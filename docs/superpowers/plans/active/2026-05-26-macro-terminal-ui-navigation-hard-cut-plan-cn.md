@@ -930,7 +930,7 @@ Only include chart/table CSS files in the commit if they changed.
 - Create: `docs/superpowers/plans/active/2026-05-26-macro-terminal-ui-navigation-hard-cut-verification-cn.md`
 - Modify: `docs/TECH_DEBT.md` only if non-trivial follow-ups remain.
 
-- [ ] **Step 1: Update frontend documentation**
+- [x] **Step 1: Update frontend documentation**
 
 In `docs/FRONTEND.md`, update the Macro route convention to state:
 
@@ -939,7 +939,7 @@ In `docs/FRONTEND.md`, update the Macro route convention to state:
 - frontend does not use old `read`, `evidence`, or `data_gaps` module keys;
 - frontend does not recompute macro scoring or module reads.
 
-- [ ] **Step 2: Run targeted verification**
+- [x] **Step 2: Run targeted verification**
 
 ```bash
 uv run pytest tests/unit/domains/macro_intel/test_macro_migration_contract.py tests/unit/domains/macro_intel/test_macro_module_catalog.py tests/unit/domains/macro_intel/test_macro_module_views.py tests/unit/test_api_macro_contract.py -q
@@ -952,7 +952,7 @@ cd web && npm run build
 
 Expected: all commands exit 0.
 
-- [ ] **Step 3: Run full completion gate**
+- [x] **Step 3: Run full completion gate**
 
 ```bash
 make check-all
@@ -960,7 +960,9 @@ make check-all
 
 Expected: exit 0. If it fails on unrelated known failures, record full output and classify the failure before claiming completion.
 
-- [ ] **Step 4: Browser verification**
+Result: exit 2 on unrelated `ruff format --check` baseline; see verification artifact.
+
+- [x] **Step 4: Browser verification**
 
 Start the local app:
 
@@ -991,7 +993,7 @@ Record:
 - no overlapping text or clipped controls;
 - no failing `/api/*` requests.
 
-- [ ] **Step 5: Write verification artifact**
+- [x] **Step 5: Write verification artifact**
 
 Create `docs/superpowers/plans/active/2026-05-26-macro-terminal-ui-navigation-hard-cut-verification-cn.md` with:
 
@@ -1001,7 +1003,7 @@ Create `docs/superpowers/plans/active/2026-05-26-macro-terminal-ui-navigation-ha
 - remaining risks;
 - deviations from this plan.
 
-- [ ] **Step 6: Commit docs and verification**
+- [x] **Step 6: Commit docs and verification**
 
 ```bash
 git add docs/FRONTEND.md \

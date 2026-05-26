@@ -15,6 +15,7 @@ export {
   formatMacroTableValue,
   sortMacroTableRows,
 } from "./model/macroTableColumns";
+export { MACRO_NAVIGATION_TREE } from "./model/macroNavigationTree";
 export { parseMacroRouteTail } from "./model/macroRoutes";
 export { MacroHeatmap } from "./ui/charts/MacroHeatmap";
 export { MacroNormalizedReturnChart } from "./ui/charts/MacroNormalizedReturnChart";
@@ -45,4 +46,5 @@ export type {
   MacroTableModel,
   MacroTableRowModel,
 } from "./model/macroTableColumns";
+export type { MacroNavigationNode } from "./model/macroNavigationTree";
 export type { MacroModuleId } from "./model/macroRoutes";

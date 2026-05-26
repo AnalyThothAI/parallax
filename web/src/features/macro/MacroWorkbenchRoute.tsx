@@ -14,13 +14,34 @@ import { MacroRatesPage } from "./ui/pages/MacroRatesPage";
 import { MacroVolatilityPage } from "./ui/pages/MacroVolatilityPage";
 import { MacroShell } from "./ui/shell/MacroShell";
 
-export function MacroWorkbenchRoute({
-  moduleId,
-  token,
-}: {
-  moduleId: MacroModuleId;
-  token: string;
-}) {
+type MacroWorkbenchRouteProps =
+  | {
+      moduleId: MacroModuleId;
+      routeKind?: "module";
+      token: string;
+    }
+  | {
+      routeKind: "unsupported";
+      routeTail: string;
+      token: string;
+    };
+
+export function MacroWorkbenchRoute(props: MacroWorkbenchRouteProps) {
+  if (props.routeKind === "unsupported") {
+    return (
+      <section className="macro-module-route" aria-label="宏观">
+        <div aria-label="不支持的宏观页面" className="macro-route-unsupported" role="status">
+          <strong>不支持的宏观页面</strong>
+          <span>/macro/{props.routeTail}</span>
+        </div>
+      </section>
+    );
+  }
+
+  return <MacroModuleWorkbenchRoute moduleId={props.moduleId} token={props.token} />;
+}
+
+function MacroModuleWorkbenchRoute({ moduleId, token }: { moduleId: MacroModuleId; token: string }) {
   const query = useMacroModuleQuery({ moduleId, token });
   const module = query.data ?? null;
 

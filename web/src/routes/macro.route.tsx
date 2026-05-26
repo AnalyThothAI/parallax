@@ -22,5 +22,10 @@ export function Component() {
       />
     );
   }
+  if (resolution.routeKind === "unsupported") {
+    return (
+      <MacroWorkbenchRoute routeKind="unsupported" routeTail={resolution.routeTail} token={token} />
+    );
+  }
   return <MacroWorkbenchRoute moduleId={resolution.moduleId} token={token} />;
 }

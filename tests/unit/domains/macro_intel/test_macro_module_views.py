@@ -14,7 +14,7 @@ from gmgn_twitter_intel.domains.macro_intel.services.macro_regime_engine import 
 NOW_MS = 1_779_000_000_000
 
 
-def test_build_macro_module_view_projects_v2_display_contract() -> None:
+def test_build_macro_module_view_projects_v3_display_contract() -> None:
     view = build_macro_module_view(
         "rates",
         snapshot=_snapshot(),
@@ -30,12 +30,17 @@ def test_build_macro_module_view_projects_v2_display_contract() -> None:
         "tiles",
         "primary_chart",
         "tables",
-        "read",
-        "evidence",
+        "module_read",
+        "module_evidence",
+        "transmission",
+        "data_health",
         "provenance",
-        "data_gaps",
         "related_routes",
+        "section_boards",
     )
+    assert "read" not in view
+    assert "evidence" not in view
+    assert "data_gaps" not in view
     assert view["snapshot"] == {
         "module_id": "rates",
         "route_path": "/macro/rates",
@@ -43,7 +48,7 @@ def test_build_macro_module_view_projects_v2_display_contract() -> None:
         "subtitle": "曲线、实际利率与估值压力",
         "question": "利率曲线是在释放风险偏好，还是继续压制估值？",
         "section": "rates",
-        "projection_version": "macro_module_view_v2",
+        "projection_version": "macro_module_view_v3",
         "status": "partial",
         "status_label": "部分可用",
         "asof_date": "2026-05-20",
@@ -90,21 +95,27 @@ def test_build_macro_module_view_projects_v2_display_contract() -> None:
     assert first_row["cells"]["latest"] == {"display_value": "3.90", "sort_value": 3.9}
     assert first_row["row_quality"] == "ok"
     assert first_row["source_state"] == {"label": "FRED", "status": "ok"}
-    assert view["read"] == {
-        "headline": "利率定价：紧缩压力",
-        "regime_label": "紧缩压力",
-        "confidence_label": "中等置信度 64%",
+    assert view["module_read"] == {
+        "headline": "利率定价：部分可用",
+        "regime_label": "部分可用",
+        "confidence_label": "模块覆盖 2/8",
         "data_note": "本页只展示已入库的真实观测、规则状态和可用性说明。",
         "methodology_note": "利率定价 使用模块配置中的 required/optional 概念生成图表和表格。",
     }
-    assert view["evidence"]["confirmations"][0]["label"] == "期限溢价压力"
-    assert view["evidence"]["confirmations"][0]["description"] == "10Y yield pressure"
-    assert view["evidence"]["watch_triggers"][0]["label"] == "实际利率突破"
-    assert view["evidence"]["invalidations"][0]["label"] == "10年期收益率回落"
-    assert all("_" not in item["label"] for group in view["evidence"].values() for item in group)
+    assert view["module_evidence"]["confirmations"][0]["code"] == "module_concept_available:rates:dgs2"
+    assert view["module_evidence"]["confirmations"][0]["label"] == "2年期美债收益率"
+    assert any(item["code"] == "module_gap:move_index_missing" for item in view["module_evidence"]["watch_triggers"])
+    assert isinstance(view["transmission"], list)
+    assert view["transmission"][0]["kind"] == "source"
+    assert view["transmission"][0]["status"] == "ok"
+    assert view["transmission"][-1]["kind"] == "implication"
+    assert view["data_health"]["summary_status"] == "partial"
+    assert any(gap["code"] == "missing_rates_dgs5" for gap in view["data_health"]["global_gaps"])
+    assert any(gap["code"] == "insufficient_history_20d" for gap in view["data_health"]["module_gaps"])
+    assert any(gap["code"] == "move_index_missing" for gap in view["data_health"]["future_integration_gaps"])
     assert all(
         item["label"] not in {"rrp buffer low", "hy oas distress", "credit spreads normalize"}
-        for group in view["evidence"].values()
+        for group in view["module_evidence"].values()
         for item in group
     )
     assert view["provenance"]["rows"] == [
@@ -129,23 +140,12 @@ def test_build_macro_module_view_projects_v2_display_contract() -> None:
     assert "fred" not in provenance_text
     assert "macro_import" not in provenance_text
     assert "run-1" not in provenance_text
-    assert all(isinstance(gap, dict) for gap in view["data_gaps"])
-    assert any(gap["code"] == "missing_rates_dgs5" and gap["label"] == "缺少当前数据：5Y" for gap in view["data_gaps"])
-    assert any(
-        gap["code"] == "insufficient_history_20d" and gap["label"] == "历史样本不足：无法计算 20 日变化"
-        for gap in view["data_gaps"]
-    )
-    assert any(
-        gap["code"] == "move_index_missing"
-        and gap["label"] == "缺少 MOVE 指数：无法确认债券波动率压力"
-        and gap["owner"] == "macro_intel"
-        for gap in view["data_gaps"]
-    )
     assert "coverage" not in view["provenance"]
     assert view["related_routes"][0] == {"href": "/macro/rates/fed-funds", "label": "联邦基金"}
+    assert view["section_boards"] == []
 
 
-def test_build_macro_module_view_returns_missing_v2_status_when_snapshot_is_absent() -> None:
+def test_build_macro_module_view_returns_missing_v3_status_when_snapshot_is_absent() -> None:
     view = build_macro_module_view(
         "fed",
         snapshot=None,
@@ -155,10 +155,10 @@ def test_build_macro_module_view_returns_missing_v2_status_when_snapshot_is_abse
 
     assert view["snapshot"]["status"] == "missing"
     assert view["snapshot"]["status_label"] == "缺失"
-    assert view["snapshot"]["projection_version"] == "macro_module_view_v2"
+    assert view["snapshot"]["projection_version"] == "macro_module_view_v3"
     assert view["primary_chart"]["status"] == "missing"
-    assert view["read"]["headline"] == "美联储走廊：缺少快照"
-    assert [gap["code"] for gap in view["data_gaps"]] == [
+    assert view["module_read"]["headline"] == "美联储走廊：缺少快照"
+    assert [gap["code"] for gap in view["data_health"]["module_gaps"]] == [
         "macro_view_snapshot_missing",
         "fed_calendar_missing",
         "fed_speeches_missing",
@@ -247,10 +247,10 @@ def test_build_macro_module_view_consumes_real_regime_v4_snapshot_without_crashi
         latest_import_run={"run_id": "run-1", "status": "ok", "reason_codes": []},
     )
 
-    assert view["snapshot"]["projection_version"] == "macro_module_view_v2"
+    assert view["snapshot"]["projection_version"] == "macro_module_view_v3"
     assert view["snapshot"]["source_projection_version"] == "macro_regime_v4"
-    assert view["data_gaps"]
-    assert all(isinstance(gap, dict) for gap in view["data_gaps"])
+    assert view["data_health"]["module_gaps"]
+    assert all(isinstance(gap, dict) for gap in view["data_health"]["module_gaps"])
     assert view["primary_chart"]["status"] == "insufficient_history"
     assert "asset:spy" not in view["tiles"][0]["label"]
 
@@ -469,7 +469,89 @@ def test_crypto_derivatives_view_marks_absent_or_empty_cex_board_as_degraded_row
                 },
             }
         ]
-        assert any(gap["code"] == expected_code for gap in view["data_gaps"])
+        assert any(gap["code"] == expected_code for gap in view["data_health"]["module_gaps"])
+
+
+def test_non_overview_module_view_does_not_reuse_global_scenario_or_blockers() -> None:
+    view = build_macro_module_view(
+        "assets/equities",
+        snapshot=_snapshot_with_global_scenario(),
+        observations=[],
+        latest_import_run=None,
+    )
+
+    assert view["snapshot"]["projection_version"] == "macro_module_view_v3"
+    assert "module_read" in view
+    assert "module_evidence" in view
+    assert "transmission" in view
+    assert "data_health" in view
+    assert "section_boards" in view
+    assert "read" not in view
+    assert "evidence" not in view
+    assert "data_gaps" not in view
+    assert "期限溢价压力" not in view["module_read"]["headline"]
+    assert all(item.get("code") != "global_term_premium" for item in view["module_evidence"]["confirmations"])
+    assert all(gap.get("code") != "missing_liquidity_srf" for gap in view["data_health"]["module_gaps"])
+    assert any(gap.get("code") == "missing_liquidity_srf" for gap in view["data_health"]["global_gaps"])
+    assert all(gap.get("scope") == "global_reference" for gap in view["data_health"]["global_gaps"])
+
+
+def test_overview_module_view_surfaces_global_scenario_and_data_health() -> None:
+    view = build_macro_module_view(
+        "overview",
+        snapshot=_snapshot_with_global_scenario(),
+        observations=[],
+        latest_import_run=None,
+    )
+
+    assert view["module_read"]["headline"] == "宏观总览：期限溢价压力"
+    assert view["module_evidence"]["confirmations"][0]["code"] == "global_term_premium"
+    assert any(gap.get("code") == "missing_liquidity_srf" for gap in view["data_health"]["global_gaps"])
+    assert view["data_health"]["summary_status"] == "missing"
+
+
+def test_assets_index_view_returns_section_boards() -> None:
+    view = build_macro_module_view(
+        "assets",
+        snapshot=_snapshot(),
+        observations=[],
+        latest_import_run=None,
+    )
+
+    assert [board["id"] for board in view["section_boards"]] == [
+        "equities",
+        "bonds",
+        "commodities",
+        "fx",
+        "crypto",
+        "crypto_derivatives",
+    ]
+    equities = view["section_boards"][0]
+    assert equities["title"] == "美股"
+    assert equities["href"] == "/macro/assets/equities"
+    assert equities["status"] == "partial"
+    assert equities["status_label"] == "部分可用"
+    assert "board_id" not in equities
+    assert "route_path" not in equities
+    assert [row["concept_key"] for row in equities["rows"]] == ["asset:spx", "asset:spy", "asset:qqq", "asset:iwm"]
+
+
+def test_assets_index_section_board_status_is_missing_when_all_rows_are_missing() -> None:
+    snapshot = _snapshot()
+    snapshot["features_json"] = {}
+
+    view = build_macro_module_view(
+        "assets",
+        snapshot=snapshot,
+        observations=[],
+        latest_import_run=None,
+    )
+
+    equities = view["section_boards"][0]
+    assert equities["id"] == "equities"
+    assert equities["status"] == "missing"
+    assert equities["status_label"] == "缺失"
+    assert all(row["status"] == "missing" for row in equities["rows"])
 
 
 def test_build_macro_module_view_rejects_unknown_module_id() -> None:
@@ -531,6 +613,17 @@ def _snapshot() -> dict[str, object]:
         ],
         "source_coverage_json": {"latest_coverage_ratio": 0.5, "history_coverage_ratio": 0.25},
     }
+
+
+def _snapshot_with_global_scenario() -> dict[str, object]:
+    snapshot = _snapshot()
+    snapshot["scenario_json"] = {
+        "current_regime": "term_premium_pressure",
+        "confidence": 0.79,
+        "confirmations": [{"code": "global_term_premium", "description": "global only"}],
+    }
+    snapshot["data_gaps_json"] = [{"code": "missing_liquidity_srf", "label": "缺少 SRF", "severity": "error"}]
+    return snapshot
 
 
 def _feature(concept_key: str, value: float, *, unit: str, source_name: str) -> dict[str, object]:

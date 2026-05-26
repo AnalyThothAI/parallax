@@ -8,8 +8,10 @@ import {
 import type { MacroModuleView } from "@lib/types";
 import { describe, expect, it } from "vitest";
 
+import { macroModuleFixture } from "../../../../fixtures/macroFixture";
+
 describe("macroPageViewModel", () => {
-  it("uses display-ready v2 labels and never surfaces raw gap strings", () => {
+  it("uses display-ready v3 labels and never surfaces raw gap strings", () => {
     expect(gapLabel({ code: "insufficient_history:60d", label: "历史样本不足" })).toBe(
       "历史样本不足",
     );
@@ -35,7 +37,28 @@ describe("macroPageViewModel", () => {
     expect(formatMacroScalar("insufficient_history")).toBe("历史样本不足");
   });
 
-  it("labels v2 read fields without exposing backend field names", () => {
+  it("accepts v3 module fixtures without old macro module payload keys", () => {
+    const module = macroModuleFixture();
+
+    expect(module.snapshot.projection_version).toBe("macro_module_view_v3");
+    expect(module.module_read.headline).toBe("美股风险：等待小盘确认");
+    expect(module.module_evidence.confirmations).toHaveLength(1);
+    expect(module.data_health.module_gaps).toHaveLength(1);
+    expect(module.transmission).toEqual([
+      {
+        kind: "flow",
+        label: "Yahoo",
+        status: "partial",
+        status_label: "部分可用",
+        value: "美股风险偏好",
+      },
+    ]);
+    expect(module).not.toHaveProperty("read");
+    expect(module).not.toHaveProperty("evidence");
+    expect(module).not.toHaveProperty("data_gaps");
+  });
+
+  it("labels v3 read fields without exposing backend field names", () => {
     expect(macroFieldLabel("regime_label")).toBe("宏观状态");
     expect(macroFieldLabel("confidence_label")).toBe("置信度");
     expect(macroFieldLabel("crypto_read")).toBe("加密影响");

@@ -1,10 +1,9 @@
 import {
   MACRO_MODULE_ROUTES,
   buildMacroBreadcrumbs,
-  macroActiveSection,
+  macroNavigationPath,
   macroModuleHref,
-  macroPrimaryTabRoutes,
-  macroSecondaryTabRoutes,
+  macroRouteLabel,
   parseMacroRouteTail,
 } from "@features/macro/model/macroRoutes";
 import { describe, expect, it } from "vitest";
@@ -21,13 +20,33 @@ describe("macroRoutes", () => {
       "assets/crypto",
       "assets/crypto-derivatives",
       "rates",
+      "rates/fed-funds",
       "rates/yield-curve",
+      "rates/auctions",
       "rates/real-rates",
+      "rates/expectations",
       "fed",
+      "fed/statements",
+      "fed/speeches",
       "liquidity",
       "liquidity/transmission-chain",
+      "liquidity/fed-balance-sheet",
+      "liquidity/operations",
+      "liquidity/rrp-tga",
+      "liquidity/reserves",
+      "liquidity/global-dollar",
+      "liquidity/subsurface",
+      "economy",
+      "economy/gdp",
+      "economy/employment",
+      "economy/inflation",
+      "economy/consumer",
       "volatility",
+      "volatility/dashboard",
+      "volatility/vix",
       "credit",
+      "credit/cds",
+      "credit/stress",
     ]);
   });
 
@@ -46,16 +65,17 @@ describe("macroRoutes", () => {
       canonicalPath: "/macro/assets/correlation",
       routeKind: "asset-correlation",
     });
-    expect(parseMacroRouteTail("assets/unknown")).toMatchObject({
-      canonicalPath: "/macro",
-      moduleId: "overview",
-      routeKind: "module",
-      wasUnknown: true,
+    expect(parseMacroRouteTail("not-real")).toMatchObject({
+      canonicalPath: "/macro/not-real",
+      routeKind: "unsupported",
+      routeTail: "not-real",
     });
   });
 
-  it("builds canonical hrefs and breadcrumbs for nested modules", () => {
+  it("builds canonical hrefs, labels, and breadcrumbs for nested modules", () => {
     expect(macroModuleHref("overview")).toBe("/macro");
+    expect(macroModuleHref("assets/equities")).toBe("/macro/assets/equities");
+    expect(macroRouteLabel("assets/equities")).toBe("美股");
     expect(macroModuleHref("liquidity/transmission-chain")).toBe(
       "/macro/liquidity/transmission-chain",
     );
@@ -67,34 +87,16 @@ describe("macroRoutes", () => {
     ]);
   });
 
-  it("groups macro routes into primary and secondary tabs", () => {
-    expect(macroPrimaryTabRoutes().map((route) => route.moduleId)).toEqual([
-      "overview",
-      "assets",
-      "rates",
-      "fed",
-      "liquidity",
-      "volatility",
-      "credit",
+  it("derives navigation paths from the macro navigation tree", () => {
+    expect(macroNavigationPath("assets/equities").map((node) => node.label)).toEqual([
+      "宏观",
+      "大类资产",
+      "美股",
     ]);
-    expect(macroSecondaryTabRoutes("assets").map((route) => route.href)).toEqual([
+    expect(macroNavigationPath("assets/correlation").map((node) => node.href)).toEqual([
+      "/macro",
       "/macro/assets",
-      "/macro/assets/equities",
-      "/macro/assets/bonds",
-      "/macro/assets/commodities",
-      "/macro/assets/fx",
-      "/macro/assets/crypto",
-      "/macro/assets/crypto-derivatives",
       "/macro/assets/correlation",
     ]);
-    expect(macroSecondaryTabRoutes("rates").map((route) => route.href)).toEqual([
-      "/macro/rates",
-      "/macro/rates/yield-curve",
-      "/macro/rates/real-rates",
-    ]);
-    expect(macroSecondaryTabRoutes("overview")).toEqual([]);
-    expect(macroActiveSection("assets/crypto")).toBe("assets");
-    expect(macroActiveSection("liquidity/transmission-chain")).toBe("liquidity");
-    expect(macroActiveSection("fed")).toBe("fed");
   });
 });

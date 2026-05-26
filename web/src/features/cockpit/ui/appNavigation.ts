@@ -1,3 +1,4 @@
+import { MACRO_NAVIGATION_TREE, type MacroNavigationNode } from "@features/macro";
 import {
   BarChart3,
   BriefcaseBusiness,
@@ -23,6 +24,22 @@ export type AppNavigationGroup = {
   items: AppNavigationItem[];
   label: string;
 };
+
+const macroNavigationRoot = MACRO_NAVIGATION_TREE[0];
+
+function adaptMacroNavigationNode(node: MacroNavigationNode): AppNavigationItem {
+  const children = node.children?.map(adaptMacroNavigationNode);
+
+  return {
+    children,
+    end: !children?.length,
+    label: node.label,
+    matchPath: children?.length ? `${node.href}/*` : undefined,
+    to: node.href,
+  };
+}
+
+const macroNavigationChildren = macroNavigationRoot.children?.map(adaptMacroNavigationNode) ?? [];
 
 export const APP_NAVIGATION_GROUPS: AppNavigationGroup[] = [
   {
@@ -58,15 +75,11 @@ export const APP_NAVIGATION_GROUPS: AppNavigationGroup[] = [
         to: "/earnings",
       },
       {
-        children: [
-          { end: true, label: "总览", to: "/macro" },
-          { end: true, label: "资产", to: "/macro/assets" },
-          { end: true, label: "相关性", to: "/macro/assets/correlation" },
-        ],
+        children: macroNavigationChildren,
         icon: BriefcaseBusiness,
-        label: "宏观",
+        label: macroNavigationRoot.label,
         matchPath: "/macro/*",
-        to: "/macro",
+        to: macroNavigationRoot.href,
       },
       {
         icon: Star,

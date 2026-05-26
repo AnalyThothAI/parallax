@@ -297,6 +297,8 @@ def test_macro_module_api_returns_backend_module_view() -> None:
         "concept_keys": (
             "rates:dgs2",
             "rates:dgs10",
+            "rates:dgs3mo",
+            "rates:dgs1",
             "rates:dgs5",
             "rates:dgs30",
             "rates:10y2y",
@@ -308,8 +310,16 @@ def test_macro_module_api_returns_backend_module_view() -> None:
     payload = response.json()
     assert payload["ok"] is True
     assert payload["data"]["snapshot"]["module_id"] == "rates"
-    assert payload["data"]["snapshot"]["projection_version"] == "macro_module_view_v2"
+    assert payload["data"]["snapshot"]["projection_version"] == "macro_module_view_v3"
     assert payload["data"]["snapshot"]["source_projection_version"] == "macro_regime_v4"
+    assert "module_read" in payload["data"]
+    assert "module_evidence" in payload["data"]
+    assert "transmission" in payload["data"]
+    assert "data_health" in payload["data"]
+    assert "section_boards" in payload["data"]
+    assert "read" not in payload["data"]
+    assert "evidence" not in payload["data"]
+    assert "data_gaps" not in payload["data"]
     assert payload["data"]["primary_chart"]["status"] == "partial"
     assert payload["data"]["primary_chart"]["series"][0]["status"] == "insufficient_history"
     assert payload["data"]["provenance"]["rows"][-1] == {
@@ -326,7 +336,7 @@ def test_macro_module_api_returns_backend_module_view() -> None:
     assert "current_read" not in payload["data"]
     assert "signals" not in payload["data"]
     assert "latest_import_run" not in payload["data"]["provenance"]
-    assert all(isinstance(gap, dict) for gap in payload["data"]["data_gaps"])
+    assert all(isinstance(gap, dict) for gap in payload["data"]["data_health"]["module_gaps"])
 
 
 def test_macro_module_api_rejects_unsupported_module() -> None:

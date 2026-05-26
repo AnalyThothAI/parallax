@@ -188,22 +188,26 @@ const routeCases: RouteCase[] = [
     path: "/macro",
     primary: async (page) => {
       await expect(page.getByRole("region", { exact: true, name: "宏观" })).toBeVisible();
-      await expect(page.getByRole("heading", { name: "总览" })).toBeVisible();
+      await expect(
+        page.getByRole("heading", { exact: true, level: 1, name: "宏观总览" }),
+      ).toBeVisible();
     },
     specific: async (page) => {
       await expect(page.getByRole("region", { name: "宏观工作台" })).toBeVisible();
-      await expect(page.getByRole("navigation", { name: "宏观主模块" })).toBeVisible();
-      await expect(page.getByRole("navigation", { name: "宏观模块" })).toBeHidden();
-      await expect(page.getByText("美股风险：等待小盘确认")).toBeVisible();
-      await expect(page.getByRole("region", { name: "关键指标" })).toContainText("标普500");
-      await expect(page.getByRole("region", { name: "关键指标" })).not.toContainText("asset:spx");
-      await expect(page.getByRole("region", { name: "核心图表" })).toBeVisible();
-      await expect(page.getByRole("table", { name: "美股代理快照" })).toBeVisible();
-      await expect(page.getByRole("region", { name: "数据缺口" })).toContainText(
-        "历史样本不足：无法计算 60 日变化",
+      await expect(page.getByRole("navigation", { name: "宏观主模块" })).toHaveCount(0);
+      await expect(page.getByRole("navigation", { name: "宏观模块" })).toHaveCount(0);
+      await expect(page.getByText("总览：风险偏好等待利率与流动性确认")).toBeVisible();
+      await expect(page.getByRole("region", { name: "宏观总览" })).toContainText("宏观状态");
+      await expect(page.getByRole("region", { name: "宏观总览" })).not.toContainText(
+        "macro:regime",
       );
-      await expect(page.getByRole("region", { name: "数据缺口" })).not.toContainText(
-        "equity_breadth_missing",
+      await expect(page.getByRole("region", { name: "核心驱动" })).toBeVisible();
+      await expect(page.getByRole("table", { name: "美股代理快照" })).toBeVisible();
+      await expect(page.getByRole("region", { name: "数据健康" })).toContainText(
+        "部分全局历史待回填",
+      );
+      await expect(page.getByRole("region", { name: "数据健康" })).not.toContainText(
+        "macro_global_history_partial",
       );
     },
     nestedOverflowSelectors: [".macro-module-route", ".macro-shell", ".macro-page-layout"],

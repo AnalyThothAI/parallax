@@ -28,7 +28,7 @@ macrodata bundle history macro-core
   -> runtime/macro_view_projection_worker.py
   -> macro_regime_v4 in macro_view_snapshots
   -> /api/macro and /api/macro/modules/{module_id}
-  -> macro_module_view_v2
+  -> macro_module_view_v3
   -> web /macro
 ```
 
@@ -64,11 +64,14 @@ Snapshot status is history-aware:
 UI and LLM-facing surfaces must read those deterministic fields rather than
 recomputing or inventing macro conclusions. Sparse source coverage should
 surface as `data_gap` / neutral scenario context, not as a false stress signal.
-Module pages consume only `macro_module_view_v2`, whose payload is
+Module pages consume only `macro_module_view_v3`, whose payload is
 display-ready: semantic snapshot headers, tiles, one primary chart with
-minimum-point status, typed display tables, current read, evidence lists,
-summarized provenance rows, structured gaps, and related routes. Raw provider
-payloads, old provenance JSON blobs, and old v1 module fields are not public
+minimum-point status, typed display tables, `module_read`, `module_evidence`,
+`transmission`, `data_health`, `section_boards`, summarized provenance rows,
+and related routes. Overview/global regime fields describe the whole macro
+state; module-local `data_health` and `section_boards` describe page readiness
+and section evidence without overriding global scores. Raw provider payloads,
+old provenance JSON blobs, and old v1/v2 module fields are not public
 compatibility surfaces.
 
 ## CLI And Operations

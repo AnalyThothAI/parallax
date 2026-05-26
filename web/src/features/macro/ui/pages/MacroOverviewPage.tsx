@@ -1,7 +1,7 @@
 import { macroRouteLabel } from "../../model/macroRoutes";
 
-import { MacroModulePageFrame, type MacroModulePageProps } from "./MacroModulePageFrame";
+import { MacroOverviewPageFrame, type MacroModulePageProps } from "./MacroModulePageFrame";
 
 export function MacroOverviewPage(props: MacroModulePageProps) {
-  return <MacroModulePageFrame {...props} pageLabel={macroRouteLabel(props.moduleId)} />;
+  return <MacroOverviewPageFrame {...props} pageLabel={macroRouteLabel(props.moduleId)} />;
 }

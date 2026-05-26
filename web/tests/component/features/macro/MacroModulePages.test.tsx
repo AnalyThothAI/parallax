@@ -1,13 +1,16 @@
 import {
   MacroAssetClassPage,
+  MacroAssetsLandingPage,
   MacroCryptoDerivativesPage,
   MacroOverviewPage,
   MacroRatesPage,
 } from "@features/macro";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import {
+  macroAssetsModuleFixture,
   macroCryptoDerivativesModuleFixture,
   macroModuleFixture,
+  macroOverviewModuleFixture,
   macroSeriesFixture,
   macroYieldCurveModuleFixture,
 } from "@tests/fixtures/macroFixture";
@@ -57,43 +60,33 @@ describe("Macro module pages", () => {
 
   it("renders overview page grammar and fetches series from backend chart concepts", async () => {
     renderWithProviders(
-      <MacroOverviewPage module={macroModuleFixture()} moduleId="overview" token="test-token" />,
+      <MacroOverviewPage
+        module={macroOverviewModuleFixture()}
+        moduleId="overview"
+        token="test-token"
+      />,
       { route: "/macro" },
     );
 
-    expect(screen.getByLabelText("总览模块页面")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "当前解读" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "核心图表" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "支撑表格" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "证据板" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "数据源" })).toBeInTheDocument();
-    const currentRead = screen.getByRole("region", { name: "当前解读" });
-    expect(within(currentRead).getByText("美股风险：等待小盘确认")).toBeInTheDocument();
-    expect(within(currentRead).getByText("风险偏好部分可用")).toBeInTheDocument();
-    expect(within(currentRead).getByText("低置信度")).toBeInTheDocument();
-    expect(
-      within(currentRead).getByText("美股代理有最新值，但历史样本不足，不能确认加密 beta。"),
-    ).toBeInTheDocument();
-    expect(within(currentRead).getByText("高 beta 山寨暴露等待更多历史确认。")).toBeInTheDocument();
-    const kpiStrip = screen.getByRole("region", { name: "关键指标" });
-    expect(within(kpiStrip).getByText("标普500")).toBeInTheDocument();
-    expect(within(kpiStrip).getByText("观测于 2026-05-20")).toBeInTheDocument();
-    const evidence = screen.getByRole("region", { name: "证据板" });
-    expect(within(evidence).getByRole("group", { name: "确认" })).toHaveTextContent(
-      "SPX 最新值可用Yahoo 最新观测存在",
+    expect(screen.getByRole("region", { name: "总览模块页面" })).toBeInTheDocument();
+    expectRegionsInOrder(["宏观总览", "核心驱动", "全局传导链", "数据健康"]);
+    const overview = screen.getByRole("region", { name: "宏观总览" });
+    expect(within(overview).getByText("总览：风险偏好等待利率与流动性确认")).toBeInTheDocument();
+    expect(within(overview).getAllByText("风险偏好部分确认").length).toBeGreaterThan(0);
+    expect(within(overview).getByText("中低置信度")).toBeInTheDocument();
+    expect(within(overview).getByText("加密 beta 需要美元流动性配合。")).toBeInTheDocument();
+    const drivers = screen.getByRole("region", { name: "核心驱动" });
+    expect(within(drivers).getByRole("group", { name: "确认" })).toHaveTextContent(
+      "美股代理可用SPX/QQQ 最新观测存在",
     );
-    expect(within(evidence).getByRole("group", { name: "反证" })).toHaveTextContent(
-      "IWM 样本不足小盘确认不足",
+    expect(within(drivers).getByRole("group", { name: "观察触发" })).toHaveTextContent(
+      "收益率曲线更新等待利率模块补齐",
     );
-    expect(within(evidence).getByRole("group", { name: "观察触发" })).toHaveTextContent(
-      "60日历史补齐核心代理达到最小样本",
-    );
-    expect(within(evidence).getByRole("group", { name: "失效条件" })).toHaveTextContent(
-      "SPX 跌破趋势风险偏好走弱",
-    );
-    const provenance = screen.getByRole("region", { name: "数据源" });
-    expect(within(provenance).getByText("计分排除")).toBeInTheDocument();
-    expect(screen.queryByText("insufficient_history")).not.toBeInTheDocument();
+    const dataHealth = screen.getByRole("region", { name: "数据健康" });
+    expect(within(dataHealth).getByText("部分全局历史待回填")).toBeInTheDocument();
+    expect(within(dataHealth).getByText("未来宏观日历待接入")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "当前解读" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "证据板" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "相关页面" })).not.toBeInTheDocument();
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/series", {
@@ -106,8 +99,8 @@ describe("Macro module pages", () => {
   it("renders backend macro fields instead of empty placeholders", () => {
     renderWithProviders(
       <MacroOverviewPage
-        module={macroModuleFixture({
-          read: {
+        module={macroOverviewModuleFixture({
+          module_read: {
             headline: "",
             regime_label: "期限溢价压力",
             confidence_label: "中等置信度",
@@ -120,11 +113,11 @@ describe("Macro module pages", () => {
       { route: "/macro" },
     );
 
-    const currentRead = screen.getByRole("region", { name: "当前解读" });
-    expect(within(currentRead).getAllByText("期限溢价压力").length).toBeGreaterThan(0);
-    expect(within(currentRead).queryByText("{}")).not.toBeInTheDocument();
-    expect(within(currentRead).queryByText("暂无")).not.toBeInTheDocument();
-    expect(currentRead).not.toHaveTextContent("term_premium_pressure");
+    const overview = screen.getByRole("region", { name: "宏观总览" });
+    expect(within(overview).getAllByText("期限溢价压力").length).toBeGreaterThan(0);
+    expect(within(overview).queryByText("{}")).not.toBeInTheDocument();
+    expect(within(overview).queryByText("暂无")).not.toBeInTheDocument();
+    expect(overview).not.toHaveTextContent("term_premium_pressure");
   });
 
   it("renders asset-class normalized return page from backend payloads", async () => {
@@ -137,8 +130,45 @@ describe("Macro module pages", () => {
       { route: "/macro/assets/equities" },
     );
 
-    expect(screen.getByLabelText("美股模块页面")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "美股模块页面" })).toBeInTheDocument();
+    expectRegionsInOrder([
+      "关键指标",
+      "市场板",
+      "模块判断",
+      "传导链",
+      "模块证据",
+      "数据来源",
+      "模块数据健康",
+    ]);
+    expect(screen.getByRole("region", { name: "市场板" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "模块判断" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "传导链" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "模块证据" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "模块数据健康" })).toBeInTheDocument();
+    expect(screen.queryByText("缺少 SRF")).not.toBeInTheDocument();
+    expect(screen.getByText("Yahoo")).toBeInTheDocument();
+    expect(screen.getByText("美股风险偏好")).toBeInTheDocument();
     expect(await screen.findByText("10%")).toBeInTheDocument();
+  });
+
+  it("renders assets landing as a terminal index", () => {
+    renderWithProviders(
+      <MacroAssetsLandingPage
+        module={macroAssetsModuleFixture()}
+        moduleId="assets"
+        token="test-token"
+      />,
+      { route: "/macro/assets" },
+    );
+
+    expect(screen.getByRole("region", { name: "大类资产索引" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "美股" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "债券" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "查看美股" })).toHaveAttribute(
+      "href",
+      "/macro/assets/equities",
+    );
+    expect(screen.queryByRole("region", { name: "模块判断" })).not.toBeInTheDocument();
   });
 
   it("keeps a stable chart loading state while backend series is pending", async () => {
@@ -211,10 +241,11 @@ describe("Macro module pages", () => {
     expect(within(cexBoard).getByText("12.50B")).toBeInTheDocument();
     expect(screen.queryByText("暂无表格行")).not.toBeInTheDocument();
     expect(screen.getAllByRole("table", { name: "CEX 永续看板" })).toHaveLength(1);
+    const dataHealth = screen.getByRole("region", { name: "模块数据健康" });
     expect(screen.getByText("Coinglass 数据不完整")).toBeInTheDocument();
-    expect(screen.getByText("基差数据缺失")).toBeInTheDocument();
-    expect(screen.getByText("加密期权数据缺失")).toBeInTheDocument();
-    expect(screen.getByText("ETF 资金流缺失")).toBeInTheDocument();
+    expect(within(dataHealth).getByText("基差数据缺失")).toBeInTheDocument();
+    expect(within(dataHealth).getByText("加密期权数据缺失")).toBeInTheDocument();
+    expect(within(dataHealth).getByText("ETF 资金流缺失")).toBeInTheDocument();
     expect(screen.queryByText("coinglass_partial")).not.toBeInTheDocument();
     expect(screen.queryByText("basis_missing")).not.toBeInTheDocument();
     expect(screen.queryByText("crypto_options_missing")).not.toBeInTheDocument();
@@ -222,3 +253,11 @@ describe("Macro module pages", () => {
     await screen.findByText("10%");
   });
 });
+
+function expectRegionsInOrder(regionNames: string[]): void {
+  const regionIndexes = regionNames.map((name) =>
+    screen.getAllByRole("region").findIndex((region) => region.getAttribute("aria-label") === name),
+  );
+  expect(regionIndexes).not.toContain(-1);
+  expect(regionIndexes).toEqual([...regionIndexes].sort((left, right) => left - right));
+}

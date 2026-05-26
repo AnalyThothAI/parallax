@@ -23,6 +23,14 @@ class MacroTableSpec:
 
 
 @dataclass(frozen=True)
+class MacroSectionBoardSpec:
+    board_id: str
+    title: str
+    route_path: str
+    concept_keys: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class MacroModuleConfig:
     module_id: str
     route_path: str
@@ -36,6 +44,7 @@ class MacroModuleConfig:
     table_specs: tuple[MacroTableSpec, ...]
     gap_codes: tuple[str, ...]
     related_routes: tuple[str, ...]
+    section_board_specs: tuple[MacroSectionBoardSpec, ...] = ()
 
 
 MACRO_MODULE_IDS = (
@@ -111,6 +120,23 @@ _MODULE_CONFIGS = {
             "/macro/assets/commodities",
             "/macro/assets/fx",
             "/macro/assets/crypto",
+        ),
+        section_board_specs=(
+            MacroSectionBoardSpec(
+                "equities", "美股", "/macro/assets/equities", ("asset:spx", "asset:spy", "asset:qqq", "asset:iwm")
+            ),
+            MacroSectionBoardSpec("bonds", "债券", "/macro/assets/bonds", ("asset:tlt", "asset:hyg", "asset:lqd")),
+            MacroSectionBoardSpec(
+                "commodities", "商品", "/macro/assets/commodities", ("commodity:wti", "asset:gld", "asset:uso")
+            ),
+            MacroSectionBoardSpec("fx", "外汇", "/macro/assets/fx", ("fx:dxy", "fx:broad_dollar")),
+            MacroSectionBoardSpec("crypto", "加密", "/macro/assets/crypto", ("crypto:btc", "crypto:eth")),
+            MacroSectionBoardSpec(
+                "crypto_derivatives",
+                "加密衍生品",
+                "/macro/assets/crypto-derivatives",
+                ("crypto:btc", "crypto:eth"),
+            ),
         ),
     ),
     "assets/equities": MacroModuleConfig(
@@ -845,6 +871,7 @@ __all__ = [
     "MACRO_MODULE_IDS",
     "MacroChartSpec",
     "MacroModuleConfig",
+    "MacroSectionBoardSpec",
     "MacroTableSpec",
     "UnsupportedMacroModuleError",
     "get_macro_module_config",

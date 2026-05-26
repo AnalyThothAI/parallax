@@ -206,16 +206,44 @@ export type MacroRelatedRoute = {
   label: string;
 };
 
+export type MacroDataHealth = {
+  summary_status?: string | null;
+  summary_label?: string | null;
+  module_gaps: MacroSemanticRecord[];
+  chart_gaps: MacroSemanticRecord[];
+  global_gaps: MacroSemanticRecord[];
+  future_integration_gaps: MacroSemanticRecord[];
+};
+
+export type MacroTransmissionNode = {
+  label?: string | null;
+  value?: unknown;
+  kind?: string | null;
+  status?: string | null;
+  status_label?: string | null;
+};
+
+export type MacroSectionBoard = {
+  id: string;
+  title: string;
+  href: string;
+  rows: MacroSemanticRecord[];
+  status?: string | null;
+  status_label?: string | null;
+};
+
 export type MacroModuleView = {
   snapshot: MacroModuleSnapshot;
   tiles: MacroModuleTile[];
   primary_chart: MacroModuleChart;
   tables: MacroModuleTable[];
-  read: MacroSemanticRecord;
-  evidence: Record<string, MacroSemanticRecord[]>;
+  module_read: MacroSemanticRecord;
+  module_evidence: Record<string, MacroSemanticRecord[]>;
+  transmission: MacroTransmissionNode[];
+  data_health: MacroDataHealth;
   provenance: MacroSemanticRecord;
-  data_gaps: MacroSemanticRecord[];
   related_routes: MacroRelatedRoute[];
+  section_boards: MacroSectionBoard[];
   [key: string]: unknown;
 };
 

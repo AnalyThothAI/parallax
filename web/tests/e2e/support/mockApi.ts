@@ -1,5 +1,10 @@
 import type { Page, Route } from "@playwright/test";
-import { macroModuleFixture, macroSeriesFixture } from "@tests/fixtures/macroFixture";
+import {
+  macroAssetsModuleFixture,
+  macroModuleFixture,
+  macroOverviewModuleFixture,
+  macroSeriesFixture,
+} from "@tests/fixtures/macroFixture";
 import { marketContextFixture, marketObservationFixture } from "@tests/fixtures/marketFixtures";
 import { tokenCaseFixture, tokenCasePostsFixture } from "@tests/fixtures/tokenCaseFixture";
 
@@ -1472,6 +1477,12 @@ function macroData() {
 
 function macroModuleData(path: string) {
   const moduleId = decodeURIComponent(path.replace("/api/macro/modules/", "")) || "overview";
+  if (moduleId === "overview") {
+    return macroOverviewModuleFixture();
+  }
+  if (moduleId === "assets") {
+    return macroAssetsModuleFixture();
+  }
   const base = macroModuleFixture();
   return macroModuleFixture({
     snapshot: {

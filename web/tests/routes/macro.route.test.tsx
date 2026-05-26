@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import {
   macroCorrelationFixture,
   macroModuleFixture,
+  macroOverviewModuleFixture,
   macroSeriesFixture,
 } from "@tests/fixtures/macroFixture";
 import { ok } from "@tests/msw/fixtures";
@@ -45,9 +46,9 @@ describe("macro route", () => {
       mock.getApiImpl = async (path, options) => {
         if (path === "/api/macro/modules/overview") {
           return ok(
-            macroModuleFixture({
+            macroOverviewModuleFixture({
               snapshot: {
-                ...macroModuleFixture().snapshot,
+                ...macroOverviewModuleFixture().snapshot,
                 module_id: "overview",
                 route_path: "/macro",
                 title: "总览",
@@ -56,7 +57,9 @@ describe("macro route", () => {
             }),
           );
         }
-        if (path === "/api/macro/modules/assets/equities") return ok(macroModuleFixture());
+        if (path === "/api/macro/modules/assets/equities") {
+          return ok(macroModuleFixture());
+        }
         if (path === "/api/macro/series") {
           const conceptKeys = String(options?.params?.concept_keys ?? "asset:spx").split(",");
           return ok(macroSeriesFixture(conceptKeys));
@@ -123,10 +126,12 @@ describe("macro route", () => {
     expect(await screen.findByRole("heading", { name: "美股风险" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "宏观" })).not.toBeInTheDocument();
     expect(screen.getByText("美股风险：等待小盘确认")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "宏观传导图" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "图表与市场板" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "交易员证据" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "数据质量" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "美股模块页面" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "市场板" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "传导链" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "模块证据" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "数据来源" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "模块数据健康" })).toBeInTheDocument();
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/assets/equities", {
         token: "secret",
@@ -134,15 +139,15 @@ describe("macro route", () => {
     );
   });
 
-  it("normalizes unknown module routes back to the macro overview", async () => {
-    renderAppRoute("/macro/assets/unknown");
+  it("renders an unsupported state for unknown macro routes", async () => {
+    renderAppRoute("/macro/not-real");
 
-    expect(await screen.findByRole("heading", { name: "总览" })).toBeInTheDocument();
-    await waitFor(() =>
-      expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/overview", {
-        token: "secret",
-      }),
-    );
+    expect(
+      await screen.findByRole("status", { name: "不支持的宏观页面" }),
+    ).toHaveTextContent("不支持的宏观页面");
+    expect(apiMock.readApi).not.toHaveBeenCalledWith("/api/macro/modules/overview", {
+      token: "secret",
+    });
   });
 
   it("opens the macro asset correlation detail route", async () => {
@@ -168,8 +173,8 @@ describe("macro route", () => {
 
     expect(await screen.findByRole("heading", { name: "美股风险" })).toBeInTheDocument();
     expect(screen.getByLabelText("宏观工作台")).toBeInTheDocument();
-    expect(screen.getByRole("navigation", { name: "宏观主模块" })).toBeInTheDocument();
-    expect(screen.getByRole("navigation", { name: "宏观模块" })).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "宏观主模块" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "宏观模块" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "宏观" })).not.toBeInTheDocument();
     expect(document.querySelector(".live-task-nav")).not.toBeInTheDocument();
   });

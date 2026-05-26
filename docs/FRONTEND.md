@@ -72,10 +72,15 @@ Do not add new code under old `api/`, `store/`, or `components/` roots. Public f
   `equity_event_calendar_rows`, and persisted `equity_event_agent_briefs`
   directly, including `pending`, `ready`, `stale`, `failed`, `insufficient`,
   and `disabled` brief states.
-- **Macro route.** `/macro` renders deterministic Macro Intel state from
-  `/api/macro`. Regime, component scores, indicators, triggers, and data
-  gaps come from `macro_view_snapshots`; frontend code does not recompute macro
-  scoring or infer missing values.
+- **Macro route.** `/macro` and child module routes render deterministic Macro
+  Intel state from `/api/macro`, `/api/macro/modules/{module_id}`, and explicit
+  module-adjacent endpoints such as `/api/macro/assets/correlation`. Macro
+  shell/sidebar code owns macro navigation; module pages consume
+  `macro_module_view_v3` payloads and render `module_read`, `module_evidence`,
+  `transmission`, `data_health`, and `section_boards` directly. Frontend macro
+  code must not use retired module keys `read`, `evidence`, or top-level
+  `data_gaps`, and must not recompute macro scoring or module reads from
+  indicators, headlines, scenarios, or data-health records.
 - **Page state.** Loading, empty, stale, and error surfaces should use `PageState.*` so skeletons, error alerts, and retry actions stay consistent.
 - **CSS ownership.** `main.tsx` imports only Tailwind, tokens, and base styles. Feature and shared UI selectors are imported by the component or route that owns them. Shared primitives such as `IconButton`, `RadarControls`, `PageState`, `TokenProfileCard`, `HandleFilter`, `DecisionTag`, `CompactPanel`, and the Obsidian case-file components own their CSS under `shared/ui/`; feature CSS may lay out the containing toolbar or deck but must not redefine primitive internals. Cross-feature widgets such as notifications own their visual selectors in their feature folder; shell code may place a slot, not restyle the widget internals. Do not use `.module.css` files as global selector buckets; CSS Modules must bind local classes from TypeScript.
 - **CSS architecture harness.** `web/tests/architecture/cssArchitectureHarness.test.ts` is the future-proof gate for CSS ownership. It rejects retired global buckets (`cockpit.css`, `signalLab.css`, `shared.css`), side-effect CSS imported from non-local owners, feature CSS that redefines shared UI classes, feature selectors outside their namespace, naked modifier classes such as `.active` or `.gap`, and side-effect class names reused across feature roots. When a new feature needs side-effect CSS, add an explicit namespace policy there rather than borrowing another feature's selectors.
