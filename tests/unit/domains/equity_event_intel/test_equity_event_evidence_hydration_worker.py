@@ -103,6 +103,10 @@ def test_hydration_worker_terminalizes_reaped_stale_job_with_failed_artifact_and
             "evidence_job_id": "job-event-document-id",
             "finished_at_ms": NOW_MS,
             "error": "evidence_job_lease_expired",
+            "attempt_count": 1,
+            "lease_owner": "equity_event_evidence_hydration",
+            "event_document_id": "event-document-id",
+            "content_hash": "content-hash",
         }
     ]
     terminal_order = [
@@ -155,6 +159,76 @@ def test_hydration_worker_skips_stale_claim_after_document_reset() -> None:
     assert wake_bus.documents_written == []
 
 
+def test_hydration_worker_retryable_exception_passes_document_claim_guard() -> None:
+    repo = _HydrationRepo(claim_current=False)
+    wake_bus = _WakeBus()
+    worker = EquityEventEvidenceHydrationWorker(
+        name="equity_event_evidence_hydration",
+        settings=SimpleNamespace(
+            batch_size=10,
+            max_attempts=3,
+            lease_ms=60_000,
+            statement_timeout_seconds=None,
+        ),
+        db=_Db(repo),
+        telemetry=SimpleNamespace(),
+        document_provider=_FailingProvider(),
+        wake_bus=wake_bus,
+        clock_ms=lambda: NOW_MS,
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.failed == 1
+    assert repo.retryables == [
+        {
+            "evidence_job_id": "job-event-document-id",
+            "attempt_count": 1,
+            "lease_owner": "equity_event_evidence_hydration",
+            "event_document_id": "event-document-id",
+            "content_hash": "content-hash",
+        }
+    ]
+    assert repo.replaced_artifacts == []
+    assert repo.marked_statuses == []
+    assert wake_bus.documents_written == []
+
+
+def test_hydration_worker_missing_input_failure_uses_claim_guard() -> None:
+    repo = _HydrationRepo(load_payload={})
+    wake_bus = _WakeBus()
+    worker = EquityEventEvidenceHydrationWorker(
+        name="equity_event_evidence_hydration",
+        settings=SimpleNamespace(
+            batch_size=10,
+            max_attempts=3,
+            lease_ms=60_000,
+            statement_timeout_seconds=None,
+        ),
+        db=_Db(repo),
+        telemetry=SimpleNamespace(),
+        document_provider=_Provider(),
+        wake_bus=wake_bus,
+        clock_ms=lambda: NOW_MS,
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.failed == 1
+    assert repo.terminals == [
+        {
+            "evidence_job_id": "job-event-document-id",
+            "finished_at_ms": NOW_MS,
+            "error": "evidence_hydration_input_missing",
+            "attempt_count": 1,
+            "lease_owner": "equity_event_evidence_hydration",
+            "event_document_id": "event-document-id",
+            "content_hash": None,
+        }
+    ]
+    assert repo.retryables == []
+
+
 @dataclass
 class _Provider:
     def hydrate_document_evidence(self, *, source: dict[str, Any], document: Any) -> EquityEvidenceHydrationResult:
@@ -185,12 +259,19 @@ class _Provider:
         )
 
 
+@dataclass
+class _FailingProvider:
+    def hydrate_document_evidence(self, *, source: dict[str, Any], document: Any) -> EquityEvidenceHydrationResult:
+        raise RuntimeError("provider unavailable")
+
+
 class _HydrationRepo:
     def __init__(
         self,
         *,
         reaped_terminal_jobs: list[dict[str, Any]] | None = None,
         claimed_jobs: list[dict[str, Any]] | None = None,
+        load_payload: dict[str, Any] | None = None,
         claim_current: bool = True,
     ) -> None:
         self.call_order: list[str] = []
@@ -198,15 +279,24 @@ class _HydrationRepo:
         self.claim_current = claim_current
         self.reaped_terminal_jobs = [] if reaped_terminal_jobs is None else reaped_terminal_jobs
         self.claimed_jobs = (
-            [{"evidence_job_id": "job-event-document-id", "event_document_id": "event-document-id"}]
+            [
+                {
+                    "evidence_job_id": "job-event-document-id",
+                    "event_document_id": "event-document-id",
+                    "attempt_count": 1,
+                    "lease_owner": "equity_event_evidence_hydration",
+                }
+            ]
             if claimed_jobs is None
             else claimed_jobs
         )
+        self.load_payload = self._default_payload() if load_payload is None else load_payload
         self.reaped: list[dict[str, Any]] = []
         self.claims: list[dict[str, Any]] = []
         self.replaced_artifacts: list[dict[str, Any]] = []
         self.marked_statuses: list[dict[str, Any]] = []
         self.successes: list[dict[str, Any]] = []
+        self.retryables: list[dict[str, Any]] = []
         self.terminals: list[dict[str, Any]] = []
         self.source_freshness: list[dict[str, Any]] = []
         self.claim_validations: list[dict[str, Any]] = []
@@ -231,8 +321,17 @@ class _HydrationRepo:
 
     def load_evidence_hydration_input(self, *, evidence_job_id: str) -> dict[str, Any]:
         assert evidence_job_id == "job-event-document-id"
+        return self.load_payload
+
+    def _default_payload(self) -> dict[str, Any]:
         return {
-            "job": {"evidence_job_id": "job-event-document-id", "attempt_count": 1, "max_attempts": 3},
+            "job": {
+                "evidence_job_id": "job-event-document-id",
+                "event_document_id": "event-document-id",
+                "attempt_count": 1,
+                "max_attempts": 3,
+                "lease_owner": "equity_event_evidence_hydration",
+            },
             "source": {
                 "source_id": "sec:MSFT",
                 "provider_type": "sec_submissions",
@@ -299,22 +398,57 @@ class _HydrationRepo:
         self.call_order.append("finish_success")
         self.successes.append({"evidence_job_id": evidence_job_id, "finished_at_ms": finished_at_ms})
 
+    def finish_evidence_job_retryable(
+        self,
+        *,
+        evidence_job_id: str,
+        attempt_count: int | None,
+        lease_owner: str | None,
+        event_document_id: str | None,
+        content_hash: str | None,
+        **_: Any,
+    ) -> bool:
+        assert attempt_count is not None
+        assert lease_owner is not None
+        self.call_order.append("finish_retryable")
+        self.retryables.append(
+            {
+                "evidence_job_id": evidence_job_id,
+                "attempt_count": attempt_count,
+                "lease_owner": lease_owner,
+                "event_document_id": event_document_id,
+                "content_hash": content_hash,
+            }
+        )
+        return self.claim_current
+
     def finish_evidence_job_terminal(
         self,
         *,
         evidence_job_id: str,
         finished_at_ms: int,
         error: str | None,
+        attempt_count: int | None,
+        lease_owner: str | None,
+        event_document_id: str | None,
+        content_hash: str | None,
         **_: Any,
-    ) -> None:
+    ) -> bool:
+        assert attempt_count is not None
+        assert lease_owner is not None
         self.call_order.append("finish_terminal")
         self.terminals.append(
             {
                 "evidence_job_id": evidence_job_id,
                 "finished_at_ms": finished_at_ms,
                 "error": error,
+                "attempt_count": attempt_count,
+                "lease_owner": lease_owner,
+                "event_document_id": event_document_id,
+                "content_hash": content_hash,
             }
         )
+        return self.claim_current
 
     def update_source_material_freshness(
         self,

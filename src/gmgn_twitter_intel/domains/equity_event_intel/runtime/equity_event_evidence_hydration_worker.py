@@ -93,6 +93,9 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
 
     def _hydrate_job(self, job: dict[str, Any], *, now_ms: int) -> WorkerResult:
         evidence_job_id = str(job["evidence_job_id"])
+        claim_attempt_count = _claim_attempt_count(job)
+        claim_lease_owner = _claim_lease_owner(job)
+        claimed_event_document_id = _optional_str(job.get("event_document_id"))
         try:
             with self._repository_session() as repos:
                 payload = repos.equity_events.load_evidence_hydration_input(evidence_job_id=evidence_job_id)
@@ -102,6 +105,10 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
                     error="evidence_hydration_input_missing",
                     now_ms=now_ms,
                     terminal=True,
+                    attempt_count=claim_attempt_count,
+                    lease_owner=claim_lease_owner,
+                    event_document_id=claimed_event_document_id,
+                    content_hash=None,
                 )
                 return WorkerResult(failed=1, notes={"evidence_job_id": evidence_job_id})
 
@@ -139,6 +146,10 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
                 error=f"evidence_hydration_worker_exception:{type(exc).__name__}",
                 now_ms=now_ms,
                 terminal=False,
+                attempt_count=claim_attempt_count,
+                lease_owner=claim_lease_owner,
+                event_document_id=claimed_event_document_id,
+                content_hash=None,
             )
             return WorkerResult(failed=1, notes={"evidence_job_id": evidence_job_id, "error": str(exc)})
 
@@ -152,6 +163,10 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
                 error="evidence_hydration_input_missing",
                 now_ms=now_ms,
                 terminal=True,
+                attempt_count=_claim_attempt_count(job),
+                lease_owner=_claim_lease_owner(job),
+                event_document_id=_optional_str(job.get("event_document_id")),
+                content_hash=None,
             )
             return WorkerResult(failed=1, notes={"evidence_job_id": evidence_job_id})
 
@@ -182,13 +197,16 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
         terminal = int(job.get("attempt_count") or 0) >= int(job.get("max_attempts") or self._max_attempts())
         reason = _hydration_exception_reason(error)
         if not terminal:
+            document = dict(payload["document"])
             self._finish_failure(
                 evidence_job_id=str(job["evidence_job_id"]),
                 error=reason,
                 now_ms=now_ms,
                 terminal=False,
-                attempt_count=int(job.get("attempt_count") or 0),
-                lease_owner=str(job.get("lease_owner") or self.name),
+                attempt_count=_claim_attempt_count(job),
+                lease_owner=_claim_lease_owner(job),
+                event_document_id=_optional_str(document.get("event_document_id")),
+                content_hash=_optional_str(document.get("content_hash")),
             )
             return WorkerResult(failed=1, notes={"evidence_job_id": str(job["evidence_job_id"]), "error": reason})
 
@@ -228,8 +246,10 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
         event_document_id = str(document["event_document_id"])
         source_id = _source_id_from_payload(source=source, document=document)
         evidence_job_id = str(job["evidence_job_id"])
-        attempt_count = int(job.get("attempt_count") or 0)
-        lease_owner = str(job.get("lease_owner") or self.name)
+        attempt_count = _claim_attempt_count(job)
+        lease_owner = _claim_lease_owner(job)
+        if attempt_count is None or lease_owner is None:
+            return WorkerResult(processed=0, notes={"stale_claim": 1, "evidence_job_id": evidence_job_id})
         evidence_status, evidence_reason, evidence_ready_at_ms = _evidence_document_status(
             artifacts,
             fetched_at_ms=now_ms,
@@ -274,6 +294,8 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
                     error=error or evidence_reason,
                     attempt_count=attempt_count,
                     lease_owner=lease_owner,
+                    event_document_id=event_document_id,
+                    content_hash=_optional_str(document.get("content_hash")),
                     commit=False,
                 )
             if evidence_status == "ready":
@@ -305,7 +327,11 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
         terminal: bool,
         attempt_count: int | None = None,
         lease_owner: str | None = None,
+        event_document_id: str | None = None,
+        content_hash: str | None = None,
     ) -> None:
+        if attempt_count is None or lease_owner is None:
+            return
         with self._repository_session() as repos:
             if terminal:
                 repos.equity_events.finish_evidence_job_terminal(
@@ -314,6 +340,8 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
                     error=error,
                     attempt_count=attempt_count,
                     lease_owner=lease_owner,
+                    event_document_id=event_document_id,
+                    content_hash=content_hash,
                     commit=False,
                 )
             else:
@@ -324,6 +352,8 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
                     now_ms=now_ms,
                     attempt_count=attempt_count,
                     lease_owner=lease_owner,
+                    event_document_id=event_document_id,
+                    content_hash=content_hash,
                     commit=False,
                 )
             repos.conn.commit()
@@ -402,6 +432,17 @@ def _optional_str(value: Any) -> str | None:
         return None
     text = str(value)
     return text or None
+
+
+def _claim_attempt_count(job: Mapping[str, Any]) -> int | None:
+    value = job.get("attempt_count")
+    if value is None:
+        return None
+    return int(value)
+
+
+def _claim_lease_owner(job: Mapping[str, Any]) -> str | None:
+    return _optional_str(job.get("lease_owner"))
 
 
 def _source_id_from_payload(*, source: Mapping[str, Any], document: Mapping[str, Any]) -> str:

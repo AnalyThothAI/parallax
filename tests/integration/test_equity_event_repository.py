@@ -198,6 +198,63 @@ def test_evidence_job_claim_guard_rejects_reset_document_content(postgres_conn) 
     assert job["attempt_count"] == 0
 
 
+def test_evidence_job_retryable_finish_rejects_reset_document_content(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    document = _seed_event_document(repos, event_document_id="event-doc-retry-guard")
+    repos.equity_events.enqueue_evidence_job(
+        evidence_job_id="evidence-job-retry-guard",
+        event_document_id=document["event_document_id"],
+        source_id="sec:MSFT",
+        due_at_ms=NOW_MS,
+        max_attempts=3,
+        now_ms=NOW_MS,
+    )
+    claimed = repos.equity_events.claim_due_evidence_jobs(
+        now_ms=NOW_MS + 1,
+        limit=1,
+        lease_owner="equity_event_evidence_hydration",
+        lease_ms=60_000,
+    )[0]
+    repos.equity_events.upsert_event_document(
+        event_document_id=document["event_document_id"],
+        provider_document_id=document["provider_document_id"],
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        source_id="sec:MSFT",
+        source_role="official_regulator",
+        document_type="sec_filing",
+        form_type="10-Q",
+        accession_number="0000789019-26-000001",
+        fiscal_period="2026Q1",
+        document_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft.htm",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS + 2,
+        content_hash="content-reset",
+        now_ms=NOW_MS + 2,
+    )
+
+    finished = repos.equity_events.finish_evidence_job_retryable(
+        evidence_job_id="evidence-job-retry-guard",
+        error="evidence_hydration_exception:RuntimeError",
+        due_at_ms=NOW_MS + 60_000,
+        now_ms=NOW_MS + 3,
+        attempt_count=claimed["attempt_count"],
+        lease_owner="equity_event_evidence_hydration",
+        event_document_id=document["event_document_id"],
+        content_hash=document["content_hash"],
+    )
+    job = postgres_conn.execute(
+        "SELECT * FROM equity_event_evidence_jobs WHERE evidence_job_id = %s",
+        ("evidence-job-retry-guard",),
+    ).fetchone()
+
+    assert finished is False
+    assert job["status"] == "running"
+    assert job["attempt_count"] == claimed["attempt_count"]
+    assert job["lease_owner"] == "equity_event_evidence_hydration"
+
+
 def test_equity_event_repository_writes_raw_document_event_and_page_row(postgres_conn) -> None:
     repos = repositories_for_connection(postgres_conn)
     repos.equity_events.upsert_source(

@@ -1183,6 +1183,10 @@ class EquityEventRepository:
         lease_owner: str | None = None,
         commit: bool = True,
     ) -> bool:
+        if attempt_count is None or lease_owner is None:
+            if commit:
+                self.conn.commit()
+            return False
         row = self.conn.execute(
             """
             UPDATE equity_event_evidence_jobs
@@ -1194,18 +1198,16 @@ class EquityEventRepository:
                    updated_at_ms = %s
              WHERE evidence_job_id = %s
                AND status = 'running'
-               AND (%s::integer IS NULL OR attempt_count = %s)
-               AND (%s::text IS NULL OR lease_owner = %s)
+               AND attempt_count = %s
+               AND lease_owner = %s
             RETURNING evidence_job_id
             """,
             (
                 int(finished_at_ms),
                 int(finished_at_ms),
                 evidence_job_id,
-                int(attempt_count) if attempt_count is not None else None,
-                int(attempt_count) if attempt_count is not None else None,
-                str(lease_owner) if lease_owner is not None else None,
-                str(lease_owner) if lease_owner is not None else None,
+                int(attempt_count),
+                str(lease_owner),
             ),
         ).fetchone()
         if commit:
@@ -1221,8 +1223,14 @@ class EquityEventRepository:
         now_ms: int,
         attempt_count: int | None = None,
         lease_owner: str | None = None,
+        event_document_id: str | None = None,
+        content_hash: str | None = None,
         commit: bool = True,
     ) -> bool:
+        if attempt_count is None or lease_owner is None:
+            if commit:
+                self.conn.commit()
+            return False
         row = self.conn.execute(
             """
             UPDATE equity_event_evidence_jobs
@@ -1241,8 +1249,17 @@ class EquityEventRepository:
                    updated_at_ms = %s
              WHERE evidence_job_id = %s
                AND status = 'running'
-               AND (%s::integer IS NULL OR attempt_count = %s)
-               AND (%s::text IS NULL OR lease_owner = %s)
+               AND attempt_count = %s
+               AND lease_owner = %s
+               AND (%s::text IS NULL OR event_document_id = %s)
+               AND (
+                 %s::text IS NULL OR EXISTS (
+                   SELECT 1
+                     FROM equity_event_documents AS documents
+                    WHERE documents.event_document_id = equity_event_evidence_jobs.event_document_id
+                      AND documents.content_hash IS NOT DISTINCT FROM %s
+                 )
+               )
             RETURNING evidence_job_id
             """,
             (
@@ -1251,10 +1268,12 @@ class EquityEventRepository:
                 _compact_error(error),
                 int(now_ms),
                 evidence_job_id,
-                int(attempt_count) if attempt_count is not None else None,
-                int(attempt_count) if attempt_count is not None else None,
-                str(lease_owner) if lease_owner is not None else None,
-                str(lease_owner) if lease_owner is not None else None,
+                int(attempt_count),
+                str(lease_owner),
+                event_document_id,
+                event_document_id,
+                content_hash,
+                content_hash,
             ),
         ).fetchone()
         if commit:
@@ -1269,8 +1288,14 @@ class EquityEventRepository:
         error: str | None,
         attempt_count: int | None = None,
         lease_owner: str | None = None,
+        event_document_id: str | None = None,
+        content_hash: str | None = None,
         commit: bool = True,
     ) -> bool:
+        if attempt_count is None or lease_owner is None:
+            if commit:
+                self.conn.commit()
+            return False
         row = self.conn.execute(
             """
             UPDATE equity_event_evidence_jobs
@@ -1282,8 +1307,17 @@ class EquityEventRepository:
                    updated_at_ms = %s
              WHERE evidence_job_id = %s
                AND status = 'running'
-               AND (%s::integer IS NULL OR attempt_count = %s)
-               AND (%s::text IS NULL OR lease_owner = %s)
+               AND attempt_count = %s
+               AND lease_owner = %s
+               AND (%s::text IS NULL OR event_document_id = %s)
+               AND (
+                 %s::text IS NULL OR EXISTS (
+                   SELECT 1
+                     FROM equity_event_documents AS documents
+                    WHERE documents.event_document_id = equity_event_evidence_jobs.event_document_id
+                      AND documents.content_hash IS NOT DISTINCT FROM %s
+                 )
+               )
             RETURNING evidence_job_id
             """,
             (
@@ -1291,10 +1325,12 @@ class EquityEventRepository:
                 _compact_error(error),
                 int(finished_at_ms),
                 evidence_job_id,
-                int(attempt_count) if attempt_count is not None else None,
-                int(attempt_count) if attempt_count is not None else None,
-                str(lease_owner) if lease_owner is not None else None,
-                str(lease_owner) if lease_owner is not None else None,
+                int(attempt_count),
+                str(lease_owner),
+                event_document_id,
+                event_document_id,
+                content_hash,
+                content_hash,
             ),
         ).fetchone()
         if commit:
