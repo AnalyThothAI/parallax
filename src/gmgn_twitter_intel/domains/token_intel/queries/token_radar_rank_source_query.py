@@ -270,6 +270,7 @@ source_intents AS (
       ELSE token_intent_resolutions.pricefeed_id
     END AS pricefeed_id,
     token_intent_resolutions.resolution_status,
+    token_intent_resolutions.confidence AS resolution_confidence,
     token_intent_resolutions.reason_codes_json,
     token_intent_resolutions.candidate_ids_json,
     token_intent_resolutions.lookup_keys_json,
@@ -468,14 +469,42 @@ source_intents AS (
     AND token_intent_resolutions.target_id IS NOT NULL
     AND CASE WHEN requested.scope = 'matched' THEN events.is_watched = true ELSE true END
 ),
+deduped_source AS (
+  SELECT *
+  FROM (
+    SELECT
+      source_intents.*,
+      row_number() OVER (
+        PARTITION BY "window", scope, target_type_key, identity_id, event_id
+        ORDER BY
+          CASE
+            WHEN resolution_status = 'EXACT' THEN 0
+            WHEN resolution_status = 'UNIQUE_BY_CONTEXT' THEN 1
+            WHEN resolution_status = 'AMBIGUOUS' THEN 2
+            ELSE 3
+          END,
+          resolution_confidence DESC NULLS LAST,
+          decision_time_ms DESC NULLS LAST,
+          intent_updated_at_ms DESC NULLS LAST,
+          event_price_observed_at_ms DESC NULLS LAST,
+          event_price_received_at_ms DESC NULLS LAST,
+          latest_price_observed_at_ms DESC NULLS LAST,
+          latest_price_received_at_ms DESC NULLS LAST,
+          resolution_id DESC NULLS LAST,
+          intent_id DESC
+      ) AS event_source_choice_rank
+    FROM source_intents
+  ) source_choices
+  WHERE event_source_choice_rank = 1
+),
 ranked_source AS (
   SELECT
-    source_intents.*,
+    deduped_source.*,
     (row_number() OVER (
       PARTITION BY "window", scope, target_type_key, identity_id
       ORDER BY event_received_at_ms ASC, event_id ASC
     ) - 1)::integer AS source_rank
-  FROM source_intents
+  FROM deduped_source
 ),
 upserted AS (
   INSERT INTO token_radar_rank_source_events(

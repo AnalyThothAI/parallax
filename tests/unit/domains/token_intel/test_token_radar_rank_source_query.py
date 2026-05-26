@@ -100,6 +100,36 @@ def test_rank_source_query_populates_compact_edges_without_event_text_or_legacy_
     assert conn.commit_count == 1
 
 
+def test_rank_source_query_dedupes_event_sources_before_upsert():
+    conn = FakeConn(rows=[{"upserted_count": 1, "deleted_count": 0}])
+
+    TokenRadarRankSourceQuery(conn).populate_edges_for_requests(
+        [
+            TokenRadarSourceRequest(
+                request_key="request-1",
+                target_type_key="Asset",
+                identity_id="asset-1",
+                window="1h",
+                scope="all",
+                analysis_since_ms=1,
+                score_since_ms=2,
+                now_ms=3,
+            )
+        ],
+        projected_at_ms=4,
+        commit=False,
+    )
+
+    normalized_sql = " ".join(conn.sql.split())
+    assert "deduped_source AS" in conn.sql
+    assert 'PARTITION BY "window", scope, target_type_key, identity_id, event_id' in conn.sql
+    assert "resolution_confidence DESC NULLS LAST" in conn.sql
+    assert "event_source_choice_rank = 1" in conn.sql
+    assert "FROM deduped_source" in conn.sql
+    assert normalized_sql.index("deduped_source AS") < normalized_sql.index("ranked_source AS")
+    assert normalized_sql.index("FROM deduped_source") < normalized_sql.index("INSERT INTO")
+
+
 def test_rank_source_query_deletes_stale_edges_inside_requested_window_only():
     conn = FakeConn(rows=[{"upserted_count": 3, "deleted_count": 1}])
 
