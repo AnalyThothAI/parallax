@@ -293,6 +293,62 @@ def test_resolution_refresh_worker_retries_hot_not_found_before_default_ttl(tmp_
     assert after["target_id"] == f"asset:eip155:1:erc20:{address}"
 
 
+def test_discovery_terminalize_empty_payload_hash_deletes_active_row(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    now_ms = 1_778_145_100_000
+    try:
+        migrate(conn)
+        repos = repositories_for_connection(conn)
+        conn.execute(
+            """
+            INSERT INTO token_discovery_dirty_lookup_keys(
+              provider, lookup_key, lookup_type, dirty_reason, payload_hash, due_at_ms,
+              latest_seen_ms, intent_count, refresh_priority, leased_until_ms, lease_owner,
+              attempt_count, last_error, first_dirty_at_ms, updated_at_ms
+            )
+            VALUES (
+              'okx_dex_search', 'symbol:EMPTY', 'dex_symbol_lookup', 'test', '', %(now_ms)s,
+              %(now_ms)s, 1, 0, NULL, NULL, 0, NULL, %(now_ms)s, %(now_ms)s
+            )
+            """,
+            {"now_ms": now_ms},
+        )
+        conn.commit()
+        claims = repos.discovery.claim_due_lookup_keys(
+            now_ms=now_ms,
+            limit=1,
+            lease_ms=60_000,
+            lease_owner="resolution_refresh",
+            hot_since_ms=None,
+            hot_not_found_retry_ms=None,
+        )
+
+        outcome = repos.discovery.terminalize_lookup_claims(
+            claims,
+            worker_name="resolution_refresh",
+            final_status="error",
+            final_reason="provider_error_retry_budget_exhausted",
+            now_ms=now_ms,
+        )
+        active = conn.execute("SELECT COUNT(*) AS count FROM token_discovery_dirty_lookup_keys").fetchone()
+        terminal = conn.execute(
+            """
+            SELECT worker_name, source_table, target_key, payload_hash, operator_action
+            FROM worker_queue_terminal_events
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert outcome == {"terminalized": 1, "deleted": 1}
+    assert active["count"] == 0
+    assert terminal["worker_name"] == "resolution_refresh"
+    assert terminal["source_table"] == "token_discovery_dirty_lookup_keys"
+    assert terminal["target_key"] == "okx_dex_search:symbol:EMPTY"
+    assert terminal["payload_hash"] == ""
+    assert terminal["operator_action"] is None
+
+
 def test_dex_symbol_discovery_retains_top_three_per_chain(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     now_ms = 1_778_145_100_000

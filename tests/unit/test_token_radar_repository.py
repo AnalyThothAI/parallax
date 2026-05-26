@@ -277,7 +277,16 @@ def test_upsert_target_feature_writes_compact_projection_row():
     assert conn.params["source_event_ids_json"].obj == ["event-1"]
     assert conn.params["source_intent_ids_json"].obj == ["intent-1"]
     assert conn.params["payload_hash"]
+    assert conn.params["rank_input_version"] == "token-radar-rank-input-v1"
+    assert conn.params["social_heat_raw_score"] == 12.0
+    assert conn.params["social_heat_weight"] == 1.0
+    assert conn.params["social_propagation_raw_score"] == 10.0
+    assert conn.params["cohort_high_confidence_mentions"] == 0
+    assert conn.params["cohort_symbol"] == "BOV"
+    assert conn.params["recommended_decision"] == "discard"
+    assert conn.params["gates_max_decision"] == "discard"
     assert "WHERE token_radar_target_features.payload_hash IS DISTINCT FROM excluded.payload_hash" in conn.sql
+    assert "rank_input_version = excluded.rank_input_version" in conn.sql
     assert "last_scored_at_ms < excluded.last_scored_at_ms" not in conn.sql
 
 
@@ -315,7 +324,7 @@ def test_delete_target_feature_uses_projection_identity_key():
     assert conn.params == ("token-radar-v13-social-attention", "1h", "all", "resolved", "Asset", "asset-1")
 
 
-def test_list_target_features_for_rank_set_rehydrates_public_row_payload():
+def test_list_rank_inputs_for_rank_set_reads_only_scalar_rank_columns_and_version():
     conn = FakeConn(
         rows=[
             {
@@ -329,27 +338,137 @@ def test_list_target_features_for_rank_set_rehydrates_public_row_payload():
                 "target_id": "asset-1",
                 "pricefeed_id": "pf-1",
                 "latest_event_received_at_ms": 1_778_000_000_000,
-                "factor_snapshot_json": _valid_factor_snapshot(rank_score=12.0),
-                "source_event_ids_json": ["event-1"],
-                "source_intent_ids_json": ["intent-1"],
-                "source_resolution_ids_json": ["resolution-1"],
+                "latest_market_observed_at_ms": 1_778_000_030_000,
+                "social_heat_raw_score": 12.0,
+                "social_heat_weight": 1.0,
+                "social_propagation_raw_score": 10.0,
+                "social_propagation_weight": 1.0,
+                "semantic_catalyst_raw_score": 10.0,
+                "semantic_catalyst_weight": 1.0,
+                "timing_risk_raw_score": 10.0,
+                "timing_risk_weight": 1.0,
+                "cohort_high_confidence_mentions": 1,
+                "cohort_kol_mentions": 0,
+                "cohort_public_followup_authors": 0,
+                "cohort_first_seen_global_24h": False,
+                "cohort_symbol": "BOV",
+                "social_heat_watched_mentions": 1,
+                "social_heat_mentions_1h": 5,
+                "social_propagation_mentions": 0,
+                "social_heat_latest_seen_ms": 1_778_000_000_000,
+                "raw_composite_score": 12.0,
+                "recommended_decision": "discard",
+                "gates_max_decision": "watch",
+                "rank_input_version": "token-radar-rank-input-v1",
+                "payload_hash": "feature-hash",
+                "last_scored_at_ms": 1_778_000_060_000,
             }
         ]
     )
 
-    rows = TokenRadarRepository(conn).list_target_features_for_rank_set(
+    rows = TokenRadarRepository(conn).list_rank_inputs_for_rank_set(
         projection_version="token-radar-v13-social-attention",
         window="1h",
         scope="all",
+        rank_input_version="token-radar-rank-input-v1",
     )
 
     assert "FROM token_radar_target_features" in conn.sql
-    assert rows[0]["intent_id"] == "intent-1"
-    assert rows[0]["event_id"] == "event-1"
+    assert "SELECT *" not in conn.sql
+    assert "factor_snapshot_json" not in conn.sql
+    assert "rank_input_version = %s" in conn.sql
+    assert conn.params == (
+        "token-radar-v13-social-attention",
+        "1h",
+        "all",
+        "token-radar-rank-input-v1",
+    )
     assert rows[0]["target_type_key"] == "Asset"
     assert rows[0]["identity_id"] == "asset-1"
+    assert rows[0]["payload_hash"] == "feature-hash"
+
+
+def test_load_target_feature_payloads_for_ranked_keys_hydrates_selected_payloads_by_hash():
+    conn = FakeConn(
+        rows=[
+            {
+                "projection_version": "token-radar-v13-social-attention",
+                "window": "1h",
+                "scope": "all",
+                "lane": "resolved",
+                "target_type_key": "Asset",
+                "identity_id": "asset-1",
+                "target_type": "Asset",
+                "target_id": "asset-1",
+                "pricefeed_id": "pf-1",
+                "latest_event_received_at_ms": 1_778_000_000_000,
+                "latest_market_observed_at_ms": 1_778_000_030_000,
+                "factor_snapshot_json": _valid_factor_snapshot(rank_score=12.0),
+                "source_event_ids_json": ["event-1"],
+                "source_intent_ids_json": ["intent-1"],
+                "source_resolution_ids_json": ["resolution-1"],
+                "payload_hash": "feature-hash",
+                "last_scored_at_ms": 1_778_000_060_000,
+            }
+        ]
+    )
+
+    rows = TokenRadarRepository(conn).load_target_feature_payloads_for_ranked_keys(
+        [
+            {
+                "projection_version": "token-radar-v13-social-attention",
+                "window": "1h",
+                "scope": "all",
+                "lane": "resolved",
+                "target_type_key": "Asset",
+                "identity_id": "asset-1",
+                "payload_hash": "feature-hash",
+            }
+        ]
+    )
+
+    assert "factor_snapshot_json" in conn.sql
+    assert "source_event_ids_json" in conn.sql
+    assert "JOIN requested" in conn.sql
+    assert "target_features.payload_hash = requested.payload_hash" in conn.sql
+    assert "SELECT *" not in conn.sql
+    assert rows[0]["intent_id"] == "intent-1"
+    assert rows[0]["event_id"] == "event-1"
     assert rows[0]["resolution_json"]["target_id"] == "asset-1"
     assert rows[0]["data_health_json"]["factor_snapshot"] == "ready"
+
+
+def test_list_rank_input_rebuild_keys_enumerates_legacy_features_without_wide_payloads():
+    conn = FakeConn(
+        rows=[
+            {
+                "projection_version": "token-radar-v13-social-attention",
+                "window": "1h",
+                "scope": "all",
+                "lane": "resolved",
+                "target_type_key": "Asset",
+                "identity_id": "asset-1",
+                "target_type": "Asset",
+                "target_id": "asset-1",
+                "payload_hash": "feature-hash",
+                "rank_input_version": "legacy_needs_rebuild",
+            }
+        ]
+    )
+
+    rows = TokenRadarRepository(conn).list_rank_input_rebuild_keys(
+        projection_version="token-radar-v13-social-attention",
+        windows=("1h",),
+        scopes=("all",),
+        limit=100,
+    )
+
+    assert "FROM token_radar_target_features" in conn.sql
+    assert "factor_snapshot_json" not in conn.sql
+    assert "SELECT *" not in conn.sql
+    assert "rank_input_version <> %s" in conn.sql
+    assert conn.params == ("token-radar-v13-social-attention", ["1h"], ["all"], "token-radar-rank-input-v1", 100)
+    assert rows[0]["target_type_key"] == "Asset"
 
 
 def test_publish_rows_rejects_stale_projection_writer():

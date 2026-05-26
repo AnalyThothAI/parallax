@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Iterable, Mapping
+from contextlib import nullcontext
 from typing import Any
 
 from psycopg.types.json import Jsonb
 
+from gmgn_twitter_intel.app.runtime.queue_terminal import terminalize_source_row
+
 DISCOVERY_PROVIDER = "okx_dex_search"
 RUNNING_LOOKUP_TIMEOUT_MS = 5 * 60 * 1000
+DISCOVERY_LOOKUP_QUEUE_TABLE = "token_discovery_dirty_lookup_keys"
 
 
 class DiscoveryRepository:
@@ -372,6 +376,76 @@ class DiscoveryRepository:
             self.conn.commit()
         return int(getattr(cursor, "rowcount", 0) or 0)
 
+    def terminalize_lookup_claims(
+        self,
+        claims: Iterable[Mapping[str, Any]],
+        *,
+        worker_name: str,
+        final_status: str,
+        final_reason: str,
+        now_ms: int,
+        commit: bool = True,
+    ) -> dict[str, int]:
+        claim_rows = [dict(claim) for claim in claims]
+        records = _claim_records(claim_rows)
+        if not records:
+            return {"terminalized": 0, "deleted": 0}
+        with _transaction(self.conn):
+            deleted_rows = self._delete_lookup_claims_returning(records)
+            if len(deleted_rows) != len(records):
+                raise ValueError("terminalize_lookup_delete_mismatch")
+            terminalized = 0
+            for row in deleted_rows:
+                provider = str(row.get("provider") or DISCOVERY_PROVIDER)
+                lookup_key = str(row.get("lookup_key") or "").strip()
+                if not lookup_key:
+                    continue
+                terminalize_source_row(
+                    self.conn,
+                    worker_name=worker_name,
+                    source_table=DISCOVERY_LOOKUP_QUEUE_TABLE,
+                    target_key=f"{provider}:{lookup_key}",
+                    source_row=row,
+                    final_status=final_status,
+                    final_reason=final_reason,
+                    now_ms=now_ms,
+                    attempt_count=int(row.get("attempt_count") or 0),
+                    payload_hash=str(row.get("payload_hash") or ""),
+                    first_seen_at_ms=_optional_int(row.get("first_dirty_at_ms")),
+                    last_attempted_at_ms=now_ms,
+                    commit=False,
+                )
+                terminalized += 1
+        if commit:
+            self.conn.commit()
+        return {"terminalized": terminalized, "deleted": len(deleted_rows)}
+
+    def _delete_lookup_claims_returning(self, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            WITH done AS (
+              SELECT *
+              FROM unnest(
+                %(providers)s::text[],
+                %(lookup_keys)s::text[],
+                %(payload_hashes)s::text[],
+                %(lease_owners)s::text[],
+                %(attempt_counts)s::bigint[]
+              ) AS done(provider, lookup_key, payload_hash, lease_owner, attempt_count)
+            )
+            DELETE FROM token_discovery_dirty_lookup_keys queue
+            USING done
+            WHERE queue.provider = done.provider
+              AND queue.lookup_key = done.lookup_key
+              AND queue.payload_hash = done.payload_hash
+              AND queue.lease_owner = done.lease_owner
+              AND queue.attempt_count = done.attempt_count
+            RETURNING queue.*
+            """,
+            _claim_params(records),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def start_lookup(
         self,
         *,
@@ -616,7 +690,7 @@ def _claim_records(claims: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
         payload_hash = str(claim.get("payload_hash") or "")
         lease_owner = str(claim.get("lease_owner") or "")
         attempt_count = int(claim.get("attempt_count") or 0)
-        if provider and lookup_key and payload_hash and lease_owner and attempt_count > 0:
+        if provider and lookup_key and payload_hash is not None and lease_owner and attempt_count > 0:
             records.append(
                 {
                     "provider": provider,
@@ -637,3 +711,16 @@ def _claim_params(records: list[dict[str, Any]]) -> dict[str, Any]:
         "lease_owners": [record["lease_owner"] for record in records],
         "attempt_counts": [record["attempt_count"] for record in records],
     }
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    return int(value)
+
+
+def _transaction(conn: Any):
+    transaction = getattr(conn, "transaction", None)
+    if callable(transaction):
+        return transaction()
+    return nullcontext()

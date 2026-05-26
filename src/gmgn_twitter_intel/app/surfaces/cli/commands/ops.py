@@ -26,6 +26,7 @@ from gmgn_twitter_intel.app.runtime.token_radar_postgres_hard_reset import (
     reset_token_radar_postgres_hard_cut,
 )
 from gmgn_twitter_intel.app.runtime.worker_status import workers_status_payload
+from gmgn_twitter_intel.app.surfaces.cli.commands import queue_ops
 from gmgn_twitter_intel.app.surfaces.cli.dependencies import repositories
 from gmgn_twitter_intel.domains.account_quality.read_models.account_quality_service import AccountQualityService
 from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
@@ -69,7 +70,7 @@ from gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worke
 from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh import reprocess_recent_token_intents
 from gmgn_twitter_intel.domains.token_intel.scoring.factor_diagnostics import factor_distribution_report
 from gmgn_twitter_intel.domains.token_intel.services.token_factor_evaluation import settle_token_factor_scores
-from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import WINDOW_MS
+from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import WINDOW_MS, TokenRadarProjection
 from gmgn_twitter_intel.integrations.binance.cex_profile_client import BinanceCexProfileClient
 from gmgn_twitter_intel.integrations.binance.usdm_futures_client import BinanceUsdmFuturesClient
 from gmgn_twitter_intel.integrations.gmgn.directory_client import GmgnDirectoryClient, GmgnDirectoryError
@@ -165,6 +166,18 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
         )
         return 0, {"ok": True, "data": data}
 
+    if args.ops_command == "rebuild-token-radar-rank-inputs":
+        reason = str(args.reason or "").strip()
+        if not bool(args.execute) or not reason:
+            return 1, {"ok": False, "error": "execute_and_reason_required"}
+        data = _rebuild_token_radar_rank_inputs_full(
+            settings=settings,
+            batch_size=args.limit,
+            now_ms=_now_ms(),
+            reason=reason,
+        )
+        return 0, {"ok": True, "data": data}
+
     if args.ops_command == "rebuild-narrative-intel":
         if not settings.narrative_intel_configured:
             return 1, {"ok": False, "error": "narrative_intel_not_configured"}
@@ -181,6 +194,20 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
         return 0, {"ok": True, "data": data}
 
     with repositories(settings) as repos:
+        if args.ops_command == "queue-inspect":
+            return queue_ops.handle_queue_inspect(args, repos)
+
+        if args.ops_command == "queue-resolve":
+            return queue_ops.handle_queue_resolve(args, repos, now_ms=_now_ms())
+
+        if args.ops_command == "reconcile-event-anchor-jobs":
+            data = repos.event_anchor_jobs.reconcile_ready_historical_jobs(
+                limit=args.limit,
+                now_ms=_now_ms(),
+                execute=bool(args.execute),
+            )
+            return 0, {"ok": True, "data": data}
+
         if args.ops_command == "factor-diagnostics":
             rows = repos.token_radar.latest_current_rows(
                 window=args.window,
@@ -851,6 +878,23 @@ def _run_token_radar_projection_worker_once(
             asyncio.run(worker.aclose())
         if db is not None:
             _close_db_bundle(db)
+
+
+def _rebuild_token_radar_rank_inputs_full(
+    settings: object,
+    *,
+    batch_size: int,
+    now_ms: int,
+    reason: str,
+) -> dict[str, Any]:
+    with repositories(settings) as repos:
+        result = TokenRadarProjection(repos=repos).rebuild_rank_inputs_full(
+            windows=("5m", "1h", "4h", "24h"),
+            scopes=("all", "matched"),
+            now_ms=now_ms,
+            batch_size=batch_size,
+        )
+    return {"reason": reason, **result}
 
 
 def _run_narrative_intel_rebuild(

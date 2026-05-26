@@ -209,6 +209,22 @@ set from `token_capture_tier`; it must not scan Token Radar current rows.
 Historical discovery belongs to `ops enqueue-runtime-worker-dirty-targets`,
 which is dry-run by default, bounded by explicit selectors, and enqueue-only.
 
+## PostgreSQL Observability
+
+The compose PostgreSQL service loads `pg_stat_statements`, PoWA,
+`pg_stat_kcache`, `pg_qualstats`, and `pg_wait_sampling`, and writes slow
+statement, lock-wait, checkpoint, temp-file, and autovacuum logs under
+`~/.gmgn-twitter-intel/postgres-logs`. These signals are production
+observability, not business truth, and they must never be used to hide backlog
+or mutate queue rows.
+
+Use `./scripts/pgbadger_report.sh` for log-driven evidence such as slow
+statements, lock waits, deadlocks, checkpoints, and temp files. Use
+`./scripts/powa_configure.sh` to keep the local PoWA GUCs and server row
+configured with bounded retention and to verify that coalesced statement history
+contains rows. The PoWA script prints server metadata and row counts only; it
+does not print passwords or application config.
+
 ## Token Radar Clean Reset And Watchlist Summary Maintenance
 
 Token Radar storage is a clean-reset hard cut. Legacy `token_radar_rows` and

@@ -22,7 +22,7 @@ def test_watchlist_handle_overview_endpoint_validates_configured_handle_and_scop
 
     assert ok.status_code == 200
     data = ok.json()["data"]
-    assert data["query"] == {"handle": "marionawfal", "scope": "signal", "window": "7d"}
+    assert data["query"] == {"handle": "marionawfal", "scope": "signal", "window": "3d"}
     assert data["metrics"]["candidate_mention_count"] == 1
     assert data["candidate_mention_clusters"][0]["label"] == "$ALOY"
     assert unknown.status_code == 404
@@ -41,7 +41,7 @@ def test_watchlist_handles_overview_endpoint_returns_configured_rows_only():
 
     assert response.status_code == 200
     data = response.json()["data"]
-    assert data["window"] == "7d"
+    assert data["window"] == "3d"
     assert [row["handle"] for row in data["items"]] == ["marionawfal", "toly"]
     assert data["items"][0]["recent_signal_event_count"] == 2
     assert data["items"][1]["recent_signal_event_count"] == 0

@@ -131,7 +131,6 @@ class EventAnchorBackfillWorker(WorkerBase):
 
     async def run_once(self) -> WorkerResult:
         now_ms = int(self.clock())
-        ready_jobs = await asyncio.to_thread(self._mark_ready_jobs_done, now_ms=now_ms)
         expired_jobs = await asyncio.to_thread(self._expire_stale_jobs, now_ms=now_ms)
         rows = await asyncio.to_thread(self._list_due_jobs, now_ms=now_ms)
         if not rows:
@@ -140,7 +139,6 @@ class EventAnchorBackfillWorker(WorkerBase):
                 skipped=0,
                 notes={
                     "pending_selected": 0,
-                    "ready_jobs_reconciled": ready_jobs,
                     "expired_jobs": expired_jobs,
                     "ticks_inserted": 0,
                     "captures_attached": 0,
@@ -182,7 +180,6 @@ class EventAnchorBackfillWorker(WorkerBase):
             skipped=len(rows) - attached - rescheduled_count - terminal_count,
             notes={
                 "pending_selected": len(rows),
-                "ready_jobs_reconciled": ready_jobs,
                 "expired_jobs": expired_jobs,
                 "ticks_inserted": inserted,
                 "captures_attached": attached,
@@ -283,13 +280,6 @@ class EventAnchorBackfillWorker(WorkerBase):
         if int(row["active_until_ms"]) <= now_ms:
             return False
         return abs(now_ms - int(row["t_event_ms"])) <= self.max_anchor_lag_ms
-
-    def _mark_ready_jobs_done(self, *, now_ms: int) -> int:
-        with self.db.worker_session(self.name) as repos:
-            marked = int(repos.event_anchor_jobs.mark_ready_jobs_done(limit=self.batch_size, now_ms=now_ms))
-            if marked:
-                _commit_if_supported(repos)
-            return marked
 
     def _expire_stale_jobs(self, *, now_ms: int) -> int:
         with self.db.worker_session(self.name) as repos:

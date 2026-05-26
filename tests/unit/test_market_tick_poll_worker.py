@@ -532,6 +532,9 @@ class FakeRepos:
         )
         self.conn = FakeConn()
 
+    def require_transaction(self, *, operation: str) -> None:
+        return None
+
 
 class FakeTokenCaptureTiers:
     def __init__(

@@ -145,6 +145,78 @@ def test_resolution_refresh_worker_notifies_from_workerbase_path(monkeypatch):
     ]
 
 
+def test_resolution_refresh_terminalizes_provider_error_after_retry_budget(monkeypatch):
+    repos = FakeRefreshRepos()
+    db = FakeDB(repos)
+
+    def raise_provider_error(**_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(module, "_fetch_lookup_provider_result", raise_provider_error)
+
+    worker = module.ResolutionRefreshWorker(
+        name="resolution_refresh",
+        settings=SimpleNamespace(
+            enabled=True,
+            interval_seconds=30,
+            timeout_seconds=120,
+            batch_size=50,
+            reprocess_limit=500,
+            max_attempts=1,
+        ),
+        db=db,
+        telemetry=object(),
+        dex_discovery_market=object(),
+        chain_ids=("solana",),
+    )
+
+    result = asyncio.run(worker.run_once(now_ms=1_778_200_000_000)).notes["result"]
+
+    assert result["lookups_failed"] == 1
+    assert result["lookups_terminalized"] == 1
+    assert repos.discovery.rescheduled == []
+    assert repos.discovery.terminalized == [
+        {
+            "claims": [
+                {
+                    "lookup_key": "symbol:ABC",
+                    "lookup_type": "dex_symbol_lookup",
+                    "error_count": 0,
+                    "payload_hash": "hash-abc",
+                    "lease_owner": "resolution_refresh",
+                    "attempt_count": 1,
+                    "latest_seen_ms": 1_778_200_000_000,
+                }
+            ],
+            "worker_name": "resolution_refresh",
+            "final_status": "error",
+            "final_reason": "provider_error_retry_budget_exhausted",
+            "now_ms": 1_778_200_000_000,
+            "commit": False,
+        }
+    ]
+
+
+def test_resolution_refresh_terminalizes_hot_not_found_after_retry_budget(monkeypatch):
+    repos = FakeRefreshRepos()
+
+    monkeypatch.setattr(module, "_process_lookup", lambda **_: module._lookup_result(search_requests=1))
+
+    result = module.run_resolution_refresh_once(
+        repos=repos,
+        dex_discovery_market=object(),
+        chain_ids=("solana",),
+        now_ms=1_778_200_000_000,
+        max_attempts=1,
+    )
+
+    assert result["lookups_done"] == 1
+    assert result["lookups_terminalized"] == 1
+    assert repos.discovery.rescheduled == []
+    assert repos.discovery.terminalized[0]["final_status"] == "not_found"
+    assert repos.discovery.terminalized[0]["final_reason"] == "not_found_retry_budget_exhausted"
+
+
 def _candidate(*, chain_id: str, address: str, symbol: str = "SPARSE") -> DexTokenCandidate:
     return DexTokenCandidate(
         chain_id=chain_id,
@@ -214,6 +286,10 @@ class FakeRefreshConn:
 
 
 class FakeRefreshDiscovery:
+    def __init__(self) -> None:
+        self.rescheduled: list[dict[str, object]] = []
+        self.terminalized: list[dict[str, object]] = []
+
     def claim_due_lookup_keys(self, **kwargs):
         return [
             {
@@ -243,7 +319,14 @@ class FakeRefreshDiscovery:
         return len(list(claims))
 
     def reschedule_lookup_claims(self, claims, **kwargs):
-        return len(list(claims))
+        rows = list(claims)
+        self.rescheduled.append({"claims": rows, **kwargs})
+        return len(rows)
+
+    def terminalize_lookup_claims(self, claims, **kwargs):
+        rows = list(claims)
+        self.terminalized.append({"claims": rows, **kwargs})
+        return {"terminalized": len(rows), "deleted": len(rows)}
 
     def counts(self):
         return {"found": 1}

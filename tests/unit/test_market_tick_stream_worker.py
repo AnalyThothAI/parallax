@@ -408,6 +408,9 @@ class FakeRepos:
         self.market_tick_current_dirty_targets = FakeDirtyTargets()
         self.conn = FakeConn()
 
+    def require_transaction(self, *, operation: str) -> None:
+        return None
+
 
 class FakeTokenCaptureTiers:
     def __init__(self, rows: list[dict[str, object]]) -> None:

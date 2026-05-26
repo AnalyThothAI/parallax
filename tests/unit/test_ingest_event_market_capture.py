@@ -104,6 +104,9 @@ class _FakeRepos:
         self.enriched_events = self
         self.event_exists = event_exists
         self.market_ticks = _FakeMarketTicks()
+        self.market_tick_current_dirty_targets = self
+        self.event_anchor_jobs = self
+        self.token_radar_dirty_targets = self
 
 
 class _FakeDB:
