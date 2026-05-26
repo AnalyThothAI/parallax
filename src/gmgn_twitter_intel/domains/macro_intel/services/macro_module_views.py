@@ -72,7 +72,8 @@ def build_macro_module_view(
             config=config,
             feature_map=feature_map,
             primary_chart=primary_chart,
-            data_health={**data_health, "_scenario": snapshot.get("scenario_json")},
+            data_health=data_health,
+            scenario=_mapping(snapshot.get("scenario_json")),
             cex_source=cex_source,
         ),
         transmission=_transmission(config=config, snapshot=snapshot, feature_map=feature_map, data_health=data_health),
@@ -164,7 +165,7 @@ def _ordered_payload(
     tables: list[dict[str, Any]],
     module_read: dict[str, Any],
     module_evidence: dict[str, Any],
-    transmission: dict[str, Any],
+    transmission: list[dict[str, Any]],
     data_health: dict[str, Any],
     provenance: dict[str, Any],
     related_routes: list[dict[str, str]],
@@ -449,10 +450,10 @@ def _module_evidence(
     feature_map: Mapping[str, Any],
     primary_chart: Mapping[str, Any],
     data_health: Mapping[str, Any],
+    scenario: Mapping[str, Any],
     cex_source: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
     if config.module_id == "overview":
-        scenario = _mapping(data_health.get("_scenario"))
         return {
             "confirmations": [_evidence_item(item) for item in _mapping_list(scenario.get("confirmations"))],
             "contradictions": [_evidence_item(item) for item in _mapping_list(scenario.get("contradictions"))],
@@ -712,6 +713,7 @@ def _data_health(
     status = _data_health_status(
         module_gaps=module_gaps,
         chart_gaps=chart_gaps,
+        global_gaps=global_gaps,
         primary_chart=primary_chart,
         feature_map=feature_map,
         concept_keys=concept_keys,
@@ -752,10 +754,14 @@ def _data_health_status(
     *,
     module_gaps: Sequence[Mapping[str, Any]],
     chart_gaps: Sequence[Mapping[str, Any]],
+    global_gaps: Sequence[Mapping[str, Any]],
     primary_chart: Mapping[str, Any],
     feature_map: Mapping[str, Any],
     concept_keys: Sequence[str],
 ) -> str:
+    global_blockers = [gap for gap in global_gaps if gap.get("scope") == "global_blocker"]
+    if any(gap.get("severity") == "error" for gap in global_blockers):
+        return "missing"
     if any(gap.get("severity") == "error" for gap in module_gaps):
         return "missing"
     chart_status = str(primary_chart.get("status") or "unknown")
@@ -763,7 +769,7 @@ def _data_health_status(
         concept_keys and not any(concept_key in feature_map for concept_key in concept_keys)
     ):
         return "missing"
-    if module_gaps or chart_gaps or chart_status in {"partial", "insufficient_history"}:
+    if global_blockers or module_gaps or chart_gaps or chart_status in {"partial", "insufficient_history"}:
         return "partial"
     return "ok"
 
@@ -774,7 +780,7 @@ def _transmission(
     snapshot: Mapping[str, Any],
     feature_map: Mapping[str, Any],
     data_health: Mapping[str, Any],
-) -> dict[str, Any]:
+) -> list[dict[str, Any]]:
     if config.module_id == "overview":
         chain = _mapping(snapshot.get("chain_json"))
         nodes = [
@@ -798,7 +804,7 @@ def _transmission(
                     "status": str(data_health.get("summary_status") or "unknown"),
                 }
             ]
-        return {"nodes": nodes}
+        return nodes
 
     first_concept = next(
         (concept_key for concept_key in _module_concept_keys(config) if concept_key in feature_map), None
@@ -807,31 +813,29 @@ def _transmission(
     source_value = (
         _feature_short_label(first_concept, _mapping(feature_map.get(first_concept))) if first_concept else "缺少观测"
     )
-    return {
-        "nodes": [
-            {
-                "id": f"{config.module_id}:source",
-                "label": "模块观测",
-                "value": source_value,
-                "kind": "source",
-                "status": source_status,
-            },
-            {
-                "id": f"{config.module_id}:signal",
-                "label": config.title,
-                "value": _status_label(data_health.get("summary_status")),
-                "kind": "signal",
-                "status": str(data_health.get("summary_status") or "unknown"),
-            },
-            {
-                "id": f"{config.module_id}:implication",
-                "label": "宏观含义",
-                "value": config.question,
-                "kind": "implication",
-                "status": str(data_health.get("summary_status") or "unknown"),
-            },
-        ]
-    }
+    return [
+        {
+            "id": f"{config.module_id}:source",
+            "label": "模块观测",
+            "value": source_value,
+            "kind": "source",
+            "status": source_status,
+        },
+        {
+            "id": f"{config.module_id}:signal",
+            "label": config.title,
+            "value": _status_label(data_health.get("summary_status")),
+            "kind": "signal",
+            "status": str(data_health.get("summary_status") or "unknown"),
+        },
+        {
+            "id": f"{config.module_id}:implication",
+            "label": "宏观含义",
+            "value": config.question,
+            "kind": "implication",
+            "status": str(data_health.get("summary_status") or "unknown"),
+        },
+    ]
 
 
 def _section_boards(config: MacroModuleConfig, feature_map: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -842,13 +846,14 @@ def _section_boards(config: MacroModuleConfig, feature_map: Mapping[str, Any]) -
             feature = _mapping(feature_map.get(concept_key))
             row = _section_board_row(concept_key, feature)
             rows.append(row)
+        status = _section_board_status(rows)
         boards.append(
             {
-                "board_id": spec.board_id,
+                "id": spec.board_id,
                 "title": spec.title,
-                "route_path": spec.route_path,
-                "concept_keys": list(spec.concept_keys),
-                "status": "ok" if all(row["status"] == "ok" for row in rows) else "partial" if rows else "missing",
+                "href": spec.route_path,
+                "status": status,
+                "status_label": _status_label(status),
                 "rows": rows,
             }
         )
@@ -870,6 +875,14 @@ def _section_board_row(concept_key: str, feature: Mapping[str, Any]) -> dict[str
         "observed_at_label": _observed_label(latest.get("observed_at")),
         "source_label": _source_label(source),
     }
+
+
+def _section_board_status(rows: Sequence[Mapping[str, Any]]) -> str:
+    if rows and all(row.get("status") == "ok" for row in rows):
+        return "ok"
+    if rows and all(row.get("status") == "missing" for row in rows):
+        return "missing"
+    return "partial"
 
 
 def _section_label(section: str) -> str:

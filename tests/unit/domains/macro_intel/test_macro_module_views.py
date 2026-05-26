@@ -105,9 +105,10 @@ def test_build_macro_module_view_projects_v3_display_contract() -> None:
     assert view["module_evidence"]["confirmations"][0]["code"] == "module_concept_available:rates:dgs2"
     assert view["module_evidence"]["confirmations"][0]["label"] == "2年期美债收益率"
     assert any(item["code"] == "module_gap:move_index_missing" for item in view["module_evidence"]["watch_triggers"])
-    assert view["transmission"]["nodes"][0]["kind"] == "source"
-    assert view["transmission"]["nodes"][0]["status"] == "ok"
-    assert view["transmission"]["nodes"][-1]["kind"] == "implication"
+    assert isinstance(view["transmission"], list)
+    assert view["transmission"][0]["kind"] == "source"
+    assert view["transmission"][0]["status"] == "ok"
+    assert view["transmission"][-1]["kind"] == "implication"
     assert view["data_health"]["summary_status"] == "partial"
     assert any(gap["code"] == "missing_rates_dgs5" for gap in view["data_health"]["global_gaps"])
     assert any(gap["code"] == "insufficient_history_20d" for gap in view["data_health"]["module_gaps"])
@@ -506,6 +507,7 @@ def test_overview_module_view_surfaces_global_scenario_and_data_health() -> None
     assert view["module_read"]["headline"] == "宏观总览：期限溢价压力"
     assert view["module_evidence"]["confirmations"][0]["code"] == "global_term_premium"
     assert any(gap.get("code") == "missing_liquidity_srf" for gap in view["data_health"]["global_gaps"])
+    assert view["data_health"]["summary_status"] == "missing"
 
 
 def test_assets_index_view_returns_section_boards() -> None:
@@ -516,7 +518,7 @@ def test_assets_index_view_returns_section_boards() -> None:
         latest_import_run=None,
     )
 
-    assert [board["board_id"] for board in view["section_boards"]] == [
+    assert [board["id"] for board in view["section_boards"]] == [
         "equities",
         "bonds",
         "commodities",
@@ -526,8 +528,30 @@ def test_assets_index_view_returns_section_boards() -> None:
     ]
     equities = view["section_boards"][0]
     assert equities["title"] == "美股"
-    assert equities["route_path"] == "/macro/assets/equities"
+    assert equities["href"] == "/macro/assets/equities"
+    assert equities["status"] == "partial"
+    assert equities["status_label"] == "部分可用"
+    assert "board_id" not in equities
+    assert "route_path" not in equities
     assert [row["concept_key"] for row in equities["rows"]] == ["asset:spx", "asset:spy", "asset:qqq", "asset:iwm"]
+
+
+def test_assets_index_section_board_status_is_missing_when_all_rows_are_missing() -> None:
+    snapshot = _snapshot()
+    snapshot["features_json"] = {}
+
+    view = build_macro_module_view(
+        "assets",
+        snapshot=snapshot,
+        observations=[],
+        latest_import_run=None,
+    )
+
+    equities = view["section_boards"][0]
+    assert equities["id"] == "equities"
+    assert equities["status"] == "missing"
+    assert equities["status_label"] == "缺失"
+    assert all(row["status"] == "missing" for row in equities["rows"])
 
 
 def test_build_macro_module_view_rejects_unknown_module_id() -> None:
@@ -598,7 +622,7 @@ def _snapshot_with_global_scenario() -> dict[str, object]:
         "confidence": 0.79,
         "confirmations": [{"code": "global_term_premium", "description": "global only"}],
     }
-    snapshot["data_gaps_json"] = [{"code": "missing_liquidity_srf", "label": "缺少 SRF"}]
+    snapshot["data_gaps_json"] = [{"code": "missing_liquidity_srf", "label": "缺少 SRF", "severity": "error"}]
     return snapshot
 
 
