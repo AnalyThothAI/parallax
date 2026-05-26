@@ -14,10 +14,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import {
+  newsDisplayTokenLanes,
   newsSignalLabel,
   newsSignalScoreLabel,
   newsSignalTone,
   tokenImpactLabel,
+  tokenMarketLabel,
 } from "./model/newsSignalViewModel";
 import "./news.css";
 import "./NewsDetail.css";
@@ -259,7 +261,7 @@ function NewsItemRoute({ token, newsItemId }: { token: string; newsItemId: strin
 
 function NewsItemDetailView({ item }: { item: NewsItemDetail }) {
   const facts = item.fact_lanes ?? [];
-  const tokens = item.token_lanes ?? [];
+  const tokens = newsDisplayTokenLanes(item);
   const isProviderSignal = item.signal.source === "provider";
   return (
     <article className="news-detail">
@@ -365,14 +367,14 @@ function ProviderSignalPanel({ item }: { item: NewsItemDetail }) {
       </div>
       <p>{item.signal.summary_zh || item.signal.summary_en || "Waiting for provider aiRating."}</p>
       <div className="news-token-list">
-        {item.token_lanes.map((token, index) => (
+        {newsDisplayTokenLanes(item).map((token, index) => (
           <div
             className="news-token-item"
             key={`${token.symbol ?? token.target_id ?? "token"}-${index}`}
           >
             <b>{token.symbol || token.target_id || "unknown token"}</b>
             <span>{tokenImpactLabel(token)}</span>
-            <small>{token.provider_signal || token.market_type || token.lane}</small>
+            <small>{token.provider_signal || tokenMarketLabel(token)}</small>
           </div>
         ))}
       </div>

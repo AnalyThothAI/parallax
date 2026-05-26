@@ -66,9 +66,6 @@ const rowWithBtcEth: NewsRow = {
       resolution_status: "resolved",
       symbol: "BTC",
       target_id: "token:btc",
-      provider_signal: "long",
-      provider_score: 82,
-      provider_grade: "A",
       market_type: "cex",
     },
     {
@@ -76,6 +73,21 @@ const rowWithBtcEth: NewsRow = {
       resolution_status: "resolved",
       symbol: "ETH",
       target_id: "token:eth",
+      market_type: "cex",
+    },
+  ],
+  token_impacts: [
+    {
+      lane: "provider",
+      symbol: "BTC",
+      provider_signal: "long",
+      provider_score: 82,
+      provider_grade: "A",
+      market_type: "cex",
+    },
+    {
+      lane: "provider",
+      symbol: "ETH",
       provider_signal: "long",
       provider_score: 70,
       provider_grade: "B+",

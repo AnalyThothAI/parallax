@@ -3,10 +3,11 @@ import type { NewsRow } from "@shared/model/newsIntel";
 import { ExternalLink } from "lucide-react";
 
 import {
+  newsDisplayTokenLanes,
   newsSignalLabel,
   newsSignalScoreLabel,
   newsSignalTone,
-  tokenImpactLabel,
+  tokenImpactCompactLabel,
   tokenImpactTone,
 } from "../model/newsSignalViewModel";
 import "./newsTape.css";
@@ -23,6 +24,9 @@ export function NewsTape({ rows, selectedId, onOpen, onSelect }: NewsTapeProps) 
     <div className="news-tape-list" role="list" aria-label="news tape">
       {rows.map((row) => {
         const selected = row.news_item_id === selectedId;
+        const tokens = newsDisplayTokenLanes(row);
+        const visibleTokens = tokens.slice(0, 5);
+        const overflowCount = Math.max(0, tokens.length - visibleTokens.length);
         return (
           <div className={`news-tape-row ${selected ? "is-selected" : ""}`} key={row.row_id}>
             <button
@@ -48,15 +52,19 @@ export function NewsTape({ rows, selectedId, onOpen, onSelect }: NewsTapeProps) 
                 <small>{row.signal.summary_zh || row.summary || "No summary available."}</small>
               </span>
               <span className="news-tape-token-strip">
-                {row.token_lanes.slice(0, 4).map((lane, index) => (
+                {visibleTokens.map((lane, index) => (
                   <span
                     className={`news-tape-token ${tokenImpactTone(lane)}`}
                     key={`${row.news_item_id}-${lane.symbol ?? lane.target_id ?? index}`}
+                    title={`${lane.symbol || lane.target_id || "token"} · ${tokenImpactCompactLabel(lane)}`}
                   >
                     <b>{lane.symbol || lane.target_id || "token"}</b>
-                    <small>{tokenImpactLabel(lane)}</small>
+                    <small>{tokenImpactCompactLabel(lane)}</small>
                   </span>
                 ))}
+                {overflowCount ? (
+                  <span className="news-tape-token-more">+{overflowCount}</span>
+                ) : null}
               </span>
             </button>
             <button

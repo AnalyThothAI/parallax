@@ -15,11 +15,11 @@
 
   .news-tape-row-main {
     display: grid;
-    grid-template-columns: 96px 82px minmax(240px, 1fr) minmax(190px, 0.5fr);
+    grid-template-columns: 72px 76px minmax(200px, 1fr) minmax(300px, 0.62fr);
     align-items: center;
     gap: 8px;
     min-width: 0;
-    min-height: 46px;
+    min-height: 54px;
     border: 1px solid var(--line);
     border-radius: 6px;
     color: var(--bone-2);
@@ -132,28 +132,53 @@
 
   .news-tape-token-strip {
     display: flex;
-    gap: 4px;
+    align-items: stretch;
+    gap: 5px;
     min-width: 0;
     overflow: hidden;
   }
 
   .news-tape-token {
-    display: inline-flex;
-    flex: 0 1 72px;
-    align-items: center;
-    justify-content: space-between;
-    gap: 4px;
+    display: grid;
+    flex: 0 0 56px;
+    align-content: center;
+    gap: 1px;
     min-width: 0;
     border: 1px solid var(--line);
     border-radius: 5px;
-    padding: 3px 5px;
+    padding: 4px 5px;
+  }
+
+  .news-tape-token b {
+    font-size: 12px;
+    line-height: 1;
+  }
+
+  .news-tape-token small {
+    color: currentColor;
+    font-size: 9px;
+    opacity: 0.78;
+  }
+
+  .news-tape-token-more {
+    display: inline-grid;
+    flex: 0 0 34px;
+    place-items: center;
+    min-width: 0;
+    border: 1px solid var(--line-soft);
+    border-radius: 5px;
+    color: var(--dim);
+    background: rgba(255, 255, 255, 0.04);
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 900;
   }
 
   .news-tape-open {
     display: grid;
     place-items: center;
     width: 32px;
-    min-height: 46px;
+    min-height: 54px;
     border: 1px solid var(--line);
     border-radius: 6px;
     color: var(--dim);
@@ -230,13 +255,14 @@
   }
 
   .news-tape-token-impact {
-    gap: 6px;
+    gap: 7px;
     border: 1px solid var(--line);
     border-radius: 6px;
     padding: 8px;
   }
 
-  .news-tape-token-impact div,
+  .news-tape-token-impact-head,
+  .news-tape-token-scoreline,
   .news-tape-inspector-actions {
     display: flex;
     align-items: center;
@@ -248,6 +274,32 @@
   .news-tape-token-impact b,
   .news-tape-token-impact strong {
     color: var(--bone);
+  }
+
+  .news-tape-token-impact b {
+    overflow: hidden;
+    font-size: 14px;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .news-tape-token-impact strong {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }
+
+  .news-tape-token-scoreline small,
+  .news-tape-token-score-missing {
+    color: currentColor;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0;
+    opacity: 0.78;
+    text-transform: uppercase;
   }
 
   .news-tape-token-bar {
@@ -301,7 +353,7 @@
     }
 
     .news-tape-token {
-      flex-basis: 54px;
+      flex-basis: 56px;
     }
   }
 }

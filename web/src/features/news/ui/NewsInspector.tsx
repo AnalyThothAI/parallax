@@ -4,10 +4,14 @@ import { ExternalLink } from "lucide-react";
 import type { CSSProperties } from "react";
 
 import {
+  newsDisplayTokenLanes,
   newsSignalLabel,
+  newsSignalScoreLabel,
   newsSignalTone,
   tokenImpactLabel,
+  tokenImpactCompactLabel,
   tokenImpactTone,
+  tokenMarketLabel,
 } from "../model/newsSignalViewModel";
 
 type NewsInspectorProps = {
@@ -24,6 +28,7 @@ export function NewsInspector({ item, onFilterToken, onOpen }: NewsInspectorProp
       </aside>
     );
   }
+  const tokens = newsDisplayTokenLanes(item);
 
   return (
     <aside className="news-tape-inspector" aria-label="news inspector">
@@ -39,6 +44,10 @@ export function NewsInspector({ item, onFilterToken, onOpen }: NewsInspectorProp
           <dd>{newsSignalLabel(item.signal)}</dd>
         </div>
         <div>
+          <dt>Score</dt>
+          <dd>{newsSignalScoreLabel(item.signal)}</dd>
+        </div>
+        <div>
           <dt>Method</dt>
           <dd>{item.signal.method || item.signal.source}</dd>
         </div>
@@ -52,17 +61,20 @@ export function NewsInspector({ item, onFilterToken, onOpen }: NewsInspectorProp
         </div>
       </dl>
       <div className="news-tape-token-impact-list" aria-label="token impacts">
-        {item.token_lanes.length ? (
-          item.token_lanes.map((lane, index) => (
+        {tokens.length ? (
+          tokens.map((lane, index) => (
             <div
               className={`news-tape-token-impact ${tokenImpactTone(lane)}`}
               key={`${lane.symbol ?? lane.target_id ?? "token"}-${index}`}
             >
-              <div>
+              <div className="news-tape-token-impact-head">
                 <b>{lane.symbol || lane.target_id || "token"}</b>
-                <span>{lane.market_type || lane.resolution_status || lane.lane}</span>
+                <span>{tokenMarketLabel(lane)}</span>
               </div>
-              <strong>{tokenImpactLabel(lane)}</strong>
+              <div className="news-tape-token-scoreline">
+                <strong>{tokenImpactLabel(lane)}</strong>
+                <small>{lane.provider_signal || "signal --"}</small>
+              </div>
               {lane.provider_score != null ? (
                 <span
                   className="news-tape-token-bar"
@@ -72,7 +84,11 @@ export function NewsInspector({ item, onFilterToken, onOpen }: NewsInspectorProp
                     } as CSSProperties
                   }
                 />
-              ) : null}
+              ) : (
+                <span className="news-tape-token-score-missing">
+                  {tokenImpactCompactLabel(lane)}
+                </span>
+              )}
               {lane.symbol ? (
                 <button type="button" onClick={() => onFilterToken?.(lane.symbol ?? "")}>
                   Filter {lane.symbol}
