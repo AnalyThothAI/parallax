@@ -85,7 +85,7 @@ def test_rank_source_query_populates_compact_edges_without_event_text_or_legacy_
         commit=True,
     )
 
-    assert changed == 3
+    assert changed == 4
     assert "INSERT INTO token_radar_rank_source_events" in conn.sql
     assert "ON CONFLICT" in conn.sql
     assert "WITH request_targets AS" not in conn.sql
@@ -98,6 +98,71 @@ def test_rank_source_query_populates_compact_edges_without_event_text_or_legacy_
     assert "price_feeds.feed_type = 'cex_swap'" in conn.sql
     assert "price_feeds.quote_symbol = 'USDT'" in conn.sql
     assert conn.commit_count == 1
+
+
+def test_rank_source_query_deletes_stale_edges_inside_requested_window_only():
+    conn = FakeConn(rows=[{"upserted_count": 3, "deleted_count": 1}])
+
+    changed = TokenRadarRankSourceQuery(conn).populate_edges_for_requests(
+        [
+            TokenRadarSourceRequest(
+                request_key="request-1",
+                target_type_key="Asset",
+                identity_id="asset-1",
+                window="1h",
+                scope="all",
+                analysis_since_ms=1,
+                score_since_ms=2,
+                now_ms=3,
+            )
+        ],
+        projected_at_ms=4,
+        commit=False,
+    )
+
+    assert changed == 4
+    assert "DELETE FROM token_radar_rank_source_events stale_edges" in conn.sql
+    assert "USING requested" in conn.sql
+    assert 'stale_edges."window" = requested."window"' in conn.sql
+    assert "stale_edges.scope = requested.scope" in conn.sql
+    assert "stale_edges.target_type_key = requested.target_type_key" in conn.sql
+    assert "stale_edges.identity_id = requested.identity_id" in conn.sql
+    assert "stale_edges.event_received_at_ms >= requested.analysis_since_ms" in conn.sql
+    assert "stale_edges.event_received_at_ms <= requested.now_ms" in conn.sql
+    assert "NOT EXISTS" in conn.sql
+    assert "fresh.event_id = stale_edges.source_id" in conn.sql
+
+
+def test_rank_source_query_conflict_update_refreshes_consumed_market_columns():
+    conn = FakeConn(rows=[{"upserted_count": 1, "deleted_count": 0}])
+
+    TokenRadarRankSourceQuery(conn).populate_edges_for_requests(
+        [
+            TokenRadarSourceRequest(
+                request_key="request-1",
+                target_type_key="Asset",
+                identity_id="asset-1",
+                window="1h",
+                scope="all",
+                analysis_since_ms=1,
+                score_since_ms=2,
+                now_ms=3,
+            )
+        ],
+        projected_at_ms=4,
+        commit=False,
+    )
+
+    assert "latest_price_market_cap_usd = excluded.latest_price_market_cap_usd" in conn.sql
+    assert "latest_price_liquidity_usd = excluded.latest_price_liquidity_usd" in conn.sql
+    assert "latest_price_volume_24h_usd = excluded.latest_price_volume_24h_usd" in conn.sql
+    assert "latest_price_open_interest_usd = excluded.latest_price_open_interest_usd" in conn.sql
+    assert "latest_price_holders = excluded.latest_price_holders" in conn.sql
+    assert "event_price_market_cap_usd = excluded.event_price_market_cap_usd" in conn.sql
+    assert "event_price_liquidity_usd = excluded.event_price_liquidity_usd" in conn.sql
+    assert "event_price_volume_24h_usd = excluded.event_price_volume_24h_usd" in conn.sql
+    assert "event_price_open_interest_usd = excluded.event_price_open_interest_usd" in conn.sql
+    assert "event_price_holders = excluded.event_price_holders" in conn.sql
 
 
 def test_rank_source_query_groups_rows_by_request_and_chunks():

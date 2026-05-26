@@ -63,9 +63,11 @@ class TokenRadarRankSourceQuery:
                     TOKEN_RADAR_RESOLVER_POLICY_VERSION,
                     TOKEN_RADAR_PROJECTION_VERSION,
                     int(projected_at_ms),
+                    TOKEN_RADAR_PROJECTION_VERSION,
                 ),
             ).fetchone()
             changed += int((row or {}).get("upserted_count") or 0)
+            changed += int((row or {}).get("deleted_count") or 0)
         if commit:
             self.conn.commit()
         return changed
@@ -621,14 +623,33 @@ upserted AS (
     source_rank = excluded.source_rank,
     projected_at_ms = excluded.projected_at_ms,
     intent_id = excluded.intent_id,
+    event_id = excluded.event_id,
+    intent_key = excluded.intent_key,
+    construction_policy = excluded.construction_policy,
+    primary_evidence_id = excluded.primary_evidence_id,
+    display_symbol = excluded.display_symbol,
+    display_name = excluded.display_name,
+    chain_hint = excluded.chain_hint,
+    address_hint = excluded.address_hint,
+    intent_status = excluded.intent_status,
+    intent_created_at_ms = excluded.intent_created_at_ms,
+    intent_updated_at_ms = excluded.intent_updated_at_ms,
     resolution_id = excluded.resolution_id,
+    target_type = excluded.target_type,
+    target_id = excluded.target_id,
     pricefeed_id = excluded.pricefeed_id,
     resolution_status = excluded.resolution_status,
+    reason_codes_json = excluded.reason_codes_json,
+    candidate_ids_json = excluded.candidate_ids_json,
+    lookup_keys_json = excluded.lookup_keys_json,
+    decision_time_ms = excluded.decision_time_ms,
+    author_handle = excluded.author_handle,
     is_watched = excluded.is_watched,
     text_fingerprint = excluded.text_fingerprint,
     post_quality_score = excluded.post_quality_score,
     post_informative = excluded.post_informative,
     post_has_market_context = excluded.post_has_market_context,
+    ws_author_followers = excluded.ws_author_followers,
     gmgn_platform_followers = excluded.gmgn_platform_followers,
     gmgn_user_tags = excluded.gmgn_user_tags,
     account_profile_first_seen_ms = excluded.account_profile_first_seen_ms,
@@ -636,18 +657,93 @@ upserted AS (
     llm_impact_hint = excluded.llm_impact_hint,
     llm_semantic_novelty_hint = excluded.llm_semantic_novelty_hint,
     llm_label_confidence = excluded.llm_label_confidence,
+    asset_chain_id = excluded.asset_chain_id,
+    asset_token_standard = excluded.asset_token_standard,
+    asset_address = excluded.asset_address,
     asset_symbol = excluded.asset_symbol,
     asset_name = excluded.asset_name,
+    asset_identity_confidence = excluded.asset_identity_confidence,
+    asset_identity_reason_codes = excluded.asset_identity_reason_codes,
+    asset_identity_conflict_count = excluded.asset_identity_conflict_count,
+    asset_registry_status = excluded.asset_registry_status,
+    cex_base_symbol = excluded.cex_base_symbol,
+    cex_token_status = excluded.cex_token_status,
+    feed_type = excluded.feed_type,
     pricefeed_provider = excluded.pricefeed_provider,
     native_market_id = excluded.native_market_id,
+    pricefeed_base_symbol = excluded.pricefeed_base_symbol,
+    pricefeed_quote_symbol = excluded.pricefeed_quote_symbol,
+    pricefeed_status = excluded.pricefeed_status,
+    first_price_observed_at_ms = excluded.first_price_observed_at_ms,
+    first_price_usd = excluded.first_price_usd,
+    first_price_quote = excluded.first_price_quote,
+    first_price_quote_symbol = excluded.first_price_quote_symbol,
+    first_price_basis = excluded.first_price_basis,
     event_price_capture_id = excluded.event_price_capture_id,
+    event_price_capture_method = excluded.event_price_capture_method,
+    event_price_capture_reason = excluded.event_price_capture_reason,
+    event_price_tick_lag_ms = excluded.event_price_tick_lag_ms,
+    event_price_provider = excluded.event_price_provider,
+    event_price_source_tier = excluded.event_price_source_tier,
+    event_price_pricefeed_id = excluded.event_price_pricefeed_id,
     event_price_observed_at_ms = excluded.event_price_observed_at_ms,
+    event_price_received_at_ms = excluded.event_price_received_at_ms,
     event_price_usd = excluded.event_price_usd,
+    event_price_quote = excluded.event_price_quote,
+    event_price_quote_symbol = excluded.event_price_quote_symbol,
+    event_price_basis = excluded.event_price_basis,
+    event_price_market_cap_usd = excluded.event_price_market_cap_usd,
+    event_price_liquidity_usd = excluded.event_price_liquidity_usd,
+    event_price_volume_24h_usd = excluded.event_price_volume_24h_usd,
+    event_price_open_interest_usd = excluded.event_price_open_interest_usd,
+    event_price_holders = excluded.event_price_holders,
     latest_price_tick_id = excluded.latest_price_tick_id,
+    latest_price_provider = excluded.latest_price_provider,
+    latest_price_source_tier = excluded.latest_price_source_tier,
+    latest_price_pricefeed_id = excluded.latest_price_pricefeed_id,
     latest_price_observed_at_ms = excluded.latest_price_observed_at_ms,
-    latest_price_usd = excluded.latest_price_usd
+    latest_price_received_at_ms = excluded.latest_price_received_at_ms,
+    latest_price_usd = excluded.latest_price_usd,
+    latest_price_quote = excluded.latest_price_quote,
+    latest_price_quote_symbol = excluded.latest_price_quote_symbol,
+    latest_price_basis = excluded.latest_price_basis,
+    latest_price_market_cap_usd = excluded.latest_price_market_cap_usd,
+    latest_price_liquidity_usd = excluded.latest_price_liquidity_usd,
+    latest_price_volume_24h_usd = excluded.latest_price_volume_24h_usd,
+    latest_price_open_interest_usd = excluded.latest_price_open_interest_usd,
+    latest_price_holders = excluded.latest_price_holders,
+    before_event_price_observed_at_ms = excluded.before_event_price_observed_at_ms,
+    before_event_price_usd = excluded.before_event_price_usd,
+    before_event_price_quote = excluded.before_event_price_quote,
+    before_event_price_quote_symbol = excluded.before_event_price_quote_symbol,
+    before_event_price_basis = excluded.before_event_price_basis,
+    first_seen_global_24h = excluded.first_seen_global_24h
+  RETURNING 1
+),
+deleted AS (
+  DELETE FROM token_radar_rank_source_events stale_edges
+  USING requested
+  WHERE stale_edges.projection_version = %s
+    AND stale_edges."window" = requested."window"
+    AND stale_edges.scope = requested.scope
+    AND stale_edges.lane = 'resolved'
+    AND stale_edges.target_type_key = requested.target_type_key
+    AND stale_edges.identity_id = requested.identity_id
+    AND stale_edges.source_kind = 'event'
+    AND stale_edges.event_received_at_ms >= requested.analysis_since_ms
+    AND stale_edges.event_received_at_ms <= requested.now_ms
+    AND NOT EXISTS (
+      SELECT 1
+      FROM ranked_source fresh
+      WHERE fresh."window" = stale_edges."window"
+        AND fresh.scope = stale_edges.scope
+        AND fresh.target_type_key = stale_edges.target_type_key
+        AND fresh.identity_id = stale_edges.identity_id
+        AND fresh.event_id = stale_edges.source_id
+    )
   RETURNING 1
 )
-SELECT COUNT(*) AS upserted_count
-FROM upserted
+SELECT
+  (SELECT COUNT(*) FROM upserted) AS upserted_count,
+  (SELECT COUNT(*) FROM deleted) AS deleted_count
 """
