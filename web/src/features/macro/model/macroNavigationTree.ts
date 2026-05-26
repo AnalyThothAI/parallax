@@ -7,6 +7,7 @@ type SupportedMacroProductTier = Exclude<MacroProductTier, "unsupported">;
 export type MacroNavigationNode = {
   label: string;
   href: string;
+  matchPath?: string;
   navHidden?: boolean;
   pageKind?: SupportedMacroPageKind;
   productTier?: SupportedMacroProductTier;
@@ -30,10 +31,8 @@ export const MACRO_NAVIGATION_TREE: MacroNavigationNode[] = [
       },
       {
         label: "大类资产",
-        href: "/macro/assets",
-        pageKind: "index",
-        productTier: "primary",
-        routeId: "assets",
+        href: "/macro/assets/equities",
+        matchPath: "/macro/assets/*",
         section: "assets",
         children: [
           {
@@ -96,10 +95,8 @@ export const MACRO_NAVIGATION_TREE: MacroNavigationNode[] = [
       },
       {
         label: "利率",
-        href: "/macro/rates",
-        pageKind: "index",
-        productTier: "primary",
-        routeId: "rates",
+        href: "/macro/rates/fed-funds",
+        matchPath: "/macro/rates/*",
         section: "rates",
         children: [
           {
@@ -147,10 +144,8 @@ export const MACRO_NAVIGATION_TREE: MacroNavigationNode[] = [
       },
       {
         label: "美联储",
-        href: "/macro/fed",
-        pageKind: "index",
-        productTier: "primary",
-        routeId: "fed",
+        href: "/macro/fed/statements",
+        matchPath: "/macro/fed/*",
         section: "fed",
         children: [
           {
@@ -175,10 +170,8 @@ export const MACRO_NAVIGATION_TREE: MacroNavigationNode[] = [
       },
       {
         label: "流动性",
-        href: "/macro/liquidity",
-        pageKind: "index",
-        productTier: "primary",
-        routeId: "liquidity",
+        href: "/macro/liquidity/transmission-chain",
+        matchPath: "/macro/liquidity/*",
         section: "liquidity",
         children: [
           {
@@ -241,10 +234,8 @@ export const MACRO_NAVIGATION_TREE: MacroNavigationNode[] = [
       },
       {
         label: "经济数据",
-        href: "/macro/economy",
-        pageKind: "index",
-        productTier: "primary",
-        routeId: "economy",
+        href: "/macro/economy/gdp",
+        matchPath: "/macro/economy/*",
         section: "economy",
         children: [
           {
@@ -283,10 +274,8 @@ export const MACRO_NAVIGATION_TREE: MacroNavigationNode[] = [
       },
       {
         label: "波动率",
-        href: "/macro/volatility",
-        pageKind: "index",
-        productTier: "primary",
-        routeId: "volatility",
+        href: "/macro/volatility/dashboard",
+        matchPath: "/macro/volatility/*",
         section: "volatility",
         children: [
           {
@@ -310,10 +299,8 @@ export const MACRO_NAVIGATION_TREE: MacroNavigationNode[] = [
       },
       {
         label: "信用",
-        href: "/macro/credit",
-        pageKind: "index",
-        productTier: "primary",
-        routeId: "credit",
+        href: "/macro/credit/cds",
+        matchPath: "/macro/credit/*",
         section: "credit",
         children: [
           {

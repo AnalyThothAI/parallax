@@ -85,7 +85,6 @@ def build_macro_module_view(
             cex_source=cex_source,
         ),
         related_routes=_related_routes(config.related_routes),
-        section_boards=_section_boards(config, feature_map),
     )
 
 
@@ -153,7 +152,6 @@ def _missing_view(
             cex_source=cex_source,
         ),
         related_routes=_related_routes(config.related_routes),
-        section_boards=[],
     )
 
 
@@ -169,7 +167,6 @@ def _ordered_payload(
     data_health: dict[str, Any],
     provenance: dict[str, Any],
     related_routes: list[dict[str, str]],
-    section_boards: list[dict[str, Any]],
 ) -> dict[str, Any]:
     return {
         "snapshot": snapshot,
@@ -182,7 +179,6 @@ def _ordered_payload(
         "data_health": data_health,
         "provenance": provenance,
         "related_routes": related_routes,
-        "section_boards": section_boards,
     }
 
 
@@ -838,53 +834,6 @@ def _transmission(
     ]
 
 
-def _section_boards(config: MacroModuleConfig, feature_map: Mapping[str, Any]) -> list[dict[str, Any]]:
-    boards: list[dict[str, Any]] = []
-    for spec in config.section_board_specs:
-        rows = []
-        for concept_key in spec.concept_keys:
-            feature = _mapping(feature_map.get(concept_key))
-            row = _section_board_row(concept_key, feature)
-            rows.append(row)
-        status = _section_board_status(rows)
-        boards.append(
-            {
-                "id": spec.board_id,
-                "title": spec.title,
-                "href": spec.route_path,
-                "status": status,
-                "status_label": _status_label(status),
-                "rows": rows,
-            }
-        )
-    return boards
-
-
-def _section_board_row(concept_key: str, feature: Mapping[str, Any]) -> dict[str, Any]:
-    latest = _mapping(feature.get("latest"))
-    source = _mapping(feature.get("source"))
-    value = _number(latest.get("value"))
-    delta_20d = _number(_mapping(feature.get("delta")).get("20d"))
-    return {
-        "concept_key": concept_key,
-        "label": _feature_label(concept_key, feature),
-        "short_label": _feature_short_label(concept_key, feature),
-        "status": "ok" if feature else "missing",
-        "display_value": _display_number(value),
-        "delta_label": _delta_label(delta_20d),
-        "observed_at_label": _observed_label(latest.get("observed_at")),
-        "source_label": _source_label(source),
-    }
-
-
-def _section_board_status(rows: Sequence[Mapping[str, Any]]) -> str:
-    if rows and all(row.get("status") == "ok" for row in rows):
-        return "ok"
-    if rows and all(row.get("status") == "missing" for row in rows):
-        return "missing"
-    return "partial"
-
-
 def _section_label(section: str) -> str:
     return {
         "assets": "资产联动",
@@ -1305,23 +1254,19 @@ _STANDARD_COLUMNS = [
 ]
 
 _ROUTE_LABELS = {
-    "/macro/assets": "资产联动",
     "/macro/assets/equities": "美股风险",
     "/macro/assets/bonds": "债券资产",
     "/macro/assets/commodities": "商品冲击",
     "/macro/assets/fx": "美元压力",
     "/macro/assets/crypto": "加密资产",
     "/macro/assets/crypto-derivatives": "加密衍生品",
-    "/macro/rates": "利率定价",
     "/macro/rates/fed-funds": "联邦基金",
     "/macro/rates/yield-curve": "收益率曲线",
     "/macro/rates/auctions": "国债拍卖",
     "/macro/rates/real-rates": "实际利率",
     "/macro/rates/expectations": "政策预期",
-    "/macro/fed": "美联储走廊",
     "/macro/fed/statements": "FOMC 声明",
     "/macro/fed/speeches": "美联储讲话",
-    "/macro/liquidity": "美元流动性",
     "/macro/liquidity/transmission-chain": "流动性传导链",
     "/macro/liquidity/fed-balance-sheet": "资产负债表",
     "/macro/liquidity/operations": "公开市场操作",
@@ -1329,15 +1274,12 @@ _ROUTE_LABELS = {
     "/macro/liquidity/reserves": "银行准备金",
     "/macro/liquidity/global-dollar": "全球美元",
     "/macro/liquidity/subsurface": "资金面暗流",
-    "/macro/economy": "经济数据",
     "/macro/economy/gdp": "GDP",
     "/macro/economy/employment": "就业",
     "/macro/economy/inflation": "通胀",
     "/macro/economy/consumer": "消费",
-    "/macro/volatility": "波动率压力",
     "/macro/volatility/dashboard": "波动率 Dashboard",
     "/macro/volatility/vix": "VIX 结构",
-    "/macro/credit": "信用压力",
     "/macro/credit/cds": "CDS 代理",
     "/macro/credit/stress": "信用压力分解",
 }

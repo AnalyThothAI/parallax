@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 
 describe("macroPageRegistry", () => {
   it("keeps the supported audit route catalog aligned with addressable macro pages", () => {
-    expect(supportedMacroAuditRoutes).toHaveLength(32);
+    expect(supportedMacroAuditRoutes).toHaveLength(25);
     expect(macroRouteDescriptor("assets/correlation")).toEqual({
       href: "/macro/assets/correlation",
       label: "相关性",

@@ -28,13 +28,17 @@ export type AppNavigationGroup = {
 const macroNavigationRoot = MACRO_NAVIGATION_TREE[0];
 
 function adaptMacroNavigationNode(node: MacroNavigationNode): AppNavigationItem {
-  const children = node.children?.filter((child) => !child.navHidden).map(adaptMacroNavigationNode);
+  const visibleChildren = node.children
+    ?.filter((child) => !child.navHidden)
+    .map(adaptMacroNavigationNode);
+  const children = visibleChildren?.length ? visibleChildren : undefined;
+  const matchPath = node.matchPath ?? (children?.length ? `${node.href}/*` : undefined);
 
   return {
     children,
-    end: !children?.length,
+    end: !matchPath,
     label: node.label,
-    matchPath: children?.length ? `${node.href}/*` : undefined,
+    matchPath,
     to: node.href,
   };
 }

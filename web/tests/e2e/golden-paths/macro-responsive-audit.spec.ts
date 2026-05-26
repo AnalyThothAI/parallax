@@ -12,7 +12,6 @@ import { installMockApi } from "@tests/e2e/support/mockApi";
 
 const PRODUCT_ROUTES = [
   "/macro",
-  "/macro/assets",
   "/macro/assets/equities",
   "/macro/assets/bonds",
   "/macro/assets/commodities",
@@ -20,13 +19,10 @@ const PRODUCT_ROUTES = [
   "/macro/assets/crypto",
   "/macro/assets/crypto-derivatives",
   "/macro/assets/correlation",
-  "/macro/rates",
   "/macro/rates/fed-funds",
   "/macro/rates/yield-curve",
   "/macro/rates/real-rates",
   "/macro/rates/expectations",
-  "/macro/fed",
-  "/macro/liquidity",
   "/macro/liquidity/transmission-chain",
   "/macro/liquidity/fed-balance-sheet",
   "/macro/liquidity/operations",
@@ -34,15 +30,22 @@ const PRODUCT_ROUTES = [
   "/macro/liquidity/reserves",
   "/macro/liquidity/global-dollar",
   "/macro/liquidity/subsurface",
-  "/macro/economy",
   "/macro/economy/gdp",
   "/macro/economy/employment",
   "/macro/economy/inflation",
   "/macro/economy/consumer",
-  "/macro/volatility",
   "/macro/volatility/vix",
-  "/macro/credit",
   "/macro/credit/stress",
+];
+
+const PARENT_ALIAS_ROUTES = [
+  { route: "/macro/assets", target: /\/macro\/assets\/equities$/ },
+  { route: "/macro/rates", target: /\/macro\/rates\/fed-funds$/ },
+  { route: "/macro/fed", target: /\/macro\/fed\/statements$/ },
+  { route: "/macro/liquidity", target: /\/macro\/liquidity\/transmission-chain$/ },
+  { route: "/macro/economy", target: /\/macro\/economy\/gdp$/ },
+  { route: "/macro/volatility", target: /\/macro\/volatility\/dashboard$/ },
+  { route: "/macro/credit", target: /\/macro\/credit\/cds$/ },
 ];
 
 const HIDDEN_DIRECT_ROUTES = [
@@ -76,6 +79,17 @@ test.describe("macro responsive audit", () => {
 
       for (const route of [...PRODUCT_ROUTES, ...HIDDEN_DIRECT_ROUTES]) {
         await page.goto(route);
+        await expect(page.getByLabel("宏观工作台")).toBeVisible();
+        await expectNoMacroBodyOverflow(page);
+        await expectNoMacroMetricFragmentation(page);
+        await expectMacroTableFramesBounded(page);
+        await expectHiddenMacroLabelsAbsent(page);
+        await expectNoUnhandledApiRequests(page);
+      }
+
+      for (const { route, target } of PARENT_ALIAS_ROUTES) {
+        await page.goto(route);
+        await expect(page).toHaveURL(target);
         await expect(page.getByLabel("宏观工作台")).toBeVisible();
         await expectNoMacroBodyOverflow(page);
         await expectNoMacroMetricFragmentation(page);

@@ -1,5 +1,5 @@
 import { MacroWorkbenchRoute, parseMacroRouteTail } from "@features/macro";
-import { useParams } from "react-router-dom";
+import { Navigate, useParams } from "react-router-dom";
 
 import { useShellRouteContext } from "./shellRouteContext";
 
@@ -7,6 +7,9 @@ export function Component() {
   const { token } = useShellRouteContext();
   const { "*": routeTail } = useParams();
   const resolution = parseMacroRouteTail(routeTail);
+  if (resolution.routeKind === "redirect") {
+    return <Navigate replace to={resolution.canonicalPath} />;
+  }
   if (resolution.routeKind === "matrix") {
     return <MacroWorkbenchRoute routeKind="matrix" token={token} />;
   }

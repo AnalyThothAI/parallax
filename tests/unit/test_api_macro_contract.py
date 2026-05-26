@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -289,7 +290,7 @@ def test_macro_module_api_returns_backend_module_view() -> None:
     app = _app(repo)
 
     with TestClient(app) as client:
-        response = client.get("/api/macro/modules/rates", headers={"Authorization": "Bearer secret"})
+        response = client.get("/api/macro/modules/rates/yield-curve", headers={"Authorization": "Bearer secret"})
 
     assert response.status_code == 200
     assert repo.calls == [("latest_snapshot", "macro_regime_v4"), ("latest_import_run", None)]
@@ -297,9 +298,14 @@ def test_macro_module_api_returns_backend_module_view() -> None:
         "concept_keys": (
             "rates:dgs2",
             "rates:dgs10",
+            "rates:dgs1mo",
             "rates:dgs3mo",
+            "rates:dgs6mo",
             "rates:dgs1",
+            "rates:dgs3",
             "rates:dgs5",
+            "rates:dgs7",
+            "rates:dgs20",
             "rates:dgs30",
             "rates:10y2y",
             "rates:10y3m",
@@ -309,14 +315,14 @@ def test_macro_module_api_returns_backend_module_view() -> None:
     assert repo.observations_for_concepts_call is None
     payload = response.json()
     assert payload["ok"] is True
-    assert payload["data"]["snapshot"]["module_id"] == "rates"
+    assert payload["data"]["snapshot"]["module_id"] == "rates/yield-curve"
     assert payload["data"]["snapshot"]["projection_version"] == "macro_module_view_v3"
     assert payload["data"]["snapshot"]["source_projection_version"] == "macro_regime_v4"
     assert "module_read" in payload["data"]
     assert "module_evidence" in payload["data"]
     assert "transmission" in payload["data"]
     assert "data_health" in payload["data"]
-    assert "section_boards" in payload["data"]
+    assert "section_boards" not in payload["data"]
     assert "read" not in payload["data"]
     assert "evidence" not in payload["data"]
     assert "data_gaps" not in payload["data"]
@@ -344,6 +350,17 @@ def test_macro_module_api_rejects_unsupported_module() -> None:
 
     with TestClient(app) as client:
         response = client.get("/api/macro/modules/not-real", headers={"Authorization": "Bearer secret"})
+
+    assert response.status_code == 400
+    assert response.json() == {"ok": False, "error": "unsupported_macro_module", "field": "module_id"}
+
+
+@pytest.mark.parametrize("module_id", ("assets", "rates", "fed", "liquidity", "economy", "volatility", "credit"))
+def test_macro_module_api_rejects_parent_categories(module_id: str) -> None:
+    app = _app(FakeMacroIntelRepository(snapshot=None))
+
+    with TestClient(app) as client:
+        response = client.get(f"/api/macro/modules/{module_id}", headers={"Authorization": "Bearer secret"})
 
     assert response.status_code == 400
     assert response.json() == {"ok": False, "error": "unsupported_macro_module", "field": "module_id"}

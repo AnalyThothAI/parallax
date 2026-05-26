@@ -1,14 +1,10 @@
 @layer app.features {
-  .macro-asset-index-table,
-  .macro-module-index-table,
   .macro-matrix-table {
     width: 100%;
     min-width: var(--macro-table-min-width, 720px);
     border-collapse: collapse;
   }
 
-  .macro-asset-index-table caption,
-  .macro-module-index-table caption,
   .macro-matrix-table caption {
     position: absolute;
     width: 1px;
@@ -20,10 +16,6 @@
     border: 0;
   }
 
-  .macro-asset-index-table th,
-  .macro-asset-index-table td,
-  .macro-module-index-table th,
-  .macro-module-index-table td,
   .macro-matrix-table th,
   .macro-matrix-table td {
     padding: 10px 12px;
@@ -35,8 +27,6 @@
     vertical-align: middle;
   }
 
-  .macro-asset-index-table thead th,
-  .macro-module-index-table thead th,
   .macro-matrix-table thead th {
     position: sticky;
     top: 0;
@@ -49,100 +39,14 @@
     text-transform: uppercase;
   }
 
-  .macro-asset-index-table tbody tr:last-child th,
-  .macro-asset-index-table tbody tr:last-child td,
-  .macro-module-index-table tbody tr:last-child th,
-  .macro-module-index-table tbody tr:last-child td,
   .macro-matrix-table tbody tr:last-child th,
   .macro-matrix-table tbody tr:last-child td {
     border-bottom: 0;
   }
 
-  .macro-asset-index-table tbody tr:hover th,
-  .macro-asset-index-table tbody tr:hover td,
-  .macro-module-index-table tbody tr:hover th,
-  .macro-module-index-table tbody tr:hover td,
   .macro-matrix-table tbody tr:hover th,
   .macro-matrix-table tbody tr:hover td {
     background: rgba(125, 211, 252, 0.035);
-  }
-
-  .macro-asset-index-asset,
-  .macro-module-index-module {
-    color: var(--text-primary, #f8fafc);
-    font-weight: 800;
-  }
-
-  .macro-asset-index-status,
-  .macro-module-index-status {
-    display: inline-flex;
-    align-items: center;
-    min-height: 24px;
-    padding: 3px 8px;
-    border: 1px solid rgba(125, 211, 252, 0.18);
-    border-radius: 999px;
-    color: #bae6fd;
-    background: rgba(14, 165, 233, 0.08);
-    font-size: 0.73rem;
-    font-weight: 800;
-  }
-
-  .macro-asset-index-status[data-status="partial"],
-  .macro-module-index-status[data-status="partial"] {
-    border-color: rgba(251, 191, 36, 0.26);
-    color: #fbbf24;
-    background: rgba(251, 191, 36, 0.08);
-  }
-
-  .macro-asset-index-status[data-status="missing"],
-  .macro-asset-index-status[data-status="unknown"],
-  .macro-module-index-status[data-status="missing"],
-  .macro-module-index-status[data-status="unknown"] {
-    border-color: rgba(148, 163, 184, 0.2);
-    color: var(--text-muted, #94a3b8);
-    background: rgba(148, 163, 184, 0.06);
-  }
-
-  .macro-asset-index-status[data-status="ok"],
-  .macro-asset-index-status[data-status="ready"],
-  .macro-module-index-status[data-status="ok"],
-  .macro-module-index-status[data-status="ready"] {
-    border-color: rgba(52, 211, 153, 0.24);
-    color: #86efac;
-    background: rgba(52, 211, 153, 0.08);
-  }
-
-  .macro-asset-index-link,
-  .macro-module-index-link {
-    display: inline-flex;
-    align-items: center;
-    min-height: 26px;
-    padding: 4px 9px;
-    border: 1px solid rgba(125, 211, 252, 0.24);
-    border-radius: 8px;
-    color: #bae6fd;
-    background: rgba(14, 165, 233, 0.08);
-    font-size: 0.76rem;
-    font-weight: 800;
-    text-decoration: none;
-    white-space: nowrap;
-  }
-
-  .macro-asset-index-link:hover,
-  .macro-asset-index-link:focus-visible,
-  .macro-module-index-link:hover,
-  .macro-module-index-link:focus-visible {
-    border-color: rgba(125, 211, 252, 0.42);
-    color: var(--text-primary, #f8fafc);
-  }
-
-  .macro-asset-index-empty,
-  .macro-module-index-empty {
-    display: grid;
-    min-height: 96px;
-    place-items: center;
-    color: var(--text-muted, #94a3b8);
-    font-size: 0.78rem;
   }
 
   .macro-chart-loading-state {

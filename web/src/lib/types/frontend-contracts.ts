@@ -223,15 +223,6 @@ export type MacroTransmissionNode = {
   status_label?: string | null;
 };
 
-export type MacroSectionBoard = {
-  id: string;
-  title: string;
-  href: string;
-  rows: MacroSemanticRecord[];
-  status?: string | null;
-  status_label?: string | null;
-};
-
 export type MacroModuleView = {
   snapshot: MacroModuleSnapshot;
   tiles: MacroModuleTile[];
@@ -243,7 +234,6 @@ export type MacroModuleView = {
   data_health: MacroDataHealth;
   provenance: MacroSemanticRecord;
   related_routes: MacroRelatedRoute[];
-  section_boards: MacroSectionBoard[];
   [key: string]: unknown;
 };
 

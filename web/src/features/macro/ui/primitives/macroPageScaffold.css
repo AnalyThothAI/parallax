@@ -8,7 +8,6 @@
   }
 
   .macro-page-scaffold[data-page-kind="overview"],
-  .macro-page-scaffold[data-page-kind="index"],
   .macro-page-scaffold[data-page-kind="matrix"] {
     gap: 16px;
   }

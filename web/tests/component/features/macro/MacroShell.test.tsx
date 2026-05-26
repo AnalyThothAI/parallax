@@ -12,7 +12,7 @@ describe("MacroShell", () => {
     const header: MacroShellHeaderModel = {
       breadcrumbs: [
         { label: "宏观", href: "/macro" },
-        { label: "大类资产", href: "/macro/assets" },
+        { label: "大类资产", href: "/macro/assets/equities" },
         { label: "美股风险", href: "/macro/assets/equities" },
       ],
       eyebrow: "宏观工作台",
@@ -40,7 +40,7 @@ describe("MacroShell", () => {
     const breadcrumb = screen.getByRole("navigation", { name: "宏观面包屑" });
     expect(within(breadcrumb).getByRole("link", { name: "大类资产" })).toHaveAttribute(
       "href",
-      "/macro/assets",
+      "/macro/assets/equities",
     );
     expect(screen.queryByRole("navigation", { name: "宏观主模块" })).not.toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "宏观模块" })).not.toBeInTheDocument();
@@ -60,7 +60,7 @@ describe("MacroShell", () => {
       actions: <button type="button">60d</button>,
       breadcrumbs: [
         { label: "宏观", href: "/macro" },
-        { label: "大类资产", href: "/macro/assets" },
+        { label: "大类资产", href: "/macro/assets/equities" },
         { label: "相关性", href: "/macro/assets/correlation" },
       ],
       eyebrow: "宏观工作台",

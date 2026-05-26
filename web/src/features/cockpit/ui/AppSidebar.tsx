@@ -131,9 +131,9 @@ function AppSidebarSubItem({ depth, item }: { depth: number; item: AppNavigation
             data-depth={depth}
             isActive={active}
           >
-            <NavLink end onClick={closeSidebarOnNavigate} to={item.to}>
+            <Link onClick={closeSidebarOnNavigate} to={item.to}>
               <span>{item.label}</span>
-            </NavLink>
+            </Link>
           </SidebarMenuSubButton>
           <BranchToggle contentId={contentId} label={item.label} open={open} />
           <Collapsible.Content asChild id={contentId}>

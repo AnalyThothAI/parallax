@@ -67,10 +67,10 @@ surface as `data_gap` / neutral scenario context, not as a false stress signal.
 Module pages consume only `macro_module_view_v3`, whose payload is
 display-ready: semantic snapshot headers, tiles, one primary chart with
 minimum-point status, typed display tables, `module_read`, `module_evidence`,
-`transmission`, `data_health`, `section_boards`, summarized provenance rows,
+`transmission`, `data_health`, summarized provenance rows,
 and related routes. Overview/global regime fields describe the whole macro
-state; module-local `data_health` and `section_boards` describe page readiness
-and section evidence without overriding global scores. Raw provider payloads,
+state; module-local `data_health` describes page readiness without overriding
+global scores. Raw provider payloads,
 old provenance JSON blobs, and old v1/v2 module fields are not public
 compatibility surfaces.
 

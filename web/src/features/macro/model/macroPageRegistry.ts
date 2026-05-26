@@ -1,7 +1,7 @@
 import { MACRO_NAVIGATION_TREE, type MacroNavigationNode } from "./macroNavigationTree";
 import type { MacroModuleId } from "./macroRoutes";
 
-export type MacroPageKind = "overview" | "index" | "leaf" | "matrix" | "unsupported";
+export type MacroPageKind = "overview" | "leaf" | "matrix" | "unsupported";
 export type MacroProductTier = "primary" | "secondary" | "hiddenSupported" | "unsupported";
 export type MacroRouteId = MacroModuleId | "assets/correlation";
 export type MacroRouteDescriptor = {

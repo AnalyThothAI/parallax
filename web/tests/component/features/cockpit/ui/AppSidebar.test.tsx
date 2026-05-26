@@ -35,7 +35,9 @@ describe("AppSidebar", () => {
     expect(macroLink).not.toHaveAttribute("aria-current");
 
     const assetLink = screen.getByRole("link", { name: "大类资产" });
+    expect(assetLink).toHaveAttribute("href", "/macro/assets/equities");
     expect(assetLink).toHaveAttribute("data-active", "true");
+    expect(assetLink).not.toHaveAttribute("aria-current");
     expect(screen.getByRole("button", { name: "展开大类资产" })).toHaveAttribute(
       "aria-expanded",
       "false",
@@ -73,7 +75,7 @@ describe("AppSidebar", () => {
     );
     const assetLink = screen.getByRole("link", { name: "大类资产" });
     expect(assetLink).toHaveAttribute("data-active", "true");
-    expect(assetLink).toHaveAttribute("href", "/macro/assets");
+    expect(assetLink).toHaveAttribute("href", "/macro/assets/equities");
     expect(assetLink).not.toHaveAttribute("aria-current");
     expect(screen.getByRole("button", { name: "展开大类资产" })).toHaveAttribute(
       "aria-expanded",
@@ -102,7 +104,10 @@ describe("AppSidebar", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "展开宏观" }));
 
-    expect(screen.getByRole("link", { name: "大类资产" })).toHaveAttribute("href", "/macro/assets");
+    expect(screen.getByRole("link", { name: "大类资产" })).toHaveAttribute(
+      "href",
+      "/macro/assets/equities",
+    );
     expect(screen.getByRole("button", { name: "展开大类资产" })).toHaveAttribute(
       "aria-expanded",
       "false",
@@ -124,7 +129,10 @@ describe("AppSidebar", () => {
     fireEvent.click(screen.getByRole("button", { name: "展开利率" }));
     fireEvent.click(screen.getByRole("button", { name: "展开信用" }));
 
-    expect(screen.getByRole("link", { name: "美联储" })).toHaveAttribute("href", "/macro/fed");
+    expect(screen.getByRole("link", { name: "美联储" })).toHaveAttribute(
+      "href",
+      "/macro/fed/statements",
+    );
     expect(screen.queryByRole("button", { name: "展开美联储" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "拍卖" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "FOMC 声明" })).not.toBeInTheDocument();
@@ -133,19 +141,43 @@ describe("AppSidebar", () => {
     expect(screen.queryByRole("link", { name: "CDS 代理" })).not.toBeInTheDocument();
   });
 
-  it("marks an exact nested Macro section route current without marking child leaves current", () => {
-    renderSidebar({ route: "/macro/assets" });
+  it("links macro category parents to default children without creating current index links", () => {
+    renderSidebar({ route: "/macro/assets/equities" });
 
     expect(screen.getByRole("link", { name: "宏观" })).toHaveAttribute("data-active", "true");
 
     const assetLink = screen.getByRole("link", { name: "大类资产" });
     expect(assetLink).toHaveAttribute("data-active", "true");
-    expect(assetLink).toHaveAttribute("href", "/macro/assets");
-    expect(assetLink).toHaveAttribute("aria-current", "page");
+    expect(assetLink).toHaveAttribute("href", "/macro/assets/equities");
+    expect(assetLink).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("link", { name: "利率" })).toHaveAttribute(
+      "href",
+      "/macro/rates/fed-funds",
+    );
+    expect(screen.getByRole("link", { name: "美联储" })).toHaveAttribute(
+      "href",
+      "/macro/fed/statements",
+    );
+    expect(screen.getByRole("link", { name: "流动性" })).toHaveAttribute(
+      "href",
+      "/macro/liquidity/transmission-chain",
+    );
+    expect(screen.getByRole("link", { name: "经济数据" })).toHaveAttribute(
+      "href",
+      "/macro/economy/gdp",
+    );
+    expect(screen.getByRole("link", { name: "波动率" })).toHaveAttribute(
+      "href",
+      "/macro/volatility/dashboard",
+    );
+    expect(screen.getByRole("link", { name: "信用" })).toHaveAttribute(
+      "href",
+      "/macro/credit/cds",
+    );
 
     expect(screen.queryByRole("link", { name: "美股" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "展开大类资产" }));
-    expect(screen.getByRole("link", { name: "美股" })).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("link", { name: "美股" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "相关性" })).not.toHaveAttribute("aria-current");
     expect(screen.getAllByRole("link", { current: "page" })).toHaveLength(1);
   });

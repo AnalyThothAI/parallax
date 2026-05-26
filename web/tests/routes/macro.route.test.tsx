@@ -135,6 +135,21 @@ describe("macro route", () => {
     );
   });
 
+  it("redirects macro parent aliases to their default child module", async () => {
+    renderAppRoute("/macro/assets");
+
+    expect(await screen.findByRole("heading", { name: "美股风险" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "大类资产索引" })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/assets/equities", {
+        token: "secret",
+      }),
+    );
+    expect(apiMock.readApi).not.toHaveBeenCalledWith("/api/macro/modules/assets", {
+      token: "secret",
+    });
+  });
+
   it("renders an unsupported state for unknown macro routes", async () => {
     renderAppRoute("/macro/not-real");
 

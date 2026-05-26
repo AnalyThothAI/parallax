@@ -55,7 +55,7 @@ test.describe("macro terminal navigation hardening", () => {
     await expectNoUnhandledApiRequests(page);
   });
 
-  test("macro terminal asset landing renders the asset index without retired module regions", async ({
+  test("macro terminal parent category aliases redirect to their default child", async ({
     page,
   }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("desktop-"), "desktop asset landing contract");
@@ -63,13 +63,9 @@ test.describe("macro terminal navigation hardening", () => {
     await installMockApi(page);
     await page.goto("/macro/assets");
 
-    const assetIndex = page.getByRole("region", { name: "大类资产索引" });
-    await expect(assetIndex).toBeVisible();
-    const assetMatrix = assetIndex.getByRole("table", { name: "大类资产矩阵" });
-    await expect(assetMatrix).toBeVisible();
-    await expect(assetMatrix.getByRole("link", { name: "查看美股" })).toBeVisible();
-    await expect(assetMatrix.getByRole("link", { name: "查看债券" })).toBeVisible();
-    await expect(page.getByRole("region", { name: "模块判断" })).toHaveCount(0);
+    await expect(page).toHaveURL(/\/macro\/assets\/equities$/);
+    await expect(page.getByRole("heading", { name: "美股风险" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "大类资产索引" })).toHaveCount(0);
 
     await expectNoDocumentHorizontalOverflow(page);
     await expectNoUnhandledApiRequests(page);

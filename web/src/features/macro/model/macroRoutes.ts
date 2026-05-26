@@ -8,23 +8,19 @@ import {
 
 export type MacroModuleId =
   | "overview"
-  | "assets"
   | "assets/equities"
   | "assets/bonds"
   | "assets/commodities"
   | "assets/fx"
   | "assets/crypto"
   | "assets/crypto-derivatives"
-  | "rates"
   | "rates/fed-funds"
   | "rates/yield-curve"
   | "rates/auctions"
   | "rates/real-rates"
   | "rates/expectations"
-  | "fed"
   | "fed/statements"
   | "fed/speeches"
-  | "liquidity"
   | "liquidity/transmission-chain"
   | "liquidity/fed-balance-sheet"
   | "liquidity/operations"
@@ -32,15 +28,12 @@ export type MacroModuleId =
   | "liquidity/reserves"
   | "liquidity/global-dollar"
   | "liquidity/subsurface"
-  | "economy"
   | "economy/gdp"
   | "economy/employment"
   | "economy/inflation"
   | "economy/consumer"
-  | "volatility"
   | "volatility/dashboard"
   | "volatility/vix"
-  | "credit"
   | "credit/cds"
   | "credit/stress";
 
@@ -80,6 +73,12 @@ export type MacroRouteResolution =
       wasUnknown: false;
     }
   | {
+      routeKind: "redirect";
+      canonicalPath: string;
+      routeTail: string;
+      wasUnknown: false;
+    }
+  | {
       routeKind: "unsupported";
       pageKind: "unsupported";
       productTier: "unsupported";
@@ -100,6 +99,16 @@ export const MACRO_MODULE_ROUTES: MacroModuleRoute[] =
 
 const ROUTES_BY_ID = new Map(MACRO_MODULE_ROUTES.map((route) => [route.moduleId, route]));
 
+const MACRO_PARENT_ROUTE_REDIRECTS = new Map<string, string>([
+  ["assets", "/macro/assets/equities"],
+  ["rates", "/macro/rates/fed-funds"],
+  ["fed", "/macro/fed/statements"],
+  ["liquidity", "/macro/liquidity/transmission-chain"],
+  ["economy", "/macro/economy/gdp"],
+  ["volatility", "/macro/volatility/dashboard"],
+  ["credit", "/macro/credit/cds"],
+]);
+
 export function parseMacroRouteTail(routeTail: string | undefined): MacroRouteResolution {
   const normalized = normalizeRouteTail(routeTail);
   if (normalized === "") {
@@ -111,6 +120,16 @@ export function parseMacroRouteTail(routeTail: string | undefined): MacroRouteRe
       productTier: descriptor?.productTier ?? "primary",
       routeId: "overview",
       routeKind: "module",
+      wasUnknown: false,
+    };
+  }
+
+  const parentRedirectPath = MACRO_PARENT_ROUTE_REDIRECTS.get(normalized);
+  if (parentRedirectPath) {
+    return {
+      canonicalPath: parentRedirectPath,
+      routeKind: "redirect",
+      routeTail: normalized,
       wasUnknown: false,
     };
   }
