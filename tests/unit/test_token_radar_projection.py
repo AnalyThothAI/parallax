@@ -92,19 +92,156 @@ def test_rank_key_does_not_promote_malformed_snapshot_from_row_decision():
     ]
 
 
-def test_apply_cross_section_rejects_rows_with_malformed_factor_snapshot():
-    rows = [
+def test_compact_rank_inputs_preserves_rank_key_tie_breakers_from_scalar_columns():
+    base = ranking_row(target_id="base", latest_seen_ms=1_777_800_000_000, decision="watch", rank_score=42)
+    newer = ranking_row(target_id="newer", latest_seen_ms=1_777_800_030_000, decision="watch", rank_score=42)
+    fallback_mentions = ranking_row(
+        target_id="fallback-mentions",
+        latest_seen_ms=1_777_800_010_000,
+        decision="watch",
+        rank_score=42,
+    )
+    fallback_mentions["factor_snapshot_json"]["families"]["social_heat"]["facts"]["mentions_1h"] = 0
+    fallback_mentions["factor_snapshot_json"]["families"]["social_propagation"]["facts"]["mentions"] = 12
+    high_alert = ranking_row(
+        target_id="high-alert",
+        latest_seen_ms=1_777_800_000_000,
+        decision="high_alert",
+        rank_score=5,
+    )
+    rows = [base, newer, fallback_mentions, high_alert]
+    for row in rows:
+        row.update(
+            {
+                "projection_version": PROJECTION_VERSION,
+                "window": "1h",
+                "scope": "all",
+                "lane": "resolved",
+                "target_type_key": "Asset",
+                "identity_id": row["target_id"],
+                "latest_event_received_at_ms": row["factor_snapshot_json"]["families"]["social_heat"]["facts"][
+                    "latest_seen_ms"
+                ],
+                "payload_hash": f"hash-{row['target_id']}",
+                "rank_input_version": "token-radar-rank-input-v1",
+                "last_scored_at_ms": 1_777_800_060_000,
+            }
+        )
+
+    compact_rows = TokenRadarProjection.rank_compact_inputs(
+        [_compact_rank_input_from_factor_row(row) for row in rows]
+    )
+
+    assert [row["identity_id"] for row in compact_rows] == [
+        "fallback-mentions",
+        "newer",
+        "base",
+        "high-alert",
+    ]
+    fallback = next(row for row in compact_rows if row["identity_id"] == "fallback-mentions")
+    assert fallback["social_heat_mentions_1h"] == 0
+    assert fallback["social_propagation_mentions"] == 12
+
+
+def test_compact_rank_inputs_does_not_admit_unresolved_identity_id_into_cohort():
+    resolved = ranking_row(
+        target_id="asset-resolved",
+        latest_seen_ms=1_777_800_030_000,
+        decision="watch",
+        rank_score=35,
+    )
+    resolved["factor_snapshot_json"]["subject"]["symbol"] = "GOOD"
+    unresolved = ranking_row(
+        target_id="",
+        latest_seen_ms=1_777_800_040_000,
+        decision="watch",
+        rank_score=99,
+    )
+    unresolved.update({"target_id": None, "identity_id": "symbol:HOT"})
+    unresolved["factor_snapshot_json"]["subject"]["target_id"] = None
+    unresolved["factor_snapshot_json"]["subject"]["symbol"] = "HOT"
+    rows = [resolved, unresolved]
+
+    compact_rows = TokenRadarProjection.rank_compact_inputs(
+        [
+            {
+                **_compact_rank_input_from_factor_row(row),
+                "cohort_high_confidence_mentions": 5,
+                "cohort_kol_mentions": 3,
+                "cohort_first_seen_global_24h": True,
+            }
+            for row in rows
+        ]
+    )
+
+    unresolved_rank = next(row for row in compact_rows if row["identity_id"] == "symbol:HOT")
+    assert unresolved_rank["target_id"] is None
+    assert unresolved_rank["cohort_in_cohort"] is False
+    assert unresolved_rank["factor_ranks"] == {family: None for family in TOKEN_RADAR_FACTOR_FAMILIES}
+
+
+def test_full_rank_input_rebuild_enumerates_legacy_rows_and_scores_owner_path(monkeypatch):
+    now_ms = 1_777_800_060_000
+    recorder = FakeProjectionRecorder()
+    token_radar = FakeTokenRadar()
+    token_radar.rebuild_keys = [
         {
-            "target_id": "asset:bad",
-            "target_json": {"symbol": "BAD"},
-            "factor_snapshot_json": {},
-            "_cohort_high_conf_count": 1,
-            "_cohort_kol_count": 0,
+            "projection_version": PROJECTION_VERSION,
+            "window": "1h",
+            "scope": "all",
+            "lane": "resolved",
+            "target_type_key": "Asset",
+            "identity_id": "asset-1",
+            "target_type": "Asset",
+            "target_id": "asset-1",
+            "payload_hash": "legacy-hash",
+            "rank_input_version": "legacy_needs_rebuild",
         }
     ]
+    repos = type("Repos", (), {"conn": FakeTransactionConn(), "token_radar": token_radar})()
 
-    with pytest.raises(ValueError, match="factor_snapshot_json must be a non-empty factor snapshot"):
-        TokenRadarProjection._apply_cross_section(rows)
+    monkeypatch.setattr(
+        token_radar_projection_module,
+        "ProjectionRepository",
+        lambda conn: FakeProjectionRepository(conn=conn, recorder=recorder),
+    )
+    monkeypatch.setattr(
+        TokenRadarProjection,
+        "score_target_window",
+        lambda self, **kwargs: token_radar.score_calls.append(kwargs) or {"source_rows": 2, "rows_written": 1},
+    )
+    monkeypatch.setattr(
+        TokenRadarProjection,
+        "refresh_rank_set",
+        lambda self, **kwargs: token_radar.refresh_calls.append(kwargs)
+        or {"status": "ready", "source_rows": 1, "rows_written": 1, "computed_at_ms": kwargs["now_ms"]},
+    )
+
+    result = TokenRadarProjection(repos=repos).rebuild_rank_inputs_full(
+        windows=("1h",),
+        scopes=("all",),
+        now_ms=now_ms,
+        batch_size=100,
+    )
+
+    assert result["status"] == "ready"
+    assert result["legacy_rows_seen"] == 1
+    assert token_radar.list_rebuild_calls == [
+        {
+            "projection_version": PROJECTION_VERSION,
+            "windows": ("1h",),
+            "scopes": ("all",),
+            "limit": 100,
+        },
+        {
+            "projection_version": PROJECTION_VERSION,
+            "windows": ("1h",),
+            "scopes": ("all",),
+            "limit": 100,
+        },
+    ]
+    assert token_radar.score_calls[0]["target"]["identity_id"] == "asset-1"
+    assert token_radar.refresh_calls == [{"window": "1h", "scope": "all", "now_ms": now_ms, "limit": 100}]
 
 
 def test_project_group_outputs_factor_snapshot_not_score_contract():
@@ -155,7 +292,7 @@ def test_project_group_populates_v3_data_health_from_top_level_snapshot():
     }
 
 
-def test_project_group_carries_first_seen_global_into_cross_section_cohort():
+def test_project_group_carries_first_seen_global_into_compact_rank_input_cohort():
     row = source_row("event-first-seen", received_at_ms=1_777_800_000_000)
     row["first_seen_global_24h"] = True
 
@@ -167,17 +304,14 @@ def test_project_group_carries_first_seen_global_into_cross_section_cohort():
     assert projected["_cohort_first_seen_global_24h"] is True
     assert projected["_cohort_public_followup_count"] == 0
 
-    result = TokenRadarProjection._apply_cross_section([projected])
+    result = TokenRadarProjection.rank_compact_inputs([_compact_rank_input_from_factor_row(projected)])
 
-    cohort = result[0]["factor_snapshot_json"]["normalization"]["cohort"]
-    assert cohort["in_cohort"] is True
-    assert cohort["first_seen_global_24h"] is True
-    assert cohort["public_followup_authors"] == 0
-    assert "_cohort_first_seen_global_24h" not in result[0]
-    assert "_cohort_public_followup_count" not in result[0]
+    assert result[0]["cohort_in_cohort"] is True
+    assert result[0]["cohort_metadata"]["first_seen_global_24h"] is True
+    assert result[0]["cohort_metadata"]["public_followup_authors"] == 0
 
 
-def test_project_group_carries_public_followup_count_as_cohort_metadata_only():
+def test_project_group_carries_public_followup_count_as_compact_cohort_metadata():
     rows = [
         source_row("event-seed", received_at_ms=1_777_800_000_000, author="alice"),
         source_row("event-bob", received_at_ms=1_777_800_060_000, author="bob"),
@@ -189,11 +323,9 @@ def test_project_group_carries_public_followup_count_as_cohort_metadata_only():
     assert projected is not None
     assert projected["_cohort_public_followup_count"] == 2
 
-    result = TokenRadarProjection._apply_cross_section([projected])
+    result = TokenRadarProjection.rank_compact_inputs([_compact_rank_input_from_factor_row(projected)])
 
-    cohort = result[0]["factor_snapshot_json"]["normalization"]["cohort"]
-    assert cohort["public_followup_authors"] == 2
-    assert "_cohort_public_followup_count" not in result[0]
+    assert result[0]["cohort_metadata"]["public_followup_authors"] == 2
 
 
 def test_analysis_window_loads_baseline_and_attention_history():
@@ -402,6 +534,25 @@ def test_projection_stale_write_does_not_advance_offset(monkeypatch):
     ]
 
 
+def test_projection_refuses_partial_rank_publish_when_rank_inputs_need_rebuild() -> None:
+    row = source_row("event-1", received_at_ms=1_777_800_000_000)
+    feature_row = _project_group([row], now_ms=1_777_800_060_000, window="5m", scope="all")
+    token_radar = FakeTokenRadar([feature_row], stale_rank_inputs=1)
+    repos = type("Repos", (), {"conn": FakeTransactionConn(), "token_radar": token_radar})()
+
+    with pytest.raises(RuntimeError, match="token_radar_rank_inputs_require_full_rebuild"):
+        TokenRadarProjection(repos=repos).refresh_rank_set(
+            window="5m",
+            scope="all",
+            now_ms=1_777_800_060_000,
+            limit=20,
+        )
+
+    assert token_radar.rows == []
+    assert token_radar.coverage[-1]["status"] == "failed"
+    assert token_radar.coverage[-1]["error"] == "token_radar_rank_inputs_require_full_rebuild"
+
+
 def test_projection_refresh_rank_set_does_not_mark_user_coverage_running(monkeypatch):
     recorder = FakeProjectionRecorder()
     now_ms = 1_777_800_060_000
@@ -424,6 +575,36 @@ def test_projection_refresh_rank_set_does_not_mark_user_coverage_running(monkeyp
 
     assert result["status"] == "ready"
     assert [call["status"] for call in token_radar.coverage] == ["ready"]
+
+
+def test_projection_stale_cleanup_is_throttled_per_window_scope(monkeypatch):
+    recorder = FakeProjectionRecorder()
+    now_ms = 1_777_800_060_000
+    feature_row = _project_group(
+        [source_row("event-1", received_at_ms=now_ms - 60_000)],
+        now_ms=now_ms,
+        window="5m",
+        scope="all",
+    )
+    token_radar = FakeTokenRadar([feature_row])
+    repos = type("Repos", (), {"conn": FakeTransactionConn(), "token_radar": token_radar})()
+
+    monkeypatch.setattr(
+        token_radar_projection_module,
+        "ProjectionRepository",
+        lambda conn: FakeProjectionRepository(conn=conn, recorder=recorder),
+    )
+
+    projection = TokenRadarProjection(repos=repos)
+    first = projection.rebuild(window="5m", scope="all", now_ms=now_ms, limit=20)
+    second = projection.rebuild(window="5m", scope="all", now_ms=now_ms + 1_000, limit=20)
+
+    assert first["status"] == "ready"
+    assert second["status"] == "ready"
+    assert len(recorder.stale_calls) == 1
+    assert recorder.stale_calls[0]["stale_before_ms"] == (
+        now_ms - token_radar_projection_module.STALE_RUNNING_PROJECTION_MS
+    )
 
 
 def test_projection_does_not_call_current_market_repository(monkeypatch):
@@ -452,6 +633,32 @@ def test_projection_does_not_call_current_market_repository(monkeypatch):
     assert snapshot["families"]["timing_risk"]["data_health"] != "anchor_only"
     assert not hasattr(repos, "current_market")
     assert token_radar.rows[0]["market_json"] == {}
+
+
+def test_projection_hydration_payload_hash_mismatch_does_not_publish(monkeypatch):
+    recorder = FakeProjectionRecorder()
+    now_ms = 1_777_800_060_000
+    projected = _project_group(
+        [source_row("event-1", received_at_ms=now_ms - 60_000)],
+        now_ms=now_ms,
+        window="5m",
+        scope="all",
+    )
+    assert projected is not None
+    token_radar = FakeTokenRadar([projected], hydrated_payload_hash="changed-hash")
+    repos = type("Repos", (), {"conn": FakeTransactionConn(), "token_radar": token_radar})()
+
+    monkeypatch.setattr(
+        token_radar_projection_module,
+        "ProjectionRepository",
+        lambda conn: FakeProjectionRepository(conn=conn, recorder=recorder),
+    )
+
+    with pytest.raises(RuntimeError, match="payload_hash changed"):
+        TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=now_ms, limit=20)
+
+    assert token_radar.rows == []
+    assert [call["status"] for call in token_radar.coverage] == ["failed"]
 
 
 def test_projection_enqueues_narrative_admission_for_realtime_rank_changes() -> None:
@@ -1314,8 +1521,17 @@ class FakeRejectingTokenRadar:
     def mark_coverage(self, **kwargs):
         self.coverage.append(kwargs)
 
-    def list_target_features_for_rank_set(self, **kwargs):
-        return list(self.feature_rows)
+    def list_rank_inputs_for_rank_set(self, **kwargs):
+        return [_compact_rank_input_from_factor_row(row) for row in self.feature_rows]
+
+    def stale_rank_input_count(self, **kwargs):
+        return 0
+
+    def load_target_feature_payloads_for_ranked_keys(self, keys):
+        rows = []
+        for row, key in zip(self.feature_rows, keys, strict=False):
+            rows.append({**dict(row), **{field: key[field] for field in _RANK_KEY_FIELDS}})
+        return rows
 
     def publish_rows(self, **kwargs):
         return False
@@ -1357,17 +1573,112 @@ class FakeRuntimeDirtyTargets:
 
 
 class FakeTokenRadar:
-    def __init__(self, feature_rows: list[dict[str, object] | None] | None = None):
+    def __init__(
+        self,
+        feature_rows: list[dict[str, object] | None] | None = None,
+        *,
+        hydrated_payload_hash: str | None = None,
+        stale_rank_inputs: int = 0,
+    ):
         self.feature_rows = [row for row in feature_rows or [] if row is not None]
         self.rows: list[dict[str, object]] = []
         self.coverage: list[dict[str, object]] = []
+        self.hydrated_payload_hash = hydrated_payload_hash
+        self.stale_rank_inputs = int(stale_rank_inputs)
+        self.rebuild_keys: list[dict[str, object]] = []
+        self.list_rebuild_calls: list[dict[str, object]] = []
+        self.score_calls: list[dict[str, object]] = []
+        self.refresh_calls: list[dict[str, object]] = []
 
     def mark_coverage(self, **kwargs):
         self.coverage.append(kwargs)
 
-    def list_target_features_for_rank_set(self, **kwargs):
-        return list(self.feature_rows)
+    def list_rank_inputs_for_rank_set(self, **kwargs):
+        return [_compact_rank_input_from_factor_row(row) for row in self.feature_rows]
+
+    def stale_rank_input_count(self, **kwargs):
+        return self.stale_rank_inputs
+
+    def load_target_feature_payloads_for_ranked_keys(self, keys):
+        rows = []
+        for row, key in zip(self.feature_rows, keys, strict=False):
+            hydrated = dict(row)
+            hydrated.update({field: key[field] for field in _RANK_KEY_FIELDS})
+            hydrated["payload_hash"] = self.hydrated_payload_hash or key["payload_hash"]
+            rows.append(hydrated)
+        return rows
+
+    def list_rank_input_rebuild_keys(self, **kwargs):
+        self.list_rebuild_calls.append(kwargs)
+        rows = list(self.rebuild_keys)
+        self.rebuild_keys = []
+        return rows
 
     def publish_rows(self, **kwargs):
         self.rows = list(kwargs["rows"])
         return True
+
+
+def _compact_rank_input_from_factor_row(row: dict[str, object]) -> dict[str, object]:
+    snapshot = row["factor_snapshot_json"]
+    families = snapshot["families"]
+    social_heat = families["social_heat"]
+    social_propagation = families["social_propagation"]
+    semantic_catalyst = families["semantic_catalyst"]
+    timing_risk = families["timing_risk"]
+    social_heat_facts = social_heat.get("facts") or {}
+    social_propagation_facts = social_propagation.get("facts") or {}
+    target_id = row.get("target_id")
+    if target_id is None:
+        target_id = snapshot["subject"].get("target_id")
+    target_id = str(target_id) if target_id is not None else None
+    return {
+        "projection_version": row.get("projection_version") or PROJECTION_VERSION,
+        "window": row.get("window") or "5m",
+        "scope": row.get("scope") or "all",
+        "lane": row.get("lane") or "attention",
+        "target_type_key": row.get("target_type_key") or row.get("target_type") or "Asset",
+        "identity_id": row.get("identity_id") or target_id or "",
+        "target_type": row.get("target_type") or "Asset",
+        "target_id": target_id,
+        "pricefeed_id": row.get("pricefeed_id"),
+        "latest_event_received_at_ms": row.get("source_max_received_at_ms")
+        or row.get("latest_event_received_at_ms")
+        or social_heat_facts.get("latest_seen_ms")
+        or 0,
+        "latest_market_observed_at_ms": row.get("latest_market_observed_at_ms"),
+        "social_heat_raw_score": social_heat.get("raw_score", social_heat.get("score")),
+        "social_heat_weight": social_heat.get("weight") or 0,
+        "social_propagation_raw_score": social_propagation.get("raw_score", social_propagation.get("score")),
+        "social_propagation_weight": social_propagation.get("weight") or 0,
+        "semantic_catalyst_raw_score": semantic_catalyst.get("raw_score", semantic_catalyst.get("score")),
+        "semantic_catalyst_weight": semantic_catalyst.get("weight") or 0,
+        "timing_risk_raw_score": timing_risk.get("raw_score", timing_risk.get("score")),
+        "timing_risk_weight": timing_risk.get("weight") or 0,
+        "cohort_high_confidence_mentions": row.get("_cohort_high_conf_count") or 0,
+        "cohort_kol_mentions": row.get("_cohort_kol_count") or 0,
+        "cohort_public_followup_authors": row.get("_cohort_public_followup_count") or 0,
+        "cohort_first_seen_global_24h": row.get("_cohort_first_seen_global_24h") is True,
+        "cohort_symbol": snapshot["subject"].get("symbol") or "",
+        "social_heat_watched_mentions": social_heat_facts.get("watched_mentions") or 0,
+        "social_heat_mentions_1h": social_heat_facts.get("mentions_1h") or 0,
+        "social_propagation_mentions": social_propagation_facts.get("mentions") or 0,
+        "social_heat_latest_seen_ms": social_heat_facts.get("latest_seen_ms"),
+        "raw_composite_score": snapshot["composite"].get("rank_score"),
+        "recommended_decision": snapshot["composite"].get("recommended_decision") or "discard",
+        "gates_max_decision": snapshot["gates"].get("max_decision") or "discard",
+        "rank_input_version": "token-radar-rank-input-v1",
+        "payload_hash": row.get("payload_hash") or f"feature-hash:{target_id}",
+        "last_scored_at_ms": row.get("last_scored_at_ms") or 1_777_800_060_000,
+    }
+
+
+_RANK_KEY_FIELDS = (
+    "projection_version",
+    "window",
+    "scope",
+    "lane",
+    "target_type_key",
+    "identity_id",
+    "payload_hash",
+)

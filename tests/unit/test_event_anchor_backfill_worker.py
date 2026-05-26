@@ -38,9 +38,11 @@ def test_run_once_no_pending_rows_emits_zero_counts() -> None:
     assert result.processed == 0
     assert result.skipped == 0
     assert result.notes["pending_selected"] == 0
+    assert "ready_jobs_reconciled" not in result.notes
     assert result.notes["ticks_inserted"] == 0
     assert result.notes["captures_attached"] == 0
     assert db.list_calls == [{"limit": 10, "min_age_ms": 100, "now_ms": NOW_MS}]
+    assert db.ready_job_calls == []
     assert db.inserted_ticks == []
     assert db.attached_captures == []
     assert wake.emitted == []
@@ -74,7 +76,7 @@ def test_run_once_expires_stale_jobs_before_provider_calls() -> None:
     assert wake.emitted == []
 
 
-def test_run_once_reconciles_jobs_when_anchor_fact_is_already_ready() -> None:
+def test_run_once_with_no_due_rows_does_not_scan_ready_anchor_facts() -> None:
     db = _FakeDB(pending_rows=[], ready_jobs=6)
     wake = _RecordingWakeEmitter()
     worker = EventAnchorBackfillWorker(
@@ -92,8 +94,8 @@ def test_run_once_reconciles_jobs_when_anchor_fact_is_already_ready() -> None:
 
     assert result.processed == 0
     assert result.skipped == 0
-    assert result.notes["ready_jobs_reconciled"] == 6
-    assert db.ready_job_calls == [{"limit": 10, "now_ms": NOW_MS}]
+    assert "ready_jobs_reconciled" not in result.notes
+    assert db.ready_job_calls == []
     assert db.provider_calls == 0
     assert wake.emitted == []
 
@@ -566,6 +568,9 @@ class _FakeRepos:
     def transaction(self):
         return _FakeWorkerSession(self._db)
 
+    def require_transaction(self, *, operation: str) -> None:
+        return None
+
 
 class _FakeEnrichedEventRepo:
     def __init__(self, db: _FakeDB) -> None:
@@ -601,8 +606,7 @@ class _FakeEventAnchorJobRepo:
         return list(self._db._expired_rows)
 
     def mark_ready_jobs_done(self, *, limit: int, now_ms: int) -> int:
-        self._db.ready_job_calls.append({"limit": limit, "now_ms": now_ms})
-        return self._db._ready_jobs
+        raise AssertionError("runtime event-anchor worker must not reconcile ready jobs by scanning facts")
 
     def mark_done(self, *, event_id: str, intent_id: str, now_ms: int) -> bool:
         self._db.done_jobs.append((event_id, intent_id))

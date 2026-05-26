@@ -54,10 +54,10 @@ options:
 
 ```
 usage: gmgn-twitter-intel ops [-h]
-                              {backfill-account-quality,backfill-enrichment-jobs,backfill-watchlist-signal-stats,reset-token-radar-postgres-hard-cut,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,ensure-postgres-partitions,drop-expired-postgres-partitions,projection-status,worker-status,validate-projections,enqueue-projection-dirty-targets,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors} ...
+                              {backfill-account-quality,backfill-enrichment-jobs,backfill-watchlist-signal-stats,reset-token-radar-postgres-hard-cut,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,enqueue-runtime-worker-dirty-targets,ensure-postgres-partitions,drop-expired-postgres-partitions,projection-status,worker-status,queue-inspect,queue-resolve,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-token-radar-rank-inputs,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors} ...
 
 positional arguments:
-  {backfill-account-quality,backfill-enrichment-jobs,backfill-watchlist-signal-stats,reset-token-radar-postgres-hard-cut,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,enqueue-runtime-worker-dirty-targets,ensure-postgres-partitions,drop-expired-postgres-partitions,projection-status,worker-status,validate-projections,enqueue-projection-dirty-targets,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors}
+  {backfill-account-quality,backfill-enrichment-jobs,backfill-watchlist-signal-stats,reset-token-radar-postgres-hard-cut,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,enqueue-runtime-worker-dirty-targets,ensure-postgres-partitions,drop-expired-postgres-partitions,projection-status,worker-status,queue-inspect,queue-resolve,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-token-radar-rank-inputs,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors}
     backfill-account-quality
                         backfill account token-call stats and quality
                         snapshots
@@ -86,6 +86,11 @@ positional arguments:
                         retention is configured
     projection-status   print projection offsets and latest runs
     worker-status       print canonical worker runtime status
+    queue-inspect       inspect worker queue terminal evidence
+    queue-resolve       resolve worker queue terminal evidence
+    reconcile-event-anchor-jobs
+                        one-shot reconcile of historical ready event-anchor
+                        backfill jobs
     validate-projections
                         validate projection read models against PostgreSQL
                         facts
@@ -122,6 +127,9 @@ positional arguments:
     audit-token-intent  inspect token intent evidence and resolution
     rebuild-token-radar
                         write the current token radar read model
+    rebuild-token-radar-rank-inputs
+                        rewrite Token Radar target features through the rank-
+                        input owner path
     rebuild-narrative-intel
                         rebuild and drain Narrative Intelligence read models
     audit-token-radar   audit token radar rows for scoring and market-

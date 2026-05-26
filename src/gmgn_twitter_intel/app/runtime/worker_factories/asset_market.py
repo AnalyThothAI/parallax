@@ -85,7 +85,7 @@ def construct_asset_market_workers(ctx: WorkerFactoryContext) -> dict[str, Worke
             wake_emitter=ctx.wake_bus,
             wake_waiter=ctx.db.wake_listener(worker_name, workers.market_tick_current_projection.wakes_on),
         )
-    if workers.event_anchor_backfill.enabled and (cex_market is not None or dex_quote_market is not None):
+    if workers.event_anchor_backfill.enabled:
         constructed["event_anchor_backfill"] = EventAnchorBackfillWorker(
             name="event_anchor_backfill",
             settings=workers.event_anchor_backfill,

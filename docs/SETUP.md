@@ -99,6 +99,22 @@ Bind-mounts host `~/.gmgn-twitter-intel/` into the container, including
 both `config.yaml` and `workers.yaml`; PostgreSQL data is pinned to the
 `gmgn-twitter-intel-postgres` named volume.
 
+PostgreSQL observability is part of the compose runtime. The PostgreSQL image
+loads `pg_stat_statements`, PoWA, `pg_stat_kcache`, `pg_qualstats`, and
+`pg_wait_sampling`; slow logs are mounted under
+`~/.gmgn-twitter-intel/postgres-logs`.
+
+```bash
+./scripts/pgbadger_report.sh
+./scripts/powa_configure.sh
+```
+
+`pgbadger_report.sh` writes
+`~/.gmgn-twitter-intel/reports/pgbadger/pgbadger-latest.html`.
+`powa_configure.sh` configures the local PoWA GUCs and server row with bounded
+retention, takes snapshots, and prints only non-secret server metadata plus
+current/history row counts.
+
 ## Frontend (`web/`)
 
 ```bash

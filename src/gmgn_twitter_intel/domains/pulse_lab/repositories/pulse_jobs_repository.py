@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from typing import Any
 
+from gmgn_twitter_intel.app.runtime.queue_terminal import terminalize_source_row
 from gmgn_twitter_intel.domains.pulse_lab.repositories._pulse_repository_shared import (
     _id,
     _json,
@@ -130,7 +132,7 @@ class PulseJobsRepository:
                 now,
             ),
         ).fetchone()
-        if commit:
+        if commit and not callable(getattr(self.conn, "transaction", None)):
             self.conn.commit()
         return _row(row)
 
@@ -220,20 +222,55 @@ class PulseJobsRepository:
         status = "dead" if attempts >= max_attempts else "failed"
         delay_ms = 0 if status == "dead" else min(300_000, 5_000 * max(1, attempts))
         stored_error = str(failure_reason or error)[:1000]
+        with _transaction(self.conn):
+            row = self.conn.execute(
+                """
+                UPDATE pulse_agent_jobs
+                SET status = %s,
+                    next_run_at_ms = %s,
+                    last_error = %s,
+                    updated_at_ms = %s
+                WHERE job_id = %s
+                RETURNING *
+                """,
+                (status, now + delay_ms, stored_error, now, job["job_id"]),
+            ).fetchone()
+            updated = _optional_row(row)
+            if updated is not None and str(updated.get("status") or "") == "dead":
+                _terminalize_pulse_job(
+                    self.conn,
+                    row=updated,
+                    reason=stored_error,
+                    now_ms=now,
+                )
+        if commit:
+            self.conn.commit()
+        return updated
+
+    def retry_terminal_job_from_snapshot(
+        self,
+        source_row: dict[str, Any],
+        *,
+        now_ms: int,
+        reason: str,
+    ) -> dict[str, Any] | None:
+        job_id = str(source_row.get("job_id") or "")
+        if not job_id:
+            raise ValueError("pulse_terminal_job_id_required")
         row = self.conn.execute(
             """
             UPDATE pulse_agent_jobs
-            SET status = %s,
+            SET status = 'pending',
+                attempt_count = 0,
                 next_run_at_ms = %s,
                 last_error = %s,
                 updated_at_ms = %s
             WHERE job_id = %s
+              AND status = 'dead'
             RETURNING *
             """,
-            (status, now + delay_ms, stored_error, now, job["job_id"]),
+            (int(now_ms), f"terminal_retry:{reason}"[:1000], int(now_ms), job_id),
         ).fetchone()
-        if commit:
-            self.conn.commit()
         return _optional_row(row)
 
     def mark_job_cancelled_by_worker_timeout(
@@ -249,48 +286,57 @@ class PulseJobsRepository:
         now = int(now_ms)
         claim_attempt_count = int(job.get("attempt_count") or 0)
         claim_updated_at_ms = int(job.get("updated_at_ms") or 0)
-        if not execution_started:
-            row = self.conn.execute(
-                """
-                UPDATE pulse_agent_jobs
-                SET status = 'pending',
-                    attempt_count = GREATEST(0, attempt_count - 1),
-                    next_run_at_ms = %s,
-                    last_error = 'worker_timeout_before_execution',
-                    updated_at_ms = %s
-                WHERE job_id = %s
-                  AND status = 'running'
-                  AND attempt_count = %s
-                  AND updated_at_ms = %s
-                RETURNING *
-                """,
-                (now + 5_000, now, str(job["job_id"]), claim_attempt_count, claim_updated_at_ms),
-            ).fetchone()
-        else:
-            row = self.conn.execute(
-                """
-                UPDATE pulse_agent_jobs
-                SET status = CASE
-                      WHEN attempt_count >= max_attempts THEN 'dead'
-                      ELSE 'failed'
-                    END,
-                    next_run_at_ms = CASE
-                      WHEN attempt_count >= max_attempts THEN %s
-                      ELSE %s + LEAST(300000, 5000 * GREATEST(1, attempt_count))
-                    END,
-                    last_error = 'worker_timeout_after_execution',
-                    updated_at_ms = %s
-                WHERE job_id = %s
-                  AND status = 'running'
-                  AND attempt_count = %s
-                  AND updated_at_ms = %s
-                RETURNING *
-                """,
-                (now, now, now, str(job["job_id"]), claim_attempt_count, claim_updated_at_ms),
-            ).fetchone()
-        if commit:
+        with _transaction(self.conn):
+            if not execution_started:
+                row = self.conn.execute(
+                    """
+                    UPDATE pulse_agent_jobs
+                    SET status = 'pending',
+                        attempt_count = GREATEST(0, attempt_count - 1),
+                        next_run_at_ms = %s,
+                        last_error = 'worker_timeout_before_execution',
+                        updated_at_ms = %s
+                    WHERE job_id = %s
+                      AND status = 'running'
+                      AND attempt_count = %s
+                      AND updated_at_ms = %s
+                    RETURNING *
+                    """,
+                    (now + 5_000, now, str(job["job_id"]), claim_attempt_count, claim_updated_at_ms),
+                ).fetchone()
+            else:
+                row = self.conn.execute(
+                    """
+                    UPDATE pulse_agent_jobs
+                    SET status = CASE
+                          WHEN attempt_count >= max_attempts THEN 'dead'
+                          ELSE 'failed'
+                        END,
+                        next_run_at_ms = CASE
+                          WHEN attempt_count >= max_attempts THEN %s
+                          ELSE %s + LEAST(300000, 5000 * GREATEST(1, attempt_count))
+                        END,
+                        last_error = 'worker_timeout_after_execution',
+                        updated_at_ms = %s
+                    WHERE job_id = %s
+                      AND status = 'running'
+                      AND attempt_count = %s
+                      AND updated_at_ms = %s
+                    RETURNING *
+                    """,
+                    (now, now, now, str(job["job_id"]), claim_attempt_count, claim_updated_at_ms),
+                ).fetchone()
+            updated = _optional_row(row)
+            if updated is not None and str(updated.get("status") or "") == "dead":
+                _terminalize_pulse_job(
+                    self.conn,
+                    row=updated,
+                    reason="worker_timeout_after_execution",
+                    now_ms=now,
+                )
+        if commit and not callable(getattr(self.conn, "transaction", None)):
             self.conn.commit()
-        return _optional_row(row)
+        return updated
 
     def release_running_job_for_backpressure(
         self,
@@ -326,7 +372,7 @@ class PulseJobsRepository:
                 attempts,
             ),
         ).fetchone()
-        if commit:
+        if commit and not callable(getattr(self.conn, "transaction", None)):
             self.conn.commit()
         return _optional_row(row)
 
@@ -425,19 +471,28 @@ class PulseJobsRepository:
             ttl = int(ttl_seconds)
             if ttl <= 0:
                 continue
-            cursor = self.conn.execute(
-                """
-                UPDATE pulse_agent_jobs
-                SET status = 'dead',
-                    last_error = 'stale_window_ttl',
-                    updated_at_ms = %s
-                WHERE "window" = %s
-                  AND status = ANY(%s)
-                  AND created_at_ms < %s
-                """,
-                (now, str(window), list(ACTIVE_JOB_STATUSES), now - ttl * 1000),
-            )
-            terminalized += int(cursor.rowcount or 0)
+            with _transaction(self.conn):
+                rows = self.conn.execute(
+                    """
+                    UPDATE pulse_agent_jobs
+                    SET status = 'dead',
+                        last_error = 'stale_window_ttl',
+                        updated_at_ms = %s
+                    WHERE "window" = %s
+                      AND status = ANY(%s)
+                      AND created_at_ms < %s
+                    RETURNING *
+                    """,
+                    (now, str(window), list(ACTIVE_JOB_STATUSES), now - ttl * 1000),
+                ).fetchall()
+                for row in rows:
+                    _terminalize_pulse_job(
+                        self.conn,
+                        row=_row(row),
+                        reason="stale_window_ttl",
+                        now_ms=now,
+                    )
+            terminalized += len(rows)
         if commit:
             self.conn.commit()
         return terminalized
@@ -469,3 +524,33 @@ class PulseJobsRepository:
         if commit:
             self.conn.commit()
         return int(cursor.rowcount or 0)
+
+
+def _terminalize_pulse_job(conn: Any, *, row: dict[str, Any], reason: str, now_ms: int) -> None:
+    terminalize_source_row(
+        conn,
+        worker_name="pulse_candidate",
+        source_table="pulse_agent_jobs",
+        target_key=str(row.get("job_id") or ""),
+        source_row=row,
+        final_status="dead",
+        final_reason=str(reason or row.get("last_error") or "dead"),
+        now_ms=now_ms,
+        attempt_count=int(row.get("attempt_count") or 0),
+        first_seen_at_ms=_optional_int(row.get("created_at_ms")),
+        last_attempted_at_ms=now_ms,
+        commit=False,
+    )
+
+
+def _transaction(conn: Any):
+    transaction = getattr(conn, "transaction", None)
+    if callable(transaction):
+        return transaction()
+    return nullcontext()
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    return int(value)
