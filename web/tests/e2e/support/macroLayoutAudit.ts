@@ -48,9 +48,22 @@ export async function expectNoMacroMetricFragmentation(page: Page) {
 export async function expectHiddenMacroLabelsAbsent(page: Page) {
   const hidden = ["拍卖", "FOMC 声明", "美联储讲话", "Dashboard", "CDS 代理"];
   const nav = page.getByRole("navigation", { name: "Primary navigation" });
+  const navIsVisible = await nav.isVisible().catch(() => false);
+
+  if (!navIsVisible) {
+    const sidebarTrigger = page.getByRole("button", { name: "Toggle Sidebar" });
+    await expect(sidebarTrigger, "mobile/tablet macro nav drawer trigger").toBeVisible();
+    await sidebarTrigger.click();
+    await expect(nav).toBeVisible();
+  }
 
   for (const label of hidden) {
     await expect(nav.getByRole("link", { name: label })).toHaveCount(0);
+  }
+
+  if (!navIsVisible) {
+    await page.keyboard.press("Escape");
+    await expect(nav).toBeHidden();
   }
 }
 

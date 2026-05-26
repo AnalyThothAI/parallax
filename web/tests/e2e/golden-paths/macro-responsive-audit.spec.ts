@@ -55,7 +55,11 @@ const HIDDEN_DIRECT_ROUTES = [
 test.describe("macro responsive audit", () => {
   test("macro product and hidden-supported routes satisfy responsive layout contract", async ({
     page,
-  }) => {
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== "desktop-1366",
+      "runs its own viewport matrix inside one project",
+    );
     test.slow();
     const consoleErrors: string[] = [];
 
