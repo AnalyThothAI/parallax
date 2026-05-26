@@ -193,7 +193,8 @@
   .macro-page-related-routes,
   .macro-page-signal-list,
   .macro-page-transmission-map,
-  .macro-page-evidence-grid {
+  .macro-page-evidence-grid,
+  .macro-page-health-buckets {
     display: grid;
     gap: 10px;
     min-width: 0;
@@ -341,6 +342,32 @@
   .macro-page-evidence-empty {
     color: var(--text-muted, #94a3b8);
     font-size: 0.72rem;
+  }
+
+  .macro-page-health-bucket {
+    display: grid;
+    gap: 7px;
+    min-width: 0;
+  }
+
+  .macro-page-health-bucket-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .macro-page-health-bucket h4,
+  .macro-page-health-reference {
+    margin: 0;
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.74rem;
+  }
+
+  .macro-page-health-bucket-head span {
+    color: var(--text-primary, #f8fafc);
+    font-size: 0.72rem;
+    font-variant-numeric: tabular-nums;
   }
 
   .macro-page-semantic-row {

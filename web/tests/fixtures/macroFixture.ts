@@ -41,7 +41,7 @@ export function macroModuleFixture(
         unit: "index",
         unit_label: "点",
         delta_label: "20日变化不可用",
-        source_label: "Yahoo",
+        source_label: "Yahoo Finance",
         observed_at: "2026-05-20",
         observed_at_label: "观测于 2026-05-20",
         quality: "partial",
@@ -68,10 +68,10 @@ export function macroModuleFixture(
     transmission: [
       {
         kind: "flow",
-        label: "美股 beta",
+        label: "Yahoo",
         status: "partial",
         status_label: "部分可用",
-        value: "等待小盘确认",
+        value: "美股风险偏好",
       },
     ],
     data_health: {
@@ -88,13 +88,13 @@ export function macroModuleFixture(
         },
       ],
       chart_gaps: [],
-      global_gaps: [],
+      global_gaps: [{ code: "missing_srf", label: "缺少 SRF" }],
       future_integration_gaps: [],
     },
     provenance: {
       rows: [
         {
-          source: "Yahoo",
+          source: "Yahoo Finance",
           status: "partial",
           status_label: "部分可用",
           latest_observed_at: "2026-05-20",
@@ -113,7 +113,9 @@ export function macroModuleFixture(
   };
 }
 
-export function macroOverviewModuleFixture(): MacroModuleView {
+export function macroOverviewModuleFixture(
+  overrides: Partial<MacroModuleView> = {},
+): MacroModuleView {
   return macroModuleFixture({
     snapshot: {
       ...macroModuleFixture().snapshot,
@@ -160,6 +162,7 @@ export function macroOverviewModuleFixture(): MacroModuleView {
       ],
     },
     section_boards: [],
+    ...overrides,
   });
 }
 
@@ -452,13 +455,13 @@ function equityTable(): MacroModuleTable {
       {
         row_id: "asset:spx",
         row_quality: "partial",
-        source_state: { label: "Yahoo", status: "partial" },
+        source_state: { label: "Yahoo Finance", status: "partial" },
         cells: {
           indicator: { display_value: "标普500", sort_value: "SPX" },
           latest: { display_value: "5,312.40", sort_value: 5312.4 },
           delta_20d: { display_value: "历史不足", sort_value: null },
           quality: { display_value: "历史不足", sort_value: "partial" },
-          source: { display_value: "Yahoo", sort_value: "Yahoo" },
+          source: { display_value: "Yahoo Finance", sort_value: "Yahoo Finance" },
         },
       },
     ],

@@ -1,8 +1,10 @@
 import type {
+  MacroDataHealth,
   MacroModuleChart,
   MacroModuleTile,
   MacroModuleView,
   MacroSemanticRecord,
+  MacroTransmissionNode,
 } from "@lib/types";
 import {
   Activity,
@@ -26,6 +28,7 @@ import {
 } from "../../model/macroModulePageModel";
 import {
   formatMacroScalar,
+  gapLabel,
   macroStatusLabel,
 } from "../../model/macroPageViewModel";
 import { macroRouteLabel, type MacroModuleId } from "../../model/macroRoutes";
@@ -82,10 +85,10 @@ export function MacroModulePageFrame({
 
       <section
         className="macro-page-panel macro-page-panel-primary macro-page-market-board"
-        aria-label="图表与市场板"
+        aria-label="市场板"
         data-has-table={hasSupportingTable ? "true" : "false"}
       >
-        <SectionHead icon={BarChart3} meta={chartStatusLabel(primaryChart)} title="图表与表格" />
+        <SectionHead icon={BarChart3} meta={chartStatusLabel(primaryChart)} title="市场板" />
         <div className="macro-page-chart-table-grid">
           <div className="macro-page-chart-slot">
             <PrimaryChart
@@ -109,24 +112,24 @@ export function MacroModulePageFrame({
 
       <section
         className="macro-page-panel macro-page-panel-current macro-page-decision"
-        aria-label="数据状态"
+        aria-label="模块判断"
       >
-        <SectionHead icon={Activity} meta={macroStatusLabel(module)} title="数据状态" />
+        <SectionHead icon={Activity} meta={macroStatusLabel(module)} title="模块判断" />
         <p className="macro-page-summary">{macroReadSummary(module)}</p>
         <ReadDetails record={currentRead} />
         <RelatedRoutes routes={module.related_routes} />
       </section>
 
-      <section className="macro-page-panel macro-page-transmission" aria-label="结构地图">
-        <SectionHead icon={GitBranch} meta={moduleLabel} title="结构地图" />
-        <TransmissionMap module={module} record={currentRead} />
+      <section className="macro-page-panel macro-page-transmission" aria-label="传导链">
+        <SectionHead icon={GitBranch} meta={moduleLabel} title="传导链" />
+        <TransmissionMap nodes={module.transmission} />
       </section>
 
       <section
         className="macro-page-panel macro-page-evidence-panel"
-        aria-label="规则证据"
+        aria-label="模块证据"
       >
-        <SectionHead icon={ListChecks} meta={`${String(evidenceCount)} 条`} title="规则证据" />
+        <SectionHead icon={ListChecks} meta={`${String(evidenceCount)} 条`} title="模块证据" />
         {evidenceCount > 0 ? (
           <div className="macro-page-evidence-grid">
             {evidenceGroups.map((group) => (
@@ -153,30 +156,112 @@ export function MacroModulePageFrame({
         </section>
       ) : null}
 
-      <section className="macro-page-quality-grid" aria-label="数据质量">
-        <section className="macro-page-panel macro-page-source-panel" aria-label="数据源">
-          <SectionHead icon={Database} meta={module.snapshot.projection_version} title="数据源" />
+      <section className="macro-page-quality-grid">
+        <section className="macro-page-panel macro-page-source-panel" aria-label="数据来源">
+          <SectionHead icon={Database} meta={module.snapshot.projection_version} title="数据来源" />
           <MacroSourceTable caption="数据源" source={module.provenance} />
         </section>
 
-        <section className="macro-page-panel macro-page-gap-panel" aria-label="数据缺口">
+        <section className="macro-page-panel macro-page-gap-panel" aria-label="模块数据健康">
           <SectionHead
             icon={ShieldAlert}
-            meta={String(module.data_gaps.length)}
-            title="数据缺口"
+            meta={module.data_health.summary_label ?? module.data_health.summary_status}
+            title="模块数据健康"
           />
-          {module.data_gaps.length > 0 ? (
-            <div className="macro-page-chip-list">
-              {module.data_gaps.map((gap, index) => (
-                <span className="macro-page-chip" key={`${index}:${formatMacroScalar(gap)}`}>
-                  {formatMacroScalar(gap)}
-                </span>
-              ))}
-            </div>
-          ) : (
-            <PageState label="module_data_gaps_clear" />
-          )}
+          <DataHealthBuckets dataHealth={module.data_health} scope="leaf" />
         </section>
+      </section>
+    </div>
+  );
+}
+
+export function MacroOverviewPageFrame({
+  module,
+  moduleId,
+  pageLabel,
+  token,
+}: MacroModulePageProps & {
+  pageLabel: string;
+}) {
+  const primaryChart = module.primary_chart;
+  const supportingTable = module.tables[0] ?? emptyTable(`${moduleId}_supporting_table`);
+  const seriesConceptKeys = chartConceptKeys(primaryChart);
+  const shouldFetchSeries = seriesConceptKeys.length > 0 && !isYieldCurveChart(primaryChart);
+  const seriesQuery = useMacroSeriesQuery({
+    conceptKeys: shouldFetchSeries ? seriesConceptKeys : [],
+    token,
+    window: "60d",
+  });
+  const currentRead = readRecord(module);
+  const evidenceGroups = groupedEvidence(module);
+  const evidenceCount = evidenceGroups.reduce((count, group) => count + group.items.length, 0);
+
+  return (
+    <div className="macro-page-layout" aria-label={`${pageLabel}模块页面`}>
+      <section
+        className="macro-page-panel macro-page-panel-current macro-page-overview-read"
+        aria-label="宏观总览"
+      >
+        <SectionHead icon={Activity} meta={macroStatusLabel(module)} title="宏观总览" />
+        <p className="macro-page-summary">{macroReadSummary(module)}</p>
+        <ReadDetails record={currentRead} />
+        {module.tiles.length > 0 ? (
+          <div className="macro-page-kpi-strip macro-page-overview-kpis">
+            {module.tiles.map((tile, index) => (
+              <KpiTile tile={tile} key={tile.concept_key ?? tile.label ?? index} />
+            ))}
+          </div>
+        ) : null}
+      </section>
+
+      <section
+        className="macro-page-panel macro-page-panel-primary macro-page-market-board"
+        aria-label="核心驱动"
+        data-has-table={supportingTable.rows?.length ? "true" : "false"}
+      >
+        <SectionHead icon={BarChart3} meta={`${String(evidenceCount)} 条`} title="核心驱动" />
+        <div className="macro-page-chart-table-grid">
+          <div className="macro-page-chart-slot">
+            <PrimaryChart
+              chart={primaryChart}
+              moduleId={moduleId}
+              seriesData={seriesQuery.data}
+              seriesLoading={shouldFetchSeries && seriesQuery.isLoading}
+            />
+          </div>
+          {supportingTable.rows?.length ? (
+            <div className="macro-page-table-slot">
+              <div className="macro-page-table-title">
+                <Table2 aria-hidden="true" />
+                <span>{tableCaption(supportingTable)}</span>
+              </div>
+              <MacroDataTable caption={tableCaption(supportingTable)} table={supportingTable} />
+            </div>
+          ) : null}
+        </div>
+        {evidenceCount > 0 ? (
+          <div className="macro-page-evidence-grid">
+            {evidenceGroups.map((group) => (
+              <EvidenceGroup group={group} key={group.key} />
+            ))}
+          </div>
+        ) : (
+          <PageState label="module_evidence_missing" />
+        )}
+      </section>
+
+      <section className="macro-page-panel macro-page-transmission" aria-label="全局传导链">
+        <SectionHead icon={GitBranch} meta={pageLabel} title="全局传导链" />
+        <TransmissionMap nodes={module.transmission} />
+      </section>
+
+      <section className="macro-page-panel macro-page-gap-panel" aria-label="数据健康">
+        <SectionHead
+          icon={ShieldAlert}
+          meta={module.data_health.summary_label ?? module.data_health.summary_status}
+          title="数据健康"
+        />
+        <DataHealthBuckets dataHealth={module.data_health} scope="overview" />
       </section>
     </div>
   );
@@ -292,22 +377,22 @@ function ReadDetails({ record }: { record: MacroSemanticRecord }) {
   );
 }
 
-function TransmissionMap({
-  module,
-  record,
-}: {
-  module: MacroModuleView;
-  record: MacroSemanticRecord;
-}) {
-  const nodes = transmissionNodes(module, record);
+function TransmissionMap({ nodes }: { nodes: MacroTransmissionNode[] }) {
   return (
     <ol className="macro-page-transmission-map">
-      {nodes.map((node, index) => (
-        <li className="macro-page-transmission-node" key={`${node.label}:${index}`}>
-          <span>{node.label}</span>
-          <b>{node.value}</b>
+      {nodes.length > 0 ? (
+        nodes.map((node, index) => (
+          <li className="macro-page-transmission-node" key={`${node.label ?? "node"}:${index}`}>
+            <span>{formatMacroScalar(node.label ?? node.kind ?? "传导节点")}</span>
+            <b>{formatMacroScalar(node.value ?? node.status_label ?? node.status)}</b>
+          </li>
+        ))
+      ) : (
+        <li className="macro-page-transmission-node">
+          <span>传导链</span>
+          <b>暂无</b>
         </li>
-      ))}
+      )}
     </ol>
   );
 }
@@ -342,7 +427,7 @@ function macroReadSummary(module: MacroModuleView): string {
 }
 
 function readRecord(module: MacroModuleView): MacroSemanticRecord {
-  return module.read;
+  return module.module_read;
 }
 
 function groupedEvidence(module: MacroModuleView): EvidenceGroupModel[] {
@@ -356,7 +441,7 @@ function evidenceItemsForGroup(
   module: MacroModuleView,
   key: string,
 ): Array<{ detail: string; label: string }> {
-  const items = module.evidence[key];
+  const items = module.module_evidence[key];
   if (!Array.isArray(items)) {
     return [];
   }
@@ -413,40 +498,86 @@ function hasMacroValue(value: unknown): boolean {
   return false;
 }
 
-function transmissionNodes(
-  module: MacroModuleView,
-  record: MacroSemanticRecord,
-): Array<{ label: string; value: string }> {
-  const nodes = TRANSMISSION_FIELDS.reduce<Array<{ label: string; value: string }>>(
-    (items, field) => {
-      const value = firstFormattedValue(record, field.keys);
-      if (value) {
-        items.push({ label: field.label, value });
-      }
-      return items;
-    },
-    [],
+function DataHealthBuckets({
+  dataHealth,
+  scope,
+}: {
+  dataHealth: MacroDataHealth;
+  scope: "leaf" | "overview";
+}) {
+  const buckets = dataHealthBuckets(dataHealth, scope);
+  const hasItems = buckets.some(
+    (bucket) => bucket.items.length > 0 || (bucket.referenceCount ?? 0) > 0,
   );
-  if (nodes.length > 0) {
-    return nodes;
+  if (!hasItems) {
+    return <PageState label="module_data_health_clear" />;
   }
-  return [
-    {
-      label: "模块状态",
-      value:
-        stringValue(module.snapshot.status_label) ??
-        stringValue(module.snapshot.status) ??
-        "状态待更新",
-    },
-  ];
+  return (
+    <div className="macro-page-health-buckets">
+      {buckets.map((bucket) => (
+        <section className="macro-page-health-bucket" key={bucket.key}>
+          <div className="macro-page-health-bucket-head">
+            <h4>{bucket.label}</h4>
+            <span>{bucket.referenceCount ?? bucket.items.length}</span>
+          </div>
+          {bucket.referenceCount ? (
+            <p className="macro-page-health-reference">总览级缺口，仅供参考</p>
+          ) : bucket.items.length > 0 ? (
+            <div className="macro-page-chip-list">
+              {bucket.items.map((gap, index) => (
+                <span className="macro-page-chip" key={`${bucket.key}:${index}:${gap}`}>
+                  {gap}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <div className="macro-page-evidence-empty">暂无</div>
+          )}
+        </section>
+      ))}
+    </div>
+  );
 }
 
-function firstFormattedValue(
-  record: MacroSemanticRecord,
-  keys: ReadonlyArray<string>,
-): string | null {
-  const value = keys.map((key) => record[key]).find(hasMacroValue);
-  return value === undefined ? null : formatMacroScalar(value);
+function dataHealthBuckets(
+  dataHealth: MacroDataHealth,
+  scope: "leaf" | "overview",
+): Array<{
+  items: string[];
+  key: string;
+  label: string;
+  referenceCount?: number;
+}> {
+  return [
+    {
+      key: "module_gaps",
+      label: "模块缺口",
+      items: dataHealth.module_gaps.map(gapLabel).filter((label) => label !== "数据缺口待确认"),
+    },
+    {
+      key: "chart_gaps",
+      label: "图表缺口",
+      items: dataHealth.chart_gaps.map(gapLabel).filter((label) => label !== "数据缺口待确认"),
+    },
+    {
+      key: "global_gaps",
+      label: scope === "leaf" ? "全局缺口（总览级参考）" : "全局缺口",
+      items:
+        scope === "overview"
+          ? dataHealth.global_gaps
+              .map(gapLabel)
+              .filter((label) => label !== "数据缺口待确认")
+          : [],
+      referenceCount: scope === "leaf" ? dataHealth.global_gaps.length : undefined,
+    },
+    {
+      key: "future_integration_gaps",
+      label: "未来集成缺口",
+      items: dataHealth.future_integration_gaps
+        .map(gapLabel)
+        .filter((label) => label !== "数据缺口待确认"),
+    },
+  ];
 }
 
 function PageState({ label }: { label: string }) {
@@ -462,8 +593,8 @@ function stringValue(value: unknown): string | null {
 }
 
 const PAGE_STATE_LABELS: Record<string, string> = {
-  module_data_gaps_clear: "暂无数据缺口",
-  module_evidence_missing: "暂无规则证据",
+  module_data_health_clear: "暂无数据缺口",
+  module_evidence_missing: "暂无模块证据",
   module_tiles_missing: "暂无关键指标",
   related_routes_missing: "暂无相关页面",
 };
@@ -472,15 +603,10 @@ const READ_FIELDS = [
   { key: "regime_label", label: "宏观状态" },
   { key: "regime", label: "宏观状态" },
   { key: "confidence_label", label: "规则覆盖" },
+  { key: "crypto_read", label: "加密影响" },
+  { key: "token_impact", label: "代币影响" },
   { key: "data_note", label: "数据说明" },
   { key: "methodology_note", label: "方法说明" },
-] as const;
-
-const TRANSMISSION_FIELDS = [
-  { keys: ["regime_label", "regime"], label: "宏观状态" },
-  { keys: ["confidence_label", "confidence"], label: "规则覆盖" },
-  { keys: ["data_note"], label: "数据说明" },
-  { keys: ["methodology_note"], label: "方法说明" },
 ] as const;
 
 type EvidenceGroupModel = {
