@@ -214,7 +214,7 @@ def test_news_api_source_status_includes_provider_diagnostics_without_postgres()
         "ok": True,
         "data": {
             "provider_capabilities": {
-                "supported_provider_types": ["atom", "cryptopanic", "json_feed", "rss"],
+                "supported_provider_types": ["atom", "cryptopanic", "json_feed", "opennews", "rss"],
                 "configured_provider_types": ["openbb", "rss"],
                 "unsupported_configured_provider_types": ["openbb"],
             },

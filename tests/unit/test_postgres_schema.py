@@ -129,6 +129,10 @@ WORKER_QUEUE_TERMINAL_EVENTS_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/"
     "20260526_0100_worker_queue_terminal_events.py"
 )
+POSTGRES_RUNTIME_ROOT_CAUSE_HARD_CUT_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/"
+    "20260526_0101_postgres_runtime_root_cause_hard_cut.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 
@@ -286,6 +290,46 @@ def test_worker_queue_terminal_events_migration_contract() -> None:
     assert "DROP INDEX CONCURRENTLY IF EXISTS uq_worker_queue_terminal_source_snapshot" in text
     assert "DROP INDEX CONCURRENTLY IF EXISTS idx_worker_queue_terminal_source" in text
     assert "DROP TABLE IF EXISTS worker_queue_terminal_events" in text
+
+
+def test_postgres_runtime_root_cause_hard_cut_migration_contract() -> None:
+    text = POSTGRES_RUNTIME_ROOT_CAUSE_HARD_CUT_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    assert 'revision = "20260526_0101"' in text
+    assert 'down_revision = "20260526_0100"' in text
+    assert "CREATE TABLE IF NOT EXISTS macro_observation_series_rows" in text
+    for column in (
+        "projection_version TEXT NOT NULL",
+        "concept_key TEXT NOT NULL",
+        "observed_at TIMESTAMPTZ NOT NULL",
+        "series_rank INTEGER NOT NULL",
+        "value_numeric DOUBLE PRECISION NOT NULL",
+        "raw_payload_json JSONB NOT NULL DEFAULT '{}'::jsonb",
+        "projected_at_ms BIGINT NOT NULL",
+        "PRIMARY KEY (projection_version, concept_key, observed_at)",
+    ):
+        assert column in text
+    assert "CREATE INDEX IF NOT EXISTS idx_macro_observation_series_rows_lookup" in text
+    assert (
+        "ON macro_observation_series_rows ( projection_version, concept_key, series_rank )"
+    ) in normalized_text
+    assert "ALTER TABLE worker_queue_terminal_events" in text
+    assert "ADD COLUMN IF NOT EXISTS final_reason_bucket TEXT NOT NULL DEFAULT 'other'" in text
+    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_worker_queue_terminal_reason_bucket_unresolved" in text
+    assert "WHERE operator_action IS NULL" in text
+    assert "final_reason_bucket" in text
+    assert "NOT i.indisvalid" in text
+    assert "RAISE EXCEPTION 'invalid indexes detected after postgres runtime hard cut migration" in text
+    for table_name in (
+        "macro_observation_series_rows",
+        "worker_queue_terminal_events",
+        "token_radar_target_features",
+        "token_radar_dirty_targets",
+        "pulse_agent_jobs",
+    ):
+        assert f"ANALYZE {table_name}" in text
+    assert "DROP INDEX CONCURRENTLY IF EXISTS idx_worker_queue_terminal_reason_bucket_unresolved" in text
 
 
 def test_initial_postgres_schema_has_no_sqlite_pragmas_or_fts5() -> None:

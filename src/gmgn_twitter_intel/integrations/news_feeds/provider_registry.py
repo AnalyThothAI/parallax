@@ -5,8 +5,9 @@ from typing import Any, Protocol
 
 from gmgn_twitter_intel.integrations.news_feeds.cryptopanic_client import CryptopanicFeedClient
 from gmgn_twitter_intel.integrations.news_feeds.feed_client import FeedClient, FeedFetchResult
+from gmgn_twitter_intel.integrations.news_feeds.opennews_client import OpenNewsFeedClient
 
-SUPPORTED_NEWS_PROVIDER_TYPES = ("atom", "cryptopanic", "json_feed", "rss")
+SUPPORTED_NEWS_PROVIDER_TYPES = ("atom", "cryptopanic", "json_feed", "opennews", "rss")
 
 
 class NewsFeedClient(Protocol):
@@ -32,6 +33,18 @@ class RegistryNewsFeedProvider(Protocol):
         etag: str | None = None,
         last_modified: str | None = None,
         source: Mapping[str, Any] | None = None,
+        limit: int | None = None,
+    ) -> FeedFetchResult: ...
+
+    def close(self) -> None: ...
+
+
+class OpenNewsClient(Protocol):
+    def fetch(
+        self,
+        url: str,
+        *,
+        source: dict[str, Any] | None = None,
         limit: int | None = None,
     ) -> FeedFetchResult: ...
 
@@ -86,6 +99,31 @@ class CryptopanicNewsFeedProvider:
             last_modified=last_modified,
             provider_type="cryptopanic",
             source=dict(source or {}),
+        )
+
+    def close(self) -> None:
+        self._client.close()
+
+
+class OpenNewsNewsFeedProvider:
+    def __init__(self, client: OpenNewsClient) -> None:
+        self._client = client
+
+    def fetch(
+        self,
+        *,
+        feed_url: str,
+        provider_type: str,
+        etag: str | None = None,
+        last_modified: str | None = None,
+        source: Mapping[str, Any] | None = None,
+        limit: int | None = None,
+    ) -> FeedFetchResult:
+        del provider_type, etag, last_modified
+        return self._client.fetch(
+            feed_url,
+            source=dict(source or {}),
+            limit=limit,
         )
 
     def close(self) -> None:
@@ -153,13 +191,16 @@ def default_news_feed_provider_registry(
     *,
     rss_client: NewsFeedClient | None = None,
     cryptopanic_client: NewsFeedClient | None = None,
+    opennews_client: OpenNewsClient | None = None,
 ) -> NewsFeedProviderRegistry:
     rss_provider = RssLikeNewsFeedProvider(rss_client or FeedClient())
     cryptopanic_provider = CryptopanicNewsFeedProvider(cryptopanic_client or CryptopanicFeedClient())
+    opennews_provider = OpenNewsNewsFeedProvider(opennews_client or OpenNewsFeedClient())
     registry = NewsFeedProviderRegistry()
     for provider_type in ("rss", "atom", "json_feed"):
         registry.register(provider_type, rss_provider)
     registry.register("cryptopanic", cryptopanic_provider)
+    registry.register("opennews", opennews_provider)
     return registry
 
 
@@ -167,6 +208,7 @@ __all__ = [
     "SUPPORTED_NEWS_PROVIDER_TYPES",
     "CryptopanicNewsFeedProvider",
     "NewsFeedProviderRegistry",
+    "OpenNewsNewsFeedProvider",
     "RegistryNewsFeedProvider",
     "RssLikeNewsFeedProvider",
     "default_news_feed_provider_registry",

@@ -198,10 +198,14 @@ REPAIR_HANDLER_PATHS = {
 }
 REPAIR_HANDLER_COMMAND = "enqueue-runtime-worker-dirty-targets"
 TOKEN_RADAR_REPOSITORY_PATH = SRC / "domains/token_intel/repositories/token_radar_repository.py"
+TOKEN_RADAR_PROJECTION_SERVICE_PATH = SRC / "domains/token_intel/services/token_radar_projection.py"
+TOKEN_RADAR_PROJECTION_WORKER_PATH = SRC / "domains/token_intel/runtime/token_radar_projection_worker.py"
 EVENT_ANCHOR_WORKER_PATH = SRC / "domains/asset_market/runtime/event_anchor_backfill_worker.py"
 EVENT_ANCHOR_JOB_REPOSITORY_PATH = (
     SRC / "domains/asset_market/repositories/event_anchor_backfill_job_repository.py"
 )
+MACRO_REPOSITORY_PATH = SRC / "domains/macro_intel/repositories/macro_intel_repository.py"
+MACRO_ROUTE_PATH = SRC / "app/surfaces/api/routes_macro.py"
 
 
 @pytest.mark.architecture
@@ -253,6 +257,42 @@ def test_token_radar_rank_path_has_no_old_wide_feature_loader() -> None:
         "TOKEN_RADAR_WIDE_RANK",
     ):
         assert forbidden not in repository_text
+
+
+@pytest.mark.architecture
+def test_token_radar_runtime_has_no_single_target_source_query() -> None:
+    runtime_text = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (TOKEN_RADAR_PROJECTION_SERVICE_PATH, TOKEN_RADAR_PROJECTION_WORKER_PATH)
+    )
+
+    for forbidden in (
+        "TokenRadarTargetFeatureQuery",
+        "WITH source_intents AS MATERIALIZED",
+        "source_rows(",
+    ):
+        assert forbidden not in runtime_text
+
+
+@pytest.mark.architecture
+def test_macro_request_path_has_no_observation_dedupe_window() -> None:
+    route_text = MACRO_ROUTE_PATH.read_text(encoding="utf-8")
+    repository_tree = _parse(MACRO_REPOSITORY_PATH)
+    request_method_text = "\n".join(
+        _function_source(MACRO_REPOSITORY_PATH, node)
+        for node in ast.walk(repository_tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name in {"latest_observations", "observations_for_concepts", "concept_history_counts"}
+    )
+
+    for forbidden in (
+        "WITH deduped AS",
+        "row_number() OVER",
+        "PARTITION BY concept_key, observed_at",
+        "FROM macro_observations",
+    ):
+        assert forbidden not in route_text
+        assert forbidden not in request_method_text
 
 
 @pytest.mark.architecture
@@ -430,6 +470,12 @@ def test_repair_service_broad_scans_enqueue_control_rows_only() -> None:
 
 def _parse(path: Path) -> ast.AST:
     return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
+
+def _function_source(path: Path, node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    end_lineno = node.end_lineno or node.lineno
+    return "\n".join(lines[node.lineno - 1 : end_lineno])
 
 
 @dataclass(frozen=True)

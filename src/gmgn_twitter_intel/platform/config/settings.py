@@ -34,6 +34,7 @@ NEWS_PROVIDER_TYPES = (
     "atom",
     "json_feed",
     "cryptopanic",
+    "opennews",
     "openbb",
     "telegram_public",
     "twitter_profile",
@@ -63,6 +64,7 @@ SettingsNewsProviderType = Literal[
     "atom",
     "json_feed",
     "cryptopanic",
+    "opennews",
     "openbb",
     "telegram_public",
     "twitter_profile",
@@ -209,6 +211,24 @@ DEFAULT_NEWS_SOURCE_CONFIGS: tuple[dict[str, object], ...] = (
         "trust_tier": "standard",
         "enabled": True,
         "refresh_interval_seconds": 300,
+    },
+    {
+        "source_id": "opennews-realtime",
+        "provider_type": "opennews",
+        "feed_url": "opennews://subscribe",
+        "source_domain": "6551.io",
+        "source_name": "OpenNews Realtime",
+        "source_role": "aggregator",
+        "trust_tier": "standard",
+        "enabled": False,
+        "refresh_interval_seconds": 10,
+        "coverage_tags": ("crypto", "realtime", "opennews"),
+        "fetch_policy": {
+            "engineTypes": {"news": [], "listing": [], "onchain": [], "market": []},
+            "hasCoin": True,
+            "stream_timeout_seconds": 10,
+            "max_messages": 20,
+        },
     },
 )
 
@@ -592,6 +612,28 @@ class NewsSourceSettings(BaseModel):
         return _normalize_news_string_tuple(value)
 
 
+class OpenNewsSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    api_token: str | None = None
+    wss_url: str = "wss://ai.6551.io/open/news_wss"
+    connect_timeout_seconds: float = Field(default=3.0, gt=0)
+
+    @field_validator("api_token", mode="before")
+    @classmethod
+    def parse_optional_token(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
+
+    @field_validator("wss_url", mode="before")
+    @classmethod
+    def parse_wss_url(cls, value: Any) -> str:
+        normalized = str(value or "wss://ai.6551.io/open/news_wss").strip()
+        return normalized or "wss://ai.6551.io/open/news_wss"
+
+
 def _default_news_source_settings() -> tuple[NewsSourceSettings, ...]:
     return tuple(NewsSourceSettings(**source) for source in DEFAULT_NEWS_SOURCE_CONFIGS)
 
@@ -626,6 +668,7 @@ class NewsIntelSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
+    opennews: OpenNewsSettings = Field(default_factory=OpenNewsSettings)
     sources: tuple[NewsSourceSettings, ...] = Field(default_factory=_default_news_source_settings)
 
     @field_validator("sources", mode="before")
@@ -1907,6 +1950,7 @@ def _default_news_intel_yaml() -> str:
         {
             "news_intel": {
                 "enabled": True,
+                "opennews": OpenNewsSettings().model_dump(),
                 "sources": [dict(source) for source in DEFAULT_NEWS_SOURCE_CONFIGS],
             }
         },

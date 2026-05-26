@@ -160,6 +160,13 @@ def test_news_intel_defaults_enable_core_crypto_and_us_market_sources() -> None:
     assert cryptopanic.provider_type == "cryptopanic"
     assert cryptopanic.feed_url.startswith("cryptopanic://posts?")
     assert cryptopanic.source_role == "aggregator"
+    opennews = next(source for source in settings.news_intel.sources if source.source_id == "opennews-realtime")
+    assert opennews.provider_type == "opennews"
+    assert opennews.feed_url == "opennews://subscribe"
+    assert opennews.enabled is False
+    assert opennews.fetch_policy["max_messages"] == 20
+    assert settings.news_intel.opennews.api_token is None
+    assert settings.news_intel.opennews.wss_url == "wss://ai.6551.io/open/news_wss"
 
 
 def test_news_source_settings_accepts_classification_fields_and_normalizes_tuples() -> None:
@@ -184,6 +191,43 @@ def test_news_source_settings_accepts_classification_fields_and_normalizes_tuple
     assert source.fetch_policy == {"interval": "release"}
     assert source.context_policy == {"include_threads": True}
     assert source.cost_policy == {"tier": "free"}
+
+
+def test_news_intel_accepts_opennews_credentials_without_using_environment_shadow_config() -> None:
+    settings = Settings(
+        ws_token="secret",
+        news_intel={
+            "opennews": {
+                "api_token": "opennews-test-token",
+                "wss_url": "wss://example.com/news_wss",
+                "connect_timeout_seconds": 2,
+            },
+            "sources": [
+                {
+                    "source_id": "opennews-realtime",
+                    "provider_type": "opennews",
+                    "feed_url": "opennews://subscribe",
+                    "source_domain": "6551.io",
+                    "source_name": "OpenNews Realtime",
+                    "source_role": "aggregator",
+                    "trust_tier": "standard",
+                    "enabled": True,
+                    "refresh_interval_seconds": 10,
+                    "fetch_policy": {
+                        "engineTypes": {"news": ["Bloomberg"]},
+                        "coins": ["BTC"],
+                        "hasCoin": True,
+                    },
+                }
+            ],
+        },
+    )
+
+    assert settings.news_intel.opennews.api_token == "opennews-test-token"
+    assert settings.news_intel.opennews.wss_url == "wss://example.com/news_wss"
+    assert settings.news_intel.opennews.connect_timeout_seconds == 2
+    assert settings.news_intel.sources[0].provider_type == "opennews"
+    assert settings.news_intel.sources[0].fetch_policy["coins"] == ["BTC"]
 
 
 def test_news_source_settings_rejects_unknown_provider_type_and_source_role() -> None:
@@ -225,6 +269,14 @@ def test_default_config_yaml_contains_explicit_news_intel_block() -> None:
         "cnbc-markets",
         "yahoo-finance",
         "cryptopanic-en",
+    }
+    opennews = next(source for source in news_intel["sources"] if source["source_id"] == "opennews-realtime")
+    assert opennews["provider_type"] == "opennews"
+    assert opennews["enabled"] is False
+    assert news_intel["opennews"] == {
+        "api_token": None,
+        "wss_url": "wss://ai.6551.io/open/news_wss",
+        "connect_timeout_seconds": 3.0,
     }
 
 

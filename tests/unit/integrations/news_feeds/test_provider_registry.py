@@ -8,6 +8,7 @@ from gmgn_twitter_intel.integrations.news_feeds.feed_client import FeedFetchResu
 from gmgn_twitter_intel.integrations.news_feeds.provider_registry import (
     SUPPORTED_NEWS_PROVIDER_TYPES,
     NewsFeedProviderRegistry,
+    OpenNewsNewsFeedProvider,
     RssLikeNewsFeedProvider,
     default_news_feed_provider_registry,
 )
@@ -16,9 +17,11 @@ from gmgn_twitter_intel.integrations.news_feeds.provider_registry import (
 def test_registry_routes_rss_atom_json_feed_and_cryptopanic_to_expected_wrappers() -> None:
     rss_client = RecordingFeedClient(FeedFetchResult(status_code=200, entries=[{"id": "rss-1"}]))
     cryptopanic_client = RecordingFeedClient(FeedFetchResult(status_code=200, entries=[{"id": "panic-1"}]))
+    opennews_client = RecordingOpenNewsClient(FeedFetchResult(status_code=101, entries=[{"id": "opennews-1"}]))
     registry = default_news_feed_provider_registry(
         rss_client=rss_client,
         cryptopanic_client=cryptopanic_client,
+        opennews_client=opennews_client,
     )
 
     rss_wrapper = registry.provider_for("rss")
@@ -42,6 +45,12 @@ def test_registry_routes_rss_atom_json_feed_and_cryptopanic_to_expected_wrappers
         last_modified=None,
         source={"source_id": "cryptopanic-en"},
     )
+    registry.fetch(
+        provider_type="opennews",
+        feed_url="opennews://subscribe",
+        source={"source_id": "opennews-realtime"},
+        limit=2,
+    )
 
     assert [call["provider_type"] for call in rss_client.calls] == ["rss", "atom", "json_feed"]
     assert rss_client.calls[0]["etag"] == "old-etag"
@@ -56,6 +65,13 @@ def test_registry_routes_rss_atom_json_feed_and_cryptopanic_to_expected_wrappers
             "source_id": "cryptopanic-en",
         }
     ]
+    assert opennews_client.calls == [
+        {
+            "url": "opennews://subscribe",
+            "limit": 2,
+            "source_id": "opennews-realtime",
+        }
+    ]
     assert registry.supported_provider_types() == SUPPORTED_NEWS_PROVIDER_TYPES
 
 
@@ -63,6 +79,7 @@ def test_registry_unknown_provider_type_raises_compact_value_error() -> None:
     registry = default_news_feed_provider_registry(
         rss_client=RecordingFeedClient(FeedFetchResult(status_code=200)),
         cryptopanic_client=RecordingFeedClient(FeedFetchResult(status_code=200)),
+        opennews_client=RecordingOpenNewsClient(FeedFetchResult(status_code=101)),
     )
 
     with pytest.raises(ValueError) as exc_info:
@@ -128,3 +145,49 @@ class CloseFailingFeedClient:
     def close(self) -> None:
         self.close_count += 1
         raise RuntimeError("close boom")
+
+
+class RecordingOpenNewsClient:
+    def __init__(self, result: FeedFetchResult) -> None:
+        self.result = result
+        self.calls: list[dict[str, Any]] = []
+
+    def fetch(
+        self,
+        url: str,
+        *,
+        source: dict[str, Any] | None = None,
+        limit: int | None = None,
+    ) -> FeedFetchResult:
+        self.calls.append(
+            {
+                "url": url,
+                "limit": limit,
+                "source_id": (source or {}).get("source_id"),
+            }
+        )
+        return self.result
+
+    def close(self) -> None:
+        return None
+
+
+def test_opennews_registry_wrapper_uses_websocket_client_shape() -> None:
+    client = RecordingOpenNewsClient(FeedFetchResult(status_code=101, entries=[{"id": "opennews-1"}]))
+    provider = OpenNewsNewsFeedProvider(client)
+
+    result = provider.fetch(
+        feed_url="opennews://subscribe",
+        provider_type="opennews",
+        source={"source_id": "opennews-realtime"},
+        limit=3,
+    )
+
+    assert result.entries == [{"id": "opennews-1"}]
+    assert client.calls == [
+        {
+            "url": "opennews://subscribe",
+            "limit": 3,
+            "source_id": "opennews-realtime",
+        }
+    ]

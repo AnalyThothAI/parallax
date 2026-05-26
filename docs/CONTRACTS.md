@@ -192,9 +192,11 @@ News Intel contract:
   control-plane fetch status, redacted latest fetch errors,
   `source_quality_status`, provider capability summaries, source hygiene
   warnings, and the latest `news_source_quality_rows` payload when available.
-  Supported provider types are currently `rss`, `atom`, `json_feed`, and
-  `cryptopanic`; configured unsupported provider types are reported before an
-  operator expects data from them.
+  Supported provider types are currently `rss`, `atom`, `json_feed`,
+  `cryptopanic`, and `opennews`; configured unsupported provider types are
+  reported before an operator expects data from them. OpenNews credentials live
+  under `news_intel.opennews` in operator-owned `config.yaml`; provider tokens
+  are not exposed through this status route.
 - `/api/news/items/{news_item_id}` returns deterministic extraction facts plus
   the full current item brief and a sanitized latest run summary. It excludes
   raw provider request/response payloads from the public item-detail contract.
