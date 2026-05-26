@@ -35,18 +35,19 @@ pgBadger 可用：
 
 - 容器内版本：`pgBadger 13.2`
 - 最新报告：`/Users/qinghuan/.gmgn-twitter-intel/reports/pgbadger/pgbadger-latest.html`
-- 本次报告大小：约 2.3 MB
-- 日志样本：253 queries、209 events、总 query duration 约 2m7s
+- 本次报告大小：约 2.7 MB
+- 日志样本：36 条 normalized queries、1,551 queries、388 events、平均每 session query duration 约 12m33s
 - pgBadger 发现：30 checkpoints、2 次 ShareLock 等待，合计约 4.715s，并记录 1 次 deadlock 事件。
 
-PoWA 可用但长期 history 还不完整：
+PoWA 可用，且已补齐本地 coalesced history：
 
 - `powa-web` 在 `127.0.0.1:8888` 正常响应并跳转登录页。
 - 业务库已加载 `pg_stat_statements`、`pg_stat_kcache`、`pg_qualstats`、`pg_wait_sampling`。
 - `shared_preload_libraries` 包含 `pg_stat_statements,powa,pg_stat_kcache,pg_qualstats,pg_wait_sampling`。
 - `powa` repository 数据库已安装 `powa 5.1.1`。
-- `powa_statements_history_current` 有 18,306 行 current snapshot 数据。
-- `powa_statements_history` 当前为 0 行；这意味着 PoWA 当前可辅助看即时快照，但还不能依赖它做稳定的长期趋势分析。
+- `scripts/powa_configure.sh` 已设置本地 GUC：`powa.coalesce=5`、`powa.frequency=5min`，同时保留 `powa_servers` 的 7 天 retention 配置。
+- 最新验证：`powa_statements_history_current` 有 838 行 current snapshot 数据，`powa_statements_history` 有 4,902 行 coalesced history 数据。
+- 根因备注：本地 server `powa_take_snapshot(0)` 使用 PostgreSQL GUC `powa.coalesce`，不是 `powa_servers.powa_coalesce`；此前 history 为 0 是因为 GUC 仍为默认 100，快速 6 次 snapshot 不会触发 coalesce。
 
 ## 当前生产状态
 
@@ -286,4 +287,4 @@ PostgreSQL 已经出现实际性能压力，但不是“数据库已经坏掉”
 - 数据流仍在跑，`readyz` 通过。
 - worker backlog 已经实质存在，且 queue health 现在能直接定位到表和 worker。
 - 数据库主要压力来自少数高频宽读、缺索引删除、queue/job 清理扫描和 request-time 重计算。
-- PoWA/pgBadger 已经装上并能工作；pgBadger 已产出报告，PoWA 需要继续补齐长期 history 配置，才能作为趋势分析主工具。
+- PoWA/pgBadger 已经装上并能工作；pgBadger 已产出报告，PoWA 已能生成 coalesced history，可作为后续趋势分析入口。

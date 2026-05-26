@@ -33,14 +33,14 @@ tables through a read-only summary query in
 The current production performance analysis found that PostgreSQL is under real
 pressure from a small number of query shapes, not from a general database
 outage. The largest query is Token Radar rank-set loading. The implementation
-still reads `SELECT *` from `token_radar_target_features` for every rank-set in
-`src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py:649`.
-The service then applies cross-section normalization in
-`src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py:245`
-and writes current/history/audit read models. The rank algorithm currently
-requires factor families and cohort metadata from the factor snapshot, as shown
-by `TokenRadarProjection._apply_cross_section(...)` in
-`src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py:566`.
+must not read `SELECT *` from `token_radar_target_features` for every rank-set
+refresh. The hard-cut implementation stores scalar rank inputs on
+`token_radar_target_features`, ranks through
+`TokenRadarProjection.rank_compact_inputs(...)`, hydrates only the selected
+rows by stable rank key plus `payload_hash`, and refuses to publish a rank-set
+while any row in that window/scope still has a stale rank-input version. The old
+factor-snapshot cross-section function is removed from executable code rather
+than retained as a fallback.
 
 `token_intent_lookup_keys` has a direct missing-index problem. The write path
 deletes by `intent_id` in
@@ -95,8 +95,9 @@ while `readyz` can still be green.
 ## Goals
 
 - G1. Remove the hot `SELECT * FROM token_radar_target_features ... ORDER BY`
-  query from the Top 10 `pg_stat_statements` total time list after one live
-  observation window.
+  rank-set query from the executable code path. After a controlled live refresh,
+  the old normalized query must be absent from `pg_stat_statements` or have zero
+  new calls.
 - G2. Make `DELETE FROM token_intent_lookup_keys WHERE intent_id = ...` use an
   `intent_id`-prefix index, with no sequential scan in `EXPLAIN`.
 - G3. Make event-anchor ready cleanup stop scanning both
@@ -189,9 +190,13 @@ Changed arrows:
 
 - One row per terminal queue decision.
 - Contains worker name, source queue table, stable target key, final status,
-  attempt count, final error/reason, payload hash when available, first seen,
-  last attempted, terminalized time, and optional operator resolution.
+  attempt count, final error/reason, non-null payload hash, full source queue
+  row snapshot, source row hash, first seen, last attempted, terminalized time,
+  and operator resolution state.
 - Terminal evidence is not active work and is not claimed by workers.
+- Duplicate terminalization of the same source row snapshot is idempotent.
+  Re-terminalization after an operator retry creates a new terminal decision only
+  after the owner repository has created a new active row snapshot.
 
 `PoWA Trend State`
 
@@ -212,9 +217,9 @@ Changed arrows:
 
 - New production operator surface for queue terminal handling.
 - Inspect is read-only by default.
-- Retry, quarantine, archive, or discard require `--execute` and an operator
-  reason.
+- Retry, quarantine, or archive require `--execute` and an operator reason.
 - Commands never print secrets and never mutate business fact tables.
+- Mutating commands operate on `terminal_id`, not loose target keys.
 
 PoWA and pgBadger
 
@@ -224,10 +229,10 @@ PoWA and pgBadger
 
 ## Acceptance Criteria
 
-- AC1. WHEN Token Radar refreshes a rank set under live data THEN
-  `pg_stat_statements` SHALL no longer show the old `SELECT * FROM
-  token_radar_target_features ... ORDER BY lane DESC, rank_score DESC ...` in
-  the Top 10 by total time after one observation window.
+- AC1. WHEN Token Radar refreshes a rank set under live data THEN the old
+  `SELECT * FROM token_radar_target_features ... ORDER BY lane DESC,
+  rank_score DESC ...` rank-set query SHALL be unreachable from code and SHALL
+  have zero new `pg_stat_statements` calls for the observation window.
 - AC2. WHEN `EXPLAIN (ANALYZE, BUFFERS)` is run for
   `DELETE FROM token_intent_lookup_keys WHERE intent_id = ...` THEN PostgreSQL
   SHALL use an `intent_id`-prefix index and SHALL NOT use a sequential scan.
@@ -250,6 +255,10 @@ PoWA and pgBadger
   contain local-server statement data.
 - AC9. WHEN tests search for deleted compatibility paths THEN there SHALL be no
   old wide-rank compatibility method, feature flag, or fallback config.
+- AC10. WHEN an exhausted queue item has no payload hash THEN duplicate
+  terminalization attempts SHALL still be idempotent, and an operator retry
+  SHALL make any later terminalization a distinct terminal decision rather than
+  overwriting history.
 
 ## Risks
 

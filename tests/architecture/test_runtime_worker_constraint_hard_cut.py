@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from gmgn_twitter_intel.app.runtime.worker_manifest import worker_class_by_name
+from gmgn_twitter_intel.app.runtime.queue_health import queue_health_adapter_specs
+from gmgn_twitter_intel.app.runtime.worker_manifest import worker_class_by_name, worker_queue_health_tables
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src" / "gmgn_twitter_intel"
@@ -196,6 +197,11 @@ REPAIR_HANDLER_PATHS = {
     SRC / "app/runtime/runtime_worker_dirty_targets.py",
 }
 REPAIR_HANDLER_COMMAND = "enqueue-runtime-worker-dirty-targets"
+TOKEN_RADAR_REPOSITORY_PATH = SRC / "domains/token_intel/repositories/token_radar_repository.py"
+EVENT_ANCHOR_WORKER_PATH = SRC / "domains/asset_market/runtime/event_anchor_backfill_worker.py"
+EVENT_ANCHOR_JOB_REPOSITORY_PATH = (
+    SRC / "domains/asset_market/repositories/event_anchor_backfill_job_repository.py"
+)
 
 
 @pytest.mark.architecture
@@ -212,6 +218,52 @@ def test_every_registered_worker_has_runtime_constraint_classification() -> None
     assert missing == []
     assert extra == []
     assert invalid == {}
+
+
+@pytest.mark.architecture
+def test_queue_health_adapter_registry_covers_manifest_queue_tables_exactly_once() -> None:
+    manifest_table_users: dict[str, set[str]] = {}
+    for worker_name, tables in worker_queue_health_tables().items():
+        for table in tables:
+            manifest_table_users.setdefault(table, set()).add(worker_name)
+    specs = queue_health_adapter_specs()
+
+    missing_specs = sorted(set(manifest_table_users) - set(specs))
+    unused_specs = sorted(set(specs) - set(manifest_table_users))
+    duplicate_specs = sorted(table for table, spec in specs.items() if spec.table != table)
+
+    assert missing_specs == []
+    assert unused_specs == []
+    assert duplicate_specs == []
+    assert {spec.kind for spec in specs.values()} <= {"status_queue", "dirty_target", "terminal_projection"}
+
+
+@pytest.mark.architecture
+def test_token_radar_rank_path_has_no_old_wide_feature_loader() -> None:
+    token_intel_text = "\n".join(path.read_text() for path in (SRC / "domains/token_intel").rglob("*.py"))
+    repository_text = TOKEN_RADAR_REPOSITORY_PATH.read_text()
+
+    assert "list_target_features_for_rank_set" not in token_intel_text
+    assert re.search(r"SELECT\s+\*\s+FROM\s+token_radar_target_features", token_intel_text, re.IGNORECASE) is None
+    for forbidden in (
+        "wide_rank_path",
+        "legacy_rank_path",
+        "rank_set_fallback",
+        "use_wide_rank",
+        "TOKEN_RADAR_WIDE_RANK",
+    ):
+        assert forbidden not in repository_text
+
+
+@pytest.mark.architecture
+def test_event_anchor_runtime_has_no_ready_fact_reconciliation_scan() -> None:
+    worker_text = EVENT_ANCHOR_WORKER_PATH.read_text(encoding="utf-8")
+    repository_text = EVENT_ANCHOR_JOB_REPOSITORY_PATH.read_text(encoding="utf-8")
+
+    assert "mark_ready_jobs_done" not in worker_text
+    assert "ready_jobs_reconciled" not in worker_text
+    assert "mark_ready_jobs_done" not in repository_text
+    assert "JOIN enriched_events anchors" not in repository_text
 
 
 @pytest.mark.architecture

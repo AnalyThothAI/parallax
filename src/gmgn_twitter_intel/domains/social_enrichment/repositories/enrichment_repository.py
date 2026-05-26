@@ -8,6 +8,7 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
+from gmgn_twitter_intel.app.runtime.queue_terminal import terminalize_source_row
 from gmgn_twitter_intel.platform.db.postgres_client import transaction
 
 from ..types.social_event_extraction import SocialEventExtraction
@@ -146,76 +147,91 @@ class EnrichmentRepository:
     def claim_next_job(self, *, now_ms: int | None = None) -> dict[str, Any] | None:
         now = now_ms if now_ms is not None else _now_ms()
         stale_before = now - self.running_timeout_ms
-        self.conn.execute(
-            """
-            UPDATE enrichment_jobs
-            SET status = 'dead',
-                last_error = 'legacy_job_type_retired',
-                updated_at_ms = %s
-            WHERE job_type <> %s
-              AND status IN ('pending', 'failed', 'running')
-            """,
-            (now, WATCHED_SOCIAL_EVENT_JOB_TYPE),
-        )
-        self.conn.execute(
-            """
-            UPDATE enrichment_jobs
-            SET status = 'dead',
-                last_error = 'stale_running_timeout',
-                updated_at_ms = %s
-            WHERE status = 'running'
-              AND job_type = %s
-              AND updated_at_ms < %s
-              AND attempt_count >= max_attempts
-            """,
-            (now, WATCHED_SOCIAL_EVENT_JOB_TYPE, stale_before),
-        )
-        row = self.conn.execute(
-            """
-            WITH picked AS (
-              SELECT job_id, status AS picked_status
-              FROM enrichment_jobs
-              WHERE job_type = %s
-                AND (
-                  (
-                    status IN ('pending', 'failed')
-                    AND attempt_count < max_attempts
-                    AND next_run_at_ms <= %s
-                  )
-                  OR (
-                    status = 'running'
-                    AND updated_at_ms < %s
-                    AND attempt_count < max_attempts
-                  )
+        with transaction(self.conn):
+            retired_rows = self.conn.execute(
+                """
+                UPDATE enrichment_jobs
+                SET status = 'dead',
+                    last_error = 'legacy_job_type_retired',
+                    updated_at_ms = %s
+                WHERE job_type <> %s
+                  AND status IN ('pending', 'failed', 'running')
+                RETURNING *
+                """,
+                (now, WATCHED_SOCIAL_EVENT_JOB_TYPE),
+            ).fetchall()
+            for row in retired_rows:
+                _terminalize_enrichment_job(self.conn, row=dict(row), reason="legacy_job_type_retired", now_ms=now)
+            stale_rows = self.conn.execute(
+                """
+                UPDATE enrichment_jobs
+                SET status = 'dead',
+                    last_error = 'stale_running_timeout',
+                    updated_at_ms = %s
+                WHERE status = 'running'
+                  AND job_type = %s
+                  AND updated_at_ms < %s
+                  AND attempt_count >= max_attempts
+                RETURNING *
+                """,
+                (now, WATCHED_SOCIAL_EVENT_JOB_TYPE, stale_before),
+            ).fetchall()
+            for row in stale_rows:
+                _terminalize_enrichment_job(self.conn, row=dict(row), reason="stale_running_timeout", now_ms=now)
+            row = self.conn.execute(
+                """
+                WITH picked AS (
+                  SELECT job_id, status AS picked_status
+                  FROM enrichment_jobs
+                  WHERE job_type = %s
+                    AND (
+                      (
+                        status IN ('pending', 'failed')
+                        AND attempt_count < max_attempts
+                        AND next_run_at_ms <= %s
+                      )
+                      OR (
+                        status = 'running'
+                        AND updated_at_ms < %s
+                        AND attempt_count < max_attempts
+                      )
+                    )
+                  ORDER BY priority DESC, next_run_at_ms ASC, created_at_ms ASC, job_id ASC
+                  LIMIT 1
+                  FOR UPDATE SKIP LOCKED
                 )
-              ORDER BY priority DESC, next_run_at_ms ASC, created_at_ms ASC, job_id ASC
-              LIMIT 1
-              FOR UPDATE SKIP LOCKED
-            )
-            UPDATE enrichment_jobs AS job
-            SET status = 'running',
-                attempt_count = job.attempt_count + 1,
-                updated_at_ms = %s,
-                last_error = NULL
-            FROM picked
-            WHERE job.job_id = picked.job_id
-              AND job.job_type = %s
-              AND (
+                UPDATE enrichment_jobs AS job
+                SET status = 'running',
+                    attempt_count = job.attempt_count + 1,
+                    updated_at_ms = %s,
+                    last_error = NULL
+                FROM picked
+                WHERE job.job_id = picked.job_id
+                  AND job.job_type = %s
+                  AND (
+                    (
+                      job.status IN ('pending', 'failed')
+                      AND job.attempt_count < job.max_attempts
+                      AND job.next_run_at_ms <= %s
+                    )
+                    OR (
+                      job.status = 'running'
+                      AND job.updated_at_ms < %s
+                      AND job.attempt_count < job.max_attempts
+                    )
+                  )
+                RETURNING job.*
+                """,
                 (
-                  job.status IN ('pending', 'failed')
-                  AND job.attempt_count < job.max_attempts
-                  AND job.next_run_at_ms <= %s
-                )
-                OR (
-                  job.status = 'running'
-                  AND job.updated_at_ms < %s
-                  AND job.attempt_count < job.max_attempts
-                )
-              )
-            RETURNING job.*
-            """,
-            (WATCHED_SOCIAL_EVENT_JOB_TYPE, now, stale_before, now, WATCHED_SOCIAL_EVENT_JOB_TYPE, now, stale_before),
-        ).fetchone()
+                    WATCHED_SOCIAL_EVENT_JOB_TYPE,
+                    now,
+                    stale_before,
+                    now,
+                    WATCHED_SOCIAL_EVENT_JOB_TYPE,
+                    now,
+                    stale_before,
+                ),
+            ).fetchone()
         return dict(row) if row else None
 
     def complete_social_event_job(
@@ -370,15 +386,44 @@ class EnrichmentRepository:
         max_attempts = int(job.get("max_attempts") or 3)
         status = "dead" if attempts >= max_attempts else "failed"
         delay_ms = min(300_000, 5_000 * max(1, attempts))
-        self.conn.execute(
+        with transaction(self.conn):
+            row = self.conn.execute(
+                """
+                UPDATE enrichment_jobs
+                SET status = %s, last_error = %s, next_run_at_ms = %s, updated_at_ms = %s
+                WHERE job_id = %s
+                RETURNING *
+                """,
+                (status, error[:1000], now_ms + delay_ms, now_ms, job["job_id"]),
+            ).fetchone()
+            if status == "dead" and row is not None:
+                _terminalize_enrichment_job(self.conn, row=dict(row), reason=error, now_ms=now_ms)
+
+    def retry_terminal_job_from_snapshot(
+        self,
+        source_row: dict[str, Any],
+        *,
+        now_ms: int,
+        reason: str,
+    ) -> dict[str, Any] | None:
+        job_id = str(source_row.get("job_id") or "")
+        if not job_id:
+            raise ValueError("enrichment_terminal_job_id_required")
+        row = self.conn.execute(
             """
             UPDATE enrichment_jobs
-            SET status = %s, last_error = %s, next_run_at_ms = %s, updated_at_ms = %s
+            SET status = 'pending',
+                attempt_count = 0,
+                next_run_at_ms = %s,
+                last_error = %s,
+                updated_at_ms = %s
             WHERE job_id = %s
+              AND status = 'dead'
+            RETURNING *
             """,
-            (status, error[:1000], now_ms + delay_ms, now_ms, job["job_id"]),
-        )
-        self.conn.commit()
+            (int(now_ms), f"terminal_retry:{reason}"[:1000], int(now_ms), job_id),
+        ).fetchone()
+        return dict(row) if row else None
 
     def release_job_for_backpressure(
         self,
@@ -505,3 +550,26 @@ def _id(*parts: str) -> str:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _terminalize_enrichment_job(conn: Any, *, row: dict[str, Any], reason: str, now_ms: int) -> None:
+    terminalize_source_row(
+        conn,
+        worker_name="enrichment",
+        source_table="enrichment_jobs",
+        target_key=str(row.get("job_id") or ""),
+        source_row=row,
+        final_status="dead",
+        final_reason=str(reason or row.get("last_error") or "dead"),
+        now_ms=now_ms,
+        attempt_count=int(row.get("attempt_count") or 0),
+        first_seen_at_ms=_optional_int(row.get("created_at_ms")),
+        last_attempted_at_ms=now_ms,
+        commit=False,
+    )
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    return int(value)

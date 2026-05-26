@@ -38,10 +38,44 @@ class FakePool:
 
     @contextmanager
     def connection(self):
-        yield object()
+        yield FakeQueueHealthConn()
 
     def close(self):
         self.closed = True
+
+
+class FakeRows:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def fetchall(self):
+        return self._rows
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+
+class FakeQueueHealthConn:
+    def execute(self, sql, params=None):
+        if "FROM worker_queue_terminal_events" in sql:
+            return FakeRows([{"terminal_count": 0, "unresolved_terminal_count": 0}])
+        if "GROUP BY status" in sql:
+            return FakeRows([{"status": "pending", "count": 1}])
+        return FakeRows(
+            [
+                {
+                    "total_count": 1,
+                    "active_count": 1,
+                    "due_count": 0,
+                    "running_count": 0,
+                    "failed_count": 0,
+                    "blocked_count": 0,
+                    "oldest_due_at_ms": None,
+                    "oldest_running_at_ms": None,
+                    "max_attempt_count": 0,
+                }
+            ]
+        )
 
 
 class FakeDB:
@@ -189,7 +223,24 @@ def test_healthz_handler_is_async_to_avoid_threadpool_starvation(tmp_path):
     assert inspect.iscoroutinefunction(route.endpoint)
 
 
-def test_healthz_readyz_and_metrics_return_status(tmp_path):
+def test_healthz_readyz_and_metrics_return_status(monkeypatch, tmp_path):
+    async def noop_scheduler_start(self) -> None:
+        return None
+
+    monkeypatch.setattr(
+        "tests.integration.test_api_health.prepare_postgres_database",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        "gmgn_twitter_intel.app.runtime.worker_scheduler.WorkerScheduler.start",
+        noop_scheduler_start,
+    )
+    patch_runtime_dependencies(monkeypatch)
+    monkeypatch.setattr(
+        app_module,
+        "postgres_health_check",
+        lambda *_, **__: {"ok": True, "probe": "postgres_liveness"},
+    )
     settings = make_settings(tmp_path)
     app = create_app(settings=settings, start_collector=False)
 
@@ -239,6 +290,94 @@ def test_healthz_readyz_and_metrics_return_status(tmp_path):
     assert metrics.status_code == 200
     assert metrics.headers["content-type"].startswith("text/plain")
     assert "gmgn_db_pool_wait_ms" in metrics.text
+
+    runtime = SimpleNamespace(
+        scheduler=NoopScheduler(),
+        collector=SimpleNamespace(
+            status=SimpleNamespace(to_dict=lambda: {"snapshot_gate_outcomes": {}}),
+            upstream_client=None,
+        ),
+        db=FakeDB(),
+        settings=SimpleNamespace(handles=("toly",)),
+        providers=SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=None)),
+        agent_execution_gateway=None,
+    )
+    monkeypatch.setattr(app_module, "postgres_health_check", lambda *_, **__: {"ok": True})
+
+    calls = 0
+
+    def backlog_workers_status_payload(_runtime):
+        nonlocal calls
+        calls += 1
+        return {
+            "workers": {
+                "token_radar_projection": {
+                    "queue_health": {
+                        "status": "blocked",
+                        "reason": "blocked_work_present",
+                        "table_count": 1,
+                        "unavailable_table_count": 0,
+                        "queue_depth": 3,
+                        "due_count": 2,
+                        "running_count": 0,
+                        "failed_count": 0,
+                        "blocked_count": 1,
+                        "terminal_count": 1,
+                        "unresolved_terminal_count": 1,
+                        "tables": {
+                            "token_radar_dirty_targets": {
+                                "available": True,
+                                "error_code": None,
+                                "queue_depth": 3,
+                                "unresolved_terminal_count": 1,
+                            }
+                        },
+                    }
+                }
+            },
+            "worker_lanes": {"projection": {"queue_health": {"status": "blocked"}}},
+        }
+
+    monkeypatch.setattr(app_module, "workers_status_payload", backlog_workers_status_payload)
+    readiness_payload, readiness_status = _readiness_payload(runtime)
+    assert calls == 1
+    assert readiness_status == 200
+    assert readiness_payload["ok"] is True
+    assert readiness_payload["reasons"] == []
+
+    def contract_failure_workers_status_payload(_runtime):
+        return {
+            "workers": {
+                "token_radar_projection": {
+                    "queue_health": {
+                        "status": "unavailable",
+                        "reason": "queue_table_unavailable",
+                        "table_count": 1,
+                        "unavailable_table_count": 1,
+                        "queue_depth": None,
+                        "due_count": 0,
+                        "running_count": 0,
+                        "failed_count": 0,
+                        "blocked_count": 0,
+                        "terminal_count": 0,
+                        "unresolved_terminal_count": 0,
+                        "tables": {
+                            "token_radar_dirty_targets": {
+                                "available": False,
+                                "error_code": "adapter_query_failure",
+                            }
+                        },
+                    }
+                }
+            },
+            "worker_lanes": {"projection": {"queue_health": {"status": "unavailable"}}},
+        }
+
+    monkeypatch.setattr(app_module, "workers_status_payload", contract_failure_workers_status_payload)
+    readiness_payload, readiness_status = _readiness_payload(runtime)
+    assert readiness_status == 503
+    assert readiness_payload["ok"] is False
+    assert "queue_health_adapter_query_failure" in readiness_payload["reasons"]
 
 
 def test_runtime_aclose_closes_wired_providers_even_when_scheduler_stop_fails(monkeypatch, tmp_path):
