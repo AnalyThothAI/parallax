@@ -153,6 +153,9 @@ RANK_SOURCE_IDENTITY_CONFIDENCE_TEXT_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/"
     "20260526_0109_rank_source_identity_confidence_text.py"
 )
+EQUITY_FETCH_RUN_REAPER_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0110_equity_fetch_run_reaper.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 
@@ -569,6 +572,27 @@ def test_rank_source_identity_confidence_text_migration_contract() -> None:
     assert "ELSE NULL" in text
 
 
+def test_equity_fetch_run_reaper_migration_contract() -> None:
+    text = EQUITY_FETCH_RUN_REAPER_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    assert 'revision = "20260526_0110"' in text
+    assert 'down_revision = "20260526_0109"' in text
+    assert "DROP CONSTRAINT IF EXISTS equity_event_fetch_runs_status_check" in text
+    assert "runs.status = 'failed'" in text
+    assert "status = 'failed_retryable'" in text
+    assert "stale_fetch_run_timeout" in text
+    assert "runs.status = 'running'" in text
+    assert "runs.finished_at_ms = 0" in text
+    assert "runs.started_at_ms < now_value.now_ms - 900000" in normalized_text
+    assert (
+        "CHECK (status IN ('running', 'success', 'failed_retryable', 'failed_terminal'))"
+        in normalized_text
+    )
+    assert "WHERE status IN ('failed_retryable', 'failed_terminal')" in text
+    assert "CHECK (status IN ('running', 'success', 'failed'))" in normalized_text
+
+
 def test_runtime_performance_hard_cut_revision_chain() -> None:
     migrations = (
         (RUNTIME_RANK_SOURCE_EDGES_MIGRATION, "20260526_0106", "20260526_0105"),
@@ -579,6 +603,7 @@ def test_runtime_performance_hard_cut_revision_chain() -> None:
             "20260526_0109",
             "20260526_0108",
         ),
+        (EQUITY_FETCH_RUN_REAPER_MIGRATION, "20260526_0110", "20260526_0109"),
     )
 
     for migration, revision, down_revision in migrations:

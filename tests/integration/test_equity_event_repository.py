@@ -3,9 +3,17 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 import pytest
+from alembic import command
 
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
-from tests.postgres_test_utils import connect_postgres_test, reset_postgres_schema
+from gmgn_twitter_intel.platform.db.postgres_migrations import alembic_config
+from tests.postgres_test_utils import (
+    connect_postgres_test,
+    reset_postgres_schema,
+)
+from tests.postgres_test_utils import (
+    test_postgres_dsn as postgres_test_dsn,
+)
 
 NOW_MS = 1_765_900_000_000
 
@@ -128,6 +136,252 @@ def test_reap_stale_evidence_jobs_is_bounded(postgres_conn) -> None:
     assert len(first_reap) == 1
     assert len(second_reap) == 1
     assert first_reap[0]["evidence_job_id"] != second_reap[0]["evidence_job_id"]
+
+
+def test_reap_stale_fetch_runs_marks_retryable_and_releases_source(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    source_id = "sec:STALEFETCH"
+    repos.equity_events.upsert_source(
+        source_id=source_id,
+        provider_type="sec_submissions",
+        company_id="market_instrument:us_equity:STALEFETCH",
+        ticker="STALEFETCH",
+        cik="0000000003",
+        source_role="official_regulator",
+        refresh_interval_seconds=300,
+        enabled=True,
+        now_ms=NOW_MS - 2_000_000,
+    )
+    stale_run_id = repos.equity_events.start_fetch_run(
+        source_id=source_id,
+        started_at_ms=NOW_MS - 1_000_000,
+    )
+    fresh_run_id = repos.equity_events.start_fetch_run(
+        source_id=source_id,
+        started_at_ms=NOW_MS - 100_000,
+    )
+    postgres_conn.execute(
+        "UPDATE equity_event_sources SET next_fetch_after_ms = %s WHERE source_id = %s",
+        (NOW_MS + 60_000, source_id),
+    )
+    postgres_conn.commit()
+
+    reaped = repos.equity_events.reap_stale_fetch_runs(
+        stale_before_ms=NOW_MS - 900_000,
+        now_ms=NOW_MS,
+        limit=10,
+    )
+    runs = postgres_conn.execute(
+        "SELECT * FROM equity_event_fetch_runs ORDER BY started_at_ms ASC",
+    ).fetchall()
+    source = postgres_conn.execute(
+        "SELECT * FROM equity_event_sources WHERE source_id = %s",
+        (source_id,),
+    ).fetchone()
+
+    assert [row["fetch_run_id"] for row in reaped] == [stale_run_id]
+    assert runs[0]["status"] == "failed_retryable"
+    assert runs[0]["finished_at_ms"] == NOW_MS
+    assert runs[0]["error"] == "stale_fetch_run_timeout"
+    assert runs[0]["extra_json"]["failure_reason"] == "stale_fetch_run_timeout"
+    assert runs[0]["extra_json"]["stale_before_ms"] == NOW_MS - 900_000
+    assert runs[1]["fetch_run_id"] == fresh_run_id
+    assert runs[1]["status"] == "running"
+    assert source["last_error"] == "stale_fetch_run_timeout"
+    assert source["next_fetch_after_ms"] == NOW_MS
+
+
+def test_finish_fetch_run_does_not_overwrite_reaped_stale_run(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    source_id = "sec:RACEFETCH"
+    repos.equity_events.upsert_source(
+        source_id=source_id,
+        provider_type="sec_submissions",
+        company_id="market_instrument:us_equity:RACEFETCH",
+        ticker="RACEFETCH",
+        cik="0000000004",
+        source_role="official_regulator",
+        refresh_interval_seconds=300,
+        enabled=True,
+        now_ms=NOW_MS - 2_000_000,
+    )
+    fetch_run_id = repos.equity_events.start_fetch_run(
+        source_id=source_id,
+        started_at_ms=NOW_MS - 1_000_000,
+    )
+
+    repos.equity_events.reap_stale_fetch_runs(
+        stale_before_ms=NOW_MS - 900_000,
+        now_ms=NOW_MS,
+        limit=10,
+    )
+    late_finish = repos.equity_events.finish_fetch_run(
+        fetch_run_id=fetch_run_id,
+        source_id=source_id,
+        status="success",
+        finished_at_ms=NOW_MS + 1_000,
+        fetched_count=1,
+        inserted_count=1,
+    )
+    run = postgres_conn.execute(
+        "SELECT * FROM equity_event_fetch_runs WHERE fetch_run_id = %s",
+        (fetch_run_id,),
+    ).fetchone()
+    source = postgres_conn.execute(
+        "SELECT * FROM equity_event_sources WHERE source_id = %s",
+        (source_id,),
+    ).fetchone()
+
+    assert late_finish == {}
+    assert run["status"] == "failed_retryable"
+    assert run["finished_at_ms"] == NOW_MS
+    assert run["inserted_count"] == 0
+    assert source["last_success_at_ms"] is None
+
+
+def test_finish_fetch_run_requires_matching_source_id(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    repos.equity_events.upsert_source(
+        source_id="sec:RUNOWNER",
+        provider_type="sec_submissions",
+        company_id="market_instrument:us_equity:RUNOWNER",
+        ticker="RUNOWNER",
+        cik="0000000006",
+        source_role="official_regulator",
+        refresh_interval_seconds=300,
+        enabled=True,
+        now_ms=NOW_MS,
+    )
+    repos.equity_events.upsert_source(
+        source_id="sec:WRONGOWNER",
+        provider_type="sec_submissions",
+        company_id="market_instrument:us_equity:WRONGOWNER",
+        ticker="WRONGOWNER",
+        cik="0000000007",
+        source_role="official_regulator",
+        refresh_interval_seconds=300,
+        enabled=True,
+        now_ms=NOW_MS,
+    )
+    fetch_run_id = repos.equity_events.start_fetch_run(source_id="sec:RUNOWNER", started_at_ms=NOW_MS)
+
+    finished = repos.equity_events.finish_fetch_run(
+        fetch_run_id=fetch_run_id,
+        source_id="sec:WRONGOWNER",
+        status="success",
+        finished_at_ms=NOW_MS + 1,
+    )
+    run = postgres_conn.execute(
+        "SELECT * FROM equity_event_fetch_runs WHERE fetch_run_id = %s",
+        (fetch_run_id,),
+    ).fetchone()
+    wrong_source = postgres_conn.execute(
+        "SELECT * FROM equity_event_sources WHERE source_id = %s",
+        ("sec:WRONGOWNER",),
+    ).fetchone()
+
+    assert finished == {}
+    assert run["status"] == "running"
+    assert run["finished_at_ms"] == 0
+    assert wrong_source["last_success_at_ms"] is None
+
+
+def test_finish_fetch_run_rejects_legacy_failed_status(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    source_id = "sec:LEGACYFAILED"
+    repos.equity_events.upsert_source(
+        source_id=source_id,
+        provider_type="sec_submissions",
+        company_id="market_instrument:us_equity:LEGACYFAILED",
+        ticker="LEGACYFAILED",
+        cik="0000000005",
+        source_role="official_regulator",
+        refresh_interval_seconds=300,
+        enabled=True,
+        now_ms=NOW_MS,
+    )
+    fetch_run_id = repos.equity_events.start_fetch_run(source_id=source_id, started_at_ms=NOW_MS)
+
+    with pytest.raises(ValueError, match="invalid_fetch_run_status:failed"):
+        repos.equity_events.finish_fetch_run(
+            fetch_run_id=fetch_run_id,
+            source_id=source_id,
+            status="failed",
+            finished_at_ms=NOW_MS + 1,
+        )
+
+
+def test_equity_fetch_run_reaper_migration_upgrades_legacy_rows(postgres_conn) -> None:
+    config = alembic_config()
+    config.attributes["database_url"] = postgres_test_dsn()
+    postgres_conn.commit()
+    command.downgrade(config, "20260526_0109")
+    postgres_conn.commit()
+    db_now_ms = postgres_conn.execute(
+        "SELECT (EXTRACT(EPOCH FROM clock_timestamp()) * 1000)::bigint AS now_ms",
+    ).fetchone()["now_ms"]
+    postgres_conn.execute(
+        """
+        INSERT INTO equity_event_sources (
+          source_id, provider_type, company_id, ticker, cik, source_role, trust_tier,
+          enabled, refresh_interval_seconds, created_at_ms, updated_at_ms
+        )
+        VALUES
+          ('sec:MIGRATION', 'sec_submissions', 'market_instrument:us_equity:MIGRATION',
+           'MIGRATION', '0000000008', 'official_regulator', 'official', true, 300, %s, %s)
+        """,
+        (db_now_ms, db_now_ms),
+    )
+    postgres_conn.execute(
+        """
+        INSERT INTO equity_event_fetch_runs (
+          fetch_run_id, source_id, started_at_ms, finished_at_ms, status, error
+        )
+        VALUES
+          ('fetch-migration-failed', 'sec:MIGRATION', %s, %s, 'failed', 'legacy_failed'),
+          ('fetch-migration-stale', 'sec:MIGRATION', %s, 0, 'running', NULL),
+          ('fetch-migration-fresh', 'sec:MIGRATION', %s, 0, 'running', NULL)
+        """,
+        (
+            db_now_ms - 2_000_000,
+            db_now_ms - 1_999_000,
+            db_now_ms - 1_000_000,
+            db_now_ms - 100_000,
+        ),
+    )
+    postgres_conn.commit()
+
+    command.upgrade(config, "20260526_0110")
+    postgres_conn.commit()
+    rows = postgres_conn.execute(
+        "SELECT fetch_run_id, status, finished_at_ms, error, extra_json "
+        "FROM equity_event_fetch_runs ORDER BY fetch_run_id",
+    ).fetchall()
+    source = postgres_conn.execute(
+        "SELECT consecutive_failures, last_error FROM equity_event_sources WHERE source_id = %s",
+        ("sec:MIGRATION",),
+    ).fetchone()
+
+    statuses = {row["fetch_run_id"]: row for row in rows}
+    assert statuses["fetch-migration-failed"]["status"] == "failed_retryable"
+    assert statuses["fetch-migration-failed"]["extra_json"]["migrated_from_status"] == "failed"
+    assert statuses["fetch-migration-stale"]["status"] == "failed_retryable"
+    assert statuses["fetch-migration-stale"]["error"] == "stale_fetch_run_timeout"
+    assert statuses["fetch-migration-stale"]["finished_at_ms"] > 0
+    assert statuses["fetch-migration-fresh"]["status"] == "running"
+    assert source["consecutive_failures"] == 1
+    assert source["last_error"] == "stale_fetch_run_timeout"
+    with pytest.raises(Exception, match="equity_event_fetch_runs_status_check"):
+        postgres_conn.execute(
+            """
+            INSERT INTO equity_event_fetch_runs (
+              fetch_run_id, source_id, started_at_ms, status
+            )
+            VALUES ('fetch-migration-rejected', 'sec:MIGRATION', %s, 'failed')
+            """,
+            (db_now_ms,),
+        )
+    postgres_conn.rollback()
 
 
 def test_evidence_job_claim_guard_rejects_reset_document_content(postgres_conn) -> None:

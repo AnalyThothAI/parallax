@@ -44,18 +44,31 @@ class EquityEventFetchWorker(WorkerBase):
     def run_once_sync(self, *, now_ms: int | None = None) -> WorkerResult:
         now = int(now_ms if now_ms is not None else self.clock_ms())
         with self._repository_session() as repos:
-            due_sources = repos.equity_events.claim_due_sources(now_ms=now, limit=self._batch_size())
+            stale_fetch_runs = repos.equity_events.reap_stale_fetch_runs(
+                stale_before_ms=self._stale_fetch_run_cutoff_ms(now),
+                now_ms=now,
+                limit=self._stale_fetch_run_reap_limit(),
+                commit=False,
+            )
+            due_sources = repos.equity_events.claim_due_sources(now_ms=now, limit=self._batch_size(), commit=False)
+            repos.conn.commit()
 
         processed = 0
         failed = 0
+        skipped = 0
         for source in due_sources:
             result = self._fetch_source(dict(source), now_ms=now)
             processed += result.processed
             failed += result.failed
+            skipped += result.skipped
         return WorkerResult(
             processed=processed,
             failed=failed,
-            notes={"due_sources": len(due_sources)},
+            skipped=skipped,
+            notes={
+                "due_sources": len(due_sources),
+                "stale_fetch_runs_reaped": len(stale_fetch_runs),
+            },
         )
 
     def _fetch_source(self, source: dict[str, Any], *, now_ms: int) -> WorkerResult:
@@ -73,16 +86,16 @@ class EquityEventFetchWorker(WorkerBase):
             if failed_document is not None:
                 reason = _failed_fetch_reason(failed_document)
                 with self._repository_session() as repos:
-                    repos.equity_events.update_source_material_freshness(
-                        source_id=source_id,
-                        actionable_error=reason,
-                        now_ms=now_ms,
-                        commit=False,
-                    )
-                    repos.equity_events.finish_fetch_run(
+                    if not repos.equity_events.lock_running_fetch_run(
                         fetch_run_id=fetch_run_id,
                         source_id=source_id,
-                        status="failed",
+                    ):
+                        repos.conn.commit()
+                        return _skipped_stale_run(source_id=source_id, fetch_run_id=fetch_run_id)
+                    finished = repos.equity_events.finish_fetch_run(
+                        fetch_run_id=fetch_run_id,
+                        source_id=source_id,
+                        status="failed_retryable",
                         finished_at_ms=now_ms,
                         http_status=fetch_result.status_code,
                         error=reason,
@@ -90,11 +103,39 @@ class EquityEventFetchWorker(WorkerBase):
                             "error_code": reason,
                             "provider_document": dict(failed_document),
                         },
+                        commit=False,
                     )
+                    if not finished:
+                        repos.conn.commit()
+                        return _skipped_stale_run(source_id=source_id, fetch_run_id=fetch_run_id)
+                    repos.equity_events.update_source_material_freshness(
+                        source_id=source_id,
+                        actionable_error=reason,
+                        now_ms=now_ms,
+                        commit=False,
+                    )
+                    repos.conn.commit()
                 return WorkerResult(failed=1, notes={"source_id": source_id, "error": reason})
 
             with self._repository_session() as repos:
+                if not repos.equity_events.lock_running_fetch_run(
+                    fetch_run_id=fetch_run_id,
+                    source_id=source_id,
+                ):
+                    repos.conn.commit()
+                    return _skipped_stale_run(source_id=source_id, fetch_run_id=fetch_run_id)
                 if fetch_result.not_modified:
+                    finished = repos.equity_events.finish_fetch_run(
+                        fetch_run_id=fetch_run_id,
+                        source_id=source_id,
+                        status="success",
+                        finished_at_ms=now_ms,
+                        http_status=fetch_result.status_code,
+                        commit=False,
+                    )
+                    if not finished:
+                        repos.conn.commit()
+                        return _skipped_stale_run(source_id=source_id, fetch_run_id=fetch_run_id)
                     repos.equity_events.update_source_http_cache(
                         source_id=source_id,
                         etag=fetch_result.etag,
@@ -108,14 +149,6 @@ class EquityEventFetchWorker(WorkerBase):
                         now_ms=now_ms,
                         commit=False,
                     )
-                    repos.equity_events.finish_fetch_run(
-                        fetch_run_id=fetch_run_id,
-                        source_id=source_id,
-                        status="success",
-                        finished_at_ms=now_ms,
-                        http_status=fetch_result.status_code,
-                        commit=False,
-                    )
                     repos.conn.commit()
                     return WorkerResult(processed=0)
 
@@ -126,17 +159,7 @@ class EquityEventFetchWorker(WorkerBase):
                     documents=fetch_result.documents,
                     fetched_at_ms=now_ms,
                 )
-                repos.conn.commit()
-
-            with self._repository_session() as repos:
-                repos.equity_events.update_source_http_cache(
-                    source_id=source_id,
-                    etag=fetch_result.etag,
-                    last_modified=fetch_result.last_modified,
-                    now_ms=now_ms,
-                    commit=False,
-                )
-                repos.equity_events.finish_fetch_run(
+                finished = repos.equity_events.finish_fetch_run(
                     fetch_run_id=fetch_run_id,
                     source_id=source_id,
                     status="success",
@@ -146,6 +169,16 @@ class EquityEventFetchWorker(WorkerBase):
                     updated_count=counts["updated"],
                     duplicate_count=counts["duplicate"],
                     http_status=fetch_result.status_code,
+                    commit=False,
+                )
+                if not finished:
+                    _rollback_conn(repos.conn)
+                    return _skipped_stale_run(source_id=source_id, fetch_run_id=fetch_run_id)
+                repos.equity_events.update_source_http_cache(
+                    source_id=source_id,
+                    etag=fetch_result.etag,
+                    last_modified=fetch_result.last_modified,
+                    now_ms=now_ms,
                     commit=False,
                 )
                 if counts["inserted"] + counts["updated"] > 0:
@@ -248,19 +281,30 @@ class EquityEventFetchWorker(WorkerBase):
             return
         try:
             with self._repository_session() as repos:
+                if not repos.equity_events.lock_running_fetch_run(
+                    fetch_run_id=fetch_run_id,
+                    source_id=source_id,
+                ):
+                    repos.conn.commit()
+                    return
+                finished = repos.equity_events.finish_fetch_run(
+                    fetch_run_id=fetch_run_id,
+                    source_id=source_id,
+                    status="failed_retryable",
+                    finished_at_ms=now_ms,
+                    error=str(error),
+                    commit=False,
+                )
+                if not finished:
+                    repos.conn.commit()
+                    return
                 repos.equity_events.update_source_material_freshness(
                     source_id=source_id,
                     actionable_error=str(error),
                     now_ms=now_ms,
                     commit=False,
                 )
-                repos.equity_events.finish_fetch_run(
-                    fetch_run_id=fetch_run_id,
-                    source_id=source_id,
-                    status="failed",
-                    finished_at_ms=now_ms,
-                    error=str(error),
-                )
+                repos.conn.commit()
         except Exception:
             return
 
@@ -272,6 +316,13 @@ class EquityEventFetchWorker(WorkerBase):
 
     def _batch_size(self) -> int:
         return max(1, int(getattr(self.settings, "batch_size", 20)))
+
+    def _stale_fetch_run_reap_limit(self) -> int:
+        return max(1_000, self._batch_size() * 10)
+
+    def _stale_fetch_run_cutoff_ms(self, now_ms: int) -> int:
+        hard_timeout_ms = int(max(1.0, float(getattr(self.settings, "hard_timeout_seconds", 180.0))) * 1000)
+        return int(now_ms) - max(hard_timeout_ms, 900_000)
 
 
 def _normalize_envelope(
@@ -306,6 +357,23 @@ def _stable_id(prefix: str, source_id: Any, document: NormalizedEquityDocument) 
 
 def _stable_evidence_job_id(event_document_id: str) -> str:
     return f"equity-event-evidence-job-{hashlib.sha256(event_document_id.encode()).hexdigest()[:32]}"
+
+
+def _skipped_stale_run(*, source_id: str, fetch_run_id: str) -> WorkerResult:
+    return WorkerResult(
+        skipped=1,
+        notes={
+            "source_id": source_id,
+            "fetch_run_id": fetch_run_id,
+            "skip_reason": "fetch_run_no_longer_running",
+        },
+    )
+
+
+def _rollback_conn(conn: Any) -> None:
+    rollback = getattr(conn, "rollback", None)
+    if rollback is not None:
+        rollback()
 
 
 def _now_ms() -> int:

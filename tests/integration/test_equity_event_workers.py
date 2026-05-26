@@ -442,7 +442,7 @@ def test_fetch_worker_records_structured_provider_failure(postgres_conn) -> None
 
     fetch_run = postgres_conn.execute("SELECT * FROM equity_event_fetch_runs").fetchone()
     assert result.failed == 1
-    assert fetch_run["status"] == "failed"
+    assert fetch_run["status"] == "failed_retryable"
     assert fetch_run["http_status"] == 503
     assert fetch_run["error"] == "missing_sec_user_agent"
     assert fetch_run["extra_json"]["error_code"] == "missing_sec_user_agent"

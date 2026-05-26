@@ -9,6 +9,7 @@ from typing import Any
 from psycopg.types.json import Jsonb
 
 _DEFAULT_SOURCE_CLAIM_LEASE_MS = 60_000
+_FETCH_RUN_FINAL_STATUSES = {"success", "failed_retryable", "failed_terminal"}
 
 
 class EquityEventRepository:
@@ -522,6 +523,20 @@ class EquityEventRepository:
             self.conn.commit()
         return fetch_run_id
 
+    def lock_running_fetch_run(self, *, fetch_run_id: str, source_id: str) -> bool:
+        row = self.conn.execute(
+            """
+            SELECT fetch_run_id
+              FROM equity_event_fetch_runs
+             WHERE fetch_run_id = %s
+               AND source_id = %s
+               AND status = 'running'
+             FOR UPDATE
+            """,
+            (fetch_run_id, source_id),
+        ).fetchone()
+        return row is not None
+
     def finish_fetch_run(
         self,
         *,
@@ -538,6 +553,9 @@ class EquityEventRepository:
         extra_json: Mapping[str, Any] | None = None,
         commit: bool = True,
     ) -> dict[str, Any]:
+        normalized_status = str(status)
+        if normalized_status not in _FETCH_RUN_FINAL_STATUSES:
+            raise ValueError(f"invalid_fetch_run_status:{normalized_status}")
         row = self.conn.execute(
             """
             UPDATE equity_event_fetch_runs
@@ -551,11 +569,13 @@ class EquityEventRepository:
                    error = %s,
                    extra_json = %s
              WHERE fetch_run_id = %s
+               AND source_id = %s
+               AND status = 'running'
             RETURNING *
             """,
             (
                 int(finished_at_ms),
-                str(status),
+                normalized_status,
                 max(0, int(fetched_count)),
                 max(0, int(inserted_count)),
                 max(0, int(updated_count)),
@@ -564,9 +584,14 @@ class EquityEventRepository:
                 _compact_error(error),
                 Jsonb(_json_dict(extra_json)),
                 fetch_run_id,
+                source_id,
             ),
         ).fetchone()
-        if status == "success":
+        if row is None:
+            if commit:
+                self.conn.commit()
+            return {}
+        if normalized_status == "success":
             self.conn.execute(
                 """
                 UPDATE equity_event_sources
@@ -594,6 +619,68 @@ class EquityEventRepository:
         if commit:
             self.conn.commit()
         return dict(row)
+
+    def reap_stale_fetch_runs(
+        self,
+        *,
+        stale_before_ms: int,
+        now_ms: int,
+        limit: int,
+        error: str = "stale_fetch_run_timeout",
+        commit: bool = True,
+    ) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            WITH stale AS (
+              SELECT fetch_run_id
+                FROM equity_event_fetch_runs
+               WHERE status = 'running'
+                 AND finished_at_ms = 0
+                 AND started_at_ms < %s
+               ORDER BY started_at_ms ASC, fetch_run_id ASC
+               LIMIT %s
+               FOR UPDATE SKIP LOCKED
+            )
+            UPDATE equity_event_fetch_runs AS runs
+               SET status = 'failed_retryable',
+                   finished_at_ms = %s,
+                   error = %s,
+                   extra_json = COALESCE(runs.extra_json, '{}'::jsonb)
+                     || jsonb_build_object(
+                          'failure_reason', %s::text,
+                          'stale_before_ms', %s::bigint,
+                          'reaped_at_ms', %s::bigint
+                        )
+              FROM stale
+             WHERE runs.fetch_run_id = stale.fetch_run_id
+            RETURNING runs.*
+            """,
+            (
+                int(stale_before_ms),
+                max(0, int(limit)),
+                int(now_ms),
+                _compact_error(error),
+                str(error),
+                int(stale_before_ms),
+                int(now_ms),
+            ),
+        ).fetchall()
+        source_ids = sorted({str(row["source_id"]) for row in rows})
+        if source_ids:
+            self.conn.execute(
+                """
+                UPDATE equity_event_sources
+                   SET consecutive_failures = consecutive_failures + 1,
+                       last_error = %s,
+                       next_fetch_after_ms = LEAST(next_fetch_after_ms, %s),
+                       updated_at_ms = %s
+                 WHERE source_id = ANY(%s::text[])
+                """,
+                (_compact_error(error), int(now_ms), int(now_ms), source_ids),
+            )
+        if commit:
+            self.conn.commit()
+        return [dict(row) for row in rows]
 
     def update_source_http_cache(
         self,
