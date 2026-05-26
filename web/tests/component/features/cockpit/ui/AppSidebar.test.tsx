@@ -40,6 +40,20 @@ describe("AppSidebar", () => {
     expect(screen.getAllByRole("link", { current: "page" })).toHaveLength(1);
   });
 
+  it("keeps the Macro app parent branch-active while only the overview child is current", () => {
+    renderSidebar({ route: "/macro" });
+
+    const macroLink = screen.getByRole("link", { name: "宏观" });
+    expect(macroLink).toHaveAttribute("href", "/macro");
+    expect(macroLink).toHaveAttribute("data-active", "true");
+    expect(macroLink).not.toHaveAttribute("aria-current");
+
+    const overviewLink = screen.getByRole("link", { name: "总览" });
+    expect(overviewLink).toHaveAttribute("href", "/macro");
+    expect(overviewLink).toHaveAttribute("aria-current", "page");
+    expect(screen.getAllByRole("link", { current: "page" })).toHaveLength(1);
+  });
+
   it("renders the full nested Macro tree and marks only the active leaf current", () => {
     renderSidebar({ route: "/macro/assets/equities" });
 
