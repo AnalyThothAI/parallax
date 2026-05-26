@@ -59,7 +59,9 @@ refresh that stages zero rows marks that generation `failed`, raises
 generation visible. After the active pointer has switched, old unreferenced
 generations may be marked `superseded` and cleaned up only by exact
 `projection_version` + `generation_id` batches; refresh must not delete all
-rows for a projection version.
+rows for a projection version. The
+`idx_macro_observation_series_generation_maintenance` index supports these
+active-pointer population and generation cleanup paths.
 
 The `macro_regime_v4` snapshot stores:
 

@@ -518,6 +518,7 @@ def test_runtime_perf_lifecycle_indexes_migration_contract() -> None:
         assert f"COMMENT ON TABLE {table_name}" in text
     for statement in (
         "CREATE INDEX IF NOT EXISTS idx_macro_observation_series_rows_generation_lookup",
+        "CREATE INDEX IF NOT EXISTS idx_macro_observation_series_generation_maintenance",
         "CREATE INDEX IF NOT EXISTS idx_macro_observation_series_generations_status",
         "CREATE INDEX IF NOT EXISTS idx_macro_observation_series_active_generation_generation",
         "CREATE INDEX IF NOT EXISTS idx_equity_event_evidence_jobs_document",
@@ -525,9 +526,15 @@ def test_runtime_perf_lifecycle_indexes_migration_contract() -> None:
         "CREATE INDEX IF NOT EXISTS idx_equity_event_fetch_runs_status_started",
         "DROP INDEX IF EXISTS idx_equity_event_fetch_runs_status_started",
         "DROP INDEX IF EXISTS idx_equity_event_fetch_runs_running_started",
+        "DROP INDEX IF EXISTS idx_macro_observation_series_generation_maintenance",
         "COMMENT ON TABLE token_radar_rank_source_events IS NULL",
     ):
         assert statement in text
+    normalized_text = " ".join(text.split())
+    assert (
+        "ON macro_observation_series_rows( projection_version, generation_id, concept_key ) "
+        "INCLUDE (projected_at_ms, observed_at)"
+    ) in normalized_text
 
 
 def test_runtime_performance_hard_cut_revision_chain() -> None:

@@ -49,6 +49,17 @@ def upgrade() -> None:
     )
     op.execute(
         """
+        CREATE INDEX IF NOT EXISTS idx_macro_observation_series_generation_maintenance
+          ON macro_observation_series_rows(
+            projection_version,
+            generation_id,
+            concept_key
+          )
+          INCLUDE (projected_at_ms, observed_at)
+        """
+    )
+    op.execute(
+        """
         CREATE INDEX IF NOT EXISTS idx_macro_observation_series_generations_status
           ON macro_observation_series_generations(projection_version, status, created_at_ms DESC)
         """
@@ -86,6 +97,7 @@ def downgrade() -> None:
     op.execute("DROP INDEX IF EXISTS idx_equity_event_evidence_jobs_document")
     op.execute("DROP INDEX IF EXISTS idx_macro_observation_series_active_generation_generation")
     op.execute("DROP INDEX IF EXISTS idx_macro_observation_series_generations_status")
+    op.execute("DROP INDEX IF EXISTS idx_macro_observation_series_generation_maintenance")
     op.execute("DROP INDEX IF EXISTS idx_macro_observation_series_rows_generation_lookup")
     op.execute("COMMENT ON TABLE equity_event_evidence_jobs IS NULL")
     op.execute("COMMENT ON TABLE macro_observation_series_active_generation IS NULL")
