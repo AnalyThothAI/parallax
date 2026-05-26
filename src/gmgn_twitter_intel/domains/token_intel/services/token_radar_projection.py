@@ -119,6 +119,11 @@ class TokenRadarProjection:
             return result
 
         source_requests = _source_requests_for_targets(claims, resolved_work_items, now_ms=computed_at_ms)
+        self.repos.token_radar_rank_sources.populate_edges_for_requests(
+            source_requests,
+            projected_at_ms=computed_at_ms,
+            commit=False,
+        )
         rows_by_request = self.repos.token_radar_rank_sources.load_rows_for_requests(source_requests)
         requests_by_target = _source_requests_by_target(source_requests)
         touched: set[tuple[str, str]] = set()
@@ -229,6 +234,11 @@ class TokenRadarProjection:
                     raise RuntimeError("rank input rebuild made no progress for legacy target feature")
                 seen_keys.add(stable_key)
             source_requests = _source_requests_for_rank_rebuild_keys(rebuild_keys, now_ms=computed_at_ms)
+            self.repos.token_radar_rank_sources.populate_edges_for_requests(
+                source_requests,
+                projected_at_ms=computed_at_ms,
+                commit=False,
+            )
             rows_by_request = self.repos.token_radar_rank_sources.load_rows_for_requests(source_requests)
             requests_by_key = {request.request_key: request for request in source_requests}
             with _transaction_context(self.repos.conn):

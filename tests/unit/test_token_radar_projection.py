@@ -58,7 +58,7 @@ def test_token_radar_projection_uses_factor_snapshot_contract():
         "semantic_catalyst",
         "timing_risk",
     )
-    assert TOKEN_RADAR_SOURCE_TABLE == ("token_intent_resolutions+asset_identity_current+enriched_events+market_ticks")
+    assert TOKEN_RADAR_SOURCE_TABLE == "token_radar_rank_source_events"
     assert PROJECTION_VERSION == TOKEN_RADAR_PROJECTION_VERSION
     assert not hasattr(token_radar_projection_module, "TokenRadarSourceQuery")
 
@@ -246,6 +246,8 @@ def test_full_rank_input_rebuild_enumerates_legacy_rows_and_scores_owner_path(mo
         },
     ]
     assert token_radar.source_request_batches[0][0].identity_id == "asset-1"
+    assert token_radar.rank_source_populate_batches[0]["requests"][0].identity_id == "asset-1"
+    assert token_radar.rank_source_populate_batches[0]["commit"] is False
     assert token_radar.score_calls[0]["target"]["identity_id"] == "asset-1"
     assert token_radar.refresh_calls == [{"window": "1h", "scope": "all", "now_ms": now_ms, "limit": 100}]
 
@@ -991,6 +993,7 @@ def test_projection_rebuild_dirty_targets_marks_claim_done_with_payload_hash(mon
     )
 
     assert result["status"] == "ready"
+    assert token_radar.rank_source_populate_batches[0]["commit"] is False
     assert dirty_targets.done == [
         {
             "target_type_key": "Asset",
@@ -1089,6 +1092,7 @@ def test_projection_rebuild_dirty_targets_scores_only_selected_work_items(monkey
     )
 
     assert result["status"] == "ready"
+    assert token_radar.rank_source_populate_batches[0]["commit"] is False
     assert [(request.window, request.scope) for request in token_radar.source_request_batches[0]] == [
         ("5m", "all"),
         ("1h", "matched"),
@@ -1566,6 +1570,16 @@ class FakeRankSources:
             request.request_key: list(self.rows_by_request.get(request.request_key, [])) for request in request_list
         }
 
+    def populate_edges_for_requests(self, requests, *, projected_at_ms, commit):
+        self.token_radar.rank_source_populate_batches.append(
+            {
+                "requests": list(requests),
+                "projected_at_ms": projected_at_ms,
+                "commit": commit,
+            }
+        )
+        return len(requests)
+
 
 class FakeTokenRadar:
     def __init__(
@@ -1587,6 +1601,7 @@ class FakeTokenRadar:
         self.score_calls: list[dict[str, object]] = []
         self.refresh_calls: list[dict[str, object]] = []
         self.source_request_batches: list[list[TokenRadarSourceRequest]] = []
+        self.rank_source_populate_batches: list[dict[str, object]] = []
         self.upserts: list[dict[str, object]] = []
         self.deletes: list[dict[str, object]] = []
         self.target_projection_coverage: list[dict[str, object]] = []

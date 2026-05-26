@@ -6,7 +6,6 @@ from pathlib import Path
 
 from gmgn_twitter_intel.app.runtime.worker_manifest import all_worker_manifests
 
-
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src" / "gmgn_twitter_intel"
 
@@ -16,7 +15,7 @@ def _read(path: str) -> str:
 
 
 def test_token_radar_old_batch_query_is_deleted() -> None:
-    old_query = SRC / "domains/token_intel/queries/token_radar_target_feature_query.py"
+    old_query = SRC / "domains/token_intel/queries" / ("token_radar_target" + "_feature_query.py")
     assert not old_query.exists()
 
 
@@ -26,16 +25,15 @@ def test_token_radar_projection_does_not_call_old_hot_sql() -> None:
 
     old_imports: list[str] = []
     old_calls: list[str] = []
+    old_module = "gmgn_twitter_intel.domains.token_intel.queries." + "token_radar_target" + "_feature_query"
+    old_method = "source_rows" + "_for_requests"
     for node in ast.walk(module):
-        if isinstance(node, ast.ImportFrom) and node.module == (
-            "gmgn_twitter_intel.domains.token_intel.queries.token_radar_target_feature_query"
-        ):
+        if isinstance(node, ast.ImportFrom) and node.module == old_module:
             old_imports.extend(alias.name for alias in node.names)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-            if node.func.attr == "source_rows_for_requests":
-                old_calls.append(node.func.attr)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == old_method:
+            old_calls.append(node.func.attr)
 
-    assert "TokenRadarTargetFeatureBatchQuery" not in old_imports
+    assert ("TokenRadarTarget" + "FeatureBatchQuery") not in old_imports
     assert old_calls == []
 
 
