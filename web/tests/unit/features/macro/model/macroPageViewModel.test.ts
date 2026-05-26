@@ -6,8 +6,9 @@ import {
   macroStatusLabel,
 } from "@features/macro/model/macroPageViewModel";
 import type { MacroModuleView } from "@lib/types";
-import { macroModuleFixture } from "../../../../fixtures/macroFixture";
 import { describe, expect, it } from "vitest";
+
+import { macroModuleFixture } from "../../../../fixtures/macroFixture";
 
 describe("macroPageViewModel", () => {
   it("uses display-ready v2 labels and never surfaces raw gap strings", () => {
