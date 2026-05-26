@@ -22,6 +22,19 @@ The 2026-05-26 hard cut proved the pattern: first make the pressure visible,
 then remove the exact hot SQL or retry loop. Do not hide backlog by weakening
 `/readyz`, reducing worker count, or deleting facts.
 
+## Hot/Cold Lifecycle Contract
+
+PostgreSQL tables are grouped by runtime temperature before any performance or
+maintenance change. Hot paths stay compact and indexed by claimed work keys;
+cold paths are retained by partition lifecycle, not by worker-loop deletes.
+
+| Retention class | Tables | Lifecycle rule |
+| --- | --- | --- |
+| Hot compact rank/read path | `token_radar_rank_source_events`, `token_radar_target_features`, `token_radar_rows`, `macro_observation_series_rows` active generation | No wide JSON/text scans. Reads and claims must use compact scalar columns indexed by claimed work keys, generation/version keys, target keys, or ranking keys. |
+| Selected-row hydrate | `events`, `enriched_events`, `equity_event_evidence_artifacts` | Access only after ranking, document selection, or explicit evidence selection has chosen stable row ids or payload hashes. Do not join these wide payload tables into rank/discovery scans. |
+| Cold audit/history | `token_radar_snapshot_audit_*`, `token_radar_rank_history_*`, `raw_frames` | Partition lifecycle only. Runtime workers must not issue loop deletes against audit, history, or provider raw-frame tables. |
+| Control plane | Dirty targets, jobs, fetch runs | Leased, bounded, and terminal-evidence based. Queue state transitions must preserve attempts, lease ownership, payload hash/idempotency keys, and explicit terminal reasons. |
+
 ## Source Material
 
 - Spec: `docs/superpowers/specs/active/2026-05-26-postgres-performance-queue-hard-cut-cn.md`
@@ -152,6 +165,17 @@ Hard gates enforced by the check:
 The script also prints the current Alembic head. Runtime results are not
 accepted unless that head corresponds to the deployed runtime performance hard
 cut migration set.
+
+The script prints a read-only lifecycle report with this CSV header:
+
+```text
+table_name,total_bytes,live_rows,dead_rows,last_analyze,retention_class,recommended_action
+```
+
+The report is advisory only. It reads `pg_stat_user_tables` and
+`pg_total_relation_size(relid)` for the hot/cold lifecycle tables, then labels
+each row with the retention class above. It recommends follow-up review but does
+not run partition changes, heap maintenance, queue updates, or worker actions.
 
 ## Query Design Rules
 

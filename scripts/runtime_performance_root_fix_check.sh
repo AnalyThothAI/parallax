@@ -122,6 +122,63 @@ echo "${token_radar_top_sql_share}"
 assert_decimal_le "top sql token radar share percent" \
   "${token_radar_top_sql_share}" "${TOKEN_RADAR_TOP_SQL_SHARE_MAX}"
 
+echo "== postgres lifecycle report =="
+psql_cmd --csv -c "
+WITH lifecycle_targets AS (
+  SELECT
+    stat.relid,
+    stat.relname AS table_name,
+    stat.n_live_tup AS live_rows,
+    stat.n_dead_tup AS dead_rows,
+    GREATEST(stat.last_analyze, stat.last_autoanalyze) AS last_analyze,
+    CASE
+      WHEN stat.relname = 'token_radar_rank_source_events'
+        THEN 'hot compact rank/read path'
+      WHEN stat.relname IN ('events', 'enriched_events', 'equity_event_evidence_artifacts')
+        THEN 'selected-row hydrate'
+      WHEN stat.relname = 'raw_frames'
+        OR stat.relname LIKE 'token_radar_snapshot_audit_%'
+        OR stat.relname LIKE 'token_radar_rank_history_%'
+        THEN 'cold audit/history'
+      ELSE 'unknown'
+    END AS retention_class
+  FROM pg_stat_user_tables stat
+  WHERE stat.relname IN (
+      'raw_frames',
+      'events',
+      'enriched_events',
+      'equity_event_evidence_artifacts',
+      'token_radar_rank_source_events'
+    )
+    OR stat.relname LIKE 'token_radar_snapshot_audit_%'
+    OR stat.relname LIKE 'token_radar_rank_history_%'
+)
+SELECT
+  table_name,
+  pg_total_relation_size(relid) AS total_bytes,
+  live_rows,
+  dead_rows,
+  last_analyze,
+  retention_class,
+  CASE retention_class
+    WHEN 'hot compact rank/read path'
+      THEN 'verify compact indexed claim/read path and analyze after owner-path rebuild'
+    WHEN 'selected-row hydrate'
+      THEN 'verify access follows ranking or document selection by stable key'
+    WHEN 'cold audit/history'
+      THEN 'review retention window and partition lifecycle plan before operator maintenance'
+    ELSE 'classify lifecycle owner before changing maintenance policy'
+  END AS recommended_action
+FROM lifecycle_targets
+ORDER BY
+  CASE retention_class
+    WHEN 'hot compact rank/read path' THEN 1
+    WHEN 'selected-row hydrate' THEN 2
+    WHEN 'cold audit/history' THEN 3
+    ELSE 4
+  END,
+  table_name;"
+
 if [[ "${failures}" -gt 0 ]]; then
   echo "runtime performance root fix check failed: ${failures} hard gate(s) failed" >&2
   exit 1
