@@ -228,6 +228,59 @@ describe("Macro module pages", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders non-asset index pages with generic module index copy", () => {
+    const module = macroModuleFixture({
+      snapshot: {
+        ...macroModuleFixture().snapshot,
+        module_id: "rates",
+        route_path: "/macro/rates",
+        section: "rates",
+        title: "利率",
+      },
+      section_boards: [
+        {
+          id: "yield-curve",
+          title: "收益率曲线",
+          href: "/macro/rates/yield-curve",
+          status: "ok",
+          status_label: "可用",
+          rows: [
+            {
+              concept_key: "rates:dgs10",
+              label: "10年期美债收益率",
+              short_label: "10Y",
+              status: "ok",
+              display_value: "4.20%",
+            },
+          ],
+        },
+      ],
+    });
+
+    renderWithProviders(
+      <MacroModulePageRenderer
+        module={module}
+        moduleId="rates"
+        pageKind="index"
+        token="test-token"
+      />,
+      { route: "/macro/rates" },
+    );
+
+    expect(screen.getByRole("region", { name: "利率模块索引" })).toHaveAttribute(
+      "data-page-kind",
+      "index",
+    );
+    expect(screen.getByRole("table", { name: "利率模块目录" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "查看收益率曲线" })).toHaveAttribute(
+      "href",
+      "/macro/rates/yield-curve",
+    );
+    expect(screen.queryByText("大类资产索引")).not.toBeInTheDocument();
+    expect(screen.queryByText("资产目录")).not.toBeInTheDocument();
+    expect(screen.queryByText("大类资产矩阵")).not.toBeInTheDocument();
+  });
+
   it("keeps a stable chart loading state while backend series is pending", async () => {
     let resolveSeries: (value: unknown) => void = () => {
       throw new Error("series resolver was not initialized");

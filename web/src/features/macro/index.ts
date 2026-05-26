@@ -23,6 +23,7 @@ export { MacroTimeSeriesChart } from "./ui/charts/MacroTimeSeriesChart";
 export { MacroYieldCurveChart } from "./ui/charts/MacroYieldCurveChart";
 export { MacroAssetIndexPage } from "./ui/pages/MacroAssetIndexPage";
 export { MacroLeafModulePage } from "./ui/pages/MacroLeafModulePage";
+export { MacroModuleIndexPage } from "./ui/pages/MacroModuleIndexPage";
 export { MacroModulePageRenderer } from "./ui/pages/MacroModulePageRenderer";
 export { MacroOverviewModulePage } from "./ui/pages/MacroOverviewModulePage";
 export { MacroCorrelationMatrix } from "./ui/tables/MacroCorrelationMatrix";

@@ -1,11 +1,13 @@
 @layer app.features {
-  .macro-asset-index-table {
+  .macro-asset-index-table,
+  .macro-module-index-table {
     width: 100%;
     min-width: var(--macro-table-min-width, 720px);
     border-collapse: collapse;
   }
 
-  .macro-asset-index-table caption {
+  .macro-asset-index-table caption,
+  .macro-module-index-table caption {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -17,7 +19,9 @@
   }
 
   .macro-asset-index-table th,
-  .macro-asset-index-table td {
+  .macro-asset-index-table td,
+  .macro-module-index-table th,
+  .macro-module-index-table td {
     padding: 10px 12px;
     border-bottom: 1px solid rgba(148, 163, 184, 0.12);
     color: var(--text-primary, #f8fafc);
@@ -27,7 +31,8 @@
     vertical-align: middle;
   }
 
-  .macro-asset-index-table thead th {
+  .macro-asset-index-table thead th,
+  .macro-module-index-table thead th {
     position: sticky;
     top: 0;
     z-index: 1;
@@ -40,21 +45,27 @@
   }
 
   .macro-asset-index-table tbody tr:last-child th,
-  .macro-asset-index-table tbody tr:last-child td {
+  .macro-asset-index-table tbody tr:last-child td,
+  .macro-module-index-table tbody tr:last-child th,
+  .macro-module-index-table tbody tr:last-child td {
     border-bottom: 0;
   }
 
   .macro-asset-index-table tbody tr:hover th,
-  .macro-asset-index-table tbody tr:hover td {
+  .macro-asset-index-table tbody tr:hover td,
+  .macro-module-index-table tbody tr:hover th,
+  .macro-module-index-table tbody tr:hover td {
     background: rgba(125, 211, 252, 0.035);
   }
 
-  .macro-asset-index-asset {
+  .macro-asset-index-asset,
+  .macro-module-index-module {
     color: var(--text-primary, #f8fafc);
     font-weight: 800;
   }
 
-  .macro-asset-index-status {
+  .macro-asset-index-status,
+  .macro-module-index-status {
     display: inline-flex;
     align-items: center;
     min-height: 24px;
@@ -67,27 +78,33 @@
     font-weight: 800;
   }
 
-  .macro-asset-index-status[data-status="partial"] {
+  .macro-asset-index-status[data-status="partial"],
+  .macro-module-index-status[data-status="partial"] {
     border-color: rgba(251, 191, 36, 0.26);
     color: #fbbf24;
     background: rgba(251, 191, 36, 0.08);
   }
 
   .macro-asset-index-status[data-status="missing"],
-  .macro-asset-index-status[data-status="unknown"] {
+  .macro-asset-index-status[data-status="unknown"],
+  .macro-module-index-status[data-status="missing"],
+  .macro-module-index-status[data-status="unknown"] {
     border-color: rgba(148, 163, 184, 0.2);
     color: var(--text-muted, #94a3b8);
     background: rgba(148, 163, 184, 0.06);
   }
 
   .macro-asset-index-status[data-status="ok"],
-  .macro-asset-index-status[data-status="ready"] {
+  .macro-asset-index-status[data-status="ready"],
+  .macro-module-index-status[data-status="ok"],
+  .macro-module-index-status[data-status="ready"] {
     border-color: rgba(52, 211, 153, 0.24);
     color: #86efac;
     background: rgba(52, 211, 153, 0.08);
   }
 
-  .macro-asset-index-link {
+  .macro-asset-index-link,
+  .macro-module-index-link {
     display: inline-flex;
     align-items: center;
     min-height: 26px;
@@ -103,12 +120,15 @@
   }
 
   .macro-asset-index-link:hover,
-  .macro-asset-index-link:focus-visible {
+  .macro-asset-index-link:focus-visible,
+  .macro-module-index-link:hover,
+  .macro-module-index-link:focus-visible {
     border-color: rgba(125, 211, 252, 0.42);
     color: var(--text-primary, #f8fafc);
   }
 
-  .macro-asset-index-empty {
+  .macro-asset-index-empty,
+  .macro-module-index-empty {
     display: grid;
     min-height: 96px;
     place-items: center;
