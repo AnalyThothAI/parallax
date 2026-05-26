@@ -68,7 +68,7 @@ describe("Macro module pages", () => {
       { route: "/macro" },
     );
 
-    expect(screen.getByLabelText("总览模块页面")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "总览模块页面" })).toBeInTheDocument();
     expectRegionsInOrder(["宏观总览", "核心驱动", "全局传导链", "数据健康"]);
     const overview = screen.getByRole("region", { name: "宏观总览" });
     expect(within(overview).getByText("总览：风险偏好等待利率与流动性确认")).toBeInTheDocument();
@@ -130,7 +130,7 @@ describe("Macro module pages", () => {
       { route: "/macro/assets/equities" },
     );
 
-    expect(screen.getByLabelText("美股模块页面")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "美股模块页面" })).toBeInTheDocument();
     expectRegionsInOrder([
       "关键指标",
       "市场板",

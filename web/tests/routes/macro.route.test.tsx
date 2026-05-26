@@ -1,8 +1,8 @@
-import type { MacroModuleView } from "@lib/types";
 import { screen, waitFor, within } from "@testing-library/react";
 import {
   macroCorrelationFixture,
   macroModuleFixture,
+  macroOverviewModuleFixture,
   macroSeriesFixture,
 } from "@tests/fixtures/macroFixture";
 import { ok } from "@tests/msw/fixtures";
@@ -46,9 +46,9 @@ describe("macro route", () => {
       mock.getApiImpl = async (path, options) => {
         if (path === "/api/macro/modules/overview") {
           return ok(
-            legacyMacroModuleFixture({
+            macroOverviewModuleFixture({
               snapshot: {
-                ...macroModuleFixture().snapshot,
+                ...macroOverviewModuleFixture().snapshot,
                 module_id: "overview",
                 route_path: "/macro",
                 title: "总览",
@@ -58,7 +58,7 @@ describe("macro route", () => {
           );
         }
         if (path === "/api/macro/modules/assets/equities") {
-          return ok(legacyMacroModuleFixture());
+          return ok(macroModuleFixture());
         }
         if (path === "/api/macro/series") {
           const conceptKeys = String(options?.params?.concept_keys ?? "asset:spx").split(",");
@@ -126,10 +126,12 @@ describe("macro route", () => {
     expect(await screen.findByRole("heading", { name: "美股风险" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "宏观" })).not.toBeInTheDocument();
     expect(screen.getByText("美股风险：等待小盘确认")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "图表与市场板" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "结构地图" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "规则证据" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "数据质量" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "美股模块页面" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "市场板" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "传导链" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "模块证据" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "数据来源" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "模块数据健康" })).toBeInTheDocument();
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/assets/equities", {
         token: "secret",
@@ -182,18 +184,4 @@ function setViewport(width: number, height: number) {
   Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
   Object.defineProperty(window, "innerHeight", { configurable: true, value: height });
   window.dispatchEvent(new Event("resize"));
-}
-
-function legacyMacroModuleFixture(overrides: Partial<MacroModuleView> = {}): MacroModuleView {
-  const module = macroModuleFixture(overrides);
-  return {
-    ...module,
-    data_gaps: [
-      ...module.data_health.module_gaps,
-      ...module.data_health.chart_gaps,
-      ...module.data_health.global_gaps,
-    ],
-    evidence: module.module_evidence,
-    read: module.module_read,
-  };
 }

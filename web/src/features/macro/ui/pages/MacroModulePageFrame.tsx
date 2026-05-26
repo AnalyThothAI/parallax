@@ -72,7 +72,7 @@ export function MacroModulePageFrame({
   const hasSupportingTable = showSupportingTable && Boolean(supportingTable.rows?.length);
 
   return (
-    <div className="macro-page-layout" aria-label={`${moduleLabel}模块页面`}>
+    <section className="macro-page-layout" aria-label={`${moduleLabel}模块页面`}>
       <section className="macro-page-kpi-strip" aria-label="关键指标">
         {module.tiles.length > 0 ? (
           module.tiles.map((tile, index) => (
@@ -171,7 +171,7 @@ export function MacroModulePageFrame({
           <DataHealthBuckets dataHealth={module.data_health} scope="leaf" />
         </section>
       </section>
-    </div>
+    </section>
   );
 }
 
@@ -197,7 +197,7 @@ export function MacroOverviewPageFrame({
   const evidenceCount = evidenceGroups.reduce((count, group) => count + group.items.length, 0);
 
   return (
-    <div className="macro-page-layout" aria-label={`${pageLabel}模块页面`}>
+    <section className="macro-page-layout" aria-label={`${pageLabel}模块页面`}>
       <section
         className="macro-page-panel macro-page-panel-current macro-page-overview-read"
         aria-label="宏观总览"
@@ -263,7 +263,7 @@ export function MacroOverviewPageFrame({
         />
         <DataHealthBuckets dataHealth={module.data_health} scope="overview" />
       </section>
-    </div>
+    </section>
   );
 }
 
