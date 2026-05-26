@@ -1227,7 +1227,7 @@ class EquityEventRepository:
         content_hash: str | None = None,
         commit: bool = True,
     ) -> bool:
-        if attempt_count is None or lease_owner is None:
+        if attempt_count is None or lease_owner is None or event_document_id is None or content_hash is None:
             if commit:
                 self.conn.commit()
             return False
@@ -1251,14 +1251,12 @@ class EquityEventRepository:
                AND status = 'running'
                AND attempt_count = %s
                AND lease_owner = %s
-               AND (%s::text IS NULL OR event_document_id = %s)
-               AND (
-                 %s::text IS NULL OR EXISTS (
-                   SELECT 1
-                     FROM equity_event_documents AS documents
-                    WHERE documents.event_document_id = equity_event_evidence_jobs.event_document_id
-                      AND documents.content_hash IS NOT DISTINCT FROM %s
-                 )
+               AND event_document_id = %s
+               AND EXISTS (
+                 SELECT 1
+                   FROM equity_event_documents AS documents
+                  WHERE documents.event_document_id = equity_event_evidence_jobs.event_document_id
+                    AND documents.content_hash IS NOT DISTINCT FROM %s
                )
             RETURNING evidence_job_id
             """,
@@ -1271,8 +1269,6 @@ class EquityEventRepository:
                 int(attempt_count),
                 str(lease_owner),
                 event_document_id,
-                event_document_id,
-                content_hash,
                 content_hash,
             ),
         ).fetchone()
@@ -1292,7 +1288,7 @@ class EquityEventRepository:
         content_hash: str | None = None,
         commit: bool = True,
     ) -> bool:
-        if attempt_count is None or lease_owner is None:
+        if attempt_count is None or lease_owner is None or event_document_id is None or content_hash is None:
             if commit:
                 self.conn.commit()
             return False
@@ -1309,14 +1305,12 @@ class EquityEventRepository:
                AND status = 'running'
                AND attempt_count = %s
                AND lease_owner = %s
-               AND (%s::text IS NULL OR event_document_id = %s)
-               AND (
-                 %s::text IS NULL OR EXISTS (
-                   SELECT 1
-                     FROM equity_event_documents AS documents
-                    WHERE documents.event_document_id = equity_event_evidence_jobs.event_document_id
-                      AND documents.content_hash IS NOT DISTINCT FROM %s
-                 )
+               AND event_document_id = %s
+               AND EXISTS (
+                 SELECT 1
+                   FROM equity_event_documents AS documents
+                  WHERE documents.event_document_id = equity_event_evidence_jobs.event_document_id
+                    AND documents.content_hash IS NOT DISTINCT FROM %s
                )
             RETURNING evidence_job_id
             """,
@@ -1328,8 +1322,6 @@ class EquityEventRepository:
                 int(attempt_count),
                 str(lease_owner),
                 event_document_id,
-                event_document_id,
-                content_hash,
                 content_hash,
             ),
         ).fetchone()

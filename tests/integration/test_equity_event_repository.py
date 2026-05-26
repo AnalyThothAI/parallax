@@ -255,6 +255,55 @@ def test_evidence_job_retryable_finish_rejects_reset_document_content(postgres_c
     assert job["lease_owner"] == "equity_event_evidence_hydration"
 
 
+def test_evidence_job_failure_finish_rejects_missing_content_hash_guard(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    document = _seed_event_document(repos, event_document_id="event-doc-missing-hash-guard")
+    repos.equity_events.enqueue_evidence_job(
+        evidence_job_id="evidence-job-missing-hash-guard",
+        event_document_id=document["event_document_id"],
+        source_id="sec:MSFT",
+        due_at_ms=NOW_MS,
+        max_attempts=3,
+        now_ms=NOW_MS,
+    )
+    claimed = repos.equity_events.claim_due_evidence_jobs(
+        now_ms=NOW_MS + 1,
+        limit=1,
+        lease_owner="equity_event_evidence_hydration",
+        lease_ms=60_000,
+    )[0]
+
+    retryable_finished = repos.equity_events.finish_evidence_job_retryable(
+        evidence_job_id="evidence-job-missing-hash-guard",
+        error="evidence_hydration_exception:RuntimeError",
+        due_at_ms=NOW_MS + 60_000,
+        now_ms=NOW_MS + 2,
+        attempt_count=claimed["attempt_count"],
+        lease_owner="equity_event_evidence_hydration",
+        event_document_id=document["event_document_id"],
+        content_hash=None,
+    )
+    terminal_finished = repos.equity_events.finish_evidence_job_terminal(
+        evidence_job_id="evidence-job-missing-hash-guard",
+        finished_at_ms=NOW_MS + 3,
+        error="evidence_hydration_exception:RuntimeError",
+        attempt_count=claimed["attempt_count"],
+        lease_owner="equity_event_evidence_hydration",
+        event_document_id=document["event_document_id"],
+        content_hash=None,
+    )
+    job = postgres_conn.execute(
+        "SELECT * FROM equity_event_evidence_jobs WHERE evidence_job_id = %s",
+        ("evidence-job-missing-hash-guard",),
+    ).fetchone()
+
+    assert retryable_finished is False
+    assert terminal_finished is False
+    assert job["status"] == "running"
+    assert job["attempt_count"] == claimed["attempt_count"]
+    assert job["lease_owner"] == "equity_event_evidence_hydration"
+
+
 def test_equity_event_repository_writes_raw_document_event_and_page_row(postgres_conn) -> None:
     repos = repositories_for_connection(postgres_conn)
     repos.equity_events.upsert_source(

@@ -194,7 +194,7 @@ def test_hydration_worker_retryable_exception_passes_document_claim_guard() -> N
     assert wake_bus.documents_written == []
 
 
-def test_hydration_worker_missing_input_failure_uses_claim_guard() -> None:
+def test_hydration_worker_missing_input_failure_does_not_finish_without_content_guard() -> None:
     repo = _HydrationRepo(load_payload={})
     wake_bus = _WakeBus()
     worker = EquityEventEvidenceHydrationWorker(
@@ -215,18 +215,70 @@ def test_hydration_worker_missing_input_failure_uses_claim_guard() -> None:
     result = worker.run_once_sync(now_ms=NOW_MS)
 
     assert result.failed == 1
-    assert repo.terminals == [
+    assert result.notes["input_missing_unrecoverable_without_content_guard"] == 1
+    assert repo.terminals == []
+    assert repo.retryables == []
+
+
+def test_hydration_worker_defensive_exception_without_content_hash_does_not_finish() -> None:
+    repo = _HydrationRepo(load_payload=_broken_payload(content_hash=None))
+    wake_bus = _WakeBus()
+    worker = EquityEventEvidenceHydrationWorker(
+        name="equity_event_evidence_hydration",
+        settings=SimpleNamespace(
+            batch_size=10,
+            max_attempts=3,
+            lease_ms=60_000,
+            statement_timeout_seconds=None,
+        ),
+        db=_Db(repo),
+        telemetry=SimpleNamespace(),
+        document_provider=_Provider(),
+        wake_bus=wake_bus,
+        clock_ms=lambda: NOW_MS,
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.failed == 1
+    assert result.notes["unguarded_failure_noop"] == 1
+    assert repo.retryables == []
+    assert repo.terminals == []
+    assert wake_bus.documents_written == []
+
+
+def test_hydration_worker_defensive_exception_with_content_hash_finishes_retryable() -> None:
+    repo = _HydrationRepo(load_payload=_broken_payload(content_hash="content-hash"))
+    wake_bus = _WakeBus()
+    worker = EquityEventEvidenceHydrationWorker(
+        name="equity_event_evidence_hydration",
+        settings=SimpleNamespace(
+            batch_size=10,
+            max_attempts=3,
+            lease_ms=60_000,
+            statement_timeout_seconds=None,
+        ),
+        db=_Db(repo),
+        telemetry=SimpleNamespace(),
+        document_provider=_Provider(),
+        wake_bus=wake_bus,
+        clock_ms=lambda: NOW_MS,
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.failed == 1
+    assert repo.retryables == [
         {
             "evidence_job_id": "job-event-document-id",
-            "finished_at_ms": NOW_MS,
-            "error": "evidence_hydration_input_missing",
             "attempt_count": 1,
             "lease_owner": "equity_event_evidence_hydration",
             "event_document_id": "event-document-id",
-            "content_hash": None,
+            "content_hash": "content-hash",
         }
     ]
-    assert repo.retryables == []
+    assert repo.terminals == []
+    assert wake_bus.documents_written == []
 
 
 @dataclass
@@ -464,6 +516,27 @@ class _HydrationRepo:
         if actionable_error is not None:
             payload["actionable_error"] = actionable_error
         self.source_freshness.append(payload)
+
+
+def _broken_payload(*, content_hash: str | None) -> dict[str, Any]:
+    return {
+        "job": {
+            "evidence_job_id": "job-event-document-id",
+            "event_document_id": "event-document-id",
+            "attempt_count": 1,
+            "max_attempts": 3,
+            "lease_owner": "equity_event_evidence_hydration",
+        },
+        "source": {
+            "source_id": "sec:MSFT",
+            "provider_type": "sec_submissions",
+            "source_role": "official_regulator",
+        },
+        "document": {
+            "event_document_id": "event-document-id",
+            "content_hash": content_hash,
+        },
+    }
 
 
 class _Db:
