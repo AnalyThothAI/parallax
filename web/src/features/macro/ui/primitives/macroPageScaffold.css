@@ -1,0 +1,25 @@
+@layer app.features {
+  .macro-page-scaffold {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 14px;
+    min-width: 0;
+    align-items: start;
+  }
+
+  .macro-page-scaffold[data-page-kind="overview"],
+  .macro-page-scaffold[data-page-kind="index"],
+  .macro-page-scaffold[data-page-kind="matrix"] {
+    gap: 16px;
+  }
+
+  .macro-page-scaffold > * {
+    min-width: 0;
+  }
+
+  @media (max-width: 1279px) {
+    .macro-page-scaffold {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+}
