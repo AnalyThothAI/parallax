@@ -35,7 +35,27 @@ describe("AppSidebar", () => {
     expect(macroLink).not.toHaveAttribute("aria-current");
 
     const correlationLink = screen.getByRole("link", { name: "相关性" });
+    expect(correlationLink).toHaveAttribute("href", "/macro/assets/correlation");
     expect(correlationLink).toHaveAttribute("aria-current", "page");
+    expect(screen.getAllByRole("link", { current: "page" })).toHaveLength(1);
+  });
+
+  it("renders the full nested Macro tree and marks only the active leaf current", () => {
+    renderSidebar({ route: "/macro/assets/equities" });
+
+    expect(screen.getByRole("link", { name: "宏观" })).toHaveAttribute("data-active", "true");
+    expect(screen.getByRole("link", { name: "大类资产" })).toHaveAttribute(
+      "href",
+      "/macro/assets",
+    );
+    expect(screen.getByRole("link", { name: "美股" })).toHaveAttribute(
+      "href",
+      "/macro/assets/equities",
+    );
+    expect(screen.getByRole("link", { name: "美股" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     expect(screen.getAllByRole("link", { current: "page" })).toHaveLength(1);
   });
 

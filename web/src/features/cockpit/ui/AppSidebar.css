@@ -213,17 +213,40 @@
   .cockpit-app-sidebar [data-sidebar="menu-sub"],
   [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="menu-sub"] {
     margin: 4px 0 3px 18px;
+    max-width: calc(100% - 18px);
+    min-width: 0;
     border-left-color: rgba(154, 159, 146, 0.12);
     padding: 2px 0 2px 9px;
+  }
+
+  .cockpit-app-sidebar [data-sidebar="menu-sub"][data-depth="2"],
+  [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="menu-sub"][data-depth="2"] {
+    margin: 2px 0 3px 12px;
+    max-width: calc(100% - 12px);
+    border-left-color: rgba(123, 181, 216, 0.12);
+    padding-left: 8px;
+  }
+
+  .cockpit-app-sidebar [data-sidebar="menu-sub-item"],
+  [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="menu-sub-item"] {
+    min-width: 0;
   }
 
   .cockpit-app-sidebar [data-sidebar="menu-sub-button"],
   [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="menu-sub-button"] {
     position: relative;
+    width: 100%;
     height: 28px;
     border-radius: 6px;
     color: var(--ash);
     font-size: 12px;
+  }
+
+  .cockpit-app-sidebar [data-sidebar="menu-sub-button"][data-depth="2"],
+  [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="menu-sub-button"][data-depth="2"] {
+    height: 26px;
+    padding-inline: 7px;
+    font-size: 11px;
   }
 
   .cockpit-app-sidebar [data-sidebar="menu-sub-button"][data-active="true"],
@@ -405,12 +428,24 @@
 
     [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="menu-sub"] {
       margin-left: 22px;
+      max-width: calc(100% - 22px);
       padding-left: 11px;
+    }
+
+    [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="menu-sub"][data-depth="2"] {
+      margin-left: 14px;
+      max-width: calc(100% - 14px);
+      padding-left: 9px;
     }
 
     [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="menu-sub-button"] {
       min-height: 34px;
       font-size: 13px;
+    }
+
+    [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="menu-sub-button"][data-depth="2"] {
+      min-height: 31px;
+      font-size: 12px;
     }
 
     [data-sidebar="sidebar"][data-mobile="true"] .cockpit-app-sidebar-footer {

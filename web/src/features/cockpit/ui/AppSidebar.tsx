@@ -90,9 +90,9 @@ function AppSidebarItem({ item }: { item: AppNavigationItem }) {
         )}
       </SidebarMenuButton>
       {item.children?.length ? (
-        <SidebarMenuSub>
+        <SidebarMenuSub className="cockpit-app-sidebar-menu-sub" data-depth={1}>
           {item.children.map((child) => (
-            <AppSidebarSubItem item={child} key={child.to} />
+            <AppSidebarSubItem depth={1} item={child} key={child.to} />
           ))}
         </SidebarMenuSub>
       ) : null}
@@ -100,17 +100,35 @@ function AppSidebarItem({ item }: { item: AppNavigationItem }) {
   );
 }
 
-function AppSidebarSubItem({ item }: { item: AppNavigationItem }) {
+function AppSidebarSubItem({ depth, item }: { depth: number; item: AppNavigationItem }) {
   const active = useAppNavigationMatch(item);
   const closeSidebarOnNavigate = useCloseSidebarOnNavigate();
 
   return (
     <SidebarMenuSubItem>
-      <SidebarMenuSubButton asChild isActive={active}>
-        <NavLink end={item.end} onClick={closeSidebarOnNavigate} to={item.to}>
-          <span>{item.label}</span>
-        </NavLink>
+      <SidebarMenuSubButton
+        asChild
+        className="cockpit-app-sidebar-menu-sub-button"
+        data-depth={depth}
+        isActive={active}
+      >
+        {item.children?.length ? (
+          <Link onClick={closeSidebarOnNavigate} to={item.to}>
+            <span>{item.label}</span>
+          </Link>
+        ) : (
+          <NavLink end={item.end} onClick={closeSidebarOnNavigate} to={item.to}>
+            <span>{item.label}</span>
+          </NavLink>
+        )}
       </SidebarMenuSubButton>
+      {item.children?.length ? (
+        <SidebarMenuSub className="cockpit-app-sidebar-menu-sub" data-depth={depth + 1}>
+          {item.children.map((child) => (
+            <AppSidebarSubItem depth={depth + 1} item={child} key={child.to} />
+          ))}
+        </SidebarMenuSub>
+      ) : null}
     </SidebarMenuSubItem>
   );
 }
