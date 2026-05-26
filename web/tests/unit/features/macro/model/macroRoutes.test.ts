@@ -63,7 +63,11 @@ describe("macroRoutes", () => {
     });
     expect(parseMacroRouteTail("assets/correlation")).toMatchObject({
       canonicalPath: "/macro/assets/correlation",
-      routeKind: "asset-correlation",
+      pageKind: "matrix",
+      productTier: "primary",
+      routeId: "assets/correlation",
+      routeKind: "matrix",
+      wasUnknown: false,
     });
     expect(parseMacroRouteTail("not-real")).toMatchObject({
       canonicalPath: "/macro/not-real",
@@ -84,6 +88,11 @@ describe("macroRoutes", () => {
       { label: "宏观", href: "/macro" },
       { label: "大类资产", href: "/macro/assets" },
       { label: "加密衍生品", href: "/macro/assets/crypto-derivatives" },
+    ]);
+    expect(buildMacroBreadcrumbs("assets/correlation").map((crumb) => crumb.label)).toEqual([
+      "宏观",
+      "大类资产",
+      "相关性",
     ]);
   });
 

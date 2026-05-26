@@ -2,6 +2,12 @@ import {
   MACRO_NAVIGATION_TREE,
   type MacroNavigationNode,
 } from "./macroNavigationTree";
+import {
+  macroRouteDescriptor,
+  type MacroPageKind,
+  type MacroProductTier,
+  type MacroRouteId,
+} from "./macroPageRegistry";
 
 export type MacroModuleId =
   | "overview"
@@ -62,18 +68,27 @@ export type MacroRouteResolution =
   | {
       routeKind: "module";
       moduleId: MacroModuleId;
+      pageKind: Exclude<MacroPageKind, "unsupported">;
+      productTier: Exclude<MacroProductTier, "unsupported">;
+      routeId: MacroModuleId;
       canonicalPath: string;
       wasUnknown: false;
     }
   | {
-      routeKind: "asset-correlation";
+      routeKind: "matrix";
+      pageKind: "matrix";
+      productTier: Exclude<MacroProductTier, "unsupported">;
+      routeId: "assets/correlation";
       canonicalPath: string;
       wasUnknown: false;
     }
   | {
       routeKind: "unsupported";
+      pageKind: "unsupported";
+      productTier: "unsupported";
       canonicalPath: string;
       routeTail: string;
+      wasUnknown: true;
     };
 
 export type MacroBreadcrumb = {
@@ -91,32 +106,47 @@ const ROUTES_BY_ID = new Map(MACRO_MODULE_ROUTES.map((route) => [route.moduleId,
 export function parseMacroRouteTail(routeTail: string | undefined): MacroRouteResolution {
   const normalized = normalizeRouteTail(routeTail);
   if (normalized === "") {
+    const descriptor = macroRouteDescriptor("overview");
     return {
       canonicalPath: "/macro",
       moduleId: "overview",
+      pageKind: descriptor?.pageKind ?? "overview",
+      productTier: descriptor?.productTier ?? "primary",
+      routeId: "overview",
       routeKind: "module",
       wasUnknown: false,
     };
   }
-  if (normalized === "assets/correlation") {
+
+  const descriptor = macroRouteDescriptor(normalized as MacroRouteId);
+  if (descriptor?.routeId === "assets/correlation") {
     return {
-      canonicalPath: "/macro/assets/correlation",
-      routeKind: "asset-correlation",
+      canonicalPath: descriptor.href,
+      pageKind: "matrix",
+      productTier: descriptor.productTier,
+      routeId: descriptor.routeId,
+      routeKind: "matrix",
       wasUnknown: false,
     };
   }
-  if (isMacroModuleId(normalized)) {
+  if (descriptor && isMacroModuleId(descriptor.routeId)) {
     return {
-      canonicalPath: macroModuleHref(normalized),
-      moduleId: normalized,
+      canonicalPath: descriptor.href,
+      moduleId: descriptor.routeId,
+      pageKind: descriptor.pageKind,
+      productTier: descriptor.productTier,
+      routeId: descriptor.routeId,
       routeKind: "module",
       wasUnknown: false,
     };
   }
   return {
     canonicalPath: `/macro/${normalized}`,
+    pageKind: "unsupported",
+    productTier: "unsupported",
     routeKind: "unsupported",
     routeTail: normalized,
+    wasUnknown: true,
   };
 }
 
@@ -129,16 +159,16 @@ export function macroRouteLabel(moduleId: MacroModuleId): string {
 }
 
 export function macroNavigationPath(
-  moduleId: MacroModuleId | "assets/correlation",
+  routeId: MacroRouteId,
 ): MacroNavigationNode[] {
-  return findNavigationPath(MACRO_NAVIGATION_TREE, moduleId) ?? [];
+  return findNavigationPath(MACRO_NAVIGATION_TREE, routeId) ?? [];
 }
 
-export function buildMacroBreadcrumbs(moduleId: MacroModuleId): MacroBreadcrumb[] {
-  if (moduleId === "overview") {
+export function buildMacroBreadcrumbs(routeId: MacroRouteId): MacroBreadcrumb[] {
+  if (routeId === "overview") {
     return [{ label: "宏观", href: "/macro" }];
   }
-  return macroNavigationPath(moduleId).map((node) => ({
+  return macroNavigationPath(routeId).map((node) => ({
     label: node.label,
     href: node.href,
   }));
@@ -151,12 +181,12 @@ export function macroModuleRouteFromHref(href: string): MacroModuleRoute | undef
 function flattenMacroModuleRoutes(nodes: MacroNavigationNode[]): MacroModuleRoute[] {
   return nodes.flatMap((node) => {
     const current =
-      node.moduleId && node.moduleId !== "assets/correlation" && node.section
+      node.routeId && node.routeId !== "assets/correlation" && node.section
         ? [
             {
               href: node.href,
               label: node.label,
-              moduleId: node.moduleId,
+              moduleId: node.routeId,
               section: node.section,
             },
           ]
@@ -167,15 +197,15 @@ function flattenMacroModuleRoutes(nodes: MacroNavigationNode[]): MacroModuleRout
 
 function findNavigationPath(
   nodes: MacroNavigationNode[],
-  moduleId: MacroModuleId | "assets/correlation",
+  routeId: MacroRouteId,
   ancestors: MacroNavigationNode[] = [],
 ): MacroNavigationNode[] | null {
   for (const node of nodes) {
     const path = [...ancestors, node];
-    if (node.moduleId === moduleId) {
-      return moduleId === "overview" ? path.slice(0, 1) : path;
+    if (node.routeId === routeId) {
+      return routeId === "overview" ? path.slice(0, 1) : path;
     }
-    const childPath = findNavigationPath(node.children ?? [], moduleId, path);
+    const childPath = findNavigationPath(node.children ?? [], routeId, path);
     if (childPath) {
       return childPath;
     }
@@ -191,6 +221,6 @@ function normalizeRouteTail(routeTail: string | undefined): string {
     .join("/");
 }
 
-function isMacroModuleId(value: string): value is MacroModuleId {
-  return ROUTES_BY_ID.has(value as MacroModuleId);
+function isMacroModuleId(value: MacroRouteId): value is MacroModuleId {
+  return value !== "assets/correlation";
 }

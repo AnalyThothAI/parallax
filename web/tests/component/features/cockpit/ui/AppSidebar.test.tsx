@@ -34,6 +34,15 @@ describe("AppSidebar", () => {
     expect(macroLink).toHaveAttribute("data-active", "true");
     expect(macroLink).not.toHaveAttribute("aria-current");
 
+    const assetLink = screen.getByRole("link", { name: "大类资产" });
+    expect(assetLink).toHaveAttribute("data-active", "true");
+    expect(screen.getByRole("button", { name: "展开大类资产" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.queryByRole("link", { name: "相关性" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "展开大类资产" }));
     const correlationLink = screen.getByRole("link", { name: "相关性" });
     expect(correlationLink).toHaveAttribute("href", "/macro/assets/correlation");
     expect(correlationLink).toHaveAttribute("aria-current", "page");
@@ -54,7 +63,7 @@ describe("AppSidebar", () => {
     expect(screen.getAllByRole("link", { current: "page" })).toHaveLength(1);
   });
 
-  it("renders the full nested Macro tree and marks only the active leaf current", () => {
+  it("keeps active nested Macro category collapsed until opened", () => {
     renderSidebar({ route: "/macro/assets/equities" });
 
     expect(screen.getByRole("link", { name: "宏观" })).toHaveAttribute("data-active", "true");
@@ -66,11 +75,13 @@ describe("AppSidebar", () => {
     expect(assetLink).toHaveAttribute("data-active", "true");
     expect(assetLink).toHaveAttribute("href", "/macro/assets");
     expect(assetLink).not.toHaveAttribute("aria-current");
-    expect(screen.getByRole("button", { name: "收起大类资产" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "展开大类资产" })).toHaveAttribute(
       "aria-expanded",
-      "true",
+      "false",
     );
+    expect(screen.queryByRole("link", { name: "美股" })).not.toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole("button", { name: "展开大类资产" }));
     expect(screen.getByRole("link", { name: "美股" })).toHaveAttribute(
       "href",
       "/macro/assets/equities",
@@ -118,6 +129,7 @@ describe("AppSidebar", () => {
     expect(screen.queryByRole("link", { name: "拍卖" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "FOMC 声明" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "美联储讲话" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Dashboard" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "CDS 代理" })).not.toBeInTheDocument();
   });
 
@@ -131,6 +143,8 @@ describe("AppSidebar", () => {
     expect(assetLink).toHaveAttribute("href", "/macro/assets");
     expect(assetLink).toHaveAttribute("aria-current", "page");
 
+    expect(screen.queryByRole("link", { name: "美股" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "展开大类资产" }));
     expect(screen.getByRole("link", { name: "美股" })).not.toHaveAttribute("aria-current");
     expect(screen.getByRole("link", { name: "相关性" })).not.toHaveAttribute("aria-current");
     expect(screen.getAllByRole("link", { current: "page" })).toHaveLength(1);

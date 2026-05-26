@@ -77,7 +77,7 @@ function AppSidebarItem({ item }: { item: AppNavigationItem }) {
   const active = useAppNavigationMatch(item);
   const closeSidebarOnNavigate = useCloseSidebarOnNavigate();
   const Icon = item.icon;
-  const [open, setOpen] = useBranchOpen(active);
+  const [open, setOpen] = useBranchOpen({ active, autoOpenActive: true });
   const contentId = useId();
 
   if (item.children?.length) {
@@ -118,7 +118,7 @@ function AppSidebarItem({ item }: { item: AppNavigationItem }) {
 function AppSidebarSubItem({ depth, item }: { depth: number; item: AppNavigationItem }) {
   const active = useAppNavigationMatch(item);
   const closeSidebarOnNavigate = useCloseSidebarOnNavigate();
-  const [open, setOpen] = useBranchOpen(active);
+  const [open, setOpen] = useBranchOpen({ active, autoOpenActive: false });
   const contentId = useId();
 
   if (item.children?.length) {
@@ -188,14 +188,20 @@ function BranchToggle({
   );
 }
 
-function useBranchOpen(active: boolean): [boolean, (open: boolean) => void] {
-  const [open, setOpen] = useState(active);
+function useBranchOpen({
+  active,
+  autoOpenActive,
+}: {
+  active: boolean;
+  autoOpenActive: boolean;
+}): [boolean, (open: boolean) => void] {
+  const [open, setOpen] = useState(active && autoOpenActive);
 
   useEffect(() => {
-    if (active) {
+    if (active && autoOpenActive) {
       setOpen(true);
     }
-  }, [active]);
+  }, [active, autoOpenActive]);
 
   return [open, setOpen];
 }
