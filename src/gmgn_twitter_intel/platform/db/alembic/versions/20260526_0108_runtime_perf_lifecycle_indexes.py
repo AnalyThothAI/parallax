@@ -78,6 +78,20 @@ def upgrade() -> None:
     )
     op.execute(
         """
+        CREATE INDEX IF NOT EXISTS idx_equity_event_evidence_jobs_reap_running
+          ON equity_event_evidence_jobs(leased_until_ms, evidence_job_id)
+          WHERE status = 'running'
+        """
+    )
+    op.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_equity_event_evidence_jobs_active_health
+          ON equity_event_evidence_jobs(status, due_at_ms, leased_until_ms, evidence_job_id)
+          WHERE status <> 'success'
+        """
+    )
+    op.execute(
+        """
         CREATE INDEX IF NOT EXISTS idx_equity_event_fetch_runs_running_started
           ON equity_event_fetch_runs(started_at_ms, fetch_run_id)
           WHERE status = 'running'
@@ -94,6 +108,8 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute("DROP INDEX IF EXISTS idx_equity_event_fetch_runs_status_started")
     op.execute("DROP INDEX IF EXISTS idx_equity_event_fetch_runs_running_started")
+    op.execute("DROP INDEX IF EXISTS idx_equity_event_evidence_jobs_active_health")
+    op.execute("DROP INDEX IF EXISTS idx_equity_event_evidence_jobs_reap_running")
     op.execute("DROP INDEX IF EXISTS idx_equity_event_evidence_jobs_document")
     op.execute("DROP INDEX IF EXISTS idx_macro_observation_series_active_generation_generation")
     op.execute("DROP INDEX IF EXISTS idx_macro_observation_series_generations_status")

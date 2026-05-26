@@ -522,15 +522,27 @@ def test_runtime_perf_lifecycle_indexes_migration_contract() -> None:
         "CREATE INDEX IF NOT EXISTS idx_macro_observation_series_generations_status",
         "CREATE INDEX IF NOT EXISTS idx_macro_observation_series_active_generation_generation",
         "CREATE INDEX IF NOT EXISTS idx_equity_event_evidence_jobs_document",
+        "CREATE INDEX IF NOT EXISTS idx_equity_event_evidence_jobs_reap_running",
+        "CREATE INDEX IF NOT EXISTS idx_equity_event_evidence_jobs_active_health",
         "CREATE INDEX IF NOT EXISTS idx_equity_event_fetch_runs_running_started",
         "CREATE INDEX IF NOT EXISTS idx_equity_event_fetch_runs_status_started",
         "DROP INDEX IF EXISTS idx_equity_event_fetch_runs_status_started",
         "DROP INDEX IF EXISTS idx_equity_event_fetch_runs_running_started",
+        "DROP INDEX IF EXISTS idx_equity_event_evidence_jobs_active_health",
+        "DROP INDEX IF EXISTS idx_equity_event_evidence_jobs_reap_running",
         "DROP INDEX IF EXISTS idx_macro_observation_series_generation_maintenance",
         "COMMENT ON TABLE token_radar_rank_source_events IS NULL",
     ):
         assert statement in text
     normalized_text = " ".join(text.split())
+    assert (
+        "ON equity_event_evidence_jobs(leased_until_ms, evidence_job_id) WHERE status = 'running'"
+        in normalized_text
+    )
+    assert (
+        "ON equity_event_evidence_jobs(status, due_at_ms, leased_until_ms, evidence_job_id) "
+        "WHERE status <> 'success'"
+    ) in normalized_text
     assert (
         "ON macro_observation_series_rows( projection_version, generation_id, concept_key ) "
         "INCLUDE (projected_at_ms, observed_at)"

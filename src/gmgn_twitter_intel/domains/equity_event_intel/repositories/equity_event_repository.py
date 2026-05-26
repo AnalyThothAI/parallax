@@ -1179,9 +1179,11 @@ class EquityEventRepository:
         *,
         evidence_job_id: str,
         finished_at_ms: int,
+        attempt_count: int | None = None,
+        lease_owner: str | None = None,
         commit: bool = True,
-    ) -> None:
-        self.conn.execute(
+    ) -> bool:
+        row = self.conn.execute(
             """
             UPDATE equity_event_evidence_jobs
                SET status = 'success',
@@ -1191,11 +1193,24 @@ class EquityEventRepository:
                    last_error = NULL,
                    updated_at_ms = %s
              WHERE evidence_job_id = %s
+               AND status = 'running'
+               AND (%s::integer IS NULL OR attempt_count = %s)
+               AND (%s::text IS NULL OR lease_owner = %s)
+            RETURNING evidence_job_id
             """,
-            (int(finished_at_ms), int(finished_at_ms), evidence_job_id),
-        )
+            (
+                int(finished_at_ms),
+                int(finished_at_ms),
+                evidence_job_id,
+                int(attempt_count) if attempt_count is not None else None,
+                int(attempt_count) if attempt_count is not None else None,
+                str(lease_owner) if lease_owner is not None else None,
+                str(lease_owner) if lease_owner is not None else None,
+            ),
+        ).fetchone()
         if commit:
             self.conn.commit()
+        return row is not None
 
     def finish_evidence_job_retryable(
         self,
@@ -1204,9 +1219,11 @@ class EquityEventRepository:
         error: str,
         due_at_ms: int,
         now_ms: int,
+        attempt_count: int | None = None,
+        lease_owner: str | None = None,
         commit: bool = True,
-    ) -> None:
-        self.conn.execute(
+    ) -> bool:
+        row = self.conn.execute(
             """
             UPDATE equity_event_evidence_jobs
                SET status = CASE
@@ -1223,11 +1240,26 @@ class EquityEventRepository:
                    last_error = %s,
                    updated_at_ms = %s
              WHERE evidence_job_id = %s
+               AND status = 'running'
+               AND (%s::integer IS NULL OR attempt_count = %s)
+               AND (%s::text IS NULL OR lease_owner = %s)
+            RETURNING evidence_job_id
             """,
-            (int(due_at_ms), int(now_ms), _compact_error(error), int(now_ms), evidence_job_id),
-        )
+            (
+                int(due_at_ms),
+                int(now_ms),
+                _compact_error(error),
+                int(now_ms),
+                evidence_job_id,
+                int(attempt_count) if attempt_count is not None else None,
+                int(attempt_count) if attempt_count is not None else None,
+                str(lease_owner) if lease_owner is not None else None,
+                str(lease_owner) if lease_owner is not None else None,
+            ),
+        ).fetchone()
         if commit:
             self.conn.commit()
+        return row is not None
 
     def finish_evidence_job_terminal(
         self,
@@ -1235,9 +1267,11 @@ class EquityEventRepository:
         evidence_job_id: str,
         finished_at_ms: int,
         error: str | None,
+        attempt_count: int | None = None,
+        lease_owner: str | None = None,
         commit: bool = True,
-    ) -> None:
-        self.conn.execute(
+    ) -> bool:
+        row = self.conn.execute(
             """
             UPDATE equity_event_evidence_jobs
                SET status = 'failed_terminal',
@@ -1247,42 +1281,118 @@ class EquityEventRepository:
                    last_error = %s,
                    updated_at_ms = %s
              WHERE evidence_job_id = %s
+               AND status = 'running'
+               AND (%s::integer IS NULL OR attempt_count = %s)
+               AND (%s::text IS NULL OR lease_owner = %s)
+            RETURNING evidence_job_id
             """,
-            (int(finished_at_ms), _compact_error(error), int(finished_at_ms), evidence_job_id),
-        )
+            (
+                int(finished_at_ms),
+                _compact_error(error),
+                int(finished_at_ms),
+                evidence_job_id,
+                int(attempt_count) if attempt_count is not None else None,
+                int(attempt_count) if attempt_count is not None else None,
+                str(lease_owner) if lease_owner is not None else None,
+                str(lease_owner) if lease_owner is not None else None,
+            ),
+        ).fetchone()
         if commit:
             self.conn.commit()
+        return row is not None
 
-    def reap_stale_evidence_jobs(self, *, now_ms: int, commit: bool = True) -> list[dict[str, Any]]:
+    def evidence_job_claim_is_current(
+        self,
+        *,
+        evidence_job_id: str,
+        attempt_count: int,
+        lease_owner: str,
+        event_document_id: str,
+        content_hash: str | None,
+    ) -> bool:
+        row = self.conn.execute(
+            """
+            SELECT jobs.evidence_job_id
+              FROM equity_event_evidence_jobs AS jobs
+              JOIN equity_event_documents AS documents
+                ON documents.event_document_id = jobs.event_document_id
+             WHERE jobs.evidence_job_id = %s
+               AND jobs.status = 'running'
+               AND jobs.attempt_count = %s
+               AND jobs.lease_owner = %s
+               AND jobs.event_document_id = %s
+               AND documents.content_hash IS NOT DISTINCT FROM %s
+             FOR UPDATE OF jobs, documents
+             LIMIT 1
+            """,
+            (evidence_job_id, int(attempt_count), str(lease_owner), event_document_id, content_hash),
+        ).fetchone()
+        return row is not None
+
+    def reap_stale_evidence_jobs(
+        self,
+        *,
+        now_ms: int,
+        limit: int,
+        lease_owner: str,
+        lease_ms: int = 60_000,
+        commit: bool = True,
+    ) -> list[dict[str, Any]]:
         terminal_rows = self.conn.execute(
             """
-            SELECT *, 'evidence_job_lease_expired'::text AS last_error
-              FROM equity_event_evidence_jobs
-             WHERE status = 'running'
-               AND leased_until_ms IS NOT NULL
-               AND leased_until_ms <= %s
-               AND attempt_count >= max_attempts
-             ORDER BY leased_until_ms ASC, evidence_job_id ASC
-             FOR UPDATE SKIP LOCKED
+            WITH terminal AS (
+              SELECT evidence_job_id
+                FROM equity_event_evidence_jobs
+               WHERE status = 'running'
+                 AND leased_until_ms IS NOT NULL
+                 AND leased_until_ms <= %s
+                 AND attempt_count >= max_attempts
+               ORDER BY leased_until_ms ASC, evidence_job_id ASC
+               LIMIT %s
+               FOR UPDATE SKIP LOCKED
+            )
+            UPDATE equity_event_evidence_jobs AS jobs
+               SET lease_owner = %s,
+                   leased_until_ms = %s,
+                   last_error = 'evidence_job_lease_expired',
+                   updated_at_ms = %s
+              FROM terminal
+             WHERE jobs.evidence_job_id = terminal.evidence_job_id
+            RETURNING jobs.*
             """,
-            (int(now_ms),),
+            (
+                int(now_ms),
+                max(0, int(limit)),
+                str(lease_owner),
+                int(now_ms) + max(1, int(lease_ms)),
+                int(now_ms),
+            ),
         ).fetchall()
         self.conn.execute(
             """
-            UPDATE equity_event_evidence_jobs
+            WITH retryable AS (
+              SELECT evidence_job_id
+                FROM equity_event_evidence_jobs
+               WHERE status = 'running'
+                 AND leased_until_ms IS NOT NULL
+                 AND leased_until_ms <= %s
+                 AND attempt_count < max_attempts
+               ORDER BY leased_until_ms ASC, evidence_job_id ASC
+               LIMIT %s
+               FOR UPDATE SKIP LOCKED
+            )
+            UPDATE equity_event_evidence_jobs AS jobs
                SET status = 'failed_retryable',
                    due_at_ms = %s,
                    finished_at_ms = NULL,
                    lease_owner = NULL,
                    leased_until_ms = NULL,
-                   last_error = COALESCE(last_error, 'evidence_job_lease_expired'),
+                   last_error = COALESCE(jobs.last_error, 'evidence_job_lease_expired'),
                    updated_at_ms = %s
-             WHERE status = 'running'
-               AND leased_until_ms IS NOT NULL
-               AND leased_until_ms <= %s
-               AND attempt_count < max_attempts
+              FROM retryable
+             WHERE jobs.evidence_job_id = retryable.evidence_job_id
             """,
-            (int(now_ms), int(now_ms), int(now_ms)),
+            (int(now_ms), max(0, int(limit)), int(now_ms), int(now_ms)),
         )
         if commit:
             self.conn.commit()

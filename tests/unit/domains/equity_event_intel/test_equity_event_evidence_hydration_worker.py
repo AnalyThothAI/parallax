@@ -36,7 +36,14 @@ def test_hydration_worker_claims_job_writes_artifacts_finishes_and_wakes() -> No
     result = worker.run_once_sync(now_ms=NOW_MS)
 
     assert result.processed == 1
-    assert repo.reaped == [{"now_ms": NOW_MS}]
+    assert repo.reaped == [
+        {
+            "now_ms": NOW_MS,
+            "limit": 10,
+            "lease_owner": "equity_event_evidence_hydration",
+            "lease_ms": 60_000,
+        }
+    ]
     assert repo.claims == [{"now_ms": NOW_MS, "limit": 10, "lease_owner": "equity_event_evidence_hydration"}]
     assert repo.replaced_artifacts[0]["event_document_id"] == "event-document-id"
     assert repo.marked_statuses == [
@@ -110,6 +117,44 @@ def test_hydration_worker_terminalizes_reaped_stale_job_with_failed_artifact_and
     assert wake_bus.documents_written == [("sec:MSFT", 1)]
 
 
+def test_hydration_worker_skips_stale_claim_after_document_reset() -> None:
+    repo = _HydrationRepo(claim_current=False)
+    wake_bus = _WakeBus()
+    worker = EquityEventEvidenceHydrationWorker(
+        name="equity_event_evidence_hydration",
+        settings=SimpleNamespace(
+            batch_size=10,
+            max_attempts=3,
+            lease_ms=60_000,
+            statement_timeout_seconds=None,
+        ),
+        db=_Db(repo),
+        telemetry=SimpleNamespace(),
+        document_provider=_Provider(),
+        wake_bus=wake_bus,
+        clock_ms=lambda: NOW_MS,
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.processed == 0
+    assert result.notes["stale_claim"] == 1
+    assert repo.claim_validations == [
+        {
+            "evidence_job_id": "job-event-document-id",
+            "attempt_count": 1,
+            "lease_owner": "equity_event_evidence_hydration",
+            "event_document_id": "event-document-id",
+            "content_hash": "content-hash",
+        }
+    ]
+    assert repo.replaced_artifacts == []
+    assert repo.marked_statuses == []
+    assert repo.successes == []
+    assert repo.terminals == []
+    assert wake_bus.documents_written == []
+
+
 @dataclass
 class _Provider:
     def hydrate_document_evidence(self, *, source: dict[str, Any], document: Any) -> EquityEvidenceHydrationResult:
@@ -146,9 +191,11 @@ class _HydrationRepo:
         *,
         reaped_terminal_jobs: list[dict[str, Any]] | None = None,
         claimed_jobs: list[dict[str, Any]] | None = None,
+        claim_current: bool = True,
     ) -> None:
         self.call_order: list[str] = []
         self.conn = SimpleNamespace(commit=lambda: self.call_order.append("commit"))
+        self.claim_current = claim_current
         self.reaped_terminal_jobs = [] if reaped_terminal_jobs is None else reaped_terminal_jobs
         self.claimed_jobs = (
             [{"evidence_job_id": "job-event-document-id", "event_document_id": "event-document-id"}]
@@ -162,10 +209,19 @@ class _HydrationRepo:
         self.successes: list[dict[str, Any]] = []
         self.terminals: list[dict[str, Any]] = []
         self.source_freshness: list[dict[str, Any]] = []
+        self.claim_validations: list[dict[str, Any]] = []
 
-    def reap_stale_evidence_jobs(self, *, now_ms: int, commit: bool = True) -> list[dict[str, Any]]:
+    def reap_stale_evidence_jobs(
+        self,
+        *,
+        now_ms: int,
+        limit: int,
+        lease_owner: str,
+        lease_ms: int,
+        commit: bool = True,
+    ) -> list[dict[str, Any]]:
         self.call_order.append("reap")
-        self.reaped.append({"now_ms": now_ms})
+        self.reaped.append({"now_ms": now_ms, "limit": limit, "lease_owner": lease_owner, "lease_ms": lease_ms})
         return self.reaped_terminal_jobs
 
     def claim_due_evidence_jobs(self, *, now_ms: int, limit: int, lease_owner: str, **_: Any) -> list[dict[str, Any]]:
@@ -201,6 +257,28 @@ class _HydrationRepo:
                 "content_hash": "content-hash",
             },
         }
+
+    def evidence_job_claim_is_current(
+        self,
+        *,
+        evidence_job_id: str,
+        attempt_count: int,
+        lease_owner: str,
+        event_document_id: str,
+        content_hash: str,
+        **_: Any,
+    ) -> bool:
+        self.call_order.append("validate_claim")
+        self.claim_validations.append(
+            {
+                "evidence_job_id": evidence_job_id,
+                "attempt_count": attempt_count,
+                "lease_owner": lease_owner,
+                "event_document_id": event_document_id,
+                "content_hash": content_hash,
+            }
+        )
+        return self.claim_current
 
     def replace_evidence_artifacts(self, *, event_document_id: str, artifacts: list[dict[str, Any]], **_: Any) -> None:
         self.call_order.append("replace_artifacts")

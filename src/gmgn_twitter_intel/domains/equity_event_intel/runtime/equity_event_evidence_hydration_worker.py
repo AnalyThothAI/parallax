@@ -48,7 +48,13 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
     def run_once_sync(self, *, now_ms: int | None = None) -> WorkerResult:
         now = int(now_ms if now_ms is not None else self.clock_ms())
         with self._repository_session() as repos:
-            reaped_terminal_jobs = repos.equity_events.reap_stale_evidence_jobs(now_ms=now, commit=False)
+            reaped_terminal_jobs = repos.equity_events.reap_stale_evidence_jobs(
+                now_ms=now,
+                limit=self._batch_size(),
+                lease_owner=self.name,
+                lease_ms=self._lease_ms(),
+                commit=False,
+            )
             jobs = repos.equity_events.claim_due_evidence_jobs(
                 now_ms=now,
                 limit=self._batch_size(),
@@ -61,20 +67,28 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
         processed = 0
         failed = 0
         written = 0
+        stale_claims = 0
         for job in reaped_terminal_jobs:
             result = self._terminalize_stale_job(dict(job), now_ms=now)
             processed += result.processed
             failed += result.failed
             written += int(result.notes.get("terminal_written", 0))
+            stale_claims += int(result.notes.get("stale_claim", 0))
         for job in jobs:
             result = self._hydrate_job(dict(job), now_ms=now)
             processed += result.processed
             failed += result.failed
             written += int(result.notes.get("terminal_written", 0))
+            stale_claims += int(result.notes.get("stale_claim", 0))
         return WorkerResult(
             processed=processed,
             failed=failed,
-            notes={"claimed": len(jobs), "reaped_stale": len(reaped_terminal_jobs), "terminal_written": written},
+            notes={
+                "claimed": len(jobs),
+                "reaped_stale": len(reaped_terminal_jobs),
+                "terminal_written": written,
+                "stale_claim": stale_claims,
+            },
         )
 
     def _hydrate_job(self, job: dict[str, Any], *, now_ms: int) -> WorkerResult:
@@ -173,6 +187,8 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
                 error=reason,
                 now_ms=now_ms,
                 terminal=False,
+                attempt_count=int(job.get("attempt_count") or 0),
+                lease_owner=str(job.get("lease_owner") or self.name),
             )
             return WorkerResult(failed=1, notes={"evidence_job_id": str(job["evidence_job_id"]), "error": reason})
 
@@ -211,12 +227,24 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
         document = dict(payload["document"])
         event_document_id = str(document["event_document_id"])
         source_id = _source_id_from_payload(source=source, document=document)
+        evidence_job_id = str(job["evidence_job_id"])
+        attempt_count = int(job.get("attempt_count") or 0)
+        lease_owner = str(job.get("lease_owner") or self.name)
         evidence_status, evidence_reason, evidence_ready_at_ms = _evidence_document_status(
             artifacts,
             fetched_at_ms=now_ms,
         )
 
         with self._repository_session() as repos:
+            if not repos.equity_events.evidence_job_claim_is_current(
+                evidence_job_id=evidence_job_id,
+                attempt_count=attempt_count,
+                lease_owner=lease_owner,
+                event_document_id=event_document_id,
+                content_hash=document.get("content_hash"),
+            ):
+                repos.conn.commit()
+                return WorkerResult(processed=0, notes={"stale_claim": 1, "evidence_job_id": evidence_job_id})
             repos.equity_events.replace_evidence_artifacts(
                 event_document_id=event_document_id,
                 artifacts=_artifact_mappings(artifacts),
@@ -233,15 +261,19 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
             )
             if job_status == "success":
                 repos.equity_events.finish_evidence_job_success(
-                    evidence_job_id=str(job["evidence_job_id"]),
+                    evidence_job_id=evidence_job_id,
                     finished_at_ms=now_ms,
+                    attempt_count=attempt_count,
+                    lease_owner=lease_owner,
                     commit=False,
                 )
             else:
                 repos.equity_events.finish_evidence_job_terminal(
-                    evidence_job_id=str(job["evidence_job_id"]),
+                    evidence_job_id=evidence_job_id,
                     finished_at_ms=now_ms,
                     error=error or evidence_reason,
+                    attempt_count=attempt_count,
+                    lease_owner=lease_owner,
                     commit=False,
                 )
             if evidence_status == "ready":
@@ -264,13 +296,24 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
             self.wake_bus.notify_equity_event_document_written(source_id=source_id, count=1)
         return WorkerResult(processed=1, notes={"terminal_written": 1, "evidence_status": evidence_status})
 
-    def _finish_failure(self, *, evidence_job_id: str, error: str, now_ms: int, terminal: bool) -> None:
+    def _finish_failure(
+        self,
+        *,
+        evidence_job_id: str,
+        error: str,
+        now_ms: int,
+        terminal: bool,
+        attempt_count: int | None = None,
+        lease_owner: str | None = None,
+    ) -> None:
         with self._repository_session() as repos:
             if terminal:
                 repos.equity_events.finish_evidence_job_terminal(
                     evidence_job_id=evidence_job_id,
                     finished_at_ms=now_ms,
                     error=error,
+                    attempt_count=attempt_count,
+                    lease_owner=lease_owner,
                     commit=False,
                 )
             else:
@@ -279,6 +322,8 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
                     error=error,
                     due_at_ms=now_ms + self._retry_delay_ms(),
                     now_ms=now_ms,
+                    attempt_count=attempt_count,
+                    lease_owner=lease_owner,
                     commit=False,
                 )
             repos.conn.commit()
