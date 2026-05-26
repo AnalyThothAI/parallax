@@ -1254,18 +1254,25 @@ class EquityEventRepository:
             self.conn.commit()
 
     def reap_stale_evidence_jobs(self, *, now_ms: int, commit: bool = True) -> list[dict[str, Any]]:
-        rows = self.conn.execute(
+        terminal_rows = self.conn.execute(
+            """
+            SELECT *, 'evidence_job_lease_expired'::text AS last_error
+              FROM equity_event_evidence_jobs
+             WHERE status = 'running'
+               AND leased_until_ms IS NOT NULL
+               AND leased_until_ms <= %s
+               AND attempt_count >= max_attempts
+             ORDER BY leased_until_ms ASC, evidence_job_id ASC
+             FOR UPDATE SKIP LOCKED
+            """,
+            (int(now_ms),),
+        ).fetchall()
+        self.conn.execute(
             """
             UPDATE equity_event_evidence_jobs
-               SET status = CASE
-                     WHEN attempt_count >= max_attempts THEN 'failed_terminal'
-                     ELSE 'failed_retryable'
-                   END,
+               SET status = 'failed_retryable',
                    due_at_ms = %s,
-                   finished_at_ms = CASE
-                     WHEN attempt_count >= max_attempts THEN %s
-                     ELSE NULL
-                   END,
+                   finished_at_ms = NULL,
                    lease_owner = NULL,
                    leased_until_ms = NULL,
                    last_error = COALESCE(last_error, 'evidence_job_lease_expired'),
@@ -1273,13 +1280,13 @@ class EquityEventRepository:
              WHERE status = 'running'
                AND leased_until_ms IS NOT NULL
                AND leased_until_ms <= %s
-            RETURNING *
+               AND attempt_count < max_attempts
             """,
-            (int(now_ms), int(now_ms), int(now_ms), int(now_ms)),
-        ).fetchall()
+            (int(now_ms), int(now_ms), int(now_ms)),
+        )
         if commit:
             self.conn.commit()
-        return [dict(row) for row in rows if str(row.get("status") or "") == "failed_terminal"]
+        return [dict(row) for row in terminal_rows]
 
     def replace_evidence_artifacts(
         self,

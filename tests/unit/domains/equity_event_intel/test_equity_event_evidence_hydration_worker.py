@@ -98,6 +98,12 @@ def test_hydration_worker_terminalizes_reaped_stale_job_with_failed_artifact_and
             "error": "evidence_job_lease_expired",
         }
     ]
+    terminal_order = [
+        item
+        for item in repo.call_order
+        if item in {"replace_artifacts", "mark_status", "finish_terminal", "commit"}
+    ]
+    assert terminal_order[-4:] == ["replace_artifacts", "mark_status", "finish_terminal", "commit"]
     assert repo.source_freshness == [
         {"source_id": "sec:MSFT", "actionable_error": "evidence_job_lease_expired"}
     ]
@@ -141,7 +147,8 @@ class _HydrationRepo:
         reaped_terminal_jobs: list[dict[str, Any]] | None = None,
         claimed_jobs: list[dict[str, Any]] | None = None,
     ) -> None:
-        self.conn = SimpleNamespace(commit=lambda: None)
+        self.call_order: list[str] = []
+        self.conn = SimpleNamespace(commit=lambda: self.call_order.append("commit"))
         self.reaped_terminal_jobs = [] if reaped_terminal_jobs is None else reaped_terminal_jobs
         self.claimed_jobs = (
             [{"evidence_job_id": "job-event-document-id", "event_document_id": "event-document-id"}]
@@ -157,10 +164,12 @@ class _HydrationRepo:
         self.source_freshness: list[dict[str, Any]] = []
 
     def reap_stale_evidence_jobs(self, *, now_ms: int, commit: bool = True) -> list[dict[str, Any]]:
+        self.call_order.append("reap")
         self.reaped.append({"now_ms": now_ms})
         return self.reaped_terminal_jobs
 
     def claim_due_evidence_jobs(self, *, now_ms: int, limit: int, lease_owner: str, **_: Any) -> list[dict[str, Any]]:
+        self.call_order.append("claim")
         self.claims.append({"now_ms": now_ms, "limit": limit, "lease_owner": lease_owner})
         return self.claimed_jobs
 
@@ -194,9 +203,11 @@ class _HydrationRepo:
         }
 
     def replace_evidence_artifacts(self, *, event_document_id: str, artifacts: list[dict[str, Any]], **_: Any) -> None:
+        self.call_order.append("replace_artifacts")
         self.replaced_artifacts.append({"event_document_id": event_document_id, "artifacts": artifacts})
 
     def mark_event_document_evidence_status(self, **kwargs: Any) -> None:
+        self.call_order.append("mark_status")
         self.marked_statuses.append(
             {
                 "event_document_id": kwargs["event_document_id"],
@@ -207,6 +218,7 @@ class _HydrationRepo:
         )
 
     def finish_evidence_job_success(self, *, evidence_job_id: str, finished_at_ms: int, **_: Any) -> None:
+        self.call_order.append("finish_success")
         self.successes.append({"evidence_job_id": evidence_job_id, "finished_at_ms": finished_at_ms})
 
     def finish_evidence_job_terminal(
@@ -217,6 +229,7 @@ class _HydrationRepo:
         error: str | None,
         **_: Any,
     ) -> None:
+        self.call_order.append("finish_terminal")
         self.terminals.append(
             {
                 "evidence_job_id": evidence_job_id,

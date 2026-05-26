@@ -72,10 +72,16 @@ def test_reap_stale_evidence_jobs_returns_new_terminal_job_context(postgres_conn
 
     reaped = repos.equity_events.reap_stale_evidence_jobs(now_ms=NOW_MS + 3)
     hydration_input = repos.equity_events.load_evidence_hydration_input(evidence_job_id="evidence-job-stale")
+    job = postgres_conn.execute(
+        "SELECT * FROM equity_event_evidence_jobs WHERE evidence_job_id = %s",
+        ("evidence-job-stale",),
+    ).fetchone()
 
     assert [row["evidence_job_id"] for row in reaped] == ["evidence-job-stale"]
-    assert reaped[0]["status"] == "failed_terminal"
+    assert reaped[0]["status"] == "running"
     assert reaped[0]["last_error"] == "evidence_job_lease_expired"
+    assert job["status"] == "running"
+    assert job["finished_at_ms"] is None
     assert hydration_input["document"]["event_document_id"] == "event-doc-stale-evidence"
     assert hydration_input["document"]["source_id"] == "sec:MSFT"
 
