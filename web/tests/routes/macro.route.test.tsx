@@ -1,3 +1,4 @@
+import type { MacroModuleView } from "@lib/types";
 import { screen, waitFor, within } from "@testing-library/react";
 import {
   macroCorrelationFixture,
@@ -45,7 +46,7 @@ describe("macro route", () => {
       mock.getApiImpl = async (path, options) => {
         if (path === "/api/macro/modules/overview") {
           return ok(
-            macroModuleFixture({
+            legacyMacroModuleFixture({
               snapshot: {
                 ...macroModuleFixture().snapshot,
                 module_id: "overview",
@@ -56,7 +57,9 @@ describe("macro route", () => {
             }),
           );
         }
-        if (path === "/api/macro/modules/assets/equities") return ok(macroModuleFixture());
+        if (path === "/api/macro/modules/assets/equities") {
+          return ok(legacyMacroModuleFixture());
+        }
         if (path === "/api/macro/series") {
           const conceptKeys = String(options?.params?.concept_keys ?? "asset:spx").split(",");
           return ok(macroSeriesFixture(conceptKeys));
@@ -123,9 +126,9 @@ describe("macro route", () => {
     expect(await screen.findByRole("heading", { name: "美股风险" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "宏观" })).not.toBeInTheDocument();
     expect(screen.getByText("美股风险：等待小盘确认")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "宏观传导图" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "图表与市场板" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "交易员证据" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "结构地图" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "规则证据" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "数据质量" })).toBeInTheDocument();
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/assets/equities", {
@@ -134,15 +137,15 @@ describe("macro route", () => {
     );
   });
 
-  it("normalizes unknown module routes back to the macro overview", async () => {
-    renderAppRoute("/macro/assets/unknown");
+  it("renders an unsupported state for unknown macro routes", async () => {
+    renderAppRoute("/macro/not-real");
 
-    expect(await screen.findByRole("heading", { name: "总览" })).toBeInTheDocument();
-    await waitFor(() =>
-      expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/overview", {
-        token: "secret",
-      }),
-    );
+    expect(
+      await screen.findByRole("status", { name: "不支持的宏观页面" }),
+    ).toHaveTextContent("不支持的宏观页面");
+    expect(apiMock.readApi).not.toHaveBeenCalledWith("/api/macro/modules/overview", {
+      token: "secret",
+    });
   });
 
   it("opens the macro asset correlation detail route", async () => {
@@ -168,8 +171,8 @@ describe("macro route", () => {
 
     expect(await screen.findByRole("heading", { name: "美股风险" })).toBeInTheDocument();
     expect(screen.getByLabelText("宏观工作台")).toBeInTheDocument();
-    expect(screen.getByRole("navigation", { name: "宏观主模块" })).toBeInTheDocument();
-    expect(screen.getByRole("navigation", { name: "宏观模块" })).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "宏观主模块" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "宏观模块" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "宏观" })).not.toBeInTheDocument();
     expect(document.querySelector(".live-task-nav")).not.toBeInTheDocument();
   });
@@ -179,4 +182,18 @@ function setViewport(width: number, height: number) {
   Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
   Object.defineProperty(window, "innerHeight", { configurable: true, value: height });
   window.dispatchEvent(new Event("resize"));
+}
+
+function legacyMacroModuleFixture(overrides: Partial<MacroModuleView> = {}): MacroModuleView {
+  const module = macroModuleFixture(overrides);
+  return {
+    ...module,
+    data_gaps: [
+      ...module.data_health.module_gaps,
+      ...module.data_health.chart_gaps,
+      ...module.data_health.global_gaps,
+    ],
+    evidence: module.module_evidence,
+    read: module.module_read,
+  };
 }

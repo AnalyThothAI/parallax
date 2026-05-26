@@ -1,20 +1,12 @@
 import type { MacroModuleView } from "@lib/types";
 import { Separator } from "@shared/ui/separator";
-import { Link } from "react-router-dom";
 
 import {
-  gapLabel,
   macroAsOfLabel,
   macroModuleTitle,
   macroStatusLabel,
 } from "../../model/macroPageViewModel";
-import {
-  macroActiveSection,
-  macroPrimaryTabRoutes,
-  macroSecondaryTabRoutes,
-  type MacroModuleId,
-  type MacroNavigationRoute,
-} from "../../model/macroRoutes";
+import { type MacroModuleId } from "../../model/macroRoutes";
 
 import { MacroBreadcrumb } from "./MacroBreadcrumb";
 
@@ -25,10 +17,6 @@ export function MacroPageHeader({
   module: MacroModuleView;
   moduleId: MacroModuleId;
 }) {
-  const gaps = module.data_gaps.slice(0, 6);
-  const activeSection = macroActiveSection(moduleId);
-  const primaryTabs = macroPrimaryTabRoutes();
-  const secondaryTabs = macroSecondaryTabRoutes(activeSection);
   const question = stringValue(module.snapshot.question) ?? stringValue(module.snapshot.subtitle);
   return (
     <header className="macro-shell-header">
@@ -46,35 +34,16 @@ export function MacroPageHeader({
           <strong>{historyReadinessLabel(module)}</strong>
         </div>
       </div>
-      {gaps.length > 0 ? (
-        <div className="macro-shell-gap-strip" aria-label="数据缺口">
-          {gaps.map((gap, index) => (
-            <span key={`${index}:${gapLabel(gap)}`}>{gapLabel(gap)}</span>
-          ))}
-        </div>
-      ) : null}
-      <nav className="macro-shell-primary-tabs" aria-label="宏观主模块">
-        {primaryTabs.map((route) => (
-          <MacroTabLink
-            active={route.section === activeSection}
-            key={route.moduleId}
-            route={route}
-          />
-        ))}
-      </nav>
-      {secondaryTabs.length > 0 ? (
-        <nav className="macro-shell-secondary-tabs" aria-label="宏观模块">
-          {secondaryTabs.map((route) => (
-            <MacroTabLink active={route.moduleId === moduleId} key={route.moduleId} route={route} />
-          ))}
-        </nav>
-      ) : null}
       <Separator className="macro-shell-separator" />
     </header>
   );
 }
 
 function historyReadinessLabel(module: MacroModuleView): string {
+  const dataHealthStatus = stringValue(module.data_health?.summary_status);
+  if (dataHealthStatus) {
+    return readyDataHealthStatuses.has(dataHealthStatus) ? "历史样本就绪" : "历史样本不足";
+  }
   const requiredPoints = numberValue(module.primary_chart.min_points) ?? 2;
   const pointCounts = chartPointCounts(module);
   if (pointCounts.length > 0 && Math.min(...pointCounts) < requiredPoints) {
@@ -113,15 +82,4 @@ function numberValue(value: unknown): number | null {
   return null;
 }
 
-function MacroTabLink({ active, route }: { active: boolean; route: MacroNavigationRoute }) {
-  return (
-    <Link
-      aria-current={active ? "page" : undefined}
-      className="macro-shell-tab"
-      data-active={active ? "true" : undefined}
-      to={route.href}
-    >
-      {route.label}
-    </Link>
-  );
-}
+const readyDataHealthStatuses = new Set(["ok", "ready", "current", "complete"]);
