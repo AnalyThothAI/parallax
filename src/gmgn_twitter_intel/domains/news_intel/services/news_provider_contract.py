@@ -73,10 +73,7 @@ def validate_news_provider_contract(
 def _configured_provider_types(configured_sources: Iterable[Any]) -> tuple[str, ...]:
     values: list[str] = []
     for source in configured_sources:
-        if isinstance(source, Mapping):
-            value = source.get("provider_type")
-        else:
-            value = getattr(source, "provider_type", None)
+        value = source.get("provider_type") if isinstance(source, Mapping) else getattr(source, "provider_type", None)
         provider_type = str(value or "").strip()
         if provider_type:
             values.append(provider_type)

@@ -279,10 +279,7 @@ def _news_supported_provider_types(runtime: Runtime) -> tuple[str, ...]:
 def _configured_news_provider_types(configured_sources: tuple[Any, ...]) -> list[str]:
     values: list[str] = []
     for source in configured_sources:
-        if isinstance(source, dict):
-            value = source.get("provider_type")
-        else:
-            value = getattr(source, "provider_type", None)
+        value = source.get("provider_type") if isinstance(source, dict) else getattr(source, "provider_type", None)
         provider_type = str(value or "").strip()
         if provider_type:
             values.append(provider_type)

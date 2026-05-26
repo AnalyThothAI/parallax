@@ -12,7 +12,6 @@ from gmgn_twitter_intel.domains.news_intel.services.news_provider_contract impor
     validate_news_provider_contract,
 )
 
-
 NOW_MS = 1_779_000_000_000
 
 
