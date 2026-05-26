@@ -1,4 +1,4 @@
-import { MacroAssetCorrelationPage } from "@features/macro";
+import { MacroMatrixPage } from "@features/macro";
 import type { MacroAssetCorrelationData } from "@lib/types";
 import { screen, waitFor } from "@testing-library/react";
 import { ok } from "@tests/msw/fixtures";
@@ -6,7 +6,7 @@ import { renderWithProviders } from "@tests/render/renderWithProviders";
 import { apiMock, setupAppRouteTest } from "@tests/routes/routeTestSetup";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-describe("MacroAssetCorrelationPage", () => {
+describe("MacroMatrixPage", () => {
   beforeEach(() => {
     setupAppRouteTest((mock) => {
       mock.getApiImpl = async (path, options) => {
@@ -23,10 +23,19 @@ describe("MacroAssetCorrelationPage", () => {
     document.body.replaceChildren();
   });
 
-  it("renders backend-fed matrix, strongest pairs, and data gaps", async () => {
-    renderWithProviders(<MacroAssetCorrelationPage token="test-token" />);
+  it("renders the correlation matrix inside macro shell grammar", async () => {
+    renderWithProviders(<MacroMatrixPage token="test-token" />, {
+      route: "/macro/assets/correlation",
+    });
 
     expect(await screen.findByRole("heading", { name: "资产相关性" })).toBeInTheDocument();
+    expect(screen.getByLabelText("宏观工作台")).toHaveAttribute("data-page-kind", "matrix");
+    expect(screen.getByRole("navigation", { name: "宏观面包屑" })).toHaveTextContent(
+      "宏观/大类资产/相关性",
+    );
+    expect(await screen.findByRole("table", { name: "60d 资产相关性矩阵" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "20d" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "60d" })).toHaveAttribute("aria-pressed", "true");
     expect(await screen.findByRole("columnheader", { name: "SPY" })).toBeInTheDocument();
     expect(await screen.findByRole("rowheader", { name: "QQQ" })).toBeInTheDocument();
     expect(screen.getByText("SPY / QQQ")).toBeInTheDocument();

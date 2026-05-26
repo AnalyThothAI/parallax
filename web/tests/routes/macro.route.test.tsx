@@ -154,6 +154,11 @@ describe("macro route", () => {
     renderAppRoute("/macro/assets/correlation");
 
     expect(await screen.findByRole("heading", { name: "资产相关性" })).toBeInTheDocument();
+    expect(screen.getByLabelText("宏观工作台")).toHaveAttribute("data-page-kind", "matrix");
+    expect(screen.getByRole("navigation", { name: "宏观面包屑" })).toHaveTextContent(
+      "宏观/大类资产/相关性",
+    );
+    expect(await screen.findByRole("table", { name: "60d 资产相关性矩阵" })).toBeInTheDocument();
     expect(await screen.findByText("SPY / QQQ")).toBeInTheDocument();
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/assets/correlation", {

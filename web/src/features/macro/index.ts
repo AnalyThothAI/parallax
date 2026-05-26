@@ -1,4 +1,3 @@
-export { MacroAssetCorrelationPage } from "./MacroAssetCorrelationPage";
 export { MacroWorkbenchRoute } from "./MacroWorkbenchRoute";
 export { useMacroAssetCorrelationQuery } from "./api/useMacroAssetCorrelationQuery";
 export { useMacroModuleQuery } from "./api/useMacroModuleQuery";
@@ -15,6 +14,16 @@ export {
   formatMacroTableValue,
   sortMacroTableRows,
 } from "./model/macroTableColumns";
+export {
+  assetLabel,
+  assetTitleByKey,
+  correlationGapLabel,
+  correlationTone,
+  matrixCorrelationLabel,
+  signedCorrelationLabel,
+  sourceLabel,
+  strongestCorrelationPairs,
+} from "./model/macroCorrelationModel";
 export { MACRO_NAVIGATION_TREE } from "./model/macroNavigationTree";
 export { parseMacroRouteTail } from "./model/macroRoutes";
 export { MacroHeatmap } from "./ui/charts/MacroHeatmap";
@@ -23,10 +32,10 @@ export { MacroTimeSeriesChart } from "./ui/charts/MacroTimeSeriesChart";
 export { MacroYieldCurveChart } from "./ui/charts/MacroYieldCurveChart";
 export { MacroAssetIndexPage } from "./ui/pages/MacroAssetIndexPage";
 export { MacroLeafModulePage } from "./ui/pages/MacroLeafModulePage";
+export { MacroMatrixPage } from "./ui/pages/MacroMatrixPage";
 export { MacroModuleIndexPage } from "./ui/pages/MacroModuleIndexPage";
 export { MacroModulePageRenderer } from "./ui/pages/MacroModulePageRenderer";
 export { MacroOverviewModulePage } from "./ui/pages/MacroOverviewModulePage";
-export { MacroCorrelationMatrix } from "./ui/tables/MacroCorrelationMatrix";
 export { MacroDataTable } from "./ui/tables/MacroDataTable";
 export { MacroSourceTable } from "./ui/tables/MacroSourceTable";
 export type {

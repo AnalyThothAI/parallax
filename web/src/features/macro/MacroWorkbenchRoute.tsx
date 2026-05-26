@@ -13,6 +13,7 @@ import {
   macroStatusLabel,
 } from "./model/macroPageViewModel";
 import { MacroModulePageRenderer } from "./ui/pages/MacroModulePageRenderer";
+import { MacroMatrixPage } from "./ui/pages/MacroMatrixPage";
 import { MacroShell, type MacroShellHeaderModel } from "./ui/shell/MacroShell";
 
 type MacroWorkbenchRouteProps =
@@ -21,6 +22,10 @@ type MacroWorkbenchRouteProps =
       pageKind: Exclude<MacroPageKind, "matrix" | "unsupported">;
       productTier: Exclude<MacroProductTier, "unsupported">;
       routeKind?: "module";
+      token: string;
+    }
+  | {
+      routeKind: "matrix";
       token: string;
     }
   | {
@@ -39,6 +44,9 @@ export function MacroWorkbenchRoute(props: MacroWorkbenchRouteProps) {
         </div>
       </section>
     );
+  }
+  if (props.routeKind === "matrix") {
+    return <MacroMatrixPage token={props.token} />;
   }
 
   return (
