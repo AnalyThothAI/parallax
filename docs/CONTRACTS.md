@@ -338,10 +338,14 @@ Macro contract:
   `asset:lqd`, `asset:gld`, `asset:uso`, `fx:dxy`, `crypto:btc`, and
   `crypto:eth`; clients must not look up raw provider symbols.
 - `/api/macro/modules/{module_id}` is authenticated and read-only. It returns a
-  first-class `macro_module_view_v2` page view for the macro workbench module
-  catalog, including `snapshot`, `tiles`, `primary_chart`, `tables`, `read`,
-  `evidence`, summarized `provenance`, structured `data_gaps`, and
-  `related_routes`. There is no `macro_module_view_v1` compatibility path.
+  first-class `macro_module_view_v3` page view for the macro workbench module
+  catalog. The payload includes `snapshot`, `tiles`, `primary_chart`, `tables`,
+  `module_read`, `module_evidence`, `transmission`, `data_health`,
+  `section_boards`, summarized `provenance`, and `related_routes`. The retired
+  module key `read`, retired module key `evidence`, and retired top-level
+  `data_gaps` field are not compatibility surfaces. Frontend module pages
+  consume v3 directly and must not recompute scoring, readiness, or module
+  reads locally. There is no v1 or v2 compatibility read path.
   Supported module ids include `overview`; `assets` plus asset subpages
   (`assets/equities`, `assets/bonds`, `assets/commodities`, `assets/fx`,
   `assets/crypto`, `assets/crypto-derivatives`); `rates` plus rates subpages
@@ -360,7 +364,7 @@ Macro contract:
   sourced from the persisted `cex_oi_radar_board` read model. Rows are compact
   display-table rows with labeled cells for symbol, open interest, funding,
   24h volume, and score. Optional richer derivatives facts are exposed only
-  when persisted read models add them through the v2 table-cell contract;
+  when persisted read models add them through the v3 table-cell contract;
   internal audit and join fields such as raw run ids, target ids, pricefeed ids,
   and score component JSON are not part of the macro module contract.
 - `/api/macro/series` is authenticated and read-only. It accepts
