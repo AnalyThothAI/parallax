@@ -230,7 +230,7 @@ ORDER BY
 
 
 _POPULATE_RANK_SOURCE_EDGES_SQL = """
-WITH requested AS (
+WITH raw_requested AS (
   SELECT *
   FROM jsonb_to_recordset(%s::jsonb) AS r(
     request_key text,
@@ -242,6 +242,27 @@ WITH requested AS (
     score_since_ms bigint,
     now_ms bigint
   )
+),
+requested AS (
+  SELECT DISTINCT ON ("window", scope, target_type_key, identity_id)
+    request_key,
+    target_type_key,
+    identity_id,
+    "window",
+    scope,
+    analysis_since_ms,
+    score_since_ms,
+    now_ms
+  FROM raw_requested
+  ORDER BY
+    "window",
+    scope,
+    target_type_key,
+    identity_id,
+    analysis_since_ms ASC,
+    score_since_ms ASC,
+    now_ms DESC,
+    request_key ASC
 ),
 source_intents AS (
   SELECT
@@ -484,6 +505,8 @@ deduped_source AS (
             ELSE 3
           END,
           resolution_confidence DESC NULLS LAST,
+          CASE WHEN event_price_capture_id IS NOT NULL THEN 0 ELSE 1 END,
+          event_price_tick_lag_ms ASC NULLS LAST,
           decision_time_ms DESC NULLS LAST,
           intent_updated_at_ms DESC NULLS LAST,
           event_price_observed_at_ms DESC NULLS LAST,
