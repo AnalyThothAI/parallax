@@ -162,13 +162,68 @@ describe("Macro module pages", () => {
     );
 
     expect(screen.getByRole("region", { name: "大类资产索引" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "美股" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "债券" })).toBeInTheDocument();
+    expect(screen.getByText("6 个板块")).toBeInTheDocument();
+    expect(screen.getByText("4 个待确认")).toBeInTheDocument();
+    const matrix = screen.getByRole("table", { name: "大类资产矩阵" });
+    expect(
+      within(matrix).getByRole("row", { name: /美股 历史不足 SPX \/ QQQ \/ IWM 等待小盘确认/ }),
+    ).toBeInTheDocument();
+    expect(
+      within(matrix).getByRole("row", { name: /债券 曲线待确认 2Y \/ 10Y \/ 30Y/ }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "查看美股" })).toHaveAttribute(
       "href",
       "/macro/assets/equities",
     );
     expect(screen.queryByRole("region", { name: "模块判断" })).not.toBeInTheDocument();
+  });
+
+  it("derives asset index proxy and readings from backend section board rows", () => {
+    const module = macroAssetsModuleFixture();
+    module.section_boards = [
+      {
+        id: "equities",
+        title: "美股",
+        href: "/macro/assets/equities",
+        status: "ok",
+        status_label: "可用",
+        rows: [
+          {
+            concept_key: "asset:spx",
+            label: "标普500",
+            short_label: "SPX",
+            status: "ok",
+            display_value: "5,312.40",
+          },
+          {
+            concept_key: "asset:qqq",
+            label: "纳指100 ETF",
+            short_label: "QQQ",
+            status: "ok",
+            display_value: "451.10",
+          },
+          {
+            concept_key: "asset:iwm",
+            label: "罗素小盘",
+            short_label: "IWM",
+            status: "missing",
+            display_value: null,
+          },
+        ],
+      },
+    ];
+
+    renderWithProviders(
+      <MacroAssetsLandingPage module={module} moduleId="assets" token="test-token" />,
+      { route: "/macro/assets" },
+    );
+
+    const matrix = screen.getByRole("table", { name: "大类资产矩阵" });
+    expect(
+      within(matrix).getByRole("row", {
+        name: /美股 可用 SPX \/ QQQ \/ IWM SPX 5,312\.40 \/ QQQ 451\.10/,
+      }),
+    ).toBeInTheDocument();
   });
 
   it("keeps a stable chart loading state while backend series is pending", async () => {

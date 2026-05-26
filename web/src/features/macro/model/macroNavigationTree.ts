@@ -4,6 +4,7 @@ export type MacroNavigationNode = {
   label: string;
   href: string;
   moduleId?: MacroModuleId | "assets/correlation";
+  navHidden?: boolean;
   section?: MacroRouteSection;
   children?: MacroNavigationNode[];
 };
@@ -91,6 +92,7 @@ export const MACRO_NAVIGATION_TREE: MacroNavigationNode[] = [
             label: "拍卖",
             href: "/macro/rates/auctions",
             moduleId: "rates/auctions",
+            navHidden: true,
             section: "rates",
           },
           {
@@ -117,12 +119,14 @@ export const MACRO_NAVIGATION_TREE: MacroNavigationNode[] = [
             label: "FOMC 声明",
             href: "/macro/fed/statements",
             moduleId: "fed/statements",
+            navHidden: true,
             section: "fed",
           },
           {
             label: "美联储讲话",
             href: "/macro/fed/speeches",
             moduleId: "fed/speeches",
+            navHidden: true,
             section: "fed",
           },
         ],
@@ -219,6 +223,7 @@ export const MACRO_NAVIGATION_TREE: MacroNavigationNode[] = [
             label: "Dashboard",
             href: "/macro/volatility/dashboard",
             moduleId: "volatility/dashboard",
+            navHidden: true,
             section: "volatility",
           },
           {
@@ -239,6 +244,7 @@ export const MACRO_NAVIGATION_TREE: MacroNavigationNode[] = [
             label: "CDS 代理",
             href: "/macro/credit/cds",
             moduleId: "credit/cds",
+            navHidden: true,
             section: "credit",
           },
           {
