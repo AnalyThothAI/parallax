@@ -1,19 +1,11 @@
 @layer app.features {
-  .macro-data-table-wrap {
-    min-width: 0;
-    overflow-x: auto;
-  }
-
-  .macro-data-table,
-  .macro-source-table {
+  .macro-data-table {
     width: 100%;
-    min-width: 420px;
     border-collapse: collapse;
     color: var(--text-secondary, #cbd5e1);
   }
 
-  .macro-data-table caption,
-  .macro-source-table caption {
+  .macro-data-table caption {
     color: var(--text-primary, #f8fafc);
     font-size: 0.86rem;
     font-weight: 700;
@@ -22,24 +14,20 @@
   }
 
   .macro-data-table th,
-  .macro-data-table td,
-  .macro-source-table th,
-  .macro-source-table td {
+  .macro-data-table td {
     padding: 8px;
     border-bottom: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.18));
     text-align: left;
     vertical-align: top;
   }
 
-  .macro-data-table th,
-  .macro-source-table th {
+  .macro-data-table th {
     color: var(--text-muted, #94a3b8);
     font-size: 0.72rem;
     font-weight: 700;
   }
 
-  .macro-data-table td,
-  .macro-source-table td {
+  .macro-data-table td {
     color: var(--text-primary, #f8fafc);
     font-variant-numeric: tabular-nums;
   }

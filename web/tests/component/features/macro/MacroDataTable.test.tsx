@@ -12,7 +12,9 @@ describe("Macro table primitives", () => {
   it("renders backend table rows with formatted numeric display", () => {
     render(<MacroDataTable table={tableFixture()} caption="CEX 永续看板" />);
 
+    expect(screen.getByRole("region", { name: "CEX 永续看板，可横向滚动" })).toBeInTheDocument();
     const table = screen.getByRole("table", { name: "CEX 永续看板" });
+    expect(within(table).getByText("CEX 永续看板")).toBeInTheDocument();
     expect(within(table).getByText("12.50B")).toBeInTheDocument();
     expect(within(table).getByText("0.0100%")).toBeInTheDocument();
     expect(table).not.toHaveTextContent("asset:spx");
