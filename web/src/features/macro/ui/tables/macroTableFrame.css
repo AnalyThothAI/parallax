@@ -28,7 +28,24 @@
     min-width: var(--macro-table-min-width);
   }
 
-  .macro-table-frame[data-sticky-first-column="true"] tr > :first-child {
+  .macro-table-frame[data-sticky-first-column="true"]
+    .macro-table-frame-scroller
+    > table
+    > thead
+    > tr
+    > :first-child,
+  .macro-table-frame[data-sticky-first-column="true"]
+    .macro-table-frame-scroller
+    > table
+    > tbody
+    > tr
+    > :first-child,
+  .macro-table-frame[data-sticky-first-column="true"]
+    .macro-table-frame-scroller
+    > table
+    > tfoot
+    > tr
+    > :first-child {
     position: sticky;
     left: 0;
     z-index: 2;
