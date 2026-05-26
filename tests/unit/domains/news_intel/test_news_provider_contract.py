@@ -58,7 +58,7 @@ def test_registry_missing_configured_provider_fails() -> None:
     assert error.provider_types == ("opennews",)
 
 
-def test_repository_constraint_parser_reads_0105_provider_values() -> None:
+def test_repository_constraint_parser_reads_0105_provider_values_from_news_sources_constraint() -> None:
     constraint_def = (
         "CHECK ((provider_type)::text = ANY "
         "(ARRAY['rss'::text, 'atom'::text, 'json_feed'::text, 'cryptopanic'::text, "
@@ -127,6 +127,7 @@ class FakeConstraintConn:
 
     def execute(self, sql: str, params: tuple[object, ...] = ()):
         assert "pg_constraint" in sql
+        assert "conrelid = 'news_sources'::regclass" in " ".join(sql.split())
         assert params == ("news_sources_provider_type_check",)
         return SimpleNamespace(fetchone=lambda: {"constraint_def": self.constraint_def})
 

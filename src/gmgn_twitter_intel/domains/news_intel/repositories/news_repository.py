@@ -55,8 +55,9 @@ class NewsRepository:
         row = self.conn.execute(
             """
             SELECT pg_get_constraintdef(oid) AS constraint_def
-              FROM pg_constraint
+             FROM pg_constraint
              WHERE conname = %s
+               AND conrelid = 'news_sources'::regclass
              ORDER BY oid DESC
              LIMIT 1
             """,
