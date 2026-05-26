@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import { macroModuleFixture } from "../../../../fixtures/macroFixture";
 
 describe("macroPageViewModel", () => {
-  it("uses display-ready v2 labels and never surfaces raw gap strings", () => {
+  it("uses display-ready v3 labels and never surfaces raw gap strings", () => {
     expect(gapLabel({ code: "insufficient_history:60d", label: "历史样本不足" })).toBe(
       "历史样本不足",
     );
@@ -47,10 +47,10 @@ describe("macroPageViewModel", () => {
     expect(module.transmission).toEqual([
       {
         kind: "flow",
-        label: "美股 beta",
+        label: "Yahoo",
         status: "partial",
         status_label: "部分可用",
-        value: "等待小盘确认",
+        value: "美股风险偏好",
       },
     ]);
     expect(module).not.toHaveProperty("read");
