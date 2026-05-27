@@ -180,7 +180,7 @@ class CexOiRadarRepository:
             """
         ).fetchone()
         if state is None:
-            return {"state": None, "run": None, "rows": []}
+            return {"state": None, "publication": None, "rows": []}
 
         state_payload = dict(state)
         rows = self.conn.execute(
@@ -197,7 +197,11 @@ class CexOiRadarRepository:
             """,
             (state_payload["period"], max(1, int(limit))),
         ).fetchall()
-        return {"state": state_payload, "run": _attempt_payload(state_payload), "rows": [dict(row) for row in rows]}
+        return {
+            "state": state_payload,
+            "publication": _publication_payload(state_payload),
+            "rows": [dict(row) for row in rows],
+        }
 
 
 def _board_key(period: str) -> str:
@@ -223,10 +227,10 @@ def _latest_attempt_error(*, status: str, notes: dict[str, Any] | None) -> str |
     return str(reason) if reason else status
 
 
-def _attempt_payload(state: dict[str, Any]) -> dict[str, Any]:
+def _publication_payload(state: dict[str, Any]) -> dict[str, Any]:
     payload = dict(state)
     payload["status"] = payload.get("latest_attempt_status")
-    payload["started_at_ms"] = payload.get("latest_attempt_started_at_ms")
-    payload["finished_at_ms"] = payload.get("latest_attempt_finished_at_ms")
-    payload["notes_json"] = {}
+    payload["published_at_ms"] = payload.get("current_published_at_ms")
+    payload["source_frontier_ms"] = payload.get("current_source_frontier_ms")
+    payload["row_count"] = payload.get("current_row_count")
     return payload

@@ -906,6 +906,9 @@ class MacroIntelRepository:
             "source_signature": source_signature,
         }
 
+    def macro_series_publication_state(self, projection_version: str) -> dict[str, Any] | None:
+        return self._macro_series_publication_state(projection_version)
+
     def _select_observation_series_rows(
         self,
         *,

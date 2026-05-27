@@ -22,7 +22,6 @@ def test_build_macro_module_view_projects_v3_display_contract() -> None:
             _obs("rates:dgs10", "2026-05-20", 4.7, unit="percent", source_name="fred"),
             _obs("rates:dgs2", "2026-05-20", 3.9, unit="percent", source_name="fred"),
         ],
-        latest_import_run={"run_id": "run-1", "status": "partial", "reason_codes_json": ["missing_api_key"]},
     )
 
     assert tuple(view) == (
@@ -127,14 +126,6 @@ def test_build_macro_module_view_projects_v3_display_contract() -> None:
             "concept_count": 2,
             "notes": "",
         },
-        {
-            "source": "宏观导入",
-            "status": "partial",
-            "status_label": "部分可用",
-            "latest_observed_at": None,
-            "concept_count": None,
-            "notes": "导入配置缺失",
-        },
     ]
     provenance_text = str(view["provenance"])
     assert "fred" not in provenance_text
@@ -145,44 +136,26 @@ def test_build_macro_module_view_projects_v3_display_contract() -> None:
     assert "section_boards" not in view
 
 
-def test_module_view_provenance_exposes_sync_fact_projection_currentness_without_run_ids() -> None:
+def test_module_view_provenance_exposes_fact_projection_currentness_without_run_ids() -> None:
     view = build_macro_module_view(
         "rates/yield-curve",
         snapshot=_snapshot(),
         observations=[
             _obs("rates:dgs10", "2026-05-20", 4.7, unit="percent", source_name="fred"),
         ],
-        latest_import_run={"run_id": "import-run-1", "status": "ok", "reason_codes": []},
-        latest_sync_run={
-            "sync_run_id": "sync-run-1",
-            "status": "ok",
-            "asof_date": "2026-05-22",
-            "completed_at_ms": NOW_MS,
-            "max_observed_at": "2026-05-22",
-            "imported_observation_count": 12,
-            "error_code": None,
-        },
         facts_max_observed_at="2026-05-22",
         projection_lag_days=2,
         projection_behind_facts=True,
     )
 
     assert view["provenance"]["currentness"] == {
-        "latest_sync_run": {
-            "status": "ok",
-            "completed_at_ms": NOW_MS,
-            "asof_date": "2026-05-22",
-            "max_observed_at": "2026-05-22",
-            "imported_observation_count": 12,
-            "error_code": None,
-        },
         "facts_max_observed_at": "2026-05-22",
         "projection_lag_days": 2,
         "projection_behind_facts": True,
     }
     provenance_text = str(view["provenance"])
-    assert "sync-run-1" not in provenance_text
-    assert "import-run-1" not in provenance_text
+    assert "sync_run" not in provenance_text
+    assert "import_run" not in provenance_text
 
 
 def test_build_macro_module_view_returns_missing_v3_status_when_snapshot_is_absent() -> None:
@@ -190,7 +163,6 @@ def test_build_macro_module_view_returns_missing_v3_status_when_snapshot_is_abse
         "fed/statements",
         snapshot=None,
         observations=[],
-        latest_import_run=None,
     )
 
     assert view["snapshot"]["status"] == "missing"
@@ -211,7 +183,6 @@ def test_crypto_derivatives_missing_snapshot_keeps_cex_table_shape() -> None:
         "assets/crypto-derivatives",
         snapshot=None,
         observations=[],
-        latest_import_run=None,
     )
 
     cex_table = next(table for table in view["tables"] if table["id"] == "cex_perp_board")
@@ -231,7 +202,6 @@ def test_crypto_derivatives_missing_snapshot_still_renders_available_cex_board()
         "assets/crypto-derivatives",
         snapshot=None,
         observations=[],
-        latest_import_run=None,
         cex_board={
             "status": "success",
             "rows": [
@@ -284,7 +254,6 @@ def test_build_macro_module_view_consumes_real_regime_v4_snapshot_without_crashi
         "assets/equities",
         snapshot=snapshot,
         observations=[],
-        latest_import_run={"run_id": "run-1", "status": "ok", "reason_codes": []},
     )
 
     assert view["snapshot"]["projection_version"] == "macro_module_view_v3"
@@ -298,7 +267,7 @@ def test_build_macro_module_view_consumes_real_regime_v4_snapshot_without_crashi
 def test_module_view_uses_semantic_chart_table_titles_for_every_catalog_spec() -> None:
     snapshot = _snapshot()
     for config in list_macro_module_configs():
-        view = build_macro_module_view(config.module_id, snapshot=snapshot, observations=[], latest_import_run=None)
+        view = build_macro_module_view(config.module_id, snapshot=snapshot, observations=[])
 
         chart = view["primary_chart"]
         assert chart["title"]
@@ -343,7 +312,7 @@ def test_feature_label_and_unit_fallback_use_metadata_not_raw_keys_or_units() ->
     for key in ("label", "short_label", "description", "unit_label"):
         feature.pop(key)
 
-    view = build_macro_module_view("rates/yield-curve", snapshot=snapshot, observations=[], latest_import_run=None)
+    view = build_macro_module_view("rates/yield-curve", snapshot=snapshot, observations=[])
 
     tile = view["tiles"][0]
     assert tile["label"] == "2年期美债收益率"
@@ -358,7 +327,6 @@ def test_crypto_derivatives_view_includes_typed_cex_board() -> None:
         "assets/crypto-derivatives",
         snapshot=_snapshot(),
         observations=[_obs("crypto:btc", "2026-05-20", 110_000, unit="usd", source_name="yahoo")],
-        latest_import_run={"run_id": "run-1", "status": "ok", "reason_codes": []},
         cex_board={
             "status": "partial",
             "degraded_reasons": ["coinglass_partial"],
@@ -415,7 +383,6 @@ def test_module_view_provenance_never_exposes_unknown_provider_or_status_codes()
             )
             | {"data_quality": "provider_not_configured"},
         ],
-        latest_import_run={"run_id": "run-1", "status": "provider_not_configured", "reason_codes": ["run-1"]},
     )
 
     assert view["provenance"]["rows"] == [
@@ -426,14 +393,6 @@ def test_module_view_provenance_never_exposes_unknown_provider_or_status_codes()
             "latest_observed_at": "2026-05-20",
             "concept_count": 1,
             "notes": "",
-        },
-        {
-            "source": "宏观导入",
-            "status": "unknown",
-            "status_label": "未知",
-            "latest_observed_at": None,
-            "concept_count": None,
-            "notes": "数据源降级",
         },
     ]
     provenance_text = str(view["provenance"])
@@ -447,7 +406,6 @@ def test_crypto_derivatives_view_preserves_zero_values_and_normalizes_success_st
         "assets/crypto-derivatives",
         snapshot=_snapshot(),
         observations=[],
-        latest_import_run=None,
         cex_board={
             "status": "success",
             "rows": [
@@ -481,14 +439,12 @@ def test_crypto_derivatives_view_marks_absent_or_empty_cex_board_as_degraded_row
         "assets/crypto-derivatives",
         snapshot=_snapshot(),
         observations=[],
-        latest_import_run=None,
         cex_board=None,
     )
     empty_view = build_macro_module_view(
         "assets/crypto-derivatives",
         snapshot=_snapshot(),
         observations=[],
-        latest_import_run=None,
         cex_board={"status": "ok", "rows": []},
     )
 
@@ -517,7 +473,6 @@ def test_non_overview_module_view_does_not_reuse_global_scenario_or_blockers() -
         "assets/equities",
         snapshot=_snapshot_with_global_scenario(),
         observations=[],
-        latest_import_run=None,
     )
 
     assert view["snapshot"]["projection_version"] == "macro_module_view_v3"
@@ -541,7 +496,6 @@ def test_overview_module_view_surfaces_global_scenario_and_data_health() -> None
         "overview",
         snapshot=_snapshot_with_global_scenario(),
         observations=[],
-        latest_import_run=None,
     )
 
     assert view["module_read"]["headline"] == "宏观总览：期限溢价压力"
@@ -552,7 +506,7 @@ def test_overview_module_view_surfaces_global_scenario_and_data_health() -> None
 
 def test_build_macro_module_view_rejects_unknown_module_id() -> None:
     with pytest.raises(UnsupportedMacroModuleError) as exc_info:
-        build_macro_module_view("not-real", snapshot=None, observations=[], latest_import_run=None)
+        build_macro_module_view("not-real", snapshot=None, observations=[])
 
     assert exc_info.value.code == "unsupported_macro_module"
 
@@ -563,7 +517,7 @@ def test_build_macro_module_view_rejects_unknown_module_id() -> None:
 )
 def test_build_macro_module_view_rejects_parent_category_ids(module_id: str) -> None:
     with pytest.raises(UnsupportedMacroModuleError):
-        build_macro_module_view(module_id, snapshot=None, observations=[], latest_import_run=None)
+        build_macro_module_view(module_id, snapshot=None, observations=[])
 
 
 def _snapshot() -> dict[str, object]:

@@ -44,7 +44,8 @@ def macro(request: Request) -> JSONResponse:
     runtime = _authenticated_runtime(request)
     with runtime.repositories() as repos:
         snapshot = repos.macro_intel.latest_snapshot(projection_version=MACRO_VIEW_PROJECTION_VERSION)
-        currentness = _macro_currentness(repos, snapshot=snapshot)
+        publication_state = repos.macro_intel.macro_series_publication_state(MACRO_VIEW_PROJECTION_VERSION)
+        currentness = _macro_currentness(snapshot=snapshot, publication_state=publication_state)
     return _json({"ok": True, "data": _public_macro(snapshot, currentness=currentness)})
 
 
@@ -114,9 +115,8 @@ def macro_module(request: Request, module_id: str) -> JSONResponse:
     with runtime.repositories() as repos:
         snapshot = repos.macro_intel.latest_snapshot(projection_version=MACRO_VIEW_PROJECTION_VERSION)
         observations = repos.macro_intel.latest_observations(limit=250, concept_keys=_module_concepts(config))
-        latest_import_run = repos.macro_intel.latest_import_run()
-        latest_sync_run = repos.macro_intel.latest_macro_sync_run()
-        currentness = _macro_currentness(repos, snapshot=snapshot, latest_sync_run=latest_sync_run)
+        publication_state = repos.macro_intel.macro_series_publication_state(MACRO_VIEW_PROJECTION_VERSION)
+        currentness = _macro_currentness(snapshot=snapshot, publication_state=publication_state)
         cex_board = _cex_board(repos, module_id)
     return _json(
         {
@@ -125,8 +125,6 @@ def macro_module(request: Request, module_id: str) -> JSONResponse:
                 module_id,
                 snapshot=snapshot,
                 observations=observations,
-                latest_import_run=latest_import_run,
-                latest_sync_run=latest_sync_run,
                 facts_max_observed_at=currentness["facts_max_observed_at"],
                 projection_lag_days=currentness["projection_lag_days"],
                 projection_behind_facts=bool(currentness["projection_behind_facts"]),
@@ -245,29 +243,32 @@ def _cex_board(repos: Any, module_id: str) -> dict[str, Any] | None:
     if board_repo is None:
         return None
     board = board_repo.latest_board(limit=20)
-    run = board.get("run") if isinstance(board, dict) else None
+    publication = board.get("publication") if isinstance(board, dict) else None
+    state = board.get("state") if isinstance(board, dict) else None
     rows = board.get("rows") if isinstance(board, dict) else []
-    notes = (run or {}).get("notes_json") if isinstance(run, dict) else None
     return {
-        "status": (run or {}).get("status") if isinstance(run, dict) else "missing",
-        "degraded_reasons": notes.get("degraded_reasons", []) if isinstance(notes, dict) else [],
-        "observed_at_ms": (run or {}).get("finished_at_ms") if isinstance(run, dict) else None,
+        "status": (publication or {}).get("status") if isinstance(publication, dict) else "missing",
+        "degraded_reasons": [],
+        "observed_at_ms": (publication or {}).get("published_at_ms")
+        if isinstance(publication, dict)
+        else (state or {}).get("current_published_at_ms")
+        if isinstance(state, dict)
+        else None,
         "rows": rows if isinstance(rows, list) else [],
     }
 
 
 def _macro_currentness(
-    repos: Any,
     *,
     snapshot: dict[str, Any] | None,
-    latest_sync_run: dict[str, Any] | None = None,
+    publication_state: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    facts_max_observed_at = repos.macro_intel.macro_observations_max_observed_at()
+    facts_max_observed_at = _to_date(_snapshot_latest_observed_at(snapshot))
     snapshot_asof = _to_date(snapshot.get("asof_date") if snapshot else None)
     return {
-        "latest_sync_run": _public_sync_run(
-            latest_sync_run if latest_sync_run is not None else repos.macro_intel.latest_macro_sync_run()
-        ),
+        "publication_status": (publication_state or {}).get("latest_attempt_status"),
+        "publication_row_count": (publication_state or {}).get("row_count"),
+        "publication_finished_at_ms": (publication_state or {}).get("latest_attempt_finished_at_ms"),
         "facts_max_observed_at": _date_string(facts_max_observed_at),
         "projection_lag_days": _projection_lag_days(facts_max_observed_at, snapshot_asof),
         "projection_behind_facts": (
@@ -276,17 +277,11 @@ def _macro_currentness(
     }
 
 
-def _public_sync_run(sync_run: dict[str, Any] | None) -> dict[str, Any] | None:
-    if sync_run is None:
-        return None
-    return {
-        "status": sync_run.get("status"),
-        "completed_at_ms": sync_run.get("completed_at_ms"),
-        "asof_date": _date_string(sync_run.get("asof_date")),
-        "max_observed_at": _date_string(sync_run.get("max_observed_at")),
-        "imported_observation_count": sync_run.get("imported_observation_count"),
-        "error_code": sync_run.get("error_code"),
-    }
+def _snapshot_latest_observed_at(snapshot: dict[str, Any] | None) -> object:
+    coverage = snapshot.get("source_coverage_json") if snapshot else None
+    if isinstance(coverage, dict) and coverage.get("latest_observed_at") is not None:
+        return coverage.get("latest_observed_at")
+    return snapshot.get("asof_date") if snapshot else None
 
 
 def _projection_lag_days(facts_max_observed_at: date | None, snapshot_asof: date | None) -> int | None:

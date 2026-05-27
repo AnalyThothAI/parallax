@@ -46,12 +46,12 @@ def cex_detail(
 
 
 def _public_board(board: dict) -> dict:
-    run = board.get("run")
+    publication = board.get("publication")
     return {
         "venue": "binance",
         "quote_symbol": "USDT",
         "contract_type": "PERPETUAL",
-        "run": dict(run) if run else None,
+        "publication": dict(publication) if publication else None,
         "rows": [_public_row(row) for row in board.get("rows") or []],
     }
 

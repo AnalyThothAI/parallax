@@ -23,9 +23,7 @@ def build_macro_module_view(
     module_id: str,
     snapshot: Mapping[str, Any] | None,
     observations: Sequence[Mapping[str, Any]],
-    latest_import_run: Mapping[str, Any] | None,
     cex_board: Mapping[str, Any] | None = None,
-    latest_sync_run: Mapping[str, Any] | None = None,
     facts_max_observed_at: object = None,
     projection_lag_days: int | None = None,
     projection_behind_facts: bool = False,
@@ -34,9 +32,7 @@ def build_macro_module_view(
     if snapshot is None:
         return _missing_view(
             config=config,
-            latest_import_run=latest_import_run,
             cex_board=cex_board,
-            latest_sync_run=latest_sync_run,
             facts_max_observed_at=facts_max_observed_at,
             projection_lag_days=projection_lag_days,
             projection_behind_facts=projection_behind_facts,
@@ -93,9 +89,7 @@ def build_macro_module_view(
         provenance=_provenance(
             snapshot=snapshot,
             observations=observations,
-            latest_import_run=latest_import_run,
             cex_source=cex_source,
-            latest_sync_run=latest_sync_run,
             facts_max_observed_at=facts_max_observed_at,
             projection_lag_days=projection_lag_days,
             projection_behind_facts=projection_behind_facts,
@@ -106,9 +100,7 @@ def build_macro_module_view(
 
 def _missing_view(
     config: MacroModuleConfig,
-    latest_import_run: Mapping[str, Any] | None,
     cex_board: Mapping[str, Any] | None,
-    latest_sync_run: Mapping[str, Any] | None = None,
     facts_max_observed_at: object = None,
     projection_lag_days: int | None = None,
     projection_behind_facts: bool = False,
@@ -168,9 +160,7 @@ def _missing_view(
         provenance=_provenance(
             snapshot={},
             observations=[],
-            latest_import_run=latest_import_run,
             cex_source=cex_source,
-            latest_sync_run=latest_sync_run,
             facts_max_observed_at=facts_max_observed_at,
             projection_lag_days=projection_lag_days,
             projection_behind_facts=projection_behind_facts,
@@ -544,26 +534,12 @@ def _provenance(
     *,
     snapshot: Mapping[str, Any],
     observations: Sequence[Mapping[str, Any]],
-    latest_import_run: Mapping[str, Any] | None,
     cex_source: Mapping[str, Any] | None,
-    latest_sync_run: Mapping[str, Any] | None,
     facts_max_observed_at: object,
     projection_lag_days: int | None,
     projection_behind_facts: bool,
 ) -> dict[str, Any]:
     rows = _observation_source_rows(observations)
-    import_run = _latest_import_run(latest_import_run)
-    import_status = _status_key(import_run["status"])
-    rows.append(
-        {
-            "source": "宏观导入",
-            "status": import_status,
-            "status_label": _status_label(import_status),
-            "latest_observed_at": None,
-            "concept_count": None,
-            "notes": "，".join(_localized_reason(reason) for reason in import_run["reason_codes"]),
-        }
-    )
     if cex_source is not None:
         cex_status = _status_key(cex_source["status"])
         rows.append(
@@ -580,7 +556,6 @@ def _provenance(
         "projection_version": snapshot.get("projection_version"),
         "source_snapshot_id": snapshot.get("snapshot_id"),
         "currentness": {
-            "latest_sync_run": _latest_sync_run(latest_sync_run),
             "facts_max_observed_at": _date_string(facts_max_observed_at),
             "projection_lag_days": projection_lag_days,
             "projection_behind_facts": bool(projection_behind_facts),
@@ -1177,32 +1152,6 @@ def _remediation_hint(code: str) -> str:
     if code.startswith("cex_board"):
         return "启用或修复 cex_oi_radar_board worker。"
     return "补齐数据源后重新投影。"
-
-
-def _latest_import_run(latest_import_run: Mapping[str, Any] | None) -> dict[str, Any]:
-    if latest_import_run is None:
-        return {"run_id": None, "status": None, "reason_codes": []}
-    reason_codes = latest_import_run.get("reason_codes")
-    if reason_codes is None:
-        reason_codes = latest_import_run.get("reason_codes_json")
-    return {
-        "run_id": latest_import_run.get("run_id"),
-        "status": latest_import_run.get("status"),
-        "reason_codes": _string_list(reason_codes),
-    }
-
-
-def _latest_sync_run(latest_sync_run: Mapping[str, Any] | None) -> dict[str, Any] | None:
-    if latest_sync_run is None:
-        return None
-    return {
-        "status": latest_sync_run.get("status"),
-        "completed_at_ms": latest_sync_run.get("completed_at_ms"),
-        "asof_date": _date_string(latest_sync_run.get("asof_date")),
-        "max_observed_at": _date_string(latest_sync_run.get("max_observed_at")),
-        "imported_observation_count": latest_sync_run.get("imported_observation_count"),
-        "error_code": latest_sync_run.get("error_code"),
-    }
 
 
 def _date_string(value: object) -> str | None:

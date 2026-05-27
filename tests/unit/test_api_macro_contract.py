@@ -97,7 +97,10 @@ def test_macro_api_returns_latest_snapshot_without_postgres() -> None:
         response = client.get("/api/macro", headers={"Authorization": "Bearer secret"})
 
     assert response.status_code == 200
-    assert repo.calls == [("latest_snapshot", "macro_regime_v4")]
+    assert repo.calls == [
+        ("latest_snapshot", "macro_regime_v4"),
+        ("macro_series_publication_state", "macro_regime_v4"),
+    ]
     assert response.json() == {
         "ok": True,
         "data": {
@@ -109,6 +112,14 @@ def test_macro_api_returns_latest_snapshot_without_postgres() -> None:
                 "regime": "funding_stress",
                 "overall_score": 7.2,
                 "computed_at_ms": 1_779_000_000_000,
+            },
+            "currentness": {
+                "publication_status": None,
+                "publication_row_count": None,
+                "publication_finished_at_ms": None,
+                "facts_max_observed_at": "2026-05-20",
+                "projection_lag_days": 0,
+                "projection_behind_facts": False,
             },
             "panels": {"liquidity": {"score": 8.0, "regime": "funding_stress"}},
             "indicators": {"sofr_iorb_spread_bps": {"value": 15.0}},
@@ -186,6 +197,14 @@ def test_macro_api_returns_data_gap_when_snapshot_missing() -> None:
     assert response.status_code == 200
     assert response.json()["data"] == {
         "snapshot": None,
+        "currentness": {
+            "publication_status": None,
+            "publication_row_count": None,
+            "publication_finished_at_ms": None,
+            "facts_max_observed_at": None,
+            "projection_lag_days": None,
+            "projection_behind_facts": False,
+        },
         "panels": {},
         "indicators": {},
         "triggers": [],
@@ -285,7 +304,6 @@ def test_macro_module_api_returns_backend_module_view() -> None:
             "data_gaps_json": build_macro_data_gaps(["insufficient_history:20d"]),
         },
         observations=[_macro_observation("rates:dgs10", "2026-05-20", 4.7)],
-        import_run={"run_id": "macro-import-1", "status": "partial", "reason_codes_json": ["fred_key_missing"]},
     )
     app = _app(repo)
 
@@ -293,7 +311,10 @@ def test_macro_module_api_returns_backend_module_view() -> None:
         response = client.get("/api/macro/modules/rates/yield-curve", headers={"Authorization": "Bearer secret"})
 
     assert response.status_code == 200
-    assert repo.calls == [("latest_snapshot", "macro_regime_v4"), ("latest_import_run", None)]
+    assert repo.calls == [
+        ("latest_snapshot", "macro_regime_v4"),
+        ("macro_series_publication_state", "macro_regime_v4"),
+    ]
     assert repo.latest_observations_call == {
         "concept_keys": (
             "rates:dgs2",
@@ -329,12 +350,12 @@ def test_macro_module_api_returns_backend_module_view() -> None:
     assert payload["data"]["primary_chart"]["status"] == "partial"
     assert payload["data"]["primary_chart"]["series"][0]["status"] == "insufficient_history"
     assert payload["data"]["provenance"]["rows"][-1] == {
-        "source": "宏观导入",
-        "status": "partial",
-        "status_label": "部分可用",
-        "latest_observed_at": None,
-        "concept_count": None,
-        "notes": "FRED 凭证缺失",
+        "source": "Yahoo",
+        "status": "ok",
+        "status_label": "可用",
+        "latest_observed_at": "2026-05-20",
+        "concept_count": 1,
+        "notes": "",
     }
     assert "macro_import" not in str(payload["data"]["provenance"])
     assert "macro-import-1" not in str(payload["data"]["provenance"])
@@ -388,20 +409,16 @@ def test_macro_module_api_compacts_crypto_derivatives_cex_rows() -> None:
             "data_gaps_json": [],
         },
         observations=[],
-        import_run=None,
     )
     cex_repo = FakeCexOiRadarRepository(
         board={
-            "run": {
-                "run_id": "cex-run-1",
+            "publication": {
                 "status": "partial",
-                "finished_at_ms": 1_779_000_200_000,
-                "notes_json": {"degraded_reasons": ["coinglass_partial"]},
+                "published_at_ms": 1_779_000_200_000,
             },
             "rows": [
                 {
                     "row_id": "cex-row-internal",
-                    "run_id": "cex-run-1",
                     "rank": 1,
                     "target_id": "cex-token:btc",
                     "pricefeed_id": "pricefeed:cex:binance:swap:BTCUSDT",
@@ -534,11 +551,11 @@ class FakeMacroIntelRepository:
         *,
         snapshot: dict[str, object] | None,
         observations: list[dict[str, object]] | None = None,
-        import_run: dict[str, object] | None = None,
+        publication_state: dict[str, object] | None = None,
     ) -> None:
         self.snapshot = snapshot
         self.observations = observations or []
-        self.import_run = import_run
+        self.publication_state = publication_state
         self.calls: list[tuple[str, str | None]] = []
         self.observations_for_concepts_call: dict[str, object] | None = None
         self.latest_observations_call: dict[str, object] | None = None
@@ -568,9 +585,9 @@ class FakeMacroIntelRepository:
         }
         return self.observations
 
-    def latest_import_run(self):
-        self.calls.append(("latest_import_run", None))
-        return self.import_run
+    def macro_series_publication_state(self, projection_version: str):
+        self.calls.append(("macro_series_publication_state", projection_version))
+        return self.publication_state
 
 
 class FakeCexOiRadarRepository:

@@ -625,7 +625,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         start_priority=95,
         input_contract=("cex market universe", "open interest providers"),
         ordering_keys=("symbol", "period"),
-        writes_read_models=("cex_oi_radar_runs", "cex_oi_radar_rows", "cex_detail_snapshots"),
+        writes_read_models=("cex_oi_radar_publication_state", "cex_oi_radar_rows", "cex_detail_snapshots"),
         idempotency_evidence=("cex oi board symbol/period snapshot identity",),
         advisory_lock_key="2026052108",
     ),

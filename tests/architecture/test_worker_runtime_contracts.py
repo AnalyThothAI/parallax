@@ -404,6 +404,15 @@ def test_cex_oi_radar_runtime_uses_current_board_lifecycle() -> None:
 
 
 @pytest.mark.architecture
+def test_cex_oi_radar_manifest_uses_current_board_lifecycle() -> None:
+    manifest = next(item for item in all_worker_manifests() if item.name == "cex_oi_radar_board")
+
+    assert "cex_oi_radar_publication_state" in manifest.writes_read_models
+    assert "cex_oi_radar_rows" in manifest.writes_read_models
+    assert "cex_oi_radar_runs" not in manifest.writes_read_models
+
+
+@pytest.mark.architecture
 def test_macro_sync_is_fact_ingest_and_projection_remains_read_model_writer() -> None:
     manifests = {manifest.name: manifest for manifest in all_worker_manifests()}
 

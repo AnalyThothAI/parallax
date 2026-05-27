@@ -89,7 +89,9 @@ def test_latest_board_reads_publication_state_and_current_rows():
             "provider": "binance",
             "period": "5m",
             "latest_attempt_status": "success",
-            "latest_attempt_finished_at_ms": 1_778_000_000_123,
+            "current_published_at_ms": 1_778_000_000_123,
+            "current_source_frontier_ms": 1_778_000_000_100,
+            "current_row_count": 1,
         },
         board_rows=[{"target_id": "binance:BTCUSDT", "rank": 1}],
     )
@@ -97,8 +99,11 @@ def test_latest_board_reads_publication_state_and_current_rows():
     board = CexOiRadarRepository(conn).latest_board(limit=25)
 
     assert board["state"]["board_key"] == "binance:USDT:PERPETUAL:5m"
-    assert board["run"]["status"] == "success"
-    assert board["run"]["finished_at_ms"] == 1_778_000_000_123
+    assert board["publication"]["status"] == "success"
+    assert board["publication"]["published_at_ms"] == 1_778_000_000_123
+    assert board["publication"]["source_frontier_ms"] == 1_778_000_000_100
+    assert board["publication"]["row_count"] == 1
+    assert "run" not in board
     assert board["rows"] == [{"target_id": "binance:BTCUSDT", "rank": 1}]
     all_sql = "\n".join(conn.sql_calls)
     assert "FROM cex_oi_radar_publication_state" in all_sql
