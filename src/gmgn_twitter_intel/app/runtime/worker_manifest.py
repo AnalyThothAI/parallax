@@ -653,11 +653,10 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         kind=WorkerKind.PROJECTION,
         worker_class="gmgn_twitter_intel.domains.macro_intel.runtime.macro_view_projection_worker.MacroViewProjectionWorker",
         start_priority=95,
-        input_contract=("macro_observations", "macro_observation_series_rows active generation"),
+        input_contract=("macro_observations", "macro_observation_series_rows current"),
         ordering_keys=("concept_key", "series_key", "observed_at"),
         writes_read_models=(
             "macro_observation_series_rows",
-            "macro_observation_series_active_generation",
             "macro_view_snapshots",
         ),
         idempotency_evidence=("macro series/observation identity",),

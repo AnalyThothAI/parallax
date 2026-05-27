@@ -550,6 +550,32 @@ def test_delete_target_feature_uses_projection_identity_key():
     assert conn.params == ("token-radar-v13-social-attention", "1h", "all", "resolved", "Asset", "asset-1")
 
 
+def test_prune_target_features_deletes_only_projection_window_scope_before_cutoff():
+    conn = FakeConn(rowcount=7)
+
+    deleted = TokenRadarRepository(conn).prune_target_features(
+        projection_version="token-radar-v13-social-attention",
+        window="5m",
+        scope="matched",
+        latest_event_before_ms=1_777_800_000_000,
+        commit=False,
+    )
+
+    assert deleted == 7
+    assert "DELETE FROM token_radar_target_features" in conn.sql
+    assert "projection_version = %s" in conn.sql
+    assert '"window" = %s' in conn.sql
+    assert "scope = %s" in conn.sql
+    assert "latest_event_received_at_ms < %s" in conn.sql
+    assert "token_radar_current_rows" not in conn.sql
+    assert conn.params == (
+        "token-radar-v13-social-attention",
+        "5m",
+        "matched",
+        1_777_800_000_000,
+    )
+
+
 def test_list_rank_inputs_for_rank_set_reads_private_projection_rows_without_version_gate():
     conn = FakeConn(
         rows=[
@@ -599,6 +625,7 @@ def test_list_rank_inputs_for_rank_set_reads_private_projection_rows_without_ver
         projection_version="token-radar-v13-social-attention",
         window="1h",
         scope="all",
+        min_latest_event_received_at_ms=1_778_000_000_000,
     )
 
     assert "FROM token_radar_target_features" in conn.sql
@@ -606,14 +633,39 @@ def test_list_rank_inputs_for_rank_set_reads_private_projection_rows_without_ver
     assert "factor_snapshot_json" in conn.sql
     assert "source_event_ids_json" in conn.sql
     assert "rank_input_version" not in conn.sql
+    assert "latest_event_received_at_ms >= %s" in conn.sql
     assert conn.params == (
         "token-radar-v13-social-attention",
         "1h",
         "all",
+        1_778_000_000_000,
     )
     assert rows[0]["target_type_key"] == "Asset"
     assert rows[0]["identity_id"] == "asset-1"
     assert rows[0]["payload_hash"] == "feature-hash"
+
+
+def test_list_rank_inputs_for_rank_set_filters_by_latest_event_cutoff():
+    conn = FakeConn(rows=[])
+    cutoff_ms = 1_778_000_300_000
+
+    rows = TokenRadarRepository(conn).list_rank_inputs_for_rank_set(
+        projection_version="token-radar-v13-social-attention",
+        window="5m",
+        scope="matched",
+        min_latest_event_received_at_ms=cutoff_ms,
+    )
+
+    assert rows == []
+    assert "FROM token_radar_target_features" in conn.sql
+    assert "AND latest_event_received_at_ms >= %s" in conn.sql
+    assert "ORDER BY lane DESC, rank_score DESC, latest_event_received_at_ms DESC, identity_id ASC" in conn.sql
+    assert conn.params == (
+        "token-radar-v13-social-attention",
+        "5m",
+        "matched",
+        cutoff_ms,
+    )
 
 
 def test_publish_current_generation_rejects_stale_projection_writer():

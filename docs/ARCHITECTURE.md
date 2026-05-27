@@ -152,6 +152,20 @@ are wrong too.
    written only by `EquityEventPageProjectionWorker`;
    `macro_observation_series_rows` and `macro_view_snapshots` are written only
    by `MacroViewProjectionWorker`.
+   Single writer is necessary but not sufficient for runtime safety. A current
+   read model must also have a bounded physical lifecycle: row count must be
+   proportional to product cardinality and active windows, not to worker run
+   count, wake count, retry count, or wall-clock uptime. A generation or run id
+   may be used as short transaction staging, but it must not become the
+   permanent serving contract for a current read model unless retention,
+   pruning, and reader semantics are explicit and architecture-tested. Active
+   pointers hide old generations from readers; they do not make the storage,
+   indexes, planner statistics, autovacuum work, or replication/WAL pressure
+   bounded.
+   Current-row projections must expose an observable unchanged path: when the
+   source signature or dirty-target content did not change, the worker updates
+   publication state at most and avoids delete/reinsert churn on the serving
+   rows.
 6. **Wake is not truth.** PostgreSQL `NOTIFY` channels
    (`market_tick_written`, `market_tick_current_updated`,
    `resolution_updated`, `token_radar_updated`) carry hint payloads only;

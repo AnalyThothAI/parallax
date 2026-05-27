@@ -303,8 +303,29 @@ class TokenRadarProjection:
     ) -> dict[str, Any]:
         computed_at_ms = int(now_ms)
         attempt_id = f"attempt:{PROJECTION_VERSION}:{window}:{scope}:{computed_at_ms}"
+        pruned_features = 0
+        pruned_rank_source_edges = 0
         try:
-            rank_inputs, rows = self._rank_current_rows(window=window, scope=scope, limit=limit)
+            retention_cutoff_ms = computed_at_ms - 3 * int(WINDOW_MS[window])
+            pruned_features = int(
+                self.repos.token_radar.prune_target_features(
+                    projection_version=PROJECTION_VERSION,
+                    window=window,
+                    scope=scope,
+                    latest_event_before_ms=retention_cutoff_ms,
+                )
+                or 0
+            )
+            pruned_rank_source_edges = int(
+                self.repos.token_radar_rank_sources.prune_edges(
+                    projection_version=PROJECTION_VERSION,
+                    window=window,
+                    scope=scope,
+                    event_received_before_ms=retention_cutoff_ms,
+                )
+                or 0
+            )
+            rank_inputs, rows = self._rank_current_rows(window=window, scope=scope, now_ms=computed_at_ms, limit=limit)
             generation_id = stable_generation_id(
                 projection_version=PROJECTION_VERSION,
                 window=window,
@@ -368,6 +389,8 @@ class TokenRadarProjection:
                         "computed_at_ms": computed_at_ms,
                         "generation_id": publication_generation_id,
                         "status": "stale_skipped",
+                        "pruned_features": pruned_features,
+                        "pruned_rank_source_edges": pruned_rank_source_edges,
                     }
                 if publication_status not in {"published", "unchanged"}:
                     raise RuntimeError(
@@ -398,6 +421,8 @@ class TokenRadarProjection:
                 "computed_at_ms": computed_at_ms,
                 "generation_id": publication_generation_id,
                 "status": "ready" if publication_status == "published" else "unchanged",
+                "pruned_features": pruned_features,
+                "pruned_rank_source_edges": pruned_rank_source_edges,
             }
         except Exception as exc:
             self.repos.token_radar.mark_publication_failed(
@@ -442,13 +467,21 @@ class TokenRadarProjection:
         *,
         window: str,
         scope: str,
+        now_ms: int,
         limit: int,
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        min_latest_event_received_at_ms = int(now_ms) - WINDOW_MS[window]
         rank_inputs = self.repos.token_radar.list_rank_inputs_for_rank_set(
             projection_version=PROJECTION_VERSION,
             window=window,
             scope=scope,
+            min_latest_event_received_at_ms=min_latest_event_received_at_ms,
         )
+        rank_inputs = [
+            row
+            for row in rank_inputs
+            if int(row.get("latest_event_received_at_ms") or 0) >= min_latest_event_received_at_ms
+        ]
         ranked = self.rank_compact_inputs(rank_inputs)
         selected_ranked = _select_top_ranked_by_lane(ranked, limit=limit)
         return rank_inputs, [_patch_ranked_current_row(_row_from_target_feature(row), row) for row in selected_ranked]

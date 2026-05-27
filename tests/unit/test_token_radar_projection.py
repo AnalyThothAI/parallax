@@ -475,7 +475,8 @@ def test_projection_stale_write_does_not_advance_offset(monkeypatch):
         "discovery_results_json": None,
     }
     feature_row = _project_group([row], now_ms=1_777_800_060_000, window="5m", scope="all")
-    repos = type("Repos", (), {"conn": FakeTransactionConn(), "token_radar": FakeRejectingTokenRadar([feature_row])})()
+    token_radar = FakeRejectingTokenRadar([feature_row])
+    repos = _rank_set_repos(token_radar)
 
     monkeypatch.setattr(
         token_radar_projection_module,
@@ -496,6 +497,8 @@ def test_projection_stale_write_does_not_advance_offset(monkeypatch):
         "computed_at_ms": 1_777_800_060_000,
         "generation_id": "newer-generation",
         "status": "stale_skipped",
+        "pruned_features": 0,
+        "pruned_rank_source_edges": 3,
     }
     assert recorder.stale_calls == [
         {
@@ -530,7 +533,7 @@ def test_projection_refresh_rank_set_does_not_mark_user_coverage_running(monkeyp
         scope="all",
     )
     token_radar = FakeTokenRadar([feature_row])
-    repos = type("Repos", (), {"conn": FakeTransactionConn(), "token_radar": token_radar})()
+    repos = _rank_set_repos(token_radar)
 
     monkeypatch.setattr(
         token_radar_projection_module,
@@ -560,11 +563,7 @@ def test_projection_refresh_rank_set_returns_unchanged_when_publication_skips_cu
             self.rows = list(kwargs["rows"])
             return {"status": "unchanged", "generation_id": "gen-existing", "rows_written": 0}
 
-    repos = type(
-        "Repos",
-        (),
-        {"conn": FakeTransactionConn(), "token_radar": FakeUnchangedTokenRadar([feature_row])},
-    )()
+    repos = _rank_set_repos(FakeUnchangedTokenRadar([feature_row]))
 
     monkeypatch.setattr(
         token_radar_projection_module,
@@ -582,6 +581,151 @@ def test_projection_refresh_rank_set_returns_unchanged_when_publication_skips_cu
     assert recorder.finish_calls[-1]["rows_written"] == 0
 
 
+def test_refresh_rank_set_excludes_expired_target_features_without_dirty_claims(monkeypatch):
+    recorder = FakeProjectionRecorder()
+    now_ms = 1_777_800_060_000
+    window = "5m"
+    cutoff_ms = now_ms - WINDOW_MS[window]
+    expired_feature = _feature_for_target_at(
+        target_slug="expired",
+        received_at_ms=cutoff_ms - 1,
+        now_ms=now_ms,
+        window=window,
+    )
+    fresh_feature = _feature_for_target_at(
+        target_slug="fresh",
+        received_at_ms=cutoff_ms,
+        now_ms=now_ms,
+        window=window,
+    )
+    token_radar = FakeTokenRadar([expired_feature, fresh_feature])
+    repos = _rank_set_repos(token_radar)
+
+    monkeypatch.setattr(
+        token_radar_projection_module,
+        "ProjectionRepository",
+        lambda conn: FakeProjectionRepository(conn=conn, recorder=recorder),
+    )
+
+    result = TokenRadarProjection(repos=repos).refresh_rank_set(
+        window=window,
+        scope="all",
+        now_ms=now_ms,
+        limit=20,
+    )
+
+    assert token_radar.list_rank_input_calls == [
+        {
+            "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+            "window": window,
+            "scope": "all",
+            "min_latest_event_received_at_ms": cutoff_ms,
+        }
+    ]
+    assert result["status"] == "ready"
+    assert result["source_rows"] == 1
+    assert [row["identity_id"] for row in token_radar.rows] == ["asset:fresh"]
+    assert [row["source_max_received_at_ms"] for row in token_radar.rows] == [cutoff_ms]
+    assert not hasattr(repos, "token_radar_dirty_targets")
+
+
+def test_refresh_rank_set_publishes_empty_ready_generation_when_no_features_are_window_fresh(monkeypatch):
+    recorder = FakeProjectionRecorder()
+    now_ms = 1_777_800_060_000
+    window = "5m"
+    cutoff_ms = now_ms - WINDOW_MS[window]
+    expired_feature = _feature_for_target_at(
+        target_slug="expired",
+        received_at_ms=cutoff_ms - 1,
+        now_ms=now_ms,
+        window=window,
+    )
+    token_radar = FakeTokenRadar([expired_feature])
+    repos = _rank_set_repos(token_radar)
+
+    monkeypatch.setattr(
+        token_radar_projection_module,
+        "ProjectionRepository",
+        lambda conn: FakeProjectionRepository(conn=conn, recorder=recorder),
+    )
+
+    result = TokenRadarProjection(repos=repos).refresh_rank_set(
+        window=window,
+        scope="all",
+        now_ms=now_ms,
+        limit=20,
+    )
+
+    assert result["status"] == "ready"
+    assert result["rows_written"] == 0
+    assert result["source_rows"] == 0
+    assert token_radar.publish_calls
+    assert token_radar.publish_calls[0]["rows"] == []
+    assert token_radar.publish_calls[0]["source_rows"] == 0
+    assert token_radar.publish_calls[0]["source_frontier_ms"] == 0
+    assert recorder.advance_calls[-1]["source_max_received_at_ms"] == 0
+    assert recorder.finish_calls[-1]["rows_read"] == 0
+    assert recorder.finish_calls[-1]["status"] == "ready"
+
+
+def test_refresh_rank_set_prunes_private_cache_before_loading_rank_inputs(monkeypatch):
+    recorder = FakeProjectionRecorder()
+    now_ms = 1_777_800_060_000
+    window = "5m"
+    feature_row = _feature_for_target_at(
+        target_slug="fresh",
+        received_at_ms=now_ms - 1_000,
+        now_ms=now_ms,
+        window=window,
+    )
+    token_radar = FakeTokenRadar([feature_row])
+    rank_sources = FakeRankSources(token_radar=token_radar, rows_by_request={})
+    repos = type(
+        "Repos",
+        (),
+        {"conn": FakeTransactionConn(), "token_radar": token_radar, "token_radar_rank_sources": rank_sources},
+    )()
+
+    monkeypatch.setattr(
+        token_radar_projection_module,
+        "ProjectionRepository",
+        lambda conn: FakeProjectionRepository(conn=conn, recorder=recorder),
+    )
+
+    result = TokenRadarProjection(repos=repos).refresh_rank_set(
+        window=window,
+        scope="all",
+        now_ms=now_ms,
+        limit=20,
+    )
+
+    expected_cutoff = now_ms - 3 * WINDOW_MS[window]
+    assert result["status"] == "ready"
+    assert result["pruned_features"] == 2
+    assert result["pruned_rank_source_edges"] == 3
+    assert token_radar.operation_calls[:3] == [
+        "prune_target_features",
+        "prune_rank_source_edges",
+        "list_rank_inputs_for_rank_set",
+    ]
+    assert token_radar.prune_target_feature_calls == [
+        {
+            "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+            "window": window,
+            "scope": "all",
+            "latest_event_before_ms": expected_cutoff,
+        }
+    ]
+    assert token_radar.prune_rank_source_edge_calls == [
+        {
+            "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+            "window": window,
+            "scope": "all",
+            "event_received_before_ms": expected_cutoff,
+        }
+    ]
+
+
 def test_projection_stale_cleanup_is_throttled_per_window_scope(monkeypatch):
     recorder = FakeProjectionRecorder()
     now_ms = 1_777_800_060_000
@@ -592,7 +736,7 @@ def test_projection_stale_cleanup_is_throttled_per_window_scope(monkeypatch):
         scope="all",
     )
     token_radar = FakeTokenRadar([feature_row])
-    repos = type("Repos", (), {"conn": FakeTransactionConn(), "token_radar": token_radar})()
+    repos = _rank_set_repos(token_radar)
 
     monkeypatch.setattr(
         token_radar_projection_module,
@@ -622,7 +766,7 @@ def test_projection_does_not_call_current_market_repository(monkeypatch):
         scope="all",
     )
     token_radar = FakeTokenRadar([feature_row])
-    repos = type("Repos", (), {"conn": FakeTransactionConn(), "token_radar": token_radar})()
+    repos = _rank_set_repos(token_radar)
 
     monkeypatch.setattr(
         token_radar_projection_module,
@@ -817,7 +961,7 @@ def test_projection_marks_market_missing_when_event_market_tick_has_not_arrived(
     row["event_price_tick_lag_ms"] = None
     row["first_price_usd"] = None
     token_radar = FakeTokenRadar([_project_group([row], now_ms=now_ms, window="5m", scope="all")])
-    repos = type("Repos", (), {"conn": FakeTransactionConn(), "token_radar": token_radar})()
+    repos = _rank_set_repos(token_radar)
 
     monkeypatch.setattr(
         token_radar_projection_module,
@@ -1620,6 +1764,24 @@ def source_row(event_id: str, *, received_at_ms: int, author: str = "alice") -> 
     }
 
 
+def _feature_for_target_at(
+    *,
+    target_slug: str,
+    received_at_ms: int,
+    now_ms: int,
+    window: str,
+    scope: str = "all",
+) -> dict:
+    row = source_row(f"event-{target_slug}", received_at_ms=received_at_ms)
+    row["target_id"] = f"asset:{target_slug}"
+    row["pricefeed_id"] = f"pricefeed:{target_slug}"
+    row["display_symbol"] = target_slug.upper()
+    row["asset_symbol"] = target_slug.upper()
+    projected = _project_group([row], now_ms=now_ms, window=window, scope=scope)
+    assert projected is not None
+    return projected
+
+
 def ranking_row(
     *,
     target_id: str,
@@ -1733,15 +1895,24 @@ class FakeRejectingTokenRadar:
     def __init__(self, feature_rows: list[dict[str, object] | None] | None = None):
         self.feature_rows = [row for row in feature_rows or [] if row is not None]
         self.publication_failures: list[dict[str, object]] = []
+        self.operation_calls: list[str] = []
+        self.prune_target_feature_calls: list[dict[str, object]] = []
+        self.prune_rank_source_edge_calls: list[dict[str, object]] = []
 
     def mark_publication_failed(self, **kwargs):
         self.publication_failures.append(kwargs)
 
     def list_rank_inputs_for_rank_set(self, **kwargs):
+        self.operation_calls.append("list_rank_inputs_for_rank_set")
         return [_compact_rank_input_from_factor_row(row) for row in self.feature_rows]
 
     def publish_current_generation(self, **kwargs):
         return {"status": "stale_skipped", "generation_id": "newer-generation", "rows_written": 0}
+
+    def prune_target_features(self, **kwargs):
+        self.operation_calls.append("prune_target_features")
+        self.prune_target_feature_calls.append(kwargs)
+        return 0
 
 
 class FakeDirtyTargets:
@@ -1814,6 +1985,23 @@ class FakeRankSources:
         )
         return len(requests)
 
+    def prune_edges(self, **kwargs):
+        self.token_radar.operation_calls.append("prune_rank_source_edges")
+        self.token_radar.prune_rank_source_edge_calls.append(kwargs)
+        return 3
+
+
+def _rank_set_repos(token_radar, *, rows_by_request: dict[str, list[dict[str, object]]] | None = None):
+    return type(
+        "Repos",
+        (),
+        {
+            "conn": FakeTransactionConn(),
+            "token_radar": token_radar,
+            "token_radar_rank_sources": FakeRankSources(token_radar=token_radar, rows_by_request=rows_by_request or {}),
+        },
+    )()
+
 
 class FakeTokenRadar:
     def __init__(
@@ -1838,6 +2026,11 @@ class FakeTokenRadar:
         self.refresh_calls: list[dict[str, object]] = []
         self.source_request_batches: list[list[TokenRadarSourceRequest]] = []
         self.rank_source_populate_batches: list[dict[str, object]] = []
+        self.list_rank_input_calls: list[dict[str, object]] = []
+        self.publish_calls: list[dict[str, object]] = []
+        self.operation_calls: list[str] = []
+        self.prune_target_feature_calls: list[dict[str, object]] = []
+        self.prune_rank_source_edge_calls: list[dict[str, object]] = []
         self.upserts: list[dict[str, object]] = []
         self.deletes: list[dict[str, object]] = []
         self.upsert_return = int(upsert_return)
@@ -1847,9 +2040,12 @@ class FakeTokenRadar:
         self.publication_failures.append(kwargs)
 
     def list_rank_inputs_for_rank_set(self, **kwargs):
+        self.operation_calls.append("list_rank_inputs_for_rank_set")
+        self.list_rank_input_calls.append(kwargs)
         return [_compact_rank_input_from_factor_row(row) for row in self.feature_rows]
 
     def publish_current_generation(self, **kwargs):
+        self.publish_calls.append(kwargs)
         self.rows = list(kwargs["rows"])
         return {
             "status": "published",
@@ -1864,6 +2060,11 @@ class FakeTokenRadar:
     def delete_target_feature(self, **kwargs):
         self.deletes.append(kwargs)
         return self.delete_return
+
+    def prune_target_features(self, **kwargs):
+        self.operation_calls.append("prune_target_features")
+        self.prune_target_feature_calls.append(kwargs)
+        return 2
 
 
 def _compact_rank_input_from_factor_row(row: dict[str, object]) -> dict[str, object]:

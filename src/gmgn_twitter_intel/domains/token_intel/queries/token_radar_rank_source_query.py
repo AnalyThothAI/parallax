@@ -72,6 +72,29 @@ class TokenRadarRankSourceQuery:
             self.conn.commit()
         return changed
 
+    def prune_edges(
+        self,
+        *,
+        projection_version: str,
+        window: str,
+        scope: str,
+        event_received_before_ms: int,
+        commit: bool = True,
+    ) -> int:
+        cursor = self.conn.execute(
+            """
+            DELETE FROM token_radar_rank_source_events
+            WHERE projection_version = %s
+              AND "window" = %s
+              AND scope = %s
+              AND event_received_at_ms < %s
+            """,
+            (projection_version, window, scope, int(event_received_before_ms)),
+        )
+        if commit:
+            self.conn.commit()
+        return int(getattr(cursor, "rowcount", 0) or 0)
+
 
 def _chunks(
     requests: tuple[TokenRadarSourceRequest, ...],

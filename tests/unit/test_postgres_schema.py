@@ -169,6 +169,9 @@ MACRO_SYNC_WORKER_MIGRATION = Path(
 TOKEN_RADAR_STABLE_PUBLICATION_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0113_token_radar_stable_publication.py"
 )
+RUNTIME_DB_PERFORMANCE_HARD_CUT_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0114_runtime_db_performance_hard_cut.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 LEGACY_TOKEN_RADAR_CURRENT_JSON_COLUMNS = {
@@ -278,6 +281,34 @@ def test_token_radar_stable_publication_migration_drops_legacy_current_row_colum
     assert "ALTER COLUMN rank_score SET NOT NULL" in text
     assert "ALTER COLUMN quality_status SET NOT NULL" in text
     assert "quality_status IN ('ready', 'degraded', 'insufficient', 'failed')" in text
+
+
+def test_runtime_db_performance_hard_cut_adds_target_feature_window_freshness_index() -> None:
+    text = RUNTIME_DB_PERFORMANCE_HARD_CUT_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    assert 'revision = "20260527_0114"' in text
+    assert 'down_revision = "20260527_0113"' in text
+    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_token_radar_target_features_window_freshness" in text
+    assert text.index("with op.get_context().autocommit_block():") < text.index(
+        "ALTER TABLE macro_observation_series_rows RENAME"
+    )
+    assert (
+        'ON token_radar_target_features( projection_version, "window", scope, latest_event_received_at_ms DESC )'
+    ) in normalized_text
+    assert "with op.get_context().autocommit_block():" in text
+    assert "DROP INDEX CONCURRENTLY IF EXISTS idx_token_radar_target_features_window_freshness" in text
+    assert "CREATE TABLE macro_observation_series_rows_compact" in text
+    assert "observed_at TIMESTAMPTZ NOT NULL" in text
+    assert "value_numeric DOUBLE PRECISION NOT NULL" in text
+    assert "data_quality TEXT" in text
+    assert "macro_observation_series_rows_compact_pkey" in text
+    assert "PRIMARY KEY (projection_version, concept_key, observed_at)" in text
+    assert "CREATE TABLE IF NOT EXISTS macro_observation_series_publication_state" in text
+    assert "source_signature TEXT" in text
+    assert "ALTER TABLE macro_observation_series_rows_compact RENAME TO macro_observation_series_rows" in text
+    assert "DROP TABLE IF EXISTS macro_observation_series_active_generation" in text
+    assert "DROP TABLE IF EXISTS macro_observation_series_generations" in text
 
 
 def test_token_radar_current_row_runtime_insert_contract_matches_hard_cut_schema() -> None:

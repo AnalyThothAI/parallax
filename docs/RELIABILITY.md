@@ -192,6 +192,17 @@ so runtime ownership stays explicit. Ops paths and CLI rebuilds are
 explicit exceptions and must call the same projection service the worker
 uses; they do not run their own SQL.
 
+Single-writer ownership does not by itself make a read model bounded. Current
+serving projections must keep physical storage proportional to the product
+surface they serve: target/window rows, active queue rows, or compact latest
+series rows. Do not use permanent generation tables or active-generation
+pointers as the serving lifecycle for current read models unless the owning
+architecture document defines retention, pruning, reader behavior, and tests.
+An active pointer can make readers correct while storage still grows without a
+runtime bound. Workers that rebuild current rows must have an unchanged path
+that is visible in publication state and avoids deleting/reinserting unchanged
+serving rows.
+
 Projection worker idle paths must be proportional to due dirty targets, not
 to fact-table size. Equity Event and News projection workers claim durable
 dirty targets (`equity_event_projection_dirty_targets`,

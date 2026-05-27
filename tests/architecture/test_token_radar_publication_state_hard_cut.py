@@ -143,6 +143,24 @@ def test_token_radar_dirty_projection_does_not_enqueue_recent_resolved_targets()
     assert violations == []
 
 
+def test_token_radar_rank_input_queries_require_latest_event_cutoff() -> None:
+    violations: list[str] = []
+    for path in _runtime_files():
+        tree = _parse(path)
+        violations.extend(
+            (
+                f"{path.relative_to(ROOT)}:{node.lineno} calls list_rank_inputs_for_rank_set "
+                "without min_latest_event_received_at_ms"
+            )
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and _call_name(node) == "list_rank_inputs_for_rank_set"
+            and _keyword_value(node, "min_latest_event_received_at_ms") is None
+        )
+
+    assert violations == []
+
+
 def test_token_radar_successful_publication_generation_ids_are_content_stable() -> None:
     tree = _parse(TOKEN_RADAR_PROJECTION)
     refresh_rank_set = _class_method(tree, "TokenRadarProjection", "refresh_rank_set")

@@ -31,3 +31,20 @@ class TokenRadarRankSourceRepository:
             projected_at_ms=projected_at_ms,
             commit=commit,
         )
+
+    def prune_edges(
+        self,
+        *,
+        projection_version: str,
+        window: str,
+        scope: str,
+        event_received_before_ms: int,
+        commit: bool = True,
+    ) -> int:
+        return TokenRadarRankSourceQuery(self.conn).prune_edges(
+            projection_version=projection_version,
+            window=window,
+            scope=scope,
+            event_received_before_ms=event_received_before_ms,
+            commit=commit,
+        )

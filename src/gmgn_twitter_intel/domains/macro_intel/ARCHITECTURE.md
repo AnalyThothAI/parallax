@@ -15,9 +15,8 @@ Cboe, CFTC, crypto providers, or macrodata directly.
 | `macro_import_runs` | Import audit | `MacroSyncWorker` and offline replay. It records coverage and diagnostics; it is not the product truth. |
 | `macro_sync_windows` | Sync control | `MacroSyncWorker` only. It owns claim, retry, and bounded catch-up state. |
 | `macro_sync_runs` | Sync audit | `MacroSyncWorker` and `macro sync` through the same service. It records redacted provider/source health. |
-| `macro_observation_series_rows` | Read model | `MacroViewProjectionWorker` only. It is staged from `macro_observations` by generation and owns request-path latest/history rows. |
-| `macro_observation_series_generations` | Projection lifecycle | `MacroViewProjectionWorker` only. It records building, active, failed, and superseded observation-series generations. |
-| `macro_observation_series_active_generation` | Active pointer | `MacroViewProjectionWorker` only. It maps each projected concept to the generation visible to request paths. |
+| `macro_observation_series_rows` | Read model | `MacroViewProjectionWorker` only. It is a compact current-only projection from `macro_observations` and owns request-path latest/history rows. |
+| `macro_observation_series_publication_state` | Read-model state | `MacroViewProjectionWorker` only. It records the current source signature and latest refresh status. |
 | `macro_view_snapshots` | Read model | `MacroViewProjectionWorker` only. |
 
 ## Flow
@@ -30,7 +29,6 @@ macro_sync_windows
   -> wake macro_observations_imported
   -> repositories/macro_intel_repository.py
   -> macro_observation_series_rows
-  -> macro_observation_series_active_generation
   -> services/macro_feature_engine.py
   -> services/macro_regime_engine.py
   -> services/macro_scenario_engine.py
@@ -47,25 +45,20 @@ fall back to `macro_regime_v3` or `macro_module_view_v1`. The
 `macro_observation_series_rows` projection absorbs observation dedupe and
 per-concept history ranking before request time. Macro API/module/series
 request paths read that table for latest observations, bounded concept series,
-and history counts by joining
-`macro_observation_series_active_generation` on projection version, concept,
-and generation. They do not run `row_number()` over `macro_observations` and do
-not fall back to raw observations when projected rows are absent.
+and history counts directly by `projection_version`. They do not run
+`row_number()` over `macro_observations` and do not fall back to raw
+observations when projected rows are absent.
 
 `MacroViewProjectionWorker` refreshes `macro_observation_series_rows` before it
 builds and writes the `macro_regime_v4` snapshot. The refresh writer may use
 window functions over `macro_observations` because it is the single projection
-writer; request paths may not. Refresh is stage/swap: the writer creates a new
-generation in `building`, inserts projected rows with that `generation_id`,
-then switches active pointers per concept only after staged rows exist. A
-refresh that stages zero rows marks that generation `failed`, raises
-`macro_observation_series_generation_empty`, and leaves the previous active
-generation visible. After the active pointer has switched, old unreferenced
-generations may be marked `superseded` and cleaned up only by exact
-`projection_version` + `generation_id` batches; refresh must not delete all
-rows for a projection version. The
-`idx_macro_observation_series_generation_maintenance` index supports these
-active-pointer population and generation cleanup paths.
+writer; request paths may not. Refresh is source-signature based: unchanged
+facts update only `macro_observation_series_publication_state` with
+`latest_attempt_status='unchanged'`, while changed facts replace the compact
+current rows for the projection version in one transaction. A refresh that
+selects zero rows marks publication state `failed`, raises
+`macro_observation_series_empty`, and leaves existing current rows untouched.
+Runtime physical generations are not a contract.
 
 The `macro_regime_v4` snapshot stores:
 

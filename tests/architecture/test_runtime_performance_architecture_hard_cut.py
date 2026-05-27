@@ -46,15 +46,20 @@ def test_token_radar_rank_source_has_single_owner_manifest_entry() -> None:
     assert owners == ["token_radar_projection"]
 
 
-def test_macro_projection_refresh_uses_generation_swap() -> None:
+def test_macro_projection_refresh_is_current_only_with_source_signature() -> None:
     repo = _read("src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py")
-    assert "macro_observation_series_active_generation" in repo
     normalized = re.sub(r"\s+", " ", repo)
-    delete_all_pattern = re.compile(
-        r"DELETE\s+FROM\s+macro_observation_series_rows\s+WHERE\s+projection_version\s*=",
+    replace_current_pattern = re.compile(
+        r"DELETE\s+FROM\s+macro_observation_series_rows\s+WHERE\s+projection_version\s*=\s*%s",
         re.IGNORECASE,
     )
-    assert delete_all_pattern.search(normalized) is None
+
+    assert "macro_observation_series_active_generation" not in repo
+    assert "macro_observation_series_generations" not in repo
+    assert "_generation_id" not in repo
+    assert "_series_source_signature" in repo
+    assert "macro_observation_series_publication_state" in repo
+    assert replace_current_pattern.search(normalized) is not None
 
 
 def test_equity_fetch_worker_does_not_hydrate_document_evidence() -> None:

@@ -31,11 +31,20 @@ cold paths are retained by partition lifecycle, not by worker-loop deletes.
 
 | Retention class | Tables | Lifecycle rule |
 | --- | --- | --- |
-| Hot online serving path | `token_radar_current_rows`, `token_radar_publication_state`, `macro_observation_series_rows` active generation | No wide JSON/text scans. Online Token Radar reads only current rows plus publication state; `fresh` requires `ready` and matching `current_generation_id`. Current rows carry `rank_score`, `quality_status`, `degraded_reasons_json`, and `factor_snapshot_json`, not legacy top-level current-row JSON blocks. |
+| Hot online serving path | `token_radar_current_rows`, `token_radar_publication_state`, `macro_observation_series_rows` current projection | No wide JSON/text scans. Online Token Radar reads only current rows plus publication state; `fresh` requires `ready` and matching `current_generation_id`. Current rows carry `rank_score`, `quality_status`, `degraded_reasons_json`, and `factor_snapshot_json`, not legacy top-level current-row JSON blocks. Macro series rows are compact current rows; unchanged source signatures update only publication state and do not rewrite the series table. |
 | Projection-private/detail path | `token_radar_target_features`, `token_radar_rank_source_events` | Used by the Token Radar projection and bounded evidence/detail lookups only. `token_radar_target_features` is not an API, CLI, Pulse, notification, or repair read path. `token_radar_rank_source_events` is lazy evidence/detail, not online leaderboard service. |
 | Selected-row hydrate | `events`, `enriched_events`, `equity_event_evidence_artifacts` | Access only after ranking, document selection, or explicit evidence selection has chosen stable row ids or payload hashes. Do not join these wide payload tables into rank/discovery scans. |
 | Cold audit/history | `raw_frames` and future explicit cold projections | Partition lifecycle only. Runtime workers must not issue loop deletes against audit, history, or provider raw-frame tables. |
 | Control plane | Dirty targets, jobs, fetch runs | Leased, bounded, and terminal-evidence based. Queue state transitions must preserve attempts, lease ownership, payload hash/idempotency keys, and explicit terminal reasons. |
+
+2026-05-27 Macro lesson: the old macro series projection had one runtime
+writer and correct active-generation readers, but every projection run produced
+a new physical generation. The active pointer made the API look current while
+`macro_observation_series_rows` kept growing with worker runs, increasing index
+size, planner/autovacuum work, and request latency. For current read models,
+"latest generation" is not a lifecycle policy. Use compact current rows, bounded
+retention, or explicit cold history; prove the bound with relation-size and row
+cardinality checks, not only by checking the API response.
 
 ## Source Material
 

@@ -1,15 +1,22 @@
 from __future__ import annotations
 
 import hashlib
-import uuid
+import json
 from collections.abc import Mapping, Sequence
 from contextlib import nullcontext
 from datetime import date
-from typing import Any
+from typing import Any, TypedDict
 
 from psycopg.types.json import Jsonb
 
 from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_VIEW_PROJECTION_VERSION
+
+
+class MacroSeriesRefreshResult(TypedDict):
+    status: str
+    rows_written: int
+    source_rows: int
+    source_signature: str
 
 
 class MacroIntelRepository:
@@ -547,10 +554,6 @@ class MacroIntelRepository:
                 """
                 SELECT rows.*
                 FROM macro_observation_series_rows AS rows
-                JOIN macro_observation_series_active_generation AS active
-                  ON active.projection_version = rows.projection_version
-                 AND active.concept_key = rows.concept_key
-                 AND active.generation_id = rows.generation_id
                 WHERE rows.projection_version = %s
                   AND rows.concept_key = ANY(%s)
                   AND rows.series_rank = 1
@@ -564,10 +567,6 @@ class MacroIntelRepository:
                 """
                 SELECT rows.*
                 FROM macro_observation_series_rows AS rows
-                JOIN macro_observation_series_active_generation AS active
-                  ON active.projection_version = rows.projection_version
-                 AND active.concept_key = rows.concept_key
-                 AND active.generation_id = rows.generation_id
                 WHERE rows.projection_version = %s
                   AND rows.series_rank = 1
                 ORDER BY rows.concept_key ASC
@@ -584,228 +583,250 @@ class MacroIntelRepository:
         now_ms: int,
         lookback_days: int,
         limit_per_series: int,
-    ) -> int:
+    ) -> MacroSeriesRefreshResult:
         bounded_lookback_days = max(1, int(lookback_days))
         bounded_limit_per_series = max(1, int(limit_per_series))
-        generation_id = _generation_id(projection_version, now_ms)
-        row_count = 0
-        generation_empty = False
+        selected_rows = self._select_observation_series_rows(
+            projection_version=projection_version,
+            lookback_days=bounded_lookback_days,
+            limit_per_series=bounded_limit_per_series,
+            projected_at_ms=int(now_ms),
+        )
+        source_signature = _series_source_signature(
+            projection_version=projection_version,
+            lookback_days=bounded_lookback_days,
+            limit_per_series=bounded_limit_per_series,
+            rows=selected_rows,
+        )
+        if not selected_rows:
+            self._upsert_macro_series_publication_state(
+                projection_version=projection_version,
+                status="failed",
+                source_signature=source_signature,
+                row_count=0,
+                started_at_ms=int(now_ms),
+                finished_at_ms=int(now_ms),
+                latest_attempt_error="macro_observation_series_empty",
+            )
+            raise RuntimeError("macro_observation_series_empty")
+
+        current_state = self._macro_series_publication_state(projection_version)
+        if current_state and current_state.get("source_signature") == source_signature:
+            self._upsert_macro_series_publication_state(
+                projection_version=projection_version,
+                status="unchanged",
+                source_signature=source_signature,
+                row_count=len(selected_rows),
+                started_at_ms=int(now_ms),
+                finished_at_ms=int(now_ms),
+                latest_attempt_error=None,
+            )
+            return {
+                "status": "unchanged",
+                "rows_written": 0,
+                "source_rows": len(selected_rows),
+                "source_signature": source_signature,
+            }
+
         with _transaction_context(self.conn):
             self.conn.execute(
                 """
-                INSERT INTO macro_observation_series_generations(
-                  projection_version,
-                  generation_id,
-                  status,
-                  source_row_count,
-                  created_at_ms
-                )
-                VALUES (%s, %s, 'building', 0, %s)
+                DELETE FROM macro_observation_series_rows
+                WHERE projection_version = %s
                 """,
-                (projection_version, generation_id, int(now_ms)),
+                (projection_version,),
             )
-            row = self.conn.execute(
-                """
-                WITH source_ranked AS (
-                  SELECT
-                    concept_key,
-                    observed_at,
-                    value_numeric,
-                    source_name,
-                    series_key,
-                    source_priority,
-                    unit,
-                    frequency,
-                    data_quality,
-                    source_ts,
-                    raw_payload_json,
-                    ingested_at_ms,
-                    row_number() OVER (
-                      PARTITION BY concept_key, observed_at
-                      ORDER BY source_priority DESC, source_ts DESC NULLS LAST, ingested_at_ms DESC
-                    ) AS dedupe_rank
-                  FROM macro_observations
-                  WHERE observed_at >= CURRENT_DATE - %s::int
-                    AND value_numeric IS NOT NULL
-                ),
-                series_ranked AS (
-                  SELECT
-                    *,
-                    row_number() OVER (
-                      PARTITION BY concept_key
-                      ORDER BY observed_at DESC
-                    ) AS series_rank
-                  FROM source_ranked
-                  WHERE dedupe_rank = 1
-                ),
-                inserted_rows AS (
-                INSERT INTO macro_observation_series_rows(
-                  projection_version,
-                  generation_id,
-                  concept_key,
-                  observed_at,
-                  series_rank,
-                  value_numeric,
-                  source_name,
-                  series_key,
-                  source_priority,
-                  unit,
-                  frequency,
-                  data_quality,
-                  source_ts,
-                  raw_payload_json,
-                  ingested_at_ms,
-                  projected_at_ms
-                )
-                SELECT
-                  %s AS projection_version,
-                  %s AS generation_id,
-                  concept_key,
-                  observed_at,
-                  series_rank,
-                  value_numeric,
-                  source_name,
-                  series_key,
-                  source_priority,
-                  unit,
-                  frequency,
-                  data_quality,
-                  source_ts,
-                  COALESCE(raw_payload_json, '{}'::jsonb) AS raw_payload_json,
-                  ingested_at_ms,
-                  %s AS projected_at_ms
-                FROM series_ranked
-                WHERE series_rank <= %s
-                ON CONFLICT (projection_version, concept_key, observed_at, generation_id) DO UPDATE SET
-                  series_rank = excluded.series_rank,
-                  value_numeric = excluded.value_numeric,
-                  source_name = excluded.source_name,
-                  series_key = excluded.series_key,
-                  source_priority = excluded.source_priority,
-                  unit = excluded.unit,
-                  frequency = excluded.frequency,
-                  data_quality = excluded.data_quality,
-                  source_ts = excluded.source_ts,
-                  raw_payload_json = excluded.raw_payload_json,
-                  ingested_at_ms = excluded.ingested_at_ms,
-                  projected_at_ms = excluded.projected_at_ms
-                RETURNING 1
-                )
-                SELECT COUNT(*)::bigint AS row_count
-                FROM inserted_rows
-                """,
-                (
-                    bounded_lookback_days,
-                    projection_version,
-                    generation_id,
-                    int(now_ms),
-                    bounded_limit_per_series,
-                ),
-            ).fetchone()
-            row_count = int(dict(row or {}).get("row_count") or 0)
-            if row_count == 0:
-                self.conn.execute(
-                    """
-                    UPDATE macro_observation_series_generations
-                       SET status = 'failed',
-                           completed_at_ms = %s,
-                           failure_reason = 'macro_observation_series_generation_empty'
-                     WHERE projection_version = %s
-                       AND generation_id = %s
-                    """,
-                    (int(now_ms), projection_version, generation_id),
-                )
-                generation_empty = True
-            else:
-                self.conn.execute(
-                    """
-                    INSERT INTO macro_observation_series_active_generation(
-                      projection_version,
-                      concept_key,
-                      generation_id,
-                      activated_at_ms
-                    )
-                    SELECT DISTINCT
-                           rows.projection_version,
-                           rows.concept_key,
-                           rows.generation_id,
-                           %s AS activated_at_ms
-                      FROM macro_observation_series_rows AS rows
-                     WHERE rows.projection_version = %s
-                       AND rows.generation_id = %s
-                    ON CONFLICT (projection_version, concept_key) DO UPDATE
-                      SET generation_id = EXCLUDED.generation_id,
-                          activated_at_ms = EXCLUDED.activated_at_ms
-                    """,
-                    (int(now_ms), projection_version, generation_id),
-                )
-                self.conn.execute(
-                    """
-                    UPDATE macro_observation_series_generations
-                       SET status = 'active',
-                           source_row_count = %s,
-                           activated_at_ms = %s,
-                           completed_at_ms = %s,
-                           failure_reason = NULL
-                     WHERE projection_version = %s
-                       AND generation_id = %s
-                    """,
-                    (row_count, int(now_ms), int(now_ms), projection_version, generation_id),
-                )
-                self.conn.execute(
-                    """
-                    UPDATE macro_observation_series_generations AS generation
-                       SET status = 'superseded',
-                           completed_at_ms = %s
-                     WHERE generation.projection_version = %s
-                       AND generation.generation_id <> %s
-                       AND generation.status = 'active'
-                       AND NOT EXISTS (
-                         SELECT 1
-                           FROM macro_observation_series_active_generation AS active
-                          WHERE active.projection_version = generation.projection_version
-                            AND active.generation_id = generation.generation_id
-                       )
-                    """,
-                    (int(now_ms), projection_version, generation_id),
-                )
-                self.conn.execute(
-                    """
-                    WITH cleanup_generations AS (
-                      SELECT generation.projection_version, generation.generation_id
-                        FROM macro_observation_series_generations AS generation
-                       WHERE generation.projection_version = %s
-                         AND generation.status = 'superseded'
-                         AND NOT EXISTS (
-                           SELECT 1
-                             FROM macro_observation_series_active_generation AS active
-                            WHERE active.projection_version = generation.projection_version
-                              AND active.generation_id = generation.generation_id
-                         )
-                       LIMIT 8
-                    ),
-                    cleanup_candidates AS (
-                      SELECT rows.ctid AS row_ctid,
-                             rows.projection_version,
-                             rows.generation_id
-                        FROM macro_observation_series_rows AS rows
-                        JOIN cleanup_generations
-                          ON cleanup_generations.projection_version = rows.projection_version
-                         AND cleanup_generations.generation_id = rows.generation_id
-                       ORDER BY rows.projected_at_ms NULLS FIRST, rows.concept_key ASC, rows.observed_at ASC
-                       LIMIT 10000
-                    )
-                    DELETE FROM macro_observation_series_rows AS rows
-                    USING cleanup_candidates
-                    WHERE rows.ctid = cleanup_candidates.row_ctid
-                      AND rows.projection_version = cleanup_candidates.projection_version
-                      AND rows.generation_id = cleanup_candidates.generation_id
-                    """,
-                    (projection_version,),
-                )
-        if generation_empty:
-            raise RuntimeError("macro_observation_series_generation_empty")
-        return row_count
+            rows_written = self._insert_observation_series_rows(selected_rows)
+            self._upsert_macro_series_publication_state(
+                projection_version=projection_version,
+                status="published",
+                source_signature=source_signature,
+                row_count=len(selected_rows),
+                started_at_ms=int(now_ms),
+                finished_at_ms=int(now_ms),
+                latest_attempt_error=None,
+            )
+        return {
+            "status": "published",
+            "rows_written": rows_written,
+            "source_rows": len(selected_rows),
+            "source_signature": source_signature,
+        }
+
+    def _select_observation_series_rows(
+        self,
+        *,
+        projection_version: str,
+        lookback_days: int,
+        limit_per_series: int,
+        projected_at_ms: int,
+    ) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            WITH source_ranked AS (
+              SELECT
+                concept_key,
+                observed_at,
+                value_numeric,
+                source_name,
+                series_key,
+                source_priority,
+                unit,
+                frequency,
+                data_quality,
+                source_ts,
+                raw_payload_json,
+                ingested_at_ms,
+                row_number() OVER (
+                  PARTITION BY concept_key, observed_at
+                  ORDER BY source_priority DESC, source_ts DESC NULLS LAST, ingested_at_ms DESC
+                ) AS dedupe_rank
+              FROM macro_observations
+              WHERE observed_at >= CURRENT_DATE - %s::int
+                AND value_numeric IS NOT NULL
+            ),
+            series_ranked AS (
+              SELECT
+                *,
+                row_number() OVER (
+                  PARTITION BY concept_key
+                  ORDER BY observed_at DESC
+                ) AS series_rank
+              FROM source_ranked
+              WHERE dedupe_rank = 1
+            )
+            SELECT
+              %s AS projection_version,
+              concept_key,
+              observed_at,
+              series_rank,
+              value_numeric,
+              source_name,
+              series_key,
+              source_priority,
+              unit,
+              frequency,
+              data_quality,
+              source_ts,
+              COALESCE(raw_payload_json, '{}'::jsonb) AS raw_payload_json,
+              ingested_at_ms,
+              %s AS projected_at_ms
+            FROM series_ranked
+            WHERE series_rank <= %s
+            ORDER BY concept_key ASC, observed_at DESC
+            """,
+            (int(lookback_days), projection_version, int(projected_at_ms), int(limit_per_series)),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def _insert_observation_series_rows(self, rows: Sequence[Mapping[str, Any]]) -> int:
+        if not rows:
+            return 0
+        values_sql = ",".join(["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(rows))
+        params: list[Any] = []
+        for row in rows:
+            params.extend(
+                [
+                    row["projection_version"],
+                    row["concept_key"],
+                    row["observed_at"],
+                    int(row["series_rank"]),
+                    row["value_numeric"],
+                    row["source_name"],
+                    row["series_key"],
+                    int(row["source_priority"]),
+                    row.get("unit"),
+                    row.get("frequency"),
+                    row.get("data_quality"),
+                    row.get("source_ts"),
+                    Jsonb(dict(row.get("raw_payload_json") or {})),
+                    int(row["ingested_at_ms"]),
+                    int(row["projected_at_ms"]),
+                ]
+            )
+        cursor = self.conn.execute(
+            f"""
+            INSERT INTO macro_observation_series_rows(
+              projection_version,
+              concept_key,
+              observed_at,
+              series_rank,
+              value_numeric,
+              source_name,
+              series_key,
+              source_priority,
+              unit,
+              frequency,
+              data_quality,
+              source_ts,
+              raw_payload_json,
+              ingested_at_ms,
+              projected_at_ms
+            )
+            VALUES {values_sql}
+            """,
+            tuple(params),
+        )
+        rowcount = getattr(cursor, "rowcount", None)
+        if rowcount is None or int(rowcount) < 0:
+            return len(rows)
+        return int(rowcount)
+
+    def _macro_series_publication_state(self, projection_version: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            SELECT *
+            FROM macro_observation_series_publication_state
+            WHERE projection_version = %s
+            """,
+            (projection_version,),
+        ).fetchone()
+        return dict(row) if row is not None else None
+
+    def _upsert_macro_series_publication_state(
+        self,
+        *,
+        projection_version: str,
+        status: str,
+        source_signature: str,
+        row_count: int,
+        started_at_ms: int,
+        finished_at_ms: int,
+        latest_attempt_error: str | None,
+    ) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO macro_observation_series_publication_state(
+              projection_version,
+              source_signature,
+              row_count,
+              latest_attempt_status,
+              latest_attempt_started_at_ms,
+              latest_attempt_finished_at_ms,
+              latest_attempt_error,
+              updated_at_ms
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (projection_version) DO UPDATE SET
+              source_signature = excluded.source_signature,
+              row_count = excluded.row_count,
+              latest_attempt_status = excluded.latest_attempt_status,
+              latest_attempt_started_at_ms = excluded.latest_attempt_started_at_ms,
+              latest_attempt_finished_at_ms = excluded.latest_attempt_finished_at_ms,
+              latest_attempt_error = excluded.latest_attempt_error,
+              updated_at_ms = excluded.updated_at_ms
+            """,
+            (
+                projection_version,
+                source_signature,
+                int(row_count),
+                status,
+                int(started_at_ms),
+                int(finished_at_ms),
+                latest_attempt_error,
+                int(finished_at_ms),
+            ),
+        )
 
     def observations_for_concepts(
         self,
@@ -821,10 +842,6 @@ class MacroIntelRepository:
             """
             SELECT rows.*
             FROM macro_observation_series_rows AS rows
-            JOIN macro_observation_series_active_generation AS active
-              ON active.projection_version = rows.projection_version
-             AND active.concept_key = rows.concept_key
-             AND active.generation_id = rows.generation_id
             WHERE rows.projection_version = %s
               AND rows.concept_key = ANY(%s)
               AND rows.observed_at >= CURRENT_DATE - %s::int
@@ -855,10 +872,6 @@ class MacroIntelRepository:
                      array_remove(array_agg(DISTINCT rows.source_name ORDER BY rows.source_name), NULL) AS sources
               FROM macro_observation_series_rows AS rows
               JOIN requested ON requested.concept_key = rows.concept_key
-              JOIN macro_observation_series_active_generation AS active
-                ON active.projection_version = rows.projection_version
-               AND active.concept_key = rows.concept_key
-               AND active.generation_id = rows.generation_id
               WHERE rows.projection_version = %s
                 AND rows.observed_at >= CURRENT_DATE - %s::int
               GROUP BY rows.concept_key
@@ -968,6 +981,40 @@ class MacroIntelRepository:
         return dict(row) if row is not None else None
 
 
+def _series_source_signature(
+    *,
+    projection_version: str,
+    lookback_days: int,
+    limit_per_series: int,
+    rows: Sequence[Mapping[str, Any]],
+) -> str:
+    stable_rows = [
+        {
+            "concept_key": str(row.get("concept_key") or ""),
+            "observed_at": str(row.get("observed_at") or ""),
+            "value_numeric": str(row.get("value_numeric") or ""),
+            "source_name": str(row.get("source_name") or ""),
+            "series_key": str(row.get("series_key") or ""),
+            "source_priority": int(row.get("source_priority") or 0),
+            "unit": row.get("unit"),
+            "frequency": row.get("frequency"),
+            "data_quality": str(row.get("data_quality") or ""),
+            "source_ts": str(row.get("source_ts") or ""),
+        }
+        for row in rows
+    ]
+    stable_rows.sort(
+        key=lambda item: (item["concept_key"], item["observed_at"], item["source_name"], item["series_key"])
+    )
+    payload = {
+        "projection_version": str(projection_version),
+        "lookback_days": int(lookback_days),
+        "limit_per_series": int(limit_per_series),
+        "rows": stable_rows,
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
 def _observation_id(observation: Mapping[str, Any]) -> str:
     identity = "|".join(
         [
@@ -1019,10 +1066,6 @@ def _payload_hash(
     return hashlib.sha256(identity.encode()).hexdigest()
 
 
-def _generation_id(projection_version: str, now_ms: int) -> str:
-    return f"macro-observation-series:{projection_version}:{int(now_ms)}:{uuid.uuid4().hex}"
-
-
 def _transaction_context(conn: Any):
     transaction = getattr(conn, "transaction", None)
     if transaction is None:
@@ -1036,4 +1079,4 @@ def _count(row: Any) -> int:
     return int(dict(row).get("count") or 0)
 
 
-__all__ = ["MacroIntelRepository"]
+__all__ = ["MacroIntelRepository", "MacroSeriesRefreshResult"]

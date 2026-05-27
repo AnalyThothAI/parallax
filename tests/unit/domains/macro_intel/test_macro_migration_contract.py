@@ -14,6 +14,16 @@ MIGRATION = (
     / "versions"
     / "20260521_0080_macro_concept_key_hard_cut.py"
 )
+RUNTIME_DB_PERFORMANCE_HARD_CUT_MIGRATION = (
+    ROOT
+    / "src"
+    / "gmgn_twitter_intel"
+    / "platform"
+    / "db"
+    / "alembic"
+    / "versions"
+    / "20260527_0114_runtime_db_performance_hard_cut.py"
+)
 
 
 def test_macro_concept_key_migration_backfills_historical_stooq_rows_only() -> None:
@@ -75,8 +85,8 @@ def test_repository_latest_observations_reads_projected_rows() -> None:
     assert result == rows
     query, params = conn.executions[0]
     assert "FROM macro_observation_series_rows AS rows" in query
-    assert "JOIN macro_observation_series_active_generation AS active" in query
-    assert "active.generation_id = rows.generation_id" in query
+    assert "macro_observation_series_active_generation" not in query
+    assert "generation_id" not in query
     assert "projection_version = %s" in query
     assert "series_rank = 1" in query
     assert "FROM macro_observations" not in query
@@ -103,8 +113,8 @@ def test_repository_concept_history_counts_returns_projected_point_contract() ->
     query, params = conn.executions[0]
     assert "WITH requested AS" in query
     assert "FROM macro_observation_series_rows AS rows" in query
-    assert "JOIN macro_observation_series_active_generation AS active" in query
-    assert "active.generation_id = rows.generation_id" in query
+    assert "macro_observation_series_active_generation" not in query
+    assert "generation_id" not in query
     assert "projection_version = %s" in query
     assert "FROM macro_observations" not in query
     assert "row_number() OVER" not in query
@@ -113,35 +123,59 @@ def test_repository_concept_history_counts_returns_projected_point_contract() ->
     assert params == (["asset:spx"], "macro_regime_v4", 60)
 
 
-def test_repository_refresh_observation_series_rows_writes_projected_read_model_generation() -> None:
-    conn = FakeRefreshConnection(row_count=42)
+def test_repository_refresh_observation_series_rows_writes_current_read_model() -> None:
+    conn = FakeRefreshConnection(row_count=1)
     repo = MacroIntelRepository(conn)
 
-    rows_written = repo.refresh_observation_series_rows(
+    result = repo.refresh_observation_series_rows(
         projection_version="macro_regime_v4",
         now_ms=1_779_000_000_000,
         lookback_days=730,
         limit_per_series=252,
     )
 
-    assert rows_written == 42
-    assert len(conn.executions) == 6
+    assert result["status"] == "published"
+    assert result["rows_written"] == 1
+    assert result["source_rows"] == 1
     queries = "\n".join(query for query, _params in conn.executions)
-    assert "INSERT INTO macro_observation_series_generations" in queries
-    assert "INSERT INTO macro_observation_series_active_generation" in queries
+    assert "DELETE FROM macro_observation_series_rows" in queries
     assert "INSERT INTO macro_observation_series_rows" in queries
-    assert "generation_id" in queries
+    assert "INSERT INTO macro_observation_series_publication_state" in queries
+    assert "generation_id" not in queries
+    assert "macro_observation_series_generations" not in queries
+    assert "macro_observation_series_active_generation" not in queries
     assert "FROM macro_observations" in queries
     assert "row_number() OVER" in queries
     assert "PARTITION BY concept_key, observed_at" in queries
     assert "PARTITION BY concept_key" in queries
-    assert "DELETE FROM macro_observation_series_rows WHERE projection_version" not in queries
-    assert "cleanup_candidates" in queries
-    insert_rows_query, insert_rows_params = conn.executions[1]
-    assert "WITH source_ranked AS" in insert_rows_query
-    assert insert_rows_params[0] == 730
-    assert insert_rows_params[1] == "macro_regime_v4"
-    assert insert_rows_params[3:] == (1_779_000_000_000, 252)
+    select_query, select_params = conn.executions[0]
+    assert "WITH source_ranked AS" in select_query
+    assert select_params == (730, "macro_regime_v4", 1_779_000_000_000, 252)
+
+
+def test_macro_observation_series_contract_is_current_only_after_hard_cut() -> None:
+    migration_sql = RUNTIME_DB_PERFORMANCE_HARD_CUT_MIGRATION.read_text(encoding="utf-8")
+    repository_sql = (
+        ROOT
+        / "src"
+        / "gmgn_twitter_intel"
+        / "domains"
+        / "macro_intel"
+        / "repositories"
+        / "macro_intel_repository.py"
+    ).read_text(encoding="utf-8")
+
+    assert "macro_observation_series_rows_compact" in migration_sql
+    assert "observed_at TIMESTAMPTZ NOT NULL" in migration_sql
+    assert "value_numeric DOUBLE PRECISION NOT NULL" in migration_sql
+    assert "macro_observation_series_rows_compact_pkey" in migration_sql
+    assert "PRIMARY KEY (projection_version, concept_key, observed_at)" in migration_sql
+    assert "CREATE TABLE IF NOT EXISTS macro_observation_series_publication_state" in migration_sql
+    assert "DROP TABLE IF EXISTS macro_observation_series_active_generation" in migration_sql
+    assert "DROP TABLE IF EXISTS macro_observation_series_generations" in migration_sql
+    assert "INSERT INTO macro_observation_series_generations" not in repository_sql
+    assert "macro_observation_series_active_generation" not in repository_sql
+    assert "_generation_id" not in repository_sql
 
 
 class FakeConnection:
@@ -171,18 +205,41 @@ class FakeRefreshConnection:
     def __init__(self, *, row_count: int) -> None:
         self.row_count = row_count
         self.executions: list[tuple[str, tuple[object, ...]]] = []
+        self.rows = [
+            {
+                "projection_version": "macro_regime_v4",
+                "concept_key": "rates:dgs10",
+                "observed_at": "2026-05-20",
+                "series_rank": 1,
+                "value_numeric": 4.7,
+                "source_name": "fred",
+                "series_key": "fred:DGS10",
+                "source_priority": 100,
+                "unit": "percent",
+                "frequency": "daily",
+                "data_quality": "ok",
+                "source_ts": "2026-05-20",
+                "raw_payload_json": {},
+                "ingested_at_ms": 1,
+                "projected_at_ms": 1_779_000_000_000,
+            }
+        ]
 
     def execute(self, query: str, params: tuple[object, ...]) -> FakeCursor:
         self.executions.append((query, params))
-        generation_id = str(params[2] if "WITH source_ranked AS" in query else "")
-        return FakeCursor(
-            [
-                {
-                    "generation_id": generation_id,
-                    "row_count": self.row_count,
-                    "status": "active",
-                    "cleanup_rows_deleted": 0,
-                }
-            ],
-            rowcount=self.row_count,
-        )
+        if "WITH source_ranked AS" in query:
+            return FakeCursor(self.rows[: self.row_count])
+        if "FROM macro_observation_series_publication_state" in query:
+            return FakeCursor([])
+        return FakeCursor([], rowcount=self.row_count)
+
+    def transaction(self):
+        return FakeTransaction()
+
+
+class FakeTransaction:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        return False

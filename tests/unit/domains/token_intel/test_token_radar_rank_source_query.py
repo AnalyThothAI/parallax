@@ -10,12 +10,13 @@ from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_rank_source
 
 
 class FakeConn:
-    def __init__(self, rows=None):
+    def __init__(self, rows=None, *, rowcount: int = 0):
         self.rows = rows or []
         self.sql = ""
         self.params = None
         self.execute_count = 0
         self.commit_count = 0
+        self.rowcount = rowcount
 
     def execute(self, sql, params=None):
         self.sql = str(sql)
@@ -206,6 +207,33 @@ def test_rank_source_query_deletes_stale_edges_inside_requested_window_only():
     assert "fresh.event_id = stale_edges.source_id" in conn.sql
 
 
+def test_rank_source_query_prunes_edges_by_projection_window_scope_and_cutoff():
+    conn = FakeConn(rowcount=5)
+
+    deleted = TokenRadarRankSourceQuery(conn).prune_edges(
+        projection_version="token-radar-v13-social-attention",
+        window="5m",
+        scope="matched",
+        event_received_before_ms=1_777_800_000_000,
+        commit=False,
+    )
+
+    assert deleted == 5
+    assert "DELETE FROM token_radar_rank_source_events" in conn.sql
+    assert 'AND "window" = %s' in conn.sql
+    assert "AND scope = %s" in conn.sql
+    assert "AND event_received_at_ms < %s" in conn.sql
+    assert "events " not in conn.sql
+    assert "token_intents" not in conn.sql
+    assert conn.params == (
+        "token-radar-v13-social-attention",
+        "5m",
+        "matched",
+        1_777_800_000_000,
+    )
+    assert conn.commit_count == 0
+
+
 def test_rank_source_query_conflict_update_refreshes_consumed_market_columns():
     conn = FakeConn(rows=[{"upserted_count": 1, "deleted_count": 0}])
 
@@ -310,3 +338,24 @@ def test_rank_source_repository_populates_compact_edges():
     assert changed == 1
     assert "INSERT INTO token_radar_rank_source_events" in conn.sql
     assert conn.commit_count == 0
+
+
+def test_rank_source_repository_prunes_edges_through_compact_query():
+    conn = FakeConn(rowcount=4)
+
+    deleted = TokenRadarRankSourceRepository(conn).prune_edges(
+        projection_version="token-radar-v13-social-attention",
+        window="1h",
+        scope="all",
+        event_received_before_ms=1_777_000_000_000,
+        commit=False,
+    )
+
+    assert deleted == 4
+    assert "DELETE FROM token_radar_rank_source_events" in conn.sql
+    assert conn.params == (
+        "token-radar-v13-social-attention",
+        "1h",
+        "all",
+        1_777_000_000_000,
+    )

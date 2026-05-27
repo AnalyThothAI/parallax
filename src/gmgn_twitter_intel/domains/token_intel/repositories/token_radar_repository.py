@@ -562,12 +562,36 @@ class TokenRadarRepository:
             self.conn.commit()
         return int(getattr(cursor, "rowcount", 0) or 0)
 
+    def prune_target_features(
+        self,
+        *,
+        projection_version: str,
+        window: str,
+        scope: str,
+        latest_event_before_ms: int,
+        commit: bool = True,
+    ) -> int:
+        cursor = self.conn.execute(
+            """
+            DELETE FROM token_radar_target_features
+            WHERE projection_version = %s
+              AND "window" = %s
+              AND scope = %s
+              AND latest_event_received_at_ms < %s
+            """,
+            (projection_version, window, scope, int(latest_event_before_ms)),
+        )
+        if commit:
+            self.conn.commit()
+        return int(getattr(cursor, "rowcount", 0) or 0)
+
     def list_rank_inputs_for_rank_set(
         self,
         *,
         projection_version: str,
         window: str,
         scope: str,
+        min_latest_event_received_at_ms: int,
     ) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
@@ -614,9 +638,10 @@ class TokenRadarRepository:
             WHERE projection_version = %s
               AND "window" = %s
               AND scope = %s
+              AND latest_event_received_at_ms >= %s
             ORDER BY lane DESC, rank_score DESC, latest_event_received_at_ms DESC, identity_id ASC
             """,
-            (projection_version, window, scope),
+            (projection_version, window, scope, int(min_latest_event_received_at_ms)),
         ).fetchall()
         return [dict(row) for row in rows]
 

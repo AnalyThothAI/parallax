@@ -187,11 +187,6 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
         SRC / "domains/macro_intel/runtime/macro_view_projection_worker.py",
         SRC / "platform/db/alembic/versions/20260521_0076_macro_views.py",
     },
-    "macro_observation_series_active_generation": {
-        SRC / "domains/macro_intel/repositories/macro_intel_repository.py",
-        SRC / "domains/macro_intel/runtime/macro_view_projection_worker.py",
-        SRC / "platform/db/alembic/versions/20260521_0076_macro_views.py",
-    },
     "equity_event_page_rows": {
         SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
         SRC / "domains/equity_event_intel/runtime/equity_event_page_projection_worker.py",
@@ -407,10 +402,11 @@ def test_macro_sync_is_fact_ingest_and_projection_remains_read_model_writer() ->
     assert manifests["macro_sync"].wakes_out == ("macro_observations_imported",)
 
     projection = manifests["macro_view_projection"]
-    assert projection.input_contract == ("macro_observations", "macro_observation_series_rows active generation")
+    assert projection.input_contract == ("macro_observations", "macro_observation_series_rows current")
     assert "macro data providers" not in projection.input_contract
     assert "macro_observation_series_rows" in projection.writes_read_models
-    assert "macro_observation_series_active_generation" in projection.writes_read_models
+    assert "macro_observation_series_active_generation" not in projection.writes_read_models
+    assert "macro_observation_series_generations" not in projection.writes_read_models
     assert "macro_view_snapshots" in projection.writes_read_models
     assert "macro_observations_imported" in projection.wakes_on
 

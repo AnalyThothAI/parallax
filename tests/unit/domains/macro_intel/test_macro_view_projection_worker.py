@@ -49,7 +49,9 @@ def test_macro_view_projection_worker_writes_latest_snapshot() -> None:
     assert result.notes["status"] == "partial"
     assert result.notes["source_rows_scanned"] == 1
     assert result.notes["targets_loaded"] == len(MACRO_CORE_CONCEPTS)
-    assert result.notes["projected_rows_written"] == 1
+    assert result.notes["projected_rows_written"] == 3
+    assert result.notes["series_status"] == "published"
+    assert result.notes["source_signature"] == "sig-a"
     assert result.notes["rows_written"] == 1
     assert result.notes["history_coverage_ratio"] == "0.0"
     assert "data_gap_count" in result.notes
@@ -99,7 +101,7 @@ class FakeMacroIntelRepository:
         now_ms: int,
         lookback_days: int,
         limit_per_series: int,
-    ) -> int:
+    ) -> dict[str, object]:
         self.calls.append("refresh_observation_series_rows")
         self.refresh_call = {
             "projection_version": projection_version,
@@ -107,7 +109,12 @@ class FakeMacroIntelRepository:
             "lookback_days": lookback_days,
             "limit_per_series": limit_per_series,
         }
-        return len(self.observations)
+        return {
+            "status": "published",
+            "rows_written": 3,
+            "source_rows": 3,
+            "source_signature": "sig-a",
+        }
 
     def observations_for_concepts(
         self,

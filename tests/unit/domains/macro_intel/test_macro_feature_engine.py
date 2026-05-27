@@ -144,8 +144,8 @@ def test_repository_observations_for_concepts_reads_projected_bounded_history() 
     assert result == rows
     query, params = conn.executions[0]
     assert "FROM macro_observation_series_rows AS rows" in query
-    assert "JOIN macro_observation_series_active_generation AS active" in query
-    assert "active.generation_id = rows.generation_id" in query
+    assert "macro_observation_series_active_generation" not in query
+    assert "generation_id" not in query
     assert "projection_version = %s" in query
     assert "concept_key = ANY(%s)" in query
     assert "observed_at >= CURRENT_DATE - %s::int" in query
