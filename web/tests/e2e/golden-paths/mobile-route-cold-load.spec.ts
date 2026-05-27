@@ -105,7 +105,7 @@ const routeCases: RouteCase[] = [
       await expect(page.locator("[aria-label='News filters']")).toBeVisible();
       await expect(page.getByRole("navigation", { name: "News pagination" })).toBeVisible();
       await expect(page.getByRole("list", { name: "news tape" })).toBeVisible();
-      await expect(page.locator("[aria-label='news inspector']")).toBeVisible();
+      await expect(page.locator("[aria-label='news inspector']")).toHaveCount(0);
       await expect(
         page.getByRole("button", { name: /Open Macro desk flags liquidity rotation/ }),
       ).toBeVisible();
@@ -113,12 +113,10 @@ const routeCases: RouteCase[] = [
     nestedOverflowSelectors: [
       ".news-panel",
       ".news-table-wrap",
-      ".news-compact-layout",
       ".news-tape-list",
       ".news-tape-row",
-      ".news-tape-inspector",
     ],
-    lastMeaningfulSelector: ".news-tape-inspector",
+    lastMeaningfulSelector: ".news-tape-row",
   },
   {
     name: "news detail",
