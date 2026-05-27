@@ -19,6 +19,9 @@ from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import 
     PulseTriggerThresholds,
 )
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import PulseGateThresholds
+from gmgn_twitter_intel.domains.asset_market.repositories.token_profile_current_repository import (
+    TokenProfileCurrentRepository,
+)
 from gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
 from tests.postgres_test_utils import connect_postgres_test, prepare_postgres_database
 from tests.support.db_seeds import (
@@ -183,41 +186,24 @@ def _promote_single_fixture_radar_row_for_pulse() -> None:
 def _seed_profile_for_pulse_evidence() -> None:
     conn = connect_postgres_test(read_only=False)
     try:
-        conn.execute(
-            """
-            INSERT INTO token_profile_current(
-              target_type, target_id, status, profile_provider, source_kind, source_ref,
-              symbol, name, quality_flags_json, source_payload_json,
-              observed_at_ms, computed_at_ms, updated_at_ms
-            )
-            VALUES (
-              %s, %s, 'ready', 'fixture', 'fixture', %s,
-              %s, %s, '[]'::jsonb, '{}'::jsonb,
-              %s, %s, %s
-            )
-            ON CONFLICT (target_type, target_id) DO UPDATE
-            SET status = EXCLUDED.status,
-                profile_provider = EXCLUDED.profile_provider,
-                source_kind = EXCLUDED.source_kind,
-                source_ref = EXCLUDED.source_ref,
-                symbol = EXCLUDED.symbol,
-                name = EXCLUDED.name,
-                observed_at_ms = EXCLUDED.observed_at_ms,
-                computed_at_ms = EXCLUDED.computed_at_ms,
-                updated_at_ms = EXCLUDED.updated_at_ms
-            """,
-            (
-                MARKET_TARGET_TYPE,
-                MARKET_TARGET_ID,
-                f"fixture:{EVENT_ID}",
-                SYMBOL,
-                f"{SYMBOL} Fixture Token",
-                FIXED_NOW_MS + 2_500,
-                FIXED_NOW_MS + 2_500,
-                FIXED_NOW_MS + 2_500,
-            ),
+        TokenProfileCurrentRepository(conn).upsert_current(
+            {
+                "target_type": MARKET_TARGET_TYPE,
+                "target_id": MARKET_TARGET_ID,
+                "status": "ready",
+                "profile_provider": "fixture",
+                "source_kind": "fixture",
+                "source_ref": f"fixture:{EVENT_ID}",
+                "symbol": SYMBOL,
+                "name": f"{SYMBOL} Fixture Token",
+                "quality_flags_json": [],
+                "source_payload_json": {},
+                "observed_at_ms": FIXED_NOW_MS + 2_500,
+                "computed_at_ms": FIXED_NOW_MS + 2_500,
+                "updated_at_ms": FIXED_NOW_MS + 2_500,
+            },
+            commit=True,
         )
-        conn.commit()
     finally:
         conn.close()
 

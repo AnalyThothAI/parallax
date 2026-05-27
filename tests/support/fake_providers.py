@@ -6,7 +6,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from gmgn_twitter_intel.domains.asset_market.providers import CexTicker, DexTokenQuote, DexTokenQuoteRequest
-from gmgn_twitter_intel.domains.pulse_lab.providers import PulseDecisionResult
+from gmgn_twitter_intel.domains.pulse_lab.providers import DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT, PulseDecisionResult
+from gmgn_twitter_intel.platform.agent_execution import AgentCapacityReservation
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     BearCaseMemo,
     BullBearView,
@@ -111,9 +112,29 @@ class FakePulseDecisionProvider:
     model = "fake-pulse"
     timeout_seconds = 1.0
     artifact_version_hash = "artifact:fake-hot-path"
+    runtime_contract = DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT
 
     def __init__(self) -> None:
         self.contexts: list[dict[str, Any]] = []
+
+    def try_reserve_execution(
+        self,
+        lane: str,
+        *,
+        child_lanes: tuple[str, ...] = (),
+        scope: str = "execution",
+    ) -> AgentCapacityReservation:
+        return AgentCapacityReservation(lane=lane, acquired=True)
+
+    def model_for_lane(self, lane: str) -> str:
+        if lane in {
+            "pulse.pipeline",
+            "pulse.signal_analyst",
+            "pulse.bear_case",
+            "pulse.risk_portfolio_judge",
+        }:
+            return self.model
+        return ""
 
     def request_audit(
         self,
@@ -153,6 +174,8 @@ class FakePulseDecisionProvider:
         route: str,
         completeness: dict[str, Any],
         runtime_manifest: dict[str, Any],
+        parent_reservation: AgentCapacityReservation | None = None,
+        stage_plan: Any | None = None,
     ) -> PulseDecisionResult:
         self.contexts.append(context)
         evidence_ids = _event_ids(context)

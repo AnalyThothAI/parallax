@@ -134,6 +134,22 @@ def _make_snapshot_pulse_ready(snapshot: dict[str, Any]) -> None:
     composite = _dict_block(snapshot, "composite")
     composite.update({"rank_score": 95, "recommended_decision": "high_alert"})
 
+    families = _dict_block(snapshot, "families")
+    social_heat = _dict_block(families, "social_heat")
+    social_heat_facts = _dict_block(social_heat, "facts")
+    social_heat_facts.update({"unique_authors": 2, "watched_mentions": 0})
+    social_propagation = _dict_block(families, "social_propagation")
+    social_propagation_facts = _dict_block(social_propagation, "facts")
+    social_propagation_facts.update(
+        {
+            "independent_authors": 2,
+            "effective_authors": 2.0,
+            "source_weighted_effective_authors": 2.0,
+            "top_author_share": 0.5,
+            "duplicate_text_share": 0.0,
+        }
+    )
+
 
 def _dict_block(parent: dict[str, Any], key: str) -> dict[str, Any]:
     value = parent.get(key)
