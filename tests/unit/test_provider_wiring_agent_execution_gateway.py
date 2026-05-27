@@ -26,6 +26,9 @@ class FakePulseClient:
     def try_reserve_execution(self, lane, *, child_lanes=(), scope="execution"):
         raise AssertionError("not used")
 
+    def model_for_lane(self, lane):
+        return f"model:{lane}"
+
     def request_audit(self, **kwargs):
         return {"input_hash": "hash-input"}
 

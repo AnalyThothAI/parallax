@@ -85,6 +85,9 @@ class OpenAIAgentsPulseDecisionClient:
     def model(self) -> str:
         return self._agent_gateway.model_for_lane("pulse.signal_analyst")
 
+    def model_for_lane(self, lane: str) -> str:
+        return self._agent_gateway.model_for_lane(lane)
+
     @property
     def artifact_version_hash(self) -> str:
         return artifact_hash_for(

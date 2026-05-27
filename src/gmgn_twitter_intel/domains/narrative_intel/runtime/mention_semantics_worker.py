@@ -80,7 +80,7 @@ class MentionSemanticsWorker(WorkerBase):
                     "agent_reservation_error": type(exc).__name__,
                 },
             )
-        if reservation is not None and not reservation.acquired:
+        if not reservation.acquired:
             reason = _reservation_backpressure_reason(reservation)
             return WorkerResult(
                 skipped=1,
@@ -501,11 +501,8 @@ class MentionSemanticsWorker(WorkerBase):
             yield repos
 
 
-def _try_reserve_provider_execution(provider: Any, lane: str) -> AgentCapacityReservation | None:
-    method = getattr(provider, "try_reserve_execution", None)
-    if not callable(method):
-        return None
-    return method(lane)
+def _try_reserve_provider_execution(provider: Any, lane: str) -> AgentCapacityReservation:
+    return provider.try_reserve_execution(lane)
 
 
 async def _label_mentions(
@@ -513,16 +510,12 @@ async def _label_mentions(
     *,
     run_id: str,
     request: Any,
-    reservation: AgentCapacityReservation | None,
+    reservation: AgentCapacityReservation,
 ) -> Any:
-    if reservation is None:
-        return await provider.label_mentions(run_id=run_id, request=request)
     return await provider.label_mentions(run_id=run_id, request=request, reservation=reservation)
 
 
-async def _release_reservation(reservation: AgentCapacityReservation | None) -> None:
-    if reservation is None:
-        return
+async def _release_reservation(reservation: AgentCapacityReservation) -> None:
     await reservation.release()
 
 

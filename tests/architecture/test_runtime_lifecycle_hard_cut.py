@@ -18,6 +18,15 @@ def test_no_runtime_compatibility_fallbacks_for_agent_contracts() -> None:
     assert "client.model" not in source
     assert "fallback" not in source.lower()
 
+    pulse_provider_sources = "\n".join(
+        (
+            (SRC / "app/runtime/provider_wiring/openai.py").read_text(),
+            (SRC / "integrations/openai_agents/pulse_decision_agent_client.py").read_text(),
+        )
+    )
+    assert "return self.model" not in pulse_provider_sources
+    assert 'getattr(gateway, "model_for_lane", None)' not in pulse_provider_sources
+
 
 @pytest.mark.architecture
 def test_macro_surfaces_do_not_read_control_plane_runs_as_product_truth() -> None:

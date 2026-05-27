@@ -2229,7 +2229,12 @@ class FakeDigestRepository:
         return {"updated": len(admission_ids)}
 
 
-class BarrierNarrativeProvider:
+class AcquiringNarrativeProvider:
+    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+        return AgentCapacityReservation(lane=lane, acquired=True)
+
+
+class BarrierNarrativeProvider(AcquiringNarrativeProvider):
     provider = "test-provider"
     model = "gpt-test"
     artifact_version_hash = "artifact-test"
@@ -2238,7 +2243,7 @@ class BarrierNarrativeProvider:
         self.db = db
         self.max_sessions_seen = 0
 
-    async def label_mentions(self, *, run_id, request):
+    async def label_mentions(self, *, run_id, request, reservation=None):
         self.max_sessions_seen = max(self.max_sessions_seen, self.db.active_sessions)
         return MentionSemanticsBatchResult(
             run_id=run_id,
@@ -2273,7 +2278,7 @@ class BarrierNarrativeProvider:
     def request_audit_for_label_mentions(self, *, run_id, request):
         return _request_audit(stage="mention_semantics", run_id=run_id)
 
-    async def summarize_discussion(self, *, run_id, request):  # pragma: no cover - protocol stub
+    async def summarize_discussion(self, *, run_id, request, reservation=None):  # pragma: no cover - protocol stub
         raise NotImplementedError
 
     def request_audit_for_summarize_discussion(self, *, run_id, request):  # pragma: no cover - protocol stub
@@ -2283,18 +2288,18 @@ class BarrierNarrativeProvider:
         return None
 
 
-class FailingNarrativeProvider:
+class FailingNarrativeProvider(AcquiringNarrativeProvider):
     provider = "test-provider"
     model = "gpt-test"
     artifact_version_hash = "artifact-test"
 
-    async def label_mentions(self, *, run_id, request):
+    async def label_mentions(self, *, run_id, request, reservation=None):
         raise TimeoutError("provider timed out")
 
     def request_audit_for_label_mentions(self, *, run_id, request):
         return _request_audit(stage="mention_semantics", run_id=run_id)
 
-    async def summarize_discussion(self, *, run_id, request):
+    async def summarize_discussion(self, *, run_id, request, reservation=None):
         raise TimeoutError("provider timed out")
 
     def request_audit_for_summarize_discussion(self, *, run_id, request):
@@ -2305,10 +2310,10 @@ class FailingNarrativeProvider:
 
 
 class CancelledNarrativeProvider(FailingNarrativeProvider):
-    async def label_mentions(self, *, run_id, request):
+    async def label_mentions(self, *, run_id, request, reservation=None):
         raise asyncio.CancelledError(WORKER_HARD_TIMEOUT_CANCEL_REASON)
 
-    async def summarize_discussion(self, *, run_id, request):
+    async def summarize_discussion(self, *, run_id, request, reservation=None):
         raise asyncio.CancelledError(WORKER_HARD_TIMEOUT_CANCEL_REASON)
 
 
@@ -2324,14 +2329,14 @@ class NoStartNarrativeProvider(FailingNarrativeProvider):
             reason=AgentExecutionErrorClass.CAPACITY_DENIED,
         )
 
-    async def label_mentions(self, *, run_id, request):
+    async def label_mentions(self, *, run_id, request, reservation=None):
         raise AgentExecutionError(
             AgentExecutionErrorClass.CAPACITY_DENIED,
             "agent lane capacity denied",
             execution_started=False,
         )
 
-    async def summarize_discussion(self, *, run_id, request):
+    async def summarize_discussion(self, *, run_id, request, reservation=None):
         raise AgentExecutionError(
             AgentExecutionErrorClass.CAPACITY_DENIED,
             "agent lane capacity denied",
@@ -2373,18 +2378,18 @@ class InvalidMentionResultProvider:
         return None
 
 
-class UnexpectedDigestProvider:
+class UnexpectedDigestProvider(AcquiringNarrativeProvider):
     provider = "test-provider"
     model = "gpt-test"
     artifact_version_hash = "artifact-test"
 
-    async def label_mentions(self, *, run_id, request):  # pragma: no cover - protocol stub
+    async def label_mentions(self, *, run_id, request, reservation=None):  # pragma: no cover - protocol stub
         raise NotImplementedError
 
     def request_audit_for_label_mentions(self, *, run_id, request):  # pragma: no cover - protocol stub
         return _request_audit(stage="mention_semantics", run_id=run_id)
 
-    async def summarize_discussion(self, *, run_id, request):
+    async def summarize_discussion(self, *, run_id, request, reservation=None):
         raise AssertionError("digest provider should not be called while semantics are still pending")
 
     def request_audit_for_summarize_discussion(self, *, run_id, request):
@@ -2394,18 +2399,18 @@ class UnexpectedDigestProvider:
         return None
 
 
-class StaleButValidDigestProvider:
+class StaleButValidDigestProvider(AcquiringNarrativeProvider):
     provider = "test-provider"
     model = "gpt-test"
     artifact_version_hash = "artifact-test"
 
-    async def label_mentions(self, *, run_id, request):  # pragma: no cover - protocol stub
+    async def label_mentions(self, *, run_id, request, reservation=None):  # pragma: no cover - protocol stub
         raise NotImplementedError
 
     def request_audit_for_label_mentions(self, *, run_id, request):  # pragma: no cover - protocol stub
         return _request_audit(stage="mention_semantics", run_id=run_id)
 
-    async def summarize_discussion(self, *, run_id, request):
+    async def summarize_discussion(self, *, run_id, request, reservation=None):
         ref = {"ref_id": "event:event-1", "kind": "event", "source_table": "events"}
         return DiscussionDigestResult(
             run_id=run_id,
@@ -2452,9 +2457,9 @@ class CountingDigestProvider(StaleButValidDigestProvider):
     def __init__(self):
         self.calls = []
 
-    async def summarize_discussion(self, *, run_id, request):
+    async def summarize_discussion(self, *, run_id, request, reservation=None):
         self.calls.append(request.target_id)
-        return await super().summarize_discussion(run_id=run_id, request=request)
+        return await super().summarize_discussion(run_id=run_id, request=request, reservation=reservation)
 
 
 class InvalidRefsDigestProvider(StaleButValidDigestProvider):
@@ -2478,18 +2483,18 @@ class InvalidRefsDigestProvider(StaleButValidDigestProvider):
         return result.model_copy(update={"digest": digest})
 
 
-class SparseDigestProvider:
+class SparseDigestProvider(AcquiringNarrativeProvider):
     provider = "test-provider"
     model = "gpt-test"
     artifact_version_hash = "artifact-test"
 
-    async def label_mentions(self, *, run_id, request):  # pragma: no cover - protocol stub
+    async def label_mentions(self, *, run_id, request, reservation=None):  # pragma: no cover - protocol stub
         raise NotImplementedError
 
     def request_audit_for_label_mentions(self, *, run_id, request):  # pragma: no cover - protocol stub
         return _request_audit(stage="mention_semantics", run_id=run_id)
 
-    async def summarize_discussion(self, *, run_id, request):
+    async def summarize_discussion(self, *, run_id, request, reservation=None):
         return DiscussionDigestResult(
             run_id=run_id,
             schema_version=request.schema_version,
@@ -2519,12 +2524,12 @@ class SparseDigestProvider:
         return None
 
 
-class PartialFailureNarrativeProvider:
+class PartialFailureNarrativeProvider(AcquiringNarrativeProvider):
     provider = "test-provider"
     model = "gpt-test"
     artifact_version_hash = "artifact-test"
 
-    async def label_mentions(self, *, run_id, request):
+    async def label_mentions(self, *, run_id, request, reservation=None):
         return MentionSemanticsBatchResult(
             run_id=run_id,
             schema_version=request.schema_version,
@@ -2538,7 +2543,7 @@ class PartialFailureNarrativeProvider:
     def request_audit_for_label_mentions(self, *, run_id, request):
         return _request_audit(stage="mention_semantics", run_id=run_id)
 
-    async def summarize_discussion(self, *, run_id, request):  # pragma: no cover - protocol stub
+    async def summarize_discussion(self, *, run_id, request, reservation=None):  # pragma: no cover - protocol stub
         raise NotImplementedError
 
     def request_audit_for_summarize_discussion(self, *, run_id, request):  # pragma: no cover - protocol stub
@@ -2548,12 +2553,12 @@ class PartialFailureNarrativeProvider:
         return None
 
 
-class UnknownLabelNarrativeProvider:
+class UnknownLabelNarrativeProvider(AcquiringNarrativeProvider):
     provider = "test-provider"
     model = "gpt-test"
     artifact_version_hash = "artifact-test"
 
-    async def label_mentions(self, *, run_id, request):
+    async def label_mentions(self, *, run_id, request, reservation=None):
         return MentionSemanticsBatchResult(
             run_id=run_id,
             schema_version=request.schema_version,
@@ -2587,7 +2592,7 @@ class UnknownLabelNarrativeProvider:
     def request_audit_for_label_mentions(self, *, run_id, request):
         return _request_audit(stage="mention_semantics", run_id=run_id)
 
-    async def summarize_discussion(self, *, run_id, request):  # pragma: no cover - protocol stub
+    async def summarize_discussion(self, *, run_id, request, reservation=None):  # pragma: no cover - protocol stub
         raise NotImplementedError
 
     def request_audit_for_summarize_discussion(self, *, run_id, request):  # pragma: no cover - protocol stub
@@ -2597,12 +2602,12 @@ class UnknownLabelNarrativeProvider:
         return None
 
 
-class EventRefAliasNarrativeProvider:
+class EventRefAliasNarrativeProvider(AcquiringNarrativeProvider):
     provider = "test-provider"
     model = "gpt-test"
     artifact_version_hash = "artifact-test"
 
-    async def label_mentions(self, *, run_id, request):
+    async def label_mentions(self, *, run_id, request, reservation=None):
         return MentionSemanticsBatchResult(
             run_id=run_id,
             schema_version=request.schema_version,
@@ -2636,7 +2641,7 @@ class EventRefAliasNarrativeProvider:
     def request_audit_for_label_mentions(self, *, run_id, request):
         return _request_audit(stage="mention_semantics", run_id=run_id)
 
-    async def summarize_discussion(self, *, run_id, request):  # pragma: no cover - protocol stub
+    async def summarize_discussion(self, *, run_id, request, reservation=None):  # pragma: no cover - protocol stub
         raise NotImplementedError
 
     def request_audit_for_summarize_discussion(self, *, run_id, request):  # pragma: no cover - protocol stub

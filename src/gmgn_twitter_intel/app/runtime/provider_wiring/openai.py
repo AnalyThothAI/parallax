@@ -82,11 +82,7 @@ class OpenAIPulseDecisionProvider:
         return self._client.runtime_contract
 
     def model_for_lane(self, lane: str) -> str:
-        gateway = getattr(self._client, "_agent_gateway", None)
-        model_for_lane = getattr(gateway, "model_for_lane", None)
-        if callable(model_for_lane):
-            return str(model_for_lane(lane) or "")
-        return self.model
+        return self._client.model_for_lane(lane)
 
     def try_reserve_execution(
         self,
