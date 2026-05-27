@@ -370,9 +370,14 @@ def test_next_runtime_lifecycle_hard_cut_payload_hash_columns_are_backfilled_not
     text = _migration_text(NEXT_RUNTIME_LIFECYCLE_HARD_CUT_MIGRATION)
 
     for table_name in ("news_page_rows", "news_source_quality_rows", "token_profile_current"):
+        table_block = text.split(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS payload_hash TEXT", maxsplit=1)[
+            1
+        ].split(f"ALTER TABLE {table_name} ALTER COLUMN payload_hash SET NOT NULL", maxsplit=1)[0]
+        normalized_block = " ".join(table_block.split())
         assert f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS payload_hash TEXT" in text
-        assert f"UPDATE {table_name}" in text
-        assert "SET payload_hash = COALESCE(NULLIF(payload_hash, '')," in text
+        assert f"UPDATE {table_name}" in table_block
+        assert "SET payload_hash = COALESCE" in normalized_block
+        assert "NULLIF(payload_hash, '')" in normalized_block
         assert f"ALTER TABLE {table_name} ALTER COLUMN payload_hash SET NOT NULL" in text
 
 

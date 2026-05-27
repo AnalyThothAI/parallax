@@ -195,7 +195,8 @@ def test_next_runtime_lifecycle_migration_compacts_macro_view_snapshots_to_curre
 
     assert "CREATE TABLE IF NOT EXISTS macro_view_snapshots_compact" in migration_sql
     assert "payload_hash TEXT NOT NULL" in compact_table
-    assert "macro-view:' || projection_version || ':current" in migration_sql
+    assert "'macro-view:' || projection_version || ':' || 'current'" in migration_sql
+    assert "|| ':current'" not in migration_sql
     assert "row_number() OVER" in migration_sql
     assert "PARTITION BY projection_version" in migration_sql
     assert "ORDER BY computed_at_ms DESC" in migration_sql

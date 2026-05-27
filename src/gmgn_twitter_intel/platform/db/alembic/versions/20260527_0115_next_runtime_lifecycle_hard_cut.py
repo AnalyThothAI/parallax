@@ -87,7 +87,7 @@ WITH ranked AS (
   FROM macro_view_snapshots
 )
 SELECT
-  'macro-view:' || projection_version || ':current' AS snapshot_id,
+  'macro-view:' || projection_version || ':' || 'current' AS snapshot_id,
   projection_version,
   asof_date,
   status,
