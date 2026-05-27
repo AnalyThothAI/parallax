@@ -19,7 +19,6 @@ def test_token_case_dossier_builds_all_sections_for_resolved_asset():
     service = TokenCaseService(
         targets=FakeTargets(rows=[target_row("event-2"), target_row("event-1")]),
         profiles=FakeProfiles(profile={"status": "ready", "provider": "test_profile"}),
-        live_price_gateway=FakeLivePriceGateway(),
     )
 
     dossier = service.dossier(
@@ -43,7 +42,6 @@ def test_token_case_dossier_raises_not_found_for_unknown_target():
     service = TokenCaseService(
         targets=FakeTargets(rows=[], identity=None),
         profiles=FakeProfiles(),
-        live_price_gateway=FakeLivePriceGateway(),
     )
 
     with pytest.raises(TokenCaseTargetNotFound):
@@ -62,7 +60,6 @@ def test_token_case_accepts_watched_scope_alias():
     service = TokenCaseService(
         targets=targets,
         profiles=FakeProfiles(),
-        live_price_gateway=FakeLivePriceGateway(),
     )
 
     dossier = service.dossier(
@@ -82,7 +79,6 @@ def test_token_case_rejects_invalid_scope():
     service = TokenCaseService(
         targets=FakeTargets(rows=[]),
         profiles=FakeProfiles(),
-        live_price_gateway=FakeLivePriceGateway(),
     )
 
     with pytest.raises(TokenCaseInvalidScope):
@@ -96,11 +92,10 @@ def test_token_case_rejects_invalid_scope():
         )
 
 
-def test_token_case_uses_missing_live_market_when_gateway_returns_none():
+def test_token_case_uses_missing_live_market_when_no_persisted_tick_exists():
     service = TokenCaseService(
         targets=FakeTargets(rows=[target_row("event-1")]),
         profiles=FakeProfiles(),
-        live_price_gateway=FakeLivePriceGateway(snapshot=None),
     )
 
     dossier = service.dossier(
@@ -117,7 +112,7 @@ def test_token_case_uses_missing_live_market_when_gateway_returns_none():
     assert dossier["market_live"]["target_id"] == TARGET_ID
 
 
-def test_token_case_uses_latest_market_tick_when_live_gateway_is_missing():
+def test_token_case_uses_latest_persisted_market_tick():
     service = TokenCaseService(
         targets=FakeTargets(
             rows=[target_row("event-1")],
@@ -134,7 +129,6 @@ def test_token_case_uses_latest_market_tick_when_live_gateway_is_missing():
             },
         ),
         profiles=FakeProfiles(),
-        live_price_gateway=FakeLivePriceGateway(snapshot=None),
     )
 
     dossier = service.dossier(
@@ -180,7 +174,6 @@ def test_token_case_returns_cex_detail_snapshot_for_cex_tokens():
             },
         ),
         profiles=FakeProfiles(),
-        live_price_gateway=FakeLivePriceGateway(snapshot=None),
         cex_detail_snapshots=FakeCexDetailSnapshots(
             snapshot={
                 "snapshot_id": "cex-detail:binance:BTCUSDT",
@@ -238,7 +231,6 @@ def test_token_case_keeps_profile_and_market_context_without_agent_brief():
                 "source": {"raw_available": True},
             }
         ),
-        live_price_gateway=FakeLivePriceGateway(snapshot=None),
     )
 
     dossier = service.dossier(
@@ -255,11 +247,10 @@ def test_token_case_keeps_profile_and_market_context_without_agent_brief():
     assert "agent_brief" not in dossier
 
 
-def test_token_case_uses_unsupported_live_market_without_gateway():
+def test_token_case_uses_missing_live_market_without_persisted_tick():
     service = TokenCaseService(
         targets=FakeTargets(rows=[target_row("event-1")]),
         profiles=FakeProfiles(),
-        live_price_gateway=None,
     )
 
     dossier = service.dossier(
@@ -271,14 +262,13 @@ def test_token_case_uses_unsupported_live_market_without_gateway():
         now_ms=NOW_MS,
     )
 
-    assert dossier["market_live"]["status"] == "unsupported"
+    assert dossier["market_live"]["status"] == "missing"
 
 
 def test_token_case_limits_first_posts_page_to_posts_limit():
     service = TokenCaseService(
         targets=FakeTargets(rows=[target_row("event-2"), target_row("event-1")]),
         profiles=FakeProfiles(),
-        live_price_gateway=FakeLivePriceGateway(),
     )
 
     dossier = service.dossier(
@@ -423,26 +413,6 @@ class FakeCexDetailSnapshots:
         if self.snapshot is None:
             return None
         return self.snapshot
-
-
-class FakeLivePriceGateway:
-    def __init__(self, *, snapshot="ready"):
-        self.snapshot_payload = snapshot
-
-    def snapshot(self, *, target_type, target_id, now_ms=None):
-        if self.snapshot_payload is None:
-            return None
-        return {
-            "target_type": target_type,
-            "target_id": target_id,
-            "status": "ready",
-            "price_usd": 0.42,
-            "market_cap_usd": 4_200_000,
-            "liquidity_usd": 500_000,
-            "holders": None,
-            "observed_at_ms": now_ms,
-            "provider": "test",
-        }
 
 
 class FakeConn:

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 
 from gmgn_twitter_intel.app.surfaces.api import schemas as api_schemas
-from gmgn_twitter_intel.app.surfaces.api.dependencies import _authenticated_runtime, _now_ms, _worker_object
+from gmgn_twitter_intel.app.surfaces.api.dependencies import _authenticated_runtime, _now_ms
 from gmgn_twitter_intel.app.surfaces.api.exceptions import ApiBadRequest
 from gmgn_twitter_intel.app.surfaces.api.responses import _json
 from gmgn_twitter_intel.app.surfaces.api.validators import _limit, _post_range, _scope, _target_type, _window
@@ -97,7 +97,6 @@ def search_inspect(
             token_radar=repos.token_radar,
             targets=repos.token_targets,
             profiles=profiles,
-            live_price_gateway=_worker_object(runtime, "live_price_gateway"),
             market_candles=_market_candles_service(),
         ).inspect(
             q,
@@ -142,7 +141,6 @@ def token_case(
             data = TokenCaseService(
                 targets=repos.token_targets,
                 profiles=TokenProfileReadModel(token_profiles=repos.token_profiles),
-                live_price_gateway=_worker_object(runtime, "live_price_gateway"),
                 market_candles=_market_candles_service(),
                 cex_detail_snapshots=repos.cex_detail_snapshots,
             ).dossier(

@@ -15,14 +15,12 @@ class SearchInspectService:
         token_radar: Any,
         targets: Any,
         profiles: Any,
-        live_price_gateway: Any | None = None,
         market_candles: Any | None = None,
     ) -> None:
         self.search_query = search_query
         self.token_radar = token_radar
         self.targets = targets
         self.profiles = profiles
-        self.live_price_gateway = live_price_gateway
         self.market_candles = market_candles
 
     def inspect(
@@ -102,7 +100,6 @@ class SearchInspectService:
         return TokenCaseService(
             targets=self.targets,
             profiles=self.profiles,
-            live_price_gateway=self.live_price_gateway,
             market_candles=self.market_candles,
         ).dossier(
             target_type=target_type,

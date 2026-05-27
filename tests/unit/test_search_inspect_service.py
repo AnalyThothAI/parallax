@@ -21,7 +21,6 @@ def test_search_inspect_returns_canonical_token_result_without_agent_brief():
         token_radar=FakeTokenRadar(),
         targets=FakeTargets(rows=[target_row("ev_1", phase_text="$BTC first social wave")]),
         profiles=FakeProfiles(profile={"status": "ready", "provider": "test_profile"}),
-        live_price_gateway=FakeLivePriceGateway(),
     )
 
     result = service.inspect("$BTC", window="24h", scope="all", limit=50, now_ms=1_700_086_400_000)
@@ -34,7 +33,7 @@ def test_search_inspect_returns_canonical_token_result_without_agent_brief():
     assert result["token_result"]["posts"]["items"][0]["event_id"] == "ev_1"
     assert result["token_result"]["profile"] == {"status": "ready", "provider": "test_profile"}
     assert "agent_brief" not in result["token_result"]
-    assert result["token_result"]["market_live"]["status"] == "ready"
+    assert result["token_result"]["market_live"]["status"] == "missing"
     assert "radar_item" not in result["token_result"]
     assert LEGACY_MARKET_FIELD not in result["token_result"]
 
@@ -187,21 +186,6 @@ class FakeProfiles:
 
     def profiles_for_targets(self, targets):
         return {}
-
-
-class FakeLivePriceGateway:
-    def snapshot(self, *, target_type, target_id, now_ms=None):
-        return {
-            "target_type": target_type,
-            "target_id": target_id,
-            "status": "ready",
-            "price_usd": 70_000,
-            "market_cap_usd": None,
-            "liquidity_usd": None,
-            "holders": None,
-            "observed_at_ms": now_ms,
-            "provider": "test",
-        }
 
 
 def hit(

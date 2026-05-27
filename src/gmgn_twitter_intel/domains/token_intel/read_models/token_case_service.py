@@ -28,13 +28,11 @@ class TokenCaseService:
         *,
         targets: Any,
         profiles: Any,
-        live_price_gateway: Any | None,
         market_candles: Any | None = None,
         cex_detail_snapshots: Any | None = None,
     ) -> None:
         self.targets = targets
         self.profiles = profiles
-        self.live_price_gateway = live_price_gateway
         self.market_candles = market_candles
         self.cex_detail_snapshots = cex_detail_snapshots
 
@@ -97,12 +95,7 @@ class TokenCaseService:
                 row=latest_tick,
                 now_ms=now_ms,
             )
-        if self.live_price_gateway is None:
-            return _market_snapshot(target_type=target_type, target_id=target_id, status="unsupported")
-        snapshot = self.live_price_gateway.snapshot(target_type=target_type, target_id=target_id, now_ms=now_ms)
-        if snapshot is None:
-            return _market_snapshot(target_type=target_type, target_id=target_id, status="missing")
-        return cast(dict[str, Any], snapshot)
+        return _market_snapshot(target_type=target_type, target_id=target_id, status="missing")
 
     def _cex_detail(self, *, target: dict[str, Any]) -> dict[str, Any] | None:
         target_type = str(target.get("target_type") or "")

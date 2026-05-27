@@ -1940,6 +1940,13 @@ class FakeClient:
     def try_reserve_execution(self, lane: str, **_: Any) -> AgentCapacityReservation:
         return AgentCapacityReservation(lane=lane, acquired=True)
 
+    def model_for_lane(self, lane: str) -> str:
+        if lane == "pulse.pipeline":
+            return "fake-pulse"
+        if lane in {"pulse.signal_analyst", "pulse.bear_case", "pulse.risk_portfolio_judge"}:
+            return "fake-pulse"
+        return ""
+
     def request_audit(
         self,
         *,

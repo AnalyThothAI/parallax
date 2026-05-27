@@ -20,7 +20,6 @@ from gmgn_twitter_intel.domains.pulse_lab.interfaces import (
     WORKFLOW_NAME,
 )
 from gmgn_twitter_intel.domains.pulse_lab.providers import (
-    DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT,
     PulseAgentRuntimeContract,
     PulseDecisionProvider,
 )
@@ -144,7 +143,8 @@ class PulseCandidateJobService:
             context = _context_with_gate(context, gate)
             route = route_decision_context(context.agent_context())
             provider = getattr(self.decision_client, "provider", "openai")
-            model = getattr(self.decision_client, "model", "")
+            lane_models = _pulse_lane_models(self.decision_client)
+            model = lane_models["pulse.pipeline"]
             artifact_version_hash = _artifact_hash(self.decision_client)
             runtime_manifest = build_pulse_runtime_manifest(
                 provider=provider,
@@ -174,7 +174,6 @@ class PulseCandidateJobService:
                     "evidence_packet_hash": evidence_packet.evidence_packet_hash,
                     "evidence_gate": completeness_json,
                 }
-                lane_models = _pulse_lane_models(self.decision_client)
                 preliminary_cost_guard = decide_pulse_agent_cost(
                     context=context,
                     evidence_gate=evidence_gate,
@@ -389,8 +388,8 @@ class PulseCandidateJobService:
                         latency_ms=stage_audit.latency_ms,
                         status=stage_audit.status,
                         error=stage_audit.error,
-                        started_at_ms=_stage_started_at_ms(stage_audit, fallback_finished_at_ms=finished_at_ms),
-                        finished_at_ms=_stage_finished_at_ms(stage_audit, fallback_finished_at_ms=finished_at_ms),
+                        started_at_ms=_stage_started_at_ms(stage_audit, default_finished_at_ms=finished_at_ms),
+                        finished_at_ms=_stage_finished_at_ms(stage_audit, default_finished_at_ms=finished_at_ms),
                         created_at_ms=finished_at_ms,
                         safety_net_used=stage_audit.safety_net_used,
                         safety_net_retries=stage_audit.safety_net_retries,
@@ -633,8 +632,8 @@ class PulseCandidateJobService:
                             latency_ms=stage_audit.latency_ms,
                             status=stage_audit.status,
                             error=stage_audit.error,
-                            started_at_ms=_stage_started_at_ms(stage_audit, fallback_finished_at_ms=failed_at_ms),
-                            finished_at_ms=_stage_finished_at_ms(stage_audit, fallback_finished_at_ms=failed_at_ms),
+                            started_at_ms=_stage_started_at_ms(stage_audit, default_finished_at_ms=failed_at_ms),
+                            finished_at_ms=_stage_finished_at_ms(stage_audit, default_finished_at_ms=failed_at_ms),
                             created_at_ms=failed_at_ms,
                             safety_net_used=stage_audit.safety_net_used,
                             safety_net_retries=stage_audit.safety_net_retries,
@@ -693,16 +692,16 @@ class PulseCandidateJobService:
 
 
 def _runtime_contract_from_client(client: Any) -> dict[str, Any]:
-    contract = getattr(client, "runtime_contract", DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT)
+    contract = getattr(client, "runtime_contract", None)
     if callable(contract):
         contract = contract()
     if not isinstance(contract, PulseAgentRuntimeContract):
-        contract = DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT
+        raise RuntimeError("pulse_agent_runtime_contract_missing")
     if tuple(contract.stage_names) != ("signal_analyst", "bear_case", "risk_portfolio_judge"):
-        contract = DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT
+        raise RuntimeError("pulse_agent_runtime_contract_mismatch")
     kwargs = contract.manifest_kwargs()
     if not kwargs.get("failure_taxonomy_version"):
-        kwargs["failure_taxonomy_version"] = PULSE_FAILURE_TAXONOMY_VERSION
+        raise RuntimeError("pulse_agent_failure_taxonomy_missing")
     return kwargs
 
 
@@ -715,16 +714,14 @@ def _pulse_lane_models(client: Any) -> dict[str, str]:
     )
     gateway = getattr(client, "_agent_gateway", None)
     model_for_lane = getattr(gateway, "model_for_lane", None) or getattr(client, "model_for_lane", None)
-    fallback = str(getattr(client, "model", "") or "")
+    if not callable(model_for_lane):
+        raise RuntimeError("pulse_agent_lane_model_resolver_missing")
     models: dict[str, str] = {}
     for lane in lanes:
-        model = ""
-        if callable(model_for_lane):
-            try:
-                model = str(model_for_lane(lane) or "")
-            except Exception:
-                model = ""
-        models[lane] = model or fallback
+        model = str(model_for_lane(lane) or "").strip()
+        if not model:
+            raise RuntimeError(f"pulse_agent_lane_model_missing:{lane}")
+        models[lane] = model
     return models
 
 
@@ -801,18 +798,18 @@ def _packet_gate_refs(packet: PulseEvidencePacket) -> list[str]:
     return [ref.ref_id for ref in packet.allowed_evidence_refs if ref.ref_type == "gate"]
 
 
-def _stage_finished_at_ms(stage_audit: StageRunAudit, *, fallback_finished_at_ms: int) -> int:
+def _stage_finished_at_ms(stage_audit: StageRunAudit, *, default_finished_at_ms: int) -> int:
     value = stage_audit.finished_at_ms
     if value is not None:
         return int(value)
-    return int(fallback_finished_at_ms)
+    return int(default_finished_at_ms)
 
 
-def _stage_started_at_ms(stage_audit: StageRunAudit, *, fallback_finished_at_ms: int) -> int:
+def _stage_started_at_ms(stage_audit: StageRunAudit, *, default_finished_at_ms: int) -> int:
     value = stage_audit.started_at_ms
     if value is not None:
         return int(value)
-    finished_at_ms = _stage_finished_at_ms(stage_audit, fallback_finished_at_ms=fallback_finished_at_ms)
+    finished_at_ms = _stage_finished_at_ms(stage_audit, default_finished_at_ms=default_finished_at_ms)
     return max(0, finished_at_ms - int(stage_audit.latency_ms or 0))
 
 
@@ -1146,7 +1143,10 @@ def _transaction(conn: Any) -> AbstractContextManager[Any]:
 
 
 def _artifact_hash(client: Any) -> str:
-    return str(getattr(client, "artifact_version_hash", "") or f"artifact:{getattr(client, 'model', '')}")
+    artifact_version_hash = str(getattr(client, "artifact_version_hash", "") or "").strip()
+    if not artifact_version_hash:
+        raise RuntimeError("pulse_agent_artifact_hash_missing")
+    return artifact_version_hash
 
 
 def _mapping(value: Any) -> dict[str, Any]:
