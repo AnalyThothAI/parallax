@@ -112,6 +112,26 @@ class CexOiRadarBoardWorker(WorkerBase):
                 limit=int(getattr(self.settings, "coinglass_enrichment_limit", 0)),
                 level_limit=int(getattr(self.settings, "coinglass_level_limit", 6)),
             )
+            if not rows and int(built["failed"]) > 0:
+                with self._repository_session() as repos:
+                    repos.cex_oi_radar.record_attempt_failure(
+                        computed_at_ms=now,
+                        period=period,
+                        notes={"reason": "all_symbols_failed", "failed_symbols": built["failed_symbols"][:20]},
+                    )
+                return WorkerResult(
+                    failed=int(built["failed"]),
+                    notes={
+                        "universe_count": len(universe),
+                        "status": "failed",
+                        "claimed": len(universe),
+                        "queue_depth": 0,
+                        "source_rows_scanned": len(universe),
+                        "targets_loaded": len(universe),
+                        "rows_written": 0,
+                        "failed_symbols": built["failed_symbols"][:20],
+                    },
+                )
             status = "success" if int(built["failed"]) == 0 else "partial"
             with self._repository_session() as repos:
                 snapshots = [
@@ -143,11 +163,9 @@ class CexOiRadarBoardWorker(WorkerBase):
             )
         except Exception as exc:
             with self._repository_session() as repos:
-                repos.cex_oi_radar.publish_board(
-                    rows=[],
+                repos.cex_oi_radar.record_attempt_failure(
                     computed_at_ms=now,
                     period=period,
-                    status="failed",
                     notes={"reason": type(exc).__name__},
                 )
             raise

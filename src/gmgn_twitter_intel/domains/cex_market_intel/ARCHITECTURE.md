@@ -6,8 +6,8 @@ decisions.
 
 ## Read Models
 
-- `cex_oi_radar_runs` and `cex_oi_radar_rows` power the market-wide Binance USDT
-  perpetual OI/radar board.
+- `cex_oi_radar_rows` and `cex_oi_radar_publication_state` power the
+  market-wide Binance USDT perpetual OI/radar board as current-only rows.
 - `cex_detail_snapshots` powers single-token CEX detail pages and Signal Pulse
   market evidence for CEX targets.
 - `cex_derivative_series` is bounded derivative history storage for normalized
@@ -15,9 +15,9 @@ decisions.
 
 ## Writer Ownership
 
-`CexOiRadarBoardWorker` is the runtime writer for `cex_oi_radar_runs`,
-`cex_oi_radar_rows`, and the v1 `cex_detail_snapshots` projection. API routes,
-Token Case, and Pulse evidence builders only read these tables.
+`CexOiRadarBoardWorker` is the runtime writer for `cex_oi_radar_rows`,
+`cex_oi_radar_publication_state`, and the v1 `cex_detail_snapshots` projection.
+API routes, Token Case, and Pulse evidence builders only read these tables.
 
 ## Data Flow
 
@@ -25,7 +25,8 @@ Token Case, and Pulse evidence builders only read these tables.
    `price_feeds` with `subject_type='CexToken'`, `provider='binance'`,
    `feed_type='cex_swap'`, and `quote_symbol='USDT'`.
 2. `CexOiRadarBoardWorker` scans that universe on its interval, calls Binance
-   ticker/premium/OI endpoints in bounded batches, and ranks the radar board.
+   ticker/premium/OI endpoints in bounded batches, and publishes the current
+   radar board with stable row ids by provider/exchange/period/target.
 3. For the configured top-K rows, the worker can call `coinglass-cli` through a
    worker-side adapter to fetch OI deltas, CVD, long/short, top trader, and
    liquidation levels. It never does this from API or frontend request handlers.
@@ -37,9 +38,11 @@ Token Case, and Pulse evidence builders only read these tables.
 
 ## Product Contract
 
-The detail snapshot is intentionally compact: one current row per exchange and
-native market. It can be deleted and rebuilt. It should contain enough bounded
-context for a CEX detail rail and an agent evidence packet, but not unbounded
+The board and detail snapshots are intentionally compact current read models.
+The board is one row per provider/exchange/period/target plus one publication
+state row; detail is one current row per exchange and native market. They can be
+deleted and rebuilt. They should contain enough bounded context for a CEX board,
+detail rail, and agent evidence packet, but not unbounded run history or
 intraday history.
 
 If a snapshot has fresh Binance baseline data but no CoinGlass enrichment,

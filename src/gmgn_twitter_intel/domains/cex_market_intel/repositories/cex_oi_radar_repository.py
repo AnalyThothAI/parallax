@@ -166,6 +166,55 @@ class CexOiRadarRepository:
             self.conn.commit()
         return written
 
+    def record_attempt_failure(
+        self,
+        *,
+        computed_at_ms: int,
+        period: str,
+        notes: dict[str, Any] | None = None,
+        commit: bool = True,
+    ) -> None:
+        board_period = str(period)
+        computed_at = int(computed_at_ms)
+        latest_error = _latest_attempt_error(status="failed", notes=notes)
+
+        self.conn.execute(
+            """
+            INSERT INTO cex_oi_radar_publication_state(
+              board_key, provider, exchange, quote_symbol, contract_type, period,
+              current_published_at_ms, current_source_frontier_ms, current_row_count,
+              latest_attempt_status, latest_attempt_started_at_ms, latest_attempt_finished_at_ms,
+              latest_attempt_error, updated_at_ms
+            )
+            VALUES (
+              %s, %s, %s, %s, %s, %s,
+              NULL, NULL, 0,
+              'failed', %s, %s,
+              %s, %s
+            )
+            ON CONFLICT(board_key) DO UPDATE SET
+              latest_attempt_status = excluded.latest_attempt_status,
+              latest_attempt_started_at_ms = excluded.latest_attempt_started_at_ms,
+              latest_attempt_finished_at_ms = excluded.latest_attempt_finished_at_ms,
+              latest_attempt_error = excluded.latest_attempt_error,
+              updated_at_ms = excluded.updated_at_ms
+            """,
+            (
+                _board_key(board_period),
+                "binance",
+                "binance",
+                "USDT",
+                "PERPETUAL",
+                board_period,
+                computed_at,
+                computed_at,
+                latest_error,
+                computed_at,
+            ),
+        )
+        if commit:
+            self.conn.commit()
+
     def latest_board(self, *, limit: int) -> dict[str, Any]:
         state = self.conn.execute(
             """

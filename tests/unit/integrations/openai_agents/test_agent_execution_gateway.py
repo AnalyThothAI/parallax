@@ -126,10 +126,10 @@ def _policy(*, timeout_seconds: float = 10, failure_threshold: int = 5) -> Agent
 def _pulse_policy() -> AgentRuntimePolicy:
     return AgentRuntimePolicy(
         defaults=AgentRuntimeDefaultsPolicy(model="local-json-object-model"),
-        global_max_concurrency=1,
+        global_max_concurrency=2,
         global_rpm_limit=1000,
         lanes={
-            "pulse.pipeline": AgentLanePolicy(max_concurrency=1, timeout_seconds=10),
+            "pulse.pipeline": AgentLanePolicy(max_concurrency=2, timeout_seconds=10),
             "pulse.signal_analyst": AgentLanePolicy(max_concurrency=1, timeout_seconds=10),
             "pulse.bear_case": AgentLanePolicy(max_concurrency=1, timeout_seconds=10),
             "pulse.risk_portfolio_judge": AgentLanePolicy(max_concurrency=1, timeout_seconds=10),
@@ -278,6 +278,112 @@ def test_parent_pipeline_reservation_reuses_global_slot_for_child_stage() -> Non
         assert snapshot["lanes"]["pulse.pipeline"]["in_flight"] == 0
         assert snapshot["lanes"]["pulse.signal_analyst"]["in_flight"] == 0
         assert len(llm_gateway.client.chat.completions.calls) == 1
+
+    asyncio.run(scenario())
+
+
+def test_parent_pipeline_reservation_reserves_child_lane_capacity_before_claim() -> None:
+    async def scenario() -> None:
+        gateway = _gateway(policy=_pulse_policy())
+        first = gateway.try_reserve(
+            "pulse.pipeline",
+            child_lanes=("pulse.signal_analyst",),
+            scope="parent",
+        )
+        try:
+            second = gateway.try_reserve(
+                "pulse.pipeline",
+                child_lanes=("pulse.signal_analyst",),
+                scope="parent",
+            )
+
+            assert first.acquired is True
+            assert second.acquired is False
+            assert second.reason is AgentExecutionErrorClass.CAPACITY_DENIED
+            snapshot = gateway.status_snapshot()
+            assert snapshot["global_in_flight"] == 1
+            assert snapshot["lanes"]["pulse.pipeline"]["in_flight"] == 1
+            assert snapshot["lanes"]["pulse.signal_analyst"]["in_flight"] == 1
+        finally:
+            await first.release()
+
+        snapshot = gateway.status_snapshot()
+        assert snapshot["global_in_flight"] == 0
+        assert snapshot["lanes"]["pulse.pipeline"]["in_flight"] == 0
+        assert snapshot["lanes"]["pulse.signal_analyst"]["in_flight"] == 0
+
+    asyncio.run(scenario())
+
+
+def test_try_reserve_denies_rpm_before_provider_execution() -> None:
+    async def scenario() -> None:
+        gateway = _gateway(policy=_lane_rpm_policy())
+        first = gateway.try_reserve("test.lane")
+        assert first.acquired is True
+        await first.release()
+
+        second = gateway.try_reserve("test.lane")
+
+        assert second.acquired is False
+        assert second.reason is AgentExecutionErrorClass.RATE_LIMITED
+        snapshot = gateway.status_snapshot()
+        assert snapshot["global_in_flight"] == 0
+        assert snapshot["lanes"]["test.lane"]["in_flight"] == 0
+
+    asyncio.run(scenario())
+
+
+def test_try_reserve_rate_units_consume_multiple_rpm_slots_before_claim() -> None:
+    async def scenario() -> None:
+        policy = AgentRuntimePolicy(
+            defaults=AgentRuntimeDefaultsPolicy(model="local-json-object-model"),
+            global_max_concurrency=2,
+            global_rpm_limit=2,
+            lanes={
+                "test.lane": AgentLanePolicy(
+                    max_concurrency=2,
+                    timeout_seconds=10,
+                    rpm_limit=2,
+                )
+            },
+        )
+        gateway = _gateway(policy=policy)
+
+        first = gateway.try_reserve("test.lane", rate_units=2)
+        assert first.acquired is True
+        assert first.rate_units == 2
+        await first.release()
+
+        second = gateway.try_reserve("test.lane")
+
+        assert second.acquired is False
+        assert second.reason is AgentExecutionErrorClass.RATE_LIMITED
+        assert gateway.status_snapshot()["global_in_flight"] == 0
+
+    asyncio.run(scenario())
+
+
+def test_try_reserve_rate_units_clamps_batch_to_available_rpm_capacity() -> None:
+    async def scenario() -> None:
+        policy = AgentRuntimePolicy(
+            defaults=AgentRuntimeDefaultsPolicy(model="local-json-object-model"),
+            global_max_concurrency=2,
+            global_rpm_limit=2,
+            lanes={
+                "test.lane": AgentLanePolicy(
+                    max_concurrency=2,
+                    timeout_seconds=10,
+                    rpm_limit=2,
+                )
+            },
+        )
+        gateway = _gateway(policy=policy)
+
+        reservation = gateway.try_reserve("test.lane", rate_units=5)
+
+        assert reservation.acquired is True
+        assert reservation.rate_units == 2
+        await reservation.release()
 
     asyncio.run(scenario())
 

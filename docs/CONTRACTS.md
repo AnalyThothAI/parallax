@@ -394,12 +394,13 @@ Macro contract:
   subpages (`credit/cds`, `credit/stress`). Unsupported ids return
   `400 {"error":"unsupported_macro_module","field":"module_id"}`.
 - The `assets/crypto-derivatives` module may attach a `cex_perp_board` table
-  sourced from persisted `cex_oi_radar_runs` / `cex_oi_radar_rows`. Rows are compact
-  display-table rows with labeled cells for symbol, open interest, funding,
-  24h volume, and score. Optional richer derivatives facts are exposed only
-  when persisted read models add them through the v3 table-cell contract;
-  internal audit and join fields such as raw run ids, target ids, pricefeed ids,
-  and score component JSON are not part of the macro module contract.
+  sourced from persisted current rows in `cex_oi_radar_rows` and publication
+  state in `cex_oi_radar_publication_state`. Rows are compact display-table
+  rows with labeled cells for symbol, open interest, funding, 24h volume, and
+  score. Optional richer derivatives facts are exposed only when persisted read
+  models add them through the v3 table-cell contract; internal audit and join
+  fields such as target ids, pricefeed ids, and score component JSON are not
+  part of the macro module contract.
 - `/api/macro/series` is authenticated and read-only. It accepts
   `concept_keys=<comma-separated canonical macro concepts>` and
   `window=20d|60d|120d|1y|3y` and returns grouped observation points for chart

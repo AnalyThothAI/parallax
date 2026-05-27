@@ -1,5 +1,9 @@
 # Spec — CEX Detail Snapshot And Agent Context
 
+> 2026-05-27 hard-cut update: CEX OI board run-ledger identity is retired.
+> Detail snapshots may read the current board rows/publication state, but must
+> not depend on `cex_oi_radar_runs` or run-id serving FKs.
+
 **Status**: Draft
 **Date**: 2026-05-21
 **Owner**: qinghuan / Codex

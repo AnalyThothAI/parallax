@@ -197,7 +197,6 @@ class NewsProjectionDirtyTargetRepository:
             UPDATE news_projection_dirty_targets
             SET leased_until_ms = %(leased_until_ms)s,
                 lease_owner = %(lease_owner)s,
-                attempt_count = news_projection_dirty_targets.attempt_count + 1,
                 last_error = NULL,
                 updated_at_ms = %(now_ms)s
             FROM due
@@ -268,6 +267,7 @@ class NewsProjectionDirtyTargetRepository:
         error: str,
         retry_ms: int,
         now_ms: int,
+        count_attempt: bool = True,
         commit: bool = True,
     ) -> int:
         records = _key_records(keys)
@@ -278,6 +278,7 @@ class NewsProjectionDirtyTargetRepository:
             "due_at_ms": int(now_ms) + max(1, int(retry_ms)),
             "now_ms": int(now_ms),
             "last_error": str(error)[:2048],
+            "attempt_increment": 1 if count_attempt else 0,
         }
         cursor = self.conn.execute(
             """
@@ -305,6 +306,7 @@ class NewsProjectionDirtyTargetRepository:
             SET due_at_ms = %(due_at_ms)s,
                 leased_until_ms = NULL,
                 lease_owner = NULL,
+                attempt_count = queue.attempt_count + %(attempt_increment)s,
                 last_error = %(last_error)s,
                 updated_at_ms = %(now_ms)s
             FROM failed
@@ -432,7 +434,7 @@ def _key_records(keys: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
             raise ValueError("news projection dirty target completion requires payload_hash from claim_due")
         if not lease_owner:
             raise ValueError("news projection dirty target completion requires lease_owner from claim_due")
-        if attempt_count <= 0:
+        if attempt_count < 0:
             raise ValueError("news projection dirty target completion requires attempt_count from claim_due")
         records.append(
             {

@@ -749,6 +749,27 @@ def test_mention_semantics_provider_started_validation_error_writes_failed_model
     asyncio.run(scenario())
 
 
+def test_mention_semantics_releases_reservation_when_request_audit_fails():
+    async def scenario():
+        repo = FakeNarrativeRepository()
+        db = FakeDB(repo)
+        provider = AuditFailingMentionProvider()
+        worker = MentionSemanticsWorker(
+            name="mention_semantics",
+            settings=fake_settings(),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=provider,
+        )
+
+        with pytest.raises(RuntimeError, match="request audit failed"):
+            await worker.run_once(now_ms=10_000)
+
+        assert provider.release_calls == 1
+
+    asyncio.run(scenario())
+
+
 def test_mention_semantics_claim_passes_per_target_cycle_cap():
     repo = FakeNarrativeRepository()
     worker = MentionSemanticsWorker(
@@ -840,7 +861,7 @@ def test_token_discussion_digest_worker_records_provider_failure_without_poisoni
         assert db.discussion_digest_dirty_targets.claim_due_calls == [
             {
                 "now_ms": 10_000,
-                "limit": 10,
+                "limit": 1,
                 "lease_owner": "token_discussion_digest",
                 "lease_ms": 60_000,
                 "commit": True,
@@ -903,7 +924,7 @@ def test_token_discussion_digest_worker_persists_cleanup_when_provider_call_is_c
     asyncio.run(scenario())
 
 
-def test_token_discussion_digest_worker_defers_threshold_targets_after_llm_cycle_budget():
+def test_token_discussion_digest_worker_claims_only_llm_cycle_budget():
     async def scenario():
         targets = [
             {
@@ -934,16 +955,17 @@ def test_token_discussion_digest_worker_defers_threshold_targets_after_llm_cycle
 
         result = await worker.run_once(now_ms=10_000)
 
+        assert provider.reserve_rate_units == [1]
         assert provider.calls == ["solana:So111"]
         assert result.notes["ready"] == 1
-        assert result.notes["pending"] == 1
+        assert result.notes["pending"] == 0
         assert result.failed == 0
         assert result.notes["llm_calls"] == 1
-        assert result.notes["deferred_llm_budget"] == 1
-        assert result.notes["refresh_reasons"]["llm_cycle_budget_exhausted"] == 1
-        assert db.discussion_digest_dirty_targets.reschedule_calls[-1]["claims"][0]["admission_id"] == "admission-2"
-        assert db.discussion_digest_dirty_targets.reschedule_calls[-1]["due_at_ms"] == 11_000
-        assert db.discussion_digest_dirty_targets.reschedule_calls[-1]["now_ms"] == 10_000
+        assert result.notes["deferred_llm_budget"] == 0
+        assert "llm_cycle_budget_exhausted" not in result.notes["refresh_reasons"]
+        assert [
+            call["claims"][0]["admission_id"] for call in db.discussion_digest_dirty_targets.reschedule_calls
+        ] == ["admission-1"]
 
     asyncio.run(scenario())
 
@@ -968,6 +990,7 @@ def test_token_discussion_digest_worker_defers_after_provider_failure_budget():
         ]
         repo = FakeDigestRepository(targets=targets)
         db = FakeDB(repo)
+        provider = FailingNarrativeProvider()
         worker = TokenDiscussionDigestWorker(
             name="token_discussion_digest",
             settings=fake_digest_settings(
@@ -978,11 +1001,12 @@ def test_token_discussion_digest_worker_defers_after_provider_failure_budget():
             ),
             db=db,
             telemetry=SimpleNamespace(),
-            provider=FailingNarrativeProvider(),
+            provider=provider,
         )
 
         result = await worker.run_once(now_ms=10_000)
 
+        assert provider.reserve_rate_units == [2]
         assert result.notes["failed"] == 1
         assert result.notes["pending"] == 1
         assert result.notes["llm_calls"] == 1
@@ -1066,6 +1090,27 @@ def test_token_discussion_digest_provider_started_validation_error_writes_failed
                 "commit": True,
             }
         ]
+
+    asyncio.run(scenario())
+
+
+def test_token_discussion_digest_releases_reservation_when_context_load_fails():
+    async def scenario():
+        repo = FailingDigestContextRepository()
+        db = FakeDB(repo)
+        provider = InvalidRefsDigestProvider()
+        worker = TokenDiscussionDigestWorker(
+            name="token_discussion_digest",
+            settings=fake_digest_settings(),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=provider,
+        )
+
+        with pytest.raises(RuntimeError, match="digest context failed"):
+            await worker.run_once(now_ms=10_000)
+
+        assert provider.release_calls == 1
 
     asyncio.run(scenario())
 
@@ -2229,9 +2274,19 @@ class FakeDigestRepository:
         return {"updated": len(admission_ids)}
 
 
+class FailingDigestContextRepository(FakeDigestRepository):
+    def digest_context(self, *, target_type, target_id, window, scope, max_mentions):
+        raise RuntimeError("digest context failed")
+
+
 class AcquiringNarrativeProvider:
-    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
-        return AgentCapacityReservation(lane=lane, acquired=True)
+    def try_reserve_execution(self, lane: str, *, rate_units: int = 1) -> AgentCapacityReservation:
+        reserve_rate_units = getattr(self, "reserve_rate_units", None)
+        if reserve_rate_units is None:
+            reserve_rate_units = []
+            self.reserve_rate_units = reserve_rate_units
+        reserve_rate_units.append(rate_units)
+        return AgentCapacityReservation(lane=lane, acquired=True, rate_units=rate_units)
 
 
 class BarrierNarrativeProvider(AcquiringNarrativeProvider):
@@ -2321,12 +2376,13 @@ class NoStartNarrativeProvider(FailingNarrativeProvider):
     def __init__(self):
         self.reserve_calls = []
 
-    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+    def try_reserve_execution(self, lane: str, *, rate_units: int = 1) -> AgentCapacityReservation:
         self.reserve_calls.append(lane)
         return AgentCapacityReservation(
             lane=lane,
             acquired=False,
             reason=AgentExecutionErrorClass.CAPACITY_DENIED,
+            rate_units=rate_units,
         )
 
     async def label_mentions(self, *, run_id, request, reservation=None):
@@ -2353,13 +2409,13 @@ class InvalidMentionResultProvider:
         self.reserve_calls = []
         self.release_calls = 0
 
-    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+    def try_reserve_execution(self, lane: str, *, rate_units: int = 1) -> AgentCapacityReservation:
         self.reserve_calls.append(lane)
 
         def release() -> None:
             self.release_calls += 1
 
-        return AgentCapacityReservation(lane=lane, acquired=True, _release=release)
+        return AgentCapacityReservation(lane=lane, acquired=True, rate_units=rate_units, _release=release)
 
     async def label_mentions(self, *, run_id, request, reservation=None):
         assert reservation is not None
@@ -2376,6 +2432,14 @@ class InvalidMentionResultProvider:
 
     async def aclose(self):  # pragma: no cover - runtime-owned provider
         return None
+
+
+class AuditFailingMentionProvider(InvalidMentionResultProvider):
+    async def label_mentions(self, *, run_id, request, reservation=None):  # pragma: no cover - must fail earlier
+        raise AssertionError("provider call should not run after request audit failure")
+
+    def request_audit_for_label_mentions(self, *, run_id, request):
+        raise RuntimeError("request audit failed")
 
 
 class UnexpectedDigestProvider(AcquiringNarrativeProvider):
@@ -2467,13 +2531,13 @@ class InvalidRefsDigestProvider(StaleButValidDigestProvider):
         self.reserve_calls = []
         self.release_calls = 0
 
-    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+    def try_reserve_execution(self, lane: str, *, rate_units: int = 1) -> AgentCapacityReservation:
         self.reserve_calls.append(lane)
 
         def release() -> None:
             self.release_calls += 1
 
-        return AgentCapacityReservation(lane=lane, acquired=True, _release=release)
+        return AgentCapacityReservation(lane=lane, acquired=True, rate_units=rate_units, _release=release)
 
     async def summarize_discussion(self, *, run_id, request, reservation=None):
         assert reservation is not None

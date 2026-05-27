@@ -10,7 +10,7 @@ class SocialEventEnrichmentProvider(Protocol):
     model: str
     timeout_seconds: float
 
-    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation: ...
+    def try_reserve_execution(self, lane: str, *, rate_units: int = 1) -> AgentCapacityReservation: ...
 
     def request_audit(
         self,

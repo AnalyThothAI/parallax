@@ -39,8 +39,8 @@ class OpenAIAgentsEquityEventBriefClient:
             output_schema_hash=json_sha256(StrictJsonOutputSchema(EquityEventBriefPayload).json_schema()),
         )
 
-    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
-        return self._agent_gateway.try_reserve(lane)
+    def try_reserve_execution(self, lane: str, *, rate_units: int = 1) -> AgentCapacityReservation:
+        return self._agent_gateway.try_reserve(lane, rate_units=rate_units)
 
     def request_audit(self, *, run_id: str, packet: EquityEventBriefInputPacket) -> dict[str, Any]:
         stage = build_equity_event_brief_stage(packet=packet, run_id=run_id)

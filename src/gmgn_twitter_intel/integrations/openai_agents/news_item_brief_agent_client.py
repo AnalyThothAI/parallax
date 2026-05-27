@@ -45,8 +45,8 @@ class OpenAIAgentsNewsItemBriefClient:
             output_schema_hash=json_sha256(StrictJsonOutputSchema(NewsItemBriefPayload).json_schema()),
         )
 
-    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
-        return self._agent_gateway.try_reserve(lane)
+    def try_reserve_execution(self, lane: str, *, rate_units: int = 1) -> AgentCapacityReservation:
+        return self._agent_gateway.try_reserve(lane, rate_units=rate_units)
 
     def request_audit(self, *, run_id: str, packet: NewsItemBriefInputPacket) -> dict[str, Any]:
         stage = build_news_item_brief_stage(packet=packet, run_id=run_id)

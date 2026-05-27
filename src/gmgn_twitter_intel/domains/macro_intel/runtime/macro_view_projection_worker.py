@@ -49,6 +49,7 @@ class MacroViewProjectionWorker(WorkerBase):
                         "claimed": 0,
                         "queue_depth": 0,
                         "source_rows_scanned": 0,
+                        "targets_loaded": 0,
                         "rows_written": 0,
                     },
                 )
@@ -69,6 +70,7 @@ class MacroViewProjectionWorker(WorkerBase):
                         "claimed": len(claimed),
                         "queue_depth": 0,
                         "source_rows_scanned": 0,
+                        "targets_loaded": 0,
                         "rows_written": 0,
                         "error": str(exc),
                     },
@@ -92,6 +94,7 @@ class MacroViewProjectionWorker(WorkerBase):
                     "claimed": len(claimed),
                     "queue_depth": 0,
                     "source_rows_scanned": 0,
+                    "targets_loaded": 0,
                     "rows_written": 0,
                     "projected_rows_written": 0,
                     "snapshot_rows_written": 0,

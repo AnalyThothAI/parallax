@@ -83,24 +83,29 @@ limits, circuit breakers, timeouts, usage capture, safety-net fallback,
 and request/result audit metadata. It does not own domain claims,
 attempt counters, product audit tables, or read-model writes.
 
-Workers that burn attempts when claiming DB work must reserve agent
-capacity before claiming. `pulse_candidate` reserves `pulse.pipeline`;
-`enrichment` reserves `social.event_enrichment`; `handle_summary`
-reserves `watchlist.handle_summary`. If a reservation is denied, the
-worker returns an `agent_backpressure_capacity_denied` note and leaves
-the job unclaimed. This preserves retry budgets during provider
-congestion and lets the next bounded catch-up cycle retry naturally.
-For Pulse, `pulse.pipeline` is a parent reservation: child stages reuse
-the parent global slot and acquire only the stage lane bulkhead. A
-no-start response from capacity, circuit, RPM, or parent-reservation
-pressure is backpressure, not a provider attempt. Provider-started
-latency timeouts remain started execution failures and follow the
-domain retry/audit policy.
-Signal Pulse releases no-start provider/circuit pressure into a bounded
-provider cooldown instead of the old 30-second retry loop. The job is returned
-to `pending`, its claim attempt is decremented, and `next_run_at_ms` is delayed
-by the lane/provider cooldown. This keeps outage noise out of business retries
-while preserving the audit row that explains why execution did not start.
+Workers that burn attempts when claiming DB work must reserve agent capacity,
+circuit, and RPM before claiming. Batch workers must pass explicit
+`rate_units` for the maximum provider calls they want to execute, then claim no
+more rows than the actual `reservation.rate_units` returned by the gateway; one
+reservation must not cover multiple unreserved model calls. This applies to
+`pulse_candidate`, `enrichment`, `handle_summary`, `mention_semantics`,
+`token_discussion_digest`, `news_item_brief`, and `equity_event_brief`. If a
+reservation is denied, the worker returns an `agent_backpressure_*` note and
+leaves the job unclaimed. This preserves retry budgets during provider
+congestion and lets the next bounded catch-up cycle retry naturally. For Pulse,
+`pulse.pipeline` is a parent reservation that also reserves child stage lane
+capacity/RPM before job claim. A no-start response from capacity, circuit,
+RPM, or parent-reservation pressure is backpressure, not a provider attempt.
+No-start backpressure must not write business run ledgers or increment
+business attempts. Provider-started validation, publication, schema, timeout,
+or cancellation failures remain started execution failures and follow the
+domain retry/audit policy with `execution_started=true`.
+Signal Pulse releases provider-started pressure into a bounded provider
+cooldown instead of the old 30-second retry loop. The job is returned to
+`pending`, its claim attempt is decremented when execution did not start, and
+`next_run_at_ms` is delayed by the lane/provider cooldown. This keeps outage
+noise out of business retries while preserving audit only for execution that
+actually started.
 Supervisor cancellation is also auditable: the gateway records
 `cancelled` result metadata and releases lane/global counters, then
 propagates cancellation as `asyncio.CancelledError` so domain cleanup can
@@ -195,13 +200,14 @@ uses; they do not run their own SQL.
 Single-writer ownership does not by itself make a read model bounded. Current
 serving projections must keep physical storage proportional to the product
 surface they serve: target/window rows, active queue rows, or compact latest
-series rows. Do not use permanent generation tables or active-generation
-pointers as the serving lifecycle for current read models unless the owning
-architecture document defines retention, pruning, reader behavior, and tests.
-An active pointer can make readers correct while storage still grows without a
-runtime bound. Workers that rebuild current rows must have an unchanged path
-that is visible in publication state and avoids deleting/reinserting unchanged
-serving rows.
+series rows. Current serving primary keys must not include `generation_id`,
+`run_id`, `attempt_id`, timestamp-derived ids, or UUIDs. Do not use permanent
+generation tables or active-generation pointers as the serving lifecycle for
+current read models unless the owning architecture document defines retention,
+pruning, reader behavior, and tests. An active pointer can make readers correct
+while storage still grows without a runtime bound. Workers that rebuild current
+rows must have an unchanged path that is visible in publication state and writes
+zero serving rows, usually through `payload_hash` or `IS DISTINCT FROM` gates.
 
 Projection worker idle paths must be proportional to due dirty targets, not
 to fact-table size. Equity Event and News projection workers claim durable

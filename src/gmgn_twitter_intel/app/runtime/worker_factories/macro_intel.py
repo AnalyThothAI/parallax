@@ -7,6 +7,7 @@ from gmgn_twitter_intel.domains.macro_intel.runtime.macro_sync_worker import Mac
 from gmgn_twitter_intel.domains.macro_intel.runtime.macro_view_projection_worker import (
     MacroViewProjectionWorker,
 )
+from gmgn_twitter_intel.integrations.macrodata.runner import MacrodataBundleRunner
 
 WORKER_KEYS = manifest_names_for_factory("macro_intel.py")
 
@@ -23,6 +24,7 @@ def construct_macro_intel_workers(ctx: WorkerFactoryContext) -> dict[str, Worker
             telemetry=ctx.telemetry,
             settings_root=ctx.settings,
             wake_bus=ctx.wake_bus,
+            runner=MacrodataBundleRunner(settings=ctx.settings),
         )
     if workers.macro_view_projection.enabled:
         worker_name = "macro_view_projection"

@@ -31,7 +31,6 @@ from gmgn_twitter_intel.domains.pulse_lab.services.agent_eval import (
 from gmgn_twitter_intel.domains.pulse_lab.services.agent_routing import route_decision_context
 from gmgn_twitter_intel.domains.pulse_lab.services.agent_runtime import (
     PULSE_AGENT_STRATEGY,
-    PULSE_FAILURE_TAXONOMY_VERSION,
     build_pulse_runtime_manifest,
     pulse_runtime_hash,
 )
@@ -142,7 +141,7 @@ class PulseCandidateJobService:
             )
             context = _context_with_gate(context, gate)
             route = route_decision_context(context.agent_context())
-            provider = getattr(self.decision_client, "provider", "openai")
+            provider = self.decision_client.provider
             lane_models = _pulse_lane_models(self.decision_client)
             model = lane_models["pulse.pipeline"]
             artifact_version_hash = _artifact_hash(self.decision_client)
@@ -150,7 +149,7 @@ class PulseCandidateJobService:
                 provider=provider,
                 model=model,
                 artifact_version_hash=artifact_version_hash,
-                timeout_seconds=float(getattr(self.decision_client, "timeout_seconds", 30.0) or 30.0),
+                timeout_seconds=float(self.decision_client.timeout_seconds),
                 **_runtime_contract_from_client(self.decision_client),
             )
             runtime_hash = pulse_runtime_hash(runtime_manifest)
@@ -376,8 +375,8 @@ class PulseCandidateJobService:
                         stage=stage_audit.stage,
                         route=stage_audit.route,
                         attempt_index=stage_audit.attempt_index,
-                        provider=getattr(self.decision_client, "provider", "openai"),
-                        model=getattr(self.decision_client, "model", ""),
+                        provider=self.decision_client.provider,
+                        model=_model_for_stage(stage_audit.stage, lane_models),
                         prompt_version=str(audit.get("prompt_version") or PULSE_DECISION_PROMPT_VERSION),
                         schema_version=str(audit.get("schema_version") or PULSE_DECISION_SCHEMA_VERSION),
                         input_json=stage_audit.input_json,
@@ -462,8 +461,8 @@ class PulseCandidateJobService:
                         stage=stage_audit.stage,
                         route=stage_audit.route,
                         attempt_index=stage_audit.attempt_index,
-                        provider=getattr(self.decision_client, "provider", "openai"),
-                        model=getattr(self.decision_client, "model", ""),
+                        provider=self.decision_client.provider,
+                        model=_model_for_stage(stage_audit.stage, lane_models),
                         prompt_version=str(audit.get("prompt_version") or PULSE_DECISION_PROMPT_VERSION),
                         schema_version=str(audit.get("schema_version") or PULSE_DECISION_SCHEMA_VERSION),
                         input_json=stage_audit.input_json,
@@ -620,8 +619,8 @@ class PulseCandidateJobService:
                             stage=stage_audit.stage,
                             route=stage_audit.route,
                             attempt_index=stage_audit.attempt_index,
-                            provider=getattr(self.decision_client, "provider", "openai"),
-                            model=getattr(self.decision_client, "model", ""),
+                            provider=self.decision_client.provider,
+                            model=_model_for_stage(stage_audit.stage, lane_models),
                             prompt_version=str(audit.get("prompt_version") if audit else PULSE_DECISION_PROMPT_VERSION),
                             schema_version=str(audit.get("schema_version") if audit else PULSE_DECISION_SCHEMA_VERSION),
                             input_json=stage_audit.input_json,
@@ -692,9 +691,7 @@ class PulseCandidateJobService:
 
 
 def _runtime_contract_from_client(client: Any) -> dict[str, Any]:
-    contract = getattr(client, "runtime_contract", None)
-    if callable(contract):
-        contract = contract()
+    contract = client.runtime_contract
     if not isinstance(contract, PulseAgentRuntimeContract):
         raise RuntimeError("pulse_agent_runtime_contract_missing")
     if tuple(contract.stage_names) != ("signal_analyst", "bear_case", "risk_portfolio_judge"):
@@ -712,17 +709,25 @@ def _pulse_lane_models(client: Any) -> dict[str, str]:
         "pulse.bear_case",
         "pulse.risk_portfolio_judge",
     )
-    gateway = getattr(client, "_agent_gateway", None)
-    model_for_lane = getattr(gateway, "model_for_lane", None) or getattr(client, "model_for_lane", None)
-    if not callable(model_for_lane):
-        raise RuntimeError("pulse_agent_lane_model_resolver_missing")
     models: dict[str, str] = {}
     for lane in lanes:
-        model = str(model_for_lane(lane) or "").strip()
+        model = str(client.model_for_lane(lane) or "").strip()
         if not model:
             raise RuntimeError(f"pulse_agent_lane_model_missing:{lane}")
         models[lane] = model
     return models
+
+
+def _model_for_stage(stage: str, lane_models: dict[str, str]) -> str:
+    lane = {
+        "signal_analyst": "pulse.signal_analyst",
+        "bear_case": "pulse.bear_case",
+        "risk_portfolio_judge": "pulse.risk_portfolio_judge",
+    }.get(str(stage), "pulse.pipeline")
+    model = str(lane_models.get(lane) or "").strip()
+    if not model:
+        raise RuntimeError(f"pulse_agent_stage_model_missing:{stage}")
+    return model
 
 
 def _cost_guard_request_json(
@@ -1143,7 +1148,7 @@ def _transaction(conn: Any) -> AbstractContextManager[Any]:
 
 
 def _artifact_hash(client: Any) -> str:
-    artifact_version_hash = str(getattr(client, "artifact_version_hash", "") or "").strip()
+    artifact_version_hash = str(client.artifact_version_hash or "").strip()
     if not artifact_version_hash:
         raise RuntimeError("pulse_agent_artifact_hash_missing")
     return artifact_version_hash

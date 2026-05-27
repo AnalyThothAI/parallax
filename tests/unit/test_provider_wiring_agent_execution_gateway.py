@@ -23,7 +23,7 @@ class FakePulseClient:
     def __init__(self) -> None:
         self.pipeline_kwargs: dict[str, Any] | None = None
 
-    def try_reserve_execution(self, lane, *, child_lanes=(), scope="execution"):
+    def try_reserve_execution(self, lane, *, child_lanes=(), rate_units=1, scope="execution"):
         raise AssertionError("not used")
 
     def model_for_lane(self, lane):

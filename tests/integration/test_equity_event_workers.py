@@ -1730,9 +1730,9 @@ class _FakeEquityBriefProvider:
         self.called_while_db_session_active: bool | None = None
         self.packet_evidence_refs: list[str] = []
 
-    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+    def try_reserve_execution(self, lane: str, *, rate_units: int = 1) -> AgentCapacityReservation:
         assert lane == EQUITY_EVENT_BRIEF_LANE
-        return AgentCapacityReservation(lane=lane, acquired=True)
+        return AgentCapacityReservation(lane=lane, acquired=True, rate_units=rate_units)
 
     def request_audit(self, *, run_id: str, packet: Any) -> dict[str, Any]:
         return {

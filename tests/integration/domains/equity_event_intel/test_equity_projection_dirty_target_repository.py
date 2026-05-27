@@ -99,7 +99,7 @@ def test_claim_due_uses_skip_locked_claims_expired_leases_and_returns_completion
     ]
     assert "FOR UPDATE SKIP LOCKED" in sql
     assert "leased_until_ms IS NULL OR leased_until_ms <= %(now_ms)s" in sql
-    assert "attempt_count = equity_event_projection_dirty_targets.attempt_count + 1" in sql
+    assert "attempt_count = equity_event_projection_dirty_targets.attempt_count + 1" not in sql
     assert conn.params[-1]["leased_until_ms"] == 1_700_000_060_000
     assert conn.params[-1]["lease_owner"] == "worker-a"
 
@@ -299,8 +299,10 @@ def test_mark_error_requires_token_and_schedules_retry() -> None:
     assert "queue.payload_hash = failed.payload_hash" in sql
     assert "queue.lease_owner = failed.lease_owner" in sql
     assert "queue.attempt_count = failed.attempt_count" in sql
+    assert "attempt_count = queue.attempt_count + %(attempt_increment)s" in sql
     assert conn.params[-1]["due_at_ms"] == 1_700_000_040_000
     assert conn.params[-1]["last_error"] == "projection failed"
+    assert conn.params[-1]["attempt_increment"] == 1
 
 
 def test_mark_done_rejects_claim_token_without_target_key() -> None:

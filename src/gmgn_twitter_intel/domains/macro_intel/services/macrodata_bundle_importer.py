@@ -12,7 +12,6 @@ from gmgn_twitter_intel.domains.macro_intel._constants import (
     MACRO_PROVIDER_SERIES_TO_CONCEPT,
 )
 from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_types import MacrodataBundleImport
-from gmgn_twitter_intel.platform.db.postgres_client import require_transaction
 
 if TYPE_CHECKING:
     from gmgn_twitter_intel.app.runtime.repository_session import RepositorySession
@@ -202,7 +201,7 @@ def _require_transaction(repos: RepositorySession, *, operation: str) -> None:
     if callable(session_require_transaction):
         session_require_transaction(operation=operation)
         return
-    require_transaction(getattr(repos, "conn", None), operation=operation)
+    raise RuntimeError(f"{operation}:transaction_required")
 
 
 __all__ = ["import_macrodata_bundle", "parse_macrodata_bundle", "write_macrodata_bundle_import"]

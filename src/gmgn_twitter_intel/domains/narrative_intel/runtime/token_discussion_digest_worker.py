@@ -89,8 +89,17 @@ class TokenDiscussionDigestWorker(WorkerBase):
                     "rows_written": 0,
                 },
             )
+        rate_units = min(
+            limit,
+            max(1, self._max_llm_calls_per_cycle()),
+            max(1, int(queue_depth)),
+        )
         try:
-            reservation = _try_reserve_provider_execution(self.provider, DISCUSSION_DIGEST_LANE)
+            reservation = _try_reserve_provider_execution(
+                self.provider,
+                DISCUSSION_DIGEST_LANE,
+                rate_units=rate_units,
+            )
         except Exception as exc:
             return WorkerResult(
                 skipped=1,
@@ -117,228 +126,132 @@ class TokenDiscussionDigestWorker(WorkerBase):
                     f"agent_backpressure_{reason}": 1,
                 },
             )
-        targets = await asyncio.to_thread(self._due_targets_sync, now_ms=resolved_now_ms, limit=limit)
-        if not targets:
-            await _release_reservation(reservation)
-            return WorkerResult(
-                skipped=1,
-                notes={
-                    "reason": "no_due_digest_targets",
-                    "claimed": 0,
-                    "queue_depth": queue_depth,
-                    "source_rows_scanned": 0,
-                    "targets_loaded": 0,
-                    "rows_written": 0,
-                },
-            )
+        try:
+            claim_limit = min(limit, max(1, int(reservation.rate_units)))
+            targets = await asyncio.to_thread(self._due_targets_sync, now_ms=resolved_now_ms, limit=claim_limit)
+            if not targets:
+                await _release_reservation(reservation)
+                return WorkerResult(
+                    skipped=1,
+                    notes={
+                        "reason": "no_due_digest_targets",
+                        "claimed": 0,
+                        "queue_depth": queue_depth,
+                        "source_rows_scanned": 0,
+                        "targets_loaded": 0,
+                        "rows_written": 0,
+                    },
+                )
 
-        counts = {"ready": 0, "insufficient": 0, "pending": 0, "semantic_unavailable": 0, "failed": 0}
-        refresh_reasons: dict[str, int] = {}
-        llm_calls = 0
-        llm_failures = 0
-        deferred = 0
-        deferred_epoch_policy = 0
-        source_rows_scanned = 0
-        targets_loaded = 0
-        rows_written = 0
-        for target in targets:
-            context = await asyncio.to_thread(self._digest_context_sync, target=target)
-            targets_loaded += 1
-            source_rows_scanned += int(context.get("source_event_count") or 0)
-            if _context_not_admitted(context):
-                await asyncio.to_thread(
-                    self._mark_digest_done_sync,
-                    target=target,
+            counts = {"ready": 0, "insufficient": 0, "pending": 0, "semantic_unavailable": 0, "failed": 0}
+            refresh_reasons: dict[str, int] = {}
+            llm_calls = 0
+            llm_failures = 0
+            deferred = 0
+            deferred_epoch_policy = 0
+            source_rows_scanned = 0
+            targets_loaded = 0
+            rows_written = 0
+            for target in targets:
+                context = await asyncio.to_thread(self._digest_context_sync, target=target)
+                targets_loaded += 1
+                source_rows_scanned += int(context.get("source_event_count") or 0)
+                if _context_not_admitted(context):
+                    await asyncio.to_thread(
+                        self._mark_digest_done_sync,
+                        target=target,
+                        now_ms=resolved_now_ms,
+                    )
+                    refresh_reasons["not_admitted"] = refresh_reasons.get("not_admitted", 0) + 1
+                    continue
+                current_ready = await asyncio.to_thread(self._current_ready_digest_sync, target=target)
+                market_context = await asyncio.to_thread(
+                    self._market_context_sync,
+                    admission={**target, **context},
+                    current_ready_digest=current_ready,
+                )
+                epoch_decision = self.epoch_policy.evaluate(
+                    admission=_admission_for_policy(target=target, context=context),
+                    current_ready_digest=current_ready,
+                    semantic_coverage=context,
+                    market_context=market_context,
                     now_ms=resolved_now_ms,
                 )
-                refresh_reasons["not_admitted"] = refresh_reasons.get("not_admitted", 0) + 1
-                continue
-            current_ready = await asyncio.to_thread(self._current_ready_digest_sync, target=target)
-            market_context = await asyncio.to_thread(
-                self._market_context_sync,
-                admission={**target, **context},
-                current_ready_digest=current_ready,
-            )
-            epoch_decision = self.epoch_policy.evaluate(
-                admission=_admission_for_policy(target=target, context=context),
-                current_ready_digest=current_ready,
-                semantic_coverage=context,
-                market_context=market_context,
-                now_ms=resolved_now_ms,
-            )
-            refresh_reasons[epoch_decision.reason] = refresh_reasons.get(epoch_decision.reason, 0) + 1
-            sealed_context = _sealed_epoch_context(
-                target=target,
-                context=context,
-                decision=epoch_decision,
-                now_ms=resolved_now_ms,
-            )
-            if not epoch_decision.should_refresh:
-                if epoch_decision.should_write_status_digest and current_ready is None:
-                    status_decision = self.service.refresh_decision(context)
-                    refresh_reasons[status_decision.reason] = refresh_reasons.get(status_decision.reason, 0) + 1
-                    digest = self.service.build_status_digest(
-                        target_type=str(target["target_type"]),
-                        target_id=str(target["target_id"]),
-                        window=str(target["window"]),
-                        scope=str(target["scope"]),
-                        context=sealed_context,
-                        reason=status_decision.reason,
-                        now_ms=resolved_now_ms,
-                        status=status_decision.status_if_not_refresh,
-                        model_version=f"deterministic:{status_decision.status_if_not_refresh}",
-                    )
-                    await asyncio.to_thread(
-                        self._replace_digest_sync,
-                        digest=digest.model_dump(mode="json"),
-                        now_ms=resolved_now_ms,
-                    )
-                    rows_written += 1
-                    counts[status_decision.status_if_not_refresh] += 1
-                else:
-                    deferred_epoch_policy += 1
-                await asyncio.to_thread(
-                    self._reschedule_digest_claim_sync,
+                refresh_reasons[epoch_decision.reason] = refresh_reasons.get(epoch_decision.reason, 0) + 1
+                sealed_context = _sealed_epoch_context(
                     target=target,
+                    context=context,
+                    decision=epoch_decision,
                     now_ms=resolved_now_ms,
-                    next_due_at_ms=epoch_decision.next_due_at_ms,
                 )
-                continue
-
-            if epoch_decision.reason == "no_ready_digest":
-                status_decision = self.service.refresh_decision(context)
-                refresh_reasons[status_decision.reason] = refresh_reasons.get(status_decision.reason, 0) + 1
-                if not status_decision.should_refresh:
-                    digest = self.service.build_status_digest(
-                        target_type=str(target["target_type"]),
-                        target_id=str(target["target_id"]),
-                        window=str(target["window"]),
-                        scope=str(target["scope"]),
-                        context=sealed_context,
-                        reason=status_decision.reason,
-                        now_ms=resolved_now_ms,
-                        status=status_decision.status_if_not_refresh,
-                        model_version=f"deterministic:{status_decision.status_if_not_refresh}",
-                    )
-                    await asyncio.to_thread(
-                        self._replace_digest_sync,
-                        digest=digest.model_dump(mode="json"),
-                        now_ms=resolved_now_ms,
-                    )
-                    rows_written += 1
+                if not epoch_decision.should_refresh:
+                    if epoch_decision.should_write_status_digest and current_ready is None:
+                        status_decision = self.service.refresh_decision(context)
+                        refresh_reasons[status_decision.reason] = refresh_reasons.get(status_decision.reason, 0) + 1
+                        digest = self.service.build_status_digest(
+                            target_type=str(target["target_type"]),
+                            target_id=str(target["target_id"]),
+                            window=str(target["window"]),
+                            scope=str(target["scope"]),
+                            context=sealed_context,
+                            reason=status_decision.reason,
+                            now_ms=resolved_now_ms,
+                            status=status_decision.status_if_not_refresh,
+                            model_version=f"deterministic:{status_decision.status_if_not_refresh}",
+                        )
+                        await asyncio.to_thread(
+                            self._replace_digest_sync,
+                            digest=digest.model_dump(mode="json"),
+                            now_ms=resolved_now_ms,
+                        )
+                        rows_written += 1
+                        counts[status_decision.status_if_not_refresh] += 1
+                    else:
+                        deferred_epoch_policy += 1
                     await asyncio.to_thread(
                         self._reschedule_digest_claim_sync,
                         target=target,
                         now_ms=resolved_now_ms,
-                        next_due_at_ms=_next_due_after_no_ready_status_block(
-                            reason=status_decision.reason,
-                            epoch_next_due_at_ms=epoch_decision.next_due_at_ms,
-                            now_ms=resolved_now_ms,
-                        ),
+                        next_due_at_ms=epoch_decision.next_due_at_ms,
                     )
-                    counts[status_decision.status_if_not_refresh] += 1
                     continue
-                sealed_context = {**sealed_context, "refresh_reason": status_decision.reason}
 
-            if llm_calls >= self._max_llm_calls_per_cycle():
-                await asyncio.to_thread(
-                    self._reschedule_digest_claim_sync,
-                    target=target,
-                    now_ms=resolved_now_ms,
-                    next_due_at_ms=self._backpressure_next_due_at_ms(now_ms=resolved_now_ms),
-                )
-                counts["pending"] += 1
-                deferred += 1
-                refresh_reasons["llm_cycle_budget_exhausted"] = refresh_reasons.get("llm_cycle_budget_exhausted", 0) + 1
-                continue
-            if llm_failures >= self._max_llm_failures_per_cycle():
-                await asyncio.to_thread(
-                    self._reschedule_digest_claim_sync,
-                    target=target,
-                    now_ms=resolved_now_ms,
-                    next_due_at_ms=self._backpressure_next_due_at_ms(now_ms=resolved_now_ms),
-                )
-                counts["pending"] += 1
-                deferred += 1
-                refresh_reasons["llm_failure_budget_exhausted"] = (
-                    refresh_reasons.get("llm_failure_budget_exhausted", 0) + 1
-                )
-                continue
+                if epoch_decision.reason == "no_ready_digest":
+                    status_decision = self.service.refresh_decision(context)
+                    refresh_reasons[status_decision.reason] = refresh_reasons.get(status_decision.reason, 0) + 1
+                    if not status_decision.should_refresh:
+                        digest = self.service.build_status_digest(
+                            target_type=str(target["target_type"]),
+                            target_id=str(target["target_id"]),
+                            window=str(target["window"]),
+                            scope=str(target["scope"]),
+                            context=sealed_context,
+                            reason=status_decision.reason,
+                            now_ms=resolved_now_ms,
+                            status=status_decision.status_if_not_refresh,
+                            model_version=f"deterministic:{status_decision.status_if_not_refresh}",
+                        )
+                        await asyncio.to_thread(
+                            self._replace_digest_sync,
+                            digest=digest.model_dump(mode="json"),
+                            now_ms=resolved_now_ms,
+                        )
+                        rows_written += 1
+                        await asyncio.to_thread(
+                            self._reschedule_digest_claim_sync,
+                            target=target,
+                            now_ms=resolved_now_ms,
+                            next_due_at_ms=_next_due_after_no_ready_status_block(
+                                reason=status_decision.reason,
+                                epoch_next_due_at_ms=epoch_decision.next_due_at_ms,
+                                now_ms=resolved_now_ms,
+                            ),
+                        )
+                        counts[status_decision.status_if_not_refresh] += 1
+                        continue
+                    sealed_context = {**sealed_context, "refresh_reason": status_decision.reason}
 
-            started_at_ms = _now_ms()
-            input_hash = _hash_json(sealed_context)
-            run_id = deterministic_run_id(stage="discussion_digest", input_hash=input_hash, started_at_ms=started_at_ms)
-            request = self.service.build_digest_request(
-                run_id=run_id,
-                target_type=str(target["target_type"]),
-                target_id=str(target["target_id"]),
-                window=str(target["window"]),
-                scope=str(target["scope"]),
-                context=sealed_context,
-                schema_version=NARRATIVE_SCHEMA_VERSION,
-                prompt_version=DISCUSSION_DIGEST_PROMPT_VERSION,
-            )
-            request_audit = _provider_request_audit(
-                self.provider,
-                "request_audit_for_summarize_discussion",
-                run_id=run_id,
-                request=request,
-            )
-            try:
-                llm_calls += 1
-                result = await _summarize_discussion(
-                    self.provider,
-                    run_id=run_id,
-                    request=request,
-                    reservation=reservation,
-                )
-            except asyncio.CancelledError as exc:
-                if not is_worker_hard_timeout_cancelled(exc):
-                    await _release_reservation(reservation)
-                    raise
-                finished_at_ms = _now_ms()
-                await asyncio.to_thread(
-                    self._record_failed_run_sync,
-                    run={
-                        "run_id": run_id,
-                        "stage": "discussion_digest",
-                        "target_type": target["target_type"],
-                        "target_id": target["target_id"],
-                        "window": target["window"],
-                        "scope": target["scope"],
-                        "provider": self.provider.provider,
-                        "model": self.provider.model,
-                        "schema_version": NARRATIVE_SCHEMA_VERSION,
-                        "prompt_version": DISCUSSION_DIGEST_PROMPT_VERSION,
-                        "artifact_version_hash": self.provider.artifact_version_hash,
-                        "input_hash": input_hash,
-                        "output_hash": None,
-                        "request_json": request.model_dump(mode="json"),
-                        "response_json": None,
-                        "usage_json": request_audit.get("usage") or {},
-                        "trace_metadata_json": {
-                            **request_audit,
-                            "error_type": "CancelledError",
-                        },
-                        "status": "failed",
-                        "error": "worker_timeout_cancelled",
-                        "execution_started": True,
-                        "started_at_ms": started_at_ms,
-                        "finished_at_ms": finished_at_ms,
-                        "latency_ms": finished_at_ms - started_at_ms,
-                    },
-                )
-                await asyncio.to_thread(
-                    self._mark_digest_error_sync,
-                    target=target,
-                    now_ms=finished_at_ms,
-                    next_due_at_ms=self._provider_failure_next_due_at_ms(now_ms=finished_at_ms),
-                    error="worker_timeout_cancelled",
-                )
-                await _release_reservation(reservation)
-                raise
-            except Exception as exc:
-                if _is_agent_no_start_backpressure(exc):
+                if llm_calls >= self._max_llm_calls_per_cycle():
                     await asyncio.to_thread(
                         self._reschedule_digest_claim_sync,
                         target=target,
@@ -346,180 +259,286 @@ class TokenDiscussionDigestWorker(WorkerBase):
                         next_due_at_ms=self._backpressure_next_due_at_ms(now_ms=resolved_now_ms),
                     )
                     counts["pending"] += 1
-                    refresh_reasons["agent_backpressure"] = refresh_reasons.get("agent_backpressure", 0) + 1
+                    deferred += 1
+                    refresh_reasons["llm_cycle_budget_exhausted"] = (
+                        refresh_reasons.get("llm_cycle_budget_exhausted", 0) + 1
+                    )
+                    continue
+                if llm_failures >= self._max_llm_failures_per_cycle():
+                    await asyncio.to_thread(
+                        self._reschedule_digest_claim_sync,
+                        target=target,
+                        now_ms=resolved_now_ms,
+                        next_due_at_ms=self._backpressure_next_due_at_ms(now_ms=resolved_now_ms),
+                    )
+                    counts["pending"] += 1
+                    deferred += 1
+                    refresh_reasons["llm_failure_budget_exhausted"] = (
+                        refresh_reasons.get("llm_failure_budget_exhausted", 0) + 1
+                    )
+                    continue
+
+                started_at_ms = _now_ms()
+                input_hash = _hash_json(sealed_context)
+                run_id = deterministic_run_id(
+                    stage="discussion_digest",
+                    input_hash=input_hash,
+                    started_at_ms=started_at_ms,
+                )
+                request = self.service.build_digest_request(
+                    run_id=run_id,
+                    target_type=str(target["target_type"]),
+                    target_id=str(target["target_id"]),
+                    window=str(target["window"]),
+                    scope=str(target["scope"]),
+                    context=sealed_context,
+                    schema_version=NARRATIVE_SCHEMA_VERSION,
+                    prompt_version=DISCUSSION_DIGEST_PROMPT_VERSION,
+                )
+                request_audit = _provider_request_audit(
+                    self.provider,
+                    "request_audit_for_summarize_discussion",
+                    run_id=run_id,
+                    request=request,
+                )
+                try:
+                    llm_calls += 1
+                    result = await _summarize_discussion(
+                        self.provider,
+                        run_id=run_id,
+                        request=request,
+                        reservation=reservation,
+                    )
+                except asyncio.CancelledError as exc:
+                    if not is_worker_hard_timeout_cancelled(exc):
+                        await _release_reservation(reservation)
+                        raise
+                    finished_at_ms = _now_ms()
+                    await asyncio.to_thread(
+                        self._record_failed_run_sync,
+                        run={
+                            "run_id": run_id,
+                            "stage": "discussion_digest",
+                            "target_type": target["target_type"],
+                            "target_id": target["target_id"],
+                            "window": target["window"],
+                            "scope": target["scope"],
+                            "provider": self.provider.provider,
+                            "model": self.provider.model,
+                            "schema_version": NARRATIVE_SCHEMA_VERSION,
+                            "prompt_version": DISCUSSION_DIGEST_PROMPT_VERSION,
+                            "artifact_version_hash": self.provider.artifact_version_hash,
+                            "input_hash": input_hash,
+                            "output_hash": None,
+                            "request_json": request.model_dump(mode="json"),
+                            "response_json": None,
+                            "usage_json": request_audit.get("usage") or {},
+                            "trace_metadata_json": {
+                                **request_audit,
+                                "error_type": "CancelledError",
+                            },
+                            "status": "failed",
+                            "error": "worker_timeout_cancelled",
+                            "execution_started": True,
+                            "started_at_ms": started_at_ms,
+                            "finished_at_ms": finished_at_ms,
+                            "latency_ms": finished_at_ms - started_at_ms,
+                        },
+                    )
+                    await asyncio.to_thread(
+                        self._mark_digest_error_sync,
+                        target=target,
+                        now_ms=finished_at_ms,
+                        next_due_at_ms=self._provider_failure_next_due_at_ms(now_ms=finished_at_ms),
+                        error="worker_timeout_cancelled",
+                    )
+                    await _release_reservation(reservation)
+                    raise
+                except Exception as exc:
+                    if _is_agent_no_start_backpressure(exc):
+                        await asyncio.to_thread(
+                            self._reschedule_digest_claim_sync,
+                            target=target,
+                            now_ms=resolved_now_ms,
+                            next_due_at_ms=self._backpressure_next_due_at_ms(now_ms=resolved_now_ms),
+                        )
+                        counts["pending"] += 1
+                        refresh_reasons["agent_backpressure"] = refresh_reasons.get("agent_backpressure", 0) + 1
+                        continue
+                    finished_at_ms = _now_ms()
+                    llm_failures += 1
+                    await asyncio.to_thread(
+                        self._record_failed_run_sync,
+                        run={
+                            "run_id": run_id,
+                            "stage": "discussion_digest",
+                            "target_type": target["target_type"],
+                            "target_id": target["target_id"],
+                            "window": target["window"],
+                            "scope": target["scope"],
+                            "provider": self.provider.provider,
+                            "model": self.provider.model,
+                            "schema_version": NARRATIVE_SCHEMA_VERSION,
+                            "prompt_version": DISCUSSION_DIGEST_PROMPT_VERSION,
+                            "artifact_version_hash": self.provider.artifact_version_hash,
+                            "input_hash": input_hash,
+                            "output_hash": None,
+                            "request_json": request.model_dump(mode="json"),
+                            "response_json": None,
+                            "usage_json": request_audit.get("usage") or {},
+                            "trace_metadata_json": {
+                                **request_audit,
+                                "error_type": type(exc).__name__,
+                            },
+                            "status": "failed",
+                            "error": str(exc),
+                            "execution_started": True,
+                            "started_at_ms": started_at_ms,
+                            "finished_at_ms": finished_at_ms,
+                            "latency_ms": finished_at_ms - started_at_ms,
+                        },
+                    )
+                    rows_written += 1
+                    await asyncio.to_thread(
+                        self._mark_digest_error_sync,
+                        target=target,
+                        now_ms=resolved_now_ms,
+                        next_due_at_ms=self._provider_failure_next_due_at_ms(now_ms=resolved_now_ms),
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
+                    counts["failed"] += 1
                     continue
                 finished_at_ms = _now_ms()
-                llm_failures += 1
+                try:
+                    ready_digest = self.service.publish_ready_digest(
+                        result.digest,
+                        context=sealed_context,
+                        now_ms=finished_at_ms,
+                    )
+                except Exception as exc:
+                    await asyncio.to_thread(
+                        self._record_failed_run_sync,
+                        run=_failed_digest_run(
+                            run_id=run_id,
+                            target=target,
+                            provider=self.provider,
+                            input_hash=input_hash,
+                            request=request,
+                            request_audit=request_audit,
+                            response_json=_jsonish(result),
+                            error="publish_ready_digest_failed",
+                            error_type=type(exc).__name__,
+                            started_at_ms=started_at_ms,
+                            finished_at_ms=finished_at_ms,
+                        ),
+                    )
+                    rows_written += 1
+                    await asyncio.to_thread(
+                        self._mark_digest_error_sync,
+                        target=target,
+                        now_ms=resolved_now_ms,
+                        next_due_at_ms=epoch_decision.next_due_at_ms,
+                        error="publish_ready_digest_failed",
+                    )
+                    counts["failed"] += 1
+                    continue
+                allowed_refs = [EvidenceRef.model_validate(ref) for ref in request.allowed_refs]
+                validation = self.validator.validate_digest_refs(ready_digest, allowed_refs)
+                if not validation.ok:
+                    await asyncio.to_thread(
+                        self._record_failed_run_sync,
+                        run=_failed_digest_run(
+                            run_id=run_id,
+                            target=target,
+                            provider=self.provider,
+                            input_hash=input_hash,
+                            request=request,
+                            request_audit=request_audit,
+                            response_json=_jsonish(result),
+                            error="invalid_evidence_refs",
+                            error_type="EvidenceRefValidation",
+                            started_at_ms=started_at_ms,
+                            finished_at_ms=finished_at_ms,
+                        ),
+                    )
+                    rows_written += 1
+                    await asyncio.to_thread(
+                        self._mark_digest_error_sync,
+                        target=target,
+                        now_ms=resolved_now_ms,
+                        next_due_at_ms=epoch_decision.next_due_at_ms,
+                        error="invalid_evidence_refs",
+                    )
+                    counts["failed"] += 1
+                    continue
+                result_payload = result.model_dump(mode="json")
+                result_payload["digest"] = ready_digest.model_dump(mode="json")
+                run = {
+                    "run_id": run_id,
+                    "stage": "discussion_digest",
+                    "target_type": target["target_type"],
+                    "target_id": target["target_id"],
+                    "window": target["window"],
+                    "scope": target["scope"],
+                    "provider": self.provider.provider,
+                    "model": self.provider.model,
+                    "schema_version": ready_digest.schema_version,
+                    "prompt_version": result.prompt_version,
+                    "artifact_version_hash": self.provider.artifact_version_hash,
+                    "input_hash": input_hash,
+                    "output_hash": _hash_json(result_payload),
+                    "request_json": request.model_dump(mode="json"),
+                    "response_json": result.raw_response,
+                    "usage_json": (result.agent_run_audit or {}).get("usage") or {},
+                    "trace_metadata_json": result.agent_run_audit or {},
+                    "status": "done",
+                    "execution_started": True,
+                    "started_at_ms": started_at_ms,
+                    "finished_at_ms": finished_at_ms,
+                    "latency_ms": finished_at_ms - started_at_ms,
+                }
+                digest_payload = ready_digest.model_dump(mode="json")
+                digest_payload["model_run_id"] = run_id
                 await asyncio.to_thread(
-                    self._record_failed_run_sync,
-                    run={
-                        "run_id": run_id,
-                        "stage": "discussion_digest",
-                        "target_type": target["target_type"],
-                        "target_id": target["target_id"],
-                        "window": target["window"],
-                        "scope": target["scope"],
-                        "provider": self.provider.provider,
-                        "model": self.provider.model,
-                        "schema_version": NARRATIVE_SCHEMA_VERSION,
-                        "prompt_version": DISCUSSION_DIGEST_PROMPT_VERSION,
-                        "artifact_version_hash": self.provider.artifact_version_hash,
-                        "input_hash": input_hash,
-                        "output_hash": None,
-                        "request_json": request.model_dump(mode="json"),
-                        "response_json": None,
-                        "usage_json": request_audit.get("usage") or {},
-                        "trace_metadata_json": {
-                            **request_audit,
-                            "error_type": type(exc).__name__,
-                        },
-                        "status": "failed",
-                        "error": str(exc),
-                        "execution_started": True,
-                        "started_at_ms": started_at_ms,
-                        "finished_at_ms": finished_at_ms,
-                        "latency_ms": finished_at_ms - started_at_ms,
-                    },
-                )
-                rows_written += 1
-                await asyncio.to_thread(
-                    self._mark_digest_error_sync,
-                    target=target,
-                    now_ms=resolved_now_ms,
-                    next_due_at_ms=self._provider_failure_next_due_at_ms(now_ms=resolved_now_ms),
-                    error=f"{type(exc).__name__}: {exc}",
-                )
-                counts["failed"] += 1
-                continue
-            finished_at_ms = _now_ms()
-            try:
-                ready_digest = self.service.publish_ready_digest(
-                    result.digest,
-                    context=sealed_context,
+                    self._record_ready_digest_sync,
+                    run=run,
+                    digest=digest_payload,
                     now_ms=finished_at_ms,
                 )
-            except Exception as exc:
+                rows_written += 2
                 await asyncio.to_thread(
-                    self._record_failed_run_sync,
-                    run=_failed_digest_run(
-                        run_id=run_id,
-                        target=target,
-                        provider=self.provider,
-                        input_hash=input_hash,
-                        request=request,
-                        request_audit=request_audit,
-                        response_json=_jsonish(result),
-                        error="publish_ready_digest_failed",
-                        error_type=type(exc).__name__,
-                        started_at_ms=started_at_ms,
-                        finished_at_ms=finished_at_ms,
-                    ),
-                )
-                rows_written += 1
-                await asyncio.to_thread(
-                    self._mark_digest_error_sync,
+                    self._reschedule_digest_claim_sync,
                     target=target,
-                    now_ms=resolved_now_ms,
+                    now_ms=finished_at_ms,
                     next_due_at_ms=epoch_decision.next_due_at_ms,
-                    error="publish_ready_digest_failed",
                 )
-                counts["failed"] += 1
-                continue
-            allowed_refs = [EvidenceRef.model_validate(ref) for ref in request.allowed_refs]
-            validation = self.validator.validate_digest_refs(ready_digest, allowed_refs)
-            if not validation.ok:
-                await asyncio.to_thread(
-                    self._record_failed_run_sync,
-                    run=_failed_digest_run(
-                        run_id=run_id,
-                        target=target,
-                        provider=self.provider,
-                        input_hash=input_hash,
-                        request=request,
-                        request_audit=request_audit,
-                        response_json=_jsonish(result),
-                        error="invalid_evidence_refs",
-                        error_type="EvidenceRefValidation",
-                        started_at_ms=started_at_ms,
-                        finished_at_ms=finished_at_ms,
-                    ),
-                )
-                rows_written += 1
-                await asyncio.to_thread(
-                    self._mark_digest_error_sync,
-                    target=target,
-                    now_ms=resolved_now_ms,
-                    next_due_at_ms=epoch_decision.next_due_at_ms,
-                    error="invalid_evidence_refs",
-                )
-                counts["failed"] += 1
-                continue
-            result_payload = result.model_dump(mode="json")
-            result_payload["digest"] = ready_digest.model_dump(mode="json")
-            run = {
-                "run_id": run_id,
-                "stage": "discussion_digest",
-                "target_type": target["target_type"],
-                "target_id": target["target_id"],
-                "window": target["window"],
-                "scope": target["scope"],
-                "provider": self.provider.provider,
-                "model": self.provider.model,
-                "schema_version": ready_digest.schema_version,
-                "prompt_version": result.prompt_version,
-                "artifact_version_hash": self.provider.artifact_version_hash,
-                "input_hash": input_hash,
-                "output_hash": _hash_json(result_payload),
-                "request_json": request.model_dump(mode="json"),
-                "response_json": result.raw_response,
-                "usage_json": (result.agent_run_audit or {}).get("usage") or {},
-                "trace_metadata_json": result.agent_run_audit or {},
-                "status": "done",
-                "execution_started": True,
-                "started_at_ms": started_at_ms,
-                "finished_at_ms": finished_at_ms,
-                "latency_ms": finished_at_ms - started_at_ms,
-            }
-            digest_payload = ready_digest.model_dump(mode="json")
-            digest_payload["model_run_id"] = run_id
-            await asyncio.to_thread(
-                self._record_ready_digest_sync,
-                run=run,
-                digest=digest_payload,
-                now_ms=finished_at_ms,
+                counts["ready"] += 1
+            await _release_reservation(reservation)
+            return WorkerResult(
+                processed=(
+                    counts["ready"]
+                    + counts["insufficient"]
+                    + counts["pending"]
+                    + counts["semantic_unavailable"]
+                    + deferred_epoch_policy
+                ),
+                failed=counts["failed"],
+                notes={
+                    "claimed": len(targets),
+                    "queue_depth": queue_depth,
+                    "source_rows_scanned": source_rows_scanned,
+                    "targets_loaded": targets_loaded,
+                    "rows_written": rows_written,
+                    **counts,
+                    "llm_calls": llm_calls,
+                    "llm_failures": llm_failures,
+                    "deferred_llm_budget": deferred,
+                    "deferred_epoch_policy": deferred_epoch_policy,
+                    "refresh_reasons": refresh_reasons,
+                },
             )
-            rows_written += 2
-            await asyncio.to_thread(
-                self._reschedule_digest_claim_sync,
-                target=target,
-                now_ms=finished_at_ms,
-                next_due_at_ms=epoch_decision.next_due_at_ms,
-            )
-            counts["ready"] += 1
-        await _release_reservation(reservation)
-        return WorkerResult(
-            processed=(
-                counts["ready"]
-                + counts["insufficient"]
-                + counts["pending"]
-                + counts["semantic_unavailable"]
-                + deferred_epoch_policy
-            ),
-            failed=counts["failed"],
-            notes={
-                "claimed": len(targets),
-                "queue_depth": queue_depth,
-                "source_rows_scanned": source_rows_scanned,
-                "targets_loaded": targets_loaded,
-                "rows_written": rows_written,
-                **counts,
-                "llm_calls": llm_calls,
-                "llm_failures": llm_failures,
-                "deferred_llm_budget": deferred,
-                "deferred_epoch_policy": deferred_epoch_policy,
-                "refresh_reasons": refresh_reasons,
-            },
-        )
+        finally:
+            await _release_reservation(reservation)
 
     def _due_targets_sync(self, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
         lease_ms = max(1, int(getattr(self.settings, "lease_seconds", 60) or 60)) * 1000
@@ -659,8 +678,8 @@ class TokenDiscussionDigestWorker(WorkerBase):
             yield repos
 
 
-def _try_reserve_provider_execution(provider: Any, lane: str) -> AgentCapacityReservation:
-    return provider.try_reserve_execution(lane)
+def _try_reserve_provider_execution(provider: Any, lane: str, *, rate_units: int = 1) -> AgentCapacityReservation:
+    return provider.try_reserve_execution(lane, rate_units=rate_units)
 
 
 async def _summarize_discussion(
@@ -879,7 +898,5 @@ def _hash_json(payload: Any) -> str:
 
 
 def _provider_request_audit(provider: Any, method_name: str, **kwargs: Any) -> dict[str, Any]:
-    method = getattr(provider, method_name, None)
-    if method is None:
-        method = getattr(getattr(provider, "_client", None), method_name)
+    method = getattr(provider, method_name)
     return dict(method(**kwargs))

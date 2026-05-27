@@ -222,9 +222,10 @@ class _ResearchCommitteeClient:
         lane: str,
         *,
         child_lanes: tuple[str, ...] = (),
+        rate_units: int = 1,
         scope: str | None = None,
     ) -> AgentCapacityReservation:
-        return AgentCapacityReservation(lane=lane, acquired=True)
+        return AgentCapacityReservation(lane=lane, acquired=True, child_lanes=child_lanes, rate_units=rate_units)
 
     def request_audit(
         self,

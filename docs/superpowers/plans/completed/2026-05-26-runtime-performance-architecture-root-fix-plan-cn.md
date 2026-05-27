@@ -1,5 +1,12 @@
 # Runtime Performance Architecture Root Fix Implementation Plan
 
+> 2026-05-27 hard-cut update: the Macro generation stage/swap design in this
+> historical active plan is retired. Do not create/read
+> `macro_observation_series_active_generation` or permanent generation serving
+> tables. Canonical Macro projection lifecycle is current-only, dirty-target
+> driven, and unchanged refreshes write zero serving rows; see
+> `docs/superpowers/plans/active/2026-05-27-next-runtime-lifecycle-hard-cut-plan-cn.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 根治当前 PostgreSQL runtime 性能问题：删除旧热路径，补齐 Kappa/CQRS 中间读模型，把 worker 改成 bounded state machine，并用明确性能测试证明达到 90/100 以上。

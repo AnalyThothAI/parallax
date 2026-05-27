@@ -80,7 +80,8 @@ class FakeGateway:
             market_read_zh="市场解读",
         )
 
-    def try_reserve(self, lane: str) -> object:
+    def try_reserve(self, lane: str, *, rate_units: int = 1) -> object:
+        assert rate_units == 1
         self.reserved_lanes.append(lane)
         return self.reservation
 

@@ -137,7 +137,7 @@ def test_claim_due_returns_full_completion_token_and_skips_unexpired_leases() ->
     sql = conn.sql[0]
     assert "FOR UPDATE SKIP LOCKED" in sql
     assert "leased_until_ms IS NULL OR leased_until_ms <= %(now_ms)s" in sql
-    assert "attempt_count = news_projection_dirty_targets.attempt_count + 1" in sql
+    assert "attempt_count = news_projection_dirty_targets.attempt_count + 1" not in sql
 
 
 def test_reenqueue_duplicate_while_leased_preserves_claim_token_when_payload_is_unchanged() -> None:
@@ -189,6 +189,8 @@ def test_reenqueue_duplicate_while_leased_preserves_claim_token_when_payload_is_
     assert "queue.payload_hash = failed.payload_hash" in conn.sql[-1]
     assert "queue.lease_owner = failed.lease_owner" in conn.sql[-1]
     assert "queue.attempt_count = failed.attempt_count" in conn.sql[-1]
+    assert "attempt_count = queue.attempt_count + %(attempt_increment)s" in conn.sql[-1]
+    assert conn.params[-1]["attempt_increment"] == 1
 
 
 def test_reenqueue_material_change_while_leased_protects_old_done_and_error_tokens() -> None:

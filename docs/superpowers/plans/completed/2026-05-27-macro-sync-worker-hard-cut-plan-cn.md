@@ -1,5 +1,11 @@
 # Macro Sync Worker Hard Cut Implementation Plan
 
+> 2026-05-27 hard-cut update: the references below to Macro active generation
+> pointers are retired. `macro_sync` owns facts/control only; current Macro
+> projections are dirty-target driven and write stable current rows plus
+> publication state. Do not write `macro_observation_series_active_generation`,
+> generation serving tables, or run/timestamp-based current snapshot ids.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Status:** Draft  

@@ -1,5 +1,10 @@
 # CEX Binance Hard Cut Implementation Plan
 
+> 2026-05-27 hard-cut update: `cex_oi_radar_runs` is retired. Any remaining
+> implementation work must use current-only `cex_oi_radar_rows` and
+> `cex_oi_radar_publication_state`; do not create run-ledger serving identity
+> or compatibility readers.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 把项目内所有 CEX identity/routing/quote/candle/OI/radar 链路 hard cut 到 Binance USDT 永续，把 `coinglass-cli` 打包进 Docker，并删除 OKX CEX runtime、配置、CLI、测试 fixture 和旧 DB 数据。

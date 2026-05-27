@@ -112,6 +112,36 @@ def test_latest_board_reads_publication_state_and_current_rows():
     assert "finished_at_ms" not in all_sql
 
 
+def test_record_attempt_failure_preserves_current_rows():
+    conn = _RecordingConn()
+
+    CexOiRadarRepository(conn).record_attempt_failure(
+        computed_at_ms=1_778_000_000_123,
+        period="5m",
+        notes={"reason": "RuntimeError"},
+    )
+
+    assert conn.committed is True
+    all_sql = "\n".join(conn.sql_calls)
+    assert "cex_oi_radar_publication_state" in all_sql
+    assert "latest_attempt_status = excluded.latest_attempt_status" in all_sql
+    assert "current_published_at_ms = excluded.current_published_at_ms" not in all_sql
+    assert "DELETE FROM cex_oi_radar_rows" not in all_sql
+    params = conn.params_for("INSERT INTO cex_oi_radar_publication_state")
+    assert params == (
+        "binance:USDT:PERPETUAL:5m",
+        "binance",
+        "binance",
+        "USDT",
+        "PERPETUAL",
+        "5m",
+        1_778_000_000_123,
+        1_778_000_000_123,
+        "RuntimeError",
+        1_778_000_000_123,
+    )
+
+
 class _RecordingConn:
     def __init__(self, *, state=None, board_rows=None) -> None:
         self.sql_calls: list[str] = []

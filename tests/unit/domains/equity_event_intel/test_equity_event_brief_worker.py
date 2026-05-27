@@ -11,6 +11,7 @@ from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_brief_wo
 from gmgn_twitter_intel.domains.equity_event_intel.types import EQUITY_EVENT_BRIEF_LANE
 from gmgn_twitter_intel.platform.agent_execution import (
     AgentCapacityReservation,
+    AgentExecutionError,
     AgentExecutionErrorClass,
 )
 
@@ -47,6 +48,7 @@ async def _test_worker_capacity_denied_does_not_claim_dirty_target_or_write_ledg
     result = await worker.run_once()
 
     assert provider.reserve_calls == [EQUITY_EVENT_BRIEF_LANE]
+    assert provider.reserve_rate_units == [1]
     assert provider.execution_calls == 0
     assert db.dirty.claim_calls == []
     assert db.equity_events.loaded_event_ids == []
@@ -61,6 +63,89 @@ async def _test_worker_capacity_denied_does_not_claim_dirty_target_or_write_ledg
     assert result.notes["claimed"] == 0
     assert result.notes["backpressure"] == 1
     assert result.notes["backpressure_capacity_denied"] == 1
+
+
+def test_worker_execute_no_start_rate_limit_does_not_write_business_ledger() -> None:
+    asyncio.run(_test_worker_execute_no_start_rate_limit_does_not_write_business_ledger())
+
+
+async def _test_worker_execute_no_start_rate_limit_does_not_write_business_ledger() -> None:
+    db = FakeDB([_candidate()])
+    provider = FakeBriefProvider(
+        reservation=AgentCapacityReservation(lane=EQUITY_EVENT_BRIEF_LANE, acquired=True),
+        brief_error=AgentExecutionError(
+            AgentExecutionErrorClass.RATE_LIMITED,
+            "rpm denied before provider start",
+            execution_started=False,
+        ),
+    )
+    worker = EquityEventBriefWorker(
+        name="equity_event_brief",
+        settings=SimpleNamespace(
+            batch_size=5,
+            max_attempts=3,
+            backpressure_cooldown_ms=60_000,
+            statement_timeout_seconds=30,
+        ),
+        db=db,
+        telemetry=object(),
+        provider=provider,
+        clock_ms=lambda: NOW_MS,
+    )
+
+    result = await worker.run_once()
+
+    assert provider.execution_calls == 1
+    assert db.equity_events.runs == []
+    assert db.equity_events.briefs == []
+    assert db.equity_events.brief_states == []
+    assert len(db.dirty.errors) == 1
+    assert db.dirty.error_kwargs[-1]["count_attempt"] is False
+    assert result.processed == 0
+    assert result.failed == 0
+    assert result.skipped == 1
+    assert result.notes["backpressure"] == 1
+    assert result.notes["backpressure_rate_limited"] == 1
+
+
+def test_worker_request_audit_error_requeues_without_business_ledger_or_current_write() -> None:
+    asyncio.run(_test_worker_request_audit_error_requeues_without_business_ledger_or_current_write())
+
+
+async def _test_worker_request_audit_error_requeues_without_business_ledger_or_current_write() -> None:
+    db = FakeDB([_candidate()])
+    provider = FakeBriefProvider(
+        reservation=AgentCapacityReservation(lane=EQUITY_EVENT_BRIEF_LANE, acquired=True),
+        audit_error=RuntimeError("audit exploded"),
+    )
+    worker = EquityEventBriefWorker(
+        name="equity_event_brief",
+        settings=SimpleNamespace(
+            batch_size=5,
+            max_attempts=3,
+            backpressure_cooldown_ms=60_000,
+            statement_timeout_seconds=30,
+        ),
+        db=db,
+        telemetry=object(),
+        provider=provider,
+        clock_ms=lambda: NOW_MS,
+    )
+
+    result = await worker.run_once()
+
+    assert provider.reserve_calls == [EQUITY_EVENT_BRIEF_LANE]
+    assert provider.execution_calls == 0
+    assert db.equity_events.runs == []
+    assert db.equity_events.briefs == []
+    assert db.equity_events.brief_states == []
+    assert len(db.dirty.errors) == 1
+    assert db.dirty.error_kwargs[-1]["count_attempt"] is False
+    assert result.processed == 0
+    assert result.failed == 0
+    assert result.skipped == 1
+    assert result.notes["backpressure"] == 1
+    assert result.notes["request_audit_failed"] == 1
 
 
 def _candidate() -> dict[str, Any]:
@@ -132,16 +217,30 @@ class FakeBriefProvider:
     model = "gpt-5-mini"
     artifact_version_hash = "artifact-hash-1"
 
-    def __init__(self, *, reservation: AgentCapacityReservation) -> None:
+    def __init__(
+        self,
+        *,
+        reservation: AgentCapacityReservation,
+        audit_error: Exception | None = None,
+        brief_error: Exception | None = None,
+    ) -> None:
         self.reservation = reservation
+        self.audit_error = audit_error
+        self.brief_error = brief_error
         self.reserve_calls: list[str] = []
+        self.reserve_rate_units: list[int] = []
         self.execution_calls = 0
 
-    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+    def try_reserve_execution(self, lane: str, *, rate_units: int = 1) -> AgentCapacityReservation:
         self.reserve_calls.append(lane)
+        self.reserve_rate_units.append(rate_units)
+        if self.reservation.acquired:
+            self.reservation.rate_units = rate_units
         return self.reservation
 
     def request_audit(self, *, run_id: str, packet: Any) -> dict[str, Any]:
+        if self.audit_error is not None:
+            raise self.audit_error
         return {
             "provider": self.provider,
             "backend": "openai_agents_sdk",
@@ -164,6 +263,8 @@ class FakeBriefProvider:
     async def brief_event(self, *, run_id: str, packet: Any, reservation: Any | None = None) -> dict[str, Any]:
         del run_id, packet, reservation
         self.execution_calls += 1
+        if self.brief_error is not None:
+            raise self.brief_error
         return {}
 
 
@@ -235,6 +336,7 @@ class FakeDirtyRepository:
         self.claim_calls: list[dict[str, Any]] = []
         self.done: list[dict[str, Any]] = []
         self.errors: list[dict[str, Any]] = []
+        self.error_kwargs: list[dict[str, Any]] = []
 
     def claim_due(self, **kwargs: Any) -> list[dict[str, Any]]:
         self.claim_calls.append(dict(kwargs))
@@ -255,8 +357,8 @@ class FakeDirtyRepository:
         return len(keys)
 
     def mark_error(self, keys: list[dict[str, Any]], **kwargs: Any) -> int:
-        del kwargs
         self.errors.extend(dict(key) for key in keys)
+        self.error_kwargs.append(dict(kwargs))
         return len(keys)
 
 

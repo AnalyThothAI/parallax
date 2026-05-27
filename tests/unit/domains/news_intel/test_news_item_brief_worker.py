@@ -34,6 +34,7 @@ async def _test_worker_writes_ready_brief_and_emits_wake() -> None:
     result = await worker.run_once()
 
     assert provider.reserve_calls == [NEWS_ITEM_BRIEF_LANE]
+    assert provider.reserve_rate_units == [1]
     assert provider.execution_calls == 1
     assert provider.saw_db_session_during_execution is False
     assert db.news.runs[0]["status"] == "completed"
@@ -63,6 +64,7 @@ async def _test_worker_marks_opennews_provider_signal_target_done_without_llm() 
     result = await worker.run_once()
 
     assert provider.reserve_calls == [NEWS_ITEM_BRIEF_LANE]
+    assert provider.reserve_rate_units == [1]
     assert provider.execution_calls == 0
     assert db.news.runs == []
     assert db.news.briefs == []
@@ -110,6 +112,7 @@ async def _test_worker_capacity_denied_does_not_claim_dirty_target_or_write_ledg
     result = await worker.run_once()
 
     assert provider.reserve_calls == [NEWS_ITEM_BRIEF_LANE]
+    assert provider.reserve_rate_units == [1]
     assert provider.execution_calls == 0
     assert db.dirty.claim_thread_ids == []
     assert db.news.loaded_target_ids == []
@@ -124,11 +127,11 @@ async def _test_worker_capacity_denied_does_not_claim_dirty_target_or_write_ledg
     assert result.notes["backpressure_capacity_denied"] == 1
 
 
-def test_worker_execute_no_start_rate_limit_does_not_upsert_failed_current() -> None:
-    asyncio.run(_test_worker_execute_no_start_rate_limit_does_not_upsert_failed_current())
+def test_worker_execute_no_start_rate_limit_does_not_write_business_ledger() -> None:
+    asyncio.run(_test_worker_execute_no_start_rate_limit_does_not_write_business_ledger())
 
 
-async def _test_worker_execute_no_start_rate_limit_does_not_upsert_failed_current() -> None:
+async def _test_worker_execute_no_start_rate_limit_does_not_write_business_ledger() -> None:
     db = FakeDB([_candidate()])
     provider = FakeBriefProvider(
         brief_error=AgentExecutionError(
@@ -142,12 +145,10 @@ async def _test_worker_execute_no_start_rate_limit_does_not_upsert_failed_curren
     result = await worker.run_once()
 
     assert provider.execution_calls == 1
-    assert db.news.runs[0]["status"] == "backpressure"
-    assert db.news.runs[0]["outcome"] == "backpressure_rate_limited"
-    assert db.news.runs[0]["execution_started"] is False
-    assert db.news.runs[0]["error_class"] == "rate_limited"
-    assert db.news.runs[0]["response_json"] is None
+    assert db.news.runs == []
     assert db.news.briefs == []
+    assert len(db.dirty.errors) == 1
+    assert db.dirty.error_kwargs[-1]["count_attempt"] is False
     assert result.processed == 0
     assert result.failed == 0
     assert result.skipped == 1
@@ -155,11 +156,11 @@ async def _test_worker_execute_no_start_rate_limit_does_not_upsert_failed_curren
     assert result.notes["backpressure_rate_limited"] == 1
 
 
-def test_worker_request_audit_error_records_failed_current_and_emits_wake() -> None:
-    asyncio.run(_test_worker_request_audit_error_records_failed_current_and_emits_wake())
+def test_worker_request_audit_error_requeues_without_business_ledger_or_current_write() -> None:
+    asyncio.run(_test_worker_request_audit_error_requeues_without_business_ledger_or_current_write())
 
 
-async def _test_worker_request_audit_error_records_failed_current_and_emits_wake() -> None:
+async def _test_worker_request_audit_error_requeues_without_business_ledger_or_current_write() -> None:
     db = FakeDB([_candidate()])
     provider = FakeBriefProvider(audit_error=RuntimeError("audit exploded"))
     wake_bus = FakeWakeBus()
@@ -169,25 +170,15 @@ async def _test_worker_request_audit_error_records_failed_current_and_emits_wake
 
     assert provider.reserve_calls == [NEWS_ITEM_BRIEF_LANE]
     assert provider.execution_calls == 0
-    assert db.news.runs[0]["status"] == "failed"
-    assert db.news.runs[0]["outcome"] == "failed"
-    assert db.news.runs[0]["execution_started"] is False
-    assert db.news.runs[0]["error_class"] == "RuntimeError"
-    assert db.news.runs[0]["provider"] == "openai"
-    assert db.news.runs[0]["model"] == "gpt-5-mini"
-    assert db.news.runs[0]["backend"] == "openai_agents_sdk"
-    assert db.news.runs[0]["workflow_name"] == "gmgn-twitter-intel.news_item_brief"
-    assert db.news.runs[0]["agent_name"] == "NewsItemBriefAgent"
-    assert db.news.runs[0]["lane"] == NEWS_ITEM_BRIEF_LANE
-    assert db.news.runs[0]["input_hash"]
-    assert db.news.runs[0]["request_json"]["audit"]["execution_started"] is False
-    assert db.news.runs[0]["trace_metadata_json"] == {}
-    assert db.news.runs[0]["usage_json"] == {}
-    assert db.news.briefs[0]["status"] == "failed"
-    assert db.news.briefs[0]["brief_json"]["data_gaps"][0]["severity"] == "high"
-    assert wake_bus.brief_updates == [1]
-    assert result.failed == 1
-    assert result.notes["failed"] == 1
+    assert db.news.runs == []
+    assert db.news.briefs == []
+    assert len(db.dirty.errors) == 1
+    assert db.dirty.error_kwargs[-1]["count_attempt"] is False
+    assert wake_bus.brief_updates == []
+    assert result.failed == 0
+    assert result.skipped == 1
+    assert result.notes["backpressure"] == 1
+    assert result.notes["request_audit_failed"] == 1
 
 
 def test_worker_reserve_error_does_not_claim_dirty_target_or_write_ledger() -> None:
@@ -364,15 +355,19 @@ class FakeBriefProvider:
         self.reserve_error = reserve_error
         self.brief_error = brief_error
         self.reserve_calls: list[str] = []
+        self.reserve_rate_units: list[int] = []
         self.execution_calls = 0
         self.saw_db_session_during_execution: bool | None = None
         self.db: FakeDB | None = None
 
-    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+    def try_reserve_execution(self, lane: str, *, rate_units: int = 1) -> AgentCapacityReservation:
         assert self.db is None or self.db.in_session is False
         self.reserve_calls.append(lane)
+        self.reserve_rate_units.append(rate_units)
         if self.reserve_error is not None:
             raise self.reserve_error
+        if self.reservation.acquired:
+            self.reservation.rate_units = rate_units
         return self.reservation
 
     def request_audit(self, *, run_id: str, packet: Any) -> dict[str, Any]:
@@ -491,6 +486,7 @@ class FakeDirtyRepository:
         self.enqueued: list[dict[str, Any]] = []
         self.done: list[dict[str, Any]] = []
         self.errors: list[dict[str, Any]] = []
+        self.error_kwargs: list[dict[str, Any]] = []
         self.claim_thread_ids: list[int] = []
 
     def claim_due(self, **kwargs: Any) -> list[dict[str, Any]]:
@@ -512,6 +508,7 @@ class FakeDirtyRepository:
 
     def mark_error(self, keys: list[dict[str, Any]], **kwargs: Any) -> int:
         self.errors.extend(dict(key) for key in keys)
+        self.error_kwargs.append(dict(kwargs))
         return len(keys)
 
     def enqueue_targets(self, rows: list[dict[str, Any]], *, reason: str, now_ms: int, commit: bool = True) -> int:

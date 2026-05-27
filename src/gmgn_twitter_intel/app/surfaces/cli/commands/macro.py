@@ -21,7 +21,7 @@ from gmgn_twitter_intel.domains.macro_intel._constants import (
 from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_service import MacroSyncService
 from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_types import MacroSyncRunSummary
 from gmgn_twitter_intel.domains.macro_intel.services.macrodata_bundle_importer import import_macrodata_bundle
-from gmgn_twitter_intel.integrations.macrodata import fred_api_key_state
+from gmgn_twitter_intel.integrations.macrodata import MacrodataBundleRunner, fred_api_key_state
 from gmgn_twitter_intel.platform.config.settings import load_settings
 
 
@@ -68,6 +68,7 @@ def _handle_sync(args: object) -> tuple[int, dict[str, Any]]:
         service = MacroSyncService(
             settings=settings,
             repository_factory=lambda: repositories(settings),
+            runner=MacrodataBundleRunner(settings=settings),
         )
         summary = service.run_explicit_window_once(
             bundle_name=str(args.bundle),

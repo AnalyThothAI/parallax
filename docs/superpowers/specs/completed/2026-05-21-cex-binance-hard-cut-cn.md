@@ -1,5 +1,10 @@
 # CEX Binance Hard Cut Spec
 
+> 2026-05-27 hard-cut update: `cex_oi_radar_runs` is retired. The canonical
+> board lifecycle is current-only: `cex_oi_radar_rows` plus
+> `cex_oi_radar_publication_state`, with stable provider/exchange/period/target
+> row identity. Do not recreate a run table or run-id serving FK.
+
 日期：2026-05-21
 状态：active spec
 范围：把项目内所有 CEX identity/routing/quote/candle/OI/radar 链路完全切到 Binance USDT 永续；移除 OKX CEX runtime、配置、CLI、测试 fixture 和旧 DB 数据。

@@ -122,9 +122,16 @@ class FakePulseDecisionProvider:
         lane: str,
         *,
         child_lanes: tuple[str, ...] = (),
+        rate_units: int = 1,
         scope: str = "execution",
     ) -> AgentCapacityReservation:
-        return AgentCapacityReservation(lane=lane, acquired=True)
+        return AgentCapacityReservation(
+            lane=lane,
+            acquired=True,
+            child_lanes=child_lanes,
+            rate_units=rate_units,
+            scope=scope,
+        )
 
     def model_for_lane(self, lane: str) -> str:
         if lane in {

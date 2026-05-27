@@ -105,7 +105,7 @@ def test_cex_oi_radar_board_worker_publishes_skipped_board_for_empty_universe():
     assert "run_id" not in result.notes
 
 
-def test_cex_oi_radar_board_worker_publishes_failed_board_then_reraises():
+def test_cex_oi_radar_board_worker_records_failed_attempt_without_clearing_current_board():
     db = _DB()
     worker = CexOiRadarBoardWorker(
         name="cex_oi_radar_board",
@@ -123,13 +123,36 @@ def test_cex_oi_radar_board_worker_publishes_failed_board_then_reraises():
     else:
         raise AssertionError("expected RuntimeError")
 
-    assert db.repos.cex_oi_radar.published == [
+    assert db.repos.cex_oi_radar.published == []
+    assert db.repos.cex_oi_radar.failed_attempts == [
         {
-            "rows": [],
             "computed_at_ms": 1_778_000_000_000,
             "period": "5m",
-            "status": "failed",
             "notes": {"reason": "RuntimeError"},
+        }
+    ]
+
+
+def test_cex_oi_radar_board_worker_does_not_publish_empty_board_when_all_symbols_fail():
+    db = _DB()
+    worker = CexOiRadarBoardWorker(
+        name="cex_oi_radar_board",
+        settings=SimpleNamespace(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
+        db=db,
+        telemetry=SimpleNamespace(),
+        cex_market=_OpenInterestFailingClient(),
+        clock_ms=lambda: 1_778_000_000_000,
+    )
+
+    result = worker.run_once_sync()
+
+    assert result.failed == 1
+    assert db.repos.cex_oi_radar.published == []
+    assert db.repos.cex_oi_radar.failed_attempts == [
+        {
+            "computed_at_ms": 1_778_000_000_000,
+            "period": "5m",
+            "notes": {"reason": "all_symbols_failed", "failed_symbols": ["BTCUSDT"]},
         }
     ]
 
@@ -186,6 +209,7 @@ class _Repo:
     def __init__(self, *, universe=None) -> None:
         self._universe = universe
         self.published = []
+        self.failed_attempts = []
         self.requested_limit = None
 
     def binance_usdt_perp_universe(self, *, limit):
@@ -212,6 +236,15 @@ class _Repo:
             }
         )
         return len(rows)
+
+    def record_attempt_failure(self, *, computed_at_ms, period, notes):
+        self.failed_attempts.append(
+            {
+                "computed_at_ms": computed_at_ms,
+                "period": period,
+                "notes": notes,
+            }
+        )
 
 
 class _DetailRepo:
@@ -240,6 +273,12 @@ class _Client:
 class _FailingClient(_Client):
     def ticker_24hr(self):
         raise RuntimeError("boom")
+
+
+class _OpenInterestFailingClient(_Client):
+    def open_interest_hist(self, *, symbol, period, limit):
+        del symbol, period, limit
+        raise RuntimeError("oi boom")
 
 
 class _CoinglassClient:

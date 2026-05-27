@@ -21,7 +21,6 @@ from gmgn_twitter_intel.domains.news_intel.types.news_item_brief import (
     default_news_item_brief_agent_config,
 )
 from gmgn_twitter_intel.platform.agent_execution import (
-    RUNTIME_VERSION,
     AgentCapacityReservation,
     AgentExecutionError,
     AgentExecutionErrorClass,
@@ -61,8 +60,9 @@ class NewsItemBriefWorker(WorkerBase):
         if queue_depth <= 0:
             return WorkerResult(skipped=1, notes={"reason": "no_due_brief_targets"})
 
+        rate_units = min(self._batch_size(), max(1, int(queue_depth)))
         try:
-            reservation = provider.try_reserve_execution(NEWS_ITEM_BRIEF_LANE)
+            reservation = provider.try_reserve_execution(NEWS_ITEM_BRIEF_LANE, rate_units=rate_units)
         except Exception as exc:
             return WorkerResult(
                 skipped=1,
@@ -86,7 +86,7 @@ class NewsItemBriefWorker(WorkerBase):
             )
 
         try:
-            claimed = await asyncio.to_thread(self._claim_targets, now_ms=now)
+            claimed = await asyncio.to_thread(self._claim_targets, now_ms=now, limit=reservation.rate_units)
             if not claimed:
                 return WorkerResult(skipped=1, notes={"reason": "no_due_brief_targets", "claimed": 0})
             try:
@@ -188,21 +188,7 @@ class NewsItemBriefWorker(WorkerBase):
         try:
             request_audit = self.provider.request_audit(run_id=run_id, packet=packet)
         except Exception as exc:
-            request_audit = _fallback_request_audit(
-                run_id=run_id,
-                packet=packet,
-                agent_config=agent_config,
-                provider=self.provider,
-            )
-            return await self._record_provider_failure(
-                run_id=run_id,
-                packet=packet,
-                agent_config=agent_config,
-                request_audit=request_audit,
-                error=exc,
-                started_at_ms=started_at_ms,
-                execution_started=False,
-            )
+            return await self._record_request_audit_failure(error=exc)
 
         try:
             result = await self.provider.brief_item(run_id=run_id, packet=packet, reservation=reservation)
@@ -343,6 +329,7 @@ class NewsItemBriefWorker(WorkerBase):
             retry_ms=self._retry_ms(),
             retry_reason=_provider_error_class(error),
             retry_attempt_limited=resolved_execution_started,
+            retry_counts_attempt=resolved_execution_started,
         )
 
     async def _record_execute_backpressure(
@@ -355,42 +342,35 @@ class NewsItemBriefWorker(WorkerBase):
         error: Exception,
         started_at_ms: int,
     ) -> _CandidateOutcome:
-        audit = _provider_error_audit(error) or dict(request_audit)
+        del run_id, packet, agent_config, request_audit, started_at_ms
         outcome = _backpressure_outcome_for_reason(getattr(error, "error_class", None))
-        finished_at_ms = self.clock_ms()
-        await asyncio.to_thread(
-            self._insert_run,
-            run_id=run_id,
-            packet=packet,
-            agent_config=agent_config,
-            audit=audit,
-            started_at_ms=started_at_ms,
-            finished_at_ms=finished_at_ms,
-            status="backpressure",
-            outcome=outcome,
-            error_class=_provider_error_class(error),
-            error=str(error),
-            request_json=_request_json(packet=packet, audit=request_audit),
-            response_json=None,
-            validation_errors=[],
-            execution_started=False,
-        )
         return _CandidateOutcome(
             notes={"backpressure": 1, outcome: 1},
             current_updates=0,
             retry_ms=self._backpressure_cooldown_ms(),
             retry_reason=outcome,
+            retry_counts_attempt=False,
         )
 
-    def _claim_targets(self, *, now_ms: int) -> list[dict[str, Any]]:
+    async def _record_request_audit_failure(self, *, error: Exception) -> _CandidateOutcome:
+        del error
+        return _CandidateOutcome(
+            notes={"backpressure": 1, "request_audit_failed": 1},
+            current_updates=0,
+            retry_ms=self._backpressure_cooldown_ms(),
+            retry_reason="request_audit_failed",
+            retry_counts_attempt=False,
+        )
+
+    def _claim_targets(self, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
         with self._repository_session() as repos:
             return cast(
                 list[dict[str, Any]],
                 repos.news_projection_dirty_targets.claim_due(
-                    limit=self._batch_size(),
+                    limit=max(1, int(limit)),
                     lease_ms=self._lease_ms(),
                     now_ms=now_ms,
-                    lease_owner=self.name,
+                    lease_owner=_claim_owner(self.name),
                     projection_name="brief_input",
                 ),
             )
@@ -421,7 +401,13 @@ class NewsItemBriefWorker(WorkerBase):
         if outcome.retry_ms is not None and (
             not outcome.retry_attempt_limited or int(target.get("attempt_count") or 0) < self._max_attempts()
         ):
-            self._mark_targets_error([target], error=outcome.retry_reason, retry_ms=outcome.retry_ms, now_ms=now_ms)
+            self._mark_targets_error(
+                [target],
+                error=outcome.retry_reason,
+                retry_ms=outcome.retry_ms,
+                now_ms=now_ms,
+                count_attempt=outcome.retry_counts_attempt,
+            )
             return
         self._mark_targets_done([target], now_ms=now_ms)
 
@@ -436,6 +422,7 @@ class NewsItemBriefWorker(WorkerBase):
         error: Exception | str,
         retry_ms: int,
         now_ms: int,
+        count_attempt: bool = True,
     ) -> None:
         with self._repository_session() as repos:
             repos.news_projection_dirty_targets.mark_error(
@@ -443,6 +430,7 @@ class NewsItemBriefWorker(WorkerBase):
                 error=str(error),
                 retry_ms=retry_ms,
                 now_ms=now_ms,
+                count_attempt=count_attempt,
             )
 
     def _insert_run(
@@ -601,12 +589,14 @@ class _CandidateOutcome:
         retry_ms: int | None = None,
         retry_reason: str = "",
         retry_attempt_limited: bool = False,
+        retry_counts_attempt: bool = True,
     ) -> None:
         self.notes = dict(notes)
         self.current_updates = int(current_updates)
         self.retry_ms = int(retry_ms) if retry_ms is not None else None
         self.retry_reason = retry_reason or "agent_brief_retry"
         self.retry_attempt_limited = bool(retry_attempt_limited)
+        self.retry_counts_attempt = bool(retry_counts_attempt)
 
 
 def _packet_from_candidate(
@@ -688,39 +678,6 @@ def _request_json(*, packet: NewsItemBriefInputPacket, audit: Mapping[str, Any])
     return {
         "packet": packet.model_dump(mode="json"),
         "audit": dict(audit),
-    }
-
-
-def _fallback_request_audit(
-    *,
-    run_id: str,
-    packet: NewsItemBriefInputPacket,
-    agent_config: NewsItemBriefAgentConfig,
-    provider: Any,
-) -> dict[str, Any]:
-    return {
-        "provider": str(getattr(provider, "provider", agent_config.provider) or agent_config.provider),
-        "backend": "openai_agents_sdk",
-        "model": agent_config.model,
-        "lane": agent_config.lane,
-        "stage": "news_item_brief",
-        "workflow_name": agent_config.workflow_name,
-        "agent_name": agent_config.agent_name,
-        "sdk_trace_id": None,
-        "group_id": f"news_item:{packet.news_item.news_item_id}",
-        "prompt_version": agent_config.prompt_version,
-        "schema_version": agent_config.schema_version,
-        "runtime_version": RUNTIME_VERSION,
-        "artifact_version_hash": agent_config.artifact_version_hash,
-        "input_hash": packet.input_hash,
-        "output_hash": None,
-        "latency_ms": None,
-        "usage": {},
-        "trace_metadata": {},
-        "execution_started": False,
-        "status": "planned",
-        "error_class": None,
-        "error_message": None,
     }
 
 
@@ -834,6 +791,10 @@ def _now_ms() -> int:
 
 def _default_run_id() -> str:
     return f"news-item-agent-run-{uuid.uuid4().hex}"
+
+
+def _claim_owner(worker_name: str) -> str:
+    return f"{worker_name}:{uuid.uuid4().hex}"
 
 
 __all__ = ["NewsItemBriefWorker"]

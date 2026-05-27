@@ -50,7 +50,8 @@ class FakeGateway:
             trace_metadata=dict(stage.trace_metadata),
         )
 
-    async def execute(self, stage):
+    async def execute(self, stage, *, reservation=None):
+        assert reservation is None
         self.execute_calls.append(stage)
         request_audit = self.request_audit(stage)
         return AgentExecutionResult(

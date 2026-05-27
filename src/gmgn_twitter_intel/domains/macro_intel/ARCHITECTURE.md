@@ -15,9 +15,10 @@ Cboe, CFTC, crypto providers, or macrodata directly.
 | `macro_import_runs` | Import audit | `MacroSyncWorker` and offline replay. It records coverage and diagnostics; it is not the product truth. |
 | `macro_sync_windows` | Sync control | `MacroSyncWorker` only. It owns claim, retry, and bounded catch-up state. |
 | `macro_sync_runs` | Sync audit | `MacroSyncWorker` and `macro sync` through the same service. It records redacted provider/source health. |
+| `macro_projection_dirty_targets` | Projection control | `MacroSyncWorker` enqueues after changed facts; `MacroViewProjectionWorker` claims before reading facts. |
 | `macro_observation_series_rows` | Read model | `MacroViewProjectionWorker` only. It is a compact current-only projection from `macro_observations` and owns request-path latest/history rows. |
 | `macro_observation_series_publication_state` | Read-model state | `MacroViewProjectionWorker` only. It records the current source signature and latest refresh status. |
-| `macro_view_snapshots` | Read model | `MacroViewProjectionWorker` only. |
+| `macro_view_snapshots` | Read model | `MacroViewProjectionWorker` only. One stable row per projection version, keyed as `macro-view:{projection_version}:current`. |
 
 ## Flow
 
@@ -27,6 +28,7 @@ macro_sync_windows
   -> packaged macrodata bundle history macro-core
   -> macro_observations / macro_import_runs / macro_sync_runs
   -> wake macro_observations_imported
+  -> macro_projection_dirty_targets
   -> repositories/macro_intel_repository.py
   -> macro_observation_series_rows
   -> services/macro_feature_engine.py
@@ -49,16 +51,19 @@ and history counts directly by `projection_version`. They do not run
 `row_number()` over `macro_observations` and do not fall back to raw
 observations when projected rows are absent.
 
-`MacroViewProjectionWorker` refreshes `macro_observation_series_rows` before it
-builds and writes the `macro_regime_v4` snapshot. The refresh writer may use
-window functions over `macro_observations` because it is the single projection
-writer; request paths may not. Refresh is source-signature based: unchanged
-facts update only `macro_observation_series_publication_state` with
-`latest_attempt_status='unchanged'`, while changed facts replace the compact
-current rows for the projection version in one transaction. A refresh that
-selects zero rows marks publication state `failed`, raises
-`macro_observation_series_empty`, and leaves existing current rows untouched.
-Runtime physical generations are not a contract.
+`MacroViewProjectionWorker` claims `macro_projection_dirty_targets` first. If no
+dirty target is due, it does not scan `macro_observations`. After a claim, it
+refreshes `macro_observation_series_rows` before it builds and writes the
+`macro_regime_v4` snapshot. The refresh writer may use window functions over
+`macro_observations` because it is the single projection writer; request paths
+may not. Refresh is source-signature based: unchanged facts update only
+`macro_observation_series_publication_state` with
+`latest_attempt_status='unchanged'` and write zero serving rows, while changed
+facts replace the compact current rows and the single current snapshot for the
+projection version in one transaction. A refresh that selects zero rows marks
+publication state `failed`, raises `macro_observation_series_empty`, and leaves
+existing current rows untouched. Runtime physical generations, run ids, and
+timestamp snapshot ids are not a serving contract.
 
 The `macro_regime_v4` snapshot stores:
 

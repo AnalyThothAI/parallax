@@ -47,8 +47,8 @@ class OpenAIAgentsWatchlistSummaryClient:
             output_schema_hash=json_sha256(HANDLE_SUMMARY_PAYLOAD_TYPE.model_json_schema()),
         )
 
-    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
-        return self._agent_gateway.try_reserve(lane)
+    def try_reserve_execution(self, lane: str, *, rate_units: int = 1) -> AgentCapacityReservation:
+        return self._agent_gateway.try_reserve(lane, rate_units=rate_units)
 
     def request_audit(
         self,

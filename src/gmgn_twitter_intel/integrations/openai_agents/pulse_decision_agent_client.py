@@ -133,9 +133,10 @@ class OpenAIAgentsPulseDecisionClient:
         lane: str,
         *,
         child_lanes: tuple[str, ...] = (),
+        rate_units: int = 1,
         scope: str = "execution",
     ) -> AgentCapacityReservation:
-        return self._agent_gateway.try_reserve(lane, child_lanes=child_lanes, scope=scope)
+        return self._agent_gateway.try_reserve(lane, child_lanes=child_lanes, rate_units=rate_units, scope=scope)
 
     def request_audit(
         self,

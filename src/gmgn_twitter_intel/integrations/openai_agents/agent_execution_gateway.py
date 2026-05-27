@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from agents.exceptions import ModelBehaviorError
-from aiolimiter import AsyncLimiter
 from pydantic import ValidationError
 
 from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import StrictJsonOutputSchema
@@ -53,6 +52,43 @@ class _LaneState:
     circuit_open_until: float = 0
 
 
+@dataclass(slots=True)
+class _RateLimitState:
+    max_rate: float
+    time_period: float = 60.0
+    level: float = 0.0
+    last_check: float = field(default_factory=time.monotonic)
+
+    def has_capacity(self, amount: float = 1.0) -> bool:
+        self._leak()
+        return self.level + amount <= self.max_rate
+
+    def capacity_remaining(self) -> float:
+        self._leak()
+        return max(self.max_rate - self.level, 0.0)
+
+    def acquire_nowait(self, amount: float = 1.0) -> bool:
+        if not self.has_capacity(amount):
+            return False
+        self.level += amount
+        return True
+
+    def _leak(self) -> None:
+        now = time.monotonic()
+        if self.level:
+            elapsed = max(0.0, now - self.last_check)
+            decrement = elapsed * (self.max_rate / self.time_period)
+            self.level = max(self.level - decrement, 0.0)
+        self.last_check = now
+
+
+@dataclass(slots=True)
+class _RateLimitReservationResult:
+    reserved_units: int
+    denied_lane: str = ""
+    denied_reason: AgentExecutionErrorClass | None = None
+
+
 class AgentExecutionGateway:
     def __init__(
         self,
@@ -78,9 +114,9 @@ class AgentExecutionGateway:
         )
         self._reservation_owner_token = object()
         self._global_semaphore = asyncio.BoundedSemaphore(policy.global_max_concurrency)
-        self._global_limiter = AsyncLimiter(policy.global_rpm_limit, 60)
+        self._global_limiter = _RateLimitState(float(policy.global_rpm_limit), 60.0)
         self._lane_limiters = {
-            lane: AsyncLimiter(lane_policy.rpm_limit, 60)
+            lane: _RateLimitState(float(lane_policy.rpm_limit), 60.0)
             for lane, lane_policy in policy.lanes.items()
             if lane_policy.rpm_limit is not None
         }
@@ -145,98 +181,81 @@ class AgentExecutionGateway:
         lane: str,
         *,
         child_lanes: tuple[str, ...] = (),
+        rate_units: int = 1,
         scope: str = "execution",
     ) -> AgentCapacityReservation:
         lane_key = str(lane)
-        lane_state = self._lane_state(lane_key)
-        if self._is_circuit_open(lane_key, lane_state):
-            lane_state.circuit_open_total += 1
-            self._record_backpressure(lane_key, AgentExecutionErrorClass.CIRCUIT_OPEN)
-            return AgentCapacityReservation(
-                lane=lane_key,
-                acquired=False,
-                reason=AgentExecutionErrorClass.CIRCUIT_OPEN,
-            )
+        child_lane_keys = _unique_lanes(child_lanes)
+        capacity_lanes = _unique_lanes((lane_key, *child_lane_keys))
+        rate_lanes = child_lane_keys or (lane_key,)
+        rate_unit_count = max(1, int(rate_units))
+        for capacity_lane in capacity_lanes:
+            lane_state = self._lane_state(capacity_lane)
+            if self._is_circuit_open(capacity_lane, lane_state):
+                lane_state.circuit_open_total += 1
+                self._record_backpressure(capacity_lane, AgentExecutionErrorClass.CIRCUIT_OPEN)
+                return AgentCapacityReservation(
+                    lane=lane_key,
+                    acquired=False,
+                    reason=AgentExecutionErrorClass.CIRCUIT_OPEN,
+                    rate_units=rate_unit_count,
+                )
         if not _try_acquire_nowait(self._global_semaphore):
-            lane_state.capacity_denied_total += 1
+            self._lane_state(lane_key).capacity_denied_total += 1
             self._record_backpressure(lane_key, AgentExecutionErrorClass.CAPACITY_DENIED)
             return AgentCapacityReservation(
                 lane=lane_key,
                 acquired=False,
                 reason=AgentExecutionErrorClass.CAPACITY_DENIED,
+                rate_units=rate_unit_count,
             )
-        if not _try_acquire_nowait(lane_state.semaphore):
+
+        acquired_lanes: list[tuple[str, _LaneState, float]] = []
+        for capacity_lane in capacity_lanes:
+            lane_state = self._lane_state(capacity_lane)
+            if not _try_acquire_nowait(lane_state.semaphore):
+                self._release_acquired_lane_capacity(acquired_lanes)
+                self._global_semaphore.release()
+                lane_state.capacity_denied_total += 1
+                self._record_backpressure(capacity_lane, AgentExecutionErrorClass.CAPACITY_DENIED)
+                return AgentCapacityReservation(
+                    lane=lane_key,
+                    acquired=False,
+                    reason=AgentExecutionErrorClass.CAPACITY_DENIED,
+                    rate_units=rate_unit_count,
+                )
+            acquired_at = time.monotonic()
+            lane_state.in_flight_started_at.append(acquired_at)
+            acquired_lanes.append((capacity_lane, lane_state, acquired_at))
+
+        rate_limit_result = self._try_acquire_rate_limits(rate_lanes, requested_rate_units=rate_unit_count)
+        if rate_limit_result.denied_reason is not None:
+            self._release_acquired_lane_capacity(acquired_lanes)
             self._global_semaphore.release()
-            lane_state.capacity_denied_total += 1
-            self._record_backpressure(lane_key, AgentExecutionErrorClass.CAPACITY_DENIED)
+            self._record_backpressure(rate_limit_result.denied_lane, rate_limit_result.denied_reason)
             return AgentCapacityReservation(
                 lane=lane_key,
                 acquired=False,
-                reason=AgentExecutionErrorClass.CAPACITY_DENIED,
+                reason=rate_limit_result.denied_reason,
+                rate_units=rate_unit_count,
             )
 
         released = False
-        acquired_at = time.monotonic()
-        lane_state.in_flight_started_at.append(acquired_at)
 
         def release() -> None:
             nonlocal released
             if released:
                 return
             released = True
-            _remove_in_flight_start(lane_state, acquired_at)
-            lane_state.semaphore.release()
+            self._release_acquired_lane_capacity(acquired_lanes)
             self._global_semaphore.release()
 
         return AgentCapacityReservation(
             lane=lane_key,
             acquired=True,
-            child_lanes=tuple(str(child_lane) for child_lane in child_lanes),
+            child_lanes=child_lane_keys,
             scope=str(scope),
-            _release=release,
-            _owner_token=self._reservation_owner_token,
-        )
-
-    def _try_reserve_lane_only(self, lane: str) -> AgentCapacityReservation:
-        lane_key = str(lane)
-        lane_state = self._lane_state(lane_key)
-
-        if self._is_circuit_open(lane_key, lane_state):
-            lane_state.circuit_open_total += 1
-            self._record_backpressure(lane_key, AgentExecutionErrorClass.CIRCUIT_OPEN)
-            return AgentCapacityReservation(
-                lane=lane_key,
-                acquired=False,
-                reason=AgentExecutionErrorClass.CIRCUIT_OPEN,
-                owns_global=False,
-            )
-
-        if not _try_acquire_nowait(lane_state.semaphore):
-            lane_state.capacity_denied_total += 1
-            self._record_backpressure(lane_key, AgentExecutionErrorClass.CAPACITY_DENIED)
-            return AgentCapacityReservation(
-                lane=lane_key,
-                acquired=False,
-                reason=AgentExecutionErrorClass.CAPACITY_DENIED,
-                owns_global=False,
-            )
-
-        released = False
-        acquired_at = time.monotonic()
-        lane_state.in_flight_started_at.append(acquired_at)
-
-        def release() -> None:
-            nonlocal released
-            if released:
-                return
-            released = True
-            _remove_in_flight_start(lane_state, acquired_at)
-            lane_state.semaphore.release()
-
-        return AgentCapacityReservation(
-            lane=lane_key,
-            acquired=True,
-            owns_global=False,
+            rate_units=rate_limit_result.reserved_units,
             _release=release,
             _owner_token=self._reservation_owner_token,
         )
@@ -252,12 +271,12 @@ class AgentExecutionGateway:
         lane_state = self._lane_state(stage.lane)
         if reservation is not None and parent_reservation is not None:
             raise ValueError("reservation and parent_reservation are mutually exclusive")
-        release_reservation = reservation is None
+        release_reservation = reservation is None and parent_reservation is None
         if reservation is not None:
             self._validate_external_reservation(stage, reservation)
         elif parent_reservation is not None:
             self._validate_parent_reservation(stage, parent_reservation)
-            reservation = self._try_reserve_lane_only(stage.lane)
+            reservation = parent_reservation
         else:
             reservation = self.try_reserve(stage.lane)
 
@@ -274,7 +293,6 @@ class AgentExecutionGateway:
         runner_entered = {"value": False}
         provider_running_recorded = False
         try:
-            await self._consume_rate_limit_or_raise(stage, audit)
             self._record_provider_running(stage, delta=1)
             provider_running_recorded = True
             try:
@@ -478,31 +496,66 @@ class AgentExecutionGateway:
             self._lanes[lane_key] = state
         return state
 
-    async def _consume_rate_limit_or_raise(
+    def _try_acquire_rate_limits(
         self,
-        stage: AgentStageSpec,
-        audit: AgentExecutionRequestAudit,
+        lanes: tuple[str, ...],
+        *,
+        requested_rate_units: int,
+    ) -> _RateLimitReservationResult:
+        lane_keys = _unique_lanes(lanes)
+        reserved_units = self._reservable_rate_units(lane_keys, requested_rate_units=requested_rate_units)
+        if reserved_units <= 0:
+            return _RateLimitReservationResult(
+                reserved_units=0,
+                denied_lane=lane_keys[0] if lane_keys else "",
+                denied_reason=AgentExecutionErrorClass.RATE_LIMITED,
+            )
+        tokens_per_lane = float(reserved_units)
+        required_global_tokens = float(max(1, len(lane_keys))) * tokens_per_lane
+        if not self._global_limiter.has_capacity(required_global_tokens):
+            return _RateLimitReservationResult(
+                reserved_units=0,
+                denied_lane=lane_keys[0] if lane_keys else "",
+                denied_reason=AgentExecutionErrorClass.RATE_LIMITED,
+            )
+        for lane in lane_keys:
+            lane_limiter = self._lane_limiters.get(lane)
+            if lane_limiter is not None and not lane_limiter.has_capacity(tokens_per_lane):
+                return _RateLimitReservationResult(
+                    reserved_units=0,
+                    denied_lane=lane,
+                    denied_reason=AgentExecutionErrorClass.RATE_LIMITED,
+                )
+        if not self._global_limiter.acquire_nowait(required_global_tokens):
+            return _RateLimitReservationResult(
+                reserved_units=0,
+                denied_lane=lane_keys[0] if lane_keys else "",
+                denied_reason=AgentExecutionErrorClass.RATE_LIMITED,
+            )
+        for lane in lane_keys:
+            lane_limiter = self._lane_limiters.get(lane)
+            if lane_limiter is not None and not lane_limiter.acquire_nowait(tokens_per_lane):
+                raise RuntimeError(f"agent_rate_limit_reservation_race:{lane}")
+        return _RateLimitReservationResult(reserved_units=reserved_units)
+
+    def _reservable_rate_units(self, lanes: tuple[str, ...], *, requested_rate_units: int) -> int:
+        lane_count = max(1, len(lanes))
+        requested_units = max(1, int(requested_rate_units))
+        reservable = min(requested_units, int(self._global_limiter.capacity_remaining() // lane_count))
+        for lane in lanes:
+            lane_limiter = self._lane_limiters.get(lane)
+            if lane_limiter is not None:
+                reservable = min(reservable, int(lane_limiter.capacity_remaining()))
+        return max(0, reservable)
+
+    def _release_acquired_lane_capacity(
+        self,
+        acquired_lanes: list[tuple[str, _LaneState, float]],
     ) -> None:
-        lane_limiter = self._lane_limiters.get(stage.lane)
-        if not self._global_limiter.has_capacity(1):
-            self._record_backpressure(stage.lane, AgentExecutionErrorClass.RATE_LIMITED)
-            raise AgentExecutionError(
-                AgentExecutionErrorClass.RATE_LIMITED,
-                f"global agent rpm limit is exhausted: {self._policy.global_rpm_limit}",
-                audit=audit,
-                execution_started=False,
-            )
-        if lane_limiter is not None and not lane_limiter.has_capacity(1):
-            self._record_backpressure(stage.lane, AgentExecutionErrorClass.RATE_LIMITED)
-            raise AgentExecutionError(
-                AgentExecutionErrorClass.RATE_LIMITED,
-                f"agent lane rpm limit is exhausted: {stage.lane}",
-                audit=audit,
-                execution_started=False,
-            )
-        await self._global_limiter.acquire(1)
-        if lane_limiter is not None:
-            await lane_limiter.acquire(1)
+        for _lane, lane_state, acquired_at in reversed(acquired_lanes):
+            _remove_in_flight_start(lane_state, acquired_at)
+            lane_state.semaphore.release()
+        acquired_lanes.clear()
 
     def _is_circuit_open(self, lane: str, lane_state: _LaneState | None = None) -> bool:
         state = lane_state or self._lane_state(lane)
@@ -647,6 +700,10 @@ def _try_acquire_nowait(semaphore: asyncio.BoundedSemaphore) -> bool:
         return False
     semaphore._value -= 1
     return True
+
+
+def _unique_lanes(lanes: tuple[str, ...] | list[str]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(str(lane) for lane in lanes if str(lane).strip()))
 
 
 def _in_flight(semaphore: asyncio.BoundedSemaphore) -> int:

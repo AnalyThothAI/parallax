@@ -1,5 +1,10 @@
 # Runtime DB Performance Hard Cut Verification
 
+> 2026-05-27 hard-cut update: this verification captured the intermediate
+> generation-swap cleanup. The active-generation table path is now retired; the
+> next lifecycle hard-cut verification must assert the old generation and legacy
+> tables are absent, not merely hidden from readers.
+
 Date: 2026-05-27
 
 ## Code Verification

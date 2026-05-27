@@ -6,7 +6,8 @@ import uuid
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
 from datetime import UTC, date, datetime
-from typing import TYPE_CHECKING, Any, cast
+from os import environ as process_environ
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_VIEW_PROJECTION_VERSION
 from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_scheduler import ensure_due_macro_sync_windows
@@ -15,19 +16,19 @@ from gmgn_twitter_intel.domains.macro_intel.services.macrodata_bundle_importer i
     parse_macrodata_bundle,
     write_macrodata_bundle_import,
 )
-from gmgn_twitter_intel.integrations.macrodata.runner import (
-    MacrodataBundleRunner,
-    MacrodataRunnerError,
-    fred_api_key_state,
-)
 
 if TYPE_CHECKING:
     from gmgn_twitter_intel.app.runtime.repository_session import RepositorySession
 
 
+class MacrodataBundleRunnerProtocol(Protocol):
+    def history_bundle(self, *, bundle: str, start: str, end: str) -> object: ...
+
+
 _CONFIG_ERROR_CODES = {
     "macrodata_executable_missing",
 }
+_DEFAULT_FRED_API_KEY_ENV = "FINANCE_FRED_API_KEY"
 _URI_CREDENTIAL_RE = re.compile(r"([a-z][a-z0-9+.-]*://[^:/@\s]+):([^@\s]+)@", re.IGNORECASE)
 _SECRET_ASSIGNMENT_RE = re.compile(
     r"\b(api[_-]?key|token|secret|password|pwd)\s*[:=]\s*([^,\s;]+)",
@@ -46,14 +47,14 @@ class MacroSyncService:
         settings: object,
         db: Any | None = None,
         repository_factory: Callable[[], AbstractContextManager[RepositorySession]] | None = None,
-        runner: MacrodataBundleRunner | None = None,
+        runner: MacrodataBundleRunnerProtocol | None = None,
         wake_bus: Any | None = None,
         clock_ms: Callable[[], int] | None = None,
     ) -> None:
         self.settings = settings
         self.db = db
         self.repository_factory = repository_factory
-        self.runner = runner or MacrodataBundleRunner(settings=settings)
+        self.runner = runner
         self.wake_bus = wake_bus
         self.clock_ms = clock_ms or _now_ms
 
@@ -134,13 +135,15 @@ class MacroSyncService:
         started_at_ms = now_ms
         sync_run_id = f"macro-sync:{uuid.uuid4().hex}"
         try:
+            if self.runner is None:
+                raise RuntimeError("macrodata bundle runner is required")
             run_result = self.runner.history_bundle(
                 bundle=str(window["bundle_name"]),
                 start=_date_string(window["window_start"]),
                 end=_date_string(window["window_end"]),
             )
-            parsed = parse_macrodata_bundle(run_result.envelope, now_ms=now_ms)
-            diagnostics = _safe_diagnostics(run_result.diagnostics)
+            parsed = parse_macrodata_bundle(_run_result_envelope(run_result), now_ms=now_ms)
+            diagnostics = _safe_diagnostics(_run_result_diagnostics(run_result))
             with self._repository_session() as repos, repos.unit_of_work():
                 import_summary = write_macrodata_bundle_import(parsed, repos=repos)
                 completed_at_ms = int(self.clock_ms())
@@ -185,8 +188,22 @@ class MacroSyncService:
             return summary
         except _StaleMacroSyncClaimError:
             return _stale_claim_summary(sync_run_id=sync_run_id)
-        except MacrodataRunnerError as exc:
-            error_code = str(exc.diagnostics.get("error_code") or "macrodata_runner_error")
+        except Exception as exc:
+            runner_diagnostics = _runner_error_diagnostics(exc)
+            if runner_diagnostics is None:
+                return self._record_failure(
+                    window,
+                    lease_owner=lease_owner,
+                    sync_run_id=sync_run_id,
+                    status="failed",
+                    error_code=exc.__class__.__name__,
+                    error_message=str(exc),
+                    diagnostics={},
+                    started_at_ms=started_at_ms,
+                    now_ms=now_ms,
+                    retry=False,
+                )
+            error_code = str(runner_diagnostics.get("error_code") or "macrodata_runner_error")
             if error_code in _CONFIG_ERROR_CODES:
                 status = "config_error"
                 retry = False
@@ -203,23 +220,10 @@ class MacroSyncService:
                 status=status,
                 error_code=error_code,
                 error_message=str(exc),
-                diagnostics=_safe_diagnostics(exc.diagnostics),
+                diagnostics=_safe_diagnostics(runner_diagnostics),
                 started_at_ms=started_at_ms,
                 now_ms=now_ms,
                 retry=retry,
-            )
-        except Exception as exc:
-            return self._record_failure(
-                window,
-                lease_owner=lease_owner,
-                sync_run_id=sync_run_id,
-                status="failed",
-                error_code=exc.__class__.__name__,
-                error_message=str(exc),
-                diagnostics={},
-                started_at_ms=started_at_ms,
-                now_ms=now_ms,
-                retry=False,
             )
 
     def _record_failure(
@@ -305,6 +309,43 @@ def _sync_settings(settings: object) -> object:
     return macro_sync or settings
 
 
+def _run_result_envelope(run_result: object) -> Mapping[str, Any]:
+    envelope = getattr(run_result, "envelope", None)
+    if not isinstance(envelope, Mapping):
+        raise ValueError("macrodata bundle runner returned no envelope")
+    return envelope
+
+
+def _run_result_diagnostics(run_result: object) -> Mapping[str, Any]:
+    diagnostics = getattr(run_result, "diagnostics", None)
+    return diagnostics if isinstance(diagnostics, Mapping) else {}
+
+
+def _runner_error_diagnostics(exc: Exception) -> Mapping[str, Any] | None:
+    diagnostics = getattr(exc, "diagnostics", None)
+    return diagnostics if isinstance(diagnostics, Mapping) else None
+
+
+def _fred_api_key_state(settings: object) -> dict[str, Any]:
+    env_name = _configured_fred_env_name(settings)
+    return {
+        "fred_api_key_env": env_name,
+        "fred_api_key_configured": bool(process_environ.get(env_name, "").strip()),
+    }
+
+
+def _configured_fred_env_name(settings: object) -> str:
+    env_name = getattr(settings, "macrodata_fred_api_key_env", None)
+    if isinstance(env_name, str) and env_name.strip():
+        return env_name.strip()
+    providers = getattr(settings, "providers", None)
+    macrodata = getattr(providers, "macrodata", None)
+    nested_env_name = getattr(macrodata, "fred_api_key_env", None)
+    if isinstance(nested_env_name, str) and nested_env_name.strip():
+        return nested_env_name.strip()
+    return _DEFAULT_FRED_API_KEY_ENV
+
+
 def _sync_run_payload(
     *,
     sync_run_id: str,
@@ -322,7 +363,7 @@ def _sync_run_payload(
     error_code: str | None,
     error_message: str | None,
 ) -> dict[str, Any]:
-    fred_state = fred_api_key_state(settings)
+    fred_state = _fred_api_key_state(settings)
     return {
         "sync_run_id": sync_run_id,
         "sync_window_id": str(window["sync_window_id"]),

@@ -1,5 +1,12 @@
 # Runtime DB Performance Hard Cut Implementation Plan
 
+> 2026-05-27 hard-cut update: this plan has been superseded by the next
+> lifecycle hard-cut for any residual storage cleanup. Do not preserve the
+> temporary legacy table `macro_observation_series_rows_legacy_20260527_0114`
+> after verification, do not reintroduce `macro_observation_series_active_generation`,
+> and do not use generation/run/attempt/timestamp/UUID identities for current
+> read-model serving keys.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 按 P0/P1/P2 一次性硬切实时链路剩余数据库性能问题：Token Radar current rows 必须窗口新鲜，Token Radar 私有缓存必须有生命周期，Macro projection 不能再用 timestamp/UUID generation 复制 100GB 级 read model。

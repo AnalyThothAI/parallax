@@ -95,6 +95,7 @@ def test_macro_view_projection_worker_without_dirty_target_does_not_scan_sources
         "claimed": 0,
         "queue_depth": 0,
         "source_rows_scanned": 0,
+        "targets_loaded": 0,
         "rows_written": 0,
     }
     assert repo.calls == ["claim_macro_projection_dirty_targets"]
@@ -124,6 +125,7 @@ def test_macro_view_projection_worker_unchanged_series_marks_done_without_snapsh
     assert result.notes["snapshot_rows_written"] == 0
     assert result.notes["source_signature"] == "sig-same"
     assert result.notes["source_rows_scanned"] == 0
+    assert result.notes["targets_loaded"] == 0
     assert result.notes["rows_written"] == 0
     assert repo.calls == [
         "claim_macro_projection_dirty_targets",

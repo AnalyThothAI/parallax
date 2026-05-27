@@ -185,11 +185,14 @@ class PulseDecisionProvider(Protocol):
     @property
     def runtime_contract(self) -> PulseAgentRuntimeContract: ...
 
+    def model_for_lane(self, lane: str) -> str: ...
+
     def try_reserve_execution(
         self,
         lane: str,
         *,
         child_lanes: tuple[str, ...] = (),
+        rate_units: int = 1,
         scope: str = "execution",
     ) -> AgentCapacityReservation: ...
 

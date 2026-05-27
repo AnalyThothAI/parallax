@@ -941,18 +941,26 @@ class FakeRepositorySession:
     def __init__(self, macro_intel: FakeMacroIntelRepository) -> None:
         self.macro_intel = macro_intel
         self.conn = macro_intel.conn
+        self.in_transaction = False
 
     def unit_of_work(self):
-        return FakeTransaction(self.macro_intel)
+        return FakeTransaction(self)
+
+    def require_transaction(self, *, operation: str) -> None:
+        assert operation == "macrodata_bundle_import"
+        if not self.in_transaction:
+            raise RuntimeError(f"{operation}:transaction_required")
 
 
 class FakeTransaction:
-    def __init__(self, macro_intel: FakeMacroIntelRepository) -> None:
-        self.macro_intel = macro_intel
+    def __init__(self, repos: FakeRepositorySession) -> None:
+        self.repos = repos
+        self.macro_intel = repos.macro_intel
         self.observations: list[dict[str, object]] = []
         self.import_runs: list[dict[str, object]] = []
 
     def __enter__(self):
+        self.repos.in_transaction = True
         self.observations = list(self.macro_intel.observations)
         self.import_runs = list(self.macro_intel.import_runs)
         return self
@@ -969,4 +977,5 @@ class FakeTransaction:
             self.macro_intel.transaction_events.append("rollback")
         else:
             self.macro_intel.transaction_events.append("commit")
+        self.repos.in_transaction = False
         return False

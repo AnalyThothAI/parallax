@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 def test_api_macro_currentness_uses_publication_state_without_sync_run() -> None:
     from gmgn_twitter_intel.app.surfaces.api.routes_macro import _macro_currentness
 

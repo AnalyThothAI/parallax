@@ -1331,20 +1331,18 @@ def _macro_projection_dirty_payload_hash(
 
 
 def _macro_projection_dirty_claims(claimed: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
-    records: list[dict[str, Any]] = []
-    for claim in claimed:
-        records.append(
-            {
-                "projection_name": str(claim["projection_name"]),
-                "projection_version": str(claim["projection_version"]),
-                "target_kind": str(claim["target_kind"]),
-                "target_id": str(claim["target_id"]),
-                "payload_hash": str(claim["payload_hash"]),
-                "lease_owner": str(claim["lease_owner"]),
-                "attempt_count": int(claim["attempt_count"]),
-            }
-        )
-    return records
+    return [
+        {
+            "projection_name": str(claim["projection_name"]),
+            "projection_version": str(claim["projection_version"]),
+            "target_kind": str(claim["target_kind"]),
+            "target_id": str(claim["target_id"]),
+            "payload_hash": str(claim["payload_hash"]),
+            "lease_owner": str(claim["lease_owner"]),
+            "attempt_count": int(claim["attempt_count"]),
+        }
+        for claim in claimed
+    ]
 
 
 def _macro_projection_dirty_claim_params(records: Sequence[Mapping[str, Any]]) -> dict[str, list[Any]]:

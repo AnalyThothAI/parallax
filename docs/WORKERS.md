@@ -59,7 +59,7 @@ Review workers by separating four categories:
 |----------|---------|----------|------|
 | Facts | Business observations and decisions that should be replayable | `events`, `token_intent_resolutions`, `asset_identity_evidence`, `asset_identity_current`, `market_ticks`, `enriched_events`, Pulse audit rows | Facts are product truth. |
 | Read models | Rebuildable projections for reads and product workflows | `market_tick_current`, `token_radar_current_rows`, `token_radar_publication_state`, `token_radar_target_first_seen`, `token_profile_current`, `pulse_candidates`, `watchlist_handle_signal_stats`, watchlist summaries | Exactly one runtime writer. |
-| Control plane | Scheduling, retry, lease, budget, and queue state | `event_anchor_backfill_jobs`, `market_tick_current_dirty_targets`, `token_radar_dirty_targets`, `token_discovery_dirty_lookup_keys`, projection dirty targets, `pulse_trigger_dirty_targets`, `narrative_admission_dirty_targets`, `discussion_digest_dirty_targets`, `token_profile_current_dirty_targets`, `token_image_source_dirty_targets`, `asset_profile_refresh_targets`, `token_capture_tier_dirty_targets`, `pulse_agent_jobs`, notification deliveries | Never treat job state as product truth. |
+| Control plane | Scheduling, retry, lease, budget, and queue state | `event_anchor_backfill_jobs`, `market_tick_current_dirty_targets`, `token_radar_dirty_targets`, `token_discovery_dirty_lookup_keys`, `macro_projection_dirty_targets`, projection dirty targets, `pulse_trigger_dirty_targets`, `narrative_admission_dirty_targets`, `discussion_digest_dirty_targets`, `token_profile_current_dirty_targets`, `token_image_source_dirty_targets`, `asset_profile_refresh_targets`, `token_capture_tier_dirty_targets`, `pulse_agent_jobs`, `notification_deliveries` | Never treat job state as product truth. |
 | Cache/fan-out | Process-local convenience state | `LivePriceGateway` latest cache and WebSocket fan-out | Cache is presentation-only unless persisted as facts. |
 | Local media mirrors | Rebuildable local copies of provider media | `token_image_assets` plus files under `cache/token-images` | Public image URLs must come from ready local rows, never provider URLs. |
 
@@ -129,7 +129,7 @@ notification_delivery
 | `news_fetch` (`NewsFetchWorker`) | `news_intel` | `domains/news_intel/runtime/news_fetch_worker.py` | configured `news_intel.sources` with `provider_type`, `source_role`, `trust_tier`, `coverage_tags`, authority/fetch/context/cost policy, due `news_sources`, RSS/Atom/CryptoPanic feeds, bounded OpenNews WebSocket subscribe cycles | `news_sources`, `news_fetch_runs`, `news_provider_items`, `news_items` | poll | `news_item_written` | `interval_seconds` |
 | `news_item_process` (`NewsItemProcessWorker`) | `news_intel` | `domains/news_intel/runtime/news_item_process_worker.py` | unprocessed `news_items`, token identity interfaces | `news_item_entities`, `news_token_mentions`, `news_fact_candidates`, `news_items.content_class/content_tags_json/content_classification_json` | `news_item_written` | `news_item_processed` | `interval_seconds` |
 | `news_story_projection` (`NewsStoryProjectionWorker`) | `news_intel` | `domains/news_intel/runtime/news_story_projection_worker.py` | due `news_projection_dirty_targets(projection_name='story')`; target-scoped `news_items`, `news_token_mentions` | `news_story_groups`, `news_story_members` | `news_item_processed` | `news_story_updated` | `interval_seconds` |
-| `news_item_brief` (`NewsItemBriefWorker`) | `news_intel` | `domains/news_intel/runtime/news_item_brief_worker.py` | processed `news_items`, `news_story_groups`, current brief state | `news_item_agent_runs`, `news_item_agent_briefs` | `news_item_processed`, `news_story_updated` | `news_item_brief_updated` | `interval_seconds` |
+| `news_item_brief` (`NewsItemBriefWorker`) | `news_intel` | `domains/news_intel/runtime/news_item_brief_worker.py` | due `news_projection_dirty_targets(projection_name='brief_input')`; processed `news_items`, `news_story_groups`, current brief state after reserving `news.item_brief` | `news_item_agent_runs`, `news_item_agent_briefs` | `news_item_processed`, `news_story_updated` | `news_item_brief_updated` | `interval_seconds`; no-start backpressure claims nothing and writes no run ledger |
 | `news_page_projection` (`NewsPageProjectionWorker`) | `news_intel` | `domains/news_intel/runtime/news_page_projection_worker.py` | due `news_projection_dirty_targets(projection_name='page')`; target-scoped `news_items`, `news_token_mentions`, `news_fact_candidates`, `news_story_groups`, current brief state | `news_page_rows` | `news_item_written`, `news_item_processed`, `news_story_updated`, `news_item_brief_updated`, `news_page_dirty` | none | `interval_seconds` |
 | `news_source_quality_projection` (`NewsSourceQualityProjectionWorker`) | `news_intel` | `domains/news_intel/runtime/news_source_quality_projection_worker.py` | due `news_projection_dirty_targets(projection_name='source_quality')`; target-scoped `news_sources`, `news_fetch_runs`, `news_items`, `news_token_mentions`, `news_fact_candidates`, `news_item_agent_briefs`, `news_context_items` by source/window | `news_source_quality_rows`, `news_sources.source_quality_status` | `news_item_written`, `news_item_processed`, `news_story_updated`, `news_item_brief_updated` | `news_page_dirty` when source status changes | `interval_seconds` |
 | `equity_event_source_reconcile` (`EquityEventSourceReconcileWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_source_reconcile_worker.py` | configured `equity_event_intel.companies`, expected events, registry US equity identity | `equity_event_sources`, `equity_event_universe_members`, `equity_expected_events` | poll | `equity_event_sources_reconciled` | `interval_seconds` |
@@ -137,16 +137,16 @@ notification_delivery
 | `equity_event_evidence_hydration` (`EquityEventEvidenceHydrationWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_evidence_hydration_worker.py` | due leased `equity_event_evidence_jobs`, event document/source context, SEC document evidence provider | `equity_event_evidence_artifacts`, `equity_event_documents.evidence_status`, `equity_company_events.evidence_status`, evidence job status | `equity_event_evidence_job_written` | `equity_event_document_written` | `interval_seconds` |
 | `equity_event_process` (`EquityEventProcessWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_process_worker.py` | unprocessed `equity_event_documents`, source company identity | `equity_company_events`, `equity_event_source_spans`, `equity_event_fact_candidates`, document lifecycle status | `equity_event_document_written` | `equity_event_processed` | `interval_seconds` |
 | `equity_event_story_projection` (`EquityEventStoryProjectionWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_story_projection_worker.py` | due `equity_event_projection_dirty_targets(projection_name='story')`; target-scoped `equity_company_events`, existing story candidates | `equity_event_story_groups`, `equity_event_story_members` | `equity_event_processed` | `equity_event_story_updated` | `interval_seconds` |
-| `equity_event_brief` (`EquityEventBriefWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_brief_worker.py` | `equity_company_events`, `equity_event_story_groups`, `equity_event_story_members`, official `equity_event_documents`, `equity_event_source_spans`, accepted/attention `equity_event_fact_candidates`, current brief state | `equity_event_agent_runs`, `equity_event_agent_briefs`, event brief lifecycle status | `equity_event_story_updated` | `equity_event_brief_updated` | `interval_seconds` |
+| `equity_event_brief` (`EquityEventBriefWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_brief_worker.py` | due `equity_event_projection_dirty_targets(projection_name='brief_input')`; `equity_company_events`, stories, official documents, spans, accepted facts, current brief state after reserving `equity_event.brief` | `equity_event_agent_runs`, `equity_event_agent_briefs`, event brief lifecycle status | `equity_event_story_updated` | `equity_event_brief_updated` | `interval_seconds`; no-start backpressure claims nothing and writes no run ledger |
 | `equity_event_page_projection` (`EquityEventPageProjectionWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_page_projection_worker.py` | due `equity_event_projection_dirty_targets(projection_name in page/timeline/alert/calendar)`; target-scoped `equity_company_events`, `equity_expected_events`, `equity_event_story_groups`, facts, documents, current brief state | `equity_event_page_rows`, `equity_event_calendar_rows`, `equity_event_alert_candidates`, `equity_company_timeline_rows` | `equity_event_document_written`, `equity_event_processed`, `equity_event_story_updated`, `equity_event_brief_updated` | `equity_event_page_updated` | `interval_seconds` |
-| `cex_oi_radar_board` (`CexOiRadarBoardWorker`) | `cex_market_intel` | `domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py` | Binance-backed `price_feeds`, Binance USD-M ticker/premium/OI history, bounded CoinGlass enrichment when available | `cex_oi_radar_runs`, `cex_oi_radar_rows`, `cex_detail_snapshots` | poll | none | `interval_seconds` |
+| `cex_oi_radar_board` (`CexOiRadarBoardWorker`) | `cex_market_intel` | `domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py` | Binance-backed `price_feeds`, Binance USD-M ticker/premium/OI history, bounded CoinGlass enrichment when available | `cex_oi_radar_rows`, `cex_oi_radar_publication_state`, `cex_detail_snapshots` | poll | none | `interval_seconds`; current board row ids are stable by provider/exchange/period/target |
 | `macro_sync` (`MacroSyncWorker`) | `macro_intel` | `domains/macro_intel/runtime/macro_sync_worker.py` | due `macro_sync_windows`; packaged `macrodata` history bundle after claim | `macro_observations`, `macro_import_runs`, `macro_sync_windows`, `macro_sync_runs` | poll | `macro_observations_imported` | claims one bounded window; idle cycles do no provider IO and no broad fact scan |
-| `macro_view_projection` (`MacroViewProjectionWorker`) | `macro_intel` | `domains/macro_intel/runtime/macro_view_projection_worker.py` | `macro_observations` history; `macro_observation_series_rows` current projection | `macro_observation_series_rows`, `macro_view_snapshots` | `macro_observations_imported` | none | `interval_seconds`; unchanged source signatures write no series rows |
+| `macro_view_projection` (`MacroViewProjectionWorker`) | `macro_intel` | `domains/macro_intel/runtime/macro_view_projection_worker.py` | due `macro_projection_dirty_targets`; then exact `macro_observations` history and `macro_observation_series_rows` current projection | `macro_observation_series_rows`, `macro_view_snapshots`, `macro_observation_series_publication_state` | `macro_observations_imported` | none | `interval_seconds`; no dirty target means no broad fact scan; unchanged signatures write zero serving rows |
 | `pulse_candidate` (`PulseCandidateWorker`) | `pulse_lab` | `domains/pulse_lab/runtime/pulse_candidate_worker.py` | due `pulse_trigger_dirty_targets`; exact Token Radar current row and evidence context for Pulse `1h`/`4h` horizons | `pulse_agent_jobs`, `pulse_candidate_edge_state`, `pulse_candidate_run_budget`, `pulse_target_run_budget`, `pulse_agent_runs`, `pulse_agent_run_steps`, `pulse_agent_runtime_versions`, `pulse_agent_eval_cases`, `pulse_agent_eval_results`, `pulse_candidates`, `pulse_candidates.decision_*`, `pulse_candidates.decision_json`, `pulse_playbook_snapshots` | `token_radar_updated` | none | `interval_seconds` |
 | `enrichment` (`EnrichmentWorker`) | `social_enrichment` | `domains/social_enrichment/runtime/enrichment_worker.py` | watched events queue, OpenAI Agents enrichment | enrichment label rows, `model_run` audit, `social_event_extractions.normalized_handle`, `watchlist_handle_signal_events`, `watchlist_handle_signal_stats`, outbound watchlist summary enqueue hook | poll | none | `interval_seconds` |
 | `handle_summary` (`HandleSummaryWorker`) | `watchlist_intel` | `domains/watchlist_intel/runtime/handle_summary_worker.py` | due `watchlist_handle_summary_jobs`, recent signal extractions for claimed summary input | `watchlist_handle_summaries`, `watchlist_handle_summary_runs`, job status | poll | none | `interval_seconds` |
-| `notification_rule` (`NotificationWorker`) | `notifications` | `domains/notifications/runtime/notification_worker.py` | notification rules, candidate rows | notification rule evaluations | poll | none | `interval_seconds` |
-| `notification_delivery` (`NotificationDeliveryWorker`) | `notifications` | `domains/notifications/runtime/notification_delivery.py` | pending deliveries | delivery rows | poll | none | `interval_seconds` |
+| `notification_rule` (`NotificationWorker`) | `notifications` | `domains/notifications/runtime/notification_worker.py` | notification rules, candidate rows | `notifications` facts and `notification_deliveries` control rows | poll | none | `interval_seconds` |
+| `notification_delivery` (`NotificationDeliveryWorker`) | `notifications` | `domains/notifications/runtime/notification_delivery.py` | pending `notification_deliveries` | `notification_deliveries` side-effect/control ledger | poll | none | `interval_seconds` |
 
 ## News Provider Operations
 
@@ -437,22 +437,24 @@ agent_runtime:
   enrichment jobs and passes that reservation into the actual stage.
 - `handle_summary` reserves `watchlist.handle_summary` before claiming
   summary jobs and passes that reservation into the actual stage.
-- `news_item_brief` selects a processed news item, writes no-start
-  backpressure as `execution_started=false`, and executes the single-item
-  brief only through `AgentExecutionGateway` lane `news.item_brief`.
+- `news_item_brief` reserves `news.item_brief` before claiming a brief dirty
+  target. No-start backpressure does not claim, burn attempts, or write an
+  agent run ledger; provider-started validation failures write
+  `execution_started=true`.
 - `equity_event_brief` builds a bounded official-evidence packet for each due
   company event, validates cited output against packet evidence refs, writes
   `equity_event_agent_runs` audit rows, and publishes current
   `equity_event_agent_briefs` only through `AgentExecutionGateway` lane
   `equity_event.brief`.
 
-If reservation is denied, the worker records
-`agent_backpressure_capacity_denied` in its iteration notes and does not
-claim a job, so no-start backpressure does not burn attempts. Workers
-that discover no-start backpressure after claiming must release or
-reschedule without charging the claim as a provider attempt. Narrative
-workers currently rely on provider-stage reservations because their claim
-semantics do not burn attempts before model execution in the same way.
+If reservation is denied, the worker records `agent_backpressure_*` in its
+iteration notes and does not claim a job, so no-start backpressure does not
+burn attempts or write business run ledgers. Batch LLM workers must reserve
+explicit `rate_units` before claim and must cap the claim limit to the actual
+`reservation.rate_units` returned by the gateway. A worker that can still
+observe a provider no-start exception after claim must release/reschedule the
+dirty row without writing a business run ledger and without counting it as a
+provider attempt.
 
 Lane `priority` is an operator-facing policy label used in diagnostics
 and incident triage. It is not a strict scheduler; fairness still comes
@@ -496,8 +498,11 @@ change:
    for wake hints.
 5. Document the worker in the owning domain's `ARCHITECTURE.md` stage
    map.
-6. If the worker writes a new derived table, declare it as a read model
-   and name its single writer in `ARCHITECTURE.md`.
+6. If the worker writes a new derived table, declare its lifecycle class
+   (`current`, `private_cache`, `control_ledger`, or `audit_fact`) and name
+   its single writer in `ARCHITECTURE.md`. Current read models must use stable
+   product/window keys, not run/generation/attempt/timestamp/UUID identity, and
+   unchanged projections must write zero serving rows.
 7. Extend architecture guards so `WorkerBase`, `WorkerManifest`,
    `WorkersSettings`, the default `workers.yaml`, and this file's
    `worker-inventory-keys` marker stay in lockstep.

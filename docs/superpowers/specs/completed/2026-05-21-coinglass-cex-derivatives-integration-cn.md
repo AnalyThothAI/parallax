@@ -1,5 +1,9 @@
 # CoinGlass CEX Derivatives Integration Spec
 
+> 2026-05-27 hard-cut update: the CEX OI board current lifecycle no longer has
+> `cex_oi_radar_runs`. Treat any run-table references below as retired; use
+> stable current rows plus publication state only.
+
 日期：2026-05-21
 状态：active spec
 范围：把 `AnalyThothAI/coinglass-cli` 作为 Docker 内可安装依赖接入，并设计 CEX 页面、Token Radar、Signal Pulse agent 的衍生品数据链路。

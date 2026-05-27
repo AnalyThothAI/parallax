@@ -55,8 +55,8 @@ class OpenAIAgentsSocialEventClient:
     def timeout_seconds(self) -> float:
         return 120.0
 
-    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
-        return self._agent_gateway.try_reserve(lane)
+    def try_reserve_execution(self, lane: str, *, rate_units: int = 1) -> AgentCapacityReservation:
+        return self._agent_gateway.try_reserve(lane, rate_units=rate_units)
 
     def request_audit(self, *, event: dict, entities: list[dict], run_id: str, job: dict) -> dict[str, Any]:
         stage = self._stage(event=event, entities=entities, run_id=run_id, job=job)

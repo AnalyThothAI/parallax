@@ -82,10 +82,11 @@ are wrong too.
    `token_profile_current_dirty_targets`, `token_image_source_dirty_targets`,
    `asset_profile_refresh_targets`, `token_capture_tier_dirty_targets`, and
    `news_fetch_runs` own worker scheduling state and are not product truth.
-   `macro_import_runs`, `macro_sync_windows`, and `macro_sync_runs` record
-   importer/sync provenance, coverage, and data-quality diagnostics; macro
-   product state still rebuilds from `macro_observations`. Every derived read model can be rebuilt from the
-   facts.
+   `macro_import_runs`, `macro_sync_windows`, `macro_sync_runs`,
+   `macro_projection_dirty_targets`, and notification delivery rows record
+   importer/sync, projection scheduling, or side-effect control state; macro
+   product state still rebuilds from `macro_observations`. Every derived read
+   model can be rebuilt from the facts.
 2. **Append-only market tick facts.** Market data from any provider is
    normalised into `MarketTick`
    (`domains/asset_market/types/market_tick.py`) before persistence.
@@ -141,8 +142,9 @@ are wrong too.
    `news_item_agent_runs` and `news_item_agent_briefs` are written only by
    `NewsItemBriefWorker`; `news_page_rows` is written only by
    `NewsPageProjectionWorker`; `news_source_quality_rows` is written only by
-   `NewsSourceQualityProjectionWorker`. `cex_oi_radar_runs`, `cex_oi_radar_rows`,
-   and `cex_detail_snapshots` are written only by `CexOiRadarBoardWorker`;
+   `NewsSourceQualityProjectionWorker`. `cex_oi_radar_rows`,
+   `cex_oi_radar_publication_state`, and `cex_detail_snapshots` are written
+   only by `CexOiRadarBoardWorker`;
    `equity_event_story_groups` and `equity_event_story_members` are written
    only by `EquityEventStoryProjectionWorker`;
    `equity_event_agent_runs` and `equity_event_agent_briefs` are written only
@@ -155,17 +157,17 @@ are wrong too.
    Single writer is necessary but not sufficient for runtime safety. A current
    read model must also have a bounded physical lifecycle: row count must be
    proportional to product cardinality and active windows, not to worker run
-   count, wake count, retry count, or wall-clock uptime. A generation or run id
-   may be used as short transaction staging, but it must not become the
-   permanent serving contract for a current read model unless retention,
-   pruning, and reader semantics are explicit and architecture-tested. Active
-   pointers hide old generations from readers; they do not make the storage,
-   indexes, planner statistics, autovacuum work, or replication/WAL pressure
-   bounded.
+   count, wake count, retry count, or wall-clock uptime. Serving primary keys
+   for current read models must not include `generation_id`, `run_id`,
+   `attempt_id`, timestamp-derived ids, or UUIDs. Those identities are allowed
+   only in audit/control ledgers with explicit retention or in short
+   transaction staging that is not a public serving contract. Active pointers
+   hide old generations from readers; they do not make the storage, indexes,
+   planner statistics, autovacuum work, or replication/WAL pressure bounded.
    Current-row projections must expose an observable unchanged path: when the
    source signature or dirty-target content did not change, the worker updates
-   publication state at most and avoids delete/reinsert churn on the serving
-   rows.
+   publication state at most and writes zero serving rows. Use `payload_hash`
+   or `IS DISTINCT FROM` gates; do not delete/reinsert unchanged current rows.
 6. **Wake is not truth.** PostgreSQL `NOTIFY` channels
    (`market_tick_written`, `market_tick_current_updated`,
    `resolution_updated`, `token_radar_updated`) carry hint payloads only;
@@ -208,11 +210,16 @@ are wrong too.
    workers still own admission, claim, retry, finalize, read-model writes,
    and business validation. There is no central durable `agent_tasks`
    queue; PostgreSQL domain facts and read models remain the truth. Pulse
-   multi-stage runs use `pulse.pipeline` as a parent reservation; child
-   stages reuse the parent global slot and acquire only their stage lane
-   bulkhead. No-start backpressure does not burn provider attempts, and
-   lane `priority` is an operator-facing policy label rather than a
-   strict scheduler.
+   multi-stage runs use `pulse.pipeline` as a parent reservation. Every
+   LLM-backed worker that can burn business attempts reserves lane capacity,
+   circuit, and RPM before durable queue claim; batch workers request explicit
+   `rate_units` for the maximum provider calls they want to execute and claim
+   only the actual `reservation.rate_units` returned by the gateway. Pulse
+   parent reservations also reserve child lane capacity/RPM before job claim.
+   No-start backpressure does not claim work, write business run ledgers, or
+   burn provider attempts. Provider-started validation/publication failures
+   write the domain run ledger with `execution_started=true`. Lane `priority`
+   is an operator-facing policy label rather than a strict scheduler.
 
 Cross-cutting primitives that implement these invariants:
 

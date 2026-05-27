@@ -94,144 +94,288 @@ class MentionSemanticsWorker(WorkerBase):
                     f"agent_backpressure_{reason}": 1,
                 },
             )
-        rows = await asyncio.to_thread(self._claim_due_rows_sync, now_ms=resolved_now_ms, limit=batch_size)
-        if not rows:
-            await _release_reservation(reservation)
-            return WorkerResult(
-                skipped=1,
-                notes={
-                    "reason": "no_due_mentions",
-                    "claimed": 0,
-                    "queue_depth": queue_depth,
-                    "source_rows_scanned": 0,
-                    "targets_loaded": 0,
-                    "rows_written": 0,
-                },
-            )
-
-        started_at_ms = _now_ms()
-        input_hash = _hash_json(rows)
-        run_id = deterministic_run_id(stage="mention_semantics", input_hash=input_hash, started_at_ms=started_at_ms)
-        request = self.service.build_batch_request(
-            rows,
-            run_id=run_id,
-            schema_version=NARRATIVE_SCHEMA_VERSION,
-            prompt_version=MENTION_SEMANTICS_PROMPT_VERSION,
-        )
-        request_audit = _provider_request_audit(
-            self.provider,
-            "request_audit_for_label_mentions",
-            run_id=run_id,
-            request=request,
-        )
         try:
-            result = await _label_mentions(
-                self.provider,
-                run_id=run_id,
-                request=request,
-                reservation=reservation,
-            )
-        except asyncio.CancelledError as exc:
-            if not is_worker_hard_timeout_cancelled(exc):
-                await _release_reservation(reservation)
-                raise
-            finished_at_ms = _now_ms()
-            failures = [
-                _provider_failure_for_row(
-                    row,
-                    error="worker_timeout_cancelled",
-                    default_next_retry_at_ms=self._provider_failure_next_retry_at_ms(now_ms=finished_at_ms),
-                    max_attempts=0,
-                )
-                for row in rows
-            ]
-            run_payload = {
-                "run_id": run_id,
-                "stage": "mention_semantics",
-                "provider": self.provider.provider,
-                "model": self.provider.model,
-                "schema_version": NARRATIVE_SCHEMA_VERSION,
-                "prompt_version": MENTION_SEMANTICS_PROMPT_VERSION,
-                "artifact_version_hash": self.provider.artifact_version_hash,
-                "input_hash": input_hash,
-                "output_hash": None,
-                "evidence_event_ids_json": [row.get("event_id") for row in rows if row.get("event_id")],
-                "request_json": request.model_dump(mode="json"),
-                "response_json": None,
-                "usage_json": request_audit.get("usage") or {},
-                "trace_metadata_json": {
-                    **request_audit,
-                    "error_type": "CancelledError",
-                },
-                "status": "failed",
-                "error": "worker_timeout_cancelled",
-                "execution_started": True,
-                "started_at_ms": started_at_ms,
-                "finished_at_ms": finished_at_ms,
-                "latency_ms": finished_at_ms - started_at_ms,
-            }
-            await asyncio.to_thread(
-                self._record_completion_sync,
-                run=run_payload,
-                labels=[],
-                failures=failures,
-                now_ms=finished_at_ms,
-            )
-            await _release_reservation(reservation)
-            raise
-        except Exception as exc:
-            if _is_agent_no_start_backpressure(exc):
-                reason = _agent_backpressure_reason(exc)
-                released = await asyncio.to_thread(
-                    self._release_claimed_rows_sync,
-                    rows=rows,
-                    now_ms=resolved_now_ms,
-                    retry_ms=self._provider_failure_retry_ms(),
-                    error=reason,
-                )
+            rows = await asyncio.to_thread(self._claim_due_rows_sync, now_ms=resolved_now_ms, limit=batch_size)
+            if not rows:
                 await _release_reservation(reservation)
                 return WorkerResult(
-                    skipped=len(rows),
+                    skipped=1,
+                    notes={
+                        "reason": "no_due_mentions",
+                        "claimed": 0,
+                        "queue_depth": queue_depth,
+                        "source_rows_scanned": 0,
+                        "targets_loaded": 0,
+                        "rows_written": 0,
+                    },
+                )
+
+            started_at_ms = _now_ms()
+            input_hash = _hash_json(rows)
+            run_id = deterministic_run_id(stage="mention_semantics", input_hash=input_hash, started_at_ms=started_at_ms)
+            request = self.service.build_batch_request(
+                rows,
+                run_id=run_id,
+                schema_version=NARRATIVE_SCHEMA_VERSION,
+                prompt_version=MENTION_SEMANTICS_PROMPT_VERSION,
+            )
+            request_audit = _provider_request_audit(
+                self.provider,
+                "request_audit_for_label_mentions",
+                run_id=run_id,
+                request=request,
+            )
+            try:
+                result = await _label_mentions(
+                    self.provider,
+                    run_id=run_id,
+                    request=request,
+                    reservation=reservation,
+                )
+            except asyncio.CancelledError as exc:
+                if not is_worker_hard_timeout_cancelled(exc):
+                    await _release_reservation(reservation)
+                    raise
+                finished_at_ms = _now_ms()
+                failures = [
+                    _provider_failure_for_row(
+                        row,
+                        error="worker_timeout_cancelled",
+                        default_next_retry_at_ms=self._provider_failure_next_retry_at_ms(now_ms=finished_at_ms),
+                        max_attempts=0,
+                    )
+                    for row in rows
+                ]
+                run_payload = {
+                    "run_id": run_id,
+                    "stage": "mention_semantics",
+                    "provider": self.provider.provider,
+                    "model": self.provider.model,
+                    "schema_version": NARRATIVE_SCHEMA_VERSION,
+                    "prompt_version": MENTION_SEMANTICS_PROMPT_VERSION,
+                    "artifact_version_hash": self.provider.artifact_version_hash,
+                    "input_hash": input_hash,
+                    "output_hash": None,
+                    "evidence_event_ids_json": [row.get("event_id") for row in rows if row.get("event_id")],
+                    "request_json": request.model_dump(mode="json"),
+                    "response_json": None,
+                    "usage_json": request_audit.get("usage") or {},
+                    "trace_metadata_json": {
+                        **request_audit,
+                        "error_type": "CancelledError",
+                    },
+                    "status": "failed",
+                    "error": "worker_timeout_cancelled",
+                    "execution_started": True,
+                    "started_at_ms": started_at_ms,
+                    "finished_at_ms": finished_at_ms,
+                    "latency_ms": finished_at_ms - started_at_ms,
+                }
+                await asyncio.to_thread(
+                    self._record_completion_sync,
+                    run=run_payload,
+                    labels=[],
+                    failures=failures,
+                    now_ms=finished_at_ms,
+                )
+                await _release_reservation(reservation)
+                raise
+            except Exception as exc:
+                if _is_agent_no_start_backpressure(exc):
+                    reason = _agent_backpressure_reason(exc)
+                    released = await asyncio.to_thread(
+                        self._release_claimed_rows_sync,
+                        rows=rows,
+                        now_ms=resolved_now_ms,
+                        retry_ms=self._provider_failure_retry_ms(),
+                        error=reason,
+                    )
+                    await _release_reservation(reservation)
+                    return WorkerResult(
+                        skipped=len(rows),
+                        notes={
+                            "claimed": len(rows),
+                            "queue_depth": await asyncio.to_thread(self._queue_depth_sync, now_ms=resolved_now_ms),
+                            "source_rows_scanned": 0,
+                            "targets_loaded": len(rows),
+                            "rows_written": released,
+                            "agent_backpressure": reason,
+                            f"agent_backpressure_{reason}": 1,
+                        },
+                    )
+                finished_at_ms = _now_ms()
+                failures = [
+                    _provider_failure_for_row(
+                        row,
+                        error=f"{type(exc).__name__}: {exc}",
+                        default_next_retry_at_ms=finished_at_ms + 60_000,
+                        max_attempts=max_attempts,
+                    )
+                    for row in rows
+                ]
+                run_payload = {
+                    "run_id": run_id,
+                    "stage": "mention_semantics",
+                    "provider": self.provider.provider,
+                    "model": self.provider.model,
+                    "schema_version": NARRATIVE_SCHEMA_VERSION,
+                    "prompt_version": MENTION_SEMANTICS_PROMPT_VERSION,
+                    "artifact_version_hash": self.provider.artifact_version_hash,
+                    "input_hash": input_hash,
+                    "output_hash": None,
+                    "evidence_event_ids_json": [row.get("event_id") for row in rows if row.get("event_id")],
+                    "request_json": request.model_dump(mode="json"),
+                    "response_json": None,
+                    "usage_json": request_audit.get("usage") or {},
+                    "trace_metadata_json": {
+                        **request_audit,
+                        "error_type": type(exc).__name__,
+                    },
+                    "status": "failed",
+                    "error": str(exc),
+                    "execution_started": True,
+                    "started_at_ms": started_at_ms,
+                    "finished_at_ms": finished_at_ms,
+                    "latency_ms": finished_at_ms - started_at_ms,
+                }
+                complete = await asyncio.to_thread(
+                    self._record_completion_sync,
+                    run=run_payload,
+                    labels=[],
+                    failures=failures,
+                    now_ms=finished_at_ms,
+                )
+                semantic_unavailable = int(complete.get("semantic_unavailable") or 0)
+                failed = int(complete.get("failed") or 0)
+                digest_targets_enqueued = int(complete.get("digest_targets_enqueued") or 0)
+                await _release_reservation(reservation)
+                return WorkerResult(
+                    processed=semantic_unavailable,
+                    failed=failed,
                     notes={
                         "claimed": len(rows),
                         "queue_depth": await asyncio.to_thread(self._queue_depth_sync, now_ms=resolved_now_ms),
                         "source_rows_scanned": 0,
                         "targets_loaded": len(rows),
-                        "rows_written": released,
-                        "agent_backpressure": reason,
-                        f"agent_backpressure_{reason}": 1,
+                        "rows_written": semantic_unavailable + failed + digest_targets_enqueued,
+                        "labeled": 0,
+                        "semantic_unavailable": semantic_unavailable,
+                        "failed": failed,
+                        "digest_targets_enqueued": digest_targets_enqueued,
+                        "provider_error": type(exc).__name__,
+                        "model": self.provider.model or NARRATIVE_MODEL_VERSION_UNKNOWN,
+                    },
+                )
+            try:
+                result = self.service.validate_batch_result(rows, result)
+            except Exception as exc:
+                finished_at_ms = _now_ms()
+                failures = [
+                    _provider_failure_for_row(
+                        row,
+                        error=f"{type(exc).__name__}: {exc}",
+                        default_next_retry_at_ms=finished_at_ms + 60_000,
+                        max_attempts=max_attempts,
+                    )
+                    for row in rows
+                ]
+                run_payload = {
+                    "run_id": run_id,
+                    "stage": "mention_semantics",
+                    "provider": self.provider.provider,
+                    "model": self.provider.model,
+                    "schema_version": NARRATIVE_SCHEMA_VERSION,
+                    "prompt_version": MENTION_SEMANTICS_PROMPT_VERSION,
+                    "artifact_version_hash": self.provider.artifact_version_hash,
+                    "input_hash": input_hash,
+                    "output_hash": None,
+                    "evidence_event_ids_json": [row.get("event_id") for row in rows if row.get("event_id")],
+                    "request_json": request.model_dump(mode="json"),
+                    "response_json": _jsonish(result),
+                    "usage_json": request_audit.get("usage") or {},
+                    "trace_metadata_json": {
+                        **request_audit,
+                        "error_type": type(exc).__name__,
+                    },
+                    "status": "failed",
+                    "error": str(exc),
+                    "execution_started": True,
+                    "started_at_ms": started_at_ms,
+                    "finished_at_ms": finished_at_ms,
+                    "latency_ms": finished_at_ms - started_at_ms,
+                }
+                complete = await asyncio.to_thread(
+                    self._record_completion_sync,
+                    run=run_payload,
+                    labels=[],
+                    failures=failures,
+                    now_ms=finished_at_ms,
+                )
+                semantic_unavailable = int(complete.get("semantic_unavailable") or 0)
+                failed = int(complete.get("failed") or 0)
+                digest_targets_enqueued = int(complete.get("digest_targets_enqueued") or 0)
+                await _release_reservation(reservation)
+                return WorkerResult(
+                    processed=semantic_unavailable,
+                    failed=failed,
+                    notes={
+                        "claimed": len(rows),
+                        "queue_depth": await asyncio.to_thread(self._queue_depth_sync, now_ms=resolved_now_ms),
+                        "source_rows_scanned": 0,
+                        "targets_loaded": len(rows),
+                        "rows_written": semantic_unavailable + failed + digest_targets_enqueued,
+                        "labeled": 0,
+                        "semantic_unavailable": semantic_unavailable,
+                        "failed": failed,
+                        "digest_targets_enqueued": digest_targets_enqueued,
+                        "provider_error": type(exc).__name__,
+                        "model": self.provider.model or NARRATIVE_MODEL_VERSION_UNKNOWN,
                     },
                 )
             finished_at_ms = _now_ms()
-            failures = [
-                _provider_failure_for_row(
-                    row,
-                    error=f"{type(exc).__name__}: {exc}",
-                    default_next_retry_at_ms=finished_at_ms + 60_000,
-                    max_attempts=max_attempts,
+            labels = _attach_semantic_identity(
+                [label.model_dump(mode="json") for label in result.labels],
+                rows=rows,
+            )
+            labeled_keys = {
+                (
+                    str(label.get("event_id")),
+                    str(label.get("target_type")),
+                    str(label.get("target_id")),
                 )
-                for row in rows
-            ]
+                for label in labels
+            }
+            failures = _attach_semantic_identity(
+                self.service.normalize_failures(
+                    rows,
+                    list(result.failures),
+                    labeled_keys=labeled_keys,
+                    default_next_retry_at_ms=finished_at_ms + 60_000,
+                ),
+                rows=rows,
+            )
+            failures = _terminalize_failures_after_max_attempts(
+                rows=rows,
+                failures=failures,
+                max_attempts=max_attempts,
+            )
+            audit = dict(result.agent_run_audit or {})
             run_payload = {
                 "run_id": run_id,
                 "stage": "mention_semantics",
                 "provider": self.provider.provider,
                 "model": self.provider.model,
-                "schema_version": NARRATIVE_SCHEMA_VERSION,
-                "prompt_version": MENTION_SEMANTICS_PROMPT_VERSION,
+                "schema_version": result.schema_version,
+                "prompt_version": result.prompt_version,
                 "artifact_version_hash": self.provider.artifact_version_hash,
                 "input_hash": input_hash,
-                "output_hash": None,
+                "output_hash": _hash_json(result.model_dump(mode="json")),
                 "evidence_event_ids_json": [row.get("event_id") for row in rows if row.get("event_id")],
                 "request_json": request.model_dump(mode="json"),
-                "response_json": None,
-                "usage_json": request_audit.get("usage") or {},
-                "trace_metadata_json": {
-                    **request_audit,
-                    "error_type": type(exc).__name__,
-                },
-                "status": "failed",
-                "error": str(exc),
+                "response_json": result.raw_response,
+                "usage_json": audit.get("usage") or {},
+                "trace_metadata_json": audit,
+                "status": "done",
                 "execution_started": True,
                 "started_at_ms": started_at_ms,
                 "finished_at_ms": finished_at_ms,
@@ -240,169 +384,33 @@ class MentionSemanticsWorker(WorkerBase):
             complete = await asyncio.to_thread(
                 self._record_completion_sync,
                 run=run_payload,
-                labels=[],
+                labels=labels,
                 failures=failures,
                 now_ms=finished_at_ms,
             )
-            semantic_unavailable = int(complete.get("semantic_unavailable") or 0)
-            failed = int(complete.get("failed") or 0)
+            changed = int(complete.get("labeled") or 0) + int(complete.get("semantic_unavailable") or 0)
             digest_targets_enqueued = int(complete.get("digest_targets_enqueued") or 0)
+            if changed and self.wake_bus is not None and hasattr(self.wake_bus, "notify_narrative_semantics_updated"):
+                self.wake_bus.notify_narrative_semantics_updated(window="*", scope="*", target_count=changed)
             await _release_reservation(reservation)
             return WorkerResult(
-                processed=semantic_unavailable,
-                failed=failed,
+                processed=changed,
+                failed=int(complete.get("failed") or 0),
                 notes={
                     "claimed": len(rows),
                     "queue_depth": await asyncio.to_thread(self._queue_depth_sync, now_ms=resolved_now_ms),
                     "source_rows_scanned": 0,
                     "targets_loaded": len(rows),
-                    "rows_written": semantic_unavailable + failed + digest_targets_enqueued,
-                    "labeled": 0,
-                    "semantic_unavailable": semantic_unavailable,
-                    "failed": failed,
+                    "rows_written": changed + int(complete.get("failed") or 0) + digest_targets_enqueued,
+                    "labeled": int(complete.get("labeled") or 0),
+                    "semantic_unavailable": int(complete.get("semantic_unavailable") or 0),
+                    "failed": int(complete.get("failed") or 0),
                     "digest_targets_enqueued": digest_targets_enqueued,
-                    "provider_error": type(exc).__name__,
                     "model": self.provider.model or NARRATIVE_MODEL_VERSION_UNKNOWN,
                 },
             )
-        try:
-            result = self.service.validate_batch_result(rows, result)
-        except Exception as exc:
-            finished_at_ms = _now_ms()
-            failures = [
-                _provider_failure_for_row(
-                    row,
-                    error=f"{type(exc).__name__}: {exc}",
-                    default_next_retry_at_ms=finished_at_ms + 60_000,
-                    max_attempts=max_attempts,
-                )
-                for row in rows
-            ]
-            run_payload = {
-                "run_id": run_id,
-                "stage": "mention_semantics",
-                "provider": self.provider.provider,
-                "model": self.provider.model,
-                "schema_version": NARRATIVE_SCHEMA_VERSION,
-                "prompt_version": MENTION_SEMANTICS_PROMPT_VERSION,
-                "artifact_version_hash": self.provider.artifact_version_hash,
-                "input_hash": input_hash,
-                "output_hash": None,
-                "evidence_event_ids_json": [row.get("event_id") for row in rows if row.get("event_id")],
-                "request_json": request.model_dump(mode="json"),
-                "response_json": _jsonish(result),
-                "usage_json": request_audit.get("usage") or {},
-                "trace_metadata_json": {
-                    **request_audit,
-                    "error_type": type(exc).__name__,
-                },
-                "status": "failed",
-                "error": str(exc),
-                "execution_started": True,
-                "started_at_ms": started_at_ms,
-                "finished_at_ms": finished_at_ms,
-                "latency_ms": finished_at_ms - started_at_ms,
-            }
-            complete = await asyncio.to_thread(
-                self._record_completion_sync,
-                run=run_payload,
-                labels=[],
-                failures=failures,
-                now_ms=finished_at_ms,
-            )
-            semantic_unavailable = int(complete.get("semantic_unavailable") or 0)
-            failed = int(complete.get("failed") or 0)
-            digest_targets_enqueued = int(complete.get("digest_targets_enqueued") or 0)
+        finally:
             await _release_reservation(reservation)
-            return WorkerResult(
-                processed=semantic_unavailable,
-                failed=failed,
-                notes={
-                    "claimed": len(rows),
-                    "queue_depth": await asyncio.to_thread(self._queue_depth_sync, now_ms=resolved_now_ms),
-                    "source_rows_scanned": 0,
-                    "targets_loaded": len(rows),
-                    "rows_written": semantic_unavailable + failed + digest_targets_enqueued,
-                    "labeled": 0,
-                    "semantic_unavailable": semantic_unavailable,
-                    "failed": failed,
-                    "digest_targets_enqueued": digest_targets_enqueued,
-                    "provider_error": type(exc).__name__,
-                    "model": self.provider.model or NARRATIVE_MODEL_VERSION_UNKNOWN,
-                },
-            )
-        finished_at_ms = _now_ms()
-        labels = _attach_semantic_identity(
-            [label.model_dump(mode="json") for label in result.labels],
-            rows=rows,
-        )
-        labeled_keys = {
-            (str(label.get("event_id")), str(label.get("target_type")), str(label.get("target_id"))) for label in labels
-        }
-        failures = _attach_semantic_identity(
-            self.service.normalize_failures(
-                rows,
-                list(result.failures),
-                labeled_keys=labeled_keys,
-                default_next_retry_at_ms=finished_at_ms + 60_000,
-            ),
-            rows=rows,
-        )
-        failures = _terminalize_failures_after_max_attempts(
-            rows=rows,
-            failures=failures,
-            max_attempts=max_attempts,
-        )
-        audit = dict(result.agent_run_audit or {})
-        run_payload = {
-            "run_id": run_id,
-            "stage": "mention_semantics",
-            "provider": self.provider.provider,
-            "model": self.provider.model,
-            "schema_version": result.schema_version,
-            "prompt_version": result.prompt_version,
-            "artifact_version_hash": self.provider.artifact_version_hash,
-            "input_hash": input_hash,
-            "output_hash": _hash_json(result.model_dump(mode="json")),
-            "evidence_event_ids_json": [row.get("event_id") for row in rows if row.get("event_id")],
-            "request_json": request.model_dump(mode="json"),
-            "response_json": result.raw_response,
-            "usage_json": audit.get("usage") or {},
-            "trace_metadata_json": audit,
-            "status": "done",
-            "execution_started": True,
-            "started_at_ms": started_at_ms,
-            "finished_at_ms": finished_at_ms,
-            "latency_ms": finished_at_ms - started_at_ms,
-        }
-        complete = await asyncio.to_thread(
-            self._record_completion_sync,
-            run=run_payload,
-            labels=labels,
-            failures=failures,
-            now_ms=finished_at_ms,
-        )
-        changed = int(complete.get("labeled") or 0) + int(complete.get("semantic_unavailable") or 0)
-        digest_targets_enqueued = int(complete.get("digest_targets_enqueued") or 0)
-        if changed and self.wake_bus is not None and hasattr(self.wake_bus, "notify_narrative_semantics_updated"):
-            self.wake_bus.notify_narrative_semantics_updated(window="*", scope="*", target_count=changed)
-        await _release_reservation(reservation)
-        return WorkerResult(
-            processed=changed,
-            failed=int(complete.get("failed") or 0),
-            notes={
-                "claimed": len(rows),
-                "queue_depth": await asyncio.to_thread(self._queue_depth_sync, now_ms=resolved_now_ms),
-                "source_rows_scanned": 0,
-                "targets_loaded": len(rows),
-                "rows_written": changed + int(complete.get("failed") or 0) + digest_targets_enqueued,
-                "labeled": int(complete.get("labeled") or 0),
-                "semantic_unavailable": int(complete.get("semantic_unavailable") or 0),
-                "failed": int(complete.get("failed") or 0),
-                "digest_targets_enqueued": digest_targets_enqueued,
-                "model": self.provider.model or NARRATIVE_MODEL_VERSION_UNKNOWN,
-            },
-        )
 
     def _claim_due_rows_sync(self, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
         max_per_target = max(1, int(getattr(self.settings, "max_semantics_claimed_per_target_per_cycle", 3) or 3))
@@ -628,7 +636,5 @@ def _hash_json(payload: Any) -> str:
 
 
 def _provider_request_audit(provider: Any, method_name: str, **kwargs: Any) -> dict[str, Any]:
-    method = getattr(provider, method_name, None)
-    if method is None:
-        method = getattr(getattr(provider, "_client", None), method_name)
+    method = getattr(provider, method_name)
     return dict(method(**kwargs))

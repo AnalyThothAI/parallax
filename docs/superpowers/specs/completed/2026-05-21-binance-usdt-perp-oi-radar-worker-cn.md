@@ -1,5 +1,10 @@
 # Binance USDT Perp Universe And OI Radar Worker Spec
 
+> 2026-05-27 hard-cut update: the run-table DDL and `run_id` FK design below
+> are retired. The OI radar board now uses current-only
+> `cex_oi_radar_rows` plus `cex_oi_radar_publication_state`; do not implement
+> `cex_oi_radar_runs`.
+
 日期：2026-05-21
 状态：superseded by `docs/superpowers/specs/active/2026-05-21-cex-binance-hard-cut-cn.md`
 范围：把 Binance USDT 永续合约 universe 低频写入现有 CEX registry 表，并新增一个可定期全量扫描 Binance USDT 永续的 OI/radar board worker。

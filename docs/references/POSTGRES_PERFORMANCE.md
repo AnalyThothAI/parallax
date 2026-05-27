@@ -31,7 +31,7 @@ cold paths are retained by partition lifecycle, not by worker-loop deletes.
 
 | Retention class | Tables | Lifecycle rule |
 | --- | --- | --- |
-| Hot online serving path | `token_radar_current_rows`, `token_radar_publication_state`, `macro_observation_series_rows` current projection | No wide JSON/text scans. Online Token Radar reads only current rows plus publication state; `fresh` requires `ready` and matching `current_generation_id`. Current rows carry `rank_score`, `quality_status`, `degraded_reasons_json`, and `factor_snapshot_json`, not legacy top-level current-row JSON blocks. Macro series rows are compact current rows; unchanged source signatures update only publication state and do not rewrite the series table. |
+| Hot online serving path | `token_radar_current_rows`, `token_radar_publication_state`, `macro_observation_series_rows`, `macro_view_snapshots`, `cex_oi_radar_rows`, `cex_oi_radar_publication_state` | No wide JSON/text scans. Online Token Radar reads only current rows plus publication state; `fresh` requires `ready` and matching `current_generation_id`. Current rows carry `rank_score`, `quality_status`, `degraded_reasons_json`, and `factor_snapshot_json`, not legacy top-level current-row JSON blocks. Macro and CEX serving rows are compact current rows; unchanged source signatures update publication state at most and write zero serving rows. |
 | Projection-private/detail path | `token_radar_target_features`, `token_radar_rank_source_events` | Used by the Token Radar projection and bounded evidence/detail lookups only. `token_radar_target_features` is not an API, CLI, Pulse, notification, or repair read path. `token_radar_rank_source_events` is lazy evidence/detail, not online leaderboard service. |
 | Selected-row hydrate | `events`, `enriched_events`, `equity_event_evidence_artifacts` | Access only after ranking, document selection, or explicit evidence selection has chosen stable row ids or payload hashes. Do not join these wide payload tables into rank/discovery scans. |
 | Cold audit/history | `raw_frames` and future explicit cold projections | Partition lifecycle only. Runtime workers must not issue loop deletes against audit, history, or provider raw-frame tables. |
@@ -42,9 +42,13 @@ writer and correct active-generation readers, but every projection run produced
 a new physical generation. The active pointer made the API look current while
 `macro_observation_series_rows` kept growing with worker runs, increasing index
 size, planner/autovacuum work, and request latency. For current read models,
-"latest generation" is not a lifecycle policy. Use compact current rows, bounded
-retention, or explicit cold history; prove the bound with relation-size and row
-cardinality checks, not only by checking the API response.
+"latest generation" is not a lifecycle policy. Current read model primary keys
+must be stable product/window keys, not `generation_id`, `run_id`,
+`attempt_id`, timestamp-derived ids, or UUIDs. Use compact current rows,
+bounded retention, or explicit cold history; prove the bound with relation-size
+and row-cardinality checks, not only by checking the API response. Unchanged
+current projections must use `payload_hash` or `IS DISTINCT FROM` gates and be
+observable as zero serving-row writes.
 
 ## Source Material
 
@@ -231,6 +235,15 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_projection_runs_running_stale
 A worker loop with no due work must not scan broad facts or read models to prove
 nothing happened. Normal runtime work must be proportional to claimed dirty
 targets or leased jobs.
+
+LLM-backed workers must reserve lane capacity, circuit, and RPM before durable
+queue claim. Batch workers request explicit `rate_units` and then cap DB claims
+to the actual `reservation.rate_units` returned by the gateway; one reservation
+cannot cover multiple unreserved model calls. Capacity, circuit, or RPM
+no-start is backpressure: it leaves the business row unclaimed, writes no
+business run ledger, and burns no provider attempt. Provider-started
+validation, publication, schema, timeout, or cancellation failures write the
+domain run ledger with `execution_started=true`.
 
 Broad discovery belongs in dry-run-first ops commands that enqueue bounded work:
 

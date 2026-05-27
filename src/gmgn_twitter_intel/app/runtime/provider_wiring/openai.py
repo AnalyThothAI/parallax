@@ -43,8 +43,8 @@ class OpenAINarrativeIntelProvider:
     def artifact_version_hash(self) -> str:
         return self._client.artifact_version_hash
 
-    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
-        return self._client.try_reserve_execution(lane)
+    def try_reserve_execution(self, lane: str, *, rate_units: int = 1) -> AgentCapacityReservation:
+        return self._client.try_reserve_execution(lane, rate_units=rate_units)
 
     async def label_mentions(self, **kwargs: Any) -> Any:
         return await self._client.label_mentions(**kwargs)
@@ -89,9 +89,15 @@ class OpenAIPulseDecisionProvider:
         lane: str,
         *,
         child_lanes: tuple[str, ...] = (),
+        rate_units: int = 1,
         scope: str = "execution",
     ) -> AgentCapacityReservation:
-        return self._client.try_reserve_execution(lane, child_lanes=child_lanes, scope=scope)
+        return self._client.try_reserve_execution(
+            lane,
+            child_lanes=child_lanes,
+            rate_units=rate_units,
+            scope=scope,
+        )
 
     def request_audit(
         self,
