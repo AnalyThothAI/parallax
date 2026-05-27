@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -25,10 +25,22 @@ def build_macro_module_view(
     observations: Sequence[Mapping[str, Any]],
     latest_import_run: Mapping[str, Any] | None,
     cex_board: Mapping[str, Any] | None = None,
+    latest_sync_run: Mapping[str, Any] | None = None,
+    facts_max_observed_at: object = None,
+    projection_lag_days: int | None = None,
+    projection_behind_facts: bool = False,
 ) -> dict[str, Any]:
     config = get_macro_module_config(module_id)
     if snapshot is None:
-        return _missing_view(config=config, latest_import_run=latest_import_run, cex_board=cex_board)
+        return _missing_view(
+            config=config,
+            latest_import_run=latest_import_run,
+            cex_board=cex_board,
+            latest_sync_run=latest_sync_run,
+            facts_max_observed_at=facts_max_observed_at,
+            projection_lag_days=projection_lag_days,
+            projection_behind_facts=projection_behind_facts,
+        )
 
     feature_map = _mapping(snapshot.get("features_json"))
     concept_keys = _module_concept_keys(config)
@@ -83,6 +95,10 @@ def build_macro_module_view(
             observations=observations,
             latest_import_run=latest_import_run,
             cex_source=cex_source,
+            latest_sync_run=latest_sync_run,
+            facts_max_observed_at=facts_max_observed_at,
+            projection_lag_days=projection_lag_days,
+            projection_behind_facts=projection_behind_facts,
         ),
         related_routes=_related_routes(config.related_routes),
     )
@@ -92,6 +108,10 @@ def _missing_view(
     config: MacroModuleConfig,
     latest_import_run: Mapping[str, Any] | None,
     cex_board: Mapping[str, Any] | None,
+    latest_sync_run: Mapping[str, Any] | None = None,
+    facts_max_observed_at: object = None,
+    projection_lag_days: int | None = None,
+    projection_behind_facts: bool = False,
 ) -> dict[str, Any]:
     cex_source = _cex_source(cex_board) if config.module_id == "assets/crypto-derivatives" else None
     primary_chart = _missing_chart(config.chart_specs[0]) if config.chart_specs else _empty_chart()
@@ -150,6 +170,10 @@ def _missing_view(
             observations=[],
             latest_import_run=latest_import_run,
             cex_source=cex_source,
+            latest_sync_run=latest_sync_run,
+            facts_max_observed_at=facts_max_observed_at,
+            projection_lag_days=projection_lag_days,
+            projection_behind_facts=projection_behind_facts,
         ),
         related_routes=_related_routes(config.related_routes),
     )
@@ -522,6 +546,10 @@ def _provenance(
     observations: Sequence[Mapping[str, Any]],
     latest_import_run: Mapping[str, Any] | None,
     cex_source: Mapping[str, Any] | None,
+    latest_sync_run: Mapping[str, Any] | None,
+    facts_max_observed_at: object,
+    projection_lag_days: int | None,
+    projection_behind_facts: bool,
 ) -> dict[str, Any]:
     rows = _observation_source_rows(observations)
     import_run = _latest_import_run(latest_import_run)
@@ -551,6 +579,12 @@ def _provenance(
     return {
         "projection_version": snapshot.get("projection_version"),
         "source_snapshot_id": snapshot.get("snapshot_id"),
+        "currentness": {
+            "latest_sync_run": _latest_sync_run(latest_sync_run),
+            "facts_max_observed_at": _date_string(facts_max_observed_at),
+            "projection_lag_days": projection_lag_days,
+            "projection_behind_facts": bool(projection_behind_facts),
+        },
         "rows": rows,
     }
 
@@ -1156,6 +1190,27 @@ def _latest_import_run(latest_import_run: Mapping[str, Any] | None) -> dict[str,
         "status": latest_import_run.get("status"),
         "reason_codes": _string_list(reason_codes),
     }
+
+
+def _latest_sync_run(latest_sync_run: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    if latest_sync_run is None:
+        return None
+    return {
+        "status": latest_sync_run.get("status"),
+        "completed_at_ms": latest_sync_run.get("completed_at_ms"),
+        "asof_date": _date_string(latest_sync_run.get("asof_date")),
+        "max_observed_at": _date_string(latest_sync_run.get("max_observed_at")),
+        "imported_observation_count": latest_sync_run.get("imported_observation_count"),
+        "error_code": latest_sync_run.get("error_code"),
+    }
+
+
+def _date_string(value: object) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, date | datetime):
+        return value.date().isoformat() if isinstance(value, datetime) else value.isoformat()
+    return str(value)
 
 
 def _chart_title(chart_id: str) -> str:

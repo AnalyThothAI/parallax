@@ -39,3 +39,15 @@ def test_stocks_radar_api_and_read_model_do_not_reach_quote_provider() -> None:
     assert "quote_provider" not in service_source
     assert "ThreadPoolExecutor" not in service_source
     assert ".quote(" not in service_source
+
+
+def test_macro_api_routes_do_not_reach_macrodata_providers() -> None:
+    route_source = (SRC / "app/surfaces/api/routes_macro.py").read_text()
+
+    forbidden = (
+        "MacrodataBundleRunner",
+        "history_bundle",
+        "providers.macrodata",
+        "runtime.provider_wiring.macrodata",
+    )
+    assert [token for token in forbidden if token in route_source] == []

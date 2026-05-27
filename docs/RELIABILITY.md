@@ -163,12 +163,16 @@ they must not stall worker publish paths or other clients.
 ## Wake hints and catch-up
 
 PostgreSQL `NOTIFY` channels (`market_tick_written`,
-`market_tick_current_updated`, `resolution_updated`, `token_radar_updated`)
+`market_tick_current_updated`, `resolution_updated`, `token_radar_updated`,
+`macro_observations_imported`)
 are wake hints, not delivery guarantees. Market tick writers wake
 `MarketTickCurrentProjectionWorker`; Token Radar wakes from
-`market_tick_current_updated` after the current market row changes. Every
-listener (`TokenRadarProjectionWorker`, `PulseCandidateWorker`, future
-workers) runs on a bounded `interval_seconds` loop from `workers.yaml`
+`market_tick_current_updated` after the current market row changes.
+`macro_sync` wakes `MacroViewProjectionWorker` after committed fact imports,
+but wake failure never changes the committed sync result. Every listener
+(`TokenRadarProjectionWorker`, `MacroViewProjectionWorker`,
+`PulseCandidateWorker`, future workers) runs on a bounded
+`interval_seconds` loop from `workers.yaml`
 even when `NOTIFY` is healthy. The loop must claim durable dirty queues
 or read bounded read models; it must not scan broad fact windows just to
 prove no wake was missed. Token Radar repair uses the explicit
@@ -202,14 +206,21 @@ proportional to queue depth, not to the size of `events`, `token_intents`,
 The same dirty-target rule applies to runtime agent/profile tails:
 `pulse_candidate`, `narrative_admission`, `token_discussion_digest`,
 `token_profile_current`, `token_image_mirror`, `asset_profile_refresh`, and
-`token_capture_tier` must claim their control-plane rows first. `mention_semantics`
-and `handle_summary` are leased-job consumers and must not discover missing
+`token_capture_tier` must claim their control-plane rows first.
+`mention_semantics` and `handle_summary` are leased-job consumers and must not discover missing
 jobs inside the runtime loop. `LivePriceGateway` reads the live target control
 set from `token_capture_tier`; it must not scan Token Radar current rows.
 Historical discovery is domain-owned. Token Radar uses
 `ops enqueue-token-radar-dirty-targets` and projection catch-up from material
 facts; other workers must expose similarly explicit domain repair paths instead
 of a generic runtime-worker repair command.
+
+`macro_sync` follows the same claim-first rule: it claims a bounded
+`macro_sync_windows` row before running macrodata, records retry or terminal
+source-health outcomes in `macro_sync_runs`, and keeps FRED secrets out of
+argv, logs, DB diagnostics, and API/CLI payloads. The macrodata child process
+must have its own subprocess timeout (`macrodata_timeout_seconds`) because
+canceling the worker thread does not kill a running child process.
 
 ## PostgreSQL Observability
 

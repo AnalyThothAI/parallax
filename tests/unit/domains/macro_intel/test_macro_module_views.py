@@ -145,6 +145,46 @@ def test_build_macro_module_view_projects_v3_display_contract() -> None:
     assert "section_boards" not in view
 
 
+def test_module_view_provenance_exposes_sync_fact_projection_currentness_without_run_ids() -> None:
+    view = build_macro_module_view(
+        "rates/yield-curve",
+        snapshot=_snapshot(),
+        observations=[
+            _obs("rates:dgs10", "2026-05-20", 4.7, unit="percent", source_name="fred"),
+        ],
+        latest_import_run={"run_id": "import-run-1", "status": "ok", "reason_codes": []},
+        latest_sync_run={
+            "sync_run_id": "sync-run-1",
+            "status": "ok",
+            "asof_date": "2026-05-22",
+            "completed_at_ms": NOW_MS,
+            "max_observed_at": "2026-05-22",
+            "imported_observation_count": 12,
+            "error_code": None,
+        },
+        facts_max_observed_at="2026-05-22",
+        projection_lag_days=2,
+        projection_behind_facts=True,
+    )
+
+    assert view["provenance"]["currentness"] == {
+        "latest_sync_run": {
+            "status": "ok",
+            "completed_at_ms": NOW_MS,
+            "asof_date": "2026-05-22",
+            "max_observed_at": "2026-05-22",
+            "imported_observation_count": 12,
+            "error_code": None,
+        },
+        "facts_max_observed_at": "2026-05-22",
+        "projection_lag_days": 2,
+        "projection_behind_facts": True,
+    }
+    provenance_text = str(view["provenance"])
+    assert "sync-run-1" not in provenance_text
+    assert "import-run-1" not in provenance_text
+
+
 def test_build_macro_module_view_returns_missing_v3_status_when_snapshot_is_absent() -> None:
     view = build_macro_module_view(
         "fed/statements",

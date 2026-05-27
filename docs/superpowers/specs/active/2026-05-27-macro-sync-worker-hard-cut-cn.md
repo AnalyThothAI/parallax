@@ -45,10 +45,10 @@ snapshot or projected observation rows from repositories; they do not fetch
 provider data at request time
 (`src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py:41`).
 
-The CLI has one-shot macro import, sync, project, and status commands
+The CLI has one-shot macro import, sync, and status commands
 (`src/gmgn_twitter_intel/app/surfaces/cli/parser.py:55`). The sync runner
-currently launches `uv run macrodata bundle history ...`, injects the configured
-FRED key into child env, and can use a configured `cli_project_dir`
+currently launches `uv run macrodata bundle history ...` and injects the configured
+FRED key into child env
 (`src/gmgn_twitter_intel/integrations/macrodata/runner.py:25`). Runtime provider
 wiring for `macrodata` currently exposes only a stock quote provider, not a
 macro fact sync provider
@@ -64,9 +64,9 @@ keeps recomputing snapshots, but the newest `macro_observations` fact is still
 host probe of `macrodata bundle history macro-core --start 2026-05-24 --end
 2026-05-27` returned fresh observations through `2026-05-27`, proving the
 current gap is not simply upstream absence. A container probe also showed that
-the current sync runner is not container-native because the configured
-`cli_project_dir` points at a host path that is absent inside the app container,
-the FRED env is unset there, and `uv` is not available on the container `PATH`.
+the current sync runner is not container-native because it still shells through
+`uv`, the FRED env is unset there, and `uv` is not available on the container
+`PATH`.
 
 ## Problem
 

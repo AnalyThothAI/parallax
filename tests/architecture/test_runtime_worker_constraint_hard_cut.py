@@ -136,6 +136,7 @@ WORKER_CLASSIFICATION: dict[str, str] = {
     "equity_event_brief": "dirty_target_consumer",
     "equity_event_page_projection": "dirty_target_consumer",
     "cex_oi_radar_board": "bounded_provider_scheduler",
+    "macro_sync": "bounded_provider_scheduler",
     "macro_view_projection": "bounded_provider_scheduler",
     "pulse_candidate": "dirty_target_consumer",
     "enrichment": "leased_job_consumer",
@@ -290,6 +291,22 @@ def test_macro_request_path_has_no_observation_dedupe_window() -> None:
     ):
         assert forbidden not in route_text
         assert forbidden not in request_method_text
+
+
+@pytest.mark.architecture
+def test_macro_cli_has_no_direct_projection_writer() -> None:
+    cli_text = (SRC / "app/surfaces/cli/commands/macro.py").read_text(encoding="utf-8")
+    parser_text = (SRC / "app/surfaces/cli/parser.py").read_text(encoding="utf-8")
+
+    for forbidden in (
+        "project-once",
+        "build_macro_view_snapshot",
+        "_project_once",
+        "insert_snapshot",
+    ):
+        assert forbidden not in cli_text
+        assert forbidden not in parser_text
+    assert 'macro_sync.add_argument("--project"' not in parser_text
 
 
 @pytest.mark.architecture

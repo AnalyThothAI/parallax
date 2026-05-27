@@ -106,6 +106,8 @@ services:
         condition: service_completed_successfully
     ports:
       - "8765:8765"
+    environment:
+      FINANCE_FRED_API_KEY: ${FINANCE_FRED_API_KEY:-}
     volumes:
       - ${HOME}/.gmgn-twitter-intel:/root/.gmgn-twitter-intel
     healthcheck:

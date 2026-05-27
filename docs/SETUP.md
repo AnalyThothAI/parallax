@@ -66,20 +66,32 @@ Macro live-data debugging starts the same way: first run
 booleans, and diagnostic command status; do not paste WebSocket tokens, API
 keys, provider passwords, or full config payloads into docs or chat.
 
-Chart-ready macro pages require history, not just a single as-of bundle:
+Macro freshness is normally owned by the `macro_sync` worker. Docker/runtime
+uses the packaged `macrodata` executable and must not depend on `uv run
+macrodata` or a host-local macrodata checkout. Provide `FINANCE_FRED_API_KEY`
+through the environment or deployment secret manager when FRED coverage is
+needed; config stores only the env var name. Tune
+`workers.macro_sync.macrodata_timeout_seconds` below the worker hard timeout so
+a stuck macrodata child process is killed and recorded as source-health
+failure.
+
+For an operator-triggered repair of one bounded window, use the same sync
+service as the worker:
 
 ```bash
-uv run macrodata bundle history macro-core --start YYYY-MM-DD --end YYYY-MM-DD \
-  | uv run gmgn-twitter-intel macro import-bundle --stdin
-uv run gmgn-twitter-intel macro project-once
+uv run gmgn-twitter-intel macro sync --bundle macro-core --start YYYY-MM-DD --end YYYY-MM-DD
 uv run gmgn-twitter-intel macro status
 ```
 
 A good macro status has `history_ready=true`, a history coverage ratio above
 the configured threshold, no required concept below minimum history for pages
-claiming `ready`, and a latest snapshot using `macro_regime_v4`. FRED public
-CSV timeouts or a missing optional FRED API key are source-health gaps; they
-should appear as partial coverage/data gaps and are not frontend defects.
+claiming `ready`, a recent `latest_sync_run`, `facts_max_observed_at` near the
+expected upstream date, and `projection_behind_facts=false` after projection
+catches up. If facts exist but no macro snapshot exists yet,
+`projection_behind_facts=true`; that means projection has not caught up, not
+that source facts are missing. FRED public CSV timeouts or a missing optional FRED API key are
+source-health gaps; they should appear as partial coverage/data gaps and are
+not frontend defects.
 
 The full CLI surface is documented by `uv run gmgn-twitter-intel --help`.
 Treat that output as the source of truth — do not enumerate commands

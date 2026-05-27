@@ -81,16 +81,17 @@ collector
   -> token_radar_projection
   -> narrative_admission
   -> mention_semantics / token_discussion_digest
+  -> macro_sync / macro_view_projection
   -> pulse_candidate / notifications / API / WebSocket / CLI
 ```
 
 `IngestService` is not a long-running worker, but it is listed in this
 document because every downstream worker depends on the facts it writes.
-The macro bundle importer is also not a long-running worker: the
-`gmgn-twitter-intel macro import-bundle` CLI writes `macro_observations`
-facts plus `macro_import_runs` audit rows from JSON produced by the packaged
-`macrodata` executable, and the projection worker later re-reads those
-persisted facts.
+Macro Intel has a normal fact-ingest worker. `macro_sync` claims bounded
+sync windows, runs the packaged `macrodata` executable outside DB
+transactions, writes `macro_observations`, `macro_import_runs`, and
+sync control/audit rows, then wakes projection as a hint. The
+`macro import-bundle` CLI is offline replay/seed only.
 
 ## Worker Inventory
 
@@ -103,7 +104,7 @@ news_fetch, news_item_process, news_story_projection,
 news_item_brief, news_page_projection, news_source_quality_projection,
 equity_event_source_reconcile, equity_event_fetch, equity_event_evidence_hydration, equity_event_process,
 equity_event_story_projection, equity_event_brief, equity_event_page_projection,
-cex_oi_radar_board, macro_view_projection,
+cex_oi_radar_board, macro_sync, macro_view_projection,
 pulse_candidate, enrichment, handle_summary, notification_rule,
 notification_delivery
 -->
@@ -139,7 +140,8 @@ notification_delivery
 | `equity_event_brief` (`EquityEventBriefWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_brief_worker.py` | `equity_company_events`, `equity_event_story_groups`, `equity_event_story_members`, official `equity_event_documents`, `equity_event_source_spans`, accepted/attention `equity_event_fact_candidates`, current brief state | `equity_event_agent_runs`, `equity_event_agent_briefs`, event brief lifecycle status | `equity_event_story_updated` | `equity_event_brief_updated` | `interval_seconds` |
 | `equity_event_page_projection` (`EquityEventPageProjectionWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_page_projection_worker.py` | due `equity_event_projection_dirty_targets(projection_name in page/timeline/alert/calendar)`; target-scoped `equity_company_events`, `equity_expected_events`, `equity_event_story_groups`, facts, documents, current brief state | `equity_event_page_rows`, `equity_event_calendar_rows`, `equity_event_alert_candidates`, `equity_company_timeline_rows` | `equity_event_document_written`, `equity_event_processed`, `equity_event_story_updated`, `equity_event_brief_updated` | `equity_event_page_updated` | `interval_seconds` |
 | `cex_oi_radar_board` (`CexOiRadarBoardWorker`) | `cex_market_intel` | `domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py` | Binance-backed `price_feeds`, Binance USD-M ticker/premium/OI history, bounded CoinGlass enrichment when available | `cex_oi_radar_runs`, `cex_oi_radar_rows`, `cex_detail_snapshots` | poll | none | `interval_seconds` |
-| `macro_view_projection` (`MacroViewProjectionWorker`) | `macro_intel` | `domains/macro_intel/runtime/macro_view_projection_worker.py` | `macro_observations` history | `macro_view_snapshots` | poll | none | `interval_seconds` |
+| `macro_sync` (`MacroSyncWorker`) | `macro_intel` | `domains/macro_intel/runtime/macro_sync_worker.py` | due `macro_sync_windows`; packaged `macrodata` history bundle after claim | `macro_observations`, `macro_import_runs`, `macro_sync_windows`, `macro_sync_runs` | poll | `macro_observations_imported` | claims one bounded window; idle cycles do no provider IO and no broad fact scan |
+| `macro_view_projection` (`MacroViewProjectionWorker`) | `macro_intel` | `domains/macro_intel/runtime/macro_view_projection_worker.py` | `macro_observations` history; `macro_observation_series_rows` active generation | `macro_observation_series_rows`, `macro_observation_series_generations`, `macro_observation_series_active_generation`, `macro_view_snapshots` | `macro_observations_imported` | none | `interval_seconds` |
 | `pulse_candidate` (`PulseCandidateWorker`) | `pulse_lab` | `domains/pulse_lab/runtime/pulse_candidate_worker.py` | due `pulse_trigger_dirty_targets`; exact Token Radar current row and evidence context for Pulse `1h`/`4h` horizons | `pulse_agent_jobs`, `pulse_candidate_edge_state`, `pulse_candidate_run_budget`, `pulse_target_run_budget`, `pulse_agent_runs`, `pulse_agent_run_steps`, `pulse_agent_runtime_versions`, `pulse_agent_eval_cases`, `pulse_agent_eval_results`, `pulse_candidates`, `pulse_candidates.decision_*`, `pulse_candidates.decision_json`, `pulse_playbook_snapshots` | `token_radar_updated` | none | `interval_seconds` |
 | `enrichment` (`EnrichmentWorker`) | `social_enrichment` | `domains/social_enrichment/runtime/enrichment_worker.py` | watched events queue, OpenAI Agents enrichment | enrichment label rows, `model_run` audit, `social_event_extractions.normalized_handle`, `watchlist_handle_signal_events`, `watchlist_handle_signal_stats`, outbound watchlist summary enqueue hook | poll | none | `interval_seconds` |
 | `handle_summary` (`HandleSummaryWorker`) | `watchlist_intel` | `domains/watchlist_intel/runtime/handle_summary_worker.py` | due `watchlist_handle_summary_jobs`, recent signal extractions for claimed summary input | `watchlist_handle_summaries`, `watchlist_handle_summary_runs`, job status | poll | none | `interval_seconds` |

@@ -8,24 +8,20 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, cast
 
-from gmgn_twitter_intel.app.surfaces.cli.dependencies import repositories
+from gmgn_twitter_intel.app.runtime.wake_bus import WakeBus
+from gmgn_twitter_intel.app.surfaces.cli.dependencies import postgres_connection, repositories
 from gmgn_twitter_intel.domains.macro_intel._constants import (
     MACRO_CONCEPT_METADATA,
-    MACRO_CORE_CONCEPTS,
     MACRO_HISTORY_REQUIRED_CONCEPTS,
     MACRO_HISTORY_REQUIRED_POINTS_BY_CONCEPT,
     MACRO_REQUIRED_STAT_POINTS,
-    MACRO_VIEW_HISTORY_LIMIT_PER_SERIES,
     MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
     MACRO_VIEW_PROJECTION_VERSION,
 )
-from gmgn_twitter_intel.domains.macro_intel.services.macro_regime_engine import build_macro_view_snapshot
+from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_service import MacroSyncService
+from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_types import MacroSyncRunSummary
 from gmgn_twitter_intel.domains.macro_intel.services.macrodata_bundle_importer import import_macrodata_bundle
-from gmgn_twitter_intel.integrations.macrodata import (
-    MacrodataBundleRunner,
-    MacrodataBundleRunResult,
-    fred_api_key_state,
-)
+from gmgn_twitter_intel.integrations.macrodata import fred_api_key_state
 from gmgn_twitter_intel.platform.config.settings import load_settings
 
 
@@ -34,8 +30,6 @@ def handle_macro(args: object) -> tuple[int, dict[str, Any]]:
         return _handle_import_bundle(args)
     if args.macro_command == "sync":
         return _handle_sync(args)
-    if args.macro_command == "project-once":
-        return _handle_project_once()
     if args.macro_command == "status":
         return _handle_status()
     return 2, {"ok": False, "error": f"unknown macro command: {args.macro_command}"}
@@ -55,6 +49,7 @@ def _handle_import_bundle(args: object) -> tuple[int, dict[str, Any]]:
         settings = load_settings(require_ws_token=False)
         with repositories(settings) as repos:
             summary = import_macrodata_bundle(envelope, repos=repos, now_ms=_now_ms())
+        _notify_imported_observations(settings, summary)
     except Exception as exc:
         return 1, _error_payload("macro_import_bundle_failed", exc)
     return 0, {"ok": True, "data": summary}
@@ -65,16 +60,25 @@ def _handle_sync(args: object) -> tuple[int, dict[str, Any]]:
     try:
         settings = load_settings(require_ws_token=False)
         fred_state = fred_api_key_state(settings)
-        run_result = MacrodataBundleRunner(settings=settings).history_bundle(
-            bundle=str(args.bundle),
-            start=str(args.start),
-            end=str(args.end),
+        window_start = _parse_cli_date(str(args.start), field="start")
+        window_end = _parse_cli_date(str(args.end), field="end")
+        if window_start > window_end:
+            return 2, {"ok": False, "error": "macro_sync_invalid_date_range"}
+        now_ms = _now_ms()
+        service = MacroSyncService(
+            settings=settings,
+            repository_factory=lambda: repositories(settings),
         )
-        if not isinstance(run_result.envelope, Mapping):
-            raise ValueError("macrodata envelope must be a JSON object")
-        with repositories(settings) as repos:
-            summary = import_macrodata_bundle(run_result.envelope, repos=repos, now_ms=_now_ms())
-            projection = _project_once(repos=repos, now_ms=_now_ms()) if bool(getattr(args, "project", False)) else None
+        summary = service.run_explicit_window_once(
+            bundle_name=str(args.bundle),
+            window_start=window_start,
+            window_end=window_end,
+            now_ms=now_ms,
+        )
+        sync_payload = _sync_summary(summary, window_start=window_start, window_end=window_end)
+        sync_ok = summary.status in {"ok", "partial"}
+    except _MacroSyncCliValidationError as exc:
+        return 2, {"ok": False, "error": "macro_sync_invalid_date", "field": exc.field}
     except Exception as exc:
         payload = _error_payload("macro_sync_failed", exc)
         payload.update(_fred_payload_from_diagnostics(fred_state))
@@ -83,28 +87,13 @@ def _handle_sync(args: object) -> tuple[int, dict[str, Any]]:
             payload.update(_fred_payload_from_diagnostics(diagnostics))
         return 1, payload
 
-    return (
-        0,
-        {
-            "ok": True,
-            "data": {
-                **_fred_payload_from_diagnostics(run_result.diagnostics),
-                "import": _sync_import_summary(summary),
-                "projection": projection,
-                "runner": _runner_diagnostics_payload(run_result.diagnostics),
-            },
-        },
-    )
+    data = {
+        **_fred_payload_from_diagnostics({**dict(fred_state), **summary.diagnostics}),
+        "sync": sync_payload,
+    }
+    if not sync_ok:
+        return 1, {"ok": False, "error": "macro_sync_failed", "data": data}
 
-
-def _handle_project_once() -> tuple[int, dict[str, Any]]:
-    try:
-        now_ms = _now_ms()
-        settings = load_settings(require_ws_token=False)
-        with repositories(settings) as repos:
-            data = _project_once(repos=repos, now_ms=now_ms)
-    except Exception as exc:
-        return 1, _error_payload("macro_project_once_failed", exc)
     return (
         0,
         {
@@ -123,6 +112,15 @@ def _handle_status() -> tuple[int, dict[str, Any]]:
                 concept_keys=MACRO_HISTORY_REQUIRED_CONCEPTS,
                 lookback_days=MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
             )
+            latest_snapshot = repos.macro_intel.latest_snapshot(
+                projection_version=MACRO_VIEW_PROJECTION_VERSION,
+            )
+            facts_max_observed_at = repos.macro_intel.macro_observations_max_observed_at()
+            snapshot_asof = _to_date(latest_snapshot.get("asof_date") if latest_snapshot else None)
+            projection_behind_facts = (
+                facts_max_observed_at is not None
+                and (snapshot_asof is None or snapshot_asof < facts_max_observed_at)
+            )
             data = {
                 "migration_ready": True,
                 **fred_state,
@@ -131,11 +129,12 @@ def _handle_status() -> tuple[int, dict[str, Any]]:
                 "required_history_concept_count": len(MACRO_HISTORY_REQUIRED_CONCEPTS),
                 **_history_readiness_payload(history),
                 "latest_import_run": _json_ready(repos.macro_intel.latest_import_run()),
-                "latest_snapshot": _snapshot_status_summary(
-                    repos.macro_intel.latest_snapshot(
-                        projection_version=MACRO_VIEW_PROJECTION_VERSION,
-                    )
-                ),
+                "latest_sync_run": _json_ready(repos.macro_intel.latest_macro_sync_run()),
+                "sync_queue": _json_ready(repos.macro_intel.macro_sync_queue_summary(now_ms=_now_ms())),
+                "facts_max_observed_at": _json_ready(facts_max_observed_at),
+                "projection_lag_days": _projection_lag_days(facts_max_observed_at, snapshot_asof),
+                "projection_behind_facts": projection_behind_facts,
+                "latest_snapshot": _snapshot_status_summary(latest_snapshot),
             }
     except Exception:
         data = {
@@ -153,25 +152,14 @@ def _handle_status() -> tuple[int, dict[str, Any]]:
             },
             "concepts_below_min_history": [],
             "latest_import_run": None,
+            "latest_sync_run": None,
+            "sync_queue": {},
+            "facts_max_observed_at": None,
+            "projection_lag_days": None,
+            "projection_behind_facts": False,
             "latest_snapshot": None,
         }
     return 0, {"ok": True, "data": data}
-
-
-def _project_once(*, repos: object, now_ms: int) -> dict[str, Any]:
-    observations = repos.macro_intel.observations_for_concepts(
-        concept_keys=MACRO_CORE_CONCEPTS,
-        lookback_days=MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
-        limit_per_series=MACRO_VIEW_HISTORY_LIMIT_PER_SERIES,
-    )
-    snapshot = build_macro_view_snapshot(observations, computed_at_ms=now_ms)
-    repos.macro_intel.insert_snapshot(snapshot)
-    return {
-        "projection_version": snapshot["projection_version"],
-        "status": snapshot["status"],
-        "regime": snapshot["regime"],
-        "snapshot_id": snapshot["snapshot_id"],
-    }
 
 
 def _fred_payload_from_diagnostics(diagnostics: Mapping[str, Any]) -> dict[str, Any]:
@@ -181,19 +169,49 @@ def _fred_payload_from_diagnostics(diagnostics: Mapping[str, Any]) -> dict[str, 
     }
 
 
-def _runner_diagnostics_payload(diagnostics: Mapping[str, Any]) -> dict[str, Any]:
+def _notify_imported_observations(settings: object, summary: Mapping[str, Any]) -> None:
+    imported_count = int(summary.get("imported_observation_count") or 0)
+    if imported_count <= 0:
+        return
+    try:
+        WakeBus(lambda: postgres_connection(settings)).notify_macro_observations_imported(
+            count=imported_count,
+            max_observed_at=_json_ready(summary.get("max_observed_at")),
+            asof_date=_json_ready(summary.get("asof")),
+        )
+    except Exception:
+        return
+
+
+class _MacroSyncCliValidationError(ValueError):
+    def __init__(self, *, field: str) -> None:
+        super().__init__(field)
+        self.field = field
+
+
+def _parse_cli_date(raw: str, *, field: str) -> date:
+    try:
+        return date.fromisoformat(raw)
+    except ValueError as exc:
+        raise _MacroSyncCliValidationError(field=field) from exc
+
+
+def _sync_summary(summary: MacroSyncRunSummary, *, window_start: date, window_end: date) -> dict[str, Any]:
     return {
-        "command": list(diagnostics.get("command") or []),
-        "returncode": diagnostics.get("returncode"),
+        "sync_run_id": summary.sync_run_id,
+        "status": summary.status,
+        "window_start": str(window_start),
+        "window_end": str(window_end),
+        "imported_observation_count": summary.imported_observation_count,
+        "max_observed_at": str(summary.max_observed_at) if summary.max_observed_at else None,
+        "asof_date": str(summary.asof_date) if summary.asof_date else None,
     }
 
 
-def _sync_import_summary(summary: Mapping[str, Any]) -> dict[str, Any]:
-    imported_ids = list(summary.get("imported_observation_ids") or [])
-    return {key: _json_ready(value) for key, value in summary.items() if key != "imported_observation_ids"} | {
-        "imported_observation_count": len(imported_ids),
-        "imported_observation_sample": _edge_sample(imported_ids),
-    }
+def _projection_lag_days(facts_max_observed_at: date | None, snapshot_asof: date | None) -> int | None:
+    if facts_max_observed_at is None or snapshot_asof is None:
+        return None
+    return max(0, (facts_max_observed_at - snapshot_asof).days)
 
 
 def _snapshot_status_summary(snapshot: Mapping[str, Any] | None) -> dict[str, Any] | None:
@@ -331,8 +349,20 @@ def _json_ready(value: object) -> object:
     return value
 
 
+def _to_date(value: object) -> date | None:
+    if value is None:
+        return None
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, str):
+        return date.fromisoformat(value)
+    return None
+
+
 def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
-__all__ = ["MacrodataBundleRunResult", "MacrodataBundleRunner", "handle_macro"]
+__all__ = ["handle_macro"]

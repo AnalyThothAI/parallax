@@ -126,8 +126,21 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.handle_summary.statement_timeout_seconds == 10
     assert settings.handle_summary.reconcile_limit == 20
     assert settings.handle_summary.window_days == 3
+    assert settings.macro_sync.enabled is True
+    assert settings.macro_sync.interval_seconds == 900.0
+    assert settings.macro_sync.bundle_name == "macro-core"
+    assert settings.macro_sync.source_name == "macrodata-cli"
+    assert settings.macro_sync.bootstrap_lookback_days == 1095
+    assert settings.macro_sync.max_window_days == 31
+    assert settings.macro_sync.steady_overlap_days == 7
+    assert settings.macro_sync.max_bootstrap_windows_per_cycle == 1
+    assert settings.macro_sync.lease_ms == 300_000
+    assert settings.macro_sync.retry_delay_ms == 900_000
+    assert settings.macro_sync.max_attempts == 8
+    assert settings.macro_sync.macrodata_timeout_seconds == 240.0
     assert settings.macro_view_projection.lookback_days == 730
     assert settings.macro_view_projection.limit_per_series == 250
+    assert settings.macro_view_projection.wakes_on == ("macro_observations_imported",)
     assert settings.notification_delivery.max_attempts == 5
 
 

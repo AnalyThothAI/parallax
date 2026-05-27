@@ -20,6 +20,7 @@ from gmgn_twitter_intel.domains.asset_market.runtime.token_capture_tier_worker i
 from gmgn_twitter_intel.domains.asset_market.runtime.token_image_mirror_worker import TokenImageMirrorWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.token_profile_current_worker import TokenProfileCurrentWorker
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_brief_worker import EquityEventBriefWorker
+from gmgn_twitter_intel.domains.macro_intel.runtime.macro_sync_worker import MacroSyncWorker
 from gmgn_twitter_intel.domains.macro_intel.runtime.macro_view_projection_worker import MacroViewProjectionWorker
 from gmgn_twitter_intel.domains.narrative_intel.runtime.mention_semantics_worker import MentionSemanticsWorker
 from gmgn_twitter_intel.domains.narrative_intel.runtime.token_discussion_digest_worker import (
@@ -235,8 +236,47 @@ def test_worker_factory_wires_news_fetch_by_default() -> None:
     )
     assert workers["news_source_quality_projection"].settings.advisory_lock_key == 2026052201
     assert isinstance(workers["macro_view_projection"], MacroViewProjectionWorker)
+    assert isinstance(workers["macro_sync"], MacroSyncWorker)
+    assert workers["macro_sync"].wake_bus is db.wake
     assert workers["macro_view_projection"].settings.advisory_lock_key == 2026052109
     assert workers["macro_view_projection"].settings.batch_size == 250
+    assert workers["macro_view_projection"].wake_waiter.channels == ("macro_observations_imported",)
+
+
+def test_macro_projection_disabled_does_not_suppress_macro_sync() -> None:
+    db = FakeDB()
+
+    workers = construct_workers(
+        settings=_settings(macro_view_projection_enabled=False),
+        db=db,
+        telemetry=object(),
+        providers=FakeProviders(),
+        hub=SimpleNamespace(publish=lambda payload: None),
+        collector=FakeCollector(name="collector", settings=SimpleNamespace(enabled=False), db=db, telemetry=object()),
+        collector_enabled=False,
+        wake_bus=db.wake,
+    )
+
+    assert isinstance(workers["macro_sync"], MacroSyncWorker)
+    assert not isinstance(workers["macro_view_projection"], MacroViewProjectionWorker)
+
+
+def test_macro_sync_skips_when_macrodata_provider_disabled() -> None:
+    db = FakeDB()
+
+    workers = construct_workers(
+        settings=_settings(macrodata_enabled=False),
+        db=db,
+        telemetry=object(),
+        providers=FakeProviders(),
+        hub=SimpleNamespace(publish=lambda payload: None),
+        collector=FakeCollector(name="collector", settings=SimpleNamespace(enabled=False), db=db, telemetry=object()),
+        collector_enabled=False,
+        wake_bus=db.wake,
+    )
+
+    assert not isinstance(workers["macro_sync"], MacroSyncWorker)
+    assert isinstance(workers["macro_view_projection"], MacroViewProjectionWorker)
 
 
 def test_worker_factory_wires_narrative_mention_and_digest_wake_waiters() -> None:
@@ -345,6 +385,8 @@ def _settings(
     narrative_intel_configured: bool = False,
     news_item_brief_configured: bool = False,
     equity_event_brief_configured: bool = False,
+    macro_view_projection_enabled: bool = True,
+    macrodata_enabled: bool = True,
 ) -> Settings:
     llm = {"api_key": "secret"} if narrative_intel_configured else {}
     agent_lanes = {}
@@ -360,6 +402,7 @@ def _settings(
         ws_token="secret",
         llm=llm,
         equity_event_intel=equity_event_intel,
+        providers={"macrodata": {"enabled": macrodata_enabled}},
         notifications={
             "enabled": notifications_enabled,
             "channels": {
@@ -387,6 +430,7 @@ def _settings(
             "token_image_mirror": {"enabled": True},
             "token_profile_current": {"enabled": True},
             "token_radar_projection": {"enabled": False},
+            "macro_view_projection": {"enabled": macro_view_projection_enabled},
             "pulse_candidate": {"enabled": False},
             "enrichment": {"enabled": False},
             "handle_summary": {"enabled": False},

@@ -292,7 +292,6 @@ def test_default_config_yaml_contains_macrodata_fred_env_pointer() -> None:
         "quote_timeout_seconds": 5,
         "quote_cache_ttl_seconds": 30,
         "fred_api_key_env": "FINANCE_FRED_API_KEY",
-        "cli_project_dir": None,
     }
 
 
@@ -588,7 +587,6 @@ def test_macrodata_fred_env_pointer_is_redacted_and_configurable(tmp_path, monke
     assert settings.macrodata_quote_timeout_seconds == 6
     assert settings.macrodata_quote_cache_ttl_seconds == 45
     assert settings.macrodata_fred_api_key_env == "CUSTOM_FRED_ENV"
-    assert settings.macrodata_cli_project_dir is None
     assert settings.macrodata_fred_api_key_configured is True
 
 
@@ -620,7 +618,6 @@ def test_cli_config_reports_macrodata_without_secret(tmp_path, monkeypatch):
         "quote_cache_ttl_seconds": 30.0,
         "fred_api_key_env": "FINANCE_FRED_API_KEY",
         "fred_api_key_configured": True,
-        "cli_project_dir_configured": False,
     }
     assert "secret-fred-key" not in str(payload)
 

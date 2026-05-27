@@ -335,7 +335,7 @@ def test_compose_bind_mounts_local_runtime_home_without_env_config_sources():
     services = data["services"]
 
     assert "env_file:" not in compose
-    assert "environment" not in services["app"]
+    assert services["app"].get("environment") == {"FINANCE_FRED_API_KEY": "${FINANCE_FRED_API_KEY:-}"}
     assert "environment" not in services["migrate"]
     assert "${HOME}/.gmgn-twitter-intel:/root/.gmgn-twitter-intel" in compose
     assert "gmgn-twitter-intel_data" not in compose

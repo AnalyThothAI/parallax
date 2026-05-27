@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
+import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,10 +26,10 @@ class MacrodataBundleRunner:
 
     def history_bundle(self, *, bundle: str, start: str, end: str) -> MacrodataBundleRunResult:
         fred_state = fred_api_key_state(self.settings, environ=self.environ)
+        executable = resolve_macrodata_executable(environ=self.environ)
+        timeout_seconds = _macrodata_timeout_seconds(self.settings)
         command = [
-            "uv",
-            "run",
-            "macrodata",
+            executable,
             "bundle",
             "history",
             bundle,
@@ -42,21 +44,31 @@ class MacrodataBundleRunner:
         if key_value:
             child_env["FRED_API_KEY"] = key_value
 
-        cli_project_dir = _configured_cli_project_dir(self.settings)
-        completed = subprocess.run(  # noqa: S603
-            command,
-            env=child_env,
-            cwd=cli_project_dir,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
         diagnostics = {
             **fred_state,
             "command": command,
-            "cli_project_dir": str(cli_project_dir) if cli_project_dir else None,
-            "returncode": completed.returncode,
+            "timeout_seconds": timeout_seconds,
         }
+        try:
+            completed = subprocess.run(  # noqa: S603
+                command,
+                env=child_env,
+                cwd=None,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=timeout_seconds,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise MacrodataRunnerError(
+                "macrodata bundle history timed out",
+                diagnostics={
+                    **diagnostics,
+                    "returncode": None,
+                    "error_code": "macrodata_runner_timeout",
+                },
+            ) from exc
+        diagnostics["returncode"] = completed.returncode
         if completed.returncode != 0:
             raise MacrodataRunnerError("macrodata bundle history failed", diagnostics=diagnostics)
 
@@ -76,6 +88,20 @@ class MacrodataRunnerError(RuntimeError):
     def __init__(self, message: str, *, diagnostics: Mapping[str, Any]) -> None:
         super().__init__(message)
         self.diagnostics = dict(diagnostics)
+
+
+def resolve_macrodata_executable(*, environ: Mapping[str, str] | None = None) -> str:
+    env = os.environ if environ is None else environ
+    executable = shutil.which("macrodata", path=env.get("PATH"))
+    if executable:
+        return executable
+    sibling = Path(sys.executable).parent / "macrodata"
+    if sibling.exists() and os.access(sibling, os.X_OK):
+        return str(sibling)
+    raise MacrodataRunnerError(
+        "macrodata executable not found",
+        diagnostics={"error_code": "macrodata_executable_missing"},
+    )
 
 
 def fred_api_key_state(settings: object, *, environ: Mapping[str, str] | None = None) -> dict[str, Any]:
@@ -99,15 +125,13 @@ def _configured_fred_env_name(settings: object) -> str:
     return DEFAULT_FRED_API_KEY_ENV
 
 
-def _configured_cli_project_dir(settings: object) -> str | None:
-    value = getattr(settings, "macrodata_cli_project_dir", None)
-    if not isinstance(value, str) or not value.strip():
-        providers = getattr(settings, "providers", None)
-        macrodata = getattr(providers, "macrodata", None)
-        value = getattr(macrodata, "cli_project_dir", None)
-    if not isinstance(value, str) or not value.strip():
-        return None
-    return str(Path(value.strip()).expanduser())
+def _macrodata_timeout_seconds(settings: object) -> float:
+    value = getattr(settings, "macrodata_timeout_seconds", None)
+    if value is None:
+        workers = getattr(settings, "workers", None)
+        macro_sync = getattr(workers, "macro_sync", None)
+        value = getattr(macro_sync, "macrodata_timeout_seconds", None)
+    return max(1.0, float(value if value is not None else 240.0))
 
 
 __all__ = [
@@ -116,4 +140,5 @@ __all__ = [
     "MacrodataBundleRunner",
     "MacrodataRunnerError",
     "fred_api_key_state",
+    "resolve_macrodata_executable",
 ]

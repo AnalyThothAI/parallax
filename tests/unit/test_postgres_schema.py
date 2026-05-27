@@ -159,6 +159,9 @@ EQUITY_FETCH_RUN_REAPER_MIGRATION = Path(
 TOKEN_RADAR_PUBLICATION_STATE_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0111_token_radar_publication_state.py"
 )
+MACRO_SYNC_WORKER_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0112_macro_sync_worker.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 
@@ -642,6 +645,90 @@ def test_equity_fetch_run_reaper_migration_contract() -> None:
     assert "CHECK (status IN ('running', 'success', 'failed'))" in normalized_text
 
 
+def test_macro_sync_worker_migration_adds_control_plane_tables() -> None:
+    text = MACRO_SYNC_WORKER_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+    windows_table = _extract_sql_statement(text, "CREATE TABLE IF NOT EXISTS macro_sync_windows")
+    runs_table = _extract_sql_statement(text, "CREATE TABLE IF NOT EXISTS macro_sync_runs")
+    downgrade_text = text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+    assert 'revision = "20260527_0112"' in text
+    assert 'down_revision = "20260527_0111"' in text
+    assert "sync_window_id TEXT PRIMARY KEY" in windows_table
+    for column in (
+        "source_name TEXT NOT NULL",
+        "bundle_name TEXT NOT NULL",
+        "window_start DATE NOT NULL",
+        "window_end DATE NOT NULL",
+        "trigger_reason TEXT NOT NULL",
+        "status TEXT NOT NULL DEFAULT 'pending'",
+        "payload_hash TEXT NOT NULL",
+        "priority INTEGER NOT NULL DEFAULT 100",
+        "due_at_ms BIGINT NOT NULL",
+        "attempt_count INTEGER NOT NULL DEFAULT 0",
+        "max_attempts INTEGER NOT NULL DEFAULT 8",
+        "created_at_ms BIGINT NOT NULL",
+        "updated_at_ms BIGINT NOT NULL",
+    ):
+        assert column in windows_table
+    for constraint in (
+        "CHECK (window_start <= window_end)",
+        "CHECK (attempt_count >= 0)",
+        "CHECK (max_attempts >= 1)",
+        "CHECK (attempt_count <= max_attempts)",
+        "CHECK (priority >= 0)",
+        "CHECK (due_at_ms >= 0)",
+    ):
+        assert constraint in normalized_text
+    assert "status IN ('pending', 'running', 'retryable', 'done', 'failed')" in normalized_text
+    assert "CREATE UNIQUE INDEX IF NOT EXISTS ux_macro_sync_windows_identity" in text
+    assert (
+        "ON macro_sync_windows(priority ASC, due_at_ms ASC, updated_at_ms ASC, sync_window_id)"
+        in normalized_text
+    )
+    assert "WHERE status IN ('pending', 'retryable')" in normalized_text
+    assert "CREATE INDEX IF NOT EXISTS idx_macro_sync_windows_lease" in text
+
+    assert "sync_run_id TEXT PRIMARY KEY" in runs_table
+    assert "sync_window_id TEXT REFERENCES macro_sync_windows(sync_window_id) ON DELETE SET NULL" in runs_table
+    assert "import_run_id TEXT REFERENCES macro_import_runs(run_id) ON DELETE SET NULL" in runs_table
+    for column in (
+        "observations_count INTEGER NOT NULL DEFAULT 0",
+        "imported_observation_count INTEGER NOT NULL DEFAULT 0",
+        "duration_ms BIGINT NOT NULL",
+        "coverage_json JSONB NOT NULL DEFAULT '{}'::jsonb",
+        "missing_series_json JSONB NOT NULL DEFAULT '[]'::jsonb",
+        "diagnostics_json JSONB NOT NULL DEFAULT '{}'::jsonb",
+        "fred_api_key_configured BOOLEAN NOT NULL DEFAULT false",
+    ):
+        assert column in runs_table
+    for constraint in (
+        "CHECK (observations_count >= 0)",
+        "CHECK (imported_observation_count >= 0)",
+        "CHECK (started_at_ms >= 0)",
+        "CHECK (completed_at_ms >= started_at_ms)",
+        "CHECK (duration_ms >= 0)",
+    ):
+        assert constraint in normalized_text
+    assert "status IN ('ok', 'partial', 'retryable_error', 'failed', 'config_error')" in normalized_text
+    assert "CREATE INDEX IF NOT EXISTS idx_macro_sync_runs_latest" in text
+    assert "CREATE INDEX IF NOT EXISTS idx_macro_sync_runs_window" in text
+    assert "with op.get_context().autocommit_block():" in text
+    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_macro_observations_max_observed" in text
+
+    assert "DROP INDEX CONCURRENTLY IF EXISTS idx_macro_observations_max_observed" in downgrade_text
+    assert downgrade_text.index("DROP TABLE IF EXISTS macro_sync_runs") < downgrade_text.index(
+        "DROP TABLE IF EXISTS macro_sync_windows"
+    )
+    for protected_table in (
+        "macro_observations",
+        "macro_import_runs",
+        "macro_observation_series_rows",
+        "macro_view_snapshots",
+    ):
+        assert f"DROP TABLE IF EXISTS {protected_table}" not in downgrade_text
+
+
 def test_runtime_performance_hard_cut_revision_chain() -> None:
     migrations = (
         (RUNTIME_RANK_SOURCE_EDGES_MIGRATION, "20260526_0106", "20260526_0105"),
@@ -653,6 +740,8 @@ def test_runtime_performance_hard_cut_revision_chain() -> None:
             "20260526_0108",
         ),
         (EQUITY_FETCH_RUN_REAPER_MIGRATION, "20260526_0110", "20260526_0109"),
+        (TOKEN_RADAR_PUBLICATION_STATE_MIGRATION, "20260527_0111", "20260526_0110"),
+        (MACRO_SYNC_WORKER_MIGRATION, "20260527_0112", "20260527_0111"),
     )
 
     for migration, revision, down_revision in migrations:

@@ -1,17 +1,20 @@
 # Macro Intel Architecture
 
 Macro Intel owns deterministic macro regime read models inside
-`gmgn-twitter-intel`. It does not fetch FRED, NY Fed, Treasury, Cboe, CFTC, or
-crypto provider data directly; normalized observations arrive as persisted
-facts from the packaged `macrodata-cli` bundle command or an
-operator-maintained path.
+`gmgn-twitter-intel`. Normal freshness is owned by the `macro_sync` runtime
+worker: it claims bounded sync windows, runs the packaged `macrodata-cli`
+history bundle outside DB transactions, and persists normalized observations
+as facts. API routes and frontend pages never call FRED, NY Fed, Treasury,
+Cboe, CFTC, crypto providers, or macrodata directly.
 
 ## Ownership
 
 | Object | Category | Runtime writer |
 |--------|----------|----------------|
-| `macro_observations` | Fact | `gmgn-twitter-intel macro import-bundle` / operator maintenance path. Normal runtime projection does not mutate it. |
-| `macro_import_runs` | Import audit | `gmgn-twitter-intel macro import-bundle`. It records coverage and diagnostics; it is not the product truth. |
+| `macro_observations` | Fact | `MacroSyncWorker` in normal runtime; `macro import-bundle` only for offline replay/seed. |
+| `macro_import_runs` | Import audit | `MacroSyncWorker` and offline replay. It records coverage and diagnostics; it is not the product truth. |
+| `macro_sync_windows` | Sync control | `MacroSyncWorker` only. It owns claim, retry, and bounded catch-up state. |
+| `macro_sync_runs` | Sync audit | `MacroSyncWorker` and `macro sync` through the same service. It records redacted provider/source health. |
 | `macro_observation_series_rows` | Read model | `MacroViewProjectionWorker` only. It is staged from `macro_observations` by generation and owns request-path latest/history rows. |
 | `macro_observation_series_generations` | Projection lifecycle | `MacroViewProjectionWorker` only. It records building, active, failed, and superseded observation-series generations. |
 | `macro_observation_series_active_generation` | Active pointer | `MacroViewProjectionWorker` only. It maps each projected concept to the generation visible to request paths. |
@@ -20,10 +23,11 @@ operator-maintained path.
 ## Flow
 
 ```text
-macrodata bundle history macro-core
-  -> macro-core JSON bundle
-  -> app/surfaces/cli/commands/macro.py import-bundle
-  -> macro_observations / macro_import_runs
+macro_sync_windows
+  -> MacroSyncWorker claim
+  -> packaged macrodata bundle history macro-core
+  -> macro_observations / macro_import_runs / macro_sync_runs
+  -> wake macro_observations_imported
   -> repositories/macro_intel_repository.py
   -> macro_observation_series_rows
   -> macro_observation_series_active_generation
@@ -105,31 +109,26 @@ compatibility surfaces.
 ## CLI And Operations
 
 - Docker installs `AnalyThothAI/macrodata-cli` from the `v0.1.5` Git tag.
-  Its executable is `macrodata`; do not mount or reference a host-local
-  `/Users/.../macrodata-cli` checkout in deployment.
-- `macrodata bundle macro-core --asof <YYYY-MM-DD> | gmgn-twitter-intel macro
-  import-bundle --stdin` is the container-native import path. The v0.1.5 bundle
-  emits Yahoo-backed cross-asset proxies (`asset:spy`, `asset:qqq`, `asset:iwm`,
-  `asset:tlt`, `asset:hyg`, `asset:lqd`, `asset:gld`, `asset:uso`, `fx:dxy`,
-  `crypto:btc`, and `crypto:eth`) which are projected as canonical concepts.
-- Chart-ready runs use the history bundle path:
-
-  ```bash
-  macrodata bundle history macro-core --start <YYYY-MM-DD> --end <YYYY-MM-DD> \
-    | uv run gmgn-twitter-intel macro import-bundle --stdin
-  uv run gmgn-twitter-intel macro project-once
-  ```
-
+  Its executable is `macrodata`; runtime sync uses that packaged executable,
+  not `uv run macrodata`, and deployment must not mount or reference a
+  host-local `/Users/.../macrodata-cli` checkout.
+- Docker operators provide `FINANCE_FRED_API_KEY` through environment or a
+  deployment secret manager. Config stores only the env var name and status
+  surfaces expose only env names/booleans, never secret values.
+- `workers.macro_sync.macrodata_timeout_seconds` bounds the macrodata child
+  process. Timeout is recorded as source health and does not rely on worker
+  thread cancellation to stop provider IO.
+- `uv run gmgn-twitter-intel macro sync --bundle macro-core --start <YYYY-MM-DD>
+  --end <YYYY-MM-DD>` runs one operator-triggered bounded window through the
+  same `MacroSyncService` as `macro_sync`.
 - `uv run gmgn-twitter-intel macro import-bundle --file /path/bundle.json`
-  imports a macrodata-cli `macro-core` bundle. `--stdin` is the streaming
-  equivalent. The command upserts observations and writes one import-run audit
-  row with status, coverage, and reason codes.
-- `uv run gmgn-twitter-intel macro project-once` reads persisted
-  `MACRO_CORE_CONCEPTS` history, builds a `macro_regime_v4` snapshot, and writes
-  `macro_view_snapshots`.
+  imports a saved macrodata-cli `macro-core` envelope for offline replay/seed.
+  `--stdin` is the streaming equivalent. It emits the persisted-fact wake hint
+  but is not the normal freshness path.
 - `uv run gmgn-twitter-intel macro status` reports migration readiness,
   observation count, concept count, history readiness, concepts below minimum
-  history, latest import run, and latest snapshot.
+  history, latest import run, latest sync run, sync queue state,
+  `facts_max_observed_at`, projection lag, and latest snapshot.
 - `uv run gmgn-twitter-intel db health` must report the expected migration
   version before real-data verification.
 

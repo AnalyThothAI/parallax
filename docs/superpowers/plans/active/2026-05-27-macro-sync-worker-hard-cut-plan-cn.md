@@ -122,7 +122,7 @@ The plan fixes these observed facts from the 2026-05-27 investigation:
 - Projection recomputes snapshots from existing facts at `src/gmgn_twitter_intel/domains/macro_intel/runtime/macro_view_projection_worker.py:33`; it does not fetch providers.
 - CLI sync directly invokes `MacrodataBundleRunner` at `src/gmgn_twitter_intel/app/surfaces/cli/commands/macro.py:63`.
 - Runner currently shells `uv run macrodata` at `src/gmgn_twitter_intel/integrations/macrodata/runner.py:25`.
-- Current Docker app has packaged `/app/.venv/bin/macrodata`, but no `uv` on runtime `PATH`, and a host-local `cli_project_dir` is invalid inside the container.
+- Current Docker app has packaged `/app/.venv/bin/macrodata`, but no `uv` on runtime `PATH`; runtime sync must use the installed executable with no host-local checkout/cwd override.
 
 ## Phase 0: Red Tests First
 
@@ -160,20 +160,22 @@ assert "uv" not in calls[0]["command"]
 assert calls[0]["command"][1:] == ["bundle", "history", "macro-core", "--start", "2026-01-01", "--end", "2026-05-21"]
 ```
 
-Add a missing configured cwd test:
+Add a legacy configured cwd regression test:
 
 ```python
-def test_macrodata_runner_rejects_missing_configured_cli_project_dir(monkeypatch, tmp_path) -> None:
-    missing = tmp_path / "missing"
+def test_macrodata_runner_ignores_legacy_cli_project_dir(monkeypatch, tmp_path) -> None:
     class Settings:
-        macrodata_cli_project_dir = str(missing)
+        macrodata_cli_project_dir = str(tmp_path)
         macrodata_fred_api_key_env = None
 
-    with pytest.raises(MacrodataRunnerError) as excinfo:
-        MacrodataBundleRunner(settings=Settings()).history_bundle(bundle="macro-core", start="2026-01-01", end="2026-01-02")
+    result = MacrodataBundleRunner(settings=Settings()).history_bundle(
+        bundle="macro-core",
+        start="2026-01-01",
+        end="2026-01-02",
+    )
 
-    assert excinfo.value.diagnostics["cli_project_dir"] == str(missing)
-    assert excinfo.value.diagnostics["error_code"] == "macrodata_cli_project_dir_missing"
+    assert result.diagnostics["cwd"] is None
+    assert "cli_project_dir" not in result.diagnostics
 ```
 
 - [ ] **Step 0.3: Add sync service and worker tests before implementation**
@@ -210,13 +212,13 @@ Required assertions:
 
 - [ ] **Step 1.1: Add migration**
 
-New file: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0111_macro_sync_worker.py`
+New file: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0112_macro_sync_worker.py`
 
 Revision:
 
 ```python
-revision = "20260527_0111"
-down_revision = "20260526_0110"
+revision = "20260527_0112"
+down_revision = "20260527_0111"
 ```
 
 Upgrade SQL:
@@ -588,15 +590,17 @@ command = [
 
 Do not keep the old `["uv", "run", "macrodata", ...]` branch.
 
-- [ ] **Step 3.2: Treat invalid configured cwd as config error**
+- [ ] **Step 3.2: Delete legacy configured cwd support**
 
-Modify `_configured_cli_project_dir(...)` or add `_resolve_cli_project_dir(...)`.
+Remove `_configured_cli_project_dir(...)`, `_resolve_cli_project_dir(...)`, and
+the `MacrodataProviderConfig.cli_project_dir` / `AppSettings.macrodata_cli_project_dir`
+runtime config surface.
 
 Rules:
 
-- `None` means use installed package and no cwd override.
-- Existing directory means pass it as `cwd`.
-- Missing directory raises `MacrodataRunnerError` with `error_code="macrodata_cli_project_dir_missing"`.
+- The runner always uses the installed `macrodata` executable with `cwd=None`.
+- Diagnostics must not expose or preserve `cli_project_dir`.
+- Missing host-local checkout paths are not a runtime configuration mode.
 
 - [ ] **Step 3.3: Keep FRED secret in child env only**
 
@@ -809,7 +813,7 @@ Required behavior:
 - It calls `run_explicit_window_once(...)`.
 - It does not instantiate `MacrodataBundleRunner` directly.
 - It does not call `import_macrodata_bundle` directly.
-- `--project` may still call `_project_once` after sync success for operator repair, but normal runtime freshness must not depend on it.
+- `macro sync --project`, `macro project-once`, and `_project_once` do not exist; projection freshness comes from the projection worker wake/catch-up path only.
 
 Expected payload:
 
@@ -1001,7 +1005,7 @@ Expected: `provider_calls=0`, `claimed=0`, claim query touches `macro_sync_windo
 - [ ] **AC5: Docker path does not use `uv` or host checkout**
 
 ```bash
-uv run pytest tests/unit/test_cli_macro_commands.py::test_macrodata_runner_injects_fred_env_without_exposing_secret tests/unit/test_cli_macro_commands.py::test_macrodata_runner_rejects_missing_configured_cli_project_dir -q
+uv run pytest tests/unit/test_cli_macro_commands.py::test_macrodata_runner_injects_fred_env_without_exposing_secret tests/unit/test_cli_macro_commands.py::test_macrodata_runner_ignores_legacy_cli_project_dir -q
 rg -n '"uv"|uv run macrodata|macrodata-cli' src/gmgn_twitter_intel/integrations/macrodata src/gmgn_twitter_intel/domains/macro_intel/runtime
 ```
 

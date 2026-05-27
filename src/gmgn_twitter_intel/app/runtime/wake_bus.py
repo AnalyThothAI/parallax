@@ -79,6 +79,22 @@ class WakeBus:
     def notify_equity_event_page_updated(self, *, count: int) -> None:
         self._notify("equity_event_page_updated", {"count": int(count)})
 
+    def notify_macro_observations_imported(
+        self,
+        *,
+        count: int,
+        max_observed_at: str | None,
+        asof_date: str | None,
+    ) -> None:
+        self._notify(
+            "macro_observations_imported",
+            {
+                "count": int(count),
+                "max_observed_at": max_observed_at,
+                "asof_date": asof_date,
+            },
+        )
+
     def _notify(self, channel: str, payload: dict[str, Any]) -> None:
         conn_or_context = self._conn_factory()
         if hasattr(conn_or_context, "__enter__"):

@@ -12,6 +12,7 @@ import yaml
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_manifest import (
+    WorkerKind,
     all_worker_manifests,
     worker_class_by_name,
     worker_dirty_target_tables,
@@ -177,6 +178,16 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
         SRC / "platform/db/alembic/versions/20260521_0073_cex_oi_radar_board.py",
     },
     "macro_view_snapshots": {
+        SRC / "domains/macro_intel/repositories/macro_intel_repository.py",
+        SRC / "domains/macro_intel/runtime/macro_view_projection_worker.py",
+        SRC / "platform/db/alembic/versions/20260521_0076_macro_views.py",
+    },
+    "macro_observation_series_rows": {
+        SRC / "domains/macro_intel/repositories/macro_intel_repository.py",
+        SRC / "domains/macro_intel/runtime/macro_view_projection_worker.py",
+        SRC / "platform/db/alembic/versions/20260521_0076_macro_views.py",
+    },
+    "macro_observation_series_active_generation": {
         SRC / "domains/macro_intel/repositories/macro_intel_repository.py",
         SRC / "domains/macro_intel/runtime/macro_view_projection_worker.py",
         SRC / "platform/db/alembic/versions/20260521_0076_macro_views.py",
@@ -380,6 +391,28 @@ def test_worker_manifest_forbids_semantic_read_model_aliases() -> None:
     }
 
     assert aliases == set()
+
+
+@pytest.mark.architecture
+def test_macro_sync_is_fact_ingest_and_projection_remains_read_model_writer() -> None:
+    manifests = {manifest.name: manifest for manifest in all_worker_manifests()}
+
+    assert manifests["macro_sync"].domain == "macro_intel"
+    assert manifests["macro_sync"].kind is WorkerKind.FACT_INGEST
+    assert "macro_observations" in manifests["macro_sync"].writes_facts
+    assert "macro_import_runs" in manifests["macro_sync"].writes_control_plane
+    assert "macro_sync_windows" in manifests["macro_sync"].writes_control_plane
+    assert "macro_sync_runs" in manifests["macro_sync"].writes_control_plane
+    assert "macro_view_snapshots" not in manifests["macro_sync"].writes_read_models
+    assert manifests["macro_sync"].wakes_out == ("macro_observations_imported",)
+
+    projection = manifests["macro_view_projection"]
+    assert projection.input_contract == ("macro_observations", "macro_observation_series_rows active generation")
+    assert "macro data providers" not in projection.input_contract
+    assert "macro_observation_series_rows" in projection.writes_read_models
+    assert "macro_observation_series_active_generation" in projection.writes_read_models
+    assert "macro_view_snapshots" in projection.writes_read_models
+    assert "macro_observations_imported" in projection.wakes_on
 
 
 @pytest.mark.architecture

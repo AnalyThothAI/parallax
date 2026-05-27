@@ -11,12 +11,14 @@ from gmgn_twitter_intel.domains.macro_intel._constants import (
     MACRO_PROVIDER_SERIES_SOURCE_PRIORITY,
     MACRO_PROVIDER_SERIES_TO_CONCEPT,
 )
+from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_types import MacrodataBundleImport
+from gmgn_twitter_intel.platform.db.postgres_client import require_transaction
 
 if TYPE_CHECKING:
     from gmgn_twitter_intel.app.runtime.repository_session import RepositorySession
 
 
-def import_macrodata_bundle(envelope: Mapping[str, Any], *, repos: RepositorySession, now_ms: int) -> dict[str, Any]:
+def parse_macrodata_bundle(envelope: Mapping[str, Any], *, now_ms: int) -> MacrodataBundleImport:
     snapshot = _snapshot(envelope)
     bundle_name = str(snapshot.get("bundle") or "unknown")
     asof = snapshot.get("asof")
@@ -27,6 +29,7 @@ def import_macrodata_bundle(envelope: Mapping[str, Any], *, repos: RepositorySes
     reason_codes = list(_sequence(snapshot.get("reason_codes")))
     data_quality = str(snapshot.get("data_quality") or "ok")
     normalized_observations = _observations(observations, now_ms=now_ms)
+    max_observed_at = _max_observed_at(normalized_observations)
 
     run_id = _run_id(
         bundle_name=bundle_name,
@@ -49,26 +52,54 @@ def import_macrodata_bundle(envelope: Mapping[str, Any], *, repos: RepositorySes
         "completed_at_ms": int(now_ms),
     }
 
+    return MacrodataBundleImport(
+        import_run=import_run,
+        observations=normalized_observations,
+        bundle_name=bundle_name,
+        asof=asof,
+        status=data_quality,
+        coverage=coverage,
+        missing_series=missing_series,
+        series_errors=series_errors,
+        reason_codes=reason_codes,
+        max_observed_at=max_observed_at,
+    )
+
+
+def write_macrodata_bundle_import(
+    parsed: MacrodataBundleImport,
+    *,
+    repos: RepositorySession,
+) -> dict[str, Any]:
+    _require_transaction(repos, operation="macrodata_bundle_import")
     imported_observation_ids: list[str] = []
-    with _unit_of_work(repos):
-        imported_observation_ids.extend(
-            repos.macro_intel.upsert_observation(observation) for observation in normalized_observations
-        )
-        repos.macro_intel.record_import_run(import_run)
+    imported_observation_ids.extend(
+        repos.macro_intel.upsert_observation(observation) for observation in parsed.observations
+    )
+    repos.macro_intel.record_import_run(parsed.import_run)
 
     return {
-        "bundle_name": bundle_name,
-        "asof": asof,
+        "bundle_name": parsed.bundle_name,
+        "asof": parsed.asof,
+        "max_observed_at": parsed.max_observed_at,
         "observations_count": len(imported_observation_ids),
+        "imported_observation_count": len(imported_observation_ids),
         "imported_observation_ids": imported_observation_ids,
-        "run_id": run_id,
-        "status": data_quality,
-        "data_quality": data_quality,
-        "coverage": coverage,
-        "missing_series": missing_series,
-        "series_errors": series_errors,
-        "reason_codes": reason_codes,
+        "run_id": parsed.import_run["run_id"],
+        "import_run_id": parsed.import_run["run_id"],
+        "status": parsed.status,
+        "data_quality": parsed.status,
+        "coverage": dict(parsed.coverage),
+        "missing_series": list(parsed.missing_series),
+        "series_errors": list(parsed.series_errors),
+        "reason_codes": list(parsed.reason_codes),
     }
+
+
+def import_macrodata_bundle(envelope: Mapping[str, Any], *, repos: RepositorySession, now_ms: int) -> dict[str, Any]:
+    parsed = parse_macrodata_bundle(envelope, now_ms=now_ms)
+    with _unit_of_work(repos):
+        return write_macrodata_bundle_import(parsed, repos=repos)
 
 
 def _snapshot(envelope: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -151,6 +182,11 @@ def _sequence(value: object) -> Sequence[Any]:
     return value if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray) else []
 
 
+def _max_observed_at(observations: Sequence[Mapping[str, Any]]) -> str | None:
+    observed_dates = [str(observation["observed_at"]) for observation in observations if observation.get("observed_at")]
+    return max(observed_dates) if observed_dates else None
+
+
 def _unit_of_work(repos: RepositorySession) -> AbstractContextManager[Any]:
     unit_of_work = getattr(repos, "unit_of_work", None)
     if callable(unit_of_work):
@@ -161,4 +197,12 @@ def _unit_of_work(repos: RepositorySession) -> AbstractContextManager[Any]:
     raise RuntimeError("repository session does not expose a transaction")
 
 
-__all__ = ["import_macrodata_bundle"]
+def _require_transaction(repos: RepositorySession, *, operation: str) -> None:
+    session_require_transaction = getattr(repos, "require_transaction", None)
+    if callable(session_require_transaction):
+        session_require_transaction(operation=operation)
+        return
+    require_transaction(getattr(repos, "conn", None), operation=operation)
+
+
+__all__ = ["import_macrodata_bundle", "parse_macrodata_bundle", "write_macrodata_bundle_import"]

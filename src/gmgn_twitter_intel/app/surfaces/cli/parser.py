@@ -55,8 +55,6 @@ def build_parser() -> argparse.ArgumentParser:
     macro_sync.add_argument("--bundle", required=True, help="macrodata bundle name")
     macro_sync.add_argument("--start", required=True, help="history start date (YYYY-MM-DD)")
     macro_sync.add_argument("--end", required=True, help="history end date (YYYY-MM-DD)")
-    macro_sync.add_argument("--project", action="store_true", help="rebuild the macro view snapshot after import")
-    macro_subcommands.add_parser("project-once", help="rebuild the latest macro view snapshot once")
     macro_subcommands.add_parser("status", help="print macro import and projection status")
 
     recent = subcommands.add_parser("recent", help="print recent stored events")

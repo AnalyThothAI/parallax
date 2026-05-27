@@ -7,6 +7,8 @@ import pytest
 
 from gmgn_twitter_intel.domains.macro_intel.services.macrodata_bundle_importer import (
     import_macrodata_bundle,
+    parse_macrodata_bundle,
+    write_macrodata_bundle_import,
 )
 
 NOW_MS = 1_779_000_000_000
@@ -84,9 +86,12 @@ def test_import_macrodata_bundle_upserts_observation_and_records_run() -> None:
     assert summary == {
         "bundle_name": "macro-core",
         "asof": "2026-05-21",
+        "max_observed_at": "2026-05-19",
         "observations_count": 1,
+        "imported_observation_count": 1,
         "imported_observation_ids": ["observation-1"],
         "run_id": import_run["run_id"],
+        "import_run_id": import_run["run_id"],
         "status": "partial",
         "data_quality": "partial",
         "coverage": {"requested": 20, "available": 1},
@@ -105,6 +110,40 @@ def test_import_macrodata_bundle_validates_all_observations_before_writing() -> 
         import_macrodata_bundle(envelope, repos=repos, now_ms=NOW_MS)
 
     assert repos.transaction_events == []
+    assert repos.macro_intel.observations == []
+    assert repos.macro_intel.import_runs == []
+
+
+def test_parse_macrodata_bundle_validates_all_observations_before_write() -> None:
+    envelope = deepcopy(ENVELOPE)
+    envelope["data"]["snapshot"]["observations"].append({"provider": "fred", "observed_at": "2026-05-19"})
+
+    with pytest.raises(ValueError, match="series_key"):
+        parse_macrodata_bundle(envelope, now_ms=NOW_MS)
+
+
+def test_write_macrodata_bundle_import_does_not_open_its_own_transaction() -> None:
+    repos = FakeRepositorySession()
+    parsed = parse_macrodata_bundle(ENVELOPE, now_ms=NOW_MS)
+
+    with repos.unit_of_work():
+        summary = write_macrodata_bundle_import(parsed, repos=repos)
+
+    assert repos.transaction_events == ["commit"]
+    assert repos.conn.commits == 0
+    assert summary["max_observed_at"] == "2026-05-19"
+    assert summary["asof"] == "2026-05-21"
+    assert summary["import_run_id"] == repos.macro_intel.import_runs[0]["run_id"]
+    assert summary["imported_observation_count"] == 1
+
+
+def test_write_macrodata_bundle_import_requires_external_transaction() -> None:
+    repos = FakeRepositorySession()
+    parsed = parse_macrodata_bundle(ENVELOPE, now_ms=NOW_MS)
+
+    with pytest.raises(RuntimeError, match="macrodata_bundle_import"):
+        write_macrodata_bundle_import(parsed, repos=repos)
+
     assert repos.macro_intel.observations == []
     assert repos.macro_intel.import_runs == []
 
@@ -174,10 +213,15 @@ class FakeRepositorySession:
     def __init__(self, *, fail_record_run: bool = False) -> None:
         self.conn = FakeConnection()
         self.transaction_events: list[str] = []
+        self.transaction_depth = 0
         self.macro_intel = FakeMacroIntelRepository(fail_record_run=fail_record_run)
 
     def unit_of_work(self):
         return FakeTransaction(self)
+
+    def require_transaction(self, *, operation: str) -> None:
+        if self.transaction_depth <= 0:
+            raise RuntimeError(f"{operation}:transaction_required")
 
 
 class FakeTransaction:
@@ -187,6 +231,7 @@ class FakeTransaction:
         self.import_runs: list[dict[str, object]] = []
 
     def __enter__(self):
+        self.repos.transaction_depth += 1
         self.observations = list(self.repos.macro_intel.observations)
         self.import_runs = list(self.repos.macro_intel.import_runs)
         return self
@@ -198,6 +243,7 @@ class FakeTransaction:
             self.repos.transaction_events.append("rollback")
         else:
             self.repos.transaction_events.append("commit")
+        self.repos.transaction_depth -= 1
         return False
 
 

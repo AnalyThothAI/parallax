@@ -22,27 +22,29 @@ GMGN public stream
   → app/surfaces/api + app/surfaces/cli
 ```
 
-Macro intelligence has a sibling batch path because the service does not fetch
-macro providers directly. The Docker image installs `macrodata-cli` from its
-versioned Git source (`v0.1.5`) and uses its `macrodata` executable; it must not
-depend on a host-local checkout path.
+Macro intelligence has a normal runtime fact-ingest lane. `macro_sync` claims
+bounded date windows in PostgreSQL before provider IO, runs the packaged
+`macrodata-cli` executable from the installed image, and writes
+`macro_observations`, `macro_import_runs`, `macro_sync_windows`, and
+`macro_sync_runs`. The Docker image installs `macrodata-cli` from its versioned
+Git source (`v0.1.5`) and uses its `macrodata` executable; runtime must not use
+`uv run` or depend on a host-local checkout path.
 
 ```text
-macrodata bundle history macro-core
-  -> macro-core JSON bundle
-  -> gmgn macro importer CLI
-  -> macro_observations / macro_import_runs
+macro_sync windows
+  -> packaged macrodata bundle history macro-core
+  -> macro_observations / macro_import_runs / macro_sync_runs
+  -> wake hint
+  -> macro_view_projection
   -> feature engine and regime state machine
   -> macro_regime_v4 in macro_view_snapshots
   -> /api/macro
   -> web /macro
 ```
 
-Single-asof `macrodata bundle macro-core --asof <date>` imports are valid for
-current facts, but they are not chart-ready by themselves. Operators backfill
-history with `macrodata bundle history macro-core --start <YYYY-MM-DD> --end
-<YYYY-MM-DD>` piped into `uv run gmgn-twitter-intel macro import-bundle
---stdin`, then run `uv run gmgn-twitter-intel macro project-once`.
+`macro import-bundle` remains an offline replay/seed tool for saved
+macrodata envelopes; it is not the normal freshness path. `macro sync` is an
+operator-triggered execution of the same sync service used by `macro_sync`.
 `macro_regime_v4` readiness requires both latest coverage and required history
 coverage; one-point history is projected as `partial` with structured gaps
 rather than `ready`.
@@ -80,9 +82,9 @@ are wrong too.
    `token_profile_current_dirty_targets`, `token_image_source_dirty_targets`,
    `asset_profile_refresh_targets`, `token_capture_tier_dirty_targets`, and
    `news_fetch_runs` own worker scheduling state and are not product truth.
-   `macro_import_runs` records importer provenance,
-   coverage, and data-quality diagnostics; macro product state still rebuilds
-   from `macro_observations`. Every derived read model can be rebuilt from the
+   `macro_import_runs`, `macro_sync_windows`, and `macro_sync_runs` record
+   importer/sync provenance, coverage, and data-quality diagnostics; macro
+   product state still rebuilds from `macro_observations`. Every derived read model can be rebuilt from the
    facts.
 2. **Append-only market tick facts.** Market data from any provider is
    normalised into `MarketTick`
@@ -271,7 +273,7 @@ direction is still enforced by the package rules below.
 | `domains/watchlist_intel/` | Watchlist handle-level topic summaries, signal/all handle timeline read model, summary job queue, and handle summary worker. |
 | `domains/news_intel/` | Configured news source ingestion, news item facts, token mention observations, deterministic story grouping, fact candidates, item-scoped agent brief read model, and the News page read model. |
 | `domains/cex_market_intel/` | Centralized exchange derivative series and Binance OI radar board projection. |
-| `domains/macro_intel/` | Normalized macro observations imported from macrodata-cli bundles, macro import-run audit, deterministic macro feature/regime/scenario scoring, and the Macro read model. |
+| `domains/macro_intel/` | `macro_sync` fact ingest from packaged macrodata-cli bundles, macro sync/import audit, deterministic macro feature/regime/scenario scoring, and the Macro read model. |
 | `domains/account_quality/` | Account-quality snapshots, account-quality read service, account-alert read service. |
 
 ## Module Architecture Documents
@@ -287,7 +289,7 @@ own maps next to the code they describe, and this file links to them.
 | CEX market intelligence | [`src/gmgn_twitter_intel/domains/cex_market_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/cex_market_intel/ARCHITECTURE.md) | Binance USDT perpetual universe consumption, OI radar board read model, CEX detail snapshots, and snapshot-only Token Case / Agent read paths. |
 | Signal Pulse pipeline | [`src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md) | Candidate gate, agent route policy, stage runtime, decision persistence, audit ledger, abstain contract. |
 | News intelligence | [`src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md) | Configured source ingestion, raw news item facts, token mention observations, story grouping, fact candidates, and the News page read model. |
-| Macro intelligence | [`src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md) | Macrodata-cli bundle/history import, macro observation facts, deterministic `macro_regime_v4` feature/regime/scenario scoring, module v2 views, and Macro projection ownership. |
+| Macro intelligence | [`src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md) | `macro_sync` fact ingest, macro observation facts, deterministic `macro_regime_v4` feature/regime/scenario scoring, module v3 views, and Macro projection ownership. |
 
 When a subsystem needs more than a short row here, add
 `src/gmgn_twitter_intel/domains/<domain>/ARCHITECTURE.md` and link it from this

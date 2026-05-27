@@ -553,9 +553,8 @@ class MacrodataProviderConfig(BaseModel):
     quote_timeout_seconds: float = Field(default=5.0, gt=0)
     quote_cache_ttl_seconds: float = Field(default=30.0, ge=0)
     fred_api_key_env: str | None = "FINANCE_FRED_API_KEY"
-    cli_project_dir: str | None = None
 
-    @field_validator("fred_api_key_env", "cli_project_dir", mode="before")
+    @field_validator("fred_api_key_env", mode="before")
     @classmethod
     def parse_optional_string(cls, value: Any) -> str | None:
         if value is None:
@@ -1085,6 +1084,30 @@ class MacroViewProjectionWorkerSettings(PerWorkerSettings):
     advisory_lock_key: int = 2026052109
     lookback_days: int = Field(default=730, ge=1)
     limit_per_series: int = Field(default=250, ge=1)
+    wakes_on: tuple[str, ...] = ("macro_observations_imported",)
+
+    @field_validator("wakes_on", mode="before")
+    @classmethod
+    def parse_wakes_on(cls, value: Any) -> tuple[str, ...]:
+        return tuple(_split_values(value))
+
+
+class MacroSyncWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=900.0, ge=0)
+    soft_timeout_seconds: float = Field(default=180.0, ge=0)
+    hard_timeout_seconds: float = Field(default=300.0, ge=0)
+    statement_timeout_seconds: float = Field(default=30.0, ge=0)
+    advisory_lock_key: int = 2026052711
+    bundle_name: str = "macro-core"
+    source_name: str = "macrodata-cli"
+    bootstrap_lookback_days: int = Field(default=1095, ge=1)
+    max_window_days: int = Field(default=31, ge=1)
+    steady_overlap_days: int = Field(default=7, ge=1)
+    max_bootstrap_windows_per_cycle: int = Field(default=1, ge=1)
+    lease_ms: int = Field(default=300_000, ge=1)
+    retry_delay_ms: int = Field(default=900_000, ge=1)
+    max_attempts: int = Field(default=8, ge=1)
+    macrodata_timeout_seconds: float = Field(default=240.0, ge=1)
 
 
 class PulseCandidateTriggerThresholds(BaseModel):
@@ -1453,6 +1476,7 @@ class WorkersSettings(BaseModel):
         default_factory=TokenRadarProjectionWorkerSettings
     )
     cex_oi_radar_board: CexOiRadarBoardWorkerSettings = Field(default_factory=CexOiRadarBoardWorkerSettings)
+    macro_sync: MacroSyncWorkerSettings = Field(default_factory=MacroSyncWorkerSettings)
     macro_view_projection: MacroViewProjectionWorkerSettings = Field(default_factory=MacroViewProjectionWorkerSettings)
     narrative_admission: NarrativeAdmissionWorkerSettings = Field(default_factory=NarrativeAdmissionWorkerSettings)
     mention_semantics: MentionSemanticsWorkerSettings = Field(default_factory=MentionSemanticsWorkerSettings)
@@ -1752,10 +1776,6 @@ class Settings(BaseModel):
         return self.providers.macrodata.fred_api_key_env
 
     @property
-    def macrodata_cli_project_dir(self) -> str | None:
-        return self.providers.macrodata.cli_project_dir
-
-    @property
     def macrodata_fred_api_key_configured(self) -> bool:
         env_name = self.macrodata_fred_api_key_env
         if not env_name:
@@ -1912,7 +1932,6 @@ providers:
     quote_timeout_seconds: 5
     quote_cache_ttl_seconds: 30
     fred_api_key_env: "FINANCE_FRED_API_KEY"
-    cli_project_dir:
 
 {_default_news_intel_yaml()}
 
@@ -2143,12 +2162,30 @@ cex_oi_radar_board:
   period: "5m"
   coinglass_enrichment_limit: 5
   coinglass_level_limit: 6
+macro_sync:
+  enabled: true
+  interval_seconds: 900.0
+  soft_timeout_seconds: 180.0
+  hard_timeout_seconds: 300.0
+  statement_timeout_seconds: 30.0
+  advisory_lock_key: 2026052711
+  bundle_name: "macro-core"
+  source_name: "macrodata-cli"
+  bootstrap_lookback_days: 1095
+  max_window_days: 31
+  steady_overlap_days: 7
+  max_bootstrap_windows_per_cycle: 1
+  lease_ms: 300000
+  retry_delay_ms: 900000
+  max_attempts: 8
+  macrodata_timeout_seconds: 240.0
 macro_view_projection:
   enabled: true
   interval_seconds: 300.0
   batch_size: 250
   statement_timeout_seconds: 30.0
   advisory_lock_key: 2026052109
+  wakes_on: ["macro_observations_imported"]
 narrative_admission:
   enabled: true
   interval_seconds: 60.0

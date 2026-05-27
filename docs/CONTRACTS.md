@@ -62,7 +62,7 @@ per manifest worker key, in manifest start-priority order:
 `equity_event_fetch`, `equity_event_process`,
 `equity_event_story_projection`, `equity_event_brief`,
 `equity_event_page_projection`, `cex_oi_radar_board`,
-`macro_view_projection`, `pulse_candidate`, `enrichment`, `handle_summary`,
+`macro_sync`, `macro_view_projection`, `pulse_candidate`, `enrichment`, `handle_summary`,
 `notification_rule`, and `notification_delivery`.
 
 The schema is `WorkersSettings`; its worker fields and the generated default
@@ -337,6 +337,9 @@ Macro contract:
   it reads the latest `macro_view_snapshots` row written by
   `MacroViewProjectionWorker`. The hard-cut projection is
   `macro_regime_v4`; there is no `macro_regime_v3` compatibility read path.
+  The response also includes `currentness`, derived only from PostgreSQL sync
+  audit/fact/projection state: latest sync status, fact max observed date,
+  projection lag days, and whether projection is behind facts.
 - When no snapshot exists, the endpoint returns `ok: true` with
   `data.snapshot = null`, empty `panels`, `indicators`, and `triggers`, plus
   structured `data_gaps` including `macro_view_snapshot_missing`, empty
@@ -368,7 +371,10 @@ Macro contract:
   first-class `macro_module_view_v3` page view for the macro workbench module
   catalog. The payload includes `snapshot`, `tiles`, `primary_chart`, `tables`,
   `module_read`, `module_evidence`, `transmission`, `data_health`,
-  summarized `provenance`, and `related_routes`. The retired
+  summarized `provenance`, and `related_routes`. `provenance.currentness`
+  exposes latest sync status, `facts_max_observed_at`, `projection_lag_days`,
+  and `projection_behind_facts` from PostgreSQL only; it never exposes raw
+  provider output or secret values. The retired
   module key `read`, retired module key `evidence`, and retired top-level
   `data_gaps` field are not compatibility surfaces. Frontend module pages
   consume v3 directly and must not recompute scoring, readiness, or module
@@ -547,24 +553,27 @@ with bounded catch-up inside their own projection path. There is no generic
 runtime-worker repair CLI because such a surface blurs the boundary between
 normal runtime and operator maintenance.
 
-Macro one-shot CLI commands are operator surfaces, not background workers:
-`macro import-bundle --file <json>` or `--stdin` imports a macrodata-cli
-`macro-core` bundle into `macro_observations` and records a
-`macro_import_runs` audit row; `macro project-once` reads persisted
-observations, builds the `macro_regime_v4` snapshot, and writes
-`macro_view_snapshots`; `macro status` reports migration readiness,
+Macro one-shot CLI commands are operator surfaces, not background workers.
+`macro sync --bundle macro-core --start <date> --end <date>` delegates to the
+same `MacroSyncService` as the `macro_sync` worker and executes one bounded
+window. It never writes macro read models directly. `macro import-bundle --file
+<json>` or `--stdin` imports a saved macrodata-cli `macro-core` envelope for
+offline replay/seed only, records a `macro_import_runs` audit row, and emits the
+same persisted-fact wake hint as runtime sync; `macro status` reports migration readiness,
 observation/concept counts, history readiness, concepts below minimum history,
-the latest import run, and the latest snapshot.
+latest import run, latest sync run, sync queue state, fact max observed date,
+projection lag, and the latest snapshot.
 Docker builds install the `AnalyThothAI/macrodata-cli` `v0.1.5` Git dependency,
-whose executable is `macrodata`, so remote operators can pipe
-`macrodata bundle macro-core --asof <date>` into `macro import-bundle --stdin`
-without mounting a local source checkout.
-For chart-ready history, operators backfill with:
+whose executable is `macrodata`; runtime sync uses that packaged executable,
+not `uv run macrodata`, and does not require a host-local source checkout.
+The child process is bounded by `workers.macro_sync.macrodata_timeout_seconds`
+so worker hard-timeout cancellation is not the only stop mechanism.
+Docker operators provide `FINANCE_FRED_API_KEY` through environment or a
+deployment secret manager; config and payloads contain only env var names and
+booleans. For an explicit repair sync, operators run:
 
 ```bash
-macrodata bundle history macro-core --start <YYYY-MM-DD> --end <YYYY-MM-DD> \
-  | uv run gmgn-twitter-intel macro import-bundle --stdin
-uv run gmgn-twitter-intel macro project-once
+uv run gmgn-twitter-intel macro sync --bundle macro-core --start <YYYY-MM-DD> --end <YYYY-MM-DD>
 ```
 
 These commands may report partial coverage and data gaps; they must not print

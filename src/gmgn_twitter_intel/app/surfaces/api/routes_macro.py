@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, Request
@@ -43,7 +44,8 @@ def macro(request: Request) -> JSONResponse:
     runtime = _authenticated_runtime(request)
     with runtime.repositories() as repos:
         snapshot = repos.macro_intel.latest_snapshot(projection_version=MACRO_VIEW_PROJECTION_VERSION)
-    return _json({"ok": True, "data": _public_macro(snapshot)})
+        currentness = _macro_currentness(repos, snapshot=snapshot)
+    return _json({"ok": True, "data": _public_macro(snapshot, currentness=currentness)})
 
 
 @router.get("/macro/assets/correlation")
@@ -113,6 +115,8 @@ def macro_module(request: Request, module_id: str) -> JSONResponse:
         snapshot = repos.macro_intel.latest_snapshot(projection_version=MACRO_VIEW_PROJECTION_VERSION)
         observations = repos.macro_intel.latest_observations(limit=250, concept_keys=_module_concepts(config))
         latest_import_run = repos.macro_intel.latest_import_run()
+        latest_sync_run = repos.macro_intel.latest_macro_sync_run()
+        currentness = _macro_currentness(repos, snapshot=snapshot, latest_sync_run=latest_sync_run)
         cex_board = _cex_board(repos, module_id)
     return _json(
         {
@@ -122,16 +126,21 @@ def macro_module(request: Request, module_id: str) -> JSONResponse:
                 snapshot=snapshot,
                 observations=observations,
                 latest_import_run=latest_import_run,
+                latest_sync_run=latest_sync_run,
+                facts_max_observed_at=currentness["facts_max_observed_at"],
+                projection_lag_days=currentness["projection_lag_days"],
+                projection_behind_facts=bool(currentness["projection_behind_facts"]),
                 cex_board=cex_board,
             ),
         }
     )
 
 
-def _public_macro(snapshot: dict[str, Any] | None) -> dict[str, Any]:
+def _public_macro(snapshot: dict[str, Any] | None, *, currentness: dict[str, Any]) -> dict[str, Any]:
     if snapshot is None:
         return {
             "snapshot": None,
+            "currentness": currentness,
             "panels": {},
             "indicators": {},
             "triggers": [],
@@ -156,6 +165,7 @@ def _public_macro(snapshot: dict[str, Any] | None) -> dict[str, Any]:
             "overall_score": snapshot.get("overall_score"),
             "computed_at_ms": snapshot["computed_at_ms"],
         },
+        "currentness": currentness,
         "panels": snapshot.get("panels_json") or {},
         "indicators": snapshot.get("indicators_json") or {},
         "triggers": snapshot.get("triggers_json") or [],
@@ -244,6 +254,67 @@ def _cex_board(repos: Any, module_id: str) -> dict[str, Any] | None:
         "observed_at_ms": (run or {}).get("finished_at_ms") if isinstance(run, dict) else None,
         "rows": rows if isinstance(rows, list) else [],
     }
+
+
+def _macro_currentness(
+    repos: Any,
+    *,
+    snapshot: dict[str, Any] | None,
+    latest_sync_run: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    facts_max_observed_at = repos.macro_intel.macro_observations_max_observed_at()
+    snapshot_asof = _to_date(snapshot.get("asof_date") if snapshot else None)
+    return {
+        "latest_sync_run": _public_sync_run(
+            latest_sync_run if latest_sync_run is not None else repos.macro_intel.latest_macro_sync_run()
+        ),
+        "facts_max_observed_at": _date_string(facts_max_observed_at),
+        "projection_lag_days": _projection_lag_days(facts_max_observed_at, snapshot_asof),
+        "projection_behind_facts": (
+            facts_max_observed_at is not None and (snapshot_asof is None or snapshot_asof < facts_max_observed_at)
+        ),
+    }
+
+
+def _public_sync_run(sync_run: dict[str, Any] | None) -> dict[str, Any] | None:
+    if sync_run is None:
+        return None
+    return {
+        "status": sync_run.get("status"),
+        "completed_at_ms": sync_run.get("completed_at_ms"),
+        "asof_date": _date_string(sync_run.get("asof_date")),
+        "max_observed_at": _date_string(sync_run.get("max_observed_at")),
+        "imported_observation_count": sync_run.get("imported_observation_count"),
+        "error_code": sync_run.get("error_code"),
+    }
+
+
+def _projection_lag_days(facts_max_observed_at: date | None, snapshot_asof: date | None) -> int | None:
+    if facts_max_observed_at is None or snapshot_asof is None:
+        return None
+    return max(0, (facts_max_observed_at - snapshot_asof).days)
+
+
+def _date_string(value: object) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    return str(value)
+
+
+def _to_date(value: object) -> date | None:
+    if value is None:
+        return None
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, str):
+        return date.fromisoformat(value)
+    return None
 
 
 __all__ = ["router"]
