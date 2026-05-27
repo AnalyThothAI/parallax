@@ -7,7 +7,6 @@ from typing import Any
 
 from gmgn_twitter_intel.domains.asset_market.providers import CexTicker, DexTokenQuote, DexTokenQuoteRequest
 from gmgn_twitter_intel.domains.pulse_lab.providers import DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT, PulseDecisionResult
-from gmgn_twitter_intel.platform.agent_execution import AgentCapacityReservation
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     BearCaseMemo,
     BullBearView,
@@ -17,6 +16,7 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     StageRunAudit,
     TradePlaybook,
 )
+from gmgn_twitter_intel.platform.agent_execution import AgentCapacityReservation
 
 
 class FakeGmgnUpstreamClient:

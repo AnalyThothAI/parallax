@@ -11,6 +11,9 @@ from fastapi.testclient import TestClient
 
 from gmgn_twitter_intel.app.runtime.app import create_app
 from gmgn_twitter_intel.app.runtime.worker_factories.notifications import _notification_rule_engine
+from gmgn_twitter_intel.domains.asset_market.repositories.token_profile_current_repository import (
+    TokenProfileCurrentRepository,
+)
 from gmgn_twitter_intel.domains.asset_market.runtime.event_anchor_backfill_worker import EventAnchorBackfillWorker
 from gmgn_twitter_intel.domains.notifications.runtime.notification_delivery import NotificationDeliveryWorker
 from gmgn_twitter_intel.domains.notifications.runtime.notification_worker import NotificationWorker
@@ -19,9 +22,6 @@ from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import 
     PulseTriggerThresholds,
 )
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import PulseGateThresholds
-from gmgn_twitter_intel.domains.asset_market.repositories.token_profile_current_repository import (
-    TokenProfileCurrentRepository,
-)
 from gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
 from tests.postgres_test_utils import connect_postgres_test, prepare_postgres_database
 from tests.support.db_seeds import (
