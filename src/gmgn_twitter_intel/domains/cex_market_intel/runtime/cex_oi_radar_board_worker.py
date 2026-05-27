@@ -9,9 +9,6 @@ from typing import Any, cast
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
-from gmgn_twitter_intel.domains.cex_market_intel.repositories.cex_oi_radar_repository import (
-    oi_radar_run_id,
-)
 from gmgn_twitter_intel.domains.cex_market_intel.services.binance_oi_radar_builder import (
     build_binance_oi_radar_rows,
 )
@@ -78,22 +75,14 @@ class CexOiRadarBoardWorker(WorkerBase):
         limit = max(1, min(int(getattr(self.settings, "universe_limit", self._batch_size())), self._batch_size()))
         with self._repository_session() as repos:
             universe = repos.cex_oi_radar.binance_usdt_perp_universe(limit=limit)
-            run_id = oi_radar_run_id(started_at_ms=now)
-            repos.cex_oi_radar.start_run(
-                run_id=run_id,
-                started_at_ms=now,
-                universe_count=len(universe),
-                period=period,
-            )
 
         if not universe:
             with self._repository_session() as repos:
-                repos.cex_oi_radar.finish_run(
-                    run_id=run_id,
+                repos.cex_oi_radar.publish_board(
+                    rows=[],
+                    computed_at_ms=now,
+                    period=period,
                     status="skipped",
-                    finished_at_ms=now,
-                    processed_count=0,
-                    failed_count=0,
                     notes={"reason": "empty_binance_universe"},
                 )
             return WorkerResult(
@@ -125,26 +114,24 @@ class CexOiRadarBoardWorker(WorkerBase):
             )
             status = "success" if int(built["failed"]) == 0 else "partial"
             with self._repository_session() as repos:
-                written = repos.cex_oi_radar.insert_rows(run_id=run_id, rows=rows, computed_at_ms=now)
                 snapshots = [
                     build_cex_detail_snapshot(row=row, computed_at_ms=now, period=period)
                     for row in rows
                     if row.get("native_market_id")
                 ]
                 detail_written = repos.cex_detail_snapshots.upsert_many(snapshots) if snapshots else 0
-                repos.cex_oi_radar.finish_run(
-                    run_id=run_id,
+                notes = {"failed_symbols": built["failed_symbols"][:20], "detail_snapshot_count": detail_written}
+                written = repos.cex_oi_radar.publish_board(
+                    rows=rows,
+                    computed_at_ms=now,
+                    period=period,
                     status=status,
-                    finished_at_ms=int(self.clock_ms()),
-                    processed_count=written,
-                    failed_count=int(built["failed"]),
-                    notes={"failed_symbols": built["failed_symbols"][:20], "detail_snapshot_count": detail_written},
+                    notes=notes,
                 )
             return WorkerResult(
                 processed=len(rows),
                 failed=int(built["failed"]),
                 notes={
-                    "run_id": run_id,
                     "universe_count": len(universe),
                     "status": status,
                     "claimed": len(universe),
@@ -156,12 +143,11 @@ class CexOiRadarBoardWorker(WorkerBase):
             )
         except Exception as exc:
             with self._repository_session() as repos:
-                repos.cex_oi_radar.finish_run(
-                    run_id=run_id,
+                repos.cex_oi_radar.publish_board(
+                    rows=[],
+                    computed_at_ms=now,
+                    period=period,
                     status="failed",
-                    finished_at_ms=int(self.clock_ms()),
-                    processed_count=0,
-                    failed_count=len(universe),
                     notes={"reason": type(exc).__name__},
                 )
             raise

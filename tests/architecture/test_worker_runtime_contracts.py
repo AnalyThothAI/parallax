@@ -29,6 +29,8 @@ NARRATIVE_DIGEST_WORKER = SRC / "domains" / "narrative_intel" / "runtime" / "tok
 NARRATIVE_EPOCH_POLICY = SRC / "domains" / "narrative_intel" / "services" / "narrative_epoch_policy.py"
 API_ROUTES = SRC / "app" / "surfaces" / "api"
 WORKER_FACTORIES = SRC / "app" / "runtime" / "worker_factories"
+CEX_OI_RADAR_REPOSITORY = SRC / "domains" / "cex_market_intel" / "repositories" / "cex_oi_radar_repository.py"
+CEX_OI_RADAR_BOARD_WORKER = SRC / "domains" / "cex_market_intel" / "runtime" / "cex_oi_radar_board_worker.py"
 EQUITY_EVENT_EVIDENCE_HARD_CUT_MIGRATION = (
     SRC / "platform/db/alembic/versions/20260526_0104_equity_event_evidence_hard_cut.py"
 )
@@ -167,15 +169,11 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
         SRC / "domains/equity_event_intel/runtime/equity_event_brief_worker.py",
         SRC / "platform/db/alembic/versions/20260523_0083_equity_event_intel.py",
     },
-    "cex_oi_radar_runs": {
-        SRC / "domains/cex_market_intel/repositories/cex_oi_radar_repository.py",
-        SRC / "domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py",
-        SRC / "platform/db/alembic/versions/20260521_0073_cex_oi_radar_board.py",
-    },
     "cex_oi_radar_rows": {
-        SRC / "domains/cex_market_intel/repositories/cex_oi_radar_repository.py",
-        SRC / "domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py",
+        CEX_OI_RADAR_REPOSITORY,
+        CEX_OI_RADAR_BOARD_WORKER,
         SRC / "platform/db/alembic/versions/20260521_0073_cex_oi_radar_board.py",
+        SRC / "platform/db/alembic/versions/20260527_0115_next_runtime_lifecycle_hard_cut.py",
     },
     "macro_view_snapshots": {
         SRC / "domains/macro_intel/repositories/macro_intel_repository.py",
@@ -386,6 +384,23 @@ def test_worker_manifest_forbids_semantic_read_model_aliases() -> None:
     }
 
     assert aliases == set()
+
+
+@pytest.mark.architecture
+def test_cex_oi_radar_runtime_uses_current_board_lifecycle() -> None:
+    forbidden_tokens = (
+        "run_id",
+        "cex_oi_radar_runs",
+        "start_run",
+        "finish_run",
+        "oi_radar_run_id",
+    )
+    violations = []
+    for path in (CEX_OI_RADAR_REPOSITORY, CEX_OI_RADAR_BOARD_WORKER):
+        text = path.read_text(encoding="utf-8")
+        violations.extend(f"{_rel(path)} contains {token}" for token in forbidden_tokens if token in text)
+
+    assert violations == []
 
 
 @pytest.mark.architecture

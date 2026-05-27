@@ -36,43 +36,96 @@ class CexOiRadarRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
-    def start_run(
+    def publish_board(
         self,
         *,
-        run_id: str,
-        started_at_ms: int,
-        universe_count: int,
+        rows: list[dict[str, Any]],
+        computed_at_ms: int,
         period: str,
-    ) -> None:
+        status: str,
+        notes: dict[str, Any] | None = None,
+        commit: bool = True,
+    ) -> int:
+        board_period = str(period)
+        computed_at = int(computed_at_ms)
+        frontier_ms = _source_frontier_ms(rows, default=computed_at)
+        latest_error = _latest_attempt_error(status=status, notes=notes)
+
         self.conn.execute(
             """
-            INSERT INTO cex_oi_radar_runs(
-              run_id, provider, exchange, quote_symbol, contract_type, period, status,
-              started_at_ms, universe_count, processed_count, failed_count, notes_json
+            INSERT INTO cex_oi_radar_publication_state(
+              board_key, provider, exchange, quote_symbol, contract_type, period,
+              current_published_at_ms, current_source_frontier_ms, current_row_count,
+              latest_attempt_status, latest_attempt_started_at_ms, latest_attempt_finished_at_ms,
+              latest_attempt_error, updated_at_ms
             )
             VALUES (
-              %s, 'binance', 'binance', 'USDT', 'PERPETUAL', %s, 'running',
-              %s, %s, 0, 0, '{}'::jsonb
+              %s, %s, %s, %s, %s, %s,
+              %s, %s, %s,
+              %s, %s, %s,
+              %s, %s
             )
-            ON CONFLICT(run_id) DO NOTHING
+            ON CONFLICT(board_key) DO UPDATE SET
+              current_published_at_ms = excluded.current_published_at_ms,
+              current_source_frontier_ms = excluded.current_source_frontier_ms,
+              current_row_count = excluded.current_row_count,
+              latest_attempt_status = excluded.latest_attempt_status,
+              latest_attempt_started_at_ms = excluded.latest_attempt_started_at_ms,
+              latest_attempt_finished_at_ms = excluded.latest_attempt_finished_at_ms,
+              latest_attempt_error = excluded.latest_attempt_error,
+              updated_at_ms = excluded.updated_at_ms
             """,
-            (run_id, period, int(started_at_ms), int(universe_count)),
+            (
+                _board_key(board_period),
+                "binance",
+                "binance",
+                "USDT",
+                "PERPETUAL",
+                board_period,
+                computed_at,
+                frontier_ms,
+                len(rows),
+                status,
+                computed_at,
+                computed_at,
+                latest_error,
+                computed_at,
+            ),
+        )
+        self.conn.execute(
+            """
+            DELETE FROM cex_oi_radar_rows
+            WHERE board_provider = 'binance'
+              AND board_exchange = 'binance'
+              AND board_quote_symbol = 'USDT'
+              AND board_contract_type = 'PERPETUAL'
+              AND period = %s
+            """,
+            (board_period,),
         )
 
-    def insert_rows(self, *, run_id: str, rows: list[dict[str, Any]], computed_at_ms: int) -> int:
         written = 0
         for row in rows:
-            row_id = _row_id(run_id, str(row["target_id"]))
             self.conn.execute(
                 """
                 INSERT INTO cex_oi_radar_rows(
-                  row_id, run_id, rank, target_id, pricefeed_id, native_market_id, base_symbol, quote_symbol,
+                  row_id, period, board_provider, board_exchange, board_quote_symbol, board_contract_type,
+                  rank, target_id, pricefeed_id, native_market_id, base_symbol, quote_symbol,
                   open_interest_usd, open_interest_change_pct_1h, volume_24h_usd, funding_rate,
                   mark_price, score, score_components_json, observed_at_ms, computed_at_ms
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (
+                  %s, %s, %s, %s, %s, %s,
+                  %s, %s, %s, %s, %s, %s,
+                  %s, %s, %s, %s,
+                  %s, %s, %s, %s, %s
+                )
                 ON CONFLICT(row_id) DO UPDATE SET
                   rank = excluded.rank,
+                  pricefeed_id = excluded.pricefeed_id,
+                  native_market_id = excluded.native_market_id,
+                  base_symbol = excluded.base_symbol,
+                  quote_symbol = excluded.quote_symbol,
                   open_interest_usd = excluded.open_interest_usd,
                   open_interest_change_pct_1h = excluded.open_interest_change_pct_1h,
                   volume_24h_usd = excluded.volume_24h_usd,
@@ -84,8 +137,12 @@ class CexOiRadarRepository:
                   computed_at_ms = excluded.computed_at_ms
                 """,
                 (
-                    row_id,
-                    run_id,
+                    _row_id(board_period, str(row["target_id"])),
+                    board_period,
+                    "binance",
+                    "binance",
+                    "USDT",
+                    "PERPETUAL",
                     int(row["rank"]),
                     row["target_id"],
                     row.get("pricefeed_id"),
@@ -99,79 +156,77 @@ class CexOiRadarRepository:
                     row.get("mark_price"),
                     row["score"],
                     Jsonb(row.get("score_components") or {}),
-                    int(row.get("observed_at_ms") or computed_at_ms),
-                    int(computed_at_ms),
+                    int(row.get("observed_at_ms") or computed_at),
+                    computed_at,
                 ),
             )
             written += 1
-        return written
 
-    def finish_run(
-        self,
-        *,
-        run_id: str,
-        status: str,
-        finished_at_ms: int,
-        processed_count: int,
-        failed_count: int,
-        notes: dict[str, Any] | None = None,
-        commit: bool = True,
-    ) -> None:
-        self.conn.execute(
-            """
-            UPDATE cex_oi_radar_runs
-            SET status = %s,
-                finished_at_ms = %s,
-                processed_count = %s,
-                failed_count = %s,
-                notes_json = %s
-            WHERE run_id = %s
-            """,
-            (
-                status,
-                int(finished_at_ms),
-                int(processed_count),
-                int(failed_count),
-                Jsonb(notes or {}),
-                run_id,
-            ),
-        )
         if commit:
             self.conn.commit()
+        return written
 
     def latest_board(self, *, limit: int) -> dict[str, Any]:
-        run = self.conn.execute(
+        state = self.conn.execute(
             """
             SELECT *
-            FROM cex_oi_radar_runs
+            FROM cex_oi_radar_publication_state
             WHERE provider = 'binance'
               AND exchange = 'binance'
               AND quote_symbol = 'USDT'
               AND contract_type = 'PERPETUAL'
-              AND status IN ('success', 'partial')
-            ORDER BY finished_at_ms DESC NULLS LAST, started_at_ms DESC
+            ORDER BY current_published_at_ms DESC NULLS LAST, updated_at_ms DESC
             LIMIT 1
             """
         ).fetchone()
-        if run is None:
-            return {"run": None, "rows": []}
+        if state is None:
+            return {"state": None, "run": None, "rows": []}
+
+        state_payload = dict(state)
         rows = self.conn.execute(
             """
             SELECT *
             FROM cex_oi_radar_rows
-            WHERE run_id = %s
+            WHERE board_provider = 'binance'
+              AND board_exchange = 'binance'
+              AND board_quote_symbol = 'USDT'
+              AND board_contract_type = 'PERPETUAL'
+              AND period = %s
             ORDER BY rank ASC, score DESC, native_market_id ASC
             LIMIT %s
             """,
-            (run["run_id"], max(1, int(limit))),
+            (state_payload["period"], max(1, int(limit))),
         ).fetchall()
-        return {"run": dict(run), "rows": [dict(row) for row in rows]}
+        return {"state": state_payload, "run": _attempt_payload(state_payload), "rows": [dict(row) for row in rows]}
 
 
-def oi_radar_run_id(*, started_at_ms: int) -> str:
-    return f"cex-oi-radar:binance-usdt-perp:{int(started_at_ms)}"
+def _board_key(period: str) -> str:
+    return f"binance:USDT:PERPETUAL:{period}"
 
 
-def _row_id(run_id: str, target_id: str) -> str:
-    digest = hashlib.sha256(f"{run_id}|{target_id}".encode()).hexdigest()[:32]
+def _row_id(period: str, target_id: str) -> str:
+    digest = hashlib.sha256(f"binance|binance|USDT|PERPETUAL|{period}|{target_id}".encode()).hexdigest()[:32]
     return f"cex-oi-radar-row:{digest}"
+
+
+def _source_frontier_ms(rows: list[dict[str, Any]], *, default: int) -> int:
+    observed_values = [int(row["observed_at_ms"]) for row in rows if row.get("observed_at_ms") is not None]
+    if not observed_values:
+        return default
+    return max(observed_values)
+
+
+def _latest_attempt_error(*, status: str, notes: dict[str, Any] | None) -> str | None:
+    if status != "failed":
+        return None
+    reason = (notes or {}).get("reason")
+    return str(reason) if reason else status
+
+
+def _attempt_payload(state: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(state)
+    payload["status"] = payload.get("latest_attempt_status")
+    payload["started_at_ms"] = payload.get("latest_attempt_started_at_ms")
+    payload["finished_at_ms"] = payload.get("latest_attempt_finished_at_ms")
+    payload["notes_json"] = {}
+    return payload
