@@ -172,6 +172,9 @@ TOKEN_RADAR_STABLE_PUBLICATION_MIGRATION = Path(
 RUNTIME_DB_PERFORMANCE_HARD_CUT_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0114_runtime_db_performance_hard_cut.py"
 )
+NEXT_RUNTIME_LIFECYCLE_HARD_CUT_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0115_next_runtime_lifecycle_hard_cut.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 LEGACY_TOKEN_RADAR_CURRENT_JSON_COLUMNS = {
@@ -309,6 +312,68 @@ def test_runtime_db_performance_hard_cut_adds_target_feature_window_freshness_in
     assert "ALTER TABLE macro_observation_series_rows_compact RENAME TO macro_observation_series_rows" in text
     assert "DROP TABLE IF EXISTS macro_observation_series_active_generation" in text
     assert "DROP TABLE IF EXISTS macro_observation_series_generations" in text
+
+
+def test_next_runtime_lifecycle_hard_cut_revision_and_macro_cleanup_contract() -> None:
+    text = _migration_text(NEXT_RUNTIME_LIFECYCLE_HARD_CUT_MIGRATION)
+    normalized_text = " ".join(text.split())
+
+    assert 'revision = "20260527_0115"' in text
+    assert 'down_revision = "20260527_0114"' in text
+    assert "DROP TABLE IF EXISTS macro_observation_series_rows_legacy_20260527_0114" in text
+    assert "RENAME TO macro_observation_series_rows_legacy" not in text
+    assert "DROP INDEX CONCURRENTLY IF EXISTS idx_macro_observation_series_rows_compact_lookup" in text
+    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_macro_observation_series_rows_history_order" in text
+    assert (
+        "ON macro_observation_series_rows(projection_version, concept_key, observed_at DESC, series_rank)"
+        in normalized_text
+    )
+
+
+def test_next_runtime_lifecycle_hard_cut_rebuilds_cex_oi_current_tables() -> None:
+    text = _migration_text(NEXT_RUNTIME_LIFECYCLE_HARD_CUT_MIGRATION)
+    rows_table = _create_table_block(text, "cex_oi_radar_rows")
+    publication_state_table = _create_table_block(text, "cex_oi_radar_publication_state")
+
+    assert "DROP TABLE IF EXISTS cex_oi_radar_rows" in text
+    assert "DROP TABLE IF EXISTS cex_oi_radar_runs" in text
+    assert "publication_id TEXT PRIMARY KEY" in publication_state_table
+    assert "current_row_count BIGINT NOT NULL DEFAULT 0" in publication_state_table
+    assert "row_id TEXT PRIMARY KEY" in rows_table
+    assert "run_id" not in rows_table
+    for column in (
+        "period TEXT NOT NULL",
+        "board_provider TEXT NOT NULL",
+        "board_exchange TEXT NOT NULL",
+        "board_quote_symbol TEXT NOT NULL",
+        "board_contract_type TEXT NOT NULL",
+        "rank BIGINT NOT NULL",
+        "target_id TEXT NOT NULL",
+        "pricefeed_id TEXT REFERENCES price_feeds(pricefeed_id) ON DELETE SET NULL",
+        "native_market_id TEXT NOT NULL",
+        "base_symbol TEXT NOT NULL",
+        "quote_symbol TEXT NOT NULL",
+        "open_interest_usd NUMERIC",
+        "open_interest_change_pct_1h NUMERIC",
+        "volume_24h_usd NUMERIC",
+        "funding_rate NUMERIC",
+        "mark_price NUMERIC",
+        "score NUMERIC NOT NULL",
+        "score_components_json JSONB NOT NULL DEFAULT '{}'::jsonb",
+        "observed_at_ms BIGINT NOT NULL",
+        "computed_at_ms BIGINT NOT NULL",
+    ):
+        assert column in rows_table
+
+
+def test_next_runtime_lifecycle_hard_cut_payload_hash_columns_are_backfilled_not_null() -> None:
+    text = _migration_text(NEXT_RUNTIME_LIFECYCLE_HARD_CUT_MIGRATION)
+
+    for table_name in ("news_page_rows", "news_source_quality_rows", "token_profile_current"):
+        assert f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS payload_hash TEXT" in text
+        assert f"UPDATE {table_name}" in text
+        assert "SET payload_hash = COALESCE(NULLIF(payload_hash, '')," in text
+        assert f"ALTER TABLE {table_name} ALTER COLUMN payload_hash SET NOT NULL" in text
 
 
 def test_token_radar_current_row_runtime_insert_contract_matches_hard_cut_schema() -> None:
@@ -827,6 +892,8 @@ def test_runtime_performance_hard_cut_revision_chain() -> None:
         (TOKEN_RADAR_PUBLICATION_STATE_MIGRATION, "20260527_0111", "20260526_0110"),
         (MACRO_SYNC_WORKER_MIGRATION, "20260527_0112", "20260527_0111"),
         (TOKEN_RADAR_STABLE_PUBLICATION_MIGRATION, "20260527_0113", "20260527_0112"),
+        (RUNTIME_DB_PERFORMANCE_HARD_CUT_MIGRATION, "20260527_0114", "20260527_0113"),
+        (NEXT_RUNTIME_LIFECYCLE_HARD_CUT_MIGRATION, "20260527_0115", "20260527_0114"),
     )
 
     for migration, revision, down_revision in migrations:
@@ -1446,6 +1513,14 @@ def _extract_sql_statement(text: str, statement_start: str) -> str:
     start = text.index(statement_start)
     end = text.index('"""', start)
     return text[start:end]
+
+
+def _migration_text(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def _create_table_block(text: str, table_name: str) -> str:
+    return _extract_sql_statement(text, f"CREATE TABLE IF NOT EXISTS {table_name}")
 
 
 def _legacy_price_index(*parts: str) -> str:

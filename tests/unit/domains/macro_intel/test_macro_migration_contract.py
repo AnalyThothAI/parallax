@@ -24,6 +24,16 @@ RUNTIME_DB_PERFORMANCE_HARD_CUT_MIGRATION = (
     / "versions"
     / "20260527_0114_runtime_db_performance_hard_cut.py"
 )
+NEXT_RUNTIME_LIFECYCLE_HARD_CUT_MIGRATION = (
+    ROOT
+    / "src"
+    / "gmgn_twitter_intel"
+    / "platform"
+    / "db"
+    / "alembic"
+    / "versions"
+    / "20260527_0115_next_runtime_lifecycle_hard_cut.py"
+)
 
 
 def test_macro_concept_key_migration_backfills_historical_stooq_rows_only() -> None:
@@ -176,6 +186,69 @@ def test_macro_observation_series_contract_is_current_only_after_hard_cut() -> N
     assert "INSERT INTO macro_observation_series_generations" not in repository_sql
     assert "macro_observation_series_active_generation" not in repository_sql
     assert "_generation_id" not in repository_sql
+
+
+def test_next_runtime_lifecycle_migration_compacts_macro_view_snapshots_to_current_only() -> None:
+    migration_sql = _migration_text(NEXT_RUNTIME_LIFECYCLE_HARD_CUT_MIGRATION)
+    compact_table = _create_table_block(migration_sql, "macro_view_snapshots_compact")
+    normalized_sql = " ".join(migration_sql.split())
+
+    assert "CREATE TABLE IF NOT EXISTS macro_view_snapshots_compact" in migration_sql
+    assert "payload_hash TEXT NOT NULL" in compact_table
+    assert "macro-view:' || projection_version || ':current" in migration_sql
+    assert "row_number() OVER" in migration_sql
+    assert "PARTITION BY projection_version" in migration_sql
+    assert "ORDER BY computed_at_ms DESC" in migration_sql
+    assert "WHERE snapshot_rank = 1" in migration_sql
+    assert "DROP TABLE macro_view_snapshots" in migration_sql
+    assert "ALTER TABLE macro_view_snapshots_compact RENAME TO macro_view_snapshots" in migration_sql
+    assert "CREATE UNIQUE INDEX IF NOT EXISTS ux_macro_view_snapshots_current" in migration_sql
+    assert "CREATE INDEX IF NOT EXISTS idx_macro_view_snapshots_latest_current" in migration_sql
+    assert "ON macro_view_snapshots(projection_version, computed_at_ms DESC)" in normalized_sql
+
+
+def test_next_runtime_lifecycle_migration_adds_macro_projection_dirty_targets_seed() -> None:
+    migration_sql = _migration_text(NEXT_RUNTIME_LIFECYCLE_HARD_CUT_MIGRATION)
+    dirty_targets_table = _create_table_block(migration_sql, "macro_projection_dirty_targets")
+    normalized_sql = " ".join(migration_sql.split())
+
+    for column in (
+        "projection_name TEXT NOT NULL",
+        "projection_version TEXT NOT NULL",
+        "target_kind TEXT NOT NULL",
+        "target_id TEXT NOT NULL",
+        "payload_hash TEXT NOT NULL",
+        "dirty_reason TEXT NOT NULL",
+        "source_watermark_ms BIGINT NOT NULL DEFAULT 0",
+        "priority INTEGER NOT NULL DEFAULT 100",
+        "due_at_ms BIGINT NOT NULL",
+        "leased_until_ms BIGINT",
+        "lease_owner TEXT",
+        "attempt_count INTEGER NOT NULL DEFAULT 0",
+        "last_error TEXT",
+        "created_at_ms BIGINT NOT NULL",
+        "updated_at_ms BIGINT NOT NULL",
+    ):
+        assert column in dirty_targets_table
+    assert (
+        "PRIMARY KEY (projection_name, projection_version, target_kind, target_id)"
+        in dirty_targets_table
+    )
+    assert "INSERT INTO macro_projection_dirty_targets" in migration_sql
+    assert "'macro_view'" in migration_sql
+    assert "'macro_regime_v4'" in migration_sql
+    assert "'current'" in migration_sql
+    assert "ON CONFLICT (projection_name, projection_version, target_kind, target_id) DO UPDATE" in normalized_sql
+
+
+def _migration_text(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def _create_table_block(text: str, table_name: str) -> str:
+    start = text.index(f"CREATE TABLE IF NOT EXISTS {table_name}")
+    end = text.index('"""', start)
+    return text[start:end]
 
 
 class FakeConnection:
