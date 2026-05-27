@@ -516,6 +516,72 @@ def test_replace_page_rows_for_items_removes_stale_rows_in_item_scope(tmp_path) 
     ]
 
 
+def test_replace_page_rows_for_items_keeps_unchanged_row_without_delete_reinsert(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo)
+        row = _page_row(
+            "row-stable",
+            news_item_id,
+            source_id="source-1",
+            computed_at_ms=NOW_MS,
+        )
+
+        first = repo.replace_page_rows_for_items(news_item_ids=[news_item_id], rows=[row], commit=True)
+        inserted = conn.execute("SELECT ctid, xmin, computed_at_ms, payload_hash FROM news_page_rows").fetchone()
+        second = repo.replace_page_rows_for_items(news_item_ids=[news_item_id], rows=[row], commit=True)
+        unchanged = conn.execute("SELECT ctid, xmin, computed_at_ms, payload_hash FROM news_page_rows").fetchone()
+    finally:
+        conn.close()
+
+    assert first == {"inserted": 1, "updated": 0, "unchanged": 0, "deleted": 0}
+    assert second == {"inserted": 0, "updated": 0, "unchanged": 1, "deleted": 0}
+    assert unchanged == inserted
+
+
+def test_replace_source_quality_rows_skips_unchanged_payload_hash(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        repo.upsert_source(
+            source_id="source-1",
+            provider_type="rss",
+            feed_url="https://source-1.example.com/rss.xml",
+            source_domain="example.com",
+            source_name="Example",
+            now_ms=NOW_MS,
+        )
+        row = _source_quality_row(source_id="source-1", computed_at_ms=NOW_MS)
+
+        repo.replace_source_quality_rows(rows=[row], status_window="24h", commit=True)
+        inserted = conn.execute(
+            """
+            SELECT ctid, xmin, computed_at_ms, payload_hash
+              FROM news_source_quality_rows
+             WHERE source_id = 'source-1'
+            """
+        ).fetchone()
+        repo.replace_source_quality_rows(
+            rows=[{**row, "computed_at_ms": NOW_MS + 10_000}],
+            status_window="24h",
+            commit=True,
+        )
+        unchanged = conn.execute(
+            """
+            SELECT ctid, xmin, computed_at_ms, payload_hash
+              FROM news_source_quality_rows
+             WHERE source_id = 'source-1'
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert unchanged == inserted
+
+
 def test_delete_page_rows_for_sources_removes_disabled_source_scope(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
@@ -1354,6 +1420,28 @@ def _page_row(
         "source_json": {"source_id": source_id},
         "projection_version": projection_version,
         "computed_at_ms": computed_at_ms,
+    }
+
+
+def _source_quality_row(*, source_id: str, computed_at_ms: int) -> dict[str, object]:
+    return {
+        "row_id": f"quality:{source_id}:24h",
+        "source_id": source_id,
+        "window": "24h",
+        "computed_at_ms": computed_at_ms,
+        "fetch_success_rate": 1.0,
+        "items_fetched": 10,
+        "items_inserted": 8,
+        "duplicate_rate": 0.2,
+        "process_success_rate": 0.9,
+        "resolved_token_rate": 0.7,
+        "attention_rate": 0.4,
+        "accepted_fact_rate": 0.3,
+        "brief_ready_rate": 0.5,
+        "median_lag_ms": 1_000,
+        "quality_score": 82.0,
+        "diagnostics_json": {"status": "healthy", "window_ms": 86_400_000},
+        "projection_version": "source-quality-test-v1",
     }
 
 

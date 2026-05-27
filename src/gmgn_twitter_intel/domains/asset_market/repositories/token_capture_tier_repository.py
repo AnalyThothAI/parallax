@@ -19,8 +19,8 @@ class TokenCaptureTierRepository:
         reason: str,
         score: Decimal,
         updated_at_ms: int,
-    ) -> None:
-        self._conn.execute(
+    ) -> bool:
+        row = self._conn.execute(
             """
             INSERT INTO token_capture_tier(
                 target_type,
@@ -43,6 +43,10 @@ class TokenCaptureTierRepository:
                 reason = EXCLUDED.reason,
                 score = EXCLUDED.score,
                 updated_at_ms = EXCLUDED.updated_at_ms
+            WHERE token_capture_tier.tier IS DISTINCT FROM EXCLUDED.tier
+               OR token_capture_tier.reason IS DISTINCT FROM EXCLUDED.reason
+               OR token_capture_tier.score IS DISTINCT FROM EXCLUDED.score
+            RETURNING true AS changed
             """,
             {
                 "target_type": target_type,
@@ -52,7 +56,8 @@ class TokenCaptureTierRepository:
                 "score": score,
                 "updated_at_ms": updated_at_ms,
             },
-        )
+        ).fetchone()
+        return row is not None and bool(row.get("changed", True))
 
     def list_by_tier(
         self,

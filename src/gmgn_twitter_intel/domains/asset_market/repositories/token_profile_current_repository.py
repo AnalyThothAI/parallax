@@ -1,19 +1,52 @@
 from __future__ import annotations
 
+import hashlib
+import json
+from collections.abc import Mapping
 from typing import Any
 
 from psycopg.types.json import Jsonb
 
 from gmgn_twitter_intel.platform.db.json_safety import postgres_safe_json, postgres_safe_text
 
+_PUBLICATION_METADATA_FIELDS = {"computed_at_ms", "updated_at_ms", "projected_at_ms", "payload_hash"}
+
 
 class TokenProfileCurrentRepository:
     def __init__(self, conn: Any):
         self.conn = conn
 
-    def upsert_current(self, row: dict[str, Any], *, commit: bool = True) -> None:
+    def upsert_current(self, row: dict[str, Any], *, commit: bool = True) -> bool:
         computed_at_ms = int(row["computed_at_ms"])
-        self.conn.execute(
+        payload = {
+            "target_type": _required_text(row.get("target_type")),
+            "target_id": _required_text(row.get("target_id")),
+            "status": _required_text(row.get("status")),
+            "profile_provider": _optional_text(row.get("profile_provider")),
+            "source_kind": _required_text(row.get("source_kind")),
+            "source_ref": _optional_text(row.get("source_ref")),
+            "symbol": _optional_text(row.get("symbol")),
+            "name": _optional_text(row.get("name")),
+            "logo_url": _optional_text(row.get("logo_url")),
+            "logo_image_id": _optional_text(row.get("logo_image_id")),
+            "logo_source_provider": _optional_text(row.get("logo_source_provider")),
+            "logo_source_url_hash": _optional_text(row.get("logo_source_url_hash")),
+            "banner_url": _optional_text(row.get("banner_url")),
+            "website_url": _optional_text(row.get("website_url")),
+            "twitter_username": _optional_text(row.get("twitter_username")),
+            "twitter_url": _optional_text(row.get("twitter_url")),
+            "telegram_url": _optional_text(row.get("telegram_url")),
+            "gmgn_url": _optional_text(row.get("gmgn_url")),
+            "geckoterminal_url": _optional_text(row.get("geckoterminal_url")),
+            "description": _optional_text(row.get("description")),
+            "quality_flags_json": _sanitize_json(row.get("quality_flags_json", row.get("quality_flags", [])) or []),
+            "source_payload_json": _sanitize_json(row.get("source_payload_json", row.get("source_payload", {})) or {}),
+            "observed_at_ms": _int_or_none(row.get("observed_at_ms")),
+            "computed_at_ms": computed_at_ms,
+            "updated_at_ms": int(row.get("updated_at_ms") or computed_at_ms),
+        }
+        payload_hash = _stable_payload_hash(payload, exclude=_PUBLICATION_METADATA_FIELDS)
+        returned = self.conn.execute(
             """
             INSERT INTO token_profile_current(
               target_type, target_id, status, profile_provider, source_kind, source_ref,
@@ -21,11 +54,11 @@ class TokenProfileCurrentRepository:
               logo_source_url_hash, banner_url, website_url, twitter_username,
               twitter_url, telegram_url, gmgn_url, geckoterminal_url,
               description, quality_flags_json, source_payload_json,
-              observed_at_ms, computed_at_ms, updated_at_ms
+              observed_at_ms, computed_at_ms, updated_at_ms, payload_hash
             )
             VALUES (
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-              %s, %s, %s, %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
             ON CONFLICT(target_type, target_id) DO UPDATE SET
               status = excluded.status,
@@ -50,38 +83,45 @@ class TokenProfileCurrentRepository:
               source_payload_json = excluded.source_payload_json,
               observed_at_ms = excluded.observed_at_ms,
               computed_at_ms = excluded.computed_at_ms,
-              updated_at_ms = excluded.updated_at_ms
+              updated_at_ms = excluded.updated_at_ms,
+              payload_hash = excluded.payload_hash
+            WHERE token_profile_current.payload_hash IS DISTINCT FROM excluded.payload_hash
+            RETURNING true AS changed
             """,
             (
-                _required_text(row.get("target_type")),
-                _required_text(row.get("target_id")),
-                _required_text(row.get("status")),
-                _optional_text(row.get("profile_provider")),
-                _required_text(row.get("source_kind")),
-                _optional_text(row.get("source_ref")),
-                _optional_text(row.get("symbol")),
-                _optional_text(row.get("name")),
-                _optional_text(row.get("logo_url")),
-                _optional_text(row.get("logo_image_id")),
-                _optional_text(row.get("logo_source_provider")),
-                _optional_text(row.get("logo_source_url_hash")),
-                _optional_text(row.get("banner_url")),
-                _optional_text(row.get("website_url")),
-                _optional_text(row.get("twitter_username")),
-                _optional_text(row.get("twitter_url")),
-                _optional_text(row.get("telegram_url")),
-                _optional_text(row.get("gmgn_url")),
-                _optional_text(row.get("geckoterminal_url")),
-                _optional_text(row.get("description")),
-                Jsonb(_sanitize_json(row.get("quality_flags_json", row.get("quality_flags", [])) or [])),
-                Jsonb(_sanitize_json(row.get("source_payload_json", row.get("source_payload", {})) or {})),
-                _int_or_none(row.get("observed_at_ms")),
-                computed_at_ms,
-                int(row.get("updated_at_ms") or computed_at_ms),
+                payload["target_type"],
+                payload["target_id"],
+                payload["status"],
+                payload["profile_provider"],
+                payload["source_kind"],
+                payload["source_ref"],
+                payload["symbol"],
+                payload["name"],
+                payload["logo_url"],
+                payload["logo_image_id"],
+                payload["logo_source_provider"],
+                payload["logo_source_url_hash"],
+                payload["banner_url"],
+                payload["website_url"],
+                payload["twitter_username"],
+                payload["twitter_url"],
+                payload["telegram_url"],
+                payload["gmgn_url"],
+                payload["geckoterminal_url"],
+                payload["description"],
+                Jsonb(payload["quality_flags_json"]),
+                Jsonb(payload["source_payload_json"]),
+                payload["observed_at_ms"],
+                payload["computed_at_ms"],
+                payload["updated_at_ms"],
+                payload_hash,
             ),
         )
+        fetchone = getattr(returned, "fetchone", None)
+        changed_row = fetchone() if fetchone is not None else None
         if commit:
             self.conn.commit()
+        return changed_row is not None and bool(changed_row.get("changed", True))
 
     def current_for_targets(self, targets: list[tuple[str, str]]) -> dict[tuple[str, str], dict[str, Any]]:
         requested = _dedupe_targets(targets)
@@ -134,3 +174,26 @@ def _sanitize_json(value: Any) -> Any:
 
 def _int_or_none(value: Any) -> int | None:
     return int(value) if value is not None else None
+
+
+def _stable_payload_hash(payload: Mapping[str, Any], *, exclude: set[str]) -> str:
+    normalized = {
+        str(key): _stable_json_value(value)
+        for key, value in payload.items()
+        if str(key) not in exclude
+    }
+    encoded = json.dumps(
+        postgres_safe_json(normalized),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _stable_json_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _stable_json_value(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_stable_json_value(item) for item in value]
+    return value

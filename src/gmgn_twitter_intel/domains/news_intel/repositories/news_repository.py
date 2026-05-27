@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import uuid
@@ -11,6 +12,7 @@ from psycopg.types.json import Jsonb
 from gmgn_twitter_intel.domains.news_intel.types import NewsSourceConfig
 from gmgn_twitter_intel.domains.news_intel.types.source_classification import normalize_string_tuple
 from gmgn_twitter_intel.domains.news_intel.types.source_quality_policy import window_ms_for_label
+from gmgn_twitter_intel.platform.db.json_safety import postgres_safe_json
 
 _DEFAULT_SOURCE_CLAIM_LEASE_MS = 60_000
 _REDACTED = "<redacted>"
@@ -45,6 +47,7 @@ _SECRET_HEADER_RE = re.compile(r"\b(authorization|cookie)\s*:\s*[^\r\n]+", re.IG
 _BEARER_RE = re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]+", re.IGNORECASE)
 _URL_USERINFO_RE = re.compile(r"([a-z][a-z0-9+.-]*://)[^/@\s]+@", re.IGNORECASE)
 _CHECK_QUOTED_VALUE_RE = re.compile(r"'((?:''|[^'])*)'(?:\s*::\s*[A-Za-z_][A-Za-z0-9_]*)?")
+_PUBLICATION_METADATA_FIELDS = {"computed_at_ms", "updated_at_ms", "projected_at_ms", "payload_hash"}
 
 
 class NewsRepository:
@@ -1900,19 +1903,21 @@ class NewsRepository:
         changed_status_source_ids: list[str] = []
         for row in rows:
             payload = _source_quality_payload(row)
+            payload["payload_hash"] = _stable_payload_hash(payload, exclude=_PUBLICATION_METADATA_FIELDS)
             self.conn.execute(
                 """
                 INSERT INTO news_source_quality_rows (
                   row_id, source_id, "window", computed_at_ms, fetch_success_rate,
                   items_fetched, items_inserted, duplicate_rate, process_success_rate,
                   resolved_token_rate, attention_rate, accepted_fact_rate, brief_ready_rate,
-                  median_lag_ms, quality_score, diagnostics_json, projection_version
+                  median_lag_ms, quality_score, diagnostics_json, projection_version, payload_hash
                 )
                 VALUES (
                   %(row_id)s, %(source_id)s, %(window)s, %(computed_at_ms)s, %(fetch_success_rate)s,
                   %(items_fetched)s, %(items_inserted)s, %(duplicate_rate)s, %(process_success_rate)s,
                   %(resolved_token_rate)s, %(attention_rate)s, %(accepted_fact_rate)s, %(brief_ready_rate)s,
-                  %(median_lag_ms)s, %(quality_score)s, %(diagnostics_json)s, %(projection_version)s
+                  %(median_lag_ms)s, %(quality_score)s, %(diagnostics_json)s, %(projection_version)s,
+                  %(payload_hash)s
                 )
                 ON CONFLICT (source_id, "window") DO UPDATE SET
                   row_id = EXCLUDED.row_id,
@@ -1929,7 +1934,9 @@ class NewsRepository:
                   median_lag_ms = EXCLUDED.median_lag_ms,
                   quality_score = EXCLUDED.quality_score,
                   diagnostics_json = EXCLUDED.diagnostics_json,
-                  projection_version = EXCLUDED.projection_version
+                  projection_version = EXCLUDED.projection_version,
+                  payload_hash = EXCLUDED.payload_hash
+                WHERE news_source_quality_rows.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
                 """,
                 payload,
             )
@@ -2032,19 +2039,41 @@ class NewsRepository:
         news_item_ids: Sequence[str],
         rows: Sequence[Mapping[str, Any]],
         commit: bool = True,
-    ) -> None:
+    ) -> dict[str, int]:
         scoped_ids = list(dict.fromkeys(str(news_item_id) for news_item_id in news_item_ids))
+        row_payloads = [_page_row_payload(row) for row in rows]
+        incoming_row_ids = list(dict.fromkeys(str(payload["row_id"]) for payload in row_payloads))
+        deleted = 0
         if scoped_ids:
-            self.conn.execute("DELETE FROM news_page_rows WHERE news_item_id = ANY(%s::text[])", (scoped_ids,))
-        for row in rows:
-            self.conn.execute(
+            if incoming_row_ids:
+                cursor = self.conn.execute(
+                    """
+                    DELETE FROM news_page_rows
+                     WHERE news_item_id = ANY(%s::text[])
+                       AND NOT (row_id = ANY(%s::text[]))
+                    """,
+                    (scoped_ids, incoming_row_ids),
+                )
+            else:
+                cursor = self.conn.execute(
+                    "DELETE FROM news_page_rows WHERE news_item_id = ANY(%s::text[])",
+                    (scoped_ids,),
+                )
+            deleted = int(getattr(cursor, "rowcount", 0) or 0)
+        inserted = 0
+        updated = 0
+        unchanged = 0
+        for payload in row_payloads:
+            payload["payload_hash"] = _stable_payload_hash(payload, exclude=_PUBLICATION_METADATA_FIELDS)
+            returned = self.conn.execute(
                 """
                 INSERT INTO news_page_rows (
                   row_id, news_item_id, story_id, latest_at_ms, lifecycle_status,
                   headline, summary, source_domain, canonical_url, token_lanes_json,
                   fact_lanes_json, content_class, content_tags_json, content_classification_json,
                   story_json, source_json, signal_json, token_impacts_json, agent_brief_json,
-                  agent_status, agent_brief_computed_at_ms, computed_at_ms, projection_version
+                  agent_status, agent_brief_computed_at_ms, computed_at_ms, projection_version,
+                  payload_hash
                 )
                 VALUES (
                   %(row_id)s, %(news_item_id)s, %(story_id)s, %(latest_at_ms)s, %(lifecycle_status)s,
@@ -2052,7 +2081,7 @@ class NewsRepository:
                   %(fact_lanes_json)s, %(content_class)s, %(content_tags_json)s, %(content_classification_json)s,
                   %(story_json)s, %(source_json)s, %(signal_json)s, %(token_impacts_json)s,
                   %(agent_brief_json)s, %(agent_status)s, %(agent_brief_computed_at_ms)s,
-                  %(computed_at_ms)s, %(projection_version)s
+                  %(computed_at_ms)s, %(projection_version)s, %(payload_hash)s
                 )
                 ON CONFLICT (row_id) DO UPDATE SET
                   news_item_id = EXCLUDED.news_item_id,
@@ -2076,12 +2105,22 @@ class NewsRepository:
                   agent_status = EXCLUDED.agent_status,
                   agent_brief_computed_at_ms = EXCLUDED.agent_brief_computed_at_ms,
                   computed_at_ms = EXCLUDED.computed_at_ms,
-                  projection_version = EXCLUDED.projection_version
+                  projection_version = EXCLUDED.projection_version,
+                  payload_hash = EXCLUDED.payload_hash
+                WHERE news_page_rows.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                RETURNING (xmax = 0) AS inserted
                 """,
-                _page_row_payload(row),
-            )
+                payload,
+            ).fetchone()
+            if returned is None:
+                unchanged += 1
+            elif bool(returned["inserted"]):
+                inserted += 1
+            else:
+                updated += 1
         if commit:
             self.conn.commit()
+        return {"inserted": inserted, "updated": updated, "unchanged": unchanged, "deleted": deleted}
 
     def delete_page_rows_for_sources(
         self,
@@ -2780,6 +2819,31 @@ def _context_policy_enabled(value: Any) -> bool:
 
 def _json(value: Any) -> Jsonb:
     return Jsonb(value, dumps=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True))
+
+
+def _stable_payload_hash(payload: Mapping[str, Any], *, exclude: set[str]) -> str:
+    normalized = {
+        str(key): _stable_json_value(value)
+        for key, value in payload.items()
+        if str(key) not in exclude
+    }
+    encoded = json.dumps(
+        postgres_safe_json(normalized),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _stable_json_value(value: Any) -> Any:
+    if isinstance(value, Jsonb):
+        return _stable_json_value(value.obj)
+    if isinstance(value, Mapping):
+        return {str(key): _stable_json_value(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_stable_json_value(item) for item in value]
+    return value
 
 
 def _compact_error(error: str | None) -> str | None:
