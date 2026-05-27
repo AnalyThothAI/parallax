@@ -57,82 +57,120 @@ class NewsItemBriefWorker(WorkerBase):
             model=str(provider.model),
             artifact_version_hash=str(provider.artifact_version_hash),
         )
-        claimed = await asyncio.to_thread(self._claim_targets, now_ms=now)
-        if not claimed:
+        queue_depth = await asyncio.to_thread(self._queue_depth, now_ms=now)
+        if queue_depth <= 0:
             return WorkerResult(skipped=1, notes={"reason": "no_due_brief_targets"})
+
         try:
-            candidates = await asyncio.to_thread(self._load_candidates, claimed=claimed)
+            reservation = provider.try_reserve_execution(NEWS_ITEM_BRIEF_LANE)
         except Exception as exc:
-            await asyncio.to_thread(self._mark_targets_error, claimed, error=exc, retry_ms=self._retry_ms(), now_ms=now)
-            return WorkerResult(failed=len(claimed), notes={"claimed": len(claimed), "load_failed": 1})
+            return WorkerResult(
+                skipped=1,
+                notes={
+                    "claimed": 0,
+                    "queue_depth": queue_depth,
+                    "backpressure": 1,
+                    "agent_reservation_error": type(exc).__name__,
+                },
+            )
+        if not reservation.acquired:
+            outcome = _backpressure_outcome(reservation)
+            return WorkerResult(
+                skipped=1,
+                notes={
+                    "claimed": 0,
+                    "queue_depth": queue_depth,
+                    "backpressure": 1,
+                    outcome: 1,
+                },
+            )
 
-        candidates_by_id = {
-            str(candidate.get("item", {}).get("news_item_id") or ""): candidate
-            for candidate in candidates
-            if isinstance(candidate.get("item"), Mapping)
-        }
-
-        notes = {
-            "claimed": len(claimed),
-            "ready": 0,
-            "insufficient": 0,
-            "failed": 0,
-            "backpressure": 0,
-            "validation_failed": 0,
-            "missing_target": 0,
-            "provider_signal_skip": 0,
-        }
-        skipped = 0
-        current_updates = 0
-
-        for target in claimed:
-            target_id = str(target.get("target_id") or "")
-            candidate = candidates_by_id.get(target_id)
-            if candidate is None:
-                notes["missing_target"] += 1
-                await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
-                skipped += 1
-                continue
-            if _has_provider_signal(candidate):
-                notes["provider_signal_skip"] += 1
-                await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
-                skipped += 1
-                continue
-
+        try:
+            claimed = await asyncio.to_thread(self._claim_targets, now_ms=now)
+            if not claimed:
+                return WorkerResult(skipped=1, notes={"reason": "no_due_brief_targets", "claimed": 0})
             try:
-                packet = _packet_from_candidate(candidate, agent_config=agent_config)
-                if _current_brief_is_fresh(candidate, packet=packet, agent_config=agent_config):
-                    await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
-                    skipped += 1
-                    continue
-
-                outcome = await self._process_candidate(
-                    candidate=candidate,
-                    packet=packet,
-                    agent_config=agent_config,
-                    now_ms=now,
-                )
+                candidates = await asyncio.to_thread(self._load_candidates, claimed=claimed)
             except Exception as exc:
-                notes["failed"] += 1
                 await asyncio.to_thread(
                     self._mark_targets_error,
-                    [target],
+                    claimed,
                     error=exc,
                     retry_ms=self._retry_ms(),
                     now_ms=now,
                 )
-                continue
-            for key, value in outcome.notes.items():
-                notes[key] = int(notes.get(key, 0)) + int(value)
-            current_updates += outcome.current_updates
-            await asyncio.to_thread(self._complete_claimed_target, target, outcome=outcome, now_ms=now)
+                return WorkerResult(failed=len(claimed), notes={"claimed": len(claimed), "load_failed": 1})
 
-        if current_updates > 0 and self.wake_bus is not None:
-            self.wake_bus.notify_news_item_brief_updated(count=current_updates)
-        failed = int(notes["failed"])
-        processed = int(notes["ready"]) + int(notes["insufficient"])
-        skipped += int(notes["backpressure"])
-        return WorkerResult(processed=processed, failed=failed, skipped=skipped, notes=notes)
+            candidates_by_id = {
+                str(candidate.get("item", {}).get("news_item_id") or ""): candidate
+                for candidate in candidates
+                if isinstance(candidate.get("item"), Mapping)
+            }
+
+            notes = {
+                "claimed": len(claimed),
+                "ready": 0,
+                "insufficient": 0,
+                "failed": 0,
+                "backpressure": 0,
+                "validation_failed": 0,
+                "missing_target": 0,
+                "provider_signal_skip": 0,
+            }
+            skipped = 0
+            current_updates = 0
+
+            for target in claimed:
+                target_id = str(target.get("target_id") or "")
+                candidate = candidates_by_id.get(target_id)
+                if candidate is None:
+                    notes["missing_target"] += 1
+                    await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
+                    skipped += 1
+                    continue
+                if _has_provider_signal(candidate):
+                    notes["provider_signal_skip"] += 1
+                    await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
+                    skipped += 1
+                    continue
+
+                try:
+                    packet = _packet_from_candidate(candidate, agent_config=agent_config)
+                    if _current_brief_is_fresh(candidate, packet=packet, agent_config=agent_config):
+                        await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
+                        skipped += 1
+                        continue
+
+                    outcome = await self._process_candidate(
+                        candidate=candidate,
+                        packet=packet,
+                        agent_config=agent_config,
+                        now_ms=now,
+                        reservation=reservation,
+                    )
+                except Exception as exc:
+                    notes["failed"] += 1
+                    await asyncio.to_thread(
+                        self._mark_targets_error,
+                        [target],
+                        error=exc,
+                        retry_ms=self._retry_ms(),
+                        now_ms=now,
+                    )
+                    continue
+                for key, value in outcome.notes.items():
+                    notes[key] = int(notes.get(key, 0)) + int(value)
+                current_updates += outcome.current_updates
+                await asyncio.to_thread(self._complete_claimed_target, target, outcome=outcome, now_ms=now)
+
+            if current_updates > 0 and self.wake_bus is not None:
+                self.wake_bus.notify_news_item_brief_updated(count=current_updates)
+            failed = int(notes["failed"])
+            processed = int(notes["ready"]) + int(notes["insufficient"])
+            skipped += int(notes["backpressure"])
+            return WorkerResult(processed=processed, failed=failed, skipped=skipped, notes=notes)
+        finally:
+            await _release_reservation(reservation)
 
     async def _process_candidate(
         self,
@@ -141,6 +179,7 @@ class NewsItemBriefWorker(WorkerBase):
         packet: NewsItemBriefInputPacket,
         agent_config: NewsItemBriefAgentConfig,
         now_ms: int,
+        reservation: AgentCapacityReservation,
     ) -> _CandidateOutcome:
         if self.provider is None:
             raise RuntimeError("news item brief provider is not configured")
@@ -166,44 +205,6 @@ class NewsItemBriefWorker(WorkerBase):
             )
 
         try:
-            reservation = self.provider.try_reserve_execution(NEWS_ITEM_BRIEF_LANE)
-        except Exception as exc:
-            return await self._record_provider_failure(
-                run_id=run_id,
-                packet=packet,
-                agent_config=agent_config,
-                request_audit=request_audit,
-                error=exc,
-                started_at_ms=started_at_ms,
-                execution_started=False,
-            )
-        if not reservation.acquired:
-            outcome = _backpressure_outcome(reservation)
-            await asyncio.to_thread(
-                self._insert_run,
-                run_id=run_id,
-                packet=packet,
-                agent_config=agent_config,
-                audit=request_audit,
-                started_at_ms=started_at_ms,
-                finished_at_ms=self.clock_ms(),
-                status="backpressure",
-                outcome=outcome,
-                error_class=_reason_value(reservation.reason),
-                error=f"news item brief execution deferred: {outcome}",
-                request_json=_request_json(packet=packet, audit=request_audit),
-                response_json=None,
-                validation_errors=[],
-                execution_started=False,
-            )
-            return _CandidateOutcome(
-                notes={"backpressure": 1, outcome: 1},
-                current_updates=0,
-                retry_ms=self._backpressure_cooldown_ms(),
-                retry_reason=outcome,
-            )
-
-        try:
             result = await self.provider.brief_item(run_id=run_id, packet=packet, reservation=reservation)
         except Exception as exc:
             if _is_no_start_backpressure_error(exc):
@@ -223,8 +224,6 @@ class NewsItemBriefWorker(WorkerBase):
                 error=exc,
                 started_at_ms=started_at_ms,
             )
-        finally:
-            await _release_reservation(reservation)
 
         payload = result.get("payload") if isinstance(result, Mapping) else None
         audit = _audit_dict(result.get("agent_run_audit") if isinstance(result, Mapping) else None) or request_audit
@@ -394,6 +393,15 @@ class NewsItemBriefWorker(WorkerBase):
                     lease_owner=self.name,
                     projection_name="brief_input",
                 ),
+            )
+
+    def _queue_depth(self, *, now_ms: int) -> int:
+        with self._repository_session() as repos:
+            return int(
+                repos.news_projection_dirty_targets.queue_depth(
+                    now_ms=now_ms,
+                    projection_name="brief_input",
+                )
             )
 
     def _load_candidates(self, *, claimed: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:

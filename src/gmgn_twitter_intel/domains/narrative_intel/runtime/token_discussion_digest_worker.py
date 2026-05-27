@@ -28,7 +28,10 @@ from gmgn_twitter_intel.domains.narrative_intel.services.narrative_epoch_policy 
 )
 from gmgn_twitter_intel.domains.narrative_intel.types.evidence_refs import EvidenceRef
 from gmgn_twitter_intel.domains.narrative_intel.types.narrative_epoch_policy import EPOCH_POLICY_VERSION
+from gmgn_twitter_intel.platform.agent_execution import AgentCapacityReservation
 from gmgn_twitter_intel.platform.cancellation import is_worker_hard_timeout_cancelled
+
+DISCUSSION_DIGEST_LANE = "narrative.discussion_digest"
 
 
 class TokenDiscussionDigestWorker(WorkerBase):
@@ -73,9 +76,50 @@ class TokenDiscussionDigestWorker(WorkerBase):
     async def run_once_async(self, *, now_ms: int | None = None) -> WorkerResult:
         resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
         limit = max(1, int(getattr(self.settings, "batch_size", 25) or 25))
-        targets = await asyncio.to_thread(self._due_targets_sync, now_ms=resolved_now_ms, limit=limit)
         queue_depth = await asyncio.to_thread(self._queue_depth_sync, now_ms=resolved_now_ms)
+        if queue_depth <= 0:
+            return WorkerResult(
+                skipped=1,
+                notes={
+                    "reason": "no_due_digest_targets",
+                    "claimed": 0,
+                    "queue_depth": queue_depth,
+                    "source_rows_scanned": 0,
+                    "targets_loaded": 0,
+                    "rows_written": 0,
+                },
+            )
+        try:
+            reservation = _try_reserve_provider_execution(self.provider, DISCUSSION_DIGEST_LANE)
+        except Exception as exc:
+            return WorkerResult(
+                skipped=1,
+                notes={
+                    "claimed": 0,
+                    "queue_depth": queue_depth,
+                    "source_rows_scanned": 0,
+                    "targets_loaded": 0,
+                    "rows_written": 0,
+                    "agent_reservation_error": type(exc).__name__,
+                },
+            )
+        if reservation is not None and not reservation.acquired:
+            reason = _reservation_backpressure_reason(reservation)
+            return WorkerResult(
+                skipped=1,
+                notes={
+                    "claimed": 0,
+                    "queue_depth": queue_depth,
+                    "source_rows_scanned": 0,
+                    "targets_loaded": 0,
+                    "rows_written": 0,
+                    "agent_backpressure": reason,
+                    f"agent_backpressure_{reason}": 1,
+                },
+            )
+        targets = await asyncio.to_thread(self._due_targets_sync, now_ms=resolved_now_ms, limit=limit)
         if not targets:
+            await _release_reservation(reservation)
             return WorkerResult(
                 skipped=1,
                 notes={
@@ -242,9 +286,15 @@ class TokenDiscussionDigestWorker(WorkerBase):
             )
             try:
                 llm_calls += 1
-                result = await self.provider.summarize_discussion(run_id=run_id, request=request)
+                result = await _summarize_discussion(
+                    self.provider,
+                    run_id=run_id,
+                    request=request,
+                    reservation=reservation,
+                )
             except asyncio.CancelledError as exc:
                 if not is_worker_hard_timeout_cancelled(exc):
+                    await _release_reservation(reservation)
                     raise
                 finished_at_ms = _now_ms()
                 await asyncio.to_thread(
@@ -272,6 +322,7 @@ class TokenDiscussionDigestWorker(WorkerBase):
                         },
                         "status": "failed",
                         "error": "worker_timeout_cancelled",
+                        "execution_started": True,
                         "started_at_ms": started_at_ms,
                         "finished_at_ms": finished_at_ms,
                         "latency_ms": finished_at_ms - started_at_ms,
@@ -284,6 +335,7 @@ class TokenDiscussionDigestWorker(WorkerBase):
                     next_due_at_ms=self._provider_failure_next_due_at_ms(now_ms=finished_at_ms),
                     error="worker_timeout_cancelled",
                 )
+                await _release_reservation(reservation)
                 raise
             except Exception as exc:
                 if _is_agent_no_start_backpressure(exc):
@@ -323,6 +375,7 @@ class TokenDiscussionDigestWorker(WorkerBase):
                         },
                         "status": "failed",
                         "error": str(exc),
+                        "execution_started": True,
                         "started_at_ms": started_at_ms,
                         "finished_at_ms": finished_at_ms,
                         "latency_ms": finished_at_ms - started_at_ms,
@@ -345,11 +398,28 @@ class TokenDiscussionDigestWorker(WorkerBase):
                     context=sealed_context,
                     now_ms=finished_at_ms,
                 )
-            except Exception:
+            except Exception as exc:
+                await asyncio.to_thread(
+                    self._record_failed_run_sync,
+                    run=_failed_digest_run(
+                        run_id=run_id,
+                        target=target,
+                        provider=self.provider,
+                        input_hash=input_hash,
+                        request=request,
+                        request_audit=request_audit,
+                        response_json=_jsonish(result),
+                        error="publish_ready_digest_failed",
+                        error_type=type(exc).__name__,
+                        started_at_ms=started_at_ms,
+                        finished_at_ms=finished_at_ms,
+                    ),
+                )
+                rows_written += 1
                 await asyncio.to_thread(
                     self._mark_digest_error_sync,
                     target=target,
-                    now_ms=finished_at_ms,
+                    now_ms=resolved_now_ms,
                     next_due_at_ms=epoch_decision.next_due_at_ms,
                     error="publish_ready_digest_failed",
                 )
@@ -359,9 +429,26 @@ class TokenDiscussionDigestWorker(WorkerBase):
             validation = self.validator.validate_digest_refs(ready_digest, allowed_refs)
             if not validation.ok:
                 await asyncio.to_thread(
+                    self._record_failed_run_sync,
+                    run=_failed_digest_run(
+                        run_id=run_id,
+                        target=target,
+                        provider=self.provider,
+                        input_hash=input_hash,
+                        request=request,
+                        request_audit=request_audit,
+                        response_json=_jsonish(result),
+                        error="invalid_evidence_refs",
+                        error_type="EvidenceRefValidation",
+                        started_at_ms=started_at_ms,
+                        finished_at_ms=finished_at_ms,
+                    ),
+                )
+                rows_written += 1
+                await asyncio.to_thread(
                     self._mark_digest_error_sync,
                     target=target,
-                    now_ms=finished_at_ms,
+                    now_ms=resolved_now_ms,
                     next_due_at_ms=epoch_decision.next_due_at_ms,
                     error="invalid_evidence_refs",
                 )
@@ -388,6 +475,7 @@ class TokenDiscussionDigestWorker(WorkerBase):
                 "usage_json": (result.agent_run_audit or {}).get("usage") or {},
                 "trace_metadata_json": result.agent_run_audit or {},
                 "status": "done",
+                "execution_started": True,
                 "started_at_ms": started_at_ms,
                 "finished_at_ms": finished_at_ms,
                 "latency_ms": finished_at_ms - started_at_ms,
@@ -408,6 +496,7 @@ class TokenDiscussionDigestWorker(WorkerBase):
                 next_due_at_ms=epoch_decision.next_due_at_ms,
             )
             counts["ready"] += 1
+        await _release_reservation(reservation)
         return WorkerResult(
             processed=(
                 counts["ready"]
@@ -568,6 +657,89 @@ class TokenDiscussionDigestWorker(WorkerBase):
             statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
         ) as repos:
             yield repos
+
+
+def _try_reserve_provider_execution(provider: Any, lane: str) -> AgentCapacityReservation | None:
+    method = getattr(provider, "try_reserve_execution", None)
+    if not callable(method):
+        return None
+    return method(lane)
+
+
+async def _summarize_discussion(
+    provider: Any,
+    *,
+    run_id: str,
+    request: Any,
+    reservation: AgentCapacityReservation | None,
+) -> Any:
+    if reservation is None:
+        return await provider.summarize_discussion(run_id=run_id, request=request)
+    return await provider.summarize_discussion(run_id=run_id, request=request, reservation=reservation)
+
+
+async def _release_reservation(reservation: AgentCapacityReservation | None) -> None:
+    if reservation is None:
+        return
+    await reservation.release()
+
+
+def _reservation_backpressure_reason(reservation: AgentCapacityReservation) -> str:
+    reason = getattr(reservation, "reason", None)
+    return str(getattr(reason, "value", reason) or "capacity_denied")
+
+
+def _failed_digest_run(
+    *,
+    run_id: str,
+    target: dict[str, Any],
+    provider: Any,
+    input_hash: str,
+    request: Any,
+    request_audit: dict[str, Any],
+    response_json: Any,
+    error: str,
+    error_type: str,
+    started_at_ms: int,
+    finished_at_ms: int,
+) -> dict[str, Any]:
+    return {
+        "run_id": run_id,
+        "stage": "discussion_digest",
+        "target_type": target["target_type"],
+        "target_id": target["target_id"],
+        "window": target["window"],
+        "scope": target["scope"],
+        "provider": provider.provider,
+        "model": provider.model,
+        "schema_version": NARRATIVE_SCHEMA_VERSION,
+        "prompt_version": DISCUSSION_DIGEST_PROMPT_VERSION,
+        "artifact_version_hash": provider.artifact_version_hash,
+        "input_hash": input_hash,
+        "output_hash": None,
+        "request_json": request.model_dump(mode="json"),
+        "response_json": response_json,
+        "usage_json": request_audit.get("usage") or {},
+        "trace_metadata_json": {
+            **request_audit,
+            "error_type": error_type,
+        },
+        "status": "failed",
+        "error": error,
+        "execution_started": True,
+        "started_at_ms": started_at_ms,
+        "finished_at_ms": finished_at_ms,
+        "latency_ms": finished_at_ms - started_at_ms,
+    }
+
+
+def _jsonish(value: Any) -> Any:
+    dump = getattr(value, "model_dump", None)
+    if dump is not None:
+        return dump(mode="json")
+    if isinstance(value, dict | list | tuple | str | int | float | bool) or value is None:
+        return value
+    return {"repr": repr(value)}
 
 
 def _thresholds_from_settings(settings: Any) -> dict[str, NarrativeEpochThreshold]:

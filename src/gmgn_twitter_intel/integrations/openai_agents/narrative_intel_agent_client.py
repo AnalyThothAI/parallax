@@ -16,7 +16,7 @@ from gmgn_twitter_intel.domains.narrative_intel.types.mention_semantics import (
     MentionSemanticsBatchRequest,
     MentionSemanticsBatchResult,
 )
-from gmgn_twitter_intel.platform.agent_execution import RUNTIME_VERSION, AgentStageSpec
+from gmgn_twitter_intel.platform.agent_execution import RUNTIME_VERSION, AgentCapacityReservation, AgentStageSpec
 from gmgn_twitter_intel.platform.agent_hashing import artifact_hash_for, json_sha256
 
 WORKFLOW_NAME = "gmgn-twitter-intel.narrative_intel"
@@ -73,6 +73,9 @@ class OpenAIAgentsNarrativeIntelClient:
             ),
         )
 
+    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+        return self._agent_gateway.try_reserve(lane)
+
     def request_audit_for_label_mentions(
         self,
         *,
@@ -87,9 +90,10 @@ class OpenAIAgentsNarrativeIntelClient:
         *,
         run_id: str,
         request: MentionSemanticsBatchRequest,
+        reservation: AgentCapacityReservation | None = None,
     ) -> MentionSemanticsBatchResult:
         stage = self._label_mentions_stage(run_id=run_id, request=request)
-        execution = await self._agent_gateway.execute(stage)
+        execution = await self._agent_gateway.execute(stage, reservation=reservation)
         payload = _coerce_mention_payload(execution.final_output)
         output_json = payload.model_dump(mode="json")
         return MentionSemanticsBatchResult(
@@ -116,9 +120,10 @@ class OpenAIAgentsNarrativeIntelClient:
         *,
         run_id: str,
         request: DiscussionDigestRequest,
+        reservation: AgentCapacityReservation | None = None,
     ) -> DiscussionDigestResult:
         stage = self._summarize_discussion_stage(run_id=run_id, request=request)
-        execution = await self._agent_gateway.execute(stage)
+        execution = await self._agent_gateway.execute(stage, reservation=reservation)
         payload = _coerce_digest_payload(execution.final_output)
         output_json = payload.model_dump(mode="json")
         return DiscussionDigestResult(

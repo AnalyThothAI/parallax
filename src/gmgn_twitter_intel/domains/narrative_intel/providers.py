@@ -10,6 +10,7 @@ from gmgn_twitter_intel.domains.narrative_intel.types.mention_semantics import (
     MentionSemanticsBatchRequest,
     MentionSemanticsBatchResult,
 )
+from gmgn_twitter_intel.platform.agent_execution import AgentCapacityReservation
 
 
 class NarrativeIntelProvider(Protocol):
@@ -22,11 +23,14 @@ class NarrativeIntelProvider(Protocol):
     @property
     def artifact_version_hash(self) -> str: ...
 
+    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation: ...
+
     async def label_mentions(
         self,
         *,
         run_id: str,
         request: MentionSemanticsBatchRequest,
+        reservation: AgentCapacityReservation | None = None,
     ) -> MentionSemanticsBatchResult: ...
 
     def request_audit_for_label_mentions(self, **kwargs: Any) -> dict[str, Any]: ...
@@ -36,6 +40,7 @@ class NarrativeIntelProvider(Protocol):
         *,
         run_id: str,
         request: DiscussionDigestRequest,
+        reservation: AgentCapacityReservation | None = None,
     ) -> DiscussionDigestResult: ...
 
     def request_audit_for_summarize_discussion(self, **kwargs: Any) -> dict[str, Any]: ...

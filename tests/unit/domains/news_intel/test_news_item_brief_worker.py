@@ -62,7 +62,7 @@ async def _test_worker_marks_opennews_provider_signal_target_done_without_llm() 
 
     result = await worker.run_once()
 
-    assert provider.reserve_calls == []
+    assert provider.reserve_calls == [NEWS_ITEM_BRIEF_LANE]
     assert provider.execution_calls == 0
     assert db.news.runs == []
     assert db.news.briefs == []
@@ -77,7 +77,9 @@ def test_worker_claims_dirty_targets_off_event_loop_thread() -> None:
 
 
 async def _test_worker_claims_dirty_targets_off_event_loop_thread() -> None:
-    db = FakeDB([])
+    candidate = _candidate()
+    candidate["item"]["provider_signal_json"] = {"source": "provider", "status": "ready"}
+    db = FakeDB([candidate])
     provider = FakeBriefProvider()
     worker = _worker(db=db, provider=provider)
     event_loop_thread_id = threading.get_ident()
@@ -87,14 +89,14 @@ async def _test_worker_claims_dirty_targets_off_event_loop_thread() -> None:
     assert result.skipped == 1
     assert db.dirty.claim_thread_ids
     assert db.dirty.claim_thread_ids[0] != event_loop_thread_id
-    assert db.news.loaded_target_ids == []
+    assert db.news.loaded_target_ids == [["news-item-1"]]
 
 
-def test_worker_no_start_backpressure_does_not_execute_provider_or_upsert_current() -> None:
-    asyncio.run(_test_worker_no_start_backpressure_does_not_execute_provider_or_upsert_current())
+def test_worker_capacity_denied_does_not_claim_dirty_target_or_write_ledger() -> None:
+    asyncio.run(_test_worker_capacity_denied_does_not_claim_dirty_target_or_write_ledger())
 
 
-async def _test_worker_no_start_backpressure_does_not_execute_provider_or_upsert_current() -> None:
+async def _test_worker_capacity_denied_does_not_claim_dirty_target_or_write_ledger() -> None:
     db = FakeDB([_candidate()])
     provider = FakeBriefProvider(
         reservation=AgentCapacityReservation(
@@ -107,14 +109,17 @@ async def _test_worker_no_start_backpressure_does_not_execute_provider_or_upsert
 
     result = await worker.run_once()
 
+    assert provider.reserve_calls == [NEWS_ITEM_BRIEF_LANE]
     assert provider.execution_calls == 0
-    assert db.news.runs[0]["status"] == "backpressure"
-    assert db.news.runs[0]["outcome"] == "backpressure_capacity_denied"
-    assert db.news.runs[0]["execution_started"] is False
-    assert db.news.runs[0]["response_json"] is None
+    assert db.dirty.claim_thread_ids == []
+    assert db.news.loaded_target_ids == []
+    assert db.news.runs == []
     assert db.news.briefs == []
+    assert db.dirty.done == []
+    assert db.dirty.errors == []
     assert result.processed == 0
     assert result.skipped == 1
+    assert result.notes["claimed"] == 0
     assert result.notes["backpressure"] == 1
     assert result.notes["backpressure_capacity_denied"] == 1
 
@@ -162,7 +167,7 @@ async def _test_worker_request_audit_error_records_failed_current_and_emits_wake
 
     result = await worker.run_once()
 
-    assert provider.reserve_calls == []
+    assert provider.reserve_calls == [NEWS_ITEM_BRIEF_LANE]
     assert provider.execution_calls == 0
     assert db.news.runs[0]["status"] == "failed"
     assert db.news.runs[0]["outcome"] == "failed"
@@ -185,11 +190,11 @@ async def _test_worker_request_audit_error_records_failed_current_and_emits_wake
     assert result.notes["failed"] == 1
 
 
-def test_worker_reserve_error_records_failed_current_and_emits_wake() -> None:
-    asyncio.run(_test_worker_reserve_error_records_failed_current_and_emits_wake())
+def test_worker_reserve_error_does_not_claim_dirty_target_or_write_ledger() -> None:
+    asyncio.run(_test_worker_reserve_error_does_not_claim_dirty_target_or_write_ledger())
 
 
-async def _test_worker_reserve_error_records_failed_current_and_emits_wake() -> None:
+async def _test_worker_reserve_error_does_not_claim_dirty_target_or_write_ledger() -> None:
     db = FakeDB([_candidate()])
     provider = FakeBriefProvider(reserve_error=RuntimeError("reserve exploded"))
     wake_bus = FakeWakeBus()
@@ -199,14 +204,16 @@ async def _test_worker_reserve_error_records_failed_current_and_emits_wake() -> 
 
     assert provider.reserve_calls == [NEWS_ITEM_BRIEF_LANE]
     assert provider.execution_calls == 0
-    assert db.news.runs[0]["status"] == "failed"
-    assert db.news.runs[0]["outcome"] == "failed"
-    assert db.news.runs[0]["execution_started"] is False
-    assert db.news.runs[0]["error_class"] == "RuntimeError"
-    assert db.news.runs[0]["request_json"]["audit"]["execution_started"] is False
-    assert db.news.briefs[0]["status"] == "failed"
-    assert wake_bus.brief_updates == [1]
-    assert result.failed == 1
+    assert db.dirty.claim_thread_ids == []
+    assert db.news.loaded_target_ids == []
+    assert db.news.runs == []
+    assert db.news.briefs == []
+    assert wake_bus.brief_updates == []
+    assert result.failed == 0
+    assert result.skipped == 1
+    assert result.notes["claimed"] == 0
+    assert result.notes["backpressure"] == 1
+    assert result.notes["agent_reservation_error"] == "RuntimeError"
 
 
 def test_worker_provider_error_releases_acquired_reservation() -> None:
@@ -492,6 +499,12 @@ class FakeDirtyRepository:
         claimed = self.targets[:limit]
         self.targets = self.targets[limit:]
         return [dict(target) for target in claimed]
+
+    def queue_depth(self, *, now_ms: int, projection_name: str | None = None) -> int:
+        del now_ms
+        if projection_name is None:
+            return len(self.targets)
+        return sum(1 for target in self.targets if target.get("projection_name") == projection_name)
 
     def mark_done(self, keys: list[dict[str, Any]], **kwargs: Any) -> int:
         self.done.extend(dict(key) for key in keys)

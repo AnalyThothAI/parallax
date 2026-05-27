@@ -43,6 +43,9 @@ class OpenAINarrativeIntelProvider:
     def artifact_version_hash(self) -> str:
         return self._client.artifact_version_hash
 
+    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+        return self._client.try_reserve_execution(lane)
+
     async def label_mentions(self, **kwargs: Any) -> Any:
         return await self._client.label_mentions(**kwargs)
 

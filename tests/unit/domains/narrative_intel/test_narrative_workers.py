@@ -28,7 +28,11 @@ from gmgn_twitter_intel.domains.narrative_intel.types.mention_semantics import (
     MentionSemanticsBatchResult,
 )
 from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
-from gmgn_twitter_intel.platform.agent_execution import AgentExecutionError, AgentExecutionErrorClass
+from gmgn_twitter_intel.platform.agent_execution import (
+    AgentCapacityReservation,
+    AgentExecutionError,
+    AgentExecutionErrorClass,
+)
 from gmgn_twitter_intel.platform.cancellation import WORKER_HARD_TIMEOUT_CANCEL_REASON
 
 
@@ -524,12 +528,13 @@ def test_mention_semantics_capacity_denied_does_not_increment_retry_count():
     async def scenario():
         repo = FakeNarrativeRepository()
         db = FakeDB(repo)
+        provider = NoStartNarrativeProvider()
         worker = MentionSemanticsWorker(
             name="mention_semantics",
             settings=fake_settings(),
             db=db,
             telemetry=SimpleNamespace(),
-            provider=NoStartNarrativeProvider(),
+            provider=provider,
         )
 
         result = await worker.run_once(now_ms=10_000)
@@ -537,11 +542,14 @@ def test_mention_semantics_capacity_denied_does_not_increment_retry_count():
         assert result.processed == 0
         assert result.failed == 0
         assert result.skipped == 1
+        assert result.notes["claimed"] == 0
         assert result.notes["agent_backpressure"] == "capacity_denied"
-        assert result.notes["rows_written"] == 1
+        assert result.notes["rows_written"] == 0
+        assert provider.reserve_calls == ["narrative.mention_semantics"]
+        assert repo.claim_due_mention_semantics_calls == []
         assert repo.recorded_runs == []
         assert repo.completed_batches == []
-        assert repo.released_semantic_claims[0]["error"] == "capacity_denied"
+        assert repo.released_semantic_claims == []
 
     asyncio.run(scenario())
 
@@ -675,7 +683,7 @@ def test_mention_semantics_worker_hard_cuts_source_age_prune_and_claims_first():
     asyncio.run(scenario())
 
 
-def test_mention_semantics_no_start_backpressure_releases_claimed_rows():
+def test_mention_semantics_no_start_backpressure_leaves_due_rows_unclaimed():
     async def scenario():
         repo = FakeNarrativeRepository(
             due_mentions=[
@@ -690,40 +698,53 @@ def test_mention_semantics_no_start_backpressure_releases_claimed_rows():
             ]
         )
         db = FakeDB(repo)
+        provider = NoStartNarrativeProvider()
         worker = MentionSemanticsWorker(
             name="mention_semantics",
             settings=fake_settings(provider_failure_backoff_seconds=7),
             db=db,
             telemetry=SimpleNamespace(),
-            provider=NoStartNarrativeProvider(),
+            provider=provider,
         )
 
         result = await worker.run_once(now_ms=10_000)
 
         assert result.skipped == 1
+        assert result.notes["claimed"] == 0
         assert result.notes["agent_backpressure"] == "capacity_denied"
-        assert result.notes["rows_written"] == 1
-        assert repo.released_semantic_claims == [
-            {
-                "claims": [
-                    {
-                        "schema_version": NARRATIVE_SCHEMA_VERSION,
-                        "retry_count": 0,
-                        "semantic_id": "semantic-1",
-                        "event_id": "event-1",
-                        "target_type": "chain_token",
-                        "target_id": "solana:So111",
-                        "text_clean": "SOL breakout",
-                        "text_fingerprint": "fp-1",
-                        "lease_owner": "mention_semantics",
-                        "attempt_count": 1,
-                    }
-                ],
-                "next_retry_at_ms": 17_000,
-                "now_ms": 10_000,
-                "error": "capacity_denied",
-            }
-        ]
+        assert result.notes["rows_written"] == 0
+        assert provider.reserve_calls == ["narrative.mention_semantics"]
+        assert repo.claim_due_mention_semantics_calls == []
+        assert repo.released_semantic_claims == []
+        assert repo.recorded_runs == []
+        assert repo.completed_batches == []
+
+    asyncio.run(scenario())
+
+
+def test_mention_semantics_provider_started_validation_error_writes_failed_model_run():
+    async def scenario():
+        repo = FakeNarrativeRepository()
+        db = FakeDB(repo)
+        provider = InvalidMentionResultProvider()
+        worker = MentionSemanticsWorker(
+            name="mention_semantics",
+            settings=fake_settings(),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=provider,
+        )
+
+        result = await worker.run_once(now_ms=10_000)
+
+        assert result.failed == 1
+        assert provider.reserve_calls == ["narrative.mention_semantics"]
+        assert provider.release_calls == 1
+        assert repo.recorded_runs[0]["stage"] == "mention_semantics"
+        assert repo.recorded_runs[0]["status"] == "failed"
+        assert repo.recorded_runs[0]["execution_started"] is True
+        assert repo.recorded_runs[0]["trace_metadata_json"]["error_type"] == "AttributeError"
+        assert repo.completed_batches[0]["failures"][0]["event_id"] == "event-1"
 
     asyncio.run(scenario())
 
@@ -990,27 +1011,58 @@ def test_digest_capacity_denied_marks_pending_not_failed():
     async def scenario():
         repo = FakeDigestRepository()
         db = FakeDB(repo)
+        provider = NoStartNarrativeProvider()
         worker = TokenDiscussionDigestWorker(
             name="token_discussion_digest",
             settings=fake_digest_settings(),
             db=db,
             telemetry=SimpleNamespace(),
-            provider=NoStartNarrativeProvider(),
+            provider=provider,
         )
 
         result = await worker.run_once(now_ms=10_000)
 
-        assert result.processed == 1
+        assert result.processed == 0
         assert result.failed == 0
-        assert result.notes["pending"] == 1
-        assert result.notes["failed"] == 0
-        assert result.notes["refresh_reasons"]["agent_backpressure"] == 1
+        assert result.skipped == 1
+        assert result.notes["claimed"] == 0
+        assert result.notes["agent_backpressure"] == "capacity_denied"
+        assert provider.reserve_calls == ["narrative.discussion_digest"]
+        assert db.discussion_digest_dirty_targets.claim_due_calls == []
         assert repo.recorded_runs == []
-        assert db.discussion_digest_dirty_targets.reschedule_calls == [
+        assert db.discussion_digest_dirty_targets.reschedule_calls == []
+
+    asyncio.run(scenario())
+
+
+def test_token_discussion_digest_provider_started_validation_error_writes_failed_model_run():
+    async def scenario():
+        repo = FakeDigestRepository()
+        db = FakeDB(repo)
+        provider = InvalidRefsDigestProvider()
+        worker = TokenDiscussionDigestWorker(
+            name="token_discussion_digest",
+            settings=fake_digest_settings(),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=provider,
+        )
+
+        result = await worker.run_once(now_ms=10_000)
+
+        assert result.failed == 1
+        assert provider.reserve_calls == ["narrative.discussion_digest"]
+        assert provider.release_calls == 1
+        assert repo.recorded_runs[0]["stage"] == "discussion_digest"
+        assert repo.recorded_runs[0]["status"] == "failed"
+        assert repo.recorded_runs[0]["execution_started"] is True
+        assert repo.recorded_runs[0]["error"] == "invalid_evidence_refs"
+        assert db.discussion_digest_dirty_targets.mark_error_calls == [
             {
                 "claims": db.discussion_digest_dirty_targets.claimed,
-                "due_at_ms": 11_000,
+                "error": "invalid_evidence_refs",
                 "now_ms": 10_000,
+                "retry_ms": 900_000,
                 "commit": True,
             }
         ]
@@ -1121,18 +1173,7 @@ def test_token_discussion_digest_worker_does_not_claim_unsupported_5m_by_default
             "targets_loaded": 0,
             "rows_written": 0,
         }
-        assert db.discussion_digest_dirty_targets.claim_due_calls == [
-            {
-                "now_ms": 10_000,
-                "limit": 10,
-                "lease_owner": "token_discussion_digest",
-                "lease_ms": 60_000,
-                "commit": True,
-                "windows": ("1h",),
-                "scopes": ("matched",),
-                "schema_version": NARRATIVE_SCHEMA_VERSION,
-            }
-        ]
+        assert db.discussion_digest_dirty_targets.claim_due_calls == []
         assert repo.due_digest_target_calls == []
         assert result.processed == 0
         assert result.failed == 0
@@ -2272,6 +2313,17 @@ class CancelledNarrativeProvider(FailingNarrativeProvider):
 
 
 class NoStartNarrativeProvider(FailingNarrativeProvider):
+    def __init__(self):
+        self.reserve_calls = []
+
+    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+        self.reserve_calls.append(lane)
+        return AgentCapacityReservation(
+            lane=lane,
+            acquired=False,
+            reason=AgentExecutionErrorClass.CAPACITY_DENIED,
+        )
+
     async def label_mentions(self, *, run_id, request):
         raise AgentExecutionError(
             AgentExecutionErrorClass.CAPACITY_DENIED,
@@ -2285,6 +2337,40 @@ class NoStartNarrativeProvider(FailingNarrativeProvider):
             "agent lane capacity denied",
             execution_started=False,
         )
+
+
+class InvalidMentionResultProvider:
+    provider = "test-provider"
+    model = "gpt-test"
+    artifact_version_hash = "artifact-test"
+
+    def __init__(self):
+        self.reserve_calls = []
+        self.release_calls = 0
+
+    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+        self.reserve_calls.append(lane)
+
+        def release() -> None:
+            self.release_calls += 1
+
+        return AgentCapacityReservation(lane=lane, acquired=True, _release=release)
+
+    async def label_mentions(self, *, run_id, request, reservation=None):
+        assert reservation is not None
+        return {"invalid": "schema"}
+
+    def request_audit_for_label_mentions(self, *, run_id, request):
+        return _request_audit(stage="mention_semantics", run_id=run_id)
+
+    async def summarize_discussion(self, *, run_id, request, reservation=None):  # pragma: no cover - protocol stub
+        raise NotImplementedError
+
+    def request_audit_for_summarize_discussion(self, *, run_id, request):  # pragma: no cover - protocol stub
+        return _request_audit(stage="discussion_digest", run_id=run_id)
+
+    async def aclose(self):  # pragma: no cover - runtime-owned provider
+        return None
 
 
 class UnexpectedDigestProvider:
@@ -2369,6 +2455,27 @@ class CountingDigestProvider(StaleButValidDigestProvider):
     async def summarize_discussion(self, *, run_id, request):
         self.calls.append(request.target_id)
         return await super().summarize_discussion(run_id=run_id, request=request)
+
+
+class InvalidRefsDigestProvider(StaleButValidDigestProvider):
+    def __init__(self):
+        self.reserve_calls = []
+        self.release_calls = 0
+
+    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+        self.reserve_calls.append(lane)
+
+        def release() -> None:
+            self.release_calls += 1
+
+        return AgentCapacityReservation(lane=lane, acquired=True, _release=release)
+
+    async def summarize_discussion(self, *, run_id, request, reservation=None):
+        assert reservation is not None
+        result = await super().summarize_discussion(run_id=run_id, request=request)
+        missing_ref = {"ref_id": "event:missing", "kind": "event", "source_table": "events"}
+        digest = result.digest.model_copy(update={"evidence_refs": [missing_ref]})
+        return result.model_copy(update={"digest": digest})
 
 
 class SparseDigestProvider:
