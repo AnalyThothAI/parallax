@@ -55,6 +55,7 @@ def test_opennews_client_subscribes_and_normalizes_websocket_updates() -> None:
                 "hasCoin": True,
                 "stream_timeout_seconds": 0.25,
                 "max_messages": 1,
+                "rest_backfill": False,
             },
         },
     )
@@ -158,7 +159,7 @@ def test_opennews_client_uses_fetch_clock_when_push_has_no_timestamp() -> None:
     result = client.fetch(
         "opennews://subscribe",
         limit=1,
-        source={"fetch_policy_json": {"stream_timeout_seconds": 0.25, "max_messages": 1}},
+        source={"fetch_policy_json": {"stream_timeout_seconds": 0.25, "max_messages": 1, "rest_backfill": False}},
     )
 
     assert result.entries[0]["published_at_ms"] == NOW_MS
@@ -206,7 +207,7 @@ def test_opennews_client_merges_ai_update_patch_by_article_id() -> None:
     result = client.fetch(
         "opennews://subscribe",
         limit=2,
-        source={"fetch_policy_json": {"stream_timeout_seconds": 0.25, "max_messages": 2}},
+        source={"fetch_policy_json": {"stream_timeout_seconds": 0.25, "max_messages": 2, "rest_backfill": False}},
     )
 
     assert len(result.entries) == 1
@@ -251,7 +252,7 @@ def test_opennews_client_parses_iso_timestamp_from_live_push_shape() -> None:
     result = client.fetch(
         "opennews://subscribe",
         limit=1,
-        source={"fetch_policy_json": {"stream_timeout_seconds": 0.25, "max_messages": 1}},
+        source={"fetch_policy_json": {"stream_timeout_seconds": 0.25, "max_messages": 1, "rest_backfill": False}},
     )
 
     assert result.entries[0]["published_at_ms"] == int(
@@ -289,7 +290,7 @@ def test_opennews_client_keeps_live_push_without_external_link() -> None:
     result = client.fetch(
         "opennews://subscribe",
         limit=1,
-        source={"fetch_policy_json": {"stream_timeout_seconds": 0.25, "max_messages": 1}},
+        source={"fetch_policy_json": {"stream_timeout_seconds": 0.25, "max_messages": 1, "rest_backfill": False}},
     )
 
     assert len(result.entries) == 1
@@ -299,6 +300,89 @@ def test_opennews_client_keeps_live_push_without_external_link() -> None:
     assert result.entries[0]["provider_token_impacts"] == [
         {"symbol": "BTC", "market_type": "cex", "score": None, "signal": None, "grade": None},
         {"symbol": "SOL", "market_type": "dex", "score": None, "signal": None, "grade": None},
+    ]
+
+
+def test_opennews_client_rest_backfill_merges_ai_rating_for_partial_push() -> None:
+    websocket = FakeWebSocket(
+        recv_messages=[
+            {"jsonrpc": "2.0", "id": "opennews_subscribe_1", "result": {"success": True}},
+            {
+                "jsonrpc": "2.0",
+                "method": "news.update",
+                "params": {
+                    "id": "2378100",
+                    "text": "Anthropic revenue runs ahead of OpenAI",
+                    "newsType": "6551News",
+                    "engineType": "news",
+                    "coins": [
+                        {"symbol": "ANTHROPIC", "market_type": "cex"},
+                        {"symbol": "OPENAI", "market_type": "cex"},
+                    ],
+                    "ts": "2026-05-27T09:04:25.319+08:00",
+                },
+            },
+        ]
+    )
+    rest_requests: list[dict[str, Any]] = []
+
+    async def fake_post_json(url: str, *, token: str, body: dict[str, Any]) -> dict[str, Any]:
+        rest_requests.append({"url": url, "token": token, "body": body})
+        return {
+            "data": [
+                {
+                    "id": 2378100,
+                    "text": "Anthropic revenue runs ahead of OpenAI",
+                    "newsType": "6551News",
+                    "engineType": "news",
+                    "coins": [
+                        {"symbol": "ANTHROPIC", "market_type": "cex", "score": 75, "signal": "long", "grade": "A"},
+                        {"symbol": "OPENAI", "market_type": "cex", "score": 65, "signal": "short", "grade": "B+"},
+                    ],
+                    "aiRating": {"status": "done", "score": 75, "signal": "long", "grade": "A"},
+                    "ts": "2026-05-27T09:04:25.319+08:00",
+                }
+            ]
+        }
+
+    client = OpenNewsFeedClient(
+        token="test-token",
+        connect=lambda url, **kwargs: FakeConnect(url=url, websocket=websocket, kwargs=kwargs),
+        post_json=fake_post_json,
+        now_ms=lambda: NOW_MS,
+    )
+
+    result = client.fetch(
+        "opennews://subscribe",
+        limit=5,
+        source={
+            "fetch_policy_json": {
+                "engineTypes": {"news": ["6551News"]},
+                "hasCoin": True,
+                "stream_timeout_seconds": 0.25,
+                "max_messages": 1,
+                "rest_limit": 5,
+            }
+        },
+    )
+
+    assert len(result.entries) == 1
+    assert result.entries[0]["id"] == "2378100"
+    assert result.entries[0]["provider_signal"]["status"] == "ready"
+    assert result.entries[0]["provider_signal"]["score"] == 75
+    assert result.entries[0]["provider_signal"]["direction"] == "bullish"
+    assert result.entries[0]["provider_token_impacts"] == [
+        {"symbol": "ANTHROPIC", "market_type": "cex", "score": 75, "signal": "long", "grade": "A"},
+        {"symbol": "OPENAI", "market_type": "cex", "score": 65, "signal": "short", "grade": "B+"},
+    ]
+    assert result.feed["websocket_received"] == 1
+    assert result.feed["rest_received"] == 1
+    assert rest_requests == [
+        {
+            "url": "https://ai.6551.io/open/news_search",
+            "token": "test-token",
+            "body": {"limit": 5, "page": 1, "engineTypes": {"news": ["6551News"]}, "hasCoin": True},
+        }
     ]
 
 

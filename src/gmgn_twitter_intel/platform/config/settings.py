@@ -224,10 +224,12 @@ DEFAULT_NEWS_SOURCE_CONFIGS: tuple[dict[str, object], ...] = (
         "refresh_interval_seconds": 10,
         "coverage_tags": ("crypto", "realtime", "opennews"),
         "fetch_policy": {
+            "fetch_mode": "hybrid",
             "engineTypes": {"news": [], "listing": [], "onchain": [], "market": []},
             "hasCoin": True,
             "stream_timeout_seconds": 10,
             "max_messages": 20,
+            "rest_limit": 20,
         },
     },
 )
@@ -616,6 +618,7 @@ class OpenNewsSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     api_token: str | None = None
+    api_base_url: str = "https://ai.6551.io"
     wss_url: str = "wss://ai.6551.io/open/news_wss"
     connect_timeout_seconds: float = Field(default=3.0, gt=0)
 
@@ -626,6 +629,12 @@ class OpenNewsSettings(BaseModel):
             return None
         normalized = str(value).strip()
         return normalized or None
+
+    @field_validator("api_base_url", mode="before")
+    @classmethod
+    def parse_api_base_url(cls, value: Any) -> str:
+        normalized = str(value or "https://ai.6551.io").strip().rstrip("/")
+        return normalized or "https://ai.6551.io"
 
     @field_validator("wss_url", mode="before")
     @classmethod

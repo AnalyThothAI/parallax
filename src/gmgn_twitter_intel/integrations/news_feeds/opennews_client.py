@@ -5,6 +5,7 @@ import json
 import time
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
+from inspect import isawaitable
 from typing import Any
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
@@ -15,9 +16,12 @@ from gmgn_twitter_intel.domains.news_intel.services.opennews_provider_signal imp
 from gmgn_twitter_intel.integrations.news_feeds.feed_client import FeedFetchResult
 
 DEFAULT_OPENNEWS_WSS_URL = "wss://ai.6551.io/open/news_wss"
+DEFAULT_OPENNEWS_API_BASE_URL = "https://ai.6551.io"
 DEFAULT_CONNECT_TIMEOUT_SECONDS = 3.0
 DEFAULT_STREAM_TIMEOUT_SECONDS = 10.0
 DEFAULT_MAX_MESSAGES = 20
+DEFAULT_REST_PAGE = 1
+MAX_REST_LIMIT = 100
 _PUSH_METHODS = {"news.update", "news.ai_update"}
 
 
@@ -26,15 +30,21 @@ class OpenNewsFeedClient:
         self,
         *,
         token: str | None = None,
+        api_base_url: str = DEFAULT_OPENNEWS_API_BASE_URL,
         wss_url: str = DEFAULT_OPENNEWS_WSS_URL,
         connect_timeout_seconds: float = DEFAULT_CONNECT_TIMEOUT_SECONDS,
         connect: Callable[..., Any] | None = None,
+        post_json: Callable[..., Any] | None = None,
         now_ms: Callable[[], int] | None = None,
     ) -> None:
         self._token = _optional_text(token)
+        self._api_base_url = str(api_base_url or DEFAULT_OPENNEWS_API_BASE_URL).strip().rstrip(
+            "/"
+        ) or DEFAULT_OPENNEWS_API_BASE_URL
         self._wss_url = str(wss_url or DEFAULT_OPENNEWS_WSS_URL).strip() or DEFAULT_OPENNEWS_WSS_URL
         self._connect_timeout_seconds = max(0.1, float(connect_timeout_seconds))
         self._connect = connect or _default_connect
+        self._post_json = post_json or _default_post_json
         self._now_ms = now_ms or _now_ms
         self._request_id = 0
 
@@ -65,73 +75,152 @@ class OpenNewsFeedClient:
     ) -> FeedFetchResult:
         policy = _source_fetch_policy(source)
         subscription = _subscription_params(url, policy)
+        fetch_mode = _fetch_mode(policy)
         max_messages = _max_messages(policy=policy, limit=limit)
         stream_timeout_seconds = _stream_timeout_seconds(policy)
-        entries: list[dict[str, Any]] = []
-        connected_url = _with_token(self._wss_url, self._token or "")
-        async with self._connect(
-            connected_url,
-            open_timeout=self._connect_timeout_seconds,
-            ping_interval=20,
-            close_timeout=1,
-        ) as websocket:
-            subscribe_id = self._next_request_id("opennews_subscribe")
-            await _send_json(
-                websocket,
-                {
-                    "jsonrpc": "2.0",
-                    "id": subscribe_id,
-                    "method": "news.subscribe",
-                    "params": subscription,
-                },
-            )
-            ack = await _recv_json(websocket, timeout_seconds=self._connect_timeout_seconds)
-            _validate_subscribe_ack(ack)
+        websocket_received = 0
+        rest_received = 0
+        rest_error: str | None = None
+        rest_success = False
+        entries_by_id: dict[str, dict[str, Any]] = {}
+        if fetch_mode in {"hybrid", "websocket"}:
+            connected_url = _with_token(self._wss_url, self._token or "")
+            async with self._connect(
+                connected_url,
+                open_timeout=self._connect_timeout_seconds,
+                ping_interval=20,
+                close_timeout=1,
+            ) as websocket:
+                subscribe_id = self._next_request_id("opennews_subscribe")
+                await _send_json(
+                    websocket,
+                    {
+                        "jsonrpc": "2.0",
+                        "id": subscribe_id,
+                        "method": "news.subscribe",
+                        "params": subscription,
+                    },
+                )
+                ack = await _recv_json(websocket, timeout_seconds=self._connect_timeout_seconds)
+                _validate_subscribe_ack(ack)
 
-            deadline = time.monotonic() + stream_timeout_seconds
-            entries_by_id: dict[str, dict[str, Any]] = {}
-            messages_seen = 0
-            while messages_seen < max_messages:
-                remaining_seconds = deadline - time.monotonic()
-                if remaining_seconds <= 0:
-                    break
-                try:
-                    message = await _recv_json(websocket, timeout_seconds=remaining_seconds)
-                except TimeoutError:
-                    break
-                messages_seen += 1
-                entry = _entry_from_message(message, now_ms=self._now_ms)
-                if entry is None:
-                    continue
-                entry_key = _entry_key(entry)
-                if not entry_key:
-                    continue
-                merged_entry = _merge_entry(entries_by_id.get(entry_key), entry)
-                entries_by_id[entry_key] = merged_entry
+                deadline = time.monotonic() + stream_timeout_seconds
+                messages_seen = 0
+                while messages_seen < max_messages:
+                    remaining_seconds = deadline - time.monotonic()
+                    if remaining_seconds <= 0:
+                        break
+                    try:
+                        message = await _recv_json(websocket, timeout_seconds=remaining_seconds)
+                    except TimeoutError:
+                        break
+                    messages_seen += 1
+                    entry = _entry_from_message(message, now_ms=self._now_ms)
+                    if entry is None:
+                        continue
+                    entry_key = _entry_key(entry)
+                    if not entry_key:
+                        continue
+                    websocket_received += 1
+                    merged_entry = _merge_entry(entries_by_id.get(entry_key), entry)
+                    entries_by_id[entry_key] = merged_entry
 
-            await _send_json(
-                websocket,
-                {
-                    "jsonrpc": "2.0",
-                    "id": self._next_request_id("opennews_unsubscribe"),
-                    "method": "news.unsubscribe",
-                },
-            )
+                await _send_json(
+                    websocket,
+                    {
+                        "jsonrpc": "2.0",
+                        "id": self._next_request_id("opennews_unsubscribe"),
+                        "method": "news.unsubscribe",
+                    },
+                )
+        if fetch_mode in {"hybrid", "rest"}:
+            try:
+                for entry in await self._fetch_rest_entries(
+                    subscription=subscription,
+                    policy=policy,
+                    limit=limit,
+                ):
+                    entry_key = _entry_key(entry)
+                    if not entry_key:
+                        continue
+                    rest_received += 1
+                    entries_by_id[entry_key] = _merge_entry(entries_by_id.get(entry_key), entry)
+                rest_success = True
+            except Exception as exc:
+                if fetch_mode == "rest":
+                    raise
+                rest_error = _compact_error(exc)
         entries = [entry for entry in entries_by_id.values() if _entry_is_visible(entry)]
+        feed = {
+            "provider": "opennews",
+            "subscription": subscription,
+            "received": len(entries),
+        }
+        if fetch_mode in {"hybrid", "rest"}:
+            feed.update(
+                {
+                    "fetch_mode": fetch_mode,
+                    "websocket_received": websocket_received,
+                    "rest_received": rest_received,
+                }
+            )
+            if rest_error:
+                feed["rest_error"] = rest_error
         return FeedFetchResult(
-            status_code=101,
+            status_code=200 if rest_success else 101,
             entries=entries,
             not_modified=False,
-            feed={
-                "provider": "opennews",
-                "subscription": subscription,
-                "received": len(entries),
-            },
+            feed=feed,
         )
+
+    async def _fetch_rest_entries(
+        self,
+        *,
+        subscription: Mapping[str, Any],
+        policy: Mapping[str, Any],
+        limit: int | None,
+    ) -> list[dict[str, Any]]:
+        body = _rest_search_body(subscription=subscription, policy=policy, limit=limit)
+        payload_result = self._post_json(
+            f"{self._api_base_url}/open/news_search",
+            token=self._token or "",
+            body=body,
+        )
+        if isawaitable(payload_result):
+            payload_result = await payload_result
+        if not isinstance(payload_result, Mapping):
+            raise ValueError("OpenNews REST search returned a non-object response")
+        data = payload_result.get("data")
+        if not isinstance(data, list):
+            return []
+        entries: list[dict[str, Any]] = []
+        for item in data:
+            if not isinstance(item, Mapping):
+                continue
+            entry = _entry_from_params(item, method="news.rest", now_ms=self._now_ms)
+            if entry is not None:
+                entries.append(entry)
+        return entries
 
     def _next_request_id(self, prefix: str) -> str:
         self._request_id += 1
         return f"{prefix}_{self._request_id}"
+
+
+async def _default_post_json(url: str, *, token: str, body: Mapping[str, Any]) -> dict[str, Any]:
+    import httpx
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=httpx.Timeout(30.0), headers=headers) as client:
+        response = await client.post(url, json=dict(body))
+        response.raise_for_status()
+        payload = response.json()
+    if not isinstance(payload, dict):
+        raise ValueError("OpenNews REST search returned a non-object response")
+    return payload
 
 
 def _default_connect(url: str, **kwargs: Any) -> Any:
@@ -245,6 +334,68 @@ def _stream_timeout_seconds(policy: Mapping[str, Any]) -> float:
     if value is None:
         value = DEFAULT_STREAM_TIMEOUT_SECONDS
     return max(0.001, float(value))
+
+
+def _fetch_mode(policy: Mapping[str, Any]) -> str:
+    raw_mode = _optional_text(policy.get("fetch_mode") or policy.get("fetchMode") or policy.get("mode"))
+    mode = str(raw_mode or "").strip().lower()
+    if mode in {"rest", "poll", "search"}:
+        return "rest"
+    if mode in {"websocket", "ws", "stream"}:
+        return "websocket"
+    if mode in {"hybrid", "websocket+rest", "ws+rest"}:
+        return "hybrid"
+    if "rest_backfill" in policy or "restBackfill" in policy:
+        return "hybrid" if _truthy(policy.get("rest_backfill", policy.get("restBackfill"))) else "websocket"
+    return "hybrid"
+
+
+def _rest_search_body(
+    *,
+    subscription: Mapping[str, Any],
+    policy: Mapping[str, Any],
+    limit: int | None,
+) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "limit": _rest_limit(policy=policy, limit=limit),
+        "page": _positive_int_or_default(policy.get("page"), DEFAULT_REST_PAGE),
+    }
+    for key in ("engineTypes", "coins", "hasCoin"):
+        if key in subscription:
+            body[key] = subscription[key]
+    query = _optional_text(policy.get("q") or policy.get("query") or policy.get("keyword"))
+    if query:
+        body["q"] = query
+    score = _positive_int_or_none(policy.get("score", policy.get("min_score", policy.get("minScore"))))
+    if score is not None:
+        body["score"] = score
+    return body
+
+
+def _rest_limit(*, policy: Mapping[str, Any], limit: int | None) -> int:
+    value = policy.get(
+        "rest_limit",
+        policy.get("restLimit", policy.get("search_limit", policy.get("searchLimit"))),
+    )
+    if value is None:
+        value = _max_messages(policy=policy, limit=limit)
+    return max(1, min(MAX_REST_LIMIT, _positive_int_or_default(value, DEFAULT_MAX_MESSAGES)))
+
+
+def _positive_int_or_default(value: Any, default: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return int(default)
+    return parsed if parsed > 0 else int(default)
+
+
+def _positive_int_or_none(value: Any) -> int | None:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
 
 
 def _entry_from_message(message: Mapping[str, Any], *, now_ms: Callable[[], int]) -> dict[str, Any] | None:
@@ -434,6 +585,13 @@ def _iso_epoch_ms(value: Any) -> int | None:
 
 def _json_safe_dict(value: Mapping[str, Any]) -> dict[str, Any]:
     return json.loads(json.dumps(dict(value), default=str, ensure_ascii=False, sort_keys=True))
+
+
+def _compact_error(exc: Exception) -> str:
+    text = str(exc) or exc.__class__.__name__
+    if "Bearer " in text:
+        text = text.split("Bearer ", 1)[0] + "Bearer <redacted>"
+    return text[:240]
 
 
 def _optional_text(value: Any) -> str | None:

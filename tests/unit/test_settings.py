@@ -166,6 +166,7 @@ def test_news_intel_defaults_enable_core_crypto_and_us_market_sources() -> None:
     assert opennews.enabled is False
     assert opennews.fetch_policy["max_messages"] == 20
     assert settings.news_intel.opennews.api_token is None
+    assert settings.news_intel.opennews.api_base_url == "https://ai.6551.io"
     assert settings.news_intel.opennews.wss_url == "wss://ai.6551.io/open/news_wss"
 
 
@@ -199,6 +200,7 @@ def test_news_intel_accepts_opennews_credentials_without_using_environment_shado
         news_intel={
             "opennews": {
                 "api_token": "opennews-test-token",
+                "api_base_url": "https://example.com",
                 "wss_url": "wss://example.com/news_wss",
                 "connect_timeout_seconds": 2,
             },
@@ -224,6 +226,7 @@ def test_news_intel_accepts_opennews_credentials_without_using_environment_shado
     )
 
     assert settings.news_intel.opennews.api_token == "opennews-test-token"
+    assert settings.news_intel.opennews.api_base_url == "https://example.com"
     assert settings.news_intel.opennews.wss_url == "wss://example.com/news_wss"
     assert settings.news_intel.opennews.connect_timeout_seconds == 2
     assert settings.news_intel.sources[0].provider_type == "opennews"
@@ -275,6 +278,7 @@ def test_default_config_yaml_contains_explicit_news_intel_block() -> None:
     assert opennews["enabled"] is False
     assert news_intel["opennews"] == {
         "api_token": None,
+        "api_base_url": "https://ai.6551.io",
         "wss_url": "wss://ai.6551.io/open/news_wss",
         "connect_timeout_seconds": 3.0,
     }

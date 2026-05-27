@@ -150,9 +150,11 @@ notification_delivery
 
 News runtime provider support is intentionally smaller than the source
 classification vocabulary. The supported provider types are `rss`, `atom`,
-`json_feed`, `cryptopanic`, and `opennews`. OpenNews uses a bounded
-WebSocket `news.subscribe` cycle inside `news_fetch`; each cycle persists
-provider pushes as normal `news_provider_items` / `news_items` facts.
+`json_feed`, `cryptopanic`, and `opennews`. OpenNews uses a bounded hybrid
+fetch inside `news_fetch`: a short WebSocket `news.subscribe` cycle captures
+live pushes, then REST `/open/news_search` actively catches up the same
+filters so delayed `aiRating` scores and per-coin impacts update the same
+`news_provider_items` / `news_items` facts by source item id.
 `/api/news/sources/status` reports:
 
 - `provider_capabilities.supported_provider_types`
@@ -175,7 +177,10 @@ docs. Staged provider waves are:
 
 1. Enable `cryptopanic` when credentials exist, as aggregator/specialist media.
 2. Enable `opennews` when `news_intel.opennews.api_token` exists and an
-   `opennews://subscribe` source is intentionally enabled.
+   `opennews://subscribe` source is intentionally enabled. Use
+   `fetch_policy.fetch_mode = hybrid` or omit it for the default WebSocket +
+   REST catch-up behavior; set `fetch_mode = rest` only when push delivery is
+   intentionally disabled.
 3. Add official regulator, exchange, protocol, and issuer RSS/manual API feeds.
 4. Add OpenBB/macro/equity adapters only behind explicit ownership boundaries.
 5. Add social/community/developer context sources into `news_context_items`.

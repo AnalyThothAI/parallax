@@ -188,7 +188,10 @@ News Intel contract:
   still include `summary_zh`, `market_read_zh`, bull/bear strengths,
   evidence/data-gap metadata, run id, prompt/schema versions, and hashes when
   available, but OpenNews provider rows can carry provider signal and token
-  impact facts without requiring an agent brief.
+  impact facts without requiring an agent brief. For OpenNews, WebSocket
+  `news.update` rows may arrive as `partial`; REST `/open/news_search` catch-up
+  is the provider path that fills delayed `aiRating.score`, direction, grade,
+  and `coins[]` impact scores.
 - `/api/news/sources/status` exposes source classification fields, item counts,
   control-plane fetch status, redacted latest fetch errors,
   `source_quality_status`, provider capability summaries, source hygiene
@@ -196,8 +199,9 @@ News Intel contract:
   Supported provider types are currently `rss`, `atom`, `json_feed`,
   `cryptopanic`, and `opennews`; configured unsupported provider types are
   reported before an operator expects data from them. OpenNews credentials live
-  under `news_intel.opennews` in operator-owned `config.yaml`; provider tokens
-  are not exposed through this status route.
+  under `news_intel.opennews` in operator-owned `config.yaml`, including
+  `api_base_url` for REST catch-up and `wss_url` for live subscribe; provider
+  tokens are not exposed through this status route.
 - `/api/news/items/{news_item_id}` returns deterministic extraction facts plus
   canonical signal/token-impact facts, the full current item brief when one
   exists, and a sanitized latest run summary. It excludes raw provider

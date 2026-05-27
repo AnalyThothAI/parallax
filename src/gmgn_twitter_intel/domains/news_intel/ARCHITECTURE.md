@@ -50,18 +50,21 @@ forced into a resolved asset.
 
 ## Provider Waves
 
-The runtime-supported News provider types are `rss`, `atom`, `json_feed`, and
-`cryptopanic`. `/api/news/sources/status` reports these alongside configured
-provider types and source hygiene warnings.
+The runtime-supported News provider types are `rss`, `atom`, `json_feed`,
+`cryptopanic`, and `opennews`. `/api/news/sources/status` reports these
+alongside configured provider types and source hygiene warnings.
 
 - Wave 1: enable `cryptopanic` where credentials exist; keep it as an
   aggregator or specialist source, not an authority source.
-- Wave 2: add official RSS/manual API feeds for exchanges, regulators,
+- Wave 2: enable OpenNews only as a provider-fact source. Its WebSocket push is
+  treated as low-latency input; REST `/open/news_search` is the catch-up path
+  for delayed `aiRating` and `coins[]` impact facts.
+- Wave 3: add official RSS/manual API feeds for exchanges, regulators,
   protocols, and issuers. These are the feeds eligible for accepted fact
   candidates after authority-scope validation.
-- Wave 3: add OpenBB/macro/equity source adapters only where they do not cross
+- Wave 4: add OpenBB/macro/equity source adapters only where they do not cross
   ownership with `equity_event_intel` or `macro_intel`.
-- Wave 4: add social/community/developer context sources. Replies, comments,
+- Wave 5: add social/community/developer context sources. Replies, comments,
   and threads belong in `news_context_items`, not in `news_items.body_text`.
 
 ## Boundaries
