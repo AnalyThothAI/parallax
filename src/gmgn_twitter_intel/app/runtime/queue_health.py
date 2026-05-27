@@ -97,6 +97,9 @@ QUEUE_HEALTH_ADAPTER_SPECS: dict[str, QueueHealthAdapterSpec] = {
     "market_tick_current_dirty_targets": QueueHealthAdapterSpec(
         table="market_tick_current_dirty_targets", kind="dirty_target"
     ),
+    "macro_projection_dirty_targets": QueueHealthAdapterSpec(
+        table="macro_projection_dirty_targets", kind="dirty_target"
+    ),
     "narrative_admission_dirty_targets": QueueHealthAdapterSpec(
         table="narrative_admission_dirty_targets", kind="dirty_target"
     ),
