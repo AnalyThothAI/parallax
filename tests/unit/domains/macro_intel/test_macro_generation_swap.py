@@ -6,6 +6,32 @@ from gmgn_twitter_intel.domains.macro_intel.repositories.macro_intel_repository 
     MacroIntelRepository,
     _series_source_signature,
 )
+from gmgn_twitter_intel.domains.macro_intel.services.macro_regime_engine import build_macro_view_snapshot
+
+
+def test_build_macro_view_snapshot_uses_stable_current_identity() -> None:
+    snapshot = build_macro_view_snapshot([_observation()], computed_at_ms=1_779_000_000_000)
+
+    assert snapshot["snapshot_id"] == "macro-view:macro_regime_v4:current"
+    assert snapshot["projection_version"] == "macro_regime_v4"
+    assert snapshot["computed_at_ms"] == 1_779_000_000_000
+
+
+def test_insert_snapshot_returns_false_when_only_computed_at_ms_changes() -> None:
+    conn = SnapshotConnection()
+    repo = MacroIntelRepository(conn)
+    first = build_macro_view_snapshot([_observation()], computed_at_ms=1_779_000_000_000)
+    second = build_macro_view_snapshot([_observation()], computed_at_ms=1_779_000_060_000)
+
+    assert repo.insert_snapshot(first) is True
+    assert repo.insert_snapshot(second) is False
+
+    queries = "\n".join(query for query, _params in conn.executions)
+    assert "payload_hash" in queries
+    assert "ON CONFLICT(snapshot_id) DO UPDATE" in queries
+    assert "payload_hash IS DISTINCT FROM excluded.payload_hash" in queries
+    assert "RETURNING true AS changed" in queries
+    assert conn.payload_hashes[0] == conn.payload_hashes[1]
 
 
 def test_macro_series_source_signature_ignores_now_ms_and_ingested_at_ms() -> None:
@@ -210,6 +236,21 @@ def _series_row(
     }
 
 
+def _observation() -> dict[str, object]:
+    return {
+        "source_name": "fred",
+        "concept_key": "vol:vix",
+        "series_key": "fred:VIXCLS",
+        "source_priority": 100,
+        "observed_at": "2026-05-20",
+        "value_numeric": 18.2,
+        "unit": "index",
+        "frequency": "daily",
+        "data_quality": "ok",
+        "source_ts": "2026-05-20",
+    }
+
+
 class CurrentRefreshConnection:
     def __init__(
         self,
@@ -254,6 +295,24 @@ class InsertChunkConnection:
     def execute(self, query: str, params: tuple[object, ...]) -> Cursor:
         self.executions.append((query, params))
         return Cursor([], rowcount=len(params) // 15)
+
+
+class SnapshotConnection:
+    def __init__(self) -> None:
+        self.executions: list[tuple[str, tuple[object, ...]]] = []
+        self.payload_hashes: list[object] = []
+        self.current_payload_hash: object | None = None
+
+    def execute(self, query: str, params: tuple[object, ...]) -> Cursor:
+        self.executions.append((query, params))
+        payload_hash = params[-1]
+        self.payload_hashes.append(payload_hash)
+        changed = self.current_payload_hash != payload_hash
+        self.current_payload_hash = payload_hash
+        return Cursor([{"changed": changed}] if changed else [], rowcount=1 if changed else 0)
+
+    def commit(self) -> None:
+        return None
 
 
 class NullContext:

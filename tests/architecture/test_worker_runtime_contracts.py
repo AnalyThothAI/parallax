@@ -402,12 +402,14 @@ def test_macro_sync_is_fact_ingest_and_projection_remains_read_model_writer() ->
     assert manifests["macro_sync"].wakes_out == ("macro_observations_imported",)
 
     projection = manifests["macro_view_projection"]
-    assert projection.input_contract == ("macro_observations", "macro_observation_series_rows current")
+    assert projection.input_contract == ("macro_projection_dirty_targets", "macro_observation_series_rows current")
     assert "macro data providers" not in projection.input_contract
     assert "macro_observation_series_rows" in projection.writes_read_models
     assert "macro_observation_series_active_generation" not in projection.writes_read_models
     assert "macro_observation_series_generations" not in projection.writes_read_models
     assert "macro_view_snapshots" in projection.writes_read_models
+    assert "macro_projection_dirty_targets" in projection.writes_control_plane
+    assert projection.dirty_target_tables == ("macro_projection_dirty_targets",)
     assert "macro_observations_imported" in projection.wakes_on
 
 
@@ -418,6 +420,7 @@ def test_worker_manifest_declares_dirty_target_consumers() -> None:
         "discussion_digest_dirty_targets",
         "equity_event_projection_dirty_targets",
         "market_tick_current_dirty_targets",
+        "macro_projection_dirty_targets",
         "narrative_admission_dirty_targets",
         "news_projection_dirty_targets",
         "pulse_trigger_dirty_targets",

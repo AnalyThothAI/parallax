@@ -10,6 +10,7 @@ from typing import Any, TypedDict
 from psycopg.types.json import Jsonb
 
 from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_VIEW_PROJECTION_VERSION
+from gmgn_twitter_intel.platform.db.json_safety import postgres_safe_json
 
 
 class MacroSeriesRefreshResult(TypedDict):
@@ -546,6 +547,253 @@ class MacroIntelRepository:
         ).fetchone()
         return dict(row or {}).get("max_observed_at")
 
+    def enqueue_macro_projection_dirty_target(
+        self,
+        *,
+        projection_name: str,
+        projection_version: str,
+        now_ms: int,
+        due_at_ms: int | None = None,
+        reason: str,
+        commit: bool = True,
+    ) -> int:
+        payload_hash = _macro_projection_dirty_payload_hash(
+            projection_name=projection_name,
+            projection_version=projection_version,
+            target_kind="current",
+            target_id="current",
+            reason=reason,
+            source_watermark_ms=int(now_ms),
+        )
+        cursor = self.conn.execute(
+            """
+            INSERT INTO macro_projection_dirty_targets(
+              projection_name,
+              projection_version,
+              target_kind,
+              target_id,
+              payload_hash,
+              dirty_reason,
+              source_watermark_ms,
+              priority,
+              due_at_ms,
+              leased_until_ms,
+              lease_owner,
+              attempt_count,
+              last_error,
+              created_at_ms,
+              updated_at_ms
+            )
+            VALUES (
+              %(projection_name)s,
+              %(projection_version)s,
+              %(target_kind)s,
+              %(target_id)s,
+              %(payload_hash)s,
+              %(dirty_reason)s,
+              %(source_watermark_ms)s,
+              0,
+              %(due_at_ms)s,
+              NULL,
+              NULL,
+              0,
+              NULL,
+              %(now_ms)s,
+              %(now_ms)s
+            )
+            ON CONFLICT (projection_name, projection_version, target_kind, target_id) DO UPDATE SET
+              payload_hash = EXCLUDED.payload_hash,
+              dirty_reason = EXCLUDED.dirty_reason,
+              source_watermark_ms = GREATEST(
+                macro_projection_dirty_targets.source_watermark_ms,
+                EXCLUDED.source_watermark_ms
+              ),
+              priority = LEAST(macro_projection_dirty_targets.priority, EXCLUDED.priority),
+              due_at_ms = LEAST(macro_projection_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
+              leased_until_ms = NULL,
+              lease_owner = NULL,
+              last_error = NULL,
+              updated_at_ms = EXCLUDED.updated_at_ms
+            RETURNING 1 AS inserted
+            """,
+            {
+                "projection_name": str(projection_name),
+                "projection_version": str(projection_version),
+                "target_kind": "current",
+                "target_id": "current",
+                "payload_hash": payload_hash,
+                "dirty_reason": str(reason),
+                "source_watermark_ms": int(now_ms),
+                "due_at_ms": int(due_at_ms if due_at_ms is not None else now_ms),
+                "now_ms": int(now_ms),
+            },
+        )
+        if commit:
+            self.conn.commit()
+        rowcount = getattr(cursor, "rowcount", None)
+        if rowcount is None or int(rowcount) < 0:
+            return 1
+        return int(rowcount)
+
+    def claim_macro_projection_dirty_targets(
+        self,
+        *,
+        projection_name: str,
+        projection_version: str,
+        limit: int,
+        lease_ms: int,
+        lease_owner: str,
+        now_ms: int,
+        commit: bool = True,
+    ) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            WITH due AS (
+              SELECT projection_name, projection_version, target_kind, target_id
+              FROM macro_projection_dirty_targets
+              WHERE projection_name = %(projection_name)s
+                AND projection_version = %(projection_version)s
+                AND due_at_ms <= %(now_ms)s
+                AND (leased_until_ms IS NULL OR leased_until_ms <= %(now_ms)s)
+              ORDER BY priority ASC, due_at_ms ASC, updated_at_ms ASC, target_kind ASC, target_id ASC
+              LIMIT %(limit)s
+              FOR UPDATE SKIP LOCKED
+            )
+            UPDATE macro_projection_dirty_targets
+            SET leased_until_ms = %(leased_until_ms)s,
+                lease_owner = %(lease_owner)s,
+                attempt_count = macro_projection_dirty_targets.attempt_count + 1,
+                last_error = NULL,
+                updated_at_ms = %(now_ms)s
+            FROM due
+            WHERE macro_projection_dirty_targets.projection_name = due.projection_name
+              AND macro_projection_dirty_targets.projection_version = due.projection_version
+              AND macro_projection_dirty_targets.target_kind = due.target_kind
+              AND macro_projection_dirty_targets.target_id = due.target_id
+            RETURNING macro_projection_dirty_targets.*
+            """,
+            {
+                "projection_name": str(projection_name),
+                "projection_version": str(projection_version),
+                "now_ms": int(now_ms),
+                "leased_until_ms": int(now_ms) + max(1, int(lease_ms)),
+                "lease_owner": str(lease_owner),
+                "limit": max(0, int(limit)),
+            },
+        ).fetchall()
+        if commit:
+            self.conn.commit()
+        return [dict(row) for row in rows]
+
+    def mark_macro_projection_dirty_targets_done(
+        self,
+        claimed: Sequence[Mapping[str, Any]],
+        *,
+        now_ms: int,
+        commit: bool = True,
+    ) -> int:
+        records = _macro_projection_dirty_claims(claimed)
+        if not records:
+            return 0
+        cursor = self.conn.execute(
+            """
+            DELETE FROM macro_projection_dirty_targets queue
+            USING (
+              SELECT *
+              FROM unnest(
+                %(projection_names)s::text[],
+                %(projection_versions)s::text[],
+                %(target_kinds)s::text[],
+                %(target_ids)s::text[],
+                %(payload_hashes)s::text[],
+                %(lease_owners)s::text[],
+                %(attempt_counts)s::int[]
+              ) AS done(
+                projection_name,
+                projection_version,
+                target_kind,
+                target_id,
+                payload_hash,
+                lease_owner,
+                attempt_count
+              )
+            ) AS done
+            WHERE queue.projection_name = done.projection_name
+              AND queue.projection_version = done.projection_version
+              AND queue.target_kind = done.target_kind
+              AND queue.target_id = done.target_id
+              AND queue.payload_hash = done.payload_hash
+              AND queue.lease_owner = done.lease_owner
+              AND queue.attempt_count = done.attempt_count
+            """,
+            _macro_projection_dirty_claim_params(records),
+        )
+        if commit:
+            self.conn.commit()
+        return int(getattr(cursor, "rowcount", 0) or 0)
+
+    def mark_macro_projection_dirty_targets_error(
+        self,
+        claimed: Sequence[Mapping[str, Any]],
+        *,
+        error: str,
+        retry_ms: int,
+        now_ms: int,
+        commit: bool = True,
+    ) -> int:
+        records = _macro_projection_dirty_claims(claimed)
+        if not records:
+            return 0
+        params = _macro_projection_dirty_claim_params(records)
+        params.update(
+            {
+                "due_at_ms": int(now_ms) + max(1, int(retry_ms)),
+                "now_ms": int(now_ms),
+                "last_error": str(error)[:2048],
+            }
+        )
+        cursor = self.conn.execute(
+            """
+            UPDATE macro_projection_dirty_targets queue
+            SET due_at_ms = %(due_at_ms)s,
+                leased_until_ms = NULL,
+                lease_owner = NULL,
+                last_error = %(last_error)s,
+                updated_at_ms = %(now_ms)s
+            FROM (
+              SELECT *
+              FROM unnest(
+                %(projection_names)s::text[],
+                %(projection_versions)s::text[],
+                %(target_kinds)s::text[],
+                %(target_ids)s::text[],
+                %(payload_hashes)s::text[],
+                %(lease_owners)s::text[],
+                %(attempt_counts)s::int[]
+              ) AS failed(
+                projection_name,
+                projection_version,
+                target_kind,
+                target_id,
+                payload_hash,
+                lease_owner,
+                attempt_count
+              )
+            ) AS failed
+            WHERE queue.projection_name = failed.projection_name
+              AND queue.projection_version = failed.projection_version
+              AND queue.target_kind = failed.target_kind
+              AND queue.target_id = failed.target_id
+              AND queue.payload_hash = failed.payload_hash
+              AND queue.lease_owner = failed.lease_owner
+              AND queue.attempt_count = failed.attempt_count
+            """,
+            params,
+        )
+        if commit:
+            self.conn.commit()
+        return int(getattr(cursor, "rowcount", 0) or 0)
+
     def latest_observations(
         self,
         *,
@@ -904,16 +1152,19 @@ class MacroIntelRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
-    def insert_snapshot(self, snapshot: Mapping[str, Any]) -> None:
-        self.conn.execute(
+    def insert_snapshot(self, snapshot: Mapping[str, Any]) -> bool:
+        payload_hash = _macro_snapshot_payload_hash(snapshot)
+        row = self.conn.execute(
             """
             INSERT INTO macro_view_snapshots(
               snapshot_id, projection_version, asof_date, status, regime, overall_score, panels_json,
               indicators_json, triggers_json, data_gaps_json, source_coverage_json, features_json,
-              chain_json, scenario_json, scorecard_json, computed_at_ms
+              chain_json, scenario_json, scorecard_json, computed_at_ms, payload_hash
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(snapshot_id) DO UPDATE SET
+              projection_version = excluded.projection_version,
+              asof_date = excluded.asof_date,
               status = excluded.status,
               regime = excluded.regime,
               overall_score = excluded.overall_score,
@@ -926,7 +1177,10 @@ class MacroIntelRepository:
               chain_json = excluded.chain_json,
               scenario_json = excluded.scenario_json,
               scorecard_json = excluded.scorecard_json,
-              computed_at_ms = excluded.computed_at_ms
+              computed_at_ms = excluded.computed_at_ms,
+              payload_hash = excluded.payload_hash
+            WHERE macro_view_snapshots.payload_hash IS DISTINCT FROM excluded.payload_hash
+            RETURNING true AS changed
             """,
             (
                 snapshot["snapshot_id"],
@@ -945,9 +1199,11 @@ class MacroIntelRepository:
                 Jsonb(snapshot.get("scenario_json") or {}),
                 Jsonb(snapshot.get("scorecard_json") or {}),
                 int(snapshot["computed_at_ms"]),
+                payload_hash,
             ),
-        )
+        ).fetchone()
         self.conn.commit()
+        return bool(dict(row or {}).get("changed", False))
 
     def latest_snapshot(
         self,
@@ -969,7 +1225,6 @@ class MacroIntelRepository:
                 SELECT *
                 FROM macro_view_snapshots
                 WHERE projection_version = %s
-                ORDER BY computed_at_ms DESC
                 LIMIT 1
                 """,
                 (projection_version,),
@@ -1028,6 +1283,77 @@ def _series_source_signature(
         "rows": stable_rows,
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def _macro_snapshot_payload_hash(snapshot: Mapping[str, Any]) -> str:
+    payload = {
+        "projection_version": snapshot["projection_version"],
+        "asof_date": snapshot["asof_date"],
+        "status": snapshot["status"],
+        "regime": snapshot["regime"],
+        "overall_score": snapshot.get("overall_score"),
+        "panels_json": snapshot.get("panels_json") or {},
+        "indicators_json": snapshot.get("indicators_json") or {},
+        "triggers_json": snapshot.get("triggers_json") or [],
+        "data_gaps_json": snapshot.get("data_gaps_json") or [],
+        "source_coverage_json": snapshot.get("source_coverage_json") or {},
+        "features_json": snapshot.get("features_json") or {},
+        "chain_json": snapshot.get("chain_json") or {},
+        "scenario_json": snapshot.get("scenario_json") or {},
+        "scorecard_json": snapshot.get("scorecard_json") or {},
+    }
+    encoded = json.dumps(postgres_safe_json(payload), sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(encoded.encode()).hexdigest()
+
+
+def _macro_projection_dirty_payload_hash(
+    *,
+    projection_name: str,
+    projection_version: str,
+    target_kind: str,
+    target_id: str,
+    reason: str,
+    source_watermark_ms: int,
+) -> str:
+    payload = {
+        "projection_name": projection_name,
+        "projection_version": projection_version,
+        "target_kind": target_kind,
+        "target_id": target_id,
+        "reason": reason,
+        "source_watermark_ms": int(source_watermark_ms),
+    }
+    encoded = json.dumps(postgres_safe_json(payload), sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(encoded.encode()).hexdigest()
+
+
+def _macro_projection_dirty_claims(claimed: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for claim in claimed:
+        records.append(
+            {
+                "projection_name": str(claim["projection_name"]),
+                "projection_version": str(claim["projection_version"]),
+                "target_kind": str(claim["target_kind"]),
+                "target_id": str(claim["target_id"]),
+                "payload_hash": str(claim["payload_hash"]),
+                "lease_owner": str(claim["lease_owner"]),
+                "attempt_count": int(claim["attempt_count"]),
+            }
+        )
+    return records
+
+
+def _macro_projection_dirty_claim_params(records: Sequence[Mapping[str, Any]]) -> dict[str, list[Any]]:
+    return {
+        "projection_names": [record["projection_name"] for record in records],
+        "projection_versions": [record["projection_version"] for record in records],
+        "target_kinds": [record["target_kind"] for record in records],
+        "target_ids": [record["target_id"] for record in records],
+        "payload_hashes": [record["payload_hash"] for record in records],
+        "lease_owners": [record["lease_owner"] for record in records],
+        "attempt_counts": [int(record["attempt_count"]) for record in records],
+    }
 
 
 def _observation_id(observation: Mapping[str, Any]) -> str:

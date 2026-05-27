@@ -111,6 +111,46 @@ def test_enqueue_macro_sync_window_coalesces_by_identity_and_returns_id() -> Non
     assert params[1:6] == ("macrodata-cli", "macro-core", "2026-05-01", "2026-05-27", "bootstrap")
 
 
+def test_macro_projection_dirty_target_methods_use_claim_done_error_contract() -> None:
+    claim_source = inspect.getsource(MacroIntelRepository.claim_macro_projection_dirty_targets)
+    done_source = inspect.getsource(MacroIntelRepository.mark_macro_projection_dirty_targets_done)
+    error_source = inspect.getsource(MacroIntelRepository.mark_macro_projection_dirty_targets_error)
+
+    assert "FROM macro_projection_dirty_targets" in claim_source
+    assert "FOR UPDATE SKIP LOCKED" in claim_source
+    assert "leased_until_ms" in claim_source
+    assert "lease_owner" in claim_source
+    assert "attempt_count = macro_projection_dirty_targets.attempt_count + 1" in claim_source
+    assert "DELETE FROM macro_projection_dirty_targets" in done_source
+    assert "payload_hash" in done_source
+    assert "attempt_count" in done_source
+    assert "UPDATE macro_projection_dirty_targets" in error_source
+    assert "last_error" in error_source
+
+
+def test_enqueue_macro_projection_dirty_target_coalesces_current_target() -> None:
+    conn = FakeConnection(rows=[{"inserted": 1}], rowcount=1)
+    repo = MacroIntelRepository(conn)
+
+    inserted = repo.enqueue_macro_projection_dirty_target(
+        projection_name="macro_view",
+        projection_version="macro_regime_v4",
+        now_ms=1_779_000_000_000,
+        due_at_ms=1_779_000_000_000,
+        reason="macro_observations_imported",
+        commit=False,
+    )
+
+    assert inserted == 1
+    query, params = conn.executions[0]
+    assert "INSERT INTO macro_projection_dirty_targets" in query
+    assert "ON CONFLICT (projection_name, projection_version, target_kind, target_id) DO UPDATE" in query
+    assert params["projection_name"] == "macro_view"
+    assert params["projection_version"] == "macro_regime_v4"
+    assert params["target_kind"] == "current"
+    assert params["target_id"] == "current"
+
+
 def test_retry_macro_sync_window_terminalizes_when_attempt_budget_is_exhausted() -> None:
     source = inspect.getsource(MacroIntelRepository.retry_macro_sync_window)
     normalized_source = " ".join(source.split())

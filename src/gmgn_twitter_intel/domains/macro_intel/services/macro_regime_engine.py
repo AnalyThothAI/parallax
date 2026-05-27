@@ -59,7 +59,7 @@ def build_macro_view_snapshot(
         data_gaps=internal_data_gaps,
     )
     return {
-        "snapshot_id": f"macro-view:{MACRO_VIEW_PROJECTION_VERSION}:{int(computed_at_ms)}",
+        "snapshot_id": f"macro-view:{MACRO_VIEW_PROJECTION_VERSION}:current",
         "projection_version": MACRO_VIEW_PROJECTION_VERSION,
         "asof_date": asof_date,
         "status": status,

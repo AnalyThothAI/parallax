@@ -106,10 +106,39 @@ def test_sync_service_import_success_writes_facts_completes_window_and_wakes_pro
             "completed_at_ms": NOW_MS,
         }
     ]
+    assert repo.enqueued_dirty_targets == [
+        {
+            "projection_name": "macro_view",
+            "projection_version": "macro_regime_v4",
+            "now_ms": NOW_MS,
+            "due_at_ms": NOW_MS,
+            "reason": "macro_observations_imported",
+            "commit": False,
+        }
+    ]
     assert wake_bus.notifications == [
         {"count": 1, "max_observed_at": "2026-05-27", "asof_date": "2026-05-27"}
     ]
     assert events.index("transaction-commit") < events.index("wake")
+
+
+def test_sync_service_noop_import_does_not_enqueue_projection_dirty_target() -> None:
+    from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_service import MacroSyncService
+
+    repo = FakeMacroIntelRepository(claimed_window=_window())
+    service = MacroSyncService(
+        settings=FakeSettings(),
+        repository_factory=FakeRepositoryFactory(repo),
+        runner=FakeRunner(envelope=_empty_envelope()),
+        wake_bus=FakeWakeBus(),
+        clock_ms=lambda: NOW_MS,
+    )
+
+    result = service.run_claimed_window_once(lease_owner="macro_sync")
+
+    assert result is not None
+    assert result.imported_observation_count == 0
+    assert repo.enqueued_dirty_targets == []
 
 
 def test_sync_service_wake_failure_preserves_committed_success() -> None:
@@ -418,6 +447,24 @@ def _window() -> dict[str, object]:
     }
 
 
+def _empty_envelope() -> dict[str, object]:
+    return {
+        "ok": True,
+        "data": {
+            "snapshot": {
+                "bundle": "macro-core",
+                "asof": "2026-05-27",
+                "observations": [],
+                "coverage": {"requested": 1, "available": 0},
+                "missing_series": ["nyfed:SOFR"],
+                "series_errors": [],
+                "data_quality": "empty",
+                "reason_codes": ["no_observations"],
+            }
+        },
+    }
+
+
 class FakeSettings:
     macrodata_enabled = True
 
@@ -456,6 +503,7 @@ class FakeRunner:
         diagnostics: dict[str, object] | None = None,
         error: MacrodataRunnerError | None = None,
         generic_error: Exception | None = None,
+        envelope: dict[str, object] | None = None,
     ) -> None:
         self.events = events
         self.diagnostics = diagnostics or {
@@ -465,6 +513,7 @@ class FakeRunner:
         }
         self.error = error
         self.generic_error = generic_error
+        self.envelope = envelope or ENVELOPE
         self.calls: list[dict[str, str]] = []
 
     def history_bundle(self, *, bundle: str, start: str, end: str) -> MacrodataBundleRunResult:
@@ -475,7 +524,7 @@ class FakeRunner:
             raise self.generic_error
         if self.error is not None:
             raise self.error
-        return MacrodataBundleRunResult(envelope=ENVELOPE, diagnostics=self.diagnostics)
+        return MacrodataBundleRunResult(envelope=self.envelope, diagnostics=self.diagnostics)
 
 
 class FakeRepositoryFactory:
@@ -535,6 +584,7 @@ class FakeTransaction:
         self.completed_windows = list(self.repos.macro_intel.completed_windows)
         self.retry_windows = list(self.repos.macro_intel.retry_windows)
         self.failed_windows = list(self.repos.macro_intel.failed_windows)
+        self.enqueued_dirty_targets = list(self.repos.macro_intel.enqueued_dirty_targets)
         if self.events is not None:
             self.events.append("transaction-open")
         return self
@@ -555,6 +605,7 @@ class FakeTransaction:
             self.repos.macro_intel.completed_windows = self.completed_windows
             self.repos.macro_intel.retry_windows = self.retry_windows
             self.repos.macro_intel.failed_windows = self.failed_windows
+            self.repos.macro_intel.enqueued_dirty_targets = self.enqueued_dirty_targets
         return False
 
 
@@ -582,6 +633,7 @@ class FakeMacroIntelRepository:
         self.enqueued_windows: list[dict[str, object]] = []
         self.claim_calls: list[dict[str, object]] = []
         self.claimed_by_id: list[dict[str, object]] = []
+        self.enqueued_dirty_targets: list[dict[str, object]] = []
 
     def enqueue_macro_sync_window(self, **kwargs: object) -> str:
         if self.events is not None:
@@ -607,6 +659,10 @@ class FakeMacroIntelRepository:
 
     def record_import_run(self, import_run: dict[str, object]) -> None:
         self.import_runs.append(import_run)
+
+    def enqueue_macro_projection_dirty_target(self, **kwargs: object) -> int:
+        self.enqueued_dirty_targets.append(dict(kwargs))
+        return 1
 
     def record_macro_sync_run(self, run: dict[str, object]) -> None:
         self.sync_runs.append(run)

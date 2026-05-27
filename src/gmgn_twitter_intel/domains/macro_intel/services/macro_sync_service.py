@@ -8,6 +8,7 @@ from contextlib import AbstractContextManager
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any, cast
 
+from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_VIEW_PROJECTION_VERSION
 from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_scheduler import ensure_due_macro_sync_windows
 from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_types import MacroSyncRunSummary
 from gmgn_twitter_intel.domains.macro_intel.services.macrodata_bundle_importer import (
@@ -160,6 +161,15 @@ class MacroSyncService:
                     error_message=None,
                 )
                 repos.macro_intel.record_macro_sync_run(run_payload)
+                if int(import_summary.get("imported_observation_count") or 0) > 0:
+                    repos.macro_intel.enqueue_macro_projection_dirty_target(
+                        projection_name="macro_view",
+                        projection_version=MACRO_VIEW_PROJECTION_VERSION,
+                        now_ms=completed_at_ms,
+                        due_at_ms=completed_at_ms,
+                        reason="macro_observations_imported",
+                        commit=False,
+                    )
                 completed = repos.macro_intel.complete_macro_sync_window(
                     sync_window_id=str(window["sync_window_id"]),
                     lease_owner=lease_owner,
