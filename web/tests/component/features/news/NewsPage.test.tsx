@@ -123,7 +123,7 @@ describe("NewsPage", () => {
     expect(screen.getByTestId("location")).toHaveTextContent("/news/items/news-1");
   });
 
-  it("renders OpenNews provider fact instead of Agent memo when signal source is provider", async () => {
+  it("renders an evidence page for OpenNews provider facts instead of Agent memo", async () => {
     fetchNewsItemMock.mockResolvedValue(providerDetail);
 
     renderNews(<NewsPage newsItemId="news-1" token="test-token" />);
@@ -134,7 +134,13 @@ describe("NewsPage", () => {
         token: "test-token",
       }),
     );
-    expect((await screen.findAllByText("Provider signal")).length).toBeGreaterThan(0);
+    await screen.findByText("Evidence page");
+    expect(screen.getByText("Provider aiRating")).toBeInTheDocument();
+    expect(screen.getByText("Token impacts")).toBeInTheDocument();
+    expect(screen.getByText("Execution gaps")).toBeInTheDocument();
+    expect(screen.getByText("Price reaction")).toBeInTheDocument();
+    expect(screen.getByText("Liquidity / OI")).toBeInTheDocument();
+    expect(screen.getByText("Agent thesis")).toBeInTheDocument();
     expect(screen.getAllByText("利好").length).toBeGreaterThan(0);
     expect(screen.getAllByText("BTC").length).toBeGreaterThan(0);
     expect(screen.queryByText("Agent memo")).not.toBeInTheDocument();
