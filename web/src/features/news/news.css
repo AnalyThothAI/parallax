@@ -145,13 +145,6 @@
     height: 14px;
   }
 
-  .news-compact-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(286px, 0.32fr);
-    gap: 10px;
-    min-height: 0;
-  }
-
   .news-pagination {
     display: inline-flex;
     align-items: center;
@@ -198,10 +191,6 @@
   }
 
   @media (max-width: 980px) {
-    .news-compact-layout {
-      grid-template-columns: 1fr;
-    }
-
     .news-search-filter {
       grid-template-columns: 1fr;
       width: 100%;

@@ -206,6 +206,8 @@ News Intel contract:
   canonical signal/token-impact facts, the full current item brief when one
   exists, and a sanitized latest run summary. It excludes raw provider
   request/response payloads from the public item-detail contract.
+- The frontend item URL is `/news/items/:newsItemId`; `/news/:newsItemId` is
+  not a compatibility route.
 - Missing or unavailable brief state is represented as
   `agent_brief.status = pending | disabled | failed | stale | insufficient`;
   it is not a 5xx by itself. Frontend clients must render this state directly

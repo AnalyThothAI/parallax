@@ -68,7 +68,7 @@ export function opsPath(): string {
 }
 
 export function newsItemPath(newsItemId: string): string {
-  return `/news/${encodeURIComponent(newsItemId)}`;
+  return `/news/items/${encodeURIComponent(newsItemId)}`;
 }
 
 export function signalLabPulsePath(candidateId: string, search = ""): string {

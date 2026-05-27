@@ -102,28 +102,45 @@ const routeCases: RouteCase[] = [
       await expect(page.getByRole("region", { name: "News intel" })).toBeVisible();
     },
     specific: async (page) => {
-      await expect(page.locator("[aria-label='news queue summary']")).toBeVisible();
-      await expect(page.getByRole("list", { name: "news decision feed" })).toBeVisible();
+      await expect(page.locator("[aria-label='News filters']")).toBeVisible();
+      await expect(page.getByRole("navigation", { name: "News pagination" })).toBeVisible();
+      await expect(page.getByRole("list", { name: "news tape" })).toBeVisible();
+      await expect(page.locator("[aria-label='news inspector']")).toHaveCount(0);
       await expect(
-        page.getByRole("button", { name: /Open news item Macro desk flags liquidity rotation/ }),
+        page.getByRole("button", { name: /Open Macro desk flags liquidity rotation/ }),
       ).toBeVisible();
     },
-    nestedOverflowSelectors: [".news-panel", ".news-table-wrap", ".news-desk", ".news-desk-row"],
-    lastMeaningfulSelector: ".news-desk-row",
+    nestedOverflowSelectors: [
+      ".news-panel",
+      ".news-table-wrap",
+      ".news-tape-list",
+      ".news-tape-row",
+    ],
+    lastMeaningfulSelector: ".news-tape-row",
   },
   {
     name: "news detail",
     path: "/news/items/news-row-1",
     primary: async (page) => {
-      await expect(page.getByRole("region", { name: "News item detail" })).toBeVisible();
+      await expect(page.getByRole("region", { name: "News item evidence" })).toBeVisible();
     },
     specific: async (page) => {
       await expect(page.getByRole("link", { name: "Queue" })).toBeVisible();
-      await expect(page.locator("[aria-label='news trading decision context']")).toBeVisible();
-      await expect(page.getByText("Liquidity rotation is visible")).toBeVisible();
+      await expect(page.getByText("Evidence page", { exact: true })).toBeVisible();
+      await expect(page.getByText("Provider aiRating", { exact: true })).toBeVisible();
+      await expect(page.getByText("Token impacts", { exact: true })).toBeVisible();
+      await expect(page.getByText("Execution gaps", { exact: true })).toBeVisible();
+      await expect(page.getByText("Price reaction", { exact: true })).toBeVisible();
+      await expect(page.getByText("Liquidity / OI", { exact: true })).toBeVisible();
+      await expect(page.getByText("Agent thesis", { exact: true })).toBeVisible();
+      await expect(page.locator("[aria-label='provider signal context']")).toBeVisible();
+      await expect(page.locator("[aria-label='source packet']")).toBeVisible();
+      await expect(page.locator("[aria-label='news evidence metadata']")).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Source metadata" })).toBeVisible();
+      await expect(page.getByText("Liquidity rotation is visible").first()).toBeVisible();
     },
-    nestedOverflowSelectors: [".news-panel", ".news-detail", ".news-detail-grid"],
-    lastMeaningfulSelector: ".news-detail-side",
+    nestedOverflowSelectors: [".news-panel", ".news-evidence-page", ".news-evidence-layout"],
+    lastMeaningfulSelector: ".news-evidence-side",
   },
   {
     name: "earnings",

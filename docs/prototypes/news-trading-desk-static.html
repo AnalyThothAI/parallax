@@ -542,12 +542,12 @@
         color: var(--amber);
       }
 
-      .trade-scroll {
+      .evidence-scroll {
         min-height: 0;
         overflow: auto;
       }
 
-      .trade-hero {
+      .evidence-hero {
         display: grid;
         grid-template-columns: 108px minmax(0, 1fr);
         gap: 14px;
@@ -601,23 +601,23 @@
         font-size: 9px;
       }
 
-      .trade-title {
+      .evidence-title {
         min-width: 0;
       }
 
-      .trade-title h2 {
+      .evidence-title h2 {
         margin: 5px 0 8px;
         font-size: 19px;
         line-height: 1.18;
       }
 
-      .trade-title p {
+      .evidence-title p {
         color: var(--muted);
         font-size: 13px;
         line-height: 1.4;
       }
 
-      .trade-meta {
+      .evidence-meta {
         display: flex;
         flex-wrap: wrap;
         gap: 6px;
@@ -731,7 +731,7 @@
         line-height: 1.35;
       }
 
-      .reaction-wrap {
+      .market-gap-wrap {
         display: grid;
         grid-template-columns: minmax(0, 1fr) 152px;
         gap: 12px;
@@ -778,106 +778,35 @@
         background: var(--long);
       }
 
-      .rail-panel {
-        display: grid;
-        grid-template-rows: auto auto minmax(0, 1fr);
-      }
-
-      .queue-list,
-      .cluster-list,
-      .pending-list {
-        display: grid;
-        gap: 8px;
-      }
-
-      .queue-item {
-        border: 1px solid var(--line);
-        border-radius: var(--radius);
-        background: var(--surface-2);
-        padding: 10px;
-      }
-
-      .queue-top {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-        margin-bottom: 6px;
-      }
-
-      .action {
-        display: inline-flex;
-        align-items: center;
-        min-height: 22px;
-        border-radius: 6px;
-        padding: 3px 7px;
-        font-family: var(--mono);
-        font-size: 10px;
-        font-weight: 700;
-      }
-
-      .action.scan {
-        background: var(--long-soft);
-        color: var(--long);
-      }
-
-      .action.watch {
-        background: var(--amber-soft);
-        color: var(--amber);
-      }
-
-      .action.fade {
-        background: var(--short-soft);
-        color: var(--short);
-      }
-
-      .queue-item p,
-      .cluster-item p,
-      .pending-item p {
-        color: var(--muted);
-        font-size: 12px;
-        line-height: 1.35;
-      }
-
-      .cluster-item,
-      .pending-item {
-        border-left: 2px solid var(--line);
-        padding: 2px 0 2px 10px;
-      }
-
-      .cluster-item.hot {
-        border-color: var(--amber);
-      }
-
       .pending-item {
         border-color: var(--cyan);
       }
 
-      .decision-band {
+      .signal-band {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
         border-top: 1px solid var(--line);
         border-bottom: 1px solid var(--line);
       }
 
-      .decision-cell {
+      .signal-cell {
         min-height: 72px;
         padding: 10px;
         border-right: 1px solid var(--line-soft);
       }
 
-      .decision-cell:last-child {
+      .signal-cell:last-child {
         border-right: 0;
       }
 
-      .decision-cell strong {
+      .signal-cell strong {
         display: block;
         color: var(--text-strong);
         font-family: var(--mono);
         font-size: 12px;
       }
 
-      .decision-cell span {
+      .signal-cell span {
         display: block;
         margin-top: 5px;
         color: var(--muted);
@@ -941,10 +870,10 @@
         }
 
         .stat-strip,
-        .decision-band,
+        .signal-band,
         .check-grid,
-        .reaction-wrap,
-        .trade-hero {
+        .market-gap-wrap,
+        .evidence-hero {
           grid-template-columns: 1fr;
         }
 
@@ -1040,34 +969,34 @@
             </div>
           <span class="caption" id="detailSource">source packet</span>
           </div>
-          <div class="trade-scroll">
-            <div class="trade-hero">
+          <div class="evidence-scroll">
+            <div class="evidence-hero">
               <div class="impact-meter" id="impactMeter">
                 <div>
                   <strong id="detailScore">85</strong>
                   <span>IMPACT</span>
                 </div>
               </div>
-              <div class="trade-title">
+              <div class="evidence-title">
                 <span class="side short" id="detailSide">SHORT</span>
                 <h2 id="detailTitle">WSJ: UK sanctions HTX, exchange owned by Justin Sun</h2>
                 <p id="detailSummary">Regulatory pressure creates an immediate headline risk pocket for SUN and TRX-linked flows.</p>
-                <div class="trade-meta" id="detailTags"></div>
+                <div class="evidence-meta" id="detailTags"></div>
               </div>
             </div>
 
-            <div class="decision-band">
-              <div class="decision-cell">
-                <strong id="decisionAction">OPENNEWS SHORT 85</strong>
-                <span>Provider aiRating is enough to rank and explain the headline.</span>
+            <div class="signal-band">
+              <div class="signal-cell">
+                <strong id="providerRead">Provider aiRating 85 / short</strong>
+                <span>Provider rating details are source-backed and explain row priority.</span>
               </div>
-              <div class="decision-cell">
-                <strong id="decisionWindow">SUN / TRX IMPACT</strong>
+              <div class="signal-cell">
+                <strong id="impactScope">SUN / TRX source impact</strong>
                 <span>Affected assets come from provider coin impacts plus local token identity.</span>
               </div>
-              <div class="decision-cell">
-                <strong id="decisionConfidence">NEEDS MARKET CONFIRM</strong>
-                <span>Execution needs price, volume, OI, and funding joins outside News API.</span>
+              <div class="signal-cell">
+                <strong id="readinessState">Needs market data</strong>
+                <span>Price, volume, OI, and funding joins are outside News API.</span>
               </div>
             </div>
 
@@ -1089,17 +1018,17 @@
 
             <section class="section">
               <div class="section-head">
-                <h2>Execution Gaps</h2>
-                <span class="caption" id="reactionLabel">not in selected news row yet</span>
+                <h2>Market Data Gaps</h2>
+                <span class="caption" id="marketGapLabel">not in selected news row yet</span>
               </div>
               <div class="check-grid">
                 <div class="check">
-                  <strong>Price reaction</strong>
+                  <strong>Price move</strong>
                   <span>Needs event-time market tick join before showing impulse or VWAP.</span>
                 </div>
                 <div class="check">
                   <strong>Liquidity / OI</strong>
-                  <span>Not attached to News API; keep it out of the trade read for now.</span>
+                  <span>Not attached to News API; keep it out of the evidence read for now.</span>
                 </div>
                 <div class="check">
                   <strong>Agent thesis</strong>
@@ -1114,7 +1043,7 @@
                 <span class="caption">product boundary</span>
               </div>
               <p class="fine" id="invalidationText">
-                Show this as provider-ranked news impact, not as an execution recommendation.
+                Show this as provider-ranked news impact with explicit missing market context.
               </p>
             </section>
           </div>
@@ -1139,15 +1068,15 @@
             { symbol: "TRX", side: "short", score: 70 },
             { symbol: "BTC", side: "watch", score: 35 },
           ],
-          action: "OPENNEWS SHORT 85",
-          window: "SUN / TRX IMPACT",
-          confidence: "NEEDS MARKET CONFIRM",
+          providerRead: "Provider aiRating 85 / short",
+          impactScope: "SUN / TRX source impact",
+          readiness: "Needs market data",
           checks: [
             ["Provider aiRating", "Ready provider packet: score 85, grade A, short direction."],
             ["Token impacts", "SUN and TRX are source-backed affected symbols."],
             ["Identity state", "Use local token resolution to mark tradable vs attention lanes."],
           ],
-          invalidation: "Current data supports ranking and inspection; execution still needs market reaction, liquidity, OI, and funding joins.",
+          invalidation: "Current data supports ranking and inspection; price move, liquidity, OI, and funding are not attached.",
           spark: [38, 40, 36, 32, 29, 24, 22, 20, 18, 21, 19, 17],
           book: [
             ["ASK", 72, "thin"],
@@ -1168,15 +1097,15 @@
             { symbol: "HYPE", side: "long", score: 80 },
             { symbol: "BTC", side: "watch", score: 25 },
           ],
-          action: "OPENNEWS LONG 80",
-          window: "HYPE IMPACT",
-          confidence: "NEEDS MARKET CONFIRM",
+          providerRead: "Provider aiRating 80 / long",
+          impactScope: "HYPE source impact",
+          readiness: "Needs market data",
           checks: [
             ["Provider aiRating", "Ready provider packet: score 80, grade A, long direction."],
             ["Token impacts", "HYPE is the only high-score affected symbol."],
             ["Identity state", "HYPE resolves to the CEX token lane in local identity."],
           ],
-          invalidation: "Do not show breakout or chase language until event-time price and open-interest context is attached.",
+          invalidation: "Do not show momentum-confirmation language until event-time price and open-interest context is attached.",
           spark: [21, 22, 24, 23, 28, 34, 38, 41, 46, 48, 47, 51],
           book: [
             ["ASK", 44, "firm"],
@@ -1198,13 +1127,13 @@
             { symbol: "RNDR", side: "long", score: 58 },
             { symbol: "BTC", side: "watch", score: 35 },
           ],
-          action: "OPENNEWS LONG 85",
-          window: "SKHX IMPACT",
-          confidence: "IDENTITY ATTENTION",
+          providerRead: "Provider aiRating 85 / long",
+          impactScope: "SKHX identity attention",
+          readiness: "Needs token identity",
           checks: [
             ["Provider aiRating", "Ready provider packet: score 85, grade A, long direction."],
             ["Token impacts", "SKHX appears in provider impact, but it is not a confirmed token lane."],
-            ["Identity state", "Display as attention, not as a clean crypto trade target."],
+            ["Identity state", "Display as attention, not as a clean crypto target."],
           ],
           invalidation: "This should remain a high-score news item with identity warning until a production token target is confirmed.",
           spark: [24, 26, 29, 28, 30, 35, 37, 36, 39, 42, 44, 43],
@@ -1221,15 +1150,15 @@
           score: 35,
           side: "long",
           title: "Meta adds Scam Protection Centre for crypto-related account safety",
-          summary: "Consumer protection headline is directionally positive but low urgency for liquid token trades.",
+          summary: "Consumer protection headline is directionally positive but low urgency for liquid token routing.",
           tags: ["Consumer safety", "Low velocity", "Watch"],
           assets: [
             { symbol: "META", side: "long", score: 35 },
             { symbol: "AI", side: "watch", score: 20 },
           ],
-          action: "OPENNEWS LONG 35",
-          window: "LOW SCORE",
-          confidence: "IDENTITY ATTENTION",
+          providerRead: "Provider aiRating 35 / long",
+          impactScope: "Low-score source impact",
+          readiness: "Needs token identity",
           checks: [
             ["Provider aiRating", "Ready provider packet: score 35, grade C, long direction."],
             ["Token impacts", "META impact exists but local identity is ambiguous."],
@@ -1250,15 +1179,15 @@
           score: 5,
           side: "neutral",
           title: "Boom times for inference providers?",
-          summary: "Broad AI infrastructure theme, but OpenNews score stays low without a tradeable token trigger.",
+          summary: "Broad AI infrastructure theme, but OpenNews score stays low without a routable token trigger.",
           tags: ["Theme", "No catalyst", "Neutral"],
           assets: [
             { symbol: "TAO", side: "watch", score: 20 },
             { symbol: "AKT", side: "watch", score: 15 },
           ],
-          action: "OPENNEWS NEUTRAL 5",
-          window: "LOW SCORE",
-          confidence: "FILTER OUT",
+          providerRead: "Provider aiRating 5 / neutral",
+          impactScope: "Low-score theme",
+          readiness: "Below signal threshold",
           checks: [
             ["Provider aiRating", "Ready provider packet: score 5, grade C, neutral direction."],
             ["Token impacts", "BOOM is attached but unresolved in local identity."],
@@ -1286,15 +1215,15 @@
             { symbol: "SUI", side: "long", score: 74 },
             { symbol: "BTC", side: "watch", score: 30 },
           ],
-          action: "OPENNEWS LONG 76",
-          window: "AVAX / SUI IMPACT",
-          confidence: "NEEDS MARKET CONFIRM",
+          providerRead: "Provider aiRating 76 / long",
+          impactScope: "AVAX / SUI source impact",
+          readiness: "Needs market data",
           checks: [
             ["Provider aiRating", "Ready provider packet: score 76, long direction."],
             ["Token impacts", "AVAX and SUI have high provider coin scores."],
-            ["Identity state", "Execution still needs local target resolution and price reaction."],
+            ["Identity state", "Local target resolution and price move are not attached yet."],
           ],
-          invalidation: "Good candidate for a future market-reaction join, but current selected read should stop at provider impact.",
+          invalidation: "Useful candidate for a future market-data join, but current selected read stops at provider impact.",
           spark: [26, 28, 31, 36, 42, 47, 49, 52, 50, 54, 57, 59],
           book: [
             ["ASK", 54, "firm"],
@@ -1315,13 +1244,13 @@
             { symbol: "TRUST", side: "watch", score: 54 },
             { symbol: "BTC", side: "watch", score: 28 },
           ],
-          action: "OPENNEWS NEUTRAL 54",
-          window: "POLICY CONTEXT",
-          confidence: "NO TRADE READ",
+          providerRead: "Provider aiRating 54 / neutral",
+          impactScope: "Policy context",
+          readiness: "No direct asset read",
           checks: [
             ["Provider aiRating", "Provider score exists but direction remains neutral."],
             ["Token impacts", "TRUST is an affected symbol, not necessarily a tradable token."],
-            ["Fact lanes", "Policy facts may exist separately, but execution data is absent."],
+            ["Fact lanes", "Policy facts may exist separately, but market data is absent."],
           ],
           invalidation: "Keep as policy context unless a later event produces direct asset impact or agent-ready thesis.",
           spark: [34, 35, 34, 33, 35, 36, 35, 36, 35, 35, 36, 35],
@@ -1338,21 +1267,21 @@
           score: 0,
           side: "pending",
           title: "You Vote: what do you think is next with Iran?",
-          summary: "Partial WebSocket item. Do not surface as tradeable until REST backfill creates aiRating.",
+          summary: "Partial WebSocket item. Do not surface as ranked evidence until REST backfill creates aiRating.",
           tags: ["Partial", "Macro", "Awaiting score"],
           assets: [
             { symbol: "BTC", side: "watch", score: 0 },
             { symbol: "ETH", side: "watch", score: 0 },
           ],
-          action: "PARTIAL PUSH",
-          window: "WAITING AI",
-          confidence: "NO SCORE",
+          providerRead: "Partial provider packet",
+          impactScope: "Awaiting REST backfill",
+          readiness: "No provider score",
           checks: [
             ["Provider aiRating", "No ready provider score attached yet."],
             ["Token impacts", "Symbols can appear before scores arrive."],
             ["Readiness", "Keep partial rows below scored rows until REST backfill lands."],
           ],
-          invalidation: "Partial rows should not generate trade language; wait for provider aiRating or keep as raw news.",
+          invalidation: "Partial rows should stay neutral; wait for provider aiRating or keep as raw news.",
           spark: [30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30],
           book: [
             ["ASK", 30, "wait"],
@@ -1560,9 +1489,9 @@
         document.getElementById("detailTags").innerHTML = event.tags
           .map((tag, index) => `<span class="tag ${index === 0 ? "hot" : ""}">${tag}</span>`)
           .join("");
-        document.getElementById("decisionAction").textContent = event.action;
-        document.getElementById("decisionWindow").textContent = event.window;
-        document.getElementById("decisionConfidence").textContent = event.confidence;
+        document.getElementById("providerRead").textContent = event.providerRead;
+        document.getElementById("impactScope").textContent = event.impactScope;
+        document.getElementById("readinessState").textContent = event.readiness;
         document.getElementById("invalidationText").textContent = event.invalidation;
         document.getElementById("impactMeter").style.setProperty("--meter-score", Math.max(event.score, 8));
         document.getElementById("impactMeter").style.setProperty("--meter-color", sideColor);

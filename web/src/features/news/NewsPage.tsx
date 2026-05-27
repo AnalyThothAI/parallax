@@ -1,29 +1,12 @@
-import { formatRelativeTime } from "@lib/format";
-import type {
-  NewsAgentBrief,
-  NewsFactLane,
-  NewsItemDetail,
-  NewsRow,
-  NewsTokenLane,
-} from "@shared/model/newsIntel";
-import { newsLifecycleLabel } from "@shared/model/newsIntel";
+import type { NewsRow } from "@shared/model/newsIntel";
 import { newsItemPath, newsPath } from "@shared/routing/paths";
 import * as PageState from "@shared/ui/PageState";
-import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import {
-  newsDisplayTokenLanes,
-  newsSignalLabel,
-  newsSignalScoreLabel,
-  newsSignalTone,
-  tokenImpactLabel,
-  tokenMarketLabel,
-} from "./model/newsSignalViewModel";
 import "./news.css";
-import "./NewsDetail.css";
-import { NewsInspector } from "./ui/NewsInspector";
+import { NewsItemEvidencePage } from "./ui/NewsItemEvidencePage";
 import { NewsTape } from "./ui/NewsTape";
 import { NEWS_PAGE_SIZE, useNewsItemWithToken, useNewsPageWithToken } from "./useNewsPage";
 
@@ -47,7 +30,6 @@ function NewsQueueRoute({ token }: { token: string }) {
   const [signalFilter, setSignalFilter] = useState<SignalFilter>("all");
   const [minScore, setMinScore] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedNewsItemId, setSelectedNewsItemId] = useState<string | null>(null);
   const [cursorStack, setCursorStack] = useState<Array<string | null>>([null]);
   const cursor = cursorStack[cursorStack.length - 1] ?? null;
   const query = useNewsPageWithToken(token, {
@@ -59,20 +41,7 @@ function NewsQueueRoute({ token }: { token: string }) {
     signal: signalFilter === "all" ? null : signalFilter,
   });
   const rows = query.data?.items ?? EMPTY_NEWS_ROWS;
-  const selectedItem = useMemo(
-    () => rows.find((row) => row.news_item_id === selectedNewsItemId) ?? rows[0] ?? null,
-    [rows, selectedNewsItemId],
-  );
   const resetCursor = () => setCursorStack([null]);
-
-  useEffect(() => {
-    if (
-      rows.length &&
-      (!selectedNewsItemId || !rows.some((row) => row.news_item_id === selectedNewsItemId))
-    ) {
-      setSelectedNewsItemId(rows[0].news_item_id);
-    }
-  }, [rows, selectedNewsItemId]);
 
   return (
     <section className="radar-panel news-panel news-queue-shell" aria-label="News intel">
@@ -164,22 +133,7 @@ function NewsQueueRoute({ token }: { token: string }) {
         ) : null}
         {!query.isLoading && !query.isError && rows.length ? (
           <PageState.Stale updating={query.isFetching && !query.isLoading}>
-            <div className="news-compact-layout">
-              <NewsTape
-                rows={rows}
-                selectedId={selectedItem?.news_item_id ?? null}
-                onOpen={(newsId) => navigate(newsItemPath(newsId))}
-                onSelect={setSelectedNewsItemId}
-              />
-              <NewsInspector
-                item={selectedItem}
-                onFilterToken={(symbol) => {
-                  setSearchQuery(symbol);
-                  resetCursor();
-                }}
-                onOpen={(newsId) => navigate(newsItemPath(newsId))}
-              />
-            </div>
+            <NewsTape rows={rows} onOpen={(newsId) => navigate(newsItemPath(newsId))} />
           </PageState.Stale>
         ) : null}
       </div>
@@ -233,7 +187,7 @@ function NewsItemRoute({ token, newsItemId }: { token: string; newsItemId: strin
   const query = useNewsItemWithToken(token, newsItemId);
   const item = query.data ?? null;
   return (
-    <section className="radar-panel news-panel news-detail-shell" aria-label="News item detail">
+    <section className="radar-panel news-panel news-evidence-shell" aria-label="News item evidence">
       <header className="radar-toolbar news-toolbar">
         <Link className="news-back-link" to={newsPath()}>
           <ArrowLeft aria-hidden />
@@ -252,224 +206,10 @@ function NewsItemRoute({ token, newsItemId }: { token: string; newsItemId: strin
       ) : null}
       {item ? (
         <PageState.Stale updating={query.isFetching}>
-          <NewsItemDetailView item={item} />
+          <NewsItemEvidencePage item={item} />
         </PageState.Stale>
       ) : null}
     </section>
-  );
-}
-
-function NewsItemDetailView({ item }: { item: NewsItemDetail }) {
-  const facts = item.fact_lanes ?? [];
-  const tokens = newsDisplayTokenLanes(item);
-  const isProviderSignal = item.signal.source === "provider";
-  return (
-    <article className="news-detail">
-      <header
-        className={`news-detail-hero ${isProviderSignal ? "news-provider-command" : "news-agent-command"}`}
-      >
-        <div className="news-hero-grid">
-          <div className="news-hero-agent">
-            <div className="news-row-kicker">
-              <span>{isProviderSignal ? "Provider signal" : "Agent brief"}</span>
-              <span className={newsSignalTone(item.signal)}>{newsSignalLabel(item.signal)}</span>
-              <span>{newsSignalScoreLabel(item.signal)}</span>
-            </div>
-            <h2>{item.signal.summary_zh || item.headline}</h2>
-            <p>{item.summary || item.signal.summary_en || "No source summary available."}</p>
-          </div>
-          <div className="news-source-card">
-            <span>Source packet</span>
-            <b>{item.signal.method || item.signal.source}</b>
-            <p>{item.headline}</p>
-            <small>
-              {item.source_domain || item.source?.source_name || "source unknown"}
-              {item.latest_at_ms ? ` · ${formatRelativeTime(item.latest_at_ms)} ago` : ""}
-            </small>
-            {item.canonical_url ? (
-              <a
-                className="news-outline-link"
-                href={item.canonical_url}
-                rel="noreferrer"
-                target="_blank"
-              >
-                <ExternalLink aria-hidden />
-                Original
-              </a>
-            ) : null}
-          </div>
-        </div>
-      </header>
-      <div className="news-decision-strip" aria-label="news provider signal context">
-        <DecisionMetric
-          label="Direction"
-          value={newsSignalLabel(item.signal)}
-          hint={item.signal.direction}
-        />
-        <DecisionMetric
-          label="Score"
-          value={newsSignalScoreLabel(item.signal)}
-          hint={item.signal.status}
-        />
-        <DecisionMetric
-          label="Tokens"
-          value={String(tokens.length)}
-          hint={newsLifecycleLabel(item.lifecycle_status)}
-        />
-      </div>
-      <div className="news-detail-grid">
-        <div className="news-detail-main">
-          {isProviderSignal ? (
-            <ProviderSignalPanel item={item} />
-          ) : (
-            <AgentBriefPanel brief={item.agent_brief} />
-          )}
-          <section className="news-detail-section">
-            <div className="news-section-heading">
-              <h3>Source brief</h3>
-              <span className="news-section-note">
-                {item.source?.provider_type || item.provider_type || "provider"}
-              </span>
-            </div>
-            <p>{item.summary || trimContent(item.content) || "No clean summary available yet."}</p>
-          </section>
-          <section className="news-detail-section">
-            <div className="news-section-heading">
-              <h3>Extracted facts</h3>
-              <span className="news-section-note">{facts.length} candidates</span>
-            </div>
-            <FactList facts={facts} />
-          </section>
-        </div>
-        <aside className="news-detail-side" aria-label="news item metadata">
-          <section className="news-detail-section">
-            <h3>Token identity</h3>
-            <TokenIdentity tokens={tokens} />
-          </section>
-          <section className="news-detail-section">
-            <h3>Production metadata</h3>
-            <MetadataList item={item} />
-          </section>
-        </aside>
-      </div>
-    </article>
-  );
-}
-
-function ProviderSignalPanel({ item }: { item: NewsItemDetail }) {
-  return (
-    <section className="news-detail-section news-provider-signal-panel">
-      <div className="news-section-heading">
-        <h3>Provider signal</h3>
-        <span className={`news-route-pill ${newsSignalTone(item.signal)}`}>
-          {newsSignalLabel(item.signal)}
-        </span>
-      </div>
-      <p>{item.signal.summary_zh || item.signal.summary_en || "Waiting for provider aiRating."}</p>
-      <div className="news-token-list">
-        {newsDisplayTokenLanes(item).map((token, index) => (
-          <div
-            className="news-token-item"
-            key={`${token.symbol ?? token.target_id ?? "token"}-${index}`}
-          >
-            <b>{token.symbol || token.target_id || "unknown token"}</b>
-            <span>{tokenImpactLabel(token)}</span>
-            <small>{token.provider_signal || tokenMarketLabel(token)}</small>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function AgentBriefPanel({ brief }: { brief?: NewsAgentBrief | null }) {
-  return (
-    <section className="news-detail-section news-agent-brief-panel">
-      <div className="news-section-heading">
-        <h3>Agent brief</h3>
-        <span className="news-route-pill is-context">{brief?.status || "pending"}</span>
-      </div>
-      <p>{brief?.summary_zh || "Agent fallback is pending for this non-provider row."}</p>
-      <p>{brief?.market_read_zh || "No persisted market read."}</p>
-    </section>
-  );
-}
-
-function DecisionMetric({ label, value, hint }: { label: string; value: string; hint: string }) {
-  return (
-    <div className="news-decision-metric">
-      <span>{label}</span>
-      <b>{value}</b>
-      <small>{hint}</small>
-    </div>
-  );
-}
-
-function FactList({ facts }: { facts: NewsFactLane[] }) {
-  if (!facts.length)
-    return <p className="news-muted-copy">No semantic fact candidate is attached yet.</p>;
-  return (
-    <div className="news-fact-list">
-      {facts.map((fact, index) => (
-        <div className="news-fact-item" key={`${fact.event_type ?? "fact"}-${index}`}>
-          <div>
-            <b>{fact.claim || fact.event_type || "fact candidate"}</b>
-            <span>{fact.event_type || "event type missing"}</span>
-          </div>
-          <strong>{fact.status || "attention"}</strong>
-          <p>
-            {fact.realis ? `${fact.realis} · ` : ""}
-            {Array.isArray(fact.affected_targets)
-              ? `${fact.affected_targets.length} affected target candidates`
-              : "target extraction pending"}
-          </p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function TokenIdentity({ tokens }: { tokens: NewsTokenLane[] }) {
-  if (!tokens.length)
-    return <p className="news-muted-copy">No production token identity is linked.</p>;
-  return (
-    <div className="news-token-list">
-      {tokens.map((token, index) => (
-        <div
-          className="news-token-item"
-          key={`${token.symbol ?? token.target_id ?? "token"}-${index}`}
-        >
-          <b>{token.symbol || token.target_id || "unknown token"}</b>
-          <span>{token.resolution_status || token.lane}</span>
-          <small>{token.target_type || token.market_type || "target type missing"}</small>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function MetadataList({ item }: { item: NewsItemDetail }) {
-  return (
-    <dl className="news-metadata-list">
-      <div>
-        <dt>Lifecycle</dt>
-        <dd>{item.lifecycle_status}</dd>
-      </div>
-      <div>
-        <dt>Provider</dt>
-        <dd>
-          {item.signal.provider || item.source?.provider_type || item.provider_type || "unknown"}
-        </dd>
-      </div>
-      <div>
-        <dt>Method</dt>
-        <dd>{item.signal.method || "unknown"}</dd>
-      </div>
-      <div>
-        <dt>Story id</dt>
-        <dd>{item.story_id || "none"}</dd>
-      </div>
-    </dl>
   );
 }
 
@@ -478,11 +218,4 @@ function signalFilterLabel(value: SignalFilter): string {
   if (value === "bearish") return "利空";
   if (value === "neutral") return "中性";
   return "全部";
-}
-
-function trimContent(content?: string | null): string | null {
-  if (!content) return null;
-  const normalized = content.replace(/\s+/g, " ").trim();
-  if (!normalized) return null;
-  return normalized.length > 360 ? `${normalized.slice(0, 357)}...` : normalized;
 }

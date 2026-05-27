@@ -47,7 +47,7 @@ describe("NewsPage", () => {
     cleanup();
   });
 
-  it("renders a compact provider-signal tape with a right inspector", async () => {
+  it("renders a compact provider-signal tape without an inline inspector", async () => {
     mockNewsRows();
 
     renderNews(<NewsPage token="test-token" />);
@@ -59,7 +59,8 @@ describe("NewsPage", () => {
     expect(screen.getAllByText("利好").length).toBeGreaterThan(0);
     expect(screen.getAllByText("A · 82").length).toBeGreaterThan(0);
     expect(screen.getAllByText("BTC").length).toBeGreaterThan(0);
-    expect(screen.getByText("Provider signal")).toBeInTheDocument();
+    expect(screen.queryByLabelText("news inspector")).not.toBeInTheDocument();
+    expect(screen.queryByText("Provider signal")).not.toBeInTheDocument();
     expect(screen.queryByText("Content")).not.toBeInTheDocument();
     expect(screen.queryByText("Decision")).not.toBeInTheDocument();
     expect(fetchNewsRowsMock).toHaveBeenCalledWith(defaultNewsFetchParams);
@@ -122,7 +123,7 @@ describe("NewsPage", () => {
     expect(screen.getByTestId("location")).toHaveTextContent("/news/items/news-1");
   });
 
-  it("renders OpenNews provider fact instead of Agent memo when signal source is provider", async () => {
+  it("renders an evidence page for OpenNews provider facts instead of Agent memo", async () => {
     fetchNewsItemMock.mockResolvedValue(providerDetail);
 
     renderNews(<NewsPage newsItemId="news-1" token="test-token" />);
@@ -133,7 +134,13 @@ describe("NewsPage", () => {
         token: "test-token",
       }),
     );
-    expect((await screen.findAllByText("Provider signal")).length).toBeGreaterThan(0);
+    await screen.findByText("Evidence page");
+    expect(screen.getByText("Provider aiRating")).toBeInTheDocument();
+    expect(screen.getByText("Token impacts")).toBeInTheDocument();
+    expect(screen.getByText("Execution gaps")).toBeInTheDocument();
+    expect(screen.getByText("Price reaction")).toBeInTheDocument();
+    expect(screen.getByText("Liquidity / OI")).toBeInTheDocument();
+    expect(screen.getByText("Agent thesis")).toBeInTheDocument();
     expect(screen.getAllByText("利好").length).toBeGreaterThan(0);
     expect(screen.getAllByText("BTC").length).toBeGreaterThan(0);
     expect(screen.queryByText("Agent memo")).not.toBeInTheDocument();

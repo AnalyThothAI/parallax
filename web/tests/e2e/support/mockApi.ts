@@ -128,10 +128,25 @@ function newsRowsData() {
         canonical_url: "https://example.com/macro-liquidity",
         source_domain: "example.com",
         summary: "Liquidity rotation is visible across crypto beta and rates-sensitive assets.",
+        signal: newsProviderSignal(),
+        token_impacts: [newsProviderTokenImpact()],
         token_lanes: [
-          { lane: "resolved", symbol: "UPEG", target_type: "Asset", target_id: TARGET_ID },
+          {
+            ...newsProviderTokenImpact(),
+            lane: "resolved",
+            resolution_status: "resolved",
+            target_type: "Asset",
+            target_id: TARGET_ID,
+            market_type: "dex",
+          },
         ],
-        fact_lanes: [{ lane: "accepted", summary: "Funding stress remains elevated." }],
+        fact_lanes: [
+          {
+            claim: "Funding stress remains elevated.",
+            event_type: "liquidity_rotation",
+            status: "accepted",
+          },
+        ],
       },
     ],
     next_cursor: null,
@@ -154,11 +169,30 @@ function newsItemDetailData(path: string) {
     source: {
       source_name: "Example Wire",
       source_domain: "example.com",
+      provider_type: "opennews",
       trust_tier: "tier_1",
       source_role: "wire",
+      source_quality_status: "healthy",
     },
-    token_lanes: [{ lane: "resolved", symbol: "UPEG", target_type: "Asset", target_id: TARGET_ID }],
-    fact_lanes: [{ lane: "accepted", summary: "Funding stress remains elevated." }],
+    signal: newsProviderSignal(),
+    token_impacts: [newsProviderTokenImpact()],
+    token_lanes: [
+      {
+        ...newsProviderTokenImpact(),
+        lane: "resolved",
+        resolution_status: "resolved",
+        target_type: "Asset",
+        target_id: TARGET_ID,
+        market_type: "dex",
+      },
+    ],
+    fact_lanes: [
+      {
+        claim: "Funding stress remains elevated.",
+        event_type: "liquidity_rotation",
+        status: "accepted",
+      },
+    ],
     token_mentions: [],
     fact_candidates: [],
     story_members: [],
@@ -171,6 +205,31 @@ function newsItemDetailData(path: string) {
       computed_at_ms: NOW,
     },
     agent_run: null,
+  };
+}
+
+function newsProviderSignal() {
+  return {
+    source: "provider",
+    provider: "opennews",
+    status: "ready",
+    direction: "bullish",
+    label_zh: "利好",
+    signal: "long",
+    score: 82,
+    grade: "A",
+    summary_zh: "OpenNews aiRating flags liquidity rotation as a positive crypto-beta signal.",
+    summary_en: "Provider aiRating links the liquidity rotation to crypto beta.",
+    method: "opennews.aiRating",
+  };
+}
+
+function newsProviderTokenImpact() {
+  return {
+    symbol: "UPEG",
+    provider_signal: "long",
+    provider_score: 82,
+    provider_grade: "A",
   };
 }
 

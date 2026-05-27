@@ -53,15 +53,15 @@ Do not add new code under old `api/`, `store/`, or `components/` roots. Public f
   `timeline_scope=signal|all` for its own timeline state and does not consume
   `/api/recent` or WebSocket replay to reconstruct selected-handle counts,
   resolved targets, candidate mentions, or narrative clusters.
-- **News route.** `/news` renders deterministic News Intel facts plus the
-  persisted `agent_brief` contract from `/api/news` and
-  `/api/news/items/{news_item_id}`. Chinese summary, market read, direction,
-  decision class, bull/bear theses, watch triggers, invalidations, evidence
-  refs, and data gaps come from the backend brief or from an explicit
-  missing/degraded brief state. Feature view-model code must not recreate
-  trading narrative from headline, summary, or fact-lane keyword heuristics.
-  Queue pagination is explicit; direction tabs request backend filters rather
-  than client-side reclassification.
+- **News route.** `/news` is a provider-signal tape with filters, pagination,
+  source-backed signal fields, and links into `/news/items/:newsItemId`.
+  `/news/items/:newsItemId` is the item evidence page rendering provider
+  `aiRating`, token impacts, token identity, fact candidates, source metadata,
+  and persisted agent brief state directly from
+  `/api/news/items/{news_item_id}`. The list route must not keep an inline
+  selected inspector or recreate trading narrative from headline, summary, or
+  fact-lane keyword heuristics. The detail route must show explicit gaps for
+  price reaction, liquidity/OI, and agent thesis when those fields are absent.
 - **Earnings route.** `/earnings` is owned by `features/equity-events` and
   renders persisted Equity Event Intel read models from `/api/equity-events*`.
   The first viewport is the event feed; `/earnings/calendar` renders expected
@@ -132,7 +132,7 @@ Production bundles ship inside the same Docker image as the Python service and a
 
 Per `WORKFLOW.md`, UI flows that tests cannot exercise must be checked manually before declaring completion. The minimum checklist for frontend architecture changes is:
 
-1. Hard-reload `/`, `/search`, `/signal-lab`, `/signal-lab/pulse/:candidateId`, `/stocks`, `/news`, `/news/:newsItemId`, `/earnings`, `/earnings/calendar`, `/earnings/events/:eventId`, `/macro`, `/watchlist`, `/ops`, and `/token/:targetType/:targetId?window=1h&scope=all` with representative query params.
+1. Hard-reload `/`, `/search`, `/signal-lab`, `/signal-lab/pulse/:candidateId`, `/stocks`, `/news`, `/news/items/:newsItemId`, `/earnings`, `/earnings/calendar`, `/earnings/events/:eventId`, `/macro`, `/watchlist`, `/ops`, and `/token/:targetType/:targetId?window=1h&scope=all` with representative query params.
 2. Submit the topbar search and confirm the URL becomes `/search?q=<submitted-query>`.
 3. Verify visible loading/empty/error states are structured, labelled, and non-overlapping.
 4. Confirm no failing `/api/*` requests in the browser session.

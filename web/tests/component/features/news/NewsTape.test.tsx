@@ -9,9 +9,7 @@ describe("NewsTape", () => {
   });
 
   it("renders compact rows without a duplicate score column", () => {
-    render(
-      <NewsTape rows={[rowWithBtcEth]} selectedId="news-1" onOpen={vi.fn()} onSelect={vi.fn()} />,
-    );
+    render(<NewsTape rows={[rowWithBtcEth]} onOpen={vi.fn()} />);
 
     expect(screen.getByText("利好")).toBeInTheDocument();
     expect(screen.getByText("A · 82")).toBeInTheDocument();
@@ -22,21 +20,18 @@ describe("NewsTape", () => {
     expect(screen.queryByText("score")).not.toBeInTheDocument();
   });
 
-  it("keeps one news item as one selectable row even with multiple token chips", () => {
-    const onSelect = vi.fn();
+  it("opens one news item as one row even with multiple token chips", () => {
     const onOpen = vi.fn();
-    render(
-      <NewsTape rows={[rowWithBtcEth]} selectedId={null} onOpen={onOpen} onSelect={onSelect} />,
-    );
+    render(<NewsTape rows={[rowWithBtcEth]} onOpen={onOpen} />);
 
-    const rows = [screen.getByRole("button", { name: "Select news item BTC ETF flows expand" })];
+    const rows = [screen.getByRole("button", { name: "Open news item BTC ETF flows expand" })];
     expect(screen.getAllByText("BTC ETF flows expand")).toHaveLength(1);
 
     fireEvent.click(rows[0]);
-    expect(onSelect).toHaveBeenCalledWith("news-1");
+    expect(onOpen).toHaveBeenCalledWith("news-1");
 
     fireEvent.click(screen.getByRole("button", { name: /open btc etf flows expand/i }));
-    expect(onOpen).toHaveBeenCalledWith("news-1");
+    expect(onOpen).toHaveBeenCalledTimes(2);
   });
 });
 
