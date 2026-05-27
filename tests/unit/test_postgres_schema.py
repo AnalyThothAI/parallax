@@ -337,7 +337,7 @@ def test_next_runtime_lifecycle_hard_cut_rebuilds_cex_oi_current_tables() -> Non
 
     assert "DROP TABLE IF EXISTS cex_oi_radar_rows" in text
     assert "DROP TABLE IF EXISTS cex_oi_radar_runs" in text
-    assert "publication_id TEXT PRIMARY KEY" in publication_state_table
+    assert "board_key TEXT PRIMARY KEY" in publication_state_table
     assert "current_row_count BIGINT NOT NULL DEFAULT 0" in publication_state_table
     assert "row_id TEXT PRIMARY KEY" in rows_table
     assert "run_id" not in rows_table

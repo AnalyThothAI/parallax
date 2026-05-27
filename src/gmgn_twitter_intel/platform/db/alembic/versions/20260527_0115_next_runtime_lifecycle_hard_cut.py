@@ -185,7 +185,7 @@ SET
 
 _CREATE_CEX_OI_PUBLICATION_STATE_SQL = """
 CREATE TABLE IF NOT EXISTS cex_oi_radar_publication_state (
-  publication_id TEXT PRIMARY KEY,
+  board_key TEXT PRIMARY KEY,
   provider TEXT NOT NULL,
   exchange TEXT NOT NULL,
   quote_symbol TEXT NOT NULL,
