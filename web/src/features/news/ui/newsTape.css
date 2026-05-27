@@ -28,7 +28,6 @@
     text-align: left;
   }
 
-  .news-tape-row.is-selected .news-tape-row-main,
   .news-tape-row-main:hover,
   .news-tape-row-main:focus-visible,
   .news-tape-open:hover,
@@ -41,9 +40,7 @@
   .news-tape-time,
   .news-tape-copy,
   .news-tape-signal,
-  .news-tape-token,
-  .news-tape-inspector,
-  .news-tape-token-impact {
+  .news-tape-token {
     display: grid;
     min-width: 0;
   }
@@ -73,10 +70,7 @@
 
   .news-tape-time small,
   .news-tape-copy small,
-  .news-tape-token small,
-  .news-tape-inspector-head span,
-  .news-tape-provider-fields dt,
-  .news-tape-token-impact span {
+  .news-tape-token small {
     overflow: hidden;
     color: var(--dim);
     font-family: var(--mono);
@@ -101,30 +95,26 @@
     padding: 4px 6px;
   }
 
-  .news-tape-signal b,
-  .news-tape-inspector-head b {
+  .news-tape-signal b {
     font-size: 13px;
   }
 
   .news-tape-signal.is-long,
-  .news-tape-token.is-long,
-  .news-tape-token-impact.is-long {
+  .news-tape-token.is-long {
     border-color: var(--opportunity-line);
     color: var(--opportunity-ink);
     background: var(--opportunity-soft);
   }
 
   .news-tape-signal.is-short,
-  .news-tape-token.is-short,
-  .news-tape-token-impact.is-short {
+  .news-tape-token.is-short {
     border-color: var(--risk-line);
     color: var(--risk-ink);
     background: var(--risk-soft);
   }
 
   .news-tape-signal.is-neutral,
-  .news-tape-token.is-neutral,
-  .news-tape-token-impact.is-neutral {
+  .news-tape-token.is-neutral {
     border-color: var(--info-line);
     color: var(--info-ink);
     background: var(--info-soft);
@@ -188,153 +178,6 @@
   .news-tape-open svg {
     width: 14px;
     height: 14px;
-  }
-
-  .news-tape-inspector {
-    align-content: start;
-    gap: 10px;
-    min-width: 0;
-    border: 1px solid var(--line);
-    border-radius: 7px;
-    background: rgba(10, 13, 13, 0.76);
-    padding: 12px;
-  }
-
-  .news-tape-inspector-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-  }
-
-  .news-tape-inspector h2,
-  .news-tape-inspector p {
-    margin: 0;
-  }
-
-  .news-tape-inspector h2 {
-    color: var(--bone);
-    font-size: 18px;
-    line-height: 1.18;
-  }
-
-  .news-tape-inspector p {
-    color: var(--bone-2);
-    font-size: 13px;
-    line-height: 1.42;
-  }
-
-  .news-tape-provider-fields {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 6px;
-    margin: 0;
-  }
-
-  .news-tape-provider-fields div {
-    display: grid;
-    gap: 3px;
-    min-width: 0;
-    border: 1px solid var(--line-soft);
-    border-radius: 5px;
-    padding: 7px;
-  }
-
-  .news-tape-provider-fields dd {
-    overflow: hidden;
-    margin: 0;
-    color: var(--bone);
-    font-size: 12px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .news-tape-token-impact-list {
-    display: grid;
-    gap: 6px;
-  }
-
-  .news-tape-token-impact {
-    gap: 7px;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    padding: 8px;
-  }
-
-  .news-tape-token-impact-head,
-  .news-tape-token-scoreline,
-  .news-tape-inspector-actions {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    min-width: 0;
-  }
-
-  .news-tape-token-impact b,
-  .news-tape-token-impact strong {
-    color: var(--bone);
-  }
-
-  .news-tape-token-impact b {
-    overflow: hidden;
-    font-size: 14px;
-    line-height: 1.1;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .news-tape-token-impact strong {
-    font-family: var(--mono);
-    font-size: 12px;
-    letter-spacing: 0;
-    text-transform: uppercase;
-  }
-
-  .news-tape-token-scoreline small,
-  .news-tape-token-score-missing {
-    color: currentColor;
-    font-family: var(--mono);
-    font-size: 10px;
-    font-weight: 900;
-    letter-spacing: 0;
-    opacity: 0.78;
-    text-transform: uppercase;
-  }
-
-  .news-tape-token-bar {
-    display: block;
-    height: 3px;
-    border-radius: 99px;
-    background:
-      linear-gradient(90deg, currentColor var(--news-tape-token-score), transparent 0),
-      rgba(255, 255, 255, 0.08);
-  }
-
-  .news-tape-token-impact button,
-  .news-tape-inspector-actions button,
-  .news-tape-inspector-actions a {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 28px;
-    border: 1px solid var(--line);
-    border-radius: 5px;
-    color: var(--bone-2);
-    background: rgba(7, 9, 8, 0.64);
-    padding: 0 8px;
-    font-family: var(--mono);
-    font-size: 10px;
-    font-weight: 800;
-    letter-spacing: 0;
-    text-decoration: none;
-    text-transform: uppercase;
-  }
-
-  .news-tape-inspector-actions a svg {
-    width: 13px;
-    height: 13px;
-    margin-right: 5px;
   }
 
   .news-tape-empty-copy {

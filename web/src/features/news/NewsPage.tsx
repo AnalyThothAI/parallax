@@ -10,7 +10,7 @@ import { newsLifecycleLabel } from "@shared/model/newsIntel";
 import { newsItemPath, newsPath } from "@shared/routing/paths";
 import * as PageState from "@shared/ui/PageState";
 import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import {
@@ -23,7 +23,6 @@ import {
 } from "./model/newsSignalViewModel";
 import "./news.css";
 import "./NewsDetail.css";
-import { NewsInspector } from "./ui/NewsInspector";
 import { NewsTape } from "./ui/NewsTape";
 import { NEWS_PAGE_SIZE, useNewsItemWithToken, useNewsPageWithToken } from "./useNewsPage";
 
@@ -47,7 +46,6 @@ function NewsQueueRoute({ token }: { token: string }) {
   const [signalFilter, setSignalFilter] = useState<SignalFilter>("all");
   const [minScore, setMinScore] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedNewsItemId, setSelectedNewsItemId] = useState<string | null>(null);
   const [cursorStack, setCursorStack] = useState<Array<string | null>>([null]);
   const cursor = cursorStack[cursorStack.length - 1] ?? null;
   const query = useNewsPageWithToken(token, {
@@ -59,20 +57,7 @@ function NewsQueueRoute({ token }: { token: string }) {
     signal: signalFilter === "all" ? null : signalFilter,
   });
   const rows = query.data?.items ?? EMPTY_NEWS_ROWS;
-  const selectedItem = useMemo(
-    () => rows.find((row) => row.news_item_id === selectedNewsItemId) ?? rows[0] ?? null,
-    [rows, selectedNewsItemId],
-  );
   const resetCursor = () => setCursorStack([null]);
-
-  useEffect(() => {
-    if (
-      rows.length &&
-      (!selectedNewsItemId || !rows.some((row) => row.news_item_id === selectedNewsItemId))
-    ) {
-      setSelectedNewsItemId(rows[0].news_item_id);
-    }
-  }, [rows, selectedNewsItemId]);
 
   return (
     <section className="radar-panel news-panel news-queue-shell" aria-label="News intel">
@@ -164,22 +149,7 @@ function NewsQueueRoute({ token }: { token: string }) {
         ) : null}
         {!query.isLoading && !query.isError && rows.length ? (
           <PageState.Stale updating={query.isFetching && !query.isLoading}>
-            <div className="news-compact-layout">
-              <NewsTape
-                rows={rows}
-                selectedId={selectedItem?.news_item_id ?? null}
-                onOpen={(newsId) => navigate(newsItemPath(newsId))}
-                onSelect={setSelectedNewsItemId}
-              />
-              <NewsInspector
-                item={selectedItem}
-                onFilterToken={(symbol) => {
-                  setSearchQuery(symbol);
-                  resetCursor();
-                }}
-                onOpen={(newsId) => navigate(newsItemPath(newsId))}
-              />
-            </div>
+            <NewsTape rows={rows} onOpen={(newsId) => navigate(newsItemPath(newsId))} />
           </PageState.Stale>
         ) : null}
       </div>

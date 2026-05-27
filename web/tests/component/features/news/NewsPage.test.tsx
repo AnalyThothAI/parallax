@@ -47,7 +47,7 @@ describe("NewsPage", () => {
     cleanup();
   });
 
-  it("renders a compact provider-signal tape with a right inspector", async () => {
+  it("renders a compact provider-signal tape without an inline inspector", async () => {
     mockNewsRows();
 
     renderNews(<NewsPage token="test-token" />);
@@ -59,7 +59,8 @@ describe("NewsPage", () => {
     expect(screen.getAllByText("利好").length).toBeGreaterThan(0);
     expect(screen.getAllByText("A · 82").length).toBeGreaterThan(0);
     expect(screen.getAllByText("BTC").length).toBeGreaterThan(0);
-    expect(screen.getByText("Provider signal")).toBeInTheDocument();
+    expect(screen.queryByLabelText("news inspector")).not.toBeInTheDocument();
+    expect(screen.queryByText("Provider signal")).not.toBeInTheDocument();
     expect(screen.queryByText("Content")).not.toBeInTheDocument();
     expect(screen.queryByText("Decision")).not.toBeInTheDocument();
     expect(fetchNewsRowsMock).toHaveBeenCalledWith(defaultNewsFetchParams);

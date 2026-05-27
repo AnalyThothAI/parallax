@@ -14,26 +14,23 @@ import "./newsTape.css";
 
 type NewsTapeProps = {
   rows: NewsRow[];
-  selectedId: string | null;
-  onSelect: (newsItemId: string) => void;
   onOpen: (newsItemId: string) => void;
 };
 
-export function NewsTape({ rows, selectedId, onOpen, onSelect }: NewsTapeProps) {
+export function NewsTape({ rows, onOpen }: NewsTapeProps) {
   return (
     <div className="news-tape-list" role="list" aria-label="news tape">
       {rows.map((row) => {
-        const selected = row.news_item_id === selectedId;
         const tokens = newsDisplayTokenLanes(row);
         const visibleTokens = tokens.slice(0, 5);
         const overflowCount = Math.max(0, tokens.length - visibleTokens.length);
         return (
-          <div className={`news-tape-row ${selected ? "is-selected" : ""}`} key={row.row_id}>
+          <div className="news-tape-row" key={row.row_id}>
             <button
-              aria-label={`Select news item ${row.headline}`}
+              aria-label={`Open news item ${row.headline}`}
               className="news-tape-row-main"
               type="button"
-              onClick={() => onSelect(row.news_item_id)}
+              onClick={() => onOpen(row.news_item_id)}
             >
               <span className="news-tape-time">
                 <b>
