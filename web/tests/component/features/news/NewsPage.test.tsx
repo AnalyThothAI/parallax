@@ -119,7 +119,7 @@ describe("NewsPage", () => {
     expect((await screen.findAllByText("BTC ETF flows expand")).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: /^open btc etf flows expand/i }));
 
-    expect(screen.getByTestId("location")).toHaveTextContent("/news/news-1");
+    expect(screen.getByTestId("location")).toHaveTextContent("/news/items/news-1");
   });
 
   it("renders OpenNews provider fact instead of Agent memo when signal source is provider", async () => {

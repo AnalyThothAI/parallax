@@ -113,7 +113,7 @@ const routeCases: RouteCase[] = [
   },
   {
     name: "news detail",
-    path: "/news/news-row-1",
+    path: "/news/items/news-row-1",
     primary: async (page) => {
       await expect(page.getByRole("region", { name: "News item detail" })).toBeVisible();
     },
