@@ -112,6 +112,30 @@ def test_worker_request_audit_error_requeues_without_business_ledger_or_current_
     asyncio.run(_test_worker_request_audit_error_requeues_without_business_ledger_or_current_write())
 
 
+def test_worker_status_payload_reads_current_queue_depth() -> None:
+    db = FakeDB([_candidate()])
+    provider = FakeBriefProvider(
+        reservation=AgentCapacityReservation(lane=EQUITY_EVENT_BRIEF_LANE, acquired=True)
+    )
+    worker = EquityEventBriefWorker(
+        name="equity_event_brief",
+        settings=SimpleNamespace(
+            batch_size=5,
+            max_attempts=3,
+            backpressure_cooldown_ms=60_000,
+            statement_timeout_seconds=30,
+        ),
+        db=db,
+        telemetry=object(),
+        provider=provider,
+        clock_ms=lambda: NOW_MS,
+    )
+
+    payload = worker.status_payload()
+
+    assert payload["queue_depth"] == 1
+
+
 async def _test_worker_request_audit_error_requeues_without_business_ledger_or_current_write() -> None:
     db = FakeDB([_candidate()])
     provider = FakeBriefProvider(

@@ -78,6 +78,16 @@ def test_worker_claims_dirty_targets_off_event_loop_thread() -> None:
     asyncio.run(_test_worker_claims_dirty_targets_off_event_loop_thread())
 
 
+def test_worker_status_payload_reads_current_queue_depth() -> None:
+    db = FakeDB([_candidate()])
+    provider = FakeBriefProvider()
+    worker = _worker(db=db, provider=provider)
+
+    payload = worker.status_payload()
+
+    assert payload["queue_depth"] == 1
+
+
 async def _test_worker_claims_dirty_targets_off_event_loop_thread() -> None:
     candidate = _candidate()
     candidate["item"]["provider_signal_json"] = {"source": "provider", "status": "ready"}

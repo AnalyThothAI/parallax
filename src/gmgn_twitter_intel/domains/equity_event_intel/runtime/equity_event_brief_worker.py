@@ -557,11 +557,12 @@ class EquityEventBriefWorker(WorkerBase):
                 ),
             )
 
-    def _queue_depth(self, *, now_ms: int) -> int:
+    def _queue_depth(self, *, now_ms: int | None = None) -> int:
+        resolved_now_ms = self.clock_ms() if now_ms is None else int(now_ms)
         with self._repository_session() as repos:
             return int(
                 repos.equity_projection_dirty_targets.queue_depth(
-                    now_ms=now_ms,
+                    now_ms=resolved_now_ms,
                     projection_name="brief_input",
                 )
             )
