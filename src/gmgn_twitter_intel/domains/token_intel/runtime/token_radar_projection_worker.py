@@ -40,6 +40,7 @@ class TokenRadarProjectionWorker(WorkerBase):
         hot_windows = tuple(getattr(settings, "hot_windows", DEFAULT_HOT_WINDOWS) or DEFAULT_HOT_WINDOWS)
         self.hot_windows = tuple(window for window in hot_windows if window in self.windows)
         self.limit = max(1, int(getattr(settings, "batch_size", 100) or 100))
+        self.hot_interval_ms = int(self.interval_seconds * 1000)
         self.cold_interval_ms = int(float(getattr(settings, "cold_interval_seconds", 60.0) or 0) * 1000)
         self.wake_bus = wake_bus
         self._cursor = 0
@@ -47,10 +48,12 @@ class TokenRadarProjectionWorker(WorkerBase):
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
         result = await asyncio.to_thread(self.rebuild_once, now_ms=now_ms)
         failed = sum(1 for item in result["windows"].values() if str(item.get("status") or "") == "failed")
-        processed = max(0, len(result["windows"]) - failed)
+        skipped = 1 if str(result.get("status") or "") == "idle" else 0
+        processed = 0 if skipped else max(0, len(result["windows"]) - failed)
         return WorkerResult(
             processed=processed,
             failed=failed,
+            skipped=skipped,
             notes={
                 "computed_at_ms": result["computed_at_ms"],
                 "rows_written": result["rows_written"],
@@ -58,6 +61,7 @@ class TokenRadarProjectionWorker(WorkerBase):
                 "window": result.get("window"),
                 "scope": result.get("scope"),
                 "status": result.get("status"),
+                "reason": result.get("reason"),
                 "claimed": result.get("claimed"),
                 "catch_up_enqueued": result.get("catch_up_enqueued"),
                 "windows": result["windows"],
@@ -104,16 +108,19 @@ class TokenRadarProjectionWorker(WorkerBase):
                     ),
                     computed_at_ms=computed_at_ms,
                 )[0]
-                projection = _projection_class()(repos=repos)
-                result = projection.rebuild_dirty_targets(
-                    windows=tuple(dict.fromkeys(window for window, _scope in work_items)),
-                    scopes=tuple(dict.fromkeys(scope for _window, scope in work_items)),
-                    work_items=tuple(work_items),
-                    now_ms=computed_at_ms,
-                    limit=self.limit,
-                    rank_limit=self.limit,
-                    lease_owner=self.name,
-                )
+                if work_items:
+                    projection = _projection_class()(repos=repos)
+                    result = projection.rebuild_dirty_targets(
+                        windows=tuple(dict.fromkeys(window for window, _scope in work_items)),
+                        scopes=tuple(dict.fromkeys(scope for _window, scope in work_items)),
+                        work_items=tuple(work_items),
+                        now_ms=computed_at_ms,
+                        limit=self.limit,
+                        rank_limit=self.limit,
+                        lease_owner=self.name,
+                    )
+                else:
+                    result = _idle_result(computed_at_ms=computed_at_ms)
         except Exception as exc:
             self.last_error = str(exc)
             logger.exception(f"token radar dirty target projection failed: error={exc}")
@@ -128,14 +135,7 @@ class TokenRadarProjectionWorker(WorkerBase):
                 "windows": {},
             }
 
-        result.setdefault("computed_at_ms", computed_at_ms)
-        result.setdefault("rows_written", 0)
-        result.setdefault("source_rows", 0)
-        result.setdefault("windows", {})
-        result.setdefault("claimed", 0)
-        result.setdefault("catch_up_enqueued", 0)
-        result["window"] = self.windows[0] if self.windows else None
-        result["scope"] = self.scopes[0] if self.scopes else None
+        result = self._finalize_result(result=result, computed_at_ms=computed_at_ms)
 
         if str(result.get("status") or "") == "failed":
             self.last_error = self.last_error or str(result.get("error") or "token radar projection failed")
@@ -147,13 +147,27 @@ class TokenRadarProjectionWorker(WorkerBase):
             self.wake_bus.notify_token_radar_updated(window=window, scope=scope)
         return result
 
+    def _finalize_result(self, *, result: dict[str, Any], computed_at_ms: int) -> dict[str, Any]:
+        result.setdefault("computed_at_ms", computed_at_ms)
+        result.setdefault("rows_written", 0)
+        result.setdefault("source_rows", 0)
+        result.setdefault("windows", {})
+        result.setdefault("claimed", 0)
+        result.setdefault("catch_up_enqueued", 0)
+        result["window"] = self.windows[0] if self.windows else None
+        result["scope"] = self.scopes[0] if self.scopes else None
+        return result
+
     def _next_work_items(
         self,
         *,
         publication_state: dict[tuple[str, str], dict[str, Any]],
         computed_at_ms: int,
-    ) -> tuple[list[tuple[str, str]], tuple[str, str]]:
-        hot_items = self._hot_work_items()
+    ) -> tuple[list[tuple[str, str]], tuple[str, str] | None]:
+        hot_items = self._hot_work_items(
+            publication_state=publication_state,
+            computed_at_ms=computed_at_ms,
+        )
         background_item = self._next_background_window_scope(
             publication_state=publication_state,
             computed_at_ms=computed_at_ms,
@@ -165,7 +179,7 @@ class TokenRadarProjectionWorker(WorkerBase):
             work_items.append(background_item)
         work_items = _dedupe_work_items(work_items)
         if not work_items:
-            raise RuntimeError("token radar projection worker has no windows or scopes configured")
+            return [], None
         return work_items, background_item or work_items[-1]
 
     def _next_background_window_scope(
@@ -182,13 +196,33 @@ class TokenRadarProjectionWorker(WorkerBase):
         for _ in range(len(work_items)):
             item = work_items[self._cursor % len(work_items)]
             self._cursor += 1
-            latest = publication_state.get(item, {}).get("current_published_at_ms")
-            if latest is None or computed_at_ms - int(latest) >= self.cold_interval_ms:
+            if _publication_due(
+                publication_state.get(item),
+                computed_at_ms=computed_at_ms,
+                interval_ms=self.cold_interval_ms,
+                failed_retry_ms=self.cold_interval_ms,
+            ):
                 return item
         return None
 
-    def _hot_work_items(self) -> list[tuple[str, str]]:
-        return [(window, scope) for window in self.hot_windows for scope in self.scopes]
+    def _hot_work_items(
+        self,
+        *,
+        publication_state: dict[tuple[str, str], dict[str, Any]],
+        computed_at_ms: int,
+    ) -> list[tuple[str, str]]:
+        due: list[tuple[str, str]] = []
+        for window in self.hot_windows:
+            for scope in self.scopes:
+                item = (window, scope)
+                if _publication_due(
+                    publication_state.get(item),
+                    computed_at_ms=computed_at_ms,
+                    interval_ms=self.hot_interval_ms,
+                    failed_retry_ms=self.cold_interval_ms,
+                ):
+                    due.append(item)
+        return due
 
     def _latest_publication_state(self) -> dict[tuple[str, str], dict[str, Any]]:
         with self._repository_session() as repos:
@@ -206,14 +240,21 @@ class TokenRadarProjectionWorker(WorkerBase):
     ) -> list[tuple[str, str]]:
         missing: list[tuple[str, str]] = []
         for window in self.windows:
+            if window not in self.hot_windows:
+                continue
             for scope in self.scopes:
                 item = (window, scope)
                 item_state = publication_state.get(item, {})
                 status = str(item_state.get("latest_attempt_status") or "")
                 if status == "ready":
                     continue
-                latest = item_state.get("current_published_at_ms")
-                if status == "failed" and latest is not None and computed_at_ms - int(latest) < self.cold_interval_ms:
+                interval_ms = self.hot_interval_ms if window in self.hot_windows else self.cold_interval_ms
+                if not _publication_due(
+                    item_state or None,
+                    computed_at_ms=computed_at_ms,
+                    interval_ms=interval_ms,
+                    failed_retry_ms=self.cold_interval_ms,
+                ):
                     continue
                 missing.append(item)
         return missing
@@ -245,6 +286,89 @@ class TokenRadarProjectionWorker(WorkerBase):
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _idle_result(*, computed_at_ms: int) -> dict[str, Any]:
+    return {
+        "computed_at_ms": computed_at_ms,
+        "rows_written": 0,
+        "source_rows": 0,
+        "status": "idle",
+        "reason": "no_due_work_items",
+        "claimed": 0,
+        "catch_up_enqueued": 0,
+        "windows": {},
+    }
+
+
+def _publication_due(
+    state: dict[str, Any] | None,
+    *,
+    computed_at_ms: int,
+    interval_ms: int,
+    failed_retry_ms: int,
+) -> bool:
+    if not state:
+        return True
+
+    status = str(state.get("latest_attempt_status") or "")
+    published_at_ms = _state_ms(state, "last_published_at_ms", "current_published_at_ms")
+
+    if status == "ready":
+        if published_at_ms is None:
+            return True
+        return _elapsed_due(
+            computed_at_ms=computed_at_ms,
+            since_ms=published_at_ms,
+            interval_ms=interval_ms,
+        )
+
+    if status == "failed":
+        if published_at_ms is not None or state.get("current_generation_id") is not None:
+            retry_since_ms = _state_ms(
+                state,
+                "latest_attempt_finished_at_ms",
+                "updated_at_ms",
+                "latest_attempt_started_at_ms",
+            ) or published_at_ms
+            return _elapsed_due(
+                computed_at_ms=computed_at_ms,
+                since_ms=retry_since_ms,
+                interval_ms=failed_retry_ms,
+            )
+        failed_at_ms = _state_ms(
+            state,
+            "latest_attempt_finished_at_ms",
+            "updated_at_ms",
+            "latest_attempt_started_at_ms",
+        )
+        return failed_at_ms is None or _elapsed_due(
+            computed_at_ms=computed_at_ms,
+            since_ms=failed_at_ms,
+            interval_ms=interval_ms,
+        )
+
+    if published_at_ms is None:
+        return True
+    return _elapsed_due(
+        computed_at_ms=computed_at_ms,
+        since_ms=published_at_ms,
+        interval_ms=interval_ms,
+    )
+
+
+def _elapsed_due(*, computed_at_ms: int, since_ms: int | None, interval_ms: int) -> bool:
+    if since_ms is None:
+        return True
+    return computed_at_ms - int(since_ms) >= max(0, int(interval_ms))
+
+
+def _state_ms(state: dict[str, Any], *keys: str) -> int | None:
+    for key in keys:
+        value = state.get(key)
+        if value is not None:
+            return int(value)
+    return None
 
 
 def _dedupe_work_items(items: list[tuple[str, str]]) -> list[tuple[str, str]]:

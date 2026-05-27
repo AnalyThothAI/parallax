@@ -22,7 +22,7 @@ EVENT_MS = FIXED_NOW_MS - 10 * 60 * 1000
 ASSET_ADDRESS = "0x1111111111111111111111111111111111111111"
 
 
-def test_token_radar_rebuild_is_idempotent_from_current_facts(tmp_path):
+def test_token_radar_rebuild_is_idempotent_from_explicit_repair_dirty_targets(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -30,7 +30,7 @@ def test_token_radar_rebuild_is_idempotent_from_current_facts(tmp_path):
         conn.commit()
 
         projection = TokenRadarProjection(repos=repositories_for_connection(conn))
-        first_enqueued = _enqueue_radar_catch_up(conn, now_ms=FIXED_NOW_MS)
+        first_enqueued = _enqueue_radar_repair_targets(conn, now_ms=FIXED_NOW_MS)
         first_result = projection.rebuild_dirty_targets(
             windows=("1h",),
             scopes=("all",),
@@ -40,7 +40,7 @@ def test_token_radar_rebuild_is_idempotent_from_current_facts(tmp_path):
         )
         first_rows = _radar_rows(conn)
 
-        second_enqueued = _enqueue_radar_catch_up(conn, now_ms=FIXED_NOW_MS)
+        second_enqueued = _enqueue_radar_repair_targets(conn, now_ms=FIXED_NOW_MS)
         second_result = projection.rebuild_dirty_targets(
             windows=("1h",),
             scopes=("all",),
@@ -62,7 +62,7 @@ def test_token_radar_rebuild_is_idempotent_from_current_facts(tmp_path):
     assert _semantic_rows(first_rows) == _semantic_rows(second_rows)
 
 
-def _enqueue_radar_catch_up(conn: Any, *, now_ms: int) -> int:
+def _enqueue_radar_repair_targets(conn: Any, *, now_ms: int) -> int:
     repos = repositories_for_connection(conn)
     return int(
         repos.token_radar_dirty_targets.enqueue_recent_resolved_targets(

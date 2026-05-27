@@ -17,6 +17,7 @@ from gmgn_twitter_intel.domains.token_intel._constants import (
 )
 from gmgn_twitter_intel.domains.token_intel.queries.token_radar_rank_source_query import TokenRadarSourceRequest
 from gmgn_twitter_intel.domains.token_intel.repositories.projection_repository import ProjectionRepository
+from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import stable_generation_id
 from gmgn_twitter_intel.domains.token_intel.scoring.cross_section_normalizer import (
     MIN_COHORT_SIZE,
     NORMALIZER_VERSION,
@@ -81,7 +82,8 @@ class TokenRadarProjection:
         lease_owner: str = "token_radar_projection",
     ) -> dict[str, Any]:
         computed_at_ms = int(now_ms or time.time() * 1000)
-        resolved_work_items = _resolve_work_items(windows=windows, scopes=scopes, work_items=work_items)
+        source_work_items = _resolve_work_items(windows=windows, scopes=scopes, work_items=work_items)
+        due_work_items = _resolve_due_work_items(work_items=work_items)
         claims = self.repos.token_radar_dirty_targets.claim_due(
             limit=limit,
             lease_ms=DIRTY_TARGET_LEASE_MS,
@@ -98,34 +100,17 @@ class TokenRadarProjection:
             "windows": {},
             "status": "idle" if not claims else "ready",
         }
-        if not claims and resolved_work_items:
-            catch_up_enqueued = self.repos.token_radar_dirty_targets.enqueue_recent_resolved_targets(
-                since_ms=_catch_up_since_ms(work_items=resolved_work_items, now_ms=computed_at_ms),
-                now_ms=computed_at_ms,
-                limit=limit,
-                reason="projection_interval_catch_up",
-                commit=True,
-            )
-            result["catch_up_enqueued"] = int(catch_up_enqueued or 0)
-            if catch_up_enqueued:
-                claims = self.repos.token_radar_dirty_targets.claim_due(
-                    limit=limit,
-                    lease_ms=DIRTY_TARGET_LEASE_MS,
-                    now_ms=computed_at_ms,
-                    lease_owner=lease_owner,
-                    commit=True,
-                )
-                result["claimed"] = len(claims)
-                result["status"] = "ready" if claims else result["status"]
-        if not claims and not resolved_work_items:
+        if not claims and not due_work_items:
             return result
 
         touched: set[tuple[str, str]] = set()
-        successful_claims: list[dict[str, str | int]] = []
+        successful_claims: list[tuple[dict[str, str | int], set[tuple[str, str]]]] = []
         failures = 0
         first_error: str | None = None
+        first_publish_error: str | None = None
+        failed_publish_items: set[tuple[str, str]] = set()
         if claims:
-            source_requests = _source_requests_for_targets(claims, resolved_work_items, now_ms=computed_at_ms)
+            source_requests = _source_requests_for_targets(claims, source_work_items, now_ms=computed_at_ms)
             self.repos.token_radar_rank_sources.populate_edges_for_requests(
                 source_requests,
                 projected_at_ms=computed_at_ms,
@@ -135,6 +120,7 @@ class TokenRadarProjection:
             requests_by_target = _source_requests_by_target(source_requests)
             for claim_index, claim in enumerate(claims):
                 claim_key = _claim_key(claim)
+                claim_touched: set[tuple[str, str]] = set()
                 try:
                     for request in requests_by_target.get(claim_index, []):
                         score_result = self._project_source_request(
@@ -144,8 +130,11 @@ class TokenRadarProjection:
                             now_ms=computed_at_ms,
                         )
                         result["source_rows"] += int(score_result.get("source_rows") or 0)
-                        touched.add((request.window, request.scope))
-                    successful_claims.append(claim_key)
+                        if bool(score_result.get("rank_set_changed")):
+                            item = (request.window, request.scope)
+                            touched.add(item)
+                            claim_touched.add(item)
+                    successful_claims.append((claim_key, claim_touched))
                 except Exception as exc:
                     failures += 1
                     first_error = first_error or str(exc)
@@ -158,7 +147,7 @@ class TokenRadarProjection:
                     )
 
         publish_items = set(touched)
-        publish_items.update(resolved_work_items)
+        publish_items.update(due_work_items)
         if publish_items:
             result["status"] = "ready"
         for window, scope in sorted(publish_items):
@@ -170,13 +159,16 @@ class TokenRadarProjection:
                     now_ms=computed_at_ms,
                     limit=rank_limit,
                 )
-                if str(rank_result.get("status") or "") != "ready":
+                rank_status = str(rank_result.get("status") or "")
+                if rank_status not in {"ready", "unchanged"}:
                     raise RuntimeError(
-                        f"rank refresh did not publish current rows: {rank_result.get('status') or 'unknown'}"
+                        f"rank refresh did not publish current rows: {rank_status or 'unknown'}"
                     )
             except Exception as exc:
                 failures += 1
                 first_error = first_error or str(exc)
+                first_publish_error = first_publish_error or str(exc)
+                failed_publish_items.add((window, scope))
                 rank_result = {
                     "rows_written": 0,
                     "source_rows": 0,
@@ -192,15 +184,33 @@ class TokenRadarProjection:
             errors = [str(item.get("error")) for item in result["windows"].values() if item.get("error")]
             result["error"] = errors[0] if errors else "dirty target projection failed"
             if successful_claims:
-                self.repos.token_radar_dirty_targets.mark_error(
-                    successful_claims,
-                    error=first_error or str(result["error"]),
-                    retry_ms=DIRTY_TARGET_RETRY_MS,
-                    now_ms=computed_at_ms,
-                    commit=True,
+                done_claims = [claim_key for claim_key, touched_items in successful_claims if not touched_items]
+                retry_claims = [
+                    claim_key
+                    for claim_key, touched_items in successful_claims
+                    if touched_items and touched_items.intersection(failed_publish_items)
+                ]
+                done_claims.extend(
+                    claim_key
+                    for claim_key, touched_items in successful_claims
+                    if touched_items and not touched_items.intersection(failed_publish_items)
                 )
+                if done_claims:
+                    self.repos.token_radar_dirty_targets.mark_done(done_claims, now_ms=computed_at_ms, commit=True)
+                if retry_claims:
+                    self.repos.token_radar_dirty_targets.mark_error(
+                        retry_claims,
+                        error=first_publish_error or first_error or str(result["error"]),
+                        retry_ms=DIRTY_TARGET_RETRY_MS,
+                        now_ms=computed_at_ms,
+                        commit=True,
+                    )
         elif successful_claims:
-            self.repos.token_radar_dirty_targets.mark_done(successful_claims, now_ms=computed_at_ms, commit=True)
+            self.repos.token_radar_dirty_targets.mark_done(
+                [claim_key for claim_key, _touched_items in successful_claims],
+                now_ms=computed_at_ms,
+                commit=True,
+            )
         return result
 
     def _project_source_request(
@@ -232,36 +242,56 @@ class TokenRadarProjection:
         if projected is None:
             deleted = 0
             for lane in ("resolved", "attention"):
-                deleted += self.repos.token_radar.delete_target_feature(
-                    projection_version=PROJECTION_VERSION,
-                    window=window,
-                    scope=scope,
-                    lane=lane,
-                    target_type_key=target_type_key,
-                    identity_id=identity_id,
-                    commit=False,
+                deleted += int(
+                    self.repos.token_radar.delete_target_feature(
+                        projection_version=PROJECTION_VERSION,
+                        window=window,
+                        scope=scope,
+                        lane=lane,
+                        target_type_key=target_type_key,
+                        identity_id=identity_id,
+                        commit=False,
+                    )
+                    or 0
                 )
-            return {"status": "deleted" if deleted else "empty", "source_rows": len(source_rows), "rows_written": 0}
+            return {
+                "status": "deleted" if deleted else "empty",
+                "source_rows": len(source_rows),
+                "rows_written": 0,
+                "rank_set_changed": deleted > 0,
+            }
 
-        written = self.repos.token_radar.upsert_target_feature(
-            projection_version=PROJECTION_VERSION,
-            window=window,
-            scope=scope,
-            row=projected,
-            computed_at_ms=int(now_ms),
-            commit=False,
+        written = int(
+            self.repos.token_radar.upsert_target_feature(
+                projection_version=PROJECTION_VERSION,
+                window=window,
+                scope=scope,
+                row=projected,
+                computed_at_ms=int(now_ms),
+                commit=False,
+            )
+            or 0
         )
         opposite_lane = "attention" if projected["lane"] == "resolved" else "resolved"
-        self.repos.token_radar.delete_target_feature(
-            projection_version=PROJECTION_VERSION,
-            window=window,
-            scope=scope,
-            lane=opposite_lane,
-            target_type_key=target_type_key,
-            identity_id=identity_id,
-            commit=False,
+        deleted = int(
+            self.repos.token_radar.delete_target_feature(
+                projection_version=PROJECTION_VERSION,
+                window=window,
+                scope=scope,
+                lane=opposite_lane,
+                target_type_key=target_type_key,
+                identity_id=identity_id,
+                commit=False,
+            )
+            or 0
         )
-        return {"status": "updated", "source_rows": len(source_rows), "rows_written": written}
+        changed = written > 0 or deleted > 0
+        return {
+            "status": "updated" if changed else "unchanged",
+            "source_rows": len(source_rows),
+            "rows_written": written,
+            "rank_set_changed": changed,
+        }
 
     def refresh_rank_set(
         self,
@@ -272,9 +302,15 @@ class TokenRadarProjection:
         limit: int = 100,
     ) -> dict[str, Any]:
         computed_at_ms = int(now_ms)
-        generation_id = _generation_id(window=window, scope=scope, published_at_ms=computed_at_ms)
+        attempt_id = f"attempt:{PROJECTION_VERSION}:{window}:{scope}:{computed_at_ms}"
         try:
             rank_inputs, rows = self._rank_current_rows(window=window, scope=scope, limit=limit)
+            generation_id = stable_generation_id(
+                projection_version=PROJECTION_VERSION,
+                window=window,
+                scope=scope,
+                rows=rows,
+            )
             source_max_received_at_ms = max(
                 (int(row.get("source_max_received_at_ms") or 0) for row in rows),
                 default=0,
@@ -299,7 +335,7 @@ class TokenRadarProjection:
                     commit=False,
                 )
                 finished_at_ms = _now_ms()
-                rows_replaced = self.repos.token_radar.publish_current_generation(
+                publication_result = self.repos.token_radar.publish_current_generation(
                     projection_version=PROJECTION_VERSION,
                     window=window,
                     scope=scope,
@@ -313,7 +349,10 @@ class TokenRadarProjection:
                     on_current_changes=self._enqueue_runtime_dirty_targets_for_rank_changes,
                     commit=False,
                 )
-                if not rows_replaced:
+                publication_status = str(publication_result.get("status") or "")
+                publication_generation_id = str(publication_result.get("generation_id") or generation_id)
+                publication_rows_written = int(publication_result.get("rows_written") or 0)
+                if publication_status == "stale_skipped":
                     projection_repo.finish_run(
                         run_id=str(run["run_id"]),
                         status="stale_skipped",
@@ -327,8 +366,13 @@ class TokenRadarProjection:
                         "rows_written": 0,
                         "source_rows": len(rank_inputs),
                         "computed_at_ms": computed_at_ms,
+                        "generation_id": publication_generation_id,
                         "status": "stale_skipped",
                     }
+                if publication_status not in {"published", "unchanged"}:
+                    raise RuntimeError(
+                        f"rank refresh did not publish current rows: {publication_status or 'unknown'}"
+                    )
                 projection_repo.advance_offset(
                     projection_name=TOKEN_RADAR_PROJECTION_NAME,
                     projection_version=PROJECTION_VERSION,
@@ -342,25 +386,25 @@ class TokenRadarProjection:
                 )
                 projection_repo.finish_run(
                     run_id=str(run["run_id"]),
-                    status="ready",
+                    status="ready" if publication_status == "published" else "unchanged",
                     rows_read=len(rank_inputs),
-                    rows_written=len(rows),
+                    rows_written=publication_rows_written,
                     dirty_ranges_written=0,
                     commit=False,
                 )
             return {
-                "rows_written": len(rows),
+                "rows_written": publication_rows_written,
                 "source_rows": len(rank_inputs),
                 "computed_at_ms": computed_at_ms,
-                "generation_id": generation_id,
-                "status": "ready",
+                "generation_id": publication_generation_id,
+                "status": "ready" if publication_status == "published" else "unchanged",
             }
         except Exception as exc:
             self.repos.token_radar.mark_publication_failed(
                 projection_version=PROJECTION_VERSION,
                 window=window,
                 scope=scope,
-                generation_id=generation_id,
+                generation_id=attempt_id,
                 started_at_ms=computed_at_ms,
                 finished_at_ms=_now_ms(),
                 error=str(exc),
@@ -708,11 +752,13 @@ def _resolve_work_items(
     return tuple((window, scope) for window in windows for scope in scopes)
 
 
-def _catch_up_since_ms(*, work_items: tuple[tuple[str, str], ...], now_ms: int) -> int:
-    if not work_items:
-        return int(now_ms)
-    lookback_ms = max(WINDOW_MS.get(window, WINDOW_MS["1h"]) for window, _scope in work_items)
-    return int(now_ms) - int(lookback_ms)
+def _resolve_due_work_items(
+    *,
+    work_items: tuple[tuple[str, str], ...] | None,
+) -> tuple[tuple[str, str], ...]:
+    if work_items is None:
+        return ()
+    return _resolve_work_items(windows=(), scopes=(), work_items=work_items)
 
 
 def _source_requests_for_targets(
@@ -776,10 +822,6 @@ def _target_source_request_key(
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
-
-
-def _generation_id(*, window: str, scope: str, published_at_ms: int) -> str:
-    return _stable_id(PROJECTION_VERSION, str(window), str(scope), str(int(published_at_ms)))
 
 
 def _claim_key(claim: dict[str, Any]) -> dict[str, str | int]:
@@ -1091,12 +1133,8 @@ def _project_group(
             "display_name": latest.get("display_name"),
             "evidence": [],
         },
-        "asset_json": target if target_type == "Asset" else {},
-        "target_json": target,
-        "primary_venue_json": None,
         "factor_snapshot_json": factor_snapshot,
         "factor_version": factor_snapshot["schema_version"],
-        "attention_json": {},
         "resolution_json": {
             "status": resolution_status,
             "target_type": target_type,
@@ -1107,9 +1145,6 @@ def _project_group(
             "lookup_keys": latest.get("lookup_keys_json") or [],
             "discovery": _resolution_discovery(latest),
         },
-        "market_json": {},
-        "price_json": {},
-        "score_json": {},
         "decision": decision,
         "data_health_json": {
             "factor_snapshot": "ready",
@@ -1694,12 +1729,8 @@ def _row_from_target_feature(row: dict[str, Any]) -> dict[str, Any]:
             "display_name": (subject or {}).get("name") if isinstance(subject, dict) else None,
             "evidence": [],
         },
-        "asset_json": subject if target_type == "Asset" and isinstance(subject, dict) else {},
-        "target_json": subject if isinstance(subject, dict) else {},
-        "primary_venue_json": None,
         "factor_snapshot_json": factor_snapshot,
         "factor_version": factor_snapshot.get("schema_version") if isinstance(factor_snapshot, dict) else None,
-        "attention_json": {},
         "resolution_json": {
             "status": "EXACT" if target_id else "NIL",
             "target_type": target_type,
@@ -1711,9 +1742,6 @@ def _row_from_target_feature(row: dict[str, Any]) -> dict[str, Any]:
             "lookup_keys": [],
             "discovery": [],
         },
-        "market_json": {},
-        "price_json": {},
-        "score_json": {},
         "decision": (factor_snapshot.get("composite") or {}).get("recommended_decision")
         if isinstance(factor_snapshot, dict)
         else None,
@@ -1763,8 +1791,12 @@ def _patch_ranked_current_row(row: dict[str, Any], ranked: dict[str, Any]) -> di
     factor_snapshot["composite"]["family_scores"] = family_scores
     factor_snapshot["composite"]["rank_score"] = ranked.get("rank_score")
     factor_snapshot["composite"]["recommended_decision"] = ranked.get("recommended_decision")
+    quality_status, degraded_reasons = _quality_from_factor_snapshot(factor_snapshot)
     patched["factor_snapshot_json"] = factor_snapshot
     patched["decision"] = ranked.get("recommended_decision")
+    patched["rank_score"] = ranked.get("rank_score")
+    patched["quality_status"] = quality_status
+    patched["degraded_reasons_json"] = degraded_reasons
     patched["rank"] = int(ranked.get("rank") or 0)
     patched["source_max_received_at_ms"] = int(ranked.get("latest_event_received_at_ms") or 0)
     return patched
@@ -1803,6 +1835,59 @@ def _dict(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
     return {str(key): item for key, item in value.items()}
+
+
+def _quality_from_factor_snapshot(snapshot: dict[str, Any]) -> tuple[str, list[str]]:
+    data_health = _dict(snapshot.get("data_health"))
+    market = _dict(snapshot.get("market"))
+    readiness = _dict(market.get("readiness"))
+    normalization = _dict(snapshot.get("normalization"))
+    reasons: list[str] = []
+    status = "ready"
+
+    if data_health.get("identity") == "missing":
+        reasons.append("identity_missing")
+        status = "insufficient"
+    if data_health.get("alpha") == "missing":
+        reasons.append("alpha_missing")
+        status = "insufficient"
+
+    if readiness.get("anchor_status") != "ready":
+        reasons.append("market_anchor_missing")
+        if status == "ready":
+            status = "degraded"
+
+    latest_status = readiness.get("latest_status")
+    if latest_status in {"missing", "stale"}:
+        reasons.append(f"market_latest_{latest_status}")
+        if status == "ready":
+            status = "degraded"
+
+    dex_floor_status = readiness.get("dex_floor_status")
+    if dex_floor_status in {"missing_fields", "missing"}:
+        reasons.append("dex_floor_missing")
+        if status == "ready":
+            status = "degraded"
+    elif dex_floor_status == "below_floor":
+        reasons.append("dex_floor_below")
+        if status == "ready":
+            status = "degraded"
+
+    if normalization.get("cohort_status") in {"insufficient", "all_tied"}:
+        reasons.append("cohort_not_rankable")
+        if status == "ready":
+            status = "degraded"
+
+    return status, _dedupe_strings(reasons)
+
+
+def _dedupe_strings(values: list[str]) -> list[str]:
+    out: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if text and text not in out:
+            out.append(text)
+    return out
 
 
 def _family_raw_score(family: Any) -> float | None:

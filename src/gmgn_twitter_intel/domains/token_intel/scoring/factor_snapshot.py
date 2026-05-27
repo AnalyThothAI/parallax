@@ -332,8 +332,18 @@ def _gates(
     if alpha_health == "missing":
         blocked_reasons.append("alpha_data_missing")
         discard_cap_reasons.append("alpha_data_missing")
+    readiness = _market_readiness(market)
+    anchor_status = str(readiness.get("anchor_status") or "").lower()
+    latest_status = str(readiness.get("latest_status") or "").lower()
+    if anchor_status != "ready":
+        blocked_reasons.append("market_anchor_missing")
+    if latest_status in {"", "missing"}:
+        blocked_reasons.append("market_latest_missing")
+    elif latest_status == "stale":
+        blocked_reasons.append("market_latest_stale")
     if subject["target_market_type"] == "dex":
         metadata_missing = False
+        floor_below = False
         decision_latest = _market_decision_latest(market)
         for key, reason in _DEX_FLOOR_REASONS.items():
             value = _optional_float(decision_latest.get(key))
@@ -342,9 +352,13 @@ def _gates(
                 blocked_reasons.append(f"{key}_unverified")
                 continue
             if _is_below(value, key):
+                floor_below = True
                 blocked_reasons.append(reason)
         if metadata_missing:
+            blocked_reasons.append("dex_floor_missing")
             risk_reasons.append("market_metadata_missing")
+        if floor_below:
+            blocked_reasons.append("dex_floor_below")
     independent_sources = max(
         _count_int(attention.get("unique_authors")),
         _count_int(social_quality.get("independent_authors")),

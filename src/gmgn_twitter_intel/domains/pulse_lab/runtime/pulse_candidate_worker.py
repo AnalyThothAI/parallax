@@ -773,7 +773,8 @@ def _mark_trigger_done(repos: Any, claim: dict[str, Any], *, now_ms: int) -> int
 
 
 def _target_payload(row: dict[str, Any]) -> dict[str, Any]:
-    target = _mapping(row.get("target_json")) or _mapping(row.get("asset_json"))
+    factor_snapshot = _factor_snapshot(row) or {}
+    target = _mapping(factor_snapshot.get("subject"))
     return {
         **_jsonable(target),
         "target_type": _clean(row.get("target_type")),

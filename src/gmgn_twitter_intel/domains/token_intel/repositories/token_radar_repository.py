@@ -5,7 +5,7 @@ import json
 import time
 from collections.abc import Callable
 from decimal import Decimal
-from typing import Any
+from typing import Any, TypedDict
 
 from psycopg.types.json import Jsonb
 
@@ -28,23 +28,19 @@ RADAR_ROW_COLUMNS = (
     "target_type_key",
     "identity_id",
     "rank",
+    "rank_score",
     "intent_id",
     "event_id",
     "target_type",
     "target_id",
     "pricefeed_id",
     "intent_json",
-    "asset_json",
-    "primary_venue_json",
-    "target_json",
-    "attention_json",
     "resolution_json",
-    "market_json",
-    "price_json",
-    "score_json",
     "factor_snapshot_json",
     "factor_version",
     "decision",
+    "quality_status",
+    "degraded_reasons_json",
     "data_health_json",
     "source_event_ids_json",
     "payload_hash",
@@ -54,23 +50,31 @@ RADAR_ROW_COLUMNS = (
 RADAR_ROW_INSERT_COLUMNS_SQL = """
   row_id, projection_version, "window", scope, computed_at_ms, source_max_received_at_ms,
   generation_id, published_at_ms, source_frontier_ms,
-  lane, target_type_key, identity_id, rank, intent_id, event_id, target_type, target_id,
-  pricefeed_id, intent_json, asset_json, primary_venue_json, target_json, attention_json,
-  resolution_json, market_json, price_json, score_json, factor_snapshot_json,
-  factor_version, decision, data_health_json, source_event_ids_json, payload_hash,
+  lane, target_type_key, identity_id, rank, rank_score, intent_id, event_id, target_type, target_id,
+  pricefeed_id, intent_json, resolution_json, factor_snapshot_json,
+  factor_version, decision, quality_status, degraded_reasons_json,
+  data_health_json, source_event_ids_json, payload_hash,
   listed_at_ms, created_at_ms
 """
 RADAR_ROW_INSERT_VALUES_SQL = """
   %(row_id)s, %(projection_version)s, %(window)s, %(scope)s, %(computed_at_ms)s,
   %(source_max_received_at_ms)s, %(generation_id)s, %(published_at_ms)s,
   %(source_frontier_ms)s, %(lane)s, %(target_type_key)s, %(identity_id)s,
-  %(rank)s, %(intent_id)s, %(event_id)s, %(target_type)s, %(target_id)s,
-  %(pricefeed_id)s, %(intent_json)s, %(asset_json)s, %(primary_venue_json)s,
-  %(target_json)s, %(attention_json)s, %(resolution_json)s, %(market_json)s,
-  %(price_json)s, %(score_json)s, %(factor_snapshot_json)s, %(factor_version)s,
-  %(decision)s, %(data_health_json)s, %(source_event_ids_json)s, %(payload_hash)s,
+  %(rank)s, %(rank_score)s, %(intent_id)s, %(event_id)s, %(target_type)s, %(target_id)s,
+  %(pricefeed_id)s, %(intent_json)s, %(resolution_json)s,
+  %(factor_snapshot_json)s, %(factor_version)s,
+  %(decision)s, %(quality_status)s, %(degraded_reasons_json)s, %(data_health_json)s,
+  %(source_event_ids_json)s, %(payload_hash)s,
   %(listed_at_ms)s, %(created_at_ms)s
 """
+
+
+class PublicationResult(TypedDict):
+    status: str
+    generation_id: str
+    rows_written: int
+
+
 class TokenRadarRepository:
     def __init__(self, conn: Any):
         self.conn = conn
@@ -90,7 +94,7 @@ class TokenRadarRepository:
         finished_at_ms: int | None = None,
         on_current_changes: Callable[..., None] | None = None,
         commit: bool = True,
-    ) -> bool:
+    ) -> PublicationResult:
         self.conn.execute(
             """
             SELECT pg_advisory_xact_lock(hashtext(%s), hashtext(%s))
@@ -99,7 +103,7 @@ class TokenRadarRepository:
         )
         latest = self.conn.execute(
             """
-            SELECT current_published_at_ms
+            SELECT current_generation_id, current_published_at_ms
             FROM token_radar_publication_state
             WHERE projection_version = %s
               AND "window" = %s
@@ -107,6 +111,11 @@ class TokenRadarRepository:
             """,
             (projection_version, window, scope),
         ).fetchone()
+        latest_current_generation_id = (
+            str(latest["current_generation_id"])
+            if latest and latest.get("current_generation_id") is not None
+            else None
+        )
         latest_published_at_ms = (
             int(latest["current_published_at_ms"])
             if latest and latest.get("current_published_at_ms") is not None
@@ -115,10 +124,15 @@ class TokenRadarRepository:
         if latest_published_at_ms is not None and latest_published_at_ms > int(published_at_ms):
             if commit:
                 self.conn.commit()
-            return False
+            return {"status": "stale_skipped", "generation_id": str(generation_id), "rows_written": 0}
 
         for row in rows:
             _validate_factor_contract(row)
+        existing_current = self._current_rows_for_projection_set(
+            projection_version=projection_version,
+            window=window,
+            scope=scope,
+        )
         listed_at_by_key = self.first_seen_by_identity(
             projection_version=projection_version,
             window=window,
@@ -138,11 +152,36 @@ class TokenRadarRepository:
             )
             for row in rows
         ]
-        existing_current = self._current_rows_for_projection_set(
+        existing_generation_id = latest_current_generation_id or _first_generation_id(existing_current)
+        existing_signature = stable_generation_id(
             projection_version=projection_version,
             window=window,
             scope=scope,
+            rows=existing_current,
         )
+        incoming_signature = stable_generation_id(
+            projection_version=projection_version,
+            window=window,
+            scope=scope,
+            rows=rows_to_insert,
+        )
+        if existing_generation_id is not None and existing_signature == incoming_signature:
+            self._upsert_ready_publication_state(
+                projection_version=projection_version,
+                window=window,
+                scope=scope,
+                generation_id=existing_generation_id,
+                published_at_ms=published_at_ms,
+                source_frontier_ms=source_frontier_ms,
+                row_count=len(rows_to_insert),
+                source_rows=source_rows,
+                started_at_ms=started_at_ms,
+                finished_at_ms=finished_at_ms,
+            )
+            if commit:
+                self.conn.commit()
+            return {"status": "unchanged", "generation_id": existing_generation_id, "rows_written": 0}
+
         existing_by_key = {_current_key(row): row for row in existing_current}
         current_keys = {_current_key(row) for row in rows_to_insert}
         exited_rows = [row for key, row in existing_by_key.items() if key not in current_keys]
@@ -171,6 +210,45 @@ class TokenRadarRepository:
             computed_at_ms=int(published_at_ms),
             commit=False,
         )
+        self._upsert_ready_publication_state(
+            projection_version=projection_version,
+            window=window,
+            scope=scope,
+            generation_id=generation_id,
+            published_at_ms=published_at_ms,
+            source_frontier_ms=source_frontier_ms,
+            row_count=len(rows_to_insert),
+            source_rows=source_rows,
+            started_at_ms=started_at_ms,
+            finished_at_ms=finished_at_ms,
+        )
+        if on_current_changes is not None:
+            on_current_changes(
+                window=window,
+                scope=scope,
+                rows=rows_to_insert,
+                exited_rows=exited_rows,
+                previous_by_key=existing_by_key,
+                computed_at_ms=int(published_at_ms),
+            )
+        if commit:
+            self.conn.commit()
+        return {"status": "published", "generation_id": str(generation_id), "rows_written": len(rows_to_insert)}
+
+    def _upsert_ready_publication_state(
+        self,
+        *,
+        projection_version: str,
+        window: str,
+        scope: str,
+        generation_id: str,
+        published_at_ms: int,
+        source_frontier_ms: int,
+        row_count: int,
+        source_rows: int | None,
+        started_at_ms: int | None,
+        finished_at_ms: int | None,
+    ) -> None:
         self.conn.execute(
             """
             INSERT INTO token_radar_publication_state(
@@ -208,8 +286,8 @@ class TokenRadarRepository:
                 "current_generation_id": str(generation_id),
                 "current_published_at_ms": int(published_at_ms),
                 "current_source_frontier_ms": int(source_frontier_ms),
-                "current_row_count": len(rows_to_insert),
-                "current_source_rows": max(0, int(source_rows if source_rows is not None else len(rows_to_insert))),
+                "current_row_count": max(0, int(row_count)),
+                "current_source_rows": max(0, int(source_rows if source_rows is not None else row_count)),
                 "latest_attempt_generation_id": str(generation_id),
                 "latest_attempt_status": "ready",
                 "latest_attempt_started_at_ms": int(started_at_ms) if started_at_ms is not None else None,
@@ -220,18 +298,6 @@ class TokenRadarRepository:
                 "updated_at_ms": _now_ms(),
             },
         )
-        if on_current_changes is not None:
-            on_current_changes(
-                window=window,
-                scope=scope,
-                rows=rows_to_insert,
-                exited_rows=exited_rows,
-                previous_by_key=existing_by_key,
-                computed_at_ms=int(published_at_ms),
-            )
-        if commit:
-            self.conn.commit()
-        return True
 
     def _current_rows_for_projection_set(
         self,
@@ -747,7 +813,18 @@ class TokenRadarRepository:
                 "current_source_rows": int(row.get("current_source_rows") or 0),
                 "latest_attempt_generation_id": row.get("latest_attempt_generation_id"),
                 "latest_attempt_status": str(row["latest_attempt_status"]),
+                "latest_attempt_started_at_ms": (
+                    int(row["latest_attempt_started_at_ms"])
+                    if row.get("latest_attempt_started_at_ms") is not None
+                    else None
+                ),
+                "latest_attempt_finished_at_ms": (
+                    int(row["latest_attempt_finished_at_ms"])
+                    if row.get("latest_attempt_finished_at_ms") is not None
+                    else None
+                ),
                 "latest_attempt_error": row.get("latest_attempt_error"),
+                "updated_at_ms": int(row["updated_at_ms"]) if row.get("updated_at_ms") is not None else None,
             }
             for row in rows
         }
@@ -843,7 +920,6 @@ def _target_feature_payload(
         or row.get("first_seen_global_24h") is True,
         "cohort_symbol": str(
             (subject.get("symbol") if isinstance(subject, dict) else None)
-            or (row.get("target_json") or {}).get("symbol")
             or (row.get("intent_json") or {}).get("display_symbol")
             or ""
         ).upper(),
@@ -880,20 +956,16 @@ def _json_payload(row: dict[str, Any]) -> dict[str, Any]:
     _validate_factor_contract(row)
     out = {column: row.get(column) for column in RADAR_ROW_COLUMNS}
     for key in (
-        "factor_snapshot_json",
         "intent_json",
-        "asset_json",
-        "primary_venue_json",
-        "target_json",
-        "attention_json",
         "resolution_json",
-        "market_json",
-        "price_json",
-        "score_json",
+        "factor_snapshot_json",
         "data_health_json",
         "source_event_ids_json",
+        "degraded_reasons_json",
     ):
         payload = out.get(key) if out.get(key) is not None else ([] if key.endswith("_ids_json") else {})
+        if key == "degraded_reasons_json":
+            payload = out.get(key) if out.get(key) is not None else []
         out[key] = Jsonb(_json_ready(payload))
     return out
 
@@ -914,6 +986,60 @@ def _identity_key(row: dict[str, Any]) -> tuple[str, str]:
 
 def _nonempty_identities(rows: list[dict[str, Any]]) -> list[tuple[str, str]]:
     return list(dict.fromkeys(identity for identity in (_identity_key(row) for row in rows) if identity[1]))
+
+
+def stable_generation_id(*, projection_version: str, window: str, scope: str, rows: list[dict[str, Any]]) -> str:
+    stable_rows = [
+        {
+            "lane": str(row.get("lane") or ""),
+            "rank": int(row.get("rank") or 0),
+            "target_type_key": str(row.get("target_type_key") or row.get("target_type") or ""),
+            "identity_id": str(row.get("identity_id") or row.get("target_id") or row.get("intent_id") or ""),
+            "decision": row.get("decision"),
+            "rank_score": _stable_rank_score(row),
+            "quality_status": row.get("quality_status"),
+            "degraded_reasons_json": _stable_degraded_reasons(row),
+            "source_max_received_at_ms": row.get("source_max_received_at_ms"),
+            "payload_hash": row.get("payload_hash"),
+        }
+        for row in rows
+    ]
+    stable_rows.sort(key=lambda item: (item["lane"], item["rank"], item["target_type_key"], item["identity_id"]))
+    payload = {
+        "projection_version": projection_version,
+        "window": window,
+        "scope": scope,
+        "rows": stable_rows,
+    }
+    encoded = json.dumps(_json_ready(payload), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _first_generation_id(rows: list[dict[str, Any]]) -> str | None:
+    for row in rows:
+        generation_id = row.get("generation_id")
+        if generation_id is not None:
+            return str(generation_id)
+    return None
+
+
+def _stable_rank_score(row: dict[str, Any]) -> Any:
+    if row.get("rank_score") is not None:
+        return _float_or_none(row.get("rank_score"))
+    factor_snapshot = row.get("factor_snapshot_json")
+    if not isinstance(factor_snapshot, dict):
+        return None
+    composite = factor_snapshot.get("composite")
+    if not isinstance(composite, dict):
+        return None
+    return _float_or_none(composite.get("rank_score"))
+
+
+def _stable_degraded_reasons(row: dict[str, Any]) -> list[str]:
+    value = _json_ready(row.get("degraded_reasons_json"))
+    if not isinstance(value, list):
+        return []
+    return sorted(str(item) for item in value if str(item))
 
 
 def _payload_hash(row: dict[str, Any]) -> str:

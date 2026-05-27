@@ -1248,10 +1248,6 @@ def _audit_token_radar_current_rows(
                     "factor_decision": recommended_decision,
                 }
             )
-        for field in ("attention_json", "market_json", "price_json", "score_json"):
-            payload = row.get(field) if isinstance(row.get(field), dict) else {}
-            if payload:
-                violations.append({"row": index, "code": "legacy_runtime_payload", "field": field})
         gates = factor_snapshot.get("gates") if isinstance(factor_snapshot.get("gates"), dict) else {}
         if row.get("decision") == "high_alert" and gates.get("eligible_for_high_alert") is not True:
             violations.append({"row": index, "code": "high_alert_without_gate_eligibility"})

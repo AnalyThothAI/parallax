@@ -191,10 +191,10 @@ def test_token_radar_schema_supports_hard_cut_targets(tmp_path):
             ).fetchall()
         }
         radar_columns = {
-            row["column_name"]
+            row["column_name"]: row
             for row in conn.execute(
                 """
-                SELECT column_name
+                SELECT column_name, is_nullable, data_type, column_default
                 FROM information_schema.columns
                 WHERE table_schema = 'public' AND table_name = 'token_radar_current_rows'
                 """
@@ -212,7 +212,20 @@ def test_token_radar_schema_supports_hard_cut_targets(tmp_path):
         resolution_columns
     )
     assert resolution_columns["identity_status"] == "YES"
-    assert {"target_type", "target_id", "pricefeed_id", "target_json", "price_json"}.issubset(radar_columns)
+    assert {"target_type", "target_id", "pricefeed_id"}.issubset(radar_columns)
+    assert {
+        "asset_json",
+        "primary_venue_json",
+        "target_json",
+        "attention_json",
+        "market_json",
+        "price_json",
+        "score_json",
+    }.isdisjoint(radar_columns)
+    assert radar_columns["rank_score"]["is_nullable"] == "NO"
+    assert radar_columns["quality_status"]["is_nullable"] == "NO"
+    assert radar_columns["degraded_reasons_json"]["is_nullable"] == "NO"
+    assert radar_columns["factor_snapshot_json"]["is_nullable"] == "NO"
 
 
 def test_runtime_schema_contains_equity_projection_payload_hash_columns_and_indexes(tmp_path):
@@ -837,10 +850,10 @@ def test_token_radar_postgres_hard_cut_runtime_schema_uses_partitioned_facts_and
             ).fetchall()
         }
         current_row_columns = {
-            row["column_name"]
+            row["column_name"]: row
             for row in conn.execute(
                 """
-                SELECT column_name
+                SELECT column_name, data_type, is_nullable, column_default
                 FROM information_schema.columns
                 WHERE table_schema = 'public'
                   AND table_name = 'token_radar_current_rows'
@@ -900,6 +913,23 @@ def test_token_radar_postgres_hard_cut_runtime_schema_uses_partitioned_facts_and
         "token_radar_dirty_targets",
     }
     assert {"generation_id", "published_at_ms", "source_frontier_ms"}.issubset(current_row_columns)
+    assert {
+        "asset_json",
+        "primary_venue_json",
+        "target_json",
+        "attention_json",
+        "market_json",
+        "price_json",
+        "score_json",
+    }.isdisjoint(current_row_columns)
+    assert current_row_columns["rank_score"]["data_type"] == "double precision"
+    assert current_row_columns["rank_score"]["is_nullable"] == "NO"
+    assert current_row_columns["quality_status"]["data_type"] == "text"
+    assert current_row_columns["quality_status"]["is_nullable"] == "NO"
+    assert current_row_columns["degraded_reasons_json"]["data_type"] == "jsonb"
+    assert current_row_columns["degraded_reasons_json"]["is_nullable"] == "NO"
+    assert current_row_columns["factor_snapshot_json"]["data_type"] == "jsonb"
+    assert current_row_columns["factor_snapshot_json"]["is_nullable"] == "NO"
     for table_options in reloptions.values():
         assert "fillfactor=70" in table_options
         assert "autovacuum_vacuum_scale_factor=0.02" in table_options

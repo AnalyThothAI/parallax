@@ -108,9 +108,16 @@ are wrong too.
    `token_radar_publication_state`, `token_radar_rank_source_events`,
    `token_radar_target_features`, and `token_radar_target_first_seen` are
    written only by `TokenRadarProjectionWorker`; Token Radar online serving
-   reads only current rows plus publication state. `token_radar_rank_source_events`
-   is lazy evidence/detail, `token_radar_target_features` is projection-private,
-   and retired `token_radar_rank_history`, `token_radar_snapshot_audit`, and
+   reads only `token_radar_current_rows` plus
+   `token_radar_publication_state`. `token_radar_rank_source_events` is lazy
+   evidence/detail, not leaderboard service. `token_radar_target_features` is
+   projection-private intermediate state, not an API, CLI, Pulse,
+   notification, or repair read path. `token_radar_current_rows` stores scalar
+   `rank_score`, `quality_status`, `degraded_reasons_json`, and
+   `factor_snapshot_json`; legacy top-level `asset_json`,
+   `primary_venue_json`, `target_json`, `attention_json`, `market_json`,
+   `price_json`, and `score_json` blocks are not a live contract. Retired
+   `token_radar_rank_history`, `token_radar_snapshot_audit`, and
    `token_radar_projection_coverage` do not participate in online service.
    `token_capture_tier` is written only by
    `TokenCaptureTierWorker`; `pulse_agent_jobs`, `pulse_candidate_edge_state`,

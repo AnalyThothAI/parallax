@@ -33,6 +33,8 @@ def test_asset_flow_returns_market_context_and_no_legacy_market_fields():
     assert btc["market"]["event_anchor"]["price_usd"] == 70_000.0
     assert btc["market"]["decision_latest"]["price_usd"] == 70_000.0
     assert btc["market"]["readiness"]["anchor_status"] == "ready"
+    assert btc["score"]["rank_score"] == 55
+    assert btc["quality"] == {"status": "ready", "degraded_reasons": []}
     assert _legacy_market_key("anchor", "price") not in btc
     assert "live_market" not in btc
     assert "current_market" not in btc
@@ -40,6 +42,8 @@ def test_asset_flow_returns_market_context_and_no_legacy_market_fields():
     assert result["projection"]["version"] == TOKEN_RADAR_PROJECTION_VERSION
     assert result["projection"]["source"] == "token_radar_current_rows"
     assert result["projection"]["anchor_coverage"] == {"status": "ready", "ready": 1, "missing": 0, "total": 1}
+    assert result["projection"]["quality_status"] == "degraded"
+    assert "identity_missing" in result["projection"]["degraded_reasons"]
     assert result["projection"]["unresolved"] == {
         "identity_missing_count": 1,
         "nil_count": 1,
@@ -58,6 +62,8 @@ def test_asset_flow_marks_ready_empty_projection_without_missing_rows():
     assert result["projection"]["status"] == "fresh"
     assert result["projection"]["computed_at_ms"] is None
     assert result["projection"]["anchor_coverage"] == {"status": "missing", "ready": 0, "missing": 0, "total": 0}
+    assert result["projection"]["quality_status"] == "ready"
+    assert result["projection"]["degraded_reasons"] == []
 
 
 def test_asset_flow_projection_metadata_prefers_publication_state_timestamp():
@@ -124,6 +130,8 @@ def test_asset_flow_marks_projection_pending_when_publication_state_is_missing()
     assert result["projection"]["status"] == "pending"
     assert result["projection"]["reason"] == "projection_window_missing"
     assert result["projection"]["anchor_coverage"] == {"status": "pending", "ready": 0, "missing": 0, "total": 0}
+    assert result["projection"]["quality_status"] == "insufficient"
+    assert result["projection"]["degraded_reasons"] == ["projection_window_missing"]
 
 
 def test_asset_flow_failed_attempt_with_previous_rows_is_stale_not_fresh():
@@ -161,6 +169,31 @@ def test_asset_flow_failed_attempt_with_previous_rows_is_stale_not_fresh():
     assert result["projection"]["error"] == "projection failed"
     assert result["projection"]["row_count"] == 1
     assert result["projection"]["source_rows"] == 1
+    assert result["projection"]["quality_status"] == "ready"
+
+
+def test_asset_flow_failed_projection_without_rows_has_failed_quality():
+    service = asset_flow_service(
+        rows=[],
+        publication_state={
+            ("1h", "all"): {
+                "latest_attempt_status": "failed",
+                "latest_attempt_generation_id": "gen-failed",
+                "current_generation_id": None,
+                "current_row_count": 0,
+                "current_source_rows": 0,
+                "current_source_frontier_ms": None,
+                "current_published_at_ms": None,
+                "latest_attempt_error": "projection failed",
+            }
+        },
+    )
+
+    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_130_000)
+
+    assert result["projection"]["status"] == "failed"
+    assert result["projection"]["quality_status"] == "failed"
+    assert result["projection"]["degraded_reasons"] == ["projection_window_failed"]
 
 
 def test_asset_flow_does_not_fallback_to_legacy_payloads_when_snapshot_missing():
@@ -176,6 +209,7 @@ def test_asset_flow_does_not_fallback_to_legacy_payloads_when_snapshot_missing()
     assert result["targets"] == []
     assert result["attention"] == []
     assert result["projection"]["anchor_coverage"] == {"status": "missing", "ready": 0, "missing": 0, "total": 0}
+    assert result["projection"]["quality_status"] == "ready"
 
 
 def test_asset_flow_uses_backend_symbol_without_inventing_contract_label():
@@ -198,6 +232,44 @@ def test_asset_flow_uses_backend_symbol_without_inventing_contract_label():
     assert result["targets"][0]["intent"]["display_symbol"] == "CTc4y2eH"
     assert result["targets"][0]["target"]["symbol"] is None
     assert result["targets"][0]["target"]["chain"] == "solana"
+
+
+def test_asset_flow_fresh_projection_can_be_quality_degraded():
+    service = asset_flow_service(
+        rows=[
+            radar_row(
+                lane="resolved",
+                symbol="BTC",
+                target_type="CexToken",
+                target_id="cex_token:BTC",
+                quality_status="degraded",
+                degraded_reasons=["market_anchor_missing"],
+            )
+        ]
+    )
+
+    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
+
+    assert result["projection"]["status"] == "fresh"
+    assert result["projection"]["quality_status"] == "degraded"
+    assert result["projection"]["degraded_reasons"] == ["market_anchor_missing"]
+    assert result["targets"][0]["quality"] == {
+        "status": "degraded",
+        "degraded_reasons": ["market_anchor_missing"],
+    }
+
+
+def test_asset_flow_ready_market_returns_quality_ready():
+    service = asset_flow_service(
+        rows=[radar_row(lane="resolved", symbol="BTC", target_type="CexToken", target_id="cex_token:BTC")]
+    )
+
+    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
+
+    assert result["projection"]["status"] == "fresh"
+    assert result["projection"]["quality_status"] == "ready"
+    assert result["projection"]["degraded_reasons"] == []
+    assert result["targets"][0]["quality"] == {"status": "ready", "degraded_reasons": []}
 
 
 class FakeTokenRadar:
@@ -273,6 +345,9 @@ def radar_row(
     chain: str | None = None,
     address: str | None = None,
     generation_id: str = "gen-default",
+    rank_score: float = 55,
+    quality_status: str = "ready",
+    degraded_reasons: list[str] | None = None,
 ) -> dict:
     event_ids = [f"event:{display_symbol or symbol or target_id or 'unknown'}"]
     snapshot = factor_snapshot_json(
@@ -300,7 +375,6 @@ def radar_row(
             "display_name": None,
             "evidence": [],
         },
-        "target_json": {},
         "factor_snapshot_json": snapshot,
         "factor_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
         "resolution_json": {
@@ -311,10 +385,10 @@ def radar_row(
             "candidate_ids": [],
             "lookup_keys": [],
         },
-        "market_json": {},
-        "price_json": {},
-        "score_json": {},
         "decision": decision,
+        "rank_score": rank_score,
+        "quality_status": quality_status,
+        "degraded_reasons_json": list(degraded_reasons or []),
         "data_health_json": {
             "factor_snapshot": "ready",
             "identity": "ready" if target_id else "partial",

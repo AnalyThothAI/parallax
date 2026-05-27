@@ -15,7 +15,10 @@ from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import 
     PulseTriggerThresholds,
 )
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import PulseGateThresholds
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
+from gmgn_twitter_intel.domains.token_intel.interfaces import (
+    TOKEN_RADAR_PROJECTION_VERSION,
+    TOKEN_RADAR_RESOLVER_POLICY_VERSION,
+)
 from gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
@@ -26,16 +29,17 @@ EVENT_MS = FIXED_NOW_MS - 10 * 60 * 1000
 ASSET_ADDRESS = "0x2222222222222222222222222222222222222222"
 
 
-def test_token_radar_projection_worker_catches_up_after_missed_dirty_enqueue(tmp_path) -> None:
+def test_token_radar_projection_worker_does_not_scan_recent_facts_when_no_dirty_or_due_work(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         _seed_resolved_radar_source(conn)
+        _insert_ready_radar_publication_state(conn, window="1h", scope="all", computed_at_ms=FIXED_NOW_MS)
         conn.commit()
 
         worker = TokenRadarProjectionWorker(
             name="token_radar_projection",
-            settings=_radar_settings(),
+            settings=_radar_settings(cold_interval_seconds=60),
             db=_DB(conn),
             telemetry=object(),
         )
@@ -49,21 +53,13 @@ def test_token_radar_projection_worker_catches_up_after_missed_dirty_enqueue(tmp
             """,
         ).fetchone()
         assert result.failed == 0
-        assert result.processed >= 1
-        assert result.notes["catch_up_enqueued"] >= 1
-        assert result.notes["source_rows"] >= 1
-        assert result.notes["rows_written"] >= 1
-        publication_state = conn.execute(
-            """
-            SELECT latest_attempt_status, current_source_rows, current_row_count
-            FROM token_radar_publication_state
-            WHERE "window" = '1h' AND scope = 'all'
-            """,
-        ).fetchone()
-        assert row["count"] >= 1
-        assert publication_state["latest_attempt_status"] == "ready"
-        assert publication_state["current_source_rows"] >= 1
-        assert publication_state["current_row_count"] >= 1
+        assert result.processed == 0
+        assert result.skipped == 1
+        assert result.notes["status"] == "idle"
+        assert result.notes["catch_up_enqueued"] == 0
+        assert result.notes["source_rows"] == 0
+        assert result.notes["rows_written"] == 0
+        assert row["count"] == 0
     finally:
         conn.close()
 
@@ -80,10 +76,11 @@ def test_pulse_candidate_worker_catches_up_from_persisted_token_radar_without_wa
             db=_DB(conn),
             telemetry=object(),
         )
-        idle_result = asyncio.run(radar_worker.run_once(now_ms=FIXED_NOW_MS))
+        empty_due_result = asyncio.run(radar_worker.run_once(now_ms=FIXED_NOW_MS))
         repair_enqueued = _enqueue_token_radar_repair(conn)
         radar_result = asyncio.run(radar_worker.run_once(now_ms=FIXED_NOW_MS))
-        assert idle_result.notes["catch_up_enqueued"] == 0
+        assert empty_due_result.notes["catch_up_enqueued"] == 0
+        assert empty_due_result.notes["rows_written"] == 0
         assert repair_enqueued >= 1
         assert radar_result.notes["rows_written"] >= 1
 
@@ -160,7 +157,7 @@ def _enqueue_token_radar_repair(conn: Any) -> int:
     )
 
 
-def _radar_settings() -> SimpleNamespace:
+def _radar_settings(*, cold_interval_seconds: float = 0) -> SimpleNamespace:
     return SimpleNamespace(
         enabled=True,
         interval_seconds=0,
@@ -169,9 +166,41 @@ def _radar_settings() -> SimpleNamespace:
         windows=("1h",),
         scopes=("all",),
         hot_windows=(),
-        cold_interval_seconds=0,
+        cold_interval_seconds=cold_interval_seconds,
         batch_size=10,
         statement_timeout_seconds=5,
+    )
+
+
+def _insert_ready_radar_publication_state(
+    conn: Any,
+    *,
+    window: str,
+    scope: str,
+    computed_at_ms: int,
+) -> None:
+    generation_id = f"ready-empty:{window}:{scope}:{computed_at_ms}"
+    conn.execute(
+        """
+        INSERT INTO token_radar_publication_state(
+          projection_version, "window", scope, current_generation_id, current_published_at_ms,
+          current_source_frontier_ms, current_row_count, current_source_rows,
+          latest_attempt_generation_id, latest_attempt_status, latest_attempt_started_at_ms,
+          latest_attempt_finished_at_ms, latest_attempt_error, updated_at_ms
+        )
+        VALUES (%s, %s, %s, %s, %s, 0, 0, 0, %s, 'ready', %s, %s, NULL, %s)
+        """,
+        (
+            TOKEN_RADAR_PROJECTION_VERSION,
+            window,
+            scope,
+            generation_id,
+            computed_at_ms,
+            generation_id,
+            computed_at_ms,
+            computed_at_ms,
+            computed_at_ms,
+        ),
     )
 
 

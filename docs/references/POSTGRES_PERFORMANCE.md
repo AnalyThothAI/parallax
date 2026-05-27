@@ -15,7 +15,8 @@ these invariants:
 - Material facts remain the only business truth.
 - Each rebuildable read model has exactly one runtime writer.
 - Dirty target tables are control plane, not business facts.
-- `NOTIFY` is only a wake hint; every listener still performs bounded catch-up.
+- `NOTIFY` is only a wake hint; runtime workers still claim durable dirty work
+  and pass due gates.
 - Runtime fixes must be observable through PostgreSQL evidence, not intuition.
 
 The 2026-05-26 hard cut proved the pattern: first make the pressure visible,
@@ -30,7 +31,8 @@ cold paths are retained by partition lifecycle, not by worker-loop deletes.
 
 | Retention class | Tables | Lifecycle rule |
 | --- | --- | --- |
-| Hot compact rank/read path | `token_radar_rank_source_events`, `token_radar_target_features`, `token_radar_current_rows`, `token_radar_publication_state`, `macro_observation_series_rows` active generation | No wide JSON/text scans. Online Token Radar reads only current rows plus publication state; `fresh` requires `ready` and matching `current_generation_id`. |
+| Hot online serving path | `token_radar_current_rows`, `token_radar_publication_state`, `macro_observation_series_rows` active generation | No wide JSON/text scans. Online Token Radar reads only current rows plus publication state; `fresh` requires `ready` and matching `current_generation_id`. Current rows carry `rank_score`, `quality_status`, `degraded_reasons_json`, and `factor_snapshot_json`, not legacy top-level current-row JSON blocks. |
+| Projection-private/detail path | `token_radar_target_features`, `token_radar_rank_source_events` | Used by the Token Radar projection and bounded evidence/detail lookups only. `token_radar_target_features` is not an API, CLI, Pulse, notification, or repair read path. `token_radar_rank_source_events` is lazy evidence/detail, not online leaderboard service. |
 | Selected-row hydrate | `events`, `enriched_events`, `equity_event_evidence_artifacts` | Access only after ranking, document selection, or explicit evidence selection has chosen stable row ids or payload hashes. Do not join these wide payload tables into rank/discovery scans. |
 | Cold audit/history | `raw_frames` and future explicit cold projections | Partition lifecycle only. Runtime workers must not issue loop deletes against audit, history, or provider raw-frame tables. |
 | Control plane | Dirty targets, jobs, fetch runs | Leased, bounded, and terminal-evidence based. Queue state transitions must preserve attempts, lease ownership, payload hash/idempotency keys, and explicit terminal reasons. |
@@ -189,6 +191,9 @@ Current example:
 
 - Fixed: the old Token Radar rank-set `SELECT * FROM token_radar_target_features
   ... ORDER BY lane DESC, rank_score DESC ...` path is removed from runtime.
+- Fixed: Token Radar runtime projection does not run a broad recent
+  resolved-target/fact-window catch-up scan. Operators repair missed work with
+  explicit bounded dirty-target enqueue commands.
 - Fixed in the follow-up hard cut: Token Radar source hydration now builds
   bounded `TokenRadarSourceRequest` batches and uses
   `TokenRadarTargetFeatureBatchQuery.source_rows_for_requests(...)`. Runtime
@@ -354,7 +359,7 @@ work, and a few query shapes and maintenance gaps amplify it.
 
 | Area | Severity | Diagnosis |
 | --- | --- | --- |
-| Token Radar rebuild gate | P0 | Compact rank-input rebuild was incomplete. Dirty-target work now checks rank-input readiness before claim, so stale rank inputs block without burning attempts. |
+| Retired Token Radar rebuild gate | Historical P0 | The compact rank-input rebuild gate was a transitional failure mode. The later publication-state hard cut removed runtime rank-input readiness/rebuild paths; Token Radar now uses durable dirty targets, due gates, and content-stable current-row publication. |
 | Token Radar source hydration | P0 | The old `TokenRadarTargetFeatureQuery.source_rows()` single-target family caused the Top SQL fingerprint. Runtime now uses batched source requests without the materialized CTE. |
 | Worker terminal backlog | P0/P1 | Most unresolved terminal rows are real provider/business outcomes, not DB lock symptoms. LLM `522`, no quote, no market data, stale TTL, and retry-budget exhaustion dominate. |
 | Worker state-machine contracts | P1 | `pulse_candidate` had a stale-running edge case. Exhausted stale running jobs now terminalize as `dead` with `stale_running_timeout` before new claims. |
@@ -379,7 +384,8 @@ projection: degraded, queue_depth=696, failed=686, max_attempt=60
 agent: blocked, queue_depth=29, running=1, unresolved_terminal=2038
 ```
 
-Token Radar rebuild gate:
+Historical Token Radar rebuild gate evidence from before the publication-state
+hard cut:
 
 ```text
 token_radar_target_features:
@@ -447,11 +453,11 @@ far above `pg_stat_user_tables.n_live_tup` estimates until analyze runs:
 
 There are no invalid indexes in the current database.
 
-## Still-Open Problems
+## Historical Problems And Current Follow-Ups
 
-### P0: Token Radar Rank Inputs Still Need A Full Rebuild
+### Resolved: Token Radar Rank-Input Rebuild Gate Was Retired
 
-Evidence:
+Historical evidence before the current-row hard cut:
 
 ```text
 token_radar_target_features:
@@ -464,37 +470,18 @@ token_radar_dirty_targets:
   sample last_error: token_radar_rank_inputs_require_full_rebuild
 ```
 
-Diagnosis:
+Current hard-cut state:
 
-The migration correctly refused to mark pre-existing rows as
-`token-radar-rank-input-v1` because not every compact rank scalar can be safely
-recovered from old JSON. That protects ranking correctness, but the mandatory
-owner-path rebuild has not been fully drained yet. Until it is, Token Radar
-dirty targets can repeatedly fail with `token_radar_rank_inputs_require_full_rebuild`.
-
-Next move:
-
-```bash
-uv run gmgn-twitter-intel ops rebuild-token-radar-rank-inputs \
-  --execute \
-  --reason "post-migration compact rank input rebuild" \
-  --limit 5000
-```
-
-Then verify:
-
-```sql
-SELECT rank_input_version, count(*)
-FROM token_radar_target_features
-GROUP BY rank_input_version;
-
-SELECT dirty_reason, count(*), max(attempt_count), max(last_error)
-FROM token_radar_dirty_targets
-GROUP BY dirty_reason;
-```
-
-Do this in an operator window. It rewrites target features through the Token
-Radar owner path, which is exactly what the hard cut requires.
+- `rank_input_version`, `legacy_needs_rebuild`, and
+  `token_radar_rank_inputs_require_full_rebuild` are retired runtime concerns.
+- `TokenRadarProjectionWorker` does not run rank-input readiness or full-rebuild
+  gates before dirty-target claim.
+- Missed or stale work is repaired by explicit bounded
+  `ops enqueue-token-radar-dirty-targets`, not by a runtime rank-input rebuild
+  command.
+- The online leaderboard path is `token_radar_current_rows` plus
+  `token_radar_publication_state`; `token_radar_target_features` remains a
+  projection-private intermediate.
 
 ### P0: Token Radar Source Hydration Was The Next Top Query
 
@@ -526,11 +513,12 @@ Hard cut:
 
 - `TokenRadarTargetFeatureBatchQuery.source_rows_for_requests(...)` accepts a
   bounded request set and hydrates source rows once per chunk.
-- `rebuild_dirty_targets()` and `rebuild_rank_inputs_full()` both use the batch
-  path.
+- `rebuild_dirty_targets()` uses the batch path after claiming durable dirty
+  targets and passing due gates; broad fact-window repair is an explicit ops
+  enqueue path, not worker runtime scan.
 - The runtime source SQL no longer contains `WITH source_intents AS MATERIALIZED`.
-- Rank-input readiness runs before dirty-target claim; stale rank inputs return
-  `blocked_precondition=true` without incrementing `attempt_count`.
+- Publication state and worker due gates control whether a rank set publishes;
+  stale or missed source work is repaired by explicit dirty-target enqueue.
 
 Verification:
 
@@ -702,19 +690,16 @@ Next move:
 
 ## Priority Order
 
-1. Finish Token Radar rank-input rebuild and verify `legacy_needs_rebuild=0`
-   for active publishable rows; dirty target workers should block before claim
-   while that rebuild is incomplete.
-2. Verify post-deploy pg_stat deltas show no new
+1. Verify post-deploy pg_stat deltas show no new
    `WITH source_intents AS MATERIALIZED` calls.
-3. Drain and classify terminal queue evidence by `final_reason_bucket`; do not leave 4k+
+2. Drain and classify terminal queue evidence by `final_reason_bucket`; do not leave 4k+
    unresolved terminal rows as background noise.
-4. Verify Macro API deltas show no request-time `row_number()` over
+3. Verify Macro API deltas show no request-time `row_number()` over
    `macro_observations`; request paths should read `macro_observation_series_rows`.
-5. Schedule retention/partition review for Token Radar audit/history and
+4. Schedule retention/partition review for Token Radar audit/history and
    market ticks.
-6. Vacuum/analyze high-churn control tables after the current live drain.
-7. Reduce equity provider document write churn with set-based idempotent writes.
+5. Vacuum/analyze high-churn control tables after the current live drain.
+6. Reduce equity provider document write churn with set-based idempotent writes.
 
 ## Completion Checklist For Future Performance PRs
 

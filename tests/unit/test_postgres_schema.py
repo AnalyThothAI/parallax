@@ -5,6 +5,10 @@ from pathlib import Path
 
 from alembic.script import ScriptDirectory
 
+from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import (
+    RADAR_ROW_COLUMNS,
+    RADAR_ROW_INSERT_COLUMNS_SQL,
+)
 from gmgn_twitter_intel.platform.db.postgres_migrations import alembic_config
 
 MIGRATION = Path("src/gmgn_twitter_intel/platform/db/alembic/versions/20260506_0001_initial_postgresql.py")
@@ -162,8 +166,20 @@ TOKEN_RADAR_PUBLICATION_STATE_MIGRATION = Path(
 MACRO_SYNC_WORKER_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0112_macro_sync_worker.py"
 )
+TOKEN_RADAR_STABLE_PUBLICATION_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0113_token_radar_stable_publication.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
+LEGACY_TOKEN_RADAR_CURRENT_JSON_COLUMNS = {
+    "asset_json",
+    "primary_venue_json",
+    "target_json",
+    "attention_json",
+    "market_json",
+    "price_json",
+    "score_json",
+}
 
 
 def test_initial_postgres_schema_uses_jsonb_boolean_and_tsvector() -> None:
@@ -238,6 +254,43 @@ def test_token_radar_publication_state_migration_hard_cuts_online_tables() -> No
     assert "idx_token_radar_publication_state_current" in text
     assert "side_effect_status" not in text
     assert "row_set_hash" not in text
+
+
+def test_token_radar_stable_publication_migration_drops_legacy_current_row_columns() -> None:
+    text = TOKEN_RADAR_STABLE_PUBLICATION_MIGRATION.read_text()
+
+    assert 'revision = "20260527_0113"' in text
+    assert 'down_revision = "20260527_0112"' in text
+    assert "DELETE FROM token_radar_current_rows" in text
+    for column_name in (
+        "asset_json",
+        "primary_venue_json",
+        "target_json",
+        "attention_json",
+        "market_json",
+        "price_json",
+        "score_json",
+    ):
+        assert f"DROP COLUMN IF EXISTS {column_name}" in text
+    assert "ADD COLUMN IF NOT EXISTS rank_score DOUBLE PRECISION" in text
+    assert "ADD COLUMN IF NOT EXISTS quality_status TEXT" in text
+    assert "ADD COLUMN IF NOT EXISTS degraded_reasons_json JSONB NOT NULL DEFAULT '[]'::jsonb" in text
+    assert "ALTER COLUMN rank_score SET NOT NULL" in text
+    assert "ALTER COLUMN quality_status SET NOT NULL" in text
+    assert "quality_status IN ('ready', 'degraded', 'insufficient', 'failed')" in text
+
+
+def test_token_radar_current_row_runtime_insert_contract_matches_hard_cut_schema() -> None:
+    insert_contract = set(RADAR_ROW_COLUMNS)
+
+    assert LEGACY_TOKEN_RADAR_CURRENT_JSON_COLUMNS.isdisjoint(insert_contract)
+    for legacy_column in LEGACY_TOKEN_RADAR_CURRENT_JSON_COLUMNS:
+        assert legacy_column not in RADAR_ROW_INSERT_COLUMNS_SQL
+    assert {"rank_score", "quality_status", "degraded_reasons_json", "factor_snapshot_json"}.issubset(
+        insert_contract
+    )
+    for required_column in ("rank_score", "quality_status", "degraded_reasons_json", "factor_snapshot_json"):
+        assert required_column in RADAR_ROW_INSERT_COLUMNS_SQL
 
 
 def test_runtime_worker_dirty_targets_migration_adds_narrative_control_plane() -> None:
@@ -742,6 +795,7 @@ def test_runtime_performance_hard_cut_revision_chain() -> None:
         (EQUITY_FETCH_RUN_REAPER_MIGRATION, "20260526_0110", "20260526_0109"),
         (TOKEN_RADAR_PUBLICATION_STATE_MIGRATION, "20260527_0111", "20260526_0110"),
         (MACRO_SYNC_WORKER_MIGRATION, "20260527_0112", "20260527_0111"),
+        (TOKEN_RADAR_STABLE_PUBLICATION_MIGRATION, "20260527_0113", "20260527_0112"),
     )
 
     for migration, revision, down_revision in migrations:
