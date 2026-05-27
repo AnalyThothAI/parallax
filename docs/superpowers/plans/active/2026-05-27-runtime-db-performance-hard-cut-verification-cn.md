@@ -26,7 +26,7 @@ uv run pytest \
 Result:
 
 ```text
-312 passed in 7.69s
+313 passed in 8.03s
 ```
 
 Lint:
@@ -83,3 +83,17 @@ WHERE projection_version = 'macro_regime_v4';
 ```
 
 Expected: generation tables are absent, compact rows are bounded by `limit_per_series`, and the second steady Macro run reports `unchanged` with zero series-row writes.
+
+## Live Rollout Regression Found And Fixed
+
+During Docker rollout, the first Macro current projection selected 22,743 rows.
+The single bulk insert attempted more than PostgreSQL's 65,535 bind parameter
+limit and failed with:
+
+```text
+OperationalError: sending query and params failed: number of parameters must be between 0 and 65535
+```
+
+Fix: Macro series current-row insert is chunked at 4,000 rows per statement
+(60,000 bind params), with a regression test asserting a 5,000-row write splits
+into 4,000 + 1,000.

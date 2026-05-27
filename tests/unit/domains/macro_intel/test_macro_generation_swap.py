@@ -105,6 +105,22 @@ def test_refresh_observation_series_rows_replaces_current_rows_when_signature_ch
     assert "macro_observation_series_generations" not in queries
 
 
+def test_insert_observation_series_rows_chunks_under_postgres_bind_parameter_limit() -> None:
+    conn = InsertChunkConnection()
+    repo = MacroIntelRepository(conn)
+    rows = [_series_row() for _ in range(5_000)]
+
+    rows_written = repo._insert_observation_series_rows(rows)
+
+    insert_executions = [
+        (query, params) for query, params in conn.executions if "INSERT INTO macro_observation_series_rows" in query
+    ]
+    assert rows_written == 5_000
+    assert len(insert_executions) == 2
+    assert all(len(params) <= 65_535 for _query, params in insert_executions)
+    assert [len(params) // 15 for _query, params in insert_executions] == [4_000, 1_000]
+
+
 def test_refresh_empty_current_rows_marks_failed_and_does_not_replace_current_rows() -> None:
     conn = CurrentRefreshConnection(selected_rows=[], publication_state=None)
     repo = MacroIntelRepository(conn)
@@ -229,6 +245,15 @@ class ReadConnection:
     def execute(self, query: str, params: tuple[object, ...]) -> Cursor:
         self.executions.append((query, params))
         return Cursor(self.rows)
+
+
+class InsertChunkConnection:
+    def __init__(self) -> None:
+        self.executions: list[tuple[str, tuple[object, ...]]] = []
+
+    def execute(self, query: str, params: tuple[object, ...]) -> Cursor:
+        self.executions.append((query, params))
+        return Cursor([], rowcount=len(params) // 15)
 
 
 class NullContext:

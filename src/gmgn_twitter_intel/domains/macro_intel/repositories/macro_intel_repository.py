@@ -19,6 +19,11 @@ class MacroSeriesRefreshResult(TypedDict):
     source_signature: str
 
 
+_POSTGRES_MAX_BIND_PARAMS = 65_535
+_MACRO_SERIES_INSERT_PARAM_COUNT = 15
+_MACRO_SERIES_INSERT_CHUNK_SIZE = min(4_000, _POSTGRES_MAX_BIND_PARAMS // _MACRO_SERIES_INSERT_PARAM_COUNT)
+
+
 class MacroIntelRepository:
     def __init__(self, conn: Any):
         self.conn = conn
@@ -722,7 +727,17 @@ class MacroIntelRepository:
     def _insert_observation_series_rows(self, rows: Sequence[Mapping[str, Any]]) -> int:
         if not rows:
             return 0
-        values_sql = ",".join(["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(rows))
+        rows_written = 0
+        for start in range(0, len(rows), _MACRO_SERIES_INSERT_CHUNK_SIZE):
+            rows_written += self._insert_observation_series_rows_chunk(
+                rows[start : start + _MACRO_SERIES_INSERT_CHUNK_SIZE]
+            )
+        return rows_written
+
+    def _insert_observation_series_rows_chunk(self, rows: Sequence[Mapping[str, Any]]) -> int:
+        values_sql = ",".join(
+            ["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(rows)
+        )
         params: list[Any] = []
         for row in rows:
             params.extend(
