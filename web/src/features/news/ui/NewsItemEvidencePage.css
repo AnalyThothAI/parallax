@@ -5,7 +5,10 @@
 
   .news-evidence-page {
     display: grid;
+    box-sizing: border-box;
     gap: 12px;
+    min-width: 0;
+    max-width: 100%;
     padding: 10px;
   }
 
@@ -184,11 +187,21 @@
     line-height: 1.35;
   }
 
+  .news-evidence-card small,
+  .news-evidence-gap-item p,
+  .news-evidence-section p {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
   .news-evidence-layout {
     display: grid;
+    box-sizing: border-box;
     grid-template-columns: minmax(0, 1fr) minmax(280px, 0.34fr);
     gap: 12px;
     align-items: start;
+    min-width: 0;
+    max-width: 100%;
   }
 
   .news-evidence-section {

@@ -122,18 +122,25 @@ const routeCases: RouteCase[] = [
     name: "news detail",
     path: "/news/items/news-row-1",
     primary: async (page) => {
-      await expect(page.getByRole("region", { name: "News item detail" })).toBeVisible();
+      await expect(page.getByRole("region", { name: "News item evidence" })).toBeVisible();
     },
     specific: async (page) => {
       await expect(page.getByRole("link", { name: "Queue" })).toBeVisible();
-      await expect(page.locator("[aria-label='news provider signal context']")).toBeVisible();
-      await expect(page.getByRole("heading", { name: "Agent brief" })).toBeVisible();
-      await expect(page.getByRole("heading", { name: "Source brief" })).toBeVisible();
-      await expect(page.locator("[aria-label='news item metadata']")).toBeVisible();
+      await expect(page.getByText("Evidence page", { exact: true })).toBeVisible();
+      await expect(page.getByText("Provider aiRating", { exact: true })).toBeVisible();
+      await expect(page.getByText("Token impacts", { exact: true })).toBeVisible();
+      await expect(page.getByText("Execution gaps", { exact: true })).toBeVisible();
+      await expect(page.getByText("Price reaction", { exact: true })).toBeVisible();
+      await expect(page.getByText("Liquidity / OI", { exact: true })).toBeVisible();
+      await expect(page.getByText("Agent thesis", { exact: true })).toBeVisible();
+      await expect(page.locator("[aria-label='provider signal context']")).toBeVisible();
+      await expect(page.locator("[aria-label='source packet']")).toBeVisible();
+      await expect(page.locator("[aria-label='news evidence metadata']")).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Source metadata" })).toBeVisible();
       await expect(page.getByText("Liquidity rotation is visible").first()).toBeVisible();
     },
-    nestedOverflowSelectors: [".news-panel", ".news-detail", ".news-detail-grid"],
-    lastMeaningfulSelector: ".news-detail-side",
+    nestedOverflowSelectors: [".news-panel", ".news-evidence-page", ".news-evidence-layout"],
+    lastMeaningfulSelector: ".news-evidence-side",
   },
   {
     name: "earnings",
