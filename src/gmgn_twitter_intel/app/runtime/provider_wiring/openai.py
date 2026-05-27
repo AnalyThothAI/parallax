@@ -46,8 +46,14 @@ class OpenAINarrativeIntelProvider:
     def try_reserve_execution(self, lane: str, *, rate_units: int = 1) -> AgentCapacityReservation:
         return self._client.try_reserve_execution(lane, rate_units=rate_units)
 
+    def request_audit_for_label_mentions(self, **kwargs: Any) -> dict[str, Any]:
+        return self._client.request_audit_for_label_mentions(**kwargs)
+
     async def label_mentions(self, **kwargs: Any) -> Any:
         return await self._client.label_mentions(**kwargs)
+
+    def request_audit_for_summarize_discussion(self, **kwargs: Any) -> dict[str, Any]:
+        return self._client.request_audit_for_summarize_discussion(**kwargs)
 
     async def summarize_discussion(self, **kwargs: Any) -> Any:
         return await self._client.summarize_discussion(**kwargs)

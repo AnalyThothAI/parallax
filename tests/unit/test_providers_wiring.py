@@ -405,6 +405,28 @@ def test_openai_provider_wiring_requires_agent_execution_gateway() -> None:
         )
 
 
+def test_openai_narrative_provider_exposes_worker_audit_contract() -> None:
+    client = SimpleNamespace(
+        request_audit_for_label_mentions=lambda **kwargs: {
+            "stage": "mention_semantics",
+            "kwargs": kwargs,
+        },
+        request_audit_for_summarize_discussion=lambda **kwargs: {
+            "stage": "discussion_digest",
+            "kwargs": kwargs,
+        },
+    )
+    provider = openai_wiring.OpenAINarrativeIntelProvider(client)
+
+    mention_audit = provider.request_audit_for_label_mentions(run_id="mention-run", request=object())
+    digest_audit = provider.request_audit_for_summarize_discussion(run_id="digest-run", request=object())
+
+    assert mention_audit["stage"] == "mention_semantics"
+    assert mention_audit["kwargs"]["run_id"] == "mention-run"
+    assert digest_audit["stage"] == "discussion_digest"
+    assert digest_audit["kwargs"]["run_id"] == "digest-run"
+
+
 def test_news_item_brief_provider_wiring_requires_agent_execution_gateway_for_news_only_config() -> None:
     settings = Settings(
         ws_token="secret",
