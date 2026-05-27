@@ -115,7 +115,8 @@ def _handle_status() -> tuple[int, dict[str, Any]]:
             latest_snapshot = repos.macro_intel.latest_snapshot(
                 projection_version=MACRO_VIEW_PROJECTION_VERSION,
             )
-            facts_max_observed_at = repos.macro_intel.macro_observations_max_observed_at()
+            publication_state = repos.macro_intel.macro_series_publication_state(MACRO_VIEW_PROJECTION_VERSION)
+            facts_max_observed_at = _snapshot_latest_observed_at(latest_snapshot)
             snapshot_asof = _to_date(latest_snapshot.get("asof_date") if latest_snapshot else None)
             projection_behind_facts = (
                 facts_max_observed_at is not None
@@ -128,9 +129,8 @@ def _handle_status() -> tuple[int, dict[str, Any]]:
                 "concept_count": repos.macro_intel.concept_count(),
                 "required_history_concept_count": len(MACRO_HISTORY_REQUIRED_CONCEPTS),
                 **_history_readiness_payload(history),
-                "latest_import_run": _json_ready(repos.macro_intel.latest_import_run()),
-                "latest_sync_run": _json_ready(repos.macro_intel.latest_macro_sync_run()),
                 "sync_queue": _json_ready(repos.macro_intel.macro_sync_queue_summary(now_ms=_now_ms())),
+                "publication_state": _publication_state_status(publication_state),
                 "facts_max_observed_at": _json_ready(facts_max_observed_at),
                 "projection_lag_days": _projection_lag_days(facts_max_observed_at, snapshot_asof),
                 "projection_behind_facts": projection_behind_facts,
@@ -151,9 +151,8 @@ def _handle_status() -> tuple[int, dict[str, Any]]:
                 "lookback_days": MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
             },
             "concepts_below_min_history": [],
-            "latest_import_run": None,
-            "latest_sync_run": None,
             "sync_queue": {},
+            "publication_state": None,
             "facts_max_observed_at": None,
             "projection_lag_days": None,
             "projection_behind_facts": False,
@@ -271,6 +270,23 @@ def _snapshot_status_summary(snapshot: Mapping[str, Any] | None) -> dict[str, An
             for panel_id, panel in panels.items()
         },
     }
+
+
+def _publication_state_status(state: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    if state is None:
+        return None
+    return {
+        "projection_version": state.get("projection_version"),
+        "row_count": state.get("row_count"),
+        "latest_attempt_status": state.get("latest_attempt_status"),
+        "latest_attempt_finished_at_ms": state.get("latest_attempt_finished_at_ms"),
+        "latest_attempt_error": state.get("latest_attempt_error"),
+    }
+
+
+def _snapshot_latest_observed_at(snapshot: Mapping[str, Any] | None) -> date | None:
+    coverage = _mapping(snapshot.get("source_coverage_json") if snapshot else None)
+    return _to_date(coverage.get("latest_observed_at") or (snapshot or {}).get("asof_date"))
 
 
 def _history_readiness_payload(history_rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:

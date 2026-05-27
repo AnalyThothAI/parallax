@@ -609,20 +609,20 @@ def test_macro_status_reports_repository_counts(monkeypatch) -> None:
     from gmgn_twitter_intel.app.surfaces.cli.commands import macro as macro_module
 
     repo = FakeMacroIntelRepository()
-    repo.latest_import = {"run_id": "run-1", "bundle_name": "macro-core", "completed_at_ms": NOW_MS}
-    repo.latest_sync = {
-        "sync_run_id": "sync-run-1",
-        "status": "ok",
-        "completed_at_ms": NOW_MS,
-        "max_observed_at": "2026-05-22",
-    }
-    repo.facts_max_observed_at = date(2026, 5, 22)
     repo.sync_queue = {"open_count": 2, "due_count": 1, "running_count": 0}
+    repo.publication_state = {
+        "projection_version": "macro_regime_v4",
+        "row_count": 318,
+        "latest_attempt_status": "published",
+        "latest_attempt_finished_at_ms": NOW_MS,
+        "latest_attempt_error": None,
+    }
     repo.latest = {
         "snapshot_id": "snapshot-1",
         "status": "partial",
         "computed_at_ms": NOW_MS,
         "asof_date": "2026-05-21",
+        "source_coverage_json": {"latest_observed_at": "2026-05-22"},
     }
     _patch_macro_dependencies(monkeypatch, macro_module, repo, settings=FakeSettings(fred_env="APP_FRED_KEY"))
     monkeypatch.setenv("APP_FRED_KEY", "dummy-fred-secret")
@@ -651,22 +651,39 @@ def test_macro_status_reports_repository_counts(monkeypatch) -> None:
                 "lookback_days": 1095,
             },
             "concepts_below_min_history": [],
-            "latest_import_run": {"run_id": "run-1", "bundle_name": "macro-core", "completed_at_ms": NOW_MS},
-            "latest_sync_run": {
-                "sync_run_id": "sync-run-1",
-                "status": "ok",
-                "completed_at_ms": NOW_MS,
-                "max_observed_at": "2026-05-22",
-            },
             "sync_queue": {"open_count": 2, "due_count": 1, "running_count": 0},
+            "publication_state": {
+                "projection_version": "macro_regime_v4",
+                "row_count": 318,
+                "latest_attempt_status": "published",
+                "latest_attempt_finished_at_ms": NOW_MS,
+                "latest_attempt_error": None,
+            },
             "facts_max_observed_at": "2026-05-22",
             "projection_lag_days": 1,
             "projection_behind_facts": True,
             "latest_snapshot": {
                 "snapshot_id": "snapshot-1",
-                "status": "partial",
-                "computed_at_ms": NOW_MS,
+                "projection_version": None,
                 "asof_date": "2026-05-21",
+                "status": "partial",
+                "regime": None,
+                "overall_score": None,
+                "computed_at_ms": NOW_MS,
+                "feature_count": 0,
+                "indicator_count": 0,
+                "data_gap_count": 0,
+                "data_gap_codes": [],
+                "coverage": {
+                    "latest_coverage_ratio": None,
+                    "history_coverage_ratio": None,
+                    "observed_concept_count": None,
+                    "required_concept_count": None,
+                    "history_ready_concept_count": None,
+                    "required_history_concept_count": None,
+                    "concepts_below_min_history": [],
+                },
+                "panels": {},
             },
         },
     }
@@ -677,7 +694,6 @@ def test_macro_status_reports_projection_behind_when_facts_exist_without_snapsho
     from gmgn_twitter_intel.app.surfaces.cli.commands import macro as macro_module
 
     repo = FakeMacroIntelRepository()
-    repo.facts_max_observed_at = date(2026, 5, 22)
     repo.latest = None
     _patch_macro_dependencies(monkeypatch, macro_module, repo)
     stdout = io.StringIO()
@@ -686,9 +702,9 @@ def test_macro_status_reports_projection_behind_when_facts_exist_without_snapsho
 
     payload = json.loads(stdout.getvalue())
     assert code == 0
-    assert payload["data"]["facts_max_observed_at"] == "2026-05-22"
+    assert payload["data"]["facts_max_observed_at"] is None
     assert payload["data"]["projection_lag_days"] is None
-    assert payload["data"]["projection_behind_facts"] is True
+    assert payload["data"]["projection_behind_facts"] is False
     assert payload["data"]["latest_snapshot"] is None
 
 
@@ -817,10 +833,8 @@ class FakeMacroIntelRepository:
         self.latest_observation_limits: list[int] = []
         self.observations_for_concepts_calls: list[dict[str, object]] = []
         self.concept_history_count_calls: list[dict[str, object]] = []
-        self.latest_import: dict[str, object] | None = None
-        self.latest_sync: dict[str, object] | None = None
         self.sync_queue: dict[str, object] = {}
-        self.facts_max_observed_at: date | None = None
+        self.publication_state: dict[str, object] | None = None
         self.latest: dict[str, object] | None = None
         self.latest_snapshot_projection_versions: list[str | None] = []
         self.fail_record_run = fail_record_run
@@ -910,18 +924,13 @@ class FakeMacroIntelRepository:
     def concept_count(self) -> int:
         return len({observation["concept_key"] for observation in self.observations})
 
-    def latest_import_run(self) -> dict[str, object] | None:
-        return self.latest_import
-
-    def latest_macro_sync_run(self) -> dict[str, object] | None:
-        return self.latest_sync
-
     def macro_sync_queue_summary(self, *, now_ms: int) -> dict[str, object]:
         assert now_ms == NOW_MS
         return self.sync_queue
 
-    def macro_observations_max_observed_at(self) -> date | None:
-        return self.facts_max_observed_at
+    def macro_series_publication_state(self, projection_version: str) -> dict[str, object] | None:
+        assert projection_version == "macro_regime_v4"
+        return self.publication_state
 
     def latest_snapshot(self, *, projection_version: str | None = None) -> dict[str, object] | None:
         self.latest_snapshot_projection_versions.append(projection_version)
