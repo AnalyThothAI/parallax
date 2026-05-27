@@ -198,7 +198,8 @@ function tokenDigestNarrative(result: SearchTokenResult): SearchCaseFact {
       ? `${Math.round(coverage * 100)}% semantic coverage`
       : digest.status.replaceAll("_", " ");
   return {
-    detail: cleanText(dominant?.summary_zh) ?? narrativeGapLabel(digest.data_gaps[0]) ?? coverageDetail,
+    detail:
+      cleanText(dominant?.summary_zh) ?? narrativeGapLabel(digest.data_gaps[0]) ?? coverageDetail,
     label: "Narrative",
     source: "social",
     tone: digest.status === "ready" ? "health" : "info",

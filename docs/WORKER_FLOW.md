@@ -68,9 +68,9 @@ The hot path from one public-stream frame to product output is:
    - live_price_gateway reads `token_capture_tier` control rows and latest market_ticks, then fans out cache-only WebSocket updates
 
 4. Token Intel projection
-   - token_radar_projection checks compact rank-input readiness before claiming token_radar_dirty_targets
-   - when ready, it claims dirty targets and hydrates source context through bounded TokenRadar source request batches
-   - publishes token_radar_target_features, token_radar_current_rows for hot reads, token_radar_rank_history for compact rank history, and token_radar_snapshot_audit for point-in-time factor snapshots
+   - token_radar_projection claims token_radar_dirty_targets and uses bounded interval catch-up
+   - it builds compact source edges and projection-private token_radar_target_features from material facts
+   - it publishes one stable generation into token_radar_current_rows and token_radar_publication_state for online reads
    - emits token_radar_updated as a wake hint
 
 5. Narrative Intelligence read models
@@ -328,9 +328,9 @@ Use this order for real-data investigations:
 
 4. Identify the projection.
    If the fact exists but the UI/API is wrong, inspect the read model:
-   `token_radar_current_rows`, `token_radar_rank_history`,
-   `token_radar_snapshot_audit`, `token_profile_current`,
-   `pulse_candidates`, or the relevant watchlist/notification model.
+   `token_radar_current_rows` plus `token_radar_publication_state`,
+   `token_profile_current`, `pulse_candidates`, or the relevant
+   watchlist/notification model.
 
 5. Check wake versus catch-up.
    If a wake was missed, the next `interval_seconds` catch-up should

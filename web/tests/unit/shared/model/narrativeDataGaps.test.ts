@@ -17,9 +17,7 @@ describe("narrativeDataGaps", () => {
     expect(narrativeGapLabel({ reason: "digest_updating" })).toBe("叙事更新中");
     expect(narrativeGapLabel({ reason: "material_delta_due" })).toBe("叙事刷新排队中");
     expect(narrativeGapLabel({ reason: "unsupported_window" })).toBe("5m 实时信号");
-    expect(narrativeGapLabel({ reason: "narrative_not_supported_for_window" })).toBe(
-      "5m 实时信号",
-    );
+    expect(narrativeGapLabel({ reason: "narrative_not_supported_for_window" })).toBe("5m 实时信号");
     expect(narrativeGapLabel({ reason: "out_of_frontier" })).toBe("不在当前雷达前沿");
     expect(narrativeGapLabel({ reason: "not_in_current_frontier" })).toBe("不在当前雷达前沿");
   });

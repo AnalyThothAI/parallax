@@ -397,18 +397,20 @@ class RegistryRepository:
               SELECT
                 "window",
                 scope,
-                computed_at_ms
-              FROM token_radar_projection_coverage
+                current_generation_id,
+                current_published_at_ms
+              FROM token_radar_publication_state
               WHERE projection_version = %s
-                AND computed_at_ms >= %s
-                AND status = 'ready'
+                AND current_published_at_ms >= %s
+                AND latest_attempt_status = 'ready'
+                AND current_generation_id IS NOT NULL
             ),
             active_targets AS MATERIALIZED (
               SELECT DISTINCT ON (rows.target_type, rows.target_id)
                 rows.target_type,
                 rows.target_id,
                 rows.pricefeed_id,
-                latest_sets.computed_at_ms,
+                latest_sets.current_published_at_ms AS computed_at_ms,
                 rows.source_max_received_at_ms,
                 NULLIF(rows.factor_snapshot_json -> 'composite' ->> 'rank_score', '')::numeric
                   AS rank_score
@@ -417,6 +419,7 @@ class RegistryRepository:
                 ON rows.projection_version = %s
                AND rows."window" = latest_sets."window"
                AND rows.scope = latest_sets.scope
+               AND rows.generation_id = latest_sets.current_generation_id
               WHERE rows.target_type IN ('Asset', 'CexToken')
                 AND rows.target_id IS NOT NULL
               ORDER BY

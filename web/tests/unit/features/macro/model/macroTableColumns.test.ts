@@ -158,9 +158,7 @@ describe("macroTableColumns", () => {
       ]),
     ).toBe("历史样本不足：无法计算 60 日变化");
     expect(formatMacroTableValue({ raw: true })).toBe("暂无");
-    expect(formatMacroTableValue({ display_value: "来源可用", sort_value: "ok" })).toBe(
-      "来源可用",
-    );
+    expect(formatMacroTableValue({ display_value: "来源可用", sort_value: "ok" })).toBe("来源可用");
     expect(formatMacroTableValue(null)).toBe("暂无");
     expect(compareMacroTableSortValues(2, 10)).toBeLessThan(0);
     expect(compareMacroTableSortValues("asset:qqq", "asset:spy")).toBeLessThan(0);

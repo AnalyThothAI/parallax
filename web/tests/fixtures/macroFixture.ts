@@ -8,9 +8,7 @@ import type {
 
 const NOW_MS = 1_779_000_000_000;
 
-export function macroModuleFixture(
-  overrides: Partial<MacroModuleView> = {},
-): MacroModuleView {
+export function macroModuleFixture(overrides: Partial<MacroModuleView> = {}): MacroModuleView {
   const primaryChart = equityChart();
   const tables = [equityTable()];
   return {
@@ -195,10 +193,34 @@ export function macroYieldCurveModuleFixture(): MacroModuleView {
     status_label: "可用",
     min_points: 2,
     series: [
-      { concept_key: "rates:dgs10", label: "10年期美债收益率", short_label: "10Y", latest: 4.2, unit: "percent" },
-      { concept_key: "rates:dgs2", label: "2年期美债收益率", short_label: "2Y", latest: 3.8, unit: "percent" },
-      { concept_key: "rates:dgs30", label: "30年期美债收益率", short_label: "30Y", latest: 4.7, unit: "percent" },
-      { concept_key: "rates:dgs5", label: "5年期美债收益率", short_label: "5Y", latest: 4.0, unit: "percent" },
+      {
+        concept_key: "rates:dgs10",
+        label: "10年期美债收益率",
+        short_label: "10Y",
+        latest: 4.2,
+        unit: "percent",
+      },
+      {
+        concept_key: "rates:dgs2",
+        label: "2年期美债收益率",
+        short_label: "2Y",
+        latest: 3.8,
+        unit: "percent",
+      },
+      {
+        concept_key: "rates:dgs30",
+        label: "30年期美债收益率",
+        short_label: "30Y",
+        latest: 4.7,
+        unit: "percent",
+      },
+      {
+        concept_key: "rates:dgs5",
+        label: "5年期美债收益率",
+        short_label: "5Y",
+        latest: 4.0,
+        unit: "percent",
+      },
     ],
   };
   return macroModuleFixture({
@@ -212,8 +234,24 @@ export function macroYieldCurveModuleFixture(): MacroModuleView {
       question: "曲线是否继续压制风险资产估值？",
     },
     tiles: [
-      { concept_key: "rates:dgs2", label: "2年期美债收益率", short_label: "2Y", value: 3.8, display_value: "3.80", unit: "percent", unit_label: "%" },
-      { concept_key: "rates:dgs10", label: "10年期美债收益率", short_label: "10Y", value: 4.2, display_value: "4.20", unit: "percent", unit_label: "%" },
+      {
+        concept_key: "rates:dgs2",
+        label: "2年期美债收益率",
+        short_label: "2Y",
+        value: 3.8,
+        display_value: "3.80",
+        unit: "percent",
+        unit_label: "%",
+      },
+      {
+        concept_key: "rates:dgs10",
+        label: "10年期美债收益率",
+        short_label: "10Y",
+        value: 4.2,
+        display_value: "4.20",
+        unit: "percent",
+        unit_label: "%",
+      },
     ],
     primary_chart: primaryChart,
     tables: [ratesTable()],
@@ -237,7 +275,9 @@ export function macroCryptoDerivativesModuleFixture(): MacroModuleView {
     status: "ok",
     status_label: "可用",
     min_points: 2,
-    series: [{ concept_key: "crypto:btc", label: "BTC", latest: 110_000, unit: "usd", point_count: 60 }],
+    series: [
+      { concept_key: "crypto:btc", label: "BTC", latest: 110_000, unit: "usd", point_count: 60 },
+    ],
   };
   return macroModuleFixture({
     snapshot: {
@@ -249,7 +289,16 @@ export function macroCryptoDerivativesModuleFixture(): MacroModuleView {
       subtitle: "CEX OI、资金费率与成交",
       question: "衍生品杠杆是否确认风险偏好？",
     },
-    tiles: [{ concept_key: "crypto:btc", label: "BTC", value: 110_000, display_value: "110,000.00", unit: "usd", unit_label: "美元" }],
+    tiles: [
+      {
+        concept_key: "crypto:btc",
+        label: "BTC",
+        value: 110_000,
+        display_value: "110,000.00",
+        unit: "usd",
+        unit_label: "美元",
+      },
+    ],
     primary_chart: primaryChart,
     tables: [cexTable()],
     data_health: {

@@ -192,10 +192,10 @@ BOUNDED_SCHEDULER_COUNTER_PATHS = (
     SRC / "domains/macro_intel/runtime/macro_view_projection_worker.py",
 )
 
-REPAIR_HANDLER_PATHS = {
+REMOVED_RUNTIME_REPAIR_PATHS = {
     SRC / "app/runtime/runtime_worker_dirty_targets.py",
 }
-REPAIR_HANDLER_COMMAND = "enqueue-runtime-worker-dirty-targets"
+REMOVED_RUNTIME_REPAIR_COMMAND = "enqueue-runtime-worker-dirty-targets"
 TOKEN_RADAR_REPOSITORY_PATH = SRC / "domains/token_intel/repositories/token_radar_repository.py"
 TOKEN_RADAR_PROJECTION_SERVICE_PATH = SRC / "domains/token_intel/services/token_radar_projection.py"
 TOKEN_RADAR_PROJECTION_WORKER_PATH = SRC / "domains/token_intel/runtime/token_radar_projection_worker.py"
@@ -410,33 +410,12 @@ def test_bounded_scheduler_tail_workers_expose_compact_cost_counters(path: Path)
 
 
 @pytest.mark.architecture
-def test_runtime_worker_dirty_target_repair_is_enqueue_only_when_present() -> None:
-    repair_paths = sorted(path for path in REPAIR_HANDLER_PATHS if path.exists())
-    if not repair_paths:
-        pytest.skip("enqueue-runtime-worker-dirty-targets repair handler has not landed yet")
+def test_runtime_worker_dirty_target_repair_surface_is_removed() -> None:
+    lingering_paths = [str(path.relative_to(ROOT)) for path in REMOVED_RUNTIME_REPAIR_PATHS if path.exists()]
+    runtime_text = "\n".join(path.read_text(encoding="utf-8") for path in (SRC / "app").rglob("*.py"))
 
-    violations: list[str] = []
-    for path in repair_paths:
-        text = path.read_text(encoding="utf-8")
-        tree = _parse(path)
-        if REPAIR_HANDLER_COMMAND not in text:
-            violations.append(f"{_rel(path)} does not expose {REPAIR_HANDLER_COMMAND}")
-        for call in (node for node in ast.walk(tree) if isinstance(node, ast.Call)):
-            call_path = _call_path(call.func)
-            call_leaf = _call_leaf(call.func)
-            if call_leaf == "run_once":
-                violations.append(f"{_rel(path)}:{call.lineno} calls worker run_once()")
-            if _looks_like_provider_or_agent_call(call_path):
-                violations.append(f"{_rel(path)}:{call.lineno} calls provider/agent path `{call_path}`")
-        violations.extend(
-            f"{_rel(path)} writes business/read-model table {table}"
-            for table in BUSINESS_OUTPUT_TABLES
-            if _write_pattern(table).search(text)
-        )
-        if not any(table in text for table in CONTROL_PLANE_TABLES):
-            violations.append(f"{_rel(path)} does not enqueue a known runtime control-plane table")
-
-    assert violations == []
+    assert lingering_paths == []
+    assert REMOVED_RUNTIME_REPAIR_COMMAND not in runtime_text
 
 
 @pytest.mark.architecture
@@ -554,7 +533,7 @@ def _is_control_claim_call(call_path: str, markers: tuple[str, ...]) -> bool:
 
 def _is_allowed_repair_path(path: Path) -> bool:
     rel = path.relative_to(SRC).as_posix()
-    return path in REPAIR_HANDLER_PATHS or bool(re.search(r"/services/[^/]*repair[^/]*\.py$", f"/{rel}"))
+    return bool(re.search(r"/services/[^/]*repair[^/]*\.py$", f"/{rel}"))
 
 
 def _looks_like_provider_or_agent_call(call_path: str) -> bool:

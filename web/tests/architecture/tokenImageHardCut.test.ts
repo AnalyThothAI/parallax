@@ -22,9 +22,15 @@ describe("token image hard cut", () => {
         const text = readFileSync(path, "utf8");
         return [
           text.includes("tokenImageUrl") ? `${relative(webRoot, path)}: tokenImageUrl` : null,
-          oldTokenImageProxyPattern.test(text) ? `${relative(webRoot, path)}: /api/token-image` : null,
-          text.includes("gmgn.ai/external-res") ? `${relative(webRoot, path)}: gmgn.ai/external-res` : null,
-          remoteLogoUrlPattern.test(text) ? `${relative(webRoot, path)}: remote logo_url fixture` : null,
+          oldTokenImageProxyPattern.test(text)
+            ? `${relative(webRoot, path)}: /api/token-image`
+            : null,
+          text.includes("gmgn.ai/external-res")
+            ? `${relative(webRoot, path)}: gmgn.ai/external-res`
+            : null,
+          remoteLogoUrlPattern.test(text)
+            ? `${relative(webRoot, path)}: remote logo_url fixture`
+            : null,
           ...removedLogoCompatibilityNames
             .filter((name) => text.includes(name))
             .map((name) => `${relative(webRoot, path)}: ${name}`),
@@ -36,13 +42,20 @@ describe("token image hard cut", () => {
 
   it("keeps frontend tests from depending on the removed proxy helper", () => {
     const offenders = collectFiles(testRoot)
-      .filter((path) => sourceExtensions.has(extname(path)) && !path.endsWith("tokenImageHardCut.test.ts"))
+      .filter(
+        (path) =>
+          sourceExtensions.has(extname(path)) && !path.endsWith("tokenImageHardCut.test.ts"),
+      )
       .flatMap((path) => {
         const text = readFileSync(path, "utf8");
         return [
           text.includes("tokenImageUrl") ? `${relative(webRoot, path)}: tokenImageUrl` : null,
-          oldTokenImageProxyPattern.test(text) ? `${relative(webRoot, path)}: /api/token-image` : null,
-          remoteLogoUrlPattern.test(text) ? `${relative(webRoot, path)}: remote logo_url fixture` : null,
+          oldTokenImageProxyPattern.test(text)
+            ? `${relative(webRoot, path)}: /api/token-image`
+            : null,
+          remoteLogoUrlPattern.test(text)
+            ? `${relative(webRoot, path)}: remote logo_url fixture`
+            : null,
           ...removedLogoCompatibilityNames
             .filter((name) => text.includes(name))
             .map((name) => `${relative(webRoot, path)}: ${name}`),

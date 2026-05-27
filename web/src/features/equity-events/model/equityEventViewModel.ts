@@ -42,9 +42,7 @@ export const sortEquityEventRows = (rows: EquityEventRow[]): EquityEventRow[] =>
     return (right.latest_event_at_ms ?? 0) - (left.latest_event_at_ms ?? 0);
   });
 
-export const sortEquityCalendarRows = (
-  rows: EquityEventCalendarRow[],
-): EquityEventCalendarRow[] =>
+export const sortEquityCalendarRows = (rows: EquityEventCalendarRow[]): EquityEventCalendarRow[] =>
   [...rows].sort((left, right) => {
     const timeDelta = (left.expected_at_ms ?? 0) - (right.expected_at_ms ?? 0);
     if (timeDelta !== 0) return timeDelta;

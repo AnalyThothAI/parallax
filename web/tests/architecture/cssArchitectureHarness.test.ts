@@ -157,12 +157,7 @@ describe("CSS architecture harness", () => {
   });
 
   it("keeps retired route and sidebar selector fragments out of production side-effect CSS", () => {
-    const retiredFragments = [
-      "desktop-side-rail",
-      "mobile-route-nav",
-      "side-rail",
-      "route-nav",
-    ];
+    const retiredFragments = ["desktop-side-rail", "mobile-route-nav", "side-rail", "route-nav"];
     const offenders = collectFiles(srcRoot)
       .filter(isSideEffectCssFile)
       .flatMap((path) => {
@@ -203,7 +198,9 @@ describe("CSS architecture harness", () => {
       .flatMap((path) => {
         const css = readFileSync(path, "utf8");
         return cssRules(css)
-          .filter((rule) => rule.selector.split(",").some((selector) => selector.trim() === ":root"))
+          .filter((rule) =>
+            rule.selector.split(",").some((selector) => selector.trim() === ":root"),
+          )
           .map((rule) => `${relativeToSrc(path)}:${lineNumber(css, rule.start)} defines :root`);
       });
 

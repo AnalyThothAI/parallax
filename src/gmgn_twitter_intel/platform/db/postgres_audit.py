@@ -21,8 +21,7 @@ CORE_TABLES = (
     "token_intent_evidence",
     "token_intent_resolutions",
     "token_radar_current_rows",
-    "token_radar_rank_history",
-    "token_radar_snapshot_audit",
+    "token_radar_publication_state",
     "token_radar_target_first_seen",
     "enrichment_jobs",
     "social_event_extractions",
@@ -38,8 +37,7 @@ PROJECTION_TABLES = (
     "projection_runs",
     "projection_dirty_ranges",
     "token_radar_current_rows",
-    "token_radar_rank_history",
-    "token_radar_snapshot_audit",
+    "token_radar_publication_state",
 )
 
 FOREIGN_KEY_CHECKS = {
@@ -70,12 +68,6 @@ FOREIGN_KEY_CHECKS = {
     "token_radar_current_rows_missing_intents": """
         SELECT COUNT(*) AS count
         FROM token_radar_current_rows child
-        LEFT JOIN token_intents parent ON parent.intent_id = child.intent_id
-        WHERE parent.intent_id IS NULL
-    """,
-    "token_radar_snapshot_audit_missing_intents": """
-        SELECT COUNT(*) AS count
-        FROM token_radar_snapshot_audit child
         LEFT JOIN token_intents parent ON parent.intent_id = child.intent_id
         WHERE parent.intent_id IS NULL
     """,
@@ -173,26 +165,6 @@ HOT_QUERIES: tuple[dict[str, Any], ...] = (
             LIMIT 50
         """,
         "params": (),
-    },
-    {
-        "name": "token_factor_settlement_rows",
-        "sql": """
-            SELECT row_id
-            FROM token_radar_snapshot_audit
-            WHERE factor_version = %(token_factor_version)s
-              AND "window" = %(window)s
-              AND scope = %(scope)s
-              AND computed_at_ms + %(horizon_ms)s <= %(generated_at_ms)s
-            ORDER BY computed_at_ms DESC, rank ASC, lane ASC, row_id ASC
-            LIMIT 50
-        """,
-        "params": {
-            TOKEN_FACTOR_VERSION_PARAM: None,
-            "window": "1h",
-            "scope": "all",
-            "horizon_ms": 60 * 60 * 1000,
-            "generated_at_ms": 4_102_444_800_000,
-        },
     },
 )
 

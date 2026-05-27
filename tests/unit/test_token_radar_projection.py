@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 
-import pytest
-
 import gmgn_twitter_intel.domains.token_intel.services.token_radar_projection as token_radar_projection_module
 from gmgn_twitter_intel.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
@@ -120,7 +118,6 @@ def test_compact_rank_inputs_preserves_rank_key_tie_breakers_from_scalar_columns
                     "latest_seen_ms"
                 ],
                 "payload_hash": f"hash-{row['target_id']}",
-                "rank_input_version": "token-radar-rank-input-v1",
                 "last_scored_at_ms": 1_777_800_060_000,
             }
         )
@@ -173,83 +170,6 @@ def test_compact_rank_inputs_does_not_admit_unresolved_identity_id_into_cohort()
     assert unresolved_rank["target_id"] is None
     assert unresolved_rank["cohort_in_cohort"] is False
     assert unresolved_rank["factor_ranks"] == {family: None for family in TOKEN_RADAR_FACTOR_FAMILIES}
-
-
-def test_full_rank_input_rebuild_enumerates_legacy_rows_and_scores_owner_path(monkeypatch):
-    now_ms = 1_777_800_060_000
-    recorder = FakeProjectionRecorder()
-    token_radar = FakeTokenRadar()
-    token_radar.rebuild_keys = [
-        {
-            "projection_version": PROJECTION_VERSION,
-            "window": "1h",
-            "scope": "all",
-            "lane": "resolved",
-            "target_type_key": "Asset",
-            "identity_id": "asset-1",
-            "target_type": "Asset",
-            "target_id": "asset-1",
-            "payload_hash": "legacy-hash",
-            "rank_input_version": "legacy_needs_rebuild",
-        }
-    ]
-    repos = type(
-        "Repos",
-        (),
-        {
-            "conn": FakeTransactionConn(),
-            "token_radar": token_radar,
-            "token_radar_rank_sources": FakeRankSources(token_radar=token_radar, rows_by_request={}),
-        },
-    )()
-
-    monkeypatch.setattr(
-        token_radar_projection_module,
-        "ProjectionRepository",
-        lambda conn: FakeProjectionRepository(conn=conn, recorder=recorder),
-    )
-    monkeypatch.setattr(
-        TokenRadarProjection,
-        "_project_source_request",
-        lambda self, **kwargs: token_radar.score_calls.append(kwargs) or {"source_rows": 2, "rows_written": 1},
-    )
-    monkeypatch.setattr(
-        TokenRadarProjection,
-        "refresh_rank_set",
-        lambda self, **kwargs: (
-            token_radar.refresh_calls.append(kwargs)
-            or {"status": "ready", "source_rows": 1, "rows_written": 1, "computed_at_ms": kwargs["now_ms"]}
-        ),
-    )
-
-    result = TokenRadarProjection(repos=repos).rebuild_rank_inputs_full(
-        windows=("1h",),
-        scopes=("all",),
-        now_ms=now_ms,
-        batch_size=100,
-    )
-
-    assert result["status"] == "ready"
-    assert result["legacy_rows_seen"] == 1
-    assert token_radar.list_rebuild_calls == [
-        {
-            "projection_version": PROJECTION_VERSION,
-            "windows": ("1h",),
-            "scopes": ("all",),
-            "limit": 100,
-        },
-        {
-            "projection_version": PROJECTION_VERSION,
-            "windows": ("1h",),
-            "scopes": ("all",),
-            "limit": 100,
-        },
-    ]
-    assert token_radar.source_request_batches[0][0].identity_id == "asset-1"
-    assert token_radar.rank_source_populate_batches[0]["requests"][0].identity_id == "asset-1"
-    assert token_radar.rank_source_populate_batches[0]["commit"] is False
-    assert token_radar.score_calls[0]["target"]["identity_id"] == "asset-1"
-    assert token_radar.refresh_calls == [{"window": "1h", "scope": "all", "now_ms": now_ms, "limit": 100}]
 
 
 def test_project_group_outputs_factor_snapshot_not_score_contract():
@@ -542,25 +462,6 @@ def test_projection_stale_write_does_not_advance_offset(monkeypatch):
     ]
 
 
-def test_projection_refuses_partial_rank_publish_when_rank_inputs_need_rebuild() -> None:
-    row = source_row("event-1", received_at_ms=1_777_800_000_000)
-    feature_row = _project_group([row], now_ms=1_777_800_060_000, window="5m", scope="all")
-    token_radar = FakeTokenRadar([feature_row], stale_rank_inputs=1)
-    repos = type("Repos", (), {"conn": FakeTransactionConn(), "token_radar": token_radar})()
-
-    with pytest.raises(RuntimeError, match="token_radar_rank_inputs_require_full_rebuild"):
-        TokenRadarProjection(repos=repos).refresh_rank_set(
-            window="5m",
-            scope="all",
-            now_ms=1_777_800_060_000,
-            limit=20,
-        )
-
-    assert token_radar.rows == []
-    assert token_radar.coverage[-1]["status"] == "failed"
-    assert token_radar.coverage[-1]["error"] == "token_radar_rank_inputs_require_full_rebuild"
-
-
 def test_projection_refresh_rank_set_does_not_mark_user_coverage_running(monkeypatch):
     recorder = FakeProjectionRecorder()
     now_ms = 1_777_800_060_000
@@ -582,7 +483,8 @@ def test_projection_refresh_rank_set_does_not_mark_user_coverage_running(monkeyp
     result = TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=now_ms, limit=20)
 
     assert result["status"] == "ready"
-    assert [call["status"] for call in token_radar.coverage] == ["ready"]
+    assert token_radar.publication_failures == []
+    assert len(token_radar.rows) == 1
 
 
 def test_projection_stale_cleanup_is_throttled_per_window_scope(monkeypatch):
@@ -641,32 +543,6 @@ def test_projection_does_not_call_current_market_repository(monkeypatch):
     assert snapshot["families"]["timing_risk"]["data_health"] != "anchor_only"
     assert not hasattr(repos, "current_market")
     assert token_radar.rows[0]["market_json"] == {}
-
-
-def test_projection_hydration_payload_hash_mismatch_does_not_publish(monkeypatch):
-    recorder = FakeProjectionRecorder()
-    now_ms = 1_777_800_060_000
-    projected = _project_group(
-        [source_row("event-1", received_at_ms=now_ms - 60_000)],
-        now_ms=now_ms,
-        window="5m",
-        scope="all",
-    )
-    assert projected is not None
-    token_radar = FakeTokenRadar([projected], hydrated_payload_hash="changed-hash")
-    repos = type("Repos", (), {"conn": FakeTransactionConn(), "token_radar": token_radar})()
-
-    monkeypatch.setattr(
-        token_radar_projection_module,
-        "ProjectionRepository",
-        lambda conn: FakeProjectionRepository(conn=conn, recorder=recorder),
-    )
-
-    with pytest.raises(RuntimeError, match="payload_hash changed"):
-        TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=now_ms, limit=20)
-
-    assert token_radar.rows == []
-    assert [call["status"] for call in token_radar.coverage] == ["failed"]
 
 
 def test_projection_enqueues_narrative_admission_for_realtime_rank_changes() -> None:
@@ -1006,46 +882,6 @@ def test_projection_rebuild_dirty_targets_marks_claim_done_with_payload_hash(mon
     assert dirty_targets.errors == []
 
 
-def test_projection_rebuild_dirty_targets_blocks_before_claim_when_rank_inputs_are_stale():
-    token_radar = FakeTokenRadar(stale_by_work_item={("5m", "all"): 3, ("1h", "matched"): 1})
-    dirty_targets = FakeDirtyTargets(
-        [
-            {
-                "target_type_key": "Asset",
-                "identity_id": "asset-1",
-                "payload_hash": "claim-hash",
-                "lease_owner": "projection-worker",
-                "attempt_count": 1,
-            }
-        ]
-    )
-    repos = type(
-        "Repos",
-        (),
-        {
-            "conn": FakeTransactionConn(),
-            "token_radar": token_radar,
-            "token_radar_dirty_targets": dirty_targets,
-            "token_radar_rank_sources": FakeRankSources(token_radar=token_radar, rows_by_request={}),
-        },
-    )()
-
-    result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
-        work_items=(("5m", "all"), ("1h", "matched")),
-        now_ms=1_777_800_060_000,
-        limit=20,
-    )
-
-    assert result["status"] == "blocked"
-    assert result["blocked_precondition"] is True
-    assert result["reason"] == "token_radar_rank_inputs_require_full_rebuild"
-    assert result["stale_rank_input_count"] == 4
-    assert result["stale_rank_input_counts"] == {"5m:all": 3, "1h:matched": 1}
-    assert dirty_targets.claim_due_calls == []
-    assert dirty_targets.done == []
-    assert dirty_targets.errors == []
-
-
 def test_projection_rebuild_dirty_targets_scores_only_selected_work_items(monkeypatch):
     score_calls: list[tuple[str, str]] = []
     refresh_calls: list[tuple[str, str]] = []
@@ -1100,6 +936,105 @@ def test_projection_rebuild_dirty_targets_scores_only_selected_work_items(monkey
     assert score_calls == [("5m", "all"), ("1h", "matched")]
     assert refresh_calls == [("1h", "matched"), ("5m", "all")]
     assert set(result["windows"]) == {"5m:all", "1h:matched"}
+
+
+def test_projection_rebuild_dirty_targets_publishes_requested_work_items_without_dirty_claims(monkeypatch):
+    refresh_calls: list[tuple[str, str]] = []
+    token_radar = FakeTokenRadar()
+    dirty_targets = FakeDirtyTargets([])
+    repos = type(
+        "Repos",
+        (),
+        {
+            "conn": FakeTransactionConn(),
+            "token_radar": token_radar,
+            "token_radar_dirty_targets": dirty_targets,
+            "token_radar_rank_sources": FakeRankSources(token_radar=token_radar, rows_by_request={}),
+        },
+    )()
+
+    def refresh(self, **kwargs):
+        refresh_calls.append((kwargs["window"], kwargs["scope"]))
+        return {"rows_written": 0, "source_rows": 0, "status": "ready"}
+
+    monkeypatch.setattr(TokenRadarProjection, "refresh_rank_set", refresh)
+
+    result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
+        windows=("5m",),
+        scopes=("all",),
+        work_items=(("5m", "all"),),
+        now_ms=1_777_800_060_000,
+        limit=20,
+    )
+
+    assert result["status"] == "ready"
+    assert result["claimed"] == 0
+    assert refresh_calls == [("5m", "all")]
+    assert result["windows"]["5m:all"]["status"] == "ready"
+
+
+def test_projection_rebuild_dirty_targets_catches_up_from_facts_when_dirty_claims_are_missing(monkeypatch):
+    score_calls: list[tuple[str, str]] = []
+    refresh_calls: list[tuple[str, str]] = []
+    token_radar = FakeTokenRadar()
+    dirty_targets = FakeDirtyTargets(
+        [],
+        catch_up_count=1,
+        catch_up_claims=[
+            {
+                "target_type_key": "Asset",
+                "identity_id": "asset-1",
+                "payload_hash": "catch-up-hash",
+                "lease_owner": "projection-worker",
+                "attempt_count": 1,
+            }
+        ],
+    )
+    repos = type(
+        "Repos",
+        (),
+        {
+            "conn": FakeTransactionConn(),
+            "token_radar": token_radar,
+            "token_radar_dirty_targets": dirty_targets,
+            "token_radar_rank_sources": FakeRankSources(token_radar=token_radar, rows_by_request={}),
+        },
+    )()
+
+    def score(self, **kwargs):
+        score_calls.append((kwargs["request"].window, kwargs["request"].scope))
+        return {"source_rows": 1, "status": "updated"}
+
+    def refresh(self, **kwargs):
+        refresh_calls.append((kwargs["window"], kwargs["scope"]))
+        return {"rows_written": 1, "source_rows": 1, "status": "ready"}
+
+    monkeypatch.setattr(TokenRadarProjection, "_project_source_request", score)
+    monkeypatch.setattr(TokenRadarProjection, "refresh_rank_set", refresh)
+
+    result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
+        windows=("5m", "1h"),
+        scopes=("all",),
+        work_items=(("5m", "all"), ("1h", "all")),
+        now_ms=1_777_800_060_000,
+        limit=20,
+        lease_owner="projection-worker",
+    )
+
+    assert result["status"] == "ready"
+    assert result["catch_up_enqueued"] == 1
+    assert dirty_targets.catch_up_calls == [
+        {
+            "since_ms": 1_777_800_060_000 - WINDOW_MS["1h"],
+            "now_ms": 1_777_800_060_000,
+            "limit": 20,
+            "reason": "projection_interval_catch_up",
+            "commit": True,
+        }
+    ]
+    assert len(dirty_targets.claim_due_calls) == 2
+    assert score_calls == [("5m", "all"), ("1h", "all")]
+    assert refresh_calls == [("1h", "all"), ("5m", "all")]
 
 
 def test_projection_rebuild_dirty_targets_marks_error_with_payload_hash_on_failure(monkeypatch):
@@ -1495,37 +1430,43 @@ class FakeProjectionRepository:
 class FakeRejectingTokenRadar:
     def __init__(self, feature_rows: list[dict[str, object] | None] | None = None):
         self.feature_rows = [row for row in feature_rows or [] if row is not None]
-        self.coverage: list[dict[str, object]] = []
+        self.publication_failures: list[dict[str, object]] = []
 
-    def mark_coverage(self, **kwargs):
-        self.coverage.append(kwargs)
+    def mark_publication_failed(self, **kwargs):
+        self.publication_failures.append(kwargs)
 
     def list_rank_inputs_for_rank_set(self, **kwargs):
         return [_compact_rank_input_from_factor_row(row) for row in self.feature_rows]
 
-    def stale_rank_input_count(self, **kwargs):
-        return 0
-
-    def load_target_feature_payloads_for_ranked_keys(self, keys):
-        rows = []
-        for row, key in zip(self.feature_rows, keys, strict=False):
-            rows.append({**dict(row), **{field: key[field] for field in _RANK_KEY_FIELDS}})
-        return rows
-
-    def publish_rows(self, **kwargs):
+    def publish_current_generation(self, **kwargs):
         return False
 
 
 class FakeDirtyTargets:
-    def __init__(self, claims: list[dict[str, object]]):
+    def __init__(
+        self,
+        claims: list[dict[str, object]],
+        *,
+        catch_up_count: int = 0,
+        catch_up_claims: list[dict[str, object]] | None = None,
+    ):
         self.claims = claims
+        self.catch_up_count = catch_up_count
+        self.catch_up_claims = catch_up_claims
         self.claim_due_calls: list[dict[str, object]] = []
+        self.catch_up_calls: list[dict[str, object]] = []
         self.done: list[dict[str, object]] = []
         self.errors: list[dict[str, object]] = []
 
     def claim_due(self, **kwargs):
         self.claim_due_calls.append(kwargs)
+        if len(self.claim_due_calls) > 1 and self.catch_up_claims is not None:
+            return list(self.catch_up_claims)
         return list(self.claims)
+
+    def enqueue_recent_resolved_targets(self, **kwargs):
+        self.catch_up_calls.append(kwargs)
+        return self.catch_up_count
 
     def mark_done(self, keys, **kwargs):
         self.done.extend(dict(key) for key in keys)
@@ -1592,7 +1533,7 @@ class FakeTokenRadar:
     ):
         self.feature_rows = [row for row in feature_rows or [] if row is not None]
         self.rows: list[dict[str, object]] = []
-        self.coverage: list[dict[str, object]] = []
+        self.publication_failures: list[dict[str, object]] = []
         self.hydrated_payload_hash = hydrated_payload_hash
         self.stale_rank_inputs = int(stale_rank_inputs)
         self.stale_by_work_item = stale_by_work_item or {}
@@ -1604,50 +1545,14 @@ class FakeTokenRadar:
         self.rank_source_populate_batches: list[dict[str, object]] = []
         self.upserts: list[dict[str, object]] = []
         self.deletes: list[dict[str, object]] = []
-        self.target_projection_coverage: list[dict[str, object]] = []
 
-    def mark_coverage(self, **kwargs):
-        self.coverage.append(kwargs)
+    def mark_publication_failed(self, **kwargs):
+        self.publication_failures.append(kwargs)
 
     def list_rank_inputs_for_rank_set(self, **kwargs):
         return [_compact_rank_input_from_factor_row(row) for row in self.feature_rows]
 
-    def stale_rank_input_count(self, **kwargs):
-        return self.stale_rank_inputs
-
-    def rank_input_readiness_for_work_items(self, **kwargs):
-        from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import (
-            TokenRadarRankInputReadiness,
-        )
-
-        work_items = tuple(kwargs["work_items"])
-        stale_by_work_item = {
-            (str(window), str(scope)): int(self.stale_by_work_item.get((str(window), str(scope)), 0))
-            for window, scope in work_items
-            if int(self.stale_by_work_item.get((str(window), str(scope)), 0))
-        }
-        return TokenRadarRankInputReadiness(
-            ready=not stale_by_work_item,
-            stale_count=sum(stale_by_work_item.values()),
-            stale_by_work_item=stale_by_work_item,
-        )
-
-    def load_target_feature_payloads_for_ranked_keys(self, keys):
-        rows = []
-        for row, key in zip(self.feature_rows, keys, strict=False):
-            hydrated = dict(row)
-            hydrated.update({field: key[field] for field in _RANK_KEY_FIELDS})
-            hydrated["payload_hash"] = self.hydrated_payload_hash or key["payload_hash"]
-            rows.append(hydrated)
-        return rows
-
-    def list_rank_input_rebuild_keys(self, **kwargs):
-        self.list_rebuild_calls.append(kwargs)
-        rows = list(self.rebuild_keys)
-        self.rebuild_keys = []
-        return rows
-
-    def publish_rows(self, **kwargs):
+    def publish_current_generation(self, **kwargs):
         self.rows = list(kwargs["rows"])
         return True
 
@@ -1658,9 +1563,6 @@ class FakeTokenRadar:
     def delete_target_feature(self, **kwargs):
         self.deletes.append(kwargs)
         return 0
-
-    def mark_target_projection_coverage(self, **kwargs):
-        self.target_projection_coverage.append(kwargs)
 
 
 def _compact_rank_input_from_factor_row(row: dict[str, object]) -> dict[str, object]:
@@ -1711,7 +1613,11 @@ def _compact_rank_input_from_factor_row(row: dict[str, object]) -> dict[str, obj
         "raw_composite_score": snapshot["composite"].get("rank_score"),
         "recommended_decision": snapshot["composite"].get("recommended_decision") or "discard",
         "gates_max_decision": snapshot["gates"].get("max_decision") or "discard",
-        "rank_input_version": "token-radar-rank-input-v1",
+        "factor_snapshot_json": snapshot,
+        "source_event_ids_json": row.get("source_event_ids_json") or ["event-1"],
+        "source_intent_ids_json": row.get("source_intent_ids_json") or [row.get("intent_id") or "intent-1"],
+        "source_resolution_ids_json": row.get("source_resolution_ids_json")
+        or [row.get("resolution_id") or "resolution-1"],
         "payload_hash": row.get("payload_hash") or f"feature-hash:{target_id}",
         "last_scored_at_ms": row.get("last_scored_at_ms") or 1_777_800_060_000,
     }

@@ -65,24 +65,27 @@ describe("buildTokenRadarCompactCase", () => {
     ["pending", "semantic_labeling_pending", "叙事分析中"],
     ["insufficient", "low_source_volume", "叙事样本不足"],
     ["semantic_unavailable", "low_semantic_coverage", "语义覆盖不足"],
-  ] as const)("surfaces %s not-ready currentness without falling back to factor text", (status, reason, title) => {
-    const view = buildTokenRadarCompactCase({
-      ...tokenFlowFixture(),
-      discussion_digest: {
-        status,
-        currentness: {
-          display_status: "not_ready",
-          reason: "no_ready_digest",
+  ] as const)(
+    "surfaces %s not-ready currentness without falling back to factor text",
+    (status, reason, title) => {
+      const view = buildTokenRadarCompactCase({
+        ...tokenFlowFixture(),
+        discussion_digest: {
+          status,
+          currentness: {
+            display_status: "not_ready",
+            reason: "no_ready_digest",
+          },
+          data_gaps: [{ reason }],
         },
-        data_gaps: [{ reason }],
-      },
-    });
+      });
 
-    expect(view.narrative.value).toBe(title);
-    expect(view.narrative.detail).toBe(title);
-    expect(view.narrative.detail).not.toContain("关注源");
-    expect(view.narrative.detail).not.toContain("催化");
-  });
+      expect(view.narrative.value).toBe(title);
+      expect(view.narrative.detail).toBe(title);
+      expect(view.narrative.detail).not.toContain("关注源");
+      expect(view.narrative.detail).not.toContain("催化");
+    },
+  );
 
   it("keeps last-ready digest visible while currentness is updating", () => {
     const view = buildTokenRadarCompactCase({
@@ -154,7 +157,6 @@ describe("buildTokenRadarCompactCase", () => {
 
     expect(view.logoUrl).toBe(TOKEN_IMAGE_URL);
   });
-
 });
 
 function tokenFlowFixture(): TokenFlowItem {

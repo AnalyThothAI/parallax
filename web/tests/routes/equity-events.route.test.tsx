@@ -101,7 +101,9 @@ describe("equity events route", () => {
   it("renders event detail at /earnings/events/event-1", async () => {
     renderAppRoute("/earnings/events/event-1");
 
-    expect(await screen.findByRole("heading", { name: "NVDA Q3 earnings release" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "NVDA Q3 earnings release" }),
+    ).toBeInTheDocument();
     expect(await screen.findByText("后端事实解读")).toBeInTheDocument();
     expect(screen.getByText("AI capex earnings cluster")).toBeInTheDocument();
     expect(screen.getByText("Revenue increased year over year.")).toBeInTheDocument();
@@ -124,7 +126,9 @@ describe("equity events route", () => {
     });
 
     renderAppRoute("/earnings");
-    expect(await screen.findByText("No equity event rows")).toHaveTextContent("No equity event rows");
+    expect(await screen.findByText("No equity event rows")).toHaveTextContent(
+      "No equity event rows",
+    );
 
     renderAppRoute("/earnings/calendar");
     expect(await screen.findByText("calendar unavailable")).toBeInTheDocument();
@@ -139,11 +143,7 @@ function renderAppRouteWithRouter(route = "/") {
   };
 }
 
-function TestRouteApp({
-  router,
-}: {
-  router: ReturnType<typeof createAppMemoryRouter>;
-}) {
+function TestRouteApp({ router }: { router: ReturnType<typeof createAppMemoryRouter> }) {
   const session = useAppSession();
   return (
     <AppRouteSessionProvider session={session}>

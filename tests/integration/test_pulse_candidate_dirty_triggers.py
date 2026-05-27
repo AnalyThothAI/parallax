@@ -85,11 +85,13 @@ def test_token_radar_publish_rolls_back_pulse_trigger_enqueue_with_current_row(t
             raise RuntimeError("forced rollback")
 
         with pytest.raises(RuntimeError, match="forced rollback"), conn.transaction():
-            repo.publish_rows(
+            repo.publish_current_generation(
                 projection_version=TOKEN_RADAR_PROJECTION_VERSION,
                 window="1h",
                 scope="all",
-                computed_at_ms=1_778_000_000_000,
+                generation_id="gen-rollback",
+                published_at_ms=1_778_000_000_000,
+                source_frontier_ms=1_778_000_000_000,
                 rows=[_valid_factor_row()],
                 on_current_changes=enqueue_then_fail,
                 commit=False,
@@ -142,7 +144,11 @@ def test_token_radar_refresh_rolls_back_current_rows_when_pulse_enqueue_fails(tm
             SELECT
               (SELECT count(*) FROM token_radar_current_rows) AS current_count,
               (SELECT count(*) FROM pulse_trigger_dirty_targets) AS trigger_count,
-              (SELECT status FROM token_radar_projection_coverage WHERE "window" = '1h' AND scope = 'all') AS status
+              (
+                SELECT latest_attempt_status
+                FROM token_radar_publication_state
+                WHERE "window" = '1h' AND scope = 'all'
+              ) AS status
             """
         ).fetchone()
     finally:

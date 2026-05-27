@@ -32,43 +32,39 @@ def fetch_radar_rows(conn: Any, *, now_ms: int, lookback_hours: int) -> list[dic
     results: list[dict[str, Any]] = []
     for window in EVALUATED_WINDOWS:
         for scope in EVALUATED_SCOPES:
-            latest = conn.execute(
-                """
-                SELECT computed_at_ms
-                FROM token_radar_projection_coverage
-                WHERE computed_at_ms >= %s
-                  AND computed_at_ms <= %s
-                  AND projection_version = %s
-                  AND "window" = %s
-                  AND scope = %s
-                  AND status = 'ready'
-                ORDER BY computed_at_ms DESC
-                LIMIT 1
-                """,
-                (since_ms, int(now_ms), TOKEN_RADAR_PROJECTION_VERSION, window, scope),
-            ).fetchone()
-            if not latest:
-                continue
             rows = conn.execute(
                 """
                 SELECT
-                  "window",
-                  scope,
-                  row_id,
-                  COALESCE(target_type || ':' || target_id, intent_id, event_id, row_id) AS subject_key,
-                  decision,
-                  rank,
-                  computed_at_ms,
-                  source_max_received_at_ms,
-                  factor_snapshot_json,
-                  source_event_ids_json
+                  token_radar_current_rows."window",
+                  token_radar_current_rows.scope,
+                  token_radar_current_rows.row_id,
+                  COALESCE(
+                    token_radar_current_rows.target_type || ':' || token_radar_current_rows.target_id,
+                    token_radar_current_rows.intent_id,
+                    token_radar_current_rows.event_id,
+                    token_radar_current_rows.row_id
+                  ) AS subject_key,
+                  token_radar_current_rows.decision,
+                  token_radar_current_rows.rank,
+                  token_radar_current_rows.computed_at_ms,
+                  token_radar_current_rows.source_max_received_at_ms,
+                  token_radar_current_rows.factor_snapshot_json,
+                  token_radar_current_rows.source_event_ids_json
                 FROM token_radar_current_rows
-                WHERE projection_version = %s
-                  AND "window" = %s
-                  AND scope = %s
-                ORDER BY rank ASC
+                JOIN token_radar_publication_state AS state
+                  ON state.projection_version = token_radar_current_rows.projection_version
+                 AND state."window" = token_radar_current_rows."window"
+                 AND state.scope = token_radar_current_rows.scope
+                 AND state.current_generation_id = token_radar_current_rows.generation_id
+                 AND state.latest_attempt_status = 'ready'
+                WHERE token_radar_current_rows.projection_version = %s
+                  AND token_radar_current_rows."window" = %s
+                  AND token_radar_current_rows.scope = %s
+                  AND state.current_published_at_ms >= %s
+                  AND state.current_published_at_ms <= %s
+                ORDER BY token_radar_current_rows.rank ASC
                 """,
-                (TOKEN_RADAR_PROJECTION_VERSION, window, scope),
+                (TOKEN_RADAR_PROJECTION_VERSION, window, scope, since_ms, int(now_ms)),
             ).fetchall()
             results.extend(dict(row) for row in rows)
     return results

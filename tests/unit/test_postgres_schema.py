@@ -156,6 +156,9 @@ RANK_SOURCE_IDENTITY_CONFIDENCE_TEXT_MIGRATION = Path(
 EQUITY_FETCH_RUN_REAPER_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0110_equity_fetch_run_reaper.py"
 )
+TOKEN_RADAR_PUBLICATION_STATE_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0111_token_radar_publication_state.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 
@@ -186,6 +189,52 @@ def test_alembic_revision_graph_has_single_head() -> None:
     script = ScriptDirectory.from_config(alembic_config())
 
     assert script.get_heads() == [script.get_current_head()]
+
+
+def test_token_radar_publication_state_migration_hard_cuts_online_tables() -> None:
+    text = TOKEN_RADAR_PUBLICATION_STATE_MIGRATION.read_text()
+
+    assert 'revision = "20260527_0111"' in text
+    assert 'down_revision = "20260526_0110"' in text
+    assert "DELETE FROM token_radar_current_rows" in text
+    for table_name in (
+        "token_radar_projection_coverage",
+        "token_radar_target_projection_coverage",
+        "token_radar_rank_history",
+        "token_radar_snapshot_audit",
+    ):
+        assert f"DROP TABLE IF EXISTS {table_name} CASCADE" in text
+
+    assert "ADD COLUMN IF NOT EXISTS generation_id TEXT" in text
+    assert "ADD COLUMN IF NOT EXISTS published_at_ms BIGINT" in text
+    assert "ADD COLUMN IF NOT EXISTS source_frontier_ms BIGINT" in text
+    assert "ALTER COLUMN generation_id SET NOT NULL" in text
+    assert "ALTER COLUMN published_at_ms SET NOT NULL" in text
+    assert "ALTER COLUMN source_frontier_ms SET NOT NULL" in text
+
+    assert "CREATE TABLE IF NOT EXISTS token_radar_publication_state" in text
+    assert "DROP COLUMN IF EXISTS rank_input_version" in text
+    for required_fragment in (
+        "current_generation_id TEXT",
+        "current_published_at_ms BIGINT",
+        "current_source_frontier_ms BIGINT",
+        "current_row_count BIGINT NOT NULL DEFAULT 0",
+        "current_source_rows BIGINT NOT NULL DEFAULT 0",
+        "latest_attempt_generation_id TEXT",
+        "latest_attempt_status TEXT NOT NULL",
+        "latest_attempt_started_at_ms BIGINT",
+        "latest_attempt_finished_at_ms BIGINT",
+        "latest_attempt_error TEXT",
+        "updated_at_ms BIGINT NOT NULL",
+        "PRIMARY KEY(projection_version, \"window\", scope)",
+        "latest_attempt_status IN ('ready', 'failed')",
+        "latest_attempt_status = 'failed' OR current_generation_id = latest_attempt_generation_id",
+    ):
+        assert required_fragment in text
+    assert "idx_token_radar_current_rows_generation" in text
+    assert "idx_token_radar_publication_state_current" in text
+    assert "side_effect_status" not in text
+    assert "row_set_hash" not in text
 
 
 def test_runtime_worker_dirty_targets_migration_adds_narrative_control_plane() -> None:

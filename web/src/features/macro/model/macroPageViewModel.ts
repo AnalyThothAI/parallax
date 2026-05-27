@@ -32,7 +32,12 @@ export function formatMacroScalar(value: unknown): string {
     return "暂无";
   }
   if (Array.isArray(value)) {
-    return value.map(formatMacroScalar).filter((item) => item !== "暂无").join(", ") || "暂无";
+    return (
+      value
+        .map(formatMacroScalar)
+        .filter((item) => item !== "暂无")
+        .join(", ") || "暂无"
+    );
   }
   if (value && typeof value === "object") {
     const record = value as Record<string, unknown>;

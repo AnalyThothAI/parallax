@@ -34,10 +34,12 @@ def test_postgres_schema_bootstraps_core_tables(tmp_path):
     assert "token_intent_evidence" in names
     assert "token_intent_resolutions" in names
     assert "token_radar_current_rows" in names
-    assert "token_radar_snapshot_audit" in names
-    assert "token_radar_rank_history" in names
+    assert "token_radar_publication_state" in names
     assert "token_radar_storage_maintenance_runs" in names
     for legacy_table in (
+        "token_radar_projection_coverage",
+        "token_radar_snapshot_audit",
+        "token_radar_rank_history",
         "token_radar_rows",
         "token_radar_retention_runs",
         "asset_mentions",
@@ -427,7 +429,7 @@ def test_runtime_schema_contains_token_factor_evaluation_diagnostics(tmp_path):
                 SELECT indexname
                 FROM pg_indexes
                 WHERE schemaname = 'public'
-                  AND tablename IN ('token_score_evaluations', 'token_radar_snapshot_audit')
+                  AND tablename = 'token_score_evaluations'
                 """
             ).fetchall()
         }
@@ -452,9 +454,7 @@ def test_runtime_schema_contains_token_factor_evaluation_diagnostics(tmp_path):
     assert columns["score_stddev"]["data_type"] == "double precision"
     assert columns["score_stddev"]["is_nullable"] == "YES"
     assert columns["diagnostics_json"]["is_nullable"] == "NO"
-    assert {"idx_token_score_evaluations_generated", "idx_token_radar_snapshot_audit_settlement"}.issubset(
-        token_factor_indexes
-    )
+    assert "idx_token_score_evaluations_generated" in token_factor_indexes
     assert {
         "idx_market_ticks_target_observed",
         "idx_enriched_events_target_time",
@@ -704,8 +704,7 @@ def test_runtime_schema_contains_token_radar_current_storage_and_watchlist_signa
                 WHERE schemaname = 'public'
                   AND tablename IN (
                     'token_radar_current_rows',
-                    'token_radar_rank_history',
-                    'token_radar_snapshot_audit',
+                    'token_radar_publication_state',
                     'token_radar_target_first_seen',
                     'social_event_extractions',
                     'watchlist_handle_signal_stats',
@@ -719,14 +718,16 @@ def test_runtime_schema_contains_token_radar_current_storage_and_watchlist_signa
 
     assert {
         "token_radar_current_rows",
-        "token_radar_rank_history",
-        "token_radar_snapshot_audit",
+        "token_radar_publication_state",
         "token_radar_target_first_seen",
         "token_radar_storage_maintenance_runs",
         "watchlist_handle_signal_stats",
         "watchlist_handle_signal_events",
     }.issubset(tables)
     assert "token_radar_rows" not in tables
+    assert "token_radar_projection_coverage" not in tables
+    assert "token_radar_rank_history" not in tables
+    assert "token_radar_snapshot_audit" not in tables
     assert "token_radar_retention_runs" not in tables
     assert "normalized_handle" in social_extraction_columns
     assert first_seen_columns["target_type_key"]["data_type"] == "text"
@@ -736,8 +737,8 @@ def test_runtime_schema_contains_token_radar_current_storage_and_watchlist_signa
     assert signal_events_primary_key_columns == {"event_id"}
     assert {
         "idx_token_radar_current_rows_read",
-        "idx_token_radar_rank_history_read",
-        "idx_token_radar_snapshot_audit_read",
+        "idx_token_radar_current_rows_generation",
+        "idx_token_radar_publication_state_current",
         "idx_token_radar_first_seen_updated",
         "idx_social_event_extractions_signal_normalized_handle_received",
         "idx_watchlist_handle_signal_stats_latest",
@@ -765,9 +766,7 @@ def test_token_radar_postgres_hard_cut_runtime_schema_uses_partitioned_facts_and
                 JOIN pg_namespace n ON n.oid = c.relnamespace
                 WHERE n.nspname = 'public'
                   AND c.relname IN (
-                    'market_ticks',
-                    'token_radar_rank_history',
-                    'token_radar_snapshot_audit'
+                    'market_ticks'
                   )
                 """
             ).fetchall()
@@ -815,8 +814,7 @@ def test_token_radar_postgres_hard_cut_runtime_schema_uses_partitioned_facts_and
                   AND tablename IN (
                     'market_ticks',
                     'enriched_events',
-                    'token_radar_target_features',
-                    'token_radar_target_projection_coverage'
+                    'token_radar_target_features'
                   )
                 """
             ).fetchall()
@@ -838,6 +836,17 @@ def test_token_radar_postgres_hard_cut_runtime_schema_uses_partitioned_facts_and
                 """
             ).fetchall()
         }
+        current_row_columns = {
+            row["column_name"]
+            for row in conn.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'token_radar_current_rows'
+                """
+            ).fetchall()
+        }
         reloptions = {
             row["relname"]: set(row["reloptions"] or [])
             for row in conn.execute(
@@ -848,8 +857,8 @@ def test_token_radar_postgres_hard_cut_runtime_schema_uses_partitioned_facts_and
                   AND relname IN (
                     'market_tick_current',
                     'token_radar_current_rows',
-                    'token_radar_dirty_targets',
-                    'token_radar_target_projection_coverage'
+                    'token_radar_publication_state',
+                    'token_radar_dirty_targets'
                   )
                 """
             ).fetchall()
@@ -862,13 +871,13 @@ def test_token_radar_postgres_hard_cut_runtime_schema_uses_partitioned_facts_and
         "market_tick_current",
         "token_radar_dirty_targets",
         "token_radar_target_features",
-        "token_radar_target_projection_coverage",
+        "token_radar_publication_state",
     }.issubset(tables)
-    assert partition_keys == {
-        "market_ticks": "RANGE (observed_at_ms)",
-        "token_radar_rank_history": "RANGE (recorded_at_ms)",
-        "token_radar_snapshot_audit": "RANGE (recorded_at_ms)",
-    }
+    assert "token_radar_projection_coverage" not in tables
+    assert "token_radar_target_projection_coverage" not in tables
+    assert "token_radar_rank_history" not in tables
+    assert "token_radar_snapshot_audit" not in tables
+    assert partition_keys == {"market_ticks": "RANGE (observed_at_ms)"}
     assert primary_keys["market_ticks"] == ["observed_at_ms", "tick_id"]
     assert primary_keys["market_tick_current"] == ["target_type", "target_id"]
     assert any(
@@ -884,17 +893,13 @@ def test_token_radar_postgres_hard_cut_runtime_schema_uses_partitioned_facts_and
         "(projection_version, target_type_key, identity_id, latest_market_observed_at_ms DESC)"
         in indexes["idx_token_radar_target_features_freshness"]
     )
-    assert "idx_token_radar_target_projection_coverage_freshness" in indexes
-    assert (
-        "(projection_version, target_type_key, identity_id, latest_market_observed_at_ms DESC)"
-        in indexes["idx_token_radar_target_projection_coverage_freshness"]
-    )
     assert payload_hash_columns == {
         "market_tick_current",
         "token_radar_current_rows",
         "token_radar_target_features",
         "token_radar_dirty_targets",
     }
+    assert {"generation_id", "published_at_ms", "source_frontier_ms"}.issubset(current_row_columns)
     for table_options in reloptions.values():
         assert "fillfactor=70" in table_options
         assert "autovacuum_vacuum_scale_factor=0.02" in table_options

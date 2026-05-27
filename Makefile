@@ -105,7 +105,6 @@ token-radar-cex-recover: ## recover Token Radar CEX recognition
 	@$(GMGN) ops sync-binance-cex-profiles
 	@$(GMGN) ops cex-binance-hard-cut-cleanup --dry-run --min-binance-feeds 400
 	@$(GMGN) ops cex-binance-hard-cut-cleanup --execute --min-binance-feeds 400
-	@$(GMGN) ops reset-token-radar-postgres-hard-cut --execute
 	@$(GMGN) ops rebuild-token-intents --window 24h --limit 5000 --projection-limit 5000
 	@$(GMGN) ops audit-token-radar --window 1h --scope all --limit 20
 

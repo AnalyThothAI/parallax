@@ -6,13 +6,14 @@ from typing import Any
 ADVISORY_LOCK_KEY = 2026052107
 TOKEN_RADAR_IMPACT_TABLES = (
     "token_radar_current_rows",
-    "token_radar_rank_history",
-    "token_radar_snapshot_audit",
 )
-TOKEN_RADAR_CLEAN_RESET_ACTION = {
+TOKEN_RADAR_REBUILD_ACTION = {
     "required": True,
-    "command": "ops reset-token-radar-postgres-hard-cut --execute",
-    "reason": "Token Radar storage is owned by token_intel; reset it through the dedicated hard-cut command.",
+    "command": "ops rebuild-token-intents --window 24h --limit 5000 --projection-limit 5000",
+    "reason": (
+        "CEX cleanup mutates resolution facts; Token Radar must rebuild from facts through "
+        "the normal projection path."
+    ),
 }
 TOKEN_CAPTURE_TIER_TABLE = "token_capture_tier"
 
@@ -49,7 +50,7 @@ def cleanup_cex_binance_hard_cut(
             "min_binance_feeds": min_binance_feeds,
             "counts": counts,
             "planned_actions": counts,
-            "token_radar_storage": TOKEN_RADAR_CLEAN_RESET_ACTION,
+            "token_radar_rebuild": TOKEN_RADAR_REBUILD_ACTION,
             "constraint_validated": False,
         }
 
@@ -72,7 +73,7 @@ def cleanup_cex_binance_hard_cut(
             "before_counts": before_counts,
             "executed_counts": executed_counts,
             "after_counts": after_counts,
-            "token_radar_storage": TOKEN_RADAR_CLEAN_RESET_ACTION,
+            "token_radar_rebuild": TOKEN_RADAR_REBUILD_ACTION,
             "constraint_validated": True,
         }
 
@@ -183,18 +184,6 @@ COUNT_SQL: dict[str, str] = {
     "token_radar_current_rows_to_reset": """
         SELECT COUNT(*)::bigint AS token_radar_current_rows_to_reset
         FROM token_radar_current_rows
-        WHERE target_type = 'CexToken'
-           OR pricefeed_id LIKE 'pricefeed:cex:okx:%'
-    """,
-    "token_radar_rank_history_to_reset": """
-        SELECT COUNT(*)::bigint AS token_radar_rank_history_to_reset
-        FROM token_radar_rank_history
-        WHERE target_type = 'CexToken'
-           OR pricefeed_id LIKE 'pricefeed:cex:okx:%'
-    """,
-    "token_radar_snapshot_audit_to_reset": """
-        SELECT COUNT(*)::bigint AS token_radar_snapshot_audit_to_reset
-        FROM token_radar_snapshot_audit
         WHERE target_type = 'CexToken'
            OR pricefeed_id LIKE 'pricefeed:cex:okx:%'
     """,

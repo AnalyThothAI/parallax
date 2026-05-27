@@ -47,8 +47,10 @@ def test_runtime_performance_check_prints_read_only_lifecycle_report() -> None:
     assert "enriched_events" in script
     assert "equity_event_evidence_artifacts" in script
     assert "token_radar_rank_source_events" in script
-    assert "token_radar_snapshot_audit_%" in script
-    assert "token_radar_rank_history_%" in script
+    assert "token_radar_current_rows" in script
+    assert "token_radar_publication_state" in script
+    assert "token_radar_snapshot_audit_%" not in script
+    assert "token_radar_rank_history_%" not in script
     assert "hot compact rank/read path" in script
     assert "selected-row hydrate" in script
     assert "cold audit/history" in script

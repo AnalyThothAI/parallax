@@ -59,7 +59,9 @@ test.describe("desktop sidebar navigation", () => {
     await expectNoUnhandledApiRequests(page);
   });
 
-  test("switches desktop routes from the sidebar without waiting for route data", async ({ page }) => {
+  test("switches desktop routes from the sidebar without waiting for route data", async ({
+    page,
+  }) => {
     await installMockApi(page);
     await page.goto("/");
 
@@ -75,7 +77,9 @@ test.describe("desktop sidebar navigation", () => {
     await expectNoUnhandledApiRequests(page);
   });
 
-  test("keeps desktop sidebar navigation instant while API requests are delayed", async ({ page }) => {
+  test("keeps desktop sidebar navigation instant while API requests are delayed", async ({
+    page,
+  }) => {
     await installMockApi(page, { delayNonBootstrapMs: 5_000 });
     await page.goto("/");
 

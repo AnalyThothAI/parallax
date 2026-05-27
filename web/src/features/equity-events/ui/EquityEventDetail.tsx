@@ -43,7 +43,8 @@ export function EquityEventDetail({
           </Link>
           <div>
             <span className="equity-event-kicker">
-              {item.ticker} · {equityEventTypeLabel(item.event_type)} · {equityEventTimestampLabel(item.latest_event_at_ms)}
+              {item.ticker} · {equityEventTypeLabel(item.event_type)} ·{" "}
+              {equityEventTimestampLabel(item.latest_event_at_ms)}
             </span>
             <h2>{item.headline}</h2>
           </div>
@@ -85,7 +86,9 @@ export function EquityEventDetail({
                   <small>{fact.validation_status ?? "pending"}</small>
                 </div>
               ))}
-              {!item.facts.length ? <span className="equity-event-muted">No facts projected.</span> : null}
+              {!item.facts.length ? (
+                <span className="equity-event-muted">No facts projected.</span>
+              ) : null}
             </div>
           </div>
 
@@ -105,7 +108,9 @@ export function EquityEventDetail({
                   ) : null}
                 </div>
               ))}
-              {!item.documents.length ? <span className="equity-event-muted">No source documents.</span> : null}
+              {!item.documents.length ? (
+                <span className="equity-event-muted">No source documents.</span>
+              ) : null}
             </div>
           </div>
 
@@ -118,10 +123,14 @@ export function EquityEventDetail({
               {item.spans.map((span, index) => (
                 <blockquote className="equity-event-span" key={span.span_id ?? index}>
                   {span.evidence_quote ?? "No quote text."}
-                  <small>{span.confidence !== null ? `confidence ${span.confidence}` : "confidence n/a"}</small>
+                  <small>
+                    {span.confidence !== null ? `confidence ${span.confidence}` : "confidence n/a"}
+                  </small>
                 </blockquote>
               ))}
-              {!item.spans.length ? <span className="equity-event-muted">No spans projected.</span> : null}
+              {!item.spans.length ? (
+                <span className="equity-event-muted">No spans projected.</span>
+              ) : null}
             </div>
           </div>
         </section>

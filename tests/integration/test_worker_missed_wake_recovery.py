@@ -26,7 +26,7 @@ EVENT_MS = FIXED_NOW_MS - 10 * 60 * 1000
 ASSET_ADDRESS = "0x2222222222222222222222222222222222222222"
 
 
-def test_token_radar_projection_worker_requires_explicit_repair_after_missed_dirty_enqueue(tmp_path) -> None:
+def test_token_radar_projection_worker_catches_up_after_missed_dirty_enqueue(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -40,27 +40,7 @@ def test_token_radar_projection_worker_requires_explicit_repair_after_missed_dir
             telemetry=object(),
         )
 
-        idle_result = asyncio.run(worker.run_once(now_ms=FIXED_NOW_MS))
-        row_before_repair = conn.execute(
-            """
-            SELECT count(*) AS count
-            FROM token_radar_current_rows
-            WHERE "window" = '1h' AND scope = 'all'
-            """,
-        ).fetchone()
-
-        repair_enqueued = _enqueue_token_radar_repair(conn)
         result = asyncio.run(worker.run_once(now_ms=FIXED_NOW_MS))
-
-        assert idle_result.failed == 0
-        assert idle_result.processed == 0
-        assert idle_result.notes["catch_up_enqueued"] == 0
-        assert row_before_repair["count"] == 0
-        assert repair_enqueued >= 1
-        assert result.failed == 0
-        assert result.processed >= 1
-        assert result.notes["source_rows"] >= 1
-        assert result.notes["rows_written"] >= 1
         row = conn.execute(
             """
             SELECT count(*) AS count
@@ -68,17 +48,22 @@ def test_token_radar_projection_worker_requires_explicit_repair_after_missed_dir
             WHERE "window" = '1h' AND scope = 'all'
             """,
         ).fetchone()
-        coverage = conn.execute(
+        assert result.failed == 0
+        assert result.processed >= 1
+        assert result.notes["catch_up_enqueued"] >= 1
+        assert result.notes["source_rows"] >= 1
+        assert result.notes["rows_written"] >= 1
+        publication_state = conn.execute(
             """
-            SELECT status, source_rows, row_count
-            FROM token_radar_projection_coverage
+            SELECT latest_attempt_status, current_source_rows, current_row_count
+            FROM token_radar_publication_state
             WHERE "window" = '1h' AND scope = 'all'
             """,
         ).fetchone()
         assert row["count"] >= 1
-        assert coverage["status"] == "ready"
-        assert coverage["source_rows"] >= 1
-        assert coverage["row_count"] >= 1
+        assert publication_state["latest_attempt_status"] == "ready"
+        assert publication_state["current_source_rows"] >= 1
+        assert publication_state["current_row_count"] >= 1
     finally:
         conn.close()
 

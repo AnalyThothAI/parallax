@@ -540,11 +540,10 @@ returns `cleanup` plus `final_health` summaries without hand-written SQL or
 API-path side effects. Its cleanup phase is an ops maintenance writer
 exception that must run while holding the narrative worker advisory locks; it is
 not a runtime compatibility layer and is not callable from HTTP routes.
-`ops enqueue-runtime-worker-dirty-targets` is the bounded repair surface for
-runtime dirty-target consumers. It is dry-run by default, requires an explicit
-work selector plus a bounded target/time/source selector, enqueues control rows
-only, and never calls providers, agents, worker `run_once()`, or public
-read-model writers.
+Runtime dirty-target consumers must self-heal from their material fact sources
+with bounded catch-up inside their own projection path. There is no generic
+runtime-worker repair CLI because such a surface blurs the boundary between
+normal runtime and operator maintenance.
 
 Macro one-shot CLI commands are operator surfaces, not background workers:
 `macro import-bundle --file <json>` or `--stdin` imports a macrodata-cli
@@ -696,11 +695,12 @@ v1/v2 shapes and reject legacy gate blocks. The v3 contract separates:
   `recommended_decision`.
 - `provenance`: source event ids and compute time.
 
-Current Token Radar reads use `token_radar_current_rows`. Lightweight rank
-history is stored in `token_radar_rank_history`, while full point-in-time
-factor snapshots live only in partitioned `token_radar_snapshot_audit`. Compact
-first-seen metadata preserves `listed_at_ms`, and diagnostics/settlement
-commands evaluate bounded audit snapshots by `computed_at_ms` and score version.
+Token Radar online serving is `token_radar_current_rows` plus
+`token_radar_publication_state`. `fresh` is allowed only when publication state
+is `ready` and served rows match `current_generation_id`. Failed latest attempts
+serve previous rows as `stale` or no rows as `failed`. Compact first-seen
+metadata preserves `listed_at_ms`; rank source edges are lazy evidence/detail,
+not a current-row fallback.
 
 Operational commands:
 
@@ -710,14 +710,9 @@ Operational commands:
   return evaluations when sufficient later market observations exist.
 - `gmgn-twitter-intel ops audit-token-radar` is v3-only and flags legacy
   snapshots instead of accepting compatibility fallback.
-- `gmgn-twitter-intel ops reset-token-radar-postgres-hard-cut` is an explicit
-  operator maintenance command for dropping legacy Token Radar storage and
-  clearing rebuildable Token Radar read models. It never touches material fact
-  tables, runtime config, or secrets.
-- `gmgn-twitter-intel ops ensure-postgres-partitions --execute` ensures current
-  and next month Token Radar rank-history and snapshot-audit partitions.
-- `gmgn-twitter-intel ops drop-expired-postgres-partitions --execute` is an
-  explicit no-op until partition retention is configured.
+- Token Radar has no runtime hard-reset command. Schema retirement belongs to
+  migrations; online repair uses `ops enqueue-token-radar-dirty-targets` or the
+  projection worker's bounded catch-up from material facts.
 
 ## Privacy boundary
 

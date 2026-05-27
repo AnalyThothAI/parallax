@@ -13,13 +13,10 @@ export function useMacroAssetCorrelationQuery({
   return useQuery({
     queryKey: queryKeys.macroAssetCorrelation(window),
     queryFn: async () => {
-      const response = await getApi<MacroAssetCorrelationData>(
-        "/api/macro/assets/correlation",
-        {
-          params: { window },
-          token,
-        },
-      );
+      const response = await getApi<MacroAssetCorrelationData>("/api/macro/assets/correlation", {
+        params: { window },
+        token,
+      });
       return response.data;
     },
     enabled: Boolean(token),

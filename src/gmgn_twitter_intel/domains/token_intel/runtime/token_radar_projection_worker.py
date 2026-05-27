@@ -97,7 +97,7 @@ class TokenRadarProjectionWorker(WorkerBase):
         try:
             with self._repository_session() as repos:
                 work_items = self._next_work_items(
-                    coverage=_latest_coverage_from_repos(
+                    publication_state=_latest_publication_state_from_repos(
                         repos,
                         windows=self.windows,
                         scopes=self.scopes,
@@ -150,17 +150,20 @@ class TokenRadarProjectionWorker(WorkerBase):
     def _next_work_items(
         self,
         *,
-        coverage: dict[tuple[str, str], dict[str, Any]],
+        publication_state: dict[tuple[str, str], dict[str, Any]],
         computed_at_ms: int,
     ) -> tuple[list[tuple[str, str]], tuple[str, str]]:
         hot_items = self._hot_work_items()
         background_item = self._next_background_window_scope(
-            coverage=coverage,
+            publication_state=publication_state,
             computed_at_ms=computed_at_ms,
         )
+        missing_items = self._missing_work_items(publication_state, computed_at_ms=computed_at_ms)
         work_items = list(hot_items)
+        work_items.extend(missing_items)
         if background_item is not None and background_item not in work_items:
             work_items.append(background_item)
+        work_items = _dedupe_work_items(work_items)
         if not work_items:
             raise RuntimeError("token radar projection worker has no windows or scopes configured")
         return work_items, background_item or work_items[-1]
@@ -168,7 +171,7 @@ class TokenRadarProjectionWorker(WorkerBase):
     def _next_background_window_scope(
         self,
         *,
-        coverage: dict[tuple[str, str], dict[str, Any]],
+        publication_state: dict[tuple[str, str], dict[str, Any]],
         computed_at_ms: int,
     ) -> tuple[str, str] | None:
         work_items = [
@@ -179,7 +182,7 @@ class TokenRadarProjectionWorker(WorkerBase):
         for _ in range(len(work_items)):
             item = work_items[self._cursor % len(work_items)]
             self._cursor += 1
-            latest = coverage.get(item, {}).get("computed_at_ms")
+            latest = publication_state.get(item, {}).get("current_published_at_ms")
             if latest is None or computed_at_ms - int(latest) >= self.cold_interval_ms:
                 return item
         return None
@@ -187,9 +190,9 @@ class TokenRadarProjectionWorker(WorkerBase):
     def _hot_work_items(self) -> list[tuple[str, str]]:
         return [(window, scope) for window in self.hot_windows for scope in self.scopes]
 
-    def _latest_coverage(self) -> dict[tuple[str, str], dict[str, Any]]:
+    def _latest_publication_state(self) -> dict[tuple[str, str], dict[str, Any]]:
         with self._repository_session() as repos:
-            return _latest_coverage_from_repos(
+            return _latest_publication_state_from_repos(
                 repos,
                 windows=self.windows,
                 scopes=self.scopes,
@@ -197,7 +200,7 @@ class TokenRadarProjectionWorker(WorkerBase):
 
     def _missing_work_items(
         self,
-        coverage: dict[tuple[str, str], dict[str, Any]],
+        publication_state: dict[tuple[str, str], dict[str, Any]],
         *,
         computed_at_ms: int,
     ) -> list[tuple[str, str]]:
@@ -205,35 +208,31 @@ class TokenRadarProjectionWorker(WorkerBase):
         for window in self.windows:
             for scope in self.scopes:
                 item = (window, scope)
-                item_coverage = coverage.get(item, {})
-                status = str(item_coverage.get("status") or "")
+                item_state = publication_state.get(item, {})
+                status = str(item_state.get("latest_attempt_status") or "")
                 if status == "ready":
                     continue
-                latest = item_coverage.get("computed_at_ms")
+                latest = item_state.get("current_published_at_ms")
                 if status == "failed" and latest is not None and computed_at_ms - int(latest) < self.cold_interval_ms:
                     continue
                 missing.append(item)
         return missing
 
-    def _mark_failed_coverage(self, *, window: str, scope: str, computed_at_ms: int, error: str) -> None:
+    def _mark_publication_failed(self, *, window: str, scope: str, computed_at_ms: int, error: str) -> None:
         try:
             with self._repository_session() as repos:
-                repos.token_radar.mark_coverage(
+                repos.token_radar.mark_publication_failed(
                     projection_version=TOKEN_RADAR_PROJECTION_VERSION,
                     window=window,
                     scope=scope,
-                    status="failed",
-                    reason="projection_window_failed",
-                    source_rows=0,
-                    row_count=0,
-                    computed_at_ms=computed_at_ms,
+                    generation_id=f"worker-failed:{window}:{scope}:{computed_at_ms}",
                     started_at_ms=computed_at_ms,
                     finished_at_ms=_now_ms(),
                     error=error,
                     commit=True,
                 )
         except Exception as exc:  # pragma: no cover - diagnostic side path
-            logger.exception(f"failed to mark token radar projection coverage failure: {exc}")
+            logger.exception(f"failed to mark token radar publication failure: {exc}")
 
     @contextmanager
     def _repository_session(self) -> Iterator[Any]:
@@ -259,7 +258,7 @@ def _dedupe_work_items(items: list[tuple[str, str]]) -> list[tuple[str, str]]:
     return out
 
 
-def _latest_coverage_from_repos(
+def _latest_publication_state_from_repos(
     repos: Any,
     *,
     windows: tuple[str, ...],
@@ -267,7 +266,7 @@ def _latest_coverage_from_repos(
 ) -> dict[tuple[str, str], dict[str, Any]]:
     return cast(
         dict[tuple[str, str], dict[str, Any]],
-        repos.token_radar.latest_coverage(
+        repos.token_radar.latest_publication_state(
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             windows=windows,
             scopes=scopes,

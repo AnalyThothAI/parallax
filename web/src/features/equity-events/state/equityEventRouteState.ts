@@ -40,9 +40,7 @@ export const parseEquityEventRouteState = (
   };
 };
 
-export const serializeEquityEventRouteState = (
-  state: EquityEventRouteState,
-): URLSearchParams => {
+export const serializeEquityEventRouteState = (state: EquityEventRouteState): URLSearchParams => {
   const params = new URLSearchParams();
   if (state.view !== EQUITY_EVENT_ROUTE_DEFAULTS.view) params.set("view", state.view);
   if (state.ticker) params.set("ticker", state.ticker);

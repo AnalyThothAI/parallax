@@ -4,13 +4,7 @@ import { useMemo } from "react";
 import { buildMacroHeatmapMatrix } from "../../model/macroChartModel";
 import "./macroCharts.css";
 
-export function MacroHeatmap({
-  caption,
-  rows,
-}: {
-  caption: string;
-  rows: MacroSemanticRecord[];
-}) {
+export function MacroHeatmap({ caption, rows }: { caption: string; rows: MacroSemanticRecord[] }) {
   const matrix = useMemo(() => buildMacroHeatmapMatrix(rows), [rows]);
   if (matrix.rows.length === 0) {
     return (

@@ -58,7 +58,7 @@ Review workers by separating four categories:
 | Category | Meaning | Examples | Rule |
 |----------|---------|----------|------|
 | Facts | Business observations and decisions that should be replayable | `events`, `token_intent_resolutions`, `asset_identity_evidence`, `asset_identity_current`, `market_ticks`, `enriched_events`, Pulse audit rows | Facts are product truth. |
-| Read models | Rebuildable projections for reads and product workflows | `market_tick_current`, `token_radar_current_rows`, `token_radar_rank_history`, `token_radar_snapshot_audit`, `token_radar_target_first_seen`, `token_profile_current`, `pulse_candidates`, `watchlist_handle_signal_stats`, watchlist summaries | Exactly one runtime writer. |
+| Read models | Rebuildable projections for reads and product workflows | `market_tick_current`, `token_radar_current_rows`, `token_radar_publication_state`, `token_radar_target_first_seen`, `token_profile_current`, `pulse_candidates`, `watchlist_handle_signal_stats`, watchlist summaries | Exactly one runtime writer. |
 | Control plane | Scheduling, retry, lease, budget, and queue state | `event_anchor_backfill_jobs`, `market_tick_current_dirty_targets`, `token_radar_dirty_targets`, `token_discovery_dirty_lookup_keys`, projection dirty targets, `pulse_trigger_dirty_targets`, `narrative_admission_dirty_targets`, `discussion_digest_dirty_targets`, `token_profile_current_dirty_targets`, `token_image_source_dirty_targets`, `asset_profile_refresh_targets`, `token_capture_tier_dirty_targets`, `pulse_agent_jobs`, notification deliveries | Never treat job state as product truth. |
 | Cache/fan-out | Process-local convenience state | `LivePriceGateway` latest cache and WebSocket fan-out | Cache is presentation-only unless persisted as facts. |
 | Local media mirrors | Rebuildable local copies of provider media | `token_image_assets` plus files under `cache/token-images` | Public image URLs must come from ready local rows, never provider URLs. |
@@ -120,7 +120,7 @@ notification_delivery
 | `resolution_refresh` (`ResolutionRefreshWorker`) | `asset_market` | `domains/asset_market/runtime/resolution_refresh_worker.py` | due `token_discovery_dirty_lookup_keys`, OKX DEX discovery | refreshed `token_intent_resolutions`, `registry_assets`, `asset_identity_evidence/current`, `token_discovery_results`, queue completion/reschedule state | poll | `resolution_updated` | `interval_seconds` |
 | `asset_profile_refresh` (`AssetProfileRefreshWorker`) | `asset_market` | `domains/asset_market/runtime/asset_profile_refresh_worker.py` | due `asset_profile_refresh_targets`, configured DEX profile sources | `asset_profiles`, refresh target backoff state | poll | none | `interval_seconds` |
 | `token_image_mirror` (`TokenImageMirrorWorker`) | `asset_market` | `domains/asset_market/runtime/token_image_mirror_worker.py` | due `token_image_source_dirty_targets`, terminal `token_image_assets` rows by exact source URL | `token_image_assets`, local cache files, `token_profile_current_dirty_targets` on terminal image changes | poll | none | `interval_seconds` |
-| `token_radar_projection` (`TokenRadarProjectionWorker`) | `token_intel` | `domains/token_intel/runtime/token_radar_projection_worker.py` | `token_radar_dirty_targets`; compact `token_radar_rank_source_events` rank-source edges | `token_radar_rank_source_events`, `token_radar_target_features`, `token_radar_current_rows`, `token_radar_rank_history`, `token_radar_snapshot_audit`, `token_radar_target_first_seen`, `projection_runs`, `projection_offsets`, `token_score_evaluations` | `market_tick_current_updated`, `resolution_updated` | `token_radar_updated` | `interval_seconds` |
+| `token_radar_projection` (`TokenRadarProjectionWorker`) | `token_intel` | `domains/token_intel/runtime/token_radar_projection_worker.py` | `token_radar_dirty_targets`; compact `token_radar_rank_source_events` rank-source edges | `token_radar_rank_source_events`, `token_radar_target_features`, `token_radar_current_rows`, `token_radar_publication_state`, `token_radar_target_first_seen`, `projection_runs`, `projection_offsets`, `token_score_evaluations` | `market_tick_current_updated`, `resolution_updated` | `token_radar_updated` | `interval_seconds` |
 | `token_profile_current` (`TokenProfileCurrentWorker`) | `asset_market` | `domains/asset_market/runtime/token_profile_current_worker.py` | due `token_profile_current_dirty_targets`; exact `asset_profiles`, `token_image_assets`, `cex_token_profiles`, exact GMGN stream evidence, exact OKX DEX evidence | `token_profile_current` | poll | none | `interval_seconds` |
 | `narrative_admission` (`NarrativeAdmissionWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/narrative_admission_worker.py` | due `narrative_admission_dirty_targets`; target-scoped Radar rows, `events`, current `token_intent_resolutions` | `narrative_admissions`, `discussion_digest_dirty_targets` | `token_radar_updated`, `resolution_updated` | none | `interval_seconds` |
 | `mention_semantics` (`MentionSemanticsWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/mention_semantics_worker.py` | leased due `token_mention_semantics` rows and exact source events | `token_mention_semantics`, `narrative_model_runs`, `discussion_digest_dirty_targets` on semantic completion | `token_radar_updated`, `resolution_updated` | `narrative_semantics_updated` | `interval_seconds` |
@@ -222,14 +222,16 @@ epoch-policy deferral is separate from provider capacity.
 ## Token Radar And Watchlist Maintenance Ownership
 
 `TokenRadarProjectionWorker` is the only runtime writer for
-`token_radar_current_rows`, `token_radar_rank_history`,
-`token_radar_snapshot_audit`, and `token_radar_target_first_seen`. The compact
-first-seen read model preserves `listed_at_ms` while current rows stay small.
-`ops reset-token-radar-postgres-hard-cut` is an explicit operator maintenance
-command for the clean-slate derived-storage reset; `ops
-enqueue-token-radar-dirty-targets` is the explicit repair path for missed dirty
-target enqueue. Neither command is called by HTTP handlers, WebSocket paths, or
-normal worker catch-up.
+`token_radar_current_rows`, `token_radar_publication_state`, and
+`token_radar_target_first_seen`. Token Radar online serving is
+`token_radar_current_rows` plus `token_radar_publication_state`. `fresh` is
+allowed only when publication state is `ready` and served rows match
+`current_generation_id`. Failed latest attempts serve previous rows as `stale`
+or no rows as `failed`. The compact first-seen read model preserves
+`listed_at_ms` while current rows stay small.
+Token Radar has no runtime hard-reset command. Legacy derived-storage removal
+belongs to migrations, and online repair is handled by the domain projection
+path plus explicit Token Radar dirty-target enqueue.
 
 `EnrichmentWorker` is the runtime writer for
 `watchlist_handle_signal_events` and `watchlist_handle_signal_stats`.

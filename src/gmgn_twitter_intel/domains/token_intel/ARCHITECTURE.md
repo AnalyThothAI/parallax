@@ -24,9 +24,9 @@ GMGN frame
   → LivePriceGateway fans out cache-only live market updates
   → TokenRadarProjectionWorker
       → token_radar_rank_source_events
+      → token_radar_target_features
       → token_radar_current_rows.factor_snapshot_json
-      → token_radar_rank_history
-      → token_radar_snapshot_audit
+      → token_radar_publication_state
   → read models / Signal Pulse / notifications
   → HTTP / WebSocket / CLI / frontend
 ```
@@ -45,7 +45,7 @@ GMGN frame
 | Asset profile facts | `../asset_market/runtime/asset_profile_refresh_worker.py`, `../asset_market/runtime/token_profile_current_worker.py`, `../asset_market/services/token_profile_current_projection.py`, `../asset_market/read_models/token_profile_read_model.py` | `asset_profiles`, `cex_token_profiles`, `token_profile_current` | GMGN OpenAPI, Binance Web3, and Binance CEX profile rows are source-cache facts. Public profile/icon facts come from `token_profile_current`, projected from persisted source caches plus GMGN stream exact snapshot and OKX DEX exact-address evidence. Profile facts are never resolver evidence, ranking factors, or `factor_snapshot_json` fields. API and frontend code do not call providers. |
 | Market facts | `../asset_market/runtime/{token_capture_tier_worker.py,market_tick_stream_worker.py,market_tick_poll_worker.py,event_anchor_backfill_worker.py,live_price_gateway.py}`, `../asset_market/services/{event_market_capture.py,asset_market_sync.py}` | `cex_tokens`, `price_feeds`, `market_ticks`, `enriched_events`, `token_capture_tier`; `event_anchor_backfill_jobs` control state | Ingest writes inline event-adjacent market ticks or a pending event-anchor fact plus a short-lived backfill job. Capture-tier projection assigns active targets to stream, poll, or inline-only. Stream and poll workers refresh hot market ticks. Event-anchor backfill consumes jobs, not fact rows, and terminalizes anchors it cannot validly attach. LivePriceGateway may receive high-frequency provider frames, but it is cache-only and does not persist facts. |
 | Event token projection | `queries/event_token_projection_query.py` | reads `token_intent_resolutions`, `asset_identity_current`, `cex_tokens`, `price_feeds`, `enriched_events`, `market_ticks` | HTTP recent, WebSocket replay/live payloads, and watchlist timelines expose token mentions through this read model. It returns a lean public token-resolution payload with `symbol` and standard message `price`; public surfaces do not serialize raw resolution fact rows. |
-| Radar projection | `runtime/token_radar_projection_worker.py`, `services/token_radar_projection.py`, `scoring/factor_snapshot.py`, `scoring/cross_section_normalizer.py`, `scoring/factor_diagnostics.py`, `queries/token_radar_rank_source_query.py`, `repositories/token_radar_rank_source_repository.py` | `token_radar_dirty_targets`, `token_radar_rank_source_events`, `token_radar_target_features`, `token_radar_current_rows.factor_snapshot_json`, `token_radar_rank_history`, `token_radar_snapshot_audit`, `token_score_evaluations`, `projection_runs`, `projection_offsets` | Projection consumes dirty resolved targets through the compact `token_radar_rank_source_events` hot-path read model, upserts compact target features, then ranks from `token_radar_target_features` into current/history/audit read models. `token_radar_rank_source_events` has a single runtime writer (`TokenRadarProjectionWorker`), is rebuildable from material facts, and stores compact source ids/scalars/text-derived metrics only; it does not store event text, cleaned text, reference JSON, raw provider payloads, or audit JSON. There is no runtime full-window raw source scan and no dirty-empty catch-up scan. Repair/audit commands may explicitly enqueue dirty targets from persisted facts. |
+| Radar projection | `runtime/token_radar_projection_worker.py`, `services/token_radar_projection.py`, `scoring/factor_snapshot.py`, `scoring/cross_section_normalizer.py`, `scoring/factor_diagnostics.py`, `queries/token_radar_rank_source_query.py`, `repositories/token_radar_rank_source_repository.py` | `token_radar_dirty_targets`, `token_radar_rank_source_events`, `token_radar_target_features`, `token_radar_current_rows.factor_snapshot_json`, `token_radar_publication_state`, `token_score_evaluations`, `projection_runs`, `projection_offsets` | Projection consumes bounded work from dirty targets and interval catch-up, builds one stable generation per `(projection_version, window, scope)`, and atomically publishes `token_radar_current_rows` plus `token_radar_publication_state`. `token_radar_current_rows` is the only online leaderboard table; `token_radar_publication_state` is the only online readiness and last-failure state. `token_radar_rank_source_events` is rebuildable projection input and bounded lazy evidence/detail only. `token_radar_target_features` is projection-private cache and is not an API, CLI, Pulse, notification, or repair read path. Retired `token_radar_rank_history`, `token_radar_snapshot_audit`, and `token_radar_projection_coverage` do not participate in online service. |
 | Search read model | `read_models/search_service.py`, `queries/search_events_query.py`, `services/query_parser.py`, `services/search_aliases.py` | `events.search_tsv`, `token_intent_resolutions`, `cex_tokens`, `registry_assets`, `asset_identity_current` | Search resolves query intent against current production identity first, retrieves target / lexical / trigram route hits, fuses them into cursor pages, and never performs provider calls, extraction, resolution mutation, scoring projection, or legacy `assets / asset_aliases / asset_venues` identity reads. |
 
 ## Factor Snapshot Contract
@@ -87,12 +87,21 @@ outside the scoring snapshot. Signal Lab Pulse decisions consume v3 factor
 snapshots, the public `market.decision_latest` response key, and deterministic
 gates.
 
-Historical full snapshots live in partitioned `token_radar_snapshot_audit` so
-`TokenFactorEvaluationService` can settle forward returns point-in-time without
-scanning the current read model. Lightweight rank history lives in
-`token_radar_rank_history`. Latest read models read `token_radar_current_rows`;
-diagnostics use `token_score_evaluations` and v3 score-version keys to keep
-populations comparable.
+Latest read models read `token_radar_current_rows`; diagnostics use
+`token_score_evaluations` and v3 score-version keys to keep populations
+comparable. Online readiness and last-failure semantics come only
+from `token_radar_publication_state`: `fresh` requires a ready latest attempt,
+matching `current_generation_id`, and a single current-row generation for the
+requested `(projection_version, window, scope)`. A failed latest attempt with
+prior current rows is `stale`; a failed latest attempt without current rows is
+`failed`; missing state must not be reported as `fresh`.
+
+`token_radar_rank_source_events` may be queried for detail/evidence only when
+bounded by a current row key and limit. `token_radar_target_features` is a
+projection-private intermediate layer, not an online read API. Retired
+`token_radar_rank_history`, `token_radar_snapshot_audit`, and
+`token_radar_projection_coverage` are not current-serving or
+publication-state sources.
 
 ## Identity Boundary
 
@@ -144,6 +153,10 @@ symbol remains `None` rather than falling back to the mention symbol.
   columns, `decision_json`, and deterministic gate output. Product decisions
   must not fall back to legacy Signal Pulse `thesis_json`, `radar_score_json`,
   or `market_context_json`.
+- Token Radar online consumers read `token_radar_current_rows` plus
+  `token_radar_publication_state` only. Failed publications must surface
+  `stale` or `failed`; they must never be wrapped as `fresh` because older
+  current rows still exist.
 
 ## Update Triggers
 

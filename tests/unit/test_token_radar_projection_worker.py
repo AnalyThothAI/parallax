@@ -11,20 +11,20 @@ from gmgn_twitter_intel.domains.token_intel.runtime import token_radar_projectio
 
 
 class FakeTokenRadar:
-    def __init__(self, coverage):
-        self.coverage = coverage
-        self.failed_coverage: list[dict[str, object]] = []
+    def __init__(self, publication_state):
+        self.publication_state = publication_state
+        self.publication_failures: list[dict[str, object]] = []
 
-    def latest_coverage(self, *, projection_version, windows, scopes):
-        return dict(self.coverage)
+    def latest_publication_state(self, *, projection_version, windows, scopes):
+        return dict(self.publication_state)
 
-    def mark_coverage(self, **kwargs):
-        self.failed_coverage.append(kwargs)
+    def mark_publication_failed(self, **kwargs):
+        self.publication_failures.append(kwargs)
 
 
 class FakeRepos:
-    def __init__(self, coverage):
-        self.token_radar = FakeTokenRadar(coverage)
+    def __init__(self, publication_state):
+        self.token_radar = FakeTokenRadar(publication_state)
         self.token_radar_dirty_targets = FakeDirtyTargets()
 
 
@@ -38,8 +38,8 @@ class FakeDirtyTargets:
 
 
 class FakeSession:
-    def __init__(self, coverage):
-        self.repos = FakeRepos(coverage)
+    def __init__(self, publication_state):
+        self.repos = FakeRepos(publication_state)
 
     def __enter__(self):
         return self.repos
@@ -49,15 +49,15 @@ class FakeSession:
 
 
 class FakeDB:
-    def __init__(self, coverage):
-        self.coverage = coverage
+    def __init__(self, publication_state):
+        self.publication_state = publication_state
         self.worker_sessions: list[dict[str, object]] = []
         self.sessions: list[FakeSession] = []
 
     @contextmanager
     def worker_session(self, name, statement_timeout_seconds=None):
         self.worker_sessions.append({"name": name, "statement_timeout_seconds": statement_timeout_seconds})
-        session = FakeSession(self.coverage)
+        session = FakeSession(self.publication_state)
         self.sessions.append(session)
         yield session.repos
 
@@ -72,7 +72,7 @@ class FakeAdvisoryLock:
 
 def test_projection_worker_calls_dirty_incremental_projection_not_window_rebuild(monkeypatch):
     calls: list[dict[str, object]] = []
-    coverage = {}
+    publication_state = {}
     wake_bus = FakeWakeBus()
 
     class FakeProjection:
@@ -94,7 +94,7 @@ def test_projection_worker_calls_dirty_incremental_projection_not_window_rebuild
             raise AssertionError("worker must not call full-window rebuild")
 
     monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
-    db = FakeDB(coverage)
+    db = FakeDB(publication_state)
     worker = module.TokenRadarProjectionWorker(
         name="token_radar_projection",
         settings=_settings(windows=("5m", "1h", "4h"), scopes=("all", "matched"), batch_size=7),
@@ -107,9 +107,16 @@ def test_projection_worker_calls_dirty_incremental_projection_not_window_rebuild
 
     assert calls == [
         {
-            "windows": ("5m", "1h"),
+            "windows": ("5m", "1h", "4h"),
             "scopes": ("all", "matched"),
-            "work_items": (("5m", "all"), ("5m", "matched"), ("1h", "all")),
+            "work_items": (
+                ("5m", "all"),
+                ("5m", "matched"),
+                ("1h", "all"),
+                ("1h", "matched"),
+                ("4h", "all"),
+                ("4h", "matched"),
+            ),
             "now_ms": 1_777_800_000_000,
             "limit": 7,
             "rank_limit": 7,
@@ -175,16 +182,16 @@ def test_projection_worker_limits_dirty_rebuild_to_hot_and_due_cold_work_items(m
             }
 
     monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
-    coverage = {
-        ("1h", "all"): {"status": "ready", "computed_at_ms": 1_777_799_990_000},
-        ("1h", "matched"): {"status": "ready", "computed_at_ms": 1_777_799_990_000},
-        ("4h", "all"): {"status": "ready", "computed_at_ms": 1_777_799_990_000},
-        ("4h", "matched"): {"status": "ready", "computed_at_ms": 1_777_799_990_000},
+    publication_state = {
+        ("1h", "all"): {"latest_attempt_status": "ready", "current_published_at_ms": 1_777_799_990_000},
+        ("1h", "matched"): {"latest_attempt_status": "ready", "current_published_at_ms": 1_777_799_990_000},
+        ("4h", "all"): {"latest_attempt_status": "ready", "current_published_at_ms": 1_777_799_990_000},
+        ("4h", "matched"): {"latest_attempt_status": "ready", "current_published_at_ms": 1_777_799_990_000},
     }
     worker = module.TokenRadarProjectionWorker(
         name="token_radar_projection",
         settings=_settings(windows=("5m", "1h", "4h"), scopes=("all", "matched"), batch_size=7),
-        db=FakeDB(coverage),
+        db=FakeDB(publication_state),
         telemetry=object(),
     )
 
@@ -193,7 +200,50 @@ def test_projection_worker_limits_dirty_rebuild_to_hot_and_due_cold_work_items(m
     assert calls[0]["work_items"] == (("5m", "all"), ("5m", "matched"))
 
 
-def test_projection_worker_does_not_treat_ready_empty_coverage_as_missing():
+def test_projection_worker_treats_failed_publication_state_as_due_work(monkeypatch):
+    calls: list[dict[str, object]] = []
+
+    class FakeProjection:
+        def __init__(self, *, repos):
+            self.repos = repos
+
+        def rebuild_dirty_targets(self, **kwargs):
+            calls.append(kwargs)
+            return {
+                "rows_written": 0,
+                "source_rows": 0,
+                "computed_at_ms": kwargs["now_ms"],
+                "status": "ready",
+                "claimed": 0,
+                "windows": {"24h:matched": {"status": "ready"}},
+            }
+
+    monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
+    publication_state = {
+        ("24h", "matched"): {
+            "latest_attempt_status": "failed",
+            "current_published_at_ms": 1_777_799_000_000,
+        },
+    }
+    worker = module.TokenRadarProjectionWorker(
+        name="token_radar_projection",
+        settings=_settings(
+            windows=("5m", "24h"),
+            scopes=("all", "matched"),
+            hot_windows=("5m",),
+            batch_size=7,
+            cold_interval_seconds=60,
+        ),
+        db=FakeDB(publication_state),
+        telemetry=object(),
+    )
+
+    worker.rebuild_once(now_ms=1_777_800_000_000)
+
+    assert ("24h", "matched") in calls[0]["work_items"]
+
+
+def test_projection_worker_does_not_treat_ready_empty_publication_state_as_missing():
     worker = module.TokenRadarProjectionWorker(
         name="token_radar_projection",
         settings=_settings(windows=("5m", "1h"), scopes=("all", "matched")),
@@ -203,10 +253,10 @@ def test_projection_worker_does_not_treat_ready_empty_coverage_as_missing():
 
     missing = worker._missing_work_items(
         {
-            ("5m", "all"): {"status": "ready", "row_count": 0},
-            ("5m", "matched"): {"status": "ready", "row_count": 0},
-            ("1h", "all"): {"status": "ready", "row_count": 0},
-            ("1h", "matched"): {"status": "ready", "row_count": 0},
+            ("5m", "all"): {"latest_attempt_status": "ready", "current_row_count": 0},
+            ("5m", "matched"): {"latest_attempt_status": "ready", "current_row_count": 0},
+            ("1h", "all"): {"latest_attempt_status": "ready", "current_row_count": 0},
+            ("1h", "matched"): {"latest_attempt_status": "ready", "current_row_count": 0},
         },
         computed_at_ms=1_777_800_000_000,
     )
@@ -229,8 +279,8 @@ def test_projection_worker_backs_off_recently_failed_missing_windows():
 
     missing = worker._missing_work_items(
         {
-            ("5m", "all"): {"status": "ready", "computed_at_ms": 1_000},
-            ("24h", "all"): {"status": "failed", "computed_at_ms": 1_000},
+            ("5m", "all"): {"latest_attempt_status": "ready", "current_published_at_ms": 1_000},
+            ("24h", "all"): {"latest_attempt_status": "failed", "current_published_at_ms": 1_000},
         },
         computed_at_ms=30_000,
     )
@@ -253,8 +303,8 @@ def test_projection_worker_retries_failed_missing_windows_after_cold_interval():
 
     missing = worker._missing_work_items(
         {
-            ("5m", "all"): {"status": "ready", "computed_at_ms": 1_000},
-            ("24h", "all"): {"status": "failed", "computed_at_ms": 1_000},
+            ("5m", "all"): {"latest_attempt_status": "ready", "current_published_at_ms": 1_000},
+            ("24h", "all"): {"latest_attempt_status": "failed", "current_published_at_ms": 1_000},
         },
         computed_at_ms=62_000,
     )
@@ -409,7 +459,7 @@ def _worker(
     scopes,
     hot_windows,
     cold_interval_seconds,
-    coverage,
+    publication_state,
     batch_size=7,
 ):
     import pytest
@@ -430,7 +480,7 @@ def _worker(
 
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(module, "_projection_class", lambda: _FakeProjection)
-    db = FakeDB(coverage)
+    db = FakeDB(publication_state)
     worker = module.TokenRadarProjectionWorker(
         name="token_radar_projection",
         settings=_settings(
@@ -447,7 +497,7 @@ def _worker(
     return worker
 
 
-def test_projection_worker_does_not_enqueue_catch_up_when_no_dirty_claims(monkeypatch) -> None:
+def test_projection_worker_leaves_catch_up_to_projection_service(monkeypatch) -> None:
     class _FakeProjection:
         def __init__(self, *, repos):
             self.repos = repos
@@ -484,7 +534,7 @@ def test_projection_worker_does_not_run_window_scan_or_runtime_catch_up_when_idl
         scopes=("all",),
         hot_windows=("5m",),
         cold_interval_seconds=60,
-        coverage={},
+        publication_state={},
     )
     try:
         result = worker.rebuild_once(now_ms=122_000)

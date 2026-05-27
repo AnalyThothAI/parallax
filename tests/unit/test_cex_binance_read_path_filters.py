@@ -39,6 +39,9 @@ def test_registry_ranked_live_market_targets_cex_payloads_are_binance_usdt_swap_
     _assert_binance_usdt_swap_only(sql)
     assert re.search(r"selected_pricefeed\.provider\s*=\s*'binance'", sql)
     assert "COALESCE(selected_pricefeed.provider, preferred_pricefeed.provider, 'okx')" not in sql
+    assert "token_radar_publication_state" in sql
+    assert "token_radar_projection_coverage" not in sql
+    assert "rows.generation_id = latest_sets.current_generation_id" in sql
     _assert_no_legacy_cex_preference_ordering(sql)
 
 

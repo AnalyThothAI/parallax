@@ -46,7 +46,8 @@ function sourceRows(source: MacroSemanticRecord): MacroSemanticRecord[] {
 function sourceRow(row: MacroSemanticRecord, index: number): MacroSemanticRecord {
   const source = sourceLabel(row);
   const quality = qualityLabel(row);
-  const latest = stringValue(row.latest_observed_at) ?? observedAtLabel(row.observed_at_ms) ?? "暂无";
+  const latest =
+    stringValue(row.latest_observed_at) ?? observedAtLabel(row.observed_at_ms) ?? "暂无";
   const count = numberValue(row.concept_count);
   const participation = scoreParticipationLabel(row.score_participation);
   const notes = notesLabel(row);
@@ -78,7 +79,7 @@ function statusLabel(row: MacroSemanticRecord): string {
     return label;
   }
   const status = stringValue(row.status);
-  return status ? STATUS_LABELS[status] ?? "未知状态" : "未知";
+  return status ? (STATUS_LABELS[status] ?? "未知状态") : "未知";
 }
 
 function qualityLabel(row: MacroSemanticRecord): string {

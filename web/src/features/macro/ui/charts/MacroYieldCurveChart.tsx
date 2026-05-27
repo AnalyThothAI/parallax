@@ -15,13 +15,7 @@ import { observeChartHost } from "./macroChartResize";
 
 import "./macroCharts.css";
 
-export function MacroYieldCurveChart({
-  chart,
-  title,
-}: {
-  chart: MacroModuleChart;
-  title: string;
-}) {
+export function MacroYieldCurveChart({ chart, title }: { chart: MacroModuleChart; title: string }) {
   const model = useMemo(() => buildMacroYieldCurveModel(chart), [chart]);
   const points = useMemo(() => model.points, [model.points]);
   const chartRef = useRef<IChartApi | null>(null);
@@ -75,11 +69,7 @@ export function MacroYieldCurveChart({
           </div>
         </>
       ) : (
-        <div
-          aria-label={`${title} state`}
-          className="macro-chart-state-panel"
-          role="status"
-        >
+        <div aria-label={`${title} state`} className="macro-chart-state-panel" role="status">
           暂无收益率曲线数据
         </div>
       )}

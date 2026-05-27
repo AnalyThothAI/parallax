@@ -281,6 +281,17 @@ class FakeTokenRadar:
     ) -> list[dict[str, Any]]:
         return self.rows[:limit]
 
+    def current_rows_for_generation(
+        self,
+        *,
+        window: str,
+        scope: str,
+        generation_id: str,
+        limit: int,
+        projection_version: str,
+    ) -> list[dict[str, Any]]:
+        return self.rows[:limit]
+
     def latest_coverage(self, *, projection_version: str, windows: tuple[str, ...], scopes: tuple[str, ...]):
         return {
             (window, scope): {
@@ -289,6 +300,29 @@ class FakeTokenRadar:
                 "row_count": len(self.rows),
                 "source_rows": len(self.rows),
                 "computed_at_ms": max((int(row.get("computed_at_ms") or 0) for row in self.rows), default=0) or None,
+            }
+            for window in windows
+            for scope in scopes
+        }
+
+    def latest_publication_state(
+        self,
+        *,
+        projection_version: str,
+        windows: tuple[str, ...],
+        scopes: tuple[str, ...],
+    ) -> dict[tuple[str, str], dict[str, Any]]:
+        del projection_version
+        max_computed_at_ms = max((int(row.get("computed_at_ms") or 0) for row in self.rows), default=0) or None
+        return {
+            (window, scope): {
+                "latest_attempt_status": "ready",
+                "current_generation_id": "gen-default",
+                "current_row_count": len(self.rows),
+                "current_source_rows": len(self.rows),
+                "current_source_frontier_ms": max_computed_at_ms,
+                "current_published_at_ms": max_computed_at_ms,
+                "latest_attempt_error": None,
             }
             for window in windows
             for scope in scopes

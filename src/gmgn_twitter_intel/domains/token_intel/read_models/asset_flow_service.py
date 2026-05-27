@@ -25,25 +25,54 @@ class AssetFlowService:
         scope: str,
         now_ms: int | None = None,
     ) -> dict[str, Any]:
-        coverage = self.token_radar.latest_coverage(
+        publication_state = self.token_radar.latest_publication_state(
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             windows=(window,),
             scopes=(scope,),
         ).get((window, scope))
         row_limit = max(0, int(limit)) * 2
-        rows = self.token_radar.latest_current_rows(
-            window=window,
-            scope=scope,
-            limit=row_limit,
-            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+        publication_status = str((publication_state or {}).get("latest_attempt_status") or "")
+        current_generation = str((publication_state or {}).get("current_generation_id") or "")
+        if current_generation:
+            rows = self.token_radar.current_rows_for_generation(
+                window=window,
+                scope=scope,
+                generation_id=current_generation,
+                limit=row_limit,
+                projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+            )
+        else:
+            rows = self.token_radar.latest_current_rows(
+                window=window,
+                scope=scope,
+                limit=row_limit,
+                projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+            )
+        row_generations = {str(row.get("generation_id") or "") for row in rows if row.get("generation_id")}
+        state_row_count = int((publication_state or {}).get("current_row_count") or 0)
+        state_source_rows = int((publication_state or {}).get("current_source_rows") or 0)
+        matches_current_generation = (
+            bool(current_generation)
+            and row_generations <= {current_generation}
+            and (bool(rows) or state_row_count == 0)
         )
-        coverage_status = str((coverage or {}).get("status") or "")
-        if not rows and coverage_status != "ready":
-            return _pending_projection_payload(coverage)
+        if publication_status == "ready" and matches_current_generation:
+            projection_status = "fresh"
+            projection_reason = None
+        elif rows:
+            projection_status = "stale"
+            projection_reason = (
+                "projection_window_failed" if publication_status == "failed" else "projection_rows_stale"
+            )
+        elif publication_status != "ready":
+            return _pending_projection_payload(publication_state)
+        else:
+            projection_status = "stale"
+            projection_reason = "projection_generation_mismatch"
 
         row_computed_at_ms = max((int(row.get("computed_at_ms") or 0) for row in rows), default=0) or None
-        coverage_computed_at_ms = (coverage or {}).get("computed_at_ms")
-        computed_at_ms = coverage_computed_at_ms if coverage_computed_at_ms is not None else row_computed_at_ms
+        published_at_ms = (publication_state or {}).get("current_published_at_ms")
+        computed_at_ms = published_at_ms if published_at_ms is not None else row_computed_at_ms
         public_rows = [_public_row(row) for row in rows]
         _hydrate_profiles(public_rows, profiles=self.profiles)
         unresolved = _unresolved_diagnostics(rows)
@@ -53,24 +82,26 @@ class AssetFlowService:
         for row in [*targets, *attention]:
             row.pop("_lane", None)
         returned_rows = [*targets[:limit], *attention[:limit]]
-        coverage_row_count = int((coverage or {}).get("row_count") or 0)
-        coverage_source_rows = int((coverage or {}).get("source_rows") or 0)
-        serving_previous_snapshot = coverage_status not in {"", "ready"}
         return {
             "targets": targets[:limit],
             "attention": attention[:limit],
             "projection": {
-                "status": "fresh",
+                "status": projection_status,
                 "version": TOKEN_RADAR_PROJECTION_VERSION,
                 "source": "token_radar_current_rows",
-                "reason": (coverage or {}).get("reason"),
-                "row_count": len(rows) if serving_previous_snapshot else coverage_row_count or len(rows),
-                "source_rows": len(rows) if serving_previous_snapshot else coverage_source_rows or len(rows),
+                "reason": projection_reason,
+                "latest_attempt_status": publication_status or "missing",
+                "row_count": state_row_count or len(rows),
+                "source_rows": state_source_rows or len(rows),
                 "source_max_received_at_ms": max(
                     (int(row.get("source_max_received_at_ms") or 0) for row in rows),
                     default=0,
                 ),
+                "source_frontier_ms": (publication_state or {}).get("current_source_frontier_ms"),
+                "generation_id": current_generation or None,
+                "row_generation_ids": sorted(row_generations),
                 "computed_at_ms": computed_at_ms,
+                "error": (publication_state or {}).get("latest_attempt_error"),
                 "anchor_coverage": _anchor_coverage(returned_rows),
                 "unresolved": unresolved,
             },
@@ -200,29 +231,33 @@ def _int_or_none(value: Any) -> int | None:
         return None
 
 
-def _pending_projection_payload(coverage: dict[str, Any] | None) -> dict[str, Any]:
-    coverage_status = str((coverage or {}).get("status") or "")
-    if not coverage:
+def _pending_projection_payload(publication_state: dict[str, Any] | None) -> dict[str, Any]:
+    publication_status = str((publication_state or {}).get("latest_attempt_status") or "")
+    if not publication_state:
+        projection_status = "pending"
         reason = "projection_window_missing"
-    elif coverage_status == "running":
-        reason = "projection_window_running"
-    elif coverage_status == "failed":
+    elif publication_status == "failed":
+        projection_status = "failed"
         reason = "projection_window_failed"
     else:
+        projection_status = "pending"
         reason = "projection_window_pending"
     return {
         "targets": [],
         "attention": [],
         "projection": {
-            "status": "pending",
+            "status": projection_status,
             "version": TOKEN_RADAR_PROJECTION_VERSION,
             "source": "token_radar_current_rows",
             "reason": reason,
-            "row_count": int((coverage or {}).get("row_count") or 0),
-            "source_rows": int((coverage or {}).get("source_rows") or 0),
+            "latest_attempt_status": publication_status or "missing",
+            "row_count": int((publication_state or {}).get("current_row_count") or 0),
+            "source_rows": int((publication_state or {}).get("current_source_rows") or 0),
             "source_max_received_at_ms": 0,
-            "computed_at_ms": (coverage or {}).get("computed_at_ms"),
-            "error": (coverage or {}).get("error"),
-            "anchor_coverage": {"status": "pending", "ready": 0, "missing": 0, "total": 0},
+            "source_frontier_ms": (publication_state or {}).get("current_source_frontier_ms"),
+            "generation_id": (publication_state or {}).get("current_generation_id"),
+            "computed_at_ms": (publication_state or {}).get("current_published_at_ms"),
+            "error": (publication_state or {}).get("latest_attempt_error"),
+            "anchor_coverage": {"status": projection_status, "ready": 0, "missing": 0, "total": 0},
         },
     }

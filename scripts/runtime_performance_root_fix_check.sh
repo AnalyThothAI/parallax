@@ -132,13 +132,16 @@ WITH lifecycle_targets AS (
     stat.n_dead_tup AS dead_rows,
     GREATEST(stat.last_analyze, stat.last_autoanalyze) AS last_analyze,
     CASE
-      WHEN stat.relname = 'token_radar_rank_source_events'
+      WHEN stat.relname IN (
+        'token_radar_rank_source_events',
+        'token_radar_target_features',
+        'token_radar_current_rows',
+        'token_radar_publication_state'
+      )
         THEN 'hot compact rank/read path'
       WHEN stat.relname IN ('events', 'enriched_events', 'equity_event_evidence_artifacts')
         THEN 'selected-row hydrate'
       WHEN stat.relname = 'raw_frames'
-        OR stat.relname LIKE 'token_radar_snapshot_audit_%'
-        OR stat.relname LIKE 'token_radar_rank_history_%'
         THEN 'cold audit/history'
       ELSE 'unknown'
     END AS retention_class
@@ -148,10 +151,11 @@ WITH lifecycle_targets AS (
       'events',
       'enriched_events',
       'equity_event_evidence_artifacts',
-      'token_radar_rank_source_events'
+      'token_radar_rank_source_events',
+      'token_radar_target_features',
+      'token_radar_current_rows',
+      'token_radar_publication_state'
     )
-    OR stat.relname LIKE 'token_radar_snapshot_audit_%'
-    OR stat.relname LIKE 'token_radar_rank_history_%'
 )
 SELECT
   table_name,

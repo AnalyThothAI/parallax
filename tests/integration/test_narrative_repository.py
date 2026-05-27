@@ -115,7 +115,7 @@ def test_load_radar_admission_target_uses_exact_latest_ready_projection_frontier
         for event_id in ["event-old-1", "event-old-2", "event-latest"]:
             assert evidence.insert_event(make_event(event_id), is_watched=True) is True
             _insert_intent(conn, intent_id=f"intent-{event_id}", event_id=event_id, observed_at_ms=1_000)
-        _insert_radar_coverage(
+        _insert_radar_publication_state(
             conn,
             window="24h",
             scope="all",
@@ -142,10 +142,12 @@ def test_load_radar_admission_target_uses_exact_latest_ready_projection_frontier
         )
         conn.execute(
             """
-            UPDATE token_radar_projection_coverage
-            SET computed_at_ms = 2_000,
-                started_at_ms = 2_000,
-                finished_at_ms = 2_000,
+            UPDATE token_radar_publication_state
+            SET current_generation_id = 'test-generation:2000',
+                current_published_at_ms = 2_000,
+                latest_attempt_started_at_ms = 2_000,
+                latest_attempt_generation_id = 'test-generation:2000',
+                latest_attempt_finished_at_ms = 2_000,
                 updated_at_ms = 2_000
             WHERE projection_version = %s
               AND "window" = '24h'
@@ -185,12 +187,12 @@ def test_load_radar_admission_target_uses_exact_latest_ready_projection_frontier
     assert context["radar_row"]["target_id"] == "asset:latest:rank10"
 
 
-def test_load_radar_admission_target_uses_current_row_when_coverage_timestamp_advances_without_row_churn(tmp_path):
+def test_load_radar_admission_target_uses_current_row_when_publication_timestamp_advances_without_row_churn(tmp_path):
     conn, evidence, repo = open_repo(tmp_path)
     try:
         assert evidence.insert_event(make_event("event-stable"), is_watched=True) is True
         _insert_intent(conn, intent_id="intent-event-stable", event_id="event-stable", observed_at_ms=1_000)
-        _insert_radar_coverage(
+        _insert_radar_publication_state(
             conn,
             window="24h",
             scope="all",
@@ -208,10 +210,10 @@ def test_load_radar_admission_target_uses_current_row_when_coverage_timestamp_ad
         )
         conn.execute(
             """
-            UPDATE token_radar_projection_coverage
-            SET computed_at_ms = 2_000,
-                started_at_ms = 2_000,
-                finished_at_ms = 2_000,
+            UPDATE token_radar_publication_state
+            SET current_published_at_ms = 2_000,
+                latest_attempt_started_at_ms = 2_000,
+                latest_attempt_finished_at_ms = 2_000,
                 updated_at_ms = 2_000
             WHERE projection_version = %s
               AND "window" = '24h'
@@ -1991,7 +1993,7 @@ def _insert_intent(conn, *, intent_id: str, event_id: str, observed_at_ms: int) 
     )
 
 
-def _insert_radar_coverage(
+def _insert_radar_publication_state(
     conn,
     *,
     window: str,
@@ -2001,13 +2003,26 @@ def _insert_radar_coverage(
 ) -> None:
     conn.execute(
         """
-        INSERT INTO token_radar_projection_coverage(
-          projection_version, "window", scope, status, reason, source_rows, row_count,
-          computed_at_ms, started_at_ms, finished_at_ms, error, updated_at_ms
+        INSERT INTO token_radar_publication_state(
+          projection_version, "window", scope, current_generation_id, current_published_at_ms,
+          current_source_frontier_ms, current_row_count, current_source_rows,
+          latest_attempt_generation_id, latest_attempt_status, latest_attempt_started_at_ms,
+          latest_attempt_finished_at_ms, latest_attempt_error, updated_at_ms
         )
-        VALUES (%s, %s, %s, 'ready', NULL, 1, 1, %s, %s, %s, NULL, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, 1, 1, %s, 'ready', %s, %s, NULL, %s)
         """,
-        (projection_version, window, scope, computed_at_ms, computed_at_ms, computed_at_ms, computed_at_ms),
+        (
+            projection_version,
+            window,
+            scope,
+            f"test-generation:{computed_at_ms}",
+            computed_at_ms,
+            computed_at_ms,
+            f"test-generation:{computed_at_ms}",
+            computed_at_ms,
+            computed_at_ms,
+            computed_at_ms,
+        ),
     )
 
 
@@ -2025,6 +2040,7 @@ def _insert_radar_row(
         """
         INSERT INTO token_radar_current_rows(
           row_id, projection_version, "window", scope, computed_at_ms, source_max_received_at_ms,
+          generation_id, published_at_ms, source_frontier_ms,
           lane, target_type_key, identity_id, rank, rank_score, intent_id, event_id, intent_json,
           asset_json, primary_venue_json,
           attention_json, resolution_json, market_json, score_json, decision, data_health_json,
@@ -2034,6 +2050,7 @@ def _insert_radar_row(
         )
         VALUES (
           %s, %s, '24h', 'all', %s, %s,
+          %s, %s, %s,
           'all', 'Asset', %s, %s, %s, %s, %s, %s, %s, NULL,
           %s, %s, %s, %s, 'watch', %s,
           %s, %s, %s, %s, 'Asset', %s, NULL, %s,
@@ -2043,6 +2060,9 @@ def _insert_radar_row(
         (
             row_id,
             TOKEN_RADAR_PROJECTION_VERSION,
+            computed_at_ms,
+            computed_at_ms,
+            f"test-generation:{computed_at_ms}",
             computed_at_ms,
             computed_at_ms,
             target_id,

@@ -14,10 +14,7 @@ describe("TokenProfileCard", () => {
     expect(screen.getByText("Zcash")).toBeInTheDocument();
     expect(screen.getByText("$ZEC")).toBeInTheDocument();
     expect(screen.getByText("Privacy coin profile facts.")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Zcash logo" })).toHaveAttribute(
-      "src",
-      TOKEN_IMAGE_URL,
-    );
+    expect(screen.getByRole("img", { name: "Zcash logo" })).toHaveAttribute("src", TOKEN_IMAGE_URL);
 
     expectLink("Website", "https://z.cash");
     expectLink("X", "https://x.com/zcash");

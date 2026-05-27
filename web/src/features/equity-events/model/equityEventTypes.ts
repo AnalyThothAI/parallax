@@ -338,7 +338,9 @@ const normalizeDataGaps = (raw: unknown): EquityEventDataGap[] =>
     const description = stringOrNull(
       payload.description_zh ?? payload.description ?? payload.reason ?? payload.kind,
     );
-    return description ? [{ description_zh: description, severity: stringOrNull(payload.severity) }] : [];
+    return description
+      ? [{ description_zh: description, severity: stringOrNull(payload.severity) }]
+      : [];
   });
 
 const objectOrNull = (value: unknown): Record<string, unknown> | null =>

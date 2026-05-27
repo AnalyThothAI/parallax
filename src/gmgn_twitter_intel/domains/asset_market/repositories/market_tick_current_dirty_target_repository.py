@@ -63,15 +63,7 @@ class MarketTickCurrentDirtyTargetRepository:
             FROM incoming
             ON CONFLICT(target_type, target_id) DO UPDATE SET
               dirty_reason = EXCLUDED.dirty_reason,
-              payload_hash = CASE
-                WHEN market_tick_current_dirty_targets.leased_until_ms IS NOT NULL
-                  THEN md5(
-                    EXCLUDED.payload_hash || ':claimed:' ||
-                    market_tick_current_dirty_targets.attempt_count::text || ':' ||
-                    market_tick_current_dirty_targets.payload_hash
-                  )
-                ELSE EXCLUDED.payload_hash
-              END,
+              payload_hash = EXCLUDED.payload_hash,
               due_at_ms = LEAST(market_tick_current_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
               source_watermark_ms = GREATEST(
                 market_tick_current_dirty_targets.source_watermark_ms,
@@ -83,15 +75,7 @@ class MarketTickCurrentDirtyTargetRepository:
               last_error = NULL,
               first_dirty_at_ms = market_tick_current_dirty_targets.first_dirty_at_ms,
               updated_at_ms = EXCLUDED.updated_at_ms
-            WHERE market_tick_current_dirty_targets.payload_hash IS DISTINCT FROM CASE
-                    WHEN market_tick_current_dirty_targets.leased_until_ms IS NOT NULL
-                      THEN md5(
-                        EXCLUDED.payload_hash || ':claimed:' ||
-                        market_tick_current_dirty_targets.attempt_count::text || ':' ||
-                        market_tick_current_dirty_targets.payload_hash
-                      )
-                    ELSE EXCLUDED.payload_hash
-                  END
+            WHERE market_tick_current_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
                OR market_tick_current_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
                OR market_tick_current_dirty_targets.due_at_ms > EXCLUDED.due_at_ms
                OR market_tick_current_dirty_targets.source_watermark_ms < EXCLUDED.source_watermark_ms

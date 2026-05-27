@@ -186,37 +186,16 @@ class TokenRadarDirtyTargetRepository:
               WHERE features.projection_version = %(projection_version)s
               GROUP BY features.target_type_key, features.identity_id
             ),
-            target_coverage AS (
-              SELECT
-                target_coverage.target_type_key,
-                target_coverage.identity_id,
-                MAX(target_coverage.latest_market_observed_at_ms) AS latest_market_observed_at_ms
-              FROM token_radar_target_projection_coverage target_coverage
-              JOIN mapped
-                ON mapped.target_type_key = target_coverage.target_type_key
-               AND mapped.identity_id = target_coverage.identity_id
-              WHERE target_coverage.projection_version = %(projection_version)s
-              GROUP BY target_coverage.target_type_key, target_coverage.identity_id
-            ),
             eligible AS (
               SELECT mapped.*
               FROM mapped
               LEFT JOIN latest_feature
                 ON latest_feature.target_type_key = mapped.target_type_key
                AND latest_feature.identity_id = mapped.identity_id
-              LEFT JOIN target_coverage
-                ON target_coverage.target_type_key = mapped.target_type_key
-               AND target_coverage.identity_id = mapped.identity_id
               WHERE mapped.identity_id IS NOT NULL
                 AND (
-                  (
-                    latest_feature.latest_market_observed_at_ms IS NULL
-                    AND target_coverage.latest_market_observed_at_ms IS NULL
-                  )
-                  OR GREATEST(
-                    COALESCE(latest_feature.latest_market_observed_at_ms, 0),
-                    COALESCE(target_coverage.latest_market_observed_at_ms, 0)
-                  ) <= %(now_ms)s - %(market_dirty_min_interval_ms)s
+                  latest_feature.latest_market_observed_at_ms IS NULL
+                  OR latest_feature.latest_market_observed_at_ms <= %(now_ms)s - %(market_dirty_min_interval_ms)s
                 )
             )
             INSERT INTO token_radar_dirty_targets(
@@ -249,42 +228,14 @@ class TokenRadarDirtyTargetRepository:
             FROM eligible
             ON CONFLICT(target_type_key, identity_id) DO UPDATE SET
               dirty_reason = EXCLUDED.dirty_reason,
-              payload_hash = CASE
-                WHEN token_radar_dirty_targets.leased_until_ms IS NOT NULL
-                  THEN md5(
-                    EXCLUDED.payload_hash || ':claimed:' ||
-                    token_radar_dirty_targets.attempt_count::text || ':' ||
-                    token_radar_dirty_targets.payload_hash
-                  )
-                WHEN token_radar_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
-                 AND token_radar_dirty_targets.dirty_reason IS NOT DISTINCT FROM EXCLUDED.dirty_reason
-                  THEN token_radar_dirty_targets.payload_hash
-                ELSE EXCLUDED.payload_hash
-              END,
+              payload_hash = EXCLUDED.payload_hash,
               due_at_ms = LEAST(token_radar_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
-              leased_until_ms = CASE
-                WHEN token_radar_dirty_targets.leased_until_ms IS NOT NULL THEN NULL
-                ELSE token_radar_dirty_targets.leased_until_ms
-              END,
-              lease_owner = CASE
-                WHEN token_radar_dirty_targets.leased_until_ms IS NOT NULL THEN NULL
-                ELSE token_radar_dirty_targets.lease_owner
-              END,
+              leased_until_ms = NULL,
+              lease_owner = NULL,
               last_error = NULL,
               first_dirty_at_ms = token_radar_dirty_targets.first_dirty_at_ms,
               updated_at_ms = EXCLUDED.updated_at_ms
-            WHERE token_radar_dirty_targets.payload_hash IS DISTINCT FROM CASE
-                    WHEN token_radar_dirty_targets.leased_until_ms IS NOT NULL
-                      THEN md5(
-                        EXCLUDED.payload_hash || ':claimed:' ||
-                        token_radar_dirty_targets.attempt_count::text || ':' ||
-                        token_radar_dirty_targets.payload_hash
-                      )
-                    WHEN token_radar_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
-                     AND token_radar_dirty_targets.dirty_reason IS NOT DISTINCT FROM EXCLUDED.dirty_reason
-                      THEN token_radar_dirty_targets.payload_hash
-                    ELSE EXCLUDED.payload_hash
-                  END
+            WHERE token_radar_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
                OR token_radar_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
                OR token_radar_dirty_targets.due_at_ms > EXCLUDED.due_at_ms
                OR token_radar_dirty_targets.leased_until_ms IS NOT NULL
@@ -347,31 +298,13 @@ class TokenRadarDirtyTargetRepository:
               WHERE features.projection_version = %(projection_version)s
               GROUP BY features.target_type_key, features.identity_id
             ),
-            target_coverage AS (
-              SELECT
-                coverage.target_type_key,
-                coverage.identity_id,
-                MAX(coverage.last_projected_at_ms) AS last_projected_at_ms
-              FROM token_radar_target_projection_coverage coverage
-              JOIN recent
-                ON recent.target_type_key = coverage.target_type_key
-               AND recent.identity_id = coverage.identity_id
-              WHERE coverage.projection_version = %(projection_version)s
-              GROUP BY coverage.target_type_key, coverage.identity_id
-            ),
             eligible AS (
               SELECT recent.*
               FROM recent
               LEFT JOIN latest_feature
                 ON latest_feature.target_type_key = recent.target_type_key
                AND latest_feature.identity_id = recent.identity_id
-              LEFT JOIN target_coverage
-                ON target_coverage.target_type_key = recent.target_type_key
-               AND target_coverage.identity_id = recent.identity_id
-              WHERE GREATEST(
-                COALESCE(latest_feature.latest_event_received_at_ms, 0),
-                COALESCE(target_coverage.last_projected_at_ms, 0)
-              ) < recent.source_max_received_at_ms
+              WHERE COALESCE(latest_feature.latest_event_received_at_ms, 0) < recent.source_max_received_at_ms
             )
             INSERT INTO token_radar_dirty_targets(
               target_type_key,
@@ -524,31 +457,13 @@ class TokenRadarDirtyTargetRepository:
               WHERE features.projection_version = %(projection_version)s
               GROUP BY features.target_type_key, features.identity_id
             ),
-            target_coverage AS (
-              SELECT
-                coverage.target_type_key,
-                coverage.identity_id,
-                MAX(coverage.last_projected_at_ms) AS last_projected_at_ms
-              FROM token_radar_target_projection_coverage coverage
-              JOIN recent
-                ON recent.target_type_key = coverage.target_type_key
-               AND recent.identity_id = coverage.identity_id
-              WHERE coverage.projection_version = %(projection_version)s
-              GROUP BY coverage.target_type_key, coverage.identity_id
-            ),
             eligible AS (
               SELECT recent.*
               FROM recent
               LEFT JOIN latest_feature
                 ON latest_feature.target_type_key = recent.target_type_key
                AND latest_feature.identity_id = recent.identity_id
-              LEFT JOIN target_coverage
-                ON target_coverage.target_type_key = recent.target_type_key
-               AND target_coverage.identity_id = recent.identity_id
-              WHERE GREATEST(
-                COALESCE(latest_feature.latest_event_received_at_ms, 0),
-                COALESCE(target_coverage.last_projected_at_ms, 0)
-              ) < recent.source_max_received_at_ms
+              WHERE COALESCE(latest_feature.latest_event_received_at_ms, 0) < recent.source_max_received_at_ms
             )
             SELECT COUNT(*) AS count
             FROM eligible
@@ -755,38 +670,17 @@ latest_feature AS (
   WHERE features.projection_version = %(projection_version)s
   GROUP BY features.target_type_key, features.identity_id
 ),
-target_coverage AS (
-  SELECT
-    target_coverage.target_type_key,
-    target_coverage.identity_id,
-    MAX(target_coverage.latest_market_observed_at_ms) AS latest_market_observed_at_ms
-  FROM token_radar_target_projection_coverage target_coverage
-  JOIN mapped
-    ON mapped.target_type_key = target_coverage.target_type_key
-   AND mapped.identity_id = target_coverage.identity_id
-  WHERE target_coverage.projection_version = %(projection_version)s
-  GROUP BY target_coverage.target_type_key, target_coverage.identity_id
-),
 eligible AS (
   SELECT mapped.*
   FROM mapped
   LEFT JOIN latest_feature
     ON latest_feature.target_type_key = mapped.target_type_key
    AND latest_feature.identity_id = mapped.identity_id
-  LEFT JOIN target_coverage
-    ON target_coverage.target_type_key = mapped.target_type_key
-   AND target_coverage.identity_id = mapped.identity_id
   WHERE mapped.identity_id IS NOT NULL
     AND mapped.market_current_watermark_ms >= %(since_ms)s
     AND (
-      (
-        latest_feature.latest_market_observed_at_ms IS NULL
-        AND target_coverage.latest_market_observed_at_ms IS NULL
-      )
-      OR GREATEST(
-        COALESCE(latest_feature.latest_market_observed_at_ms, 0),
-        COALESCE(target_coverage.latest_market_observed_at_ms, 0)
-      ) <= %(now_ms)s - %(market_dirty_min_interval_ms)s
+      latest_feature.latest_market_observed_at_ms IS NULL
+      OR latest_feature.latest_market_observed_at_ms <= %(now_ms)s - %(market_dirty_min_interval_ms)s
     )
 )
 """
@@ -839,42 +733,14 @@ SELECT
 FROM eligible
 ON CONFLICT(target_type_key, identity_id) DO UPDATE SET
   dirty_reason = EXCLUDED.dirty_reason,
-  payload_hash = CASE
-    WHEN token_radar_dirty_targets.leased_until_ms IS NOT NULL
-      THEN md5(
-        EXCLUDED.payload_hash || ':claimed:' ||
-        token_radar_dirty_targets.attempt_count::text || ':' ||
-        token_radar_dirty_targets.payload_hash
-      )
-    WHEN token_radar_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
-     AND token_radar_dirty_targets.dirty_reason IS NOT DISTINCT FROM EXCLUDED.dirty_reason
-      THEN token_radar_dirty_targets.payload_hash
-    ELSE EXCLUDED.payload_hash
-  END,
+  payload_hash = EXCLUDED.payload_hash,
   due_at_ms = LEAST(token_radar_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
-  leased_until_ms = CASE
-    WHEN token_radar_dirty_targets.leased_until_ms IS NOT NULL THEN NULL
-    ELSE token_radar_dirty_targets.leased_until_ms
-  END,
-  lease_owner = CASE
-    WHEN token_radar_dirty_targets.leased_until_ms IS NOT NULL THEN NULL
-    ELSE token_radar_dirty_targets.lease_owner
-  END,
+  leased_until_ms = NULL,
+  lease_owner = NULL,
   last_error = NULL,
   first_dirty_at_ms = token_radar_dirty_targets.first_dirty_at_ms,
   updated_at_ms = EXCLUDED.updated_at_ms
-WHERE token_radar_dirty_targets.payload_hash IS DISTINCT FROM CASE
-        WHEN token_radar_dirty_targets.leased_until_ms IS NOT NULL
-          THEN md5(
-            EXCLUDED.payload_hash || ':claimed:' ||
-            token_radar_dirty_targets.attempt_count::text || ':' ||
-            token_radar_dirty_targets.payload_hash
-          )
-        WHEN token_radar_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
-         AND token_radar_dirty_targets.dirty_reason IS NOT DISTINCT FROM EXCLUDED.dirty_reason
-          THEN token_radar_dirty_targets.payload_hash
-        ELSE EXCLUDED.payload_hash
-      END
+WHERE token_radar_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
    OR token_radar_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
    OR token_radar_dirty_targets.due_at_ms > EXCLUDED.due_at_ms
    OR token_radar_dirty_targets.leased_until_ms IS NOT NULL

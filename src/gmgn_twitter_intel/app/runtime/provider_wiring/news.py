@@ -15,6 +15,7 @@ from gmgn_twitter_intel.integrations.news_feeds.cryptopanic_client import Crypto
 from gmgn_twitter_intel.integrations.news_feeds.feed_client import FeedClient, FeedFetchResult
 from gmgn_twitter_intel.integrations.news_feeds.opennews_client import OpenNewsFeedClient
 from gmgn_twitter_intel.integrations.news_feeds.provider_registry import (
+    SUPPORTED_NEWS_PROVIDER_TYPES,
     NewsFeedProviderRegistry,
     default_news_feed_provider_registry,
 )
@@ -34,6 +35,10 @@ def news_feed_client(settings: Settings) -> NewsSourceProvider:
         ),
     )
     return RegistryBackedNewsSourceProvider(registry=registry)
+
+
+def supported_news_provider_types() -> tuple[str, ...]:
+    return tuple(SUPPORTED_NEWS_PROVIDER_TYPES)
 
 
 class RegistryBackedNewsSourceProvider:
@@ -168,4 +173,9 @@ def _provider_type_for_url(url: str) -> str:
     return "rss"
 
 
-__all__ = ["CompositeNewsFeedClient", "RegistryBackedNewsSourceProvider", "news_feed_client"]
+__all__ = [
+    "CompositeNewsFeedClient",
+    "RegistryBackedNewsSourceProvider",
+    "news_feed_client",
+    "supported_news_provider_types",
+]

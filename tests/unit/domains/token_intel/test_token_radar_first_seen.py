@@ -88,15 +88,17 @@ def test_upsert_first_seen_batch_uses_identity_key_and_keeps_first_seen_stable()
     assert conn.records[1]["first_seen_ms"] == 200
 
 
-def test_publish_rows_uses_compact_first_seen_before_insert_and_upserts_after_insert() -> None:
+def test_publish_current_generation_uses_compact_first_seen_before_insert_and_upserts_after_insert() -> None:
     conn = PublishFirstSeenConn(first_seen={("Asset", "asset-1"): 100})
     row = _valid_factor_row()
 
-    TokenRadarRepository(conn).publish_rows(
+    TokenRadarRepository(conn).publish_current_generation(
         projection_version="token-radar-v13-social-attention",
         window="1h",
         scope="all",
-        computed_at_ms=200,
+        generation_id="gen-200",
+        published_at_ms=200,
+        source_frontier_ms=200,
         rows=[row],
         commit=False,
     )

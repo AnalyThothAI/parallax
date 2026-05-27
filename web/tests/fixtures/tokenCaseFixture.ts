@@ -130,7 +130,10 @@ export function tokenCaseFixture(): TokenCaseDossier {
         stance: "watch",
         bull: {
           thesis_zh: "多个独立账号围绕 CA 证据复述，说明讨论已经脱离单一喊单源。",
-          bullets_zh: ["market cap and liquidity become ready", "watched account follow-up appears"],
+          bullets_zh: [
+            "market cap and liquidity become ready",
+            "watched account follow-up appears",
+          ],
           evidence_refs: [
             { ref_type: "event", event_id: "event-hansa-1" },
             { ref_type: "event", event_id: "event-hansa-3" },

@@ -42,8 +42,8 @@ Runtime discovery is control-plane first. `NarrativeAdmissionWorker` claims
 `narrative_admission_dirty_targets`; `MentionSemanticsWorker` claims leased
 `token_mention_semantics` rows; `TokenDiscussionDigestWorker` claims
 `discussion_digest_dirty_targets`. Empty queues return without scanning Token
-Radar, admissions, or semantic source rows. Historical repair uses the bounded
-`ops enqueue-runtime-worker-dirty-targets` command and only enqueues work.
+Radar, admissions, or semantic source rows. Historical repair uses a
+domain-owned repair command and only enqueues work.
 
 `ops rebuild-narrative-intel` is the maintenance exception. While it holds all
 narrative worker advisory locks, it may run hard-cut cleanup to delete obsolete

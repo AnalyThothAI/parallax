@@ -10,7 +10,6 @@ from gmgn_twitter_intel.app.surfaces.api.dependencies import _authenticated_runt
 from gmgn_twitter_intel.app.surfaces.api.responses import _json
 from gmgn_twitter_intel.app.surfaces.api.validators import _limit
 from gmgn_twitter_intel.domains.news_intel.queries.news_page_query import NewsPageQuery
-from gmgn_twitter_intel.integrations.news_feeds.provider_registry import SUPPORTED_NEWS_PROVIDER_TYPES
 
 router = APIRouter()
 
@@ -75,9 +74,10 @@ def get_news_source_status(request: Request) -> JSONResponse:
     runtime = _authenticated_runtime(request)
     with runtime.repositories() as repos:
         sources = _news_read_model(repos).source_status()
+        supported_types = _supported_news_provider_types(runtime)
         data = {
-            "provider_capabilities": _provider_capabilities(sources),
-            "source_hygiene": _source_hygiene(sources),
+            "provider_capabilities": _provider_capabilities(sources, supported_types=supported_types),
+            "source_hygiene": _source_hygiene(sources, supported_types=supported_types),
             "sources": sources,
         }
     return _json({"ok": True, "data": data})
@@ -98,19 +98,19 @@ def _signal(value: str) -> str | None:
     return normalized
 
 
-def _provider_capabilities(sources: list[dict[str, Any]]) -> dict[str, Any]:
-    supported = set(SUPPORTED_NEWS_PROVIDER_TYPES)
+def _provider_capabilities(sources: list[dict[str, Any]], *, supported_types: tuple[str, ...]) -> dict[str, Any]:
+    supported = set(supported_types)
     configured = sorted({str(source.get("provider_type") or "") for source in sources if source.get("provider_type")})
     unsupported = [provider_type for provider_type in configured if provider_type not in supported]
     return {
-        "supported_provider_types": list(SUPPORTED_NEWS_PROVIDER_TYPES),
+        "supported_provider_types": list(supported_types),
         "configured_provider_types": configured,
         "unsupported_configured_provider_types": unsupported,
     }
 
 
-def _source_hygiene(sources: list[dict[str, Any]]) -> dict[str, Any]:
-    supported = set(SUPPORTED_NEWS_PROVIDER_TYPES)
+def _source_hygiene(sources: list[dict[str, Any]], *, supported_types: tuple[str, ...]) -> dict[str, Any]:
+    supported = set(supported_types)
     sources_missing_coverage_tags: list[str] = []
     unsupported_sources: list[dict[str, str]] = []
     degraded_sources: list[dict[str, str]] = []
@@ -137,3 +137,16 @@ def _source_hygiene(sources: list[dict[str, Any]]) -> dict[str, Any]:
         "degraded_sources": degraded_sources,
         "warnings": warnings,
     }
+
+
+def _supported_news_provider_types(runtime: Any) -> tuple[str, ...]:
+    news_intel = getattr(getattr(runtime, "providers", None), "news_intel", None)
+    feed_client = getattr(news_intel, "feed_client", None)
+    supported = getattr(feed_client, "supported_provider_types", None)
+    if callable(supported):
+        return tuple(str(value) for value in supported())
+    registry = getattr(feed_client, "_registry", None)
+    registry_supported = getattr(registry, "supported_provider_types", None)
+    if callable(registry_supported):
+        return tuple(str(value) for value in registry_supported())
+    return ()

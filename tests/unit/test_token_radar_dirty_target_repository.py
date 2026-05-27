@@ -172,16 +172,14 @@ def test_enqueue_market_targets_uses_stable_hash_and_coalesces_fresh_targets() -
     sql = conn.sql[-1]
     assert "%(now_ms)s::text" not in sql
     assert "MAX(features.latest_market_observed_at_ms)" in sql
-    assert "token_radar_target_projection_coverage" in sql
-    assert "MAX(target_coverage.latest_market_observed_at_ms)" in sql
+    assert "token_radar_target_projection_coverage" not in sql
     assert "latest_market_observed_at_ms" in sql
     assert "features.projection_version = %(projection_version)s" in sql
-    assert "target_coverage.projection_version = %(projection_version)s" in sql
     assert "%(market_dirty_min_interval_ms)s" in sql
     assert "payload_hash IS DISTINCT FROM EXCLUDED.payload_hash" in sql
     assert "token_radar_dirty_targets.due_at_ms > EXCLUDED.due_at_ms" in sql
-    assert "leased_until_ms = CASE" in sql
-    assert "lease_owner = CASE" in sql
+    assert "leased_until_ms = NULL" in sql
+    assert "lease_owner = NULL" in sql
     assert "token_radar_dirty_targets.last_error IS NOT NULL" in sql
     assert conn.params[-1]["projection_version"] == "token-radar-v13-social-attention"
     assert conn.params[-1]["market_dirty_min_interval_ms"] == 60_000
@@ -207,9 +205,8 @@ def test_enqueue_recent_resolved_targets_is_bounded_freshness_gated_catch_up() -
     assert "token_intent_resolutions.target_id IS NOT NULL" in sql
     assert "MAX(events.received_at_ms) AS source_max_received_at_ms" in sql
     assert "token_radar_target_features" in sql
-    assert "token_radar_target_projection_coverage" in sql
+    assert "token_radar_target_projection_coverage" not in sql
     assert "MAX(features.latest_event_received_at_ms)" in sql
-    assert "MAX(coverage.last_projected_at_ms)" in sql
     assert "eligible.source_max_received_at_ms::text" in sql
     assert "payload_hash IS DISTINCT FROM EXCLUDED.payload_hash" in sql
     assert "token_radar_dirty_targets.last_error IS NOT NULL" in sql
@@ -239,7 +236,7 @@ def test_recent_resolved_target_candidate_counts_reuse_bounded_fact_query() -> N
     assert "INSERT INTO token_radar_dirty_targets" not in conn.sql[0]
     assert "latest_feature" not in conn.sql[0]
     assert "latest_feature" in conn.sql[1]
-    assert "target_coverage" in conn.sql[1]
+    assert "target_coverage" not in conn.sql[1]
     assert conn.params[0]["since_ms"] == 1_700_000_000_000
     assert conn.params[1]["projection_version"] == "token-radar-v13-social-attention"
 
@@ -288,7 +285,7 @@ def test_market_current_target_candidate_counts_are_read_only() -> None:
     assert "INSERT INTO token_radar_dirty_targets" not in conn.sql[0]
     assert "latest_feature" not in conn.sql[0]
     assert "latest_feature" in conn.sql[1]
-    assert "target_coverage" in conn.sql[1]
+    assert "target_coverage" not in conn.sql[1]
     assert conn.params[0]["since_ms"] == 123
     assert conn.params[1]["projection_version"] == "token-radar-v13-social-attention"
 

@@ -171,9 +171,7 @@ export function buildMacroHeatmapMatrix(rows: MacroSemanticRecord[]): MacroHeatm
         row,
       };
     })
-    .filter((row): row is { key: string; label: string; row: MacroSemanticRecord } =>
-      Boolean(row),
-    );
+    .filter((row): row is { key: string; label: string; row: MacroSemanticRecord } => Boolean(row));
   const columns = sourceRows.map(({ key, label }) => ({ key, label }));
   return {
     columns,
@@ -200,9 +198,7 @@ export function buildMacroHeatmapMatrix(rows: MacroSemanticRecord[]): MacroHeatm
 
 export function formatMacroChartValue(value: number, unit?: string | null): string {
   const formatted =
-    Math.abs(value) > 0 && Math.abs(value) < 1
-      ? trimNumber(value, 6)
-      : trimNumber(value, 2);
+    Math.abs(value) > 0 && Math.abs(value) < 1 ? trimNumber(value, 6) : trimNumber(value, 2);
   return unit === "return_percent" || unit === "percent" ? `${formatted}%` : formatted;
 }
 
@@ -216,7 +212,8 @@ function buildSeriesModel(
     return null;
   }
   const payloadPoints = normalizeSeriesPoints(payload?.points ?? []);
-  const inlinePoints = payloadPoints.length > 0 ? [] : normalizeSeriesPoints(inlineSeriesPoints(series));
+  const inlinePoints =
+    payloadPoints.length > 0 ? [] : normalizeSeriesPoints(inlineSeriesPoints(series));
   const normalizedPoints = payloadPoints.length > 0 ? payloadPoints : inlinePoints;
   const pointCount = integerValue(series.point_count) ?? normalizedPoints.length;
   const status = seriesStatus(series, payload, normalizedPoints.length, minPoints);

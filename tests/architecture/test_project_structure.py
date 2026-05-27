@@ -325,7 +325,6 @@ def test_makefile_exposes_single_token_radar_cex_recovery_target():
     assert "\t@$(GMGN) ops sync-binance-cex-profiles" in makefile
     assert "\t@$(GMGN) ops cex-binance-hard-cut-cleanup --dry-run --min-binance-feeds 400" in makefile
     assert "\t@$(GMGN) ops cex-binance-hard-cut-cleanup --execute --min-binance-feeds 400" in makefile
-    assert "\t@$(GMGN) ops reset-token-radar-postgres-hard-cut --execute" in makefile
     assert "\t@$(GMGN) ops rebuild-token-intents --window 24h --limit 5000 --projection-limit 5000" in makefile
     assert "\t@$(GMGN) ops audit-token-radar --window 1h --scope all --limit 20" in makefile
 

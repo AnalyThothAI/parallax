@@ -101,11 +101,7 @@ export function MacroLineChartFigure({
           <ChartLegend model={model} valueUnit={valueUnit} />
         </>
       ) : (
-        <div
-          aria-label={`${title} state`}
-          className="macro-chart-state-panel"
-          role="status"
-        >
+        <div aria-label={`${title} state`} className="macro-chart-state-panel" role="status">
           {stateLabel}
         </div>
       )}

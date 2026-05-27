@@ -3,11 +3,6 @@ from __future__ import annotations
 import argparse
 
 from gmgn_twitter_intel.app.runtime.projection_dirty_targets import PROJECTION_CHOICES
-from gmgn_twitter_intel.app.runtime.runtime_worker_dirty_targets import (
-    PULSE_TRIGGER_SCOPES,
-    PULSE_TRIGGER_WINDOWS,
-    WORK_CHOICES,
-)
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_horizon_policy import SIGNAL_PULSE_WINDOWS
 
 
@@ -137,15 +132,6 @@ def build_parser() -> argparse.ArgumentParser:
     backfill_watchlist_signal_stats.add_argument("--max-batches", type=int, default=1)
     backfill_watchlist_signal_stats.add_argument("--after-cursor", default="")
     backfill_watchlist_signal_stats.add_argument("--dry-run", action="store_true")
-    reset_token_radar_postgres_hard_cut = ops_subcommands.add_parser(
-        "reset-token-radar-postgres-hard-cut",
-        help="hard reset rebuildable PostgreSQL Token Radar projection storage",
-    )
-    reset_token_radar_postgres_hard_cut_mode = reset_token_radar_postgres_hard_cut.add_mutually_exclusive_group(
-        required=True
-    )
-    reset_token_radar_postgres_hard_cut_mode.add_argument("--dry-run", action="store_true")
-    reset_token_radar_postgres_hard_cut_mode.add_argument("--execute", action="store_true")
     rebuild_market_tick_current = ops_subcommands.add_parser(
         "rebuild-market-tick-current",
         help="rebuild market_tick_current from append-only market_ticks",
@@ -165,33 +151,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     enqueue_token_radar_dirty_targets_mode.add_argument("--dry-run", action="store_true")
     enqueue_token_radar_dirty_targets_mode.add_argument("--execute", action="store_true")
-    enqueue_runtime_worker_dirty_targets = ops_subcommands.add_parser(
-        "enqueue-runtime-worker-dirty-targets",
-        help="enqueue bounded dirty targets for runtime worker repair",
-    )
-    enqueue_runtime_worker_dirty_targets.add_argument("--work", choices=WORK_CHOICES, required=True)
-    enqueue_runtime_worker_dirty_targets.add_argument("--window", choices=PULSE_TRIGGER_WINDOWS, default="1h")
-    enqueue_runtime_worker_dirty_targets.add_argument("--scope", choices=PULSE_TRIGGER_SCOPES, default="all")
-    enqueue_runtime_worker_dirty_targets.add_argument("--since-hours", type=float, default=None)
-    enqueue_runtime_worker_dirty_targets.add_argument("--target-id", default="")
-    enqueue_runtime_worker_dirty_targets.add_argument("--target-type", choices=("Asset", "CexToken"), default="")
-    enqueue_runtime_worker_dirty_targets.add_argument("--provider", default="")
-    enqueue_runtime_worker_dirty_targets.add_argument("--source-url", default="")
-    enqueue_runtime_worker_dirty_targets.add_argument("--limit", type=int, default=None)
-    enqueue_runtime_worker_dirty_targets.set_defaults(dry_run=True, execute=False)
-    enqueue_runtime_worker_dirty_targets_mode = enqueue_runtime_worker_dirty_targets.add_mutually_exclusive_group()
-    enqueue_runtime_worker_dirty_targets_mode.add_argument("--dry-run", action="store_true")
-    enqueue_runtime_worker_dirty_targets_mode.add_argument("--execute", action=_ExecuteMode)
-    ensure_postgres_partitions = ops_subcommands.add_parser(
-        "ensure-postgres-partitions",
-        help="ensure current and next Token Radar PostgreSQL history/audit partitions",
-    )
-    ensure_postgres_partitions.add_argument("--execute", action="store_true", required=True)
-    drop_expired_postgres_partitions = ops_subcommands.add_parser(
-        "drop-expired-postgres-partitions",
-        help="explicit no-op until Token Radar PostgreSQL partition retention is configured",
-    )
-    drop_expired_postgres_partitions.add_argument("--execute", action="store_true", required=True)
     ops_subcommands.add_parser("projection-status", help="print projection offsets and latest runs")
     ops_subcommands.add_parser("worker-status", help="print canonical worker runtime status")
     queue_inspect = ops_subcommands.add_parser("queue-inspect", help="inspect worker queue terminal evidence")
@@ -298,13 +257,6 @@ def build_parser() -> argparse.ArgumentParser:
     rebuild_token_radar.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
     rebuild_token_radar.add_argument("--limit", type=int, default=50)
     rebuild_token_radar.add_argument("--scope", choices=("all", "matched"), default="all")
-    rebuild_token_radar_rank_inputs = ops_subcommands.add_parser(
-        "rebuild-token-radar-rank-inputs",
-        help="rewrite Token Radar target features through the rank-input owner path",
-    )
-    rebuild_token_radar_rank_inputs.add_argument("--execute", action="store_true", required=True)
-    rebuild_token_radar_rank_inputs.add_argument("--reason", required=True)
-    rebuild_token_radar_rank_inputs.add_argument("--limit", type=int, default=5000)
     rebuild_narrative_intel = ops_subcommands.add_parser(
         "rebuild-narrative-intel",
         help="rebuild and drain Narrative Intelligence read models",

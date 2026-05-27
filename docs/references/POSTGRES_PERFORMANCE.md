@@ -30,9 +30,9 @@ cold paths are retained by partition lifecycle, not by worker-loop deletes.
 
 | Retention class | Tables | Lifecycle rule |
 | --- | --- | --- |
-| Hot compact rank/read path | `token_radar_rank_source_events`, `token_radar_target_features`, `token_radar_rows`, `macro_observation_series_rows` active generation | No wide JSON/text scans. Reads and claims must use compact scalar columns indexed by claimed work keys, generation/version keys, target keys, or ranking keys. |
+| Hot compact rank/read path | `token_radar_rank_source_events`, `token_radar_target_features`, `token_radar_current_rows`, `token_radar_publication_state`, `macro_observation_series_rows` active generation | No wide JSON/text scans. Online Token Radar reads only current rows plus publication state; `fresh` requires `ready` and matching `current_generation_id`. |
 | Selected-row hydrate | `events`, `enriched_events`, `equity_event_evidence_artifacts` | Access only after ranking, document selection, or explicit evidence selection has chosen stable row ids or payload hashes. Do not join these wide payload tables into rank/discovery scans. |
-| Cold audit/history | `token_radar_snapshot_audit_*`, `token_radar_rank_history_*`, `raw_frames` | Partition lifecycle only. Runtime workers must not issue loop deletes against audit, history, or provider raw-frame tables. |
+| Cold audit/history | `raw_frames` and future explicit cold projections | Partition lifecycle only. Runtime workers must not issue loop deletes against audit, history, or provider raw-frame tables. |
 | Control plane | Dirty targets, jobs, fetch runs | Leased, bounded, and terminal-evidence based. Queue state transitions must preserve attempts, lease ownership, payload hash/idempotency keys, and explicit terminal reasons. |
 
 ## Source Material
@@ -221,7 +221,6 @@ targets or leased jobs.
 Broad discovery belongs in dry-run-first ops commands that enqueue bounded work:
 
 ```bash
-uv run gmgn-twitter-intel ops enqueue-runtime-worker-dirty-targets --work token-radar --dry-run
 uv run gmgn-twitter-intel ops enqueue-token-radar-dirty-targets --dry-run
 ```
 
@@ -626,10 +625,8 @@ Fresh largest relations:
 
 | Relation | Total Size |
 | --- | ---: |
-| `token_radar_snapshot_audit_202605` | 6.5 GB |
 | `market_ticks_default` | 2.1 GB |
 | `events` | 1.9 GB |
-| `token_radar_rank_history_202605` | 1.1 GB |
 | `raw_frames` | 835 MB |
 
 Diagnosis:

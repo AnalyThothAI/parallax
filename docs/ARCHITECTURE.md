@@ -9,7 +9,7 @@ GMGN public stream
   → domains/ingestion           (raw frame normalisation, snapshot gate)
   → domains/evidence            (transactional facts: events, evidence, intents, resolutions, asset identity)
   → domains/asset_market        (market tick capture, capture-tier projection, profile refresh/current projection, discovery)
-  → domains/token_intel         (Token Radar current/history/audit projections, scoring, search read model)
+  → domains/token_intel         (Token Radar current-row publication, scoring, search read model)
   → domains/narrative_intel     (per-mention semantics and token discussion digests)
   → domains/social_enrichment   (watched-event extraction)
   → domains/pulse_lab           (candidate gate, agent route, decision, audit ledger)
@@ -102,9 +102,15 @@ are wrong too.
    identity tables, `enriched_events`, and `market_ticks`. Public payloads do
    not return raw resolution fact rows.
 5. **One writer per read model.** Each derived read model has exactly one
-   runtime writer: `token_radar_current_rows`, `token_radar_rank_history`,
-   `token_radar_snapshot_audit`, and `token_radar_target_first_seen` are written
-   only by `TokenRadarProjectionWorker`; `token_capture_tier` is written only by
+   runtime writer: `token_radar_current_rows`,
+   `token_radar_publication_state`, `token_radar_rank_source_events`,
+   `token_radar_target_features`, and `token_radar_target_first_seen` are
+   written only by `TokenRadarProjectionWorker`; Token Radar online serving
+   reads only current rows plus publication state. `token_radar_rank_source_events`
+   is lazy evidence/detail, `token_radar_target_features` is projection-private,
+   and retired `token_radar_rank_history`, `token_radar_snapshot_audit`, and
+   `token_radar_projection_coverage` do not participate in online service.
+   `token_capture_tier` is written only by
    `TokenCaptureTierWorker`; `pulse_agent_jobs`, `pulse_candidate_edge_state`,
    `pulse_candidate_run_budget`, `pulse_target_run_budget`,
    `pulse_agent_runs`, `pulse_agent_run_steps`,
@@ -257,7 +263,7 @@ direction is still enforced by the package rules below.
 | `domains/ingestion/` | GMGN public-stream frame handling, snapshot gate, handle filtering, raw public-stream normalisation, collector status. |
 | `domains/evidence/` | Canonical Twitter event model, event identity, text projection, entity extraction, evidence and entity persistence, ingest orchestration. |
 | `domains/asset_market/` | Asset registry, chain/address identity, asset identity evidence/current identity selection, exact-token profile source cache and current profile projection, append-only `market_ticks`, rebuildable `token_capture_tier`, cache/publish-only live price gateway, discovery, and CEX route sync. |
-| `domains/token_intel/` | Token evidence, token intents, deterministic resolution, target-first search read model, token-target views, Token Radar feature aggregation, `token_factor_snapshot_v3_social_attention` construction, factor-snapshot projection, evaluation diagnostics, audit queries, signal alerts. |
+| `domains/token_intel/` | Token evidence, token intents, deterministic resolution, target-first search read model, token-target views, Token Radar feature aggregation, current-row publication state, `token_factor_snapshot_v3_social_attention` construction, factor-snapshot projection, evaluation diagnostics, signal alerts. |
 | `domains/narrative_intel/` | Per-mention trade stance / attention valence labels, token-window discussion digests, semantic coverage, narrative evidence refs, and the narrative read model consumed by API composition and Pulse evidence packets. |
 | `domains/social_enrichment/` | Watched-event gate, social-event extraction schema and facts, OpenAI Agents enrichment lifecycle, enrichment worker. |
 | `domains/notifications/` | Notification rules, repository, delivery, workers, candidate types. |
@@ -320,12 +326,11 @@ Legacy `assets`, `asset_aliases`, `asset_venues`, and `asset_market_snapshots` t
 Transaction ownership follows the same rule: domain services and runtime workers use repository/session Unit of Work methods, not `platform.db.postgres_client.transaction` directly. Repositories and `app/runtime/repository_session.py` own the concrete PostgreSQL transaction context.
 
 PostgreSQL table lifecycle follows the hot/cold contract in
-`docs/references/POSTGRES_PERFORMANCE.md`: compact rank/read models are the
-only hot ranking inputs, selected-row hydrate tables are read only after a
-stable row/document selection, audit/history tables are managed by partition
-lifecycle, and control-plane tables are leased with bounded work and terminal
-evidence. Runtime workers must not use deletes against cold audit/history
-tables as queue maintenance.
+`docs/references/POSTGRES_PERFORMANCE.md`: compact read models are the only hot
+serving inputs, detail/evidence queries are bounded by selected read-model keys,
+and control-plane tables are leased with bounded work and terminal evidence.
+Runtime workers must not use cold history/audit tables as freshness, fallback,
+or queue-maintenance state; cold projections need their own spec and writer.
 
 Provider modules are intentionally sparse. Only domains with real inbound cross-cutting dependencies have `providers.py` today: `ingestion`, `asset_market`, `social_enrichment`, `pulse_lab`, and `watchlist_intel`. Do not add empty provider files.
 

@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 from gmgn_twitter_intel.app.runtime.bootstrap import Runtime, bootstrap
+from gmgn_twitter_intel.app.runtime.provider_wiring.news import supported_news_provider_types
 from gmgn_twitter_intel.app.runtime.telemetry import PROMETHEUS_CONTENT_TYPE
 from gmgn_twitter_intel.app.runtime.worker_status import workers_status_payload
 from gmgn_twitter_intel.app.surfaces.api.exceptions import (
@@ -26,7 +27,6 @@ from gmgn_twitter_intel.domains.news_intel.services.news_provider_contract impor
     NewsProviderContractError,
     validate_news_provider_contract,
 )
-from gmgn_twitter_intel.integrations.news_feeds.provider_registry import SUPPORTED_NEWS_PROVIDER_TYPES
 from gmgn_twitter_intel.platform.config.settings import Settings, load_settings
 from gmgn_twitter_intel.platform.db.postgres_client import postgres_health_check
 from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_version
@@ -273,7 +273,7 @@ def _news_supported_provider_types(runtime: Runtime) -> tuple[str, ...]:
     registry_supported = getattr(registry, "supported_provider_types", None)
     if callable(registry_supported):
         return tuple(str(value) for value in registry_supported())
-    return tuple(SUPPORTED_NEWS_PROVIDER_TYPES)
+    return supported_news_provider_types()
 
 
 def _configured_news_provider_types(configured_sources: tuple[Any, ...]) -> list[str]:

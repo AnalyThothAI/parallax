@@ -170,10 +170,7 @@ describe("AppSidebar", () => {
       "href",
       "/macro/volatility/dashboard",
     );
-    expect(screen.getByRole("link", { name: "信用" })).toHaveAttribute(
-      "href",
-      "/macro/credit/cds",
-    );
+    expect(screen.getByRole("link", { name: "信用" })).toHaveAttribute("href", "/macro/credit/cds");
 
     expect(screen.queryByRole("link", { name: "美股" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "展开大类资产" }));

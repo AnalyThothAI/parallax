@@ -40,7 +40,13 @@ describe("Macro chart primitives", () => {
   });
 
   it("renders an accessible time series chart from semantic backend payloads", () => {
-    render(<MacroTimeSeriesChart chart={chartFixture()} seriesData={seriesFixture()} title="Equity trend" />);
+    render(
+      <MacroTimeSeriesChart
+        chart={chartFixture()}
+        seriesData={seriesFixture()}
+        title="Equity trend"
+      />,
+    );
 
     const figure = screen.getByRole("figure", { name: "Equity trend" });
     expect(within(figure).getByText("S&P 500")).toBeInTheDocument();
@@ -54,8 +60,12 @@ describe("Macro chart primitives", () => {
     render(<MacroTimeSeriesChart chart={{ id: "empty_chart", series: [] }} title="Empty chart" />);
 
     expect(screen.getByRole("figure", { name: "Empty chart" })).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "Empty chart state" })).toHaveTextContent("暂无可绘制序列");
-    expect(screen.getByRole("status", { name: "Empty chart state" })).not.toHaveTextContent("chart_series_missing");
+    expect(screen.getByRole("status", { name: "Empty chart state" })).toHaveTextContent(
+      "暂无可绘制序列",
+    );
+    expect(screen.getByRole("status", { name: "Empty chart state" })).not.toHaveTextContent(
+      "chart_series_missing",
+    );
     expect(chartMocks.createChart).not.toHaveBeenCalled();
   });
 
@@ -178,18 +188,26 @@ describe("Macro chart primitives", () => {
       <MacroHeatmap
         caption="Asset correlation heatmap"
         rows={[
-          { concept_key: "asset:spy", label: "SPY", correlations: { "asset:spy": 1, "asset:qqq": 0.92 } },
-          { concept_key: "asset:qqq", label: "QQQ", correlations: { "asset:spy": 0.92, "asset:qqq": 1 } },
+          {
+            concept_key: "asset:spy",
+            label: "SPY",
+            correlations: { "asset:spy": 1, "asset:qqq": 0.92 },
+          },
+          {
+            concept_key: "asset:qqq",
+            label: "QQQ",
+            correlations: { "asset:spy": 0.92, "asset:qqq": 1 },
+          },
         ]}
       />,
     );
 
     const table = screen.getByRole("table", { name: "Asset correlation heatmap" });
-    expect(within(table).getAllByRole("columnheader").map((header) => header.textContent)).toEqual([
-      "",
-      "SPY",
-      "QQQ",
-    ]);
+    expect(
+      within(table)
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent),
+    ).toEqual(["", "SPY", "QQQ"]);
     expect(within(table).getAllByText("0.92")).toHaveLength(2);
   });
 });

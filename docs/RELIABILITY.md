@@ -179,9 +179,9 @@ depend on `NOTIFY` delivery.
 ## One writer per read model
 
 Each derived read model has exactly one runtime writer. A second runtime
-writer of `token_radar_current_rows`, `token_radar_rank_history`,
-`token_radar_snapshot_audit`, `pulse_candidates`, or any future read model
-is both a reliability incident and an architecture-test violation. The
+writer of `token_radar_current_rows`, `token_radar_publication_state`,
+`pulse_candidates`, or any future read model is both a reliability incident
+and an architecture-test violation. The
 canonical worker registry and worker inventory are architecture-guarded
 so runtime ownership stays explicit. Ops paths and CLI rebuilds are
 explicit exceptions and must call the same projection service the worker
@@ -206,8 +206,10 @@ The same dirty-target rule applies to runtime agent/profile tails:
 and `handle_summary` are leased-job consumers and must not discover missing
 jobs inside the runtime loop. `LivePriceGateway` reads the live target control
 set from `token_capture_tier`; it must not scan Token Radar current rows.
-Historical discovery belongs to `ops enqueue-runtime-worker-dirty-targets`,
-which is dry-run by default, bounded by explicit selectors, and enqueue-only.
+Historical discovery is domain-owned. Token Radar uses
+`ops enqueue-token-radar-dirty-targets` and projection catch-up from material
+facts; other workers must expose similarly explicit domain repair paths instead
+of a generic runtime-worker repair command.
 
 ## PostgreSQL Observability
 
@@ -228,26 +230,26 @@ does not print passwords or application config.
 ## Token Radar Clean Reset And Watchlist Summary Maintenance
 
 Token Radar storage is a clean-reset hard cut. Legacy `token_radar_rows` and
-`token_radar_retention_runs` are removed by migration/reset; current reads use
-`token_radar_current_rows`, lightweight history uses `token_radar_rank_history`,
-and full audit snapshots use partitioned `token_radar_snapshot_audit`.
+`token_radar_retention_runs` are removed by migration/reset. Token Radar online
+serving is `token_radar_current_rows` plus `token_radar_publication_state`.
+`fresh` is allowed only when publication state is `ready` and served rows match
+`current_generation_id`. Failed latest attempts serve previous rows as `stale`
+or no rows as `failed`; retired history/audit tables are not part of runtime
+serving.
 
-When resetting Token Radar read models against real data, dry-run first:
+Token Radar has no runtime hard-reset command. Legacy table retirement belongs
+to migrations, and current-row repair is fact-driven:
 
 ```bash
-uv run gmgn-twitter-intel ops reset-token-radar-postgres-hard-cut --dry-run
-uv run gmgn-twitter-intel ops reset-token-radar-postgres-hard-cut --execute
+uv run gmgn-twitter-intel ops enqueue-token-radar-dirty-targets --source events --since-ms 0 --dry-run
+uv run gmgn-twitter-intel ops enqueue-token-radar-dirty-targets --source events --since-ms 0 --execute
+uv run gmgn-twitter-intel ops rebuild-token-intents --window 24h --limit 5000 --projection-limit 5000
 ```
-
-The reset command may clear Token Radar derived state and projection controls,
-but it must not touch material facts such as `events`, `token_intents`,
-`token_intent_resolutions`, `asset_identity_*`, `market_ticks`, or
-`enriched_events`.
 
 Cross-domain hard-cut cleanup commands, such as CEX Binance cleanup, may report
 Token Radar rows that will become stale, but they do not delete Token Radar
-tables directly. Run the clean-reset command after those fact-level cleanups
-and before restarting Token Radar projection workers.
+tables directly. Run the domain rebuild path after those fact-level cleanups so
+Token Radar reprojects from the updated facts.
 
 Before re-enabling Watchlist handle summaries against existing data, backfill
 compact watchlist read models in bounded batches:

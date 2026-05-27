@@ -28,7 +28,9 @@ export function EquityEventCalendar({
     return <PageState.Error error={error ?? "Equity event calendar unavailable"} />;
   }
   if (!rows.length) {
-    return <PageState.Empty title="No calendar rows" hint="No expected events match these filters." />;
+    return (
+      <PageState.Empty title="No calendar rows" hint="No expected events match these filters." />
+    );
   }
 
   return (
@@ -40,7 +42,8 @@ export function EquityEventCalendar({
             <div className="equity-event-calendar-main">
               <strong>{row.headline}</strong>
               <small>
-                {row.ticker} · {row.fiscal_period ?? "period n/a"} · {equityEventTypeLabel(row.event_type)}
+                {row.ticker} · {row.fiscal_period ?? "period n/a"} ·{" "}
+                {equityEventTypeLabel(row.event_type)}
               </small>
             </div>
             <span className="equity-event-calendar-time">

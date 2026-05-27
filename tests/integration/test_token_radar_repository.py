@@ -9,32 +9,30 @@ from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_dirty_targe
     TokenRadarDirtyTargetRepository,
 )
 from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import TokenRadarRepository
-from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import TokenRadarProjection
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
 
-def test_projection_coverage_round_trips_ready_zero_rows(tmp_path):
+def test_publication_state_round_trips_ready_zero_rows(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         repo = TokenRadarRepository(conn)
-        repo.mark_coverage(
+        repo.publish_current_generation(
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             window="5m",
             scope="matched",
-            status="ready",
-            reason=None,
+            generation_id="gen-5m-matched-1",
+            published_at_ms=1_778_000_000_000,
+            source_frontier_ms=1_777_999_999_000,
+            rows=[],
             source_rows=17,
-            row_count=0,
-            computed_at_ms=1_778_000_000_000,
             started_at_ms=1_777_999_990_000,
             finished_at_ms=1_778_000_000_000,
-            error=None,
         )
 
-        coverage = repo.latest_coverage(
+        state = repo.latest_publication_state(
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             windows=("5m",),
             scopes=("matched",),
@@ -42,38 +40,36 @@ def test_projection_coverage_round_trips_ready_zero_rows(tmp_path):
     finally:
         conn.close()
 
-    assert coverage == {
+    assert state == {
         ("5m", "matched"): {
-            "status": "ready",
-            "reason": None,
-            "source_rows": 17,
-            "row_count": 0,
-            "computed_at_ms": 1_778_000_000_000,
-            "error": None,
+            "current_generation_id": "gen-5m-matched-1",
+            "current_published_at_ms": 1_778_000_000_000,
+            "current_source_frontier_ms": 1_777_999_999_000,
+            "current_row_count": 0,
+            "current_source_rows": 17,
+            "latest_attempt_generation_id": "gen-5m-matched-1",
+            "latest_attempt_status": "ready",
+            "latest_attempt_error": None,
         }
     }
 
 
-def test_projection_coverage_round_trips_failed_state_without_rows(tmp_path):
+def test_publication_state_round_trips_failed_state_without_rows(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         repo = TokenRadarRepository(conn)
-        repo.mark_coverage(
+        repo.mark_publication_failed(
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             window="1h",
             scope="all",
-            status="failed",
-            reason="query_timeout",
-            source_rows=0,
-            row_count=0,
-            computed_at_ms=1_778_000_000_000,
+            generation_id="gen-1h-all-failed",
             started_at_ms=1_777_999_990_000,
             finished_at_ms=1_778_000_000_000,
             error="statement timeout",
         )
 
-        coverage = repo.latest_coverage(
+        state = repo.latest_publication_state(
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             windows=("1h",),
             scopes=("all",),
@@ -81,9 +77,9 @@ def test_projection_coverage_round_trips_failed_state_without_rows(tmp_path):
     finally:
         conn.close()
 
-    assert coverage[("1h", "all")]["status"] == "failed"
-    assert coverage[("1h", "all")]["reason"] == "query_timeout"
-    assert coverage[("1h", "all")]["error"] == "statement timeout"
+    assert state[("1h", "all")]["current_generation_id"] is None
+    assert state[("1h", "all")]["latest_attempt_status"] == "failed"
+    assert state[("1h", "all")]["latest_attempt_error"] == "statement timeout"
 
 
 def test_publish_and_latest_current_rows_persist_factor_snapshot_json(tmp_path):
@@ -114,7 +110,8 @@ def test_publish_and_latest_current_rows_persist_factor_snapshot_json(tmp_path):
         _insert_token_intent(conn, intent_id="intent-1", event_id="event-1")
         _insert_pricefeed(conn, "feed-1")
         repo = TokenRadarRepository(conn)
-        repo.publish_rows(
+        _publish_generation(
+            repo,
             projection_version="token-radar-v11-factor-alpha-gated",
             window="1h",
             scope="all",
@@ -137,7 +134,7 @@ def test_publish_and_latest_current_rows_persist_factor_snapshot_json(tmp_path):
     assert latest[0]["payload_hash"]
 
 
-def test_publish_rows_replaces_current_and_retains_audit_history(tmp_path):
+def test_publish_current_generation_replaces_current_and_updates_publication_state(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     older = _valid_factor_row()
     older["row_id"] = "row-factor-older"
@@ -150,44 +147,45 @@ def test_publish_rows_replaces_current_and_retains_audit_history(tmp_path):
         _insert_token_intent(conn, intent_id="intent-1", event_id="event-1")
         _insert_pricefeed(conn, "feed-1")
         repo = TokenRadarRepository(conn)
-        repo.publish_rows(
+        _publish_generation(
+            repo,
             projection_version="token-radar-v11-factor-alpha-gated",
             window="1h",
             scope="all",
             computed_at_ms=1_778_000_000_000,
             rows=[older],
         )
-        repo.publish_rows(
+        _publish_generation(
+            repo,
             projection_version="token-radar-v11-factor-alpha-gated",
             window="1h",
             scope="all",
             computed_at_ms=1_778_000_060_000,
             rows=[newer],
         )
-        retained = conn.execute(
-            """
-            SELECT row_id
-            FROM token_radar_snapshot_audit
-            WHERE projection_version = %s AND "window" = %s AND scope = %s
-            ORDER BY computed_at_ms ASC
-            """,
-            ("token-radar-v11-factor-alpha-gated", "1h", "all"),
-        ).fetchall()
         current = repo.latest_current_rows(
             window="1h",
             scope="all",
             limit=10,
             projection_version="token-radar-v11-factor-alpha-gated",
         )
+        state = repo.latest_publication_state(
+            projection_version="token-radar-v11-factor-alpha-gated",
+            windows=("1h",),
+            scopes=("all",),
+        )
     finally:
         conn.close()
 
-    assert [row["row_id"] for row in retained] == ["row-factor-older", "row-factor-newer"]
     assert [row["row_id"] for row in current] == ["row-factor-newer"]
     assert current[0]["listed_at_ms"] == 1_778_000_000_000
+    assert state[("1h", "all")]["current_generation_id"] == (
+        "token-radar-v11-factor-alpha-gated:1h:all:1778000060000"
+    )
+    assert state[("1h", "all")]["current_row_count"] == 1
 
 
-def test_publish_rows_does_not_duplicate_history_or_audit_for_unchanged_payload(tmp_path):
+def test_publish_current_generation_advances_generation_without_cold_history_side_effects(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     row = _valid_factor_row()
     try:
@@ -195,7 +193,8 @@ def test_publish_rows_does_not_duplicate_history_or_audit_for_unchanged_payload(
         _insert_token_intent(conn, intent_id="intent-1", event_id="event-1")
         _insert_pricefeed(conn, "feed-1")
         repo = TokenRadarRepository(conn)
-        repo.publish_rows(
+        _publish_generation(
+            repo,
             projection_version="token-radar-v11-factor-alpha-gated",
             window="1h",
             scope="all",
@@ -210,7 +209,8 @@ def test_publish_rows_does_not_duplicate_history_or_audit_for_unchanged_payload(
             """
         )
         row["row_id"] = "row-factor-same-later"
-        repo.publish_rows(
+        _publish_generation(
+            repo,
             projection_version="token-radar-v11-factor-alpha-gated",
             window="1h",
             scope="all",
@@ -220,8 +220,6 @@ def test_publish_rows_does_not_duplicate_history_or_audit_for_unchanged_payload(
         counts = conn.execute(
             """
             SELECT
-              (SELECT count(*) FROM token_radar_rank_history) AS rank_history_count,
-              (SELECT count(*) FROM token_radar_snapshot_audit) AS snapshot_audit_count,
               (
                 SELECT computed_at_ms
                 FROM token_radar_current_rows
@@ -237,10 +235,8 @@ def test_publish_rows_does_not_duplicate_history_or_audit_for_unchanged_payload(
     finally:
         conn.close()
 
-    assert counts["rank_history_count"] == 1
-    assert counts["snapshot_audit_count"] == 1
-    assert counts["current_computed_at_ms"] == 1_778_000_000_000
-    assert counts["first_seen_updated_at_ms"] == 1234
+    assert counts["current_computed_at_ms"] == 1_778_000_060_000
+    assert counts["first_seen_updated_at_ms"] > 1_778_000_000_000
 
 
 def test_upsert_target_feature_unchanged_payload_does_not_advance_score_timestamps(tmp_path):
@@ -351,7 +347,7 @@ def test_enqueue_market_targets_skips_when_target_feature_market_data_is_fresh(t
     assert stored_count["count"] == 0
 
 
-def test_enqueue_market_targets_does_not_let_old_claim_delete_new_market_dirty(tmp_path):
+def test_enqueue_market_targets_clears_stale_lease_without_claim_hash_suffix(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -396,7 +392,7 @@ def test_enqueue_market_targets_does_not_let_old_claim_delete_new_market_dirty(t
         conn.close()
 
     assert reenqueue_count == 1
-    assert after_reenqueue["payload_hash"] != old_claim["payload_hash"]
+    assert after_reenqueue["payload_hash"] == old_claim["payload_hash"]
     assert after_reenqueue["leased_until_ms"] is None
     assert after_reenqueue["lease_owner"] is None
     assert old_done_count == 0
@@ -448,7 +444,7 @@ def test_mark_done_does_not_let_expired_claim_delete_successor_claim(tmp_path):
     assert remaining["lease_owner"] == "projection-b"
 
 
-def test_empty_target_projection_marks_market_freshness_to_debounce_market_ticks(tmp_path):
+def test_empty_target_without_feature_has_no_target_projection_coverage_debounce(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -468,36 +464,35 @@ def test_empty_target_projection_marks_market_freshness_to_debounce_market_ticks
             now_ms=1_778_000_000_000,
         )
 
-        result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
-            windows=("5m",),
-            scopes=("all",),
+        claimed = repos.token_radar_dirty_targets.claim_due(
+            limit=1,
+            lease_ms=120_000,
             now_ms=1_778_000_001_000,
-            limit=10,
+            lease_owner="projection-a",
         )
+        repos.token_radar_dirty_targets.mark_done(claimed, now_ms=1_778_000_002_000)
+        target_coverage_tables = conn.execute(
+            """
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_name = 'token_radar_target_projection_coverage'
+            """
+        ).fetchall()
         second_count = repos.token_radar_dirty_targets.enqueue_market_targets(
             [("chain_token", "eip155:1:0xabc")],
             reason="market_tick_current_changed",
             now_ms=1_778_000_030_000,
         )
-        target_coverage = conn.execute(
-            """
-            SELECT latest_market_observed_at_ms
-            FROM token_radar_target_projection_coverage
-            WHERE projection_version = %s
-              AND target_type_key = 'Asset'
-              AND identity_id = 'asset-1'
-            """,
-            (TOKEN_RADAR_PROJECTION_VERSION,),
-        ).fetchone()
         dirty_count = conn.execute("SELECT count(*) AS count FROM token_radar_dirty_targets").fetchone()
     finally:
         conn.close()
 
     assert first_count == 1
-    assert result["status"] == "ready"
-    assert target_coverage["latest_market_observed_at_ms"] == 1_778_000_001_000
-    assert second_count == 0
-    assert dirty_count["count"] == 0
+    assert len(claimed) == 1
+    assert target_coverage_tables == []
+    assert second_count == 1
+    assert dirty_count["count"] == 1
 
 
 def test_recent_resolved_catch_up_is_stable_and_skips_projected_targets(tmp_path):
@@ -529,12 +524,12 @@ def test_recent_resolved_catch_up_is_stable_and_skips_projected_targets(tmp_path
         dirty_after_replay = conn.execute("SELECT count(*) AS count FROM token_radar_dirty_targets").fetchone()
 
         conn.execute("DELETE FROM token_radar_dirty_targets")
-        TokenRadarRepository(conn).mark_target_projection_coverage(
+        TokenRadarRepository(conn).upsert_target_feature(
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
-            target_type_key="Asset",
-            identity_id="asset-1",
-            latest_market_observed_at_ms=1_778_000_001_000,
-            projected_at_ms=1_778_000_001_000,
+            window="1h",
+            scope="all",
+            row=_valid_factor_row(),
+            computed_at_ms=1_778_000_001_000,
         )
         covered_count = dirty_repo.enqueue_recent_resolved_targets(
             since_ms=1_777_999_000_000,
@@ -551,7 +546,7 @@ def test_recent_resolved_catch_up_is_stable_and_skips_projected_targets(tmp_path
     assert covered_count == 0
 
 
-def test_publish_rows_removes_exited_current_rows_and_audits_rank_exit(tmp_path):
+def test_publish_current_generation_removes_exited_current_rows(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     first = _valid_factor_row()
     first["row_id"] = "row-asset-1"
@@ -577,14 +572,16 @@ def test_publish_rows_removes_exited_current_rows_and_audits_rank_exit(tmp_path)
         _insert_token_intent(conn, intent_id="intent-3", event_id="event-3")
         _insert_pricefeed(conn, "feed-1")
         repo = TokenRadarRepository(conn)
-        repo.publish_rows(
+        _publish_generation(
+            repo,
             projection_version="token-radar-v11-factor-alpha-gated",
             window="1h",
             scope="all",
             computed_at_ms=1_778_000_000_000,
             rows=[first, second],
         )
-        repo.publish_rows(
+        _publish_generation(
+            repo,
             projection_version="token-radar-v11-factor-alpha-gated",
             window="1h",
             scope="all",
@@ -600,28 +597,13 @@ def test_publish_rows_removes_exited_current_rows_and_audits_rank_exit(tmp_path)
             """,
             ("token-radar-v11-factor-alpha-gated", "1h", "all"),
         ).fetchall()
-        audit_reasons = conn.execute(
-            """
-            SELECT audit_reason, identity_id
-            FROM token_radar_snapshot_audit
-            WHERE projection_version = %s AND "window" = %s AND scope = %s
-              AND recorded_at_ms = %s
-            ORDER BY audit_reason ASC, identity_id ASC
-            """,
-            ("token-radar-v11-factor-alpha-gated", "1h", "all", 1_778_000_060_000),
-        ).fetchall()
     finally:
         conn.close()
 
     assert [(row["identity_id"], row["rank"]) for row in current] == [("asset-3", 1)]
-    assert [(row["audit_reason"], row["identity_id"]) for row in audit_reasons] == [
-        ("rank_enter", "asset-3"),
-        ("rank_exit", "asset-1"),
-        ("rank_exit", "asset-2"),
-    ]
 
 
-def test_publish_rows_can_upsert_rank_swaps_without_current_row_delete(tmp_path):
+def test_publish_current_generation_can_replace_rank_swaps(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     first = _valid_factor_row()
     first["row_id"] = "row-asset-1"
@@ -639,7 +621,8 @@ def test_publish_rows_can_upsert_rank_swaps_without_current_row_delete(tmp_path)
         _insert_token_intent(conn, intent_id="intent-2", event_id="event-2")
         _insert_pricefeed(conn, "feed-1")
         repo = TokenRadarRepository(conn)
-        repo.publish_rows(
+        _publish_generation(
+            repo,
             projection_version="token-radar-v11-factor-alpha-gated",
             window="1h",
             scope="all",
@@ -650,7 +633,8 @@ def test_publish_rows_can_upsert_rank_swaps_without_current_row_delete(tmp_path)
         second["rank"] = 1
         first["factor_snapshot_json"] = _valid_factor_snapshot(rank_score=10)
         second["factor_snapshot_json"] = _valid_factor_snapshot(rank_score=90)
-        repo.publish_rows(
+        _publish_generation(
+            repo,
             projection_version="token-radar-v11-factor-alpha-gated",
             window="1h",
             scope="all",
@@ -672,7 +656,7 @@ def test_publish_rows_can_upsert_rank_swaps_without_current_row_delete(tmp_path)
     assert [(row["identity_id"], row["rank"]) for row in ranks] == [("asset-2", 1), ("asset-1", 2)]
 
 
-def test_publish_rows_rejects_old_rows_after_newer_zero_row_coverage(tmp_path):
+def test_publish_current_generation_rejects_old_rows_after_newer_zero_row_generation(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     stale_row = _valid_factor_row()
     stale_row["row_id"] = "row-factor-stale"
@@ -681,16 +665,19 @@ def test_publish_rows_rejects_old_rows_after_newer_zero_row_coverage(tmp_path):
         _insert_token_intent(conn, intent_id="intent-1", event_id="event-1")
         _insert_pricefeed(conn, "feed-1")
         repo = TokenRadarRepository(conn)
-        repo.mark_coverage(
+        repo.publish_current_generation(
             projection_version="token-radar-v11-factor-alpha-gated",
             window="1h",
             scope="all",
-            status="ready",
-            row_count=0,
-            computed_at_ms=1_778_000_060_000,
+            generation_id="newer-empty-generation",
+            published_at_ms=1_778_000_060_000,
+            source_frontier_ms=1_778_000_060_000,
+            rows=[],
+            source_rows=0,
         )
 
-        written = repo.publish_rows(
+        written = _publish_generation(
+            repo,
             projection_version="token-radar-v11-factor-alpha-gated",
             window="1h",
             scope="all",
@@ -708,6 +695,27 @@ def test_publish_rows_rejects_old_rows_after_newer_zero_row_coverage(tmp_path):
 
     assert written is False
     assert current == []
+
+
+def _publish_generation(
+    repo: TokenRadarRepository,
+    *,
+    projection_version: str,
+    window: str,
+    scope: str,
+    computed_at_ms: int,
+    rows: list[dict[str, object]],
+) -> bool:
+    return repo.publish_current_generation(
+        projection_version=projection_version,
+        window=window,
+        scope=scope,
+        generation_id=f"{projection_version}:{window}:{scope}:{computed_at_ms}",
+        published_at_ms=computed_at_ms,
+        source_frontier_ms=max((int(row.get("source_max_received_at_ms") or 0) for row in rows), default=0),
+        rows=rows,
+        source_rows=len(rows),
+    )
 
 
 def _valid_factor_row() -> dict[str, object]:

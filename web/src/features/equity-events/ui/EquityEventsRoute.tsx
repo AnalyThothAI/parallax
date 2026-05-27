@@ -1,8 +1,4 @@
-import {
-  earningsCalendarPath,
-  earningsPath,
-  equityEventDetailPath,
-} from "@shared/routing/paths";
+import { earningsCalendarPath, earningsPath, equityEventDetailPath } from "@shared/routing/paths";
 import * as PageState from "@shared/ui/PageState";
 import { BarChart3, CalendarDays, FileClock, Search } from "lucide-react";
 import type { FormEvent, ReactNode } from "react";
@@ -14,10 +10,7 @@ import {
   useEquityEventSummary,
   useEquityEvents,
 } from "../api/useEquityEvents";
-import {
-  buildEquityEventFeedModel,
-  sortEquityCalendarRows,
-} from "../model/equityEventViewModel";
+import { buildEquityEventFeedModel, sortEquityCalendarRows } from "../model/equityEventViewModel";
 import {
   serializeEquityEventRouteState,
   type EquityEventRouteState,
@@ -66,7 +59,9 @@ export function EquityEventsRoute({
       status: formText(form, "status"),
       ticker: formText(form, "ticker")?.toUpperCase() ?? null,
     };
-    navigate(`${routeState.view === "calendar" ? earningsCalendarPath() : earningsPath()}${searchFor(nextState)}`);
+    navigate(
+      `${routeState.view === "calendar" ? earningsCalendarPath() : earningsPath()}${searchFor(nextState)}`,
+    );
   };
 
   return (
@@ -113,7 +108,11 @@ export function EquityEventsRoute({
       </nav>
 
       {!routeState.selectedEventId ? (
-        <form className="equity-event-filters" aria-label="Equity event filters" onSubmit={updateFilters}>
+        <form
+          className="equity-event-filters"
+          aria-label="Equity event filters"
+          onSubmit={updateFilters}
+        >
           <label>
             <span>Ticker</span>
             <input name="ticker" defaultValue={routeState.ticker ?? ""} placeholder="NVDA" />

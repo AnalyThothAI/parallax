@@ -60,9 +60,9 @@ describe("data router architecture", () => {
       "@features/watchlist",
     ];
 
-    expect(
-      importSources.filter((source) => pageExportingFeatureBarrels.includes(source)),
-    ).toEqual([]);
+    expect(importSources.filter((source) => pageExportingFeatureBarrels.includes(source))).toEqual(
+      [],
+    );
   });
 
   it("keeps shell chrome data above cockpit and search shell switches", () => {

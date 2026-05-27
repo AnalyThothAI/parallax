@@ -32,12 +32,7 @@
   .news-provider-command {
     border-color: var(--opportunity-line);
     background:
-      linear-gradient(
-        110deg,
-        rgba(66, 211, 146, 0.12),
-        rgba(123, 181, 216, 0.05) 48%,
-        transparent
-      ),
+      linear-gradient(110deg, rgba(66, 211, 146, 0.12), rgba(123, 181, 216, 0.05) 48%, transparent),
       rgba(10, 13, 13, 0.84);
   }
 

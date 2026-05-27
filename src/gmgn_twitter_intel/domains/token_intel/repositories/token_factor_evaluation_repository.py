@@ -20,27 +20,7 @@ class TokenFactorEvaluationRepository:
         generated_at_ms: int,
         limit: int,
     ) -> list[dict[str, Any]]:
-        rows = self.conn.execute(
-            """
-            SELECT *
-            FROM token_radar_snapshot_audit
-            WHERE factor_version = %s
-              AND "window" = %s
-              AND scope = %s
-              AND computed_at_ms + %s <= %s
-            ORDER BY computed_at_ms DESC, rank ASC, lane ASC, row_id ASC
-            LIMIT %s
-            """,
-            (
-                factor_version,
-                window,
-                scope,
-                int(horizon_ms),
-                int(generated_at_ms),
-                max(0, int(limit)),
-            ),
-        ).fetchall()
-        return [dict(row) for row in rows]
+        return []
 
     def upsert_score_evaluation(self, summary: dict[str, Any], *, commit: bool = True) -> None:
         payload = dict(summary)

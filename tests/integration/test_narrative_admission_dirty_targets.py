@@ -13,7 +13,7 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJEC
 from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import TokenRadarProjection
 from tests.integration.test_narrative_repository import (
     _insert_intent,
-    _insert_radar_coverage,
+    _insert_radar_publication_state,
     _insert_radar_row,
     make_event,
     open_repo,
@@ -121,13 +121,13 @@ class _FailingNarrativeAdmissionDirtyTargets:
         raise RuntimeError("forced narrative enqueue failure")
 
 
-def test_load_radar_admission_target_uses_exact_target_and_latest_ready_coverage(tmp_path) -> None:
+def test_load_radar_admission_target_uses_exact_target_and_latest_ready_publication_state(tmp_path) -> None:
     conn, evidence, repo = open_repo(tmp_path)
     try:
         for event_id in ["event-target", "event-other"]:
             assert evidence.insert_event(make_event(event_id), is_watched=True) is True
             _insert_intent(conn, intent_id=f"intent-{event_id}", event_id=event_id, observed_at_ms=1_000)
-        _insert_radar_coverage(
+        _insert_radar_publication_state(
             conn,
             window="24h",
             scope="all",
@@ -154,10 +154,10 @@ def test_load_radar_admission_target_uses_exact_target_and_latest_ready_coverage
         )
         conn.execute(
             """
-            UPDATE token_radar_projection_coverage
-            SET computed_at_ms = 2_000,
-                started_at_ms = 2_000,
-                finished_at_ms = 2_000,
+            UPDATE token_radar_publication_state
+            SET current_published_at_ms = 2_000,
+                latest_attempt_started_at_ms = 2_000,
+                latest_attempt_finished_at_ms = 2_000,
                 updated_at_ms = 2_000
             WHERE projection_version = %s
               AND "window" = '24h'

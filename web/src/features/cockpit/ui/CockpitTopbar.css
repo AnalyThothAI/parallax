@@ -3,8 +3,7 @@
     position: relative;
     z-index: 20;
     display: grid;
-    grid-template-columns:
-      minmax(32px, auto) minmax(300px, 1fr) 32px 32px 32px;
+    grid-template-columns: minmax(32px, auto) minmax(300px, 1fr) 32px 32px 32px;
     align-items: center;
     gap: 10px;
     min-height: var(--cockpit-topbar-height);

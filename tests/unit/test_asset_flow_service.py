@@ -60,17 +60,26 @@ def test_asset_flow_marks_ready_empty_projection_without_missing_rows():
     assert result["projection"]["anchor_coverage"] == {"status": "missing", "ready": 0, "missing": 0, "total": 0}
 
 
-def test_asset_flow_projection_metadata_prefers_coverage_timestamp():
+def test_asset_flow_projection_metadata_prefers_publication_state_timestamp():
     service = asset_flow_service(
-        rows=[radar_row(lane="resolved", symbol="BTC", target_type="CexToken", target_id="cex_token:BTC")],
-        coverage={
+        rows=[
+            radar_row(
+                lane="resolved",
+                symbol="BTC",
+                target_type="CexToken",
+                target_id="cex_token:BTC",
+                generation_id="gen-1",
+            )
+        ],
+        publication_state={
             ("1h", "all"): {
-                "status": "ready",
-                "reason": None,
-                "row_count": 1,
-                "source_rows": 1,
-                "computed_at_ms": 1_700_000_120_000,
-                "error": None,
+                "latest_attempt_status": "ready",
+                "current_generation_id": "gen-1",
+                "current_row_count": 1,
+                "current_source_rows": 1,
+                "current_source_frontier_ms": 1_700_000_000_000,
+                "current_published_at_ms": 1_700_000_120_000,
+                "latest_attempt_error": None,
             }
         },
     )
@@ -81,8 +90,32 @@ def test_asset_flow_projection_metadata_prefers_coverage_timestamp():
     assert result["projection"]["computed_at_ms"] == 1_700_000_120_000
 
 
-def test_asset_flow_marks_projection_pending_when_coverage_is_missing():
-    service = asset_flow_service(rows=[], coverage={})
+def test_asset_flow_ready_state_with_missing_current_generation_rows_is_stale():
+    service = asset_flow_service(
+        rows=[],
+        publication_state={
+            ("1h", "all"): {
+                "latest_attempt_status": "ready",
+                "current_generation_id": "gen-missing",
+                "current_row_count": 1,
+                "current_source_rows": 1,
+                "current_source_frontier_ms": 1_700_000_000_000,
+                "current_published_at_ms": 1_700_000_120_000,
+                "latest_attempt_error": None,
+            }
+        },
+    )
+
+    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_130_000)
+
+    assert result["targets"] == []
+    assert result["projection"]["status"] == "stale"
+    assert result["projection"]["reason"] == "projection_generation_mismatch"
+    assert result["projection"]["row_count"] == 1
+
+
+def test_asset_flow_marks_projection_pending_when_publication_state_is_missing():
+    service = asset_flow_service(rows=[], publication_state={})
 
     result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
 
@@ -93,17 +126,27 @@ def test_asset_flow_marks_projection_pending_when_coverage_is_missing():
     assert result["projection"]["anchor_coverage"] == {"status": "pending", "ready": 0, "missing": 0, "total": 0}
 
 
-def test_asset_flow_serves_last_current_rows_while_projection_is_running():
+def test_asset_flow_failed_attempt_with_previous_rows_is_stale_not_fresh():
     service = asset_flow_service(
-        rows=[radar_row(lane="resolved", symbol="BTC", target_type="CexToken", target_id="cex_token:BTC")],
-        coverage={
+        rows=[
+            radar_row(
+                lane="resolved",
+                symbol="BTC",
+                target_type="CexToken",
+                target_id="cex_token:BTC",
+                generation_id="gen-previous",
+            )
+        ],
+        publication_state={
             ("1h", "all"): {
-                "status": "running",
-                "reason": "projection_window_running",
-                "row_count": 0,
-                "source_rows": 0,
-                "computed_at_ms": 1_700_000_120_000,
-                "error": None,
+                "latest_attempt_status": "failed",
+                "latest_attempt_generation_id": "gen-failed",
+                "current_generation_id": "gen-previous",
+                "current_row_count": 1,
+                "current_source_rows": 1,
+                "current_source_frontier_ms": 1_700_000_000_000,
+                "current_published_at_ms": 1_700_000_120_000,
+                "latest_attempt_error": "projection failed",
             }
         },
     )
@@ -111,8 +154,11 @@ def test_asset_flow_serves_last_current_rows_while_projection_is_running():
     result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_130_000)
 
     assert result["targets"][0]["target"]["symbol"] == "BTC"
-    assert result["projection"]["status"] == "fresh"
-    assert result["projection"]["reason"] == "projection_window_running"
+    assert result["attention"] == []
+    assert result["projection"]["status"] == "stale"
+    assert result["projection"]["reason"] == "projection_window_failed"
+    assert result["projection"]["latest_attempt_status"] == "failed"
+    assert result["projection"]["error"] == "projection failed"
     assert result["projection"]["row_count"] == 1
     assert result["projection"]["source_rows"] == 1
 
@@ -155,38 +201,60 @@ def test_asset_flow_uses_backend_symbol_without_inventing_contract_label():
 
 
 class FakeTokenRadar:
-    def __init__(self, *, rows, coverage=None):
+    def __init__(self, *, rows, publication_state=None):
         self.rows = rows
-        self.coverage = coverage
+        self.publication_state = publication_state
         self.calls = []
 
     def latest_current_rows(self, *, window, scope, limit, projection_version):
         self.calls.append({"window": window, "scope": scope, "limit": limit, "projection_version": projection_version})
         return self.rows[:limit]
 
-    def latest_coverage(self, *, projection_version, windows, scopes):
-        if self.coverage is None:
+    def current_rows_for_generation(self, *, window, scope, generation_id, limit, projection_version):
+        self.calls.append(
+            {
+                "window": window,
+                "scope": scope,
+                "generation_id": generation_id,
+                "limit": limit,
+                "projection_version": projection_version,
+            }
+        )
+        return [row for row in self.rows if str(row.get("generation_id") or "") == str(generation_id)][:limit]
+
+    def latest_publication_state(self, *, projection_version, windows, scopes):
+        if self.publication_state is None:
             return {
                 (window, scope): {
-                    "status": "ready",
-                    "reason": None,
-                    "row_count": len(self.rows),
-                    "source_rows": len(self.rows),
-                    "computed_at_ms": max((int(row.get("computed_at_ms") or 0) for row in self.rows), default=0)
+                    "latest_attempt_status": "ready",
+                    "current_generation_id": "gen-default",
+                    "current_row_count": len(self.rows),
+                    "current_source_rows": len(self.rows),
+                    "current_source_frontier_ms": max(
+                        (int(row.get("source_max_received_at_ms") or 0) for row in self.rows), default=0
+                    )
                     or None,
+                    "current_published_at_ms": max(
+                        (int(row.get("computed_at_ms") or 0) for row in self.rows), default=0
+                    )
+                    or None,
+                    "latest_attempt_error": None,
                 }
                 for window in windows
                 for scope in scopes
             }
-        return dict(self.coverage)
+        return dict(self.publication_state)
 
 
 def asset_flow_service(
     *,
     rows: list[dict],
-    coverage: dict[tuple[str, str], dict] | None = None,
+    publication_state: dict[tuple[str, str], dict] | None = None,
 ) -> AssetFlowService:
-    return AssetFlowService(token_radar=FakeTokenRadar(rows=rows, coverage=coverage), profiles=FakeProfiles())
+    return AssetFlowService(
+        token_radar=FakeTokenRadar(rows=rows, publication_state=publication_state),
+        profiles=FakeProfiles(),
+    )
 
 
 class FakeProfiles:
@@ -204,6 +272,7 @@ def radar_row(
     display_symbol: str | None = None,
     chain: str | None = None,
     address: str | None = None,
+    generation_id: str = "gen-default",
 ) -> dict:
     event_ids = [f"event:{display_symbol or symbol or target_id or 'unknown'}"]
     snapshot = factor_snapshot_json(
@@ -254,6 +323,7 @@ def radar_row(
         "source_event_ids_json": event_ids,
         "source_max_received_at_ms": 1_700_000_000_000,
         "computed_at_ms": 1_700_000_060_000,
+        "generation_id": generation_id,
         "listed_at_ms": 1_699_999_880_000,
     }
 

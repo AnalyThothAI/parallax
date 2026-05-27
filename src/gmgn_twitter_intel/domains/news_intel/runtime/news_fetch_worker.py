@@ -23,7 +23,6 @@ from gmgn_twitter_intel.domains.news_intel.types.source_provider import (
     NewsSourceHttpCache,
     NewsSourceSnapshot,
 )
-from gmgn_twitter_intel.integrations.news_feeds.provider_registry import SUPPORTED_NEWS_PROVIDER_TYPES
 
 
 class NewsFetchWorker(WorkerBase):
@@ -428,7 +427,7 @@ def _supported_provider_types(feed_client: NewsSourceProvider) -> tuple[str, ...
     registry_supported = getattr(registry, "supported_provider_types", None)
     if callable(registry_supported):
         return tuple(str(value) for value in registry_supported())
-    return tuple(SUPPORTED_NEWS_PROVIDER_TYPES)
+    return tuple(PROVIDER_TYPES)
 
 
 def _schema_provider_types(repository: Any) -> tuple[str, ...]:

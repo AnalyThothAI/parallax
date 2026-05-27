@@ -1,4 +1,9 @@
-import { Navigate, createBrowserRouter, createMemoryRouter, type RouteObject } from "react-router-dom";
+import {
+  Navigate,
+  createBrowserRouter,
+  createMemoryRouter,
+  type RouteObject,
+} from "react-router-dom";
 
 import { RouteErrorElement } from "./routeErrorElement";
 import { SearchShellRoute, ShellChromeRoute, ShellRoute } from "./shell.route";

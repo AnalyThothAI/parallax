@@ -14,7 +14,8 @@ def upgrade() -> None:
     op.execute(
         """
         COMMENT ON TABLE token_radar_rank_source_events IS
-          'Compact Token Radar rank-source edge read model. Stores source ids and text-derived metrics only; event text and raw payload stay in material fact tables.'
+          'Compact Token Radar rank-source edge read model. Stores source ids and text-derived metrics only; '
+          'event text and raw payload stay in material fact tables.'
         """
     )
     op.execute(

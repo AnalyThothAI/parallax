@@ -142,11 +142,11 @@ def test_news_workers_ingest_process_project_and_query_visible_news(tmp_path) ->
     assert row["canonical_url"] == "https://www.binance.com/en/support/announcement/btc-listing"
     assert row["lifecycle_status"] == "accepted"
     assert row["story_id"]
-    assert row["source_json"]["source_role"] == "official_exchange"
-    assert row["token_lanes_json"][0]["resolution_status"] == "known_symbol"
-    assert row["token_lanes_json"][0]["target_type"] == "CexToken"
-    assert row["fact_lanes_json"][0]["event_type"] == "exchange_listing"
-    assert row["fact_lanes_json"][0]["status"] == "accepted"
+    assert row["source"]["source_role"] == "official_exchange"
+    assert row["token_lanes"][0]["resolution_status"] == "known_symbol"
+    assert row["token_lanes"][0]["target_type"] == "CexToken"
+    assert row["fact_lanes"][0]["event_type"] == "exchange_listing"
+    assert row["fact_lanes"][0]["status"] == "accepted"
     assert item_detail is not None
     assert item_detail["source"]["source_role"] == "official_exchange"
     assert item_detail["provider_item"]["source_item_key"] == "binance-guid-1"

@@ -179,10 +179,10 @@ function displayValue(value: unknown): string | null {
   );
 }
 
-function isDisplayCell(
-  value: unknown,
-): value is { display_value?: unknown; sort_value?: unknown } {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value) && "display_value" in value);
+function isDisplayCell(value: unknown): value is { display_value?: unknown; sort_value?: unknown } {
+  return Boolean(
+    value && typeof value === "object" && !Array.isArray(value) && "display_value" in value,
+  );
 }
 
 const VALUE_LABELS: Record<string, string> = {

@@ -43,7 +43,11 @@ describe("macroChartModel", () => {
     const model = buildMacroTimeSeriesModel(chart, data);
 
     expect(model.series.map((series) => series.conceptKey)).toEqual(["asset:spx", "rates:dgs10"]);
-    expect(model.series[0]).toMatchObject({ conceptKey: "asset:spx", label: "S&P 500", unit: "index" });
+    expect(model.series[0]).toMatchObject({
+      conceptKey: "asset:spx",
+      label: "S&P 500",
+      unit: "index",
+    });
     expect(model.series[1]).toMatchObject({
       conceptKey: "rates:dgs10",
       label: "10Y",

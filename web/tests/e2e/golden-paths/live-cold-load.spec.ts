@@ -35,9 +35,10 @@ test("cold live load renders radar, tape, and URL-owned filters", async ({ page 
     "data-state",
     "on",
   );
-  await expect(
-    radarScopeControls.getByRole("radio", { name: "all" }),
-  ).toHaveAttribute("data-state", "on");
+  await expect(radarScopeControls.getByRole("radio", { name: "all" })).toHaveAttribute(
+    "data-state",
+    "on",
+  );
   await expect(page).toHaveURL(/\/$/);
 
   const shellBox = await page.locator(".cockpit-shell").boundingBox();

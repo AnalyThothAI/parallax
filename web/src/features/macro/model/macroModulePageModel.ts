@@ -7,11 +7,19 @@ export function chartConceptKeys(chart: MacroModuleChart): string[] {
 }
 
 export function tableCaption(table: MacroModuleTable): string {
-  return stringValue(table.title) ?? TITLE_BY_ID[tableIdentifier(table)] ?? labelFromIdentifier(tableIdentifier(table));
+  return (
+    stringValue(table.title) ??
+    TITLE_BY_ID[tableIdentifier(table)] ??
+    labelFromIdentifier(tableIdentifier(table))
+  );
 }
 
 export function chartCaption(chart: MacroModuleChart): string {
-  return stringValue(chart.title) ?? TITLE_BY_ID[chartIdentifier(chart)] ?? labelFromIdentifier(chartIdentifier(chart));
+  return (
+    stringValue(chart.title) ??
+    TITLE_BY_ID[chartIdentifier(chart)] ??
+    labelFromIdentifier(chartIdentifier(chart))
+  );
 }
 
 export function chartIdentifier(chart: MacroModuleChart): string {

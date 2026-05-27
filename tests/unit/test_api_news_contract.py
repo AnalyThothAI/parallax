@@ -271,9 +271,25 @@ class FakeRuntime:
     def __init__(self, news: FakeNewsRepository) -> None:
         self.settings = type("FakeSettings", (), {"ws_token": "secret"})()
         self.news = news
+        self.providers = type(
+            "FakeProviders",
+            (),
+            {
+                "news_intel": type(
+                    "FakeNewsProviders",
+                    (),
+                    {"feed_client": FakeNewsFeedClient()},
+                )()
+            },
+        )()
 
     def repositories(self):
         return FakeRepositoryContext(self.news)
+
+
+class FakeNewsFeedClient:
+    def supported_provider_types(self) -> tuple[str, ...]:
+        return ("atom", "cryptopanic", "json_feed", "opennews", "rss")
 
 
 def _app(news: FakeNewsRepository) -> FastAPI:

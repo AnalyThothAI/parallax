@@ -1,8 +1,4 @@
-import {
-  OpsDiagnosticsPage,
-  useOpsDiagnosticsQuery,
-  useOpsQueueQuery,
-} from "@features/ops";
+import { OpsDiagnosticsPage, useOpsDiagnosticsQuery, useOpsQueueQuery } from "@features/ops";
 import { useState } from "react";
 
 import { useShellRouteContext } from "./shellRouteContext";

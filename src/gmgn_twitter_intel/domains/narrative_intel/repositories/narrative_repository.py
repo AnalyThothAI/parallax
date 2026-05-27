@@ -203,21 +203,27 @@ class NarrativeRepository:
         radar_row = self.conn.execute(
             """
             WITH latest AS (
-              SELECT computed_at_ms, row_count
-              FROM token_radar_projection_coverage
+              SELECT
+                projection_version,
+                "window",
+                scope,
+                current_generation_id,
+                current_published_at_ms,
+                current_row_count
+              FROM token_radar_publication_state
               WHERE projection_version = %s
                 AND "window" = %s
                 AND scope = %s
-                AND status = 'ready'
-                AND computed_at_ms IS NOT NULL
-              ORDER BY computed_at_ms DESC
+                AND latest_attempt_status = 'ready'
+                AND current_published_at_ms IS NOT NULL
+                AND current_generation_id IS NOT NULL
               LIMIT 1
             )
             SELECT token_radar_current_rows.row_id,
                    token_radar_current_rows.target_type,
                    token_radar_current_rows.target_id,
                    token_radar_current_rows.rank,
-                   latest.computed_at_ms AS computed_at_ms,
+                   latest.current_published_at_ms AS computed_at_ms,
                    token_radar_current_rows.computed_at_ms AS row_computed_at_ms,
                    NULLIF(
                      token_radar_current_rows.factor_snapshot_json->'composite'->>'rank_score', ''
@@ -226,18 +232,16 @@ class NarrativeRepository:
                    token_radar_current_rows.source_max_received_at_ms
             FROM latest
             JOIN token_radar_current_rows
-              ON token_radar_current_rows.projection_version = %s
-             AND token_radar_current_rows."window" = %s
-             AND token_radar_current_rows.scope = %s
+              ON token_radar_current_rows.projection_version = latest.projection_version
+             AND token_radar_current_rows."window" = latest."window"
+             AND token_radar_current_rows.scope = latest.scope
+             AND token_radar_current_rows.generation_id = latest.current_generation_id
              AND token_radar_current_rows.target_type = %s
              AND token_radar_current_rows.target_id = %s
-            WHERE latest.row_count > 0
+            WHERE latest.current_row_count > 0
             LIMIT 1
             """,
             (
-                projection_version,
-                window,
-                scope,
                 projection_version,
                 window,
                 scope,

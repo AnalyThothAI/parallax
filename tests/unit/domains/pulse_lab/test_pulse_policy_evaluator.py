@@ -130,7 +130,15 @@ def test_build_pulse_policy_evaluation_uses_only_read_queries_and_returns_sectio
         candidate_rows=[_candidate_row("1h", "all", "display_trade_candidate")],
         run_rows=[_run_row("1h", "all", outcome="completed", status="completed", job_status="done")],
         job_rows=[_job_row("1h", "all", status="pending", has_run=False, next_run_at_ms=1_699_999_999_000)],
-        coverage_rows=[{"window": "1h", "scope": "all", "computed_at_ms": 1_700_000_000_000, "status": "ready"}],
+        publication_state_rows=[
+            {
+                "window": "1h",
+                "scope": "all",
+                "current_published_at_ms": 1_700_000_000_000,
+                "current_generation_id": "gen-ready",
+                "latest_attempt_status": "ready",
+            }
+        ],
     )
 
     evaluation = build_pulse_policy_evaluation(conn, now_ms=1_700_000_000_000, lookback_hours=24)
@@ -145,32 +153,57 @@ def test_build_pulse_policy_evaluation_uses_only_read_queries_and_returns_sectio
     assert all(_is_read_only_select(sql) for sql in conn.executed_sql)
 
 
-def test_fetch_radar_rows_uses_projection_coverage_for_freshness() -> None:
+def test_fetch_radar_rows_uses_publication_state_for_ready_current_generation() -> None:
     conn = FakeConn(
-        radar_rows=[_radar_row("1h", "all", authors=3, top_share=0.3, watched_mentions=1, computed_at_ms=100)],
+        radar_rows=[
+            _radar_row(
+                "1h",
+                "all",
+                authors=3,
+                top_share=0.3,
+                watched_mentions=1,
+                computed_at_ms=100,
+                generation_id="gen-ready",
+            )
+        ],
         candidate_rows=[],
         run_rows=[],
-        coverage_rows=[{"window": "1h", "scope": "all", "computed_at_ms": 1_700_000_000_000, "status": "ready"}],
+        publication_state_rows=[
+            {
+                "window": "1h",
+                "scope": "all",
+                "current_published_at_ms": 1_700_000_000_000,
+                "current_generation_id": "gen-ready",
+                "latest_attempt_status": "ready",
+            }
+        ],
     )
 
     rows = fetch_radar_rows(conn, now_ms=1_700_000_060_000, lookback_hours=24)
 
     assert len(rows) == 1
     assert rows[0]["computed_at_ms"] == 100
-    assert any("FROM token_radar_projection_coverage" in sql for sql in conn.executed_sql)
-    freshness_sql = next(sql for sql in conn.executed_sql if "FROM token_radar_projection_coverage" in sql)
-    assert "status = 'ready'" in freshness_sql
-    assert "token_radar_current_rows" not in freshness_sql
+    assert all("token_radar_projection_coverage" not in sql for sql in conn.executed_sql)
     row_sql = next(sql for sql in conn.executed_sql if "FROM token_radar_current_rows" in sql)
-    assert "%s AS computed_at_ms" not in row_sql
+    assert "JOIN token_radar_publication_state" in row_sql
+    assert "state.current_generation_id = token_radar_current_rows.generation_id" in row_sql
+    assert "state.latest_attempt_status = 'ready'" in row_sql
 
 
-def test_fetch_radar_rows_ignores_non_ready_projection_coverage() -> None:
+def test_fetch_radar_rows_ignores_non_ready_publication_state() -> None:
     conn = FakeConn(
         radar_rows=[_radar_row("1h", "all", authors=3, top_share=0.3, watched_mentions=1, computed_at_ms=100)],
         candidate_rows=[],
         run_rows=[],
-        coverage_rows=[{"window": "1h", "scope": "all", "computed_at_ms": 1_700_000_000_000, "status": "failed"}],
+        publication_state_rows=[
+            {
+                "window": "1h",
+                "scope": "all",
+                "current_published_at_ms": 1_700_000_000_000,
+                "current_generation_id": "gen-ready",
+                "latest_attempt_status": "failed",
+            }
+        ],
     )
 
     rows = fetch_radar_rows(conn, now_ms=1_700_000_060_000, lookback_hours=24)
@@ -197,10 +230,28 @@ def test_build_pulse_policy_evaluation_uses_configured_current_policy_selection(
             _job_row("1h", "matched", status="done", has_run=True, next_run_at_ms=900),
             _job_row("4h", "matched", status="done", has_run=True, next_run_at_ms=900),
         ],
-        coverage_rows=[
-            {"window": "1h", "scope": "matched", "computed_at_ms": 1_700_000_000_000, "status": "ready"},
-            {"window": "1h", "scope": "all", "computed_at_ms": 1_700_000_000_000, "status": "ready"},
-            {"window": "4h", "scope": "matched", "computed_at_ms": 1_700_000_000_000, "status": "ready"},
+        publication_state_rows=[
+            {
+                "window": "1h",
+                "scope": "matched",
+                "current_published_at_ms": 1_700_000_000_000,
+                "current_generation_id": "gen-ready",
+                "latest_attempt_status": "ready",
+            },
+            {
+                "window": "1h",
+                "scope": "all",
+                "current_published_at_ms": 1_700_000_000_000,
+                "current_generation_id": "gen-ready",
+                "latest_attempt_status": "ready",
+            },
+            {
+                "window": "4h",
+                "scope": "matched",
+                "current_published_at_ms": 1_700_000_000_000,
+                "current_generation_id": "gen-ready",
+                "latest_attempt_status": "ready",
+            },
         ],
     )
 
@@ -295,11 +346,11 @@ class FakeConn:
         candidate_rows: list[dict],
         run_rows: list[dict],
         job_rows: list[dict] | None = None,
-        coverage_rows: list[dict] | None = None,
+        publication_state_rows: list[dict] | None = None,
     ) -> None:
         self._rows = {
             "token_radar_current_rows": radar_rows,
-            "token_radar_projection_coverage": coverage_rows or [],
+            "token_radar_publication_state": publication_state_rows or [],
             "pulse_candidates": candidate_rows,
             "pulse_agent_runs": run_rows,
             "pulse_agent_jobs": job_rows or [],
@@ -314,20 +365,24 @@ class FakeConn:
             return FakeCursor(self._rows["pulse_agent_runs"])
         if "FROM pulse_agent_jobs" in sql:
             return FakeCursor(self._rows["pulse_agent_jobs"])
-        if "FROM token_radar_projection_coverage" in sql:
-            window, scope = str(params[-2]), str(params[-1])
-            rows = [
-                row
-                for row in self._rows["token_radar_projection_coverage"]
-                if row.get("window") == window and row.get("scope") == scope and row.get("status", "ready") == "ready"
-            ][:1]
-            return FakeCursor(rows)
         if "FROM token_radar_current_rows" in sql and '"window" = %s' in sql and "scope = %s" in sql:
-            window, scope = str(params[-2]), str(params[-1])
+            window, scope = str(params[1]), str(params[2])
+            state_rows = [
+                row
+                for row in self._rows["token_radar_publication_state"]
+                if row.get("window") == window
+                and row.get("scope") == scope
+                and row.get("latest_attempt_status") == "ready"
+            ]
+            if not state_rows:
+                return FakeCursor([])
+            generation_id = state_rows[0].get("current_generation_id")
             rows = [
                 row
                 for row in self._rows["token_radar_current_rows"]
-                if row.get("window") == window and row.get("scope") == scope
+                if row.get("window") == window
+                and row.get("scope") == scope
+                and row.get("generation_id", "gen-ready") == generation_id
             ]
             return FakeCursor(rows)
         for table, rows in self._rows.items():
@@ -349,10 +404,12 @@ def _radar_row(
     top_share: float,
     watched_mentions: int,
     computed_at_ms: int = 1_000,
+    generation_id: str = "gen-ready",
 ) -> dict:
     return {
         "window": window,
         "scope": scope,
+        "generation_id": generation_id,
         "subject_key": f"{window}:{scope}:{authors}:{top_share}:{watched_mentions}",
         "computed_at_ms": computed_at_ms,
         "factor_snapshot_json": _factor_snapshot(

@@ -13,12 +13,7 @@ export type SearchShellProps = {
   outletContext?: unknown;
 };
 
-export function SearchShell({
-  topbar,
-  notifications,
-  onHotkey,
-  outletContext,
-}: SearchShellProps) {
+export function SearchShell({ topbar, notifications, onHotkey, outletContext }: SearchShellProps) {
   useEffect(() => {
     document.addEventListener("keydown", onHotkey);
     return () => document.removeEventListener("keydown", onHotkey);

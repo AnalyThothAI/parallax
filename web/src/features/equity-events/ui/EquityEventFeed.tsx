@@ -80,11 +80,14 @@ export function EquityEventFeed({
               type="button"
               onClick={() => onOpen(row.company_event_id)}
             >
-              <span className="equity-event-time">{equityEventTimestampLabel(row.latest_event_at_ms)}</span>
+              <span className="equity-event-time">
+                {equityEventTimestampLabel(row.latest_event_at_ms)}
+              </span>
               <span className="equity-event-main">
                 <strong>{row.headline}</strong>
                 <small>
-                  {row.ticker} · {row.company_name ?? "company"} · {equityEventTypeLabel(row.event_type)}
+                  {row.ticker} · {row.company_name ?? "company"} ·{" "}
+                  {equityEventTypeLabel(row.event_type)}
                 </small>
                 <em>{row.brief.summary_zh ?? row.summary ?? "Backend brief pending."}</em>
               </span>

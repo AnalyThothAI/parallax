@@ -1,5 +1,9 @@
 import type { AppSession } from "@app/useAppSession";
-import { useCockpitStatusQuery, type CockpitShellProps, type SearchShellProps } from "@features/cockpit";
+import {
+  useCockpitStatusQuery,
+  type CockpitShellProps,
+  type SearchShellProps,
+} from "@features/cockpit";
 import {
   useLiveRouteState,
   useLiveSelection,
@@ -7,13 +11,7 @@ import {
   type LiveSignalTapeItem,
 } from "@features/live/shell";
 import { useNotificationsController } from "@features/notifications";
-import type {
-  LivePayload,
-  ScopeKey,
-  SignalPulseItem,
-  TokenFlowItem,
-  WindowKey,
-} from "@lib/types";
+import type { LivePayload, ScopeKey, SignalPulseItem, TokenFlowItem, WindowKey } from "@lib/types";
 import { useSocketSnapshot } from "@shared/socket/socketContext";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";

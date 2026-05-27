@@ -17,7 +17,6 @@ from gmgn_twitter_intel.domains.token_intel._constants import (
 )
 from gmgn_twitter_intel.domains.token_intel.queries.token_radar_rank_source_query import TokenRadarSourceRequest
 from gmgn_twitter_intel.domains.token_intel.repositories.projection_repository import ProjectionRepository
-from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import TOKEN_RADAR_RANK_INPUT_VERSION
 from gmgn_twitter_intel.domains.token_intel.scoring.cross_section_normalizer import (
     MIN_COHORT_SIZE,
     NORMALIZER_VERSION,
@@ -83,23 +82,6 @@ class TokenRadarProjection:
     ) -> dict[str, Any]:
         computed_at_ms = int(now_ms or time.time() * 1000)
         resolved_work_items = _resolve_work_items(windows=windows, scopes=scopes, work_items=work_items)
-        readiness = self.repos.token_radar.rank_input_readiness_for_work_items(
-            projection_version=PROJECTION_VERSION,
-            work_items=resolved_work_items,
-        )
-        if not readiness.ready:
-            return {
-                "computed_at_ms": computed_at_ms,
-                "rows_written": 0,
-                "source_rows": 0,
-                "claimed": 0,
-                "windows": {},
-                "status": "blocked",
-                "blocked_precondition": True,
-                "reason": "token_radar_rank_inputs_require_full_rebuild",
-                "stale_rank_input_count": int(readiness.stale_count),
-                "stale_rank_input_counts": _readiness_counts_by_key(readiness.stale_by_work_item),
-            }
         claims = self.repos.token_radar_dirty_targets.claim_due(
             limit=limit,
             lease_ms=DIRTY_TARGET_LEASE_MS,
@@ -112,49 +94,74 @@ class TokenRadarProjection:
             "rows_written": 0,
             "source_rows": 0,
             "claimed": len(claims),
+            "catch_up_enqueued": 0,
             "windows": {},
             "status": "idle" if not claims else "ready",
         }
-        if not claims:
+        if not claims and resolved_work_items:
+            catch_up_enqueued = self.repos.token_radar_dirty_targets.enqueue_recent_resolved_targets(
+                since_ms=_catch_up_since_ms(work_items=resolved_work_items, now_ms=computed_at_ms),
+                now_ms=computed_at_ms,
+                limit=limit,
+                reason="projection_interval_catch_up",
+                commit=True,
+            )
+            result["catch_up_enqueued"] = int(catch_up_enqueued or 0)
+            if catch_up_enqueued:
+                claims = self.repos.token_radar_dirty_targets.claim_due(
+                    limit=limit,
+                    lease_ms=DIRTY_TARGET_LEASE_MS,
+                    now_ms=computed_at_ms,
+                    lease_owner=lease_owner,
+                    commit=True,
+                )
+                result["claimed"] = len(claims)
+                result["status"] = "ready" if claims else result["status"]
+        if not claims and not resolved_work_items:
             return result
 
-        source_requests = _source_requests_for_targets(claims, resolved_work_items, now_ms=computed_at_ms)
-        self.repos.token_radar_rank_sources.populate_edges_for_requests(
-            source_requests,
-            projected_at_ms=computed_at_ms,
-            commit=False,
-        )
-        rows_by_request = self.repos.token_radar_rank_sources.load_rows_for_requests(source_requests)
-        requests_by_target = _source_requests_by_target(source_requests)
         touched: set[tuple[str, str]] = set()
         successful_claims: list[dict[str, str | int]] = []
         failures = 0
         first_error: str | None = None
-        for claim_index, claim in enumerate(claims):
-            claim_key = _claim_key(claim)
-            try:
-                for request in requests_by_target.get(claim_index, []):
-                    score_result = self._project_source_request(
-                        request=request,
-                        target=claim,
-                        source_rows=rows_by_request.get(request.request_key, []),
+        if claims:
+            source_requests = _source_requests_for_targets(claims, resolved_work_items, now_ms=computed_at_ms)
+            self.repos.token_radar_rank_sources.populate_edges_for_requests(
+                source_requests,
+                projected_at_ms=computed_at_ms,
+                commit=False,
+            )
+            rows_by_request = self.repos.token_radar_rank_sources.load_rows_for_requests(source_requests)
+            requests_by_target = _source_requests_by_target(source_requests)
+            for claim_index, claim in enumerate(claims):
+                claim_key = _claim_key(claim)
+                try:
+                    for request in requests_by_target.get(claim_index, []):
+                        score_result = self._project_source_request(
+                            request=request,
+                            target=claim,
+                            source_rows=rows_by_request.get(request.request_key, []),
+                            now_ms=computed_at_ms,
+                        )
+                        result["source_rows"] += int(score_result.get("source_rows") or 0)
+                        touched.add((request.window, request.scope))
+                    successful_claims.append(claim_key)
+                except Exception as exc:
+                    failures += 1
+                    first_error = first_error or str(exc)
+                    self.repos.token_radar_dirty_targets.mark_error(
+                        [claim_key],
+                        error=str(exc),
+                        retry_ms=DIRTY_TARGET_RETRY_MS,
                         now_ms=computed_at_ms,
+                        commit=True,
                     )
-                    result["source_rows"] += int(score_result.get("source_rows") or 0)
-                    touched.add((request.window, request.scope))
-                successful_claims.append(claim_key)
-            except Exception as exc:
-                failures += 1
-                first_error = first_error or str(exc)
-                self.repos.token_radar_dirty_targets.mark_error(
-                    [claim_key],
-                    error=str(exc),
-                    retry_ms=DIRTY_TARGET_RETRY_MS,
-                    now_ms=computed_at_ms,
-                    commit=True,
-                )
 
-        for window, scope in sorted(touched):
+        publish_items = set(touched)
+        publish_items.update(resolved_work_items)
+        if publish_items:
+            result["status"] = "ready"
+        for window, scope in sorted(publish_items):
             key = f"{window}:{scope}"
             try:
                 rank_result = self.refresh_rank_set(
@@ -196,85 +203,6 @@ class TokenRadarProjection:
             self.repos.token_radar_dirty_targets.mark_done(successful_claims, now_ms=computed_at_ms, commit=True)
         return result
 
-    def rebuild_rank_inputs_full(
-        self,
-        *,
-        windows: tuple[str, ...],
-        scopes: tuple[str, ...],
-        now_ms: int | None = None,
-        batch_size: int = 5000,
-    ) -> dict[str, Any]:
-        computed_at_ms = int(now_ms or time.time() * 1000)
-        parsed_batch_size = max(1, int(batch_size))
-        legacy_rows_seen = 0
-        source_rows = 0
-        rows_written = 0
-        touched: set[tuple[str, str]] = set()
-        seen_keys: set[tuple[str, str, str, str, str]] = set()
-
-        while True:
-            rebuild_keys = self.repos.token_radar.list_rank_input_rebuild_keys(
-                projection_version=PROJECTION_VERSION,
-                windows=windows,
-                scopes=scopes,
-                limit=parsed_batch_size,
-            )
-            if not rebuild_keys:
-                break
-            legacy_rows_seen += len(rebuild_keys)
-            for key in rebuild_keys:
-                stable_key = (
-                    str(key.get("window") or ""),
-                    str(key.get("scope") or ""),
-                    str(key.get("lane") or ""),
-                    str(key.get("target_type_key") or ""),
-                    str(key.get("identity_id") or ""),
-                )
-                if stable_key in seen_keys:
-                    raise RuntimeError("rank input rebuild made no progress for legacy target feature")
-                seen_keys.add(stable_key)
-            source_requests = _source_requests_for_rank_rebuild_keys(rebuild_keys, now_ms=computed_at_ms)
-            self.repos.token_radar_rank_sources.populate_edges_for_requests(
-                source_requests,
-                projected_at_ms=computed_at_ms,
-                commit=False,
-            )
-            rows_by_request = self.repos.token_radar_rank_sources.load_rows_for_requests(source_requests)
-            requests_by_key = {request.request_key: request for request in source_requests}
-            with _transaction_context(self.repos.conn):
-                for key in rebuild_keys:
-                    request = requests_by_key[_rank_rebuild_request_key(key)]
-                    score_result = self._project_source_request(
-                        request=request,
-                        target=key,
-                        source_rows=rows_by_request.get(request.request_key, []),
-                        now_ms=computed_at_ms,
-                    )
-                    source_rows += int(score_result.get("source_rows") or 0)
-                    rows_written += int(score_result.get("rows_written") or 0)
-                    touched.add((request.window, request.scope))
-
-        window_results: dict[str, dict[str, Any]] = {}
-        for window, scope in sorted(touched):
-            rank_result = self.refresh_rank_set(
-                window=window,
-                scope=scope,
-                now_ms=computed_at_ms,
-                limit=parsed_batch_size,
-            )
-            window_results[f"{window}:{scope}"] = rank_result
-            if str(rank_result.get("status") or "") != "ready":
-                raise RuntimeError(f"rank input rebuild refresh failed for {window}:{scope}")
-
-        return {
-            "status": "ready",
-            "computed_at_ms": computed_at_ms,
-            "legacy_rows_seen": legacy_rows_seen,
-            "source_rows": source_rows,
-            "rows_written": rows_written,
-            "windows": window_results,
-        }
-
     def _project_source_request(
         self,
         *,
@@ -313,14 +241,6 @@ class TokenRadarProjection:
                     identity_id=identity_id,
                     commit=False,
                 )
-            self.repos.token_radar.mark_target_projection_coverage(
-                projection_version=PROJECTION_VERSION,
-                target_type_key=target_type_key,
-                identity_id=identity_id,
-                latest_market_observed_at_ms=int(now_ms),
-                projected_at_ms=int(now_ms),
-                commit=False,
-            )
             return {"status": "deleted" if deleted else "empty", "source_rows": len(source_rows), "rows_written": 0}
 
         written = self.repos.token_radar.upsert_target_feature(
@@ -352,8 +272,9 @@ class TokenRadarProjection:
         limit: int = 100,
     ) -> dict[str, Any]:
         computed_at_ms = int(now_ms)
+        generation_id = _generation_id(window=window, scope=scope, published_at_ms=computed_at_ms)
         try:
-            rank_inputs, rows = self._rank_and_hydrate_selected_rows(window=window, scope=scope, limit=limit)
+            rank_inputs, rows = self._rank_current_rows(window=window, scope=scope, limit=limit)
             source_max_received_at_ms = max(
                 (int(row.get("source_max_received_at_ms") or 0) for row in rows),
                 default=0,
@@ -377,12 +298,18 @@ class TokenRadarProjection:
                     source_end_ms=computed_at_ms,
                     commit=False,
                 )
-                rows_replaced = self.repos.token_radar.publish_rows(
+                finished_at_ms = _now_ms()
+                rows_replaced = self.repos.token_radar.publish_current_generation(
                     projection_version=PROJECTION_VERSION,
                     window=window,
                     scope=scope,
-                    computed_at_ms=computed_at_ms,
+                    generation_id=generation_id,
+                    published_at_ms=computed_at_ms,
+                    source_frontier_ms=source_max_received_at_ms,
                     rows=rows,
+                    source_rows=len(rank_inputs),
+                    started_at_ms=computed_at_ms,
+                    finished_at_ms=finished_at_ms,
                     on_current_changes=self._enqueue_runtime_dirty_targets_for_rank_changes,
                     commit=False,
                 )
@@ -421,36 +348,19 @@ class TokenRadarProjection:
                     dirty_ranges_written=0,
                     commit=False,
                 )
-                self.repos.token_radar.mark_coverage(
-                    projection_version=PROJECTION_VERSION,
-                    window=window,
-                    scope=scope,
-                    status="ready",
-                    reason=None,
-                    source_rows=len(rank_inputs),
-                    row_count=len(rows),
-                    computed_at_ms=computed_at_ms,
-                    started_at_ms=computed_at_ms,
-                    finished_at_ms=_now_ms(),
-                    error=None,
-                    commit=False,
-                )
             return {
                 "rows_written": len(rows),
                 "source_rows": len(rank_inputs),
                 "computed_at_ms": computed_at_ms,
+                "generation_id": generation_id,
                 "status": "ready",
             }
         except Exception as exc:
-            self.repos.token_radar.mark_coverage(
+            self.repos.token_radar.mark_publication_failed(
                 projection_version=PROJECTION_VERSION,
                 window=window,
                 scope=scope,
-                status="failed",
-                reason="projection_window_failed",
-                source_rows=0,
-                row_count=0,
-                computed_at_ms=computed_at_ms,
+                generation_id=generation_id,
                 started_at_ms=computed_at_ms,
                 finished_at_ms=_now_ms(),
                 error=str(exc),
@@ -483,56 +393,21 @@ class TokenRadarProjection:
         self._last_stale_cleanup_at_ms[cleanup_key] = int(finished_at_ms)
         return updated
 
-    def _rank_and_hydrate_selected_rows(
+    def _rank_current_rows(
         self,
         *,
         window: str,
         scope: str,
         limit: int,
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        stale_rank_inputs = self.repos.token_radar.stale_rank_input_count(
-            projection_version=PROJECTION_VERSION,
-            window=window,
-            scope=scope,
-            limit=1,
-        )
-        if stale_rank_inputs:
-            raise RuntimeError("token_radar_rank_inputs_require_full_rebuild")
         rank_inputs = self.repos.token_radar.list_rank_inputs_for_rank_set(
             projection_version=PROJECTION_VERSION,
             window=window,
             scope=scope,
-            rank_input_version=TOKEN_RADAR_RANK_INPUT_VERSION,
         )
         ranked = self.rank_compact_inputs(rank_inputs)
         selected_ranked = _select_top_ranked_by_lane(ranked, limit=limit)
-        try:
-            return rank_inputs, self._hydrate_ranked_rows(selected_ranked)
-        except RuntimeError as exc:
-            if "payload_hash changed" not in str(exc):
-                raise
-        rank_inputs = self.repos.token_radar.list_rank_inputs_for_rank_set(
-            projection_version=PROJECTION_VERSION,
-            window=window,
-            scope=scope,
-            rank_input_version=TOKEN_RADAR_RANK_INPUT_VERSION,
-        )
-        ranked = self.rank_compact_inputs(rank_inputs)
-        selected_ranked = _select_top_ranked_by_lane(ranked, limit=limit)
-        return rank_inputs, self._hydrate_ranked_rows(selected_ranked)
-
-    def _hydrate_ranked_rows(self, selected_ranked: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        if not selected_ranked:
-            return []
-        hydrated_rows = self.repos.token_radar.load_target_feature_payloads_for_ranked_keys(selected_ranked)
-        hydrated_by_key = {_rank_payload_key(row): row for row in hydrated_rows}
-        rows: list[dict[str, Any]] = []
-        for ranked in selected_ranked:
-            hydrated = hydrated_by_key.get(_rank_payload_key(ranked))
-            if hydrated is None:
-                raise RuntimeError("Token Radar payload_hash changed during selected-row hydration")
-            rows.append(_patch_hydrated_rank_row(hydrated, ranked))
-        return rows
+        return rank_inputs, [_patch_ranked_current_row(_row_from_target_feature(row), row) for row in selected_ranked]
 
     @staticmethod
     def rank_compact_inputs(rank_inputs: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -833,6 +708,13 @@ def _resolve_work_items(
     return tuple((window, scope) for window in windows for scope in scopes)
 
 
+def _catch_up_since_ms(*, work_items: tuple[tuple[str, str], ...], now_ms: int) -> int:
+    if not work_items:
+        return int(now_ms)
+    lookback_ms = max(WINDOW_MS.get(window, WINDOW_MS["1h"]) for window, _scope in work_items)
+    return int(now_ms) - int(lookback_ms)
+
+
 def _source_requests_for_targets(
     targets: list[dict[str, Any]],
     work_items: tuple[tuple[str, str], ...],
@@ -867,33 +749,6 @@ def _source_requests_for_targets(
     return requests
 
 
-def _source_requests_for_rank_rebuild_keys(
-    rebuild_keys: list[dict[str, Any]],
-    *,
-    now_ms: int,
-) -> list[TokenRadarSourceRequest]:
-    requests: list[TokenRadarSourceRequest] = []
-    for key in rebuild_keys:
-        window = str(key.get("window") or "")
-        scope = str(key.get("scope") or "")
-        target_type_key = str(key.get("target_type_key") or key.get("target_type") or "")
-        identity_id = str(key.get("identity_id") or key.get("target_id") or "")
-        window_ms = WINDOW_MS.get(window, WINDOW_MS["1h"])
-        requests.append(
-            TokenRadarSourceRequest(
-                request_key=_rank_rebuild_request_key(key),
-                target_type_key=target_type_key,
-                identity_id=identity_id,
-                window=window,
-                scope=scope,
-                analysis_since_ms=_analysis_since_ms(computed_at_ms=int(now_ms), window_ms=window_ms),
-                score_since_ms=int(now_ms) - window_ms,
-                now_ms=int(now_ms),
-            )
-        )
-    return requests
-
-
 def _source_requests_by_target(
     requests: list[TokenRadarSourceRequest],
 ) -> dict[int, list[TokenRadarSourceRequest]]:
@@ -919,24 +774,12 @@ def _target_source_request_key(
     return f"target-{target_index}:{stable}"
 
 
-def _rank_rebuild_request_key(key: Mapping[str, Any]) -> str:
-    return _stable_id(
-        "token-radar-rank-rebuild-source-request",
-        str(key.get("window") or ""),
-        str(key.get("scope") or ""),
-        str(key.get("lane") or ""),
-        str(key.get("target_type_key") or key.get("target_type") or ""),
-        str(key.get("identity_id") or key.get("target_id") or ""),
-        str(key.get("payload_hash") or ""),
-    )
-
-
-def _readiness_counts_by_key(stale_by_work_item: Mapping[tuple[str, str], int]) -> dict[str, int]:
-    return {f"{window}:{scope}": int(count) for (window, scope), count in stale_by_work_item.items()}
-
-
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _generation_id(*, window: str, scope: str, published_at_ms: int) -> str:
+    return _stable_id(PROJECTION_VERSION, str(window), str(scope), str(int(published_at_ms)))
 
 
 def _claim_key(claim: dict[str, Any]) -> dict[str, str | int]:
@@ -1814,19 +1657,87 @@ def _select_top_ranked_by_lane(ranked: list[dict[str, Any]], *, limit: int) -> l
     return selected
 
 
-def _rank_payload_key(row: dict[str, Any]) -> tuple[str, str, str, str, str, str, str]:
-    return (
-        str(row.get("projection_version") or ""),
-        str(row.get("window") or ""),
-        str(row.get("scope") or ""),
-        str(row.get("lane") or ""),
-        str(row.get("target_type_key") or ""),
-        str(row.get("identity_id") or ""),
-        str(row.get("payload_hash") or ""),
-    )
+def _row_from_target_feature(row: dict[str, Any]) -> dict[str, Any]:
+    factor_snapshot = _json_ready(row.get("factor_snapshot_json")) or {}
+    source_event_ids = _json_list(row.get("source_event_ids_json"))
+    source_intent_ids = _json_list(row.get("source_intent_ids_json"))
+    source_resolution_ids = _json_list(row.get("source_resolution_ids_json"))
+    intent_id = source_intent_ids[0] if source_intent_ids else str(row.get("identity_id") or "")
+    event_id = source_event_ids[-1] if source_event_ids else intent_id
+    target_type = row.get("target_type")
+    target_id = row.get("target_id")
+    subject = factor_snapshot.get("subject") if isinstance(factor_snapshot, dict) else {}
+    data_health = factor_snapshot.get("data_health") if isinstance(factor_snapshot, dict) else {}
+    return {
+        "row_id": _stable_id(
+            "token-radar-row",
+            str(row.get("projection_version") or ""),
+            str(row.get("window") or ""),
+            str(row.get("scope") or ""),
+            str(row.get("lane") or ""),
+            str(row.get("target_type_key") or ""),
+            str(row.get("identity_id") or ""),
+        ),
+        "source_max_received_at_ms": int(row.get("latest_event_received_at_ms") or 0),
+        "lane": str(row.get("lane") or "attention"),
+        "rank": 0,
+        "intent_id": intent_id,
+        "event_id": event_id,
+        "target_type_key": str(row.get("target_type_key") or ""),
+        "identity_id": str(row.get("identity_id") or ""),
+        "target_type": target_type,
+        "target_id": target_id,
+        "pricefeed_id": row.get("pricefeed_id"),
+        "intent_json": {
+            "intent_id": intent_id,
+            "display_symbol": (subject or {}).get("symbol") if isinstance(subject, dict) else None,
+            "display_name": (subject or {}).get("name") if isinstance(subject, dict) else None,
+            "evidence": [],
+        },
+        "asset_json": subject if target_type == "Asset" and isinstance(subject, dict) else {},
+        "target_json": subject if isinstance(subject, dict) else {},
+        "primary_venue_json": None,
+        "factor_snapshot_json": factor_snapshot,
+        "factor_version": factor_snapshot.get("schema_version") if isinstance(factor_snapshot, dict) else None,
+        "attention_json": {},
+        "resolution_json": {
+            "status": "EXACT" if target_id else "NIL",
+            "target_type": target_type,
+            "target_id": target_id,
+            "pricefeed_id": row.get("pricefeed_id"),
+            "resolution_ids": source_resolution_ids,
+            "reason_codes": [],
+            "candidate_ids": [],
+            "lookup_keys": [],
+            "discovery": [],
+        },
+        "market_json": {},
+        "price_json": {},
+        "score_json": {},
+        "decision": (factor_snapshot.get("composite") or {}).get("recommended_decision")
+        if isinstance(factor_snapshot, dict)
+        else None,
+        "data_health_json": {
+            "factor_snapshot": "ready",
+            "identity": (data_health or {}).get("identity") if isinstance(data_health, dict) else None,
+            "market": (data_health or {}).get("market") if isinstance(data_health, dict) else None,
+            "social": (data_health or {}).get("social") if isinstance(data_health, dict) else None,
+            "alpha": (data_health or {}).get("alpha") if isinstance(data_health, dict) else None,
+        },
+        "source_event_ids_json": source_event_ids,
+        "payload_hash": str(row.get("payload_hash") or ""),
+        "created_at_ms": int(row.get("last_scored_at_ms") or row.get("updated_at_ms") or _now_ms()),
+    }
 
 
-def _patch_hydrated_rank_row(row: dict[str, Any], ranked: dict[str, Any]) -> dict[str, Any]:
+def _json_list(value: Any) -> list[str]:
+    raw = _json_ready(value)
+    if not isinstance(raw, list):
+        return []
+    return [str(item) for item in raw if str(item)]
+
+
+def _patch_ranked_current_row(row: dict[str, Any], ranked: dict[str, Any]) -> dict[str, Any]:
     patched = dict(row)
     factor_snapshot = _factor_snapshot_or_raise(patched)
     families = _dict(factor_snapshot.get("families"))
