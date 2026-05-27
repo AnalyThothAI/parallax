@@ -859,7 +859,7 @@ def test_digest_context_counts_missing_semantics_outside_prompt_limit(tmp_path):
                 {
                     "target_type": "chain_token",
                     "target_id": "solana:So111",
-                    "window": "24h",
+                    "window": "1h",
                     "scope": "matched",
                     "schema_version": "narrative_intel_v1",
                     "source_event_ids": event_ids,
@@ -1215,13 +1215,13 @@ def test_current_digests_returns_matching_fingerprint_digest(tmp_path):
     try:
         admission = repo.upsert_admissions(
             [
-                {
-                    "target_type": "chain_token",
-                    "target_id": "solana:So111",
-                    "window": "24h",
-                    "scope": "matched",
-                    "schema_version": "narrative_intel_v1",
-                    "source_event_ids": ["event-source"],
+                    {
+                        "target_type": "chain_token",
+                        "target_id": "solana:So111",
+                        "window": "1h",
+                        "scope": "matched",
+                        "schema_version": "narrative_intel_v1",
+                        "source_event_ids": ["event-source"],
                     "source_max_received_at_ms": 3_000,
                     "source_event_count": 1,
                 }
@@ -1235,7 +1235,7 @@ def test_current_digests_returns_matching_fingerprint_digest(tmp_path):
             {
                 "target_type": "chain_token",
                 "target_id": "solana:So111",
-                "window": "24h",
+                "window": "1h",
                 "scope": "matched",
                 "schema_version": "narrative_intel_v1",
                 "model_version": "deterministic",
@@ -1252,7 +1252,7 @@ def test_current_digests_returns_matching_fingerprint_digest(tmp_path):
 
         current = repo.current_digests_for_targets(
             [{"target_type": "chain_token", "target_id": "solana:So111"}],
-            window="24h",
+            window="1h",
             scope="matched",
             schema_version="narrative_intel_v1",
         )
@@ -1605,12 +1605,12 @@ def test_current_digests_marks_suppressed_ready_digest_out_of_frontier(tmp_path)
 def test_current_digests_returns_not_ready_without_admission_or_digest(tmp_path):
     conn, _, repo = open_repo(tmp_path)
     try:
-        current = repo.current_digests_for_targets(
-            [{"target_type": "chain_token", "target_id": "solana:So111"}],
-            window="24h",
-            scope="matched",
-            schema_version="narrative_intel_v1",
-        )
+            current = repo.current_digests_for_targets(
+                [{"target_type": "chain_token", "target_id": "solana:So111"}],
+                window="1h",
+                scope="matched",
+                schema_version="narrative_intel_v1",
+            )
     finally:
         conn.close()
 
@@ -2042,19 +2042,18 @@ def _insert_radar_row(
           row_id, projection_version, "window", scope, computed_at_ms, source_max_received_at_ms,
           generation_id, published_at_ms, source_frontier_ms,
           lane, target_type_key, identity_id, rank, rank_score, intent_id, event_id, intent_json,
-          asset_json, primary_venue_json,
-          attention_json, resolution_json, market_json, score_json, decision, data_health_json,
+          resolution_json, factor_snapshot_json, factor_version, decision,
+          quality_status, degraded_reasons_json, data_health_json,
           source_event_ids_json, payload_hash, listed_at_ms, created_at_ms, target_type, target_id,
-          pricefeed_id, target_json,
-          price_json, factor_snapshot_json, factor_version
+          pricefeed_id
         )
         VALUES (
           %s, %s, '24h', 'all', %s, %s,
           %s, %s, %s,
-          'all', 'Asset', %s, %s, %s, %s, %s, %s, %s, NULL,
-          %s, %s, %s, %s, 'watch', %s,
-          %s, %s, %s, %s, 'Asset', %s, NULL, %s,
-          %s, %s, 'token_factor_snapshot_v3_social_attention'
+          'all', 'Asset', %s, %s, %s, %s, %s, %s,
+          %s, %s, 'token_factor_snapshot_v3_social_attention', 'watch',
+          'ready', %s, %s,
+          %s, %s, %s, %s, 'Asset', %s, NULL
         )
         """,
         (
@@ -2071,20 +2070,21 @@ def _insert_radar_row(
             intent_id,
             event_id,
             Jsonb({"intent_id": intent_id}),
-            Jsonb({}),
-            Jsonb({}),
-            Jsonb({}),
-            Jsonb({}),
-            Jsonb({"rank_score": max(0, 100 - rank)}),
+            Jsonb({"status": "EXACT", "target_type": "Asset", "target_id": target_id}),
+            Jsonb(
+                {
+                    "schema_version": "token_factor_snapshot_v3_social_attention",
+                    "subject": {"target_type": "Asset", "target_id": target_id, "target_market_type": "dex"},
+                    "composite": {"rank_score": max(0, 100 - rank), "recommended_decision": "watch"},
+                }
+            ),
+            Jsonb([]),
             Jsonb({"alpha": "ready"}),
             Jsonb([event_id]),
             f"test-payload-hash:{row_id}",
             computed_at_ms,
             computed_at_ms,
             target_id,
-            Jsonb({"target_id": target_id}),
-            Jsonb({}),
-            Jsonb({"composite": {"rank_score": max(0, 100 - rank)}}),
         ),
     )
 

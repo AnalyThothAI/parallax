@@ -8,7 +8,10 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import (
 from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_dirty_target_repository import (
     TokenRadarDirtyTargetRepository,
 )
-from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import TokenRadarRepository
+from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import (
+    TokenRadarRepository,
+    stable_generation_id,
+)
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
@@ -40,6 +43,8 @@ def test_publication_state_round_trips_ready_zero_rows(tmp_path):
     finally:
         conn.close()
 
+    ready_state = state[("5m", "matched")]
+    assert isinstance(ready_state["updated_at_ms"], int)
     assert state == {
         ("5m", "matched"): {
             "current_generation_id": "gen-5m-matched-1",
@@ -49,7 +54,10 @@ def test_publication_state_round_trips_ready_zero_rows(tmp_path):
             "current_source_rows": 17,
             "latest_attempt_generation_id": "gen-5m-matched-1",
             "latest_attempt_status": "ready",
+            "latest_attempt_started_at_ms": 1_777_999_990_000,
+            "latest_attempt_finished_at_ms": 1_778_000_000_000,
             "latest_attempt_error": None,
+            "updated_at_ms": ready_state["updated_at_ms"],
         }
     }
 
@@ -80,6 +88,9 @@ def test_publication_state_round_trips_failed_state_without_rows(tmp_path):
     assert state[("1h", "all")]["current_generation_id"] is None
     assert state[("1h", "all")]["latest_attempt_status"] == "failed"
     assert state[("1h", "all")]["latest_attempt_error"] == "statement timeout"
+    assert state[("1h", "all")]["latest_attempt_started_at_ms"] == 1_777_999_990_000
+    assert state[("1h", "all")]["latest_attempt_finished_at_ms"] == 1_778_000_000_000
+    assert isinstance(state[("1h", "all")]["updated_at_ms"], int)
 
 
 def test_publish_and_latest_current_rows_persist_factor_snapshot_json(tmp_path):
@@ -95,12 +106,12 @@ def test_publish_and_latest_current_rows_persist_factor_snapshot_json(tmp_path):
         "target_id": "asset-1",
         "pricefeed_id": "feed-1",
         "intent_json": {"display_symbol": "BOV"},
-        "asset_json": {},
-        "primary_venue_json": None,
-        "target_json": {"symbol": "BOV"},
         "factor_snapshot_json": _valid_factor_snapshot(rank_score=12),
         "factor_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
         "decision": "discard",
+        "rank_score": 12,
+        "quality_status": "ready",
+        "degraded_reasons_json": [],
         "data_health_json": {"factor_snapshot": "ready"},
         "source_event_ids_json": ["event-1"],
         "created_at_ms": 1_778_000_000_000,
@@ -131,6 +142,9 @@ def test_publish_and_latest_current_rows_persist_factor_snapshot_json(tmp_path):
     assert latest[0]["factor_snapshot_json"]["schema_version"] == TOKEN_FACTOR_SNAPSHOT_VERSION
     assert latest[0]["target_type_key"] == "Asset"
     assert latest[0]["identity_id"] == "asset-1"
+    assert latest[0]["rank_score"] == 12
+    assert latest[0]["quality_status"] == "ready"
+    assert latest[0]["degraded_reasons_json"] == []
     assert latest[0]["payload_hash"]
 
 
@@ -139,9 +153,11 @@ def test_publish_current_generation_replaces_current_and_updates_publication_sta
     older = _valid_factor_row()
     older["row_id"] = "row-factor-older"
     older["factor_snapshot_json"] = _valid_factor_snapshot(rank_score=25)
+    older["rank_score"] = 25
     newer = _valid_factor_row()
     newer["row_id"] = "row-factor-newer"
     newer["factor_snapshot_json"] = _valid_factor_snapshot(rank_score=75)
+    newer["rank_score"] = 75
     try:
         migrate(conn)
         _insert_token_intent(conn, intent_id="intent-1", event_id="event-1")
@@ -179,13 +195,16 @@ def test_publish_current_generation_replaces_current_and_updates_publication_sta
 
     assert [row["row_id"] for row in current] == ["row-factor-newer"]
     assert current[0]["listed_at_ms"] == 1_778_000_000_000
-    assert state[("1h", "all")]["current_generation_id"] == (
-        "token-radar-v11-factor-alpha-gated:1h:all:1778000060000"
+    assert state[("1h", "all")]["current_generation_id"] == stable_generation_id(
+        projection_version="token-radar-v11-factor-alpha-gated",
+        window="1h",
+        scope="all",
+        rows=[newer],
     )
     assert state[("1h", "all")]["current_row_count"] == 1
 
 
-def test_publish_current_generation_advances_generation_without_cold_history_side_effects(tmp_path):
+def test_publish_current_generation_unchanged_skips_current_rows_and_first_seen_rewrite(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     row = _valid_factor_row()
     try:
@@ -201,6 +220,11 @@ def test_publish_current_generation_advances_generation_without_cold_history_sid
             computed_at_ms=1_778_000_000_000,
             rows=[row],
         )
+        state_after_first = repo.latest_publication_state(
+            projection_version="token-radar-v11-factor-alpha-gated",
+            windows=("1h",),
+            scopes=("all",),
+        )
         conn.execute(
             """
             UPDATE token_radar_target_first_seen
@@ -209,7 +233,7 @@ def test_publish_current_generation_advances_generation_without_cold_history_sid
             """
         )
         row["row_id"] = "row-factor-same-later"
-        _publish_generation(
+        second_result = _publish_generation(
             repo,
             projection_version="token-radar-v11-factor-alpha-gated",
             window="1h",
@@ -229,14 +253,35 @@ def test_publish_current_generation_advances_generation_without_cold_history_sid
                 SELECT updated_at_ms
                 FROM token_radar_target_first_seen
                 WHERE identity_id = 'asset-1'
-              ) AS first_seen_updated_at_ms
+              ) AS first_seen_updated_at_ms,
+              (
+                SELECT current_published_at_ms
+                FROM token_radar_publication_state
+                WHERE projection_version = 'token-radar-v11-factor-alpha-gated'
+                  AND "window" = '1h'
+                  AND scope = 'all'
+              ) AS state_published_at_ms,
+              (
+                SELECT latest_attempt_status
+                FROM token_radar_publication_state
+                WHERE projection_version = 'token-radar-v11-factor-alpha-gated'
+                  AND "window" = '1h'
+                  AND scope = 'all'
+              ) AS latest_attempt_status
             """
         ).fetchone()
     finally:
         conn.close()
 
-    assert counts["current_computed_at_ms"] == 1_778_000_060_000
-    assert counts["first_seen_updated_at_ms"] > 1_778_000_000_000
+    assert second_result == {
+        "status": "unchanged",
+        "generation_id": state_after_first[("1h", "all")]["current_generation_id"],
+        "rows_written": 0,
+    }
+    assert counts["current_computed_at_ms"] == 1_778_000_000_000
+    assert counts["first_seen_updated_at_ms"] == 1234
+    assert counts["state_published_at_ms"] == 1_778_000_060_000
+    assert counts["latest_attempt_status"] == "ready"
 
 
 def test_upsert_target_feature_unchanged_payload_does_not_advance_score_timestamps(tmp_path):
@@ -565,6 +610,7 @@ def test_publish_current_generation_removes_exited_current_rows(tmp_path):
     entrant["event_id"] = "event-3"
     entrant["target_id"] = "asset-3"
     entrant["factor_snapshot_json"] = _valid_factor_snapshot(rank_score=99)
+    entrant["rank_score"] = 99
     try:
         migrate(conn)
         _insert_token_intent(conn, intent_id="intent-1", event_id="event-1")
@@ -633,6 +679,8 @@ def test_publish_current_generation_can_replace_rank_swaps(tmp_path):
         second["rank"] = 1
         first["factor_snapshot_json"] = _valid_factor_snapshot(rank_score=10)
         second["factor_snapshot_json"] = _valid_factor_snapshot(rank_score=90)
+        first["rank_score"] = 10
+        second["rank_score"] = 90
         _publish_generation(
             repo,
             projection_version="token-radar-v11-factor-alpha-gated",
@@ -676,7 +724,7 @@ def test_publish_current_generation_rejects_old_rows_after_newer_zero_row_genera
             source_rows=0,
         )
 
-        written = _publish_generation(
+        result = _publish_generation(
             repo,
             projection_version="token-radar-v11-factor-alpha-gated",
             window="1h",
@@ -693,7 +741,8 @@ def test_publish_current_generation_rejects_old_rows_after_newer_zero_row_genera
     finally:
         conn.close()
 
-    assert written is False
+    assert result["status"] == "stale_skipped"
+    assert result["rows_written"] == 0
     assert current == []
 
 
@@ -705,12 +754,17 @@ def _publish_generation(
     scope: str,
     computed_at_ms: int,
     rows: list[dict[str, object]],
-) -> bool:
+) -> dict[str, object]:
     return repo.publish_current_generation(
         projection_version=projection_version,
         window=window,
         scope=scope,
-        generation_id=f"{projection_version}:{window}:{scope}:{computed_at_ms}",
+        generation_id=stable_generation_id(
+            projection_version=projection_version,
+            window=window,
+            scope=scope,
+            rows=rows,
+        ),
         published_at_ms=computed_at_ms,
         source_frontier_ms=max((int(row.get("source_max_received_at_ms") or 0) for row in rows), default=0),
         rows=rows,
@@ -730,12 +784,12 @@ def _valid_factor_row() -> dict[str, object]:
         "target_id": "asset-1",
         "pricefeed_id": "feed-1",
         "intent_json": {"display_symbol": "BOV"},
-        "asset_json": {},
-        "primary_venue_json": None,
-        "target_json": {"symbol": "BOV"},
         "factor_snapshot_json": _valid_factor_snapshot(),
         "factor_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
         "decision": "discard",
+        "rank_score": 12,
+        "quality_status": "ready",
+        "degraded_reasons_json": [],
         "data_health_json": {"factor_snapshot": "ready"},
         "source_event_ids_json": ["event-1"],
         "created_at_ms": 1_778_000_000_000,

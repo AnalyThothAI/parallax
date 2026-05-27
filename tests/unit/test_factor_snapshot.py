@@ -258,12 +258,14 @@ def test_dex_market_floors_gate_high_alert_without_market_alpha_family() -> None
 
     assert "market_quality" not in snapshot["families"]
     assert snapshot["gates"]["eligible_for_high_alert"] is False
+    assert "dex_floor_below" in snapshot["gates"]["blocked_reasons"]
     assert set(snapshot["gates"]["blocked_reasons"]) >= {
         "holders_below_high_alert_floor",
         "liquidity_below_high_alert_floor",
         "market_cap_below_high_alert_floor",
     }
-    assert snapshot["composite"]["recommended_decision"] != "high_alert"
+    assert snapshot["gates"]["max_decision"] == "watch"
+    assert snapshot["composite"]["recommended_decision"] == "watch"
 
 
 def test_fresh_dex_market_missing_floor_inputs_is_not_market_ready() -> None:
@@ -278,6 +280,7 @@ def test_fresh_dex_market_missing_floor_inputs_is_not_market_ready() -> None:
 
     assert snapshot["data_health"]["market"] == "partial"
     assert "market_metadata_missing" in snapshot["gates"]["risk_reasons"]
+    assert "dex_floor_missing" in snapshot["gates"]["blocked_reasons"]
     assert "holders_unverified" in snapshot["gates"]["blocked_reasons"]
     assert "liquidity_usd_unverified" in snapshot["gates"]["blocked_reasons"]
     assert "market_cap_usd_unverified" in snapshot["gates"]["blocked_reasons"]
@@ -285,6 +288,8 @@ def test_fresh_dex_market_missing_floor_inputs_is_not_market_ready() -> None:
     assert "liquidity_below_high_alert_floor" not in snapshot["gates"]["blocked_reasons"]
     assert "market_cap_below_high_alert_floor" not in snapshot["gates"]["blocked_reasons"]
     assert snapshot["gates"]["eligible_for_high_alert"] is False
+    assert snapshot["gates"]["max_decision"] == "watch"
+    assert snapshot["composite"]["recommended_decision"] == "watch"
 
 
 def test_dex_missing_market_fields_block_high_alert() -> None:
@@ -297,11 +302,14 @@ def test_dex_missing_market_fields_block_high_alert() -> None:
     )
 
     assert snapshot["gates"]["eligible_for_high_alert"] is False
+    assert "dex_floor_missing" in snapshot["gates"]["blocked_reasons"]
     assert set(snapshot["gates"]["blocked_reasons"]) >= {
         "holders_unverified",
         "liquidity_usd_unverified",
         "market_cap_usd_unverified",
     }
+    assert snapshot["gates"]["max_decision"] == "watch"
+    assert snapshot["composite"]["recommended_decision"] == "watch"
 
 
 def test_cex_token_does_not_apply_dex_holder_liquidity_floors_or_native_market_alpha() -> None:
@@ -376,30 +384,57 @@ def test_high_raw_alpha_with_unresolved_identity_is_capped_to_discard() -> None:
     assert snapshot["composite"]["recommended_decision"] == "discard"
 
 
-@pytest.mark.parametrize(
-    ("market_status", "market_health"),
-    [
-        ("stale", "partial"),
-        (None, "missing"),
-    ],
-)
-def test_high_raw_alpha_with_unfresh_market_is_not_capped_by_backend_market_freshness(
-    market_status: object,
-    market_health: str,
-) -> None:
-    snapshot = _strong_dex_snapshot(market={"market_status": market_status})
+def test_ready_market_with_strong_social_remains_eligible_for_high_alert() -> None:
+    snapshot = _strong_dex_snapshot()
 
     assert snapshot["composite"]["raw_alpha_score"] >= 70
-    assert snapshot["data_health"]["market"] == market_health
-    assert "market_freshness_stale" not in snapshot["gates"]["blocked_reasons"]
-    assert "market_freshness_missing" not in snapshot["gates"]["blocked_reasons"]
-    if market_status is None:
-        assert snapshot["gates"]["eligible_for_high_alert"] is False
-        assert "holders_unverified" in snapshot["gates"]["blocked_reasons"]
-    else:
-        assert snapshot["gates"]["eligible_for_high_alert"] is True
-        assert snapshot["gates"]["max_decision"] == "high_alert"
-        assert snapshot["composite"]["recommended_decision"] == "high_alert"
+    assert snapshot["data_health"]["market"] == "ready"
+    assert snapshot["gates"]["eligible_for_high_alert"] is True
+    assert snapshot["gates"]["max_decision"] == "high_alert"
+    assert snapshot["composite"]["recommended_decision"] == "high_alert"
+    assert not {
+        "market_anchor_missing",
+        "market_latest_missing",
+        "market_latest_stale",
+        "dex_floor_missing",
+        "dex_floor_below",
+    } & set(snapshot["gates"]["blocked_reasons"])
+
+
+def test_high_raw_alpha_with_missing_market_anchor_caps_high_alert_to_watch() -> None:
+    market = _dex_market()
+    market["event_anchor"] = None
+    market["readiness"]["anchor_status"] = "missing"
+    snapshot = _strong_dex_snapshot(market=market)
+
+    assert snapshot["composite"]["raw_alpha_score"] >= 70
+    assert snapshot["data_health"]["market"] == "missing"
+    assert "market_anchor_missing" in snapshot["gates"]["blocked_reasons"]
+    assert snapshot["gates"]["eligible_for_high_alert"] is False
+    assert snapshot["gates"]["max_decision"] == "watch"
+    assert snapshot["composite"]["recommended_decision"] == "watch"
+
+
+@pytest.mark.parametrize(
+    ("latest_status", "reason"),
+    [
+        ("missing", "market_latest_missing"),
+        ("stale", "market_latest_stale"),
+    ],
+)
+def test_high_raw_alpha_with_degraded_latest_market_caps_high_alert_to_watch(
+    latest_status: str,
+    reason: str,
+) -> None:
+    market = _market_with_latest_status(latest_status)
+    snapshot = _strong_dex_snapshot(market=market)
+
+    assert snapshot["composite"]["raw_alpha_score"] >= 70
+    assert snapshot["data_health"]["market"] == "partial"
+    assert reason in snapshot["gates"]["blocked_reasons"]
+    assert snapshot["gates"]["eligible_for_high_alert"] is False
+    assert snapshot["gates"]["max_decision"] == "watch"
+    assert snapshot["composite"]["recommended_decision"] == "watch"
 
 
 def test_unresolved_identity_and_stale_market_gate_high_alert() -> None:
@@ -411,9 +446,9 @@ def test_unresolved_identity_and_stale_market_gate_high_alert() -> None:
     assert snapshot["data_health"]["identity"] == "missing"
     assert snapshot["data_health"]["market"] == "partial"
     assert snapshot["gates"]["eligible_for_high_alert"] is False
-    assert set(snapshot["gates"]["blocked_reasons"]) >= {"identity_unresolved"}
-    assert "market_freshness_stale" not in snapshot["gates"]["blocked_reasons"]
-    assert snapshot["composite"]["recommended_decision"] != "high_alert"
+    assert set(snapshot["gates"]["blocked_reasons"]) >= {"identity_unresolved", "market_latest_stale"}
+    assert snapshot["gates"]["max_decision"] == "discard"
+    assert snapshot["composite"]["recommended_decision"] == "discard"
 
 
 def test_eligible_raw_alpha_35_recommends_watch() -> None:
@@ -521,6 +556,7 @@ def test_non_finite_numeric_inputs_are_treated_as_missing_or_zero() -> None:
     assert concentration_penalty["raw_value"] is None
     assert snapshot["families"]["timing_risk"]["facts"]["social_signal_start_ms"] is None
     assert "market_metadata_missing" in snapshot["gates"]["risk_reasons"]
+    assert "dex_floor_missing" in snapshot["gates"]["blocked_reasons"]
     assert "market_cap_usd_unverified" in snapshot["gates"]["blocked_reasons"]
     assert "holders_below_high_alert_floor" not in snapshot["gates"]["blocked_reasons"]
     assert "liquidity_below_high_alert_floor" not in snapshot["gates"]["blocked_reasons"]
@@ -650,6 +686,19 @@ def _dex_market(overrides: dict[str, object] | None = None) -> dict[str, object]
     }
 
 
+def _market_with_latest_status(latest_status: str) -> dict[str, object]:
+    market = _dex_market()
+    market["readiness"]["latest_status"] = latest_status
+    if latest_status == "missing":
+        market["decision_latest"] = None
+        market["readiness"]["dex_floor_status"] = "missing_fields"
+        market["readiness"]["missing_fields"] = ["holders", "liquidity_usd", "market_cap_usd"]
+        market["readiness"]["stale_fields"] = []
+    elif latest_status == "stale":
+        market["readiness"]["stale_fields"] = ["decision_latest"]
+    return market
+
+
 def _cex_market(overrides: dict[str, object] | None = None) -> dict[str, object]:
     market = _dex_market({})
     latest = dict(market["decision_latest"])
@@ -714,7 +763,7 @@ def _strong_dex_snapshot(
     }
     if attention is not None:
         base_attention.update(attention)
-    base_market = _dex_market(market)
+    base_market = market if market is not None and _is_full_market_payload(market) else _dex_market(market)
     base_social_quality: dict[str, object] = {
         "duplicate_text_share": 0.0,
         "top_author_share": 0.20,
@@ -756,6 +805,10 @@ def _strong_dex_snapshot(
         source_event_ids=["event-strong-1", "event-strong-2", "event-strong-1"],
         computed_at_ms=computed_at_ms,
     )
+
+
+def _is_full_market_payload(market: dict[str, object]) -> bool:
+    return {"event_anchor", "decision_latest", "readiness"} <= set(market)
 
 
 def _strong_cex_snapshot(

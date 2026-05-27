@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any, cast
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
@@ -42,27 +43,33 @@ class MarketTickCurrentProjectionWorker(WorkerBase):
                 "changed": int(result["changed"]),
                 "missing": int(result["missing"]),
                 "failed": int(result["failed"]),
+                "token_radar_dirty_enqueued": int(result["token_radar_dirty_enqueued"]),
             },
         )
 
     def _run_once_sync(self, now_ms: int) -> dict[str, Any]:
         claims = self._claim_due(now_ms=now_ms)
-        result: dict[str, Any] = {"claimed": len(claims), "changed": 0, "missing": 0, "failed": 0}
-        changed_targets: list[tuple[str, str]] = []
+        result: dict[str, Any] = {
+            "claimed": len(claims),
+            "changed": 0,
+            "missing": 0,
+            "failed": 0,
+            "token_radar_dirty_enqueued": 0,
+        }
         for claim in claims:
             try:
-                changed, target = self._process_claim(claim, now_ms=now_ms)
+                claim_result = self._process_claim(claim, now_ms=now_ms)
             except Exception as exc:
                 result["failed"] += 1
                 self._mark_error(claim, error=_error_text(exc), now_ms=now_ms)
                 continue
-            if target is None:
+            if claim_result.missing:
                 result["missing"] += 1
                 continue
-            if changed:
+            if claim_result.changed:
                 result["changed"] += 1
-                changed_targets.append(target)
-        self._emit_token_radar_wakes(changed_targets)
+            result["token_radar_dirty_enqueued"] += claim_result.token_radar_dirty_enqueued
+        self._emit_token_radar_wake(token_radar_dirty_enqueued=int(result["token_radar_dirty_enqueued"]))
         return result
 
     def _claim_due(self, *, now_ms: int) -> list[dict[str, Any]]:
@@ -81,9 +88,10 @@ class MarketTickCurrentProjectionWorker(WorkerBase):
                 ),
             )
 
-    def _process_claim(self, claim: Mapping[str, Any], *, now_ms: int) -> tuple[bool, tuple[str, str] | None]:
+    def _process_claim(self, claim: Mapping[str, Any], *, now_ms: int) -> _ClaimResult:
         target_type = str(claim.get("target_type") or "")
         target_id = str(claim.get("target_id") or "")
+        token_radar_dirty_enqueued = 0
         with self.db.worker_transaction(
             self.name,
             statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
@@ -94,17 +102,24 @@ class MarketTickCurrentProjectionWorker(WorkerBase):
             )
             if tick_row is None:
                 repos.market_tick_current_dirty_targets.mark_done([claim], now_ms=now_ms, commit=False)
-                return False, None
+                return _ClaimResult(changed=False, missing=True, token_radar_dirty_enqueued=0)
             changed = repos.market_tick_current.upsert_current_from_tick(tick_row, now_ms=now_ms)
             if changed:
-                repos.token_radar_dirty_targets.enqueue_market_targets(
-                    [(target_type, target_id)],
-                    reason="market_tick_current_changed",
-                    now_ms=now_ms,
-                    commit=False,
+                token_radar_dirty_enqueued = int(
+                    repos.token_radar_dirty_targets.enqueue_market_targets(
+                        [(target_type, target_id)],
+                        reason="market_tick_current_changed",
+                        now_ms=now_ms,
+                        commit=False,
+                    )
+                    or 0
                 )
             repos.market_tick_current_dirty_targets.mark_done([claim], now_ms=now_ms, commit=False)
-        return bool(changed), (target_type, target_id)
+        return _ClaimResult(
+            changed=bool(changed),
+            missing=False,
+            token_radar_dirty_enqueued=token_radar_dirty_enqueued,
+        )
 
     def _mark_error(self, claim: Mapping[str, Any], *, error: str, now_ms: int) -> None:
         with self.db.worker_transaction(
@@ -119,17 +134,21 @@ class MarketTickCurrentProjectionWorker(WorkerBase):
                 commit=False,
             )
 
-    def _emit_token_radar_wakes(self, targets: list[tuple[str, str]]) -> None:
+    def _emit_token_radar_wake(self, *, token_radar_dirty_enqueued: int) -> None:
+        if token_radar_dirty_enqueued <= 0:
+            return
         if self.wake_emitter is None:
             return
         notify_market_tick_current_updated = getattr(self.wake_emitter, "notify_market_tick_current_updated", None)
         if notify_market_tick_current_updated is not None:
-            for target_type, target_id in targets:
-                notify_market_tick_current_updated(target_type=target_type, target_id=target_id)
-            return
-        notify_token_radar_updated = getattr(self.wake_emitter, "notify_token_radar_updated", None)
-        if notify_token_radar_updated is not None and targets:
-            notify_token_radar_updated(window="5m", scope="all")
+            notify_market_tick_current_updated(target_type="batch", target_id="market_tick_current")
+
+
+@dataclass(frozen=True)
+class _ClaimResult:
+    changed: bool
+    missing: bool
+    token_radar_dirty_enqueued: int
 
 
 def _error_text(exc: BaseException) -> str:

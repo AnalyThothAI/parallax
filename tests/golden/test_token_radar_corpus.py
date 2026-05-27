@@ -36,7 +36,7 @@ def test_versa_symbol_and_ca_build_one_intent(tmp_path):
 
 def test_unresolved_attention_never_projects_as_driver(tmp_path):
     _, repos, ingest = open_token_radar_runtime(tmp_path)
-    for index in range(7):
+    results = [
         ingest.ingest_event(
             make_token_event(
                 event_id=f"event-hanta-{index}",
@@ -46,6 +46,8 @@ def test_unresolved_attention_never_projects_as_driver(tmp_path):
             ),
             is_watched=True,
         )
+        for index in range(7)
+    ]
 
     TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=1_777_800_060_000)
     rows = repos.token_radar.latest_current_rows(
@@ -55,14 +57,12 @@ def test_unresolved_attention_never_projects_as_driver(tmp_path):
         projection_version=TOKEN_RADAR_PROJECTION_VERSION,
     )
 
-    hanta = next(row for row in rows if row["intent_json"]["display_symbol"] == "HANTA")
-    assert hanta["lane"] == "attention"
-    assert hanta["decision"] == "discard"
-    factor_snapshot = hanta["factor_snapshot_json"]
-    assert factor_snapshot["market"]["event_anchor"] is None
-    assert factor_snapshot["market"]["decision_latest"] is None
-    assert factor_snapshot["market"]["readiness"]["anchor_status"] == "missing"
-    assert factor_snapshot["market"]["readiness"]["latest_status"] == "missing"
+    assert all(
+        resolution["resolution_status"] != "EXACT"
+        for result in results
+        for resolution in result.token_resolutions
+    )
+    assert rows == []
 
 
 def test_address_like_payload_symbol_does_not_mask_missing_real_symbol(tmp_path):
@@ -76,7 +76,7 @@ def test_address_like_payload_symbol_does_not_mask_missing_real_symbol(tmp_path)
     )
 
     result = ingest.ingest_event(event, is_watched=True)
-    TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=1_777_800_060_000)
+    _rebuild_resolved_current_rows(repos, now_ms=1_777_800_060_000)
     rows = repos.token_radar.latest_current_rows(
         window="5m",
         scope="all",
@@ -86,8 +86,8 @@ def test_address_like_payload_symbol_does_not_mask_missing_real_symbol(tmp_path)
 
     assert result.token_resolutions[0]["resolution_status"] == "EXACT"
     assert rows[0]["target_type"] == "Asset"
-    assert rows[0]["asset_json"]["symbol"] is None
-    assert rows[0]["asset_json"]["address"] == address
+    assert rows[0]["factor_snapshot_json"]["subject"]["symbol"] is None
+    assert rows[0]["factor_snapshot_json"]["subject"]["address"] == address
 
 
 def test_gmgn_payload_identity_does_not_project_market_snapshot_into_radar(tmp_path):
@@ -100,7 +100,7 @@ def test_gmgn_payload_identity_does_not_project_market_snapshot_into_radar(tmp_p
     )
 
     result = ingest.ingest_event(event, is_watched=True)
-    TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=1_777_800_060_000)
+    _rebuild_resolved_current_rows(repos, now_ms=1_777_800_060_000)
     rows = repos.token_radar.latest_current_rows(
         window="5m",
         scope="all",
@@ -109,7 +109,7 @@ def test_gmgn_payload_identity_does_not_project_market_snapshot_into_radar(tmp_p
     )
 
     assert result.token_resolutions[0]["resolution_status"] == "EXACT"
-    assert rows[0]["asset_json"]["symbol"] == "PEPE"
+    assert rows[0]["factor_snapshot_json"]["subject"]["symbol"] == "PEPE"
     enriched_events = repos.enriched_events.list_by_event_id(event.event_id)
     assert enriched_events
     assert {item["capture_method"] for item in enriched_events} == {"unavailable"}
@@ -121,3 +121,19 @@ def test_gmgn_payload_identity_does_not_project_market_snapshot_into_radar(tmp_p
     assert factor_snapshot["market"]["readiness"]["latest_status"] == "missing"
     assert factor_snapshot["data_health"]["market"] == "missing"
     assert "market_metadata_missing" in factor_snapshot["gates"]["risk_reasons"]
+
+
+def _rebuild_resolved_current_rows(repos, *, now_ms: int) -> None:
+    repos.token_radar_dirty_targets.enqueue_recent_resolved_targets(
+        since_ms=now_ms - 5 * 60 * 1000,
+        now_ms=now_ms,
+        limit=20,
+        reason="golden_corpus_projection",
+    )
+    TokenRadarProjection(repos=repos).rebuild_dirty_targets(
+        windows=("5m",),
+        scopes=("all",),
+        now_ms=now_ms,
+        limit=20,
+        rank_limit=20,
+    )

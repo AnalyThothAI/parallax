@@ -160,15 +160,17 @@ def _market_tick_target(*, row: dict[str, Any], subject: dict[str, Any]) -> tupl
     if subject_type in {"chain_token", "cex_symbol"} and subject_id:
         return subject_type, subject_id
 
-    target = _mapping(row.get("target_json"))
     if subject_type == "Asset":
-        chain = _clean(subject.get("chain") or target.get("chain") or target.get("chain_id"))
-        address = _clean(subject.get("address") or target.get("address") or target.get("asset_address"))
+        chain = _clean(subject.get("chain") or subject.get("chain_id"))
+        address = _clean(subject.get("address") or subject.get("asset_address"))
         if chain and address:
             return "chain_token", f"{chain}:{address}"
     if subject_type == "CexToken":
-        provider = _clean(target.get("provider") or target.get("pricefeed_provider"))
-        native_market_id = _clean(target.get("native_market_id") or target.get("instrument"))
+        snapshot = _mapping(row.get("factor_snapshot_json"))
+        market = _mapping(snapshot.get("market"))
+        decision_latest = _mapping(market.get("decision_latest"))
+        provider = _clean(subject.get("provider") or decision_latest.get("provider"))
+        native_market_id = _clean(subject.get("native_market_id") or subject.get("instrument"))
         if provider and native_market_id:
             return "cex_symbol", f"{provider}:{native_market_id}"
     return None, None

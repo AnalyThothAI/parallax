@@ -82,6 +82,11 @@ class AssetFlowService:
         for row in [*targets, *attention]:
             row.pop("_lane", None)
         returned_rows = [*targets[:limit], *attention[:limit]]
+        projection_quality_status, projection_degraded_reasons = _projection_quality(
+            projection_status=projection_status,
+            rows=returned_rows,
+            unresolved=unresolved,
+        )
         return {
             "targets": targets[:limit],
             "attention": attention[:limit],
@@ -103,6 +108,8 @@ class AssetFlowService:
                 "computed_at_ms": computed_at_ms,
                 "error": (publication_state or {}).get("latest_attempt_error"),
                 "anchor_coverage": _anchor_coverage(returned_rows),
+                "quality_status": projection_quality_status,
+                "degraded_reasons": projection_degraded_reasons,
                 "unresolved": unresolved,
             },
         }
@@ -110,6 +117,9 @@ class AssetFlowService:
 
 def _public_row(row: dict[str, Any]) -> dict[str, Any]:
     factor_snapshot = _mapping(row.get("factor_snapshot_json"))
+    score = _composite_from_snapshot(factor_snapshot)
+    if row.get("rank_score") is not None:
+        score["rank_score"] = _float_or_none(row.get("rank_score"))
     return {
         "_lane": row.get("lane"),
         "intent": row.get("intent_json") or {},
@@ -118,7 +128,11 @@ def _public_row(row: dict[str, Any]) -> dict[str, Any]:
         "market": _market_from_snapshot(factor_snapshot),
         "radar": _radar_from_row(row),
         "resolution": row.get("resolution_json") or {},
-        "score": _composite_from_snapshot(factor_snapshot),
+        "score": score,
+        "quality": {
+            "status": row.get("quality_status"),
+            "degraded_reasons": _string_list(row.get("degraded_reasons_json")),
+        },
         "factor_snapshot": factor_snapshot,
         "data_health": row.get("data_health_json") or {},
         "source_event_ids": row.get("source_event_ids_json") or [],
@@ -190,15 +204,16 @@ def _unresolved_diagnostics(rows: list[dict[str, Any]]) -> dict[str, Any]:
     nil_count = 0
     ambiguous_count = 0
     for row in unresolved:
-        target = _mapping(row.get("target_json"))
+        snapshot = _mapping(row.get("factor_snapshot_json"))
+        subject = _mapping(snapshot.get("subject"))
         intent = _mapping(row.get("intent_json"))
         resolution = _mapping(row.get("resolution_json"))
-        status = str(target.get("status") or resolution.get("status") or row.get("resolution_status") or "").strip()
+        status = str(resolution.get("status") or subject.get("status") or row.get("resolution_status") or "").strip()
         if status == "NIL":
             nil_count += 1
         elif status == "AMBIGUOUS":
             ambiguous_count += 1
-        symbol = target.get("symbol") or intent.get("display_symbol") or intent.get("symbol")
+        symbol = subject.get("symbol") or intent.get("display_symbol") or intent.get("symbol")
         if symbol and str(symbol) not in symbols:
             symbols.append(str(symbol))
     return {
@@ -224,9 +239,65 @@ def _mapping(value: Any) -> dict[str, Any]:
     return {str(key): item for key, item in value.items()}
 
 
+def _projection_quality(
+    *,
+    projection_status: str,
+    rows: list[dict[str, Any]],
+    unresolved: dict[str, Any],
+) -> tuple[str, list[str]]:
+    if projection_status == "failed":
+        return "failed", ["projection_window_failed"]
+
+    reasons: list[str] = []
+    row_statuses: list[str] = []
+    for row in rows:
+        quality = _mapping(row.get("quality"))
+        status = str(quality.get("status") or "ready")
+        row_statuses.append(status)
+        reasons.extend(_string_list(quality.get("degraded_reasons")))
+
+    if int(unresolved.get("identity_missing_count") or 0) > 0:
+        reasons.append("identity_missing")
+
+    degraded_reasons = _dedupe_strings(reasons)
+    if row_statuses and all(status == "insufficient" for status in row_statuses):
+        return "insufficient", degraded_reasons
+    if any(status in {"degraded", "insufficient", "failed"} for status in row_statuses) or degraded_reasons:
+        return "degraded", degraded_reasons
+    return "ready", []
+
+
+def _pending_quality(reason: str) -> tuple[str, list[str]]:
+    if reason == "projection_window_failed":
+        return "failed", [reason]
+    return "insufficient", [reason]
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list | tuple):
+        return []
+    return _dedupe_strings([str(item) for item in value if str(item)])
+
+
+def _dedupe_strings(values: list[str]) -> list[str]:
+    out: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if text and text not in out:
+            out.append(text)
+    return out
+
+
 def _int_or_none(value: Any) -> int | None:
     try:
         return int(value) if value is not None else None
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _float_or_none(value: Any) -> float | None:
+    try:
+        return float(value) if value is not None else None
     except (TypeError, ValueError, OverflowError):
         return None
 
@@ -242,6 +313,7 @@ def _pending_projection_payload(publication_state: dict[str, Any] | None) -> dic
     else:
         projection_status = "pending"
         reason = "projection_window_pending"
+    quality_status, degraded_reasons = _pending_quality(reason)
     return {
         "targets": [],
         "attention": [],
@@ -259,5 +331,7 @@ def _pending_projection_payload(publication_state: dict[str, Any] | None) -> dic
             "computed_at_ms": (publication_state or {}).get("current_published_at_ms"),
             "error": (publication_state or {}).get("latest_attempt_error"),
             "anchor_coverage": {"status": projection_status, "ready": 0, "missing": 0, "total": 0},
+            "quality_status": quality_status,
+            "degraded_reasons": degraded_reasons,
         },
     }

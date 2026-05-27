@@ -13,6 +13,7 @@ from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository 
     _json_payload,
     _payload_hash,
     _runtime_row_payload,
+    stable_generation_id,
 )
 
 
@@ -23,24 +24,35 @@ def test_json_payload_converts_decimal_values_before_jsonb_binding():
         {
             "factor_snapshot_json": snapshot,
             "intent_json": {},
-            "asset_json": {},
-            "primary_venue_json": None,
-            "target_json": {},
             "data_health_json": {},
             "source_event_ids_json": [],
+            "degraded_reasons_json": [],
+            "rank_score": 12.5,
+            "quality_status": "ready",
             "factor_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
         }
     )
 
     assert payload["factor_snapshot_json"].obj["composite"]["rank_score"] == 12.5
     assert payload["factor_snapshot_json"].obj["families"]["social_heat"]["facts"]["volume_24h_usd"] == 123.45
+    assert payload["degraded_reasons_json"].obj == []
+    for dropped_column in (
+        "asset_json",
+        "primary_venue_json",
+        "target_json",
+        "attention_json",
+        "market_json",
+        "price_json",
+        "score_json",
+    ):
+        assert dropped_column not in payload
 
 
 def test_publish_current_generation_replaces_current_rows_and_marks_ready_publication_state():
     conn = FakePublishConn()
     row = _valid_factor_row()
 
-    written = TokenRadarRepository(conn).publish_current_generation(
+    result = TokenRadarRepository(conn).publish_current_generation(
         projection_version="token-radar-v13-social-attention",
         window="1h",
         scope="all",
@@ -52,7 +64,7 @@ def test_publish_current_generation_replaces_current_rows_and_marks_ready_public
     )
 
     joined_sql = "\n".join(conn.sqls)
-    assert written is True
+    assert result == {"status": "published", "generation_id": "gen-1h-1778", "rows_written": 1}
     assert "DELETE FROM token_radar_current_rows" in joined_sql
     assert "INSERT INTO token_radar_current_rows" in joined_sql
     assert "INSERT INTO token_radar_publication_state" in joined_sql
@@ -67,11 +79,167 @@ def test_publish_current_generation_replaces_current_rows_and_marks_ready_public
     assert conn.current_insert_params["source_frontier_ms"] == 1_778_000_030_000
     assert conn.current_insert_params["payload_hash"]
     assert conn.current_insert_params["listed_at_ms"] == 1_778_000_000_000
+    assert conn.current_insert_params["rank_score"] == 12
+    assert conn.current_insert_params["quality_status"] == "ready"
+    assert conn.current_insert_params["degraded_reasons_json"].obj == []
+    for dropped_column in (
+        "asset_json",
+        "primary_venue_json",
+        "target_json",
+        "attention_json",
+        "market_json",
+        "price_json",
+        "score_json",
+    ):
+        assert dropped_column not in conn.current_insert_params
     assert conn.publication_state_params["current_generation_id"] == "gen-1h-1778"
     assert conn.publication_state_params["current_published_at_ms"] == 1_778_000_000_000
     assert conn.publication_state_params["current_source_frontier_ms"] == 1_778_000_030_000
     assert conn.publication_state_params["current_row_count"] == 1
     assert conn.publication_state_params["current_source_rows"] == 1
+    assert conn.publication_state_params["latest_attempt_status"] == "ready"
+
+
+def test_stable_generation_id_is_content_addressed_not_time_addressed():
+    first = _valid_factor_row()
+    second = _valid_factor_row()
+    second["row_id"] = "row-factor-same-semantic-later"
+    second["created_at_ms"] = 1_778_000_060_000
+
+    first_generation_id = stable_generation_id(
+        projection_version="token-radar-v13-social-attention",
+        window="5m",
+        scope="all",
+        rows=[first],
+    )
+    second_generation_id = stable_generation_id(
+        projection_version="token-radar-v13-social-attention",
+        window="5m",
+        scope="all",
+        rows=[second],
+    )
+
+    assert first_generation_id == second_generation_id
+
+
+def test_stable_generation_id_changes_when_row_quality_changes_even_with_same_payload_hash():
+    ready = {**_valid_factor_row(), "payload_hash": "same-payload-hash"}
+    degraded = {
+        **_valid_factor_row(),
+        "payload_hash": "same-payload-hash",
+        "quality_status": "degraded",
+        "degraded_reasons_json": ["market_anchor_missing"],
+    }
+
+    ready_generation_id = stable_generation_id(
+        projection_version="token-radar-v13-social-attention",
+        window="5m",
+        scope="all",
+        rows=[ready],
+    )
+    degraded_generation_id = stable_generation_id(
+        projection_version="token-radar-v13-social-attention",
+        window="5m",
+        scope="all",
+        rows=[degraded],
+    )
+
+    assert ready_generation_id != degraded_generation_id
+
+
+def test_publish_current_generation_rewrites_when_only_row_quality_changes():
+    ready = _valid_factor_row()
+    degraded = {
+        **_valid_factor_row(),
+        "quality_status": "degraded",
+        "degraded_reasons_json": ["market_anchor_missing"],
+    }
+    incoming_payload_hash = _runtime_row_payload(
+        degraded,
+        projection_version="token-radar-v13-social-attention",
+        window="1h",
+        scope="all",
+        generation_id="gen-degraded",
+        published_at_ms=1_778_000_060_000,
+        source_frontier_ms=1_778_000_030_000,
+        listed_at_ms=1_778_000_000_000,
+    )["payload_hash"]
+    existing_current = _runtime_row_payload(
+        ready,
+        projection_version="token-radar-v13-social-attention",
+        window="1h",
+        scope="all",
+        generation_id="gen-existing",
+        published_at_ms=1_778_000_000_000,
+        source_frontier_ms=1_778_000_030_000,
+        listed_at_ms=1_778_000_000_000,
+    )
+    existing_current["payload_hash"] = incoming_payload_hash
+    conn = FakePublishConn(
+        existing_current=existing_current,
+        publication_state={
+            "current_generation_id": "gen-existing",
+            "current_published_at_ms": 1_778_000_000_000,
+        },
+    )
+
+    result = TokenRadarRepository(conn).publish_current_generation(
+        projection_version="token-radar-v13-social-attention",
+        window="1h",
+        scope="all",
+        generation_id="gen-degraded",
+        published_at_ms=1_778_000_060_000,
+        source_frontier_ms=1_778_000_030_000,
+        rows=[degraded],
+        commit=False,
+    )
+
+    joined_sql = "\n".join(conn.sqls)
+    assert result == {"status": "published", "generation_id": "gen-degraded", "rows_written": 1}
+    assert "DELETE FROM token_radar_current_rows" in joined_sql
+    assert "INSERT INTO token_radar_current_rows" in joined_sql
+
+
+def test_publish_current_generation_unchanged_does_not_delete_insert_or_emit_current_changes():
+    row = _valid_factor_row()
+    existing_current = _runtime_row_payload(
+        row,
+        projection_version="token-radar-v13-social-attention",
+        window="1h",
+        scope="all",
+        generation_id="gen-existing",
+        published_at_ms=1_778_000_000_000,
+        source_frontier_ms=1_778_000_030_000,
+        listed_at_ms=1_778_000_000_000,
+    )
+    conn = FakePublishConn(
+        existing_current=existing_current,
+        publication_state={
+            "current_generation_id": "gen-existing",
+            "current_published_at_ms": 1_778_000_000_000,
+        },
+    )
+    current_changes: list[dict[str, Any]] = []
+
+    result = TokenRadarRepository(conn).publish_current_generation(
+        projection_version="token-radar-v13-social-attention",
+        window="1h",
+        scope="all",
+        generation_id="gen-incoming-stable",
+        published_at_ms=1_778_000_060_000,
+        source_frontier_ms=1_778_000_030_000,
+        rows=[row],
+        on_current_changes=lambda **kwargs: current_changes.append(kwargs),
+        commit=False,
+    )
+
+    joined_sql = "\n".join(conn.sqls)
+    assert result == {"status": "unchanged", "generation_id": "gen-existing", "rows_written": 0}
+    assert "DELETE FROM token_radar_current_rows" not in joined_sql
+    assert "INSERT INTO token_radar_current_rows" not in joined_sql
+    assert current_changes == []
+    assert conn.publication_state_params["current_generation_id"] == "gen-existing"
+    assert conn.publication_state_params["latest_attempt_generation_id"] == "gen-existing"
     assert conn.publication_state_params["latest_attempt_status"] == "ready"
 
 
@@ -104,7 +272,7 @@ def test_publish_current_generation_replaces_rows_without_payload_hash_retry_pat
         }
     )
 
-    written = TokenRadarRepository(conn).publish_current_generation(
+    result = TokenRadarRepository(conn).publish_current_generation(
         projection_version="token-radar-v13-social-attention",
         window="1h",
         scope="all",
@@ -115,7 +283,7 @@ def test_publish_current_generation_replaces_rows_without_payload_hash_retry_pat
         commit=False,
     )
 
-    assert written is True
+    assert result == {"status": "published", "generation_id": "gen-next", "rows_written": 1}
     assert conn.current_insert_params["generation_id"] == "gen-next"
     current_sql = next(sql for sql in conn.sqls if "INSERT INTO token_radar_current_rows" in sql)
     assert "payload_hash IS DISTINCT FROM" not in current_sql
@@ -451,7 +619,7 @@ def test_list_rank_inputs_for_rank_set_reads_private_projection_rows_without_ver
 def test_publish_current_generation_rejects_stale_projection_writer():
     conn = FakeStalePublishConn(existing_computed_at_ms=1_700_000_100_000)
 
-    written = TokenRadarRepository(conn).publish_current_generation(
+    result = TokenRadarRepository(conn).publish_current_generation(
         projection_version="token-radar-v13-social-attention",
         window="5m",
         scope="all",
@@ -462,14 +630,14 @@ def test_publish_current_generation_rejects_stale_projection_writer():
         commit=False,
     )
 
-    assert written is False
+    assert result == {"status": "stale_skipped", "generation_id": "gen-old", "rows_written": 0}
     assert not any("DELETE FROM" in sql for sql in conn.sqls)
 
 
 def test_publish_current_generation_rejects_stale_writer_after_newer_zero_row_publication():
     conn = FakeStalePublishConn(existing_computed_at_ms=1_700_000_100_000)
 
-    written = TokenRadarRepository(conn).publish_current_generation(
+    result = TokenRadarRepository(conn).publish_current_generation(
         projection_version="token-radar-v13-social-attention",
         window="5m",
         scope="all",
@@ -480,7 +648,7 @@ def test_publish_current_generation_rejects_stale_writer_after_newer_zero_row_pu
         commit=False,
     )
 
-    assert written is False
+    assert result == {"status": "stale_skipped", "generation_id": "gen-old", "rows_written": 0}
     watermark_sql = conn.sqls[1]
     assert "FROM token_radar_publication_state" in watermark_sql
     assert "current_published_at_ms" in watermark_sql
@@ -510,7 +678,18 @@ def test_mark_publication_failed_records_failed_attempt_without_replacing_curren
 
 
 def test_latest_publication_state_reads_state_for_requested_sets():
-    conn = FakeConn(rows=[{"window": "1h", "scope": "all", "latest_attempt_status": "failed"}])
+    conn = FakeConn(
+        rows=[
+            {
+                "window": "1h",
+                "scope": "all",
+                "latest_attempt_status": "failed",
+                "latest_attempt_started_at_ms": 1_778_000_000_000,
+                "latest_attempt_finished_at_ms": 1_778_000_001_000,
+                "updated_at_ms": 1_778_000_002_000,
+            }
+        ]
+    )
 
     state = TokenRadarRepository(conn).latest_publication_state(
         projection_version="token-radar-v13-social-attention",
@@ -519,6 +698,9 @@ def test_latest_publication_state_reads_state_for_requested_sets():
     )
 
     assert state[("1h", "all")]["latest_attempt_status"] == "failed"
+    assert state[("1h", "all")]["latest_attempt_started_at_ms"] == 1_778_000_000_000
+    assert state[("1h", "all")]["latest_attempt_finished_at_ms"] == 1_778_000_001_000
+    assert state[("1h", "all")]["updated_at_ms"] == 1_778_000_002_000
     assert "FROM requested" in conn.sql
     assert "JOIN token_radar_publication_state state" in conn.sql
     assert "token_radar_projection_coverage" not in conn.sql
@@ -548,9 +730,18 @@ class FakeConn:
 
 
 class FakePublishConn:
-    def __init__(self, *, existing_current: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        existing_current: dict[str, Any] | None = None,
+        publication_state: dict[str, Any] | None = None,
+    ) -> None:
         self.sqls: list[str] = []
         self.existing_current = existing_current
+        self.publication_state = publication_state or {
+            "current_generation_id": None,
+            "current_published_at_ms": None,
+        }
         self.current_insert_params: dict[str, Any] = {}
         self.publication_state_params: dict[str, Any] = {}
         self._last_rows: list[dict[str, Any]] = []
@@ -559,6 +750,8 @@ class FakePublishConn:
         text = str(sql)
         self.sqls.append(text)
         self._last_rows = []
+        if "FROM token_radar_publication_state" in text:
+            self._last_rows = [self.publication_state]
         if "SELECT *" in text and "FROM token_radar_current_rows" in text:
             self._last_rows = [self.existing_current] if self.existing_current is not None else []
         if "INSERT INTO token_radar_current_rows" in text:
@@ -604,17 +797,13 @@ def _valid_factor_row() -> dict[str, object]:
         "target_id": "asset-1",
         "pricefeed_id": "feed-1",
         "intent_json": {"display_symbol": "BOV"},
-        "asset_json": {},
-        "primary_venue_json": None,
-        "target_json": {"symbol": "BOV"},
-        "attention_json": {},
         "resolution_json": {},
-        "market_json": {},
-        "price_json": {},
-        "score_json": {},
         "factor_snapshot_json": _valid_factor_snapshot(),
         "factor_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
         "decision": "discard",
+        "rank_score": 12,
+        "quality_status": "ready",
+        "degraded_reasons_json": [],
         "data_health_json": {"factor_snapshot": "ready"},
         "source_event_ids_json": ["event-1"],
         "created_at_ms": 1_778_000_000_000,
@@ -667,7 +856,7 @@ def _valid_factor_snapshot(*, rank_score: object = 12) -> dict[str, object]:
             "readiness": {
                 "anchor_status": "ready",
                 "latest_status": "fresh",
-                "dex_floor_status": "pass",
+                "dex_floor_status": "ready",
                 "missing_fields": [],
                 "stale_fields": [],
             },

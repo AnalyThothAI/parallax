@@ -104,6 +104,9 @@ def test_publish_current_generation_uses_compact_first_seen_before_insert_and_up
     )
 
     assert conn.insert_params["listed_at_ms"] == 100
+    assert conn.insert_params["rank_score"] == 0
+    assert conn.insert_params["quality_status"] == "degraded"
+    assert conn.insert_params["degraded_reasons_json"].obj == ["market_anchor_missing", "market_latest_missing"]
     assert conn.call_labels.index("compact_lookup") < conn.call_labels.index("insert_current_row")
     assert conn.call_labels.index("insert_current_row") < conn.call_labels.index("upsert_first_seen")
     assert all("token_radar_rows" not in sql for sql in conn.sqls)
@@ -203,17 +206,13 @@ def _valid_factor_row() -> dict[str, object]:
         "target_id": "asset-1",
         "pricefeed_id": "feed-1",
         "intent_json": {"display_symbol": "BOV"},
-        "asset_json": {},
-        "primary_venue_json": None,
-        "target_json": {"symbol": "BOV"},
-        "attention_json": {},
         "resolution_json": {},
-        "market_json": {},
-        "price_json": {},
-        "score_json": {},
         "factor_snapshot_json": _valid_factor_snapshot(),
         "factor_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
         "decision": "discard",
+        "rank_score": 0,
+        "quality_status": "degraded",
+        "degraded_reasons_json": ["market_anchor_missing", "market_latest_missing"],
         "data_health_json": {"factor_snapshot": "ready"},
         "source_event_ids_json": ["event-1"],
         "created_at_ms": 200,

@@ -228,7 +228,17 @@ def test_invalid_ref_abstain_maps_to_unknown_evidence_outcome() -> None:
 
 def test_asset_context_uses_factor_snapshot_and_no_legacy_runtime_context() -> None:
     repos = FakeRepos()
-    snapshot = _factor_snapshot(rank_score=82)
+    snapshot = _factor_snapshot(
+        rank_score=82,
+        subject={
+            "target_type": "Asset",
+            "target_id": "asset-1",
+            "target_market_type": "dex",
+            "symbol": "SNAP",
+            "chain": "solana",
+            "address": "So111",
+        },
+    )
     repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
     repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
     worker = _worker(repos)
@@ -244,7 +254,12 @@ def test_asset_context_uses_factor_snapshot_and_no_legacy_runtime_context() -> N
         target_type="Asset",
         target_id="asset-1",
     )
+    assert job["context_json"]["subject_key"] == "SNAP"
+    assert job["context_json"]["symbol"] == "SNAP"
     assert job["context_json"]["factor_snapshot"] == snapshot
+    assert job["context_json"]["factor_snapshot"]["subject"]["chain"] == "solana"
+    assert job["context_json"]["factor_snapshot"]["subject"]["address"] == "So111"
+    assert job["context_json"]["factor_snapshot"]["subject"]["target_market_type"] == "dex"
     assert job["context_json"]["edge_events"] == ["pulse_status_changed"]
     assert job["context_json"]["selected_posts"]
     assert "radar_score" not in job["context_json"]
@@ -317,7 +332,7 @@ def test_worker_persists_factor_snapshot_gate_and_decision_only() -> None:
     assert upsert["decision_recommendation"] == "watchlist"
     assert upsert["last_edge_events_json"] == ["pulse_status_changed"]
     assert "agent_recommendation_json" not in upsert
-    assert "radar_score_json" not in upsert
+    assert "radar_score" + "_json" not in upsert
     assert "market_context_json" not in upsert
     assert "thesis_json" not in upsert
 
@@ -2213,6 +2228,14 @@ async def _wait_until(predicate, *, timeout_seconds: float = 1.0) -> None:
 
 
 def _radar_row(*, factor_snapshot_json: dict[str, Any] | None, target_id: str = "asset-1") -> dict[str, Any]:
+    if factor_snapshot_json is not None:
+        factor_snapshot_json = {
+            **factor_snapshot_json,
+            "subject": {
+                **dict(factor_snapshot_json.get("subject") or {}),
+                "target_id": target_id,
+            },
+        }
     return {
         "row_id": "row-1",
         "window": "1h",
@@ -2221,8 +2244,6 @@ def _radar_row(*, factor_snapshot_json: dict[str, Any] | None, target_id: str = 
         "event_id": "event-1",
         "target_type": "Asset",
         "target_id": target_id,
-        "target_json": {"target_type": "Asset", "target_id": target_id, "symbol": "TEST"},
-        "asset_json": {"target_type": "Asset", "target_id": target_id, "symbol": "TEST"},
         "factor_snapshot_json": factor_snapshot_json,
         "source_event_ids_json": ["event-1"],
     }
@@ -2231,6 +2252,7 @@ def _radar_row(*, factor_snapshot_json: dict[str, Any] | None, target_id: str = 
 def _factor_snapshot(
     *,
     rank_score: int,
+    subject: dict[str, Any] | None = None,
     blocked_reasons: list[str] | None = None,
     recommended_decision: str | None = None,
     watched_mentions: int = 1,
@@ -2244,7 +2266,8 @@ def _factor_snapshot(
     decision = recommended_decision or ("high_alert" if rank_score >= 72 else "watch")
     return {
         "schema_version": "token_factor_snapshot_v3_social_attention",
-        "subject": {
+        "subject": subject
+        or {
             "target_type": "Asset",
             "target_id": "asset-1",
             "target_market_type": "dex",

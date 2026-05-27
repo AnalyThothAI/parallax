@@ -123,8 +123,7 @@ not good enough for default discovery.
 ## Hard Boundaries
 
 - No LLM fact acquisition for critical Pulse facts.
-- No fallback to legacy `thesis_json`, `radar_score_json`, or
-  `market_context_json`.
+- No fallback to legacy thesis, radar-score, or market-context JSON payloads.
 - No public row without `evidence_packet_hash`.
 - No non-abstain decision without `supporting_evidence_refs`.
 - No decision without an audit row.

@@ -187,6 +187,9 @@ def test_low_score_eligible_snapshot_is_blocked_low_information() -> None:
         ["liquidity_below_high_alert_floor"],
         ["holders_below_high_alert_floor"],
         ["liquidity_below_high_alert_floor", "holders_below_high_alert_floor"],
+        ["market_anchor_missing"],
+        ["market_latest_stale"],
+        ["dex_floor_missing"],
     ],
 )
 def test_blocked_reasons_from_gates_reject_high_info(blocked_reasons: list[str]) -> None:
@@ -281,7 +284,7 @@ def test_to_json_contains_gate_contract_for_agent_validation() -> None:
         factor_snapshot=_snapshot(
             rank_score=50,
             eligible=False,
-            blocked_reasons=["market_freshness_missing"],
+            blocked_reasons=["market_latest_missing"],
         )
     )
 
@@ -290,12 +293,12 @@ def test_to_json_contains_gate_contract_for_agent_validation() -> None:
         "verdict": "risk_rejected_high_info",
         "candidate_score": 50.0,
         "score_band": "blocked",
-        "gate_reasons": ["market_freshness_missing"],
-        "risk_reasons": ["market_freshness_missing"],
-        "hard_risks": ["market_freshness_missing"],
+        "gate_reasons": ["market_latest_missing"],
+        "risk_reasons": ["market_latest_missing"],
+        "hard_risks": ["market_latest_missing"],
         "max_recommendation": "research",
         "eligible_for_high_alert": False,
-        "blocked_reasons": ["market_freshness_missing"],
+        "blocked_reasons": ["market_latest_missing"],
     }
 
 

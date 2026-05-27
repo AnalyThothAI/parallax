@@ -202,6 +202,61 @@ def test_settle_token_factor_scores_records_family_rank_ic_diagnostics():
     assert diagnostics["family_coverage"]["timing_risk"] == 1.0
 
 
+def test_settle_token_factor_scores_does_not_fallback_to_dropped_target_json_for_cex_market_target():
+    base_ms = 1_700_000_000_000
+    horizon_ms = 60 * 60 * 1000
+    row = {
+        "row_id": "row:btc",
+        "window": "1h",
+        "scope": "all",
+        "target_type": "CexToken",
+        "target_id": "cex_token:BTC",
+        "computed_at_ms": base_ms,
+        "factor_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
+        "target_json": {
+            "provider": "binance",
+            "native_market_id": "BTCUSDT",
+        },
+        "factor_snapshot_json": {
+            "schema_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
+            "subject": {
+                "target_type": "CexToken",
+                "target_id": "cex_token:BTC",
+                "symbol": "BTC",
+                "target_market_type": "cex",
+            },
+            "market": {
+                "decision_latest": {
+                    "provider": "binance",
+                    "price_usd": 70_000.0,
+                }
+            },
+            "families": {},
+            "gates": {},
+            "data_health": {},
+            "normalization": {},
+            "composite": {"rank_score": 80, "family_scores": {}},
+            "provenance": {"computed_at_ms": base_ms},
+        },
+    }
+    repos = FakeRepos(rows=[row], prices={("cex_symbol", "binance:BTCUSDT"): (100.0, 120.0)})
+
+    result = settle_token_factor_scores(
+        repos=repos,
+        horizon="1h",
+        window="1h",
+        scope="all",
+        generated_at_ms=base_ms + horizon_ms + 1,
+        limit=100,
+    )
+
+    diagnostics = repos.token_factor_evaluations.upserts[0]["diagnostics_json"]
+    assert result["settled_count"] == 0
+    assert diagnostics["unsettled_reasons"] == {"missing_market_target": 1}
+    assert repos.market_ticks.latest_calls == []
+    assert repos.market_ticks.bounded_exit_calls == []
+
+
 def test_evaluation_repository_does_not_read_retired_snapshot_audit_for_settlement():
     conn = FakeConn(rows=[{"row_id": "row:a"}])
 
@@ -295,13 +350,6 @@ def radar_row(suffix: str, *, score: int, computed_at_ms: int, family_scores: di
         "scope": "all",
         "computed_at_ms": computed_at_ms,
         "factor_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
-        "target_json": {
-            "target_type": "Asset",
-            "target_id": f"asset:{suffix}",
-            "symbol": suffix.upper(),
-            "chain_id": "eip155:1",
-            "address": f"0x{suffix}",
-        },
         "factor_snapshot_json": {
             "schema_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
             "subject": {

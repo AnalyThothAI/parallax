@@ -160,7 +160,7 @@ become a correctness dependency for projections.
 WebSocket fan-out must be bounded. Slow clients are stale subscribers to drop;
 they must not stall worker publish paths or other clients.
 
-## Wake hints and catch-up
+## Wake Hints And Durable Work
 
 PostgreSQL `NOTIFY` channels (`market_tick_written`,
 `market_tick_current_updated`, `resolution_updated`, `token_radar_updated`)
@@ -169,9 +169,10 @@ are wake hints, not delivery guarantees. Market tick writers wake
 `market_tick_current_updated` after the current market row changes. Every
 listener (`TokenRadarProjectionWorker`, `PulseCandidateWorker`, future
 workers) runs on a bounded `interval_seconds` loop from `workers.yaml`
-even when `NOTIFY` is healthy. The loop must claim durable dirty queues
-or read bounded read models; it must not scan broad fact windows just to
-prove no wake was missed. Token Radar repair uses the explicit
+even when `NOTIFY` is healthy. The loop must claim durable dirty queues,
+honor due gates, or read bounded read models; it must not scan broad fact
+windows just to prove no wake was missed. Token Radar runtime projection has
+no recent-resolved-target catch-up scan. Token Radar repair uses the explicit
 `ops enqueue-token-radar-dirty-targets` command, and resolution refresh
 uses `token_discovery_dirty_lookup_keys`. Service correctness must not
 depend on `NOTIFY` delivery.
@@ -207,9 +208,9 @@ and `handle_summary` are leased-job consumers and must not discover missing
 jobs inside the runtime loop. `LivePriceGateway` reads the live target control
 set from `token_capture_tier`; it must not scan Token Radar current rows.
 Historical discovery is domain-owned. Token Radar uses
-`ops enqueue-token-radar-dirty-targets` and projection catch-up from material
-facts; other workers must expose similarly explicit domain repair paths instead
-of a generic runtime-worker repair command.
+`ops enqueue-token-radar-dirty-targets` for explicit bounded repair; other
+workers must expose similarly explicit domain repair paths instead of a generic
+runtime-worker repair command.
 
 ## PostgreSQL Observability
 
@@ -235,7 +236,22 @@ serving is `token_radar_current_rows` plus `token_radar_publication_state`.
 `fresh` is allowed only when publication state is `ready` and served rows match
 `current_generation_id`. Failed latest attempts serve previous rows as `stale`
 or no rows as `failed`; retired history/audit tables are not part of runtime
-serving.
+serving. `fresh`, `stale`, and `failed` describe publication freshness only;
+row `quality_status` describes business credibility.
+
+Successful publication generation ids are content-stable. If a rebuild produces
+unchanged current-row content, publication state refreshes without deleting or
+reinserting `token_radar_current_rows`. Failed attempts may record
+`attempt:{projection_version}:{window}:{scope}:{computed_at_ms}` ids before
+rows are built, but successful generations must not be timestamp-derived.
+
+`token_radar_current_rows` stores `rank_score`, `quality_status`,
+`degraded_reasons_json`, and `factor_snapshot_json`. Legacy top-level
+`asset_json`, `primary_venue_json`, `target_json`, `attention_json`,
+`market_json`, `price_json`, and `score_json` blocks are dropped and must not be
+treated as reader contracts. High-alert eligibility is gated by market quality
+and deterministic gates; degraded rows can remain useful `watch` rows, but they
+must not be promoted to `high_alert`.
 
 Token Radar has no runtime hard-reset command. Legacy table retirement belongs
 to migrations, and current-row repair is fact-driven:
