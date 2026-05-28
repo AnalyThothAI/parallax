@@ -1612,15 +1612,38 @@ def _create_table_block(text: str, table_name: str) -> str:
     return _extract_sql_statement(text, f"CREATE TABLE IF NOT EXISTS {table_name}")
 
 
-def _migration_call_block(text: str, marker: str) -> str:
+def _migration_op_call(text: str, op_name: str, first_arg: str) -> ast.Call:
     tree = ast.parse(text)
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        source = ast.get_source_segment(text, node) or ""
-        if marker in source:
-            return source
-    raise AssertionError(f"migration must include call block: {marker}")
+        if not isinstance(node.func, ast.Attribute) or node.func.attr != op_name:
+            continue
+        if not isinstance(node.func.value, ast.Name) or node.func.value.id != "op":
+            continue
+        if not node.args:
+            continue
+        first = node.args[0]
+        if isinstance(first, ast.Constant) and first.value == first_arg:
+            return node
+    raise AssertionError(f"migration must call op.{op_name}({first_arg!r}, ...)")
+
+
+def _sa_column_names(call: ast.Call) -> set[str]:
+    names: set[str] = set()
+    for arg in call.args[1:]:
+        if not isinstance(arg, ast.Call):
+            continue
+        if not isinstance(arg.func, ast.Attribute) or arg.func.attr != "Column":
+            continue
+        if not isinstance(arg.func.value, ast.Name) or arg.func.value.id != "sa":
+            continue
+        if not arg.args:
+            continue
+        first = arg.args[0]
+        if isinstance(first, ast.Constant) and isinstance(first.value, str):
+            names.add(first.value)
+    return names
 
 
 def _legacy_price_index(*parts: str) -> str:
@@ -1637,8 +1660,8 @@ def test_token_equity_workerspace_root_fix_migration_contract() -> None:
     downgrade_marker = "def downgrade() -> None:"
     assert downgrade_marker in text, "migration must define irreversible downgrade"
     downgrade_text = text.split(downgrade_marker, maxsplit=1)[1]
-    process_jobs_table = _migration_call_block(text, 'op.create_table("equity_event_process_jobs"')
-    compact_process_jobs_table = "".join(process_jobs_table.split())
+    process_jobs_table = _migration_op_call(text, "create_table", "equity_event_process_jobs")
+    process_jobs_columns = _sa_column_names(process_jobs_table)
 
     assert 'revision = "20260528_0120"' in text
     assert 'down_revision = "20260528_0116"' in text
@@ -1652,7 +1675,6 @@ def test_token_equity_workerspace_root_fix_migration_contract() -> None:
             f'op.add_column("token_radar_dirty_targets",sa.Column("{column_name}"'
             in compact_text
         )
-    assert 'op.create_table("equity_event_process_jobs"' in compact_process_jobs_table
     for column_name in (
         "event_document_id",
         "status",
@@ -1660,7 +1682,7 @@ def test_token_equity_workerspace_root_fix_migration_contract() -> None:
         "leased_until_ms",
         "input_payload_hash",
     ):
-        assert f'sa.Column("{column_name}"' in compact_process_jobs_table
+        assert column_name in process_jobs_columns
     assert (
         'op.add_column("equity_event_evidence_artifacts",sa.Column("artifact_payload_hash"'
         in compact_text
