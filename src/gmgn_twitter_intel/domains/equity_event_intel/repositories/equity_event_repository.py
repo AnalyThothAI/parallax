@@ -1709,6 +1709,9 @@ class EquityEventRepository:
             ON CONFLICT (event_document_id) DO UPDATE SET
               status = CASE
                 WHEN equity_event_process_jobs.status = 'running'
+                  AND equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
+                  THEN 'pending'
+                WHEN equity_event_process_jobs.status = 'running'
                   THEN equity_event_process_jobs.status
                 WHEN equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
                   OR equity_event_process_jobs.status IN ('pending', 'failed_retryable')
@@ -1716,6 +1719,9 @@ class EquityEventRepository:
                 ELSE equity_event_process_jobs.status
               END,
               due_at_ms = CASE
+                WHEN equity_event_process_jobs.status = 'running'
+                  AND equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
+                  THEN EXCLUDED.due_at_ms
                 WHEN equity_event_process_jobs.status = 'running'
                   THEN equity_event_process_jobs.due_at_ms
                 WHEN equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
@@ -1725,12 +1731,18 @@ class EquityEventRepository:
               END,
               attempt_count = CASE
                 WHEN equity_event_process_jobs.status = 'running'
+                  AND equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
+                  THEN 0
+                WHEN equity_event_process_jobs.status = 'running'
                   THEN equity_event_process_jobs.attempt_count
                 WHEN equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
                   THEN 0
                 ELSE equity_event_process_jobs.attempt_count
               END,
               input_payload_hash = CASE
+                WHEN equity_event_process_jobs.status = 'running'
+                  AND equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
+                  THEN EXCLUDED.input_payload_hash
                 WHEN equity_event_process_jobs.status = 'running'
                   THEN equity_event_process_jobs.input_payload_hash
                 WHEN equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
@@ -1740,6 +1752,9 @@ class EquityEventRepository:
               END,
               started_at_ms = CASE
                 WHEN equity_event_process_jobs.status = 'running'
+                  AND equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
+                  THEN NULL
+                WHEN equity_event_process_jobs.status = 'running'
                   THEN equity_event_process_jobs.started_at_ms
                 WHEN equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
                   OR equity_event_process_jobs.status IN ('pending', 'failed_retryable')
@@ -1747,6 +1762,9 @@ class EquityEventRepository:
                 ELSE equity_event_process_jobs.started_at_ms
               END,
               finished_at_ms = CASE
+                WHEN equity_event_process_jobs.status = 'running'
+                  AND equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
+                  THEN NULL
                 WHEN equity_event_process_jobs.status = 'running'
                   THEN equity_event_process_jobs.finished_at_ms
                 WHEN equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
@@ -1756,6 +1774,9 @@ class EquityEventRepository:
               END,
               lease_owner = CASE
                 WHEN equity_event_process_jobs.status = 'running'
+                  AND equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
+                  THEN NULL
+                WHEN equity_event_process_jobs.status = 'running'
                   THEN equity_event_process_jobs.lease_owner
                 WHEN equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
                   OR equity_event_process_jobs.status IN ('pending', 'failed_retryable')
@@ -1763,6 +1784,9 @@ class EquityEventRepository:
                 ELSE equity_event_process_jobs.lease_owner
               END,
               leased_until_ms = CASE
+                WHEN equity_event_process_jobs.status = 'running'
+                  AND equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
+                  THEN NULL
                 WHEN equity_event_process_jobs.status = 'running'
                   THEN equity_event_process_jobs.leased_until_ms
                 WHEN equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
@@ -1772,6 +1796,9 @@ class EquityEventRepository:
               END,
               last_error = CASE
                 WHEN equity_event_process_jobs.status = 'running'
+                  AND equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
+                  THEN NULL
+                WHEN equity_event_process_jobs.status = 'running'
                   THEN equity_event_process_jobs.last_error
                 WHEN equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
                   OR equity_event_process_jobs.status IN ('pending', 'failed_retryable')
@@ -1779,6 +1806,9 @@ class EquityEventRepository:
                 ELSE equity_event_process_jobs.last_error
               END,
               terminal_reason = CASE
+                WHEN equity_event_process_jobs.status = 'running'
+                  AND equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
+                  THEN NULL
                 WHEN equity_event_process_jobs.status = 'running'
                   THEN equity_event_process_jobs.terminal_reason
                 WHEN equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash

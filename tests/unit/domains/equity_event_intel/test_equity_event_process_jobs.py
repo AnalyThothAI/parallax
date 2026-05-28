@@ -81,9 +81,10 @@ def test_enqueue_process_job_loads_document_artifacts_and_upserts_pending_hash()
     assert conn.commits == 0
 
 
-def test_enqueue_process_job_changed_hash_preserves_running_claim_sql_contract() -> None:
+def test_enqueue_process_job_changed_hash_requeues_running_claim_sql_contract() -> None:
     document = _document()
     artifacts = [_artifact("artifact-1", artifact_payload_hash="changed-payload")]
+    input_hash = _process_input_payload_hash(document=document, artifacts=artifacts)
     conn = _ScriptedConnection(
         [
             [document],
@@ -91,11 +92,11 @@ def test_enqueue_process_job_changed_hash_preserves_running_claim_sql_contract()
             [
                 {
                     "event_document_id": "event-doc-1",
-                    "status": "running",
-                    "lease_owner": "process-a",
-                    "leased_until_ms": NOW_MS + 60_000,
-                    "attempt_count": 1,
-                    "input_payload_hash": "old-running-hash",
+                    "status": "pending",
+                    "lease_owner": None,
+                    "leased_until_ms": None,
+                    "attempt_count": 0,
+                    "input_payload_hash": input_hash,
                 }
             ],
         ]
@@ -109,7 +110,11 @@ def test_enqueue_process_job_changed_hash_preserves_running_claim_sql_contract()
     )
 
     upsert_sql = conn.sql[2]
-    assert row["status"] == "running"
+    assert row["status"] == "pending"
+    assert row["input_payload_hash"] == input_hash
+    assert _running_changed_hash_branch("status", "'pending'") in upsert_sql
+    assert _running_changed_hash_branch("attempt_count", "0") in upsert_sql
+    assert _running_changed_hash_branch("input_payload_hash", "EXCLUDED.input_payload_hash") in upsert_sql
     for column in (
         "status",
         "attempt_count",
@@ -335,6 +340,14 @@ def _process_input_payload_hash(*, document: dict[str, Any], artifacts: list[dic
 def _running_preserve_branch(column: str) -> str:
     return (
         f"WHEN equity_event_process_jobs.status = 'running'\n                  THEN equity_event_process_jobs.{column}"
+    )
+
+
+def _running_changed_hash_branch(column: str, value: str) -> str:
+    return (
+        "WHEN equity_event_process_jobs.status = 'running'\n"
+        "                  AND equity_event_process_jobs.input_payload_hash IS DISTINCT FROM "
+        f"EXCLUDED.input_payload_hash\n                  THEN {value}"
     )
 
 

@@ -20,6 +20,9 @@
 
 ## Unit And Architecture Tests
 
+- Final-review regression pair:
+  `uv run pytest tests/unit/domains/equity_event_intel/test_equity_event_process_jobs.py tests/unit/domains/token_intel/test_token_radar_market_only_projection.py -q`
+  -> `13 passed`.
 - Focused root-fix suite:
   `uv run pytest tests/architecture/test_token_equity_workerspace_root_fix_contract.py tests/unit/test_token_radar_payload_hash.py tests/unit/domains/token_intel/test_token_radar_dirty_target_kinds.py tests/unit/domains/token_intel/test_token_radar_market_only_projection.py tests/unit/domains/equity_event_intel/test_equity_event_process_jobs.py tests/unit/domains/equity_event_intel/test_equity_event_process_worker_queue.py tests/unit/domains/equity_event_intel/test_equity_event_artifact_upsert.py tests/unit/test_runtime_worker_context.py -q`
   -> `37 passed`.
@@ -79,7 +82,14 @@
 ## Other Commands Run
 
 - `docker compose up -d --build app` rebuilt and restarted `app`/`migrate` from
-  this worktree so runtime expected migration head matched DB head.
+  this worktree so runtime expected migration head matched DB head. This was run
+  before the final-review P1/P2 local code fixes below; the DB/schema readiness
+  result remains valid, while those two code-path fixes are covered by local
+  unit/architecture tests above.
+- Final-review fixes added after the Docker readiness smoke:
+  running Equity process jobs with a changed input hash are reset to `pending`
+  so the old lease cannot mark stale output done; Token Radar source+market
+  dirty claims now overlay latest market context before projection.
 - Static retired-path scan:
   `rg -n "list_event_documents_for_processing|list_unprocessed_event_documents|replace_evidence_artifacts|WITH source_intents AS MATERIALIZED|TokenRadarTargetFeatureQuery|source_rows\(" ...`
   -> no production hits; only architecture-test assertions matched.

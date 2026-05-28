@@ -144,15 +144,16 @@ class TokenRadarProjection:
             rows_by_request = self.repos.token_radar_rank_sources.load_rows_for_requests(
                 [*source_requests, *market_requests]
             )
+            market_patch_claims = [claim for claim in claims if bool(claim.get("market_dirty"))]
             market_context_by_target = (
-                self.repos.token_radar_rank_sources.latest_market_context_for_targets(market_only_claims)
-                if market_only_claims
+                self.repos.token_radar_rank_sources.latest_market_context_for_targets(market_patch_claims)
+                if market_patch_claims
                 else {}
             )
 
-            for batch_claims, batch_requests, patch_latest_market in (
-                (source_rebuild_claims, source_requests, False),
-                (market_only_claims, market_requests, True),
+            for batch_claims, batch_requests in (
+                (source_rebuild_claims, source_requests),
+                (market_only_claims, market_requests),
             ):
                 requests_by_target = _source_requests_by_target(batch_requests)
                 for claim_index, claim in enumerate(batch_claims):
@@ -161,7 +162,7 @@ class TokenRadarProjection:
                     try:
                         for request in requests_by_target.get(claim_index, []):
                             source_rows = rows_by_request.get(request.request_key, [])
-                            if patch_latest_market:
+                            if bool(claim.get("market_dirty")):
                                 source_rows = _with_latest_market_context(
                                     source_rows,
                                     market_context_by_target.get(_source_request_target_key(request)),

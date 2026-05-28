@@ -156,7 +156,6 @@ def test_rebuild_dirty_targets_market_only_loads_existing_rows_without_populatin
     "claim",
     [
         _claim(source_dirty=True, market_dirty=False, repair_dirty=False),
-        _claim(source_dirty=False, market_dirty=True, repair_dirty=True),
     ],
 )
 def test_rebuild_dirty_targets_source_or_repair_claim_populates_edges(monkeypatch, claim) -> None:
@@ -196,6 +195,71 @@ def test_rebuild_dirty_targets_source_or_repair_claim_populates_edges(monkeypatc
     assert rank_sources.latest_market_calls == []
     assert dirty_targets.done[0]["identity_id"] == "asset-1"
     assert dirty_targets.errors == []
+
+
+def test_rebuild_dirty_targets_source_and_market_claim_patches_latest_market(monkeypatch) -> None:
+    now_ms = 1_777_800_060_000
+    claim = _claim(source_dirty=True, market_dirty=True, repair_dirty=False)
+    existing_source_row = {
+        "event_id": "event-existing",
+        "latest_price_tick_id": "stale-tick",
+        "latest_price_observed_at_ms": now_ms - 600_000,
+        "latest_price_usd": 1.0,
+    }
+    latest_market_context = {
+        ("Asset", "asset-1"): {
+            "latest_price_tick_id": "fresh-tick",
+            "latest_price_provider": "fresh-provider",
+            "latest_price_source_tier": "tier1",
+            "latest_price_pricefeed_id": "fresh-feed",
+            "latest_price_observed_at_ms": now_ms - 10_000,
+            "latest_price_received_at_ms": now_ms - 5_000,
+            "latest_price_usd": 2.5,
+            "latest_price_quote": None,
+            "latest_price_quote_symbol": "USD",
+            "latest_price_basis": "usd",
+            "latest_price_market_cap_usd": 25_000,
+            "latest_price_liquidity_usd": 5_000,
+            "latest_price_volume_24h_usd": 8_000,
+            "latest_price_open_interest_usd": None,
+            "latest_price_holders": 250,
+        }
+    }
+    rank_sources = FakeRankSources(
+        rows_by_request={"*": [existing_source_row]},
+        latest_market_context=latest_market_context,
+    )
+    dirty_targets = FakeDirtyTargets([claim])
+    repos = _repos(dirty_targets=dirty_targets, rank_sources=rank_sources)
+    score_calls: list[dict[str, Any]] = []
+
+    def score(self, **kwargs):
+        score_calls.append(kwargs)
+        return {"source_rows": 1, "status": "updated", "rank_set_changed": False}
+
+    monkeypatch.setattr(TokenRadarProjection, "_project_source_request", score)
+    monkeypatch.setattr(
+        TokenRadarProjection,
+        "refresh_rank_set",
+        lambda self, **kwargs: {"rows_written": 1, "source_rows": 1, "status": "ready"},
+    )
+
+    result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
+        windows=("5m",),
+        scopes=("all",),
+        now_ms=now_ms,
+        limit=20,
+    )
+
+    assert result["status"] == "ready"
+    assert len(rank_sources.populate_calls) == 1
+    assert rank_sources.latest_market_calls == [[claim]]
+    assert score_calls[0]["source_rows"] == [
+        {
+            **existing_source_row,
+            **latest_market_context[("Asset", "asset-1")],
+        }
+    ]
 
 
 class FakeDirtyTargets:
