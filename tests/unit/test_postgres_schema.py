@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
@@ -1611,6 +1612,17 @@ def _create_table_block(text: str, table_name: str) -> str:
     return _extract_sql_statement(text, f"CREATE TABLE IF NOT EXISTS {table_name}")
 
 
+def _migration_call_block(text: str, marker: str) -> str:
+    tree = ast.parse(text)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        source = ast.get_source_segment(text, node) or ""
+        if marker in source:
+            return source
+    raise AssertionError(f"migration must include call block: {marker}")
+
+
 def _legacy_price_index(*parts: str) -> str:
     return "_".join(("idx", LEGACY_PRICE_TABLE, *parts))
 
@@ -1622,7 +1634,11 @@ def test_token_equity_workerspace_root_fix_migration_contract() -> None:
     )
     text = _migration_text(TOKEN_EQUITY_WORKERSPACE_ROOT_FIX_MIGRATION)
     compact_text = "".join(text.split())
-    downgrade_text = text.split("def downgrade() -> None:", maxsplit=1)[1]
+    downgrade_marker = "def downgrade() -> None:"
+    assert downgrade_marker in text, "migration must define irreversible downgrade"
+    downgrade_text = text.split(downgrade_marker, maxsplit=1)[1]
+    process_jobs_table = _migration_call_block(text, 'op.create_table("equity_event_process_jobs"')
+    compact_process_jobs_table = "".join(process_jobs_table.split())
 
     assert 'revision = "20260528_0120"' in text
     assert 'down_revision = "20260528_0116"' in text
@@ -1636,7 +1652,7 @@ def test_token_equity_workerspace_root_fix_migration_contract() -> None:
             f'op.add_column("token_radar_dirty_targets",sa.Column("{column_name}"'
             in compact_text
         )
-    assert 'op.create_table("equity_event_process_jobs"' in compact_text
+    assert 'op.create_table("equity_event_process_jobs"' in compact_process_jobs_table
     for column_name in (
         "event_document_id",
         "status",
@@ -1644,7 +1660,7 @@ def test_token_equity_workerspace_root_fix_migration_contract() -> None:
         "leased_until_ms",
         "input_payload_hash",
     ):
-        assert f'sa.Column("{column_name}"' in compact_text
+        assert f'sa.Column("{column_name}"' in compact_process_jobs_table
     assert (
         'op.add_column("equity_event_evidence_artifacts",sa.Column("artifact_payload_hash"'
         in compact_text
