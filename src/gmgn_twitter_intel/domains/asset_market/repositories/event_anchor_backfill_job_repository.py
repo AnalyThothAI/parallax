@@ -65,57 +65,141 @@ class EventAnchorBackfillJobRepository:
             },
         )
 
-    def list_due(self, *, limit: int, now_ms: int, min_age_ms: int) -> list[dict[str, Any]]:
-        return list(
-            self._conn.execute(
-                """
-                SELECT *
-                FROM event_anchor_backfill_jobs
-                WHERE status = 'pending'
-                  AND next_run_at_ms <= %(now_ms)s
-                  AND created_at_ms <= %(ready_before_ms)s
-                  AND active_until_ms >= %(now_ms)s
-                ORDER BY next_run_at_ms ASC, created_at_ms ASC, event_id ASC, intent_id ASC
-                LIMIT %(limit)s
-                """,
-                {
-                    "now_ms": int(now_ms),
-                    "ready_before_ms": int(now_ms) - int(min_age_ms),
-                    "limit": max(1, int(limit)),
-                },
-            ).fetchall()
-        )
+    def claim_due(
+        self,
+        *,
+        limit: int,
+        now_ms: int,
+        min_age_ms: int,
+        lease_owner: str,
+        lease_ms: int,
+    ) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            """
+            WITH due AS (
+              SELECT event_id, intent_id
+              FROM event_anchor_backfill_jobs
+              WHERE status = 'pending'
+                AND next_run_at_ms <= %(now_ms)s
+                AND created_at_ms <= %(ready_before_ms)s
+                AND active_until_ms >= %(now_ms)s
+              ORDER BY next_run_at_ms ASC, created_at_ms ASC, event_id ASC, intent_id ASC
+              LIMIT %(limit)s
+              FOR UPDATE SKIP LOCKED
+            )
+            UPDATE event_anchor_backfill_jobs AS jobs
+            SET status = 'running',
+                attempt_count = attempt_count + 1,
+                lease_owner = %(lease_owner)s,
+                leased_until_ms = %(leased_until_ms)s,
+                updated_at_ms = %(now_ms)s
+            FROM due
+            WHERE jobs.event_id = due.event_id
+              AND jobs.intent_id = due.intent_id
+            RETURNING jobs.*
+            """,
+            {
+                "now_ms": int(now_ms),
+                "ready_before_ms": int(now_ms) - int(min_age_ms),
+                "lease_owner": _required_text(lease_owner, "lease_owner"),
+                "leased_until_ms": int(now_ms) + max(1, int(lease_ms)),
+                "limit": max(1, int(limit)),
+            },
+        ).fetchall()
+        return [dict(row) for row in rows]
 
-    def list_expired(self, *, limit: int, now_ms: int) -> list[dict[str, Any]]:
-        return list(
-            self._conn.execute(
-                """
-                SELECT *
-                FROM event_anchor_backfill_jobs
-                WHERE status = 'pending'
-                  AND active_until_ms < %(now_ms)s
-                ORDER BY active_until_ms ASC, created_at_ms ASC, event_id ASC, intent_id ASC
-                LIMIT %(limit)s
-                """,
-                {"now_ms": int(now_ms), "limit": max(1, int(limit))},
-            ).fetchall()
-        )
+    def expire_stale(
+        self,
+        *,
+        limit: int,
+        now_ms: int,
+        max_attempts: int,
+        retry_backoff_ms: int,
+    ) -> dict[str, Any]:
+        parsed_limit = max(1, int(limit))
+        with _transaction(self._conn):
+            expired_rows = self._terminalize_expired_jobs(limit=parsed_limit, now_ms=now_ms)
+            remaining = max(0, parsed_limit - len(expired_rows))
+            rescheduled_rows = self._reschedule_stale_running_jobs(
+                limit=remaining,
+                now_ms=now_ms,
+                max_attempts=max_attempts,
+                retry_backoff_ms=retry_backoff_ms,
+            )
+            remaining = max(0, remaining - len(rescheduled_rows))
+            failed_rows = self._fail_exhausted_stale_running_jobs(
+                limit=remaining,
+                now_ms=now_ms,
+                max_attempts=max_attempts,
+            )
+            for row in expired_rows:
+                _terminalize_event_anchor_row(
+                    self._conn,
+                    row,
+                    status="expired",
+                    reason="backfill_expired",
+                    now_ms=now_ms,
+                )
+            for row in failed_rows:
+                _terminalize_event_anchor_row(
+                    self._conn,
+                    row,
+                    status="failed",
+                    reason="lease_expired_max_attempts",
+                    now_ms=now_ms,
+                )
+        terminal_rows = expired_rows + failed_rows
+        return {
+            "expired": len(expired_rows),
+            "failed": len(failed_rows),
+            "rescheduled": len(rescheduled_rows),
+            "terminal_rows": terminal_rows,
+        }
 
-    def mark_done(self, *, event_id: str, intent_id: str, now_ms: int) -> bool:
-        cursor = self._conn.execute(
+    def mark_done(
+        self,
+        *,
+        event_id: str,
+        intent_id: str,
+        now_ms: int,
+        lease_owner: str,
+        attempt_count: int,
+    ) -> bool:
+        row = self._conn.execute(
             """
             UPDATE event_anchor_backfill_jobs
             SET status = 'done',
+                lease_owner = NULL,
+                leased_until_ms = NULL,
                 updated_at_ms = %(now_ms)s
             WHERE event_id = %(event_id)s
               AND intent_id = %(intent_id)s
-              AND status = 'pending'
+              AND status = 'running'
+              AND lease_owner = %(lease_owner)s
+              AND attempt_count = %(attempt_count)s
+            RETURNING event_id, intent_id
             """,
-            {"event_id": event_id, "intent_id": intent_id, "now_ms": int(now_ms)},
-        )
-        return int(getattr(cursor, "rowcount", 0) or 0) == 1
+            {
+                "event_id": event_id,
+                "intent_id": intent_id,
+                "now_ms": int(now_ms),
+                "lease_owner": _required_text(lease_owner, "lease_owner"),
+                "attempt_count": int(attempt_count),
+            },
+        ).fetchone()
+        return row is not None
 
-    def mark_terminal(self, *, event_id: str, intent_id: str, status: str, reason: str, now_ms: int) -> bool:
+    def mark_terminal(
+        self,
+        *,
+        event_id: str,
+        intent_id: str,
+        status: str,
+        reason: str,
+        now_ms: int,
+        lease_owner: str,
+        attempt_count: int,
+    ) -> bool:
         if status not in {"expired", "failed"}:
             raise ValueError("terminal event-anchor job status must be expired or failed")
         with _transaction(self._conn):
@@ -124,10 +208,14 @@ class EventAnchorBackfillJobRepository:
                 UPDATE event_anchor_backfill_jobs
                 SET status = %(status)s,
                     last_reason = %(reason)s,
+                    lease_owner = NULL,
+                    leased_until_ms = NULL,
                     updated_at_ms = %(now_ms)s
                 WHERE event_id = %(event_id)s
                   AND intent_id = %(intent_id)s
-                  AND status = 'pending'
+                  AND status = 'running'
+                  AND lease_owner = %(lease_owner)s
+                  AND attempt_count = %(attempt_count)s
                 RETURNING *
                 """,
                 {
@@ -136,25 +224,14 @@ class EventAnchorBackfillJobRepository:
                     "status": status,
                     "reason": reason,
                     "now_ms": int(now_ms),
+                    "lease_owner": _required_text(lease_owner, "lease_owner"),
+                    "attempt_count": int(attempt_count),
                 },
             ).fetchone()
             if row is None:
                 return False
             source_row = dict(row)
-            terminalize_source_row(
-                self._conn,
-                worker_name="event_anchor_backfill",
-                source_table="event_anchor_backfill_jobs",
-                target_key=f"{event_id}:{intent_id}",
-                source_row=source_row,
-                final_status=status,
-                final_reason=reason,
-                now_ms=now_ms,
-                attempt_count=int(source_row.get("attempt_count") or 0),
-                first_seen_at_ms=_optional_int(source_row.get("created_at_ms")),
-                last_attempted_at_ms=now_ms,
-                commit=False,
-            )
+            _terminalize_event_anchor_row(self._conn, source_row, status=status, reason=reason, now_ms=now_ms)
         return True
 
     def retry_terminal_job_from_snapshot(
@@ -176,6 +253,8 @@ class EventAnchorBackfillJobRepository:
                 last_reason = %(reason)s,
                 next_run_at_ms = %(now_ms)s,
                 active_until_ms = GREATEST(active_until_ms, %(now_ms)s),
+                lease_owner = NULL,
+                leased_until_ms = NULL,
                 updated_at_ms = %(now_ms)s
             WHERE event_id = %(event_id)s
               AND intent_id = %(intent_id)s
@@ -284,6 +363,127 @@ class EventAnchorBackfillJobRepository:
         ).fetchone()
         return int((row or {}).get("count") or 0)
 
+    def _terminalize_expired_jobs(self, *, limit: int, now_ms: int) -> list[dict[str, Any]]:
+        if limit <= 0:
+            return []
+        rows = self._conn.execute(
+            """
+            WITH due AS (
+              SELECT event_id, intent_id
+              FROM event_anchor_backfill_jobs
+              WHERE (
+                  status = 'pending'
+                  AND active_until_ms < %(now_ms)s
+                )
+                 OR (
+                  status = 'running'
+                  AND COALESCE(leased_until_ms, 0) <= %(now_ms)s
+                  AND active_until_ms < %(now_ms)s
+                )
+              ORDER BY active_until_ms ASC, updated_at_ms ASC, event_id ASC, intent_id ASC
+              LIMIT %(limit)s
+              FOR UPDATE SKIP LOCKED
+            )
+            UPDATE event_anchor_backfill_jobs AS jobs
+            SET status = 'expired',
+                last_reason = 'backfill_expired',
+                lease_owner = NULL,
+                leased_until_ms = NULL,
+                updated_at_ms = %(now_ms)s
+            FROM due
+            WHERE jobs.event_id = due.event_id
+              AND jobs.intent_id = due.intent_id
+            RETURNING jobs.*
+            """,
+            {"now_ms": int(now_ms), "limit": max(1, int(limit))},
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def _reschedule_stale_running_jobs(
+        self,
+        *,
+        limit: int,
+        now_ms: int,
+        max_attempts: int,
+        retry_backoff_ms: int,
+    ) -> list[dict[str, Any]]:
+        if limit <= 0:
+            return []
+        rows = self._conn.execute(
+            """
+            WITH due AS (
+              SELECT event_id, intent_id
+              FROM event_anchor_backfill_jobs
+              WHERE status = 'running'
+                AND COALESCE(leased_until_ms, 0) <= %(now_ms)s
+                AND active_until_ms >= %(now_ms)s
+                AND attempt_count < %(max_attempts)s
+              ORDER BY leased_until_ms ASC NULLS FIRST, updated_at_ms ASC, event_id ASC, intent_id ASC
+              LIMIT %(limit)s
+              FOR UPDATE SKIP LOCKED
+            )
+            UPDATE event_anchor_backfill_jobs AS jobs
+            SET status = 'pending',
+                last_reason = 'lease_expired',
+                next_run_at_ms = LEAST(active_until_ms, %(next_run_at_ms)s),
+                lease_owner = NULL,
+                leased_until_ms = NULL,
+                updated_at_ms = %(now_ms)s
+            FROM due
+            WHERE jobs.event_id = due.event_id
+              AND jobs.intent_id = due.intent_id
+            RETURNING jobs.*
+            """,
+            {
+                "now_ms": int(now_ms),
+                "next_run_at_ms": int(now_ms) + max(1, int(retry_backoff_ms)),
+                "max_attempts": max(1, int(max_attempts)),
+                "limit": max(1, int(limit)),
+            },
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def _fail_exhausted_stale_running_jobs(
+        self,
+        *,
+        limit: int,
+        now_ms: int,
+        max_attempts: int,
+    ) -> list[dict[str, Any]]:
+        if limit <= 0:
+            return []
+        rows = self._conn.execute(
+            """
+            WITH due AS (
+              SELECT event_id, intent_id
+              FROM event_anchor_backfill_jobs
+              WHERE status = 'running'
+                AND COALESCE(leased_until_ms, 0) <= %(now_ms)s
+                AND active_until_ms >= %(now_ms)s
+                AND attempt_count >= %(max_attempts)s
+              ORDER BY leased_until_ms ASC NULLS FIRST, updated_at_ms ASC, event_id ASC, intent_id ASC
+              LIMIT %(limit)s
+              FOR UPDATE SKIP LOCKED
+            )
+            UPDATE event_anchor_backfill_jobs AS jobs
+            SET status = 'failed',
+                last_reason = 'lease_expired_max_attempts',
+                lease_owner = NULL,
+                leased_until_ms = NULL,
+                updated_at_ms = %(now_ms)s
+            FROM due
+            WHERE jobs.event_id = due.event_id
+              AND jobs.intent_id = due.intent_id
+            RETURNING jobs.*
+            """,
+            {
+                "now_ms": int(now_ms),
+                "max_attempts": max(1, int(max_attempts)),
+                "limit": max(1, int(limit)),
+            },
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def reschedule(
         self,
         *,
@@ -292,18 +492,24 @@ class EventAnchorBackfillJobRepository:
         reason: str,
         now_ms: int,
         next_run_at_ms: int,
+        lease_owner: str,
+        attempt_count: int,
     ) -> bool:
-        cursor = self._conn.execute(
+        row = self._conn.execute(
             """
             UPDATE event_anchor_backfill_jobs
             SET status = 'pending',
-                attempt_count = attempt_count + 1,
                 last_reason = %(reason)s,
                 next_run_at_ms = %(next_run_at_ms)s,
+                lease_owner = NULL,
+                leased_until_ms = NULL,
                 updated_at_ms = %(now_ms)s
             WHERE event_id = %(event_id)s
               AND intent_id = %(intent_id)s
-              AND status = 'pending'
+              AND status = 'running'
+              AND lease_owner = %(lease_owner)s
+              AND attempt_count = %(attempt_count)s
+            RETURNING event_id, intent_id
             """,
             {
                 "event_id": event_id,
@@ -311,15 +517,48 @@ class EventAnchorBackfillJobRepository:
                 "reason": reason,
                 "now_ms": int(now_ms),
                 "next_run_at_ms": int(next_run_at_ms),
+                "lease_owner": _required_text(lease_owner, "lease_owner"),
+                "attempt_count": int(attempt_count),
             },
-        )
-        return int(getattr(cursor, "rowcount", 0) or 0) == 1
+        ).fetchone()
+        return row is not None
 
 
 def _optional_int(value: Any) -> int | None:
     if value is None or value == "":
         return None
     return int(value)
+
+
+def _terminalize_event_anchor_row(
+    conn: Any,
+    row: dict[str, Any],
+    *,
+    status: str,
+    reason: str,
+    now_ms: int,
+) -> None:
+    terminalize_source_row(
+        conn,
+        worker_name="event_anchor_backfill",
+        source_table="event_anchor_backfill_jobs",
+        target_key=f"{row.get('event_id')}:{row.get('intent_id')}",
+        source_row=row,
+        final_status=status,
+        final_reason=reason,
+        now_ms=now_ms,
+        attempt_count=int(row.get("attempt_count") or 0),
+        first_seen_at_ms=_optional_int(row.get("created_at_ms")),
+        last_attempted_at_ms=now_ms,
+        commit=False,
+    )
+
+
+def _required_text(value: Any, name: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError(f"{name}_required")
+    return text
 
 
 def _transaction(conn: Any) -> AbstractContextManager[Any]:

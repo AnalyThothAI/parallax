@@ -32,35 +32,116 @@ def test_enqueue_ignores_non_pending_captures() -> None:
     assert conn.sql == []
 
 
-def test_list_due_reads_jobs_not_enriched_event_rows() -> None:
-    conn = _ScriptedConnection([[{"event_id": "event-1", "intent_id": "intent-1"}]])
+def test_event_anchor_claim_due_moves_pending_to_running() -> None:
+    conn = _ScriptedConnection(
+        [
+            [
+                {
+                    "event_id": "event-1",
+                    "intent_id": "intent-1",
+                    "status": "running",
+                    "attempt_count": 1,
+                    "lease_owner": "worker-a",
+                    "leased_until_ms": 1_700_000_061_000,
+                }
+            ]
+        ]
+    )
 
-    rows = EventAnchorBackfillJobRepository(conn).list_due(limit=25, now_ms=1_700_000_001_000, min_age_ms=250)
+    rows = EventAnchorBackfillJobRepository(conn).claim_due(
+        limit=25,
+        now_ms=1_700_000_001_000,
+        min_age_ms=250,
+        lease_owner="worker-a",
+        lease_ms=60_000,
+    )
 
-    assert rows == [{"event_id": "event-1", "intent_id": "intent-1"}]
+    assert rows == [
+        {
+            "event_id": "event-1",
+            "intent_id": "intent-1",
+            "status": "running",
+            "attempt_count": 1,
+            "lease_owner": "worker-a",
+            "leased_until_ms": 1_700_000_061_000,
+        }
+    ]
     sql = conn.sql[-1]
+    assert "WITH due AS" in sql
+    assert "UPDATE event_anchor_backfill_jobs AS jobs" in sql
+    assert "SET status = 'running'" in sql
+    assert "attempt_count = attempt_count + 1" in sql
+    assert "lease_owner = %(lease_owner)s" in sql
+    assert "leased_until_ms = %(leased_until_ms)s" in sql
+    assert "FOR UPDATE SKIP LOCKED" in sql
     assert "FROM event_anchor_backfill_jobs" in sql
     assert "FROM enriched_events" not in sql
     assert "status = 'pending'" in sql
     assert "next_run_at_ms <= %(now_ms)s" in sql
     assert "created_at_ms <= %(ready_before_ms)s" in sql
+    assert conn.params[-1]["lease_owner"] == "worker-a"
+    assert conn.params[-1]["leased_until_ms"] == 1_700_000_061_000
 
 
-def test_reschedule_increments_attempts_and_keeps_job_pending() -> None:
-    conn = _ScriptedConnection([])
+def test_event_anchor_mark_done_requires_lease_owner_and_attempt() -> None:
+    conn = _ScriptedConnection(
+        [
+            None,
+            {"event_id": "event-1", "intent_id": "intent-1"},
+        ]
+    )
 
-    EventAnchorBackfillJobRepository(conn).reschedule(
+    wrong_owner = EventAnchorBackfillJobRepository(conn).mark_done(
+        event_id="event-1",
+        intent_id="intent-1",
+        now_ms=1_700_000_001_000,
+        lease_owner="worker-b",
+        attempt_count=1,
+    )
+    matching_owner = EventAnchorBackfillJobRepository(conn).mark_done(
+        event_id="event-1",
+        intent_id="intent-1",
+        now_ms=1_700_000_001_000,
+        lease_owner="worker-a",
+        attempt_count=1,
+    )
+
+    assert wrong_owner is False
+    assert matching_owner is True
+    sql = conn.sql[-1]
+    assert "status = 'done'" in sql
+    assert "lease_owner = NULL" in sql
+    assert "leased_until_ms = NULL" in sql
+    assert "status = 'running'" in sql
+    assert "lease_owner = %(lease_owner)s" in sql
+    assert "attempt_count = %(attempt_count)s" in sql
+    assert conn.params[-1]["lease_owner"] == "worker-a"
+    assert conn.params[-1]["attempt_count"] == 1
+
+
+def test_reschedule_uses_claim_guard_without_incrementing_attempts() -> None:
+    conn = _ScriptedConnection([{"event_id": "event-1", "intent_id": "intent-1"}])
+
+    rescheduled = EventAnchorBackfillJobRepository(conn).reschedule(
         event_id="event-1",
         intent_id="intent-1",
         reason="rate_limited",
         now_ms=1_700_000_001_000,
         next_run_at_ms=1_700_000_011_000,
+        lease_owner="worker-a",
+        attempt_count=1,
     )
 
+    assert rescheduled is True
     sql = conn.sql[-1]
     assert "UPDATE event_anchor_backfill_jobs" in sql
-    assert "attempt_count = attempt_count + 1" in sql
+    assert "attempt_count = attempt_count + 1" not in sql
     assert "status = 'pending'" in sql
+    assert "lease_owner = NULL" in sql
+    assert "leased_until_ms = NULL" in sql
+    assert "status = 'running'" in sql
+    assert "lease_owner = %(lease_owner)s" in sql
+    assert "attempt_count = %(attempt_count)s" in sql
     assert conn.params[-1]["reason"] == "rate_limited"
 
 
@@ -87,10 +168,17 @@ def test_mark_terminal_writes_operator_terminal_evidence() -> None:
         status="failed",
         reason="provider_no_quote",
         now_ms=1_700_000_001_000,
+        lease_owner="worker-a",
+        attempt_count=3,
     )
 
     assert marked is True
     assert "RETURNING *" in conn.sql[0]
+    assert "status = 'running'" in conn.sql[0]
+    assert "lease_owner = %(lease_owner)s" in conn.sql[0]
+    assert "attempt_count = %(attempt_count)s" in conn.sql[0]
+    assert "lease_owner = NULL" in conn.sql[0]
+    assert "leased_until_ms = NULL" in conn.sql[0]
     insert_index = next(
         index for index, sql in enumerate(conn.sql) if "INSERT INTO worker_queue_terminal_events" in sql
     )

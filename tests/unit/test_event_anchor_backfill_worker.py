@@ -19,7 +19,7 @@ NOW_MS = 1_777_800_000_000
 EVENT_MS = NOW_MS - 5_000
 
 
-def test_run_once_no_pending_rows_emits_zero_counts() -> None:
+def test_event_anchor_provider_not_called_without_claim() -> None:
     db = _FakeDB(pending_rows=[])
     wake = _RecordingWakeEmitter()
     worker = EventAnchorBackfillWorker(
@@ -41,7 +41,15 @@ def test_run_once_no_pending_rows_emits_zero_counts() -> None:
     assert "ready_jobs_reconciled" not in result.notes
     assert result.notes["ticks_inserted"] == 0
     assert result.notes["captures_attached"] == 0
-    assert db.list_calls == [{"limit": 10, "min_age_ms": 100, "now_ms": NOW_MS}]
+    assert db.claim_calls == [
+        {
+            "limit": 10,
+            "min_age_ms": 100,
+            "now_ms": NOW_MS,
+            "lease_owner": "event_anchor_backfill",
+            "lease_ms": 60_000,
+        }
+    ]
     assert db.ready_job_calls == []
     assert db.inserted_ticks == []
     assert db.attached_captures == []
@@ -122,6 +130,14 @@ def test_run_once_reads_due_jobs_not_enriched_event_pending_rows() -> None:
     assert result.notes["terminal_failures"] == 1
     assert db.terminal_captures == [("event-job", "intent-event-job", "provider_no_quote")]
     assert db.terminal_jobs == [("event-job", "intent-event-job", "failed", "provider_no_quote")]
+    assert db.terminal_job_guards == [
+        {
+            "event_id": "event-job",
+            "intent_id": "intent-event-job",
+            "lease_owner": "event_anchor_backfill",
+            "attempt_count": 1,
+        }
+    ]
     assert db.rescheduled_jobs == []
     assert wake.emitted == []
 
@@ -148,6 +164,14 @@ def test_run_once_reschedules_rate_limited_jobs_inside_active_window() -> None:
     assert result.processed == 0
     assert result.notes["rescheduled_jobs"] == 1
     assert db.rescheduled_jobs == [("evt-rate", "intent-evt-rate", "rate_limited")]
+    assert db.reschedule_job_guards == [
+        {
+            "event_id": "evt-rate",
+            "intent_id": "intent-evt-rate",
+            "lease_owner": "event_anchor_backfill",
+            "attempt_count": 1,
+        }
+    ]
     assert db.terminal_captures == []
     assert db.terminal_jobs == []
     assert wake.emitted == []
@@ -162,12 +186,12 @@ def test_run_once_dispatches_to_capture_service_under_semaphore_then_persists_an
         price_usd=Decimal("1.25"),
         raw={"price": "1.25"},
     )
-    provider = _RecordingDexQuoteProvider([quote])
+    db = _FakeDB(pending_rows=rows)
+    provider = _RecordingDexQuoteProvider([quote], db=db)
     service = EventMarketCaptureService(
         providers=AssetMarketProviders(dex_quote_market=provider),
         now_ms=lambda: NOW_MS,
     )
-    db = _FakeDB(pending_rows=rows)
     wake = _RecordingWakeEmitter()
     worker = EventAnchorBackfillWorker(
         pool_bundle=db,
@@ -206,6 +230,14 @@ def test_run_once_dispatches_to_capture_service_under_semaphore_then_persists_an
     assert result.notes["pending_selected"] == 1
     assert result.notes["ticks_inserted"] == 1
     assert result.notes["captures_attached"] == 1
+    assert db.done_job_guards == [
+        {
+            "event_id": "event-1",
+            "intent_id": "intent-event-1",
+            "lease_owner": "event_anchor_backfill",
+            "attempt_count": 1,
+        }
+    ]
 
     assert wake.emitted == [("chain_token", "solana:AAA")]
     assert db.dirty_target_enqueues == [
@@ -341,6 +373,14 @@ def test_run_once_provider_no_quote_terminalizes_job_and_does_not_wake() -> None
     assert db.attached_captures == []
     assert db.terminal_captures == [("evt-unavailable", "intent-evt-unavailable", "provider_no_quote")]
     assert db.terminal_jobs == [("evt-unavailable", "intent-evt-unavailable", "failed", "provider_no_quote")]
+    assert db.terminal_job_guards == [
+        {
+            "event_id": "evt-unavailable",
+            "intent_id": "intent-evt-unavailable",
+            "lease_owner": "event_anchor_backfill",
+            "attempt_count": 1,
+        }
+    ]
     assert wake.emitted == []
 
 
@@ -449,15 +489,23 @@ def _pending_row(*, event_id: str, target_type: str, target_id: str) -> dict[str
         "capture_method": "unavailable",
         "capture_reason": "pending_backfill",
         "created_at_ms": NOW_MS - 500,
+        "next_run_at_ms": NOW_MS - 100,
+        "active_until_ms": NOW_MS + 60_000,
+        "attempt_count": 0,
+        "lease_owner": None,
+        "leased_until_ms": None,
     }
 
 
 class _RecordingDexQuoteProvider:
-    def __init__(self, quotes: list[DexTokenQuote]) -> None:
+    def __init__(self, quotes: list[DexTokenQuote], *, db: _FakeDB | None = None) -> None:
         self.quotes = quotes
+        self.db = db
         self.calls: list[list[tuple[str, str]]] = []
 
     def token_quotes(self, tokens: Any) -> list[DexTokenQuote]:
+        if self.db is not None:
+            assert self.db.open_sessions == 0
         self.calls.append([(item.chain_id, item.address) for item in tokens])
         return self.quotes
 
@@ -514,8 +562,8 @@ class _FakeDB:
         self._ready_jobs = ready_jobs
         self._attach_results = list(attach_results) if attach_results is not None else None
         self.forbid_enriched_event_queue_scan = forbid_enriched_event_queue_scan
-        self.list_calls: list[dict[str, Any]] = []
-        self.expired_list_calls: list[dict[str, Any]] = []
+        self.claim_calls: list[dict[str, Any]] = []
+        self.expire_stale_calls: list[dict[str, Any]] = []
         self.ready_job_calls: list[dict[str, Any]] = []
         self.inserted_ticks: list[MarketTick] = []
         self.attached_captures: list[EnrichedEventCapture] = []
@@ -523,8 +571,12 @@ class _FakeDB:
         self.terminal_jobs: list[tuple[str, str, str, str]] = []
         self.rescheduled_jobs: list[tuple[str, str, str]] = []
         self.done_jobs: list[tuple[str, str]] = []
+        self.terminal_job_guards: list[dict[str, Any]] = []
+        self.reschedule_job_guards: list[dict[str, Any]] = []
+        self.done_job_guards: list[dict[str, Any]] = []
         self.provider_calls = 0
         self.dirty_target_enqueues: list[dict[str, Any]] = []
+        self.open_sessions = 0
 
     def worker_session(self, name: str, statement_timeout_seconds: float | None = None):
         return _FakeWorkerSession(self)
@@ -539,6 +591,7 @@ class _FakeWorkerSession:
         self._snapshot: dict[str, int] = {}
 
     def __enter__(self) -> _FakeRepos:
+        self._db.open_sessions += 1
         self._snapshot = {
             "inserted_ticks": len(self._db.inserted_ticks),
             "attached_captures": len(self._db.attached_captures),
@@ -547,10 +600,14 @@ class _FakeWorkerSession:
             "rescheduled_jobs": len(self._db.rescheduled_jobs),
             "done_jobs": len(self._db.done_jobs),
             "dirty_target_enqueues": len(self._db.dirty_target_enqueues),
+            "terminal_job_guards": len(self._db.terminal_job_guards),
+            "reschedule_job_guards": len(self._db.reschedule_job_guards),
+            "done_job_guards": len(self._db.done_job_guards),
         }
         return _FakeRepos(self._db)
 
     def __exit__(self, exc_type, exc, tb) -> None:
+        self._db.open_sessions -= 1
         if exc_type is not None:
             for name, size in self._snapshot.items():
                 del getattr(self._db, name)[size:]
@@ -579,8 +636,7 @@ class _FakeEnrichedEventRepo:
     def list_pending_backfill(self, *, limit: int, now_ms: int, min_age_ms: int) -> list[dict[str, Any]]:
         if self._db.forbid_enriched_event_queue_scan:
             raise AssertionError("worker must read event_anchor_backfill_jobs, not enriched_events pending rows")
-        self._db.list_calls.append({"limit": limit, "now_ms": now_ms, "min_age_ms": min_age_ms})
-        return list(self._db._pending_rows)
+        raise AssertionError("worker must not read enriched_events pending rows at runtime")
 
     def attach_backfill_capture(self, capture: EnrichedEventCapture) -> bool:
         self._db.attached_captures.append(capture)
@@ -597,23 +653,103 @@ class _FakeEventAnchorJobRepo:
     def __init__(self, db: _FakeDB) -> None:
         self._db = db
 
-    def list_due(self, *, limit: int, now_ms: int, min_age_ms: int) -> list[dict[str, Any]]:
-        self._db.list_calls.append({"limit": limit, "now_ms": now_ms, "min_age_ms": min_age_ms})
-        return list(self._db._pending_rows)
+    def claim_due(
+        self,
+        *,
+        limit: int,
+        now_ms: int,
+        min_age_ms: int,
+        lease_owner: str,
+        lease_ms: int,
+    ) -> list[dict[str, Any]]:
+        self._db.claim_calls.append(
+            {
+                "limit": limit,
+                "now_ms": now_ms,
+                "min_age_ms": min_age_ms,
+                "lease_owner": lease_owner,
+                "lease_ms": lease_ms,
+            }
+        )
+        claimed: list[dict[str, Any]] = []
+        for row in self._db._pending_rows:
+            copied = dict(row)
+            copied["status"] = "running"
+            copied["lease_owner"] = lease_owner
+            copied["leased_until_ms"] = now_ms + lease_ms
+            copied["attempt_count"] = int(copied.get("attempt_count") or 0) + 1
+            claimed.append(copied)
+        return claimed
 
-    def list_expired(self, *, limit: int, now_ms: int) -> list[dict[str, Any]]:
-        self._db.expired_list_calls.append({"limit": limit, "now_ms": now_ms})
-        return list(self._db._expired_rows)
+    def list_due(self, **_: Any) -> list[dict[str, Any]]:
+        raise AssertionError("runtime event-anchor worker must claim jobs before provider work")
+
+    def list_expired(self, **_: Any) -> list[dict[str, Any]]:
+        raise AssertionError("runtime event-anchor worker must expire stale jobs through the repository lease path")
+
+    def expire_stale(
+        self,
+        *,
+        limit: int,
+        now_ms: int,
+        max_attempts: int,
+        retry_backoff_ms: int,
+    ) -> dict[str, Any]:
+        self._db.expire_stale_calls.append(
+            {
+                "limit": limit,
+                "now_ms": now_ms,
+                "max_attempts": max_attempts,
+                "retry_backoff_ms": retry_backoff_ms,
+            }
+        )
+        terminal_rows = [dict(row) for row in self._db._expired_rows]
+        for row in terminal_rows:
+            self._db.terminal_jobs.append(
+                (str(row["event_id"]), str(row["intent_id"]), "expired", "backfill_expired")
+            )
+        return {
+            "expired": len(terminal_rows),
+            "failed": 0,
+            "rescheduled": 0,
+            "terminal_rows": terminal_rows,
+        }
 
     def mark_ready_jobs_done(self, *, limit: int, now_ms: int) -> int:
         raise AssertionError("runtime event-anchor worker must not reconcile ready jobs by scanning facts")
 
-    def mark_done(self, *, event_id: str, intent_id: str, now_ms: int) -> bool:
+    def mark_done(self, *, event_id: str, intent_id: str, now_ms: int, lease_owner: str, attempt_count: int) -> bool:
         self._db.done_jobs.append((event_id, intent_id))
+        self._db.done_job_guards.append(
+            {
+                "event_id": event_id,
+                "intent_id": intent_id,
+                "lease_owner": lease_owner,
+                "attempt_count": attempt_count,
+            }
+        )
         return True
 
-    def mark_terminal(self, *, event_id: str, intent_id: str, status: str, reason: str, now_ms: int) -> bool:
+    def mark_terminal(
+        self,
+        *,
+        event_id: str,
+        intent_id: str,
+        status: str,
+        reason: str,
+        now_ms: int,
+        lease_owner: str,
+        attempt_count: int,
+    ) -> bool:
         self._db.terminal_jobs.append((event_id, intent_id, status, reason))
+        self._db.terminal_job_guards.append(
+            {
+                "event_id": event_id,
+                "intent_id": intent_id,
+                "lease_owner": lease_owner,
+                "attempt_count": attempt_count,
+            }
+        )
         return True
 
     def reschedule(
@@ -624,8 +760,18 @@ class _FakeEventAnchorJobRepo:
         reason: str,
         now_ms: int,
         next_run_at_ms: int,
+        lease_owner: str,
+        attempt_count: int,
     ) -> bool:
         self._db.rescheduled_jobs.append((event_id, intent_id, reason))
+        self._db.reschedule_job_guards.append(
+            {
+                "event_id": event_id,
+                "intent_id": intent_id,
+                "lease_owner": lease_owner,
+                "attempt_count": attempt_count,
+            }
+        )
         return True
 
 

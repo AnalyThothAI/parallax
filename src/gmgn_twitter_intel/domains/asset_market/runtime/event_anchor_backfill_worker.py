@@ -35,6 +35,7 @@ DEFAULT_MIN_AGE_MS = 250
 DEFAULT_ACTIVE_WINDOW_MS = 300_000
 DEFAULT_MAX_ANCHOR_LAG_MS = 60_000
 DEFAULT_INTERVAL_SECONDS = 1.0
+DEFAULT_LEASE_MS = 60_000
 TEMPORARY_RETRY_BACKOFF_MS = 10_000
 TEMPORARY_REASONS = frozenset({"provider_error", "provider_timeout", "rate_limited"})
 
@@ -126,24 +127,28 @@ class EventAnchorBackfillWorker(WorkerBase):
         self.concurrency = max(1, int(getattr(resolved_settings, "concurrency", concurrency)))
         self.max_attempts = max(1, int(getattr(resolved_settings, "max_attempts", 3)))
         self.min_age_ms = max(0, int(getattr(resolved_settings, "min_age_ms", min_age_ms)))
+        self.lease_ms = max(1, int(getattr(resolved_settings, "lease_ms", DEFAULT_LEASE_MS)))
         self.active_window_ms = max(1, int(getattr(resolved_settings, "active_window_ms", active_window_ms)))
         self.max_anchor_lag_ms = max(1, int(getattr(resolved_settings, "max_anchor_lag_ms", max_anchor_lag_ms)))
 
     async def run_once(self) -> WorkerResult:
         now_ms = int(self.clock())
-        expired_jobs = await asyncio.to_thread(self._expire_stale_jobs, now_ms=now_ms)
-        rows = await asyncio.to_thread(self._list_due_jobs, now_ms=now_ms)
+        stale_jobs = await asyncio.to_thread(self._expire_stale_jobs, now_ms=now_ms)
+        stale_terminal = int(stale_jobs["expired"]) + int(stale_jobs["failed"])
+        stale_rescheduled = int(stale_jobs["rescheduled"])
+        rows = await asyncio.to_thread(self._claim_due_jobs, now_ms=now_ms)
         if not rows:
             return WorkerResult(
                 processed=0,
                 skipped=0,
                 notes={
                     "pending_selected": 0,
-                    "expired_jobs": expired_jobs,
+                    "claimed": 0,
+                    "expired_jobs": int(stale_jobs["expired"]),
                     "ticks_inserted": 0,
                     "captures_attached": 0,
-                    "terminal_failures": expired_jobs,
-                    "rescheduled_jobs": 0,
+                    "terminal_failures": stale_terminal,
+                    "rescheduled_jobs": stale_rescheduled,
                 },
             )
 
@@ -180,11 +185,12 @@ class EventAnchorBackfillWorker(WorkerBase):
             skipped=len(rows) - attached - rescheduled_count - terminal_count,
             notes={
                 "pending_selected": len(rows),
-                "expired_jobs": expired_jobs,
+                "claimed": len(rows),
+                "expired_jobs": int(stale_jobs["expired"]),
                 "ticks_inserted": inserted,
                 "captures_attached": attached,
-                "terminal_failures": expired_jobs + terminal_count,
-                "rescheduled_jobs": rescheduled_count,
+                "terminal_failures": stale_terminal + terminal_count,
+                "rescheduled_jobs": stale_rescheduled + rescheduled_count,
                 "skipped_reasons": dict(sorted(skipped_reasons.items())),
             },
         )
@@ -275,40 +281,42 @@ class EventAnchorBackfillWorker(WorkerBase):
     def _should_reschedule(self, *, row: Mapping[str, Any], reason: str, now_ms: int) -> bool:
         if reason not in TEMPORARY_REASONS:
             return False
-        if int(row.get("attempt_count") or 0) + 1 >= self.max_attempts:
+        if int(row.get("attempt_count") or 0) >= self.max_attempts:
             return False
         if int(row["active_until_ms"]) <= now_ms:
             return False
         return abs(now_ms - int(row["t_event_ms"])) <= self.max_anchor_lag_ms
 
-    def _expire_stale_jobs(self, *, now_ms: int) -> int:
+    def _expire_stale_jobs(self, *, now_ms: int) -> dict[str, int]:
         with self.db.worker_session(self.name) as repos:
-            rows = repos.event_anchor_jobs.list_expired(limit=self.batch_size, now_ms=now_ms)
-            expired = 0
-            for row in rows:
+            summary = repos.event_anchor_jobs.expire_stale(
+                limit=self.batch_size,
+                now_ms=now_ms,
+                max_attempts=self.max_attempts,
+                retry_backoff_ms=TEMPORARY_RETRY_BACKOFF_MS,
+            )
+            terminal_rows = [dict(row) for row in summary.get("terminal_rows") or ()]
+            for row in terminal_rows:
                 repos.enriched_events.mark_backfill_terminal(
                     event_id=str(row["event_id"]),
                     intent_id=str(row["intent_id"]),
-                    reason="backfill_expired",
+                    reason=_terminal_reason(row),
                 )
-                if repos.event_anchor_jobs.mark_terminal(
-                    event_id=str(row["event_id"]),
-                    intent_id=str(row["intent_id"]),
-                    status="expired",
-                    reason="backfill_expired",
-                    now_ms=now_ms,
-                ):
-                    expired += 1
-            if expired:
+            expired = int(summary.get("expired") or 0)
+            failed = int(summary.get("failed") or 0)
+            rescheduled = int(summary.get("rescheduled") or 0)
+            if terminal_rows or rescheduled:
                 _commit_if_supported(repos)
-            return expired
+            return {"expired": expired, "failed": failed, "rescheduled": rescheduled}
 
-    def _list_due_jobs(self, *, now_ms: int) -> list[dict[str, Any]]:
+    def _claim_due_jobs(self, *, now_ms: int) -> list[dict[str, Any]]:
         with self.db.worker_session(self.name) as repos:
-            rows = repos.event_anchor_jobs.list_due(
+            rows = repos.event_anchor_jobs.claim_due(
                 limit=self.batch_size,
                 now_ms=now_ms,
                 min_age_ms=self.min_age_ms,
+                lease_owner=self.name,
+                lease_ms=self.lease_ms,
             )
         return [dict(row) for row in rows]
 
@@ -343,6 +351,8 @@ class EventAnchorBackfillWorker(WorkerBase):
                             event_id=str(attach.row["event_id"]),
                             intent_id=str(attach.row["intent_id"]),
                             now_ms=now_ms,
+                            lease_owner=_lease_owner(attach.row),
+                            attempt_count=_attempt_count(attach.row),
                         )
                         if not marked_done:
                             raise _AttachSkipped
@@ -363,6 +373,8 @@ class EventAnchorBackfillWorker(WorkerBase):
                     status=terminal.status,
                     reason=terminal.reason,
                     now_ms=now_ms,
+                    lease_owner=_lease_owner(terminal.row),
+                    attempt_count=_attempt_count(terminal.row),
                 ):
                     terminal_count += 1
             rescheduled_count = 0
@@ -373,6 +385,8 @@ class EventAnchorBackfillWorker(WorkerBase):
                     reason=reschedule.reason,
                     now_ms=now_ms,
                     next_run_at_ms=reschedule.next_run_at_ms,
+                    lease_owner=_lease_owner(reschedule.row),
+                    attempt_count=_attempt_count(reschedule.row),
                 ):
                     rescheduled_count += 1
         return inserted, attached_ticks, terminal_count, rescheduled_count
@@ -429,6 +443,26 @@ def _market_tick_from_row(row: Mapping[str, Any]) -> MarketTick:
     )
 
 
+def _terminal_reason(row: Mapping[str, Any]) -> str:
+    reason = str(row.get("last_reason") or "").strip()
+    if reason:
+        return reason
+    if str(row.get("status") or "") == "failed":
+        return "lease_expired_max_attempts"
+    return "backfill_expired"
+
+
+def _lease_owner(row: Mapping[str, Any]) -> str:
+    lease_owner = str(row.get("lease_owner") or "").strip()
+    if not lease_owner:
+        raise ValueError("event_anchor_backfill_claim_lease_owner_required")
+    return lease_owner
+
+
+def _attempt_count(row: Mapping[str, Any]) -> int:
+    return int(row.get("attempt_count") or 0)
+
+
 def _str_or_none(value: Any) -> str | None:
     if value is None:
         return None
@@ -481,6 +515,7 @@ def _settings(
             hard_timeout_seconds=180.0,
             batch_size=batch_size,
             concurrency=concurrency,
+            lease_ms=DEFAULT_LEASE_MS,
             min_age_ms=min_age_ms,
             active_window_ms=active_window_ms,
             max_anchor_lag_ms=max_anchor_lag_ms,
