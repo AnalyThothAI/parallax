@@ -78,6 +78,7 @@ are wrong too.
    `equity_event_fact_candidates`, and `macro_observations` are
    the business fact tables. Control plane tables such as
    `event_anchor_backfill_jobs`, `pulse_trigger_dirty_targets`,
+   `equity_event_evidence_jobs`, `equity_event_process_jobs`,
    `narrative_admission_dirty_targets`, `discussion_digest_dirty_targets`,
    `token_profile_current_dirty_targets`, `token_image_source_dirty_targets`,
    `asset_profile_refresh_targets`, `token_capture_tier_dirty_targets`, and

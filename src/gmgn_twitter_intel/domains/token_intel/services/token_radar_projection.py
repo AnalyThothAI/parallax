@@ -204,9 +204,7 @@ class TokenRadarProjection:
                 )
                 rank_status = str(rank_result.get("status") or "")
                 if rank_status not in {"ready", "unchanged"}:
-                    raise RuntimeError(
-                        f"rank refresh did not publish current rows: {rank_status or 'unknown'}"
-                    )
+                    raise RuntimeError(f"rank refresh did not publish current rows: {rank_status or 'unknown'}")
             except Exception as exc:
                 failures += 1
                 first_error = first_error or str(exc)
@@ -436,9 +434,7 @@ class TokenRadarProjection:
                         "pruned_rank_source_edges": pruned_rank_source_edges,
                     }
                 if publication_status not in {"published", "unchanged"}:
-                    raise RuntimeError(
-                        f"rank refresh did not publish current rows: {publication_status or 'unknown'}"
-                    )
+                    raise RuntimeError(f"rank refresh did not publish current rows: {publication_status or 'unknown'}")
                 projection_repo.advance_offset(
                     projection_name=TOKEN_RADAR_PROJECTION_NAME,
                     projection_version=PROJECTION_VERSION,

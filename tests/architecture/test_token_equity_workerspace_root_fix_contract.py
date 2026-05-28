@@ -85,10 +85,7 @@ def test_token_rank_source_manifest_identity_matches_runtime_key() -> None:
 
 
 def test_token_dirty_targets_preserve_source_and_market_dirty_kinds() -> None:
-    repo = _text(
-        "src/gmgn_twitter_intel/domains/token_intel/repositories/"
-        "token_radar_dirty_target_repository.py"
-    )
+    repo = _text("src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_dirty_target_repository.py")
     payload_hash_helper = _function_source(
         repo,
         "_payload_hash",
@@ -110,14 +107,8 @@ def test_token_hashes_use_shared_canonicalizer() -> None:
 
 
 def test_equity_process_worker_uses_process_jobs_not_document_scan() -> None:
-    worker = _text(
-        "src/gmgn_twitter_intel/domains/equity_event_intel/runtime/"
-        "equity_event_process_worker.py"
-    )
-    repo = _text(
-        "src/gmgn_twitter_intel/domains/equity_event_intel/repositories/"
-        "equity_event_repository.py"
-    )
+    worker = _text("src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_process_worker.py")
+    repo = _text("src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py")
 
     assert "claim_due_process_jobs" in worker
     assert "load_process_packets_for_claims" in worker
@@ -128,10 +119,7 @@ def test_equity_process_worker_uses_process_jobs_not_document_scan() -> None:
 
 
 def test_equity_process_and_page_hot_paths_do_not_select_raw_payload() -> None:
-    repo = _text(
-        "src/gmgn_twitter_intel/domains/equity_event_intel/repositories/"
-        "equity_event_repository.py"
-    )
+    repo = _text("src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py")
     process_loader = _function_source(
         repo,
         "load_process_packets_for_claims",
@@ -165,11 +153,14 @@ def test_enforcement_workers_use_runtime_context_not_raw_worker_session() -> Non
 def test_event_anchor_and_equity_process_manifests_declare_leased_queues() -> None:
     manifest = _text("src/gmgn_twitter_intel/app/runtime/worker_manifest.py")
     event_anchor = _worker_manifest_call(manifest, "event_anchor_backfill")
+    equity_evidence_hydration = _worker_manifest_call(manifest, "equity_event_evidence_hydration")
     equity_process = _worker_manifest_call(manifest, "equity_event_process")
+    equity_evidence_control_tables = set(_literal_keyword(equity_evidence_hydration, "writes_control_plane") or ())
     equity_process_control_tables = set(_literal_keyword(equity_process, "writes_control_plane") or ())
     equity_process_control_tables.update(_literal_keyword(equity_process, "queue_health_tables") or ())
 
     assert _literal_keyword(event_anchor, "uses_provider_io") is True
     assert _literal_keyword(event_anchor, "queue_depth_table") == "event_anchor_backfill_jobs"
+    assert "equity_event_process_jobs" in equity_evidence_control_tables
     assert _literal_keyword(equity_process, "queue_depth_table") == "equity_event_process_jobs"
     assert "equity_event_process_jobs" in equity_process_control_tables

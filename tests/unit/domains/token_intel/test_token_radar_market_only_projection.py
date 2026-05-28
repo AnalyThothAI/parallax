@@ -137,9 +137,7 @@ def test_rebuild_dirty_targets_market_only_loads_existing_rows_without_populatin
         (request.window, request.scope, request.target_type_key, request.identity_id)
         for request in rank_sources.load_calls[0]
     ]
-    assert loaded_requests == [
-        ("5m", "all", "Asset", "asset-1")
-    ]
+    assert loaded_requests == [("5m", "all", "Asset", "asset-1")]
     assert len(score_calls) == 1
     assert score_calls[0]["source_rows"] == [
         {
@@ -191,9 +189,7 @@ def test_rebuild_dirty_targets_source_or_repair_claim_populates_edges(monkeypatc
         (request.window, request.scope, request.target_type_key, request.identity_id)
         for request in rank_sources.populate_calls[0]["requests"]
     ]
-    assert populated_requests == [
-        ("5m", "all", "Asset", "asset-1")
-    ]
+    assert populated_requests == [("5m", "all", "Asset", "asset-1")]
     assert rank_sources.populate_calls[0]["projected_at_ms"] == now_ms
     assert rank_sources.populate_calls[0]["commit"] is False
     assert len(rank_sources.load_calls) == 1

@@ -126,8 +126,7 @@ class WorkerSpace:
             self._db_session_depth > 0 or self._db_transaction_depth > 0
         ):
             raise WorkerSpaceViolation(
-                f"{self.contract.worker_name}: provider IO inside DB session; "
-                "provider IO inside DB transaction"
+                f"{self.contract.worker_name}: provider IO inside DB session; provider IO inside DB transaction"
             )
         yield
 

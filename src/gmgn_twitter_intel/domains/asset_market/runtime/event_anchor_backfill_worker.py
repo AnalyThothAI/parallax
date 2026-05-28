@@ -161,9 +161,7 @@ class EventAnchorBackfillWorker(WorkerBase):
             )
 
         semaphore = asyncio.Semaphore(self.concurrency)
-        outcomes = await asyncio.gather(
-            *(self._capture_one(row, semaphore, now_ms=now_ms) for row in rows)
-        )
+        outcomes = await asyncio.gather(*(self._capture_one(row, semaphore, now_ms=now_ms) for row in rows))
 
         attaches: list[_AttachOutcome] = []
         terminals: list[_TerminalOutcome] = []

@@ -122,14 +122,10 @@ def test_hydration_worker_terminalizes_reaped_stale_job_with_failed_artifact_and
     ]
     assert repo.process_jobs == [{"event_document_id": "event-document-id", "due_at_ms": NOW_MS, "now_ms": NOW_MS}]
     terminal_order = [
-        item
-        for item in repo.call_order
-        if item in {"upsert_artifacts", "mark_status", "finish_terminal", "commit"}
+        item for item in repo.call_order if item in {"upsert_artifacts", "mark_status", "finish_terminal", "commit"}
     ]
     assert terminal_order[-4:] == ["upsert_artifacts", "mark_status", "finish_terminal", "commit"]
-    assert repo.source_freshness == [
-        {"source_id": "sec:MSFT", "actionable_error": "evidence_job_lease_expired"}
-    ]
+    assert repo.source_freshness == [{"source_id": "sec:MSFT", "actionable_error": "evidence_job_lease_expired"}]
     assert wake_bus.documents_written == [("sec:MSFT", 1)]
 
 

@@ -1931,6 +1931,7 @@ class FakeTransactionConn:
         self.transaction_count += 1
         yield
 
+
 class FakeProjectionRecorder:
     def __init__(self):
         self.stale_calls: list[dict[str, object]] = []

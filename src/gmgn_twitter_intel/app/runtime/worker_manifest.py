@@ -569,7 +569,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
             "equity_company_events.evidence_status",
             "equity_event_sources.last_evidence_ready_at_ms",
         ),
-        writes_control_plane=("equity_event_evidence_jobs",),
+        writes_control_plane=("equity_event_evidence_jobs", "equity_event_process_jobs"),
         uses_provider_io=True,
         idempotency_evidence=("event_document_id evidence artifact replacement",),
         advisory_lock_key="2026052307",
@@ -1028,8 +1028,7 @@ def _validate_worker_manifests() -> None:
     }
     if forbidden_current_identities:
         raise ValueError(
-            "current read model identities include serving lifecycle columns: "
-            f"{forbidden_current_identities}"
+            f"current read model identities include serving lifecycle columns: {forbidden_current_identities}"
         )
 
 

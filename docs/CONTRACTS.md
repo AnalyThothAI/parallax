@@ -59,7 +59,7 @@ per manifest worker key, in manifest start-priority order:
 `token_discussion_digest`, `news_fetch`, `news_item_process`,
 `news_story_projection`, `news_item_brief`, `news_page_projection`,
 `news_source_quality_projection`, `equity_event_source_reconcile`,
-`equity_event_fetch`, `equity_event_process`,
+`equity_event_fetch`, `equity_event_evidence_hydration`, `equity_event_process`,
 `equity_event_story_projection`, `equity_event_brief`,
 `equity_event_page_projection`, `cex_oi_radar_board`,
 `macro_sync`, `macro_view_projection`, `pulse_candidate`, `enrichment`, `handle_summary`,

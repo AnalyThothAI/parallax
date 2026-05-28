@@ -334,8 +334,7 @@ def _process_input_payload_hash(*, document: dict[str, Any], artifacts: list[dic
 
 def _running_preserve_branch(column: str) -> str:
     return (
-        "WHEN equity_event_process_jobs.status = 'running'\n"
-        f"                  THEN equity_event_process_jobs.{column}"
+        f"WHEN equity_event_process_jobs.status = 'running'\n                  THEN equity_event_process_jobs.{column}"
     )
 
 

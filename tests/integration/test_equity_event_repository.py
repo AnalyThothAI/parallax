@@ -1262,12 +1262,15 @@ def test_equity_event_repository_excludes_pending_evidence_documents_from_proces
     repos = repositories_for_connection(postgres_conn)
     _seed_event_document(repos, event_document_id="event-doc-pending")
 
-    assert repos.equity_events.claim_due_process_jobs(
-        now_ms=NOW_MS + 2,
-        limit=10,
-        lease_owner="process-worker-a",
-        lease_ms=60_000,
-    ) == []
+    assert (
+        repos.equity_events.claim_due_process_jobs(
+            now_ms=NOW_MS + 2,
+            limit=10,
+            lease_owner="process-worker-a",
+            lease_ms=60_000,
+        )
+        == []
+    )
 
 
 def test_equity_event_repository_upserts_brief_state(postgres_conn) -> None:
@@ -1653,12 +1656,15 @@ def test_changed_event_document_content_resets_failed_processing_attempts_for_re
     assert unchanged["processing_attempts"] == 3
     assert unchanged["processing_error"] == "exhausted"
     assert unchanged["processed_at_ms"] == NOW_MS + 1_000
-    assert repos.equity_events.claim_due_process_jobs(
-        now_ms=NOW_MS + 2_500,
-        limit=10,
-        lease_owner="process-worker-a",
-        lease_ms=60_000,
-    ) == []
+    assert (
+        repos.equity_events.claim_due_process_jobs(
+            now_ms=NOW_MS + 2_500,
+            limit=10,
+            lease_owner="process-worker-a",
+            lease_ms=60_000,
+        )
+        == []
+    )
 
     repos.equity_events.upsert_event_document(
         event_document_id="event-doc-retry",

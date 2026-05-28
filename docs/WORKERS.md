@@ -174,7 +174,7 @@ notification_delivery
 | `news_source_quality_projection` (`NewsSourceQualityProjectionWorker`) | `news_intel` | `domains/news_intel/runtime/news_source_quality_projection_worker.py` | due `news_projection_dirty_targets(projection_name='source_quality')`; target-scoped `news_sources`, `news_fetch_runs`, `news_items`, `news_token_mentions`, `news_fact_candidates`, `news_item_agent_briefs`, `news_context_items` by source/window | `news_source_quality_rows`, `news_sources.source_quality_status` | `news_item_written`, `news_item_processed`, `news_story_updated`, `news_item_brief_updated` | `news_page_dirty` when source status changes | `interval_seconds` |
 | `equity_event_source_reconcile` (`EquityEventSourceReconcileWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_source_reconcile_worker.py` | configured `equity_event_intel.companies`, expected events, registry US equity identity | `equity_event_sources`, `equity_event_universe_members`, `equity_expected_events` | poll | `equity_event_sources_reconciled` | `interval_seconds` |
 | `equity_event_fetch` (`EquityEventFetchWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_fetch_worker.py` | due `equity_event_sources`, SEC submissions provider payloads | `equity_event_fetch_runs`, `equity_provider_documents`, `equity_event_documents`, `equity_event_evidence_jobs` | `equity_event_sources_reconciled` | `equity_event_evidence_job_written` | `interval_seconds` |
-| `equity_event_evidence_hydration` (`EquityEventEvidenceHydrationWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_evidence_hydration_worker.py` | due leased `equity_event_evidence_jobs`, event document/source context, SEC document evidence provider | `equity_event_evidence_artifacts`, `equity_event_documents.evidence_status`, `equity_company_events.evidence_status`, evidence job status | `equity_event_evidence_job_written` | `equity_event_document_written` | `interval_seconds` |
+| `equity_event_evidence_hydration` (`EquityEventEvidenceHydrationWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_evidence_hydration_worker.py` | due leased `equity_event_evidence_jobs`, event document/source context, SEC document evidence provider | `equity_event_evidence_artifacts`, `equity_event_documents.evidence_status`, `equity_company_events.evidence_status`, evidence job status, `equity_event_process_jobs` | `equity_event_evidence_job_written` | `equity_event_document_written` | `interval_seconds` |
 | `equity_event_process` (`EquityEventProcessWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_process_worker.py` | due leased `equity_event_process_jobs`, normalized event document packet, source company identity | `equity_company_events`, `equity_event_source_spans`, `equity_event_fact_candidates`, document lifecycle status, process job status | `equity_event_document_written` | `equity_event_processed` | `interval_seconds` |
 | `equity_event_story_projection` (`EquityEventStoryProjectionWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_story_projection_worker.py` | due `equity_event_projection_dirty_targets(projection_name='story')`; target-scoped `equity_company_events`, existing story candidates | `equity_event_story_groups`, `equity_event_story_members` | `equity_event_processed` | `equity_event_story_updated` | `interval_seconds` |
 | `equity_event_brief` (`EquityEventBriefWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_brief_worker.py` | due `equity_event_projection_dirty_targets(projection_name='brief_input')`; `equity_company_events`, stories, official documents, spans, accepted facts, current brief state after reserving `equity_event.brief` | `equity_event_agent_runs`, `equity_event_agent_briefs`, event brief lifecycle status | `equity_event_story_updated` | `equity_event_brief_updated` | `interval_seconds`; no-start backpressure claims nothing and writes no run ledger |
@@ -342,15 +342,16 @@ wraps `WorkerSpace` from the manifest contract. The context makes the intended
 order explicit:
 
 ```text
-claim_scope -> payload_scope -> provider_scope -> persist_scope
+claim_session -> payload_session -> provider_io -> persist_session/transaction_session
 ```
 
-`claim_scope` and `payload_scope` may open worker DB sessions to claim leased
-rows and load the smallest required packet. `provider_scope` must run outside
-all worker sessions and transactions. `persist_scope` opens a fresh worker
-transaction for terminal writes, projection writes, and wake emission. The
-guard tracks both session depth and transaction depth; provider IO inside
-either boundary is a runtime error.
+`claim_session` and `payload_session` may open worker DB sessions to claim
+leased rows and load the smallest required packet. `provider_io` must run
+outside all worker sessions and transactions. `persist_session` opens a fresh
+worker session for non-transactional terminal work; `transaction_session` opens
+a fresh worker transaction for terminal writes, projection writes, and wake
+emission. The guard tracks both session depth and transaction depth; provider
+IO inside either boundary is a runtime error.
 
 Current enforced workers include `token_radar_projection`,
 `equity_event_fetch`, `equity_event_evidence_hydration`,

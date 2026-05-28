@@ -336,8 +336,9 @@ Use these rules when adding or reviewing a worker:
    Materialize DB rows, close the session, call the provider, then open a
    new worker session to persist results.
    Workers with `RuntimeWorkerContext` enforce this through explicit
-   `claim_scope`, `payload_scope`, `provider_scope`, and `persist_scope`
-   boundaries. A provider call inside a DB session or transaction is a bug.
+   `claim_session`, `payload_session`, `provider_io`, `persist_session`, and
+   `transaction_session` boundaries. A provider call inside a DB session or
+   transaction is a bug.
 
 7. Cancellation cleanup is part of the domain state machine. If a
    hard timeout interrupts provider IO after a claim, the worker must

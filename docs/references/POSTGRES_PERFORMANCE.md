@@ -259,14 +259,19 @@ Broad discovery belongs in dry-run-first ops commands that enqueue bounded work:
 uv run gmgn-twitter-intel ops enqueue-token-radar-dirty-targets --dry-run
 ```
 
-### Hard Reset Derived Token/Equity Rows
+### Hard Reset Token Rows And Equity Process Outputs
 
 Use this only after the Token Radar / Equity Event / WorkerSpace hard cut
 migration and code are deployed, all affected workers are stopped or in a
 maintenance window, and the operator has a bounded repair target list ready.
-This removes rebuildable derived rows and control rows only; it is not a fact
-retention policy and it must not be run while workers are concurrently claiming
-the same queues.
+This is a destructive maintenance reset, not routine cleanup and not a fact
+retention policy. The Token Radar tables in this recipe are rebuildable
+projection/control rows. The Equity Event tables include classifier process
+outputs (`equity_event_source_spans` and `equity_event_fact_candidates`) that
+are business fact tables in the global architecture; reset them only when the
+operator intends to regenerate them from official documents/evidence artifacts
+through re-enqueued `equity_event_process_jobs`. It must not be run while
+workers are concurrently claiming the same queues.
 
 After the reset, enqueue explicit bounded repair targets through the owning ops
 paths. Do not rely on runtime workers to scan facts and rediscover everything.

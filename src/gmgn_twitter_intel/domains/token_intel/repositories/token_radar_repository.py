@@ -114,9 +114,7 @@ class TokenRadarRepository:
             (projection_version, window, scope),
         ).fetchone()
         latest_current_generation_id = (
-            str(latest["current_generation_id"])
-            if latest and latest.get("current_generation_id") is not None
-            else None
+            str(latest["current_generation_id"]) if latest and latest.get("current_generation_id") is not None else None
         )
         latest_published_at_ms = (
             int(latest["current_published_at_ms"])

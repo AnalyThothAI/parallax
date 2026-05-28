@@ -345,7 +345,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = "20260528_0120"
-down_revision = "20260528_0116"
+down_revision = "20260528_0119"
 branch_labels = None
 depends_on = None
 
@@ -424,7 +424,9 @@ def downgrade() -> None:
     raise RuntimeError("20260528_0120 token/equity/WorkerSpace hard cut is not reversible")
 ```
 
-Adjust `down_revision` to the actual current head if `alembic heads` reports a different latest revision in the worktree.
+This branch includes the News `20260528_0117` through `20260528_0119`
+migrations from current `main`; the Token/Equity/WorkerSpace migration follows
+`20260528_0119`.
 
 - [ ] **Step 2: Run schema guard**
 

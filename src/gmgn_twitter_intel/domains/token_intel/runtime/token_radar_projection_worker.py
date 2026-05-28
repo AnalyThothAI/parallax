@@ -341,12 +341,15 @@ def _publication_due(
 
     if status == "failed":
         if published_at_ms is not None or state.get("current_generation_id") is not None:
-            retry_since_ms = _state_ms(
-                state,
-                "latest_attempt_finished_at_ms",
-                "updated_at_ms",
-                "latest_attempt_started_at_ms",
-            ) or published_at_ms
+            retry_since_ms = (
+                _state_ms(
+                    state,
+                    "latest_attempt_finished_at_ms",
+                    "updated_at_ms",
+                    "latest_attempt_started_at_ms",
+                )
+                or published_at_ms
+            )
             return _elapsed_due(
                 computed_at_ms=computed_at_ms,
                 since_ms=retry_since_ms,

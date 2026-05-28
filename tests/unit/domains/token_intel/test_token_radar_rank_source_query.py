@@ -292,8 +292,7 @@ def test_rank_source_query_uses_source_payload_hash_noop_gate():
     assert "convert_to(" in conn.sql
     assert "source_payload_hash = excluded.source_payload_hash" in conn.sql
     assert (
-        "WHERE token_radar_rank_source_events.source_payload_hash IS DISTINCT FROM "
-        "excluded.source_payload_hash"
+        "WHERE token_radar_rank_source_events.source_payload_hash IS DISTINCT FROM excluded.source_payload_hash"
     ) in normalized_sql
     assert "projected_at_ms = excluded.projected_at_ms" in conn.sql
 

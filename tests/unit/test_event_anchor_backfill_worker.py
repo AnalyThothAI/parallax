@@ -855,9 +855,7 @@ class _FakeEventAnchorJobRepo:
         )
         terminal_rows = [dict(row) for row in self._db._expired_rows]
         for row in terminal_rows:
-            self._db.terminal_jobs.append(
-                (str(row["event_id"]), str(row["intent_id"]), "expired", "backfill_expired")
-            )
+            self._db.terminal_jobs.append((str(row["event_id"]), str(row["intent_id"]), "expired", "backfill_expired"))
         return {
             "expired": len(terminal_rows),
             "failed": 0,
