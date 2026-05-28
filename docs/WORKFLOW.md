@@ -17,6 +17,13 @@ Templates live at `docs/superpowers/_templates/`. Copy a template into the appro
 
 When work ships and verification is recorded, move both the spec and the plan from `active/` to `completed/`. This is a manual step performed in the same PR that records verification.
 
+`active/` specs and plans are working artefacts, not canonical runtime
+documentation. If an old active file disagrees with `AGENTS.md`, this document,
+`ARCHITECTURE.md`, `WORKERS.md`, the owning domain `ARCHITECTURE.md`, or code,
+trust the canonical docs/code and either update the plan before using it or move
+it to `completed/` with verification. Do not infer current worker behavior from
+an old active plan without re-auditing the implementation.
+
 Get explicit user approval at each lane boundary; do not write the next lane until the prior is approved.
 
 ## Worktree policy

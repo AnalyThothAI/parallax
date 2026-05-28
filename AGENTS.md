@@ -26,14 +26,14 @@ Frontend CSS is harness-constrained, not convention-only. Before changing `web/s
 | Public surfaces (config, WS, HTTP, CLI) | `docs/CONTRACTS.md` |
 | Spec→plan→tasks→verification flow | `docs/WORKFLOW.md` |
 | Design rules (audit, reuse, scoring) | `docs/DESIGN_DISCIPLINE.md` |
-| Testing & completion gates | `docs/TESTING.md` |
+| Testing & completion gates, including worker development gates | `docs/TESTING.md` |
 | Secrets, config, authn changes | `docs/SECURITY.md` |
 | Operational invariants | `docs/RELIABILITY.md` |
 | PostgreSQL performance & queue diagnostics | `docs/references/POSTGRES_PERFORMANCE.md` |
-| Worker flow, lifecycle, state-machine debugging | `docs/WORKER_FLOW.md` |
-| Cross-domain worker inventory | `docs/WORKERS.md` |
-| Module architecture maps | `src/gmgn_twitter_intel/domains/<domain>/ARCHITECTURE.md` (currently `token_intel`, `asset_market`, `pulse_lab`) |
-| Active / done specs & plans | `docs/superpowers/{specs,plans}/{active,completed}/` |
+| Worker flow, lifecycle, state-machine debugging, and review checklist | `docs/WORKER_FLOW.md` |
+| Cross-domain worker inventory, runtime ownership, and worker best practices | `docs/WORKERS.md` |
+| Module architecture maps | `src/gmgn_twitter_intel/domains/<domain>/ARCHITECTURE.md`; discover current maps with `find src/gmgn_twitter_intel/domains -name ARCHITECTURE.md` |
+| Active / done specs & plans | `docs/superpowers/{specs,plans}/{active,completed}/` are planning artefacts; verify against code and canonical docs before treating an old active file as current truth |
 | External references & papers | `docs/references/` |
 | Auto-generated artefacts | `docs/generated/` |
 | Tech debt log | `docs/TECH_DEBT.md` |

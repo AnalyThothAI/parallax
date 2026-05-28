@@ -83,3 +83,41 @@ ownership, and `app.runtime.queue_health` read-only summaries in sync.
 Worker tests must keep external IO outside DB worker sessions. Provider
 clients, publishers, wake waits, and other network/process IO cannot run
 inside `DBPoolBundle.worker_session()` blocks.
+
+## Worker Development Gates
+
+Worker changes need tests for the runtime contract, not just the happy-path
+domain result. Use the smallest lane that exercises each contract:
+
+- Unit tests cover `run_once()` with no work, one claimed target, retryable
+  provider failure, terminal failure, cancellation cleanup, and explicit
+  no-start backpressure. No-start backpressure must leave dirty/job rows
+  unclaimed, not burn attempts, and not write business run ledgers.
+- Unit tests call `status_payload()` for any worker that overrides
+  `_queue_depth()` or custom details. Queue-depth hooks must be read-only and
+  callable by `WorkerBase.status_payload()` with no required arguments.
+- Provider wiring tests cover the concrete runtime wrapper for every protocol
+  method a worker calls. Fake providers are useful for domain units, but they
+  do not prove the real wrapper satisfies the worker contract.
+- Integration tests use real PostgreSQL for storage/query/projection behavior:
+  claim order, lease release, terminal states, publication state, idempotent
+  current-row writes, and stable row counts.
+- Architecture tests must be extended when a new worker, queue table, wake
+  channel, read model writer, provider protocol, or lifecycle class is added.
+  They guard manifest/settings/docs lockstep, no external IO inside DB worker
+  sessions, single-writer read models, hard-cut no-compatibility paths, and
+  worker status/readiness shape.
+- API or runtime-health changes include a `/healthz` and `/readyz` integration
+  check. For live/docker verification, also inspect streaming logs for
+  Tracebacks, failed workers, queue depth stuck growth, stale migrations, and
+  repeated readiness reasons.
+- Performance-sensitive projection workers include cardinality and write
+  amplification checks: current read-model row counts stay bounded by stable
+  product/window keys, unchanged projections write zero serving rows, and idle
+  cycles do not run broad fact scans.
+
+These gates would have caught the recent worker regressions earlier: Macro's
+generation-based current lifecycle violated stable current-row identity and
+bounded idle behavior; the news/equity brief queue-depth drift violated the
+`status_payload()` signature; and the narrative provider wrapper passed fake
+provider tests while missing concrete audit methods used by the worker.

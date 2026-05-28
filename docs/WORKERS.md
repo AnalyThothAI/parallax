@@ -51,6 +51,46 @@ bounded `interval_seconds` loop from `workers.yaml`, but that loop must
 claim durable queues or read bounded read models. It must not run broad
 fact-table scans when the dirty queue is empty.
 
+## Worker Best Practices
+
+Use this checklist when adding or changing a worker. These rules are the
+operational version of the Kappa/CQRS contract:
+
+- Start from the manifest. A worker key, lane, kind, queue ownership, read
+  model ownership, wake channels, and start priority are product architecture,
+  not local implementation details. `workers.yaml` may tune runtime behavior,
+  but it must not create aliases or hidden workers.
+- Claim or reserve before doing expensive work. Dirty-target and job workers
+  claim bounded rows first; LLM workers reserve agent capacity before claiming
+  business targets. No-start backpressure does not burn attempts or write
+  business run ledgers.
+- Keep runtime loops proportional to changed targets. An idle worker should
+  observe queue depth and return. It should not scan historical facts,
+  read-model history, or provider history to discover work while idle.
+- Keep provider IO outside DB sessions. Load the minimal input packet, close
+  the worker session, call the provider/subprocess/filesystem/network, then
+  persist the result in a new worker session.
+- Make current read models compact and stable. Current rows are keyed by
+  product/window/scope/target identity, not by run, generation, attempt,
+  timestamp, or UUID ids. Publication state may describe freshness; it must
+  not make old generations part of the serving identity. Unchanged projections
+  write zero serving rows.
+- Treat status as production code. `status_payload()`, custom
+  `_queue_depth()` hooks, queue health, `/readyz`, `/api/status`, and
+  `ops worker-status` are part of the runtime contract. Queue-depth hooks must
+  be read-only and callable with no required arguments from
+  `WorkerBase.status_payload()`.
+- Test the concrete provider wrapper, not only fakes. If a worker depends on
+  a provider protocol method, the runtime wrapper must implement that protocol
+  directly and have a wiring test for the exact methods used.
+- Keep public reads honest. API, WebSocket, CLI, and frontend paths read facts
+  or read models and expose missing/degraded states. They do not run repair
+  cleanup, call providers, resurrect removed aliases, or reconstruct old
+  payload shapes.
+- Hard-cut old runtime paths. Migrations, completed specs, and ops notes may
+  mention history; runtime code must not keep fallback readers, dual writers,
+  compatibility settings, or shadow queues for removed behavior.
+
 ## Truth Categories
 
 Review workers by separating four categories:

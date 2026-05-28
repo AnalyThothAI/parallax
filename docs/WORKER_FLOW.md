@@ -135,6 +135,43 @@ awaits the in-flight task. Domain workers then persist their own
 failing an agent run audit row, or backing off a digest target, before
 they re-raise cancellation.
 
+## Why Workers Break
+
+Most worker incidents in this repo have come from one of these boundary
+mistakes, not from PostgreSQL or asyncio being mysterious:
+
+- A worker lets control-plane state answer a product question. Queue rows,
+  run rows, active-generation pointers, and provider connection state can
+  explain work, but they are not public truth.
+- A current read model uses run/generation/attempt/timestamp/UUID identity.
+  Macro became slow because projection lifecycle identity was modeled as
+  ever-growing generations instead of stable series/window keys with a
+  compact publication state. The fix is a hard cut to stable current rows:
+  unchanged projections write zero serving rows.
+- An idle loop discovers work by scanning broad fact/read-model history.
+  Runtime loops should claim durable dirty targets, process bounded target
+  batches, and stop when the queue is empty. Broad discovery belongs to an
+  explicit ops repair command that enqueues dirty targets.
+- A worker writes while holding the wrong boundary open. Provider, publisher,
+  wake-wait, file, subprocess, and network IO must run outside DB worker
+  sessions; only materialization and persistence belong inside sessions.
+- A status hook is treated as diagnostics-only. `status_payload()`,
+  `_queue_depth()`, queue health, `/readyz`, and `ops worker-status` are
+  production contracts. Custom queue-depth hooks must be callable by
+  `WorkerBase.status_payload()` with no required arguments and must not
+  mutate queue state.
+- A fake provider satisfies tests while the real wrapper misses the domain
+  protocol. Workers should depend on narrow provider protocols, and tests
+  must exercise the concrete runtime wrapper for every method the worker
+  calls, including audit methods.
+- An agent worker claims business work before reserving execution capacity.
+  No-start backpressure must not claim a target, burn an attempt, or write a
+  business run ledger. Once provider execution starts, failures are audited
+  as provider-started attempts.
+- A public route repairs data inline. API, WebSocket, CLI, and frontend paths
+  should read facts/read models and expose honest missing/degraded status.
+  They must not call providers, cleanup commands, or compatibility readers.
+
 ## State Machines
 
 The system has several state machines stacked together. That is normal
@@ -360,6 +397,14 @@ For each worker, answer these questions before changing code:
 - Can it recover when a wake hint is missed?
 - Does every pending job state have a terminal state?
 - Does provider IO happen outside DB sessions?
+- Is every custom status hook (`_queue_depth()`, details payload, queue
+  health) callable from `/readyz` and read-only?
+- If the worker calls a provider, does a concrete provider-wrapper test cover
+  the exact protocol methods used in runtime?
+- If the worker is LLM-backed, does it reserve agent capacity before claiming
+  business work?
+- If it writes current rows, are row keys stable product/window keys and do
+  unchanged projections write zero serving rows?
 - Is the public API reading facts/read models instead of worker internals?
 - Is the owning domain `ARCHITECTURE.md` updated?
 - Is `docs/WORKERS.md` updated in the same change?
@@ -410,6 +455,9 @@ Avoid these common mistakes:
 - Fixing an API row by calling a provider from the route.
 - Reconstructing market context from worker job state.
 - Using queue status as product truth.
+- Making run, generation, timestamp, or UUID ids part of current-row identity.
+- Letting status or readiness hooks drift from `WorkerBase` call signatures.
+- Testing fake providers but not the concrete runtime provider wrapper.
 - Debugging real data from repo fixtures instead of
   `~/.gmgn-twitter-intel/config.yaml` and `workers.yaml`.
 - Updating `AGENTS.md` without mirroring `CLAUDE.md`.

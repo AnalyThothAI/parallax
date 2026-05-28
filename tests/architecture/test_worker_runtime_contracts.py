@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import importlib
+import inspect
 import re
 from pathlib import Path
 from types import SimpleNamespace
@@ -331,6 +332,33 @@ def test_long_running_workers_do_not_override_worker_base_run_without_allowlist(
             continue
         if "run" in worker_class.__dict__:
             violations.append(f"{worker_key} overrides run()")
+
+    assert violations == []
+
+
+@pytest.mark.architecture
+def test_worker_queue_depth_overrides_are_status_payload_compatible() -> None:
+    violations: list[str] = []
+    for worker_key, qualified_name in MANIFEST_WORKER_CLASSES.items():
+        try:
+            worker_class = _import_qualified_name(qualified_name)
+        except ModuleNotFoundError as exc:
+            if ".narrative_intel." in qualified_name:
+                pytest.skip(f"{worker_key} runtime is owned by agent A: {exc.name}")
+            if _is_stubbed_task_worker(qualified_name):
+                continue
+            raise
+        override = worker_class.__dict__.get("_queue_depth")
+        if override is None:
+            continue
+        signature = inspect.signature(override)
+        try:
+            signature.bind(object())
+        except TypeError as exc:
+            violations.append(
+                f"{worker_key}._queue_depth must be callable by WorkerBase.status_payload() "
+                f"with no required arguments: {exc}"
+            )
 
     assert violations == []
 
