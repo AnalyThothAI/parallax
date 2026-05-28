@@ -69,7 +69,9 @@ The hot path from one public-stream frame to product output is:
 
 4. Token Intel projection
    - token_radar_projection claims token_radar_dirty_targets and uses bounded interval catch-up
+   - source/market/repair dirty kinds decide whether source edges must rebuild or whether existing source edges can be reused
    - it builds compact source edges and projection-private token_radar_target_features from material facts
+   - market-only work overlays fresh latest market context on stable source packets instead of rehydrating every source event
    - it publishes one stable generation into token_radar_current_rows and token_radar_publication_state for online reads
    - emits token_radar_updated as a wake hint
 
@@ -155,6 +157,10 @@ mistakes, not from PostgreSQL or asyncio being mysterious:
 - A worker writes while holding the wrong boundary open. Provider, publisher,
   wake-wait, file, subprocess, and network IO must run outside DB worker
   sessions; only materialization and persistence belong inside sessions.
+- A worker treats a broad table scan as a queue. Equity processing now consumes
+  `equity_event_process_jobs`; event-anchor catch-up consumes
+  `event_anchor_backfill_jobs`; Token Radar consumes dirty targets with dirty
+  kind flags. Empty queues mean idle, not "scan the fact table to be sure."
 - A status hook is treated as diagnostics-only. `status_payload()`,
   `_queue_depth()`, queue health, `/readyz`, and `ops worker-status` are
   production contracts. Custom queue-depth hooks must be callable by
@@ -229,6 +235,8 @@ expired, or failed?"
 Examples:
 
 - `event_anchor_backfill_jobs`
+- `equity_event_evidence_jobs`
+- `equity_event_process_jobs`
 - `pulse_agent_jobs`
 - `watchlist_handle_summary_jobs`
 - notification delivery rows
@@ -327,6 +335,9 @@ Use these rules when adding or reviewing a worker:
 6. Provider IO must not happen while a worker holds a DB session.
    Materialize DB rows, close the session, call the provider, then open a
    new worker session to persist results.
+   Workers with `RuntimeWorkerContext` enforce this through explicit
+   `claim_scope`, `payload_scope`, `provider_scope`, and `persist_scope`
+   boundaries. A provider call inside a DB session or transaction is a bug.
 
 7. Cancellation cleanup is part of the domain state machine. If a
    hard timeout interrupts provider IO after a claim, the worker must
@@ -434,6 +445,11 @@ Useful patterns for this repo:
 - Keep provider adapters narrow.
   Concrete clients translate third-party shapes. Domain workers receive
   typed provider protocols and own product decisions.
+
+- Use stable payload hashes for hot-row idempotency.
+  Token Radar source edges, equity provider documents, and equity evidence
+  artifacts should not rewrite TOAST-heavy payload rows when the normalized
+  payload has not changed.
 
 - Split coordination when a file has too many reasons to change.
   Large projection and agent-runtime files should gradually move toward

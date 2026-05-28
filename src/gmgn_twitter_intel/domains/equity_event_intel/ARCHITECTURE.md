@@ -25,7 +25,11 @@ Provider observations and material event facts live in PostgreSQL:
   `event_document_id`; fetch only enqueues or resets these jobs.
 - `equity_event_evidence_artifacts`: hydrated source text/table artifacts for
   official documents. `EquityEventEvidenceHydrationWorker` is the only runtime
-  writer.
+  writer. Artifacts are idempotent by stable artifact identity and
+  `artifact_payload_hash`; unchanged artifacts are not rewritten.
+- `equity_event_process_jobs`: leased processing jobs keyed by
+  `event_document_id`; evidence hydration enqueues these jobs only after a
+  terminal evidence state exists.
 - `equity_company_events`: material company-event facts classified from
   official documents.
 - `equity_event_source_spans`: cited source snippets extracted from official
@@ -37,6 +41,11 @@ Provider observations and material event facts live in PostgreSQL:
 
 Provider raw frames and HTTP responses are inputs. Product surfaces must read
 facts and read models, not provider raw payloads.
+The only hot-path exception is evidence hydration after a successful
+`equity_event_evidence_jobs` lease: it may exact-load the raw provider payload
+for the claimed document in order to fetch source evidence. Processing,
+projection, page, API, and frontend paths consume normalized scalar document
+fields and hydrated artifacts; they must not select `provider.raw_payload_json`.
 
 ## Read Models
 
@@ -65,6 +74,7 @@ configured company universe / expected events
   -> equity_event_evidence_jobs
   -> EquityEventEvidenceHydrationWorker
   -> equity_event_evidence_artifacts + document evidence status
+  -> equity_event_process_jobs
   -> EquityEventProcessWorker
   -> equity_company_events + source spans + fact candidates
   -> EquityEventStoryProjectionWorker
@@ -85,9 +95,19 @@ material source freshness. It does not hydrate evidence or write evidence
 artifacts. `EquityEventEvidenceHydrationWorker` owns the due
 `equity_event_evidence_jobs` queue, performs bounded evidence provider
 hydration outside the fetch chain, upserts `equity_event_evidence_artifacts`,
-deletes stale document artifacts by stable artifact identity, updates
-document/company evidence status and source evidence freshness, and wakes
+updates document/company evidence status and source evidence freshness, enqueues
+`equity_event_process_jobs` when evidence reaches a terminal state, and wakes
 downstream document consumers after terminal evidence state is written.
+`EquityEventProcessWorker` claims leased `equity_event_process_jobs` before
+loading document packets. It does not scan `equity_event_documents` to discover
+unprocessed rows.
+
+`equity_event_documents` carries normalized scalar fields such as provider
+title, summary, and primary document URL so classifiers and page projections do
+not need raw provider JSON. `equity_provider_documents` keeps raw provider
+metadata for audit/input replay, but its payload hash is an idempotency gate:
+unchanged provider payloads do not rewrite `raw_payload_json` or
+`fetched_at_ms`.
 
 ## Source Roles
 

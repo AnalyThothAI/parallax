@@ -212,6 +212,14 @@ Current example:
   `TokenRadarTargetFeatureBatchQuery.source_rows_for_requests(...)`. Runtime
   code no longer calls the single-target `source_rows(...)` path or the old
   `WITH source_intents AS MATERIALIZED` query.
+- Fixed in the 2026-05-28 Token/Equity/WorkerSpace hard cut: Token Radar
+  market-only dirty targets reuse stable `token_radar_rank_source_events`
+  source packets and overlay latest market context instead of rewriting source
+  edges. Source-edge, provider-document, and evidence-artifact writes use
+  payload hashes to avoid unchanged TOAST rewrites.
+- Fixed in the same hard cut: `equity_event_process` consumes leased
+  `equity_event_process_jobs` and loads normalized document packets. It does
+  not poll `equity_event_documents` with raw provider payload hydration.
 
 ### Match Indexes To Real Predicates
 
@@ -249,6 +257,46 @@ Broad discovery belongs in dry-run-first ops commands that enqueue bounded work:
 
 ```bash
 uv run gmgn-twitter-intel ops enqueue-token-radar-dirty-targets --dry-run
+```
+
+### Hard Reset Derived Token/Equity Rows
+
+Use this only after the Token Radar / Equity Event / WorkerSpace hard cut
+migration and code are deployed, all affected workers are stopped or in a
+maintenance window, and the operator has a bounded repair target list ready.
+This removes rebuildable derived rows and control rows only; it is not a fact
+retention policy and it must not be run while workers are concurrently claiming
+the same queues.
+
+After the reset, enqueue explicit bounded repair targets through the owning ops
+paths. Do not rely on runtime workers to scan facts and rediscover everything.
+
+```sql
+TRUNCATE token_radar_dirty_targets;
+TRUNCATE token_radar_rank_source_events;
+TRUNCATE token_radar_target_features;
+TRUNCATE token_radar_current_rows;
+DELETE FROM token_radar_publication_state
+WHERE projection_version = 'token-radar-v13-social-attention';
+
+TRUNCATE equity_event_process_jobs;
+TRUNCATE equity_event_evidence_artifacts;
+TRUNCATE equity_event_source_spans;
+TRUNCATE equity_event_fact_candidates;
+```
+
+Recommended post-reset checks:
+
+```sql
+ANALYZE token_radar_dirty_targets;
+ANALYZE token_radar_rank_source_events;
+ANALYZE token_radar_target_features;
+ANALYZE token_radar_current_rows;
+ANALYZE token_radar_publication_state;
+ANALYZE equity_event_process_jobs;
+ANALYZE equity_event_evidence_artifacts;
+ANALYZE equity_event_source_spans;
+ANALYZE equity_event_fact_candidates;
 ```
 
 ### Treat Queue Terminal States As Evidence
@@ -705,10 +753,11 @@ source volume grows.
 
 Next move:
 
-- Preserve provider natural-key idempotency.
-- Convert fetch/process batches to set-based `INSERT ... SELECT FROM unnest`
-  where the repository can keep the same conflict policy.
-- Measure WAL and dead tuples before/after.
+- Preserve provider natural-key idempotency with `payload_hash`.
+- Keep normalized scalar document fields on `equity_event_documents` for
+  process/page paths.
+- Measure WAL and dead tuples after the hash-gated provider-document and
+  evidence-artifact writes have run long enough to show deltas.
 
 ## Priority Order
 
