@@ -17,7 +17,6 @@ const fetchNewsItemMock = vi.mocked(fetchNewsItem);
 
 type ObservedNewsParams = {
   cursor: string | null;
-  has_token: boolean;
   limit: number;
   min_score: number | null;
   q: string | null;
@@ -28,7 +27,6 @@ type ObservedNewsParams = {
 
 const defaultNewsFetchParams: ObservedNewsParams = {
   cursor: null,
-  has_token: true,
   limit: 100,
   min_score: null,
   q: null,
@@ -54,8 +52,8 @@ describe("NewsPage", () => {
 
     await waitFor(() => expect(fetchNewsRowsMock).toHaveBeenCalled());
     expect((await screen.findAllByText("BTC ETF flows expand")).length).toBeGreaterThan(0);
-    expect(screen.getByText("有 Token")).toBeInTheDocument();
-    expect(screen.getByText("无 Token")).toBeInTheDocument();
+    expect(screen.queryByText("有 Token")).not.toBeInTheDocument();
+    expect(screen.queryByText("无 Token")).not.toBeInTheDocument();
     expect(screen.getAllByText("利好").length).toBeGreaterThan(0);
     expect(screen.getAllByText("A · 82").length).toBeGreaterThan(0);
     expect(screen.getAllByText("BTC").length).toBeGreaterThan(0);
@@ -66,26 +64,17 @@ describe("NewsPage", () => {
     expect(fetchNewsRowsMock).toHaveBeenCalledWith(defaultNewsFetchParams);
   });
 
-  it("requests backend hard-cut filters from token, signal, score, and search controls", async () => {
+  it("requests backend hard-cut filters from signal, score, and search controls", async () => {
     mockNewsRows();
 
     renderNews(<NewsPage token="test-token" />);
 
     expect((await screen.findAllByText("BTC ETF flows expand")).length).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByRole("button", { name: "无 Token" }));
-    await waitFor(() =>
-      expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
-        ...defaultNewsFetchParams,
-        has_token: false,
-      }),
-    );
-
     fireEvent.click(screen.getByRole("button", { name: "利空" }));
     await waitFor(() =>
       expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
         ...defaultNewsFetchParams,
-        has_token: false,
         signal: "bearish",
       }),
     );
@@ -94,7 +83,6 @@ describe("NewsPage", () => {
     await waitFor(() =>
       expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
         ...defaultNewsFetchParams,
-        has_token: false,
         min_score: 70,
         signal: "bearish",
       }),
@@ -104,7 +92,6 @@ describe("NewsPage", () => {
     await waitFor(() =>
       expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
         ...defaultNewsFetchParams,
-        has_token: false,
         min_score: 70,
         q: "eth",
         signal: "bearish",

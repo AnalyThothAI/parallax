@@ -1505,7 +1505,6 @@ class NewsRepository:
         content_class: str | None = None,
         content_tag: str | None = None,
         decision_class: str | None = None,
-        has_token: bool | None = None,
         signal: str | None = None,
         min_score: int | None = None,
         q: str | None = None,
@@ -1522,7 +1521,6 @@ class NewsRepository:
             content_class=content_class,
             content_tag=content_tag,
             decision_class=decision_class,
-            has_token=has_token,
             signal=signal,
             min_score=min_score,
             q=q,
@@ -1542,7 +1540,6 @@ class NewsRepository:
         content_class: str | None = None,
         content_tag: str | None = None,
         decision_class: str | None = None,
-        has_token: bool | None = None,
         signal: str | None = None,
         min_score: int | None = None,
         q: str | None = None,
@@ -1558,7 +1555,6 @@ class NewsRepository:
             content_class=content_class,
             content_tag=content_tag,
             decision_class=decision_class,
-            has_token=has_token,
             signal=signal,
             min_score=min_score,
             q=q,
@@ -3356,7 +3352,6 @@ def _news_page_row_filter_sql(
     content_class: str | None = None,
     content_tag: str | None = None,
     decision_class: str | None = None,
-    has_token: bool | None = None,
     signal: str | None = None,
     min_score: int | None = None,
     q: str | None = None,
@@ -3375,10 +3370,6 @@ def _news_page_row_filter_sql(
     if min_score is not None:
         filters.append("COALESCE(NULLIF(signal_json ->> 'score', '')::int, -1) >= %s")
         filter_params.append(int(min_score))
-    if has_token is True:
-        filters.append("jsonb_array_length(token_lanes_json) > 0")
-    if has_token is False:
-        filters.append("jsonb_array_length(token_lanes_json) = 0")
     if decision_class:
         filters.append("agent_brief_json ->> 'decision_class' = %s")
         filter_params.append(str(decision_class))

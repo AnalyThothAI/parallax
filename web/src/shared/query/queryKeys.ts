@@ -54,7 +54,6 @@ export const queryKeys = {
     ["macro", "series", [...conceptKeys].sort(), window] as const,
   newsRows: ({
     cursor,
-    has_token,
     limit,
     min_score,
     q,
@@ -62,7 +61,6 @@ export const queryKeys = {
     status,
   }: {
     cursor?: string | null;
-    has_token?: boolean | null;
     limit: number;
     min_score?: number | null;
     q?: string | null;
@@ -73,21 +71,18 @@ export const queryKeys = {
       "news",
       limit,
       cursor ?? "",
-      has_token == null ? "" : String(has_token),
       signal ?? "",
       min_score ?? "",
       status ?? "",
       q ?? "",
     ] as const,
   newsRowsInfinite: ({
-    has_token,
     limit,
     min_score,
     q,
     signal,
     status,
   }: {
-    has_token?: boolean | null;
     limit: number;
     min_score?: number | null;
     q?: string | null;
@@ -98,7 +93,6 @@ export const queryKeys = {
       "news",
       "infinite",
       limit,
-      has_token == null ? "" : String(has_token),
       signal ?? "",
       min_score ?? "",
       status ?? "",

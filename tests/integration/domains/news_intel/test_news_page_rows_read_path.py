@@ -65,8 +65,8 @@ def test_news_page_rows_filter_indexes_cover_normal_ui_filters(tmp_path) -> None
     assert {
         "ix_news_page_rows_signal_direction",
         "ix_news_page_rows_signal_score",
-        "ix_news_page_rows_token_count_time",
     } <= index_names
+    assert "ix_news_page_rows_token_count_time" not in index_names
 
 
 def _insert_source_provider_and_item(

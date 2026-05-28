@@ -4,12 +4,14 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 describe("news API client normalization", () => {
-  it("sends hard-cut news filters and normalizes provider signal rows", async () => {
+  it("sends hard-cut news filters without retired token presence filtering", async () => {
     const observedParams: Record<string, string | null> = {};
+    let observedKeys: string[] = [];
     server.use(
       http.get(/.*\/api\/news$/, ({ request }) => {
         const searchParams = new URL(request.url).searchParams;
-        ["cursor", "has_token", "limit", "min_score", "q", "signal"].forEach((key) => {
+        observedKeys = [...searchParams.keys()].sort();
+        ["cursor", "limit", "min_score", "q", "signal"].forEach((key) => {
           observedParams[key] = searchParams.get(key);
         });
         return HttpResponse.json({
@@ -72,14 +74,14 @@ describe("news API client normalization", () => {
       q: "tokenized",
       signal: "bullish",
       token: "test-token",
-    });
+    } as Parameters<typeof fetchNewsRows>[0] & { has_token: boolean });
 
     expect(observedParams.cursor).toBe("cursor-1");
-    expect(observedParams.has_token).toBe("true");
     expect(observedParams.limit).toBe("25");
     expect(observedParams.min_score).toBe("70");
     expect(observedParams.q).toBe("tokenized");
     expect(observedParams.signal).toBe("bullish");
+    expect(observedKeys).toEqual(["cursor", "limit", "min_score", "q", "signal"].sort());
     expect(rows.items[0].signal.label_zh).toBe("利好");
     expect(rows.items[0].signal.score).toBe(82);
     expect(rows.items[0].token_lanes).toEqual([]);

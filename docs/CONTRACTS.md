@@ -172,11 +172,10 @@ News Intel contract:
   nothing else; handlers do not fetch feeds, run extraction, execute agents,
   rebuild projections, or fall back to raw `news_items`.
 - `/api/news` accepts optional product filters for the current page surface:
-  `has_token`, `signal=bullish|bearish|neutral`, `min_score`, `status`, and
-  `q`.
-  Signal filtering reads persisted `signal_json`, token presence reads
-  `token_lanes_json`, and keyword search scans projected headline, summary, and
-  token lanes.
+  `signal=bullish|bearish|neutral`, `min_score`, `status`, and `q`.
+  News rows default to the full projected tape regardless of whether token
+  lanes are present. Signal filtering reads persisted `signal_json`, and
+  keyword search scans projected headline, summary, and token lanes.
 - News rows expose deterministic fields (`headline`, `summary`,
   `source_domain`, `token_lanes`, `fact_lanes`, lifecycle/story metadata),
   canonical signal metadata (`signal.direction`, `signal.score`,

@@ -183,7 +183,6 @@ export async function fetchNewsRows(
   params: {
     limit?: number;
     cursor?: string | null;
-    has_token?: boolean | null;
     min_score?: number | null;
     q?: string | null;
     signal?: "bullish" | "bearish" | "neutral" | string | null;
@@ -194,7 +193,6 @@ export async function fetchNewsRows(
   const response = await getApi<NewsRowsData>("/api/news", {
     params: {
       cursor: params.cursor,
-      has_token: params.has_token,
       limit: params.limit ?? 100,
       min_score: params.min_score,
       q: params.q,
