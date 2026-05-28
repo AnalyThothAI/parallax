@@ -122,6 +122,82 @@ def test_stable_generation_id_is_content_addressed_not_time_addressed():
     assert first_generation_id == second_generation_id
 
 
+def test_runtime_row_payload_hash_ignores_factor_snapshot_computed_at_noise():
+    first = _valid_factor_row()
+    second = _valid_factor_row()
+    second_snapshot = dict(second["factor_snapshot_json"])
+    second_snapshot["provenance"] = {
+        "computed_at_ms": 1_778_000_060_000,
+        "source_event_ids": ["event-1"],
+    }
+    second["factor_snapshot_json"] = second_snapshot
+
+    first_payload = _runtime_row_payload(
+        first,
+        projection_version="token-radar-v13-social-attention",
+        window="1h",
+        scope="all",
+        generation_id="gen-1",
+        published_at_ms=1_778_000_000_000,
+        source_frontier_ms=1_778_000_030_000,
+        listed_at_ms=1_778_000_000_000,
+    )
+    second_payload = _runtime_row_payload(
+        second,
+        projection_version="token-radar-v13-social-attention",
+        window="1h",
+        scope="all",
+        generation_id="gen-1",
+        published_at_ms=1_778_000_000_000,
+        source_frontier_ms=1_778_000_030_000,
+        listed_at_ms=1_778_000_000_000,
+    )
+
+    assert second_payload["payload_hash"] == first_payload["payload_hash"]
+
+
+def test_runtime_row_payload_hash_keeps_non_factor_provenance_computed_at_significant():
+    first = _valid_factor_row()
+    second = _valid_factor_row()
+    first["intent_json"] = {
+        "display_symbol": "BOV",
+        "analysis": {
+            "subject": {"kind": "non-factor"},
+            "provenance": {"computed_at_ms": 1_778_000_000_000, "source": "audit"},
+        },
+    }
+    second["intent_json"] = {
+        "display_symbol": "BOV",
+        "analysis": {
+            "subject": {"kind": "non-factor"},
+            "provenance": {"computed_at_ms": 1_778_000_060_000, "source": "audit"},
+        },
+    }
+
+    first_payload = _runtime_row_payload(
+        first,
+        projection_version="token-radar-v13-social-attention",
+        window="1h",
+        scope="all",
+        generation_id="gen-1",
+        published_at_ms=1_778_000_000_000,
+        source_frontier_ms=1_778_000_030_000,
+        listed_at_ms=1_778_000_000_000,
+    )
+    second_payload = _runtime_row_payload(
+        second,
+        projection_version="token-radar-v13-social-attention",
+        window="1h",
+        scope="all",
+        generation_id="gen-1",
+        published_at_ms=1_778_000_000_000,
+        source_frontier_ms=1_778_000_030_000,
+        listed_at_ms=1_778_000_000_000,
+    )
+
+    assert second_payload["payload_hash"] != first_payload["payload_hash"]
+
+
 def test_stable_generation_id_changes_when_row_quality_changes_even_with_same_payload_hash():
     ready = {**_valid_factor_row(), "payload_hash": "same-payload-hash"}
     degraded = {
