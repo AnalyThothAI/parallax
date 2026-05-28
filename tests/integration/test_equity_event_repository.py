@@ -1157,6 +1157,73 @@ def test_equity_event_repository_lists_ready_evidence_documents_for_processing(p
     assert [artifact["evidence_artifact_id"] for artifact in rows[0]["evidence_artifacts"]] == ["artifact-ready"]
 
 
+def test_enqueue_process_job_preserves_running_claim_when_input_hash_changes(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    event_document_id = "event-doc-process-running"
+    _seed_event_document(repos, event_document_id=event_document_id)
+    _insert_evidence_artifact(
+        postgres_conn,
+        evidence_artifact_id="artifact-process-running",
+        event_document_id=event_document_id,
+        content_hash="artifact-content-1",
+        artifact_payload_hash="artifact-payload-1",
+    )
+    repos.equity_events.mark_event_document_evidence_status(
+        event_document_id=event_document_id,
+        evidence_status="ready",
+        evidence_reason="",
+        evidence_ready_at_ms=NOW_MS + 1,
+        now_ms=NOW_MS + 1,
+    )
+    repos.equity_events.enqueue_process_job_for_document(
+        event_document_id=event_document_id,
+        due_at_ms=NOW_MS + 2,
+        now_ms=NOW_MS + 2,
+    )
+    claimed = repos.equity_events.claim_due_process_jobs(
+        now_ms=NOW_MS + 3,
+        limit=1,
+        lease_owner="process-worker-a",
+        lease_ms=60_000,
+    )
+    running = claimed[0]
+
+    postgres_conn.execute(
+        """
+        UPDATE equity_event_evidence_artifacts
+           SET content_hash = %s,
+               artifact_payload_hash = %s,
+               updated_at_ms = %s
+         WHERE evidence_artifact_id = %s
+        """,
+        ("artifact-content-2", "artifact-payload-2", NOW_MS + 4, "artifact-process-running"),
+    )
+    postgres_conn.commit()
+    requeued = repos.equity_events.enqueue_process_job_for_document(
+        event_document_id=event_document_id,
+        due_at_ms=NOW_MS + 5,
+        now_ms=NOW_MS + 5,
+    )
+    duplicate_claim = repos.equity_events.claim_due_process_jobs(
+        now_ms=NOW_MS + 6,
+        limit=1,
+        lease_owner="process-worker-b",
+        lease_ms=60_000,
+    )
+    stored = postgres_conn.execute(
+        "SELECT * FROM equity_event_process_jobs WHERE event_document_id = %s",
+        (event_document_id,),
+    ).fetchone()
+
+    assert duplicate_claim == []
+    for row in (requeued, stored):
+        assert row["status"] == "running"
+        assert row["lease_owner"] == "process-worker-a"
+        assert row["leased_until_ms"] == running["leased_until_ms"]
+        assert row["attempt_count"] == running["attempt_count"]
+        assert row["input_payload_hash"] == running["input_payload_hash"]
+
+
 def test_equity_event_repository_lists_unavailable_evidence_documents_with_reason(postgres_conn) -> None:
     repos = repositories_for_connection(postgres_conn)
     _seed_event_document(repos, event_document_id="event-doc-unavailable")
@@ -1694,3 +1761,45 @@ def _seed_event_document(repos, *, event_document_id: str) -> dict[str, object]:
         content_hash=f"content:{event_document_id}",
         now_ms=NOW_MS,
     )
+
+
+def _insert_evidence_artifact(
+    conn,
+    *,
+    evidence_artifact_id: str,
+    event_document_id: str,
+    content_hash: str,
+    artifact_payload_hash: str,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO equity_event_evidence_artifacts (
+          evidence_artifact_id, event_document_id, provider_document_id, source_id,
+          artifact_kind, extraction_status, source_url, content_hash, content_text,
+          content_json, excerpt_text, failure_reason, fetched_at_ms, parsed_at_ms,
+          created_at_ms, updated_at_ms, artifact_payload_hash
+        )
+        VALUES (
+          %s, %s, %s, %s,
+          'html_text', 'ready', %s, %s, %s,
+          '{}'::jsonb, %s, NULL, %s, %s,
+          %s, %s, %s
+        )
+        """,
+        (
+            evidence_artifact_id,
+            event_document_id,
+            "provider-doc-event-duplicate",
+            "sec:MSFT",
+            "https://example.test/msft.htm",
+            content_hash,
+            "Revenue was $10.",
+            "Revenue was $10.",
+            NOW_MS,
+            NOW_MS,
+            NOW_MS,
+            NOW_MS,
+            artifact_payload_hash,
+        ),
+    )
+    conn.commit()
