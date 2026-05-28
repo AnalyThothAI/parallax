@@ -178,6 +178,10 @@ NEXT_RUNTIME_LIFECYCLE_HARD_CUT_MIGRATION = Path(
 MACRO_WORKERSPACE_ROOT_FIX_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0116_macro_workerspace_root_fix.py"
 )
+TOKEN_EQUITY_WORKERSPACE_ROOT_FIX_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/"
+    "20260528_0120_token_equity_workerspace_root_fix.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 LEGACY_TOKEN_RADAR_CURRENT_JSON_COLUMNS = {
@@ -1609,6 +1613,24 @@ def _create_table_block(text: str, table_name: str) -> str:
 
 def _legacy_price_index(*parts: str) -> str:
     return "_".join(("idx", LEGACY_PRICE_TABLE, *parts))
+
+
+def test_token_equity_workerspace_root_fix_migration_contract() -> None:
+    assert TOKEN_EQUITY_WORKERSPACE_ROOT_FIX_MIGRATION.exists(), (
+        f"{TOKEN_EQUITY_WORKERSPACE_ROOT_FIX_MIGRATION} missing; "
+        "add the token/equity WorkerSpace root-fix migration"
+    )
+    text = _migration_text(TOKEN_EQUITY_WORKERSPACE_ROOT_FIX_MIGRATION)
+
+    assert "source_payload_hash" in text
+    assert "source_dirty" in text
+    assert "market_dirty" in text
+    assert "equity_event_process_jobs" in text
+    assert "artifact_payload_hash" in text
+    assert "lease_owner" in text
+    assert "leased_until_ms" in text
+    assert "event_anchor_backfill_jobs" in text
+    assert "queue_depth_table" not in text
 
 
 def test_asset_migration_adds_identity_resolution_tables() -> None:
