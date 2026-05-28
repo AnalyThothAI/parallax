@@ -221,6 +221,37 @@ def test_macro_api_returns_data_gap_when_snapshot_missing() -> None:
     }
 
 
+def test_macro_api_accepts_timestamp_text_for_currentness_dates() -> None:
+    repo = FakeMacroIntelRepository(
+        snapshot={
+            "snapshot_id": "macro-view:macro_regime_v4:timestamp",
+            "projection_version": "macro_regime_v4",
+            "asof_date": "2026-05-27",
+            "status": "ready",
+            "regime": "risk_on",
+            "overall_score": 6.8,
+            "computed_at_ms": 1_779_000_000_000,
+            "source_coverage_json": {
+                "latest_observed_at": "2026-05-28 00:00:00+00:00",
+            },
+        }
+    )
+    app = _app(repo)
+
+    with TestClient(app) as client:
+        response = client.get("/api/macro", headers={"Authorization": "Bearer secret"})
+
+    assert response.status_code == 200
+    assert response.json()["data"]["currentness"] == {
+        "publication_status": None,
+        "publication_row_count": None,
+        "publication_finished_at_ms": None,
+        "facts_max_observed_at": "2026-05-28",
+        "projection_lag_days": 1,
+        "projection_behind_facts": True,
+    }
+
+
 def test_macro_asset_correlation_api_returns_backend_computed_concept_matrix() -> None:
     repo = FakeMacroIntelRepository(
         snapshot=None,

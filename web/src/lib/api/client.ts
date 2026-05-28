@@ -86,6 +86,11 @@ async function requestApi<T>(
   }
 
   const response = await fetch(url, { headers, method: options.method });
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    const text = (await response.text()).trim();
+    throw new ApiError(text || response.statusText || "Request failed", response.status);
+  }
   const body = (await response.json()) as ApiResponse<T>;
   if (!response.ok || body.ok === false) {
     throw new ApiError(body.error ?? response.statusText, response.status, body.error);

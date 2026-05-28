@@ -308,7 +308,16 @@ def _to_date(value: object) -> date | None:
     if isinstance(value, datetime):
         return value.date()
     if isinstance(value, str):
-        return date.fromisoformat(value)
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return date.fromisoformat(text)
+        except ValueError:
+            try:
+                return datetime.fromisoformat(text.replace("Z", "+00:00")).date()
+            except ValueError:
+                return None
     return None
 
 
