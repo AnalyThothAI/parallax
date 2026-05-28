@@ -1621,15 +1621,46 @@ def test_token_equity_workerspace_root_fix_migration_contract() -> None:
         "add the token/equity WorkerSpace root-fix migration"
     )
     text = _migration_text(TOKEN_EQUITY_WORKERSPACE_ROOT_FIX_MIGRATION)
+    compact_text = "".join(text.split())
+    downgrade_text = text.split("def downgrade() -> None:", maxsplit=1)[1]
 
-    assert "source_payload_hash" in text
-    assert "source_dirty" in text
-    assert "market_dirty" in text
-    assert "equity_event_process_jobs" in text
-    assert "artifact_payload_hash" in text
-    assert "lease_owner" in text
-    assert "leased_until_ms" in text
-    assert "event_anchor_backfill_jobs" in text
+    assert 'revision = "20260528_0120"' in text
+    assert 'down_revision = "20260528_0116"' in text
+    assert "raise RuntimeError" in downgrade_text
+    assert (
+        'op.add_column("token_radar_rank_source_events",sa.Column("source_payload_hash"'
+        in compact_text
+    )
+    for column_name in ("source_dirty", "market_dirty", "repair_dirty"):
+        assert (
+            f'op.add_column("token_radar_dirty_targets",sa.Column("{column_name}"'
+            in compact_text
+        )
+    assert 'op.create_table("equity_event_process_jobs"' in compact_text
+    for column_name in (
+        "event_document_id",
+        "status",
+        "lease_owner",
+        "leased_until_ms",
+        "input_payload_hash",
+    ):
+        assert f'sa.Column("{column_name}"' in compact_text
+    assert (
+        'op.add_column("equity_event_evidence_artifacts",sa.Column("artifact_payload_hash"'
+        in compact_text
+    )
+    for column_name in ("lease_owner", "leased_until_ms"):
+        assert (
+            f'op.add_column("event_anchor_backfill_jobs",sa.Column("{column_name}"'
+            in compact_text
+        )
+    for index_name in (
+        "idx_equity_event_process_jobs_due",
+        "idx_equity_event_process_jobs_running",
+        "idx_event_anchor_backfill_jobs_due",
+        "idx_event_anchor_backfill_jobs_running",
+    ):
+        assert f'"{index_name}"' in text
     assert "queue_depth_table" not in text
 
 

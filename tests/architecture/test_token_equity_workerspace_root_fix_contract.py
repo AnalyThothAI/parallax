@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -22,6 +23,20 @@ def _function_source(text: str, function_name: str, *, context: str) -> str:
     raise AssertionError(f"{context} must define {function_name}")
 
 
+def _keyword_value(call: ast.Call, name: str) -> ast.AST | None:
+    return next((keyword.value for keyword in call.keywords if keyword.arg == name), None)
+
+
+def _literal_keyword(call: ast.Call, name: str) -> Any:
+    value = _keyword_value(call, name)
+    if value is None:
+        return None
+    try:
+        return ast.literal_eval(value)
+    except (TypeError, ValueError) as exc:
+        raise AssertionError(f"WorkerManifest keyword {name!r} must be a literal") from exc
+
+
 def _worker_manifest_call(manifest: str, worker_name: str) -> ast.Call:
     tree = ast.parse(manifest)
     for node in ast.walk(tree):
@@ -37,29 +52,11 @@ def _worker_manifest_call(manifest: str, worker_name: str) -> ast.Call:
     raise AssertionError(f"WorkerManifest {worker_name!r} is missing")
 
 
-def _worker_manifest_block(manifest: str, worker_name: str) -> str:
-    marker = f'name="{worker_name}"'
-    name_index = manifest.find(marker)
-    assert name_index != -1, f"WorkerManifest {worker_name!r} is missing"
-    start = manifest.rfind("WorkerManifest(", 0, name_index)
-    assert start != -1, f"WorkerManifest {worker_name!r} call start is missing"
-    end = manifest.find("WorkerManifest(", name_index + len(marker))
-    if end == -1:
-        end = manifest.find("\n)\n\n\ndef ", name_index)
-    assert end != -1, f"WorkerManifest {worker_name!r} call end is missing"
-    return manifest[start:end]
-
-
 def _current_read_model_identity_columns(manifest: str, *, worker_name: str, table_name: str) -> tuple[str, ...]:
     manifest_call = _worker_manifest_call(manifest, worker_name)
-    identity_keyword = next(
-        (keyword for keyword in manifest_call.keywords if keyword.arg == "current_read_model_identities"),
-        None,
-    )
-    assert identity_keyword is not None, f"{worker_name} must declare current_read_model_identities"
-    assert isinstance(identity_keyword.value, ast.Tuple), f"{worker_name} identities must be a tuple literal"
-    for entry in identity_keyword.value.elts:
-        table, columns = ast.literal_eval(entry)
+    identities = _literal_keyword(manifest_call, "current_read_model_identities")
+    assert isinstance(identities, tuple), f"{worker_name} must declare current_read_model_identities"
+    for table, columns in identities:
         if table == table_name:
             return tuple(columns)
     raise AssertionError(f"{worker_name} must declare identity columns for {table_name}")
@@ -161,10 +158,12 @@ def test_enforcement_workers_use_runtime_context_not_raw_worker_session() -> Non
 
 def test_event_anchor_and_equity_process_manifests_declare_leased_queues() -> None:
     manifest = _text("src/gmgn_twitter_intel/app/runtime/worker_manifest.py")
-    event_anchor = _worker_manifest_block(manifest, "event_anchor_backfill")
-    equity_process = _worker_manifest_block(manifest, "equity_event_process")
+    event_anchor = _worker_manifest_call(manifest, "event_anchor_backfill")
+    equity_process = _worker_manifest_call(manifest, "equity_event_process")
+    equity_process_control_tables = set(_literal_keyword(equity_process, "writes_control_plane") or ())
+    equity_process_control_tables.update(_literal_keyword(equity_process, "queue_health_tables") or ())
 
-    assert "uses_provider_io=True" in event_anchor
-    assert 'queue_depth_table="event_anchor_backfill_jobs"' in event_anchor
-    assert 'queue_depth_table="equity_event_process_jobs"' in equity_process
-    assert '"equity_event_process_jobs"' in equity_process
+    assert _literal_keyword(event_anchor, "uses_provider_io") is True
+    assert _literal_keyword(event_anchor, "queue_depth_table") == "event_anchor_backfill_jobs"
+    assert _literal_keyword(equity_process, "queue_depth_table") == "equity_event_process_jobs"
+    assert "equity_event_process_jobs" in equity_process_control_tables
