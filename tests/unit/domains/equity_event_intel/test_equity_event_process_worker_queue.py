@@ -4,6 +4,8 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any
 
+from gmgn_twitter_intel.app.runtime.worker_manifest import require_worker_manifest
+from gmgn_twitter_intel.app.runtime.worker_space import contract_from_manifest
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_process_worker import (
     EquityEventProcessWorker,
 )
@@ -81,6 +83,7 @@ def _worker(repo: _ProcessRepo) -> EquityEventProcessWorker:
         telemetry=SimpleNamespace(),
         wake_bus=_WakeBus(),
         clock_ms=lambda: NOW_MS,
+        worker_space_contract=contract_from_manifest(require_worker_manifest("equity_event_process")),
     )
 
 

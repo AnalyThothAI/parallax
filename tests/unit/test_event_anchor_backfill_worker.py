@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
 
 from gmgn_twitter_intel.app.runtime.providers_wiring import AssetMarketProviders
+from gmgn_twitter_intel.app.runtime.worker_manifest import require_worker_manifest
+from gmgn_twitter_intel.app.runtime.worker_space import WorkerSpaceContract, contract_from_manifest
 from gmgn_twitter_intel.domains.asset_market.providers import DexTokenQuote
 from gmgn_twitter_intel.domains.asset_market.runtime.event_anchor_backfill_worker import (
     EventAnchorBackfillWorker,
@@ -31,6 +34,7 @@ def test_event_anchor_provider_not_called_without_claim() -> None:
         min_age_ms=100,
         clock=lambda: NOW_MS,
         settings=_settings(),
+        worker_space_contract=_event_anchor_contract(),
     )
 
     result = asyncio.run(worker.run_once())
@@ -70,6 +74,7 @@ def test_run_once_expires_stale_jobs_before_provider_calls() -> None:
         min_age_ms=100,
         clock=lambda: NOW_MS,
         settings=_settings(),
+        worker_space_contract=_event_anchor_contract(),
     )
 
     result = asyncio.run(worker.run_once())
@@ -96,6 +101,7 @@ def test_run_once_with_no_due_rows_does_not_scan_ready_anchor_facts() -> None:
         min_age_ms=100,
         clock=lambda: NOW_MS,
         settings=_settings(),
+        worker_space_contract=_event_anchor_contract(),
     )
 
     result = asyncio.run(worker.run_once())
@@ -121,6 +127,7 @@ def test_run_once_reads_due_jobs_not_enriched_event_pending_rows() -> None:
         min_age_ms=100,
         clock=lambda: NOW_MS,
         settings=_settings(),
+        worker_space_contract=_event_anchor_contract(),
     )
 
     result = asyncio.run(worker.run_once())
@@ -142,6 +149,44 @@ def test_run_once_reads_due_jobs_not_enriched_event_pending_rows() -> None:
     assert wake.emitted == []
 
 
+def test_concurrent_captures_use_isolated_workerspace_session_depth() -> None:
+    hold_started = threading.Event()
+    release_hold = threading.Event()
+    rows = [
+        _pending_row(event_id="event-held-session", target_type="chain_token", target_id="solana:HOLD"),
+        _pending_row(event_id="event-provider", target_type="chain_token", target_id="solana:PROVIDER"),
+    ]
+    db = _FakeDB(
+        pending_rows=rows,
+        nearest_hold_target_id="solana:HOLD",
+        nearest_hold_started=hold_started,
+        nearest_hold_release=release_hold,
+    )
+    worker = EventAnchorBackfillWorker(
+        pool_bundle=db,
+        capture_service=_ReleasingUnavailableService("provider_no_quote", release_hold),
+        wake_emitter=_RecordingWakeEmitter(),
+        batch_size=10,
+        concurrency=2,
+        min_age_ms=100,
+        clock=lambda: NOW_MS,
+        settings=_settings(),
+        worker_space_contract=_event_anchor_contract(),
+    )
+
+    result = asyncio.run(worker.run_once())
+
+    assert hold_started.is_set()
+    assert release_hold.is_set()
+    assert result.processed == 0
+    assert result.notes["pending_selected"] == 2
+    assert result.notes["terminal_failures"] == 2
+    assert sorted(event_id for event_id, _intent_id, _reason in db.terminal_captures) == [
+        "event-held-session",
+        "event-provider",
+    ]
+
+
 def test_run_once_reschedules_rate_limited_jobs_inside_active_window() -> None:
     row = _pending_row(event_id="evt-rate", target_type="chain_token", target_id="solana:RATE")
     row["attempt_count"] = 0
@@ -157,6 +202,7 @@ def test_run_once_reschedules_rate_limited_jobs_inside_active_window() -> None:
         min_age_ms=100,
         clock=lambda: NOW_MS,
         settings=_settings(max_attempts=3),
+        worker_space_contract=_event_anchor_contract(),
     )
 
     result = asyncio.run(worker.run_once())
@@ -192,6 +238,7 @@ def test_run_once_stale_reschedule_lease_has_no_other_side_effects() -> None:
         min_age_ms=100,
         clock=lambda: NOW_MS,
         settings=_settings(max_attempts=3),
+        worker_space_contract=_event_anchor_contract(),
     )
 
     result = asyncio.run(worker.run_once())
@@ -239,6 +286,7 @@ def test_run_once_dispatches_to_capture_service_under_semaphore_then_persists_an
         min_age_ms=100,
         clock=lambda: NOW_MS,
         settings=_settings(),
+        worker_space_contract=_event_anchor_contract(),
     )
 
     result = asyncio.run(worker.run_once())
@@ -345,6 +393,7 @@ def test_run_once_cex_target_dispatches_to_message_cex_provider() -> None:
         min_age_ms=0,
         clock=lambda: NOW_MS,
         settings=_settings(),
+        worker_space_contract=_event_anchor_contract(),
     )
 
     result = asyncio.run(worker.run_once())
@@ -395,6 +444,7 @@ def test_run_once_provider_no_quote_terminalizes_job_and_does_not_wake() -> None
         min_age_ms=0,
         clock=lambda: NOW_MS,
         settings=_settings(),
+        worker_space_contract=_event_anchor_contract(),
     )
 
     result = asyncio.run(worker.run_once())
@@ -434,6 +484,7 @@ def test_run_once_stale_terminal_lease_does_not_mark_enriched_event_terminal() -
         min_age_ms=0,
         clock=lambda: NOW_MS,
         settings=_settings(),
+        worker_space_contract=_event_anchor_contract(),
     )
 
     result = asyncio.run(worker.run_once())
@@ -512,6 +563,7 @@ def test_run_once_wakes_only_targets_that_were_attached() -> None:
         min_age_ms=0,
         clock=lambda: NOW_MS,
         settings=_settings(),
+        worker_space_contract=_event_anchor_contract(),
     )
 
     result = asyncio.run(worker.run_once())
@@ -543,6 +595,10 @@ def _settings(*, max_attempts: int = 3) -> Any:
         active_window_ms=300_000,
         max_anchor_lag_ms=60_000,
     )
+
+
+def _event_anchor_contract() -> WorkerSpaceContract:
+    return contract_from_manifest(require_worker_manifest("event_anchor_backfill"))
 
 
 def _pending_row(*, event_id: str, target_type: str, target_id: str) -> dict[str, Any]:
@@ -608,6 +664,16 @@ class _UnavailableService:
         return CaptureResult(tick=None, capture=capture)
 
 
+class _ReleasingUnavailableService(_UnavailableService):
+    def __init__(self, reason: str, release_event: threading.Event) -> None:
+        super().__init__(reason)
+        self.release_event = release_event
+
+    def capture_backfill_quote(self, **kwargs: Any):
+        self.release_event.set()
+        return super().capture_backfill_quote(**kwargs)
+
+
 class _RecordingWakeEmitter:
     def __init__(self) -> None:
         self.emitted: list[tuple[str, str]] = []
@@ -627,6 +693,9 @@ class _FakeDB:
         terminal_results: list[bool] | None = None,
         reschedule_results: list[bool] | None = None,
         forbid_enriched_event_queue_scan: bool = False,
+        nearest_hold_target_id: str | None = None,
+        nearest_hold_started: threading.Event | None = None,
+        nearest_hold_release: threading.Event | None = None,
     ) -> None:
         self._pending_rows = pending_rows
         self._expired_rows = list(expired_rows or [])
@@ -652,6 +721,9 @@ class _FakeDB:
         self.provider_calls = 0
         self.dirty_target_enqueues: list[dict[str, Any]] = []
         self.open_sessions = 0
+        self.nearest_hold_target_id = nearest_hold_target_id
+        self.nearest_hold_started = nearest_hold_started
+        self.nearest_hold_release = nearest_hold_release
 
     def worker_session(self, name: str, statement_timeout_seconds: float | None = None):
         return _FakeWorkerSession(self)
@@ -861,7 +933,16 @@ class _FakeMarketTickRepo:
     def __init__(self, db: _FakeDB) -> None:
         self._db = db
 
-    def nearest_around(self, **_: Any) -> dict[str, Any] | None:
+    def nearest_around(self, **kwargs: Any) -> dict[str, Any] | None:
+        target_id = str(kwargs.get("target_id") or "")
+        if target_id == self._db.nearest_hold_target_id:
+            assert self._db.nearest_hold_started is not None
+            assert self._db.nearest_hold_release is not None
+            self._db.nearest_hold_started.set()
+            self._db.nearest_hold_release.wait(timeout=1.0)
+            return None
+        if self._db.nearest_hold_started is not None:
+            assert self._db.nearest_hold_started.wait(timeout=1.0)
         return None
 
     def insert_ticks_returning_ids(self, ticks: Any) -> list[str]:

@@ -162,7 +162,7 @@ class EventAnchorBackfillWorker(WorkerBase):
 
         semaphore = asyncio.Semaphore(self.concurrency)
         outcomes = await asyncio.gather(
-            *(self._capture_one(row, semaphore, now_ms=now_ms, runtime_context=runtime_context) for row in rows)
+            *(self._capture_one(row, semaphore, now_ms=now_ms) for row in rows)
         )
 
         attaches: list[_AttachOutcome] = []
@@ -212,9 +212,9 @@ class EventAnchorBackfillWorker(WorkerBase):
         semaphore: asyncio.Semaphore,
         *,
         now_ms: int,
-        runtime_context: Any | None = None,
     ) -> _BackfillOutcome:
-        context = runtime_context or self._runtime_context()
+        context = self._runtime_context()
+        context.mark_claimed(count=1)
         resolution = _resolution_from_row(row)
         async with semaphore:
             existing = await asyncio.to_thread(

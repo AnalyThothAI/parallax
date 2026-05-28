@@ -3,6 +3,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
+from gmgn_twitter_intel.app.runtime.worker_manifest import require_worker_manifest
+from gmgn_twitter_intel.app.runtime.worker_space import WorkerSpaceContract, contract_from_manifest
 from gmgn_twitter_intel.domains.equity_event_intel.repositories.equity_event_repository import (
     EquityEventRepository,
 )
@@ -26,6 +28,10 @@ from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_source_r
 )
 
 NOW_MS = 1_700_000_000_000
+
+
+def _worker_contract(worker_name: str) -> WorkerSpaceContract:
+    return contract_from_manifest(require_worker_manifest(worker_name))
 
 
 def test_empty_dirty_queue_does_not_call_broad_discovery() -> None:
@@ -347,6 +353,7 @@ def test_event_processing_enqueues_projection_and_matching_calendar_targets_in_s
         settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=None),
         db=_FakeDb(equity_repo=equity_repo, dirty_repo=dirty_repo),
         telemetry=SimpleNamespace(),
+        worker_space_contract=_worker_contract("equity_event_process"),
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)

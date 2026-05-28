@@ -113,15 +113,11 @@ class WorkerBase(ABC):
 
     def _runtime_context(self) -> Any:
         from gmgn_twitter_intel.app.runtime.runtime_worker_context import RuntimeWorkerContext
-        from gmgn_twitter_intel.app.runtime.worker_manifest import require_worker_manifest
-        from gmgn_twitter_intel.app.runtime.worker_space import WorkerSpace, contract_from_manifest
+        from gmgn_twitter_intel.app.runtime.worker_space import WorkerSpace
 
         contract = self.worker_space_contract
         if contract is None:
-            try:
-                contract = contract_from_manifest(require_worker_manifest(self.name))
-            except ValueError as exc:
-                raise RuntimeError(f"worker:{self.name}:missing WorkerSpace contract") from exc
+            raise RuntimeError(f"worker:{self.name}:missing WorkerSpace contract")
         return RuntimeWorkerContext(
             worker_name=self.name,
             db=self.db,

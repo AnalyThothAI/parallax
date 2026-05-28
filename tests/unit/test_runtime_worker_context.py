@@ -6,6 +6,8 @@ from types import SimpleNamespace
 import pytest
 
 from gmgn_twitter_intel.app.runtime.runtime_worker_context import RuntimeWorkerContext
+from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
+from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.app.runtime.worker_space import (
     ClaimContract,
     ClaimDiscipline,
@@ -49,6 +51,18 @@ def test_payload_load_requires_claim() -> None:
         assert repos.name == "runtime_context_test"
 
 
+def test_worker_base_runtime_context_requires_explicit_contract() -> None:
+    worker = _RuntimeContextProbeWorker(
+        name="token_radar_projection",
+        settings=SimpleNamespace(enabled=True, statement_timeout_seconds=None),
+        db=_Db(),
+        telemetry=SimpleNamespace(),
+    )
+
+    with pytest.raises(RuntimeError, match="missing WorkerSpace contract"):
+        worker._runtime_context()
+
+
 def _contract(*, provider_allowed: bool, claim_required: bool) -> WorkerSpaceContract:
     if not claim_required:
         return WorkerSpaceContract(
@@ -71,3 +85,8 @@ class _Db:
     @contextmanager
     def worker_session(self, name: str, statement_timeout_seconds: float | None = None):
         yield SimpleNamespace(name=name, statement_timeout_seconds=statement_timeout_seconds)
+
+
+class _RuntimeContextProbeWorker(WorkerBase):
+    async def run_once(self) -> WorkerResult:
+        return WorkerResult()

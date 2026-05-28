@@ -7,11 +7,17 @@ from typing import Any
 import pytest
 
 from gmgn_twitter_intel.app.runtime.provider_wiring.equity_events import EquityDocumentProviderFetchResult
+from gmgn_twitter_intel.app.runtime.worker_manifest import require_worker_manifest
+from gmgn_twitter_intel.app.runtime.worker_space import WorkerSpaceContract, contract_from_manifest
 from gmgn_twitter_intel.domains.equity_event_intel.runtime import equity_event_fetch_worker as fetch_module
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_fetch_worker import EquityEventFetchWorker
 from gmgn_twitter_intel.domains.equity_event_intel.types import NormalizedEquityDocument
 
 NOW_MS = 1_765_900_000_000
+
+
+def _worker_contract(worker_name: str) -> WorkerSpaceContract:
+    return contract_from_manifest(require_worker_manifest(worker_name))
 
 
 def test_fetch_worker_enqueues_evidence_jobs_without_hydrating(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -38,6 +44,7 @@ def test_fetch_worker_enqueues_evidence_jobs_without_hydrating(monkeypatch: pyte
         settings=SimpleNamespace(batch_size=20, statement_timeout_seconds=None),
         db=_Db(repo),
         telemetry=SimpleNamespace(),
+        worker_space_contract=_worker_contract("equity_event_fetch"),
         document_provider=_Provider(),
         wake_bus=_WakeBus(),
         clock_ms=lambda: NOW_MS,
@@ -87,6 +94,7 @@ def test_fetch_worker_uses_configured_evidence_job_max_attempts(monkeypatch: pyt
         ),
         db=_Db(repo),
         telemetry=SimpleNamespace(),
+        worker_space_contract=_worker_contract("equity_event_fetch"),
         document_provider=_Provider(),
         wake_bus=_WakeBus(),
         clock_ms=lambda: NOW_MS,
@@ -118,6 +126,7 @@ def test_fetch_worker_reaps_stale_fetch_runs_before_claiming_sources() -> None:
         ),
         db=_Db(repo),
         telemetry=SimpleNamespace(),
+        worker_space_contract=_worker_contract("equity_event_fetch"),
         document_provider=_Provider(),
         wake_bus=None,
         clock_ms=lambda: NOW_MS,
@@ -156,6 +165,7 @@ def test_fetch_worker_skips_side_effects_when_fetch_run_was_reaped(monkeypatch: 
         settings=SimpleNamespace(batch_size=20, statement_timeout_seconds=None),
         db=_Db(repo),
         telemetry=SimpleNamespace(),
+        worker_space_contract=_worker_contract("equity_event_fetch"),
         document_provider=_Provider(),
         wake_bus=_WakeBus(),
         clock_ms=lambda: NOW_MS,

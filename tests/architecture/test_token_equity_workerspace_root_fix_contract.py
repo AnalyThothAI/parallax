@@ -121,7 +121,7 @@ def test_equity_process_worker_uses_process_jobs_not_document_scan() -> None:
 
     assert "claim_due_process_jobs" in worker
     assert "load_process_packets_for_claims" in worker
-    assert "unit_of_work()" in worker
+    assert "transaction_session()" in worker
     assert "list_event_documents_for_processing" not in worker
     assert "def list_event_documents_for_processing" not in repo
     assert "def list_unprocessed_event_documents" not in repo

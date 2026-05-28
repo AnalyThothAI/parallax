@@ -6,7 +6,9 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
+from gmgn_twitter_intel.app.runtime.worker_manifest import require_worker_manifest
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
+from gmgn_twitter_intel.app.runtime.worker_space import WorkerSpaceContract, contract_from_manifest
 from gmgn_twitter_intel.domains.token_intel.runtime import token_radar_projection_worker as module
 
 
@@ -83,6 +85,10 @@ class FakeAdvisoryLock:
         return None
 
 
+def _token_radar_contract() -> WorkerSpaceContract:
+    return contract_from_manifest(require_worker_manifest("token_radar_projection"))
+
+
 def test_projection_worker_calls_dirty_incremental_projection_not_window_rebuild(monkeypatch):
     calls: list[dict[str, object]] = []
     publication_state = {}
@@ -113,6 +119,7 @@ def test_projection_worker_calls_dirty_incremental_projection_not_window_rebuild
         settings=_settings(windows=("5m", "1h", "4h"), scopes=("all", "matched"), batch_size=7),
         db=db,
         telemetry=object(),
+        worker_space_contract=_token_radar_contract(),
         wake_bus=wake_bus,
     )
 
@@ -171,6 +178,7 @@ def test_projection_worker_run_once_returns_worker_result(monkeypatch):
         settings=_settings(windows=("5m",), scopes=("all",), hot_windows=("5m",), batch_size=7),
         db=FakeDB({}),
         telemetry=object(),
+        worker_space_contract=_token_radar_contract(),
     )
 
     result = asyncio.run(worker.run_once())
@@ -201,6 +209,7 @@ def test_token_radar_wake_does_not_bypass_hot_interval_gate(monkeypatch):
         settings=_settings(windows=("5m",), scopes=("all",), hot_windows=("5m",), interval_seconds=10.0),
         db=FakeDB(publication_state),
         telemetry=object(),
+        worker_space_contract=_token_radar_contract(),
     )
 
     result = asyncio.run(worker.run_once(now_ms=now_ms))
@@ -249,6 +258,7 @@ def test_token_radar_worker_runs_only_due_hot_items_after_interval(monkeypatch):
         ),
         db=FakeDB(publication_state),
         telemetry=object(),
+        worker_space_contract=_token_radar_contract(),
     )
 
     worker.rebuild_once(now_ms=now_ms)
@@ -286,6 +296,7 @@ def test_token_radar_worker_idles_when_cold_grouped_window_is_fresh(monkeypatch)
         ),
         db=FakeDB(publication_state),
         telemetry=object(),
+        worker_space_contract=_token_radar_contract(),
     )
 
     result = worker.rebuild_once(now_ms=now_ms)
@@ -332,6 +343,7 @@ def test_token_radar_worker_runs_due_cold_grouped_window_after_interval(monkeypa
         ),
         db=FakeDB(publication_state),
         telemetry=object(),
+        worker_space_contract=_token_radar_contract(),
     )
 
     worker.rebuild_once(now_ms=now_ms)
@@ -366,6 +378,7 @@ def test_token_radar_failed_without_current_backs_off_recent_attempt(monkeypatch
         settings=_settings(windows=("5m",), scopes=("all",), hot_windows=("5m",), interval_seconds=10.0),
         db=FakeDB(publication_state),
         telemetry=object(),
+        worker_space_contract=_token_radar_contract(),
     )
 
     result = worker.rebuild_once(now_ms=now_ms)
@@ -407,6 +420,7 @@ def test_token_radar_failed_with_previous_generation_uses_attempt_backoff(monkey
         ),
         db=FakeDB(publication_state),
         telemetry=object(),
+        worker_space_contract=_token_radar_contract(),
     )
 
     result = worker.rebuild_once(now_ms=now_ms)
@@ -444,6 +458,7 @@ def test_token_radar_ready_state_without_publish_time_is_due(monkeypatch):
         settings=_settings(windows=("5m",), scopes=("all",), hot_windows=("5m",), interval_seconds=10.0),
         db=FakeDB(publication_state),
         telemetry=object(),
+        worker_space_contract=_token_radar_contract(),
     )
 
     worker.rebuild_once(now_ms=now_ms)
@@ -486,6 +501,7 @@ def test_token_radar_worker_limits_partial_cold_missing_to_one_background_item(m
         ),
         db=FakeDB(publication_state),
         telemetry=object(),
+        worker_space_contract=_token_radar_contract(),
     )
 
     worker.rebuild_once(now_ms=now_ms)
@@ -525,6 +541,7 @@ def test_projection_worker_limits_dirty_rebuild_to_hot_and_due_cold_work_items(m
         settings=_settings(windows=("5m", "1h", "4h"), scopes=("all", "matched"), batch_size=7),
         db=FakeDB(publication_state),
         telemetry=object(),
+        worker_space_contract=_token_radar_contract(),
     )
 
     worker.rebuild_once(now_ms=1_777_800_000_000)
@@ -571,6 +588,7 @@ def test_projection_worker_treats_failed_publication_state_as_due_work(monkeypat
         ),
         db=FakeDB(publication_state),
         telemetry=object(),
+        worker_space_contract=_token_radar_contract(),
     )
 
     worker.rebuild_once(now_ms=now_ms)
@@ -584,6 +602,7 @@ def test_projection_worker_does_not_treat_ready_empty_publication_state_as_missi
         settings=_settings(windows=("5m", "1h"), scopes=("all", "matched")),
         db=FakeDB({}),
         telemetry=object(),
+        worker_space_contract=_token_radar_contract(),
     )
 
     missing = worker._missing_work_items(
@@ -610,6 +629,7 @@ def test_projection_worker_missing_work_items_excludes_cold_failed_before_backgr
         ),
         db=FakeDB({}),
         telemetry=object(),
+        worker_space_contract=_token_radar_contract(),
     )
 
     missing = worker._missing_work_items(
@@ -634,6 +654,7 @@ def test_projection_worker_missing_work_items_excludes_cold_failed_even_after_in
         ),
         db=FakeDB({}),
         telemetry=object(),
+        worker_space_contract=_token_radar_contract(),
     )
 
     missing = worker._missing_work_items(
@@ -680,6 +701,7 @@ def test_projection_worker_records_partial_window_results_before_background_fail
         settings=_settings(windows=("1h",), scopes=("all", "matched"), hot_windows=(), batch_size=7),
         db=FakeDB({}),
         telemetry=object(),
+        worker_space_contract=_token_radar_contract(),
     )
     worker.db.worker_session = repository_session
 
@@ -715,6 +737,7 @@ def test_projection_worker_uses_wake_waiter_before_interval(monkeypatch):
             settings=_settings(windows=("5m",), scopes=("all",), interval_seconds=60.0),
             db=FakeDB({}),
             telemetry=object(),
+            worker_space_contract=_token_radar_contract(),
             wake_waiter=wake_waiter,
         )
         task = asyncio.create_task(worker.run())
@@ -851,6 +874,7 @@ def _worker(
         ),
         db=db,
         telemetry=object(),
+        worker_space_contract=_token_radar_contract(),
     )
     worker._test_monkeypatch = monkeypatch  # type: ignore[attr-defined]
     return worker
@@ -878,6 +902,7 @@ def test_projection_worker_leaves_catch_up_to_projection_service(monkeypatch) ->
         settings=_settings(windows=("5m", "1h"), scopes=("all",), hot_windows=("5m",), batch_size=7),
         db=db,
         telemetry=object(),
+        worker_space_contract=_token_radar_contract(),
     )
 
     result = worker.rebuild_once(now_ms=122_000)

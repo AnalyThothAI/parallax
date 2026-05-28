@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any
 
+from gmgn_twitter_intel.app.runtime.worker_manifest import require_worker_manifest
+from gmgn_twitter_intel.app.runtime.worker_space import WorkerSpaceContract, contract_from_manifest
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_evidence_hydration_worker import (
     EquityEventEvidenceHydrationWorker,
 )
@@ -32,6 +34,7 @@ def test_hydration_worker_claims_job_writes_artifacts_finishes_and_wakes() -> No
         document_provider=_Provider(),
         wake_bus=wake_bus,
         clock_ms=lambda: NOW_MS,
+        worker_space_contract=_worker_contract("equity_event_evidence_hydration"),
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)
@@ -87,6 +90,7 @@ def test_hydration_worker_terminalizes_reaped_stale_job_with_failed_artifact_and
         document_provider=_Provider(),
         wake_bus=wake_bus,
         clock_ms=lambda: NOW_MS,
+        worker_space_contract=_worker_contract("equity_event_evidence_hydration"),
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)
@@ -145,6 +149,7 @@ def test_hydration_worker_skips_stale_claim_after_document_reset() -> None:
         document_provider=_Provider(),
         wake_bus=wake_bus,
         clock_ms=lambda: NOW_MS,
+        worker_space_contract=_worker_contract("equity_event_evidence_hydration"),
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)
@@ -183,6 +188,7 @@ def test_hydration_worker_retryable_exception_passes_document_claim_guard() -> N
         document_provider=_FailingProvider(),
         wake_bus=wake_bus,
         clock_ms=lambda: NOW_MS,
+        worker_space_contract=_worker_contract("equity_event_evidence_hydration"),
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)
@@ -218,6 +224,7 @@ def test_hydration_worker_missing_input_failure_does_not_finish_without_content_
         document_provider=_Provider(),
         wake_bus=wake_bus,
         clock_ms=lambda: NOW_MS,
+        worker_space_contract=_worker_contract("equity_event_evidence_hydration"),
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)
@@ -244,6 +251,7 @@ def test_hydration_worker_defensive_exception_without_content_hash_does_not_fini
         document_provider=_Provider(),
         wake_bus=wake_bus,
         clock_ms=lambda: NOW_MS,
+        worker_space_contract=_worker_contract("equity_event_evidence_hydration"),
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)
@@ -271,6 +279,7 @@ def test_hydration_worker_defensive_exception_with_content_hash_finishes_retryab
         document_provider=_Provider(),
         wake_bus=wake_bus,
         clock_ms=lambda: NOW_MS,
+        worker_space_contract=_worker_contract("equity_event_evidence_hydration"),
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)
@@ -587,6 +596,10 @@ class _Db:
 
     def worker_session(self, *_: Any, **__: Any) -> _Session:
         return _Session(self.repo)
+
+
+def _worker_contract(worker_name: str) -> WorkerSpaceContract:
+    return contract_from_manifest(require_worker_manifest(worker_name))
 
 
 class _Session:

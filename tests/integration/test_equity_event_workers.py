@@ -10,6 +10,8 @@ import pytest
 
 from gmgn_twitter_intel.app.runtime.provider_wiring.equity_events import EquityDocumentProviderFetchResult
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
+from gmgn_twitter_intel.app.runtime.worker_manifest import require_worker_manifest
+from gmgn_twitter_intel.app.runtime.worker_space import WorkerSpaceContract, contract_from_manifest
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_brief_worker import EquityEventBriefWorker
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_evidence_hydration_worker import (
     EquityEventEvidenceHydrationWorker,
@@ -37,6 +39,10 @@ from gmgn_twitter_intel.platform.config.settings import Settings
 from tests.postgres_test_utils import connect_postgres_test, reset_postgres_schema
 
 NOW_MS = 1_765_900_000_000
+
+
+def _worker_contract(worker_name: str) -> WorkerSpaceContract:
+    return contract_from_manifest(require_worker_manifest(worker_name))
 
 
 @pytest.fixture
@@ -124,6 +130,7 @@ def test_source_reconcile_and_fetch_workers_write_sec_documents_outside_db_sessi
         settings=settings.workers.equity_event_fetch,
         db=db,
         telemetry=SimpleNamespace(),
+        worker_space_contract=_worker_contract("equity_event_fetch"),
         document_provider=provider,
         wake_bus=wake_bus,
         clock_ms=lambda: NOW_MS + 1_000,
@@ -160,6 +167,7 @@ def test_source_reconcile_and_fetch_workers_write_sec_documents_outside_db_sessi
         settings=settings.workers.equity_event_process,
         db=db,
         telemetry=SimpleNamespace(),
+        worker_space_contract=_worker_contract("equity_event_process"),
         wake_bus=wake_bus,
         clock_ms=lambda: NOW_MS + 2_000,
     )
@@ -433,6 +441,7 @@ def test_fetch_worker_records_structured_provider_failure(postgres_conn) -> None
         settings=Settings().workers.equity_event_fetch,
         db=db,
         telemetry=SimpleNamespace(),
+        worker_space_contract=_worker_contract("equity_event_fetch"),
         document_provider=provider,
         wake_bus=None,
         clock_ms=lambda: NOW_MS + 1_000,
@@ -1868,6 +1877,7 @@ def _process_worker(db: _WorkerDb, *, now_ms: int, batch_size: int = 100) -> Equ
         settings=settings.workers.equity_event_process,
         db=db,
         telemetry=SimpleNamespace(),
+        worker_space_contract=_worker_contract("equity_event_process"),
         wake_bus=None,
         clock_ms=lambda: now_ms,
     )
@@ -2259,6 +2269,7 @@ def _fetch_worker(
         settings=Settings().workers.equity_event_fetch,
         db=db,
         telemetry=SimpleNamespace(),
+        worker_space_contract=_worker_contract("equity_event_fetch"),
         document_provider=provider,
         wake_bus=wake_bus,
         clock_ms=lambda: now_ms,
@@ -2277,6 +2288,7 @@ def _hydration_worker(
         settings=Settings().workers.equity_event_evidence_hydration,
         db=db,
         telemetry=SimpleNamespace(),
+        worker_space_contract=_worker_contract("equity_event_evidence_hydration"),
         document_provider=provider,
         wake_bus=wake_bus,
         clock_ms=lambda: now_ms,

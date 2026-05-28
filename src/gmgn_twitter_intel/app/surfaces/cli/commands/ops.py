@@ -20,6 +20,8 @@ from gmgn_twitter_intel.app.runtime.projection_dirty_targets import enqueue_proj
 from gmgn_twitter_intel.app.runtime.provider_wiring.openai import build_agent_execution_gateway
 from gmgn_twitter_intel.app.runtime.providers_wiring import wire_asset_market_providers, wire_providers
 from gmgn_twitter_intel.app.runtime.telemetry import TelemetryRegistry
+from gmgn_twitter_intel.app.runtime.worker_manifest import require_worker_manifest
+from gmgn_twitter_intel.app.runtime.worker_space import contract_from_manifest
 from gmgn_twitter_intel.app.runtime.worker_status import workers_status_payload
 from gmgn_twitter_intel.app.surfaces.cli.commands import queue_ops
 from gmgn_twitter_intel.app.surfaces.cli.dependencies import repositories
@@ -780,6 +782,7 @@ def _run_token_radar_projection_worker_once(
             settings=_worker_settings_with_overrides(settings.workers.token_radar_projection, batch_size=limit),
             db=db,
             telemetry=telemetry,
+            worker_space_contract=contract_from_manifest(require_worker_manifest(worker_name)),
             wake_bus=db.wake_emitter(),
             wake_waiter=db.wake_listener(worker_name, settings.workers.token_radar_projection.wakes_on),
         )
