@@ -28,13 +28,13 @@ Known-failing baseline tests: none expected. If baseline fails, record exact fai
 
 ### Storage / migrations
 
-- Create `src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0116_news_intel_canonical_dedup_hard_cut.py`.
+- Create `src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0117_news_intel_canonical_dedup_hard_cut.py`.
 
   Alembic header:
 
   ```python
-  revision = "20260528_0116"
-  down_revision = "20260527_0115"
+  revision = "20260528_0117"
+  down_revision = "20260528_0116"
   branch_labels = None
   depends_on = None
   ```

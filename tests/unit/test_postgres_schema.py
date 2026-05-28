@@ -178,6 +178,9 @@ NEXT_RUNTIME_LIFECYCLE_HARD_CUT_MIGRATION = Path(
 MACRO_WORKERSPACE_ROOT_FIX_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0116_macro_workerspace_root_fix.py"
 )
+NEWS_INTEL_CANONICAL_DEDUP_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0117_news_intel_canonical_dedup_hard_cut.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 LEGACY_TOKEN_RADAR_CURRENT_JSON_COLUMNS = {
@@ -971,6 +974,7 @@ def test_runtime_performance_hard_cut_revision_chain() -> None:
         (RUNTIME_DB_PERFORMANCE_HARD_CUT_MIGRATION, "20260527_0114", "20260527_0113"),
         (NEXT_RUNTIME_LIFECYCLE_HARD_CUT_MIGRATION, "20260527_0115", "20260527_0114"),
         (MACRO_WORKERSPACE_ROOT_FIX_MIGRATION, "20260528_0116", "20260527_0115"),
+        (NEWS_INTEL_CANONICAL_DEDUP_MIGRATION, "20260528_0117", "20260528_0116"),
     )
 
     for migration, revision, down_revision in migrations:

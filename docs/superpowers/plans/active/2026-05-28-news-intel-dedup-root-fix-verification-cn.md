@@ -31,7 +31,7 @@ uv run ruff check .
 Result: `All checks passed!`.
 
 ```bash
-uv run ruff format --check src/gmgn_twitter_intel/domains/news_intel/services/news_canonical_identity.py src/gmgn_twitter_intel/domains/news_intel/services/news_url_identity.py src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0116_news_intel_canonical_dedup_hard_cut.py tests/unit/domains/news_intel/test_news_canonical_identity.py tests/unit/domains/news_intel/test_news_url_identity.py $(git diff --name-only -- '*.py')
+uv run ruff format --check src/gmgn_twitter_intel/domains/news_intel/services/news_canonical_identity.py src/gmgn_twitter_intel/domains/news_intel/services/news_url_identity.py src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0117_news_intel_canonical_dedup_hard_cut.py tests/unit/domains/news_intel/test_news_canonical_identity.py tests/unit/domains/news_intel/test_news_url_identity.py $(git diff --name-only -- '*.py')
 ```
 
 Result: `36 files already formatted`.
