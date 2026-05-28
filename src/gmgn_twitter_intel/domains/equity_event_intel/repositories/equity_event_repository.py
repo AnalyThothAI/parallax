@@ -8,6 +8,8 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
+from gmgn_twitter_intel.platform.db.json_safety import postgres_safe_json
+
 _DEFAULT_SOURCE_CLAIM_LEASE_MS = 60_000
 _FETCH_RUN_FINAL_STATUSES = {"success", "failed_retryable", "failed_terminal"}
 
@@ -1562,6 +1564,341 @@ class EquityEventRepository:
             """,
             (event_document_id,),
         ).fetchall()
+        return [dict(row) for row in rows]
+
+    def enqueue_process_job_for_document(
+        self,
+        *,
+        event_document_id: str,
+        due_at_ms: int,
+        now_ms: int,
+        commit: bool = True,
+    ) -> dict[str, Any]:
+        document = self.conn.execute(
+            """
+            SELECT documents.event_document_id,
+                   documents.provider_document_id,
+                   documents.company_id,
+                   documents.ticker,
+                   documents.cik,
+                   documents.source_id,
+                   documents.source_role,
+                   documents.document_type,
+                   documents.form_type,
+                   documents.accession_number,
+                   documents.fiscal_period,
+                   documents.document_url,
+                   documents.content_hash,
+                   documents.evidence_status,
+                   documents.evidence_reason
+              FROM equity_event_documents AS documents
+             WHERE documents.event_document_id = %(event_document_id)s
+             LIMIT 1
+            """,
+            {"event_document_id": str(event_document_id)},
+        ).fetchone()
+        if document is None:
+            if commit:
+                self.conn.commit()
+            return {}
+        artifacts = self.conn.execute(
+            """
+            SELECT artifacts.evidence_artifact_id,
+                   artifacts.artifact_kind,
+                   artifacts.content_hash,
+                   artifacts.extraction_status,
+                   artifacts.artifact_payload_hash
+              FROM equity_event_evidence_artifacts AS artifacts
+             WHERE artifacts.event_document_id = %(event_document_id)s
+             ORDER BY artifacts.artifact_kind ASC, artifacts.evidence_artifact_id ASC
+            """,
+            {"event_document_id": str(event_document_id)},
+        ).fetchall()
+        input_payload_hash = _process_input_payload_hash(
+            document=dict(document),
+            artifacts=[dict(artifact) for artifact in artifacts],
+        )
+        row = self.conn.execute(
+            """
+            INSERT INTO equity_event_process_jobs (
+              event_document_id, status, due_at_ms, attempt_count, max_attempts,
+              lease_owner, leased_until_ms, input_payload_hash, started_at_ms,
+              finished_at_ms, last_error, terminal_reason, created_at_ms, updated_at_ms
+            )
+            VALUES (
+              %(event_document_id)s, 'pending', %(due_at_ms)s, 0, 3,
+              NULL, NULL, %(input_payload_hash)s, NULL,
+              NULL, NULL, NULL, %(now_ms)s, %(now_ms)s
+            )
+            ON CONFLICT (event_document_id) DO UPDATE SET
+              status = CASE
+                WHEN equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
+                  OR equity_event_process_jobs.status IN ('pending', 'failed_retryable')
+                  THEN 'pending'
+                ELSE equity_event_process_jobs.status
+              END,
+              due_at_ms = CASE
+                WHEN equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
+                  OR equity_event_process_jobs.status IN ('pending', 'failed_retryable')
+                  THEN EXCLUDED.due_at_ms
+                ELSE equity_event_process_jobs.due_at_ms
+              END,
+              attempt_count = CASE
+                WHEN equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
+                  THEN 0
+                ELSE equity_event_process_jobs.attempt_count
+              END,
+              input_payload_hash = CASE
+                WHEN equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
+                  OR equity_event_process_jobs.status IN ('pending', 'failed_retryable')
+                  THEN EXCLUDED.input_payload_hash
+                ELSE equity_event_process_jobs.input_payload_hash
+              END,
+              started_at_ms = CASE
+                WHEN equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
+                  OR equity_event_process_jobs.status IN ('pending', 'failed_retryable')
+                  THEN NULL
+                ELSE equity_event_process_jobs.started_at_ms
+              END,
+              finished_at_ms = CASE
+                WHEN equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
+                  OR equity_event_process_jobs.status IN ('pending', 'failed_retryable')
+                  THEN NULL
+                ELSE equity_event_process_jobs.finished_at_ms
+              END,
+              lease_owner = CASE
+                WHEN equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
+                  OR equity_event_process_jobs.status IN ('pending', 'failed_retryable')
+                  THEN NULL
+                ELSE equity_event_process_jobs.lease_owner
+              END,
+              leased_until_ms = CASE
+                WHEN equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
+                  OR equity_event_process_jobs.status IN ('pending', 'failed_retryable')
+                  THEN NULL
+                ELSE equity_event_process_jobs.leased_until_ms
+              END,
+              last_error = CASE
+                WHEN equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
+                  OR equity_event_process_jobs.status IN ('pending', 'failed_retryable')
+                  THEN NULL
+                ELSE equity_event_process_jobs.last_error
+              END,
+              terminal_reason = CASE
+                WHEN equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
+                  OR equity_event_process_jobs.status IN ('pending', 'failed_retryable')
+                  THEN NULL
+                ELSE equity_event_process_jobs.terminal_reason
+              END,
+              updated_at_ms = CASE
+                WHEN equity_event_process_jobs.input_payload_hash IS DISTINCT FROM EXCLUDED.input_payload_hash
+                  OR equity_event_process_jobs.status IN ('pending', 'failed_retryable')
+                  THEN EXCLUDED.updated_at_ms
+                ELSE equity_event_process_jobs.updated_at_ms
+              END
+            RETURNING *
+            """,
+            {
+                "event_document_id": str(event_document_id),
+                "due_at_ms": int(due_at_ms),
+                "input_payload_hash": input_payload_hash,
+                "now_ms": int(now_ms),
+            },
+        ).fetchone()
+        if commit:
+            self.conn.commit()
+        return dict(row) if row is not None else {}
+
+    def claim_due_process_jobs(
+        self,
+        *,
+        now_ms: int,
+        limit: int,
+        lease_owner: str,
+        lease_ms: int = 60_000,
+        commit: bool = True,
+    ) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            WITH due AS (
+              SELECT event_document_id
+                FROM equity_event_process_jobs
+               WHERE status IN ('pending', 'failed_retryable')
+                 AND due_at_ms <= %(now_ms)s
+                 AND attempt_count < max_attempts
+               ORDER BY due_at_ms ASC, created_at_ms ASC, event_document_id ASC
+               LIMIT %(limit)s
+               FOR UPDATE SKIP LOCKED
+            )
+            UPDATE equity_event_process_jobs AS jobs
+               SET status = 'running',
+                   started_at_ms = COALESCE(jobs.started_at_ms, %(now_ms)s),
+                   finished_at_ms = NULL,
+                   attempt_count = jobs.attempt_count + 1,
+                   lease_owner = %(lease_owner)s,
+                   leased_until_ms = %(leased_until_ms)s,
+                   last_error = NULL,
+                   terminal_reason = NULL,
+                   updated_at_ms = %(now_ms)s
+              FROM due
+             WHERE jobs.event_document_id = due.event_document_id
+            RETURNING jobs.*
+            """,
+            {
+                "now_ms": int(now_ms),
+                "limit": max(0, int(limit)),
+                "lease_owner": str(lease_owner),
+                "leased_until_ms": int(now_ms) + max(1, int(lease_ms)),
+            },
+        ).fetchall()
+        if commit:
+            self.conn.commit()
+        return [dict(row) for row in rows]
+
+    def finish_process_job_success(
+        self,
+        *,
+        event_document_id: str,
+        lease_owner: str,
+        attempt_count: int,
+        input_payload_hash: str,
+        now_ms: int,
+        commit: bool = True,
+    ) -> bool:
+        row = self.conn.execute(
+            """
+            UPDATE equity_event_process_jobs
+               SET status = 'done',
+                   finished_at_ms = %(now_ms)s,
+                   lease_owner = NULL,
+                   leased_until_ms = NULL,
+                   last_error = NULL,
+                   terminal_reason = NULL,
+                   updated_at_ms = %(now_ms)s
+             WHERE event_document_id = %(event_document_id)s
+               AND status = 'running'
+               AND lease_owner = %(lease_owner)s
+               AND attempt_count = %(attempt_count)s
+               AND input_payload_hash = %(input_payload_hash)s
+            RETURNING event_document_id
+            """,
+            {
+                "event_document_id": str(event_document_id),
+                "lease_owner": str(lease_owner),
+                "attempt_count": int(attempt_count),
+                "input_payload_hash": str(input_payload_hash),
+                "now_ms": int(now_ms),
+            },
+        ).fetchone()
+        if commit:
+            self.conn.commit()
+        return row is not None
+
+    def finish_process_job_failure(
+        self,
+        *,
+        event_document_id: str,
+        lease_owner: str,
+        attempt_count: int,
+        input_payload_hash: str,
+        error: str,
+        now_ms: int,
+        retry_ms: int,
+        commit: bool = True,
+    ) -> bool:
+        row = self.conn.execute(
+            """
+            UPDATE equity_event_process_jobs
+               SET status = CASE
+                     WHEN attempt_count >= max_attempts THEN 'failed_terminal'
+                     ELSE 'failed_retryable'
+                   END,
+                   due_at_ms = CASE
+                     WHEN attempt_count >= max_attempts THEN due_at_ms
+                     ELSE %(due_at_ms)s
+                   END,
+                   finished_at_ms = CASE
+                     WHEN attempt_count >= max_attempts THEN %(now_ms)s
+                     ELSE NULL
+                   END,
+                   lease_owner = NULL,
+                   leased_until_ms = NULL,
+                   last_error = %(last_error)s,
+                   terminal_reason = CASE
+                     WHEN attempt_count >= max_attempts THEN %(last_error)s
+                     ELSE NULL
+                   END,
+                   updated_at_ms = %(now_ms)s
+             WHERE event_document_id = %(event_document_id)s
+               AND status = 'running'
+               AND lease_owner = %(lease_owner)s
+               AND attempt_count = %(attempt_count)s
+               AND input_payload_hash = %(input_payload_hash)s
+            RETURNING event_document_id
+            """,
+            {
+                "event_document_id": str(event_document_id),
+                "lease_owner": str(lease_owner),
+                "attempt_count": int(attempt_count),
+                "input_payload_hash": str(input_payload_hash),
+                "last_error": _compact_error(error),
+                "due_at_ms": int(now_ms) + max(1, int(retry_ms)),
+                "now_ms": int(now_ms),
+            },
+        ).fetchone()
+        if commit:
+            self.conn.commit()
+        return row is not None
+
+    def expire_stale_process_jobs(
+        self,
+        *,
+        now_ms: int,
+        limit: int,
+        commit: bool = True,
+    ) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            WITH stale AS (
+              SELECT event_document_id
+                FROM equity_event_process_jobs
+               WHERE status = 'running'
+                 AND leased_until_ms IS NOT NULL
+                 AND leased_until_ms <= %(now_ms)s
+               ORDER BY leased_until_ms ASC, started_at_ms ASC, event_document_id ASC
+               LIMIT %(limit)s
+               FOR UPDATE SKIP LOCKED
+            )
+            UPDATE equity_event_process_jobs AS jobs
+               SET status = CASE
+                     WHEN jobs.attempt_count >= jobs.max_attempts THEN 'failed_terminal'
+                     ELSE 'failed_retryable'
+                   END,
+                   due_at_ms = CASE
+                     WHEN jobs.attempt_count >= jobs.max_attempts THEN jobs.due_at_ms
+                     ELSE %(now_ms)s
+                   END,
+                   finished_at_ms = CASE
+                     WHEN jobs.attempt_count >= jobs.max_attempts THEN %(now_ms)s
+                     ELSE NULL
+                   END,
+                   lease_owner = NULL,
+                   leased_until_ms = NULL,
+                   last_error = COALESCE(jobs.last_error, 'process_job_lease_expired'),
+                   terminal_reason = CASE
+                     WHEN jobs.attempt_count >= jobs.max_attempts
+                       THEN COALESCE(jobs.last_error, 'process_job_lease_expired')
+                     ELSE NULL
+                   END,
+                   updated_at_ms = %(now_ms)s
+              FROM stale
+             WHERE jobs.event_document_id = stale.event_document_id
+            RETURNING jobs.*
+            """,
+            {"now_ms": int(now_ms), "limit": max(0, int(limit))},
+        ).fetchall()
+        if commit:
+            self.conn.commit()
         return [dict(row) for row in rows]
 
     def list_event_documents_for_processing(self, *, limit: int) -> list[dict[str, Any]]:
@@ -3503,6 +3840,54 @@ def _projection_payload_hash(payload: Mapping[str, Any]) -> str:
         if key not in {"computed_at_ms", "payload_hash", "source_watermark_ms", "freshness_json"}
     }
     encoded = json.dumps(hash_payload, sort_keys=True, ensure_ascii=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _process_input_payload_hash(
+    *,
+    document: Mapping[str, Any],
+    artifacts: Sequence[Mapping[str, Any]],
+) -> str:
+    artifact_payloads = [
+        {
+            "evidence_artifact_id": artifact.get("evidence_artifact_id"),
+            "artifact_kind": artifact.get("artifact_kind"),
+            "content_hash": artifact.get("content_hash"),
+            "extraction_status": artifact.get("extraction_status"),
+            "artifact_payload_hash": artifact.get("artifact_payload_hash"),
+        }
+        for artifact in artifacts
+    ]
+    artifact_payloads.sort(
+        key=lambda artifact: (
+            str(artifact.get("artifact_kind") or ""),
+            str(artifact.get("evidence_artifact_id") or ""),
+        )
+    )
+    payload = {
+        "event_document_id": document.get("event_document_id"),
+        "provider_document_id": document.get("provider_document_id"),
+        "company_id": document.get("company_id"),
+        "ticker": document.get("ticker"),
+        "cik": document.get("cik"),
+        "source_id": document.get("source_id"),
+        "source_role": document.get("source_role"),
+        "document_type": document.get("document_type"),
+        "form_type": document.get("form_type"),
+        "accession_number": document.get("accession_number"),
+        "fiscal_period": document.get("fiscal_period"),
+        "document_url": document.get("document_url"),
+        "content_hash": document.get("content_hash"),
+        "evidence_status": document.get("evidence_status"),
+        "evidence_reason": document.get("evidence_reason"),
+        "artifacts": artifact_payloads,
+    }
+    encoded = json.dumps(
+        postgres_safe_json(payload),
+        sort_keys=True,
+        ensure_ascii=True,
+        separators=(",", ":"),
+    )
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
