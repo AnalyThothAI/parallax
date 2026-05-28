@@ -33,7 +33,8 @@ class EquityEventProcessWorker(WorkerBase):
 
     def run_once_sync(self, *, now_ms: int | None = None) -> WorkerResult:
         now = int(now_ms if now_ms is not None else self.clock_ms())
-        with self._repository_session() as repos:
+        runtime_context = self._runtime_context()
+        with runtime_context.claim_session() as repos:
             expired = repos.equity_events.expire_stale_process_jobs(
                 now_ms=now,
                 limit=self._batch_size(),
@@ -47,13 +48,14 @@ class EquityEventProcessWorker(WorkerBase):
                 commit=False,
             )
             repos.conn.commit()
+        runtime_context.mark_claimed(count=len(claims))
         if not claims:
             return WorkerResult(
                 skipped=1,
                 notes={"reason": "no_due_process_jobs", "expired": len(expired)},
             )
 
-        with self._repository_session() as repos:
+        with runtime_context.payload_session() as repos:
             packets = repos.equity_events.load_process_packets_for_claims(claims=claims)
 
         processed = 0
@@ -62,13 +64,23 @@ class EquityEventProcessWorker(WorkerBase):
         for packet in packets:
             try:
                 materials = self._build_packet_materials(packet, now_ms=now)
-                self._persist_packet_success(packet=packet, materials=materials, now_ms=now)
+                self._persist_packet_success(
+                    packet=packet,
+                    materials=materials,
+                    now_ms=now,
+                    runtime_context=runtime_context,
+                )
                 processed += 1
             except _StaleProcessJobClaim:
                 stale_claims += 1
             except Exception as exc:  # pragma: no cover - defensive worker path.
                 try:
-                    self._persist_packet_failure(packet=packet, error=exc, now_ms=now)
+                    self._persist_packet_failure(
+                        packet=packet,
+                        error=exc,
+                        now_ms=now,
+                        runtime_context=runtime_context,
+                    )
                 except _StaleProcessJobClaim:
                     stale_claims += 1
                 except Exception:
@@ -138,14 +150,19 @@ class EquityEventProcessWorker(WorkerBase):
             "fact_extracted_at_ms": fact_extracted_at_ms,
         }
 
-    def _persist_packet_success(self, *, packet: dict[str, Any], materials: dict[str, Any], now_ms: int) -> None:
+    def _persist_packet_success(
+        self,
+        *,
+        packet: dict[str, Any],
+        materials: dict[str, Any],
+        now_ms: int,
+        runtime_context: Any | None = None,
+    ) -> None:
+        context = runtime_context or self._runtime_context()
         event_document_id, lease_owner, attempt_count, input_payload_hash = _process_job_guard(packet)
         identity = materials["identity"]
         event = materials["event"]
-        with (
-            self._repository_session() as repos,
-            repos.unit_of_work(),
-        ):
+        with context.transaction_session() as repos:
             old_company_event_ids = repos.equity_events.company_event_ids_for_document(
                 event_document_id=event_document_id
             )
@@ -236,12 +253,17 @@ class EquityEventProcessWorker(WorkerBase):
             if not finished:
                 raise _StaleProcessJobClaim(event_document_id)
 
-    def _persist_packet_failure(self, *, packet: dict[str, Any], error: Exception, now_ms: int) -> None:
+    def _persist_packet_failure(
+        self,
+        *,
+        packet: dict[str, Any],
+        error: Exception,
+        now_ms: int,
+        runtime_context: Any | None = None,
+    ) -> None:
+        context = runtime_context or self._runtime_context()
         event_document_id, lease_owner, attempt_count, input_payload_hash = _process_job_guard(packet)
-        with (
-            self._repository_session() as repos,
-            repos.unit_of_work(),
-        ):
+        with context.transaction_session() as repos:
             repos.equity_events.mark_event_document_process_failed(
                 event_document_id=event_document_id,
                 error=str(error)[:2_000],
@@ -260,12 +282,6 @@ class EquityEventProcessWorker(WorkerBase):
             )
             if not finished:
                 raise _StaleProcessJobClaim(event_document_id)
-
-    def _repository_session(self) -> Any:
-        return self.db.worker_session(
-            self.name,
-            statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
-        )
 
     def _batch_size(self) -> int:
         return max(1, int(getattr(self.settings, "batch_size", 100)))

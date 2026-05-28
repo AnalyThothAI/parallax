@@ -201,6 +201,38 @@ def test_load_process_packets_for_claims_matches_current_lease_and_omits_raw_pay
     assert "artifacts.artifact_payload_hash" in sql
 
 
+def test_load_evidence_hydration_input_requires_current_running_claim() -> None:
+    conn = _ScriptedConnection(
+        [
+            [
+                {
+                    "job": {
+                        "evidence_job_id": "evidence-job-1",
+                        "status": "running",
+                        "lease_owner": "hydrator-a",
+                        "attempt_count": 2,
+                    },
+                    "source": {"source_id": "sec:MSFT"},
+                    "document": {"event_document_id": "event-doc-1"},
+                }
+            ]
+        ]
+    )
+
+    payload = EquityEventRepository(conn).load_evidence_hydration_input(
+        evidence_job_id="evidence-job-1",
+        lease_owner="hydrator-a",
+        attempt_count=2,
+    )
+
+    sql = conn.sql[-1]
+    assert payload["job"]["evidence_job_id"] == "evidence-job-1"
+    assert "jobs.status = 'running'" in sql
+    assert "jobs.lease_owner = %s" in sql
+    assert "jobs.attempt_count = %s" in sql
+    assert conn.params[-1] == ("evidence-job-1", "hydrator-a", 2)
+
+
 def test_finish_process_job_success_requires_matching_lease_attempt_and_hash() -> None:
     conn = _ScriptedConnection([[], [{"event_document_id": "event-doc-1"}]])
     repo = EquityEventRepository(conn)
@@ -355,7 +387,7 @@ class _ScriptedConnection:
     def __init__(self, results: list[list[dict[str, Any]]]) -> None:
         self.results = list(results)
         self.sql: list[str] = []
-        self.params: list[dict[str, Any]] = []
+        self.params: list[Any] = []
         self.commits = 0
 
     def execute(self, sql: str, params: dict[str, Any] | None = None) -> _ScriptedConnection:

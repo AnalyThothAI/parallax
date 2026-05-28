@@ -99,6 +99,7 @@ class EventAnchorBackfillWorker(WorkerBase):
         settings: Any | None = None,
         db: Any | None = None,
         telemetry: Any | None = None,
+        worker_space_contract: Any | None = None,
     ) -> None:
         resolved_settings = _settings(
             settings,
@@ -114,6 +115,7 @@ class EventAnchorBackfillWorker(WorkerBase):
             settings=resolved_settings,
             db=pool_bundle or db,
             telemetry=telemetry or object(),
+            worker_space_contract=worker_space_contract,
         )
         self.clock = clock or _now_ms
         if capture_service is None:
@@ -137,10 +139,12 @@ class EventAnchorBackfillWorker(WorkerBase):
 
     async def run_once(self) -> WorkerResult:
         now_ms = int(self.clock())
-        stale_jobs = await asyncio.to_thread(self._expire_stale_jobs, now_ms=now_ms)
+        runtime_context = self._runtime_context()
+        stale_jobs = await asyncio.to_thread(self._expire_stale_jobs, now_ms=now_ms, runtime_context=runtime_context)
         stale_terminal = int(stale_jobs["expired"]) + int(stale_jobs["failed"])
         stale_rescheduled = int(stale_jobs["rescheduled"])
-        rows = await asyncio.to_thread(self._claim_due_jobs, now_ms=now_ms)
+        rows = await asyncio.to_thread(self._claim_due_jobs, now_ms=now_ms, runtime_context=runtime_context)
+        runtime_context.mark_claimed(count=len(rows))
         if not rows:
             return WorkerResult(
                 processed=0,
@@ -157,7 +161,9 @@ class EventAnchorBackfillWorker(WorkerBase):
             )
 
         semaphore = asyncio.Semaphore(self.concurrency)
-        outcomes = await asyncio.gather(*(self._capture_one(row, semaphore, now_ms=now_ms) for row in rows))
+        outcomes = await asyncio.gather(
+            *(self._capture_one(row, semaphore, now_ms=now_ms, runtime_context=runtime_context) for row in rows)
+        )
 
         attaches: list[_AttachOutcome] = []
         terminals: list[_TerminalOutcome] = []
@@ -180,6 +186,7 @@ class EventAnchorBackfillWorker(WorkerBase):
             terminals=terminals,
             reschedules=reschedules,
             now_ms=now_ms,
+            runtime_context=runtime_context,
         )
         for tick in attached_ticks:
             _emit_wake(self.wake_emitter, target_type=tick.target_type, target_id=tick.target_id)
@@ -205,10 +212,17 @@ class EventAnchorBackfillWorker(WorkerBase):
         semaphore: asyncio.Semaphore,
         *,
         now_ms: int,
+        runtime_context: Any | None = None,
     ) -> _BackfillOutcome:
+        context = runtime_context or self._runtime_context()
         resolution = _resolution_from_row(row)
         async with semaphore:
-            existing = await asyncio.to_thread(self._capture_existing_tick, row=row, now_ms=now_ms)
+            existing = await asyncio.to_thread(
+                self._capture_existing_tick,
+                row=row,
+                now_ms=now_ms,
+                runtime_context=context,
+            )
             if existing is not None:
                 return existing
             if abs(now_ms - int(row["t_event_ms"])) > self.max_anchor_lag_ms:
@@ -218,6 +232,7 @@ class EventAnchorBackfillWorker(WorkerBase):
                 row,
                 resolution,
                 now_ms,
+                context,
             )
 
     def _capture_provider_quote(
@@ -225,14 +240,17 @@ class EventAnchorBackfillWorker(WorkerBase):
         row: Mapping[str, Any],
         resolution: Mapping[str, Any],
         now_ms: int,
+        runtime_context: Any | None = None,
     ) -> _BackfillOutcome:
-        result = self._capture_service.capture_backfill_quote(
-            event_id=str(row["event_id"]),
-            intent_id=str(row["intent_id"]),
-            resolution_id=str(row["resolution_id"]),
-            resolution=resolution,
-            event_ms=int(row["t_event_ms"]),
-        )
+        context = runtime_context or self._runtime_context()
+        with context.provider_io():
+            result = self._capture_service.capture_backfill_quote(
+                event_id=str(row["event_id"]),
+                intent_id=str(row["intent_id"]),
+                resolution_id=str(row["resolution_id"]),
+                resolution=resolution,
+                event_ms=int(row["t_event_ms"]),
+            )
         if result.tick is not None:
             capture = replace(
                 result.capture,
@@ -255,8 +273,15 @@ class EventAnchorBackfillWorker(WorkerBase):
             )
         return _TerminalOutcome(row=dict(row), reason=reason, status="failed")
 
-    def _capture_existing_tick(self, *, row: Mapping[str, Any], now_ms: int) -> _AttachOutcome | None:
-        with self.db.worker_session(self.name) as repos:
+    def _capture_existing_tick(
+        self,
+        *,
+        row: Mapping[str, Any],
+        now_ms: int,
+        runtime_context: Any | None = None,
+    ) -> _AttachOutcome | None:
+        context = runtime_context or self._runtime_context()
+        with context.payload_session() as repos:
             tick_row = repos.market_ticks.nearest_around(
                 target_type=str(row["target_type"]),
                 target_id=str(row["target_id"]),
@@ -291,8 +316,9 @@ class EventAnchorBackfillWorker(WorkerBase):
             return False
         return abs(now_ms - int(row["t_event_ms"])) <= self.max_anchor_lag_ms
 
-    def _expire_stale_jobs(self, *, now_ms: int) -> dict[str, int]:
-        with self.db.worker_session(self.name) as repos:
+    def _expire_stale_jobs(self, *, now_ms: int, runtime_context: Any | None = None) -> dict[str, int]:
+        context = runtime_context or self._runtime_context()
+        with context.claim_session() as repos:
             summary = repos.event_anchor_jobs.expire_stale(
                 limit=self.batch_size,
                 now_ms=now_ms,
@@ -313,8 +339,9 @@ class EventAnchorBackfillWorker(WorkerBase):
                 _commit_if_supported(repos)
             return {"expired": expired, "failed": failed, "rescheduled": rescheduled}
 
-    def _claim_due_jobs(self, *, now_ms: int) -> list[dict[str, Any]]:
-        with self.db.worker_session(self.name) as repos:
+    def _claim_due_jobs(self, *, now_ms: int, runtime_context: Any | None = None) -> list[dict[str, Any]]:
+        context = runtime_context or self._runtime_context()
+        with context.claim_session() as repos:
             rows = repos.event_anchor_jobs.claim_due(
                 limit=self.batch_size,
                 now_ms=now_ms,
@@ -331,10 +358,12 @@ class EventAnchorBackfillWorker(WorkerBase):
         terminals: Sequence[_TerminalOutcome],
         reschedules: Sequence[_RescheduleOutcome],
         now_ms: int,
+        runtime_context: Any | None = None,
     ) -> tuple[int, list[MarketTick], int, int]:
         if not attaches and not terminals and not reschedules:
             return 0, [], 0, 0
-        with self.db.worker_transaction(self.name) as repos:
+        context = runtime_context or self._runtime_context()
+        with context.transaction_session() as repos:
             persistence = MarketTickPersistenceService(repos)
             inserted = 0
             attached_ticks: list[MarketTick] = []

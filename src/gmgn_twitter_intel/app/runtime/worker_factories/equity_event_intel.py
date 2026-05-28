@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_factories import WorkerFactoryContext
-from gmgn_twitter_intel.app.runtime.worker_manifest import manifest_names_for_factory
+from gmgn_twitter_intel.app.runtime.worker_manifest import manifest_names_for_factory, require_worker_manifest
+from gmgn_twitter_intel.app.runtime.worker_space import contract_from_manifest
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_brief_worker import EquityEventBriefWorker
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_evidence_hydration_worker import (
     EquityEventEvidenceHydrationWorker,
@@ -50,6 +51,7 @@ def construct_equity_event_intel_workers(ctx: WorkerFactoryContext) -> dict[str,
             document_provider=document_provider,
             wake_bus=ctx.wake_bus,
             wake_waiter=ctx.db.wake_listener(worker_name, workers.equity_event_fetch.wakes_on),
+            worker_space_contract=contract_from_manifest(require_worker_manifest(worker_name)),
         )
     if workers.equity_event_evidence_hydration.enabled and document_provider is not None:
         worker_name = "equity_event_evidence_hydration"
@@ -61,6 +63,7 @@ def construct_equity_event_intel_workers(ctx: WorkerFactoryContext) -> dict[str,
             document_provider=document_provider,
             wake_bus=ctx.wake_bus,
             wake_waiter=ctx.db.wake_listener(worker_name, workers.equity_event_evidence_hydration.wakes_on),
+            worker_space_contract=contract_from_manifest(require_worker_manifest(worker_name)),
         )
     if workers.equity_event_process.enabled:
         worker_name = "equity_event_process"
@@ -71,6 +74,7 @@ def construct_equity_event_intel_workers(ctx: WorkerFactoryContext) -> dict[str,
             telemetry=ctx.telemetry,
             wake_bus=ctx.wake_bus,
             wake_waiter=ctx.db.wake_listener(worker_name, workers.equity_event_process.wakes_on),
+            worker_space_contract=contract_from_manifest(require_worker_manifest(worker_name)),
         )
     if workers.equity_event_story_projection.enabled:
         worker_name = "equity_event_story_projection"

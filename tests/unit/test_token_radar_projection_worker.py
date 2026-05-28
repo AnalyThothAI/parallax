@@ -31,6 +31,19 @@ class FakeRepos:
 class FakeDirtyTargets:
     def __init__(self):
         self.catch_up_calls: list[dict[str, object]] = []
+        self.claim_due_calls: list[dict[str, object]] = []
+
+    def claim_due(self, **kwargs):
+        self.claim_due_calls.append(kwargs)
+        return [
+            {
+                "target_type_key": "Asset",
+                "identity_id": "asset-1",
+                "payload_hash": "claim-hash",
+                "lease_owner": kwargs["lease_owner"],
+                "attempt_count": 1,
+            }
+        ]
 
     def enqueue_recent_resolved_targets(self, **kwargs):
         self.catch_up_calls.append(kwargs)
@@ -118,6 +131,15 @@ def test_projection_worker_calls_dirty_incremental_projection_not_window_rebuild
             "limit": 7,
             "rank_limit": 7,
             "lease_owner": "token_radar_projection",
+            "claimed_targets": (
+                {
+                    "target_type_key": "Asset",
+                    "identity_id": "asset-1",
+                    "payload_hash": "claim-hash",
+                    "lease_owner": "token_radar_projection",
+                    "attempt_count": 1,
+                },
+            ),
         }
     ]
     assert result["rows_written"] == 2

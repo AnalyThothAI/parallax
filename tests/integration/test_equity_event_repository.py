@@ -84,7 +84,11 @@ def test_reap_stale_evidence_jobs_returns_new_terminal_job_context(postgres_conn
         lease_owner="terminalizer-a",
         lease_ms=60_000,
     )
-    hydration_input = repos.equity_events.load_evidence_hydration_input(evidence_job_id="evidence-job-stale")
+    hydration_input = repos.equity_events.load_evidence_hydration_input(
+        evidence_job_id="evidence-job-stale",
+        lease_owner="terminalizer-a",
+        attempt_count=int(reaped[0]["attempt_count"]),
+    )
     job = postgres_conn.execute(
         "SELECT * FROM equity_event_evidence_jobs WHERE evidence_job_id = %s",
         ("evidence-job-stale",),

@@ -700,6 +700,9 @@ class _FakeRepos:
     def transaction(self):
         return _FakeWorkerSession(self._db)
 
+    def unit_of_work(self):
+        return _FakeWorkerSession(self._db)
+
     def require_transaction(self, *, operation: str) -> None:
         return None
 

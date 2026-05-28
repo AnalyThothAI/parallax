@@ -43,7 +43,8 @@ class EquityEventFetchWorker(WorkerBase):
 
     def run_once_sync(self, *, now_ms: int | None = None) -> WorkerResult:
         now = int(now_ms if now_ms is not None else self.clock_ms())
-        with self._repository_session() as repos:
+        runtime_context = self._runtime_context()
+        with runtime_context.claim_session() as repos:
             stale_fetch_runs = repos.equity_events.reap_stale_fetch_runs(
                 stale_before_ms=self._stale_fetch_run_cutoff_ms(now),
                 now_ms=now,
@@ -52,12 +53,13 @@ class EquityEventFetchWorker(WorkerBase):
             )
             due_sources = repos.equity_events.claim_due_sources(now_ms=now, limit=self._batch_size(), commit=False)
             repos.conn.commit()
+        runtime_context.mark_claimed(count=len(due_sources))
 
         processed = 0
         failed = 0
         skipped = 0
         for source in due_sources:
-            result = self._fetch_source(dict(source), now_ms=now)
+            result = self._fetch_source(dict(source), now_ms=now, runtime_context=runtime_context)
             processed += result.processed
             failed += result.failed
             skipped += result.skipped
@@ -71,21 +73,29 @@ class EquityEventFetchWorker(WorkerBase):
             },
         )
 
-    def _fetch_source(self, source: dict[str, Any], *, now_ms: int) -> WorkerResult:
+    def _fetch_source(
+        self,
+        source: dict[str, Any],
+        *,
+        now_ms: int,
+        runtime_context: Any | None = None,
+    ) -> WorkerResult:
+        context = runtime_context or self._runtime_context()
         source_id = str(source["source_id"])
         fetch_run_id = ""
         try:
-            with self._repository_session() as repos:
+            with context.persist_session() as repos:
                 fetch_run_id = repos.equity_events.start_fetch_run(source_id=source_id, started_at_ms=now_ms)
 
             if str(source.get("provider_type") or "") != "sec_submissions":
                 raise ValueError(f"unsupported_provider_type:{source.get('provider_type')}")
 
-            fetch_result = self.document_provider.fetch_source(source)
+            with context.provider_io():
+                fetch_result = self.document_provider.fetch_source(source)
             failed_document = _failed_fetch_document(fetch_result.documents)
             if failed_document is not None:
                 reason = _failed_fetch_reason(failed_document)
-                with self._repository_session() as repos:
+                with context.persist_session() as repos:
                     if not repos.equity_events.lock_running_fetch_run(
                         fetch_run_id=fetch_run_id,
                         source_id=source_id,
@@ -117,7 +127,7 @@ class EquityEventFetchWorker(WorkerBase):
                     repos.conn.commit()
                 return WorkerResult(failed=1, notes={"source_id": source_id, "error": reason})
 
-            with self._repository_session() as repos:
+            with context.persist_session() as repos:
                 if not repos.equity_events.lock_running_fetch_run(
                     fetch_run_id=fetch_run_id,
                     source_id=source_id,
@@ -204,7 +214,13 @@ class EquityEventFetchWorker(WorkerBase):
                     notify(source_id=source_id, count=enqueued)
             return WorkerResult(processed=counts["inserted"] + counts["updated"])
         except Exception as exc:  # pragma: no cover - exercised through integration failures.
-            self._mark_source_failed(source_id=source_id, fetch_run_id=fetch_run_id, now_ms=now_ms, error=exc)
+            self._mark_source_failed(
+                source_id=source_id,
+                fetch_run_id=fetch_run_id,
+                now_ms=now_ms,
+                error=exc,
+                runtime_context=context,
+            )
             return WorkerResult(failed=1, notes={"source_id": source_id, "error": str(exc)})
 
     def _persist_documents(
@@ -279,11 +295,20 @@ class EquityEventFetchWorker(WorkerBase):
                     counts["enqueued_jobs"] += 1
         return counts
 
-    def _mark_source_failed(self, *, source_id: str, fetch_run_id: str, now_ms: int, error: Exception) -> None:
+    def _mark_source_failed(
+        self,
+        *,
+        source_id: str,
+        fetch_run_id: str,
+        now_ms: int,
+        error: Exception,
+        runtime_context: Any | None = None,
+    ) -> None:
         if not fetch_run_id:
             return
+        context = runtime_context or self._runtime_context()
         try:
-            with self._repository_session() as repos:
+            with context.persist_session() as repos:
                 if not repos.equity_events.lock_running_fetch_run(
                     fetch_run_id=fetch_run_id,
                     source_id=source_id,
@@ -310,12 +335,6 @@ class EquityEventFetchWorker(WorkerBase):
                 repos.conn.commit()
         except Exception:
             return
-
-    def _repository_session(self) -> Any:
-        return self.db.worker_session(
-            self.name,
-            statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
-        )
 
     def _batch_size(self) -> int:
         return max(1, int(getattr(self.settings, "batch_size", 20)))

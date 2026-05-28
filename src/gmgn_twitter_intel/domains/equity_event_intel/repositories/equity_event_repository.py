@@ -1251,7 +1251,13 @@ class EquityEventRepository:
             self.conn.commit()
         return [dict(row) for row in rows]
 
-    def load_evidence_hydration_input(self, *, evidence_job_id: str) -> dict[str, Any]:
+    def load_evidence_hydration_input(
+        self,
+        *,
+        evidence_job_id: str,
+        lease_owner: str,
+        attempt_count: int,
+    ) -> dict[str, Any]:
         row = self.conn.execute(
             """
             SELECT to_jsonb(jobs.*) AS job,
@@ -1287,9 +1293,12 @@ class EquityEventRepository:
               LEFT JOIN equity_event_sources AS sources
                 ON sources.source_id = COALESCE(jobs.source_id, documents.source_id)
              WHERE jobs.evidence_job_id = %s
+               AND jobs.status = 'running'
+               AND jobs.lease_owner = %s
+               AND jobs.attempt_count = %s
              LIMIT 1
             """,
-            (evidence_job_id,),
+            (evidence_job_id, str(lease_owner), int(attempt_count)),
         ).fetchone()
         if row is None:
             return {}

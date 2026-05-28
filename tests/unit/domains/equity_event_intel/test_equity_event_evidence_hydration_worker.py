@@ -64,7 +64,12 @@ def test_hydration_worker_claims_job_writes_artifacts_finishes_and_wakes() -> No
 def test_hydration_worker_terminalizes_reaped_stale_job_with_failed_artifact_and_wake() -> None:
     repo = _HydrationRepo(
         reaped_terminal_jobs=[
-            {"evidence_job_id": "job-event-document-id", "event_document_id": "event-document-id"}
+            {
+                "evidence_job_id": "job-event-document-id",
+                "event_document_id": "event-document-id",
+                "attempt_count": 1,
+                "lease_owner": "equity_event_evidence_hydration",
+            }
         ],
         claimed_jobs=[],
     )
@@ -375,8 +380,16 @@ class _HydrationRepo:
         self.claims.append({"now_ms": now_ms, "limit": limit, "lease_owner": lease_owner})
         return self.claimed_jobs
 
-    def load_evidence_hydration_input(self, *, evidence_job_id: str) -> dict[str, Any]:
+    def load_evidence_hydration_input(
+        self,
+        *,
+        evidence_job_id: str,
+        lease_owner: str,
+        attempt_count: int,
+    ) -> dict[str, Any]:
         assert evidence_job_id == "job-event-document-id"
+        assert lease_owner == "equity_event_evidence_hydration"
+        assert attempt_count == 1
         return self.load_payload
 
     def _default_payload(self) -> dict[str, Any]:

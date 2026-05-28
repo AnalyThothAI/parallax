@@ -97,9 +97,18 @@ class WorkerSpace:
         if errors:
             raise WorkerSpaceViolation("; ".join(errors))
         self.contract = contract
+        self._db_session_depth = 0
         self._db_transaction_depth = 0
         self._claimed = False
         self._agent_capacity_reserved = False
+
+    @contextmanager
+    def db_session(self) -> Iterator[None]:
+        self._db_session_depth += 1
+        try:
+            yield
+        finally:
+            self._db_session_depth -= 1
 
     @contextmanager
     def db_transaction(self) -> Iterator[None]:
@@ -113,8 +122,13 @@ class WorkerSpace:
     def provider_io(self) -> Iterator[None]:
         if not self.contract.provider_io.allowed:
             raise WorkerSpaceViolation(f"{self.contract.worker_name}: provider IO is not allowed")
-        if self.contract.provider_io.forbid_inside_db_transaction and self._db_transaction_depth > 0:
-            raise WorkerSpaceViolation(f"{self.contract.worker_name}: provider IO inside DB transaction")
+        if self.contract.provider_io.forbid_inside_db_transaction and (
+            self._db_session_depth > 0 or self._db_transaction_depth > 0
+        ):
+            raise WorkerSpaceViolation(
+                f"{self.contract.worker_name}: provider IO inside DB session; "
+                "provider IO inside DB transaction"
+            )
         yield
 
     def mark_claimed(self, *, count: int) -> None:

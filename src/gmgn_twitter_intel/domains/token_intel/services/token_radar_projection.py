@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from contextlib import AbstractContextManager
 from typing import Any, cast
 
@@ -82,16 +82,21 @@ class TokenRadarProjection:
         limit: int = 100,
         rank_limit: int = 100,
         lease_owner: str = "token_radar_projection",
+        claimed_targets: Sequence[Mapping[str, Any]] | None = None,
     ) -> dict[str, Any]:
         computed_at_ms = int(now_ms or time.time() * 1000)
         source_work_items = _resolve_work_items(windows=windows, scopes=scopes, work_items=work_items)
         due_work_items = _resolve_due_work_items(work_items=work_items)
-        claims = self.repos.token_radar_dirty_targets.claim_due(
-            limit=limit,
-            lease_ms=DIRTY_TARGET_LEASE_MS,
-            now_ms=computed_at_ms,
-            lease_owner=lease_owner,
-            commit=True,
+        claims = (
+            [dict(claim) for claim in claimed_targets]
+            if claimed_targets is not None
+            else self.repos.token_radar_dirty_targets.claim_due(
+                limit=limit,
+                lease_ms=DIRTY_TARGET_LEASE_MS,
+                now_ms=computed_at_ms,
+                lease_owner=lease_owner,
+                commit=True,
+            )
         )
         result: dict[str, Any] = {
             "computed_at_ms": computed_at_ms,

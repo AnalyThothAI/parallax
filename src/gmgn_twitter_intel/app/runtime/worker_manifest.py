@@ -575,6 +575,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         advisory_lock_key="2026052307",
         wakes_on=("equity_event_evidence_job_written",),
         wakes_out=("equity_event_document_written",),
+        queue_depth_table="equity_event_evidence_jobs",
         queue_health_tables=("equity_event_evidence_jobs",),
     ),
     WorkerManifest(

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_factories import WorkerFactoryContext
-from gmgn_twitter_intel.app.runtime.worker_manifest import manifest_names_for_factory
+from gmgn_twitter_intel.app.runtime.worker_manifest import manifest_names_for_factory, require_worker_manifest
+from gmgn_twitter_intel.app.runtime.worker_space import contract_from_manifest
 from gmgn_twitter_intel.domains.asset_market.runtime.asset_profile_refresh_worker import AssetProfileRefreshWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.event_anchor_backfill_worker import EventAnchorBackfillWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.live_price_gateway import LivePriceGateway
@@ -98,6 +99,7 @@ def construct_asset_market_workers(ctx: WorkerFactoryContext) -> dict[str, Worke
             min_age_ms=workers.event_anchor_backfill.min_age_ms,
             active_window_ms=workers.event_anchor_backfill.active_window_ms,
             max_anchor_lag_ms=workers.event_anchor_backfill.max_anchor_lag_ms,
+            worker_space_contract=contract_from_manifest(require_worker_manifest("event_anchor_backfill")),
         )
     if workers.asset_profile_refresh.enabled and dex_profile_sources:
         constructed["asset_profile_refresh"] = AssetProfileRefreshWorker(

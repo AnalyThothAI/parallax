@@ -47,7 +47,8 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
 
     def run_once_sync(self, *, now_ms: int | None = None) -> WorkerResult:
         now = int(now_ms if now_ms is not None else self.clock_ms())
-        with self._repository_session() as repos:
+        runtime_context = self._runtime_context()
+        with runtime_context.claim_session() as repos:
             reaped_terminal_jobs = repos.equity_events.reap_stale_evidence_jobs(
                 now_ms=now,
                 limit=self._batch_size(),
@@ -63,6 +64,7 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
                 commit=False,
             )
             repos.conn.commit()
+        runtime_context.mark_claimed(count=len(reaped_terminal_jobs) + len(jobs))
 
         processed = 0
         failed = 0
@@ -71,7 +73,7 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
         input_missing_without_guard = 0
         unguarded_failure_noops = 0
         for job in reaped_terminal_jobs:
-            result = self._terminalize_stale_job(dict(job), now_ms=now)
+            result = self._terminalize_stale_job(dict(job), now_ms=now, runtime_context=runtime_context)
             processed += result.processed
             failed += result.failed
             written += int(result.notes.get("terminal_written", 0))
@@ -79,7 +81,7 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
             input_missing_without_guard += int(result.notes.get("input_missing_unrecoverable_without_content_guard", 0))
             unguarded_failure_noops += int(result.notes.get("unguarded_failure_noop", 0))
         for job in jobs:
-            result = self._hydrate_job(dict(job), now_ms=now)
+            result = self._hydrate_job(dict(job), now_ms=now, runtime_context=runtime_context)
             processed += result.processed
             failed += result.failed
             written += int(result.notes.get("terminal_written", 0))
@@ -99,15 +101,28 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
             },
         )
 
-    def _hydrate_job(self, job: dict[str, Any], *, now_ms: int) -> WorkerResult:
+    def _hydrate_job(
+        self,
+        job: dict[str, Any],
+        *,
+        now_ms: int,
+        runtime_context: Any | None = None,
+    ) -> WorkerResult:
+        context = runtime_context or self._runtime_context()
         evidence_job_id = str(job["evidence_job_id"])
         claim_attempt_count = _claim_attempt_count(job)
         claim_lease_owner = _claim_lease_owner(job)
         claimed_event_document_id = _optional_str(job.get("event_document_id"))
         payload: Mapping[str, Any] | None = None
         try:
-            with self._repository_session() as repos:
-                payload = repos.equity_events.load_evidence_hydration_input(evidence_job_id=evidence_job_id)
+            if claim_attempt_count is None or claim_lease_owner is None:
+                return WorkerResult(processed=0, notes={"stale_claim": 1, "evidence_job_id": evidence_job_id})
+            with context.payload_session() as repos:
+                payload = repos.equity_events.load_evidence_hydration_input(
+                    evidence_job_id=evidence_job_id,
+                    lease_owner=claim_lease_owner,
+                    attempt_count=claim_attempt_count,
+                )
             if not payload:
                 return WorkerResult(
                     failed=1,
@@ -120,10 +135,16 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
             source = dict(payload["source"])
             document = _normalized_document_from_row(payload["document"])
             try:
-                hydration = self.document_provider.hydrate_document_evidence(source=source, document=document)
+                with context.provider_io():
+                    hydration = self.document_provider.hydrate_document_evidence(source=source, document=document)
                 artifacts = list(hydration.artifacts)
             except Exception as exc:
-                return self._handle_hydration_exception(payload=payload, error=exc, now_ms=now_ms)
+                return self._handle_hydration_exception(
+                    payload=payload,
+                    error=exc,
+                    now_ms=now_ms,
+                    runtime_context=context,
+                )
 
             if not artifacts:
                 artifacts = [
@@ -144,6 +165,7 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
                 artifacts=artifacts,
                 now_ms=now_ms,
                 job_status="success",
+                runtime_context=context,
             )
         except Exception as exc:  # pragma: no cover - defensive path for DB/session failures.
             document_context = _document_context_from_payload(payload)
@@ -156,16 +178,32 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
                 lease_owner=claim_lease_owner,
                 event_document_id=document_context[0] or claimed_event_document_id,
                 content_hash=document_context[1],
+                runtime_context=context,
             )
             notes: dict[str, Any] = {"evidence_job_id": evidence_job_id, "error": str(exc)}
             if not finished:
                 notes["unguarded_failure_noop"] = 1
             return WorkerResult(failed=1, notes=notes)
 
-    def _terminalize_stale_job(self, job: dict[str, Any], *, now_ms: int) -> WorkerResult:
+    def _terminalize_stale_job(
+        self,
+        job: dict[str, Any],
+        *,
+        now_ms: int,
+        runtime_context: Any | None = None,
+    ) -> WorkerResult:
+        context = runtime_context or self._runtime_context()
         evidence_job_id = str(job["evidence_job_id"])
-        with self._repository_session() as repos:
-            payload = repos.equity_events.load_evidence_hydration_input(evidence_job_id=evidence_job_id)
+        claim_attempt_count = _claim_attempt_count(job)
+        claim_lease_owner = _claim_lease_owner(job)
+        if claim_attempt_count is None or claim_lease_owner is None:
+            return WorkerResult(processed=0, notes={"stale_claim": 1, "evidence_job_id": evidence_job_id})
+        with context.payload_session() as repos:
+            payload = repos.equity_events.load_evidence_hydration_input(
+                evidence_job_id=evidence_job_id,
+                lease_owner=claim_lease_owner,
+                attempt_count=claim_attempt_count,
+            )
         if not payload:
             return WorkerResult(
                 failed=1,
@@ -195,9 +233,18 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
             now_ms=now_ms,
             job_status="failed_terminal",
             error=reason,
+            runtime_context=context,
         )
 
-    def _handle_hydration_exception(self, *, payload: Mapping[str, Any], error: Exception, now_ms: int) -> WorkerResult:
+    def _handle_hydration_exception(
+        self,
+        *,
+        payload: Mapping[str, Any],
+        error: Exception,
+        now_ms: int,
+        runtime_context: Any | None = None,
+    ) -> WorkerResult:
+        context = runtime_context or self._runtime_context()
         job = dict(payload["job"])
         terminal = int(job.get("attempt_count") or 0) >= int(job.get("max_attempts") or self._max_attempts())
         reason = _hydration_exception_reason(error)
@@ -212,6 +259,7 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
                 lease_owner=_claim_lease_owner(job),
                 event_document_id=_optional_str(document.get("event_document_id")),
                 content_hash=_optional_str(document.get("content_hash")),
+                runtime_context=context,
             )
             notes: dict[str, Any] = {"evidence_job_id": str(job["evidence_job_id"]), "error": reason}
             if not finished:
@@ -237,6 +285,7 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
             now_ms=now_ms,
             job_status="failed_terminal",
             error=reason,
+            runtime_context=context,
         )
 
     def _persist_terminal_result(
@@ -247,7 +296,9 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
         now_ms: int,
         job_status: str,
         error: str | None = None,
+        runtime_context: Any | None = None,
     ) -> WorkerResult:
+        context = runtime_context or self._runtime_context()
         job = dict(payload["job"])
         source = dict(payload["source"])
         document = dict(payload["document"])
@@ -263,10 +314,7 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
             fetched_at_ms=now_ms,
         )
 
-        with (
-            self._repository_session() as repos,
-            repos.unit_of_work(),
-        ):
+        with context.transaction_session() as repos:
             if not repos.equity_events.evidence_job_claim_is_current(
                 evidence_job_id=evidence_job_id,
                 attempt_count=attempt_count,
@@ -344,10 +392,12 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
         lease_owner: str | None = None,
         event_document_id: str | None = None,
         content_hash: str | None = None,
+        runtime_context: Any | None = None,
     ) -> bool:
         if attempt_count is None or lease_owner is None or event_document_id is None or content_hash is None:
             return False
-        with self._repository_session() as repos:
+        context = runtime_context or self._runtime_context()
+        with context.persist_session() as repos:
             if terminal:
                 finished = repos.equity_events.finish_evidence_job_terminal(
                     evidence_job_id=evidence_job_id,
@@ -373,12 +423,6 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
                 )
             repos.conn.commit()
         return bool(finished)
-
-    def _repository_session(self) -> Any:
-        return self.db.worker_session(
-            self.name,
-            statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
-        )
 
     def _batch_size(self) -> int:
         return max(1, int(getattr(self.settings, "batch_size", 20)))
