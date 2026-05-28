@@ -9,13 +9,14 @@
 
 ## Migration
 
-- Fixed the Alembic chain so this branch includes current `main` News
+- Final `main` Alembic chain includes current `main` News
   migrations `20260528_0117` -> `20260528_0118` -> `20260528_0119` ->
   `20260528_0120`, and Token/Equity/WorkerSpace `20260528_0121` follows
-  `20260528_0120`.
+  `20260528_0120`; `20260528_0122` reasserts Token Radar runtime NOT NULL
+  guardrails without rehashing payloads.
 - `uv run gmgn-twitter-intel db migrate`: passed.
 - `uv run gmgn-twitter-intel db health`: passed with
-  `migration_version=20260528_0120`, `expected_migration_version=20260528_0120`,
+  `migration_version=20260528_0122`, `expected_migration_version=20260528_0122`,
   `migration_status=ready`.
 - Docker `migrate` service exited `0`.
 
@@ -30,11 +31,17 @@
 - Migration/manifest guard:
   `uv run pytest tests/architecture/test_token_equity_workerspace_root_fix_contract.py tests/unit/test_postgres_schema.py::test_runtime_performance_hard_cut_revision_chain tests/unit/test_postgres_schema.py::test_alembic_revision_ids_are_unique tests/unit/test_postgres_schema.py::test_token_equity_workerspace_root_fix_migration_contract -q`
   -> `10 passed`.
+- Final `main` focused + migration guard:
+  `uv run pytest tests/architecture/test_token_equity_workerspace_root_fix_contract.py tests/unit/test_token_radar_payload_hash.py tests/unit/domains/token_intel/test_token_radar_dirty_target_kinds.py tests/unit/domains/token_intel/test_token_radar_market_only_projection.py tests/unit/domains/equity_event_intel/test_equity_event_process_jobs.py tests/unit/domains/equity_event_intel/test_equity_event_process_worker_queue.py tests/unit/domains/equity_event_intel/test_equity_event_artifact_upsert.py tests/unit/test_runtime_worker_context.py tests/unit/test_postgres_schema.py::test_runtime_performance_hard_cut_revision_chain tests/unit/test_postgres_schema.py::test_alembic_revision_ids_are_unique tests/unit/test_postgres_schema.py::test_token_equity_workerspace_root_fix_migration_contract tests/unit/test_postgres_schema.py::test_token_radar_runtime_not_null_guardrails_do_not_rehash_payloads -q`
+  -> `41 passed`.
 - Wider related unit/schema suite:
   `uv run pytest tests/unit/domains/equity_event_intel/test_equity_event_evidence_hydration_worker.py tests/unit/domains/equity_event_intel/test_equity_event_process_jobs.py tests/unit/test_event_anchor_backfill_worker.py tests/unit/domains/token_intel/test_token_radar_rank_source_query.py tests/unit/test_postgres_schema.py -q`
-  -> `107 passed`.
+  -> `110 passed` on final `main`.
 - `uv run ruff format --check $(git diff --name-only main...HEAD | rg '\.py$')`
   -> passed for branch-touched Python files.
+- Final `main` formatter check:
+  `uv run ruff format --check src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0122_token_radar_runtime_not_null_guardrails.py tests/unit/test_postgres_schema.py`
+  -> `2 files already formatted`.
 - `git diff --check` -> passed.
 
 ## make check-all
@@ -50,18 +57,18 @@
 
 - Docker services after rebuild:
   `postgres` healthy, `migrate` exited `0`, `app` healthy.
-- `/readyz` after rebuilding app image from this worktree before the final main-chain
-  renumber:
-  `ok=true`, `reasons=[]`, DB `migration_version=20260528_0120`,
-  `expected_migration_version=20260528_0120`, `migration_status=ready`.
+- `/readyz` after rebuilding app image from final `main`:
+  `ok=true`, `reasons=[]`, DB `migration_version=20260528_0122`,
+  `expected_migration_version=20260528_0122`, `migration_status=ready`.
 - Schema smoke:
   `equity_event_process_jobs` exists; `token_radar_rank_source_events.source_payload_hash`,
   `token_radar_dirty_targets.market_dirty`, and
   `equity_event_evidence_artifacts.artifact_payload_hash` exist.
 - Queue smoke:
-  `equity_event_process_jobs` had `0` rows immediately after migration;
-  `event_anchor_backfill_jobs` grouped as `done=60489`, `expired=30`,
-  `failed=3384`; `token_radar_dirty_targets` had `2` rows.
+  final Docker DB had `0` null `source_payload_hash` rows across `40321`
+  rank-source rows; `0` null dirty-flag rows across `22` dirty targets;
+  `equity_event_process_jobs` had `77 done` rows; evidence artifacts had
+  `0` null `artifact_payload_hash` rows across `22022` rows.
 
 ## Coverage
 
@@ -84,10 +91,11 @@
 ## Other Commands Run
 
 - `docker compose up -d --build app` rebuilt and restarted `app`/`migrate` from
-  this worktree so runtime expected migration head matched DB head. This was run
-  before the final-review P1/P2 local code fixes below; the DB/schema readiness
-  result remains valid, while those two code-path fixes are covered by local
-  unit/architecture tests above.
+  final `main`; `migrate` exited `0`, `postgres` and `app` became healthy.
+- The dirty `main` worktree from another News thread was preserved in
+  `stash@{0}` with message `pre-token-equity-main-merge-news-wip-20260528`
+  before the merge. It was not reapplied because it contains a separate
+  News `20260528_0121` migration and would make the Docker validation ambiguous.
 - Final-review fixes added after the Docker readiness smoke:
   running Equity process jobs with a changed input hash are reset to `pending`
   so the old lease cannot mark stale output done; Token Radar source+market
@@ -105,6 +113,12 @@
 - Live queues still contain historical terminal/backlog rows; this branch
   changes the root execution architecture but does not resolve every old
   terminal provider/business outcome.
+- Startup logs still showed one WebSocket replay `statement timeout` on
+  `events` and one GMGN WS broken pipe; no new errors appeared in the final
+  30-second log window, and `/readyz` stayed `ok=true`.
+- Postgres CPU dropped from a startup burst to about `63.80%` after the final
+  wait window; no long-running active SQL was present, only a short
+  `idle in transaction` worker claim observed at sub-second age.
 - The hard reset SQL in the runbook is destructive maintenance. It includes
   Equity Event classifier fact outputs and must only be used with workers
   stopped and explicit re-enqueue/rebuild targets ready.
