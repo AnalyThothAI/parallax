@@ -114,11 +114,17 @@ def test_equity_process_worker_uses_process_jobs_not_document_scan() -> None:
         "src/gmgn_twitter_intel/domains/equity_event_intel/runtime/"
         "equity_event_process_worker.py"
     )
+    repo = _text(
+        "src/gmgn_twitter_intel/domains/equity_event_intel/repositories/"
+        "equity_event_repository.py"
+    )
 
     assert "claim_due_process_jobs" in worker
     assert "load_process_packets_for_claims" in worker
     assert "unit_of_work()" in worker
     assert "list_event_documents_for_processing" not in worker
+    assert "def list_event_documents_for_processing" not in repo
+    assert "def list_unprocessed_event_documents" not in repo
 
 
 def test_equity_process_and_page_hot_paths_do_not_select_raw_payload() -> None:

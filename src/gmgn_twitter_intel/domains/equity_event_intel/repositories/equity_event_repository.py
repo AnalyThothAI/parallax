@@ -1093,24 +1093,6 @@ class EquityEventRepository:
             self.conn.commit()
         return dict(row)
 
-    def list_unprocessed_event_documents(self, *, limit: int) -> list[dict[str, Any]]:
-        rows = self.conn.execute(
-            """
-            SELECT documents.*,
-                   provider.raw_payload_json
-              FROM equity_event_documents AS documents
-              JOIN equity_provider_documents AS provider
-                ON provider.provider_document_id = documents.provider_document_id
-             WHERE documents.lifecycle_status IN ('raw', 'process_failed')
-               AND documents.processing_attempts < 3
-             ORDER BY documents.event_time_ms DESC, documents.event_document_id ASC
-             LIMIT %s
-             FOR UPDATE SKIP LOCKED
-            """,
-            (max(0, int(limit)),),
-        ).fetchall()
-        return [dict(row) for row in rows]
-
     def enqueue_evidence_job(
         self,
         *,
@@ -2015,32 +1997,6 @@ class EquityEventRepository:
         ).fetchall()
         if commit:
             self.conn.commit()
-        return [dict(row) for row in rows]
-
-    def list_event_documents_for_processing(self, *, limit: int) -> list[dict[str, Any]]:
-        rows = self.conn.execute(
-            """
-            SELECT documents.*,
-                   provider.raw_payload_json,
-                   COALESCE(artifacts.evidence_artifacts, '[]'::jsonb) AS evidence_artifacts
-              FROM equity_event_documents AS documents
-              JOIN equity_provider_documents AS provider
-                ON provider.provider_document_id = documents.provider_document_id
-              LEFT JOIN LATERAL (
-                SELECT jsonb_agg(to_jsonb(evidence) ORDER BY evidence.artifact_kind, evidence.evidence_artifact_id)
-                         AS evidence_artifacts
-                  FROM equity_event_evidence_artifacts AS evidence
-                 WHERE evidence.event_document_id = documents.event_document_id
-              ) AS artifacts ON true
-             WHERE documents.lifecycle_status IN ('raw', 'process_failed')
-               AND documents.processing_attempts < 3
-               AND documents.evidence_status IN ('ready', 'unavailable', 'failed')
-             ORDER BY documents.event_time_ms DESC, documents.event_document_id ASC
-             LIMIT %s
-             FOR UPDATE OF documents SKIP LOCKED
-            """,
-            (max(0, int(limit)),),
-        ).fetchall()
         return [dict(row) for row in rows]
 
     def mark_event_document_evidence_status(

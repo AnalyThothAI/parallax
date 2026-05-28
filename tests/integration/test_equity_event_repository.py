@@ -1119,28 +1119,15 @@ def test_equity_event_repository_replaces_evidence_artifacts_for_document(postgr
     assert rows[0]["content_json"] == {"version": 2}
 
 
-def test_equity_event_repository_lists_ready_evidence_documents_for_processing(postgres_conn) -> None:
+def test_equity_event_repository_loads_ready_evidence_process_packets_for_claims(postgres_conn) -> None:
     repos = repositories_for_connection(postgres_conn)
     _seed_event_document(repos, event_document_id="event-doc-ready")
-    repos.equity_events.replace_evidence_artifacts(
+    _insert_evidence_artifact(
+        postgres_conn,
+        evidence_artifact_id="artifact-ready",
         event_document_id="event-doc-ready",
-        artifacts=[
-            {
-                "evidence_artifact_id": "artifact-ready",
-                "provider_document_id": "provider-doc-event-duplicate",
-                "source_id": "sec:MSFT",
-                "artifact_kind": "html_text",
-                "extraction_status": "ready",
-                "source_url": "https://example.test/msft.htm",
-                "content_hash": "hash-ready",
-                "content_text": "Revenue was $10.",
-                "content_json": {"sections": ["results"]},
-                "excerpt_text": "Revenue was $10.",
-                "fetched_at_ms": NOW_MS,
-                "parsed_at_ms": NOW_MS + 1,
-            }
-        ],
-        now_ms=NOW_MS + 2,
+        content_hash="hash-ready",
+        artifact_payload_hash="artifact-payload-ready",
     )
     repos.equity_events.mark_event_document_evidence_status(
         event_document_id="event-doc-ready",
@@ -1150,9 +1137,22 @@ def test_equity_event_repository_lists_ready_evidence_documents_for_processing(p
         now_ms=NOW_MS + 2,
     )
 
-    rows = repos.equity_events.list_event_documents_for_processing(limit=10)
+    repos.equity_events.enqueue_process_job_for_document(
+        event_document_id="event-doc-ready",
+        due_at_ms=NOW_MS + 3,
+        now_ms=NOW_MS + 3,
+    )
+    claims = repos.equity_events.claim_due_process_jobs(
+        now_ms=NOW_MS + 4,
+        limit=10,
+        lease_owner="process-worker-a",
+        lease_ms=60_000,
+    )
+    rows = repos.equity_events.load_process_packets_for_claims(claims=claims)
 
     assert [row["event_document_id"] for row in rows] == ["event-doc-ready"]
+    assert rows[0]["lease_owner"] == "process-worker-a"
+    assert rows[0]["attempt_count"] == 1
     assert rows[0]["evidence_status"] == "ready"
     assert [artifact["evidence_artifact_id"] for artifact in rows[0]["evidence_artifacts"]] == ["artifact-ready"]
 
@@ -1224,7 +1224,7 @@ def test_enqueue_process_job_preserves_running_claim_when_input_hash_changes(pos
         assert row["input_payload_hash"] == running["input_payload_hash"]
 
 
-def test_equity_event_repository_lists_unavailable_evidence_documents_with_reason(postgres_conn) -> None:
+def test_equity_event_repository_loads_unavailable_evidence_process_packets_with_reason(postgres_conn) -> None:
     repos = repositories_for_connection(postgres_conn)
     _seed_event_document(repos, event_document_id="event-doc-unavailable")
     repos.equity_events.mark_event_document_evidence_status(
@@ -1235,7 +1235,18 @@ def test_equity_event_repository_lists_unavailable_evidence_documents_with_reaso
         now_ms=NOW_MS + 2,
     )
 
-    rows = repos.equity_events.list_event_documents_for_processing(limit=10)
+    repos.equity_events.enqueue_process_job_for_document(
+        event_document_id="event-doc-unavailable",
+        due_at_ms=NOW_MS + 3,
+        now_ms=NOW_MS + 3,
+    )
+    claims = repos.equity_events.claim_due_process_jobs(
+        now_ms=NOW_MS + 4,
+        limit=10,
+        lease_owner="process-worker-a",
+        lease_ms=60_000,
+    )
+    rows = repos.equity_events.load_process_packets_for_claims(claims=claims)
 
     assert [row["event_document_id"] for row in rows] == ["event-doc-unavailable"]
     assert rows[0]["evidence_status"] == "unavailable"
@@ -1247,7 +1258,12 @@ def test_equity_event_repository_excludes_pending_evidence_documents_from_proces
     repos = repositories_for_connection(postgres_conn)
     _seed_event_document(repos, event_document_id="event-doc-pending")
 
-    assert repos.equity_events.list_event_documents_for_processing(limit=10) == []
+    assert repos.equity_events.claim_due_process_jobs(
+        now_ms=NOW_MS + 2,
+        limit=10,
+        lease_owner="process-worker-a",
+        lease_ms=60_000,
+    ) == []
 
 
 def test_equity_event_repository_upserts_brief_state(postgres_conn) -> None:
@@ -1633,7 +1649,12 @@ def test_changed_event_document_content_resets_failed_processing_attempts_for_re
     assert unchanged["processing_attempts"] == 3
     assert unchanged["processing_error"] == "exhausted"
     assert unchanged["processed_at_ms"] == NOW_MS + 1_000
-    assert repos.equity_events.list_unprocessed_event_documents(limit=10) == []
+    assert repos.equity_events.claim_due_process_jobs(
+        now_ms=NOW_MS + 2_500,
+        limit=10,
+        lease_owner="process-worker-a",
+        lease_ms=60_000,
+    ) == []
 
     repos.equity_events.upsert_event_document(
         event_document_id="event-doc-retry",
@@ -1653,12 +1674,30 @@ def test_changed_event_document_content_resets_failed_processing_attempts_for_re
         content_hash="content-2",
         now_ms=NOW_MS + 3_000,
     )
+    repos.equity_events.mark_event_document_evidence_status(
+        event_document_id="event-doc-retry",
+        evidence_status="unavailable",
+        evidence_reason="evidence_reset_for_retry",
+        evidence_ready_at_ms=NOW_MS + 3_100,
+        now_ms=NOW_MS + 3_100,
+    )
+    repos.equity_events.enqueue_process_job_for_document(
+        event_document_id="event-doc-retry",
+        due_at_ms=NOW_MS + 3_200,
+        now_ms=NOW_MS + 3_200,
+    )
 
     changed = postgres_conn.execute(
         "SELECT * FROM equity_event_documents WHERE event_document_id = %s",
         ("event-doc-retry",),
     ).fetchone()
-    claimable = repos.equity_events.list_unprocessed_event_documents(limit=10)
+    claims = repos.equity_events.claim_due_process_jobs(
+        now_ms=NOW_MS + 3_300,
+        limit=10,
+        lease_owner="process-worker-a",
+        lease_ms=60_000,
+    )
+    claimable = repos.equity_events.load_process_packets_for_claims(claims=claims)
     assert changed["lifecycle_status"] == "raw"
     assert changed["processing_attempts"] == 0
     assert changed["processing_error"] is None
