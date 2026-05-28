@@ -84,9 +84,10 @@ provider/event document upsert, evidence job enqueue, fetch-run completion, and
 material source freshness. It does not hydrate evidence or write evidence
 artifacts. `EquityEventEvidenceHydrationWorker` owns the due
 `equity_event_evidence_jobs` queue, performs bounded evidence provider
-hydration outside the fetch chain, replaces `equity_event_evidence_artifacts`,
-updates document/company evidence status and source evidence freshness, and
-wakes downstream document consumers after terminal evidence state is written.
+hydration outside the fetch chain, upserts `equity_event_evidence_artifacts`,
+deletes stale document artifacts by stable artifact identity, updates
+document/company evidence status and source evidence freshness, and wakes
+downstream document consumers after terminal evidence state is written.
 
 ## Source Roles
 

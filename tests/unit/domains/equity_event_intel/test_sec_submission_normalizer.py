@@ -51,6 +51,8 @@ def test_normalize_sec_submission_documents_prefers_acceptance_time() -> None:
                 "acceptanceDateTime": ["2026-04-25T14:30:15.000Z"],
                 "reportDate": [""],
                 "primaryDocument": ["msft-8k.htm"],
+                "primaryDocDescription": ["MSFT 8-K"],
+                "items": ["Item 2.02 Results of Operations and Financial Condition"],
                 "title": ["Item 2.02 Results of Operations and Financial Condition"],
                 "description": ["Microsoft earnings release with management commentary."],
                 "body_text": ["Revenue increased and operating income grew."],
@@ -71,6 +73,9 @@ def test_normalize_sec_submission_documents_prefers_acceptance_time() -> None:
     assert len(docs) == 1
     assert docs[0].event_time_ms == int(datetime(2026, 4, 25, 14, 30, 15, tzinfo=UTC).timestamp() * 1000)
     assert docs[0].document_url == ("https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft-8k.htm")
+    assert docs[0].provider_title == "MSFT 8-K"
+    assert docs[0].provider_summary == "Item 2.02 Results of Operations and Financial Condition"
+    assert docs[0].primary_document_url == docs[0].document_url
     assert docs[0].raw_payload_json == {
         "company_cik": "CIK0000789019",
         "company_name": "MICROSOFT CORP",

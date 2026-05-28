@@ -1068,11 +1068,11 @@ def test_equity_event_repository_replace_page_rows_advances_source_watermark_wit
     assert after["xmin"] != before["xmin"]
 
 
-def test_equity_event_repository_replaces_evidence_artifacts_for_document(postgres_conn) -> None:
+def test_equity_event_repository_upserts_evidence_artifacts_for_document(postgres_conn) -> None:
     repos = repositories_for_connection(postgres_conn)
     _seed_event_document(repos, event_document_id="event-doc-evidence-replace")
 
-    repos.equity_events.replace_evidence_artifacts(
+    repos.equity_events.upsert_evidence_artifacts(
         event_document_id="event-doc-evidence-replace",
         artifacts=[
             {
@@ -1092,7 +1092,7 @@ def test_equity_event_repository_replaces_evidence_artifacts_for_document(postgr
         ],
         now_ms=NOW_MS + 2,
     )
-    repos.equity_events.replace_evidence_artifacts(
+    repos.equity_events.upsert_evidence_artifacts(
         event_document_id="event-doc-evidence-replace",
         artifacts=[
             {

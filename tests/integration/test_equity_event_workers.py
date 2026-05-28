@@ -831,6 +831,7 @@ def test_process_worker_claims_newest_raw_documents_first(postgres_conn) -> None
         provider_document_key="0000789019-26-000999:8-K",
         accession_number="0000789019-26-000999",
         form_type="8-K",
+        provider_summary="Results of Operations and Financial Condition",
         raw_payload_json={
             "title": "Results of Operations and Financial Condition",
             "body_text": "Revenue was $63.0 billion.",
@@ -910,12 +911,19 @@ def test_reprocessing_updated_document_clears_stale_story_membership(postgres_co
         discovered_at_ms=NOW_MS + 3_000,
         content_hash="content-updated",
         now_ms=NOW_MS + 3_000,
+        provider_title="MSFT 8-K",
+        provider_summary="Results of Operations and Financial Condition",
     )
     repos.equity_events.mark_event_document_evidence_status(
         event_document_id="event-doc-update",
         evidence_status="ready",
         evidence_reason="",
         evidence_ready_at_ms=NOW_MS + 3_000,
+        now_ms=NOW_MS + 3_000,
+    )
+    repos.equity_events.enqueue_process_job_for_document(
+        event_document_id="event-doc-update",
+        due_at_ms=NOW_MS + 3_000,
         now_ms=NOW_MS + 3_000,
     )
 
@@ -943,6 +951,7 @@ def test_story_projection_rebuilds_members_after_partial_truncation(postgres_con
         provider_document_key="0000789019-26-000102:8-K",
         accession_number="0000789019-26-000102",
         form_type="8-K",
+        provider_summary="Results of Operations and Financial Condition",
         raw_payload_json={
             "title": "Results of Operations and Financial Condition",
             "body_text": "Revenue was $62.0 billion.",
@@ -2047,6 +2056,9 @@ def _seed_processable_document(
     form_type: str = "10-Q",
     fiscal_period: str | None = "2026Q1",
     raw_payload_json: dict[str, Any] | None = None,
+    provider_title: str | None = None,
+    provider_summary: str | None = None,
+    primary_document_url: str | None = None,
     evidence_status: str = "ready",
     evidence_reason: str = "",
     evidence_text: str = "Revenue was $62.0 billion. EPS was $2.94.",
@@ -2095,6 +2107,10 @@ def _seed_processable_document(
         discovered_at_ms=NOW_MS,
         content_hash=content_hash,
         now_ms=NOW_MS,
+        provider_title=provider_title or f"{ticker} {form_type}",
+        provider_summary=provider_summary,
+        primary_document_url=primary_document_url
+        or "https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft.htm",
         commit=False,
     )
     artifacts = []
@@ -2145,7 +2161,7 @@ def _seed_processable_document(
                 )
             )
         )
-    repos.equity_events.replace_evidence_artifacts(
+    repos.equity_events.upsert_evidence_artifacts(
         event_document_id=event_document_id,
         artifacts=artifacts,
         now_ms=NOW_MS,
@@ -2156,6 +2172,12 @@ def _seed_processable_document(
         evidence_status=evidence_status,
         evidence_reason=evidence_reason,
         evidence_ready_at_ms=NOW_MS if evidence_status == "ready" else None,
+        now_ms=NOW_MS,
+        commit=False,
+    )
+    repos.equity_events.enqueue_process_job_for_document(
+        event_document_id=event_document_id,
+        due_at_ms=NOW_MS,
         now_ms=NOW_MS,
         commit=False,
     )

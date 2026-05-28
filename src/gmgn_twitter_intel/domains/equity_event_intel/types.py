@@ -288,6 +288,9 @@ class NormalizedEquityDocument:
     cik: str | None = None
     event_document_id: str | None = None
     provider_document_id: str | None = None
+    provider_title: str | None = None
+    provider_summary: str | None = None
+    primary_document_url: str | None = None
     document_type: str = "unknown"
     form_type: str | None = None
     accession_number: str | None = None

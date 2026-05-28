@@ -16,7 +16,7 @@ _EARNINGS_8K_TEXT = (
 
 def classify_equity_event(document: Mapping[str, Any]) -> EquityCompanyEvent:
     form_type = _text(document.get("form_type")).upper()
-    event_type, priority = _event_type_and_priority(form_type=form_type, title=_document_title(document))
+    event_type, priority = _event_type_and_priority(form_type=form_type, title=_document_search_text(document))
     summary = _summary(document=document, event_type=event_type)
     return EquityCompanyEvent(
         company_event_id=_company_event_id(document=document, event_type=event_type),
@@ -61,13 +61,25 @@ def _company_event_id(*, document: Mapping[str, Any], event_type: str) -> str:
 
 
 def _document_title(document: Mapping[str, Any]) -> str:
-    raw_payload = document.get("raw_payload_json")
-    if isinstance(raw_payload, Mapping):
-        for key in ("title", "description", "primary_document"):
-            value = _text(raw_payload.get(key))
-            if value:
-                return value
-    return _text(document.get("title"))
+    for key in ("provider_title", "title", "provider_summary", "primary_document_url", "document_url"):
+        value = _text(document.get(key))
+        if value:
+            return value
+    return ""
+
+
+def _document_search_text(document: Mapping[str, Any]) -> str:
+    return " ".join(
+        value
+        for value in (
+            _text(document.get("provider_title")),
+            _text(document.get("provider_summary")),
+            _text(document.get("title")),
+            _text(document.get("primary_document_url")),
+            _text(document.get("document_url")),
+        )
+        if value
+    )
 
 
 def _summary(*, document: Mapping[str, Any], event_type: str) -> str:

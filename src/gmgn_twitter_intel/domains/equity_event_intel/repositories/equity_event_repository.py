@@ -795,31 +795,17 @@ class EquityEventRepository:
         fetched_at_ms: int,
         commit: bool = True,
     ) -> dict[str, Any]:
-        existing = self.conn.execute(
-            """
-            SELECT *
-              FROM equity_provider_documents
-             WHERE source_id = %s
-               AND provider_document_key = %s
-            """,
-            (source_id, provider_document_key),
-        ).fetchone()
-        status = "inserted"
-        if existing is not None:
-            status = "duplicate"
-            if (
-                existing["document_url"] != document_url
-                or existing["payload_hash"] != payload_hash
-                or dict(existing["raw_payload_json"]) != dict(raw_payload_json)
-            ):
-                status = "updated"
         row = self.conn.execute(
             """
             INSERT INTO equity_provider_documents (
               provider_document_id, source_id, fetch_run_id, provider_document_key,
               company_id, ticker, cik, document_url, payload_hash, raw_payload_json, fetched_at_ms
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (
+              %(provider_document_id)s, %(source_id)s, %(fetch_run_id)s, %(provider_document_key)s,
+              %(company_id)s, %(ticker)s, %(cik)s, %(document_url)s, %(payload_hash)s,
+              %(raw_payload_json)s, %(fetched_at_ms)s
+            )
             ON CONFLICT (source_id, provider_document_key) DO UPDATE SET
               fetch_run_id = EXCLUDED.fetch_run_id,
               company_id = EXCLUDED.company_id,
@@ -827,27 +813,75 @@ class EquityEventRepository:
               cik = EXCLUDED.cik,
               document_url = EXCLUDED.document_url,
               payload_hash = EXCLUDED.payload_hash,
-              raw_payload_json = EXCLUDED.raw_payload_json,
-              fetched_at_ms = EXCLUDED.fetched_at_ms
-            RETURNING *
+              raw_payload_json = CASE
+                WHEN equity_provider_documents.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                THEN EXCLUDED.raw_payload_json
+                ELSE equity_provider_documents.raw_payload_json
+              END,
+              fetched_at_ms = CASE
+                WHEN equity_provider_documents.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                THEN EXCLUDED.fetched_at_ms
+                ELSE equity_provider_documents.fetched_at_ms
+              END
+            WHERE equity_provider_documents.company_id IS DISTINCT FROM EXCLUDED.company_id
+               OR equity_provider_documents.ticker IS DISTINCT FROM EXCLUDED.ticker
+               OR equity_provider_documents.cik IS DISTINCT FROM EXCLUDED.cik
+               OR equity_provider_documents.document_url IS DISTINCT FROM EXCLUDED.document_url
+               OR equity_provider_documents.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+            RETURNING provider_document_id,
+                      source_id,
+                      fetch_run_id,
+                      provider_document_key,
+                      company_id,
+                      ticker,
+                      cik,
+                      document_url,
+                      payload_hash,
+                      raw_payload_json,
+                      fetched_at_ms,
+                      CASE WHEN xmax = 0 THEN 'inserted' ELSE 'updated' END AS status
             """,
-            (
-                provider_document_id,
-                source_id,
-                fetch_run_id,
-                provider_document_key,
-                company_id,
-                ticker,
-                cik,
-                document_url,
-                payload_hash,
-                Jsonb(dict(raw_payload_json)),
-                int(fetched_at_ms),
-            ),
+            {
+                "provider_document_id": provider_document_id,
+                "source_id": source_id,
+                "fetch_run_id": fetch_run_id,
+                "provider_document_key": provider_document_key,
+                "company_id": company_id,
+                "ticker": ticker,
+                "cik": cik,
+                "document_url": document_url,
+                "payload_hash": payload_hash,
+                "raw_payload_json": Jsonb(dict(raw_payload_json)),
+                "fetched_at_ms": int(fetched_at_ms),
+            },
         ).fetchone()
+        if row is None:
+            row = self.conn.execute(
+                """
+                SELECT provider_document_id,
+                       source_id,
+                       fetch_run_id,
+                       provider_document_key,
+                       company_id,
+                       ticker,
+                       cik,
+                       document_url,
+                       payload_hash,
+                       raw_payload_json,
+                       fetched_at_ms,
+                       'duplicate'::text AS status
+                  FROM equity_provider_documents
+                 WHERE source_id = %(source_id)s
+                   AND provider_document_key = %(provider_document_key)s
+                 LIMIT 1
+                """,
+                {"source_id": source_id, "provider_document_key": provider_document_key},
+            ).fetchone()
+        if row is None:
+            raise RuntimeError(f"provider document upsert returned no row for {source_id}:{provider_document_key}")
         if commit:
             self.conn.commit()
-        return {**dict(row), "status": status}
+        return dict(row)
 
     def upsert_event_document(
         self,
@@ -868,6 +902,9 @@ class EquityEventRepository:
         discovered_at_ms: int,
         content_hash: str,
         now_ms: int,
+        provider_title: str | None = None,
+        provider_summary: str | None = None,
+        primary_document_url: str | None = None,
         commit: bool = True,
     ) -> dict[str, Any]:
         row = self.conn.execute(
@@ -876,9 +913,10 @@ class EquityEventRepository:
               INSERT INTO equity_event_documents (
                 event_document_id, provider_document_id, company_id, ticker, cik, source_id,
                 source_role, document_type, form_type, accession_number, fiscal_period, document_url,
-                event_time_ms, discovered_at_ms, content_hash, created_at_ms, updated_at_ms
+                provider_title, provider_summary, primary_document_url, event_time_ms, discovered_at_ms,
+                content_hash, created_at_ms, updated_at_ms
               )
-              VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+              VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
               ON CONFLICT (event_document_id) DO UPDATE SET
                 provider_document_id = EXCLUDED.provider_document_id,
                 company_id = EXCLUDED.company_id,
@@ -891,6 +929,9 @@ class EquityEventRepository:
                 accession_number = EXCLUDED.accession_number,
                 fiscal_period = EXCLUDED.fiscal_period,
                 document_url = EXCLUDED.document_url,
+                provider_title = EXCLUDED.provider_title,
+                provider_summary = EXCLUDED.provider_summary,
+                primary_document_url = EXCLUDED.primary_document_url,
                 event_time_ms = EXCLUDED.event_time_ms,
                 discovered_at_ms = CASE
                   WHEN equity_event_documents.content_hash IS NOT DISTINCT FROM EXCLUDED.content_hash
@@ -944,6 +985,9 @@ class EquityEventRepository:
                  OR equity_event_documents.accession_number IS DISTINCT FROM EXCLUDED.accession_number
                  OR equity_event_documents.fiscal_period IS DISTINCT FROM EXCLUDED.fiscal_period
                  OR equity_event_documents.document_url IS DISTINCT FROM EXCLUDED.document_url
+                 OR equity_event_documents.provider_title IS DISTINCT FROM EXCLUDED.provider_title
+                 OR equity_event_documents.provider_summary IS DISTINCT FROM EXCLUDED.provider_summary
+                 OR equity_event_documents.primary_document_url IS DISTINCT FROM EXCLUDED.primary_document_url
                  OR equity_event_documents.event_time_ms IS DISTINCT FROM EXCLUDED.event_time_ms
                  OR equity_event_documents.content_hash IS DISTINCT FROM EXCLUDED.content_hash
               RETURNING *, CASE WHEN xmax = 0 THEN 'inserted' ELSE 'updated' END AS status
@@ -971,6 +1015,9 @@ class EquityEventRepository:
                 accession_number,
                 fiscal_period,
                 document_url,
+                _optional_str(provider_title),
+                _optional_str(provider_summary),
+                _optional_str(primary_document_url),
                 int(event_time_ms),
                 int(discovered_at_ms),
                 content_hash,
@@ -1226,6 +1273,9 @@ class EquityEventRepository:
                      'form_type', documents.form_type,
                      'accession_number', documents.accession_number,
                      'fiscal_period', documents.fiscal_period,
+                     'provider_title', documents.provider_title,
+                     'provider_summary', documents.provider_summary,
+                     'primary_document_url', documents.primary_document_url,
                      'event_time_ms', documents.event_time_ms,
                      'content_hash', documents.content_hash
                    ) AS document
@@ -1497,44 +1547,76 @@ class EquityEventRepository:
             self.conn.commit()
         return [dict(row) for row in terminal_rows]
 
-    def replace_evidence_artifacts(
+    def upsert_evidence_artifacts(
         self,
         *,
         event_document_id: str,
         artifacts: Sequence[Mapping[str, Any]],
         now_ms: int,
         commit: bool = True,
-    ) -> None:
-        self.conn.execute(
-            "DELETE FROM equity_event_evidence_artifacts WHERE event_document_id = %s",
-            (event_document_id,),
-        )
+    ) -> dict[str, int]:
+        counts = {"inserted": 0, "updated": 0, "deleted": 0}
+        incoming_ids: list[str] = []
         for artifact in artifacts:
             payload = _evidence_artifact_payload(
                 event_document_id=event_document_id,
                 artifact=artifact,
                 now_ms=now_ms,
             )
-            self.conn.execute(
+            incoming_ids.append(str(payload["evidence_artifact_id"]))
+            row = self.conn.execute(
                 """
                 INSERT INTO equity_event_evidence_artifacts (
                   evidence_artifact_id, event_document_id, provider_document_id, source_id,
                   artifact_kind, extraction_status, source_url, content_hash, content_text,
                   content_json, excerpt_text, failure_reason, fetched_at_ms, parsed_at_ms,
-                  created_at_ms, updated_at_ms
+                  created_at_ms, updated_at_ms, artifact_payload_hash
                 )
                 VALUES (
                   %(evidence_artifact_id)s, %(event_document_id)s, %(provider_document_id)s,
                   %(source_id)s, %(artifact_kind)s, %(extraction_status)s, %(source_url)s,
                   %(content_hash)s, %(content_text)s, %(content_json)s, %(excerpt_text)s,
                   %(failure_reason)s, %(fetched_at_ms)s, %(parsed_at_ms)s, %(created_at_ms)s,
-                  %(updated_at_ms)s
+                  %(updated_at_ms)s, %(artifact_payload_hash)s
                 )
+                ON CONFLICT (evidence_artifact_id) DO UPDATE SET
+                  event_document_id = EXCLUDED.event_document_id,
+                  provider_document_id = EXCLUDED.provider_document_id,
+                  source_id = EXCLUDED.source_id,
+                  artifact_kind = EXCLUDED.artifact_kind,
+                  extraction_status = EXCLUDED.extraction_status,
+                  source_url = EXCLUDED.source_url,
+                  content_hash = EXCLUDED.content_hash,
+                  content_text = EXCLUDED.content_text,
+                  content_json = EXCLUDED.content_json,
+                  excerpt_text = EXCLUDED.excerpt_text,
+                  failure_reason = EXCLUDED.failure_reason,
+                  fetched_at_ms = EXCLUDED.fetched_at_ms,
+                  parsed_at_ms = EXCLUDED.parsed_at_ms,
+                  updated_at_ms = EXCLUDED.updated_at_ms,
+                  artifact_payload_hash = EXCLUDED.artifact_payload_hash
+                WHERE equity_event_evidence_artifacts.artifact_payload_hash
+                  IS DISTINCT FROM EXCLUDED.artifact_payload_hash
+                RETURNING CASE WHEN xmax = 0 THEN 'inserted' ELSE 'updated' END AS status
                 """,
                 payload,
-            )
+            ).fetchone()
+            if row is not None:
+                status = str(row["status"])
+                if status in counts:
+                    counts[status] += 1
+        cursor = self.conn.execute(
+            """
+            DELETE FROM equity_event_evidence_artifacts
+             WHERE event_document_id = %(event_document_id)s
+               AND NOT (evidence_artifact_id = ANY(%(incoming_ids)s::text[]))
+            """,
+            {"event_document_id": event_document_id, "incoming_ids": incoming_ids},
+        )
+        counts["deleted"] = max(0, int(getattr(cursor, "rowcount", 0) or 0))
         if commit:
             self.conn.commit()
+        return counts
 
     def list_event_evidence_artifacts(self, event_document_id: str) -> list[dict[str, Any]]:
         rows = self.conn.execute(
@@ -1570,6 +1652,9 @@ class EquityEventRepository:
                    documents.accession_number,
                    documents.fiscal_period,
                    documents.document_url,
+                   documents.provider_title,
+                   documents.provider_summary,
+                   documents.primary_document_url,
                    documents.content_hash,
                    documents.evidence_status,
                    documents.evidence_reason
@@ -3887,7 +3972,7 @@ def _evidence_artifact_payload(
                 "content_hash": artifact.get("content_hash"),
             }
         )
-    return {
+    payload = {
         "evidence_artifact_id": evidence_artifact_id,
         "event_document_id": event_document_id,
         "provider_document_id": _optional_str(artifact.get("provider_document_id")),
@@ -3897,7 +3982,7 @@ def _evidence_artifact_payload(
         "source_url": str(artifact.get("source_url") or ""),
         "content_hash": str(artifact.get("content_hash") or ""),
         "content_text": str(artifact.get("content_text") or ""),
-        "content_json": Jsonb(_json_dict(artifact.get("content_json"))),
+        "content_json": Jsonb(_artifact_content_json(artifact)),
         "excerpt_text": str(artifact.get("excerpt_text") or ""),
         "failure_reason": _compact_error(_optional_str(artifact.get("failure_reason"))),
         "fetched_at_ms": int(artifact.get("fetched_at_ms") or 0),
@@ -3905,6 +3990,34 @@ def _evidence_artifact_payload(
         "created_at_ms": int(now_ms),
         "updated_at_ms": int(now_ms),
     }
+    payload["artifact_payload_hash"] = _evidence_artifact_payload_hash(payload)
+    return payload
+
+
+def _artifact_content_json(artifact: Mapping[str, Any]) -> dict[str, Any]:
+    if str(artifact.get("artifact_kind") or "") == "companyfacts":
+        return {}
+    return _json_dict(artifact.get("content_json"))
+
+
+def _evidence_artifact_payload_hash(payload: Mapping[str, Any]) -> str:
+    hash_payload = {
+        key: payload.get(key)
+        for key in (
+            "evidence_artifact_id",
+            "event_document_id",
+            "provider_document_id",
+            "source_id",
+            "artifact_kind",
+            "extraction_status",
+            "source_url",
+            "content_hash",
+            "excerpt_text",
+            "failure_reason",
+        )
+    }
+    encoded = json.dumps(hash_payload, sort_keys=True, ensure_ascii=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def _projection_payload(payload: dict[str, Any], *, json_fields: Sequence[str]) -> dict[str, Any]:
@@ -3958,6 +4071,9 @@ def _process_input_payload_hash(
         "accession_number": document.get("accession_number"),
         "fiscal_period": document.get("fiscal_period"),
         "document_url": document.get("document_url"),
+        "provider_title": document.get("provider_title"),
+        "provider_summary": document.get("provider_summary"),
+        "primary_document_url": document.get("primary_document_url"),
         "content_hash": document.get("content_hash"),
         "evidence_status": document.get("evidence_status"),
         "evidence_reason": document.get("evidence_reason"),

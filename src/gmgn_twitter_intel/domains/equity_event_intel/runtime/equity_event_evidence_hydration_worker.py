@@ -275,7 +275,7 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
                 content_hash=document.get("content_hash"),
             ):
                 return WorkerResult(processed=0, notes={"stale_claim": 1, "evidence_job_id": evidence_job_id})
-            repos.equity_events.replace_evidence_artifacts(
+            repos.equity_events.upsert_evidence_artifacts(
                 event_document_id=event_document_id,
                 artifacts=_artifact_mappings(artifacts),
                 now_ms=now_ms,
@@ -405,6 +405,9 @@ def _normalized_document_from_row(row: Mapping[str, Any]) -> NormalizedEquityDoc
         payload_hash=str(row["payload_hash"]),
         raw_payload_json=dict(row.get("raw_payload_json") or {}),
         fetched_at_ms=int(row.get("fetched_at_ms") or 0),
+        provider_title=_optional_str(row.get("provider_title")),
+        provider_summary=_optional_str(row.get("provider_summary")),
+        primary_document_url=_optional_str(row.get("primary_document_url")),
         document_type=str(row.get("document_type") or "unknown"),
         form_type=_optional_str(row.get("form_type")),
         accession_number=_optional_str(row.get("accession_number")),

@@ -51,6 +51,8 @@ def normalize_sec_submission_documents(
         acceptance_datetime = _optional_string(_value_at(recent, "acceptanceDateTime", index))
         report_date = _optional_string(_value_at(recent, "reportDate", index))
         primary_document = _optional_string(_value_at(recent, "primaryDocument", index))
+        primary_doc_description = _optional_string(_value_at(recent, "primaryDocDescription", index))
+        filing_items = _optional_string(_value_at(recent, "items", index))
         document_url = _sec_document_url(cik=cik, accession_number=accession, primary_document=primary_document)
         if not document_url:
             continue
@@ -75,6 +77,9 @@ def normalize_sec_submission_documents(
                 payload_hash=payload_hash,
                 raw_payload_json=raw_payload,
                 fetched_at_ms=int(fetched_at_ms),
+                provider_title=primary_doc_description or f"{str(source['ticker']).upper()} {normalized_form}",
+                provider_summary=filing_items,
+                primary_document_url=document_url,
                 document_type="sec_filing",
                 form_type=normalized_form,
                 accession_number=accession,

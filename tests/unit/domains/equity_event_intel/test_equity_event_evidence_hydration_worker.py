@@ -46,7 +46,7 @@ def test_hydration_worker_claims_job_writes_artifacts_finishes_and_wakes() -> No
         }
     ]
     assert repo.claims == [{"now_ms": NOW_MS, "limit": 10, "lease_owner": "equity_event_evidence_hydration"}]
-    assert repo.replaced_artifacts[0]["event_document_id"] == "event-document-id"
+    assert repo.upserted_artifacts[0]["event_document_id"] == "event-document-id"
     assert repo.marked_statuses == [
         {
             "event_document_id": "event-document-id",
@@ -88,8 +88,8 @@ def test_hydration_worker_terminalizes_reaped_stale_job_with_failed_artifact_and
 
     assert result.processed == 1
     assert result.notes["reaped_stale"] == 1
-    assert repo.replaced_artifacts[0]["event_document_id"] == "event-document-id"
-    artifact = repo.replaced_artifacts[0]["artifacts"][0]
+    assert repo.upserted_artifacts[0]["event_document_id"] == "event-document-id"
+    artifact = repo.upserted_artifacts[0]["artifacts"][0]
     assert artifact["extraction_status"] == "failed"
     assert artifact["failure_reason"] == "evidence_job_lease_expired"
     assert repo.marked_statuses == [
@@ -115,9 +115,9 @@ def test_hydration_worker_terminalizes_reaped_stale_job_with_failed_artifact_and
     terminal_order = [
         item
         for item in repo.call_order
-        if item in {"replace_artifacts", "mark_status", "finish_terminal", "commit"}
+        if item in {"upsert_artifacts", "mark_status", "finish_terminal", "commit"}
     ]
-    assert terminal_order[-4:] == ["replace_artifacts", "mark_status", "finish_terminal", "commit"]
+    assert terminal_order[-4:] == ["upsert_artifacts", "mark_status", "finish_terminal", "commit"]
     assert repo.source_freshness == [
         {"source_id": "sec:MSFT", "actionable_error": "evidence_job_lease_expired"}
     ]
@@ -155,7 +155,7 @@ def test_hydration_worker_skips_stale_claim_after_document_reset() -> None:
             "content_hash": "content-hash",
         }
     ]
-    assert repo.replaced_artifacts == []
+    assert repo.upserted_artifacts == []
     assert repo.marked_statuses == []
     assert repo.successes == []
     assert repo.terminals == []
@@ -192,7 +192,7 @@ def test_hydration_worker_retryable_exception_passes_document_claim_guard() -> N
             "content_hash": "content-hash",
         }
     ]
-    assert repo.replaced_artifacts == []
+    assert repo.upserted_artifacts == []
     assert repo.marked_statuses == []
     assert wake_bus.documents_written == []
 
@@ -348,7 +348,7 @@ class _HydrationRepo:
         self.load_payload = self._default_payload() if load_payload is None else load_payload
         self.reaped: list[dict[str, Any]] = []
         self.claims: list[dict[str, Any]] = []
-        self.replaced_artifacts: list[dict[str, Any]] = []
+        self.upserted_artifacts: list[dict[str, Any]] = []
         self.marked_statuses: list[dict[str, Any]] = []
         self.successes: list[dict[str, Any]] = []
         self.retryables: list[dict[str, Any]] = []
@@ -435,9 +435,16 @@ class _HydrationRepo:
         )
         return self.claim_current
 
-    def replace_evidence_artifacts(self, *, event_document_id: str, artifacts: list[dict[str, Any]], **_: Any) -> None:
-        self.call_order.append("replace_artifacts")
-        self.replaced_artifacts.append({"event_document_id": event_document_id, "artifacts": artifacts})
+    def upsert_evidence_artifacts(
+        self,
+        *,
+        event_document_id: str,
+        artifacts: list[dict[str, Any]],
+        **_: Any,
+    ) -> dict[str, int]:
+        self.call_order.append("upsert_artifacts")
+        self.upserted_artifacts.append({"event_document_id": event_document_id, "artifacts": artifacts})
+        return {"inserted": len(artifacts), "updated": 0, "deleted": 0}
 
     def mark_event_document_evidence_status(self, **kwargs: Any) -> None:
         self.call_order.append("mark_status")

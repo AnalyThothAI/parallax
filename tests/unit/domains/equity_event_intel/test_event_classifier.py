@@ -22,6 +22,19 @@ def test_classifier_maps_8k_earnings_release_to_p0() -> None:
     assert event.priority == "P0"
 
 
+def test_classifier_maps_8k_earnings_release_from_normalized_summary() -> None:
+    event = classify_equity_event(
+        document_payload(
+            form_type="8-K",
+            provider_title="MSFT 8-K",
+            provider_summary="Item 2.02 Results of Operations and Financial Condition",
+        )
+    )
+
+    assert event.event_type == "earnings_release"
+    assert event.summary == "MSFT 8-K"
+
+
 def document_payload(**overrides: Any) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "event_document_id": "event-doc-1",
@@ -33,7 +46,9 @@ def document_payload(**overrides: Any) -> dict[str, Any]:
         "fiscal_period": None,
         "event_time_ms": 1_765_900_000_000,
         "discovered_at_ms": 1_765_900_000_000,
-        "raw_payload_json": {},
+        "provider_title": "",
+        "provider_summary": "",
+        "primary_document_url": "",
     }
     payload.update(overrides)
     return payload

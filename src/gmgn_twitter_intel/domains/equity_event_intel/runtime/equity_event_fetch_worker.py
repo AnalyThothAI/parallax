@@ -257,6 +257,9 @@ class EquityEventFetchWorker(WorkerBase):
                     discovered_at_ms=fetched_at_ms,
                     content_hash=normalized.content_hash or normalized.payload_hash,
                     now_ms=fetched_at_ms,
+                    provider_title=normalized.provider_title,
+                    provider_summary=normalized.provider_summary,
+                    primary_document_url=normalized.primary_document_url,
                     commit=False,
                 )
                 status = str(event.get("status") or provider.get("status") or "duplicate")

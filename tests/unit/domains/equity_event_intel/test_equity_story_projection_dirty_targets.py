@@ -374,6 +374,32 @@ class _FakeProcessEquityRepository:
         self.matching_expected_event_ids = matching_expected_event_ids
         self.conn = _FakeConn()
 
+    def expire_stale_process_jobs(self, **_kwargs: Any) -> list[dict[str, Any]]:
+        return []
+
+    def claim_due_process_jobs(self, *, lease_owner: str, **_kwargs: Any) -> list[dict[str, Any]]:
+        return [
+            {
+                "event_document_id": self.document["event_document_id"],
+                "lease_owner": lease_owner,
+                "attempt_count": 1,
+                "input_payload_hash": "process-input-hash",
+            }
+        ]
+
+    def load_process_packets_for_claims(self, *, claims: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not claims:
+            return []
+        document = self.list_event_documents_for_processing(limit=1)[0]
+        document.update(
+            {
+                "lease_owner": claims[0]["lease_owner"],
+                "attempt_count": claims[0]["attempt_count"],
+                "input_payload_hash": claims[0]["input_payload_hash"],
+            }
+        )
+        return [document]
+
     def list_event_documents_for_processing(self, *, limit: int) -> list[dict[str, Any]]:
         document = dict(self.document)
         document.setdefault("evidence_status", "ready")
@@ -410,6 +436,12 @@ class _FakeProcessEquityRepository:
 
     def mark_event_document_process_failed(self, **_kwargs: Any) -> None:
         return None
+
+    def finish_process_job_success(self, **_kwargs: Any) -> bool:
+        return True
+
+    def finish_process_job_failure(self, **_kwargs: Any) -> bool:
+        return True
 
     def matching_expected_event_ids_for_company_events(self, *, company_event_ids: list[str]) -> list[str]:
         return list(self.matching_expected_event_ids)
@@ -564,6 +596,9 @@ class _FakeSession:
 
     def __exit__(self, *_args: Any) -> None:
         return None
+
+    def unit_of_work(self) -> _FakeTransaction:
+        return self.conn.transaction()
 
 
 class _FakeDb:
