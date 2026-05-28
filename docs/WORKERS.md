@@ -218,11 +218,13 @@ copy provider credentials, cookies, tokens, proxy URLs, or API keys into logs or
 docs. Staged provider waves are:
 
 1. Enable `cryptopanic` when credentials exist, as aggregator/specialist media.
-2. Enable `opennews` when `news_intel.opennews.api_token` exists and an
-   `opennews://subscribe` source is intentionally enabled. Use
-   `fetch_policy.fetch_mode = hybrid` or omit it for the default WebSocket +
-   REST catch-up behavior; set `fetch_mode = rest` only when push delivery is
-   intentionally disabled.
+2. Enable `opennews` when `news_intel.opennews.api_token` exists and explicit
+   `opennews://subscribe` sources are intentionally enabled. Production crypto
+   news coverage is split by provider engine into `opennews-news`,
+   `opennews-listing`, and `opennews-onchain`; do not mix OpenNews `market`
+   engine rows into the News tape. Use `fetch_policy.fetch_mode = hybrid` or
+   omit it for the default WebSocket + REST catch-up behavior; set
+   `fetch_mode = rest` only when push delivery is intentionally disabled.
 3. Add official regulator, exchange, protocol, and issuer RSS/manual API feeds.
 4. Add OpenBB/macro/equity adapters only behind explicit ownership boundaries.
 5. Add social/community/developer context sources into `news_context_items`.

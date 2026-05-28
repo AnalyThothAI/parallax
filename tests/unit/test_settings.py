@@ -160,11 +160,19 @@ def test_news_intel_defaults_enable_core_crypto_and_us_market_sources() -> None:
     assert cryptopanic.provider_type == "cryptopanic"
     assert cryptopanic.feed_url.startswith("cryptopanic://posts?")
     assert cryptopanic.source_role == "aggregator"
-    opennews = next(source for source in settings.news_intel.sources if source.source_id == "opennews-realtime")
-    assert opennews.provider_type == "opennews"
-    assert opennews.feed_url == "opennews://subscribe"
-    assert opennews.enabled is False
-    assert opennews.fetch_policy["max_messages"] == 20
+    opennews_sources = {
+        source.source_id: source for source in settings.news_intel.sources if source.provider_type == "opennews"
+    }
+    assert set(opennews_sources) == {"opennews-news", "opennews-listing", "opennews-onchain"}
+    assert opennews_sources["opennews-news"].fetch_policy["engineTypes"] == {"news": []}
+    assert opennews_sources["opennews-listing"].fetch_policy["engineTypes"] == {"listing": []}
+    assert opennews_sources["opennews-onchain"].fetch_policy["engineTypes"] == {"onchain": []}
+    for opennews in opennews_sources.values():
+        assert opennews.feed_url == "opennews://subscribe"
+        assert opennews.enabled is False
+        assert "market" not in opennews.fetch_policy["engineTypes"]
+        assert opennews.fetch_policy["max_messages"] == 20
+        assert opennews.fetch_policy["rest_limit"] == 100
     assert settings.news_intel.opennews.api_token is None
     assert settings.news_intel.opennews.api_base_url == "https://ai.6551.io"
     assert settings.news_intel.opennews.wss_url == "wss://ai.6551.io/open/news_wss"
@@ -273,9 +281,17 @@ def test_default_config_yaml_contains_explicit_news_intel_block() -> None:
         "yahoo-finance",
         "cryptopanic-en",
     }
-    opennews = next(source for source in news_intel["sources"] if source["source_id"] == "opennews-realtime")
-    assert opennews["provider_type"] == "opennews"
-    assert opennews["enabled"] is False
+    opennews_sources = {
+        source["source_id"]: source for source in news_intel["sources"] if source["provider_type"] == "opennews"
+    }
+    assert set(opennews_sources) == {"opennews-news", "opennews-listing", "opennews-onchain"}
+    assert opennews_sources["opennews-news"]["fetch_policy"]["engineTypes"] == {"news": []}
+    assert opennews_sources["opennews-listing"]["fetch_policy"]["engineTypes"] == {"listing": []}
+    assert opennews_sources["opennews-onchain"]["fetch_policy"]["engineTypes"] == {"onchain": []}
+    for opennews in opennews_sources.values():
+        assert opennews["enabled"] is False
+        assert "market" not in opennews["fetch_policy"]["engineTypes"]
+        assert opennews["fetch_policy"]["rest_limit"] == 100
     assert news_intel["opennews"] == {
         "api_token": None,
         "api_base_url": "https://ai.6551.io",
