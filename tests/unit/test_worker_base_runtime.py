@@ -4,6 +4,8 @@ import asyncio
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from gmgn_twitter_intel.app.runtime.telemetry import TelemetryRegistry
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
@@ -159,6 +161,39 @@ def test_worker_base_run_calls_hooks_updates_status_and_metrics() -> None:
         assert payload["iteration_duration_p99_ms"] >= 0
         assert payload["queue_depth"] is None
         assert payload["pool_wait_ms_p99"] == 12.5
+
+    asyncio.run(scenario())
+
+
+def test_worker_base_rejects_concurrent_run_on_same_instance() -> None:
+    class BlockingWorker(WorkerBase):
+        def __init__(self, **kwargs: Any) -> None:
+            super().__init__(**kwargs)
+            self.entered = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def run_once(self) -> WorkerResult:
+            self.entered.set()
+            await self.release.wait()
+            await self.stop()
+            return WorkerResult(processed=1)
+
+    async def scenario() -> None:
+        worker = BlockingWorker(
+            name="blocking_worker",
+            settings=worker_settings(),
+            db=FakeDB(),
+            telemetry=FakeTelemetry(),
+        )
+        running = asyncio.create_task(worker.run())
+        await worker.entered.wait()
+
+        with pytest.raises(RuntimeError, match="worker:blocking_worker:already_running"):
+            await worker.run()
+
+        worker.release.set()
+        await running
+        await worker.aclose()
 
     asyncio.run(scenario())
 
@@ -615,7 +650,7 @@ def test_worker_base_cancelled_run_cancels_shielded_timed_out_run_once_task() ->
     asyncio.run(scenario())
 
 
-def test_worker_base_aclose_cancels_all_in_flight_run_once_tasks_from_concurrent_run_loops() -> None:
+def test_worker_base_aclose_cancels_single_in_flight_task_after_rejected_concurrent_run() -> None:
     class ConcurrentStubbornWorker(WorkerBase):
         def __init__(self, **kwargs: Any) -> None:
             super().__init__(**kwargs)
@@ -625,8 +660,7 @@ def test_worker_base_aclose_cancels_all_in_flight_run_once_tasks_from_concurrent
 
         async def run_once(self) -> WorkerResult:
             self.started_count += 1
-            if self.started_count == 2:
-                self.started_event.set()
+            self.started_event.set()
             try:
                 await asyncio.sleep(10)
             except asyncio.CancelledError:
@@ -643,15 +677,16 @@ def test_worker_base_aclose_cancels_all_in_flight_run_once_tasks_from_concurrent
             wake_waiter=FakeWakeWaiter(),
         )
         first = asyncio.create_task(worker.run(), name="worker:concurrent_stubborn#0")
-        second = asyncio.create_task(worker.run(), name="worker:concurrent_stubborn#1")
         await worker.started_event.wait()
+        with pytest.raises(RuntimeError, match="worker:concurrent_stubborn:already_running"):
+            await worker.run()
         await asyncio.sleep(0.01)
 
         await worker.stop()
         await worker.aclose()
-        await asyncio.gather(first, second, return_exceptions=True)
+        await asyncio.gather(first, return_exceptions=True)
 
-        assert worker.cancelled_count == 2
+        assert worker.cancelled_count == 1
         assert worker._run_once_tasks == set()
 
     asyncio.run(scenario())

@@ -103,6 +103,27 @@ def test_build_macro_asset_correlation_dedupes_by_source_priority() -> None:
     assert result["assets"][0]["sources"] == ["yahoo"]
 
 
+def test_build_macro_asset_correlation_does_not_truncate_timestamp_dates() -> None:
+    dates = _dates(24)
+    observations = _price_samples("asset:spy", dates, _prices_from_returns(([0.004, -0.002, 0.007] * 8)[:-1]))
+    observations.append(
+        _observation(
+            "asset:spy",
+            "2026-05-21T00:00:00Z",
+            999.0,
+            source="timestamp_vendor",
+            priority=200,
+            ingested_at_ms=1_779_000_100_000,
+        )
+    )
+
+    result = build_macro_asset_correlation(observations, assets=("asset:spy",), window="20d")
+
+    assert result["asof_date"] == "2026-05-20"
+    assert result["assets"][0]["latest_observed_at"] == "2026-05-20"
+    assert result["assets"][0]["sources"] == ["yahoo"]
+
+
 def test_build_macro_asset_correlation_marks_pairs_unavailable_when_overlap_is_too_small() -> None:
     dates = _dates(24)
     observations = [
@@ -171,7 +192,7 @@ def _price_samples(
 
 def _observation(
     concept_key: str,
-    observed_at: date,
+    observed_at: date | str,
     value: float,
     *,
     source: str,

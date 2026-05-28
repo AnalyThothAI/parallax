@@ -234,28 +234,13 @@ V1 可选 family：
 新增 rebuildable read model，唯一 writer 是 board worker：
 
 ```sql
-CREATE TABLE IF NOT EXISTS cex_oi_radar_runs (
-  run_id TEXT PRIMARY KEY,
-  run_kind TEXT NOT NULL,             -- "scheduled" / "manual" / "backfill"
-  status TEXT NOT NULL,               -- "running" / "succeeded" / "partial" / "failed"
-  exchange TEXT NOT NULL,             -- "binance"
-  quote_symbol TEXT NOT NULL,         -- "USDT"
-  universe_count BIGINT NOT NULL DEFAULT 0,
-  rows_written BIGINT NOT NULL DEFAULT 0,
-  degraded_count BIGINT NOT NULL DEFAULT 0,
-  started_at_ms BIGINT NOT NULL,
-  finished_at_ms BIGINT,
-  source_max_observed_at_ms BIGINT,
-  ranking_version TEXT NOT NULL,
-  config_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-  performance_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-  degradations_json JSONB NOT NULL DEFAULT '[]'::jsonb,
-  created_at_ms BIGINT NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS cex_oi_radar_rows (
-  run_id TEXT NOT NULL REFERENCES cex_oi_radar_runs(run_id) ON DELETE CASCADE,
-  rank BIGINT NOT NULL,
+  row_id TEXT PRIMARY KEY,
+  period TEXT NOT NULL,
+  board_provider TEXT NOT NULL,
+  board_exchange TEXT NOT NULL,
+  board_quote_symbol TEXT NOT NULL,
+  board_contract_type TEXT NOT NULL,
   target_type TEXT NOT NULL DEFAULT 'cex_symbol',
   target_id TEXT NOT NULL,
   cex_token_id TEXT REFERENCES cex_tokens(cex_token_id) ON DELETE SET NULL,
@@ -281,15 +266,19 @@ CREATE TABLE IF NOT EXISTS cex_oi_radar_rows (
   evidence_refs_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   summary_json JSONB NOT NULL DEFAULT '{}'::jsonb,
   degraded BOOLEAN NOT NULL DEFAULT false,
-  created_at_ms BIGINT NOT NULL,
-  PRIMARY KEY(run_id, target_id)
+  computed_at_ms BIGINT NOT NULL,
+  UNIQUE(board_provider, board_exchange, board_quote_symbol, board_contract_type, period, target_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_cex_oi_radar_rows_latest_rank
-ON cex_oi_radar_rows(run_id, rank);
+CREATE TABLE IF NOT EXISTS cex_oi_radar_publication_state (
+  board_key TEXT PRIMARY KEY,
+  current_payload_hash TEXT,
+  latest_attempt_status TEXT NOT NULL,
+  updated_at_ms BIGINT NOT NULL
+);
 ```
 
-`cex_oi_radar_rows` 是 read model，不是 business fact。它可以按 `run_id` 重建，不能被其他 worker 写。
+`cex_oi_radar_rows` 是 current read model，不是 business fact。它按 board identity 和 target identity 幂等发布，不能被其他 worker 写。
 
 ### CoinGlass top-K snapshots
 
@@ -385,7 +374,7 @@ cex_oi_radar_board:
 6. 对每个 symbol 计算 features：latest OI USD、4h/24h delta、price 24h、volume 24h、funding current、可交易性 gate。
 7. 生成 deterministic ranking rows。
 8. 如果 `coinglass_enrichment_enabled=true`，只对 top `coinglass_depth` 调 CoinGlass heavy families，写 `cex_derivatives_snapshots`，再重算 top-K 的 labels/degradations。
-9. 写 `cex_oi_radar_runs` 和 `cex_oi_radar_rows`，发送 wake hint `cex_oi_radar_updated`。
+9. 发布 `cex_oi_radar_rows` 和 `cex_oi_radar_publication_state`，发送 wake hint `cex_oi_radar_updated`。
 
 DB session 规则：
 
@@ -633,7 +622,7 @@ cex_oi_radar_board:
    - Retention：默认 30 天。
 
 5. **Radar board read model**
-   - Migration：`cex_oi_radar_runs`、`cex_oi_radar_rows`。
+   - Migration：`cex_oi_radar_rows`、`cex_oi_radar_publication_state`。
    - Worker：`cex_oi_radar_board`。
    - Scoring service：deterministic，fixture 可回放。
 

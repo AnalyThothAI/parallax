@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import date
 from decimal import Decimal
 
 import pytest
 
+from gmgn_twitter_intel.domains.macro_intel.observation_identity import (
+    macro_observation_fact_payload_hash,
+    macro_observation_id,
+)
 from gmgn_twitter_intel.domains.macro_intel.services.macrodata_bundle_importer import (
     import_macrodata_bundle,
     parse_macrodata_bundle,
@@ -58,7 +63,7 @@ def test_import_macrodata_bundle_upserts_observation_and_records_run() -> None:
             "concept_key": "liquidity:sofr",
             "series_key": "nyfed:SOFR",
             "source_priority": 100,
-            "observed_at": "2026-05-19",
+            "observed_at": date(2026, 5, 19),
             "value_numeric": 3.51,
             "unit": "percent",
             "frequency": "daily",
@@ -75,6 +80,10 @@ def test_import_macrodata_bundle_upserts_observation_and_records_run() -> None:
     assert import_run["asof_date"] == "2026-05-21"
     assert import_run["status"] == "partial"
     assert import_run["observations_count"] == 1
+    assert import_run["seen_observation_count"] == 1
+    assert import_run["inserted_observation_count"] == 1
+    assert import_run["changed_observation_count"] == 0
+    assert import_run["noop_observation_count"] == 0
     assert import_run["coverage_json"] == {"requested": 20, "available": 1}
     assert import_run["missing_series_json"] == ["fred:WALCL"]
     assert import_run["series_errors_json"] == [
@@ -83,22 +92,44 @@ def test_import_macrodata_bundle_upserts_observation_and_records_run() -> None:
     assert import_run["reason_codes_json"] == ["missing_series", "missing_api_key"]
     assert import_run["started_at_ms"] == NOW_MS
     assert import_run["completed_at_ms"] == NOW_MS
-    assert summary == {
-        "bundle_name": "macro-core",
-        "asof": "2026-05-21",
-        "max_observed_at": "2026-05-19",
-        "observations_count": 1,
-        "imported_observation_count": 1,
-        "imported_observation_ids": ["observation-1"],
-        "run_id": import_run["run_id"],
-        "import_run_id": import_run["run_id"],
-        "status": "partial",
-        "data_quality": "partial",
-        "coverage": {"requested": 20, "available": 1},
-        "missing_series": ["fred:WALCL"],
-        "series_errors": [{"series_key": "fred:WALCL", "provider": "fred", "code": "missing_api_key"}],
-        "reason_codes": ["missing_series", "missing_api_key"],
-    }
+    assert summary["bundle_name"] == "macro-core"
+    assert summary["asof"] == "2026-05-21"
+    assert summary["max_observed_at"] == date(2026, 5, 19)
+    assert summary["observations_count"] == 1
+    assert summary["seen_observation_count"] == 1
+    assert summary["inserted_observation_count"] == 1
+    assert summary["changed_observation_count"] == 0
+    assert summary["noop_observation_count"] == 0
+    assert summary["imported_observation_count"] == 1
+    assert summary["imported_observation_ids"] == [macro_observation_id(repos.macro_intel.observations[0])]
+    assert summary["run_id"] == import_run["run_id"]
+    assert summary["import_run_id"] == import_run["run_id"]
+    assert summary["status"] == "partial"
+    assert summary["data_quality"] == "partial"
+    assert summary["coverage"] == {"requested": 20, "available": 1}
+    assert summary["missing_series"] == ["fred:WALCL"]
+    assert summary["series_errors"] == [{"series_key": "fred:WALCL", "provider": "fred", "code": "missing_api_key"}]
+    assert summary["reason_codes"] == ["missing_series", "missing_api_key"]
+    assert summary["dirty_targets_enqueued"] == 1
+    assert repos.macro_intel.enqueued_dirty_targets == [
+        {
+            "changed_observations": [
+                {
+                    "observation_id": macro_observation_id(repos.macro_intel.observations[0]),
+                    "status": "inserted",
+                    "concept_key": "liquidity:sofr",
+                    "observed_at": date(2026, 5, 19),
+                    "fact_payload_hash": macro_observation_fact_payload_hash(repos.macro_intel.observations[0]),
+                }
+            ],
+            "projection_name": "macro_view",
+            "projection_version": "macro_regime_v4",
+            "now_ms": NOW_MS,
+            "due_at_ms": NOW_MS,
+            "reason": "macro_observations_changed",
+            "commit": False,
+        }
+    ]
 
 
 def test_import_macrodata_bundle_validates_all_observations_before_writing() -> None:
@@ -131,10 +162,11 @@ def test_write_macrodata_bundle_import_does_not_open_its_own_transaction() -> No
 
     assert repos.transaction_events == ["commit"]
     assert repos.conn.commits == 0
-    assert summary["max_observed_at"] == "2026-05-19"
+    assert summary["max_observed_at"] == date(2026, 5, 19)
     assert summary["asof"] == "2026-05-21"
     assert summary["import_run_id"] == repos.macro_intel.import_runs[0]["run_id"]
     assert summary["imported_observation_count"] == 1
+    assert summary["dirty_targets_enqueued"] == 1
 
 
 def test_write_macrodata_bundle_import_requires_external_transaction() -> None:
@@ -229,17 +261,22 @@ class FakeTransaction:
         self.repos = repos
         self.observations: list[dict[str, object]] = []
         self.import_runs: list[dict[str, object]] = []
+        self.enqueued_dirty_targets: list[dict[str, object]] = []
 
     def __enter__(self):
         self.repos.transaction_depth += 1
         self.observations = list(self.repos.macro_intel.observations)
+        self.observation_index = dict(self.repos.macro_intel._observation_index)
         self.import_runs = list(self.repos.macro_intel.import_runs)
+        self.enqueued_dirty_targets = list(self.repos.macro_intel.enqueued_dirty_targets)
         return self
 
     def __exit__(self, exc_type, exc, tb) -> bool:
         if exc_type is not None:
             self.repos.macro_intel.observations = self.observations
+            self.repos.macro_intel._observation_index = self.observation_index
             self.repos.macro_intel.import_runs = self.import_runs
+            self.repos.macro_intel.enqueued_dirty_targets = self.enqueued_dirty_targets
             self.repos.transaction_events.append("rollback")
         else:
             self.repos.transaction_events.append("commit")
@@ -258,14 +295,40 @@ class FakeConnection:
 class FakeMacroIntelRepository:
     def __init__(self, *, fail_record_run: bool = False) -> None:
         self.observations: list[dict[str, object]] = []
+        self._observation_index: dict[str, int] = {}
         self.import_runs: list[dict[str, object]] = []
+        self.enqueued_dirty_targets: list[dict[str, object]] = []
         self.fail_record_run = fail_record_run
 
-    def upsert_observation(self, observation: dict[str, object]) -> str:
-        self.observations.append(observation)
-        return f"observation-{len(self.observations)}"
+    def upsert_observation(self, observation: dict[str, object]) -> dict[str, object]:
+        observation_id = macro_observation_id(observation)
+        fact_payload_hash = macro_observation_fact_payload_hash(observation)
+        existing_index = self._observation_index.get(observation_id)
+        if existing_index is None:
+            self._observation_index[observation_id] = len(self.observations)
+            self.observations.append(dict(observation))
+            status = "inserted"
+        else:
+            existing = self.observations[existing_index]
+            existing_hash = macro_observation_fact_payload_hash(existing)
+            if existing_hash == fact_payload_hash:
+                status = "noop"
+            else:
+                self.observations[existing_index] = dict(observation)
+                status = "changed"
+        return {
+            "observation_id": observation_id,
+            "status": status,
+            "concept_key": str(observation["concept_key"]),
+            "observed_at": observation["observed_at"],
+            "fact_payload_hash": fact_payload_hash,
+        }
 
     def record_import_run(self, import_run: dict[str, object]) -> None:
         if self.fail_record_run:
             raise RuntimeError("record_run_failed")
         self.import_runs.append(import_run)
+
+    def enqueue_macro_projection_dirty_targets_for_changes(self, **kwargs: object) -> int:
+        self.enqueued_dirty_targets.append(dict(kwargs))
+        return 1

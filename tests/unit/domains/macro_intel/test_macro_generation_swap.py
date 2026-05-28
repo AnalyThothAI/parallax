@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import pytest
-
+from gmgn_twitter_intel.domains.macro_intel.observation_identity import (
+    macro_series_current_row_payload_hash,
+)
 from gmgn_twitter_intel.domains.macro_intel.repositories.macro_intel_repository import (
     MacroIntelRepository,
     _series_source_signature,
@@ -85,14 +86,23 @@ def test_refresh_observation_series_rows_skips_writes_when_source_signature_unch
     conn = CurrentRefreshConnection(
         selected_rows=[selected_row],
         publication_state={"projection_version": "macro_regime_v4", "source_signature": signature},
+        existing_rows=[
+            {
+                "concept_key": selected_row["concept_key"],
+                "observed_at": selected_row["observed_at"],
+                "series_rank": selected_row["series_rank"],
+                "payload_hash": macro_series_current_row_payload_hash(selected_row),
+            }
+        ],
     )
     repo = MacroIntelRepository(conn)
 
-    result = repo.refresh_observation_series_rows(
+    result = repo.refresh_observation_series_rows_for_concepts(
         projection_version="macro_regime_v4",
         now_ms=1_779_000_000_000,
         lookback_days=730,
         limit_per_series=252,
+        concept_keys=("rates:dgs10",),
     )
 
     queries = "\n".join(query for query, _params in conn.executions)
@@ -112,11 +122,12 @@ def test_refresh_observation_series_rows_replaces_current_rows_when_signature_ch
     conn = CurrentRefreshConnection(selected_rows=[selected_row], publication_state=None, insert_rowcount=1)
     repo = MacroIntelRepository(conn)
 
-    result = repo.refresh_observation_series_rows(
+    result = repo.refresh_observation_series_rows_for_concepts(
         projection_version="macro_regime_v4",
         now_ms=1_779_000_000_000,
         lookback_days=730,
         limit_per_series=252,
+        concept_keys=("rates:dgs10",),
     )
 
     queries = "\n".join(query for query, _params in conn.executions)
@@ -144,31 +155,30 @@ def test_insert_observation_series_rows_chunks_under_postgres_bind_parameter_lim
     assert rows_written == 5_000
     assert len(insert_executions) == 2
     assert all(len(params) <= 65_535 for _query, params in insert_executions)
-    assert [len(params) // 15 for _query, params in insert_executions] == [4_000, 1_000]
+    assert [len(params) // 16 for _query, params in insert_executions] == [4_000, 1_000]
 
 
-def test_refresh_empty_current_rows_marks_failed_and_does_not_replace_current_rows() -> None:
+def test_refresh_empty_current_partition_without_existing_rows_is_unchanged() -> None:
     conn = CurrentRefreshConnection(selected_rows=[], publication_state=None)
     repo = MacroIntelRepository(conn)
 
-    with pytest.raises(RuntimeError, match="macro_observation_series_empty"):
-        repo.refresh_observation_series_rows(
-            projection_version="macro_regime_v4",
-            now_ms=1_779_000_000_000,
-            lookback_days=730,
-            limit_per_series=252,
-        )
+    result = repo.refresh_observation_series_rows_for_concepts(
+        projection_version="macro_regime_v4",
+        now_ms=1_779_000_000_000,
+        lookback_days=730,
+        limit_per_series=252,
+        concept_keys=("rates:dgs10",),
+    )
 
     queries = "\n".join(query for query, _params in conn.executions)
-    assert "INSERT INTO macro_observation_series_publication_state" in queries
-    assert "macro_observation_series_empty" in str(conn.executions[-1][1])
+    assert result["status"] == "unchanged"
     assert "DELETE FROM macro_observation_series_rows" not in queries
     assert "INSERT INTO macro_observation_series_rows" not in queries
     assert "macro_observation_series_active_generation" not in queries
     assert "macro_observation_series_generations" not in queries
 
 
-def test_refresh_empty_current_rows_fails_even_when_empty_signature_matches_previous_failure() -> None:
+def test_refresh_empty_current_partition_marks_failed_and_preserves_existing_rows() -> None:
     empty_signature = _series_source_signature(
         projection_version="macro_regime_v4",
         lookback_days=730,
@@ -178,22 +188,32 @@ def test_refresh_empty_current_rows_fails_even_when_empty_signature_matches_prev
     conn = CurrentRefreshConnection(
         selected_rows=[],
         publication_state={"projection_version": "macro_regime_v4", "source_signature": empty_signature},
+        existing_rows=[
+            {
+                "concept_key": "rates:dgs10",
+                "observed_at": "2026-05-20",
+                "series_rank": 1,
+                "payload_hash": "old",
+            }
+        ],
     )
     repo = MacroIntelRepository(conn)
 
-    with pytest.raises(RuntimeError, match="macro_observation_series_empty"):
-        repo.refresh_observation_series_rows(
-            projection_version="macro_regime_v4",
-            now_ms=1_779_000_060_000,
-            lookback_days=730,
-            limit_per_series=252,
-        )
+    result = repo.refresh_observation_series_rows_for_concepts(
+        projection_version="macro_regime_v4",
+        now_ms=1_779_000_060_000,
+        lookback_days=730,
+        limit_per_series=252,
+        concept_keys=("rates:dgs10",),
+    )
 
     queries = "\n".join(query for query, _params in conn.executions)
+    assert result["status"] == "failed"
+    assert result["rows_written"] == 0
+    assert "empty current refresh" in result["latest_attempt_error"]
     assert "DELETE FROM macro_observation_series_rows" not in queries
     assert "INSERT INTO macro_observation_series_rows" not in queries
-    assert conn.executions[-1][1][3] == "failed"
-    assert conn.executions[-1][1][6] == "macro_observation_series_empty"
+    assert "INSERT INTO macro_observation_series_publication_state" in queries
 
 
 def test_observation_series_readers_read_current_rows_directly() -> None:
@@ -257,10 +277,12 @@ class CurrentRefreshConnection:
         *,
         selected_rows: list[dict[str, object]],
         publication_state: dict[str, object] | None,
+        existing_rows: list[dict[str, object]] | None = None,
         insert_rowcount: int = 0,
     ) -> None:
         self.selected_rows = selected_rows
         self.publication_state = publication_state
+        self.existing_rows = existing_rows or []
         self.insert_rowcount = insert_rowcount
         self.executions: list[tuple[str, tuple[object, ...]]] = []
 
@@ -268,6 +290,8 @@ class CurrentRefreshConnection:
         self.executions.append((query, params))
         if "WITH source_ranked AS" in query:
             return Cursor(self.selected_rows)
+        if "FROM macro_observation_series_rows AS rows" in query and "payload_hash" in query:
+            return Cursor(self.existing_rows)
         if "SELECT *" in query and "FROM macro_observation_series_publication_state" in query:
             return Cursor([self.publication_state] if self.publication_state else [])
         if "INSERT INTO macro_observation_series_rows" in query:
@@ -294,7 +318,7 @@ class InsertChunkConnection:
 
     def execute(self, query: str, params: tuple[object, ...]) -> Cursor:
         self.executions.append((query, params))
-        return Cursor([], rowcount=len(params) // 15)
+        return Cursor([], rowcount=len(params) // 16)
 
 
 class SnapshotConnection:

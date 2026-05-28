@@ -12,6 +12,10 @@ import pytest
 from gmgn_twitter_intel.app.surfaces.cli.parser import build_parser
 from gmgn_twitter_intel.cli import main
 from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_HISTORY_REQUIRED_CONCEPTS
+from gmgn_twitter_intel.domains.macro_intel.observation_identity import (
+    macro_observation_fact_payload_hash,
+    macro_observation_id,
+)
 from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_types import MacroSyncRunSummary
 
 NOW_MS = 1_779_000_000_000
@@ -389,6 +393,25 @@ def test_macro_import_bundle_from_file_dispatches_to_importer(tmp_path, monkeypa
     assert repo.observations[0]["source_priority"] == 100
     assert repo.conn.commits == 0
     assert repo.transaction_events == ["commit"]
+    assert repo.enqueued_dirty_targets == [
+        {
+            "changed_observations": [
+                {
+                    "observation_id": payload["data"]["imported_observation_ids"][0],
+                    "status": "inserted",
+                    "concept_key": "liquidity:sofr",
+                    "observed_at": date(2026, 5, 19),
+                    "fact_payload_hash": payload["data"]["changed_observations"][0]["fact_payload_hash"],
+                }
+            ],
+            "projection_name": "macro_view",
+            "projection_version": "macro_regime_v4",
+            "now_ms": NOW_MS,
+            "due_at_ms": NOW_MS,
+            "reason": "macro_observations_changed",
+            "commit": False,
+        }
+    ]
     assert wake_notifications == [
         {
             "count": 1,
@@ -518,6 +541,8 @@ def test_macro_sync_failure_returns_nonzero_and_does_not_project(monkeypatch) ->
     [
         ("not-a-date", "2026-05-21", {"error": "macro_sync_invalid_date", "field": "start"}),
         ("2026-05-21", "also-bad", {"error": "macro_sync_invalid_date", "field": "end"}),
+        ("20260521", "2026-05-22", {"error": "macro_sync_invalid_date", "field": "start"}),
+        ("2026-05-21", "2026-W22-5", {"error": "macro_sync_invalid_date", "field": "end"}),
         ("2026-05-22", "2026-05-21", {"error": "macro_sync_invalid_date_range"}),
     ],
 )
@@ -708,6 +733,32 @@ def test_macro_status_reports_projection_behind_when_facts_exist_without_snapsho
     assert payload["data"]["latest_snapshot"] is None
 
 
+def test_macro_status_repository_exception_returns_structured_error_without_secret(monkeypatch) -> None:
+    from gmgn_twitter_intel.app.surfaces.cli.commands import macro as macro_module
+
+    repo = FakeMacroIntelRepository(fail_concept_history_counts=True)
+    _patch_macro_dependencies(monkeypatch, macro_module, repo, settings=FakeSettings(fred_env="APP_FRED_KEY"))
+    monkeypatch.setenv("APP_FRED_KEY", "dummy-fred-secret")
+    stdout = io.StringIO()
+
+    code = main(["macro", "status"], stdout=stdout)
+
+    output = stdout.getvalue()
+    payload = json.loads(output)
+    assert code == 1
+    assert "dummy-fred-secret" not in output
+    assert payload == {
+        "ok": False,
+        "error": "macro_status_unavailable",
+        "detail": "RuntimeError",
+        "error_type": "RuntimeError",
+        "data": {
+            "fred_api_key_env": "APP_FRED_KEY",
+            "fred_api_key_configured": True,
+        },
+    }
+
+
 def test_macro_status_reports_one_point_history_as_not_ready(monkeypatch) -> None:
     from gmgn_twitter_intel.app.surfaces.cli.commands import macro as macro_module
 
@@ -823,6 +874,7 @@ class FakeMacroIntelRepository:
         fail_record_run: bool = False,
         fail_latest_observations: bool = False,
         fail_observations_for_series: bool = False,
+        fail_concept_history_counts: bool = False,
     ) -> None:
         self.conn = FakeConnection()
         self.source_observations = observations or []
@@ -834,22 +886,48 @@ class FakeMacroIntelRepository:
         self.observations_for_concepts_calls: list[dict[str, object]] = []
         self.concept_history_count_calls: list[dict[str, object]] = []
         self.sync_queue: dict[str, object] = {}
+        self.enqueued_dirty_targets: list[dict[str, object]] = []
         self.publication_state: dict[str, object] | None = None
         self.latest: dict[str, object] | None = None
         self.latest_snapshot_projection_versions: list[str | None] = []
         self.fail_record_run = fail_record_run
         self.fail_latest_observations = fail_latest_observations
         self.fail_observations_for_series = fail_observations_for_series
+        self.fail_concept_history_counts = fail_concept_history_counts
         self.transaction_events: list[str] = []
+        self._observation_index: dict[str, int] = {}
 
-    def upsert_observation(self, observation: dict[str, object]) -> str:
-        self.observations.append(observation)
-        return f"observation-{len(self.observations)}"
+    def upsert_observation(self, observation: dict[str, object]) -> dict[str, object]:
+        observation_id = macro_observation_id(observation)
+        fact_payload_hash = macro_observation_fact_payload_hash(observation)
+        existing_index = self._observation_index.get(observation_id)
+        if existing_index is None:
+            self._observation_index[observation_id] = len(self.observations)
+            self.observations.append(dict(observation))
+            status = "inserted"
+        else:
+            existing_hash = macro_observation_fact_payload_hash(self.observations[existing_index])
+            if existing_hash == fact_payload_hash:
+                status = "noop"
+            else:
+                self.observations[existing_index] = dict(observation)
+                status = "changed"
+        return {
+            "observation_id": observation_id,
+            "status": status,
+            "concept_key": str(observation["concept_key"]),
+            "observed_at": observation["observed_at"],
+            "fact_payload_hash": fact_payload_hash,
+        }
 
     def record_import_run(self, import_run: dict[str, object]) -> None:
         if self.fail_record_run:
             raise RuntimeError("postgres://user:secret@db record failed")
         self.import_runs.append(import_run)
+
+    def enqueue_macro_projection_dirty_targets_for_changes(self, **kwargs: object) -> int:
+        self.enqueued_dirty_targets.append(dict(kwargs))
+        return 1
 
     def latest_observations(self, *, limit: int) -> list[dict[str, object]]:
         if self.fail_latest_observations:
@@ -881,6 +959,8 @@ class FakeMacroIntelRepository:
         concept_keys: tuple[str, ...],
         lookback_days: int,
     ) -> list[dict[str, object]]:
+        if self.fail_concept_history_counts:
+            raise RuntimeError("postgres://user:secret@db history failed")
         self.concept_history_count_calls.append(
             {
                 "concept_keys": concept_keys,
@@ -957,12 +1037,16 @@ class FakeTransaction:
         self.repos = repos
         self.macro_intel = repos.macro_intel
         self.observations: list[dict[str, object]] = []
+        self.observation_index: dict[str, int] = {}
         self.import_runs: list[dict[str, object]] = []
+        self.enqueued_dirty_targets: list[dict[str, object]] = []
 
     def __enter__(self):
         self.repos.in_transaction = True
         self.observations = list(self.macro_intel.observations)
+        self.observation_index = dict(self.macro_intel._observation_index)
         self.import_runs = list(self.macro_intel.import_runs)
+        self.enqueued_dirty_targets = list(self.macro_intel.enqueued_dirty_targets)
         return self
 
     def __exit__(
@@ -973,7 +1057,9 @@ class FakeTransaction:
     ) -> bool:
         if exc_type is not None:
             self.macro_intel.observations = self.observations
+            self.macro_intel._observation_index = self.observation_index
             self.macro_intel.import_runs = self.import_runs
+            self.macro_intel.enqueued_dirty_targets = self.enqueued_dirty_targets
             self.macro_intel.transaction_events.append("rollback")
         else:
             self.macro_intel.transaction_events.append("commit")

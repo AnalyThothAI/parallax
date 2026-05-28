@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, datetime
 from types import TracebackType
 
 from gmgn_twitter_intel.integrations.macrodata.runner import MacrodataBundleRunResult, MacrodataRunnerError
@@ -34,6 +34,18 @@ ENVELOPE = {
         }
     },
 }
+
+
+def test_sync_service_date_contract_accepts_only_date_and_yyyy_mm_dd_text() -> None:
+    from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_service import _to_date
+
+    assert _to_date(date(2026, 5, 28)) == date(2026, 5, 28)
+    assert _to_date("2026-05-28") == date(2026, 5, 28)
+    assert _to_date(None) is None
+    assert _to_date(datetime(2026, 5, 28)) is None
+    assert _to_date("20260528") is None
+    assert _to_date("2026-W22-4") is None
+    assert _to_date("2026-05-28T00:00:00Z") is None
 
 
 def test_sync_service_idle_claims_no_window_and_does_not_call_runner() -> None:
@@ -108,11 +120,20 @@ def test_sync_service_import_success_writes_facts_completes_window_and_wakes_pro
     ]
     assert repo.enqueued_dirty_targets == [
         {
+            "changed_observations": [
+                {
+                        "observation_id": "observation-1",
+                        "status": "inserted",
+                        "concept_key": "liquidity:sofr",
+                        "observed_at": date(2026, 5, 27),
+                        "fact_payload_hash": "hash-1",
+                    }
+                ],
             "projection_name": "macro_view",
             "projection_version": "macro_regime_v4",
             "now_ms": NOW_MS,
             "due_at_ms": NOW_MS,
-            "reason": "macro_observations_imported",
+            "reason": "macro_observations_changed",
             "commit": False,
         }
     ]
@@ -122,7 +143,7 @@ def test_sync_service_import_success_writes_facts_completes_window_and_wakes_pro
     assert events.index("transaction-commit") < events.index("wake")
 
 
-def test_sync_service_noop_import_does_not_enqueue_projection_dirty_target() -> None:
+def test_sync_service_empty_import_does_not_enqueue_projection_dirty_target() -> None:
     from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_service import MacroSyncService
 
     repo = FakeMacroIntelRepository(claimed_window=_window())
@@ -139,6 +160,32 @@ def test_sync_service_noop_import_does_not_enqueue_projection_dirty_target() -> 
     assert result is not None
     assert result.imported_observation_count == 0
     assert repo.enqueued_dirty_targets == []
+
+
+def test_sync_service_noop_overlap_records_seen_and_does_not_wake_or_dirty() -> None:
+    from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_service import MacroSyncService
+
+    repo = FakeMacroIntelRepository(claimed_window=_window(), upsert_statuses=["noop"])
+    wake_bus = FakeWakeBus()
+    service = MacroSyncService(
+        settings=FakeSettings(),
+        repository_factory=FakeRepositoryFactory(repo),
+        runner=FakeRunner(),
+        wake_bus=wake_bus,
+        clock_ms=lambda: NOW_MS,
+    )
+
+    result = service.run_claimed_window_once(lease_owner="macro_sync")
+
+    assert result is not None
+    assert result.seen_observation_count == 1
+    assert result.inserted_observation_count == 0
+    assert result.changed_observation_count == 0
+    assert result.noop_observation_count == 1
+    assert result.imported_observation_count == 0
+    assert repo.sync_runs[0]["seen_observation_count"] == 1
+    assert repo.enqueued_dirty_targets == []
+    assert wake_bus.notifications == []
 
 
 def test_sync_service_wake_failure_preserves_committed_success() -> None:
@@ -618,12 +665,14 @@ class FakeMacroIntelRepository:
         complete_result: bool = True,
         retry_result: bool = True,
         fail_result: bool = True,
+        upsert_statuses: list[str] | None = None,
     ) -> None:
         self.claimed_window = claimed_window
         self.events = events
         self.complete_result = complete_result
         self.retry_result = retry_result
         self.fail_result = fail_result
+        self.upsert_statuses = list(upsert_statuses or [])
         self.observations: list[dict[str, object]] = []
         self.import_runs: list[dict[str, object]] = []
         self.sync_runs: list[dict[str, object]] = []
@@ -653,14 +702,22 @@ class FakeMacroIntelRepository:
         self.claimed_by_id.append(dict(kwargs))
         return self.claimed_window
 
-    def upsert_observation(self, observation: dict[str, object]) -> str:
+    def upsert_observation(self, observation: dict[str, object]) -> dict[str, object]:
         self.observations.append(observation)
-        return f"observation-{len(self.observations)}"
+        observation_id = f"observation-{len(self.observations)}"
+        status = self.upsert_statuses.pop(0) if self.upsert_statuses else "inserted"
+        return {
+            "observation_id": observation_id,
+            "status": status,
+            "concept_key": observation["concept_key"],
+            "observed_at": observation["observed_at"],
+            "fact_payload_hash": f"hash-{len(self.observations)}",
+        }
 
     def record_import_run(self, import_run: dict[str, object]) -> None:
         self.import_runs.append(import_run)
 
-    def enqueue_macro_projection_dirty_target(self, **kwargs: object) -> int:
+    def enqueue_macro_projection_dirty_targets_for_changes(self, **kwargs: object) -> int:
         self.enqueued_dirty_targets.append(dict(kwargs))
         return 1
 

@@ -422,9 +422,9 @@ Docker ordering invariant:
 - Create `src/gmgn_twitter_intel/domains/cex_market_intel/repositories/cex_derivative_series_repository.py`
   - Batch upsert Binance OI history points keyed by `(source_provider, exchange, instrument, family, period, timestamp_ms)`.
 - Create `src/gmgn_twitter_intel/domains/cex_market_intel/repositories/cex_oi_radar_repository.py`
-  - Write `cex_oi_radar_runs`.
-  - Replace rows for a `run_id` in `cex_oi_radar_rows`.
-  - Query latest succeeded or partial run.
+  - Publish current `cex_oi_radar_rows`.
+  - Preserve existing current rows on failed/skipped attempts.
+  - Track latest attempt and current payload hash in `cex_oi_radar_publication_state`.
 - Create `src/gmgn_twitter_intel/domains/cex_market_intel/services/binance_oi_radar_builder.py`
   - Read Binance-backed `price_feeds`.
   - Fetch `ticker/24hr`, `premiumIndex`, and `openInterestHist`.
@@ -447,8 +447,8 @@ Docker ordering invariant:
 - Modify API route registration where existing routes are mounted.
 - Create migration `src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0073_cex_oi_radar_board.py`
   - Add `cex_derivative_series_points`.
-  - Add `cex_oi_radar_runs`.
   - Add `cex_oi_radar_rows`.
+  - Add `cex_oi_radar_publication_state`.
 - Create tests:
   - `tests/unit/domains/cex_market_intel/test_oi_radar_scoring.py`
   - `tests/unit/domains/cex_market_intel/test_binance_oi_radar_builder.py`

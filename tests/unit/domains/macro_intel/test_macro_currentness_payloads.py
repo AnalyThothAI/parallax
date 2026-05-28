@@ -24,3 +24,48 @@ def test_api_macro_currentness_uses_publication_state_without_sync_run() -> None
         "projection_lag_days": 1,
         "projection_behind_facts": True,
     }
+
+
+def test_api_macro_currentness_rejects_timestamp_latest_observed_at() -> None:
+    from gmgn_twitter_intel.app.surfaces.api.routes_macro import _macro_currentness
+
+    payload = _macro_currentness(
+        snapshot={
+            "asof_date": "2026-05-26",
+            "source_coverage_json": {"latest_observed_at": "2026-05-27T08:30:00Z"},
+        },
+        publication_state={
+            "latest_attempt_status": "published",
+            "row_count": 318,
+            "latest_attempt_finished_at_ms": 1_779_000_000_000,
+        },
+    )
+
+    assert payload["facts_max_observed_at"] is None
+    assert payload["projection_lag_days"] is None
+    assert payload["projection_behind_facts"] is False
+
+
+def test_api_macro_currentness_rejects_non_yyyy_mm_dd_date_text() -> None:
+    from gmgn_twitter_intel.app.surfaces.api.routes_macro import _macro_currentness
+
+    for latest_observed_at in ("20260528", "2026-W22-4"):
+        payload = _macro_currentness(
+            snapshot={
+                "asof_date": "2026-05-26",
+                "source_coverage_json": {"latest_observed_at": latest_observed_at},
+            },
+            publication_state=None,
+        )
+
+        assert payload["facts_max_observed_at"] is None
+        assert payload["projection_lag_days"] is None
+        assert payload["projection_behind_facts"] is False
+
+
+def test_api_macro_date_parser_has_no_timestamp_fallback() -> None:
+    from pathlib import Path
+
+    routes_source = Path("src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py").read_text(encoding="utf-8")
+
+    assert "datetime.fromisoformat" not in routes_source

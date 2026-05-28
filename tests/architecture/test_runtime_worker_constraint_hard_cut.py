@@ -92,19 +92,14 @@ RUNTIME_WORKER_CONTRACTS: tuple[RuntimeWorkerHardCutContract, ...] = (
         banned_calls=("handles_missing_summary_jobs", "reconcile_missing_jobs_once"),
         control_claim_markers=("claim_next_summary_job",),
     ),
+    RuntimeWorkerHardCutContract(
+        path=SRC / "domains/macro_intel/runtime/macro_view_projection_worker.py",
+        banned_calls=("refresh_observation_series_rows",),
+        control_claim_markers=("claim_macro_projection_dirty_targets",),
+        payload_loader_markers=("refresh_observation_series_rows_for_concepts", "observations_for_concepts"),
+    ),
 )
-ENFORCED_RUNTIME_WORKER_CONTRACTS = (
-    RUNTIME_WORKER_CONTRACTS[0],
-    RUNTIME_WORKER_CONTRACTS[1],
-    RUNTIME_WORKER_CONTRACTS[2],
-    RUNTIME_WORKER_CONTRACTS[3],
-    RUNTIME_WORKER_CONTRACTS[4],
-    RUNTIME_WORKER_CONTRACTS[5],
-    RUNTIME_WORKER_CONTRACTS[6],
-    RUNTIME_WORKER_CONTRACTS[7],
-    RUNTIME_WORKER_CONTRACTS[8],
-    RUNTIME_WORKER_CONTRACTS[9],
-)
+ENFORCED_RUNTIME_WORKER_CONTRACTS = RUNTIME_WORKER_CONTRACTS
 
 WORKER_CLASSIFICATION: dict[str, str] = {
     "collector": "bounded_provider_scheduler",
@@ -137,7 +132,7 @@ WORKER_CLASSIFICATION: dict[str, str] = {
     "equity_event_page_projection": "dirty_target_consumer",
     "cex_oi_radar_board": "bounded_provider_scheduler",
     "macro_sync": "bounded_provider_scheduler",
-    "macro_view_projection": "bounded_provider_scheduler",
+    "macro_view_projection": "dirty_target_consumer",
     "pulse_candidate": "dirty_target_consumer",
     "enrichment": "leased_job_consumer",
     "handle_summary": "leased_job_consumer",
@@ -190,7 +185,6 @@ BUSINESS_OUTPUT_TABLES = frozenset(
 
 BOUNDED_SCHEDULER_COUNTER_PATHS = (
     SRC / "domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py",
-    SRC / "domains/macro_intel/runtime/macro_view_projection_worker.py",
 )
 
 REMOVED_RUNTIME_REPAIR_PATHS = {

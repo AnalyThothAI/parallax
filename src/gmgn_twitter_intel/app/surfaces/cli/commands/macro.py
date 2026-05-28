@@ -4,7 +4,7 @@ import json
 import sys
 import time
 from collections.abc import Mapping, Sequence
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 from typing import Any, cast
 
@@ -18,6 +18,7 @@ from gmgn_twitter_intel.domains.macro_intel._constants import (
     MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
     MACRO_VIEW_PROJECTION_VERSION,
 )
+from gmgn_twitter_intel.domains.macro_intel.observation_identity import normalize_macro_date
 from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_service import MacroSyncService
 from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_types import MacroSyncRunSummary
 from gmgn_twitter_intel.domains.macro_intel.services.macrodata_bundle_importer import import_macrodata_bundle
@@ -52,7 +53,7 @@ def _handle_import_bundle(args: object) -> tuple[int, dict[str, Any]]:
         _notify_imported_observations(settings, summary)
     except Exception as exc:
         return 1, _error_payload("macro_import_bundle_failed", exc)
-    return 0, {"ok": True, "data": summary}
+    return 0, {"ok": True, "data": _json_ready(summary)}
 
 
 def _handle_sync(args: object) -> tuple[int, dict[str, Any]]:
@@ -137,28 +138,11 @@ def _handle_status() -> tuple[int, dict[str, Any]]:
                 "projection_behind_facts": projection_behind_facts,
                 "latest_snapshot": _snapshot_status_summary(latest_snapshot),
             }
-    except Exception:
-        data = {
-            "migration_ready": False,
-            **fred_state,
-            "observations_count": 0,
-            "concept_count": 0,
-            "history_ready": False,
-            "history_coverage": {
-                "required_points": MACRO_REQUIRED_STAT_POINTS,
-                "required_concept_count": len(MACRO_HISTORY_REQUIRED_CONCEPTS),
-                "ready_concept_count": 0,
-                "coverage_ratio": 0.0,
-                "lookback_days": MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
-            },
-            "concepts_below_min_history": [],
-            "sync_queue": {},
-            "publication_state": None,
-            "facts_max_observed_at": None,
-            "projection_lag_days": None,
-            "projection_behind_facts": False,
-            "latest_snapshot": None,
-        }
+    except Exception as exc:
+        payload = _error_payload("macro_status_unavailable", exc)
+        payload["error_type"] = type(exc).__name__
+        payload["data"] = _fred_payload_from_diagnostics(fred_state)
+        return 1, payload
     return 0, {"ok": True, "data": data}
 
 
@@ -191,7 +175,7 @@ class _MacroSyncCliValidationError(ValueError):
 
 def _parse_cli_date(raw: str, *, field: str) -> date:
     try:
-        return date.fromisoformat(raw)
+        return normalize_macro_date(raw)
     except ValueError as exc:
         raise _MacroSyncCliValidationError(field=field) from exc
 
@@ -361,7 +345,7 @@ def _json_ready(value: object) -> object:
         return {str(key): _json_ready(item) for key, item in value.items()}
     if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
         return [_json_ready(item) for item in value]
-    if isinstance(value, datetime | date):
+    if isinstance(value, date):
         return value.isoformat()
     return value
 
@@ -369,12 +353,10 @@ def _json_ready(value: object) -> object:
 def _to_date(value: object) -> date | None:
     if value is None:
         return None
-    if isinstance(value, date) and not isinstance(value, datetime):
-        return value
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, str):
-        return date.fromisoformat(value)
+    try:
+        return normalize_macro_date(value)
+    except ValueError:
+        return None
     return None
 
 

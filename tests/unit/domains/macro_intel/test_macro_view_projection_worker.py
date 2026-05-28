@@ -12,7 +12,7 @@ NOW_MS = 1_779_000_000_000
 
 
 def test_macro_view_projection_worker_writes_latest_snapshot() -> None:
-    target = _dirty_target()
+    target = _concept_dirty_target("vol:vix")
     repo = FakeMacroIntelRepository(
         dirty_targets=[target],
         observations=[
@@ -52,7 +52,7 @@ def test_macro_view_projection_worker_writes_latest_snapshot() -> None:
     assert db.sessions == ["macro_view_projection"]
     assert repo.calls == [
         "claim_macro_projection_dirty_targets",
-        "refresh_observation_series_rows",
+        "refresh_observation_series_rows_for_concepts",
         "observations_for_concepts",
         "insert_snapshot",
         "mark_macro_projection_dirty_targets_done",
@@ -71,6 +71,8 @@ def test_macro_view_projection_worker_writes_latest_snapshot() -> None:
         "now_ms": NOW_MS,
         "lookback_days": 730,
         "limit_per_series": 99,
+        "claimed_targets": [target],
+        "concept_keys": ("vol:vix",),
     }
     assert repo.observations_for_series_call == {
         "concept_keys": MACRO_CORE_CONCEPTS,
@@ -102,7 +104,7 @@ def test_macro_view_projection_worker_without_dirty_target_does_not_scan_sources
 
 
 def test_macro_view_projection_worker_unchanged_series_marks_done_without_snapshot() -> None:
-    target = _dirty_target()
+    target = _concept_dirty_target("rates:dgs10")
     repo = FakeMacroIntelRepository(
         dirty_targets=[target],
         observations=[],
@@ -129,7 +131,7 @@ def test_macro_view_projection_worker_unchanged_series_marks_done_without_snapsh
     assert result.notes["rows_written"] == 0
     assert repo.calls == [
         "claim_macro_projection_dirty_targets",
-        "refresh_observation_series_rows",
+        "refresh_observation_series_rows_for_concepts",
         "mark_macro_projection_dirty_targets_done",
     ]
     assert repo.done_targets == [(target, NOW_MS, True)]
@@ -137,7 +139,7 @@ def test_macro_view_projection_worker_unchanged_series_marks_done_without_snapsh
 
 
 def test_macro_view_projection_worker_refresh_failure_marks_dirty_target_error() -> None:
-    target = _dirty_target()
+    target = _concept_dirty_target("rates:dgs10")
     repo = FakeMacroIntelRepository(dirty_targets=[target], observations=[], refresh_error=RuntimeError("boom"))
     db = FakeDB(repo)
     worker = _worker(db)
@@ -150,7 +152,7 @@ def test_macro_view_projection_worker_refresh_failure_marks_dirty_target_error()
     assert result.notes["error"] == "boom"
     assert repo.calls == [
         "claim_macro_projection_dirty_targets",
-        "refresh_observation_series_rows",
+        "refresh_observation_series_rows_for_concepts",
         "mark_macro_projection_dirty_targets_error",
     ]
     assert repo.error_targets == [(target, "boom", 300_000, NOW_MS, True)]
@@ -180,6 +182,22 @@ def _dirty_target() -> dict[str, object]:
         "target_kind": "current",
         "target_id": "current",
         "payload_hash": "dirty-hash",
+        "lease_owner": "macro_view_projection",
+        "attempt_count": 1,
+    }
+
+
+def _concept_dirty_target(concept_key: str) -> dict[str, object]:
+    return {
+        "projection_name": "macro_view",
+        "projection_version": "macro_regime_v4",
+        "target_kind": "concept",
+        "target_id": concept_key,
+        "concept_key": concept_key,
+        "min_observed_at": "2026-05-20",
+        "max_observed_at": "2026-05-20",
+        "source_watermark_date": "2026-05-20",
+        "payload_hash": f"dirty-hash:{concept_key}",
         "lease_owner": "macro_view_projection",
         "attempt_count": 1,
     }
@@ -246,15 +264,17 @@ class FakeMacroIntelRepository:
         }
         return self.dirty_targets[:limit]
 
-    def refresh_observation_series_rows(
+    def refresh_observation_series_rows_for_concepts(
         self,
         *,
         projection_version: str,
         now_ms: int,
         lookback_days: int,
         limit_per_series: int,
+        claimed_targets: list[dict[str, object]],
+        concept_keys: tuple[str, ...],
     ) -> dict[str, object]:
-        self.calls.append("refresh_observation_series_rows")
+        self.calls.append("refresh_observation_series_rows_for_concepts")
         if self.refresh_error is not None:
             raise self.refresh_error
         self.refresh_call = {
@@ -262,6 +282,8 @@ class FakeMacroIntelRepository:
             "now_ms": now_ms,
             "lookback_days": lookback_days,
             "limit_per_series": limit_per_series,
+            "claimed_targets": claimed_targets,
+            "concept_keys": concept_keys,
         }
         return self.refresh_result
 

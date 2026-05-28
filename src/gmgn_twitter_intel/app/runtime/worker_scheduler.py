@@ -9,8 +9,6 @@ from gmgn_twitter_intel.app.runtime.worker_manifest import worker_start_priority
 
 _START_PRIORITY = worker_start_priority()
 
-_SCHEDULER_CONCURRENT_WORKERS = {"enrichment"}
-
 
 class WorkerScheduler:
     def __init__(
@@ -24,17 +22,36 @@ class WorkerScheduler:
         self.db = db
         self.stop_timeout_seconds = max(0.0, float(stop_timeout_seconds))
         self.tasks: dict[str, asyncio.Task[None]] = {}
+        self._started = False
 
     async def start(self) -> None:
-        for name in self._ordered_worker_names():
-            worker = self.workers[name]
-            if not _worker_enabled(worker):
-                continue
-            concurrency = _worker_concurrency(name, worker)
-            for index in range(concurrency):
-                task_key = name if concurrency == 1 else f"{name}#{index}"
-                self.tasks[task_key] = asyncio.create_task(worker.run(), name=f"worker:{task_key}")
-                await asyncio.sleep(0)
+        if self._started:
+            raise RuntimeError("worker_scheduler:already_started")
+        self._started = True
+        try:
+            for name in self._ordered_worker_names():
+                worker = self.workers[name]
+                if not _worker_enabled(worker):
+                    continue
+                concurrency = _worker_concurrency(name, worker)
+                for index in range(concurrency):
+                    task_key = name if concurrency == 1 else f"{name}#{index}"
+                    self.tasks[task_key] = asyncio.create_task(worker.run(), name=f"worker:{task_key}")
+                    await asyncio.sleep(0)
+                    task = self.tasks[task_key]
+                    if task.done():
+                        exc = task.exception()
+                        if exc is not None:
+                            raise exc
+        except Exception:
+            tasks = list(self.tasks.values())
+            for task in tasks:
+                task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            self.tasks.clear()
+            self._started = False
+            raise
 
     async def stop(self) -> None:
         errors: list[Exception] = []
@@ -61,6 +78,7 @@ class WorkerScheduler:
             except Exception as exc:
                 errors.append(exc)
         await self._close_pools(errors)
+        self._started = False
         if errors:
             raise ExceptionGroup("worker_scheduler_stop_failed", errors)
 
@@ -124,10 +142,8 @@ def _worker_enabled(worker: Any) -> bool:
 
 
 def _worker_concurrency(name: str, worker: Any) -> int:
-    if name not in _SCHEDULER_CONCURRENT_WORKERS:
-        return 1
-    settings = getattr(worker, "settings", None)
-    return max(1, int(getattr(settings, "concurrency", 1) or 1))
+    _ = (name, worker)
+    return 1
 
 
 def _worker_hard_timed_out(worker: Any) -> bool:

@@ -77,11 +77,14 @@ class MacroViewProjectionWorker(WorkerBase):
                 )
 
     def _run_claimed_once(self, repos: RepositorySession, *, claimed: list[dict[str, Any]], now: int) -> WorkerResult:
-        refresh_result = repos.macro_intel.refresh_observation_series_rows(
+        concept_keys = _claimed_concept_keys(claimed)
+        refresh_result = repos.macro_intel.refresh_observation_series_rows_for_concepts(
             projection_version=MACRO_VIEW_PROJECTION_VERSION,
             now_ms=now,
             lookback_days=self._lookback_days(),
             limit_per_series=self._limit_per_series(),
+            claimed_targets=claimed,
+            concept_keys=concept_keys,
         )
         projected_rows_written = int(refresh_result.get("rows_written") or 0)
         series_status = str(refresh_result.get("status") or "")
@@ -162,6 +165,23 @@ class MacroViewProjectionWorker(WorkerBase):
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _claimed_concept_keys(claimed: list[dict[str, Any]]) -> tuple[str, ...]:
+    concept_keys: list[str] = []
+    for target in claimed:
+        concept_key = str(target.get("concept_key") or "").strip()
+        if concept_key:
+            concept_keys.append(concept_key)
+            continue
+        if str(target.get("target_kind") or "") == "concept":
+            target_id = str(target.get("target_id") or "").strip()
+            if target_id:
+                concept_keys.append(target_id)
+            continue
+        if str(target.get("target_kind") or "") == "current":
+            concept_keys.extend(MACRO_CORE_CONCEPTS)
+    return tuple(dict.fromkeys(concept_keys))
 
 
 __all__ = ["MacroViewProjectionWorker"]

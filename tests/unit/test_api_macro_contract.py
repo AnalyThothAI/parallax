@@ -221,7 +221,7 @@ def test_macro_api_returns_data_gap_when_snapshot_missing() -> None:
     }
 
 
-def test_macro_api_accepts_timestamp_text_for_currentness_dates() -> None:
+def test_macro_api_rejects_timestamp_text_for_currentness_dates() -> None:
     repo = FakeMacroIntelRepository(
         snapshot={
             "snapshot_id": "macro-view:macro_regime_v4:timestamp",
@@ -246,9 +246,9 @@ def test_macro_api_accepts_timestamp_text_for_currentness_dates() -> None:
         "publication_status": None,
         "publication_row_count": None,
         "publication_finished_at_ms": None,
-        "facts_max_observed_at": "2026-05-28",
-        "projection_lag_days": 1,
-        "projection_behind_facts": True,
+        "facts_max_observed_at": None,
+        "projection_lag_days": None,
+        "projection_behind_facts": False,
     }
 
 

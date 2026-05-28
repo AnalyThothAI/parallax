@@ -99,6 +99,28 @@ def test_feature_engine_falls_back_to_numeric_value_and_ignores_non_numeric_valu
     assert any(gap["code"] == "non_numeric_values_1" for gap in dgs10["data_gaps"])
 
 
+def test_feature_engine_does_not_truncate_timestamp_dates() -> None:
+    observations = [
+        {
+            "concept_key": "rates:dgs10",
+            "observed_at": "2026-05-21T00:00:00Z",
+            "value_numeric": 4.7,
+            "unit": "percent",
+            "frequency": "daily",
+            "data_quality": "ok",
+            "source_name": "fred",
+            "series_key": "fred:DGS10",
+        }
+    ]
+
+    features = build_macro_features(observations, computed_at_ms=COMPUTED_AT_MS)
+
+    dgs10 = features["rates:dgs10"]
+    assert dgs10["latest"]["value"] is None
+    assert dgs10["latest"]["observed_at"] is None
+    assert "missing_numeric_history" in {gap["code"] for gap in dgs10["data_gaps"]}
+
+
 def test_feature_engine_marks_degraded_latest_data_quality_as_gap() -> None:
     observations = _daily_observations(
         "rates:dgs10",

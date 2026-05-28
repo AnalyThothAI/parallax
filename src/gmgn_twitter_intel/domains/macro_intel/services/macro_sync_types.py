@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
@@ -27,9 +27,16 @@ class MacroSyncRunSummary:
     status: str
     observations_count: int
     imported_observation_count: int
-    asof_date: date | None
-    max_observed_at: date | None
-    diagnostics: Mapping[str, Any]
+    seen_observation_count: int = 0
+    inserted_observation_count: int = 0
+    changed_observation_count: int = 0
+    noop_observation_count: int = 0
+    asof_date: date | None = None
+    max_observed_at: date | None = None
+    max_seen_observed_at: date | None = None
+    min_changed_observed_at: date | None = None
+    max_changed_observed_at: date | None = None
+    diagnostics: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)

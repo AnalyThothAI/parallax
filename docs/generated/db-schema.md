@@ -219,6 +219,7 @@
 | `current_published_at_ms` | `BIGINT` | True | `None` |
 | `current_source_frontier_ms` | `BIGINT` | True | `None` |
 | `current_row_count` | `BIGINT` | False | `0` |
+| `current_payload_hash` | `TEXT` | True | `None` |
 | `latest_attempt_status` | `TEXT` | False | `'pending'::text` |
 | `latest_attempt_started_at_ms` | `BIGINT` | True | `None` |
 | `latest_attempt_finished_at_ms` | `BIGINT` | True | `None` |
@@ -3025,4 +3026,3 @@
 | `operator_reason` | `TEXT` | True | `None` |
 | `operator_action_at_ms` | `BIGINT` | True | `None` |
 | `final_reason_bucket` | `TEXT` | False | `'other'::text` |
-

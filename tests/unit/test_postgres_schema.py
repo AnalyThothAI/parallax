@@ -175,6 +175,9 @@ RUNTIME_DB_PERFORMANCE_HARD_CUT_MIGRATION = Path(
 NEXT_RUNTIME_LIFECYCLE_HARD_CUT_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0115_next_runtime_lifecycle_hard_cut.py"
 )
+MACRO_WORKERSPACE_ROOT_FIX_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0116_macro_workerspace_root_fix.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 LEGACY_TOKEN_RADAR_CURRENT_JSON_COLUMNS = {
@@ -379,6 +382,74 @@ def test_next_runtime_lifecycle_hard_cut_payload_hash_columns_are_backfilled_not
         assert "SET payload_hash = COALESCE" in normalized_block
         assert "NULLIF(payload_hash, '')" in normalized_block
         assert f"ALTER TABLE {table_name} ALTER COLUMN payload_hash SET NOT NULL" in text
+
+
+def test_macro_workerspace_root_fix_migration_hard_cuts_dates_and_counts() -> None:
+    text = _migration_text(MACRO_WORKERSPACE_ROOT_FIX_MIGRATION)
+    normalized_text = " ".join(text.split())
+    downgrade_text = text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+    assert 'revision = "20260528_0116"' in text
+    assert 'down_revision = "20260527_0115"' in text
+    assert "RuntimeError" in downgrade_text
+    assert "not safely reversible" in downgrade_text
+
+    assert "ALTER TABLE macro_observations ADD COLUMN IF NOT EXISTS fact_payload_hash TEXT" in text
+    assert "macro_observation_fact_payload_hash(" in text
+    assert "md5(" not in text
+    assert "ALTER TABLE macro_observations ALTER COLUMN fact_payload_hash SET NOT NULL" in text
+
+    for table_name in ("macro_import_runs", "macro_sync_runs"):
+        for column_name in (
+            "seen_observation_count",
+            "inserted_observation_count",
+            "changed_observation_count",
+            "noop_observation_count",
+        ):
+            assert f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {column_name} INTEGER NOT NULL DEFAULT 0" in text
+            assert f"CHECK ({column_name} >= 0)" in text
+
+    for column_name in ("max_seen_observed_at", "min_changed_observed_at", "max_changed_observed_at"):
+        assert f"ALTER TABLE macro_sync_runs ADD COLUMN IF NOT EXISTS {column_name} DATE" in text
+
+    assert "ALTER TABLE macro_observation_series_rows ALTER COLUMN observed_at TYPE DATE" in normalized_text
+    assert "USING observed_at::date" in normalized_text
+    assert "ALTER TABLE macro_observation_series_rows ADD COLUMN IF NOT EXISTS payload_hash TEXT" in text
+    assert "macro_series_current_row_payload_hash(" in text
+    assert "ALTER TABLE macro_observation_series_rows ALTER COLUMN payload_hash SET NOT NULL" in text
+    assert "CREATE INDEX IF NOT EXISTS idx_macro_observation_series_rows_payload_hash" in text
+
+    for column_name in ("concept_key", "min_observed_at", "max_observed_at", "source_watermark_date"):
+        assert f"ALTER TABLE macro_projection_dirty_targets ADD COLUMN IF NOT EXISTS {column_name} " in text
+    for column_name in ("min_observed_at", "max_observed_at", "source_watermark_date"):
+        assert f"{column_name} DATE" in text
+
+    for table_name in (
+        "macro_observation_series_active_generation",
+        "macro_observation_series_generations",
+        "macro_view_snapshots_compact",
+        "macro_view_snapshot_generations",
+        "macro_regime_snapshots",
+    ):
+        assert f"DROP TABLE IF EXISTS {table_name}" in text
+
+    for table_name in (
+        "macro_view_snapshots",
+        "macro_observation_series_rows",
+        "macro_projection_dirty_targets",
+        "macro_observation_series_publication_state",
+    ):
+        assert f"DELETE FROM {table_name} WHERE projection_version <> 'macro_regime_v4'" in text
+
+    assert "ALTER TABLE IF EXISTS cex_oi_radar_publication_state" in text
+    assert "ADD COLUMN IF NOT EXISTS current_payload_hash TEXT" in text
+
+    generated_schema = Path("docs/generated/db-schema.md").read_text(encoding="utf-8")
+    cex_publication_state = generated_schema.split("## `cex_oi_radar_publication_state`", maxsplit=1)[1].split(
+        "\n## `",
+        maxsplit=1,
+    )[0]
+    assert "| `current_payload_hash` | `TEXT` | True | `None` |" in cex_publication_state
 
 
 def test_token_radar_current_row_runtime_insert_contract_matches_hard_cut_schema() -> None:
@@ -899,6 +970,7 @@ def test_runtime_performance_hard_cut_revision_chain() -> None:
         (TOKEN_RADAR_STABLE_PUBLICATION_MIGRATION, "20260527_0113", "20260527_0112"),
         (RUNTIME_DB_PERFORMANCE_HARD_CUT_MIGRATION, "20260527_0114", "20260527_0113"),
         (NEXT_RUNTIME_LIFECYCLE_HARD_CUT_MIGRATION, "20260527_0115", "20260527_0114"),
+        (MACRO_WORKERSPACE_ROOT_FIX_MIGRATION, "20260528_0116", "20260527_0115"),
     )
 
     for migration, revision, down_revision in migrations:
@@ -1518,6 +1590,13 @@ def _extract_sql_statement(text: str, statement_start: str) -> str:
     start = text.index(statement_start)
     end = text.index('"""', start)
     return text[start:end]
+
+
+def _assignment_block(text: str, assignment_name: str) -> str:
+    start = text.index(f"{assignment_name} = ")
+    string_start = text.index('"""', start) + 3
+    string_end = text.index('"""', string_start)
+    return text[string_start:string_end]
 
 
 def _migration_text(path: Path) -> str:

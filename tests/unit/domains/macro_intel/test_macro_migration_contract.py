@@ -137,11 +137,12 @@ def test_repository_refresh_observation_series_rows_writes_current_read_model() 
     conn = FakeRefreshConnection(row_count=1)
     repo = MacroIntelRepository(conn)
 
-    result = repo.refresh_observation_series_rows(
+    result = repo.refresh_observation_series_rows_for_concepts(
         projection_version="macro_regime_v4",
         now_ms=1_779_000_000_000,
         lookback_days=730,
         limit_per_series=252,
+        concept_keys=("rates:dgs10",),
     )
 
     assert result["status"] == "published"
@@ -160,7 +161,8 @@ def test_repository_refresh_observation_series_rows_writes_current_read_model() 
     assert "PARTITION BY concept_key" in queries
     select_query, select_params = conn.executions[0]
     assert "WITH source_ranked AS" in select_query
-    assert select_params == (730, "macro_regime_v4", 1_779_000_000_000, 252)
+    assert "concept_key = ANY" in select_query
+    assert select_params == (["rates:dgs10"], 730, "macro_regime_v4", 1_779_000_000_000, 252)
 
 
 def test_macro_observation_series_contract_is_current_only_after_hard_cut() -> None:
@@ -240,6 +242,24 @@ def test_next_runtime_lifecycle_migration_adds_macro_projection_dirty_targets_se
     assert "'macro_regime_v4'" in migration_sql
     assert "'current'" in migration_sql
     assert "ON CONFLICT (projection_name, projection_version, target_kind, target_id) DO UPDATE" in normalized_sql
+
+
+def test_macro_workerspace_root_fix_backfills_hashes_with_runtime_hash_functions() -> None:
+    migration_sql = _migration_text(
+        ROOT
+        / "src"
+        / "gmgn_twitter_intel"
+        / "platform"
+        / "db"
+        / "alembic"
+        / "versions"
+        / "20260528_0116_macro_workerspace_root_fix.py"
+    )
+
+    assert "macro_observation_fact_payload_hash(" in migration_sql
+    assert "macro_series_current_row_payload_hash(" in migration_sql
+    assert "'md5:'" not in migration_sql
+    assert "md5(" not in migration_sql
 
 
 def _migration_text(path: Path) -> str:

@@ -111,8 +111,10 @@ class WorkerBase(ABC):
     async def run(self) -> None:
         if not self.enabled:
             return
+        if self._active_run_loops > 0:
+            raise RuntimeError(f"worker:{self.name}:already_running")
         run_once_task: asyncio.Task[WorkerResult | None] | None = None
-        self._active_run_loops += 1
+        self._active_run_loops = 1
         self.running = True
         try:
             await self.on_start()
@@ -157,8 +159,8 @@ class WorkerBase(ABC):
                 await self._wait_for_next_iteration(self.interval_seconds)
         finally:
             await self._cancel_run_once_task(run_once_task)
-            self._active_run_loops = max(0, self._active_run_loops - 1)
-            self.running = self._active_run_loops > 0
+            self._active_run_loops = 0
+            self.running = False
             await self.on_stop()
 
     async def stop(self) -> None:

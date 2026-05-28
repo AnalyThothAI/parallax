@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import json
+from collections.abc import Mapping
+from decimal import Decimal
 from typing import Any
 
 from psycopg.types.json import Jsonb
@@ -48,20 +51,55 @@ class CexOiRadarRepository:
     ) -> int:
         board_period = str(period)
         computed_at = int(computed_at_ms)
+        board_key = _board_key(board_period)
         frontier_ms = _source_frontier_ms(rows, default=computed_at)
         latest_error = _latest_attempt_error(status=status, notes=notes)
+
+        if status not in {"success", "partial"}:
+            self._record_attempt_without_publication(
+                computed_at_ms=computed_at,
+                period=board_period,
+                status=status,
+                latest_error=latest_error,
+                commit=commit,
+            )
+            return 0
+
+        current_payload_hash = _board_payload_hash(
+            rows=rows,
+            period=board_period,
+            source_frontier_ms=frontier_ms,
+        )
+        existing_state = self.conn.execute(
+            """
+            SELECT current_payload_hash
+            FROM cex_oi_radar_publication_state
+            WHERE board_key = %s
+            """,
+            (board_key,),
+        ).fetchone()
+        existing_payload_hash = dict(existing_state).get("current_payload_hash") if existing_state else None
+        if existing_payload_hash == current_payload_hash:
+            self._record_attempt_without_publication(
+                computed_at_ms=computed_at,
+                period=board_period,
+                status=status,
+                latest_error=latest_error,
+                commit=commit,
+            )
+            return 0
 
         self.conn.execute(
             """
             INSERT INTO cex_oi_radar_publication_state(
               board_key, provider, exchange, quote_symbol, contract_type, period,
-              current_published_at_ms, current_source_frontier_ms, current_row_count,
+              current_published_at_ms, current_source_frontier_ms, current_row_count, current_payload_hash,
               latest_attempt_status, latest_attempt_started_at_ms, latest_attempt_finished_at_ms,
               latest_attempt_error, updated_at_ms
             )
             VALUES (
               %s, %s, %s, %s, %s, %s,
-              %s, %s, %s,
+              %s, %s, %s, %s,
               %s, %s, %s,
               %s, %s
             )
@@ -69,6 +107,7 @@ class CexOiRadarRepository:
               current_published_at_ms = excluded.current_published_at_ms,
               current_source_frontier_ms = excluded.current_source_frontier_ms,
               current_row_count = excluded.current_row_count,
+              current_payload_hash = excluded.current_payload_hash,
               latest_attempt_status = excluded.latest_attempt_status,
               latest_attempt_started_at_ms = excluded.latest_attempt_started_at_ms,
               latest_attempt_finished_at_ms = excluded.latest_attempt_finished_at_ms,
@@ -76,7 +115,7 @@ class CexOiRadarRepository:
               updated_at_ms = excluded.updated_at_ms
             """,
             (
-                _board_key(board_period),
+                board_key,
                 "binance",
                 "binance",
                 "USDT",
@@ -85,6 +124,7 @@ class CexOiRadarRepository:
                 computed_at,
                 frontier_ms,
                 len(rows),
+                current_payload_hash,
                 status,
                 computed_at,
                 computed_at,
@@ -178,6 +218,26 @@ class CexOiRadarRepository:
         computed_at = int(computed_at_ms)
         latest_error = _latest_attempt_error(status="failed", notes=notes)
 
+        self._record_attempt_without_publication(
+            computed_at_ms=computed_at,
+            period=board_period,
+            status="failed",
+            latest_error=latest_error,
+            commit=commit,
+        )
+
+    def _record_attempt_without_publication(
+        self,
+        *,
+        computed_at_ms: int,
+        period: str,
+        status: str,
+        latest_error: str | None,
+        commit: bool,
+    ) -> None:
+        board_period = str(period)
+        computed_at = int(computed_at_ms)
+
         self.conn.execute(
             """
             INSERT INTO cex_oi_radar_publication_state(
@@ -189,7 +249,7 @@ class CexOiRadarRepository:
             VALUES (
               %s, %s, %s, %s, %s, %s,
               NULL, NULL, 0,
-              'failed', %s, %s,
+              %s, %s, %s,
               %s, %s
             )
             ON CONFLICT(board_key) DO UPDATE SET
@@ -206,6 +266,7 @@ class CexOiRadarRepository:
                 "USDT",
                 "PERPETUAL",
                 board_period,
+                status,
                 computed_at,
                 computed_at,
                 latest_error,
@@ -274,6 +335,61 @@ def _latest_attempt_error(*, status: str, notes: dict[str, Any] | None) -> str |
         return None
     reason = (notes or {}).get("reason")
     return str(reason) if reason else status
+
+
+def _board_payload_hash(*, rows: list[dict[str, Any]], period: str, source_frontier_ms: int) -> str:
+    return _stable_current_payload_hash(
+        {
+            "provider": "binance",
+            "exchange": "binance",
+            "quote_symbol": "USDT",
+            "contract_type": "PERPETUAL",
+            "period": period,
+            "source_frontier_ms": source_frontier_ms,
+            "rows": [
+                _board_row_payload(row)
+                for row in sorted(rows, key=lambda item: (int(item["rank"]), str(item["target_id"])))
+            ],
+        }
+    )
+
+
+def _board_row_payload(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "rank": int(row["rank"]),
+        "target_id": row["target_id"],
+        "pricefeed_id": row.get("pricefeed_id"),
+        "native_market_id": row["native_market_id"],
+        "base_symbol": row["base_symbol"],
+        "quote_symbol": row["quote_symbol"],
+        "open_interest_usd": row.get("open_interest_usd"),
+        "open_interest_change_pct_1h": row.get("open_interest_change_pct_1h"),
+        "volume_24h_usd": row.get("volume_24h_usd"),
+        "funding_rate": row.get("funding_rate"),
+        "mark_price": row.get("mark_price"),
+        "score": row["score"],
+        "score_components": row.get("score_components") or {},
+        "observed_at_ms": row.get("observed_at_ms"),
+    }
+
+
+def _stable_current_payload_hash(payload: Mapping[str, Any]) -> str:
+    encoded = json.dumps(_json_ready(dict(payload)), sort_keys=True, separators=(",", ":"), allow_nan=False)
+    return "sha256:" + hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _json_ready(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _json_ready(inner) for key, inner in value.items()}
+    if isinstance(value, tuple | list):
+        return [_json_ready(inner) for inner in value]
+    if isinstance(value, set | frozenset):
+        return sorted(_json_ready(inner) for inner in value)
+    if isinstance(value, Decimal):
+        return str(value.normalize())
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return value
 
 
 def _publication_payload(state: dict[str, Any]) -> dict[str, Any]:

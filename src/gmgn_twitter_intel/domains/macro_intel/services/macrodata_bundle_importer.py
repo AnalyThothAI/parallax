@@ -10,7 +10,9 @@ from typing import TYPE_CHECKING, Any, cast
 from gmgn_twitter_intel.domains.macro_intel._constants import (
     MACRO_PROVIDER_SERIES_SOURCE_PRIORITY,
     MACRO_PROVIDER_SERIES_TO_CONCEPT,
+    MACRO_VIEW_PROJECTION_VERSION,
 )
+from gmgn_twitter_intel.domains.macro_intel.observation_identity import normalize_macro_date
 from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_types import MacrodataBundleImport
 
 if TYPE_CHECKING:
@@ -71,21 +73,65 @@ def write_macrodata_bundle_import(
     repos: RepositorySession,
 ) -> dict[str, Any]:
     _require_transaction(repos, operation="macrodata_bundle_import")
-    imported_observation_ids: list[str] = []
-    imported_observation_ids.extend(
-        repos.macro_intel.upsert_observation(observation) for observation in parsed.observations
+    observation_outcomes = [
+        dict(repos.macro_intel.upsert_observation(observation)) for observation in parsed.observations
+    ]
+    changed_observations = [
+        outcome for outcome in observation_outcomes if str(outcome.get("status")) in {"inserted", "changed"}
+    ]
+    inserted_observation_count = _count_outcomes(observation_outcomes, "inserted")
+    changed_observation_count = _count_outcomes(observation_outcomes, "changed")
+    noop_observation_count = _count_outcomes(observation_outcomes, "noop")
+    imported_observation_count = inserted_observation_count + changed_observation_count
+    changed_concept_keys = sorted({str(outcome["concept_key"]) for outcome in changed_observations})
+    max_seen_observed_at = _max_observed_at(observation_outcomes)
+    min_changed_observed_at = _min_observed_at(changed_observations)
+    max_changed_observed_at = _max_observed_at(changed_observations)
+    import_run = dict(parsed.import_run)
+    import_run.update(
+        {
+            "seen_observation_count": len(observation_outcomes),
+            "inserted_observation_count": inserted_observation_count,
+            "changed_observation_count": changed_observation_count,
+            "noop_observation_count": noop_observation_count,
+            "imported_observation_count": imported_observation_count,
+        }
     )
-    repos.macro_intel.record_import_run(parsed.import_run)
+    repos.macro_intel.record_import_run(import_run)
+    dirty_targets_enqueued = 0
+    if imported_observation_count > 0:
+        dirty_targets_enqueued = int(
+            repos.macro_intel.enqueue_macro_projection_dirty_targets_for_changes(
+                changed_observations=changed_observations,
+                projection_name="macro_view",
+                projection_version=MACRO_VIEW_PROJECTION_VERSION,
+                now_ms=int(import_run["completed_at_ms"]),
+                due_at_ms=int(import_run["completed_at_ms"]),
+                reason="macro_observations_changed",
+                commit=False,
+            )
+        )
 
     return {
         "bundle_name": parsed.bundle_name,
         "asof": parsed.asof,
         "max_observed_at": parsed.max_observed_at,
-        "observations_count": len(imported_observation_ids),
-        "imported_observation_count": len(imported_observation_ids),
-        "imported_observation_ids": imported_observation_ids,
-        "run_id": parsed.import_run["run_id"],
-        "import_run_id": parsed.import_run["run_id"],
+        "observations_count": len(observation_outcomes),
+        "seen_observation_count": len(observation_outcomes),
+        "inserted_observation_count": inserted_observation_count,
+        "changed_observation_count": changed_observation_count,
+        "noop_observation_count": noop_observation_count,
+        "imported_observation_count": imported_observation_count,
+        "imported_observation_ids": [str(outcome["observation_id"]) for outcome in changed_observations],
+        "max_seen_observed_at": max_seen_observed_at,
+        "min_changed_observed_at": min_changed_observed_at,
+        "max_changed_observed_at": max_changed_observed_at,
+        "observation_outcomes": observation_outcomes,
+        "changed_observations": changed_observations,
+        "changed_concept_keys": changed_concept_keys,
+        "dirty_targets_enqueued": dirty_targets_enqueued,
+        "run_id": import_run["run_id"],
+        "import_run_id": import_run["run_id"],
         "status": parsed.status,
         "data_quality": parsed.status,
         "coverage": dict(parsed.coverage),
@@ -134,7 +180,7 @@ def _observation(raw_observation: Mapping[str, Any], *, now_ms: int) -> dict[str
         "concept_key": concept_key,
         "series_key": series_key,
         "source_priority": MACRO_PROVIDER_SERIES_SOURCE_PRIORITY[series_key],
-        "observed_at": raw_observation.get("observed_at"),
+        "observed_at": normalize_macro_date(raw_observation.get("observed_at")),
         "value_numeric": _numeric_value(raw_observation.get("value")),
         "unit": raw_observation.get("unit"),
         "frequency": raw_observation.get("frequency"),
@@ -181,9 +227,18 @@ def _sequence(value: object) -> Sequence[Any]:
     return value if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray) else []
 
 
-def _max_observed_at(observations: Sequence[Mapping[str, Any]]) -> str | None:
-    observed_dates = [str(observation["observed_at"]) for observation in observations if observation.get("observed_at")]
+def _max_observed_at(observations: Sequence[Mapping[str, Any]]) -> object | None:
+    observed_dates = [observation["observed_at"] for observation in observations if observation.get("observed_at")]
     return max(observed_dates) if observed_dates else None
+
+
+def _min_observed_at(observations: Sequence[Mapping[str, Any]]) -> object | None:
+    observed_dates = [observation["observed_at"] for observation in observations if observation.get("observed_at")]
+    return min(observed_dates) if observed_dates else None
+
+
+def _count_outcomes(outcomes: Sequence[Mapping[str, Any]], status: str) -> int:
+    return sum(1 for outcome in outcomes if outcome.get("status") == status)
 
 
 def _unit_of_work(repos: RepositorySession) -> AbstractContextManager[Any]:

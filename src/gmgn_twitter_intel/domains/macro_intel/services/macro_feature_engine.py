@@ -12,6 +12,7 @@ from gmgn_twitter_intel.domains.macro_intel._constants import (
     MACRO_REQUIRED_DELTA_POINTS,
     MACRO_REQUIRED_STAT_POINTS,
 )
+from gmgn_twitter_intel.domains.macro_intel.observation_identity import normalize_macro_date
 from gmgn_twitter_intel.domains.macro_intel.services.macro_gap_payloads import build_macro_data_gaps
 
 DELTA_HORIZONS = (5, 20, 60)
@@ -185,6 +186,8 @@ def _numeric_observation(observation: Mapping[str, Any]) -> dict[str, Any] | Non
     if value is None:
         return None
     observed_date = _date_value(observation.get("observed_at"))
+    if observed_date is None:
+        return None
     return {
         "value": value,
         "observed_at": _date_text(observation.get("observed_at")),
@@ -251,23 +254,17 @@ def _stale_after_days(observation: Mapping[str, Any]) -> int:
 
 
 def _date_value(value: Any) -> date | None:
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    if value is None:
-        return None
     try:
-        return date.fromisoformat(str(value)[:10])
+        return normalize_macro_date(value)
     except ValueError:
         return None
 
 
-def _date_text(value: Any) -> str:
+def _date_text(value: Any) -> str | None:
     observed_date = _date_value(value)
     if observed_date is not None:
         return observed_date.isoformat()
-    return str(value or "")
+    return None
 
 
 def _int_value(value: Any) -> int:

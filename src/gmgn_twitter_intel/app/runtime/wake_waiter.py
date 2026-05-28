@@ -43,19 +43,22 @@ class WakeWaiter:
 
     def wait(self, timeout: float) -> bool:
         deadline = time.monotonic() + max(0.0, float(timeout))
+        retry_after_failure = False
         while True:
             if self._local_wake.is_set():
                 self._local_wake.clear()
                 return True
             remaining = deadline - time.monotonic()
-            if remaining <= 0:
+            if remaining <= 0 and not retry_after_failure:
                 return False
             try:
+                retry_after_failure = False
                 return self._wait_once(timeout=remaining)
             except Exception as exc:
                 logger.warning("wake waiter reconnecting after LISTEN failure: {}", exc)
-                if deadline - time.monotonic() <= 0:
+                if max(0.0, float(timeout)) <= 0:
                     return False
+                retry_after_failure = True
 
     def _wait_once(self, *, timeout: float) -> bool:
         deadline = time.monotonic() + max(0.0, timeout)

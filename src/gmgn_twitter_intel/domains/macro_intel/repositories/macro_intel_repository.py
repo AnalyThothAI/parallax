@@ -5,11 +5,17 @@ import json
 from collections.abc import Mapping, Sequence
 from contextlib import nullcontext
 from datetime import date
-from typing import Any, TypedDict
+from typing import Any, NotRequired, TypedDict
 
 from psycopg.types.json import Jsonb
 
 from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_VIEW_PROJECTION_VERSION
+from gmgn_twitter_intel.domains.macro_intel.observation_identity import (
+    macro_observation_fact_payload_hash,
+    macro_observation_id,
+    macro_series_current_row_payload_hash,
+    normalize_macro_date,
+)
 from gmgn_twitter_intel.platform.db.json_safety import postgres_safe_json
 
 
@@ -18,10 +24,19 @@ class MacroSeriesRefreshResult(TypedDict):
     rows_written: int
     source_rows: int
     source_signature: str
+    latest_attempt_error: NotRequired[str | None]
+
+
+class MacroObservationUpsertOutcome(TypedDict):
+    observation_id: str
+    status: str
+    concept_key: str
+    observed_at: date
+    fact_payload_hash: str
 
 
 _POSTGRES_MAX_BIND_PARAMS = 65_535
-_MACRO_SERIES_INSERT_PARAM_COUNT = 15
+_MACRO_SERIES_INSERT_PARAM_COUNT = 16
 _MACRO_SERIES_INSERT_CHUNK_SIZE = min(4_000, _POSTGRES_MAX_BIND_PARAMS // _MACRO_SERIES_INSERT_PARAM_COUNT)
 
 
@@ -29,15 +44,34 @@ class MacroIntelRepository:
     def __init__(self, conn: Any):
         self.conn = conn
 
-    def upsert_observation(self, observation: Mapping[str, Any]) -> str:
-        observation_id = str(observation.get("observation_id") or _observation_id(observation))
-        self.conn.execute(
+    def upsert_observation(self, observation: Mapping[str, Any]) -> MacroObservationUpsertOutcome:
+        observed_at = normalize_macro_date(observation.get("observed_at"))
+        observation_id = str(observation.get("observation_id") or macro_observation_id(observation))
+        raw_payload = dict(observation.get("raw_payload") or observation.get("raw_payload_json") or {})
+        fact_payload_hash = macro_observation_fact_payload_hash(observation)
+        row = self.conn.execute(
             """
+            WITH upserted AS (
             INSERT INTO macro_observations(
               observation_id, source_name, concept_key, series_key, source_priority, observed_at, value_numeric, unit,
-              frequency, data_quality, source_ts, raw_payload_json, ingested_at_ms
+              frequency, data_quality, source_ts, raw_payload_json, ingested_at_ms, fact_payload_hash
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (
+              %(observation_id)s,
+              %(source_name)s,
+              %(concept_key)s,
+              %(series_key)s,
+              %(source_priority)s,
+              %(observed_at)s,
+              %(value_numeric)s,
+              %(unit)s,
+              %(frequency)s,
+              %(data_quality)s,
+              %(source_ts)s,
+              %(raw_payload_json)s,
+              %(ingested_at_ms)s,
+              %(fact_payload_hash)s
+            )
             ON CONFLICT(concept_key, observed_at, source_name, series_key) DO UPDATE SET
               source_priority = excluded.source_priority,
               value_numeric = excluded.value_numeric,
@@ -46,41 +80,94 @@ class MacroIntelRepository:
               data_quality = excluded.data_quality,
               source_ts = excluded.source_ts,
               raw_payload_json = excluded.raw_payload_json,
-              ingested_at_ms = excluded.ingested_at_ms
-            """,
-            (
-                observation_id,
-                str(observation["source_name"]),
-                str(observation["concept_key"]),
-                str(observation["series_key"]),
-                int(observation["source_priority"]),
-                observation["observed_at"],
-                observation.get("value_numeric"),
-                observation.get("unit"),
-                observation.get("frequency"),
-                str(observation.get("data_quality") or "ok"),
-                observation.get("source_ts"),
-                Jsonb(dict(observation.get("raw_payload") or observation.get("raw_payload_json") or {})),
-                int(observation["ingested_at_ms"]),
+              ingested_at_ms = excluded.ingested_at_ms,
+              fact_payload_hash = excluded.fact_payload_hash
+            WHERE macro_observations.fact_payload_hash IS DISTINCT FROM excluded.fact_payload_hash
+            RETURNING
+              observation_id,
+              concept_key,
+              observed_at,
+              fact_payload_hash,
+              (xmax = 0) AS inserted
             ),
-        )
-        return observation_id
+            existing AS (
+              SELECT
+                observation_id,
+                concept_key,
+                observed_at,
+                fact_payload_hash
+              FROM macro_observations
+              WHERE concept_key = %(concept_key)s
+                AND observed_at = %(observed_at)s
+                AND source_name = %(source_name)s
+                AND series_key = %(series_key)s
+                AND NOT EXISTS (SELECT 1 FROM upserted)
+            )
+            SELECT
+              observation_id,
+              CASE WHEN inserted THEN 'inserted' ELSE 'changed' END AS status,
+              concept_key,
+              observed_at,
+              fact_payload_hash
+            FROM upserted
+            UNION ALL
+            SELECT
+              observation_id,
+              'noop' AS status,
+              concept_key,
+              observed_at,
+              fact_payload_hash
+            FROM existing
+            LIMIT 1
+            """,
+            {
+                "observation_id": observation_id,
+                "source_name": str(observation["source_name"]),
+                "concept_key": str(observation["concept_key"]),
+                "series_key": str(observation["series_key"]),
+                "source_priority": int(observation["source_priority"]),
+                "observed_at": observed_at,
+                "value_numeric": observation.get("value_numeric"),
+                "unit": observation.get("unit"),
+                "frequency": observation.get("frequency"),
+                "data_quality": str(observation.get("data_quality") or "ok"),
+                "source_ts": observation.get("source_ts"),
+                "raw_payload_json": Jsonb(raw_payload),
+                "ingested_at_ms": int(observation["ingested_at_ms"]),
+                "fact_payload_hash": fact_payload_hash,
+            },
+        ).fetchone()
+        if row is None:
+            raise RuntimeError("macro_observation_upsert_returned_no_outcome")
+        outcome = dict(row)
+        return {
+            "observation_id": str(outcome["observation_id"]),
+            "status": str(outcome["status"]),
+            "concept_key": str(outcome["concept_key"]),
+            "observed_at": normalize_macro_date(outcome["observed_at"]),
+            "fact_payload_hash": str(outcome["fact_payload_hash"]),
+        }
 
     def record_import_run(self, import_run: Mapping[str, Any]) -> None:
         self.conn.execute(
             """
             INSERT INTO macro_import_runs(
               run_id, source_name, bundle_name, asof_date, status, observations_count,
+              seen_observation_count, inserted_observation_count, changed_observation_count, noop_observation_count,
               coverage_json, missing_series_json, series_errors_json, reason_codes_json,
               started_at_ms, completed_at_ms
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(run_id) DO UPDATE SET
               source_name = excluded.source_name,
               bundle_name = excluded.bundle_name,
               asof_date = excluded.asof_date,
               status = excluded.status,
               observations_count = excluded.observations_count,
+              seen_observation_count = excluded.seen_observation_count,
+              inserted_observation_count = excluded.inserted_observation_count,
+              changed_observation_count = excluded.changed_observation_count,
+              noop_observation_count = excluded.noop_observation_count,
               coverage_json = excluded.coverage_json,
               missing_series_json = excluded.missing_series_json,
               series_errors_json = excluded.series_errors_json,
@@ -95,6 +182,10 @@ class MacroIntelRepository:
                 import_run.get("asof_date"),
                 str(import_run["status"]),
                 int(import_run.get("observations_count") or 0),
+                int(import_run.get("seen_observation_count") or 0),
+                int(import_run.get("inserted_observation_count") or 0),
+                int(import_run.get("changed_observation_count") or 0),
+                int(import_run.get("noop_observation_count") or 0),
                 Jsonb(dict(import_run.get("coverage_json") or {})),
                 Jsonb(list(import_run.get("missing_series_json") or [])),
                 Jsonb(list(import_run.get("series_errors_json") or [])),
@@ -307,6 +398,13 @@ class MacroIntelRepository:
               max_observed_at,
               observations_count,
               imported_observation_count,
+              seen_observation_count,
+              inserted_observation_count,
+              changed_observation_count,
+              noop_observation_count,
+              max_seen_observed_at,
+              min_changed_observed_at,
+              max_changed_observed_at,
               coverage_json,
               missing_series_json,
               series_errors_json,
@@ -320,7 +418,10 @@ class MacroIntelRepository:
               completed_at_ms,
               duration_ms
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s, %s, %s, %s, %s
+            )
             ON CONFLICT(sync_run_id) DO UPDATE SET
               sync_window_id = excluded.sync_window_id,
               source_name = excluded.source_name,
@@ -333,6 +434,13 @@ class MacroIntelRepository:
               max_observed_at = excluded.max_observed_at,
               observations_count = excluded.observations_count,
               imported_observation_count = excluded.imported_observation_count,
+              seen_observation_count = excluded.seen_observation_count,
+              inserted_observation_count = excluded.inserted_observation_count,
+              changed_observation_count = excluded.changed_observation_count,
+              noop_observation_count = excluded.noop_observation_count,
+              max_seen_observed_at = excluded.max_seen_observed_at,
+              min_changed_observed_at = excluded.min_changed_observed_at,
+              max_changed_observed_at = excluded.max_changed_observed_at,
               coverage_json = excluded.coverage_json,
               missing_series_json = excluded.missing_series_json,
               series_errors_json = excluded.series_errors_json,
@@ -359,6 +467,13 @@ class MacroIntelRepository:
                 run.get("max_observed_at"),
                 int(run.get("observations_count") or 0),
                 int(run.get("imported_observation_count") or 0),
+                int(run.get("seen_observation_count") or 0),
+                int(run.get("inserted_observation_count") or 0),
+                int(run.get("changed_observation_count") or 0),
+                int(run.get("noop_observation_count") or 0),
+                run.get("max_seen_observed_at"),
+                run.get("min_changed_observed_at"),
+                run.get("max_changed_observed_at"),
                 Jsonb(dict(run.get("coverage_json") or {})),
                 Jsonb(list(run.get("missing_series_json") or [])),
                 Jsonb(list(run.get("series_errors_json") or [])),
@@ -628,11 +743,144 @@ class MacroIntelRepository:
                 "now_ms": int(now_ms),
             },
         )
-        if commit:
-            self.conn.commit()
         rowcount = getattr(cursor, "rowcount", None)
         if rowcount is None or int(rowcount) < 0:
             return 1
+        return int(rowcount)
+
+    def enqueue_macro_projection_dirty_targets_for_changes(
+        self,
+        *,
+        changed_observations: Sequence[Mapping[str, Any]],
+        projection_name: str,
+        projection_version: str,
+        now_ms: int,
+        due_at_ms: int | None = None,
+        reason: str,
+        commit: bool = True,
+    ) -> int:
+        targets = _macro_projection_dirty_change_targets(
+            changed_observations,
+            projection_name=projection_name,
+            projection_version=projection_version,
+            reason=reason,
+        )
+        if not targets:
+            return 0
+        params: dict[str, Any] = {
+            "projection_names": [target["projection_name"] for target in targets],
+            "projection_versions": [target["projection_version"] for target in targets],
+            "target_kinds": [target["target_kind"] for target in targets],
+            "target_ids": [target["target_id"] for target in targets],
+            "concept_keys": [target["concept_key"] for target in targets],
+            "min_observed_ats": [target["min_observed_at"] for target in targets],
+            "max_observed_ats": [target["max_observed_at"] for target in targets],
+            "source_watermark_dates": [target["source_watermark_date"] for target in targets],
+            "payload_hashes": [target["payload_hash"] for target in targets],
+            "dirty_reasons": [reason for _target in targets],
+            "source_watermark_ms": int(now_ms),
+            "due_at_ms": int(due_at_ms if due_at_ms is not None else now_ms),
+            "now_ms": int(now_ms),
+        }
+        cursor = self.conn.execute(
+            """
+            INSERT INTO macro_projection_dirty_targets(
+              projection_name,
+              projection_version,
+              target_kind,
+              target_id,
+              concept_key,
+              min_observed_at,
+              max_observed_at,
+              source_watermark_date,
+              payload_hash,
+              dirty_reason,
+              source_watermark_ms,
+              priority,
+              due_at_ms,
+              leased_until_ms,
+              lease_owner,
+              attempt_count,
+              last_error,
+              created_at_ms,
+              updated_at_ms
+            )
+            SELECT
+              projection_name,
+              projection_version,
+              target_kind,
+              target_id,
+              concept_key,
+              min_observed_at,
+              max_observed_at,
+              source_watermark_date,
+              payload_hash,
+              dirty_reason,
+              %(source_watermark_ms)s,
+              0,
+              %(due_at_ms)s,
+              NULL,
+              NULL,
+              0,
+              NULL,
+              %(now_ms)s,
+              %(now_ms)s
+            FROM unnest(
+              %(projection_names)s::text[],
+              %(projection_versions)s::text[],
+              %(target_kinds)s::text[],
+              %(target_ids)s::text[],
+              %(concept_keys)s::text[],
+              %(min_observed_ats)s::date[],
+              %(max_observed_ats)s::date[],
+              %(source_watermark_dates)s::date[],
+              %(payload_hashes)s::text[],
+              %(dirty_reasons)s::text[]
+            ) AS target(
+              projection_name,
+              projection_version,
+              target_kind,
+              target_id,
+              concept_key,
+              min_observed_at,
+              max_observed_at,
+              source_watermark_date,
+              payload_hash,
+              dirty_reason
+            )
+            ON CONFLICT (projection_name, projection_version, target_kind, target_id) DO UPDATE SET
+              concept_key = EXCLUDED.concept_key,
+              min_observed_at = LEAST(
+                COALESCE(macro_projection_dirty_targets.min_observed_at, EXCLUDED.min_observed_at),
+                EXCLUDED.min_observed_at
+              ),
+              max_observed_at = GREATEST(
+                COALESCE(macro_projection_dirty_targets.max_observed_at, EXCLUDED.max_observed_at),
+                EXCLUDED.max_observed_at
+              ),
+              source_watermark_date = GREATEST(
+                COALESCE(macro_projection_dirty_targets.source_watermark_date, EXCLUDED.source_watermark_date),
+                EXCLUDED.source_watermark_date
+              ),
+              payload_hash = EXCLUDED.payload_hash,
+              dirty_reason = EXCLUDED.dirty_reason,
+              source_watermark_ms = GREATEST(
+                macro_projection_dirty_targets.source_watermark_ms,
+                EXCLUDED.source_watermark_ms
+              ),
+              priority = LEAST(macro_projection_dirty_targets.priority, EXCLUDED.priority),
+              due_at_ms = LEAST(macro_projection_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
+              leased_until_ms = NULL,
+              lease_owner = NULL,
+              last_error = NULL,
+              updated_at_ms = EXCLUDED.updated_at_ms
+            RETURNING 1 AS inserted
+            """,
+            params,
+        )
+        rowcount = getattr(cursor, "rowcount", None)
+        if rowcount is None or int(rowcount) < 0:
+            return len(targets)
         return int(rowcount)
 
     def claim_macro_projection_dirty_targets(
@@ -829,21 +1077,39 @@ class MacroIntelRepository:
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def refresh_observation_series_rows(
+    def refresh_observation_series_rows_for_concepts(
         self,
         *,
         projection_version: str,
         now_ms: int,
         lookback_days: int,
         limit_per_series: int,
+        claimed_targets: Sequence[Mapping[str, Any]] = (),
+        concept_keys: Sequence[str] = (),
     ) -> MacroSeriesRefreshResult:
         bounded_lookback_days = max(1, int(lookback_days))
         bounded_limit_per_series = max(1, int(limit_per_series))
+        target_concept_keys = _refresh_target_concept_keys(claimed_targets=claimed_targets, concept_keys=concept_keys)
+        if not target_concept_keys:
+            source_signature = _series_source_signature(
+                projection_version=projection_version,
+                lookback_days=bounded_lookback_days,
+                limit_per_series=bounded_limit_per_series,
+                rows=[],
+            )
+            return {
+                "status": "unchanged",
+                "rows_written": 0,
+                "source_rows": 0,
+                "source_signature": source_signature,
+            }
+
         selected_rows = self._select_observation_series_rows(
             projection_version=projection_version,
             lookback_days=bounded_lookback_days,
             limit_per_series=bounded_limit_per_series,
             projected_at_ms=int(now_ms),
+            concept_keys=target_concept_keys,
         )
         source_signature = _series_source_signature(
             projection_version=projection_version,
@@ -851,20 +1117,43 @@ class MacroIntelRepository:
             limit_per_series=bounded_limit_per_series,
             rows=selected_rows,
         )
-        if not selected_rows:
+        existing_rows = self._current_observation_series_payload_rows(
+            projection_version=projection_version,
+            concept_keys=target_concept_keys,
+        )
+        empty_current_concept_keys = _empty_current_refresh_concept_keys(
+            concept_keys=target_concept_keys,
+            selected_rows=selected_rows,
+            existing_rows=existing_rows,
+        )
+        if empty_current_concept_keys:
+            latest_attempt_error = (
+                "macro_observation_series_empty: empty current refresh preserved existing current rows "
+                f"for {','.join(empty_current_concept_keys)}"
+            )
             self._upsert_macro_series_publication_state(
                 projection_version=projection_version,
                 status="failed",
                 source_signature=source_signature,
-                row_count=0,
+                row_count=len(existing_rows),
                 started_at_ms=int(now_ms),
                 finished_at_ms=int(now_ms),
-                latest_attempt_error="macro_observation_series_empty",
+                latest_attempt_error=latest_attempt_error,
+                preserve_current=True,
             )
-            raise RuntimeError("macro_observation_series_empty")
-
-        current_state = self._macro_series_publication_state(projection_version)
-        if current_state and current_state.get("source_signature") == source_signature:
+            return {
+                "status": "failed",
+                "rows_written": 0,
+                "source_rows": len(selected_rows),
+                "source_signature": source_signature,
+                "latest_attempt_error": latest_attempt_error,
+            }
+        changed_concept_keys = _changed_series_concept_keys(
+            concept_keys=target_concept_keys,
+            selected_rows=selected_rows,
+            existing_rows=existing_rows,
+        )
+        if not changed_concept_keys:
             self._upsert_macro_series_publication_state(
                 projection_version=projection_version,
                 status="unchanged",
@@ -873,6 +1162,7 @@ class MacroIntelRepository:
                 started_at_ms=int(now_ms),
                 finished_at_ms=int(now_ms),
                 latest_attempt_error=None,
+                preserve_current=False,
             )
             return {
                 "status": "unchanged",
@@ -881,15 +1171,19 @@ class MacroIntelRepository:
                 "source_signature": source_signature,
             }
 
+        rows_to_insert = [
+            row for row in selected_rows if str(row.get("concept_key") or "") in set(changed_concept_keys)
+        ]
         with _transaction_context(self.conn):
             self.conn.execute(
                 """
                 DELETE FROM macro_observation_series_rows
                 WHERE projection_version = %s
+                  AND concept_key = ANY(%s)
                 """,
-                (projection_version,),
+                (projection_version, list(changed_concept_keys)),
             )
-            rows_written = self._insert_observation_series_rows(selected_rows)
+            rows_written = self._insert_observation_series_rows(rows_to_insert)
             self._upsert_macro_series_publication_state(
                 projection_version=projection_version,
                 status="published",
@@ -898,6 +1192,7 @@ class MacroIntelRepository:
                 started_at_ms=int(now_ms),
                 finished_at_ms=int(now_ms),
                 latest_attempt_error=None,
+                preserve_current=False,
             )
         return {
             "status": "published",
@@ -916,7 +1211,11 @@ class MacroIntelRepository:
         lookback_days: int,
         limit_per_series: int,
         projected_at_ms: int,
+        concept_keys: Sequence[str] | None = None,
     ) -> list[dict[str, Any]]:
+        bounded_concept_keys = _normalize_concept_keys(concept_keys or ())
+        if not bounded_concept_keys:
+            raise RuntimeError("macro_observation_series_refresh_requires_concepts")
         rows = self.conn.execute(
             """
             WITH source_ranked AS (
@@ -938,7 +1237,8 @@ class MacroIntelRepository:
                   ORDER BY source_priority DESC, source_ts DESC NULLS LAST, ingested_at_ms DESC
                 ) AS dedupe_rank
               FROM macro_observations
-              WHERE observed_at >= CURRENT_DATE - %s::int
+              WHERE concept_key = ANY(%s)
+                AND observed_at >= CURRENT_DATE - %s::int
                 AND value_numeric IS NOT NULL
             ),
             series_ranked AS (
@@ -971,7 +1271,35 @@ class MacroIntelRepository:
             WHERE series_rank <= %s
             ORDER BY concept_key ASC, observed_at DESC
             """,
-            (int(lookback_days), projection_version, int(projected_at_ms), int(limit_per_series)),
+            (
+                list(bounded_concept_keys),
+                int(lookback_days),
+                projection_version,
+                int(projected_at_ms),
+                int(limit_per_series),
+            ),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def _current_observation_series_payload_rows(
+        self,
+        *,
+        projection_version: str,
+        concept_keys: Sequence[str],
+    ) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT
+              rows.concept_key,
+              rows.observed_at,
+              rows.series_rank,
+              rows.payload_hash
+            FROM macro_observation_series_rows AS rows
+            WHERE rows.projection_version = %s
+              AND rows.concept_key = ANY(%s)
+            ORDER BY rows.concept_key ASC, rows.observed_at DESC, rows.series_rank ASC
+            """,
+            (projection_version, list(concept_keys)),
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -987,7 +1315,7 @@ class MacroIntelRepository:
 
     def _insert_observation_series_rows_chunk(self, rows: Sequence[Mapping[str, Any]]) -> int:
         values_sql = ",".join(
-            ["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(rows)
+            ["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(rows)
         )
         params: list[Any] = []
         for row in rows:
@@ -1008,6 +1336,7 @@ class MacroIntelRepository:
                     Jsonb(dict(row.get("raw_payload_json") or {})),
                     int(row["ingested_at_ms"]),
                     int(row["projected_at_ms"]),
+                    macro_series_current_row_payload_hash(row),
                 ]
             )
         cursor = self.conn.execute(
@@ -1027,7 +1356,8 @@ class MacroIntelRepository:
               source_ts,
               raw_payload_json,
               ingested_at_ms,
-              projected_at_ms
+              projected_at_ms,
+              payload_hash
             )
             VALUES {values_sql}
             """,
@@ -1059,6 +1389,7 @@ class MacroIntelRepository:
         started_at_ms: int,
         finished_at_ms: int,
         latest_attempt_error: str | None,
+        preserve_current: bool = False,
     ) -> None:
         self.conn.execute(
             """
@@ -1074,8 +1405,14 @@ class MacroIntelRepository:
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (projection_version) DO UPDATE SET
-              source_signature = excluded.source_signature,
-              row_count = excluded.row_count,
+              source_signature = CASE
+                WHEN %s THEN macro_observation_series_publication_state.source_signature
+                ELSE excluded.source_signature
+              END,
+              row_count = CASE
+                WHEN %s THEN macro_observation_series_publication_state.row_count
+                ELSE excluded.row_count
+              END,
               latest_attempt_status = excluded.latest_attempt_status,
               latest_attempt_started_at_ms = excluded.latest_attempt_started_at_ms,
               latest_attempt_finished_at_ms = excluded.latest_attempt_finished_at_ms,
@@ -1091,6 +1428,8 @@ class MacroIntelRepository:
                 int(finished_at_ms),
                 latest_attempt_error,
                 int(finished_at_ms),
+                preserve_current,
+                preserve_current,
             ),
         )
 
@@ -1288,6 +1627,81 @@ def _series_source_signature(
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+def _refresh_target_concept_keys(
+    *,
+    claimed_targets: Sequence[Mapping[str, Any]],
+    concept_keys: Sequence[str],
+) -> tuple[str, ...]:
+    keys: list[str] = list(concept_keys)
+    for target in claimed_targets:
+        concept_key = str(target.get("concept_key") or "").strip()
+        if concept_key:
+            keys.append(concept_key)
+            continue
+        if str(target.get("target_kind") or "") == "concept":
+            keys.append(str(target.get("target_id") or "").strip())
+    return _normalize_concept_keys(keys)
+
+
+def _normalize_concept_keys(concept_keys: Sequence[str]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(key for key in (str(value).strip() for value in concept_keys) if key))
+
+
+def _changed_series_concept_keys(
+    *,
+    concept_keys: Sequence[str],
+    selected_rows: Sequence[Mapping[str, Any]],
+    existing_rows: Sequence[Mapping[str, Any]],
+) -> list[str]:
+    selected_by_concept = _series_payload_hashes_by_concept(selected_rows, compute_hash=True)
+    existing_by_concept = _series_payload_hashes_by_concept(existing_rows, compute_hash=False)
+    return [
+        concept_key
+        for concept_key in concept_keys
+        if selected_by_concept.get(concept_key, []) != existing_by_concept.get(concept_key, [])
+    ]
+
+
+def _empty_current_refresh_concept_keys(
+    *,
+    concept_keys: Sequence[str],
+    selected_rows: Sequence[Mapping[str, Any]],
+    existing_rows: Sequence[Mapping[str, Any]],
+) -> list[str]:
+    selected_by_concept = _series_payload_hashes_by_concept(selected_rows, compute_hash=True)
+    existing_by_concept = _series_payload_hashes_by_concept(existing_rows, compute_hash=False)
+    return [
+        concept_key
+        for concept_key in concept_keys
+        if not selected_by_concept.get(concept_key) and existing_by_concept.get(concept_key)
+    ]
+
+
+def _series_payload_hashes_by_concept(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    compute_hash: bool,
+) -> dict[str, list[tuple[str, int, str]]]:
+    grouped: dict[str, list[tuple[str, int, str]]] = {}
+    for row in rows:
+        concept_key = str(row.get("concept_key") or "").strip()
+        if not concept_key:
+            continue
+        payload_hash = (
+            macro_series_current_row_payload_hash(row) if compute_hash else str(row.get("payload_hash") or "")
+        )
+        grouped.setdefault(concept_key, []).append(
+            (
+                str(row.get("observed_at") or ""),
+                int(row.get("series_rank") or 0),
+                payload_hash,
+            )
+        )
+    for hashes in grouped.values():
+        hashes.sort()
+    return grouped
+
+
 def _macro_snapshot_payload_hash(snapshot: Mapping[str, Any]) -> str:
     payload = {
         "projection_version": snapshot["projection_version"],
@@ -1325,6 +1739,74 @@ def _macro_projection_dirty_payload_hash(
         "target_id": target_id,
         "reason": reason,
         "source_watermark_ms": int(source_watermark_ms),
+    }
+    encoded = json.dumps(postgres_safe_json(payload), sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(encoded.encode()).hexdigest()
+
+
+def _macro_projection_dirty_change_targets(
+    changed_observations: Sequence[Mapping[str, Any]],
+    *,
+    projection_name: str,
+    projection_version: str,
+    reason: str,
+) -> list[dict[str, Any]]:
+    grouped: dict[str, list[date]] = {}
+    for observation in changed_observations:
+        concept_key = str(observation.get("concept_key") or "").strip()
+        if not concept_key:
+            continue
+        grouped.setdefault(concept_key, []).append(normalize_macro_date(observation.get("observed_at")))
+
+    targets: list[dict[str, Any]] = []
+    for concept_key in sorted(grouped):
+        observed_dates = grouped[concept_key]
+        min_observed_at = min(observed_dates)
+        max_observed_at = max(observed_dates)
+        source_watermark_date = max_observed_at
+        target = {
+            "projection_name": str(projection_name),
+            "projection_version": str(projection_version),
+            "target_kind": "concept",
+            "target_id": concept_key,
+            "concept_key": concept_key,
+            "min_observed_at": min_observed_at,
+            "max_observed_at": max_observed_at,
+            "source_watermark_date": source_watermark_date,
+        }
+        target["payload_hash"] = _macro_projection_dirty_change_payload_hash(
+            projection_name=str(projection_name),
+            projection_version=str(projection_version),
+            concept_key=concept_key,
+            min_observed_at=min_observed_at,
+            max_observed_at=max_observed_at,
+            source_watermark_date=source_watermark_date,
+            reason=reason,
+        )
+        targets.append(target)
+    return targets
+
+
+def _macro_projection_dirty_change_payload_hash(
+    *,
+    projection_name: str,
+    projection_version: str,
+    concept_key: str,
+    min_observed_at: date,
+    max_observed_at: date,
+    source_watermark_date: date,
+    reason: str,
+) -> str:
+    payload = {
+        "projection_name": projection_name,
+        "projection_version": projection_version,
+        "target_kind": "concept",
+        "target_id": concept_key,
+        "concept_key": concept_key,
+        "min_observed_at": min_observed_at,
+        "max_observed_at": max_observed_at,
+        "source_watermark_date": source_watermark_date,
+        "reason": reason,
     }
     encoded = json.dumps(postgres_safe_json(payload), sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(encoded.encode()).hexdigest()

@@ -99,6 +99,9 @@ class FakeDB:
     def wake_listener(self, _name, _channels):
         return None
 
+    def acquire_advisory_lock_connection(self, _name, _key):
+        return SimpleNamespace(release=lambda: None)
+
 
 class FakePulseProvider:
     provider = "fake"
@@ -740,7 +743,12 @@ def test_readiness_uses_scheduler_workers_payload(monkeypatch):
             unhealthy_reasons=lambda: [],
         ),
     )
+    worker_status = {
+        "workers": runtime.scheduler.status_payload(),
+        "worker_lanes": {},
+    }
     monkeypatch.setattr(app_module, "_db_status", lambda _: {"ok": True, "probe": "fake"})
+    monkeypatch.setattr(app_module, "workers_status_payload", lambda _: worker_status)
 
     payload, status_code = _readiness_payload(runtime, now_ms=12_001)
 
@@ -774,6 +782,7 @@ def test_readiness_reports_okx_circuit_open_without_failing_app(monkeypatch):
         ),
     )
     monkeypatch.setattr(app_module, "_db_status", lambda _: {"ok": True, "probe": "fake"})
+    monkeypatch.setattr(app_module, "workers_status_payload", lambda _: {"workers": {}, "worker_lanes": {}})
 
     payload, status_code = _readiness_payload(runtime, now_ms=12_001)
 

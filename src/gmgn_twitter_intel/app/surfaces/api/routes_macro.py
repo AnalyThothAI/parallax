@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, Request
@@ -13,6 +13,7 @@ from gmgn_twitter_intel.domains.macro_intel._constants import (
     MACRO_CORE_CONCEPTS,
     MACRO_VIEW_PROJECTION_VERSION,
 )
+from gmgn_twitter_intel.domains.macro_intel.observation_identity import normalize_macro_date
 from gmgn_twitter_intel.domains.macro_intel.services.macro_asset_correlation import (
     ASSET_CORRELATION_WINDOWS,
     DEFAULT_ASSET_CORRELATION_CONCEPTS,
@@ -293,8 +294,6 @@ def _projection_lag_days(facts_max_observed_at: date | None, snapshot_asof: date
 def _date_string(value: object) -> str | None:
     if value is None:
         return None
-    if isinstance(value, datetime):
-        return value.date().isoformat()
     if isinstance(value, date):
         return value.isoformat()
     return str(value)
@@ -303,21 +302,10 @@ def _date_string(value: object) -> str | None:
 def _to_date(value: object) -> date | None:
     if value is None:
         return None
-    if isinstance(value, date) and not isinstance(value, datetime):
-        return value
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return None
-        try:
-            return date.fromisoformat(text)
-        except ValueError:
-            try:
-                return datetime.fromisoformat(text.replace("Z", "+00:00")).date()
-            except ValueError:
-                return None
+    try:
+        return normalize_macro_date(value)
+    except ValueError:
+        return None
     return None
 
 

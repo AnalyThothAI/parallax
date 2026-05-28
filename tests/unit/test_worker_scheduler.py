@@ -35,6 +35,7 @@ class FakeWorker:
         *,
         enabled: bool = True,
         fail_run: bool = False,
+        fail_after_start: bool = False,
         never_stop: bool = False,
         exit_immediately: bool = False,
         fail_stop: bool = False,
@@ -43,6 +44,7 @@ class FakeWorker:
         self.name = name
         self.settings = SimpleNamespace(enabled=enabled)
         self.fail_run = fail_run
+        self.fail_after_start = fail_after_start
         self.never_stop = never_stop
         self.exit_immediately = exit_immediately
         self.fail_stop = fail_stop
@@ -61,6 +63,10 @@ class FakeWorker:
         self.started_count += 1
         self.started_event.set()
         if self.fail_run:
+            self.last_error = "run failed"
+            raise RuntimeError("run failed")
+        if self.fail_after_start:
+            await asyncio.sleep(0)
             self.last_error = "run failed"
             raise RuntimeError("run failed")
         if self.exit_immediately:
@@ -152,29 +158,58 @@ def test_scheduler_starts_enabled_workers_in_dependency_order_with_task_names() 
     asyncio.run(scenario())
 
 
-def test_scheduler_starts_configured_enrichment_concurrency_with_canonical_status_key() -> None:
+def test_scheduler_uses_one_run_loop_even_when_worker_has_internal_concurrency() -> None:
     async def scenario() -> None:
-        worker = FakeWorker("enrichment")
+        worker = FakeWorker("market_tick_poll")
         worker.settings.concurrency = 3
-        scheduler = WorkerScheduler(workers={"enrichment": worker}, db=FakeDB(), stop_timeout_seconds=0.1)
+        scheduler = WorkerScheduler(workers={"market_tick_poll": worker}, db=FakeDB(), stop_timeout_seconds=0.1)
 
         await scheduler.start()
         await worker.started_event.wait()
-        await asyncio.sleep(0)
 
-        assert worker.started_count == 3
-        assert set(scheduler.tasks) == {"enrichment#0", "enrichment#1", "enrichment#2"}
-        assert {task.get_name() for task in scheduler.tasks.values()} == {
-            "worker:enrichment#0",
-            "worker:enrichment#1",
-            "worker:enrichment#2",
-        }
-        assert set(scheduler.status_payload()) == {"enrichment"}
-
+        assert list(scheduler.tasks) == ["market_tick_poll"]
+        assert worker.started_count == 1
         await scheduler.stop()
 
-        assert worker.stopped == 1
-        assert worker.closed == 1
+    asyncio.run(scenario())
+
+
+def test_scheduler_rejects_repeated_start_without_losing_existing_task() -> None:
+    async def scenario() -> None:
+        worker = FakeWorker("collector")
+        scheduler = WorkerScheduler(workers={"collector": worker}, db=FakeDB(), stop_timeout_seconds=0.1)
+
+        await scheduler.start()
+        await worker.started_event.wait()
+        original_task = scheduler.tasks["collector"]
+
+        with pytest.raises(RuntimeError, match="worker_scheduler:already_started"):
+            await scheduler.start()
+
+        assert scheduler.tasks == {"collector": original_task}
+        assert worker.started_count == 1
+        await scheduler.stop()
+
+    asyncio.run(scenario())
+
+
+def test_scheduler_cleans_up_tasks_when_worker_fails_during_start() -> None:
+    async def scenario() -> None:
+        failing = FakeWorker("collector", fail_run=True)
+        other = FakeWorker("market_tick_poll")
+        scheduler = WorkerScheduler(
+            workers={"collector": failing, "market_tick_poll": other},
+            db=FakeDB(),
+            stop_timeout_seconds=0.1,
+        )
+
+        with pytest.raises(RuntimeError, match="run failed"):
+            await scheduler.start()
+
+        assert scheduler.tasks == {}
+        assert scheduler._started is False
+        assert failing.closed == 0
+        assert other.started_count == 0
 
     asyncio.run(scenario())
 
@@ -280,7 +315,7 @@ def test_scheduler_unhealthy_reasons_reports_enabled_stopped_or_errored_workers_
     async def scenario() -> None:
         healthy = FakeWorker("market_tick_poll")
         stopped = FakeWorker("collector", exit_immediately=True)
-        errored = FakeWorker("enrichment", fail_run=True)
+        errored = FakeWorker("enrichment", fail_after_start=True)
         disabled = FakeWorker("pulse_candidate", enabled=False, fail_run=True)
         scheduler = WorkerScheduler(
             workers={

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping, Sequence
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
 from itertools import pairwise
 from typing import Any
+
+from gmgn_twitter_intel.domains.macro_intel.observation_identity import normalize_macro_date
 
 ASSET_CORRELATION_WINDOWS: Mapping[str, int] = {"20d": 20, "60d": 60, "120d": 120}
 
@@ -318,17 +320,8 @@ def _int_value(value: Any) -> int:
 
 
 def _date_value(value: Any) -> date | None:
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    if value is None:
-        return None
-    text = str(value).strip()
-    if not text:
-        return None
     try:
-        return date.fromisoformat(text[:10])
+        return normalize_macro_date(value)
     except ValueError:
         return None
 

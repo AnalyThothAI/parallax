@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from datetime import date
 
 from gmgn_twitter_intel.domains.macro_intel.repositories.macro_intel_repository import (
     MacroIntelRepository,
@@ -17,6 +18,7 @@ CONTROL_METHODS = (
     "latest_macro_sync_run",
     "macro_sync_queue_summary",
     "macro_observations_max_observed_at",
+    "enqueue_macro_projection_dirty_targets_for_changes",
 )
 
 
@@ -149,6 +151,68 @@ def test_enqueue_macro_projection_dirty_target_coalesces_current_target() -> Non
     assert params["projection_version"] == "macro_regime_v4"
     assert params["target_kind"] == "current"
     assert params["target_id"] == "current"
+
+
+def test_upsert_observation_updates_only_when_fact_payload_hash_changes() -> None:
+    source = inspect.getsource(MacroIntelRepository.upsert_observation)
+    normalized_source = " ".join(source.split())
+
+    assert "fact_payload_hash" in source
+    assert "IS DISTINCT FROM excluded.fact_payload_hash" in source
+    assert "RETURNING" in source
+    assert "status" in source
+    assert "noop" in source
+    assert "ingested_at_ms = excluded.ingested_at_ms" in source
+    assert "WHERE macro_observations.fact_payload_hash IS DISTINCT FROM excluded.fact_payload_hash" in normalized_source
+
+
+def test_record_run_methods_write_hard_cut_observation_counts_and_watermarks() -> None:
+    import_source = inspect.getsource(MacroIntelRepository.record_import_run)
+    sync_source = inspect.getsource(MacroIntelRepository.record_macro_sync_run)
+
+    for column_name in (
+        "seen_observation_count",
+        "inserted_observation_count",
+        "changed_observation_count",
+        "noop_observation_count",
+    ):
+        assert column_name in import_source
+        assert column_name in sync_source
+    for column_name in ("max_seen_observed_at", "min_changed_observed_at", "max_changed_observed_at"):
+        assert column_name in sync_source
+
+
+def test_enqueue_macro_projection_dirty_targets_for_changes_groups_by_concept_watermark() -> None:
+    conn = FakeConnection(rows=[{"inserted": 1}], rowcount=1)
+    repo = MacroIntelRepository(conn)
+
+    inserted = repo.enqueue_macro_projection_dirty_targets_for_changes(
+        changed_observations=[
+            {"concept_key": "liquidity:sofr", "observed_at": "2026-05-27"},
+            {"concept_key": "liquidity:sofr", "observed_at": "2026-05-28"},
+        ],
+        projection_name="macro_view",
+        projection_version="macro_regime_v4",
+        now_ms=1_779_000_000_000,
+        due_at_ms=1_779_000_000_000,
+        reason="macro_observations_changed",
+        commit=False,
+    )
+
+    assert inserted == 1
+    query, params = conn.executions[0]
+    assert "INSERT INTO macro_projection_dirty_targets" in query
+    assert "concept_key" in query
+    assert "min_observed_at" in query
+    assert "max_observed_at" in query
+    assert "source_watermark_date" in query
+    assert "target_kind" in query
+    assert params["target_kinds"] == ["concept"]
+    assert params["target_ids"] == ["liquidity:sofr"]
+    assert params["concept_keys"] == ["liquidity:sofr"]
+    assert params["min_observed_ats"] == [date(2026, 5, 27)]
+    assert params["max_observed_ats"] == [date(2026, 5, 28)]
+    assert params["source_watermark_dates"] == [date(2026, 5, 28)]
 
 
 def test_retry_macro_sync_window_terminalizes_when_attempt_budget_is_exhausted() -> None:

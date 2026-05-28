@@ -9,7 +9,7 @@ from datetime import UTC, date, datetime
 from os import environ as process_environ
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
-from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_VIEW_PROJECTION_VERSION
+from gmgn_twitter_intel.domains.macro_intel.observation_identity import normalize_macro_date
 from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_scheduler import ensure_due_macro_sync_windows
 from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_types import MacroSyncRunSummary
 from gmgn_twitter_intel.domains.macro_intel.services.macrodata_bundle_importer import (
@@ -154,8 +154,15 @@ class MacroSyncService:
                     import_run_id=cast("str | None", import_summary.get("import_run_id")),
                     observations_count=int(import_summary.get("observations_count") or 0),
                     imported_observation_count=int(import_summary.get("imported_observation_count") or 0),
+                    seen_observation_count=int(import_summary.get("seen_observation_count") or 0),
+                    inserted_observation_count=int(import_summary.get("inserted_observation_count") or 0),
+                    changed_observation_count=int(import_summary.get("changed_observation_count") or 0),
+                    noop_observation_count=int(import_summary.get("noop_observation_count") or 0),
                     asof_date=_to_date(import_summary.get("asof")),
                     max_observed_at=_to_date(import_summary.get("max_observed_at")),
+                    max_seen_observed_at=_to_date(import_summary.get("max_seen_observed_at")),
+                    min_changed_observed_at=_to_date(import_summary.get("min_changed_observed_at")),
+                    max_changed_observed_at=_to_date(import_summary.get("max_changed_observed_at")),
                     diagnostics=diagnostics,
                     started_at_ms=started_at_ms,
                     completed_at_ms=completed_at_ms,
@@ -164,15 +171,6 @@ class MacroSyncService:
                     error_message=None,
                 )
                 repos.macro_intel.record_macro_sync_run(run_payload)
-                if int(import_summary.get("imported_observation_count") or 0) > 0:
-                    repos.macro_intel.enqueue_macro_projection_dirty_target(
-                        projection_name="macro_view",
-                        projection_version=MACRO_VIEW_PROJECTION_VERSION,
-                        now_ms=completed_at_ms,
-                        due_at_ms=completed_at_ms,
-                        reason="macro_observations_imported",
-                        commit=False,
-                    )
                 completed = repos.macro_intel.complete_macro_sync_window(
                     sync_window_id=str(window["sync_window_id"]),
                     lease_owner=lease_owner,
@@ -249,8 +247,15 @@ class MacroSyncService:
             import_run_id=None,
             observations_count=0,
             imported_observation_count=0,
+            seen_observation_count=0,
+            inserted_observation_count=0,
+            changed_observation_count=0,
+            noop_observation_count=0,
             asof_date=None,
             max_observed_at=None,
+            max_seen_observed_at=None,
+            min_changed_observed_at=None,
+            max_changed_observed_at=None,
             diagnostics=diagnostics,
             started_at_ms=started_at_ms,
             completed_at_ms=completed_at_ms,
@@ -354,8 +359,15 @@ def _sync_run_payload(
     import_run_id: str | None,
     observations_count: int,
     imported_observation_count: int,
+    seen_observation_count: int,
+    inserted_observation_count: int,
+    changed_observation_count: int,
+    noop_observation_count: int,
     asof_date: date | None,
     max_observed_at: date | None,
+    max_seen_observed_at: date | None,
+    min_changed_observed_at: date | None,
+    max_changed_observed_at: date | None,
     diagnostics: Mapping[str, Any],
     started_at_ms: int,
     completed_at_ms: int,
@@ -377,6 +389,13 @@ def _sync_run_payload(
         "max_observed_at": max_observed_at,
         "observations_count": observations_count,
         "imported_observation_count": imported_observation_count,
+        "seen_observation_count": seen_observation_count,
+        "inserted_observation_count": inserted_observation_count,
+        "changed_observation_count": changed_observation_count,
+        "noop_observation_count": noop_observation_count,
+        "max_seen_observed_at": max_seen_observed_at,
+        "min_changed_observed_at": min_changed_observed_at,
+        "max_changed_observed_at": max_changed_observed_at,
         "coverage_json": {},
         "missing_series_json": [],
         "series_errors_json": [],
@@ -401,8 +420,15 @@ def _summary_from_payload(payload: Mapping[str, Any]) -> MacroSyncRunSummary:
         status=str(payload["status"]),
         observations_count=int(payload.get("observations_count") or 0),
         imported_observation_count=int(payload.get("imported_observation_count") or 0),
+        seen_observation_count=int(payload.get("seen_observation_count") or 0),
+        inserted_observation_count=int(payload.get("inserted_observation_count") or 0),
+        changed_observation_count=int(payload.get("changed_observation_count") or 0),
+        noop_observation_count=int(payload.get("noop_observation_count") or 0),
         asof_date=_to_date(payload.get("asof_date")),
         max_observed_at=_to_date(payload.get("max_observed_at")),
+        max_seen_observed_at=_to_date(payload.get("max_seen_observed_at")),
+        min_changed_observed_at=_to_date(payload.get("min_changed_observed_at")),
+        max_changed_observed_at=_to_date(payload.get("max_changed_observed_at")),
         diagnostics=dict(cast("Mapping[str, Any]", payload.get("diagnostics_json") or {})),
     )
 
@@ -414,8 +440,15 @@ def _stale_claim_summary(*, sync_run_id: str) -> MacroSyncRunSummary:
         status="stale_claim",
         observations_count=0,
         imported_observation_count=0,
+        seen_observation_count=0,
+        inserted_observation_count=0,
+        changed_observation_count=0,
+        noop_observation_count=0,
         asof_date=None,
         max_observed_at=None,
+        max_seen_observed_at=None,
+        min_changed_observed_at=None,
+        max_changed_observed_at=None,
         diagnostics={},
     )
 
@@ -478,13 +511,10 @@ def _date_string(value: object) -> str:
 def _to_date(value: object) -> date | None:
     if value is None:
         return None
-    if isinstance(value, date) and not isinstance(value, datetime):
-        return value
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, str):
-        return date.fromisoformat(value)
-    return None
+    try:
+        return normalize_macro_date(value)
+    except ValueError:
+        return None
 
 
 def _date_from_ms(now_ms: int) -> date:

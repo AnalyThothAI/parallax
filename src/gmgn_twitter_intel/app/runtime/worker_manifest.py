@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from gmgn_twitter_intel.app.runtime.current_read_model_publisher import FORBIDDEN_SERVING_IDENTITY_COLUMNS
+
 
 class WorkerKind(StrEnum):
     FACT_INGEST = "fact_ingest"
@@ -38,6 +40,8 @@ class WorkerManifest:
     writes_facts: tuple[str, ...] = ()
     writes_read_models: tuple[str, ...] = ()
     writes_control_plane: tuple[str, ...] = ()
+    current_read_model_identities: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    uses_provider_io: bool = False
     idempotency_evidence: tuple[str, ...] = ()
     side_effect_ledgers: tuple[str, ...] = ()
     dirty_target_tables: tuple[str, ...] = ()
@@ -61,6 +65,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         ordering_keys=("provider_event_id", "received_at_ms"),
         writes_facts=("raw_frames", "events", "token_intents"),
         writes_control_plane=("enrichment_jobs",),
+        uses_provider_io=True,
         idempotency_evidence=("events provider event identity", "enrichment_jobs(event_id, job_type)"),
         wakes_out=("event_written",),
     ),
@@ -77,6 +82,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         input_contract=("token_capture_tier stream targets", "stream provider ticks"),
         ordering_keys=("target_type", "target_id", "observed_at_ms"),
         writes_facts=("market_ticks",),
+        uses_provider_io=True,
         idempotency_evidence=("market tick provider/time natural key",),
         wakes_out=("market_tick_written",),
     ),
@@ -91,6 +97,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         input_contract=("token_capture_tier poll targets", "quote provider ticks"),
         ordering_keys=("target_type", "target_id", "observed_at_ms"),
         writes_facts=("market_ticks",),
+        uses_provider_io=True,
         idempotency_evidence=("market tick provider/time natural key",),
         wakes_out=("market_tick_written",),
     ),
@@ -109,6 +116,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         ordering_keys=("target_type", "target_id"),
         writes_read_models=("market_tick_current",),
         writes_control_plane=("market_tick_current_dirty_targets", "token_radar_dirty_targets"),
+        current_read_model_identities=(("market_tick_current", ("target_type", "target_id")),),
         idempotency_evidence=("market_tick_current target primary key", "dirty target claim/retry state"),
         dirty_target_tables=("market_tick_current_dirty_targets",),
         advisory_lock_key="2026052401",
@@ -146,6 +154,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         ordering_keys=("target_type", "target_id"),
         writes_read_models=("token_capture_tier",),
         writes_control_plane=("token_capture_tier_dirty_targets",),
+        current_read_model_identities=(("token_capture_tier", ("target_type", "target_id")),),
         idempotency_evidence=("token_capture_tier target primary key", "dirty target payload hash"),
         dirty_target_tables=("token_capture_tier_dirty_targets",),
         advisory_lock_key="2026051503",
@@ -198,6 +207,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         ordering_keys=("target_type", "target_id", "provider"),
         writes_facts=("asset_profiles",),
         writes_control_plane=("asset_profile_refresh_targets", "token_image_source_dirty_targets"),
+        uses_provider_io=True,
         idempotency_evidence=("asset_profiles target/provider identity", "dirty target payload hash"),
         dirty_target_tables=("asset_profile_refresh_targets",),
     ),
@@ -215,6 +225,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         ordering_keys=("target_type", "target_id", "source_url"),
         writes_facts=("token_image_assets",),
         writes_control_plane=("token_image_source_dirty_targets", "token_profile_current_dirty_targets"),
+        uses_provider_io=True,
         idempotency_evidence=("token_image_assets source digest", "dirty target payload hash"),
         dirty_target_tables=("token_image_source_dirty_targets",),
         advisory_lock_key="2026052111",
@@ -233,6 +244,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         ordering_keys=("target_type", "target_id"),
         writes_read_models=("token_profile_current",),
         writes_control_plane=("token_profile_current_dirty_targets",),
+        current_read_model_identities=(("token_profile_current", ("target_type", "target_id")),),
         idempotency_evidence=("token_profile_current target primary key", "dirty target payload hash"),
         dirty_target_tables=("token_profile_current_dirty_targets",),
     ),
@@ -254,14 +266,45 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
             "token_radar_current_rows",
             "token_radar_publication_state",
             "token_radar_target_first_seen",
-            "projection_runs",
             "projection_offsets",
             "token_score_evaluations",
         ),
         writes_control_plane=(
             "token_radar_dirty_targets",
+            "projection_runs",
             "pulse_trigger_dirty_targets",
             "narrative_admission_dirty_targets",
+        ),
+        current_read_model_identities=(
+            (
+                "token_radar_rank_source_events",
+                (
+                    "projection_version",
+                    "window",
+                    "scope",
+                    "lane",
+                    "target_type_key",
+                    "identity_id",
+                    "source_kind",
+                    "source_id",
+                    "intent_id",
+                ),
+            ),
+            (
+                "token_radar_target_features",
+                ("projection_version", "window", "scope", "lane", "target_type_key", "identity_id"),
+            ),
+            (
+                "token_radar_current_rows",
+                ("projection_version", "window", "scope", "lane", "target_type_key", "identity_id"),
+            ),
+            ("token_radar_publication_state", ("projection_version", "window", "scope")),
+            (
+                "token_radar_target_first_seen",
+                ("projection_version", "window", "scope", "target_type_key", "identity_id"),
+            ),
+            ("projection_offsets", ("projection_name",)),
+            ("token_score_evaluations", ("horizon", "window", "scope", "score_version", "bucket_label")),
         ),
         idempotency_evidence=("token radar window/scope/target primary key", "projection version"),
         dirty_target_tables=("token_radar_dirty_targets",),
@@ -283,6 +326,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         ordering_keys=("window", "scope", "target_type", "target_id"),
         writes_read_models=("narrative_admissions",),
         writes_control_plane=("narrative_admission_dirty_targets", "discussion_digest_dirty_targets"),
+        current_read_model_identities=(("narrative_admissions", ("target_type", "target_id", "window", "scope")),),
         idempotency_evidence=("narrative admission target/window identity", "dirty target payload hash"),
         dirty_target_tables=("narrative_admission_dirty_targets",),
         advisory_lock_key="2026051901",
@@ -302,6 +346,9 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         ordering_keys=("event_id", "target_type", "target_id", "text_fingerprint"),
         writes_read_models=("token_mention_semantics",),
         writes_control_plane=("discussion_digest_dirty_targets",),
+        current_read_model_identities=(
+            ("token_mention_semantics", ("event_id", "target_type", "target_id", "schema_version", "text_fingerprint")),
+        ),
         idempotency_evidence=(
             "token_mention_semantics(event_id,target_type,target_id,schema_version,text_fingerprint)",
         ),
@@ -326,6 +373,9 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         ordering_keys=("target_type", "target_id", "window", "scope"),
         writes_read_models=("token_discussion_digests",),
         writes_control_plane=("discussion_digest_dirty_targets", "narrative_model_runs"),
+        current_read_model_identities=(
+            ("token_discussion_digests", ("target_type", "target_id", "window", "scope", "schema_version")),
+        ),
         idempotency_evidence=("token_discussion_digests target/window/scope/schema identity",),
         side_effect_ledgers=("token_discussion_digests", "narrative_model_runs"),
         dirty_target_tables=("discussion_digest_dirty_targets",),
@@ -344,6 +394,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         ordering_keys=("source_id", "published_at_ms", "external_id"),
         writes_facts=("news_sources", "news_fetch_runs", "news_provider_items", "news_items"),
         writes_control_plane=("news_projection_dirty_targets",),
+        uses_provider_io=True,
         idempotency_evidence=("news item source/external identity",),
         advisory_lock_key="2026051905",
     ),
@@ -385,6 +436,10 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         ordering_keys=("story_id",),
         writes_read_models=("news_story_groups", "news_story_members"),
         writes_control_plane=("news_projection_dirty_targets",),
+        current_read_model_identities=(
+            ("news_story_groups", ("story_id",)),
+            ("news_story_members", ("story_id", "news_item_id")),
+        ),
         idempotency_evidence=("news story projection primary key", "dirty target payload hash"),
         dirty_target_tables=("news_projection_dirty_targets",),
         advisory_lock_key="2026051903",
@@ -403,6 +458,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         ordering_keys=("news_item_id", "artifact_version_hash"),
         writes_read_models=("news_item_agent_briefs",),
         writes_control_plane=("news_projection_dirty_targets", "news_item_agent_runs"),
+        current_read_model_identities=(("news_item_agent_briefs", ("news_item_id",)),),
         idempotency_evidence=("news_item_agent_briefs(news_item_id)", "news_item_agent_runs(run_id)"),
         side_effect_ledgers=("news_item_agent_runs", "news_item_agent_briefs"),
         dirty_target_tables=("news_projection_dirty_targets",),
@@ -422,6 +478,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         ordering_keys=("page_id", "news_item_id"),
         writes_read_models=("news_page_rows",),
         writes_control_plane=("news_projection_dirty_targets",),
+        current_read_model_identities=(("news_page_rows", ("page_id",)),),
         idempotency_evidence=("news page projection target identity", "dirty target payload hash"),
         dirty_target_tables=("news_projection_dirty_targets",),
         advisory_lock_key="2026051904",
@@ -448,6 +505,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         ordering_keys=("source_id", "window"),
         writes_read_models=("news_source_quality_rows",),
         writes_control_plane=("news_projection_dirty_targets",),
+        current_read_model_identities=(("news_source_quality_rows", ("source_id", "window")),),
         idempotency_evidence=("news source/window projection identity", "dirty target payload hash"),
         dirty_target_tables=("news_projection_dirty_targets",),
         advisory_lock_key="2026052201",
@@ -485,6 +543,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         ordering_keys=("source_id", "document_id"),
         writes_facts=("equity_event_fetch_runs", "equity_provider_documents", "equity_event_documents"),
         writes_control_plane=("equity_event_evidence_jobs",),
+        uses_provider_io=True,
         idempotency_evidence=("equity document source/external identity",),
         advisory_lock_key="2026052302",
         wakes_on=("equity_event_sources_reconciled",),
@@ -510,6 +569,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
             "equity_event_sources.last_evidence_ready_at_ms",
         ),
         writes_control_plane=("equity_event_evidence_jobs",),
+        uses_provider_io=True,
         idempotency_evidence=("event_document_id evidence artifact replacement",),
         advisory_lock_key="2026052307",
         wakes_on=("equity_event_evidence_job_written",),
@@ -555,6 +615,10 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         ordering_keys=("company_event_id",),
         writes_read_models=("equity_event_story_groups", "equity_event_story_members"),
         writes_control_plane=("equity_event_projection_dirty_targets",),
+        current_read_model_identities=(
+            ("equity_event_story_groups", ("story_id",)),
+            ("equity_event_story_members", ("story_id", "company_event_id")),
+        ),
         idempotency_evidence=("equity event story projection identity", "dirty target payload hash"),
         dirty_target_tables=("equity_event_projection_dirty_targets",),
         advisory_lock_key="2026052304",
@@ -575,6 +639,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         ordering_keys=("company_event_id", "artifact_version_hash"),
         writes_read_models=("equity_event_agent_briefs",),
         writes_control_plane=("equity_event_projection_dirty_targets", "equity_event_agent_runs"),
+        current_read_model_identities=(("equity_event_agent_briefs", ("company_event_id",)),),
         idempotency_evidence=("equity_event_agent_briefs(company_event_id)", "equity_event_agent_runs(run_id)"),
         side_effect_ledgers=("equity_event_agent_runs", "equity_event_agent_briefs"),
         dirty_target_tables=("equity_event_projection_dirty_targets",),
@@ -601,6 +666,12 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
             "equity_company_timeline_rows",
         ),
         writes_control_plane=("equity_event_projection_dirty_targets",),
+        current_read_model_identities=(
+            ("equity_event_page_rows", ("row_id",)),
+            ("equity_event_calendar_rows", ("row_id",)),
+            ("equity_event_alert_candidates", ("alert_candidate_id",)),
+            ("equity_company_timeline_rows", ("row_id",)),
+        ),
         idempotency_evidence=("equity event page projection identity", "dirty target payload hash"),
         dirty_target_tables=("equity_event_projection_dirty_targets",),
         advisory_lock_key="2026052306",
@@ -622,9 +693,25 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         ),
         start_priority=95,
         input_contract=("cex market universe", "open interest providers"),
-        ordering_keys=("symbol", "period"),
+        ordering_keys=("provider", "exchange", "quote_symbol", "contract_type", "period", "target_id"),
         writes_read_models=("cex_oi_radar_publication_state", "cex_oi_radar_rows", "cex_detail_snapshots"),
+        uses_provider_io=True,
         idempotency_evidence=("cex oi board symbol/period snapshot identity",),
+        current_read_model_identities=(
+            ("cex_oi_radar_publication_state", ("board_key",)),
+            (
+                "cex_oi_radar_rows",
+                (
+                    "board_provider",
+                    "board_exchange",
+                    "board_quote_symbol",
+                    "board_contract_type",
+                    "period",
+                    "target_id",
+                ),
+            ),
+            ("cex_detail_snapshots", ("exchange", "native_market_id")),
+        ),
         advisory_lock_key="2026052108",
     ),
     WorkerManifest(
@@ -638,7 +725,13 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         input_contract=("macro_sync_windows", "macrodata macro-core history bundle"),
         ordering_keys=("source_name", "bundle_name", "window_start", "window_end"),
         writes_facts=("macro_observations",),
-        writes_control_plane=("macro_import_runs", "macro_sync_windows", "macro_sync_runs"),
+        writes_control_plane=(
+            "macro_import_runs",
+            "macro_sync_windows",
+            "macro_sync_runs",
+            "macro_projection_dirty_targets",
+        ),
+        uses_provider_io=True,
         idempotency_evidence=("macro observation concept/source/series/date identity", "sync window identity"),
         advisory_lock_key="2026052711",
         wakes_out=("macro_observations_imported",),
@@ -655,9 +748,15 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         ordering_keys=("concept_key", "series_key", "observed_at"),
         writes_read_models=(
             "macro_observation_series_rows",
+            "macro_observation_series_publication_state",
             "macro_view_snapshots",
         ),
         writes_control_plane=("macro_projection_dirty_targets",),
+        current_read_model_identities=(
+            ("macro_observation_series_rows", ("projection_version", "concept_key", "observed_at")),
+            ("macro_observation_series_publication_state", ("projection_version",)),
+            ("macro_view_snapshots", ("projection_version",)),
+        ),
         idempotency_evidence=("macro series/observation identity",),
         dirty_target_tables=("macro_projection_dirty_targets",),
         advisory_lock_key="2026052109",
@@ -678,7 +777,6 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
             "pulse_candidate_edge_state",
             "pulse_candidate_run_budget",
             "pulse_target_run_budget",
-            "pulse_agent_runs",
             "pulse_agent_run_steps",
             "pulse_agent_runtime_versions",
             "pulse_agent_eval_cases",
@@ -687,6 +785,18 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
             "pulse_playbook_snapshots",
         ),
         writes_control_plane=("pulse_trigger_dirty_targets", "pulse_agent_jobs", "pulse_agent_runs"),
+        current_read_model_identities=(
+            ("pulse_agent_jobs", ("job_id",)),
+            ("pulse_candidate_edge_state", ("candidate_id",)),
+            ("pulse_candidate_run_budget", ("candidate_id", "hour_bucket_ms")),
+            ("pulse_target_run_budget", ("target_type", "target_id", "hour_bucket_ms")),
+            ("pulse_agent_run_steps", ("step_id",)),
+            ("pulse_agent_runtime_versions", ("runtime_hash",)),
+            ("pulse_agent_eval_cases", ("eval_case_id",)),
+            ("pulse_agent_eval_results", ("eval_result_id",)),
+            ("pulse_candidates", ("candidate_id",)),
+            ("pulse_playbook_snapshots", ("playbook_id",)),
+        ),
         idempotency_evidence=("pulse candidate id", "pulse_agent_jobs candidate identity", "pulse_agent_runs(run_id)"),
         side_effect_ledgers=("pulse_agent_jobs", "pulse_agent_runs", "pulse_agent_run_steps", "pulse_candidates"),
         dirty_target_tables=("pulse_trigger_dirty_targets",),
@@ -711,6 +821,11 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
             "watchlist_handle_signal_stats",
         ),
         writes_control_plane=("enrichment_jobs", "model_runs", "watchlist_handle_summary_jobs"),
+        current_read_model_identities=(
+            ("social_event_extractions", ("extraction_id",)),
+            ("watchlist_handle_signal_events", ("event_id",)),
+            ("watchlist_handle_signal_stats", ("handle",)),
+        ),
         idempotency_evidence=("enrichment_jobs(event_id, job_type)", "model_runs(run_id)"),
         side_effect_ledgers=("enrichment_jobs", "model_runs"),
         queue_depth_table="enrichment_jobs",
@@ -727,6 +842,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         ordering_keys=("handle",),
         writes_read_models=("watchlist_handle_summaries",),
         writes_control_plane=("watchlist_handle_summary_jobs", "watchlist_handle_summary_runs"),
+        current_read_model_identities=(("watchlist_handle_summaries", ("handle",)),),
         idempotency_evidence=("watchlist_handle_summary_jobs(handle)", "watchlist_handle_summary_runs(run_id)"),
         side_effect_ledgers=("watchlist_handle_summary_jobs", "watchlist_handle_summary_runs"),
         queue_depth_table="watchlist_handle_summary_jobs",
@@ -881,6 +997,36 @@ def _validate_worker_manifests() -> None:
     }
     if missing_queue_health_owner:
         raise ValueError(f"queue health tables missing from worker ownership: {missing_queue_health_owner}")
+
+    missing_current_identities = {
+        manifest.name: sorted(
+            set(manifest.writes_read_models)
+            - {table_name for table_name, _identity_columns in manifest.current_read_model_identities}
+        )
+        for manifest in _WORKER_MANIFESTS
+        if set(manifest.writes_read_models)
+        - {table_name for table_name, _identity_columns in manifest.current_read_model_identities}
+    }
+    if missing_current_identities:
+        raise ValueError(f"current read model tables missing stable identities: {missing_current_identities}")
+
+    forbidden_current_identities = {
+        manifest.name: {
+            table_name: sorted(set(identity_columns) & FORBIDDEN_SERVING_IDENTITY_COLUMNS)
+            for table_name, identity_columns in manifest.current_read_model_identities
+            if set(identity_columns) & FORBIDDEN_SERVING_IDENTITY_COLUMNS
+        }
+        for manifest in _WORKER_MANIFESTS
+        if any(
+            set(identity_columns) & FORBIDDEN_SERVING_IDENTITY_COLUMNS
+            for _table_name, identity_columns in manifest.current_read_model_identities
+        )
+    }
+    if forbidden_current_identities:
+        raise ValueError(
+            "current read model identities include serving lifecycle columns: "
+            f"{forbidden_current_identities}"
+        )
 
 
 def _dedupe(values: tuple[str, ...]) -> tuple[str, ...]:
