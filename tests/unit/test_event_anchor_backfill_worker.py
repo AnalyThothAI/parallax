@@ -177,6 +177,43 @@ def test_run_once_reschedules_rate_limited_jobs_inside_active_window() -> None:
     assert wake.emitted == []
 
 
+def test_run_once_stale_reschedule_lease_has_no_other_side_effects() -> None:
+    row = _pending_row(event_id="evt-stale-rate", target_type="chain_token", target_id="solana:RATE")
+    row["attempt_count"] = 0
+    row["active_until_ms"] = NOW_MS + 60_000
+    db = _FakeDB(pending_rows=[row], reschedule_results=[False])
+    wake = _RecordingWakeEmitter()
+    worker = EventAnchorBackfillWorker(
+        pool_bundle=db,
+        capture_service=_UnavailableService("rate_limited"),
+        wake_emitter=wake,
+        batch_size=10,
+        concurrency=2,
+        min_age_ms=100,
+        clock=lambda: NOW_MS,
+        settings=_settings(max_attempts=3),
+    )
+
+    result = asyncio.run(worker.run_once())
+
+    assert result.processed == 0
+    assert result.notes["rescheduled_jobs"] == 0
+    assert db.reschedule_mark_attempts == [
+        {
+            "event_id": "evt-stale-rate",
+            "intent_id": "intent-evt-stale-rate",
+            "lease_owner": "event_anchor_backfill",
+            "attempt_count": 1,
+        }
+    ]
+    assert db.rescheduled_jobs == []
+    assert db.terminal_captures == []
+    assert db.terminal_jobs == []
+    assert db.attached_captures == []
+    assert db.inserted_ticks == []
+    assert wake.emitted == []
+
+
 def test_run_once_dispatches_to_capture_service_under_semaphore_then_persists_and_wakes() -> None:
     rows = [_pending_row(event_id="event-1", target_type="chain_token", target_id="solana:AAA")]
     quote = DexTokenQuote(
@@ -384,6 +421,38 @@ def test_run_once_provider_no_quote_terminalizes_job_and_does_not_wake() -> None
     assert wake.emitted == []
 
 
+def test_run_once_stale_terminal_lease_does_not_mark_enriched_event_terminal() -> None:
+    rows = [_pending_row(event_id="evt-stale", target_type="chain_token", target_id="solana:STALE")]
+    db = _FakeDB(pending_rows=rows, terminal_results=[False])
+    wake = _RecordingWakeEmitter()
+    worker = EventAnchorBackfillWorker(
+        pool_bundle=db,
+        capture_service=_UnavailableService("provider_no_quote"),
+        wake_emitter=wake,
+        batch_size=5,
+        concurrency=2,
+        min_age_ms=0,
+        clock=lambda: NOW_MS,
+        settings=_settings(),
+    )
+
+    result = asyncio.run(worker.run_once())
+
+    assert result.processed == 0
+    assert result.notes["terminal_failures"] == 0
+    assert db.terminal_mark_attempts == [
+        {
+            "event_id": "evt-stale",
+            "intent_id": "intent-evt-stale",
+            "lease_owner": "event_anchor_backfill",
+            "attempt_count": 1,
+        }
+    ]
+    assert db.terminal_jobs == []
+    assert db.terminal_captures == []
+    assert wake.emitted == []
+
+
 def test_run_once_wakes_only_targets_that_were_attached() -> None:
     rows = [
         _pending_row(event_id="evt-first", target_type="chain_token", target_id="solana:FIRST"),
@@ -555,12 +624,16 @@ class _FakeDB:
         expired_rows: list[dict[str, Any]] | None = None,
         ready_jobs: int = 0,
         attach_results: list[bool] | None = None,
+        terminal_results: list[bool] | None = None,
+        reschedule_results: list[bool] | None = None,
         forbid_enriched_event_queue_scan: bool = False,
     ) -> None:
         self._pending_rows = pending_rows
         self._expired_rows = list(expired_rows or [])
         self._ready_jobs = ready_jobs
         self._attach_results = list(attach_results) if attach_results is not None else None
+        self._terminal_results = list(terminal_results) if terminal_results is not None else None
+        self._reschedule_results = list(reschedule_results) if reschedule_results is not None else None
         self.forbid_enriched_event_queue_scan = forbid_enriched_event_queue_scan
         self.claim_calls: list[dict[str, Any]] = []
         self.expire_stale_calls: list[dict[str, Any]] = []
@@ -574,6 +647,8 @@ class _FakeDB:
         self.terminal_job_guards: list[dict[str, Any]] = []
         self.reschedule_job_guards: list[dict[str, Any]] = []
         self.done_job_guards: list[dict[str, Any]] = []
+        self.terminal_mark_attempts: list[dict[str, Any]] = []
+        self.reschedule_mark_attempts: list[dict[str, Any]] = []
         self.provider_calls = 0
         self.dirty_target_enqueues: list[dict[str, Any]] = []
         self.open_sessions = 0
@@ -741,16 +816,18 @@ class _FakeEventAnchorJobRepo:
         lease_owner: str,
         attempt_count: int,
     ) -> bool:
-        self._db.terminal_jobs.append((event_id, intent_id, status, reason))
-        self._db.terminal_job_guards.append(
-            {
-                "event_id": event_id,
-                "intent_id": intent_id,
-                "lease_owner": lease_owner,
-                "attempt_count": attempt_count,
-            }
-        )
-        return True
+        terminal_result = True if self._db._terminal_results is None else self._db._terminal_results.pop(0)
+        attempt = {
+            "event_id": event_id,
+            "intent_id": intent_id,
+            "lease_owner": lease_owner,
+            "attempt_count": attempt_count,
+        }
+        self._db.terminal_mark_attempts.append(attempt)
+        self._db.terminal_job_guards.append(attempt)
+        if terminal_result:
+            self._db.terminal_jobs.append((event_id, intent_id, status, reason))
+        return terminal_result
 
     def reschedule(
         self,
@@ -763,16 +840,18 @@ class _FakeEventAnchorJobRepo:
         lease_owner: str,
         attempt_count: int,
     ) -> bool:
-        self._db.rescheduled_jobs.append((event_id, intent_id, reason))
-        self._db.reschedule_job_guards.append(
-            {
-                "event_id": event_id,
-                "intent_id": intent_id,
-                "lease_owner": lease_owner,
-                "attempt_count": attempt_count,
-            }
-        )
-        return True
+        reschedule_result = True if self._db._reschedule_results is None else self._db._reschedule_results.pop(0)
+        attempt = {
+            "event_id": event_id,
+            "intent_id": intent_id,
+            "lease_owner": lease_owner,
+            "attempt_count": attempt_count,
+        }
+        self._db.reschedule_mark_attempts.append(attempt)
+        self._db.reschedule_job_guards.append(attempt)
+        if reschedule_result:
+            self._db.rescheduled_jobs.append((event_id, intent_id, reason))
+        return reschedule_result
 
 
 class _FakeMarketTickRepo:

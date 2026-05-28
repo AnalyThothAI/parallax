@@ -69,6 +69,10 @@ class _AttachSkipped(Exception):
     pass
 
 
+class _TerminalSkipped(Exception):
+    pass
+
+
 class EventAnchorBackfillWorker(WorkerBase):
     """Catch up unavailable/pending_backfill enriched events asynchronously."""
 
@@ -362,21 +366,26 @@ class EventAnchorBackfillWorker(WorkerBase):
                 attached_ticks.append(attach.tick)
             terminal_count = 0
             for terminal in terminals:
-                repos.enriched_events.mark_backfill_terminal(
-                    event_id=str(terminal.row["event_id"]),
-                    intent_id=str(terminal.row["intent_id"]),
-                    reason=terminal.reason,
-                )
-                if repos.event_anchor_jobs.mark_terminal(
-                    event_id=str(terminal.row["event_id"]),
-                    intent_id=str(terminal.row["intent_id"]),
-                    status=terminal.status,
-                    reason=terminal.reason,
-                    now_ms=now_ms,
-                    lease_owner=_lease_owner(terminal.row),
-                    attempt_count=_attempt_count(terminal.row),
-                ):
-                    terminal_count += 1
+                try:
+                    with repos.transaction():
+                        if not repos.event_anchor_jobs.mark_terminal(
+                            event_id=str(terminal.row["event_id"]),
+                            intent_id=str(terminal.row["intent_id"]),
+                            status=terminal.status,
+                            reason=terminal.reason,
+                            now_ms=now_ms,
+                            lease_owner=_lease_owner(terminal.row),
+                            attempt_count=_attempt_count(terminal.row),
+                        ):
+                            raise _TerminalSkipped
+                        repos.enriched_events.mark_backfill_terminal(
+                            event_id=str(terminal.row["event_id"]),
+                            intent_id=str(terminal.row["intent_id"]),
+                            reason=terminal.reason,
+                        )
+                except _TerminalSkipped:
+                    continue
+                terminal_count += 1
             rescheduled_count = 0
             for reschedule in reschedules:
                 if repos.event_anchor_jobs.reschedule(
