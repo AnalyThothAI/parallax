@@ -14,6 +14,14 @@ from gmgn_twitter_intel.integrations.news_feeds.provider_registry import (
 )
 
 
+def test_provider_wiring_exposes_only_source_provider_surface() -> None:
+    import gmgn_twitter_intel.app.runtime.provider_wiring.news as provider_wiring
+
+    assert "CompositeNewsFeedClient" not in provider_wiring.__all__
+    assert not hasattr(provider_wiring, "CompositeNewsFeedClient")
+    assert not hasattr(provider_wiring, "_provider_type_for_url")
+
+
 def test_registry_routes_rss_atom_json_feed_and_cryptopanic_to_expected_wrappers() -> None:
     rss_client = RecordingFeedClient(FeedFetchResult(status_code=200, entries=[{"id": "rss-1"}]))
     cryptopanic_client = RecordingFeedClient(FeedFetchResult(status_code=200, entries=[{"id": "panic-1"}]))
@@ -49,6 +57,7 @@ def test_registry_routes_rss_atom_json_feed_and_cryptopanic_to_expected_wrappers
         provider_type="opennews",
         feed_url="opennews://subscribe",
         source={"source_id": "opennews-realtime"},
+        cursor={"high_watermark_ms": 123},
         limit=2,
     )
 
@@ -69,6 +78,7 @@ def test_registry_routes_rss_atom_json_feed_and_cryptopanic_to_expected_wrappers
         {
             "url": "opennews://subscribe",
             "limit": 2,
+            "cursor": {"high_watermark_ms": 123},
             "source_id": "opennews-realtime",
         }
     ]
@@ -157,12 +167,14 @@ class RecordingOpenNewsClient:
         url: str,
         *,
         source: dict[str, Any] | None = None,
+        cursor: dict[str, Any] | None = None,
         limit: int | None = None,
     ) -> FeedFetchResult:
         self.calls.append(
             {
                 "url": url,
                 "limit": limit,
+                "cursor": dict(cursor or {}),
                 "source_id": (source or {}).get("source_id"),
             }
         )
@@ -180,6 +192,7 @@ def test_opennews_registry_wrapper_uses_websocket_client_shape() -> None:
         feed_url="opennews://subscribe",
         provider_type="opennews",
         source={"source_id": "opennews-realtime"},
+        cursor={"high_watermark_ms": 456},
         limit=3,
     )
 
@@ -188,6 +201,7 @@ def test_opennews_registry_wrapper_uses_websocket_client_shape() -> None:
         {
             "url": "opennews://subscribe",
             "limit": 3,
+            "cursor": {"high_watermark_ms": 456},
             "source_id": "opennews-realtime",
         }
     ]

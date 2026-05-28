@@ -177,6 +177,19 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
         return 0, {"ok": True, "data": data}
 
     with repositories(settings) as repos:
+        if args.ops_command == "news-dedup-diagnostics":
+            return 0, {"ok": True, "data": repos.news.news_dedup_diagnostics()}
+
+        if args.ops_command == "rebuild-news-canonical-items":
+            data = _rebuild_news_canonical_items(
+                repos,
+                limit=args.limit,
+                dry_run=bool(args.dry_run),
+                execute=bool(args.execute),
+                now_ms=_now_ms(),
+            )
+            return 0, {"ok": True, "data": data}
+
         if args.ops_command == "queue-inspect":
             return queue_ops.handle_queue_inspect(args, repos)
 
@@ -580,6 +593,44 @@ def _enqueue_token_radar_dirty_targets(
         )
         return data
     raise ValueError(f"unknown token radar dirty target source: {source}")
+
+
+def _rebuild_news_canonical_items(
+    repos: object,
+    *,
+    limit: int,
+    dry_run: bool,
+    execute: bool,
+    now_ms: int,
+) -> dict[str, Any]:
+    news_item_ids = repos.news.list_news_item_ids_for_canonical_rebuild(limit=max(0, int(limit)))
+    targets = [
+        {"projection_name": projection_name, "target_kind": "news_item", "target_id": news_item_id}
+        for news_item_id in news_item_ids
+        for projection_name in ("story", "page", "brief_input")
+    ]
+    data: dict[str, Any] = {
+        "mode": "execute" if execute else "dry_run",
+        "dry_run": bool(dry_run),
+        "execute": bool(execute),
+        "matched_canonical_items": len(news_item_ids),
+        "would_enqueue": len(targets),
+    }
+    if dry_run:
+        data["enqueued"] = 0
+        data["deleted_disabled_rows"] = 0
+        return data
+    deleted = repos.news.delete_page_rows_without_enabled_observation_edges(commit=False)
+    enqueued = repos.news_projection_dirty_targets.enqueue_targets(
+        targets,
+        reason="ops_news_canonical_rebuild",
+        now_ms=now_ms,
+        commit=False,
+    )
+    repos.conn.commit()
+    data["enqueued"] = int(enqueued)
+    data["deleted_disabled_rows"] = int(deleted)
+    return data
 
 
 def _cursor_mapping(raw: str) -> dict[str, Any]:

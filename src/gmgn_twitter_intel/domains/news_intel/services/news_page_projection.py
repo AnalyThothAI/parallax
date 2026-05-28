@@ -23,9 +23,7 @@ def build_news_page_row(
     provider_signal = _json_object(item.get("provider_signal_json"))
     token_impacts = _provider_token_impacts(item.get("provider_token_impacts_json"))
     impacts_by_symbol = {
-        str(impact.get("symbol") or "").upper(): impact
-        for impact in token_impacts
-        if str(impact.get("symbol") or "")
+        str(impact.get("symbol") or "").upper(): impact for impact in token_impacts if str(impact.get("symbol") or "")
     }
     token_lanes = [_merge_provider_impact(_token_lane(row), impacts_by_symbol) for row in token_mentions]
     fact_lanes = [_fact_lane(row) for row in fact_candidates]
@@ -44,7 +42,7 @@ def build_news_page_row(
         "headline": str(item.get("title") or ""),
         "summary": str(item.get("summary") or ""),
         "source_domain": str(item.get("source_domain") or ""),
-        "canonical_url": str(item.get("canonical_url") or ""),
+        "canonical_url": _public_url(item.get("canonical_url")),
         "token_lanes": token_lanes,
         "fact_lanes": fact_lanes,
         "signal": _page_signal(provider_signal=provider_signal, agent_signal=agent_payload),
@@ -127,6 +125,13 @@ def _token_lane_name(status: str) -> str:
     if status in _IGNORED_TOKEN_STATUSES:
         return "ignored"
     return "attention"
+
+
+def _public_url(value: Any) -> str:
+    url = str(value or "").strip()
+    if url.startswith(("http://", "https://")):
+        return url
+    return ""
 
 
 def _fact_lane(row: dict[str, Any]) -> dict[str, Any]:

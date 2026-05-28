@@ -9,6 +9,15 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
+from gmgn_twitter_intel.domains.news_intel.services.news_canonical_identity import (
+    CANONICAL_POLICY_VERSION,
+    CanonicalIdentity,
+    canonical_identity_for_observation,
+)
+from gmgn_twitter_intel.domains.news_intel.services.news_canonical_identity import (
+    provider_article_key as canonical_provider_article_key,
+)
+from gmgn_twitter_intel.domains.news_intel.services.news_url_identity import url_identity_kind
 from gmgn_twitter_intel.domains.news_intel.types import NewsSourceConfig
 from gmgn_twitter_intel.domains.news_intel.types.source_classification import normalize_string_tuple
 from gmgn_twitter_intel.domains.news_intel.types.source_quality_policy import window_ms_for_label
@@ -189,14 +198,42 @@ class NewsRepository:
             payload = _source_payload(source)
             configured_source_ids.append(str(payload["source_id"]))
             rows.append(self.upsert_source(**payload, now_ms=now_ms, commit=False))
-        self.disable_unconfigured_sources(
-            configured_source_ids=configured_source_ids,
-            now_ms=now_ms,
-            commit=False,
+        rows.extend(
+            self.disable_unconfigured_source_rows(
+                configured_source_ids=configured_source_ids,
+                now_ms=now_ms,
+                commit=False,
+            )
         )
         if commit:
             self.conn.commit()
         return rows
+
+    def disable_unconfigured_source_rows(
+        self,
+        *,
+        configured_source_ids: Sequence[str] | None = None,
+        active_source_ids: Sequence[str] | None = None,
+        now_ms: int,
+        commit: bool = True,
+    ) -> list[dict[str, Any]]:
+        source_ids = configured_source_ids if configured_source_ids is not None else active_source_ids
+        normalized_ids = [str(source_id) for source_id in (source_ids or [])]
+        rows = self.conn.execute(
+            """
+            UPDATE news_sources
+               SET enabled = false,
+                   updated_at_ms = %s
+             WHERE managed_by_config = true
+               AND enabled = true
+               AND NOT (source_id = ANY(%s::text[]))
+            RETURNING *
+            """,
+            (int(now_ms), normalized_ids),
+        ).fetchall()
+        if commit:
+            self.conn.commit()
+        return [{**dict(row), "status": "disabled"} for row in rows]
 
     def disable_unconfigured_sources(
         self,
@@ -206,22 +243,15 @@ class NewsRepository:
         now_ms: int,
         commit: bool = True,
     ) -> int:
-        source_ids = configured_source_ids if configured_source_ids is not None else active_source_ids
-        normalized_ids = [str(source_id) for source_id in (source_ids or [])]
-        cursor = self.conn.execute(
-            """
-            UPDATE news_sources
-               SET enabled = false,
-                   updated_at_ms = %s
-             WHERE managed_by_config = true
-               AND enabled = true
-               AND NOT (source_id = ANY(%s::text[]))
-            """,
-            (int(now_ms), normalized_ids),
+        rows = self.disable_unconfigured_source_rows(
+            configured_source_ids=configured_source_ids,
+            active_source_ids=active_source_ids,
+            now_ms=now_ms,
+            commit=False,
         )
         if commit:
             self.conn.commit()
-        return int(cursor.rowcount or 0)
+        return len(rows)
 
     def list_news_item_ids_for_sources(self, *, source_ids: Sequence[str]) -> list[str]:
         normalized_ids = list(dict.fromkeys(str(source_id) for source_id in source_ids if str(source_id)))
@@ -229,10 +259,10 @@ class NewsRepository:
             return []
         rows = self.conn.execute(
             """
-            SELECT news_item_id
-              FROM news_items
-             WHERE source_id = ANY(%s::text[])
-             ORDER BY source_id ASC, news_item_id ASC
+            SELECT DISTINCT edges.news_item_id
+              FROM news_item_observation_edges AS edges
+             WHERE edges.source_id = ANY(%s::text[])
+             ORDER BY edges.news_item_id ASC
             """,
             (normalized_ids,),
         ).fetchall()
@@ -244,9 +274,9 @@ class NewsRepository:
             return []
         rows = self.conn.execute(
             """
-            SELECT DISTINCT source_id
-              FROM news_items
-             WHERE news_item_id = ANY(%s::text[])
+            SELECT DISTINCT edges.source_id
+              FROM news_item_observation_edges AS edges
+             WHERE edges.news_item_id = ANY(%s::text[])
              ORDER BY source_id ASC
             """,
             (normalized_ids,),
@@ -265,6 +295,18 @@ class NewsRepository:
              ORDER BY story_id ASC, news_item_id ASC
             """,
             (normalized_ids,),
+        ).fetchall()
+        return [str(row["news_item_id"]) for row in rows]
+
+    def list_news_item_ids_for_canonical_rebuild(self, *, limit: int) -> list[str]:
+        rows = self.conn.execute(
+            """
+            SELECT news_item_id
+              FROM news_items
+             ORDER BY updated_at_ms DESC, news_item_id ASC
+             LIMIT %s
+            """,
+            (max(0, int(limit)),),
         ).fetchall()
         return [str(row["news_item_id"]) for row in rows]
 
@@ -434,6 +476,61 @@ class NewsRepository:
         if commit:
             self.conn.commit()
 
+    def source_sync_cursor(self, source_id: str) -> dict[str, Any]:
+        row = self.conn.execute(
+            """
+            SELECT sync_cursor_json, sync_high_watermark_ms, sync_overlap_ms, sync_diagnostics_json
+              FROM news_sources
+             WHERE source_id = %s
+            """,
+            (str(source_id),),
+        ).fetchone()
+        if row is None:
+            return {}
+        cursor = _json_dict(row["sync_cursor_json"])
+        cursor["high_watermark_ms"] = int(row["sync_high_watermark_ms"] or 0)
+        cursor["overlap_ms"] = int(row["sync_overlap_ms"] or 0)
+        diagnostics = _json_dict(row["sync_diagnostics_json"])
+        if diagnostics:
+            cursor["diagnostics"] = diagnostics
+        return cursor
+
+    def update_source_sync_state(
+        self,
+        source_id: str,
+        next_cursor: Mapping[str, Any],
+        *,
+        now_ms: int,
+        commit: bool = True,
+    ) -> None:
+        cursor = _json_dict(next_cursor)
+        diagnostics = {
+            key: cursor[key]
+            for key in ("pages_scanned", "rest_received", "oldest_seen_ms", "stop_reason")
+            if key in cursor
+        }
+        self.conn.execute(
+            """
+            UPDATE news_sources
+               SET sync_cursor_json = %s,
+                   sync_high_watermark_ms = COALESCE(%s, sync_high_watermark_ms),
+                   sync_overlap_ms = COALESCE(%s, sync_overlap_ms),
+                   sync_diagnostics_json = %s,
+                   updated_at_ms = %s
+             WHERE source_id = %s
+            """,
+            (
+                _json(cursor),
+                _positive_optional_int(cursor.get("high_watermark_ms")),
+                _positive_optional_int(cursor.get("overlap_ms")),
+                _json(diagnostics),
+                int(now_ms),
+                str(source_id),
+            ),
+        )
+        if commit:
+            self.conn.commit()
+
     def upsert_provider_item(
         self,
         *,
@@ -444,26 +541,106 @@ class NewsRepository:
         payload_hash: str,
         raw_payload: Mapping[str, Any] | None = None,
         raw_payload_json: Mapping[str, Any] | None = None,
+        provider_article_id: str | None = None,
+        provider_article_key: str | None = None,
+        provider_payload_status: str | None = None,
+        provider_published_at_ms: int | None = None,
+        provider_observed_at_ms: int | None = None,
         fetched_at_ms: int,
         commit: bool = True,
     ) -> dict[str, Any]:
         payload = dict(raw_payload if raw_payload is not None else raw_payload_json or {})
+        source = self.conn.execute(
+            """
+            SELECT provider_type
+              FROM news_sources
+             WHERE source_id = %s
+            """,
+            (source_id,),
+        ).fetchone()
+        if source is None:
+            raise ValueError(f"news source does not exist: {source_id}")
+        provider_type = str(source["provider_type"]).strip().lower()
+        incoming_article_id = _provider_article_id(
+            explicit=provider_article_id,
+            provider_type=provider_type,
+            source_item_key=source_item_key,
+            payload=payload,
+        )
+        incoming_article_key = str(provider_article_key or "").strip() or canonical_provider_article_key(
+            provider_type=provider_type,
+            provider_article_id=incoming_article_id,
+        )
         existing = self.conn.execute(
             """
-            SELECT *
-              FROM news_provider_items
-             WHERE source_id = %s
-               AND source_item_key = %s
+            SELECT provider_items.*, sources.provider_type
+              FROM news_provider_items AS provider_items
+              JOIN news_sources AS sources ON sources.source_id = provider_items.source_id
+             WHERE provider_items.source_id = %s
+               AND (
+                 provider_items.source_item_key = %s
+                 OR (%s <> '' AND provider_items.provider_article_key = %s)
+               )
+             ORDER BY
+               CASE WHEN provider_items.source_item_key = %s THEN 0 ELSE 1 END,
+               provider_items.provider_observed_at_ms DESC,
+               provider_items.provider_item_id ASC
+             LIMIT 1
             """,
-            (source_id, source_item_key),
+            (source_id, source_item_key, incoming_article_key, incoming_article_key, source_item_key),
         ).fetchone()
+        stored_source_item_key = str(existing["source_item_key"]) if existing is not None else str(source_item_key)
+        existing_article_id = str(existing["provider_article_id"] or "").strip() if existing is not None else ""
+        normalized_article_id = existing_article_id or incoming_article_id
+        existing_article_key = str(existing["provider_article_key"] or "").strip() if existing is not None else ""
+        normalized_article_key = existing_article_key or (
+            canonical_provider_article_key(provider_type=provider_type, provider_article_id=existing_article_id)
+            if existing_article_id
+            else incoming_article_key
+        )
+        if normalized_article_id and not normalized_article_key:
+            normalized_article_key = canonical_provider_article_key(
+                provider_type=provider_type,
+                provider_article_id=normalized_article_id,
+            )
+        incoming_payload_status = _provider_payload_status(
+            explicit=provider_payload_status,
+            payload=payload,
+        )
+        normalized_payload_status = _merge_provider_payload_status(
+            existing=str(existing["provider_payload_status"] or "") if existing is not None else "",
+            incoming=incoming_payload_status,
+        )
+        normalized_published_at_ms = (
+            int(provider_published_at_ms)
+            if provider_published_at_ms is not None
+            else _provider_published_at_ms(payload)
+        )
+        normalized_observed_at_ms = int(
+            provider_observed_at_ms if provider_observed_at_ms is not None else fetched_at_ms
+        )
+        keep_existing_payload = (
+            existing is not None
+            and str(existing["provider_payload_status"] or "").strip().lower() == "ready"
+            and incoming_payload_status != "ready"
+        )
+        stored_canonical_url = str(existing["canonical_url"]) if keep_existing_payload else str(canonical_url)
+        stored_payload_hash = str(existing["payload_hash"]) if keep_existing_payload else str(payload_hash)
+        stored_payload = dict(existing["raw_payload_json"]) if keep_existing_payload else payload
+        stored_fetched_at_ms = int(existing["fetched_at_ms"]) if keep_existing_payload else int(fetched_at_ms)
         status = "inserted"
         if existing is not None:
             status = "duplicate"
             if (
-                existing["payload_hash"] != payload_hash
-                or existing["canonical_url"] != canonical_url
-                or dict(existing["raw_payload_json"]) != payload
+                existing["payload_hash"] != stored_payload_hash
+                or existing["canonical_url"] != stored_canonical_url
+                or dict(existing["raw_payload_json"]) != stored_payload
+                or existing["fetched_at_ms"] != stored_fetched_at_ms
+                or existing["provider_article_id"] != normalized_article_id
+                or existing["provider_article_key"] != normalized_article_key
+                or existing["provider_payload_status"] != normalized_payload_status
+                or existing["provider_published_at_ms"] != normalized_published_at_ms
+                or existing["provider_observed_at_ms"] != normalized_observed_at_ms
             ):
                 status = "updated"
         provider_item_id = (
@@ -473,38 +650,80 @@ class NewsRepository:
             """
             INSERT INTO news_provider_items (
               provider_item_id, source_id, fetch_run_id, source_item_key, canonical_url,
-              payload_hash, raw_payload_json, fetched_at_ms
+              payload_hash, raw_payload_json, fetched_at_ms, provider_article_id,
+              provider_article_key, provider_payload_status, provider_published_at_ms,
+              provider_observed_at_ms
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (source_id, source_item_key) DO UPDATE SET
               fetch_run_id = EXCLUDED.fetch_run_id,
-              canonical_url = EXCLUDED.canonical_url,
-              payload_hash = EXCLUDED.payload_hash,
-              raw_payload_json = EXCLUDED.raw_payload_json,
-              fetched_at_ms = EXCLUDED.fetched_at_ms
+              canonical_url = CASE
+                WHEN news_provider_items.provider_payload_status = 'ready'
+                 AND EXCLUDED.provider_payload_status <> 'ready'
+                  THEN news_provider_items.canonical_url
+                ELSE EXCLUDED.canonical_url
+              END,
+              payload_hash = CASE
+                WHEN news_provider_items.provider_payload_status = 'ready'
+                 AND EXCLUDED.provider_payload_status <> 'ready'
+                  THEN news_provider_items.payload_hash
+                ELSE EXCLUDED.payload_hash
+              END,
+              raw_payload_json = CASE
+                WHEN news_provider_items.provider_payload_status = 'ready'
+                 AND EXCLUDED.provider_payload_status <> 'ready'
+                  THEN news_provider_items.raw_payload_json
+                ELSE EXCLUDED.raw_payload_json
+              END,
+              fetched_at_ms = CASE
+                WHEN news_provider_items.provider_payload_status = 'ready'
+                 AND EXCLUDED.provider_payload_status <> 'ready'
+                  THEN news_provider_items.fetched_at_ms
+                ELSE EXCLUDED.fetched_at_ms
+              END,
+              provider_article_id = COALESCE(
+                NULLIF(news_provider_items.provider_article_id, ''),
+                EXCLUDED.provider_article_id
+              ),
+              provider_article_key = COALESCE(
+                NULLIF(news_provider_items.provider_article_key, ''),
+                EXCLUDED.provider_article_key
+              ),
+              provider_payload_status = CASE
+                WHEN news_provider_items.provider_payload_status = 'ready'
+                  OR EXCLUDED.provider_payload_status = 'ready'
+                  THEN 'ready'
+                ELSE 'partial'
+              END,
+              provider_published_at_ms = EXCLUDED.provider_published_at_ms,
+              provider_observed_at_ms = EXCLUDED.provider_observed_at_ms
             RETURNING *
             """,
             (
                 provider_item_id,
                 source_id,
                 fetch_run_id,
-                source_item_key,
-                canonical_url,
-                payload_hash,
-                _json(payload),
-                int(fetched_at_ms),
+                stored_source_item_key,
+                stored_canonical_url,
+                stored_payload_hash,
+                _json(stored_payload),
+                stored_fetched_at_ms,
+                normalized_article_id,
+                normalized_article_key,
+                incoming_payload_status,
+                normalized_published_at_ms,
+                normalized_observed_at_ms,
             ),
         ).fetchone()
         if commit:
             self.conn.commit()
-        return {**dict(row), "status": status}
+        return {**dict(row), "status": status, "incoming_provider_payload_status": incoming_payload_status}
 
-    def upsert_news_item(
+    def upsert_canonical_news_item(
         self,
         *,
         provider_item_id: str,
-        source_id: str,
-        source_domain: str,
+        canonical_identity: CanonicalIdentity | None = None,
         canonical_url: str,
         title: str,
         summary: str = "",
@@ -515,36 +734,199 @@ class NewsRepository:
         content_hash: str,
         title_fingerprint: str,
         now_ms: int,
-        news_item_id: str | None = None,
         provider_signal: Mapping[str, Any] | None = None,
         provider_token_impacts: Sequence[Mapping[str, Any]] | None = None,
+        provider_payload_status: str | None = None,
         commit: bool = True,
     ) -> dict[str, Any]:
         item_published_at_ms = int(published_at_ms if published_at_ms is not None else fetched_at_ms)
         provider_signal_payload = dict(provider_signal or {})
         provider_token_impacts_payload = [dict(item) for item in provider_token_impacts or []]
-        existing = self.conn.execute(
-            "SELECT * FROM news_items WHERE provider_item_id = %s",
+        observation = self.conn.execute(
+            """
+            SELECT provider_items.*, sources.provider_type, sources.source_domain
+              FROM news_provider_items AS provider_items
+              JOIN news_sources AS sources ON sources.source_id = provider_items.source_id
+             WHERE provider_items.provider_item_id = %s
+            """,
             (provider_item_id,),
         ).fetchone()
-        status = "inserted"
+        if observation is None:
+            raise ValueError(f"news provider item does not exist: {provider_item_id}")
+        observation_source_id = str(observation["source_id"])
+        observation_source_domain = str(observation["source_domain"])
+        identity = (
+            canonical_identity
+            if canonical_identity is not None
+            else canonical_identity_for_observation(
+                provider_type=str(observation["provider_type"]),
+                source_id=observation_source_id,
+                provider_article_id=str(observation["provider_article_id"] or ""),
+                canonical_url=canonical_url,
+                content_hash=content_hash,
+                title_fingerprint=title_fingerprint,
+                published_at_ms=item_published_at_ms,
+            )
+        )
+        provider_article_key = str(observation["provider_article_key"] or "")
+        observation_payload_status = str(observation["provider_payload_status"] or "").strip().lower()
+        incoming_payload_status = str(provider_payload_status or "").strip().lower()
+        effective_payload_status = (
+            incoming_payload_status if incoming_payload_status in {"partial", "ready"} else observation_payload_status
+        )
+        ready_content_identity = identity.dedup_key_kind == "content_hash" and effective_payload_status == "ready"
+        if provider_article_key:
+            existing_provider_article_item = self.conn.execute(
+                """
+                SELECT items.news_item_id,
+                       items.provider_item_id,
+                       items.source_id,
+                       items.canonical_item_key,
+                       items.dedup_key_kind,
+                       items.dedup_key_confidence,
+                       items.url_identity_kind,
+                       provider_items.provider_payload_status
+                  FROM news_item_observation_edges AS edges
+                  JOIN news_items AS items ON items.news_item_id = edges.news_item_id
+                  JOIN news_provider_items AS provider_items ON provider_items.provider_item_id = items.provider_item_id
+                 WHERE edges.provider_article_key = %s
+                 ORDER BY
+                   CASE
+                     WHEN items.dedup_key_kind = 'content_hash'
+                      AND items.url_identity_kind = 'article'
+                      AND provider_items.provider_payload_status = 'ready'
+                       THEN 0
+                     ELSE 1
+                   END,
+                   edges.provider_article_key ASC,
+                   items.source_id ASC,
+                   items.provider_item_id ASC
+                 LIMIT 1
+                """,
+                (provider_article_key,),
+            ).fetchone()
+            reuse_provider_article_item = (
+                existing_provider_article_item is not None
+                and str(existing_provider_article_item["canonical_item_key"] or "")
+                and str(existing_provider_article_item["canonical_item_key"]) != identity.canonical_item_key
+            )
+            if reuse_provider_article_item and ready_content_identity:
+                existing_ready_content_identity = (
+                    str(existing_provider_article_item["dedup_key_kind"] or "") == "content_hash"
+                    and str(existing_provider_article_item["url_identity_kind"] or "") == "article"
+                    and str(existing_provider_article_item["provider_payload_status"] or "") == "ready"
+                )
+                same_provider_item = str(existing_provider_article_item["provider_item_id"] or "") == str(
+                    provider_item_id
+                )
+                if same_provider_item:
+                    reuse_provider_article_item = False
+                elif existing_ready_content_identity:
+                    existing_tie_breaker = (
+                        provider_article_key,
+                        str(existing_provider_article_item["source_id"] or ""),
+                        str(existing_provider_article_item["provider_item_id"] or ""),
+                    )
+                    incoming_tie_breaker = (provider_article_key, observation_source_id, str(provider_item_id))
+                    reuse_provider_article_item = existing_tie_breaker <= incoming_tie_breaker
+                else:
+                    reuse_provider_article_item = False
+            if reuse_provider_article_item and existing_provider_article_item is not None:
+                identity = CanonicalIdentity(
+                    canonical_item_key=str(existing_provider_article_item["canonical_item_key"]),
+                    news_item_id=str(existing_provider_article_item["news_item_id"]),
+                    dedup_key_kind=str(existing_provider_article_item["dedup_key_kind"] or identity.dedup_key_kind),
+                    dedup_key_confidence=str(
+                        existing_provider_article_item["dedup_key_confidence"] or identity.dedup_key_confidence
+                    ),
+                    url_identity_kind=str(
+                        existing_provider_article_item["url_identity_kind"] or identity.url_identity_kind
+                    ),
+                    match_type="same_provider_article_id",
+                    match_confidence="strong",
+                    evidence={
+                        **dict(identity.evidence),
+                        "provider_article_key": provider_article_key,
+                        "provider_article_id": str(observation["provider_article_id"] or ""),
+                        "provider_article_existing_news_item_id": str(existing_provider_article_item["news_item_id"]),
+                    },
+                )
+        self.conn.execute(
+            """
+            SELECT pg_advisory_xact_lock(
+              ('x' || substr(md5(%s), 1, 16))::bit(64)::bigint
+            )
+            """,
+            (identity.canonical_item_key,),
+        )
+        item_payload = {
+            "provider_item_id": str(provider_item_id),
+            "source_id": observation_source_id,
+            "source_domain": observation_source_domain,
+            "canonical_url": str(canonical_url),
+            "title": str(title),
+            "summary": str(summary),
+            "body_text": str(body_text),
+            "language": str(language),
+            "published_at_ms": item_published_at_ms,
+            "fetched_at_ms": int(fetched_at_ms),
+            "content_hash": str(content_hash),
+            "title_fingerprint": str(title_fingerprint),
+            "provider_signal_json": provider_signal_payload,
+            "provider_token_impacts_json": provider_token_impacts_payload,
+        }
+        existing = self.conn.execute(
+            "SELECT * FROM news_items WHERE canonical_item_key = %s",
+            (identity.canonical_item_key,),
+        ).fetchone()
+        existing_representative_provider = None
         if existing is not None:
-            status = "duplicate"
-            if (
-                existing["canonical_url"] != canonical_url
-                or existing["title"] != title
-                or existing["summary"] != summary
-                or existing["body_text"] != body_text
-                or existing["language"] != language
-                or existing["published_at_ms"] != item_published_at_ms
-                or existing["content_hash"] != content_hash
-                or existing["title_fingerprint"] != title_fingerprint
-                or dict(existing["provider_signal_json"]) != provider_signal_payload
-                or list(existing["provider_token_impacts_json"]) != provider_token_impacts_payload
-            ):
-                status = "updated"
-        item_id = (
-            str(existing["news_item_id"]) if existing is not None else news_item_id or f"news-item-{uuid.uuid4().hex}"
+            existing_representative_provider = self.conn.execute(
+                """
+                SELECT provider_article_key, provider_payload_status
+                  FROM news_provider_items
+                 WHERE provider_item_id = %s
+                """,
+                (str(existing["provider_item_id"]),),
+            ).fetchone()
+        existing_representative = (
+            {
+                **dict(existing),
+                "provider_payload_status": (
+                    str(existing_representative_provider["provider_payload_status"] or "")
+                    if existing_representative_provider is not None
+                    else ""
+                ),
+                "provider_article_key": (
+                    str(existing_representative_provider["provider_article_key"] or "")
+                    if existing_representative_provider is not None
+                    else ""
+                ),
+            }
+            if existing is not None
+            else None
+        )
+        incoming_representative = {
+            **item_payload,
+            "provider_payload_status": str(observation["provider_payload_status"] or ""),
+            "provider_article_key": str(observation["provider_article_key"] or ""),
+        }
+        replace_representative = existing is None or _representative_payload_should_replace(
+            existing_representative or {},
+            incoming_representative,
+        )
+        content_changed = (
+            existing is not None and replace_representative and _news_item_content_changed(existing, item_payload)
+        )
+        item_id = str(existing["news_item_id"]) if existing is not None else identity.news_item_id
+        existing_edge = self.conn.execute(
+            "SELECT * FROM news_item_observation_edges WHERE provider_item_id = %s",
+            (provider_item_id,),
+        ).fetchone()
+        previous_edge_news_item_id = (
+            str(existing_edge["news_item_id"])
+            if existing_edge is not None and str(existing_edge["news_item_id"]) != item_id
+            else None
         )
         row = self.conn.execute(
             """
@@ -552,65 +934,425 @@ class NewsRepository:
               news_item_id, provider_item_id, source_id, source_domain, canonical_url,
               title, summary, body_text, language, published_at_ms, fetched_at_ms,
               content_hash, title_fingerprint, provider_signal_json, provider_token_impacts_json,
-              created_at_ms, updated_at_ms
+              canonical_item_key, dedup_key_kind, dedup_key_confidence, url_identity_kind,
+              canonical_policy_version, created_at_ms, updated_at_ms
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (provider_item_id) DO UPDATE SET
-              source_id = EXCLUDED.source_id,
-              source_domain = EXCLUDED.source_domain,
-              canonical_url = EXCLUDED.canonical_url,
-              title = EXCLUDED.title,
-              summary = EXCLUDED.summary,
-              body_text = EXCLUDED.body_text,
-              language = EXCLUDED.language,
-              published_at_ms = EXCLUDED.published_at_ms,
-              fetched_at_ms = EXCLUDED.fetched_at_ms,
-              content_hash = EXCLUDED.content_hash,
-              title_fingerprint = EXCLUDED.title_fingerprint,
-              provider_signal_json = EXCLUDED.provider_signal_json,
-              provider_token_impacts_json = EXCLUDED.provider_token_impacts_json,
+            VALUES (
+              %(item_id)s, %(provider_item_id)s, %(source_id)s, %(source_domain)s,
+              %(canonical_url)s, %(title)s, %(summary)s, %(body_text)s, %(language)s,
+              %(published_at_ms)s, %(fetched_at_ms)s, %(content_hash)s,
+              %(title_fingerprint)s, %(provider_signal_json)s, %(provider_token_impacts_json)s,
+              %(canonical_item_key)s, %(dedup_key_kind)s, %(dedup_key_confidence)s,
+              %(url_identity_kind)s, %(canonical_policy_version)s, %(created_at_ms)s,
+              %(updated_at_ms)s
+            )
+            ON CONFLICT (canonical_item_key) WHERE canonical_item_key <> '' DO UPDATE SET
+              provider_item_id = CASE
+                WHEN %(replace_representative)s THEN EXCLUDED.provider_item_id
+                ELSE news_items.provider_item_id
+              END,
+              source_id = CASE
+                WHEN %(replace_representative)s THEN EXCLUDED.source_id
+                ELSE news_items.source_id
+              END,
+              source_domain = CASE
+                WHEN %(replace_representative)s THEN EXCLUDED.source_domain
+                ELSE news_items.source_domain
+              END,
+              canonical_url = CASE
+                WHEN %(replace_representative)s THEN EXCLUDED.canonical_url
+                ELSE news_items.canonical_url
+              END,
+              title = CASE
+                WHEN %(replace_representative)s THEN EXCLUDED.title
+                ELSE news_items.title
+              END,
+              summary = CASE
+                WHEN %(replace_representative)s THEN EXCLUDED.summary
+                ELSE news_items.summary
+              END,
+              body_text = CASE
+                WHEN %(replace_representative)s THEN EXCLUDED.body_text
+                ELSE news_items.body_text
+              END,
+              language = CASE
+                WHEN %(replace_representative)s THEN EXCLUDED.language
+                ELSE news_items.language
+              END,
+              published_at_ms = CASE
+                WHEN %(replace_representative)s THEN EXCLUDED.published_at_ms
+                ELSE news_items.published_at_ms
+              END,
+              fetched_at_ms = CASE
+                WHEN %(replace_representative)s THEN EXCLUDED.fetched_at_ms
+                ELSE news_items.fetched_at_ms
+              END,
+              content_hash = CASE
+                WHEN %(replace_representative)s THEN EXCLUDED.content_hash
+                ELSE news_items.content_hash
+              END,
+              title_fingerprint = CASE
+                WHEN %(replace_representative)s THEN EXCLUDED.title_fingerprint
+                ELSE news_items.title_fingerprint
+              END,
+              provider_signal_json = CASE
+                WHEN %(replace_representative)s THEN EXCLUDED.provider_signal_json
+                ELSE news_items.provider_signal_json
+              END,
+              provider_token_impacts_json = CASE
+                WHEN %(replace_representative)s THEN EXCLUDED.provider_token_impacts_json
+                ELSE news_items.provider_token_impacts_json
+              END,
+              dedup_key_kind = EXCLUDED.dedup_key_kind,
+              dedup_key_confidence = EXCLUDED.dedup_key_confidence,
+              url_identity_kind = CASE
+                WHEN %(replace_representative)s THEN EXCLUDED.url_identity_kind
+                ELSE news_items.url_identity_kind
+              END,
+              canonical_policy_version = EXCLUDED.canonical_policy_version,
               lifecycle_status = CASE
+                WHEN NOT %(replace_representative)s THEN news_items.lifecycle_status
                 WHEN news_items.content_hash = EXCLUDED.content_hash THEN news_items.lifecycle_status
                 ELSE 'raw'
               END,
               updated_at_ms = EXCLUDED.updated_at_ms
             RETURNING *
             """,
+            {
+                "item_id": item_id,
+                "provider_item_id": item_payload["provider_item_id"],
+                "source_id": item_payload["source_id"],
+                "source_domain": item_payload["source_domain"],
+                "canonical_url": item_payload["canonical_url"],
+                "title": item_payload["title"],
+                "summary": item_payload["summary"],
+                "body_text": item_payload["body_text"],
+                "language": item_payload["language"],
+                "published_at_ms": item_published_at_ms,
+                "fetched_at_ms": int(fetched_at_ms),
+                "content_hash": item_payload["content_hash"],
+                "title_fingerprint": item_payload["title_fingerprint"],
+                "provider_signal_json": _json(provider_signal_payload),
+                "provider_token_impacts_json": _json(provider_token_impacts_payload),
+                "canonical_item_key": identity.canonical_item_key,
+                "dedup_key_kind": identity.dedup_key_kind,
+                "dedup_key_confidence": identity.dedup_key_confidence,
+                "url_identity_kind": identity.url_identity_kind,
+                "canonical_policy_version": CANONICAL_POLICY_VERSION,
+                "created_at_ms": int(now_ms),
+                "updated_at_ms": int(now_ms),
+                "replace_representative": replace_representative,
+            },
+        ).fetchone()
+        edge_evidence = {
+            **dict(identity.evidence),
+            "item_payload": {
+                "canonical_url": item_payload["canonical_url"],
+                "title": item_payload["title"],
+                "summary": item_payload["summary"],
+                "body_text": item_payload["body_text"],
+                "language": item_payload["language"],
+                "published_at_ms": item_payload["published_at_ms"],
+                "fetched_at_ms": item_payload["fetched_at_ms"],
+                "content_hash": item_payload["content_hash"],
+                "title_fingerprint": item_payload["title_fingerprint"],
+                "provider_signal_json": provider_signal_payload,
+                "provider_token_impacts_json": provider_token_impacts_payload,
+                "url_identity_kind": identity.url_identity_kind,
+            },
+        }
+        edge_payload = {
+            "news_item_id": str(row["news_item_id"]),
+            "source_id": observation_source_id,
+            "provider_article_key": str(observation["provider_article_key"] or ""),
+            "match_type": identity.match_type,
+            "match_confidence": identity.match_confidence,
+            "policy_version": CANONICAL_POLICY_VERSION,
+            "evidence_json": edge_evidence,
+        }
+        self.conn.execute(
+            """
+            INSERT INTO news_item_observation_edges (
+              provider_item_id, news_item_id, source_id, provider_article_key, match_type,
+              match_confidence, policy_version, evidence_json, first_seen_at_ms, last_seen_at_ms
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (provider_item_id) DO UPDATE SET
+              news_item_id = EXCLUDED.news_item_id,
+              source_id = EXCLUDED.source_id,
+              provider_article_key = EXCLUDED.provider_article_key,
+              match_type = EXCLUDED.match_type,
+              match_confidence = EXCLUDED.match_confidence,
+              policy_version = EXCLUDED.policy_version,
+              evidence_json = EXCLUDED.evidence_json,
+              last_seen_at_ms = EXCLUDED.last_seen_at_ms
+            """,
             (
-                item_id,
                 provider_item_id,
-                source_id,
-                source_domain,
-                canonical_url,
-                title,
-                summary,
-                body_text,
-                language,
-                item_published_at_ms,
-                int(fetched_at_ms),
-                content_hash,
-                title_fingerprint,
-                _json(provider_signal_payload),
-                _json(provider_token_impacts_payload),
+                edge_payload["news_item_id"],
+                edge_payload["source_id"],
+                edge_payload["provider_article_key"],
+                edge_payload["match_type"],
+                edge_payload["match_confidence"],
+                edge_payload["policy_version"],
+                _json(edge_payload["evidence_json"]),
                 int(now_ms),
                 int(now_ms),
             ),
-        ).fetchone()
-        if status == "updated":
-            story_rows = self.conn.execute(
-                "SELECT DISTINCT story_id FROM news_story_members WHERE news_item_id = %s",
-                (item_id,),
-            ).fetchall()
-            story_ids = [str(story_row["story_id"]) for story_row in story_rows]
-            self.conn.execute("DELETE FROM news_fact_candidates WHERE news_item_id = %s", (item_id,))
-            self.conn.execute("DELETE FROM news_token_mentions WHERE news_item_id = %s", (item_id,))
-            self.conn.execute("DELETE FROM news_item_entities WHERE news_item_id = %s", (item_id,))
-            self.conn.execute("DELETE FROM news_story_members WHERE news_item_id = %s", (item_id,))
-            for story_id in story_ids:
-                self._refresh_story_counts(story_id=story_id, now_ms=now_ms)
+        )
+        provider_article_remapped_old_item_ids: list[str] = []
+        if provider_article_key and ready_content_identity:
+            provider_article_remapped_old_item_ids = self._remap_provider_article_edges_to_news_item(
+                provider_article_key=provider_article_key,
+                news_item_id=str(row["news_item_id"]),
+                now_ms=now_ms,
+            )
+        row = self._refresh_news_item_observation_summary(news_item_id=str(row["news_item_id"]), now_ms=now_ms)
+        aggregate_changed = existing is not None and _news_item_aggregate_changed(existing, row)
+        edge_changed = (
+            existing_edge is None
+            or _news_item_edge_changed(
+                existing_edge,
+                edge_payload,
+            )
+            or bool(provider_article_remapped_old_item_ids)
+        )
+        remapped_edge = previous_edge_news_item_id is not None
+        affected_news_item_ids = [str(row["news_item_id"])]
+        old_news_item_ids = list(
+            dict.fromkeys(
+                [
+                    item_id
+                    for item_id in [previous_edge_news_item_id, *provider_article_remapped_old_item_ids]
+                    if item_id
+                ]
+            )
+        )
+        if old_news_item_ids:
+            remapped_edge = True
+        for old_news_item_id in old_news_item_ids:
+            affected_news_item_ids.append(old_news_item_id)
+            self._refresh_news_item_observation_summary(
+                news_item_id=old_news_item_id,
+                now_ms=now_ms,
+            )
+            deleted_old_item = self._delete_zero_edge_news_item(news_item_id=old_news_item_id)
+            if not deleted_old_item:
+                self._reselect_news_item_representative_from_edges(
+                    news_item_id=old_news_item_id,
+                    now_ms=now_ms,
+                )
+                self._clear_item_scoped_derived_facts(news_item_id=old_news_item_id)
+        if existing is None and not remapped_edge:
+            status = "inserted"
+        elif content_changed or aggregate_changed or edge_changed or remapped_edge:
+            status = "updated"
+        else:
+            status = "duplicate"
+        if content_changed:
+            self._clear_item_scoped_derived_facts(news_item_id=item_id)
         if commit:
             self.conn.commit()
-        return {**dict(row), "status": status}
+        return {
+            **dict(row),
+            "status": status,
+            "affected_news_item_ids": list(dict.fromkeys(affected_news_item_ids)),
+        }
+
+    def _remap_provider_article_edges_to_news_item(
+        self,
+        *,
+        provider_article_key: str,
+        news_item_id: str,
+        now_ms: int,
+    ) -> list[str]:
+        rows = self.conn.execute(
+            """
+            WITH remapped AS (
+              SELECT provider_item_id, news_item_id AS old_news_item_id
+                FROM news_item_observation_edges
+               WHERE provider_article_key = %s
+                 AND news_item_id <> %s
+            ),
+            updated AS (
+              UPDATE news_item_observation_edges AS edges
+                 SET news_item_id = %s,
+                     match_type = 'same_provider_article_id',
+                     match_confidence = 'strong',
+                     policy_version = %s,
+                     evidence_json = edges.evidence_json || jsonb_build_object(
+                       'provider_article_remap_reason', 'ready_content_hash',
+                       'provider_article_remapped_to_news_item_id', %s::text,
+                       'provider_article_remapped_at_ms', %s::bigint
+                     ),
+                     last_seen_at_ms = %s
+                FROM remapped
+               WHERE edges.provider_item_id = remapped.provider_item_id
+               RETURNING remapped.old_news_item_id
+            )
+            SELECT DISTINCT old_news_item_id
+              FROM updated
+            """,
+            (
+                str(provider_article_key),
+                str(news_item_id),
+                str(news_item_id),
+                CANONICAL_POLICY_VERSION,
+                str(news_item_id),
+                int(now_ms),
+                int(now_ms),
+            ),
+        ).fetchall()
+        return [str(row["old_news_item_id"]) for row in rows]
+
+    def _refresh_news_item_observation_summary(self, *, news_item_id: str, now_ms: int) -> dict[str, Any]:
+        row = self.conn.execute(
+            """
+            WITH edge_summary AS (
+              SELECT
+                edges.news_item_id,
+                COUNT(*)::int AS duplicate_observation_count,
+                COALESCE(jsonb_agg(DISTINCT edges.source_id ORDER BY edges.source_id), '[]'::jsonb) AS source_ids_json,
+                COALESCE(
+                  jsonb_agg(DISTINCT sources.source_domain ORDER BY sources.source_domain),
+                  '[]'::jsonb
+                ) AS source_domains_json,
+                COALESCE(
+                  jsonb_agg(DISTINCT edges.provider_article_key ORDER BY edges.provider_article_key)
+                    FILTER (WHERE edges.provider_article_key <> ''),
+                  '[]'::jsonb
+                ) AS provider_article_keys_json
+              FROM news_item_observation_edges AS edges
+              JOIN news_sources AS sources ON sources.source_id = edges.source_id
+             WHERE edges.news_item_id = %s
+             GROUP BY edges.news_item_id
+            )
+            UPDATE news_items AS items
+               SET duplicate_observation_count = edge_summary.duplicate_observation_count,
+                   source_ids_json = edge_summary.source_ids_json,
+                   source_domains_json = edge_summary.source_domains_json,
+                   provider_article_keys_json = edge_summary.provider_article_keys_json,
+                   updated_at_ms = %s
+              FROM edge_summary
+             WHERE items.news_item_id = edge_summary.news_item_id
+            RETURNING items.*
+            """,
+            (news_item_id, int(now_ms)),
+        ).fetchone()
+        if row is not None:
+            return dict(row)
+        fallback = self.conn.execute(
+            "SELECT * FROM news_items WHERE news_item_id = %s",
+            (news_item_id,),
+        ).fetchone()
+        return dict(fallback) if fallback is not None else {}
+
+    def _delete_zero_edge_news_item(self, *, news_item_id: str) -> bool:
+        row = self.conn.execute(
+            """
+            DELETE FROM news_items AS items
+             WHERE items.news_item_id = %s
+               AND NOT EXISTS (
+                 SELECT 1
+                   FROM news_item_observation_edges AS edges
+                  WHERE edges.news_item_id = items.news_item_id
+               )
+            RETURNING items.news_item_id
+            """,
+            (news_item_id,),
+        ).fetchone()
+        return row is not None
+
+    def _clear_item_scoped_derived_facts(self, *, news_item_id: str) -> None:
+        self.conn.execute("DELETE FROM news_fact_candidates WHERE news_item_id = %s", (news_item_id,))
+        self.conn.execute("DELETE FROM news_token_mentions WHERE news_item_id = %s", (news_item_id,))
+        self.conn.execute("DELETE FROM news_item_entities WHERE news_item_id = %s", (news_item_id,))
+
+    def _reselect_news_item_representative_from_edges(self, *, news_item_id: str, now_ms: int) -> dict[str, Any]:
+        row = self.conn.execute(
+            """
+            WITH representative_edge AS (
+              SELECT
+                edges.provider_item_id,
+                edges.source_id,
+                sources.source_domain,
+                provider_items.canonical_url AS provider_canonical_url,
+                edges.evidence_json #> '{item_payload}' AS item_payload
+              FROM news_item_observation_edges AS edges
+              JOIN news_provider_items AS provider_items
+                ON provider_items.provider_item_id = edges.provider_item_id
+              JOIN news_sources AS sources ON sources.source_id = edges.source_id
+             WHERE edges.news_item_id = %s
+             ORDER BY
+               CASE WHEN provider_items.provider_payload_status = 'ready' THEN 0 ELSE 1 END,
+               CASE
+                 WHEN edges.evidence_json #>> '{item_payload,url_identity_kind}' = 'article' THEN 0
+                 WHEN provider_items.canonical_url ~* '^https?://' THEN 1
+                 ELSE 2
+               END,
+               edges.provider_article_key ASC,
+               edges.source_id ASC,
+               provider_items.payload_hash ASC,
+               edges.provider_item_id ASC
+             LIMIT 1
+            )
+            UPDATE news_items AS items
+               SET provider_item_id = representative_edge.provider_item_id,
+                   source_id = representative_edge.source_id,
+                   source_domain = representative_edge.source_domain,
+                   canonical_url = COALESCE(
+                     NULLIF(representative_edge.item_payload ->> 'canonical_url', ''),
+                     representative_edge.provider_canonical_url
+                   ),
+                   title = COALESCE(NULLIF(representative_edge.item_payload ->> 'title', ''), items.title),
+                   summary = COALESCE(representative_edge.item_payload ->> 'summary', items.summary),
+                   body_text = COALESCE(representative_edge.item_payload ->> 'body_text', items.body_text),
+                   language = COALESCE(NULLIF(representative_edge.item_payload ->> 'language', ''), items.language),
+                   published_at_ms = COALESCE(
+                     CASE
+                       WHEN representative_edge.item_payload ->> 'published_at_ms' ~ '^[0-9]+$'
+                         THEN (representative_edge.item_payload ->> 'published_at_ms')::bigint
+                       ELSE NULL
+                     END,
+                     items.published_at_ms
+                   ),
+                   fetched_at_ms = COALESCE(
+                     CASE
+                       WHEN representative_edge.item_payload ->> 'fetched_at_ms' ~ '^[0-9]+$'
+                         THEN (representative_edge.item_payload ->> 'fetched_at_ms')::bigint
+                       ELSE NULL
+                     END,
+                     items.fetched_at_ms
+                   ),
+                   content_hash = COALESCE(
+                     NULLIF(representative_edge.item_payload ->> 'content_hash', ''),
+                     items.content_hash
+                   ),
+                   title_fingerprint = COALESCE(
+                     NULLIF(representative_edge.item_payload ->> 'title_fingerprint', ''),
+                     items.title_fingerprint
+                   ),
+                   provider_signal_json = COALESCE(
+                     representative_edge.item_payload -> 'provider_signal_json',
+                     '{}'::jsonb
+                   ),
+                   provider_token_impacts_json = COALESCE(
+                     representative_edge.item_payload -> 'provider_token_impacts_json',
+                     '[]'::jsonb
+                   ),
+                   url_identity_kind = COALESCE(
+                     NULLIF(representative_edge.item_payload ->> 'url_identity_kind', ''),
+                     items.url_identity_kind
+                   ),
+                   lifecycle_status = 'raw',
+                   updated_at_ms = %s
+              FROM representative_edge
+             WHERE items.news_item_id = %s
+            RETURNING items.*
+            """,
+            (news_item_id, int(now_ms), news_item_id),
+        ).fetchone()
+        return dict(row) if row is not None else {}
 
     def upsert_news_context_item(
         self,
@@ -833,6 +1575,9 @@ class NewsRepository:
               summary,
               source_domain,
               canonical_url,
+              duplicate_count,
+              source_ids_json AS source_ids,
+              source_domains_json AS source_domains,
               token_lanes_json AS token_lanes,
               fact_lanes_json AS fact_lanes,
               signal_json AS signal,
@@ -851,6 +1596,13 @@ class NewsRepository:
               %s::bigint IS NULL
               OR (latest_at_ms, row_id) < (%s::bigint, %s::text)
             )
+              AND EXISTS (
+                SELECT 1
+                  FROM news_item_observation_edges AS edges
+                  JOIN news_sources AS sources ON sources.source_id = edges.source_id
+                 WHERE edges.news_item_id = news_page_rows.news_item_id
+                   AND sources.enabled = true
+              )
             {filter_sql}
             ORDER BY latest_at_ms DESC, row_id DESC
             LIMIT %s
@@ -863,7 +1615,12 @@ class NewsRepository:
                 max(0, int(limit)),
             ),
         ).fetchall()
-        return [dict(row) for row in rows]
+        payloads: list[dict[str, Any]] = []
+        for row in rows:
+            payload = dict(row)
+            payload["agent_brief"] = _public_agent_brief_payload(payload.get("agent_brief"))
+            payloads.append(payload)
+        return payloads
 
     def list_unprocessed_items(self, *, limit: int, now_ms: int, commit: bool = True) -> list[dict[str, Any]]:
         rows = self.conn.execute(
@@ -1138,39 +1895,6 @@ class NewsRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
-    def find_story_candidates_for_item(self, item: Mapping[str, Any], *, limit: int = 25) -> list[dict[str, Any]]:
-        rows = self.conn.execute(
-            """
-            SELECT story_id,
-                   representative_title,
-                   canonical_url,
-                   latest_seen_at_ms,
-                   token_targets_json AS token_targets,
-                   CASE
-                     WHEN canonical_url = %s THEN 1.0
-                     ELSE similarity(representative_title, %s)
-                   END AS candidate_score
-              FROM news_story_groups
-             WHERE status = 'active'
-               AND (
-                 canonical_url = %s
-                 OR latest_seen_at_ms >= %s
-                 OR similarity(representative_title, %s) >= 0.45
-               )
-             ORDER BY candidate_score DESC, latest_seen_at_ms DESC
-             LIMIT %s
-            """,
-            (
-                str(item.get("canonical_url") or ""),
-                str(item.get("title_fingerprint") or item.get("title") or ""),
-                str(item.get("canonical_url") or ""),
-                int(item.get("published_at_ms") or 0) - 24 * 60 * 60 * 1000,
-                str(item.get("title_fingerprint") or item.get("title") or ""),
-                max(1, int(limit)),
-            ),
-        ).fetchall()
-        return [dict(row) for row in rows]
-
     def create_story_from_item(
         self,
         *,
@@ -1225,7 +1949,7 @@ class NewsRepository:
         if commit:
             self.conn.commit()
 
-    def add_story_member(
+    def replace_story_member_for_item(
         self,
         *,
         story_id: str,
@@ -1236,20 +1960,34 @@ class NewsRepository:
         now_ms: int,
         commit: bool = True,
     ) -> None:
+        old_story_rows = self.conn.execute(
+            """
+            SELECT DISTINCT story_id
+              FROM news_story_members
+             WHERE news_item_id = %s
+            """,
+            (news_item_id,),
+        ).fetchall()
+        old_story_ids = [str(row["story_id"]) for row in old_story_rows]
         self.conn.execute(
             """
             INSERT INTO news_story_members (
               story_id, news_item_id, relation, match_reason, match_score, created_at_ms
             )
             VALUES (%s, %s, %s, %s, %s, %s)
-            ON CONFLICT (story_id, news_item_id) DO UPDATE SET
+            ON CONFLICT (news_item_id) DO UPDATE SET
+              story_id = EXCLUDED.story_id,
               relation = EXCLUDED.relation,
               match_reason = EXCLUDED.match_reason,
-              match_score = EXCLUDED.match_score
+              match_score = EXCLUDED.match_score,
+              created_at_ms = EXCLUDED.created_at_ms
             """,
             (story_id, news_item_id, relation, match_reason, float(match_score), int(now_ms)),
         )
-        self._refresh_story_counts(story_id=story_id, now_ms=now_ms)
+        for refresh_story_id in dict.fromkeys([*old_story_ids, story_id]):
+            if not refresh_story_id:
+                continue
+            self._refresh_story_counts(story_id=refresh_story_id, now_ms=now_ms)
         if commit:
             self.conn.commit()
 
@@ -1299,16 +2037,31 @@ class NewsRepository:
               SELECT items.*
                 FROM news_items AS items
                WHERE items.news_item_id = ANY(%s::text[])
+                 AND EXISTS (
+                   SELECT 1
+                     FROM news_item_observation_edges AS edges
+                     JOIN news_sources AS edge_sources ON edge_sources.source_id = edges.source_id
+                    WHERE edges.news_item_id = items.news_item_id
+                      AND edge_sources.enabled = true
+                 )
             )
             SELECT
               to_jsonb(items.*)
                 || jsonb_build_object(
-                  'provider_type', sources.provider_type,
-                  'source_name', sources.source_name,
-                  'source_role', sources.source_role,
-                  'trust_tier', sources.trust_tier,
-                  'coverage_tags_json', sources.coverage_tags_json,
-                  'source_quality_status', sources.source_quality_status
+                  'source_id', source_rep.source_id,
+                  'source_domain', source_rep.source_domain,
+                  'provider_type', source_rep.provider_type,
+                  'source_name', source_rep.source_name,
+                  'source_role', source_rep.source_role,
+                  'trust_tier', source_rep.trust_tier,
+                  'coverage_tags_json', source_rep.coverage_tags_json,
+                  'source_quality_status', source_rep.source_quality_status,
+                  'duplicate_observation_count',
+                    COALESCE(edge_summary.duplicate_observation_count, items.duplicate_observation_count),
+                  'source_ids_json', COALESCE(edge_summary.source_ids_json, items.source_ids_json),
+                  'source_domains_json', COALESCE(edge_summary.source_domains_json, items.source_domains_json),
+                  'provider_article_keys_json',
+                    COALESCE(edge_summary.provider_article_keys_json, items.provider_article_keys_json)
                 ) AS item,
               story.story_json AS story,
               CASE
@@ -1318,7 +2071,41 @@ class NewsRepository:
               COALESCE(mentions.token_mentions, '[]'::jsonb) AS token_mentions,
               COALESCE(facts.fact_candidates, '[]'::jsonb) AS fact_candidates
             FROM target_items AS items
-            JOIN news_sources AS sources ON sources.source_id = items.source_id
+            JOIN LATERAL (
+              SELECT edge_sources.*
+                FROM news_item_observation_edges AS edges
+                JOIN news_sources AS edge_sources ON edge_sources.source_id = edges.source_id
+                JOIN news_provider_items AS provider_items ON provider_items.provider_item_id = edges.provider_item_id
+               WHERE edges.news_item_id = items.news_item_id
+                 AND edge_sources.enabled = true
+               ORDER BY
+                 CASE WHEN provider_items.provider_payload_status = 'ready' THEN 0 ELSE 1 END,
+                 CASE WHEN edges.evidence_json #>> '{item_payload,url_identity_kind}' = 'article' THEN 0 ELSE 1 END,
+                 edges.provider_article_key ASC,
+                 edge_sources.source_id ASC,
+                 provider_items.payload_hash ASC,
+                 edges.provider_item_id ASC
+               LIMIT 1
+            ) AS source_rep ON true
+            LEFT JOIN LATERAL (
+              SELECT
+                COUNT(*)::int AS duplicate_observation_count,
+                COALESCE(jsonb_agg(DISTINCT edges.source_id ORDER BY edges.source_id), '[]'::jsonb)
+                  AS source_ids_json,
+                COALESCE(
+                  jsonb_agg(DISTINCT edge_sources.source_domain ORDER BY edge_sources.source_domain),
+                  '[]'::jsonb
+                ) AS source_domains_json,
+                COALESCE(
+                  jsonb_agg(DISTINCT edges.provider_article_key ORDER BY edges.provider_article_key)
+                    FILTER (WHERE edges.provider_article_key <> ''),
+                  '[]'::jsonb
+                ) AS provider_article_keys_json
+                FROM news_item_observation_edges AS edges
+                JOIN news_sources AS edge_sources ON edge_sources.source_id = edges.source_id
+               WHERE edges.news_item_id = items.news_item_id
+                 AND edge_sources.enabled = true
+            ) AS edge_summary ON true
             LEFT JOIN news_item_agent_briefs AS current_brief ON current_brief.news_item_id = items.news_item_id
             LEFT JOIN LATERAL (
               SELECT to_jsonb(stories.*) AS story_json
@@ -1596,24 +2383,45 @@ class NewsRepository:
             """,
             (news_item_id,),
         ).fetchall()
-        context_items = self.list_context_items_for_news_item(news_item_id, limit=25)
+        observation_rows = self.conn.execute(
+            """
+            SELECT to_jsonb(edges.*)
+                     || jsonb_build_object(
+                       'source_domain', sources.source_domain,
+                       'source_name', sources.source_name,
+                       'source_role', sources.source_role,
+                       'trust_tier', sources.trust_tier,
+                       'enabled', sources.enabled,
+                       'provider_payload_status', provider_items.provider_payload_status,
+                       'provider_published_at_ms', provider_items.provider_published_at_ms,
+                       'provider_observed_at_ms', provider_items.provider_observed_at_ms
+                     ) AS observation_edge,
+                   to_jsonb(provider_items.*)
+                     || jsonb_build_object(
+                       'source_domain', sources.source_domain,
+                       'source_name', sources.source_name,
+                       'source_role', sources.source_role,
+                       'trust_tier', sources.trust_tier,
+                       'enabled', sources.enabled
+                     ) AS provider_observation
+              FROM news_item_observation_edges AS edges
+              JOIN news_provider_items AS provider_items ON provider_items.provider_item_id = edges.provider_item_id
+              JOIN news_sources AS sources ON sources.source_id = edges.source_id
+             WHERE edges.news_item_id = %s
+             ORDER BY sources.enabled DESC, edges.source_id ASC, provider_items.source_item_key ASC
+            """,
+            (news_item_id,),
+        ).fetchall()
+        context_items = [
+            _public_context_item_payload(item) for item in self.list_context_items_for_news_item(news_item_id, limit=25)
+        ]
         item_payload = _json_dict(row["item"])
         provider_signal = _json_dict(item_payload.get("provider_signal_json"))
         provider_token_impacts = _json_list(item_payload.get("provider_token_impacts_json"))
         agent_brief = _detail_agent_brief(row["agent_brief"])
         token_mentions = _json_list(row["token_mentions"])
         fact_candidates = _json_list(row["fact_candidates"])
-        public_item = {
-            key: value
-            for key, value in item_payload.items()
-            if key
-            not in {
-                "provider_signal_json",
-                "provider_token_impacts_json",
-                "content_tags_json",
-                "content_classification_json",
-            }
-        }
+        public_item = _public_news_item_payload(item_payload)
         return {
             **public_item,
             "content_tags": _json_list(item_payload.get("content_tags_json")),
@@ -1627,12 +2435,24 @@ class NewsRepository:
             "fact_lanes": [_fact_lane_from_candidate(candidate) for candidate in fact_candidates],
             "provider_signal": provider_signal,
             "provider_token_impacts": provider_token_impacts,
-            "source": _json_dict(row["source"]),
-            "provider_item": _json_dict(row["provider_item"]),
-            "fetch_run": _json_dict(row["fetch_run"]) if row["fetch_run"] is not None else None,
+            "source": _public_source_payload(_json_dict(row["source"])),
+            "provider_item": _public_provider_observation_payload(_json_dict(row["provider_item"])),
+            "fetch_run": _public_fetch_run_payload(_json_dict(row["fetch_run"]))
+            if row["fetch_run"] is not None
+            else None,
             "agent_brief": agent_brief,
-            "agent_run": _json_dict(row["agent_run"]) if row["agent_run"] is not None else None,
+            "agent_run": _public_agent_run_payload(_json_dict(row["agent_run"]))
+            if row["agent_run"] is not None
+            else None,
             "story_members": [_json_dict(story_row["story_member"]) for story_row in story_rows],
+            "observation_edges": [
+                _public_observation_edge_payload(_json_dict(observation_row["observation_edge"]))
+                for observation_row in observation_rows
+            ],
+            "provider_observations": [
+                _public_provider_observation_payload(_json_dict(observation_row["provider_observation"]))
+                for observation_row in observation_rows
+            ],
             "entities": _json_list(row["entities"]),
             "token_mentions": token_mentions,
             "fact_candidates": fact_candidates,
@@ -1645,22 +2465,86 @@ class NewsRepository:
             SELECT to_jsonb(stories.*) AS story,
                    COALESCE(
                      jsonb_agg(
-                       DISTINCT jsonb_build_object(
+                       jsonb_build_object(
                          'news_item_id', items.news_item_id,
                          'headline', items.title,
                          'source_domain', items.source_domain,
-                         'canonical_url', items.canonical_url,
+                         'canonical_url',
+                           CASE
+                             WHEN left(items.canonical_url, 7) = 'http://'
+                               OR left(items.canonical_url, 8) = 'https://'
+                             THEN items.canonical_url
+                             ELSE ''
+                           END,
                          'published_at_ms', items.published_at_ms,
                          'relation', members.relation,
                          'match_reason', members.match_reason,
-                         'match_score', members.match_score
+                         'match_score', members.match_score,
+                         'observation_edges', COALESCE(observations.observation_edges, '[]'::jsonb),
+                         'provider_observations', COALESCE(observations.provider_observations, '[]'::jsonb)
                        )
+                       ORDER BY items.published_at_ms DESC, items.news_item_id ASC
                      ) FILTER (WHERE items.news_item_id IS NOT NULL),
                      '[]'::jsonb
                    ) AS members
               FROM news_story_groups AS stories
               LEFT JOIN news_story_members AS members ON members.story_id = stories.story_id
               LEFT JOIN news_items AS items ON items.news_item_id = members.news_item_id
+              LEFT JOIN LATERAL (
+                SELECT
+                  COALESCE(
+                    jsonb_agg(
+                      jsonb_build_object(
+                        'news_item_id', edges.news_item_id,
+                        'source_id', edges.source_id,
+                        'source_domain', sources.source_domain,
+                        'source_name', sources.source_name,
+                        'source_role', sources.source_role,
+                        'trust_tier', sources.trust_tier,
+                        'enabled', sources.enabled,
+                        'match_type', edges.match_type,
+                        'match_confidence', edges.match_confidence,
+                        'policy_version', edges.policy_version,
+                        'first_seen_at_ms', edges.first_seen_at_ms,
+                        'last_seen_at_ms', edges.last_seen_at_ms,
+                        'provider_payload_status', provider_items.provider_payload_status,
+                        'provider_published_at_ms', provider_items.provider_published_at_ms,
+                        'provider_observed_at_ms', provider_items.provider_observed_at_ms
+                      )
+                      ORDER BY sources.enabled DESC, edges.source_id ASC, edges.provider_item_id ASC
+                    ),
+                    '[]'::jsonb
+                  ) AS observation_edges,
+                  COALESCE(
+                    jsonb_agg(
+                      jsonb_build_object(
+                        'source_id', edges.source_id,
+                        'canonical_url',
+                          CASE
+                            WHEN left(provider_items.canonical_url, 7) = 'http://'
+                              OR left(provider_items.canonical_url, 8) = 'https://'
+                            THEN provider_items.canonical_url
+                            ELSE ''
+                          END,
+                        'fetched_at_ms', provider_items.fetched_at_ms,
+                        'provider_payload_status', provider_items.provider_payload_status,
+                        'provider_published_at_ms', provider_items.provider_published_at_ms,
+                        'provider_observed_at_ms', provider_items.provider_observed_at_ms,
+                        'source_domain', sources.source_domain,
+                        'source_name', sources.source_name,
+                        'source_role', sources.source_role,
+                        'trust_tier', sources.trust_tier,
+                        'enabled', sources.enabled
+                      )
+                      ORDER BY sources.enabled DESC, edges.source_id ASC, edges.provider_item_id ASC
+                    ),
+                    '[]'::jsonb
+                  ) AS provider_observations
+                  FROM news_item_observation_edges AS edges
+                  JOIN news_provider_items AS provider_items ON provider_items.provider_item_id = edges.provider_item_id
+                  JOIN news_sources AS sources ON sources.source_id = edges.source_id
+                 WHERE edges.news_item_id = items.news_item_id
+              ) AS observations ON true
              WHERE stories.story_id = %s
              GROUP BY stories.story_id
             """,
@@ -1686,8 +2570,10 @@ class NewsRepository:
             """,
             (story_id,),
         ).fetchone()
+        story_payload = _json_dict(row["story"])
+        story_payload["canonical_url"] = _public_url(story_payload.get("canonical_url"))
         return {
-            **_json_dict(row["story"]),
+            **story_payload,
             "members": _json_list(row["members"]),
             "token_mentions": _json_list(token_mentions["rows"] if token_mentions is not None else []),
             "fact_candidates": _json_list(fact_candidates["rows"] if fact_candidates is not None else []),
@@ -1703,7 +2589,11 @@ class NewsRepository:
             """,
             (fact_candidate_id,),
         ).fetchone()
-        return dict(row) if row is not None else None
+        if row is None:
+            return None
+        result = dict(row)
+        result["canonical_url"] = _public_url(result.get("canonical_url"))
+        return result
 
     def list_source_quality_inputs_for_targets(
         self,
@@ -1976,14 +2866,16 @@ class NewsRepository:
                    CASE
                      WHEN latest_quality.row_id IS NULL THEN NULL
                      ELSE to_jsonb(latest_quality.*)
-                   END AS latest_quality_json
+                   END AS latest_quality_json,
+                   dedup_aggregate.dedup_diagnostics_json
               FROM news_sources AS sources
               LEFT JOIN LATERAL (
-                SELECT COUNT(items.news_item_id)::int AS item_count,
+                SELECT COUNT(DISTINCT items.news_item_id)::int AS item_count,
                        MAX(items.published_at_ms) AS latest_item_published_at_ms,
                        MAX(items.fetched_at_ms) AS latest_item_fetched_at_ms
-                  FROM news_items AS items
-                 WHERE items.source_id = sources.source_id
+                  FROM news_item_observation_edges AS edges
+                  JOIN news_items AS items ON items.news_item_id = edges.news_item_id
+                 WHERE edges.source_id = sources.source_id
               ) AS item_aggregate ON true
               LEFT JOIN LATERAL (
                 SELECT COUNT(context_items.context_item_id)::int AS context_item_count,
@@ -2017,7 +2909,7 @@ class NewsRepository:
                 SELECT *
                   FROM news_source_quality_rows AS quality
                  WHERE quality.source_id = sources.source_id
-                 ORDER BY
+                ORDER BY
                    quality.computed_at_ms DESC,
                    CASE quality."window"
                      WHEN '24h' THEN 0
@@ -2028,10 +2920,216 @@ class NewsRepository:
                    END
                  LIMIT 1
               ) AS latest_quality ON true
+              LEFT JOIN LATERAL (
+                SELECT jsonb_build_object(
+                         'raw_observation_count',
+                           (
+                             SELECT COUNT(*)::int
+                               FROM news_provider_items AS provider_items
+                              WHERE provider_items.source_id = sources.source_id
+                           ),
+                         'canonical_item_count',
+                           (
+                             SELECT COUNT(DISTINCT edges.news_item_id)::int
+                               FROM news_item_observation_edges AS edges
+                              WHERE edges.source_id = sources.source_id
+                           ),
+                         'observation_edge_count',
+                           (
+                             SELECT COUNT(*)::int
+                               FROM news_item_observation_edges AS edges
+                              WHERE edges.source_id = sources.source_id
+                           ),
+                         'enabled_serving_row_count',
+                           (
+                             SELECT COUNT(DISTINCT rows.row_id)::int
+                               FROM news_page_rows AS rows
+                               JOIN news_item_observation_edges AS edges
+                                 ON edges.news_item_id = rows.news_item_id
+                              WHERE edges.source_id = sources.source_id
+                                AND sources.enabled = true
+                           ),
+                         'disabled_serving_row_count',
+                           (
+                             SELECT COUNT(DISTINCT rows.row_id)::int
+                               FROM news_page_rows AS rows
+                               JOIN news_item_observation_edges AS edges
+                                 ON edges.news_item_id = rows.news_item_id
+                              WHERE edges.source_id = sources.source_id
+                                AND sources.enabled = false
+                           )
+                       ) AS dedup_diagnostics_json
+              ) AS dedup_aggregate ON true
              ORDER BY sources.enabled DESC, sources.source_domain ASC, sources.source_id ASC
             """
         ).fetchall()
         return [_source_status_payload(row) for row in rows]
+
+    def news_dedup_diagnostics(self) -> dict[str, Any]:
+        row = self.conn.execute(
+            """
+            WITH visible_rows AS (
+              SELECT rows.row_id,
+                     rows.news_item_id,
+                     rows.canonical_item_key,
+                     items.content_hash,
+                     EXISTS (
+                       SELECT 1
+                         FROM news_item_observation_edges AS edges
+                         JOIN news_sources AS sources ON sources.source_id = edges.source_id
+                        WHERE edges.news_item_id = rows.news_item_id
+                          AND sources.enabled = true
+                     ) AS has_enabled_edge
+                FROM news_page_rows AS rows
+                JOIN news_items AS items ON items.news_item_id = rows.news_item_id
+            ),
+            enabled_content_duplicates AS (
+              SELECT content_hash, COUNT(*)::int AS row_count
+                FROM visible_rows
+               WHERE has_enabled_edge = true
+                 AND COALESCE(content_hash, '') <> ''
+               GROUP BY content_hash
+              HAVING COUNT(*) > 1
+            ),
+            top_content_duplicate_groups AS (
+              SELECT jsonb_build_object(
+                       'content_hash', duplicates.content_hash,
+                       'visible_row_count', duplicates.row_count,
+                       'duplicate_excess', duplicates.row_count - 1,
+                       'news_item_ids',
+                         (
+                           SELECT COALESCE(jsonb_agg(rows.news_item_id ORDER BY rows.news_item_id), '[]'::jsonb)
+                             FROM visible_rows AS rows
+                            WHERE rows.content_hash = duplicates.content_hash
+                              AND rows.has_enabled_edge = true
+                         )
+                     ) AS payload
+                FROM enabled_content_duplicates AS duplicates
+               ORDER BY duplicates.row_count DESC, duplicates.content_hash ASC
+               LIMIT 20
+            ),
+            top_canonical_duplicate_groups AS (
+              SELECT jsonb_build_object(
+                       'canonical_item_key', rows.canonical_item_key,
+                       'visible_row_count', COUNT(*)::int,
+                       'duplicate_excess', COUNT(*)::int - 1,
+                       'news_item_ids', jsonb_agg(rows.news_item_id ORDER BY rows.news_item_id)
+                     ) AS payload
+                FROM visible_rows AS rows
+               WHERE rows.has_enabled_edge = true
+                 AND COALESCE(rows.canonical_item_key, '') <> ''
+               GROUP BY rows.canonical_item_key
+              HAVING COUNT(*) > 1
+               ORDER BY COUNT(*) DESC, rows.canonical_item_key ASC
+               LIMIT 20
+            ),
+            clock AS (
+              SELECT (extract(epoch FROM clock_timestamp()) * 1000)::bigint AS now_ms
+            ),
+            source_sync AS (
+              SELECT jsonb_build_object(
+                       'source_id', sources.source_id,
+                       'enabled', sources.enabled,
+                       'source_domain', sources.source_domain,
+                       'sync_high_watermark_ms', sources.sync_high_watermark_ms,
+                       'sync_overlap_ms', sources.sync_overlap_ms,
+                       'watermark_lag_ms',
+                         CASE
+                           WHEN sources.sync_high_watermark_ms > 0
+                           THEN GREATEST(clock.now_ms - sources.sync_high_watermark_ms, 0)
+                           ELSE NULL
+                         END,
+                       'pages_scanned', sources.sync_diagnostics_json -> 'pages_scanned',
+                       'rest_received', sources.sync_diagnostics_json -> 'rest_received',
+                       'oldest_seen_ms', sources.sync_diagnostics_json -> 'oldest_seen_ms',
+                       'stop_reason', sources.sync_diagnostics_json ->> 'stop_reason'
+                     ) AS payload
+                FROM news_sources AS sources
+                CROSS JOIN clock
+               WHERE sources.provider_type = 'opennews'
+               ORDER BY sources.enabled DESC, sources.source_id ASC
+            )
+            SELECT
+              (SELECT COUNT(*)::int FROM news_provider_items) AS raw_observation_count,
+              (SELECT COUNT(*)::int FROM news_items) AS canonical_item_count,
+              (SELECT COUNT(*)::int FROM news_item_observation_edges) AS observation_edge_count,
+              (SELECT COUNT(*)::int FROM visible_rows WHERE has_enabled_edge = true) AS enabled_serving_row_count,
+              (SELECT COUNT(*)::int FROM visible_rows WHERE has_enabled_edge = false) AS disabled_serving_row_count,
+              COALESCE(
+                (SELECT SUM(row_count - 1)::int FROM enabled_content_duplicates),
+                0
+              ) AS enabled_exact_content_visible_duplicate_excess,
+              COALESCE((SELECT jsonb_agg(payload) FROM top_content_duplicate_groups), '[]'::jsonb)
+                AS top_visible_content_duplicate_groups,
+              COALESCE((SELECT jsonb_agg(payload) FROM top_canonical_duplicate_groups), '[]'::jsonb)
+                AS top_visible_canonical_duplicate_groups,
+              COALESCE((SELECT jsonb_agg(payload) FROM source_sync), '[]'::jsonb) AS source_sync_diagnostics
+            """
+        ).fetchone()
+        if row is None:
+            return {
+                "raw_observation_count": 0,
+                "canonical_item_count": 0,
+                "observation_edge_count": 0,
+                "enabled_serving_row_count": 0,
+                "disabled_serving_row_count": 0,
+                "enabled_exact_content_visible_duplicate_excess": 0,
+                "top_visible_content_duplicate_groups": [],
+                "top_visible_canonical_duplicate_groups": [],
+                "source_sync_diagnostics": [],
+            }
+        return {
+            "raw_observation_count": int(row["raw_observation_count"] or 0),
+            "canonical_item_count": int(row["canonical_item_count"] or 0),
+            "observation_edge_count": int(row["observation_edge_count"] or 0),
+            "enabled_serving_row_count": int(row["enabled_serving_row_count"] or 0),
+            "disabled_serving_row_count": int(row["disabled_serving_row_count"] or 0),
+            "enabled_exact_content_visible_duplicate_excess": int(
+                row["enabled_exact_content_visible_duplicate_excess"] or 0
+            ),
+            "top_visible_content_duplicate_groups": _json_list(row["top_visible_content_duplicate_groups"]),
+            "top_visible_canonical_duplicate_groups": _json_list(row["top_visible_canonical_duplicate_groups"]),
+            "source_sync_diagnostics": _json_list(row["source_sync_diagnostics"]),
+        }
+
+    def _page_row_summary_by_news_item_id(self, news_item_ids: Sequence[str]) -> dict[str, dict[str, Any]]:
+        normalized_ids = list(dict.fromkeys(str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)))
+        if not normalized_ids:
+            return {}
+        rows = self.conn.execute(
+            """
+            SELECT items.news_item_id,
+                   items.canonical_item_key,
+                   COALESCE(edge_summary.duplicate_observation_count, 0)::int
+                     AS duplicate_observation_count,
+                   COALESCE(edge_summary.source_ids_json, '[]'::jsonb) AS source_ids_json,
+                   COALESCE(edge_summary.source_domains_json, '[]'::jsonb) AS source_domains_json,
+                   COALESCE(edge_summary.provider_article_keys_json, '[]'::jsonb) AS provider_article_keys_json
+              FROM news_items AS items
+              LEFT JOIN LATERAL (
+                SELECT
+                  COUNT(*)::int AS duplicate_observation_count,
+                  COALESCE(jsonb_agg(DISTINCT edges.source_id ORDER BY edges.source_id), '[]'::jsonb)
+                    AS source_ids_json,
+                  COALESCE(
+                    jsonb_agg(DISTINCT sources.source_domain ORDER BY sources.source_domain),
+                    '[]'::jsonb
+                  ) AS source_domains_json,
+                  COALESCE(
+                    jsonb_agg(DISTINCT edges.provider_article_key ORDER BY edges.provider_article_key)
+                      FILTER (WHERE edges.provider_article_key <> ''),
+                    '[]'::jsonb
+                  ) AS provider_article_keys_json
+                  FROM news_item_observation_edges AS edges
+                  JOIN news_sources AS sources ON sources.source_id = edges.source_id
+                 WHERE edges.news_item_id = items.news_item_id
+                   AND sources.enabled = true
+              ) AS edge_summary ON true
+             WHERE items.news_item_id = ANY(%s::text[])
+            """,
+            (normalized_ids,),
+        ).fetchall()
+        return {str(row["news_item_id"]): dict(row) for row in rows}
 
     def replace_page_rows_for_items(
         self,
@@ -2042,6 +3140,11 @@ class NewsRepository:
     ) -> dict[str, int]:
         scoped_ids = list(dict.fromkeys(str(news_item_id) for news_item_id in news_item_ids))
         row_payloads = [_page_row_payload(row) for row in rows]
+        row_summary_by_item_id = self._page_row_summary_by_news_item_id(
+            [str(payload["news_item_id"]) for payload in row_payloads]
+        )
+        for payload in row_payloads:
+            _apply_page_row_summary(payload, row_summary_by_item_id.get(str(payload["news_item_id"]), {}))
         incoming_row_ids = list(dict.fromkeys(str(payload["row_id"]) for payload in row_payloads))
         deleted = 0
         if scoped_ids:
@@ -2073,7 +3176,8 @@ class NewsRepository:
                   fact_lanes_json, content_class, content_tags_json, content_classification_json,
                   story_json, source_json, signal_json, token_impacts_json, agent_brief_json,
                   agent_status, agent_brief_computed_at_ms, computed_at_ms, projection_version,
-                  payload_hash
+                  canonical_item_key, duplicate_count, source_ids_json, source_domains_json,
+                  provider_article_keys_json, payload_hash
                 )
                 VALUES (
                   %(row_id)s, %(news_item_id)s, %(story_id)s, %(latest_at_ms)s, %(lifecycle_status)s,
@@ -2081,7 +3185,9 @@ class NewsRepository:
                   %(fact_lanes_json)s, %(content_class)s, %(content_tags_json)s, %(content_classification_json)s,
                   %(story_json)s, %(source_json)s, %(signal_json)s, %(token_impacts_json)s,
                   %(agent_brief_json)s, %(agent_status)s, %(agent_brief_computed_at_ms)s,
-                  %(computed_at_ms)s, %(projection_version)s, %(payload_hash)s
+                  %(computed_at_ms)s, %(projection_version)s, %(canonical_item_key)s,
+                  %(duplicate_count)s, %(source_ids_json)s, %(source_domains_json)s,
+                  %(provider_article_keys_json)s, %(payload_hash)s
                 )
                 ON CONFLICT (row_id) DO UPDATE SET
                   news_item_id = EXCLUDED.news_item_id,
@@ -2106,6 +3212,11 @@ class NewsRepository:
                   agent_brief_computed_at_ms = EXCLUDED.agent_brief_computed_at_ms,
                   computed_at_ms = EXCLUDED.computed_at_ms,
                   projection_version = EXCLUDED.projection_version,
+                  canonical_item_key = EXCLUDED.canonical_item_key,
+                  duplicate_count = EXCLUDED.duplicate_count,
+                  source_ids_json = EXCLUDED.source_ids_json,
+                  source_domains_json = EXCLUDED.source_domains_json,
+                  provider_article_keys_json = EXCLUDED.provider_article_keys_json,
                   payload_hash = EXCLUDED.payload_hash
                 WHERE news_page_rows.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
                 RETURNING (xmax = 0) AS inserted
@@ -2133,15 +3244,48 @@ class NewsRepository:
         normalized_domains = [str(item) for item in (source_domains or [])]
         cursor = self.conn.execute(
             """
-            DELETE FROM news_page_rows rows
-             USING news_items items
-             WHERE rows.news_item_id = items.news_item_id
-               AND (
-                 (%s::text[] <> '{}'::text[] AND items.source_id = ANY(%s::text[]))
-                 OR (%s::text[] <> '{}'::text[] AND items.source_domain = ANY(%s::text[]))
+            WITH affected_items AS (
+              SELECT DISTINCT edges.news_item_id
+                FROM news_item_observation_edges AS edges
+                JOIN news_sources AS sources ON sources.source_id = edges.source_id
+               WHERE (
+                 (%s::text[] <> '{}'::text[] AND edges.source_id = ANY(%s::text[]))
+                 OR (%s::text[] <> '{}'::text[] AND sources.source_domain = ANY(%s::text[]))
                )
+            ),
+            deletable_items AS (
+              SELECT affected_items.news_item_id
+                FROM affected_items
+               WHERE NOT EXISTS (
+                 SELECT 1
+                   FROM news_item_observation_edges AS edges
+                   JOIN news_sources AS sources ON sources.source_id = edges.source_id
+                  WHERE edges.news_item_id = affected_items.news_item_id
+                    AND sources.enabled = true
+               )
+            )
+            DELETE FROM news_page_rows AS rows
+             USING deletable_items
+             WHERE rows.news_item_id = deletable_items.news_item_id
             """,
             (normalized_source_ids, normalized_source_ids, normalized_domains, normalized_domains),
+        )
+        if commit:
+            self.conn.commit()
+        return int(cursor.rowcount or 0)
+
+    def delete_page_rows_without_enabled_observation_edges(self, *, commit: bool = True) -> int:
+        cursor = self.conn.execute(
+            """
+            DELETE FROM news_page_rows AS rows
+             WHERE NOT EXISTS (
+               SELECT 1
+                 FROM news_item_observation_edges AS edges
+                 JOIN news_sources AS sources ON sources.source_id = edges.source_id
+                WHERE edges.news_item_id = rows.news_item_id
+                  AND sources.enabled = true
+             )
+            """
         )
         if commit:
             self.conn.commit()
@@ -2288,12 +3432,24 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def _apply_page_row_summary(payload: dict[str, Any], summary: Mapping[str, Any]) -> None:
+    payload["canonical_item_key"] = str(payload.get("canonical_item_key") or summary.get("canonical_item_key") or "")
+    payload["duplicate_count"] = int(payload.get("duplicate_count") or summary.get("duplicate_observation_count") or 1)
+    payload["source_ids_json"] = _json(
+        payload.get("source_ids_json", payload.get("source_ids")) or summary.get("source_ids_json") or []
+    )
+    payload["source_domains_json"] = _json(
+        payload.get("source_domains_json", payload.get("source_domains")) or summary.get("source_domains_json") or []
+    )
+    payload["provider_article_keys_json"] = _json(
+        payload.get("provider_article_keys_json", payload.get("provider_article_keys"))
+        or summary.get("provider_article_keys_json")
+        or []
+    )
+
+
 def _detail_agent_brief(value: Any) -> dict[str, Any]:
-    if value is None:
-        return {"status": "pending", "brief_json": {}}
-    payload = _json_dict(value)
-    payload["brief_json"] = _json_dict(payload.get("brief_json"))
-    return payload
+    return _public_agent_brief_payload(value)
 
 
 def _signal_from_agent_brief(value: Any) -> dict[str, Any]:
@@ -2584,6 +3740,10 @@ def _source_status_payload(row: Mapping[str, Any]) -> dict[str, Any]:
         "last_seen_at_ms": last_seen_at_ms,
         "latest_fetch_run": _latest_fetch_run_payload(row.get("latest_fetch_run_json")),
         "latest_quality_counts": _latest_quality_counts(latest_quality),
+        "sync_high_watermark_ms": int(row.get("sync_high_watermark_ms") or 0),
+        "sync_overlap_ms": int(row.get("sync_overlap_ms") or 0),
+        "sync_diagnostics": _json_dict(row.get("sync_diagnostics_json")),
+        "dedup_diagnostics": _json_dict(row.get("dedup_diagnostics_json")),
         "provider_health": _provider_health_payload(
             row=row,
             quality_payload=quality_payload,
@@ -2644,6 +3804,164 @@ def _source_material_changed(existing: Mapping[str, Any], payload: Mapping[str, 
     return False
 
 
+def _provider_article_id(
+    *,
+    explicit: str | None,
+    provider_type: str,
+    source_item_key: str,
+    payload: Mapping[str, Any],
+) -> str:
+    if explicit is not None:
+        return str(explicit).strip()
+    for field_name in ("provider_article_id", "article_id", "id"):
+        value = str(payload.get(field_name) or "").strip()
+        if value:
+            return value
+    if str(provider_type or "").strip().lower() == "opennews":
+        return ""
+    return str(source_item_key or "").strip()
+
+
+def _provider_payload_status(*, explicit: str | None, payload: Mapping[str, Any]) -> str:
+    normalized = str(explicit or "").strip().lower()
+    if normalized in {"partial", "ready"}:
+        return normalized
+    provider_signal = _json_dict(payload.get("provider_signal"))
+    if str(provider_signal.get("status") or "").strip().lower() == "ready":
+        return "ready"
+    ai_rating = _json_dict(payload.get("aiRating"))
+    if str(ai_rating.get("status") or "").strip().lower() == "done":
+        return "ready"
+    return "partial"
+
+
+def _merge_provider_payload_status(*, existing: str, incoming: str) -> str:
+    if str(existing or "").strip().lower() == "ready":
+        return "ready"
+    if str(incoming or "").strip().lower() == "ready":
+        return "ready"
+    return "partial"
+
+
+def _provider_published_at_ms(payload: Mapping[str, Any]) -> int | None:
+    for field_name in ("published_at_ms", "published_ms", "ts"):
+        value = _numeric_payload_ms(payload.get(field_name))
+        if value is not None:
+            return value
+    return None
+
+
+def _numeric_payload_ms(value: Any) -> int | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    raw = str(value).strip()
+    if not raw.isdigit():
+        return None
+    return int(raw)
+
+
+def _representative_payload_should_replace(existing: Mapping[str, Any], incoming: Mapping[str, Any]) -> bool:
+    existing_ready = _representative_payload_ready(existing)
+    incoming_ready = _representative_payload_ready(incoming)
+    if incoming_ready != existing_ready:
+        return incoming_ready
+
+    existing_url_rank = _representative_url_rank(existing.get("canonical_url"))
+    incoming_url_rank = _representative_url_rank(incoming.get("canonical_url"))
+    if incoming_url_rank != existing_url_rank:
+        return incoming_url_rank > existing_url_rank
+
+    if str(incoming.get("provider_item_id") or "") == str(existing.get("provider_item_id") or ""):
+        return True
+
+    return _representative_tie_breaker(incoming) < _representative_tie_breaker(existing)
+
+
+def _representative_payload_ready(payload: Mapping[str, Any]) -> bool:
+    provider_signal = _json_dict(payload.get("provider_signal_json"))
+    signal_status = str(provider_signal.get("status") or "").strip().lower()
+    if signal_status:
+        return signal_status == "ready"
+    return str(payload.get("provider_payload_status") or "").strip().lower() == "ready"
+
+
+def _representative_url_rank(value: Any) -> int:
+    canonical_url = str(value or "").strip()
+    if not canonical_url or canonical_url.startswith("opennews://item/"):
+        return 0
+    kind = url_identity_kind(canonical_url)
+    if kind == "article":
+        return 2
+    if canonical_url.startswith(("http://", "https://")):
+        return 1
+    return 0
+
+
+def _representative_tie_breaker(payload: Mapping[str, Any]) -> tuple[str, str, str, str]:
+    return (
+        str(payload.get("provider_article_key") or ""),
+        str(payload.get("source_id") or ""),
+        _representative_payload_hash(payload),
+        str(payload.get("provider_item_id") or ""),
+    )
+
+
+def _representative_payload_hash(payload: Mapping[str, Any]) -> str:
+    material = {
+        "canonical_url": str(payload.get("canonical_url") or ""),
+        "title": str(payload.get("title") or ""),
+        "summary": str(payload.get("summary") or ""),
+        "body_text": str(payload.get("body_text") or ""),
+    }
+    return hashlib.sha256(json.dumps(material, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def _news_item_content_changed(existing: Mapping[str, Any], payload: Mapping[str, Any]) -> bool:
+    fields = (
+        "canonical_url",
+        "title",
+        "summary",
+        "body_text",
+        "language",
+        "published_at_ms",
+        "content_hash",
+        "title_fingerprint",
+    )
+    for field_name in fields:
+        if existing.get(field_name) != payload.get(field_name):
+            return True
+    return _json_dict(existing.get("provider_signal_json")) != _json_dict(
+        payload.get("provider_signal_json")
+    ) or _json_list(existing.get("provider_token_impacts_json")) != _json_list(
+        payload.get("provider_token_impacts_json")
+    )
+
+
+def _news_item_aggregate_changed(existing: Mapping[str, Any], updated: Mapping[str, Any]) -> bool:
+    return (
+        int(existing.get("duplicate_observation_count") or 0) != int(updated.get("duplicate_observation_count") or 0)
+        or _json_list(existing.get("source_ids_json")) != _json_list(updated.get("source_ids_json"))
+        or _json_list(existing.get("source_domains_json")) != _json_list(updated.get("source_domains_json"))
+        or _json_list(existing.get("provider_article_keys_json"))
+        != _json_list(updated.get("provider_article_keys_json"))
+    )
+
+
+def _news_item_edge_changed(existing: Mapping[str, Any], payload: Mapping[str, Any]) -> bool:
+    fields = (
+        "news_item_id",
+        "source_id",
+        "provider_article_key",
+        "match_type",
+        "match_confidence",
+        "policy_version",
+    )
+    for field_name in fields:
+        if existing.get(field_name) != payload.get(field_name):
+            return True
+    return _json_dict(existing.get("evidence_json")) != _json_dict(payload.get("evidence_json"))
+
+
 def _comparable_source_value(value: Any) -> Any:
     if isinstance(value, Mapping):
         return {str(key): _comparable_source_value(item) for key, item in sorted(value.items())}
@@ -2661,6 +3979,187 @@ def _object_payload(value: Any) -> dict[str, Any]:
     if hasattr(value, "__dict__"):
         return dict(vars(value))
     return {name: getattr(value, name) for name in getattr(value, "__slots__", ()) if hasattr(value, name)}
+
+
+def _public_observation_edge_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+    allowed = (
+        "news_item_id",
+        "source_id",
+        "source_domain",
+        "source_name",
+        "source_role",
+        "trust_tier",
+        "enabled",
+        "match_type",
+        "match_confidence",
+        "policy_version",
+        "first_seen_at_ms",
+        "last_seen_at_ms",
+        "provider_payload_status",
+        "provider_published_at_ms",
+        "provider_observed_at_ms",
+    )
+    return {key: row.get(key) for key in allowed if key in row}
+
+
+def _public_news_item_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+    allowed = (
+        "news_item_id",
+        "source_id",
+        "source_domain",
+        "canonical_url",
+        "title",
+        "summary",
+        "body_text",
+        "language",
+        "published_at_ms",
+        "fetched_at_ms",
+        "lifecycle_status",
+        "content_class",
+        "processed_at_ms",
+        "processing_error",
+        "created_at_ms",
+        "updated_at_ms",
+        "duplicate_observation_count",
+    )
+    payload = {key: row.get(key) for key in allowed if key in row}
+    payload["canonical_url"] = _public_url(payload.get("canonical_url"))
+    return payload
+
+
+def _public_context_item_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+    allowed = (
+        "context_item_id",
+        "source_id",
+        "parent_news_item_id",
+        "context_type",
+        "author",
+        "canonical_url",
+        "body_text",
+        "published_at_ms",
+        "engagement_json",
+        "created_at_ms",
+    )
+    payload = {key: row.get(key) for key in allowed if key in row}
+    payload["canonical_url"] = _public_url(payload.get("canonical_url"))
+    return payload
+
+
+def _public_provider_observation_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+    allowed = (
+        "source_id",
+        "canonical_url",
+        "fetched_at_ms",
+        "provider_payload_status",
+        "provider_published_at_ms",
+        "provider_observed_at_ms",
+        "source_domain",
+        "source_name",
+        "source_role",
+        "trust_tier",
+        "enabled",
+    )
+    payload = {key: row.get(key) for key in allowed if key in row}
+    payload["canonical_url"] = _public_url(payload.get("canonical_url"))
+    return payload
+
+
+def _public_source_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+    allowed = (
+        "source_id",
+        "provider_type",
+        "source_domain",
+        "source_name",
+        "source_role",
+        "trust_tier",
+        "coverage_tags_json",
+        "asset_universe_json",
+        "authority_scope_json",
+        "source_quality_status",
+        "enabled",
+        "managed_by_config",
+        "refresh_interval_seconds",
+        "created_at_ms",
+        "updated_at_ms",
+    )
+    payload = {key: row.get(key) for key in allowed if key in row}
+    if "coverage_tags_json" in payload:
+        payload["coverage_tags"] = _json_list(payload.pop("coverage_tags_json"))
+    if "asset_universe_json" in payload:
+        payload["asset_universe"] = _json_list(payload.pop("asset_universe_json"))
+    if "authority_scope_json" in payload:
+        payload["authority_scope"] = _json_dict(payload.pop("authority_scope_json"))
+    return payload
+
+
+def _public_fetch_run_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+    allowed = (
+        "source_id",
+        "status",
+        "started_at_ms",
+        "finished_at_ms",
+        "fetched_count",
+        "inserted_count",
+        "updated_count",
+        "duplicate_count",
+        "http_status",
+        "error",
+        "created_at_ms",
+    )
+    payload = {key: row.get(key) for key in allowed if key in row}
+    if "error" in payload:
+        payload["error"] = _compact_error(payload.get("error"))
+    return payload
+
+
+def _public_agent_brief_payload(value: Any) -> dict[str, Any]:
+    payload = _json_dict(value)
+    brief_json = _json_dict(payload.get("brief_json"))
+    if not payload:
+        return {"status": "pending", "brief_json": {}}
+    allowed = (
+        "status",
+        "direction",
+        "decision_class",
+        "summary_zh",
+        "market_read_zh",
+        "impact_zh",
+        "watch_items_zh",
+        "confidence",
+        "prompt_version",
+        "schema_version",
+        "computed_at_ms",
+    )
+    public_payload = {key: payload.get(key) for key in allowed if key in payload}
+    public_payload["status"] = str(public_payload.get("status") or "pending")
+    public_payload["brief_json"] = brief_json
+    return public_payload
+
+
+def _public_agent_run_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+    allowed = (
+        "status",
+        "outcome",
+        "execution_started",
+        "model",
+        "provider",
+        "lane",
+        "error_class",
+        "error",
+        "started_at_ms",
+        "finished_at_ms",
+    )
+    payload = {key: row.get(key) for key in allowed if key in row}
+    if "error" in payload:
+        payload["error"] = _compact_error(payload.get("error"))
+    return payload
+
+
+def _public_url(value: Any) -> str:
+    url = str(value or "").strip()
+    if url.startswith(("http://", "https://")):
+        return url
+    return ""
 
 
 def _json_dict(value: Any) -> dict[str, Any]:
@@ -2822,11 +4321,7 @@ def _json(value: Any) -> Jsonb:
 
 
 def _stable_payload_hash(payload: Mapping[str, Any], *, exclude: set[str]) -> str:
-    normalized = {
-        str(key): _stable_json_value(value)
-        for key, value in payload.items()
-        if str(key) not in exclude
-    }
+    normalized = {str(key): _stable_json_value(value) for key, value in payload.items() if str(key) not in exclude}
     encoded = json.dumps(
         postgres_safe_json(normalized),
         ensure_ascii=False,

@@ -66,3 +66,21 @@ def test_opennews_provider_signal_marks_missing_ai_rating_as_partial() -> None:
         "summary_en": None,
         "method": "opennews.partial",
     }
+
+
+def test_opennews_provider_signal_marks_done_without_score_as_ready() -> None:
+    payload = {"aiRating": {"status": "done"}}
+
+    assert provider_signal_from_opennews_payload(payload) == {
+        "source": "provider",
+        "provider": "opennews",
+        "status": "ready",
+        "direction": "neutral",
+        "label_zh": "中性",
+        "signal": None,
+        "score": None,
+        "grade": None,
+        "summary_zh": None,
+        "summary_en": None,
+        "method": "opennews.aiRating",
+    }

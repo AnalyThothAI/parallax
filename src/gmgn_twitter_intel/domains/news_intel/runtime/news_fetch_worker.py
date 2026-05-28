@@ -11,6 +11,7 @@ from typing import Any
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.news_intel.providers import NewsSourceProvider
+from gmgn_twitter_intel.domains.news_intel.services.news_canonical_identity import canonical_identity_for_observation
 from gmgn_twitter_intel.domains.news_intel.services.news_provider_contract import (
     NewsProviderContractError,
     validate_news_provider_contract,
@@ -75,7 +76,7 @@ class NewsFetchWorker(WorkerBase):
             changed_source_ids = [
                 str(row["source_id"])
                 for row in reconciled_sources
-                if str(row.get("status") or "") == "updated" and row.get("source_id")
+                if str(row.get("status") or "") in {"updated", "disabled"} and row.get("source_id")
             ]
             changed_item_ids = (
                 repos.news.list_news_item_ids_for_sources(source_ids=changed_source_ids) if changed_source_ids else []
@@ -127,6 +128,11 @@ class NewsFetchWorker(WorkerBase):
                     started_at_ms=now_ms,
                     commit=False,
                 )
+                source_cursor = (
+                    repos.news.source_sync_cursor(source_id)
+                    if str(source.get("provider_type") or "").strip().lower() == "opennews"
+                    else {}
+                )
 
             snapshot = NewsSourceSnapshot.from_row(source, now_ms=now_ms)
             cache = NewsSourceHttpCache(
@@ -135,8 +141,8 @@ class NewsFetchWorker(WorkerBase):
             )
             feed_result = self.feed_client.fetch(
                 snapshot,
-                since_ms=None,
-                cursor={},
+                since_ms=_cursor_high_watermark_ms(source_cursor),
+                cursor=source_cursor,
                 cache=cache,
                 limit=self._batch_size(),
             )
@@ -151,6 +157,13 @@ class NewsFetchWorker(WorkerBase):
                             now_ms=now_ms,
                             commit=False,
                         )
+                        if feed_result.next_cursor:
+                            repos.news.update_source_sync_state(
+                                source_id,
+                                feed_result.next_cursor,
+                                now_ms=now_ms,
+                                commit=False,
+                            )
                         repos.news.finish_fetch_run(
                             fetch_run_id=fetch_run_id,
                             source_id=source_id,
@@ -188,6 +201,13 @@ class NewsFetchWorker(WorkerBase):
                         now_ms=now_ms,
                         commit=False,
                     )
+                    if feed_result.next_cursor:
+                        repos.news.update_source_sync_state(
+                            source_id,
+                            feed_result.next_cursor,
+                            now_ms=now_ms,
+                            commit=False,
+                        )
                     repos.news.finish_fetch_run(
                         fetch_run_id=fetch_run_id,
                         source_id=source_id,
@@ -229,7 +249,6 @@ class NewsFetchWorker(WorkerBase):
         dirty_news_item_ids: list[str] = []
         repository = repos.news
         source_id = str(source["source_id"])
-        source_domain = str(source["source_domain"])
         parent_ids_by_source_key: dict[str, str] = {}
         for observation in observations:
             counts["fetched"] += 1
@@ -243,10 +262,28 @@ class NewsFetchWorker(WorkerBase):
                 fetched_at_ms=fetched_at_ms,
                 commit=False,
             )
-            news = repository.upsert_news_item(
-                provider_item_id=provider["provider_item_id"],
+            item_content_hash = content_hash(
+                observation.title,
+                observation.summary,
+                observation.canonical_url,
+                body_text=observation.body_text,
+            )
+            item_title_fingerprint = title_fingerprint(observation.title)
+            item_published_at_ms = int(
+                observation.published_at_ms if observation.published_at_ms is not None else fetched_at_ms
+            )
+            canonical_identity = canonical_identity_for_observation(
+                provider_type=str(source["provider_type"]),
                 source_id=source_id,
-                source_domain=source_domain,
+                provider_article_id=str(provider.get("provider_article_id") or ""),
+                canonical_url=observation.canonical_url,
+                content_hash=item_content_hash,
+                title_fingerprint=item_title_fingerprint,
+                published_at_ms=item_published_at_ms,
+            )
+            news = repository.upsert_canonical_news_item(
+                provider_item_id=provider["provider_item_id"],
+                canonical_identity=canonical_identity,
                 canonical_url=observation.canonical_url,
                 title=observation.title,
                 summary=observation.summary,
@@ -254,16 +291,14 @@ class NewsFetchWorker(WorkerBase):
                 language=observation.language,
                 published_at_ms=observation.published_at_ms,
                 fetched_at_ms=fetched_at_ms,
-                content_hash=content_hash(
-                    observation.title,
-                    observation.summary,
-                    observation.canonical_url,
-                    body_text=observation.body_text,
-                ),
-                title_fingerprint=title_fingerprint(observation.title),
+                content_hash=item_content_hash,
+                title_fingerprint=item_title_fingerprint,
                 now_ms=fetched_at_ms,
                 provider_signal=observation.provider_signal,
                 provider_token_impacts=observation.provider_token_impacts,
+                provider_payload_status=str(
+                    provider.get("incoming_provider_payload_status") or provider.get("provider_payload_status") or ""
+                ),
                 commit=False,
             )
             news_item_id = str(news.get("news_item_id") or "")
@@ -273,7 +308,8 @@ class NewsFetchWorker(WorkerBase):
             if status in counts:
                 counts[status] += 1
             if news_item_id and status in {"inserted", "updated"}:
-                dirty_news_item_ids.append(news_item_id)
+                affected_item_ids = _affected_news_item_ids(news, fallback_news_item_id=news_item_id)
+                dirty_news_item_ids.extend(affected_item_ids)
         _enqueue_news_item_dirty_targets(
             repos,
             news_item_ids=dirty_news_item_ids,
@@ -407,6 +443,22 @@ def _notify_news_page_dirty(wake_bus: Any | None, *, count: int, reason: str) ->
     if notify is None:
         return
     notify(count=int(count), reason=str(reason))
+
+
+def _cursor_high_watermark_ms(cursor: Mapping[str, Any]) -> int | None:
+    try:
+        value = int(cursor.get("high_watermark_ms") or 0)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+def _affected_news_item_ids(news: Mapping[str, Any], *, fallback_news_item_id: str) -> list[str]:
+    raw_ids = news.get("affected_news_item_ids")
+    item_ids = [str(item) for item in raw_ids if str(item or "")] if isinstance(raw_ids, list | tuple) else []
+    if not item_ids:
+        item_ids = [str(fallback_news_item_id)]
+    return list(dict.fromkeys(item_ids))
 
 
 def _source_quality_windows(windows: Iterable[str] | None) -> tuple[str, ...]:

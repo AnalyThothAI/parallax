@@ -93,10 +93,8 @@ def _insert_source_provider_and_item(
         raw_payload_json={"title": title},
         fetched_at_ms=NOW_MS,
     )
-    news = repo.upsert_news_item(
+    news = repo.upsert_canonical_news_item(
         provider_item_id=provider["provider_item_id"],
-        source_id="source-1",
-        source_domain="example.com",
         canonical_url=f"https://example.com/{source_item_key}",
         title=title,
         summary="Summary",

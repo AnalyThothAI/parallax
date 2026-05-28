@@ -13,10 +13,11 @@ def test_page_projection_loader_reads_source_payload_for_claimed_targets() -> No
 
     assert rows == []
     assert "WHERE items.news_item_id = ANY(%s::text[])" in conn.sql
-    assert "JOIN news_sources AS sources ON sources.source_id = items.source_id" in conn.sql
-    assert "'provider_type', sources.provider_type" in conn.sql
-    assert "'source_quality_status', sources.source_quality_status" in conn.sql
-    assert "'coverage_tags_json', sources.coverage_tags_json" in conn.sql
+    assert "JOIN LATERAL" in conn.sql
+    assert "edge_sources.enabled = true" in conn.sql
+    assert "'provider_type', source_rep.provider_type" in conn.sql
+    assert "'source_quality_status', source_rep.source_quality_status" in conn.sql
+    assert "'coverage_tags_json', source_rep.coverage_tags_json" in conn.sql
 
 
 class CapturingConnection:

@@ -39,7 +39,7 @@ def test_news_fetch_worker_fetches_outside_db_session_and_writes_items() -> None
             observations=[
                 NewsProviderObservation(
                     source_item_key="guid-1",
-                    canonical_url="https://example.com/story",
+                    canonical_url="https://example.com/news/story",
                     title="SOL ETF approved",
                     summary="Issuer confirms launch.",
                     body_text="Issuer confirms launch.",
@@ -47,7 +47,7 @@ def test_news_fetch_worker_fetches_outside_db_session_and_writes_items() -> None
                     published_at_ms=NOW_MS,
                     raw_payload={
                         "id": "guid-1",
-                        "link": "https://example.com/story?utm_source=rss",
+                        "link": "https://example.com/news/story?utm_source=rss",
                         "title": "SOL ETF approved",
                         "summary": "Issuer confirms launch.",
                         "source_domain": "example.com",
@@ -72,12 +72,14 @@ def test_news_fetch_worker_fetches_outside_db_session_and_writes_items() -> None
             "provider_type": "rss",
             "feed_url": "https://example.com/rss.xml",
             "cache": NewsSourceHttpCache(etag="old-etag", last_modified="old-modified"),
+            "since_ms": None,
+            "cursor": {},
             "limit": 10,
         }
     ]
     assert db.repo.reconciled_sources == [source]
     assert db.repo.provider_items[0]["source_item_key"] == "guid-1"
-    assert db.repo.provider_items[0]["canonical_url"] == "https://example.com/story"
+    assert db.repo.provider_items[0]["canonical_url"] == "https://example.com/news/story"
     assert db.repo.news_items[0]["title"] == "SOL ETF approved"
     assert db.repo.news_items[0]["provider_signal"] == {
         "source": "provider",
@@ -85,6 +87,7 @@ def test_news_fetch_worker_fetches_outside_db_session_and_writes_items() -> None
         "status": "ready",
     }
     assert db.repo.news_items[0]["provider_token_impacts"] == [{"symbol": "SOL", "score": 70, "signal": "long"}]
+    assert db.repo.news_items[0]["canonical_identity"].canonical_item_key.startswith("content-hash:")
     assert db.repo.cache_updates == [
         {
             "source_id": "example-rss",
@@ -122,6 +125,108 @@ def test_news_fetch_worker_treats_not_modified_as_success_without_wake() -> None
     assert db.repo.finished_runs[0]["status"] == "success"
     assert db.repo.finished_runs[0]["fetched_count"] == 0
     assert wake_bus.notifications == []
+
+
+def test_news_fetch_worker_passes_source_sync_cursor_and_updates_after_success() -> None:
+    source = {
+        "source_id": "opennews-realtime",
+        "provider_type": "opennews",
+        "feed_url": "opennews://subscribe",
+        "source_domain": "6551.io",
+        "source_name": "OpenNews",
+    }
+    db = FakeDB(FakeNewsRepository([source]))
+    db.repo.sync_cursors["opennews-realtime"] = {"high_watermark_ms": NOW_MS - 60_000, "overlap_ms": 600_000}
+    next_cursor = {
+        "high_watermark_ms": NOW_MS - 1_000,
+        "overlap_ms": 600_000,
+        "pages_scanned": 2,
+        "rest_received": 4,
+        "oldest_seen_ms": NOW_MS - 120_000,
+        "stop_reason": "empty_page",
+    }
+    feed = FakeNewsSourceProvider(
+        db,
+        NewsProviderFetchResult(
+            status_code=200,
+            next_cursor=next_cursor,
+            observations=[
+                NewsProviderObservation(
+                    source_item_key="2367422",
+                    canonical_url="https://example.com/news/2367422",
+                    title="BTC headline",
+                    summary="OpenNews summary.",
+                    body_text="OpenNews body.",
+                    language="en",
+                    published_at_ms=NOW_MS - 1_000,
+                    raw_payload={"id": "2367422", "title": "BTC headline"},
+                )
+            ],
+        ),
+    )
+    worker = _worker(db=db, feed_client=feed, wake_bus=FakeWakeBus(), sources=[source])
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.failed == 0
+    assert feed.calls[0]["since_ms"] == NOW_MS - 60_000
+    assert feed.calls[0]["cursor"] == {"high_watermark_ms": NOW_MS - 60_000, "overlap_ms": 600_000}
+    assert db.repo.sync_updates == [
+        {
+            "source_id": "opennews-realtime",
+            "next_cursor": next_cursor,
+            "now_ms": NOW_MS,
+            "commit": False,
+        }
+    ]
+    assert db.repo.events.index("update_source_sync_state") < db.repo.events.index("finish_fetch_run")
+
+
+def test_news_fetch_worker_enqueues_dirty_targets_for_all_affected_news_items() -> None:
+    source = {
+        "source_id": "example-rss",
+        "provider_type": "rss",
+        "feed_url": "https://example.com/rss.xml",
+        "source_domain": "example.com",
+        "source_name": "Example",
+    }
+    db = FakeDB(FakeNewsRepository([source]))
+    db.repo.news_results = [
+        {
+            "news_item_id": "news-new",
+            "status": "updated",
+            "affected_news_item_ids": ["news-old", "news-new"],
+        }
+    ]
+    feed = FakeNewsSourceProvider(
+        db,
+        NewsProviderFetchResult(
+            status_code=200,
+            observations=[
+                NewsProviderObservation(
+                    source_item_key="guid-1",
+                    canonical_url="https://example.com/news/story",
+                    title="Updated story",
+                    summary="Summary",
+                    body_text="Body",
+                    language="en",
+                    published_at_ms=NOW_MS,
+                    raw_payload={"id": "guid-1", "title": "Updated story"},
+                )
+            ],
+        ),
+    )
+    worker = _worker(db=db, feed_client=feed, wake_bus=FakeWakeBus(), sources=[source])
+
+    worker.run_once_sync(now_ms=NOW_MS)
+
+    news_item_written = next(batch for batch in db.dirty.enqueued if batch["reason"] == "news_item_written")
+    assert news_item_written["rows"] == [
+        {"projection_name": "story", "target_kind": "news_item", "target_id": "news-old"},
+        {"projection_name": "story", "target_kind": "news_item", "target_id": "news-new"},
+        {"projection_name": "page", "target_kind": "news_item", "target_id": "news-old"},
+        {"projection_name": "page", "target_kind": "news_item", "target_id": "news-new"},
+    ]
 
 
 def test_news_fetch_worker_persists_context_observations() -> None:
@@ -327,6 +432,8 @@ def test_news_fetch_worker_passes_cryptopanic_source_context_to_feed_client() ->
             "provider_type": "cryptopanic",
             "feed_url": "cryptopanic://posts?regions=en&kind=news&max_items=50",
             "cache": NewsSourceHttpCache(etag=None, last_modified=None),
+            "since_ms": None,
+            "cursor": {},
             "limit": 10,
         }
     ]
@@ -616,6 +723,12 @@ class FakeProjectionDB:
 
 
 class FakeConn:
+    def __init__(self) -> None:
+        self.events: list[str] = []
+
+    def record(self, event: str) -> None:
+        self.events.append(event)
+
     def commit(self) -> None:
         return None
 
@@ -661,14 +774,14 @@ class FakeNewsSourceProvider:
         limit: int | None = None,
     ) -> NewsProviderFetchResult:
         assert self.db.open_sessions == 0
-        assert since_ms is None
-        assert cursor == {}
         self.calls.append(
             {
                 "source_id": source.source_id,
                 "provider_type": source.provider_type,
                 "feed_url": source.feed_url,
                 "cache": cache,
+                "since_ms": since_ms,
+                "cursor": dict(cursor or {}),
                 "limit": limit,
             }
         )
@@ -724,6 +837,10 @@ class FakeNewsRepository:
         self.context_items: list[dict[str, object]] = []
         self.finished_runs: list[dict[str, object]] = []
         self.cache_updates: list[dict[str, object]] = []
+        self.news_results: list[dict[str, object]] = []
+        self.sync_cursors: dict[str, dict[str, object]] = {}
+        self.sync_updates: list[dict[str, object]] = []
+        self.events: list[str] = []
 
     def reconcile_configured_sources(self, sources, *, now_ms: int, commit: bool = True):
         self.reconciled_sources = list(sources)
@@ -740,6 +857,15 @@ class FakeNewsRepository:
         self.fetch_runs.append({"source_id": source_id, "started_at_ms": started_at_ms})
         return fetch_run_id
 
+    def source_sync_cursor(self, source_id: str):
+        return dict(self.sync_cursors.get(source_id, {}))
+
+    def update_source_sync_state(self, source_id: str, next_cursor: dict[str, object], *, now_ms: int, commit: bool):
+        self.sync_updates.append(
+            {"source_id": source_id, "next_cursor": dict(next_cursor), "now_ms": now_ms, "commit": commit}
+        )
+        self.events.append("update_source_sync_state")
+
     def update_source_http_cache(
         self,
         *,
@@ -755,10 +881,18 @@ class FakeNewsRepository:
 
     def upsert_provider_item(self, **payload):
         self.provider_items.append(payload)
-        return {"provider_item_id": f"provider-{len(self.provider_items)}", "status": "inserted"}
+        provider_article_id = str(payload["raw_payload"].get("id") or "")
+        return {
+            "provider_item_id": f"provider-{len(self.provider_items)}",
+            "provider_article_id": provider_article_id,
+            "provider_article_key": f"rss:{provider_article_id}" if provider_article_id else "",
+            "status": "inserted",
+        }
 
-    def upsert_news_item(self, **payload):
+    def upsert_canonical_news_item(self, **payload):
         self.news_items.append(payload)
+        if self.news_results:
+            return dict(self.news_results.pop(0))
         return {"news_item_id": f"news-{len(self.news_items)}", "status": "inserted"}
 
     def upsert_news_context_item(self, **payload):
@@ -766,6 +900,7 @@ class FakeNewsRepository:
         return payload
 
     def finish_fetch_run(self, **payload):
+        self.events.append("finish_fetch_run")
         self.finished_runs.append(payload)
         return payload
 
@@ -835,8 +970,10 @@ class FakeStoryProjectionRepository:
         return [
             {
                 "news_item_id": "news-1",
+                "canonical_item_key": "article-url:https://example.test/a",
                 "source_id": "source-1",
                 "canonical_url": "https://example.test/a",
+                "url_identity_kind": "article",
                 "content_hash": "hash-1",
                 "title_fingerprint": "coinbase lists newx",
                 "published_at_ms": 1000,
@@ -844,17 +981,13 @@ class FakeStoryProjectionRepository:
             }
         ]
 
-    def find_story_candidates_for_item(self, item):
-        assert item["news_item_id"] == "news-1"
-        return []
-
     def create_story_from_item(self, **payload):
         self.created_stories.append(payload)
 
     def refresh_story_from_member(self, **payload):
         self.refreshed_stories.append(payload)
 
-    def add_story_member(self, **payload):
+    def replace_story_member_for_item(self, **payload):
         self.story_members.append(payload)
 
     def list_news_item_ids_for_stories(self, *, story_ids):

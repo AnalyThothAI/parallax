@@ -21,6 +21,9 @@ DEFAULT_CONNECT_TIMEOUT_SECONDS = 3.0
 DEFAULT_STREAM_TIMEOUT_SECONDS = 10.0
 DEFAULT_MAX_MESSAGES = 20
 DEFAULT_REST_PAGE = 1
+DEFAULT_MAX_REST_PAGES = 5
+DEFAULT_REST_OVERLAP_MS = 900_000
+MIN_REST_OVERLAP_MS = 600_000
 MAX_REST_LIMIT = 100
 _PUSH_METHODS = {"news.update", "news.ai_update"}
 
@@ -38,9 +41,9 @@ class OpenNewsFeedClient:
         now_ms: Callable[[], int] | None = None,
     ) -> None:
         self._token = _optional_text(token)
-        self._api_base_url = str(api_base_url or DEFAULT_OPENNEWS_API_BASE_URL).strip().rstrip(
-            "/"
-        ) or DEFAULT_OPENNEWS_API_BASE_URL
+        self._api_base_url = (
+            str(api_base_url or DEFAULT_OPENNEWS_API_BASE_URL).strip().rstrip("/") or DEFAULT_OPENNEWS_API_BASE_URL
+        )
         self._wss_url = str(wss_url or DEFAULT_OPENNEWS_WSS_URL).strip() or DEFAULT_OPENNEWS_WSS_URL
         self._connect_timeout_seconds = max(0.1, float(connect_timeout_seconds))
         self._connect = connect or _default_connect
@@ -53,6 +56,7 @@ class OpenNewsFeedClient:
         url: str,
         *,
         source: dict[str, Any] | None = None,
+        cursor: Mapping[str, Any] | None = None,
         limit: int | None = None,
     ) -> FeedFetchResult:
         if not self._token:
@@ -60,7 +64,7 @@ class OpenNewsFeedClient:
         try:
             asyncio.get_running_loop()
         except RuntimeError:
-            return asyncio.run(self._fetch_async(url, source=source or {}, limit=limit))
+            return asyncio.run(self._fetch_async(url, source=source or {}, cursor=cursor or {}, limit=limit))
         raise RuntimeError("OpenNewsFeedClient.fetch must be called from a synchronous worker thread")
 
     def close(self) -> None:
@@ -71,6 +75,7 @@ class OpenNewsFeedClient:
         url: str,
         *,
         source: Mapping[str, Any],
+        cursor: Mapping[str, Any],
         limit: int | None,
     ) -> FeedFetchResult:
         policy = _source_fetch_policy(source)
@@ -82,6 +87,7 @@ class OpenNewsFeedClient:
         rest_received = 0
         rest_error: str | None = None
         rest_success = False
+        next_cursor: dict[str, Any] = {}
         entries_by_id: dict[str, dict[str, Any]] = {}
         if fetch_mode in {"hybrid", "websocket"}:
             connected_url = _with_token(self._wss_url, self._token or "")
@@ -135,11 +141,13 @@ class OpenNewsFeedClient:
                 )
         if fetch_mode in {"hybrid", "rest"}:
             try:
-                for entry in await self._fetch_rest_entries(
+                rest_entries, next_cursor = await self._fetch_rest_entries(
                     subscription=subscription,
                     policy=policy,
+                    cursor=cursor,
                     limit=limit,
-                ):
+                )
+                for entry in rest_entries:
                     entry_key = _entry_key(entry)
                     if not entry_key:
                         continue
@@ -171,6 +179,7 @@ class OpenNewsFeedClient:
             entries=entries,
             not_modified=False,
             feed=feed,
+            next_cursor=next_cursor,
         )
 
     async def _fetch_rest_entries(
@@ -178,29 +187,60 @@ class OpenNewsFeedClient:
         *,
         subscription: Mapping[str, Any],
         policy: Mapping[str, Any],
+        cursor: Mapping[str, Any],
         limit: int | None,
-    ) -> list[dict[str, Any]]:
-        body = _rest_search_body(subscription=subscription, policy=policy, limit=limit)
-        payload_result = self._post_json(
-            f"{self._api_base_url}/open/news_search",
-            token=self._token or "",
-            body=body,
-        )
-        if isawaitable(payload_result):
-            payload_result = await payload_result
-        if not isinstance(payload_result, Mapping):
-            raise ValueError("OpenNews REST search returned a non-object response")
-        data = payload_result.get("data")
-        if not isinstance(data, list):
-            return []
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        previous_high_watermark_ms = _cursor_int(cursor, "high_watermark_ms")
+        overlap_ms = _rest_overlap_ms(policy=policy, cursor=cursor)
+        max_pages = _max_rest_pages(policy)
+        stop_threshold_ms = previous_high_watermark_ms - overlap_ms
         entries: list[dict[str, Any]] = []
-        for item in data:
-            if not isinstance(item, Mapping):
-                continue
-            entry = _entry_from_params(item, method="news.rest", now_ms=self._now_ms)
-            if entry is not None:
+        high_watermark_ms = previous_high_watermark_ms
+        oldest_seen_ms = 0
+        rest_received = 0
+        pages_scanned = 0
+        stop_reason = "max_pages"
+        for page in range(1, max_pages + 1):
+            body = _rest_search_body(subscription=subscription, policy=policy, limit=limit, page=page)
+            payload_result = self._post_json(
+                f"{self._api_base_url}/open/news_search",
+                token=self._token or "",
+                body=body,
+            )
+            if isawaitable(payload_result):
+                payload_result = await payload_result
+            if not isinstance(payload_result, Mapping):
+                raise ValueError("OpenNews REST search returned a non-object response")
+            data = payload_result.get("data")
+            pages_scanned += 1
+            if not isinstance(data, list) or not data:
+                stop_reason = "empty_page"
+                break
+            page_oldest_ms: int | None = None
+            for item in data:
+                if not isinstance(item, Mapping):
+                    continue
+                entry = _entry_from_params(item, method="news.rest", now_ms=self._now_ms)
+                if entry is None:
+                    continue
+                published_ms = int(entry.get("published_at_ms") or 0)
+                high_watermark_ms = max(high_watermark_ms, published_ms)
+                oldest_seen_ms = published_ms if oldest_seen_ms <= 0 else min(oldest_seen_ms, published_ms)
+                page_oldest_ms = published_ms if page_oldest_ms is None else min(page_oldest_ms, published_ms)
+                rest_received += 1
                 entries.append(entry)
-        return entries
+            if previous_high_watermark_ms > 0 and page_oldest_ms is not None and page_oldest_ms < stop_threshold_ms:
+                stop_reason = "oldest_before_overlap"
+                break
+        next_cursor = {
+            "high_watermark_ms": high_watermark_ms,
+            "overlap_ms": overlap_ms,
+            "pages_scanned": pages_scanned,
+            "rest_received": rest_received,
+            "oldest_seen_ms": oldest_seen_ms,
+            "stop_reason": stop_reason,
+        }
+        return entries, next_cursor
 
     def _next_request_id(self, prefix: str) -> str:
         self._request_id += 1
@@ -261,8 +301,6 @@ def _validate_subscribe_ack(payload: Mapping[str, Any]) -> None:
 
 def _source_fetch_policy(source: Mapping[str, Any]) -> dict[str, Any]:
     raw = source.get("fetch_policy_json")
-    if raw is None:
-        raw = source.get("fetch_policy")
     if isinstance(raw, Mapping):
         return dict(raw)
     if isinstance(raw, str) and raw.strip():
@@ -337,17 +375,17 @@ def _stream_timeout_seconds(policy: Mapping[str, Any]) -> float:
 
 
 def _fetch_mode(policy: Mapping[str, Any]) -> str:
-    raw_mode = _optional_text(policy.get("fetch_mode") or policy.get("fetchMode") or policy.get("mode"))
+    raw_mode = _optional_text(policy.get("fetch_mode"))
     mode = str(raw_mode or "").strip().lower()
-    if mode in {"rest", "poll", "search"}:
-        return "rest"
-    if mode in {"websocket", "ws", "stream"}:
-        return "websocket"
-    if mode in {"hybrid", "websocket+rest", "ws+rest"}:
+    if not mode:
         return "hybrid"
-    if "rest_backfill" in policy or "restBackfill" in policy:
-        return "hybrid" if _truthy(policy.get("rest_backfill", policy.get("restBackfill"))) else "websocket"
-    return "hybrid"
+    if mode == "rest":
+        return "rest"
+    if mode == "websocket":
+        return "websocket"
+    if mode == "hybrid":
+        return "hybrid"
+    raise ValueError(f"unsupported OpenNews fetch_mode: {mode}")
 
 
 def _rest_search_body(
@@ -355,10 +393,13 @@ def _rest_search_body(
     subscription: Mapping[str, Any],
     policy: Mapping[str, Any],
     limit: int | None,
+    page: int | None = None,
 ) -> dict[str, Any]:
     body: dict[str, Any] = {
         "limit": _rest_limit(policy=policy, limit=limit),
-        "page": _positive_int_or_default(policy.get("page"), DEFAULT_REST_PAGE),
+        "page": (
+            max(1, int(page)) if page is not None else _positive_int_or_default(policy.get("page"), DEFAULT_REST_PAGE)
+        ),
     }
     for key in ("engineTypes", "coins", "hasCoin"):
         if key in subscription:
@@ -373,13 +414,32 @@ def _rest_search_body(
 
 
 def _rest_limit(*, policy: Mapping[str, Any], limit: int | None) -> int:
-    value = policy.get(
-        "rest_limit",
-        policy.get("restLimit", policy.get("search_limit", policy.get("searchLimit"))),
-    )
+    value = policy.get("rest_limit")
     if value is None:
         value = _max_messages(policy=policy, limit=limit)
     return max(1, min(MAX_REST_LIMIT, _positive_int_or_default(value, DEFAULT_MAX_MESSAGES)))
+
+
+def _max_rest_pages(policy: Mapping[str, Any]) -> int:
+    value = policy.get("max_rest_pages")
+    return max(1, _positive_int_or_default(value, DEFAULT_MAX_REST_PAGES))
+
+
+def _rest_overlap_ms(*, policy: Mapping[str, Any], cursor: Mapping[str, Any]) -> int:
+    value = policy.get("rest_overlap_ms", policy.get("overlap_ms"))
+    if value is None:
+        value = cursor.get("overlap_ms")
+    if value is None:
+        value = DEFAULT_REST_OVERLAP_MS
+    return max(MIN_REST_OVERLAP_MS, _positive_int_or_default(value, DEFAULT_REST_OVERLAP_MS))
+
+
+def _cursor_int(cursor: Mapping[str, Any], key: str) -> int:
+    try:
+        value = int(cursor.get(key, 0) or 0)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, value)
 
 
 def _positive_int_or_default(value: Any, default: int) -> int:
@@ -409,18 +469,20 @@ def _entry_from_message(message: Mapping[str, Any], *, now_ms: Callable[[], int]
 
 
 def _entry_from_params(params: Mapping[str, Any], *, method: str, now_ms: Callable[[], int]) -> dict[str, Any] | None:
-    article_id = _optional_text(params.get("id")) or _optional_text(params.get("sourceItemKey"))
-    link = _optional_text(params.get("link") or params.get("url")) or _fallback_link(article_id)
+    provider_article_id = _provider_article_id(params)
+    source_item_key = _optional_text(params.get("sourceItemKey"))
+    observation_key = source_item_key or provider_article_id
+    identity_key = provider_article_id or source_item_key
+    link = _optional_text(params.get("link") or params.get("url")) or _fallback_link(identity_key or "")
     title = _optional_text(params.get("title") or params.get("text"))
-    if not article_id:
+    if not identity_key:
         return None
     ai_rating = params.get("aiRating") if isinstance(params.get("aiRating"), Mapping) else {}
     summary = _optional_text(ai_rating.get("summary")) or _optional_text(params.get("summary")) or ""
     en_summary = _optional_text(ai_rating.get("enSummary")) or ""
     body = en_summary or summary or title
     entry = {
-        "id": article_id,
-        "guid": article_id,
+        "guid": observation_key,
         "summary": summary,
         "language": _optional_text(params.get("language")) or "en",
         "published_at_ms": _epoch_ms(params.get("ts") or params.get("published_at_ms"), now_ms=now_ms),
@@ -430,6 +492,12 @@ def _entry_from_params(params: Mapping[str, Any], *, method: str, now_ms: Callab
         "provider_token_impacts": provider_token_impacts_from_opennews_payload(params),
         "raw": _json_safe_dict(params),
     }
+    if provider_article_id:
+        entry["id"] = provider_article_id
+        entry["provider_article_id"] = provider_article_id
+        entry["provider_article_key"] = f"opennews:{provider_article_id}"
+    if source_item_key:
+        entry["source_item_key"] = source_item_key
     if link:
         entry["link"] = link
     if title:
@@ -440,14 +508,22 @@ def _entry_from_params(params: Mapping[str, Any], *, method: str, now_ms: Callab
 
 
 def _entry_key(entry: Mapping[str, Any]) -> str:
-    return _optional_text(entry.get("id")) or _optional_text(entry.get("guid")) or ""
+    return (
+        _optional_text(entry.get("provider_article_id"))
+        or _optional_text(entry.get("id"))
+        or _optional_text(entry.get("guid"))
+        or ""
+    )
 
 
 def _merge_entry(existing: Mapping[str, Any] | None, patch: Mapping[str, Any]) -> dict[str, Any]:
     if existing is None:
         return dict(patch)
     merged = dict(existing)
+    keep_ready_payload = _entry_payload_ready(existing) and not _entry_payload_ready(patch)
     for key, value in patch.items():
+        if keep_ready_payload and key in _READY_PROTECTED_ENTRY_FIELDS:
+            continue
         if key == "raw" and isinstance(merged.get("raw"), Mapping) and isinstance(value, Mapping):
             merged["raw"] = {**dict(merged["raw"]), **dict(value)}
             continue
@@ -462,7 +538,7 @@ def _merge_entry(existing: Mapping[str, Any] | None, patch: Mapping[str, Any]) -
 
 def _entry_is_visible(entry: Mapping[str, Any]) -> bool:
     return bool(
-        _optional_text(entry.get("id"))
+        (_optional_text(entry.get("id")) or _optional_text(entry.get("guid")))
         and _optional_text(entry.get("link"))
         and _optional_text(entry.get("title"))
     )
@@ -470,6 +546,14 @@ def _entry_is_visible(entry: Mapping[str, Any]) -> bool:
 
 def _fallback_link(article_id: str) -> str:
     return f"opennews://item/{quote(article_id, safe='')}"
+
+
+def _provider_article_id(params: Mapping[str, Any]) -> str:
+    for field_name in ("provider_article_id", "article_id", "id"):
+        value = _optional_text(params.get(field_name))
+        if value:
+            return value
+    return ""
 
 
 def _is_present(value: Any) -> bool:
@@ -486,6 +570,30 @@ def _keeps_existing_provider_signal(existing: Any, patch: Any) -> bool:
     if not isinstance(existing, Mapping) or not isinstance(patch, Mapping):
         return False
     return str(existing.get("status") or "") == "ready" and str(patch.get("status") or "") != "ready"
+
+
+_READY_PROTECTED_ENTRY_FIELDS = frozenset(
+    {
+        "raw",
+        "link",
+        "title",
+        "summary",
+        "content",
+        "provider_token_impacts",
+        "published_at_ms",
+        "language",
+        "source_domain",
+    }
+)
+
+
+def _entry_payload_ready(value: Mapping[str, Any]) -> bool:
+    provider_signal = value.get("provider_signal")
+    if isinstance(provider_signal, Mapping) and str(provider_signal.get("status") or "") == "ready":
+        return True
+    raw = value.get("raw")
+    ai_rating = raw.get("aiRating") if isinstance(raw, Mapping) else None
+    return isinstance(ai_rating, Mapping) and str(ai_rating.get("status") or "") == "done"
 
 
 def _keeps_existing_link(existing: Any, patch: Any) -> bool:

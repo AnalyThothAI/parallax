@@ -149,10 +149,13 @@ def test_news_workers_ingest_process_project_and_query_visible_news(tmp_path) ->
     assert row["fact_lanes"][0]["status"] == "accepted"
     assert item_detail is not None
     assert item_detail["source"]["source_role"] == "official_exchange"
-    assert item_detail["provider_item"]["source_item_key"] == "binance-guid-1"
+    assert "source_item_key" not in item_detail["provider_item"]
+    assert item_detail["provider_item"]["source_id"] == "binance-announcements"
+    assert item_detail["observation_edges"][0]["source_id"] == "binance-announcements"
     assert item_detail["fetch_run"]["status"] == "success"
     assert item_detail["story_members"][0]["story_id"] == row["story_id"]
     assert story_detail is not None
+    assert story_detail["members"][0]["observation_edges"][0]["source_id"] == "binance-announcements"
     assert story_detail["token_mentions"][0]["target_type"] == "CexToken"
     assert story_detail["fact_candidates"][0]["event_type"] == "exchange_listing"
 
