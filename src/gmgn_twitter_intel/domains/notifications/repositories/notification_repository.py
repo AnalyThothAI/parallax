@@ -151,7 +151,7 @@ class NotificationRepository:
     ) -> dict[str, Any] | None:
         if rule_id != _SIGNAL_PULSE_RULE_ID:
             return None
-        in_app_signature = str(payload.get("in_app_signature") or payload.get("notification_signature") or "").strip()
+        in_app_signature = str(payload.get("in_app_signature") or "").strip()
         if not in_app_signature:
             return None
         external_push_signature = str(payload.get("external_push_signature") or "").strip() or "in_app"
@@ -160,7 +160,7 @@ class NotificationRepository:
             SELECT *
             FROM notifications
             WHERE rule_id = %s
-              AND COALESCE(payload_json->>'in_app_signature', payload_json->>'notification_signature') = %s
+              AND payload_json->>'in_app_signature' = %s
               AND COALESCE(payload_json->>'external_push_signature', 'in_app') = %s
             ORDER BY last_seen_at_ms DESC, created_at_ms DESC
             LIMIT 1

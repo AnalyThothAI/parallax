@@ -171,31 +171,6 @@ def test_claim_next_job_marks_running_and_respects_status(tmp_path):
     assert stored["status"] == "running"
 
 
-def test_claim_next_job_ignores_legacy_enrichment_job_types(tmp_path):
-    conn, _, enrichment, ingest = open_repositories(tmp_path)
-    try:
-        event = make_event("legacy-job")
-        ingest.ingest_event(event, is_watched=True)
-        conn.execute(
-            """
-            UPDATE enrichment_jobs
-            SET job_type = 'watched_event_enrichment'
-            WHERE event_id = %s
-            """,
-            ("legacy-job",),
-        )
-        conn.commit()
-
-        claimed = enrichment.claim_next_job(now_ms=int(time.time() * 1000))
-        stored = enrichment.list_jobs(limit=10)[0]
-    finally:
-        conn.close()
-
-    assert claimed is None
-    assert stored["status"] == "dead"
-    assert stored["last_error"] == "legacy_job_type_retired"
-
-
 def test_complete_social_event_job_records_agents_sdk_run_audit(tmp_path):
     conn, _, enrichment, ingest = open_repositories(tmp_path)
     try:

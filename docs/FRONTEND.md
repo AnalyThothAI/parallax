@@ -18,7 +18,7 @@
 | `shared/ui/`             | Reusable presentational primitives and cross-feature token display components. No server fetching.                                                                                                                |
 | `lib/api/`               | Typed HTTP client facade and auth-token plumbing. No feature query hooks.                                                                                                                                         |
 | `lib/env/`               | Runtime environment parsing.                                                                                                                                                                                      |
-| `lib/types/`             | Generated OpenAPI types and compatibility UI payload types.                                                                                                                                                       |
+| `lib/types/`             | Generated OpenAPI types and frontend-owned view contracts.                                                                                                                                                        |
 | `styles/`                | Global Tailwind import, design tokens, and base element styles only. Feature/page selectors belong beside their owning component or feature as side-effect CSS, or as real CSS Modules with local class bindings. |
 
 Do not add new code under old `api/`, `store/`, or `components/` roots. Public feature imports should come from `@features/<name>`; deep imports across feature internals are blocked by lint and grep gates.

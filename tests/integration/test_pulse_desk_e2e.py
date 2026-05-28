@@ -8,7 +8,7 @@ from psycopg import errors as psycopg_errors
 from psycopg.types.json import Jsonb
 
 from gmgn_twitter_intel.domains.notifications.services.notification_rules import NotificationRuleEngine
-from gmgn_twitter_intel.domains.pulse_lab.providers import PulseDecisionResult
+from gmgn_twitter_intel.domains.pulse_lab.providers import DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT, PulseDecisionResult
 from gmgn_twitter_intel.domains.pulse_lab.queries.agent_tool_queries import fetch_evidence_event_urls
 from gmgn_twitter_intel.domains.pulse_lab.read_models.signal_pulse_service import SignalPulseService
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_admission_repository import PulseAdmissionRepository
@@ -19,6 +19,9 @@ from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_jobs_repository imp
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_playbooks_repository import PulsePlaybooksRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_read_repository import PulseReadRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_runs_repository import PulseRunsRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_trigger_dirty_target_repository import (
+    PulseTriggerDirtyTargetRepository,
+)
 from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import PulseCandidateWorker
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     BearCaseMemo,
@@ -117,6 +120,20 @@ def test_pulse_agent_desk_real_postgres_read_model_and_notification_dataflow(tmp
             received_at_ms=NOW_MS - 1_000,
             canonical_url="https://x.com/toly/status/1",
         )
+        PulseTriggerDirtyTargetRepository(conn).enqueue_targets(
+            [
+                {
+                    "target_type": "Asset",
+                    "target_id": "asset-1",
+                    "window": "1h",
+                    "scope": "all",
+                    "source_watermark_ms": NOW_MS - 1_000,
+                }
+            ],
+            reason="test_seed",
+            now_ms=NOW_MS,
+            commit=False,
+        )
         conn.commit()
 
         scan = worker.scan_triggers_once(now_ms=NOW_MS)
@@ -154,7 +171,7 @@ def test_pulse_agent_desk_real_postgres_read_model_and_notification_dataflow(tmp
         pulse_notifications = [item for item in notifications if item.rule_id == "signal_pulse_candidate"]
         assert len(pulse_notifications) == 1
         notification = pulse_notifications[0]
-        signature = notification.payload["notification_signature"]
+        signature = notification.payload["in_app_signature"]
         assert signature.startswith("sha256:")
         external_identity = notification.payload.get("external_push_signature") or "in_app"
         assert notification.dedup_key == f"signal_pulse_candidate:{signature}:{external_identity}"
@@ -216,6 +233,11 @@ class _ResearchCommitteeClient:
     model = "fake-pulse"
     timeout_seconds = 1.0
     artifact_version_hash = "artifact:fake-research-committee"
+    runtime_contract = DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT
+
+    def model_for_lane(self, lane: str) -> str:
+        del lane
+        return self.model
 
     def try_reserve_execution(
         self,
@@ -262,7 +284,9 @@ class _ResearchCommitteeClient:
         completeness: dict[str, Any],
         runtime_manifest: dict[str, Any],
         parent_reservation: AgentCapacityReservation | None = None,
+        stage_plan: Any | None = None,
     ) -> PulseDecisionResult:
+        del parent_reservation, stage_plan
         allowed_refs = [
             str(ref.get("ref_id"))
             for ref in context.get("evidence_packet", {}).get("allowed_evidence_refs", [])
@@ -442,6 +466,7 @@ class _RealWorkerRepos:
         self.pulse_playbooks = PulsePlaybooksRepository(conn)
         self.pulse_evidence = PulseEvidenceRepository(conn)
         self.pulse_evidence_sources = _RealWorkerEvidenceSources(conn)
+        self.pulse_trigger_dirty_targets = PulseTriggerDirtyTargetRepository(conn)
         self.token_radar = _StaticRows(rows=token_radar_rows)
         self.token_targets = _StaticRows(rows=token_target_rows)
 
@@ -455,6 +480,17 @@ class _StaticRows:
 
     def timeline_rows(self, **_: Any) -> list[dict[str, Any]]:
         return list(self.rows)
+
+    def current_row_for_target(self, **kwargs: Any) -> dict[str, Any] | None:
+        for row in self.rows:
+            if (
+                row.get("target_type") == kwargs.get("target_type")
+                and row.get("target_id") == kwargs.get("target_id")
+                and row.get("window") == kwargs.get("window")
+                and row.get("scope") == kwargs.get("scope")
+            ):
+                return dict(row)
+        return None
 
 
 class _RealWorkerEvidenceSources:

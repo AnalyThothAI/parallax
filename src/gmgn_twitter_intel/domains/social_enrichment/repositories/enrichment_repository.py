@@ -148,20 +148,6 @@ class EnrichmentRepository:
         now = now_ms if now_ms is not None else _now_ms()
         stale_before = now - self.running_timeout_ms
         with transaction(self.conn):
-            retired_rows = self.conn.execute(
-                """
-                UPDATE enrichment_jobs
-                SET status = 'dead',
-                    last_error = 'legacy_job_type_retired',
-                    updated_at_ms = %s
-                WHERE job_type <> %s
-                  AND status IN ('pending', 'failed', 'running')
-                RETURNING *
-                """,
-                (now, WATCHED_SOCIAL_EVENT_JOB_TYPE),
-            ).fetchall()
-            for row in retired_rows:
-                _terminalize_enrichment_job(self.conn, row=dict(row), reason="legacy_job_type_retired", now_ms=now)
             stale_rows = self.conn.execute(
                 """
                 UPDATE enrichment_jobs

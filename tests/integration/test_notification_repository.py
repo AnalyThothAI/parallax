@@ -198,7 +198,7 @@ def test_insert_notification_suppresses_same_pulse_signature_only(tmp_path):
             "candidate_id": "pulse-1",
             "pulse_status": "token_watch",
             "symbol": "SLOP",
-            "notification_signature": "sha256:first",
+            "in_app_signature": "sha256:first",
         },
         channels=["in_app", "pushdeer"],
     )
@@ -218,7 +218,7 @@ def test_insert_notification_suppresses_same_pulse_signature_only(tmp_path):
             "candidate_id": "pulse-1",
             "pulse_status": "token_watch",
             "symbol": "SLOP",
-            "notification_signature": "sha256:first",
+            "in_app_signature": "sha256:first",
         },
         channels=["in_app", "pushdeer"],
     )
@@ -238,7 +238,7 @@ def test_insert_notification_suppresses_same_pulse_signature_only(tmp_path):
             "candidate_id": "pulse-1",
             "pulse_status": "token_watch",
             "symbol": "SLOP",
-            "notification_signature": "sha256:second",
+            "in_app_signature": "sha256:second",
         },
         channels=["in_app", "pushdeer"],
     )

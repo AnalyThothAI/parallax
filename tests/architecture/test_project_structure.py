@@ -130,7 +130,7 @@ def test_legacy_narrative_modules_stay_removed():
     assert not (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "narrative_link_scoring.py").exists()
 
 
-def test_enrichment_worker_does_not_claim_legacy_job_types():
+def test_enrichment_worker_has_no_runtime_legacy_job_type_cleanup():
     text = (
         ROOT
         / "src"
@@ -141,7 +141,8 @@ def test_enrichment_worker_does_not_claim_legacy_job_types():
         / "enrichment_repository.py"
     ).read_text()
 
-    assert "legacy_job_type_retired" in text
+    assert "legacy_job_type_retired" not in text
+    assert "job_type <>" not in text
     assert "job_type = %s" in text
 
 

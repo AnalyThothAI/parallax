@@ -51,7 +51,7 @@ class FakeEvidenceSourceRepository:
 def test_builds_partial_cex_packet_with_pricefeed_id_and_no_venue_id() -> None:
     context = _context(
         target_type="cex_token",
-        target_id="binance:BTCUSDT",
+        target_id="cex_token:BTC",
         source_event_ids=["event-1"],
         factor_snapshot={"market": {"decision_latest": {"price_usd": 99_999}}},
     )
@@ -157,7 +157,7 @@ def test_builds_dex_packet_with_pair_and_liquidity_evidence() -> None:
 def test_marks_market_evidence_stale_without_using_factor_snapshot_as_truth() -> None:
     context = _context(
         target_type="cex_token",
-        target_id="binance:ETHUSDT",
+        target_id="cex_token:ETH",
         source_event_ids=["event-1"],
         factor_snapshot={"market": {"decision_latest": {"price_usd": 9_999, "observed_at_ms": NOW_MS}}},
     )
@@ -190,13 +190,13 @@ def test_marks_market_evidence_stale_without_using_factor_snapshot_as_truth() ->
 def test_packet_hash_is_stable_across_input_dict_key_order() -> None:
     context_a = _context(
         target_type="cex_token",
-        target_id="binance:BTCUSDT",
+        target_id="cex_token:BTC",
         source_event_ids=["event-1"],
         factor_snapshot={"b": 2, "a": {"z": 3, "y": 4}},
     )
     context_b = _context(
         target_type="cex_token",
-        target_id="binance:BTCUSDT",
+        target_id="cex_token:BTC",
         source_event_ids=["event-1"],
         factor_snapshot={"a": {"y": 4, "z": 3}, "b": 2},
     )
@@ -265,7 +265,7 @@ def test_stale_digest_prose_without_current_sources_blocks_non_abstain_packet() 
 
 
 def test_current_source_refs_remain_primary_when_digest_is_stale_context() -> None:
-    context = _context(target_type="cex_token", target_id="binance:BTCUSDT", source_event_ids=["event-current"])
+    context = _context(target_type="cex_token", target_id="cex_token:BTC", source_event_ids=["event-current"])
     repo = FakeEvidenceSourceRepository(
         events=[_event("event-current")],
         market_facts=[

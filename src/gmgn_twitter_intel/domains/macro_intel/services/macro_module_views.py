@@ -631,11 +631,11 @@ def _cex_source(cex_board: Mapping[str, Any] | None) -> dict[str, Any]:
 
 
 def _cex_row(row: Mapping[str, Any], *, source: Mapping[str, Any]) -> dict[str, Any]:
-    symbol = _first_non_none(row, ("symbol", "base_symbol", "native_market_id")) or "--"
-    row_id = str(_first_non_none(row, ("native_market_id", "symbol", "base_symbol")) or symbol)
-    oi = _number(_first_non_none(row, ("open_interest_usd", "oi_usd")))
-    funding = _number(_first_non_none(row, ("funding_rate", "funding_rate_pct")))
-    volume = _number(_first_non_none(row, ("volume_24h_usd", "volume_usd")))
+    symbol = row.get("base_symbol") or "--"
+    row_id = str(row.get("native_market_id") or symbol)
+    oi = _number(row.get("open_interest_usd"))
+    funding = _number(row.get("funding_rate"))
+    volume = _number(row.get("volume_24h_usd"))
     score = _number(row.get("score"))
     quality = str(source.get("status") or "unknown")
     return {
@@ -1189,14 +1189,6 @@ def _normalize_cex_status(status: object, *, has_rows: bool) -> str:
     if status_key in {"missing", "empty"}:
         return "missing"
     return "unknown"
-
-
-def _first_non_none(row: Mapping[str, Any], aliases: Sequence[str]) -> Any | None:
-    for alias in aliases:
-        value = row.get(alias)
-        if value is not None:
-            return value
-    return None
 
 
 def _mapping(value: object) -> Mapping[str, Any]:

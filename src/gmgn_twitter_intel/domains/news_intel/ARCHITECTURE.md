@@ -46,7 +46,7 @@ forced into a resolved asset.
 | Item brief | Build bounded item/story/token/fact packets, reserve `news.item_brief`, execute through the shared `AgentExecutionGateway`, validate the output, write the run ledger, and upsert the current brief. |
 | Page projection | Rebuild the News page rows from news facts, story state, item lifecycle, and the current item brief. |
 | Source quality projection | Rebuild per-source quality windows from source/fetch/item/token/fact/brief/context rows and update compact source quality status. |
-| API/UI | Read-only surfaces over projected `news_page_rows` by default, with explicit source/content/decision filters and source status diagnostics. Raw visible `news_items` fallback is opt-in for rollout/debugging only. |
+| API/UI | Read-only surfaces over projected `news_page_rows`, with explicit source/content/decision filters and source status diagnostics. Raw `news_items` are worker inputs, not public fallback rows. |
 
 ## Provider Waves
 

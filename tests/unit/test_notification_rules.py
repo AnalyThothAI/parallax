@@ -523,15 +523,15 @@ def test_signal_pulse_signature_changes_on_stable_dimension_shifts():
     }
 
     signatures = {
-        "base": _only_pulse_notification(base).payload["notification_signature"],
+        "base": _only_pulse_notification(base).payload["in_app_signature"],
         "score_band": _only_pulse_notification({**base, "score_band": "high_conviction"}).payload[
-            "notification_signature"
+            "in_app_signature"
         ],
-        "gate": _only_pulse_notification(gate_changed).payload["notification_signature"],
-        "route": _only_pulse_notification(route_changed).payload["notification_signature"],
-        "narrative_archetype": _only_pulse_notification(archetype_changed).payload["notification_signature"],
-        "bull_strength": _only_pulse_notification(bull_changed).payload["notification_signature"],
-        "has_playbook": _only_pulse_notification(playbook_added).payload["notification_signature"],
+        "gate": _only_pulse_notification(gate_changed).payload["in_app_signature"],
+        "route": _only_pulse_notification(route_changed).payload["in_app_signature"],
+        "narrative_archetype": _only_pulse_notification(archetype_changed).payload["in_app_signature"],
+        "bull_strength": _only_pulse_notification(bull_changed).payload["in_app_signature"],
+        "has_playbook": _only_pulse_notification(playbook_added).payload["in_app_signature"],
     }
 
     assert len(set(signatures.values())) == len(signatures)
@@ -542,7 +542,7 @@ def test_signal_pulse_signature_does_not_change_for_free_text_only_change():
     bump the signature — otherwise minor agent paraphrasing would re-page users.
     """
     base = pulse_candidate("watch", status="token_watch")
-    base_sig = _only_pulse_notification(base).payload["notification_signature"]
+    base_sig = _only_pulse_notification(base).payload["in_app_signature"]
 
     # Only summary_zh / narrative_thesis_zh / bull_view.thesis_zh differ
     paraphrased = pulse_candidate("watch", status="token_watch", recommendation_summary="完全不同的文字描述")
@@ -564,8 +564,8 @@ def test_signal_pulse_signature_does_not_change_for_free_text_only_change():
             "supporting_event_ids": ["event-1"],
         },
     }
-    base_sig_with_bull = _only_pulse_notification(base).payload["notification_signature"]
-    paraphrased_sig = _only_pulse_notification(paraphrased).payload["notification_signature"]
+    base_sig_with_bull = _only_pulse_notification(base).payload["in_app_signature"]
+    paraphrased_sig = _only_pulse_notification(paraphrased).payload["in_app_signature"]
 
     assert paraphrased_sig == base_sig_with_bull
     # And neither matches the pre-bull base (because adding bull strength is a stable shift)
@@ -587,8 +587,8 @@ def test_signal_pulse_signature_does_not_change_for_evidence_or_edge_event_churn
     )
 
     assert (
-        _only_pulse_notification(base).payload["notification_signature"]
-        == _only_pulse_notification(churned).payload["notification_signature"]
+        _only_pulse_notification(base).payload["in_app_signature"]
+        == _only_pulse_notification(churned).payload["in_app_signature"]
     )
 
 
@@ -605,8 +605,8 @@ def test_signal_pulse_signature_changes_when_bull_strength_changes():
     }
 
     assert (
-        _only_pulse_notification(base).payload["notification_signature"]
-        != _only_pulse_notification(bumped).payload["notification_signature"]
+        _only_pulse_notification(base).payload["in_app_signature"]
+        != _only_pulse_notification(bumped).payload["in_app_signature"]
     )
 
 
@@ -652,11 +652,11 @@ def test_signal_pulse_signature_changes_on_playbook_structure_not_raw_text():
         },
     }
 
-    base_sig = _only_pulse_notification(base).payload["notification_signature"]
+    base_sig = _only_pulse_notification(base).payload["in_app_signature"]
 
-    assert _only_pulse_notification(raw_text_changed).payload["notification_signature"] == base_sig
-    assert _only_pulse_notification(horizon_changed).payload["notification_signature"] != base_sig
-    assert _only_pulse_notification(count_changed).payload["notification_signature"] != base_sig
+    assert _only_pulse_notification(raw_text_changed).payload["in_app_signature"] == base_sig
+    assert _only_pulse_notification(horizon_changed).payload["in_app_signature"] != base_sig
+    assert _only_pulse_notification(count_changed).payload["in_app_signature"] != base_sig
 
 
 def test_signal_pulse_signature_counts_only_safe_playbook_entries():
@@ -682,8 +682,8 @@ def test_signal_pulse_signature_counts_only_safe_playbook_entries():
     }
 
     assert (
-        _only_pulse_notification(base).payload["notification_signature"]
-        == _only_pulse_notification(unsafe_extra).payload["notification_signature"]
+        _only_pulse_notification(base).payload["in_app_signature"]
+        == _only_pulse_notification(unsafe_extra).payload["in_app_signature"]
     )
 
 
@@ -778,7 +778,7 @@ def test_signal_pulse_external_signature_ignores_in_app_decision_detail_churn() 
     base_candidate = _only_pulse_notification(base, notifications=notifications)
     changed_candidate = _only_pulse_notification(playbook_changed, notifications=notifications)
 
-    assert base_candidate.payload["notification_signature"] != changed_candidate.payload["notification_signature"]
+    assert base_candidate.payload["in_app_signature"] != changed_candidate.payload["in_app_signature"]
     assert base_candidate.payload["external_push_signature"] == changed_candidate.payload["external_push_signature"]
 
 

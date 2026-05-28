@@ -488,41 +488,6 @@ def test_pulse_client_passes_parent_reservation_to_stage_execution() -> None:
     ]
 
 
-def test_pulse_client_omits_parent_reservation_keyword_for_legacy_gateway() -> None:
-    gateway = _FakeAgentGateway(
-        {
-            "signal_analyst": _signal_analyst_raw(["event:event-1"]),
-            "bear_case": _bear_case_raw(["event:event-1"]),
-            "risk_portfolio_judge": _final_decision_raw(
-                supporting_refs=["event:event-1"],
-                playbook={
-                    "has_playbook": False,
-                    "watch_signals": [],
-                    "exit_triggers": [],
-                    "monitoring_horizon": "4h",
-                },
-            ),
-        }
-    )
-    client = OpenAIAgentsPulseDecisionClient(
-        agent_gateway=gateway,
-        decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
-    )
-
-    asyncio.run(
-        client.run_decision_pipeline(
-            context=_pipeline_context(),
-            run_id="run-1",
-            job={"job_id": "job-1", "attempt_count": 1},
-            route="meme",
-            completeness={"status": "complete"},
-            runtime_manifest={"runtime_version": "test"},
-        )
-    )
-
-    assert [call["kwargs"] for call in gateway.execute_calls] == [{}, {}, {}]
-
-
 def test_pulse_client_normalizes_gateway_output_before_domain_ref_validation() -> None:
     gateway = _FakeAgentGateway(
         {

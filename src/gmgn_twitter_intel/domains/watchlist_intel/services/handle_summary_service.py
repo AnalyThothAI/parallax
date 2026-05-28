@@ -161,10 +161,7 @@ class WatchlistHandleSummaryService:
         finished_at_ms: int,
     ) -> dict[str, Any]:
         run_audit = _mapping(response.get("agent_run_audit"))
-        # usage now flows through agent_run_audit.usage (filled by SafetyNet on the
-        # primary path from SDK RunResult.usage). Fall back to response.usage for
-        # any legacy provider that still puts it at the top level.
-        usage = _mapping(run_audit.get("usage")) or _mapping(response.get("usage"))
+        usage = _mapping(run_audit.get("usage"))
         summary = self.repository.complete_handle_summary(
             job=job,
             handle=inputs.handle,

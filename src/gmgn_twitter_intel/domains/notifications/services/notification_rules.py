@@ -379,7 +379,6 @@ class NotificationRuleEngine:
             external_identity = push_policy.external_push_signature or "in_app"
             payload = _pulse_payload(
                 row,
-                notification_signature=in_app_signature,
                 in_app_signature=in_app_signature,
                 external_push_signature=push_policy.external_push_signature,
                 external_push_eligible=push_policy.eligible,
@@ -484,7 +483,7 @@ def _alert_dedup_key(
     return f"{rule_id}:{identity}:author:{author}:{_cooldown_bucket(occurrence_at_ms, cooldown_seconds)}"
 
 
-def _pulse_notification_signature(row: dict[str, Any]) -> str:
+def _pulse_stable_decision_signature(row: dict[str, Any]) -> str:
     """Hash only stable decision dimensions to avoid:
     - free-text micro-changes (thesis_zh / narrative_thesis_zh / summary_zh) triggering duplicate notifications
     - bull/bear strength changes failing to trigger refresh
@@ -520,7 +519,7 @@ def _pulse_notification_signature(row: dict[str, Any]) -> str:
 
 
 def _pulse_in_app_signature(row: dict[str, Any]) -> str:
-    return _pulse_notification_signature(row)
+    return _pulse_stable_decision_signature(row)
 
 
 def _pulse_external_push_signature(
@@ -594,7 +593,6 @@ def _pulse_recommendation_escalation_level(value: Any) -> int:
 def _pulse_payload(
     row: dict[str, Any],
     *,
-    notification_signature: str,
     in_app_signature: str,
     external_push_signature: str | None,
     external_push_eligible: bool,
@@ -616,7 +614,6 @@ def _pulse_payload(
         "target_type": row.get("target_type"),
         "target_id": row.get("target_id"),
         "symbol": _symbol(row.get("symbol")),
-        "notification_signature": notification_signature,
         "in_app_signature": in_app_signature,
         "external_push_signature": external_push_signature,
         "external_push_eligible": external_push_eligible,

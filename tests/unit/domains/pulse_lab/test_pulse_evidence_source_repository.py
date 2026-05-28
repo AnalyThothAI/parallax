@@ -5,7 +5,7 @@ from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_evidence_source_rep
 )
 
 
-def test_cex_detail_snapshot_lookup_accepts_legacy_binance_target_id() -> None:
+def test_cex_detail_snapshot_lookup_uses_current_cex_token_target_id() -> None:
     conn = _Conn(
         row={
             "snapshot_id": "cex-detail:binance:BTCUSDT",
@@ -19,14 +19,14 @@ def test_cex_detail_snapshot_lookup_accepts_legacy_binance_target_id() -> None:
 
     snapshot = PulseEvidenceSourceRepository(conn).get_latest_cex_detail_snapshot(
         "cex_token",
-        "binance:BTCUSDT",
+        "cex_token:BTC",
         3_600_000,
         now_ms=1_800_000_100_000,
     )
 
     assert snapshot["snapshot_id"] == "cex-detail:binance:BTCUSDT"
-    assert "native_market_id = %s" in conn.sql
-    assert conn.params == ["BTCUSDT", 1_799_996_500_000]
+    assert "target_id = %s" in conn.sql
+    assert conn.params == ["cex_token:BTC", 1_799_996_500_000]
 
 
 class _Conn:

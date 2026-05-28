@@ -144,22 +144,6 @@ class PulseEvidenceSourceRepository:
         min_computed_at_ms = max(0, int(now_ms) - max(0, int(max_age_ms)))
         normalized_type = str(target_type or "").strip()
         if normalized_type in {"CexToken", "cex_token"}:
-            if target_id.lower().startswith("binance:"):
-                native_market_id = target_id.split(":", 1)[1]
-                return _optional_row(
-                    self.conn.execute(
-                        """
-                        SELECT *
-                        FROM cex_detail_snapshots
-                        WHERE exchange = 'binance'
-                          AND native_market_id = %s
-                          AND computed_at_ms >= %s
-                        ORDER BY computed_at_ms DESC
-                        LIMIT 1
-                        """,
-                        (native_market_id.upper(), min_computed_at_ms),
-                    ).fetchone()
-                )
             return _optional_row(
                 self.conn.execute(
                     """

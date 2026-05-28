@@ -176,31 +176,8 @@ def test_signal_pulse_duplicate_lookup_uses_in_app_and_external_signatures():
     sql, params = conn.calls[-1]
     assert "payload_json->>'in_app_signature'" in sql
     assert "payload_json->>'external_push_signature'" in sql
+    assert "notification_signature" not in sql
     assert params == ("signal_pulse_candidate", "sha256:in-app", "sha256:external")
-
-
-def test_signal_pulse_duplicate_lookup_accepts_legacy_notification_signature():
-    class RecordingConn:
-        def __init__(self):
-            self.calls = []
-
-        def execute(self, sql, params):
-            self.calls.append((sql, params))
-            return SimpleNamespace(fetchone=lambda: None)
-
-    conn = RecordingConn()
-    repo = NotificationRepository(conn)
-
-    assert (
-        repo._pulse_signature_duplicate(
-            rule_id="signal_pulse_candidate",
-            payload={"notification_signature": "sha256:legacy"},
-        )
-        is None
-    )
-
-    _sql, params = conn.calls[-1]
-    assert params == ("signal_pulse_candidate", "sha256:legacy", "in_app")
 
 
 class SequenceRuleEngine:
@@ -320,7 +297,7 @@ class InMemoryNotificationConn:
     def _row_by_signature(self, *, rule_id: str, in_app: str, external: str):
         for row in reversed(self.rows):
             payload = row["payload_json"]
-            row_in_app = payload.get("in_app_signature") or payload.get("notification_signature")
+            row_in_app = payload.get("in_app_signature")
             row_external = payload.get("external_push_signature") or "in_app"
             if row["rule_id"] == rule_id and row_in_app == in_app and row_external == external:
                 return row
