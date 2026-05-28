@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import hashlib
-import json
 import time
 from collections.abc import Callable
 from decimal import Decimal
@@ -13,6 +11,10 @@ from gmgn_twitter_intel.domains.token_intel._constants import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
 )
 from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot_contract import require_token_factor_snapshot
+from gmgn_twitter_intel.domains.token_intel.services.token_radar_payload_hash import (
+    canonical_token_radar_payload,
+    stable_token_radar_payload_hash,
+)
 
 RADAR_ROW_COLUMNS = (
     "row_id",
@@ -1030,14 +1032,15 @@ def stable_generation_id(*, projection_version: str, window: str, scope: str, ro
         for row in rows
     ]
     stable_rows.sort(key=lambda item: (item["lane"], item["rank"], item["target_type_key"], item["identity_id"]))
-    payload = {
-        "projection_version": projection_version,
-        "window": window,
-        "scope": scope,
-        "rows": stable_rows,
-    }
-    encoded = json.dumps(_json_ready(payload), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
-    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+    payload = canonical_token_radar_payload(
+        {
+            "projection_version": projection_version,
+            "window": window,
+            "scope": scope,
+            "rows": stable_rows,
+        }
+    )
+    return stable_token_radar_payload_hash(payload)
 
 
 def _first_generation_id(rows: list[dict[str, Any]]) -> str | None:
@@ -1068,23 +1071,24 @@ def _stable_degraded_reasons(row: dict[str, Any]) -> list[str]:
 
 
 def _payload_hash(row: dict[str, Any]) -> str:
-    stable_payload = {
-        column: _json_ready(row.get(column))
-        for column in RADAR_ROW_COLUMNS
-        if column
-        not in {
-            "row_id",
-            "computed_at_ms",
-            "generation_id",
-            "published_at_ms",
-            "source_frontier_ms",
-            "payload_hash",
-            "listed_at_ms",
-            "created_at_ms",
+    stable_payload = canonical_token_radar_payload(
+        {
+            column: _json_ready(row.get(column))
+            for column in RADAR_ROW_COLUMNS
+            if column
+            not in {
+                "row_id",
+                "computed_at_ms",
+                "generation_id",
+                "published_at_ms",
+                "source_frontier_ms",
+                "payload_hash",
+                "listed_at_ms",
+                "created_at_ms",
+            }
         }
-    }
-    encoded = json.dumps(stable_payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
-    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+    )
+    return stable_token_radar_payload_hash(stable_payload)
 
 
 def _now_ms() -> int:
@@ -1174,13 +1178,14 @@ def _resolution_ids(row: dict[str, Any]) -> list[str]:
 
 
 def _target_feature_hash(row: dict[str, Any]) -> str:
-    stable_payload = {
-        key: _json_ready(value)
-        for key, value in row.items()
-        if key not in {"payload_hash", "last_scored_at_ms", "created_at_ms", "updated_at_ms"}
-    }
-    encoded = json.dumps(stable_payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
-    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+    stable_payload = canonical_token_radar_payload(
+        {
+            key: _json_ready(value)
+            for key, value in row.items()
+            if key not in {"payload_hash", "last_scored_at_ms", "created_at_ms", "updated_at_ms"}
+        }
+    )
+    return stable_token_radar_payload_hash(stable_payload)
 
 
 def _validate_factor_contract(row: dict[str, Any]) -> None:

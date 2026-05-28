@@ -20,6 +20,7 @@ from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection impo
     _market_context,
     _patch_ranked_current_row,
     _project_group,
+    _pulse_trigger_target,
     _rank_key,
     _row_from_target_feature,
 )
@@ -885,6 +886,71 @@ def test_projection_enqueues_pulse_trigger_for_matched_realtime_rank_changes() -
             "commit": False,
         }
     ]
+
+
+def test_projection_downstream_payload_hash_ignores_factor_snapshot_computed_at_noise() -> None:
+    now_ms = 1_777_800_060_000
+    base_snapshot = {
+        "schema_version": "token_factor_snapshot_v3_social_attention",
+        "composite": {"rank_score": 88},
+        "provenance": {"source_event_ids": ["event-1"], "computed_at_ms": now_ms},
+    }
+    row = {
+        "target_type": "Asset",
+        "target_id": "asset-1",
+        "rank": 1,
+        "lane": "resolved",
+        "decision": "high_alert",
+        "factor_snapshot_json": base_snapshot,
+        "source_event_ids_json": ["event-1"],
+        "source_max_received_at_ms": now_ms - 1_000,
+        "payload_hash": "stable-row-hash",
+    }
+    noisy_timestamp_row = {
+        **row,
+        "factor_snapshot_json": {
+            **base_snapshot,
+            "provenance": {"source_event_ids": ["event-1"], "computed_at_ms": now_ms + 60_000},
+        },
+    }
+    business_change_row = {
+        **row,
+        "factor_snapshot_json": {
+            **base_snapshot,
+            "composite": {"rank_score": 89},
+        },
+    }
+
+    base_target = _pulse_trigger_target(
+        row,
+        previous=None,
+        window="1h",
+        scope="all",
+        computed_at_ms=now_ms,
+        exited=False,
+    )
+    noisy_timestamp_target = _pulse_trigger_target(
+        noisy_timestamp_row,
+        previous=None,
+        window="1h",
+        scope="all",
+        computed_at_ms=now_ms,
+        exited=False,
+    )
+    business_change_target = _pulse_trigger_target(
+        business_change_row,
+        previous=None,
+        window="1h",
+        scope="all",
+        computed_at_ms=now_ms,
+        exited=False,
+    )
+
+    assert base_target is not None
+    assert noisy_timestamp_target is not None
+    assert business_change_target is not None
+    assert noisy_timestamp_target["payload_hash"] == base_target["payload_hash"]
+    assert business_change_target["payload_hash"] != base_target["payload_hash"]
 
 
 def test_projection_enqueues_token_profile_current_for_realtime_rank_changes() -> None:

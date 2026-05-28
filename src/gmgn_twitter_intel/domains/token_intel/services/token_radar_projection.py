@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import time
 from collections.abc import Mapping
 from contextlib import AbstractContextManager
@@ -37,6 +36,9 @@ from gmgn_twitter_intel.domains.token_intel.scoring.token_radar_feature_builder 
     build_radar_features,
 )
 from gmgn_twitter_intel.domains.token_intel.services.atomic_mention import HIGH_CONF_RESOLUTION_STATUSES, KOL_TIER_TAGS
+from gmgn_twitter_intel.domains.token_intel.services.token_radar_payload_hash import (
+    stable_token_radar_payload_hash,
+)
 
 PROJECTION_VERSION = TOKEN_RADAR_PROJECTION_VERSION
 STALE_RUNNING_PROJECTION_MS = 10 * 60 * 1000
@@ -899,7 +901,7 @@ def _pulse_trigger_target(
         "lane": row.get("lane"),
         "decision": row.get("decision"),
         "exited": bool(exited),
-        "factor_snapshot_hash": _stable_payload_hash(row.get("factor_snapshot_json") or {}),
+        "factor_snapshot_hash": stable_token_radar_payload_hash(row.get("factor_snapshot_json") or {}),
         "source_event_ids": _json_ready(row.get("source_event_ids_json") or []),
         "source_watermark_ms": source_watermark_ms,
         "token_radar_payload_hash": row.get("payload_hash"),
@@ -911,7 +913,7 @@ def _pulse_trigger_target(
         "window": str(window),
         "scope": str(scope),
         "dirty_reason": reason,
-        "payload_hash": _stable_payload_hash(payload),
+        "payload_hash": stable_token_radar_payload_hash(payload),
         "source_watermark_ms": source_watermark_ms,
         "priority": 50 if exited else 40,
         "due_at_ms": int(computed_at_ms),
@@ -944,7 +946,7 @@ def _narrative_admission_target(
         "lane": row.get("lane"),
         "decision": row.get("decision"),
         "exited": bool(exited),
-        "factor_snapshot_hash": _stable_payload_hash(row.get("factor_snapshot_json") or {}),
+        "factor_snapshot_hash": stable_token_radar_payload_hash(row.get("factor_snapshot_json") or {}),
         "source_event_ids": _json_ready(row.get("source_event_ids_json") or []),
         "source_watermark_ms": source_watermark_ms,
         "token_radar_payload_hash": row.get("payload_hash"),
@@ -958,7 +960,7 @@ def _narrative_admission_target(
         "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
         "schema_version": NARRATIVE_SCHEMA_VERSION,
         "dirty_reason": reason,
-        "payload_hash": _stable_payload_hash(payload),
+        "payload_hash": stable_token_radar_payload_hash(payload),
         "source_watermark_ms": source_watermark_ms,
         "priority": 50 if exited else 40,
         "due_at_ms": int(computed_at_ms),
@@ -997,7 +999,7 @@ def _token_profile_current_target(
         "target_type": target_type,
         "target_id": target_id,
         "dirty_reason": reason,
-        "payload_hash": _stable_payload_hash(payload),
+        "payload_hash": stable_token_radar_payload_hash(payload),
         "source_watermark_ms": source_watermark_ms,
         "priority": 60 if exited else 70,
         "due_at_ms": int(computed_at_ms),
@@ -1061,11 +1063,6 @@ def _narrative_admission_reason(
     if int(previous.get("source_max_received_at_ms") or 0) != int(row.get("source_max_received_at_ms") or 0):
         return "token_radar_source_watermark_changed"
     return "token_radar_changed"
-
-
-def _stable_payload_hash(payload: Any) -> str:
-    encoded = json.dumps(_json_ready(payload), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
-    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def _transaction_context(conn: Any) -> AbstractContextManager[Any]:
