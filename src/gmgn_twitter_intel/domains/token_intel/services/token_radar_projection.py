@@ -112,41 +112,66 @@ class TokenRadarProjection:
         first_publish_error: str | None = None
         failed_publish_items: set[tuple[str, str]] = set()
         if claims:
-            source_requests = _source_requests_for_targets(claims, source_work_items, now_ms=computed_at_ms)
-            self.repos.token_radar_rank_sources.populate_edges_for_requests(
-                source_requests,
-                projected_at_ms=computed_at_ms,
-                commit=False,
+            source_rebuild_claims: list[dict[str, Any]] = []
+            market_only_claims: list[dict[str, Any]] = []
+            for claim in claims:
+                if _claim_requires_source_rebuild(claim):
+                    source_rebuild_claims.append(claim)
+                else:
+                    market_only_claims.append(claim)
+
+            source_requests = _source_requests_for_targets(
+                source_rebuild_claims,
+                source_work_items,
+                now_ms=computed_at_ms,
             )
-            rows_by_request = self.repos.token_radar_rank_sources.load_rows_for_requests(source_requests)
-            requests_by_target = _source_requests_by_target(source_requests)
-            for claim_index, claim in enumerate(claims):
-                claim_key = _claim_key(claim)
-                claim_touched: set[tuple[str, str]] = set()
-                try:
-                    for request in requests_by_target.get(claim_index, []):
-                        score_result = self._project_source_request(
-                            request=request,
-                            target=claim,
-                            source_rows=rows_by_request.get(request.request_key, []),
+            market_requests = _source_requests_for_targets(
+                market_only_claims,
+                source_work_items,
+                now_ms=computed_at_ms,
+            )
+            if source_requests:
+                self.repos.token_radar_rank_sources.populate_edges_for_requests(
+                    source_requests,
+                    projected_at_ms=computed_at_ms,
+                    commit=False,
+                )
+            rows_by_request = self.repos.token_radar_rank_sources.load_rows_for_requests(
+                [*source_requests, *market_requests]
+            )
+
+            for batch_claims, batch_requests in (
+                (source_rebuild_claims, source_requests),
+                (market_only_claims, market_requests),
+            ):
+                requests_by_target = _source_requests_by_target(batch_requests)
+                for claim_index, claim in enumerate(batch_claims):
+                    claim_key = _claim_key(claim)
+                    claim_touched: set[tuple[str, str]] = set()
+                    try:
+                        for request in requests_by_target.get(claim_index, []):
+                            score_result = self._project_source_request(
+                                request=request,
+                                target=claim,
+                                source_rows=rows_by_request.get(request.request_key, []),
+                                now_ms=computed_at_ms,
+                            )
+                            result["source_rows"] += int(score_result.get("source_rows") or 0)
+                            if bool(score_result.get("rank_set_changed")):
+                                item = (request.window, request.scope)
+                                touched.add(item)
+                                claim_touched.add(item)
+                        successful_claims.append((claim_key, claim_touched))
+                    except Exception as exc:
+                        failures += 1
+                        first_error = first_error or str(exc)
+                        self.repos.token_radar_dirty_targets.mark_error(
+                            [claim_key],
+                            error=str(exc),
+                            retry_ms=DIRTY_TARGET_RETRY_MS,
                             now_ms=computed_at_ms,
+                            commit=True,
                         )
-                        result["source_rows"] += int(score_result.get("source_rows") or 0)
-                        if bool(score_result.get("rank_set_changed")):
-                            item = (request.window, request.scope)
-                            touched.add(item)
-                            claim_touched.add(item)
-                    successful_claims.append((claim_key, claim_touched))
-                except Exception as exc:
-                    failures += 1
-                    first_error = first_error or str(exc)
-                    self.repos.token_radar_dirty_targets.mark_error(
-                        [claim_key],
-                        error=str(exc),
-                        retry_ms=DIRTY_TARGET_RETRY_MS,
-                        now_ms=computed_at_ms,
-                        commit=True,
-                    )
 
         publish_items = set(touched)
         publish_items.update(due_work_items)
@@ -867,6 +892,17 @@ def _claim_key(claim: dict[str, Any]) -> dict[str, str | int]:
         "lease_owner": str(claim.get("lease_owner") or ""),
         "attempt_count": int(claim.get("attempt_count") or 0),
     }
+
+
+def _claim_requires_source_rebuild(claim: Mapping[str, Any]) -> bool:
+    dirty_kind_columns = {"source_dirty", "market_dirty", "repair_dirty"}
+    if not dirty_kind_columns.issubset(claim):
+        return True
+    if bool(claim.get("repair_dirty")):
+        return True
+    if bool(claim.get("source_dirty")):
+        return True
+    return not bool(claim.get("market_dirty"))
 
 
 def _current_key(row: Mapping[str, Any]) -> tuple[str, str, str]:
