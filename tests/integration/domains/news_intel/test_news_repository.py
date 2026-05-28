@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from contextlib import contextmanager
 from types import SimpleNamespace
 
@@ -54,10 +55,8 @@ def test_source_fetch_provider_and_news_item_round_trip(tmp_path) -> None:
             raw_payload_json={"id": "guid-1", "title": "SOL ETF filing"},
             fetched_at_ms=NOW_MS,
         )
-        news = repo.upsert_news_item(
+        news = repo.upsert_canonical_news_item(
             provider_item_id=provider["provider_item_id"],
-            source_id="coindesk-rss",
-            source_domain="coindesk.com",
             canonical_url="https://www.coindesk.com/news/sol-etf",
             title="SOL ETF filing",
             summary="Issuer files for a SOL ETF.",
@@ -174,10 +173,8 @@ def test_upsert_news_item_persists_provider_signal_and_token_impacts(tmp_path) -
             fetched_at_ms=NOW_MS,
         )
 
-        row = repo.upsert_news_item(
+        row = repo.upsert_canonical_news_item(
             provider_item_id=provider["provider_item_id"],
-            source_id="opennews-realtime",
-            source_domain="6551.io",
             canonical_url="https://example.com/news/2367422",
             title="BTC headline",
             fetched_at_ms=NOW_MS,
@@ -226,16 +223,14 @@ def test_provider_and_news_item_upserts_are_idempotent_and_update_content(tmp_pa
             source_id="source-1",
             fetch_run_id=fetch_run_id,
             source_item_key="same-guid",
-            canonical_url="https://example.com/a",
+            canonical_url="https://example.com/news/a",
             payload_hash="hash-old",
             raw_payload_json={"title": "Old"},
             fetched_at_ms=NOW_MS,
         )
-        first_news = repo.upsert_news_item(
+        first_news = repo.upsert_canonical_news_item(
             provider_item_id=first_provider["provider_item_id"],
-            source_id="source-1",
-            source_domain="example.com",
-            canonical_url="https://example.com/a",
+            canonical_url="https://example.com/news/a",
             title="Old title",
             summary="Old summary",
             body_text="Old body",
@@ -251,16 +246,14 @@ def test_provider_and_news_item_upserts_are_idempotent_and_update_content(tmp_pa
             source_id="source-1",
             fetch_run_id=fetch_run_id,
             source_item_key="same-guid",
-            canonical_url="https://example.com/a",
+            canonical_url="https://example.com/news/a",
             payload_hash="hash-new",
             raw_payload_json={"title": "New"},
             fetched_at_ms=NOW_MS + 1_000,
         )
-        second_news = repo.upsert_news_item(
+        second_news = repo.upsert_canonical_news_item(
             provider_item_id=second_provider["provider_item_id"],
-            source_id="source-1",
-            source_domain="example.com",
-            canonical_url="https://example.com/a",
+            canonical_url="https://example.com/news/a",
             title="New title",
             summary="New summary",
             body_text="New body",
@@ -295,6 +288,1123 @@ def test_provider_and_news_item_upserts_are_idempotent_and_update_content(tmp_pa
     assert stored_provider["raw_payload_json"] == {"title": "New"}
     assert stored_news["title"] == "New title"
     assert stored_news["content_hash"] == "content-new"
+
+
+def test_opennews_article_id_collapses_across_sources_into_observation_edges(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        for source_id in ("opennews-news", "opennews-listing"):
+            repo.upsert_source(
+                source_id=source_id,
+                provider_type="opennews",
+                feed_url=f"opennews://{source_id}",
+                source_domain="6551.io",
+                source_name=source_id,
+                refresh_interval_seconds=10,
+                now_ms=NOW_MS,
+            )
+
+        first_run_id = repo.start_fetch_run(source_id="opennews-news", started_at_ms=NOW_MS)
+        first_provider = repo.upsert_provider_item(
+            source_id="opennews-news",
+            fetch_run_id=first_run_id,
+            source_item_key="news-2367422",
+            canonical_url="https://example.com/news/2367422",
+            payload_hash="payload-news",
+            raw_payload_json={"id": 2367422, "title": "BTC headline", "aiRating": {"status": "done"}, "ts": NOW_MS},
+            fetched_at_ms=NOW_MS,
+        )
+        first_news = repo.upsert_canonical_news_item(
+            provider_item_id=first_provider["provider_item_id"],
+            canonical_url="https://example.com/news/2367422",
+            title="BTC headline",
+            summary="First source summary",
+            body_text="First source body",
+            language="en",
+            published_at_ms=NOW_MS - 60_000,
+            fetched_at_ms=NOW_MS,
+            content_hash="content-btc-headline",
+            title_fingerprint="btc headline",
+            now_ms=NOW_MS,
+        )
+
+        second_run_id = repo.start_fetch_run(source_id="opennews-listing", started_at_ms=NOW_MS + 1_000)
+        second_provider = repo.upsert_provider_item(
+            source_id="opennews-listing",
+            fetch_run_id=second_run_id,
+            source_item_key="listing-2367422",
+            canonical_url="https://example.com/news/2367422",
+            payload_hash="payload-listing",
+            raw_payload_json={"id": 2367422, "title": "BTC headline", "aiRating": {"status": "done"}, "ts": NOW_MS},
+            fetched_at_ms=NOW_MS + 1_000,
+        )
+        second_news = repo.upsert_canonical_news_item(
+            provider_item_id=second_provider["provider_item_id"],
+            canonical_url="https://example.com/news/2367422",
+            title="BTC headline",
+            summary="Second source summary",
+            body_text="Second source body",
+            language="en",
+            published_at_ms=NOW_MS - 60_000,
+            fetched_at_ms=NOW_MS + 1_000,
+            content_hash="content-btc-headline",
+            title_fingerprint="btc headline",
+            now_ms=NOW_MS + 1_000,
+        )
+
+        news_count = conn.execute("SELECT COUNT(*) AS count FROM news_items").fetchone()["count"]
+        edge_count = conn.execute("SELECT COUNT(*) AS count FROM news_item_observation_edges").fetchone()["count"]
+        stored_news = conn.execute(
+            "SELECT * FROM news_items WHERE canonical_item_key = %s",
+            ("content-hash:content-btc-headline",),
+        ).fetchone()
+        edges = conn.execute(
+            """
+            SELECT provider_item_id, news_item_id, source_id, provider_article_key, match_type, match_confidence
+              FROM news_item_observation_edges
+             ORDER BY source_id
+            """
+        ).fetchall()
+        providers = conn.execute(
+            """
+            SELECT source_id, provider_article_id, provider_article_key, provider_payload_status,
+                   provider_published_at_ms, provider_observed_at_ms
+              FROM news_provider_items
+             ORDER BY source_id
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert first_provider["provider_article_id"] == "2367422"
+    assert second_provider["provider_article_id"] == "2367422"
+    assert first_provider["provider_article_key"] == second_provider["provider_article_key"] == "opennews:2367422"
+    assert [dict(row) for row in providers] == [
+        {
+            "source_id": "opennews-listing",
+            "provider_article_id": "2367422",
+            "provider_article_key": "opennews:2367422",
+            "provider_payload_status": "ready",
+            "provider_published_at_ms": NOW_MS,
+            "provider_observed_at_ms": NOW_MS + 1_000,
+        },
+        {
+            "source_id": "opennews-news",
+            "provider_article_id": "2367422",
+            "provider_article_key": "opennews:2367422",
+            "provider_payload_status": "ready",
+            "provider_published_at_ms": NOW_MS,
+            "provider_observed_at_ms": NOW_MS,
+        },
+    ]
+    assert first_news["status"] == "inserted"
+    assert second_news["status"] == "updated"
+    assert first_news["news_item_id"] == second_news["news_item_id"] == stored_news["news_item_id"]
+    assert news_count == 1
+    assert edge_count == 2
+    assert stored_news["canonical_item_key"] == "content-hash:content-btc-headline"
+    assert stored_news["duplicate_observation_count"] == 2
+    assert stored_news["source_ids_json"] == ["opennews-listing", "opennews-news"]
+    assert stored_news["source_domains_json"] == ["6551.io"]
+    assert stored_news["provider_article_keys_json"] == ["opennews:2367422"]
+    assert [dict(row) for row in edges] == [
+        {
+            "provider_item_id": second_provider["provider_item_id"],
+            "news_item_id": stored_news["news_item_id"],
+            "source_id": "opennews-listing",
+            "provider_article_key": "opennews:2367422",
+            "match_type": "same_content_hash",
+            "match_confidence": "strong",
+        },
+        {
+            "provider_item_id": first_provider["provider_item_id"],
+            "news_item_id": stored_news["news_item_id"],
+            "source_id": "opennews-news",
+            "provider_article_key": "opennews:2367422",
+            "match_type": "same_content_hash",
+            "match_confidence": "strong",
+        },
+    ]
+
+
+def test_exact_content_hash_collapses_different_opennews_article_ids(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        repo.upsert_source(
+            source_id="opennews-news",
+            provider_type="opennews",
+            feed_url="opennews://news",
+            source_domain="6551.io",
+            source_name="OpenNews",
+            refresh_interval_seconds=10,
+            now_ms=NOW_MS,
+        )
+        news_ids: list[str] = []
+        for article_id in ("2367422", "2367423"):
+            run_id = repo.start_fetch_run(source_id="opennews-news", started_at_ms=NOW_MS)
+            provider = repo.upsert_provider_item(
+                source_id="opennews-news",
+                fetch_run_id=run_id,
+                source_item_key=f"source-key-{article_id}",
+                canonical_url=f"https://example.com/news/{article_id}",
+                payload_hash=f"payload-{article_id}",
+                raw_payload_json={"id": article_id, "title": "Shared body", "aiRating": {"status": "done"}},
+                fetched_at_ms=NOW_MS,
+            )
+            news = repo.upsert_canonical_news_item(
+                provider_item_id=provider["provider_item_id"],
+                canonical_url=f"https://example.com/news/{article_id}",
+                title="Shared body",
+                summary="Shared summary",
+                body_text="Shared body",
+                language="en",
+                published_at_ms=NOW_MS,
+                fetched_at_ms=NOW_MS,
+                content_hash="content-shared-opennews-body",
+                title_fingerprint="shared body",
+                now_ms=NOW_MS,
+            )
+            news_ids.append(str(news["news_item_id"]))
+
+        rows = conn.execute("SELECT canonical_item_key, duplicate_observation_count FROM news_items").fetchall()
+        edges = conn.execute(
+            """
+            SELECT provider_article_key, match_type
+              FROM news_item_observation_edges
+             ORDER BY provider_article_key
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert len(set(news_ids)) == 1
+    assert [dict(row) for row in rows] == [
+        {"canonical_item_key": "content-hash:content-shared-opennews-body", "duplicate_observation_count": 2}
+    ]
+    assert [dict(row) for row in edges] == [
+        {"provider_article_key": "opennews:2367422", "match_type": "same_content_hash"},
+        {"provider_article_key": "opennews:2367423", "match_type": "same_content_hash"},
+    ]
+
+
+def test_opennews_provider_article_key_survives_source_item_key_drift(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        repo.upsert_source(
+            source_id="opennews-news",
+            provider_type="opennews",
+            feed_url="opennews://news",
+            source_domain="6551.io",
+            source_name="OpenNews",
+            refresh_interval_seconds=10,
+            now_ms=NOW_MS,
+        )
+        first_run_id = repo.start_fetch_run(source_id="opennews-news", started_at_ms=NOW_MS)
+        first = repo.upsert_provider_item(
+            source_id="opennews-news",
+            fetch_run_id=first_run_id,
+            source_item_key="transient-a",
+            canonical_url="https://example.com/news/2367422",
+            payload_hash="payload-a",
+            raw_payload_json={"id": 2367422, "title": "Ready", "aiRating": {"status": "done"}},
+            fetched_at_ms=NOW_MS,
+        )
+        second_run_id = repo.start_fetch_run(source_id="opennews-news", started_at_ms=NOW_MS + 1_000)
+        second = repo.upsert_provider_item(
+            source_id="opennews-news",
+            fetch_run_id=second_run_id,
+            source_item_key="transient-b",
+            canonical_url="https://example.com/news/2367422",
+            payload_hash="payload-b",
+            raw_payload_json={"id": 2367422, "title": "Ready", "aiRating": {"status": "done"}},
+            fetched_at_ms=NOW_MS + 1_000,
+        )
+        providers = conn.execute(
+            """
+            SELECT provider_item_id, source_item_key, provider_article_key, payload_hash
+              FROM news_provider_items
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert first["provider_item_id"] == second["provider_item_id"]
+    assert [dict(row) for row in providers] == [
+        {
+            "provider_item_id": first["provider_item_id"],
+            "source_item_key": "transient-a",
+            "provider_article_key": "opennews:2367422",
+            "payload_hash": "payload-b",
+        }
+    ]
+
+
+def test_duplicate_observation_edge_returns_updated_for_projection_refresh(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        for source_id in ("opennews-news", "opennews-onchain"):
+            repo.upsert_source(
+                source_id=source_id,
+                provider_type="opennews",
+                feed_url=f"opennews://{source_id}",
+                source_domain="6551.io",
+                source_name=source_id,
+                refresh_interval_seconds=10,
+                now_ms=NOW_MS,
+            )
+
+        first_run_id = repo.start_fetch_run(source_id="opennews-news", started_at_ms=NOW_MS)
+        first_provider = repo.upsert_provider_item(
+            source_id="opennews-news",
+            fetch_run_id=first_run_id,
+            source_item_key="news-2367422",
+            canonical_url="https://example.com/news/2367422",
+            payload_hash="payload-news",
+            raw_payload_json={"id": 2367422, "title": "BTC headline", "ts": NOW_MS},
+            fetched_at_ms=NOW_MS,
+        )
+        repo.upsert_canonical_news_item(
+            provider_item_id=first_provider["provider_item_id"],
+            canonical_url="https://example.com/news/2367422",
+            title="BTC headline",
+            summary="Same summary",
+            body_text="Same body",
+            language="en",
+            published_at_ms=NOW_MS,
+            fetched_at_ms=NOW_MS,
+            content_hash="content-btc-headline",
+            title_fingerprint="btc headline",
+            now_ms=NOW_MS,
+        )
+
+        second_run_id = repo.start_fetch_run(source_id="opennews-onchain", started_at_ms=NOW_MS + 1_000)
+        second_provider = repo.upsert_provider_item(
+            source_id="opennews-onchain",
+            fetch_run_id=second_run_id,
+            source_item_key="onchain-2367422",
+            canonical_url="https://example.com/news/2367422",
+            payload_hash="payload-onchain",
+            raw_payload_json={"id": 2367422, "title": "BTC headline", "ts": NOW_MS},
+            fetched_at_ms=NOW_MS + 1_000,
+        )
+        duplicate_edge_news = repo.upsert_canonical_news_item(
+            provider_item_id=second_provider["provider_item_id"],
+            canonical_url="https://example.com/news/2367422",
+            title="BTC headline",
+            summary="Same summary",
+            body_text="Same body",
+            language="en",
+            published_at_ms=NOW_MS,
+            fetched_at_ms=NOW_MS + 1_000,
+            content_hash="content-btc-headline",
+            title_fingerprint="btc headline",
+            now_ms=NOW_MS + 1_000,
+        )
+        repeated_duplicate = repo.upsert_canonical_news_item(
+            provider_item_id=second_provider["provider_item_id"],
+            canonical_url="https://example.com/news/2367422",
+            title="BTC headline",
+            summary="Same summary",
+            body_text="Same body",
+            language="en",
+            published_at_ms=NOW_MS,
+            fetched_at_ms=NOW_MS + 1_000,
+            content_hash="content-btc-headline",
+            title_fingerprint="btc headline",
+            now_ms=NOW_MS + 2_000,
+        )
+    finally:
+        conn.close()
+
+    assert duplicate_edge_news["status"] == "updated"
+    assert repeated_duplicate["status"] == "duplicate"
+
+
+def test_partial_duplicate_does_not_replace_ready_canonical_representative(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        for source_id in ("opennews-news", "opennews-listing"):
+            repo.upsert_source(
+                source_id=source_id,
+                provider_type="opennews",
+                feed_url=f"opennews://{source_id}",
+                source_domain="6551.io",
+                source_name=source_id,
+                refresh_interval_seconds=10,
+                now_ms=NOW_MS,
+            )
+
+        ready_run_id = repo.start_fetch_run(source_id="opennews-news", started_at_ms=NOW_MS)
+        ready_provider = repo.upsert_provider_item(
+            source_id="opennews-news",
+            fetch_run_id=ready_run_id,
+            source_item_key="ready-2367422",
+            canonical_url="https://example.com/news/2367422",
+            payload_hash="payload-ready",
+            raw_payload_json={"id": 2367422, "title": "Ready headline", "aiRating": {"status": "done"}, "ts": NOW_MS},
+            fetched_at_ms=NOW_MS,
+        )
+        ready_news = repo.upsert_canonical_news_item(
+            provider_item_id=ready_provider["provider_item_id"],
+            canonical_url="https://example.com/news/2367422",
+            title="Ready headline",
+            summary="Ready summary",
+            body_text="Ready body",
+            language="en",
+            published_at_ms=NOW_MS,
+            fetched_at_ms=NOW_MS,
+            content_hash="content-ready",
+            title_fingerprint="ready headline",
+            now_ms=NOW_MS,
+            provider_signal={
+                "source": "provider",
+                "provider": "opennews",
+                "status": "ready",
+                "direction": "bullish",
+                "score": 82,
+            },
+        )
+
+        partial_run_id = repo.start_fetch_run(source_id="opennews-listing", started_at_ms=NOW_MS + 1_000)
+        partial_provider = repo.upsert_provider_item(
+            source_id="opennews-listing",
+            fetch_run_id=partial_run_id,
+            source_item_key="partial-2367422",
+            canonical_url="opennews://item/2367422",
+            payload_hash="payload-partial",
+            raw_payload_json={"id": 2367422, "title": "Partial headline", "ts": NOW_MS + 1_000},
+            fetched_at_ms=NOW_MS + 1_000,
+        )
+        partial_news = repo.upsert_canonical_news_item(
+            provider_item_id=partial_provider["provider_item_id"],
+            canonical_url="opennews://item/2367422",
+            title="Partial headline",
+            summary="Partial summary",
+            body_text="Partial body",
+            language="en",
+            published_at_ms=NOW_MS + 1_000,
+            fetched_at_ms=NOW_MS + 1_000,
+            content_hash="content-partial",
+            title_fingerprint="partial headline",
+            now_ms=NOW_MS + 1_000,
+            provider_signal={
+                "source": "partial",
+                "status": "partial",
+                "direction": "neutral",
+            },
+        )
+
+        stored_news = conn.execute(
+            "SELECT * FROM news_items WHERE news_item_id = %s",
+            (ready_news["news_item_id"],),
+        ).fetchone()
+        edge_count = conn.execute("SELECT COUNT(*) AS count FROM news_item_observation_edges").fetchone()["count"]
+    finally:
+        conn.close()
+
+    assert ready_news["status"] == "inserted"
+    assert partial_news["status"] == "updated"
+    assert ready_news["news_item_id"] == partial_news["news_item_id"]
+    assert edge_count == 2
+    assert stored_news["duplicate_observation_count"] == 2
+    assert stored_news["canonical_url"] == "https://example.com/news/2367422"
+    assert stored_news["title"] == "Ready headline"
+    assert stored_news["summary"] == "Ready summary"
+    assert stored_news["body_text"] == "Ready body"
+    assert stored_news["content_hash"] == "content-ready"
+    assert stored_news["provider_signal_json"] == {
+        "source": "provider",
+        "provider": "opennews",
+        "status": "ready",
+        "direction": "bullish",
+        "score": 82,
+    }
+    assert stored_news["source_ids_json"] == ["opennews-listing", "opennews-news"]
+    assert stored_news["provider_article_keys_json"] == ["opennews:2367422"]
+
+
+def test_ready_representative_tie_breaker_is_order_independent(tmp_path) -> None:
+    def write_pair(order: tuple[str, str], db_name: str) -> dict[str, object]:
+        conn = connect_postgres_test(tmp_path / db_name, read_only=False)
+        try:
+            migrate(conn)
+            repo = NewsRepository(conn)
+            for label in ("alpha", "beta"):
+                repo.upsert_source(
+                    source_id=f"opennews-{label}",
+                    provider_type="opennews",
+                    feed_url=f"opennews://{label}",
+                    source_domain="6551.io",
+                    source_name=f"OpenNews {label}",
+                    refresh_interval_seconds=10,
+                    now_ms=NOW_MS,
+                )
+
+            for index, label in enumerate(order):
+                run_id = repo.start_fetch_run(source_id=f"opennews-{label}", started_at_ms=NOW_MS + index)
+                provider = repo.upsert_provider_item(
+                    source_id=f"opennews-{label}",
+                    fetch_run_id=run_id,
+                    source_item_key=f"{label}-2367422",
+                    canonical_url="https://example.com/news/2367422",
+                    payload_hash=f"payload-{label}",
+                    raw_payload_json={"id": 2367422, "title": f"{label} headline", "aiRating": {"status": "done"}},
+                    fetched_at_ms=NOW_MS + index * 1_000,
+                )
+                repo.upsert_canonical_news_item(
+                    provider_item_id=provider["provider_item_id"],
+                    canonical_url="https://example.com/news/2367422",
+                    title=f"{label.title()} headline",
+                    summary=f"{label.title()} summary",
+                    body_text=f"{label.title()} body",
+                    language="en",
+                    published_at_ms=NOW_MS,
+                    fetched_at_ms=NOW_MS + index * 1_000,
+                    content_hash=f"content-{label}",
+                    title_fingerprint=f"{label} headline",
+                    now_ms=NOW_MS + index * 1_000,
+                    provider_signal={"source": "provider", "provider": "opennews", "status": "ready"},
+                )
+
+            row = conn.execute(
+                """
+                SELECT source_id, title, summary, body_text, provider_item_id, canonical_item_key
+                  FROM news_items
+                 WHERE provider_article_keys_json ? 'opennews:2367422'
+                """
+            ).fetchone()
+        finally:
+            conn.close()
+        return dict(row)
+
+    alpha_then_beta = write_pair(("alpha", "beta"), "alpha-then-beta")
+    beta_then_alpha = write_pair(("beta", "alpha"), "beta-then-alpha")
+
+    expected = {
+        "source_id": "opennews-alpha",
+        "title": "Alpha headline",
+        "summary": "Alpha summary",
+        "body_text": "Alpha body",
+    }
+    assert {key: alpha_then_beta[key] for key in expected} == expected
+    assert {key: beta_then_alpha[key] for key in expected} == expected
+    assert alpha_then_beta["canonical_item_key"].startswith("content-hash:")
+    assert beta_then_alpha["canonical_item_key"].startswith("content-hash:")
+
+
+def test_provider_item_identity_and_ready_status_do_not_downgrade_on_later_partial(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        repo.upsert_source(
+            source_id="opennews-realtime",
+            provider_type="opennews",
+            feed_url="opennews://realtime",
+            source_domain="6551.io",
+            source_name="OpenNews",
+            refresh_interval_seconds=10,
+            now_ms=NOW_MS,
+        )
+        ready_run_id = repo.start_fetch_run(source_id="opennews-realtime", started_at_ms=NOW_MS)
+        ready_provider = repo.upsert_provider_item(
+            source_id="opennews-realtime",
+            fetch_run_id=ready_run_id,
+            source_item_key="same-provider-item",
+            canonical_url="https://example.com/news/2367422",
+            payload_hash="payload-ready",
+            raw_payload_json={"id": 2367422, "title": "Ready headline", "aiRating": {"status": "done"}},
+            fetched_at_ms=NOW_MS,
+        )
+        ready_news = repo.upsert_canonical_news_item(
+            provider_item_id=ready_provider["provider_item_id"],
+            canonical_url="https://example.com/news/2367422",
+            title="Ready headline",
+            summary="Ready summary",
+            body_text="Ready body",
+            language="en",
+            published_at_ms=NOW_MS,
+            fetched_at_ms=NOW_MS,
+            content_hash="content-ready",
+            title_fingerprint="ready headline",
+            now_ms=NOW_MS,
+            provider_signal={"source": "provider", "provider": "opennews", "status": "ready"},
+            provider_payload_status=ready_provider["incoming_provider_payload_status"],
+        )
+
+        partial_run_id = repo.start_fetch_run(source_id="opennews-realtime", started_at_ms=NOW_MS + 1_000)
+        partial_provider = repo.upsert_provider_item(
+            source_id="opennews-realtime",
+            fetch_run_id=partial_run_id,
+            source_item_key="same-provider-item",
+            canonical_url="opennews://item/2367422",
+            payload_hash="payload-partial",
+            raw_payload_json={"title": "Partial headline"},
+            fetched_at_ms=NOW_MS + 1_000,
+        )
+        partial_news = repo.upsert_canonical_news_item(
+            provider_item_id=partial_provider["provider_item_id"],
+            canonical_url="opennews://item/2367422",
+            title="Partial headline",
+            summary="Partial summary",
+            body_text="Partial body",
+            language="en",
+            published_at_ms=NOW_MS + 1_000,
+            fetched_at_ms=NOW_MS + 1_000,
+            content_hash="content-partial",
+            title_fingerprint="partial headline",
+            now_ms=NOW_MS + 1_000,
+            provider_signal={"source": "partial", "status": "partial"},
+            provider_payload_status=partial_provider["incoming_provider_payload_status"],
+        )
+
+        provider_row = conn.execute(
+            """
+            SELECT provider_article_id, provider_article_key, provider_payload_status,
+                   canonical_url, payload_hash, raw_payload_json, fetched_at_ms
+              FROM news_provider_items
+            """
+        ).fetchone()
+        stored_news = conn.execute("SELECT * FROM news_items").fetchone()
+        edge = conn.execute(
+            "SELECT news_item_id, provider_article_key, match_type FROM news_item_observation_edges"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert ready_provider["provider_item_id"] == partial_provider["provider_item_id"]
+    assert ready_news["news_item_id"] == partial_news["news_item_id"]
+    assert provider_row["provider_article_id"] == "2367422"
+    assert provider_row["provider_article_key"] == "opennews:2367422"
+    assert provider_row["provider_payload_status"] == "ready"
+    assert provider_row["canonical_url"] == "https://example.com/news/2367422"
+    assert provider_row["payload_hash"] == "payload-ready"
+    assert provider_row["raw_payload_json"]["aiRating"] == {"status": "done"}
+    assert provider_row["fetched_at_ms"] == NOW_MS
+    assert stored_news["canonical_item_key"] == "content-hash:content-ready"
+    assert stored_news["title"] == "Ready headline"
+    assert stored_news["canonical_url"] == "https://example.com/news/2367422"
+    assert edge["news_item_id"] == stored_news["news_item_id"]
+    assert edge["provider_article_key"] == "opennews:2367422"
+    assert edge["match_type"] == "same_provider_article_id"
+
+
+def test_provider_item_identity_promotion_remaps_edge_and_removes_zero_edge_item(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        repo.upsert_source(
+            source_id="opennews-realtime",
+            provider_type="opennews",
+            feed_url="opennews://realtime",
+            source_domain="6551.io",
+            source_name="OpenNews",
+            refresh_interval_seconds=10,
+            now_ms=NOW_MS,
+        )
+        first_run_id = repo.start_fetch_run(source_id="opennews-realtime", started_at_ms=NOW_MS)
+        first_provider = repo.upsert_provider_item(
+            source_id="opennews-realtime",
+            fetch_run_id=first_run_id,
+            source_item_key="pending-2367422",
+            canonical_url="opennews://item/pending-2367422",
+            payload_hash="payload-pending",
+            raw_payload_json={"title": "Pending headline"},
+            provider_article_id="",
+            fetched_at_ms=NOW_MS,
+        )
+        first_news = repo.upsert_canonical_news_item(
+            provider_item_id=first_provider["provider_item_id"],
+            canonical_url="opennews://item/pending-2367422",
+            title="Pending headline",
+            summary="Pending summary",
+            body_text="Pending body",
+            language="en",
+            published_at_ms=NOW_MS,
+            fetched_at_ms=NOW_MS,
+            content_hash="content-pending-2367422",
+            title_fingerprint="pending headline",
+            now_ms=NOW_MS,
+        )
+
+        second_run_id = repo.start_fetch_run(source_id="opennews-realtime", started_at_ms=NOW_MS + 1_000)
+        second_provider = repo.upsert_provider_item(
+            source_id="opennews-realtime",
+            fetch_run_id=second_run_id,
+            source_item_key="pending-2367422",
+            canonical_url="https://example.com/news/2367422",
+            payload_hash="payload-ready",
+            raw_payload_json={"id": 2367422, "title": "Ready headline", "aiRating": {"status": "done"}},
+            provider_article_id="2367422",
+            fetched_at_ms=NOW_MS + 1_000,
+        )
+        second_news = repo.upsert_canonical_news_item(
+            provider_item_id=second_provider["provider_item_id"],
+            canonical_url="https://example.com/news/2367422",
+            title="Ready headline",
+            summary="Ready summary",
+            body_text="Ready body",
+            language="en",
+            published_at_ms=NOW_MS + 1_000,
+            fetched_at_ms=NOW_MS + 1_000,
+            content_hash="content-ready-2367422",
+            title_fingerprint="ready headline",
+            now_ms=NOW_MS + 1_000,
+            provider_payload_status=second_provider["incoming_provider_payload_status"],
+        )
+
+        old_item_count = conn.execute(
+            "SELECT COUNT(*) AS count FROM news_items WHERE news_item_id = %s",
+            (first_news["news_item_id"],),
+        ).fetchone()["count"]
+        rows = conn.execute(
+            """
+            SELECT news_item_id, canonical_item_key, duplicate_observation_count,
+                   source_ids_json, provider_article_keys_json
+              FROM news_items
+             ORDER BY canonical_item_key
+            """
+        ).fetchall()
+        edges = conn.execute(
+            """
+            SELECT provider_item_id, news_item_id, provider_article_key, match_type
+              FROM news_item_observation_edges
+             ORDER BY provider_item_id
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert first_provider["provider_item_id"] == second_provider["provider_item_id"]
+    assert first_provider["provider_article_id"] == ""
+    assert first_news["canonical_item_key"] == "content-hash:content-pending-2367422"
+    assert second_news["status"] == "updated"
+    assert second_news["canonical_item_key"] == "content-hash:content-ready-2367422"
+    assert old_item_count == 0
+    assert [dict(row) for row in rows] == [
+        {
+            "news_item_id": second_news["news_item_id"],
+            "canonical_item_key": "content-hash:content-ready-2367422",
+            "duplicate_observation_count": 1,
+            "source_ids_json": ["opennews-realtime"],
+            "provider_article_keys_json": ["opennews:2367422"],
+        }
+    ]
+    assert [dict(row) for row in edges] == [
+        {
+            "provider_item_id": second_provider["provider_item_id"],
+            "news_item_id": second_news["news_item_id"],
+            "provider_article_key": "opennews:2367422",
+            "match_type": "same_content_hash",
+        }
+    ]
+
+
+def test_opennews_partial_first_promotes_to_ready_content_hash_and_collapses_mirror_source(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        repo.upsert_source(
+            source_id="opennews-realtime",
+            provider_type="opennews",
+            feed_url="opennews://realtime",
+            source_domain="6551.io",
+            source_name="OpenNews",
+            refresh_interval_seconds=10,
+            now_ms=NOW_MS,
+        )
+        repo.upsert_source(
+            source_id="rss-mirror",
+            provider_type="rss",
+            feed_url="https://example.com/rss.xml",
+            source_domain="example.com",
+            source_name="Mirror",
+            refresh_interval_seconds=60,
+            now_ms=NOW_MS,
+        )
+        partial_run_id = repo.start_fetch_run(source_id="opennews-realtime", started_at_ms=NOW_MS)
+        partial_provider = repo.upsert_provider_item(
+            source_id="opennews-realtime",
+            fetch_run_id=partial_run_id,
+            source_item_key="ws-2367422",
+            canonical_url="opennews://item/2367422",
+            payload_hash="payload-partial",
+            raw_payload_json={"title": "Partial headline"},
+            provider_article_id="2367422",
+            fetched_at_ms=NOW_MS,
+        )
+        partial_news = repo.upsert_canonical_news_item(
+            provider_item_id=partial_provider["provider_item_id"],
+            canonical_url="opennews://item/2367422",
+            title="Partial headline",
+            summary="Partial summary",
+            body_text="Partial body",
+            language="en",
+            published_at_ms=NOW_MS,
+            fetched_at_ms=NOW_MS,
+            content_hash="content-partial-2367422",
+            title_fingerprint="partial headline",
+            now_ms=NOW_MS,
+            provider_payload_status=partial_provider["incoming_provider_payload_status"],
+        )
+
+        ready_run_id = repo.start_fetch_run(source_id="opennews-realtime", started_at_ms=NOW_MS + 1_000)
+        ready_provider = repo.upsert_provider_item(
+            source_id="opennews-realtime",
+            fetch_run_id=ready_run_id,
+            source_item_key="rest-2367422",
+            canonical_url="https://example.com/news/2367422",
+            payload_hash="payload-ready",
+            raw_payload_json={"id": 2367422, "title": "Ready headline", "aiRating": {"status": "done"}},
+            fetched_at_ms=NOW_MS + 1_000,
+        )
+        ready_news = repo.upsert_canonical_news_item(
+            provider_item_id=ready_provider["provider_item_id"],
+            canonical_url="https://example.com/news/2367422",
+            title="Ready headline",
+            summary="Shared summary",
+            body_text="Shared body",
+            language="en",
+            published_at_ms=NOW_MS + 1_000,
+            fetched_at_ms=NOW_MS + 1_000,
+            content_hash="content-ready-2367422",
+            title_fingerprint="ready headline",
+            now_ms=NOW_MS + 1_000,
+            provider_payload_status=ready_provider["incoming_provider_payload_status"],
+        )
+        mirror_run_id = repo.start_fetch_run(source_id="rss-mirror", started_at_ms=NOW_MS + 2_000)
+        mirror_provider = repo.upsert_provider_item(
+            source_id="rss-mirror",
+            fetch_run_id=mirror_run_id,
+            source_item_key="mirror-2367422",
+            canonical_url="https://example.com/news/2367422",
+            payload_hash="payload-mirror",
+            raw_payload_json={"guid": "mirror-2367422", "title": "Ready headline"},
+            fetched_at_ms=NOW_MS + 2_000,
+        )
+        mirror_news = repo.upsert_canonical_news_item(
+            provider_item_id=mirror_provider["provider_item_id"],
+            canonical_url="https://example.com/news/2367422",
+            title="Ready headline",
+            summary="Shared summary",
+            body_text="Shared body",
+            language="en",
+            published_at_ms=NOW_MS + 2_000,
+            fetched_at_ms=NOW_MS + 2_000,
+            content_hash="content-ready-2367422",
+            title_fingerprint="ready headline",
+            now_ms=NOW_MS + 2_000,
+        )
+
+        rows = conn.execute(
+            """
+            SELECT news_item_id, canonical_item_key, duplicate_observation_count,
+                   source_ids_json, provider_article_keys_json
+              FROM news_items
+             ORDER BY canonical_item_key
+            """
+        ).fetchall()
+        edges = conn.execute(
+            """
+            SELECT source_id, news_item_id, provider_article_key, match_type
+              FROM news_item_observation_edges
+             ORDER BY source_id
+            """
+        ).fetchall()
+        old_item_count = conn.execute(
+            "SELECT COUNT(*) AS count FROM news_items WHERE news_item_id = %s",
+            (partial_news["news_item_id"],),
+        ).fetchone()["count"]
+    finally:
+        conn.close()
+
+    assert partial_provider["provider_item_id"] == ready_provider["provider_item_id"]
+    assert ready_news["news_item_id"] == mirror_news["news_item_id"]
+    assert old_item_count == 0
+    assert [dict(row) for row in rows] == [
+        {
+            "news_item_id": ready_news["news_item_id"],
+            "canonical_item_key": "content-hash:content-ready-2367422",
+            "duplicate_observation_count": 2,
+            "source_ids_json": ["opennews-realtime", "rss-mirror"],
+            "provider_article_keys_json": ["opennews:2367422", "rss:mirror-2367422"],
+        }
+    ]
+    assert [dict(row) for row in edges] == [
+        {
+            "source_id": "opennews-realtime",
+            "news_item_id": ready_news["news_item_id"],
+            "provider_article_key": "opennews:2367422",
+            "match_type": "same_content_hash",
+        },
+        {
+            "source_id": "rss-mirror",
+            "news_item_id": ready_news["news_item_id"],
+            "provider_article_key": "rss:mirror-2367422",
+            "match_type": "same_content_hash",
+        },
+    ]
+
+
+def test_opennews_ready_content_hash_promotes_even_when_url_is_not_article_identity(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        repo.upsert_source(
+            source_id="opennews-realtime",
+            provider_type="opennews",
+            feed_url="opennews://realtime",
+            source_domain="6551.io",
+            source_name="OpenNews",
+            refresh_interval_seconds=10,
+            now_ms=NOW_MS,
+        )
+        partial_run_id = repo.start_fetch_run(source_id="opennews-realtime", started_at_ms=NOW_MS)
+        partial_provider = repo.upsert_provider_item(
+            source_id="opennews-realtime",
+            fetch_run_id=partial_run_id,
+            source_item_key="ws-2367422",
+            canonical_url="opennews://item/2367422",
+            payload_hash="payload-partial",
+            raw_payload_json={"title": "Partial headline"},
+            provider_article_id="2367422",
+            fetched_at_ms=NOW_MS,
+        )
+        partial_news = repo.upsert_canonical_news_item(
+            provider_item_id=partial_provider["provider_item_id"],
+            canonical_url="opennews://item/2367422",
+            title="Partial headline",
+            summary="Partial summary",
+            body_text="Partial body",
+            language="en",
+            published_at_ms=NOW_MS,
+            fetched_at_ms=NOW_MS,
+            content_hash="content-partial-homepage",
+            title_fingerprint="partial headline",
+            now_ms=NOW_MS,
+            provider_payload_status=partial_provider["incoming_provider_payload_status"],
+        )
+        ready_run_id = repo.start_fetch_run(source_id="opennews-realtime", started_at_ms=NOW_MS + 1_000)
+        ready_provider = repo.upsert_provider_item(
+            source_id="opennews-realtime",
+            fetch_run_id=ready_run_id,
+            source_item_key="rest-2367422",
+            canonical_url="https://example.com/",
+            payload_hash="payload-ready",
+            raw_payload_json={"id": 2367422, "title": "Ready headline", "aiRating": {"status": "done"}},
+            fetched_at_ms=NOW_MS + 1_000,
+        )
+        ready_news = repo.upsert_canonical_news_item(
+            provider_item_id=ready_provider["provider_item_id"],
+            canonical_url="https://example.com/",
+            title="Ready headline",
+            summary="Ready summary",
+            body_text="Ready body",
+            language="en",
+            published_at_ms=NOW_MS + 1_000,
+            fetched_at_ms=NOW_MS + 1_000,
+            content_hash="content-ready-homepage",
+            title_fingerprint="ready headline",
+            now_ms=NOW_MS + 1_000,
+            provider_payload_status=ready_provider["incoming_provider_payload_status"],
+        )
+
+        rows = conn.execute("SELECT news_item_id, canonical_item_key, url_identity_kind FROM news_items").fetchall()
+        edge = conn.execute(
+            "SELECT news_item_id, provider_article_key, match_type FROM news_item_observation_edges"
+        ).fetchone()
+        old_item_count = conn.execute(
+            "SELECT COUNT(*) AS count FROM news_items WHERE news_item_id = %s",
+            (partial_news["news_item_id"],),
+        ).fetchone()["count"]
+    finally:
+        conn.close()
+
+    assert old_item_count == 0
+    assert [dict(row) for row in rows] == [
+        {
+            "news_item_id": ready_news["news_item_id"],
+            "canonical_item_key": "content-hash:content-ready-homepage",
+            "url_identity_kind": "homepage",
+        }
+    ]
+    assert dict(edge) == {
+        "news_item_id": ready_news["news_item_id"],
+        "provider_article_key": "opennews:2367422",
+        "match_type": "same_content_hash",
+    }
+
+
+def test_identity_promotion_reselects_old_representative_when_edges_remain(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        repo.upsert_source(
+            source_id="opennews-realtime",
+            provider_type="opennews",
+            feed_url="opennews://realtime",
+            source_domain="6551.io",
+            source_name="OpenNews",
+            refresh_interval_seconds=10,
+            now_ms=NOW_MS,
+        )
+        fetch_run_id = repo.start_fetch_run(source_id="opennews-realtime", started_at_ms=NOW_MS)
+        first_provider = repo.upsert_provider_item(
+            source_id="opennews-realtime",
+            fetch_run_id=fetch_run_id,
+            source_item_key="pending-a",
+            canonical_url="opennews://item/pending-a",
+            payload_hash="payload-a",
+            raw_payload_json={"title": "Pending A"},
+            provider_article_id="",
+            fetched_at_ms=NOW_MS,
+        )
+        first_news = repo.upsert_canonical_news_item(
+            provider_item_id=first_provider["provider_item_id"],
+            canonical_url="opennews://item/pending-a",
+            title="Pending A",
+            summary="Pending A summary",
+            body_text="Pending A body",
+            language="en",
+            published_at_ms=NOW_MS,
+            fetched_at_ms=NOW_MS,
+            content_hash="content-shared-cluster",
+            title_fingerprint="pending shared",
+            now_ms=NOW_MS,
+        )
+        second_provider = repo.upsert_provider_item(
+            source_id="opennews-realtime",
+            fetch_run_id=fetch_run_id,
+            source_item_key="pending-b",
+            canonical_url="opennews://item/pending-b",
+            payload_hash="payload-b",
+            raw_payload_json={"title": "Pending B"},
+            provider_article_id="",
+            fetched_at_ms=NOW_MS + 1,
+        )
+        repo.upsert_canonical_news_item(
+            provider_item_id=second_provider["provider_item_id"],
+            canonical_url="opennews://item/pending-b",
+            title="Pending B",
+            summary="Pending B summary",
+            body_text="Pending B body",
+            language="en",
+            published_at_ms=NOW_MS,
+            fetched_at_ms=NOW_MS + 1,
+            content_hash="content-shared-cluster",
+            title_fingerprint="pending shared",
+            now_ms=NOW_MS + 1,
+        )
+        repo.mark_item_processed(news_item_id=first_news["news_item_id"], processed_at_ms=NOW_MS + 100)
+        conn.execute(
+            """
+            INSERT INTO news_item_entities (
+              entity_id, news_item_id, entity_type, raw_value, normalized_value, chain,
+              span_start, span_end, text_surface, confidence, extraction_policy_version, created_at_ms
+            )
+            VALUES (%s, %s, 'symbol', '$STALE', 'STALE', NULL, 0, 6, 'title', 0.8, 'test', %s)
+            """,
+            ("entity-stale-remap", first_news["news_item_id"], NOW_MS),
+        )
+        conn.commit()
+
+        promoted_run_id = repo.start_fetch_run(source_id="opennews-realtime", started_at_ms=NOW_MS + 2_000)
+        promoted_provider = repo.upsert_provider_item(
+            source_id="opennews-realtime",
+            fetch_run_id=promoted_run_id,
+            source_item_key="pending-a",
+            canonical_url="https://example.com/news/2367422",
+            payload_hash="payload-a-ready",
+            raw_payload_json={"id": 2367422, "title": "Ready A", "aiRating": {"status": "done"}},
+            provider_article_id="2367422",
+            fetched_at_ms=NOW_MS + 2_000,
+        )
+        promoted_news = repo.upsert_canonical_news_item(
+            provider_item_id=promoted_provider["provider_item_id"],
+            canonical_url="https://example.com/news/2367422",
+            title="Ready A",
+            summary="Ready A summary",
+            body_text="Ready A body",
+            language="en",
+            published_at_ms=NOW_MS + 2_000,
+            fetched_at_ms=NOW_MS + 2_000,
+            content_hash="content-ready-a",
+            title_fingerprint="ready a",
+            now_ms=NOW_MS + 2_000,
+        )
+
+        old_item = conn.execute(
+            "SELECT * FROM news_items WHERE news_item_id = %s",
+            (first_news["news_item_id"],),
+        ).fetchone()
+        old_entity_count = conn.execute(
+            "SELECT COUNT(*) AS count FROM news_item_entities WHERE news_item_id = %s",
+            (first_news["news_item_id"],),
+        ).fetchone()["count"]
+        old_edges = conn.execute(
+            """
+            SELECT provider_item_id, news_item_id, provider_article_key
+              FROM news_item_observation_edges
+             WHERE news_item_id = %s
+            """,
+            (first_news["news_item_id"],),
+        ).fetchall()
+        new_edges = conn.execute(
+            """
+            SELECT provider_item_id, news_item_id, provider_article_key
+              FROM news_item_observation_edges
+             WHERE news_item_id = %s
+            """,
+            (promoted_news["news_item_id"],),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert old_item is not None
+    assert old_item["canonical_item_key"] == "content-hash:content-shared-cluster"
+    assert old_item["provider_item_id"] == second_provider["provider_item_id"]
+    assert old_item["canonical_url"] == "opennews://item/pending-b"
+    assert old_item["title"] == "Pending B"
+    assert old_item["summary"] == "Pending B summary"
+    assert old_item["body_text"] == "Pending B body"
+    assert old_item["content_hash"] == "content-shared-cluster"
+    assert old_item["title_fingerprint"] == "pending shared"
+    assert old_item["lifecycle_status"] == "raw"
+    assert old_item["duplicate_observation_count"] == 1
+    assert old_item["provider_article_keys_json"] == []
+    assert old_entity_count == 0
+    assert set(promoted_news["affected_news_item_ids"]) == {
+        first_news["news_item_id"],
+        promoted_news["news_item_id"],
+    }
+    assert [dict(row) for row in old_edges] == [
+        {
+            "provider_item_id": second_provider["provider_item_id"],
+            "news_item_id": first_news["news_item_id"],
+            "provider_article_key": "",
+        }
+    ]
+    assert [dict(row) for row in new_edges] == [
+        {
+            "provider_item_id": promoted_provider["provider_item_id"],
+            "news_item_id": promoted_news["news_item_id"],
+            "provider_article_key": "opennews:2367422",
+        }
+    ]
 
 
 def test_fetch_run_deletion_does_not_delete_provider_or_news_facts(tmp_path) -> None:
@@ -432,7 +1542,10 @@ def test_reconcile_configured_sources_materializes_and_disables_removed_managed_
     finally:
         conn.close()
 
-    assert [row["source_id"] for row in rows] == ["configured-source"]
+    assert [(row["source_id"], row["status"]) for row in rows] == [
+        ("configured-source", "inserted"),
+        ("removed-source", "disabled"),
+    ]
     assert states == {"configured-source": True, "removed-source": False}
 
 
@@ -601,6 +1714,8 @@ def test_delete_page_rows_for_sources_removes_disabled_source_scope(tmp_path) ->
                 _page_row("row-2", other_news_item_id, source_id="source-2"),
             ],
         )
+        conn.execute("UPDATE news_sources SET enabled = false WHERE source_id = 'source-1'")
+        conn.commit()
 
         deleted = repo.delete_page_rows_for_sources(source_ids=["source-1"])
         rows = conn.execute("SELECT row_id FROM news_page_rows ORDER BY row_id").fetchall()
@@ -609,6 +1724,105 @@ def test_delete_page_rows_for_sources_removes_disabled_source_scope(tmp_path) ->
 
     assert deleted == 1
     assert [row["row_id"] for row in rows] == ["row-2"]
+
+
+def test_list_news_item_ids_for_sources_uses_observation_edges_not_representative_source(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo, source_id="source-1", source_item_key="shared")
+        repo.upsert_source(
+            source_id="source-2",
+            provider_type="rss",
+            feed_url="https://source-2.example.com/rss.xml",
+            source_domain="source-2.example.com",
+            source_name="Source Two",
+            now_ms=NOW_MS,
+        )
+        fetch_run_id = repo.start_fetch_run(source_id="source-2", started_at_ms=NOW_MS)
+        provider = repo.upsert_provider_item(
+            source_id="source-2",
+            fetch_run_id=fetch_run_id,
+            source_item_key="shared-copy",
+            canonical_url="https://example.com/news/shared",
+            payload_hash="hash-shared-copy",
+            raw_payload_json={"title": "Shared"},
+            fetched_at_ms=NOW_MS,
+        )
+        repo.upsert_canonical_news_item(
+            provider_item_id=provider["provider_item_id"],
+            canonical_url="https://example.com/news/shared",
+            title="Shared",
+            summary="Summary",
+            body_text="Body",
+            language="en",
+            published_at_ms=NOW_MS,
+            fetched_at_ms=NOW_MS,
+            content_hash="content-shared",
+            title_fingerprint="shared",
+            now_ms=NOW_MS,
+        )
+
+        source_two_items = repo.list_news_item_ids_for_sources(source_ids=["source-2"])
+    finally:
+        conn.close()
+
+    assert source_two_items == [news_item_id]
+
+
+def test_page_projection_loader_uses_enabled_edge_source_metadata_for_disabled_representative(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo, source_id="source-disabled", source_item_key="shared")
+        repo.upsert_source(
+            source_id="source-enabled",
+            provider_type="rss",
+            feed_url="https://enabled.example/rss.xml",
+            source_domain="enabled.example",
+            source_name="Enabled",
+            source_role="official_exchange",
+            trust_tier="high",
+            coverage_tags=("breaking",),
+            now_ms=NOW_MS,
+        )
+        fetch_run_id = repo.start_fetch_run(source_id="source-enabled", started_at_ms=NOW_MS)
+        provider = repo.upsert_provider_item(
+            source_id="source-enabled",
+            fetch_run_id=fetch_run_id,
+            source_item_key="shared-enabled",
+            canonical_url="https://example.com/news/shared",
+            payload_hash="hash-shared-enabled",
+            raw_payload_json={"title": "Shared"},
+            fetched_at_ms=NOW_MS,
+        )
+        repo.upsert_canonical_news_item(
+            provider_item_id=provider["provider_item_id"],
+            canonical_url="https://example.com/news/shared",
+            title="Shared",
+            summary="Summary",
+            body_text="Body",
+            language="en",
+            published_at_ms=NOW_MS,
+            fetched_at_ms=NOW_MS,
+            content_hash="content-shared",
+            title_fingerprint="shared",
+            now_ms=NOW_MS,
+        )
+        conn.execute("UPDATE news_sources SET enabled = false WHERE source_id = 'source-disabled'")
+        conn.commit()
+
+        payloads = repo.load_items_for_page_projection(news_item_ids=[news_item_id])
+    finally:
+        conn.close()
+
+    assert payloads[0]["item"]["source_id"] == "source-enabled"
+    assert payloads[0]["item"]["source_domain"] == "enabled.example"
+    assert payloads[0]["item"]["source_role"] == "official_exchange"
+    assert payloads[0]["item"]["trust_tier"] == "high"
+    assert payloads[0]["item"]["coverage_tags_json"] == ["breaking"]
 
 
 def test_list_news_page_rows_only_returns_projected_items_after_fallback_hard_cut(tmp_path) -> None:
@@ -628,6 +1842,135 @@ def test_list_news_page_rows_only_returns_projected_items_after_fallback_hard_cu
         conn.close()
 
     assert {row["row_id"] for row in rows} == {"row-projected"}
+
+
+def test_list_news_page_rows_requires_enabled_observation_edge(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo, source_item_key="disabled-source", title="Disabled")
+        repo.replace_page_rows_for_items(
+            news_item_ids=[news_item_id],
+            rows=[_page_row("row-disabled-source", news_item_id, source_id="source-1")],
+        )
+        conn.execute("UPDATE news_sources SET enabled = false WHERE source_id = 'source-1'")
+        conn.commit()
+
+        rows = repo.list_news_page_rows(limit=10)
+    finally:
+        conn.close()
+
+    assert rows == []
+
+
+def test_replace_page_rows_for_items_writes_canonical_duplicate_summary_columns(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo, source_item_key="summary", title="Summary")
+        repo.replace_page_rows_for_items(
+            news_item_ids=[news_item_id],
+            rows=[_page_row("row-summary", news_item_id, source_id="source-1")],
+        )
+
+        row = conn.execute(
+            """
+            SELECT canonical_item_key, duplicate_count, source_ids_json,
+                   source_domains_json, provider_article_keys_json
+              FROM news_page_rows
+             WHERE row_id = 'row-summary'
+            """
+        ).fetchone()
+        item = conn.execute(
+            """
+            SELECT canonical_item_key, duplicate_observation_count, source_ids_json,
+                   source_domains_json, provider_article_keys_json
+              FROM news_items
+             WHERE news_item_id = %s
+            """,
+            (news_item_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row["canonical_item_key"] == item["canonical_item_key"]
+    assert row["duplicate_count"] == item["duplicate_observation_count"]
+    assert row["source_ids_json"] == item["source_ids_json"] == ["source-1"]
+    assert row["source_domains_json"] == item["source_domains_json"] == ["example.com"]
+    assert row["provider_article_keys_json"] == item["provider_article_keys_json"] == ["rss:summary"]
+
+
+def test_replace_page_rows_summary_counts_enabled_edges_only(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo, source_item_key="summary", title="Summary")
+        repo.upsert_source(
+            source_id="source-disabled",
+            provider_type="rss",
+            feed_url="https://disabled.example/rss.xml",
+            source_domain="disabled.example",
+            source_name="Disabled",
+            now_ms=NOW_MS,
+        )
+        fetch_run_id = repo.start_fetch_run(source_id="source-disabled", started_at_ms=NOW_MS)
+        provider = repo.upsert_provider_item(
+            source_id="source-disabled",
+            fetch_run_id=fetch_run_id,
+            source_item_key="summary-disabled",
+            canonical_url="https://example.com/news/summary",
+            payload_hash="hash-summary-disabled",
+            raw_payload_json={"title": "Summary"},
+            fetched_at_ms=NOW_MS,
+        )
+        duplicate_news = repo.upsert_canonical_news_item(
+            provider_item_id=provider["provider_item_id"],
+            canonical_url="https://example.com/news/summary",
+            title="Summary",
+            summary="Summary",
+            body_text="Body",
+            language="en",
+            published_at_ms=NOW_MS,
+            fetched_at_ms=NOW_MS,
+            content_hash="content-summary",
+            title_fingerprint="summary",
+            now_ms=NOW_MS,
+        )
+        conn.execute("UPDATE news_sources SET enabled = false WHERE source_id = 'source-disabled'")
+        conn.commit()
+
+        repo.replace_page_rows_for_items(
+            news_item_ids=[news_item_id],
+            rows=[_page_row("row-summary-enabled", news_item_id, source_id="source-1")],
+        )
+        row = conn.execute(
+            """
+            SELECT duplicate_count, source_ids_json, source_domains_json, provider_article_keys_json
+              FROM news_page_rows
+             WHERE row_id = 'row-summary-enabled'
+            """
+        ).fetchone()
+        item = conn.execute(
+            """
+            SELECT duplicate_observation_count, source_ids_json
+              FROM news_items
+             WHERE news_item_id = %s
+            """,
+            (news_item_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert duplicate_news["news_item_id"] == news_item_id
+    assert item["duplicate_observation_count"] == 2
+    assert set(item["source_ids_json"]) == {"source-1", "source-disabled"}
+    assert row["duplicate_count"] == 1
+    assert row["source_ids_json"] == ["source-1"]
+    assert row["source_domains_json"] == ["example.com"]
+    assert row["provider_article_keys_json"] == ["rss:summary"]
 
 
 def test_news_item_agent_brief_migration_backfills_pending_page_rows(tmp_path) -> None:
@@ -669,6 +2012,262 @@ def test_news_item_agent_brief_migration_backfills_pending_page_rows(tmp_path) -
     assert "agent_brief_json" not in rows[0]
     assert rows[0]["agent_brief"]["status"] == "pending"
     assert rows[0]["signal"]["status"] == "partial"
+
+
+def test_canonical_dedup_migration_backfills_identity_and_observation_edges(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
+        conn.execute("CREATE SCHEMA public")
+        conn.execute("GRANT ALL ON SCHEMA public TO public")
+        conn.commit()
+        config = alembic_config()
+        config.attributes["database_url"] = _test_postgres_dsn()
+        command.upgrade(config, "20260527_0115")
+
+        _insert_legacy_canonical_source(conn)
+        _insert_legacy_canonical_provider_and_item(
+            conn,
+            suffix="a",
+            canonical_url="https://example.com/news/shared",
+            content_hash="content-shared",
+        )
+        _insert_legacy_canonical_provider_and_item(
+            conn,
+            suffix="b",
+            canonical_url="https://example.com/news/shared",
+            content_hash="content-shared",
+        )
+        conn.commit()
+
+        command.upgrade(config, "head")
+
+        rows = conn.execute(
+            """
+            SELECT news_item_id, canonical_item_key, duplicate_observation_count,
+                   source_ids_json, source_domains_json, provider_article_keys_json
+              FROM news_items
+             ORDER BY news_item_id
+            """
+        ).fetchall()
+        edge_rows = conn.execute(
+            """
+            SELECT provider_item_id, news_item_id, source_id, provider_article_key,
+                   match_type, match_confidence
+              FROM news_item_observation_edges
+             ORDER BY provider_item_id
+            """
+        ).fetchall()
+        empty_key_count = conn.execute(
+            "SELECT COUNT(*) AS count FROM news_items WHERE canonical_item_key = ''"
+        ).fetchone()["count"]
+        zero_edge_count = conn.execute(
+            """
+            SELECT COUNT(*) AS count
+              FROM news_items AS items
+             WHERE NOT EXISTS (
+               SELECT 1
+                 FROM news_item_observation_edges AS edges
+                WHERE edges.news_item_id = items.news_item_id
+             )
+            """
+        ).fetchone()["count"]
+        duplicate_key_count = conn.execute(
+            """
+            SELECT COUNT(*) AS count
+              FROM (
+                SELECT canonical_item_key
+                  FROM news_items
+                 WHERE canonical_item_key <> ''
+                 GROUP BY canonical_item_key
+                HAVING COUNT(*) > 1
+              ) AS duplicate_keys
+            """
+        ).fetchone()["count"]
+        canonical_index_exists = conn.execute(
+            "SELECT to_regclass('public.ux_news_items_canonical_item_key') IS NOT NULL AS exists"
+        ).fetchone()["exists"]
+    finally:
+        conn.close()
+
+    assert empty_key_count == 0
+    assert zero_edge_count == 0
+    assert duplicate_key_count == 0
+    assert canonical_index_exists is True
+    assert len(rows) == 1
+    assert len(edge_rows) == 2
+    assert [dict(row) for row in rows] == [
+        {
+            "news_item_id": "news-item-legacy-a",
+            "canonical_item_key": "content-hash:content-shared",
+            "duplicate_observation_count": 2,
+            "source_ids_json": ["source-legacy"],
+            "source_domains_json": ["example.com"],
+            "provider_article_keys_json": ["rss:guid-a", "rss:guid-b"],
+        }
+    ]
+    assert {tuple(row["source_ids_json"]) for row in rows} == {("source-legacy",)}
+    assert {tuple(row["source_domains_json"]) for row in rows} == {("example.com",)}
+    assert [dict(row) for row in edge_rows] == [
+        {
+            "provider_item_id": "provider-item-legacy-a",
+            "news_item_id": "news-item-legacy-a",
+            "source_id": "source-legacy",
+            "provider_article_key": "rss:guid-a",
+            "match_type": "same_content_hash",
+            "match_confidence": "strong",
+        },
+        {
+            "provider_item_id": "provider-item-legacy-b",
+            "news_item_id": "news-item-legacy-a",
+            "source_id": "source-legacy",
+            "provider_article_key": "rss:guid-b",
+            "match_type": "same_content_hash",
+            "match_confidence": "strong",
+        },
+    ]
+
+
+def test_canonical_dedup_migration_keeps_aggregators_and_live_urls_out_of_article_identity(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
+        conn.execute("CREATE SCHEMA public")
+        conn.execute("GRANT ALL ON SCHEMA public TO public")
+        conn.commit()
+        config = alembic_config()
+        config.attributes["database_url"] = _test_postgres_dsn()
+        command.upgrade(config, "20260527_0115")
+
+        _insert_legacy_canonical_source(conn, source_id="source-url", provider_type="rss")
+        for suffix, url in (
+            ("news-root", "https://example.com/news"),
+            ("nyt-live", "https://www.nytimes.com/live/2026/05/28/business/markets-fed"),
+            ("tass-world", "https://tass.com/world"),
+            ("afp-news", "https://www.afp.com/en/news"),
+        ):
+            _insert_legacy_canonical_provider_and_item(
+                conn,
+                suffix=suffix,
+                source_id="source-url",
+                canonical_url=url,
+                content_hash=f"content-{suffix}",
+            )
+        conn.commit()
+
+        command.upgrade(config, "head")
+
+        rows = conn.execute(
+            """
+            SELECT canonical_url, canonical_item_key, dedup_key_kind, url_identity_kind
+              FROM news_items
+             ORDER BY canonical_url
+            """
+        ).fetchall()
+        edges = conn.execute(
+            """
+            SELECT items.canonical_url, edges.match_type
+              FROM news_item_observation_edges AS edges
+              JOIN news_items AS items ON items.news_item_id = edges.news_item_id
+             ORDER BY items.canonical_url
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert [row["canonical_item_key"] for row in rows] == [
+        "content-hash:content-news-root",
+        "content-hash:content-tass-world",
+        "content-hash:content-afp-news",
+        "content-hash:content-nyt-live",
+    ]
+    assert {row["dedup_key_kind"] for row in rows} == {"content_hash"}
+    assert {row["url_identity_kind"] for row in rows} == {"aggregator", "live_page"}
+    assert {row["match_type"] for row in edges} == {"same_content_hash"}
+
+
+def test_canonical_dedup_migration_backfills_opennews_provider_id_only_from_payload(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
+        conn.execute("CREATE SCHEMA public")
+        conn.execute("GRANT ALL ON SCHEMA public TO public")
+        conn.commit()
+        config = alembic_config()
+        config.attributes["database_url"] = _test_postgres_dsn()
+        command.upgrade(config, "20260527_0115")
+
+        _insert_legacy_canonical_source(
+            conn,
+            source_id="opennews-legacy",
+            provider_type="opennews",
+            source_domain="6551.io",
+        )
+        _insert_legacy_canonical_provider_and_item(
+            conn,
+            suffix="opennews-missing",
+            source_id="opennews-legacy",
+            source_domain="6551.io",
+            source_item_key="source-key-is-not-article-id",
+            canonical_url="opennews://item/source-key-is-not-article-id",
+            content_hash="content-opennews-missing",
+            raw_payload={"sourceItemKey": "source-key-is-not-article-id", "title": "Missing provider id"},
+        )
+        _insert_legacy_canonical_provider_and_item(
+            conn,
+            suffix="opennews-real",
+            source_id="opennews-legacy",
+            source_domain="6551.io",
+            source_item_key="transient-source-key",
+            canonical_url="opennews://item/2367422",
+            content_hash="content-opennews-real",
+            raw_payload={"id": 2367422, "title": "Real provider id"},
+        )
+        conn.commit()
+
+        command.upgrade(config, "head")
+
+        providers = conn.execute(
+            """
+            SELECT source_item_key, provider_article_id, provider_article_key
+              FROM news_provider_items
+             ORDER BY source_item_key
+            """
+        ).fetchall()
+        rows = conn.execute(
+            """
+            SELECT canonical_url, canonical_item_key, provider_article_keys_json
+              FROM news_items
+             ORDER BY canonical_url
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert [dict(row) for row in providers] == [
+        {
+            "source_item_key": "source-key-is-not-article-id",
+            "provider_article_id": "",
+            "provider_article_key": "",
+        },
+        {
+            "source_item_key": "transient-source-key",
+            "provider_article_id": "2367422",
+            "provider_article_key": "opennews:2367422",
+        },
+    ]
+    assert [dict(row) for row in rows] == [
+        {
+            "canonical_url": "opennews://item/2367422",
+            "canonical_item_key": "content-hash:content-opennews-real",
+            "provider_article_keys_json": ["opennews:2367422"],
+        },
+        {
+            "canonical_url": "opennews://item/source-key-is-not-article-id",
+            "canonical_item_key": "content-hash:content-opennews-missing",
+            "provider_article_keys_json": [],
+        },
+    ]
 
 
 def test_page_projection_rebuilds_and_lists_agent_brief_columns_when_brief_updates(tmp_path) -> None:
@@ -746,7 +2345,9 @@ def test_page_projection_rebuilds_and_lists_agent_brief_columns_when_brief_updat
     assert "agent_brief_status" not in rows[0]
     assert "agent_brief_json" not in rows[0]
     assert rows[0]["agent_brief"]["summary_zh"] == "SOL ETF 申请提升关注。"
-    assert rows[0]["agent_brief"]["agent_run_id"] == "run-brief-1"
+    assert "agent_run_id" not in rows[0]["agent_brief"]
+    assert "input_hash" not in rows[0]["agent_brief"]
+    assert "artifact_version_hash" not in rows[0]["agent_brief"]
 
 
 def test_list_news_page_rows_uses_composite_cursor(tmp_path) -> None:
@@ -1034,7 +2635,7 @@ def test_updating_news_item_clears_stale_story_and_page_projection(tmp_path) -> 
             policy_version="test-story-v1",
             now_ms=NOW_MS,
         )
-        repo.add_story_member(
+        repo.replace_story_member_for_item(
             story_id="story-1",
             news_item_id=news_item_id,
             relation="representative",
@@ -1091,16 +2692,18 @@ def test_updating_news_item_clears_stale_story_and_page_projection(tmp_path) -> 
             ("fact-old", news_item_id, Jsonb({"asset": True}), Jsonb([]), Jsonb([]), NOW_MS, NOW_MS),
         )
         conn.commit()
+        story_before = conn.execute(
+            "SELECT item_count, source_count, status FROM news_story_groups WHERE story_id = %s",
+            ("story-1",),
+        ).fetchone()
         provider = conn.execute(
             "SELECT provider_item_id FROM news_items WHERE news_item_id = %s",
             (news_item_id,),
         ).fetchone()
 
-        repo.upsert_news_item(
+        repo.upsert_canonical_news_item(
             provider_item_id=provider["provider_item_id"],
-            source_id="source-1",
-            source_domain="example.com",
-            canonical_url="https://example.com/guid-1",
+            canonical_url="https://example.com/news/guid-1",
             title="Title",
             summary="Summary",
             body_text="Changed body",
@@ -1164,19 +2767,68 @@ def test_updating_news_item_clears_stale_story_and_page_projection(tmp_path) -> 
     finally:
         conn.close()
 
-    assert story_count == 0
+    assert story_count == 1
     assert page_count == 1
     assert entity_count == 0
     assert mention_count == 0
     assert fact_count == 0
-    assert story["item_count"] == 0
-    assert story["source_count"] == 0
-    assert story["status"] == "stale"
+    assert dict(story) == dict(story_before)
     assert status == "raw"
     assert page_result.processed == 1
-    assert refreshed_page["story_id"] is None
+    assert refreshed_page["story_id"] == "story-1"
     assert refreshed_page["token_lanes_json"] == []
     assert refreshed_page["fact_lanes_json"] == []
+
+
+def test_replace_story_member_for_item_clears_stale_membership(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo)
+        for story_id in ("story-old", "story-new"):
+            repo.create_story_from_item(
+                story_id=story_id,
+                item={
+                    "title": story_id,
+                    "canonical_url": f"https://example.com/{story_id}",
+                    "published_at_ms": NOW_MS,
+                },
+                policy_version="test",
+                now_ms=NOW_MS,
+            )
+        repo.replace_story_member_for_item(
+            story_id="story-old",
+            news_item_id=news_item_id,
+            relation="representative",
+            match_reason="initial",
+            match_score=1.0,
+            now_ms=NOW_MS,
+        )
+        repo.replace_story_member_for_item(
+            story_id="story-new",
+            news_item_id=news_item_id,
+            relation="representative",
+            match_reason="recomputed",
+            match_score=1.0,
+            now_ms=NOW_MS + 1,
+        )
+
+        memberships = conn.execute(
+            "SELECT story_id, match_reason FROM news_story_members WHERE news_item_id = %s",
+            (news_item_id,),
+        ).fetchall()
+        story_rows = conn.execute(
+            "SELECT story_id, item_count, status FROM news_story_groups ORDER BY story_id",
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert [dict(row) for row in memberships] == [{"story_id": "story-new", "match_reason": "recomputed"}]
+    assert [dict(row) for row in story_rows] == [
+        {"story_id": "story-new", "item_count": 1, "status": "active"},
+        {"story_id": "story-old", "item_count": 0, "status": "stale"},
+    ]
 
 
 def test_update_item_content_classification_persists_materialized_fields(tmp_path) -> None:
@@ -1274,25 +2926,152 @@ def test_get_news_item_detail_hydrates_agent_brief_and_latest_run_summary(tmp_pa
     assert detail["agent_brief"]["status"] == "ready"
     assert detail["agent_brief"]["direction"] == "mixed"
     assert detail["agent_brief"]["brief_json"]["summary_zh"] == "事件仍需观察。"
-    assert detail["agent_brief"]["input_hash"] == "input-brief-1"
+    assert "agent_run_id" not in detail["agent_brief"]
+    assert "input_hash" not in detail["agent_brief"]
+    assert "artifact_version_hash" not in detail["agent_brief"]
     assert detail["agent_run"] == {
-        "run_id": "run-detail-1",
         "status": "completed",
         "outcome": "ready",
         "execution_started": True,
         "model": "gpt-5-mini",
         "provider": "openai",
         "lane": NEWS_ITEM_BRIEF_LANE,
-        "sdk_trace_id": "trace-run-detail-1",
         "error_class": None,
         "error": None,
-        "usage_json": {"input_tokens": 10, "output_tokens": 5},
-        "trace_metadata_json": {"attempt": 1},
         "started_at_ms": NOW_MS + 90,
         "finished_at_ms": NOW_MS + 100,
     }
     assert "request_json" not in detail["agent_run"]
     assert "response_json" not in detail["agent_run"]
+
+
+def test_get_news_item_detail_exposes_canonical_observation_evidence(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo, source_id="source-1", source_item_key="shared")
+        repo.upsert_source(
+            source_id="source-2",
+            provider_type="rss",
+            feed_url="https://source-2.example.com/rss.xml",
+            source_domain="source-2.example.com",
+            source_name="Source Two",
+            now_ms=NOW_MS,
+        )
+        fetch_run_id = repo.start_fetch_run(source_id="source-2", started_at_ms=NOW_MS)
+        provider = repo.upsert_provider_item(
+            source_id="source-2",
+            fetch_run_id=fetch_run_id,
+            source_item_key="shared-copy",
+            canonical_url="opennews://item/shared-copy",
+            payload_hash="hash-shared-copy",
+            raw_payload_json={"id": "shared-copy", "title": "Shared"},
+            fetched_at_ms=NOW_MS,
+        )
+        repo.upsert_canonical_news_item(
+            provider_item_id=provider["provider_item_id"],
+            canonical_url="https://example.com/news/shared",
+            title="Shared",
+            summary="Summary",
+            body_text="Body",
+            language="en",
+            published_at_ms=NOW_MS,
+            fetched_at_ms=NOW_MS,
+            content_hash="content-shared",
+            title_fingerprint="shared",
+            now_ms=NOW_MS,
+        )
+
+        detail = repo.get_news_item_detail(news_item_id=news_item_id)
+    finally:
+        conn.close()
+
+    assert detail is not None
+    assert "provider_item_id" not in detail
+    assert "canonical_item_key" not in detail
+    assert "dedup_key_kind" not in detail
+    assert "dedup_key_confidence" not in detail
+    assert "url_identity_kind" not in detail
+    assert "source_ids_json" not in detail
+    assert "source_domains_json" not in detail
+    assert "provider_article_keys_json" not in detail
+    assert {edge["source_id"] for edge in detail["observation_edges"]} == {"source-1", "source-2"}
+    assert {item["source_id"] for item in detail["provider_observations"]} == {"source-1", "source-2"}
+    assert all("provider_item_id" not in item for item in detail["provider_observations"])
+    assert all("source_item_key" not in item for item in detail["provider_observations"])
+    assert all("raw_payload_json" not in item for item in detail["provider_observations"])
+    assert {item["canonical_url"] for item in detail["provider_observations"]} == {
+        "",
+        "https://example.com/news/shared",
+    }
+    assert "source_item_key" not in detail["provider_item"]
+    assert detail["source"]["source_id"] == "source-1"
+    assert "feed_url" not in detail["source"]
+    assert "fetch_policy_json" not in detail["source"]
+    assert "sync_cursor_json" not in detail["source"]
+    assert detail["fetch_run"]["source_id"] == "source-1"
+    assert detail["fetch_run"]["status"] == "running"
+    assert "fetch_run_id" not in detail["fetch_run"]
+
+
+def test_story_and_fact_detail_sanitize_internal_urls(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo, source_item_key="internal-url")
+        conn.execute(
+            "UPDATE news_items SET canonical_url = 'opennews://item/internal-url' WHERE news_item_id = %s",
+            (news_item_id,),
+        )
+        repo.create_story_from_item(
+            story_id="story-internal-url",
+            item={
+                "title": "Internal URL",
+                "canonical_url": "opennews://item/internal-url",
+                "published_at_ms": NOW_MS,
+            },
+            policy_version="test",
+            now_ms=NOW_MS,
+        )
+        repo.replace_story_member_for_item(
+            story_id="story-internal-url",
+            news_item_id=news_item_id,
+            relation="representative",
+            match_reason="test",
+            match_score=1.0,
+            now_ms=NOW_MS,
+        )
+        conn.execute(
+            """
+            INSERT INTO news_fact_candidates (
+              fact_candidate_id, news_item_id, event_type, claim, realis, evidence_quote,
+              evidence_span_start, evidence_span_end, source_role, required_slots_json,
+              affected_targets_json, validation_status, rejection_reasons_json, extraction_method,
+              policy_version, created_at_ms, updated_at_ms
+            )
+            VALUES (
+              'fact-internal-url', %s, 'listing', 'Claim', 'reported_claim', 'Evidence',
+              0, 8, 'observed_source', '{}'::jsonb, '[]'::jsonb, 'accepted', '[]'::jsonb,
+              'test', 'test', %s, %s
+            )
+            """,
+            (news_item_id, NOW_MS, NOW_MS),
+        )
+        story = repo.get_news_story_detail(story_id="story-internal-url")
+        fact = repo.get_news_fact_detail(fact_candidate_id="fact-internal-url")
+    finally:
+        conn.close()
+
+    assert story is not None
+    assert story["members"][0]["canonical_url"] == ""
+    assert story["canonical_url"] == ""
+    assert story["members"][0]["observation_edges"][0]["source_id"] == "source-1"
+    assert story["members"][0]["provider_observations"][0]["source_id"] == "source-1"
+    assert "source_item_key" not in story["members"][0]["provider_observations"][0]
+    assert fact is not None
+    assert fact["canonical_url"] == ""
 
 
 def test_repository_session_exposes_news_repository(tmp_path) -> None:
@@ -1304,6 +3083,175 @@ def test_repository_session_exposes_news_repository(tmp_path) -> None:
         conn.close()
 
     assert isinstance(repos.news, NewsRepository)
+
+
+def test_news_repository_exposes_only_canonical_news_item_writer_surface() -> None:
+    assert hasattr(NewsRepository, "upsert_canonical_news_item")
+    assert not hasattr(NewsRepository, "upsert_news_item")
+
+
+def test_canonical_news_item_writer_serializes_canonical_key_upserts() -> None:
+    source = inspect.getsource(NewsRepository.upsert_canonical_news_item)
+
+    assert "pg_advisory_xact_lock" in source
+    assert "canonical_item_key" in source
+
+
+def test_provider_item_upsert_keeps_identity_status_monotonic_in_conflict_sql() -> None:
+    source = inspect.getsource(NewsRepository.upsert_provider_item)
+
+    assert "NULLIF(news_provider_items.provider_article_id, '')" in source
+    assert "NULLIF(news_provider_items.provider_article_key, '')" in source
+    assert "news_provider_items.provider_payload_status = 'ready'" in source
+    assert "EXCLUDED.provider_payload_status <> 'ready'" in source
+
+
+def test_source_sync_cursor_round_trips_high_watermark_and_diagnostics(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        repo.upsert_source(
+            source_id="opennews-realtime",
+            provider_type="opennews",
+            feed_url="opennews://realtime",
+            source_domain="6551.io",
+            source_name="OpenNews",
+            refresh_interval_seconds=10,
+            now_ms=NOW_MS,
+        )
+
+        initial = repo.source_sync_cursor("opennews-realtime")
+        repo.update_source_sync_state(
+            "opennews-realtime",
+            {
+                "high_watermark_ms": NOW_MS - 5_000,
+                "overlap_ms": 1_200_000,
+                "pages_scanned": 3,
+                "rest_received": 17,
+                "oldest_seen_ms": NOW_MS - 90_000,
+                "stop_reason": "oldest_before_overlap",
+            },
+            now_ms=NOW_MS,
+        )
+        updated = repo.source_sync_cursor("opennews-realtime")
+        row = conn.execute(
+            """
+            SELECT sync_cursor_json, sync_high_watermark_ms, sync_overlap_ms, sync_diagnostics_json
+              FROM news_sources
+             WHERE source_id = 'opennews-realtime'
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert initial["high_watermark_ms"] == 0
+    assert initial["overlap_ms"] == 900_000
+    assert updated["high_watermark_ms"] == NOW_MS - 5_000
+    assert updated["overlap_ms"] == 1_200_000
+    assert updated["pages_scanned"] == 3
+    assert row["sync_high_watermark_ms"] == NOW_MS - 5_000
+    assert row["sync_overlap_ms"] == 1_200_000
+    assert row["sync_cursor_json"]["stop_reason"] == "oldest_before_overlap"
+    assert row["sync_diagnostics_json"] == {
+        "pages_scanned": 3,
+        "rest_received": 17,
+        "oldest_seen_ms": NOW_MS - 90_000,
+        "stop_reason": "oldest_before_overlap",
+    }
+
+
+def test_source_status_exposes_news_dedup_and_sync_diagnostics(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(
+            repo,
+            source_id="opennews-realtime",
+            source_item_key="shared",
+        )
+        repo.update_source_sync_state(
+            "opennews-realtime",
+            {
+                "high_watermark_ms": NOW_MS - 5_000,
+                "overlap_ms": 1_200_000,
+                "pages_scanned": 3,
+                "rest_received": 17,
+                "oldest_seen_ms": NOW_MS - 90_000,
+                "stop_reason": "oldest_before_overlap",
+            },
+            now_ms=NOW_MS,
+        )
+        repo.replace_page_rows_for_items(
+            news_item_ids=[news_item_id],
+            rows=[_page_row("row-opennews", news_item_id, source_id="opennews-realtime")],
+        )
+
+        status = next(row for row in repo.list_source_status() if row["source_id"] == "opennews-realtime")
+    finally:
+        conn.close()
+
+    assert status["sync_high_watermark_ms"] == NOW_MS - 5_000
+    assert status["sync_overlap_ms"] == 1_200_000
+    assert status["sync_diagnostics"]["pages_scanned"] == 3
+    assert status["dedup_diagnostics"]["raw_observation_count"] == 1
+    assert status["dedup_diagnostics"]["canonical_item_count"] == 1
+    assert status["dedup_diagnostics"]["observation_edge_count"] == 1
+    assert status["dedup_diagnostics"]["enabled_serving_row_count"] == 1
+    assert status["dedup_diagnostics"]["disabled_serving_row_count"] == 0
+
+
+def test_news_dedup_diagnostics_reports_disabled_rows_and_visible_duplicate_excess(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo, source_id="source-1", source_item_key="shared")
+        repo.replace_page_rows_for_items(
+            news_item_ids=[news_item_id],
+            rows=[_page_row("row-shared", news_item_id, source_id="source-1")],
+        )
+        repo.upsert_source(
+            source_id="opennews-realtime",
+            provider_type="opennews",
+            feed_url="opennews://realtime",
+            source_domain="6551.io",
+            source_name="OpenNews",
+            refresh_interval_seconds=10,
+            now_ms=NOW_MS,
+        )
+        repo.update_source_sync_state(
+            "opennews-realtime",
+            {
+                "high_watermark_ms": NOW_MS - 5_000,
+                "overlap_ms": 1_200_000,
+                "pages_scanned": 3,
+                "rest_received": 17,
+                "oldest_seen_ms": NOW_MS - 90_000,
+                "stop_reason": "oldest_before_overlap",
+            },
+            now_ms=NOW_MS,
+        )
+        conn.execute("UPDATE news_sources SET enabled = false WHERE source_id = 'source-1'")
+        conn.commit()
+
+        diagnostics = repo.news_dedup_diagnostics()
+    finally:
+        conn.close()
+
+    assert diagnostics["raw_observation_count"] == 1
+    assert diagnostics["canonical_item_count"] == 1
+    assert diagnostics["observation_edge_count"] == 1
+    assert diagnostics["disabled_serving_row_count"] == 1
+    assert diagnostics["enabled_exact_content_visible_duplicate_excess"] == 0
+    assert diagnostics["top_visible_content_duplicate_groups"] == []
+    assert diagnostics["top_visible_canonical_duplicate_groups"] == []
+    assert diagnostics["source_sync_diagnostics"][0]["source_id"] == "opennews-realtime"
+    assert diagnostics["source_sync_diagnostics"][0]["pages_scanned"] == 3
+    assert diagnostics["source_sync_diagnostics"][0]["rest_received"] == 17
+    assert diagnostics["source_sync_diagnostics"][0]["stop_reason"] == "oldest_before_overlap"
+    assert diagnostics["source_sync_diagnostics"][0]["watermark_lag_ms"] >= 0
 
 
 def _insert_source_provider_and_item(
@@ -1327,16 +3275,14 @@ def _insert_source_provider_and_item(
         source_id=source_id,
         fetch_run_id=fetch_run_id,
         source_item_key=source_item_key,
-        canonical_url=f"https://example.com/{source_item_key}",
+        canonical_url=f"https://example.com/news/{source_item_key}",
         payload_hash=f"hash-{source_item_key}",
         raw_payload_json={"title": title},
         fetched_at_ms=NOW_MS,
     )
-    news = repo.upsert_news_item(
+    news = repo.upsert_canonical_news_item(
         provider_item_id=provider["provider_item_id"],
-        source_id=source_id,
-        source_domain="example.com",
-        canonical_url=f"https://example.com/{source_item_key}",
+        canonical_url=f"https://example.com/news/{source_item_key}",
         title=title,
         summary="Summary",
         body_text="Body",
@@ -1393,6 +3339,91 @@ def _insert_legacy_source_provider_and_item(conn) -> str:
         (news_item_id, NOW_MS, NOW_MS, NOW_MS, NOW_MS),
     )
     return news_item_id
+
+
+def _insert_legacy_canonical_source(
+    conn,
+    *,
+    source_id: str = "source-legacy",
+    provider_type: str = "rss",
+    source_domain: str = "example.com",
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO news_sources (
+          source_id, provider_type, feed_url, source_domain, source_name,
+          source_role, trust_tier, created_at_ms, updated_at_ms
+        )
+        VALUES (
+          %s, %s, %s, %s, 'Example',
+          'observed_source', 'standard', %s, %s
+        )
+        """,
+        (source_id, provider_type, f"https://{source_domain}/rss.xml", source_domain, NOW_MS, NOW_MS),
+    )
+
+
+def _insert_legacy_canonical_provider_and_item(
+    conn,
+    *,
+    suffix: str,
+    canonical_url: str,
+    content_hash: str,
+    source_id: str = "source-legacy",
+    source_domain: str = "example.com",
+    source_item_key: str | None = None,
+    raw_payload: object | None = None,
+    published_at_ms: int = NOW_MS,
+    fetched_at_ms: int = NOW_MS,
+) -> None:
+    item_key = source_item_key or f"guid-{suffix}"
+    conn.execute(
+        """
+        INSERT INTO news_provider_items (
+          provider_item_id, source_id, source_item_key, canonical_url, payload_hash,
+          raw_payload_json, fetched_at_ms
+        )
+        VALUES (
+          %s, %s, %s, %s, %s, %s, %s
+        )
+        """,
+        (
+            f"provider-item-legacy-{suffix}",
+            source_id,
+            item_key,
+            canonical_url,
+            f"hash-{suffix}",
+            Jsonb(raw_payload if raw_payload is not None else {"title": f"Title {suffix}", "published_at_ms": NOW_MS}),
+            fetched_at_ms,
+        ),
+    )
+    conn.execute(
+        """
+        INSERT INTO news_items (
+          news_item_id, provider_item_id, source_id, source_domain, canonical_url,
+          title, summary, body_text, language, published_at_ms, fetched_at_ms,
+          content_hash, title_fingerprint, created_at_ms, updated_at_ms
+        )
+        VALUES (
+          %s, %s, %s, %s, %s,
+          %s, 'Summary', 'Body', 'en', %s, %s, %s, %s, %s, %s
+        )
+        """,
+        (
+            f"news-item-legacy-{suffix}",
+            f"provider-item-legacy-{suffix}",
+            source_id,
+            source_domain,
+            canonical_url,
+            f"Title {suffix}",
+            published_at_ms,
+            fetched_at_ms,
+            content_hash,
+            f"title {suffix}",
+            published_at_ms,
+            fetched_at_ms,
+        ),
+    )
 
 
 def _page_row(

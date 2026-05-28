@@ -122,3 +122,24 @@ def test_ops_enqueue_token_radar_dirty_targets_parser_accepts_source_since_limit
 
     with pytest.raises(SystemExit):
         parser.parse_args(["ops", "enqueue-token-radar-dirty-targets", "--source", "events"])
+
+
+def test_ops_news_dedup_commands_are_registered_without_compatibility_flags() -> None:
+    parser = build_parser()
+
+    diagnostics = parser.parse_args(["ops", "news-dedup-diagnostics"])
+    rebuild_dry_run = parser.parse_args(["ops", "rebuild-news-canonical-items", "--limit", "25", "--dry-run"])
+    rebuild_execute = parser.parse_args(["ops", "rebuild-news-canonical-items", "--limit", "25", "--execute"])
+
+    assert diagnostics.ops_command == "news-dedup-diagnostics"
+    assert rebuild_dry_run.ops_command == "rebuild-news-canonical-items"
+    assert rebuild_dry_run.limit == 25
+    assert rebuild_dry_run.dry_run is True
+    assert rebuild_dry_run.execute is False
+    assert rebuild_execute.execute is True
+    assert not hasattr(diagnostics, "include_legacy")
+    assert not hasattr(rebuild_execute, "legacy_id")
+    assert not hasattr(rebuild_execute, "raw_item_id")
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ops", "rebuild-news-canonical-items"])

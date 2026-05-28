@@ -56,6 +56,8 @@ def test_context_items_persist_independently_and_hydrate_detail(tmp_path) -> Non
     assert [row["context_item_id"] for row in detail["context_items"]] == ["context-2", "context-1"]
     assert detail["context_items"][0]["body_text"] == "Second comment"
     assert detail["context_items"][1]["engagement_json"] == {"likes": 1}
+    assert all("raw_payload_json" not in row for row in detail["context_items"])
+    assert all("provider_item_id" not in row for row in detail["context_items"])
 
 
 def test_context_item_upsert_updates_mutable_fields_without_touching_news_body(tmp_path) -> None:
@@ -158,10 +160,8 @@ def _insert_source_provider_and_item(repo: NewsRepository) -> tuple[str, str]:
         raw_payload_json={"title": "Primary"},
         fetched_at_ms=NOW_MS,
     )
-    news = repo.upsert_news_item(
+    news = repo.upsert_canonical_news_item(
         provider_item_id=provider["provider_item_id"],
-        source_id="source-1",
-        source_domain="example.com",
         canonical_url="https://example.com/guid-1",
         title="Primary",
         summary="Primary summary",

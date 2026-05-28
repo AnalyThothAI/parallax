@@ -44,10 +44,8 @@ def test_source_quality_repository_aggregates_and_replaces_rows(tmp_path) -> Non
             raw_payload={"id": "guid-1"},
             fetched_at_ms=NOW_MS - 7_000,
         )
-        item = repo.upsert_news_item(
+        item = repo.upsert_canonical_news_item(
             provider_item_id=str(provider_item["provider_item_id"]),
-            source_id="coindesk",
-            source_domain="coindesk.com",
             canonical_url="https://www.coindesk.com/story",
             title="Coinbase lists $BTC",
             summary="Trading starts today.",

@@ -257,7 +257,7 @@ def test_load_items_for_brief_targets_payload_contains_packet_inputs_and_audit_r
             policy_version="test",
             now_ms=NOW_MS,
         )
-        repo.add_story_member(
+        repo.replace_story_member_for_item(
             story_id="story-payload",
             news_item_id=news_item_id,
             relation="representative",
@@ -609,10 +609,8 @@ def _insert_source_provider_and_item(
         raw_payload_json={"title": "SOL ETF filing"},
         fetched_at_ms=now_ms,
     )
-    news = repo.upsert_news_item(
+    news = repo.upsert_canonical_news_item(
         provider_item_id=provider["provider_item_id"],
-        source_id=source_id,
-        source_domain="example.com",
         canonical_url=f"https://example.com/{source_item_key}",
         title="SOL ETF filing",
         summary="Issuer files for a SOL ETF.",

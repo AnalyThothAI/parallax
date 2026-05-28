@@ -75,7 +75,11 @@ def test_reconcile_configured_sources_persists_classification_and_disables_remov
     finally:
         conn.close()
 
-    assert [row["source_id"] for row in rows] == ["configured-source", "community-source"]
+    assert [(row["source_id"], row["status"]) for row in rows] == [
+        ("configured-source", "updated"),
+        ("community-source", "inserted"),
+        ("removed-source", "disabled"),
+    ]
     assert stored["configured-source"]["enabled"] is True
     assert stored["removed-source"]["enabled"] is False
     assert stored["configured-source"]["provider_type"] == "github"

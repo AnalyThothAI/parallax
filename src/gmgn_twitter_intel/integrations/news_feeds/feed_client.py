@@ -15,6 +15,7 @@ class FeedFetchResult:
     last_modified: str | None = None
     not_modified: bool = False
     feed: dict[str, Any] = field(default_factory=dict)
+    next_cursor: dict[str, Any] = field(default_factory=dict)
 
 
 class FeedClient:
