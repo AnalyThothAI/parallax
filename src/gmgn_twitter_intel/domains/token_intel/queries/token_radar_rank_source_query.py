@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -46,6 +46,24 @@ class TokenRadarRankSourceQuery:
                 request_key = str(payload.get("request_key") or "")
                 rows_by_request.setdefault(request_key, []).append(payload)
         return rows_by_request
+
+    def latest_market_context_for_targets(
+        self,
+        targets: Sequence[Mapping[str, Any]],
+    ) -> dict[tuple[str, str], dict[str, Any]]:
+        rows_by_target: dict[tuple[str, str], dict[str, Any]] = {}
+        target_payloads = _target_payloads(targets)
+        if not target_payloads:
+            return rows_by_target
+        rows = self.conn.execute(
+            _LATEST_MARKET_CONTEXT_FOR_TARGETS_SQL,
+            (Jsonb(target_payloads),),
+        ).fetchall()
+        for row in rows:
+            payload = dict(row)
+            target_key = (str(payload.get("target_type_key") or ""), str(payload.get("identity_id") or ""))
+            rows_by_target[target_key] = payload
+        return rows_by_target
 
     def populate_edges_for_requests(
         self,
@@ -114,6 +132,100 @@ def _request_payload(request: TokenRadarSourceRequest) -> dict[str, Any]:
         "score_since_ms": int(request.score_since_ms),
         "now_ms": int(request.now_ms),
     }
+
+
+def _target_payloads(targets: Sequence[Mapping[str, Any]]) -> list[dict[str, str]]:
+    payloads: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for target in targets:
+        target_type_key = str(target.get("target_type_key") or target.get("target_type") or "").strip()
+        identity_id = str(target.get("identity_id") or target.get("target_id") or "").strip()
+        target_key = (target_type_key, identity_id)
+        if not target_type_key or not identity_id or target_key in seen:
+            continue
+        seen.add(target_key)
+        payloads.append({"target_type_key": target_type_key, "identity_id": identity_id})
+    return payloads
+
+
+_LATEST_MARKET_CONTEXT_FOR_TARGETS_SQL = """
+WITH requested AS (
+  SELECT DISTINCT target_type_key, identity_id
+  FROM jsonb_to_recordset(%s::jsonb) AS r(
+    target_type_key text,
+    identity_id text
+  )
+),
+asset_market AS (
+  SELECT
+    requested.target_type_key,
+    requested.identity_id,
+    current_row.tick_id AS latest_price_tick_id,
+    current_row.source_provider AS latest_price_provider,
+    current_row.source_tier AS latest_price_source_tier,
+    current_row.pricefeed_id AS latest_price_pricefeed_id,
+    current_row.tick_observed_at_ms AS latest_price_observed_at_ms,
+    current_row.updated_at_ms AS latest_price_received_at_ms,
+    current_row.price_usd AS latest_price_usd,
+    NULL::numeric AS latest_price_quote,
+    NULL::text AS latest_price_quote_symbol,
+    NULL::text AS latest_price_basis,
+    current_row.market_cap_usd AS latest_price_market_cap_usd,
+    current_row.liquidity_usd AS latest_price_liquidity_usd,
+    current_row.volume_24h_usd AS latest_price_volume_24h_usd,
+    current_row.open_interest_usd AS latest_price_open_interest_usd,
+    current_row.holders AS latest_price_holders
+  FROM requested
+  JOIN registry_assets
+    ON requested.target_type_key = 'Asset'
+   AND registry_assets.asset_id = requested.identity_id
+  JOIN market_tick_current current_row
+    ON current_row.target_type = 'chain_token'
+   AND lower(current_row.target_id) = lower(registry_assets.chain_id || ':' || registry_assets.address)
+),
+cex_market AS (
+  SELECT
+    requested.target_type_key,
+    requested.identity_id,
+    current_row.tick_id AS latest_price_tick_id,
+    current_row.source_provider AS latest_price_provider,
+    current_row.source_tier AS latest_price_source_tier,
+    current_row.pricefeed_id AS latest_price_pricefeed_id,
+    current_row.tick_observed_at_ms AS latest_price_observed_at_ms,
+    current_row.updated_at_ms AS latest_price_received_at_ms,
+    current_row.price_usd AS latest_price_usd,
+    NULL::numeric AS latest_price_quote,
+    NULL::text AS latest_price_quote_symbol,
+    NULL::text AS latest_price_basis,
+    current_row.market_cap_usd AS latest_price_market_cap_usd,
+    current_row.liquidity_usd AS latest_price_liquidity_usd,
+    current_row.volume_24h_usd AS latest_price_volume_24h_usd,
+    current_row.open_interest_usd AS latest_price_open_interest_usd,
+    current_row.holders AS latest_price_holders
+  FROM requested
+  JOIN LATERAL (
+    SELECT *
+    FROM price_feeds
+    WHERE requested.target_type_key = 'CexToken'
+      AND price_feeds.subject_type = 'CexToken'
+      AND price_feeds.subject_id = requested.identity_id
+      AND price_feeds.provider = 'binance'
+      AND price_feeds.feed_type = 'cex_swap'
+      AND price_feeds.quote_symbol = 'USDT'
+      AND price_feeds.status = 'canonical'
+    ORDER BY price_feeds.updated_at_ms DESC, price_feeds.native_market_id ASC
+    LIMIT 1
+  ) price_feeds ON true
+  JOIN market_tick_current current_row
+    ON current_row.target_type = 'cex_symbol'
+   AND current_row.target_id = price_feeds.provider || ':' || price_feeds.native_market_id
+)
+SELECT *
+FROM asset_market
+UNION ALL
+SELECT *
+FROM cex_market
+"""
 
 
 _RANK_SOURCE_ROWS_FOR_REQUESTS_SQL = """

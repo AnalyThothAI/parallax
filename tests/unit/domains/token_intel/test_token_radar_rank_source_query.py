@@ -325,6 +325,50 @@ def test_rank_source_query_groups_rows_by_request_and_chunks():
     assert conn.execute_count == 2
 
 
+def test_rank_source_query_loads_latest_market_context_for_requested_targets():
+    conn = FakeConn(
+        rows=[
+            {
+                "target_type_key": "Asset",
+                "identity_id": "asset-1",
+                "latest_price_tick_id": "tick-1",
+            },
+            {
+                "target_type_key": "CexToken",
+                "identity_id": "cex-token-1",
+                "latest_price_tick_id": "tick-2",
+            },
+        ]
+    )
+
+    context = TokenRadarRankSourceQuery(conn).latest_market_context_for_targets(
+        [
+            {"target_type_key": "Asset", "identity_id": "asset-1"},
+            {"target_type_key": "CexToken", "identity_id": "cex-token-1"},
+        ]
+    )
+
+    assert context == {
+        ("Asset", "asset-1"): {
+            "target_type_key": "Asset",
+            "identity_id": "asset-1",
+            "latest_price_tick_id": "tick-1",
+        },
+        ("CexToken", "cex-token-1"): {
+            "target_type_key": "CexToken",
+            "identity_id": "cex-token-1",
+            "latest_price_tick_id": "tick-2",
+        },
+    }
+    assert "JOIN market_tick_current" in conn.sql
+    assert "JOIN registry_assets" in conn.sql
+    assert "JOIN LATERAL" in conn.sql
+    assert "price_feeds.provider = 'binance'" in conn.sql
+    assert "price_feeds.feed_type = 'cex_swap'" in conn.sql
+    assert "price_feeds.quote_symbol = 'USDT'" in conn.sql
+    assert "price_feeds.status = 'canonical'" in conn.sql
+
+
 def test_rank_source_repository_uses_compact_query():
     conn = FakeConn(rows=[{"request_key": "request-1", "event_id": "event-1"}])
 
@@ -345,6 +389,17 @@ def test_rank_source_repository_uses_compact_query():
 
     assert rows["request-1"][0]["event_id"] == "event-1"
     assert "token_radar_rank_source_events" in conn.sql
+
+
+def test_rank_source_repository_loads_latest_market_context_through_compact_query():
+    conn = FakeConn(rows=[{"target_type_key": "Asset", "identity_id": "asset-1"}])
+
+    context = TokenRadarRankSourceRepository(conn).latest_market_context_for_targets(
+        [{"target_type_key": "Asset", "identity_id": "asset-1"}]
+    )
+
+    assert context == {("Asset", "asset-1"): {"target_type_key": "Asset", "identity_id": "asset-1"}}
+    assert "JOIN market_tick_current" in conn.sql
 
 
 def test_rank_source_repository_populates_compact_edges():

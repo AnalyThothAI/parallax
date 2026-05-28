@@ -139,10 +139,15 @@ class TokenRadarProjection:
             rows_by_request = self.repos.token_radar_rank_sources.load_rows_for_requests(
                 [*source_requests, *market_requests]
             )
+            market_context_by_target = (
+                self.repos.token_radar_rank_sources.latest_market_context_for_targets(market_only_claims)
+                if market_only_claims
+                else {}
+            )
 
-            for batch_claims, batch_requests in (
-                (source_rebuild_claims, source_requests),
-                (market_only_claims, market_requests),
+            for batch_claims, batch_requests, patch_latest_market in (
+                (source_rebuild_claims, source_requests, False),
+                (market_only_claims, market_requests, True),
             ):
                 requests_by_target = _source_requests_by_target(batch_requests)
                 for claim_index, claim in enumerate(batch_claims):
@@ -150,10 +155,16 @@ class TokenRadarProjection:
                     claim_touched: set[tuple[str, str]] = set()
                     try:
                         for request in requests_by_target.get(claim_index, []):
+                            source_rows = rows_by_request.get(request.request_key, [])
+                            if patch_latest_market:
+                                source_rows = _with_latest_market_context(
+                                    source_rows,
+                                    market_context_by_target.get(_source_request_target_key(request)),
+                                )
                             score_result = self._project_source_request(
                                 request=request,
                                 target=claim,
-                                source_rows=rows_by_request.get(request.request_key, []),
+                                source_rows=source_rows,
                                 now_ms=computed_at_ms,
                             )
                             result["source_rows"] += int(score_result.get("source_rows") or 0)
@@ -866,6 +877,39 @@ def _source_requests_by_target(
         target_index = int(parts[0].removeprefix("target-"))
         grouped.setdefault(target_index, []).append(request)
     return grouped
+
+
+LATEST_MARKET_FIELDS = (
+    "latest_price_tick_id",
+    "latest_price_provider",
+    "latest_price_source_tier",
+    "latest_price_pricefeed_id",
+    "latest_price_observed_at_ms",
+    "latest_price_received_at_ms",
+    "latest_price_usd",
+    "latest_price_quote",
+    "latest_price_quote_symbol",
+    "latest_price_basis",
+    "latest_price_market_cap_usd",
+    "latest_price_liquidity_usd",
+    "latest_price_volume_24h_usd",
+    "latest_price_open_interest_usd",
+    "latest_price_holders",
+)
+
+
+def _with_latest_market_context(
+    source_rows: list[dict[str, Any]],
+    latest_market_context: Mapping[str, Any] | None,
+) -> list[dict[str, Any]]:
+    market_overlay = {
+        field: latest_market_context.get(field) if latest_market_context else None for field in LATEST_MARKET_FIELDS
+    }
+    return [{**row, **market_overlay} for row in source_rows]
+
+
+def _source_request_target_key(request: TokenRadarSourceRequest) -> tuple[str, str]:
+    return (str(request.target_type_key), str(request.identity_id))
 
 
 def _target_source_request_key(

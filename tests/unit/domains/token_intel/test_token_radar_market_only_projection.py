@@ -60,9 +60,47 @@ def test_claim_requires_source_rebuild_classifies_dirty_kind_flags() -> None:
 
 def test_rebuild_dirty_targets_market_only_loads_existing_rows_without_populating_edges(monkeypatch) -> None:
     now_ms = 1_777_800_060_000
-    existing_source_row = {"event_id": "event-existing", "received_at_ms": now_ms - 60_000}
+    existing_source_row = {
+        "event_id": "event-existing",
+        "received_at_ms": now_ms - 60_000,
+        "target_type": "Asset",
+        "target_id": "asset-1",
+        "latest_price_tick_id": "stale-tick",
+        "latest_price_provider": "old-provider",
+        "latest_price_pricefeed_id": "old-feed",
+        "latest_price_observed_at_ms": now_ms - 600_000,
+        "latest_price_received_at_ms": now_ms - 590_000,
+        "latest_price_usd": 1.0,
+        "latest_price_market_cap_usd": 10_000,
+        "latest_price_liquidity_usd": 1_000,
+        "latest_price_volume_24h_usd": 2_000,
+        "latest_price_open_interest_usd": None,
+        "latest_price_holders": 100,
+    }
+    latest_market_context = {
+        ("Asset", "asset-1"): {
+            "latest_price_tick_id": "fresh-tick",
+            "latest_price_provider": "fresh-provider",
+            "latest_price_source_tier": "tier1",
+            "latest_price_pricefeed_id": "fresh-feed",
+            "latest_price_observed_at_ms": now_ms - 10_000,
+            "latest_price_received_at_ms": now_ms - 5_000,
+            "latest_price_usd": 2.5,
+            "latest_price_quote": None,
+            "latest_price_quote_symbol": "USD",
+            "latest_price_basis": "usd",
+            "latest_price_market_cap_usd": 25_000,
+            "latest_price_liquidity_usd": 5_000,
+            "latest_price_volume_24h_usd": 8_000,
+            "latest_price_open_interest_usd": 3_000,
+            "latest_price_holders": 250,
+        }
+    }
     claim = _claim(source_dirty=False, market_dirty=True, repair_dirty=False)
-    rank_sources = FakeRankSources(rows_by_request={"*": [existing_source_row]})
+    rank_sources = FakeRankSources(
+        rows_by_request={"*": [existing_source_row]},
+        latest_market_context=latest_market_context,
+    )
     dirty_targets = FakeDirtyTargets([claim])
     repos = _repos(dirty_targets=dirty_targets, rank_sources=rank_sources)
     score_calls: list[dict[str, Any]] = []
@@ -93,6 +131,7 @@ def test_rebuild_dirty_targets_market_only_loads_existing_rows_without_populatin
 
     assert result["status"] == "ready"
     assert rank_sources.populate_calls == []
+    assert rank_sources.latest_market_calls == [[claim]]
     assert len(rank_sources.load_calls) == 1
     loaded_requests = [
         (request.window, request.scope, request.target_type_key, request.identity_id)
@@ -102,7 +141,12 @@ def test_rebuild_dirty_targets_market_only_loads_existing_rows_without_populatin
         ("5m", "all", "Asset", "asset-1")
     ]
     assert len(score_calls) == 1
-    assert score_calls[0]["source_rows"] == [existing_source_row]
+    assert score_calls[0]["source_rows"] == [
+        {
+            **existing_source_row,
+            **latest_market_context[("Asset", "asset-1")],
+        }
+    ]
     assert refresh_calls == [
         {"window": "5m", "scope": "all", "now_ms": now_ms, "limit": 7},
     ]
@@ -153,6 +197,7 @@ def test_rebuild_dirty_targets_source_or_repair_claim_populates_edges(monkeypatc
     assert rank_sources.populate_calls[0]["projected_at_ms"] == now_ms
     assert rank_sources.populate_calls[0]["commit"] is False
     assert len(rank_sources.load_calls) == 1
+    assert rank_sources.latest_market_calls == []
     assert dirty_targets.done[0]["identity_id"] == "asset-1"
     assert dirty_targets.errors == []
 
@@ -179,10 +224,17 @@ class FakeDirtyTargets:
 
 
 class FakeRankSources:
-    def __init__(self, *, rows_by_request: dict[str, list[dict[str, Any]]]) -> None:
+    def __init__(
+        self,
+        *,
+        rows_by_request: dict[str, list[dict[str, Any]]],
+        latest_market_context: dict[tuple[str, str], dict[str, Any]] | None = None,
+    ) -> None:
         self.rows_by_request = rows_by_request
+        self.latest_market_context = latest_market_context or {}
         self.load_calls: list[list[Any]] = []
         self.populate_calls: list[dict[str, Any]] = []
+        self.latest_market_calls: list[list[dict[str, Any]]] = []
 
     def load_rows_for_requests(self, requests):
         request_list = list(requests)
@@ -201,6 +253,10 @@ class FakeRankSources:
             }
         )
         return len(self.populate_calls[-1]["requests"])
+
+    def latest_market_context_for_targets(self, targets):
+        self.latest_market_calls.append([dict(target) for target in targets])
+        return dict(self.latest_market_context)
 
 
 def _repos(*, dirty_targets: FakeDirtyTargets, rank_sources: FakeRankSources) -> Any:
