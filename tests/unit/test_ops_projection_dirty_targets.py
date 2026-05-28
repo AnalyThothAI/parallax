@@ -25,7 +25,7 @@ def test_enqueue_projection_dirty_targets_dry_run_reports_counts_without_writes(
     assert result["execute"] is False
     assert result["equity"]["company_event_targets"] == 10
     assert result["equity"]["expected_event_targets"] == 1
-    assert result["news"]["news_item_targets"] == 6
+    assert result["news"]["news_item_targets"] == 5
     assert result["news"]["source_quality_targets"] == 4
     assert repos.equity_dirty.enqueued == []
     assert repos.news_dirty.enqueued == []
@@ -142,12 +142,6 @@ def test_enqueue_projection_dirty_targets_execute_enqueues_only_dirty_targets() 
             "source_watermark_ms": NOW_MS - 2_000,
         },
         {
-            "projection_name": "brief_input",
-            "target_kind": "news_item",
-            "target_id": "news-2",
-            "source_watermark_ms": NOW_MS - 2_000,
-        },
-        {
             "projection_name": "page",
             "target_kind": "news_item",
             "target_id": "news-2",
@@ -218,7 +212,7 @@ def test_enqueue_projection_dirty_targets_can_scope_brief_input_repair() -> None
     )
 
     assert result["projection"] == "brief_input"
-    assert result["news"]["news_item_targets"] == 2
+    assert result["news"]["news_item_targets"] == 1
     assert repos.equity_dirty.enqueued == []
     assert repos.news_dirty.enqueued[0]["rows"] == [
         {
@@ -226,12 +220,6 @@ def test_enqueue_projection_dirty_targets_can_scope_brief_input_repair() -> None
             "target_kind": "news_item",
             "target_id": "news-1",
             "source_watermark_ms": NOW_MS - 1_000,
-        },
-        {
-            "projection_name": "brief_input",
-            "target_kind": "news_item",
-            "target_id": "news-2",
-            "source_watermark_ms": NOW_MS - 2_000,
         },
     ]
 
@@ -262,8 +250,18 @@ class FakeConn:
         if "FROM news_items" in sql:
             return FakeCursor(
                 [
-                    {"news_item_id": "news-1", "source_watermark_ms": NOW_MS - 1_000},
-                    {"news_item_id": "news-2", "source_watermark_ms": NOW_MS - 2_000},
+                    {
+                        "news_item_id": "news-1",
+                        "source_watermark_ms": NOW_MS - 1_000,
+                        "provider_type": "rss",
+                        "provider_signal_json": {},
+                    },
+                    {
+                        "news_item_id": "news-2",
+                        "source_watermark_ms": NOW_MS - 2_000,
+                        "provider_type": "opennews",
+                        "provider_signal_json": {"source": "provider", "provider": "opennews"},
+                    },
                 ]
             )
         if "FROM news_sources" in sql:

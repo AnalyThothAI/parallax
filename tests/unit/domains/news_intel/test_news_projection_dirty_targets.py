@@ -169,7 +169,7 @@ def test_fetch_worker_enqueues_news_item_and_source_quality_dirty_for_inserted_a
             "commit": False,
         },
     ]
-    assert "tx:upsert_news_item" in repos.conn.events
+    assert "tx:upsert_canonical_news_item" in repos.conn.events
     assert "tx:dirty:news_item_written" in repos.conn.events
     assert "autocommit:dirty:news_item_written" not in repos.conn.events
     assert "direct_commit" not in repos.conn.events
@@ -669,6 +669,8 @@ class FakeFetchRepos:
         self.dirty = FakeDirtyRepository()
         self.dirty.conn = self.conn
         self.news_projection_dirty_targets = self.dirty
+        self.sync_cursors: dict[str, dict[str, Any]] = {}
+        self.sync_updates: list[dict[str, Any]] = []
 
     def reconcile_configured_sources(
         self,
@@ -697,12 +699,36 @@ class FakeFetchRepos:
         self.conn.record("start_fetch_run")
         return "fetch-run-1"
 
+    def source_sync_cursor(self, source_id: str) -> dict[str, Any]:
+        return dict(self.sync_cursors.get(source_id, {}))
+
+    def update_source_sync_state(
+        self,
+        source_id: str,
+        next_cursor: dict[str, Any],
+        *,
+        now_ms: int,
+        commit: bool = True,
+    ) -> None:
+        assert commit is False
+        self.conn.record("update_source_sync_state")
+        self.sync_updates.append(
+            {"source_id": source_id, "next_cursor": dict(next_cursor), "now_ms": now_ms, "commit": commit}
+        )
+
     def upsert_provider_item(self, **payload: Any) -> dict[str, Any]:
         self.conn.record("upsert_provider_item")
-        return {"provider_item_id": f"provider-{payload['source_item_key']}", "status": "inserted"}
+        provider_article_id = str(payload["raw_payload"].get("id") or "")
+        return {
+            "provider_item_id": f"provider-{payload['source_item_key']}",
+            "provider_article_id": provider_article_id,
+            "provider_article_key": f"fake:{provider_article_id}" if provider_article_id else "",
+            "status": "inserted",
+        }
 
-    def upsert_news_item(self, **payload: Any) -> dict[str, Any]:
-        self.conn.record("upsert_news_item")
+    def upsert_canonical_news_item(self, **payload: Any) -> dict[str, Any]:
+        self.conn.record("upsert_canonical_news_item")
+        assert payload["canonical_identity"].canonical_item_key.startswith("content-hash:")
         return dict(self.news_statuses.pop(0))
 
     def update_source_http_cache(self, **payload: Any) -> None:
@@ -739,7 +765,7 @@ def _source() -> dict[str, Any]:
 def _observation(key: str) -> NewsProviderObservation:
     return NewsProviderObservation(
         source_item_key=key,
-        canonical_url=f"https://example.com/{key}",
+        canonical_url=f"https://example.com/news/{key}",
         title=f"Title {key}",
         summary="",
         body_text="",

@@ -12,7 +12,7 @@ from gmgn_twitter_intel.domains.news_intel.types.source_provider import (
     NewsSourceSnapshot,
 )
 from gmgn_twitter_intel.integrations.news_feeds.cryptopanic_client import CryptopanicFeedClient
-from gmgn_twitter_intel.integrations.news_feeds.feed_client import FeedClient, FeedFetchResult
+from gmgn_twitter_intel.integrations.news_feeds.feed_client import FeedClient
 from gmgn_twitter_intel.integrations.news_feeds.opennews_client import OpenNewsFeedClient
 from gmgn_twitter_intel.integrations.news_feeds.provider_registry import (
     SUPPORTED_NEWS_PROVIDER_TYPES,
@@ -30,8 +30,6 @@ def news_feed_client(settings: Settings) -> NewsSourceProvider:
         opennews_client=OpenNewsFeedClient(
             token=opennews_settings.api_token,
             api_base_url=opennews_settings.api_base_url,
-            wss_url=opennews_settings.wss_url,
-            connect_timeout_seconds=opennews_settings.connect_timeout_seconds,
         ),
     )
     return RegistryBackedNewsSourceProvider(registry=registry)
@@ -59,13 +57,14 @@ class RegistryBackedNewsSourceProvider:
         cache: NewsSourceHttpCache | None = None,
         limit: int | None = None,
     ) -> NewsProviderFetchResult:
-        del since_ms, cursor
+        del since_ms
         feed_result = self._registry.fetch(
             provider_type=source.provider_type,
             feed_url=source.feed_url,
             etag=cache.etag if cache else None,
             last_modified=cache.last_modified if cache else None,
             source=source.raw,
+            cursor=cursor or {},
             limit=limit,
         )
         observations = [_observation_from_entry(source, entry) for entry in feed_result.entries]
@@ -75,43 +74,8 @@ class RegistryBackedNewsSourceProvider:
             etag=feed_result.etag,
             last_modified=feed_result.last_modified,
             not_modified=feed_result.not_modified,
+            next_cursor=dict(feed_result.next_cursor or {}),
             provider_diagnostics=_provider_diagnostics(feed_result),
-        )
-
-    def close(self) -> None:
-        self._registry.close()
-
-
-class CompositeNewsFeedClient:
-    def __init__(
-        self,
-        *,
-        rss_client: FeedClient,
-        cryptopanic_client: CryptopanicFeedClient,
-        opennews_client: OpenNewsFeedClient | None = None,
-    ) -> None:
-        self._registry = default_news_feed_provider_registry(
-            rss_client=rss_client,
-            cryptopanic_client=cryptopanic_client,
-            opennews_client=opennews_client,
-        )
-
-    def fetch(
-        self,
-        url: str,
-        *,
-        etag: str | None = None,
-        last_modified: str | None = None,
-        provider_type: str | None = None,
-        source: dict[str, Any] | None = None,
-    ) -> FeedFetchResult:
-        resolved_provider_type = provider_type or _provider_type_for_url(str(url))
-        return self._registry.fetch(
-            provider_type=resolved_provider_type,
-            feed_url=url,
-            etag=etag,
-            last_modified=last_modified,
-            source=source,
         )
 
     def close(self) -> None:
@@ -165,16 +129,7 @@ def _optional_mapping_list(value: Any) -> list[dict[str, Any]]:
     return [dict(item) for item in value if isinstance(item, Mapping)]
 
 
-def _provider_type_for_url(url: str) -> str:
-    if url.startswith("cryptopanic://"):
-        return "cryptopanic"
-    if url.startswith("opennews://"):
-        return "opennews"
-    return "rss"
-
-
 __all__ = [
-    "CompositeNewsFeedClient",
     "RegistryBackedNewsSourceProvider",
     "news_feed_client",
     "supported_news_provider_types",

@@ -32,7 +32,7 @@
 
 Create:
 
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0120_token_equity_workerspace_root_fix.py`
+- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0121_token_equity_workerspace_root_fix.py`
 - `src/gmgn_twitter_intel/app/runtime/runtime_worker_context.py`
 - `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_payload_hash.py`
 - `tests/unit/domains/token_intel/test_token_radar_payload_hash.py`
@@ -288,7 +288,7 @@ Append to `tests/unit/test_postgres_schema.py`:
 
 ```python
 def test_token_equity_workerspace_root_fix_migration_contract() -> None:
-    text = _migration_text("20260528_0120_token_equity_workerspace_root_fix.py")
+    text = _migration_text("20260528_0121_token_equity_workerspace_root_fix.py")
 
     assert "source_payload_hash" in text
     assert "source_dirty" in text
@@ -328,13 +328,13 @@ Expected: commit succeeds with only tests changed.
 ## Task 2: Schema Hard Cut Migration
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0120_token_equity_workerspace_root_fix.py`
+- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0121_token_equity_workerspace_root_fix.py`
 - Modify: `tests/unit/test_postgres_schema.py`
 - Test: `tests/unit/test_postgres_schema.py`
 
 - [ ] **Step 1: Create Alembic migration with hard-cut schema**
 
-Create `src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0120_token_equity_workerspace_root_fix.py` with these operations:
+Create `src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0121_token_equity_workerspace_root_fix.py` with these operations:
 
 ```python
 """Hard cut Token Radar, Equity Event, and WorkerSpace runtime schema."""
@@ -344,8 +344,8 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
-revision = "20260528_0120"
-down_revision = "20260528_0119"
+revision = "20260528_0121"
+down_revision = "20260528_0120"
 branch_labels = None
 depends_on = None
 
@@ -421,12 +421,12 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    raise RuntimeError("20260528_0120 token/equity/WorkerSpace hard cut is not reversible")
+    raise RuntimeError("20260528_0121 token/equity/WorkerSpace hard cut is not reversible")
 ```
 
-This branch includes the News `20260528_0117` through `20260528_0119`
+This branch includes the News `20260528_0117` through `20260528_0120`
 migrations from current `main`; the Token/Equity/WorkerSpace migration follows
-`20260528_0119`.
+`20260528_0120`.
 
 - [ ] **Step 2: Run schema guard**
 
@@ -443,7 +443,7 @@ Expected: pass.
 Run:
 
 ```bash
-uv run python -m py_compile src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0120_token_equity_workerspace_root_fix.py
+uv run python -m py_compile src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0121_token_equity_workerspace_root_fix.py
 ```
 
 Expected: exit `0`.
@@ -453,7 +453,7 @@ Expected: exit `0`.
 Run:
 
 ```bash
-git add src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0120_token_equity_workerspace_root_fix.py tests/unit/test_postgres_schema.py
+git add src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0121_token_equity_workerspace_root_fix.py tests/unit/test_postgres_schema.py
 git commit -m "feat: add token equity workerspace hard cut schema"
 ```
 

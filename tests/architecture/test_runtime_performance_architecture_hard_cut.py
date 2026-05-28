@@ -62,9 +62,7 @@ def test_macro_projection_refresh_is_current_only_with_source_signature() -> Non
 
 
 def test_equity_fetch_worker_does_not_hydrate_document_evidence() -> None:
-    fetch_worker = _read(
-        "src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_fetch_worker.py"
-    )
+    fetch_worker = _read("src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_fetch_worker.py")
     assert "hydrate_document_evidence" not in fetch_worker
     assert "replace_evidence_artifacts" not in fetch_worker
 
@@ -79,3 +77,24 @@ def test_news_fetch_validates_provider_contract_before_reconcile() -> None:
     validate_at = worker.index("validate_news_provider_contract")
     reconcile_at = worker.index("reconcile_configured_sources")
     assert validate_at < reconcile_at
+
+
+def test_opennews_client_runtime_reports_rest_transport_without_fetch_mode_surface() -> None:
+    client = _read("src/gmgn_twitter_intel/integrations/news_feeds/opennews_client.py")
+
+    assert '"transport": "rest"' in client
+    assert '"fetch_mode": "rest"' not in client
+    assert "_reject_removed_websocket_policy(policy)" in client
+
+
+def test_opennews_provider_signal_never_reenters_news_brief_input_hot_path() -> None:
+    policy = "needs_news_item_agent_brief"
+    hot_path_files = (
+        "src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py",
+        "src/gmgn_twitter_intel/domains/news_intel/runtime/news_story_projection_worker.py",
+        "src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_process_worker.py",
+        "src/gmgn_twitter_intel/app/runtime/projection_dirty_targets.py",
+    )
+
+    for path in hot_path_files:
+        assert policy in _read(path), f"{path} must apply the provider-signal brief policy"

@@ -171,11 +171,15 @@ def test_news_intel_defaults_enable_core_crypto_and_us_market_sources() -> None:
         assert opennews.feed_url == "opennews://subscribe"
         assert opennews.enabled is False
         assert "market" not in opennews.fetch_policy["engineTypes"]
-        assert opennews.fetch_policy["max_messages"] == 20
-        assert opennews.fetch_policy["rest_limit"] == 100
+        assert opennews.fetch_policy == {
+            "engineTypes": opennews.fetch_policy["engineTypes"],
+            "hasCoin": True,
+            "rest_limit": 100,
+            "max_rest_pages": 5,
+            "rest_overlap_ms": 900_000,
+        }
     assert settings.news_intel.opennews.api_token is None
     assert settings.news_intel.opennews.api_base_url == "https://ai.6551.io"
-    assert settings.news_intel.opennews.wss_url == "wss://ai.6551.io/open/news_wss"
 
 
 def test_news_source_settings_accepts_classification_fields_and_normalizes_tuples() -> None:
@@ -209,8 +213,6 @@ def test_news_intel_accepts_opennews_credentials_without_using_environment_shado
             "opennews": {
                 "api_token": "opennews-test-token",
                 "api_base_url": "https://example.com",
-                "wss_url": "wss://example.com/news_wss",
-                "connect_timeout_seconds": 2,
             },
             "sources": [
                 {
@@ -235,10 +237,48 @@ def test_news_intel_accepts_opennews_credentials_without_using_environment_shado
 
     assert settings.news_intel.opennews.api_token == "opennews-test-token"
     assert settings.news_intel.opennews.api_base_url == "https://example.com"
-    assert settings.news_intel.opennews.wss_url == "wss://example.com/news_wss"
-    assert settings.news_intel.opennews.connect_timeout_seconds == 2
     assert settings.news_intel.sources[0].provider_type == "opennews"
     assert settings.news_intel.sources[0].fetch_policy["coins"] == ["BTC"]
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("fetch_mode", "hybrid"),
+        ("wss_url", "wss://example.com/news_wss"),
+        ("stream_timeout_seconds", 10),
+        ("streamTimeoutSeconds", 10),
+        ("max_messages", 20),
+        ("maxMessages", 20),
+        ("connect_timeout_seconds", 2),
+        ("connectTimeoutSeconds", 2),
+    ],
+)
+def test_news_intel_rejects_removed_opennews_websocket_policy_keys(key: str, value: object) -> None:
+    with pytest.raises(ValidationError, match=f"opennews-realtime uses removed OpenNews websocket policy keys: {key}"):
+        Settings(
+            ws_token="secret",
+            news_intel={
+                "sources": [
+                    {
+                        "source_id": "opennews-realtime",
+                        "provider_type": "opennews",
+                        "feed_url": "opennews://subscribe",
+                        "source_domain": "6551.io",
+                        "source_name": "OpenNews Realtime",
+                        "source_role": "aggregator",
+                        "trust_tier": "standard",
+                        "fetch_policy": {key: value},
+                    }
+                ]
+            },
+        )
+
+
+@pytest.mark.parametrize("key", ["wss_url", "connect_timeout_seconds"])
+def test_news_intel_opennews_settings_reject_removed_websocket_keys(key: str) -> None:
+    with pytest.raises(ValidationError):
+        Settings(ws_token="secret", news_intel={"opennews": {key: "removed"}})
 
 
 def test_news_source_settings_rejects_unknown_provider_type_and_source_role() -> None:
@@ -291,12 +331,16 @@ def test_default_config_yaml_contains_explicit_news_intel_block() -> None:
     for opennews in opennews_sources.values():
         assert opennews["enabled"] is False
         assert "market" not in opennews["fetch_policy"]["engineTypes"]
-        assert opennews["fetch_policy"]["rest_limit"] == 100
+        assert opennews["fetch_policy"] == {
+            "engineTypes": opennews["fetch_policy"]["engineTypes"],
+            "hasCoin": True,
+            "rest_limit": 100,
+            "max_rest_pages": 5,
+            "rest_overlap_ms": 900_000,
+        }
     assert news_intel["opennews"] == {
         "api_token": None,
         "api_base_url": "https://ai.6551.io",
-        "wss_url": "wss://ai.6551.io/open/news_wss",
-        "connect_timeout_seconds": 3.0,
     }
 
 

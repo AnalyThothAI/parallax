@@ -52,14 +52,14 @@ describe("useNewsPage", () => {
     expect(result.current.data?.items[0].token_lanes[0].provider_score).toBe(82);
   });
 
-  it("requests only hard-cut token, signal, score, and search filters", async () => {
+  it("requests only hard-cut signal, score, and search filters", async () => {
     const observedParams: Record<string, string | null> = {};
     let observedKeys: string[] = [];
     server.use(
       http.get(/.*\/api\/news$/, ({ request }) => {
         const searchParams = new URL(request.url).searchParams;
         observedKeys = [...searchParams.keys()].sort();
-        ["has_token", "signal", "min_score", "q"].forEach((key) => {
+        ["signal", "min_score", "q"].forEach((key) => {
           observedParams[key] = searchParams.get(key);
         });
         return HttpResponse.json({ ok: true, data: { items: [], next_cursor: null } });
@@ -73,16 +73,15 @@ describe("useNewsPage", () => {
           signal: "bullish",
           min_score: 70,
           q: "btc",
-        }),
+        } as Parameters<typeof useNewsPageWithToken>[1] & { has_token: boolean }),
       { wrapper: wrapper() },
     );
 
     await waitFor(() => expect(observedParams.q).toBe("btc"));
-    expect(observedParams.has_token).toBe("true");
     expect(observedParams.signal).toBe("bullish");
     expect(observedParams.min_score).toBe("70");
     expect(observedParams.q).toBe("btc");
-    expect(observedKeys).toEqual(["has_token", "limit", "min_score", "q", "signal"].sort());
+    expect(observedKeys).toEqual(["limit", "min_score", "q", "signal"].sort());
   });
 });
 

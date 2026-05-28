@@ -33,6 +33,7 @@ class RegistryNewsFeedProvider(Protocol):
         etag: str | None = None,
         last_modified: str | None = None,
         source: Mapping[str, Any] | None = None,
+        cursor: Mapping[str, Any] | None = None,
         limit: int | None = None,
     ) -> FeedFetchResult: ...
 
@@ -45,6 +46,7 @@ class OpenNewsClient(Protocol):
         url: str,
         *,
         source: dict[str, Any] | None = None,
+        cursor: Mapping[str, Any] | None = None,
         limit: int | None = None,
     ) -> FeedFetchResult: ...
 
@@ -63,9 +65,10 @@ class RssLikeNewsFeedProvider:
         etag: str | None = None,
         last_modified: str | None = None,
         source: Mapping[str, Any] | None = None,
+        cursor: Mapping[str, Any] | None = None,
         limit: int | None = None,
     ) -> FeedFetchResult:
-        del limit
+        del cursor, limit
         return self._client.fetch(
             feed_url,
             etag=etag,
@@ -90,9 +93,10 @@ class CryptopanicNewsFeedProvider:
         etag: str | None = None,
         last_modified: str | None = None,
         source: Mapping[str, Any] | None = None,
+        cursor: Mapping[str, Any] | None = None,
         limit: int | None = None,
     ) -> FeedFetchResult:
-        del provider_type, limit
+        del provider_type, cursor, limit
         return self._client.fetch(
             feed_url,
             etag=etag,
@@ -117,12 +121,14 @@ class OpenNewsNewsFeedProvider:
         etag: str | None = None,
         last_modified: str | None = None,
         source: Mapping[str, Any] | None = None,
+        cursor: Mapping[str, Any] | None = None,
         limit: int | None = None,
     ) -> FeedFetchResult:
         del provider_type, etag, last_modified
         return self._client.fetch(
             feed_url,
             source=dict(source or {}),
+            cursor=dict(cursor or {}),
             limit=limit,
         )
 
@@ -155,6 +161,7 @@ class NewsFeedProviderRegistry:
         etag: str | None = None,
         last_modified: str | None = None,
         source: Mapping[str, Any] | None = None,
+        cursor: Mapping[str, Any] | None = None,
         limit: int | None = None,
     ) -> FeedFetchResult:
         provider = self.provider_for(provider_type)
@@ -164,6 +171,7 @@ class NewsFeedProviderRegistry:
             etag=etag,
             last_modified=last_modified,
             source=source,
+            cursor=cursor,
             limit=limit,
         )
 

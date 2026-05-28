@@ -166,7 +166,7 @@ notification_delivery
 | `narrative_admission` (`NarrativeAdmissionWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/narrative_admission_worker.py` | due `narrative_admission_dirty_targets`; target-scoped Radar rows, `events`, current `token_intent_resolutions` | `narrative_admissions`, `discussion_digest_dirty_targets` | `token_radar_updated`, `resolution_updated` | none | `interval_seconds` |
 | `mention_semantics` (`MentionSemanticsWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/mention_semantics_worker.py` | leased due `token_mention_semantics` rows and exact source events | `token_mention_semantics`, `narrative_model_runs`, `discussion_digest_dirty_targets` on semantic completion | `token_radar_updated`, `resolution_updated` | `narrative_semantics_updated` | `interval_seconds` |
 | `token_discussion_digest` (`TokenDiscussionDigestWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/token_discussion_digest_worker.py` | due `discussion_digest_dirty_targets`; exact `narrative_admissions`, `token_mention_semantics`, market/profile facts | `token_discussion_digests`, `narrative_model_runs`, digest dirty target backoff | `token_radar_updated`, `narrative_semantics_updated`, `market_tick_written` | none | `interval_seconds` |
-| `news_fetch` (`NewsFetchWorker`) | `news_intel` | `domains/news_intel/runtime/news_fetch_worker.py` | configured `news_intel.sources` with `provider_type`, `source_role`, `trust_tier`, `coverage_tags`, authority/fetch/context/cost policy, due `news_sources`, RSS/Atom/CryptoPanic feeds, bounded OpenNews WebSocket subscribe cycles | `news_sources`, `news_fetch_runs`, `news_provider_items`, `news_items` | poll | `news_item_written` | `interval_seconds` |
+| `news_fetch` (`NewsFetchWorker`) | `news_intel` | `domains/news_intel/runtime/news_fetch_worker.py` | configured `news_intel.sources` with `provider_type`, `source_role`, `trust_tier`, `coverage_tags`, authority/fetch/context/cost policy, due `news_sources`, RSS/Atom/CryptoPanic feeds, OpenNews REST `/open/news_search` catch-up | `news_sources`, `news_fetch_runs`, `news_provider_items`, `news_items` | poll | `news_item_written` | `interval_seconds` |
 | `news_item_process` (`NewsItemProcessWorker`) | `news_intel` | `domains/news_intel/runtime/news_item_process_worker.py` | unprocessed `news_items`, token identity interfaces | `news_item_entities`, `news_token_mentions`, `news_fact_candidates`, `news_items.content_class/content_tags_json/content_classification_json` | `news_item_written` | `news_item_processed` | `interval_seconds` |
 | `news_story_projection` (`NewsStoryProjectionWorker`) | `news_intel` | `domains/news_intel/runtime/news_story_projection_worker.py` | due `news_projection_dirty_targets(projection_name='story')`; target-scoped `news_items`, `news_token_mentions` | `news_story_groups`, `news_story_members` | `news_item_processed` | `news_story_updated` | `interval_seconds` |
 | `news_item_brief` (`NewsItemBriefWorker`) | `news_intel` | `domains/news_intel/runtime/news_item_brief_worker.py` | due `news_projection_dirty_targets(projection_name='brief_input')`; processed `news_items`, `news_story_groups`, current brief state after reserving `news.item_brief` | `news_item_agent_runs`, `news_item_agent_briefs` | `news_item_processed`, `news_story_updated` | `news_item_brief_updated` | `interval_seconds`; no-start backpressure claims nothing and writes no run ledger |
@@ -192,11 +192,12 @@ notification_delivery
 
 News runtime provider support is intentionally smaller than the source
 classification vocabulary. The supported provider types are `rss`, `atom`,
-`json_feed`, `cryptopanic`, and `opennews`. OpenNews uses a bounded hybrid
-fetch inside `news_fetch`: a short WebSocket `news.subscribe` cycle captures
-live pushes, then REST `/open/news_search` actively catches up the same
-filters so delayed `aiRating` scores and per-coin impacts update the same
-`news_provider_items` / `news_items` facts by source item id.
+`json_feed`, `cryptopanic`, and `opennews`. OpenNews is REST-only inside
+`news_fetch`: bounded `/open/news_search` pages catch up by source cursor and
+merge partial/ready article fragments into the same `news_provider_items` /
+`news_items` facts by provider article id. Short-lived OpenNews WebSocket
+subscribe cycles, hybrid fetch mode, and WebSocket policy keys are rejected
+rather than kept as compatibility paths.
 `/api/news/sources/status` reports:
 
 - `provider_capabilities.supported_provider_types`
@@ -222,9 +223,11 @@ docs. Staged provider waves are:
    `opennews://subscribe` sources are intentionally enabled. Production crypto
    news coverage is split by provider engine into `opennews-news`,
    `opennews-listing`, and `opennews-onchain`; do not mix OpenNews `market`
-   engine rows into the News tape. Use `fetch_policy.fetch_mode = hybrid` or
-   omit it for the default WebSocket + REST catch-up behavior; set
-   `fetch_mode = rest` only when push delivery is intentionally disabled.
+   engine rows into the News tape. Use only REST policy keys such as
+   `engineTypes`, `hasCoin`, `coins`, `rest_limit`, `max_rest_pages`, and
+   `rest_overlap_ms`; removed WebSocket keys such as `fetch_mode`, `wss_url`,
+   `stream_timeout_seconds`, `max_messages`, and `connect_timeout_seconds`
+   hard-fail configuration.
 3. Add official regulator, exchange, protocol, and issuer RSS/manual API feeds.
 4. Add OpenBB/macro/equity adapters only behind explicit ownership boundaries.
 5. Add social/community/developer context sources into `news_context_items`.

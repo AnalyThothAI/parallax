@@ -11,7 +11,7 @@ def provider_signal_from_opennews_payload(payload: Mapping[str, Any]) -> dict[st
     score = _optional_int(ai_rating.get("score"))
     grade = _optional_text(ai_rating.get("grade"))
     status = _optional_text(ai_rating.get("status"))
-    if signal or score is not None or grade:
+    if status == "done" or signal or score is not None or grade:
         return {
             "source": "provider",
             "provider": "opennews",

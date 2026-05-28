@@ -36,7 +36,7 @@ def test_claimed_story_targets_load_only_claimed_ids_and_enqueue_page() -> None:
 
     assert result.processed == 1
     assert result.notes["story_rows"] == 1
-    assert news_repo.loaded_news_item_ids == [["news-1"]]
+    assert news_repo.loaded_news_item_ids == [["news-1"], ["news-1"]]
     assert news_repo.created_story_items == ["news-1"]
     assert news_repo.added_story_members == ["news-1"]
     assert dirty_repo.done == dirty_repo.claimed
@@ -55,6 +55,26 @@ def test_claimed_story_targets_load_only_claimed_ids_and_enqueue_page() -> None:
             "source_watermark_ms": NOW_MS,
         },
     ]
+
+
+def test_claimed_story_targets_use_order_independent_story_ids_for_same_article_url() -> None:
+    first = _story_item(news_item_id="news-a", canonical_item_key="canonical-a")
+    second = _story_item(news_item_id="news-b", canonical_item_key="canonical-b")
+    first_run_repo = FakeStoryNewsRepository(items=[first, second])
+    second_run_repo = FakeStoryNewsRepository(items=[second, first])
+    claims = [_claim("story", "news_item", "news-a"), _claim("story", "news_item", "news-b")]
+
+    _story_worker(news_repo=first_run_repo, dirty_repo=FakeDirtyTargetRepository(claimed=claims)).run_once_sync(
+        now_ms=NOW_MS
+    )
+    _story_worker(news_repo=second_run_repo, dirty_repo=FakeDirtyTargetRepository(claimed=claims)).run_once_sync(
+        now_ms=NOW_MS
+    )
+
+    first_story_ids = {row["story_id"] for row in first_run_repo.story_member_payloads}
+    second_story_ids = {row["story_id"] for row in second_run_repo.story_member_payloads}
+    assert len(first_story_ids) == 1
+    assert first_story_ids == second_story_ids
 
 
 def test_claimed_story_target_with_no_loaded_item_marks_done_without_fallback() -> None:
@@ -198,12 +218,14 @@ def _claim(projection_name: str, target_kind: str, target_id: str) -> dict[str, 
     }
 
 
-def _story_item(*, news_item_id: str) -> dict[str, Any]:
+def _story_item(*, news_item_id: str, canonical_item_key: str | None = None) -> dict[str, Any]:
     return {
         "news_item_id": news_item_id,
+        "canonical_item_key": canonical_item_key or f"canonical-{news_item_id}",
         "title": "SOL ETF approved",
         "title_fingerprint": "sol etf approved",
         "canonical_url": "https://example.com/sol-etf",
+        "url_identity_kind": "article",
         "published_at_ms": NOW_MS - 1_000,
         "lifecycle_status": "processed",
         "source_domain": "example.com",
@@ -220,7 +242,9 @@ class FakeStoryNewsRepository:
         self.missing_story_scan_calls = 0
         self.loaded_news_item_ids: list[list[str]] = []
         self.created_story_items: list[str] = []
+        self.refreshed_story_items: list[str] = []
         self.added_story_members: list[str] = []
+        self.story_member_payloads: list[dict[str, Any]] = []
 
     def list_items_missing_story(self, *, limit: int) -> list[dict[str, Any]]:
         self.missing_story_scan_calls += 1
@@ -231,19 +255,21 @@ class FakeStoryNewsRepository:
         wanted = set(news_item_ids)
         return [dict(item) for item in self.items if item["news_item_id"] in wanted]
 
-    def find_story_candidates_for_item(self, item: dict[str, Any]) -> list[dict[str, Any]]:
-        return []
-
     def create_story_from_item(self, *, item: dict[str, Any], **_kwargs: Any) -> None:
         self.conn.record_write(lambda: self.created_story_items.append(str(item["news_item_id"])))
 
     def refresh_story_from_member(self, *, item: dict[str, Any], **_kwargs: Any) -> None:
-        self.conn.record_write(lambda: self.created_story_items.append(str(item["news_item_id"])))
+        self.conn.record_write(lambda: self.refreshed_story_items.append(str(item["news_item_id"])))
 
-    def add_story_member(self, *, news_item_id: str, **_kwargs: Any) -> None:
+    def replace_story_member_for_item(self, *, news_item_id: str, **payload: Any) -> None:
         if self.fail_add:
             raise RuntimeError("add story failed")
-        self.conn.record_write(lambda: self.added_story_members.append(str(news_item_id)))
+        self.conn.record_write(
+            lambda: (
+                self.added_story_members.append(str(news_item_id)),
+                self.story_member_payloads.append({"news_item_id": str(news_item_id), **payload}),
+            )
+        )
 
     def list_news_item_ids_for_stories(self, *, story_ids: list[str]) -> list[str]:
         if not story_ids:

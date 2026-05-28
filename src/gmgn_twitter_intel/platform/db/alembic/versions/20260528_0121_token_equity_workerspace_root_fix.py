@@ -5,8 +5,8 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-revision = "20260528_0120"
-down_revision = "20260528_0119"
+revision = "20260528_0121"
+down_revision = "20260528_0120"
 branch_labels = None
 depends_on = None
 
@@ -157,6 +157,6 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     raise RuntimeError(
-        "20260528_0120 token/equity WorkerSpace root-fix hard cut is not safely reversible; "
+        "20260528_0121 token/equity WorkerSpace root-fix hard cut is not safely reversible; "
         "restore from backup or rebuild Token Radar and Equity Event facts from provider inputs."
     )

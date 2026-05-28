@@ -9,9 +9,10 @@ from typing import Any
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.news_intel._constants import NEWS_STORY_POLICY_VERSION
+from gmgn_twitter_intel.domains.news_intel.services.news_item_agent_policy import needs_news_item_agent_brief
 from gmgn_twitter_intel.domains.news_intel.services.news_story_grouping import (
-    choose_story_assignment,
     new_story_id,
+    story_key_for_item,
 )
 
 
@@ -74,8 +75,15 @@ class NewsStoryProjectionWorker(WorkerBase):
                             story_member_ids = repos.news.list_news_item_ids_for_stories(
                                 story_ids=story_result.story_ids
                             )
+                            downstream_item_ids = story_member_ids or _item_ids(items)
+                            downstream_items = (
+                                repos.news.load_items_for_story_projection(news_item_ids=downstream_item_ids)
+                                if story_member_ids
+                                else items
+                            )
                             downstream_targets = _downstream_targets(
-                                news_item_ids=story_member_ids or _item_ids(items),
+                                items=downstream_items,
+                                news_item_ids=downstream_item_ids,
                                 source_watermark_ms=now,
                             )
                             if downstream_targets:
@@ -152,28 +160,22 @@ def _write_story_rows(*, repos: Any, items: Iterable[Mapping[str, Any]], now_ms:
     story_ids: list[str] = []
     for item in items:
         item_payload = dict(item)
-        candidates = repos.news.find_story_candidates_for_item(item_payload)
-        assignment = choose_story_assignment(item=item_payload, candidates=[dict(row) for row in candidates])
-        if assignment.story_id is None:
-            story_id = new_story_id(news_item_id=str(item_payload["news_item_id"]))
-            relation = "representative"
-            repos.news.create_story_from_item(
-                story_id=story_id,
-                item=item_payload,
-                policy_version=NEWS_STORY_POLICY_VERSION,
-                now_ms=now_ms,
-                commit=False,
-            )
-        else:
-            story_id = assignment.story_id
-            relation = assignment.relation
-            repos.news.refresh_story_from_member(story_id=story_id, item=item_payload, now_ms=now_ms, commit=False)
-        repos.news.add_story_member(
+        story_key = story_key_for_item(item_payload)
+        story_id = new_story_id(story_key=story_key)
+        repos.news.create_story_from_item(
+            story_id=story_id,
+            item=item_payload,
+            policy_version=NEWS_STORY_POLICY_VERSION,
+            now_ms=now_ms,
+            commit=False,
+        )
+        repos.news.refresh_story_from_member(story_id=story_id, item=item_payload, now_ms=now_ms, commit=False)
+        repos.news.replace_story_member_for_item(
             story_id=story_id,
             news_item_id=str(item_payload["news_item_id"]),
-            relation=relation,
-            match_reason=assignment.match_reason,
-            match_score=assignment.match_score,
+            relation="representative",
+            match_reason=story_key,
+            match_score=1.0,
             now_ms=now_ms,
             commit=False,
         )
@@ -182,7 +184,13 @@ def _write_story_rows(*, repos: Any, items: Iterable[Mapping[str, Any]], now_ms:
     return _StoryWriteResult(story_rows=story_rows, story_ids=story_ids)
 
 
-def _downstream_targets(*, news_item_ids: Iterable[str], source_watermark_ms: int) -> list[dict[str, Any]]:
+def _downstream_targets(
+    *,
+    items: Iterable[Mapping[str, Any]],
+    news_item_ids: Iterable[str],
+    source_watermark_ms: int,
+) -> list[dict[str, Any]]:
+    item_by_id = {str(item.get("news_item_id") or ""): item for item in items}
     return [
         {
             "projection_name": projection_name,
@@ -192,6 +200,8 @@ def _downstream_targets(*, news_item_ids: Iterable[str], source_watermark_ms: in
         }
         for news_item_id in _unique_values(str(item_id) for item_id in news_item_ids)
         for projection_name in ("page", "brief_input")
+        if projection_name != "brief_input"
+        or (news_item_id in item_by_id and needs_news_item_agent_brief(item_by_id[news_item_id]))
     ]
 
 

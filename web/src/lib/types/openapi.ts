@@ -3441,7 +3441,6 @@ export interface operations {
                 limit?: number;
                 cursor?: string;
                 status?: string;
-                has_token?: boolean | null;
                 signal?: string;
                 min_score?: number | null;
                 q?: string;

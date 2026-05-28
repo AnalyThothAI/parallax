@@ -63,6 +63,22 @@ def test_normalize_feed_entry_uses_provider_epoch_milliseconds_when_present() ->
     assert item.published_at_ms == 1_779_000_000_000
 
 
+def test_normalize_feed_entry_prefers_explicit_source_item_key_over_provider_id() -> None:
+    item = normalize_feed_entry(
+        "6551.io",
+        {
+            "id": "2367422",
+            "source_item_key": "source-key-2367422",
+            "link": "https://example.com/opennews-2367422",
+            "title": "OpenNews token alert",
+        },
+        fetched_at_ms=1_779_000_060_000,
+    )
+
+    assert item is not None
+    assert item.source_item_key == "source-key-2367422"
+
+
 def test_normalize_feed_entry_uses_provider_iso_timestamp_when_present() -> None:
     item = normalize_feed_entry(
         "6551.io",

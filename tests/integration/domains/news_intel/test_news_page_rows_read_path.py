@@ -65,8 +65,8 @@ def test_news_page_rows_filter_indexes_cover_normal_ui_filters(tmp_path) -> None
     assert {
         "ix_news_page_rows_signal_direction",
         "ix_news_page_rows_signal_score",
-        "ix_news_page_rows_token_count_time",
     } <= index_names
+    assert "ix_news_page_rows_token_count_time" not in index_names
 
 
 def _insert_source_provider_and_item(
@@ -93,10 +93,8 @@ def _insert_source_provider_and_item(
         raw_payload_json={"title": title},
         fetched_at_ms=NOW_MS,
     )
-    news = repo.upsert_news_item(
+    news = repo.upsert_canonical_news_item(
         provider_item_id=provider["provider_item_id"],
-        source_id="source-1",
-        source_domain="example.com",
         canonical_url=f"https://example.com/{source_item_key}",
         title=title,
         summary="Summary",

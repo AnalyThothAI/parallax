@@ -243,6 +243,35 @@ def test_worker_factory_wires_news_fetch_by_default() -> None:
     assert workers["macro_view_projection"].wake_waiter.channels == ("macro_observations_imported",)
 
 
+def test_news_provider_wiring_constructs_opennews_rest_client_without_websocket_kwargs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import gmgn_twitter_intel.app.runtime.provider_wiring.news as news_wiring
+
+    constructor_calls: list[dict[str, object]] = []
+
+    class RecordingOpenNewsFeedClient:
+        def __init__(self, **kwargs: object) -> None:
+            constructor_calls.append(dict(kwargs))
+
+        def fetch(self, *_args: object, **_kwargs: object) -> object:
+            raise AssertionError("fetch should not run during provider wiring")
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(news_wiring, "OpenNewsFeedClient", RecordingOpenNewsFeedClient)
+
+    news_wiring.news_feed_client(
+        Settings(
+            ws_token="secret",
+            news_intel={"opennews": {"api_token": "opennews-token", "api_base_url": "https://example.com/"}},
+        )
+    )
+
+    assert constructor_calls == [{"token": "opennews-token", "api_base_url": "https://example.com"}]
+
+
 def test_macro_projection_disabled_does_not_suppress_macro_sync() -> None:
     db = FakeDB()
 

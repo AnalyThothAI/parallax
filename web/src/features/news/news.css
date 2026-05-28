@@ -22,7 +22,7 @@
 
   .news-compact-controls {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 8px;
     min-width: 0;
@@ -32,7 +32,6 @@
     padding: 7px;
   }
 
-  .news-token-mode,
   .news-signal-controls,
   .news-pager,
   .news-page-button {
@@ -40,7 +39,6 @@
     align-items: center;
   }
 
-  .news-token-mode,
   .news-signal-controls {
     gap: 5px;
     min-width: 0;
@@ -50,7 +48,6 @@
     flex-wrap: wrap;
   }
 
-  .news-token-mode button,
   .news-signal-controls button,
   .news-page-button {
     min-height: 28px;
@@ -67,15 +64,12 @@
     white-space: nowrap;
   }
 
-  .news-token-mode button[aria-pressed="true"],
   .news-signal-controls button[aria-pressed="true"] {
     border-color: var(--agent-line);
     color: var(--bone);
     background: rgba(88, 112, 255, 0.16);
   }
 
-  .news-token-mode button:hover,
-  .news-token-mode button:focus-visible,
   .news-signal-controls button:hover,
   .news-signal-controls button:focus-visible,
   .news-page-button:hover:not(:disabled),

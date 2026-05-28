@@ -59,6 +59,18 @@ NEWS_SOURCE_ROLES = (
 )
 NEWS_SOURCE_QUALITY_WINDOWS = ("1h", "4h", "24h", "7d")
 NEWS_SOURCE_QUALITY_WINDOW_SET = frozenset(NEWS_SOURCE_QUALITY_WINDOWS)
+REMOVED_OPENNEWS_WEBSOCKET_POLICY_KEYS = frozenset(
+    {
+        "fetch_mode",
+        "wss_url",
+        "stream_timeout_seconds",
+        "streamTimeoutSeconds",
+        "max_messages",
+        "maxMessages",
+        "connect_timeout_seconds",
+        "connectTimeoutSeconds",
+    }
+)
 SettingsNewsProviderType = Literal[
     "rss",
     "atom",
@@ -224,12 +236,11 @@ DEFAULT_NEWS_SOURCE_CONFIGS: tuple[dict[str, object], ...] = (
         "refresh_interval_seconds": 10,
         "coverage_tags": ("crypto", "realtime", "opennews", "news"),
         "fetch_policy": {
-            "fetch_mode": "hybrid",
             "engineTypes": {"news": []},
             "hasCoin": True,
-            "stream_timeout_seconds": 10,
-            "max_messages": 20,
             "rest_limit": 100,
+            "max_rest_pages": 5,
+            "rest_overlap_ms": 900_000,
         },
     },
     {
@@ -244,12 +255,11 @@ DEFAULT_NEWS_SOURCE_CONFIGS: tuple[dict[str, object], ...] = (
         "refresh_interval_seconds": 10,
         "coverage_tags": ("crypto", "realtime", "opennews", "listing"),
         "fetch_policy": {
-            "fetch_mode": "hybrid",
             "engineTypes": {"listing": []},
             "hasCoin": True,
-            "stream_timeout_seconds": 10,
-            "max_messages": 20,
             "rest_limit": 100,
+            "max_rest_pages": 5,
+            "rest_overlap_ms": 900_000,
         },
     },
     {
@@ -264,12 +274,11 @@ DEFAULT_NEWS_SOURCE_CONFIGS: tuple[dict[str, object], ...] = (
         "refresh_interval_seconds": 10,
         "coverage_tags": ("crypto", "realtime", "opennews", "onchain"),
         "fetch_policy": {
-            "fetch_mode": "hybrid",
             "engineTypes": {"onchain": []},
             "hasCoin": True,
-            "stream_timeout_seconds": 10,
-            "max_messages": 20,
             "rest_limit": 100,
+            "max_rest_pages": 5,
+            "rest_overlap_ms": 900_000,
         },
     },
 )
@@ -658,8 +667,6 @@ class OpenNewsSettings(BaseModel):
 
     api_token: str | None = None
     api_base_url: str = "https://ai.6551.io"
-    wss_url: str = "wss://ai.6551.io/open/news_wss"
-    connect_timeout_seconds: float = Field(default=3.0, gt=0)
 
     @field_validator("api_token", mode="before")
     @classmethod
@@ -674,12 +681,6 @@ class OpenNewsSettings(BaseModel):
     def parse_api_base_url(cls, value: Any) -> str:
         normalized = str(value or "https://ai.6551.io").strip().rstrip("/")
         return normalized or "https://ai.6551.io"
-
-    @field_validator("wss_url", mode="before")
-    @classmethod
-    def parse_wss_url(cls, value: Any) -> str:
-        normalized = str(value or "wss://ai.6551.io/open/news_wss").strip()
-        return normalized or "wss://ai.6551.io/open/news_wss"
 
 
 def _default_news_source_settings() -> tuple[NewsSourceSettings, ...]:
@@ -729,6 +730,19 @@ class NewsIntelSettings(BaseModel):
         if isinstance(value, list):
             return tuple(value)
         raise ValueError("news_intel.sources must be a list")
+
+    @field_validator("sources", mode="after")
+    @classmethod
+    def reject_removed_opennews_websocket_policy(
+        cls, sources: tuple[NewsSourceSettings, ...]
+    ) -> tuple[NewsSourceSettings, ...]:
+        for source in sources:
+            if source.provider_type != "opennews":
+                continue
+            bad = sorted(REMOVED_OPENNEWS_WEBSOCKET_POLICY_KEYS.intersection(source.fetch_policy))
+            if bad:
+                raise ValueError(f"{source.source_id} uses removed OpenNews websocket policy keys: {', '.join(bad)}")
+        return sources
 
 
 class EquityEventCompanySettings(BaseModel):

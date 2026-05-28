@@ -165,6 +165,16 @@ become a correctness dependency for projections.
 WebSocket fan-out must be bounded. Slow clients are stale subscribers to drop;
 they must not stall worker publish paths or other clients.
 
+## News Provider Ingest
+
+`news_fetch` is an interval catch-up worker over configured sources and
+durable source cursors. OpenNews provider ingestion is REST-only through
+bounded `/open/news_search` pages; it must not open short-lived WebSocket
+subscribe cycles during a poll. If a future OpenNews streaming input is added,
+it must be a separate provider input path that writes provider observations
+into the same material-fact contract instead of sharing `news_fetch` control
+flow or reintroducing hybrid fetch mode.
+
 ## Wake Hints And Durable Work
 
 PostgreSQL `NOTIFY` channels (`market_tick_written`,

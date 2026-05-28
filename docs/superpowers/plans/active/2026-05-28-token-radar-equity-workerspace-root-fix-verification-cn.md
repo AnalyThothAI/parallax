@@ -10,8 +10,9 @@
 ## Migration
 
 - Fixed the Alembic chain so this branch includes current `main` News
-  migrations `20260528_0117` -> `20260528_0118` -> `20260528_0119`, and
-  Token/Equity/WorkerSpace `20260528_0120` follows `20260528_0119`.
+  migrations `20260528_0117` -> `20260528_0118` -> `20260528_0119` ->
+  `20260528_0120`, and Token/Equity/WorkerSpace `20260528_0121` follows
+  `20260528_0120`.
 - `uv run gmgn-twitter-intel db migrate`: passed.
 - `uv run gmgn-twitter-intel db health`: passed with
   `migration_version=20260528_0120`, `expected_migration_version=20260528_0120`,
@@ -49,7 +50,8 @@
 
 - Docker services after rebuild:
   `postgres` healthy, `migrate` exited `0`, `app` healthy.
-- `/readyz` after rebuilding app image from this worktree:
+- `/readyz` after rebuilding app image from this worktree before the final main-chain
+  renumber:
   `ok=true`, `reasons=[]`, DB `migration_version=20260528_0120`,
   `expected_migration_version=20260528_0120`, `migration_status=ready`.
 - Schema smoke:

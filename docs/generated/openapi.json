@@ -6732,22 +6732,6 @@
           },
           {
             "in": "query",
-            "name": "has_token",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "boolean"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Has Token"
-            }
-          },
-          {
-            "in": "query",
             "name": "signal",
             "required": false,
             "schema": {

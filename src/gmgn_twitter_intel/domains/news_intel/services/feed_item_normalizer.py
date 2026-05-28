@@ -21,7 +21,7 @@ def normalize_feed_entry(
     title = clean_news_text(entry.get("title"), max_chars=500)
     if not title or not canonical_url:
         return None
-    source_item_key = _first_text(entry, "id", "guid", "link") or canonical_url
+    source_item_key = _first_text(entry, "source_item_key", "id", "guid", "link") or canonical_url
     summary = clean_news_text(_first_value(entry, "summary", "description", "subtitle"))
     body_text = clean_news_text(_content_value(entry))
     if not body_text:

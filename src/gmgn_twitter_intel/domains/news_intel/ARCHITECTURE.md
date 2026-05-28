@@ -56,9 +56,10 @@ alongside configured provider types and source hygiene warnings.
 
 - Wave 1: enable `cryptopanic` where credentials exist; keep it as an
   aggregator or specialist source, not an authority source.
-- Wave 2: enable OpenNews only as a provider-fact source. Its WebSocket push is
-  treated as low-latency input; REST `/open/news_search` is the catch-up path
-  for delayed `aiRating` and `coins[]` impact facts.
+- Wave 2: enable OpenNews only as a provider-fact source. OpenNews is
+  REST-only in `news_fetch`: `/open/news_search` is the canonical path for
+  `aiRating` and `coins[]` impact facts. Short-lived OpenNews WebSocket
+  subscribe cycles and hybrid fetch mode are not runtime surfaces.
 - Wave 3: add official RSS/manual API feeds for exchanges, regulators,
   protocols, and issuers. These are the feeds eligible for accepted fact
   candidates after authority-scope validation.

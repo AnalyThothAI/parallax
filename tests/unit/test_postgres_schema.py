@@ -177,7 +177,7 @@ NEXT_RUNTIME_LIFECYCLE_HARD_CUT_MIGRATION = Path(
 MACRO_WORKERSPACE_ROOT_FIX_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0116_macro_workerspace_root_fix.py"
 )
-NEWS_CANONICAL_DEDUP_HARD_CUT_MIGRATION = Path(
+NEWS_INTEL_CANONICAL_DEDUP_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0117_news_intel_canonical_dedup_hard_cut.py"
 )
 NEWS_REALTIME_POSTGRES_HOTPATH_MIGRATION = Path(
@@ -186,8 +186,11 @@ NEWS_REALTIME_POSTGRES_HOTPATH_MIGRATION = Path(
 NEWS_SOURCE_STATUS_HOTPATH_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0119_news_source_status_hotpath_indexes.py"
 )
+NEWS_TOKEN_PRESENCE_FILTER_INDEX_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0120_drop_news_token_presence_filter_index.py"
+)
 TOKEN_EQUITY_WORKERSPACE_ROOT_FIX_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0120_token_equity_workerspace_root_fix.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0121_token_equity_workerspace_root_fix.py"
 )
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
@@ -957,10 +960,11 @@ def test_runtime_performance_hard_cut_revision_chain() -> None:
         (RUNTIME_DB_PERFORMANCE_HARD_CUT_MIGRATION, "20260527_0114", "20260527_0113"),
         (NEXT_RUNTIME_LIFECYCLE_HARD_CUT_MIGRATION, "20260527_0115", "20260527_0114"),
         (MACRO_WORKERSPACE_ROOT_FIX_MIGRATION, "20260528_0116", "20260527_0115"),
-        (NEWS_CANONICAL_DEDUP_HARD_CUT_MIGRATION, "20260528_0117", "20260528_0116"),
+        (NEWS_INTEL_CANONICAL_DEDUP_MIGRATION, "20260528_0117", "20260528_0116"),
         (NEWS_REALTIME_POSTGRES_HOTPATH_MIGRATION, "20260528_0118", "20260528_0117"),
         (NEWS_SOURCE_STATUS_HOTPATH_MIGRATION, "20260528_0119", "20260528_0118"),
-        (TOKEN_EQUITY_WORKERSPACE_ROOT_FIX_MIGRATION, "20260528_0120", "20260528_0119"),
+        (NEWS_TOKEN_PRESENCE_FILTER_INDEX_MIGRATION, "20260528_0120", "20260528_0119"),
+        (TOKEN_EQUITY_WORKERSPACE_ROOT_FIX_MIGRATION, "20260528_0121", "20260528_0120"),
     )
 
     for migration, revision, down_revision in migrations:
@@ -1430,6 +1434,96 @@ def test_opennews_provider_signal_migration_adds_jsonb_fact_columns() -> None:
         assert statement in text
 
 
+def test_news_realtime_postgres_hotpath_migration_cleans_legacy_news_runtime_debt() -> None:
+    text = NEWS_REALTIME_POSTGRES_HOTPATH_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    for statement in (
+        'revision = "20260528_0118"',
+        'down_revision = "20260528_0117"',
+        "SET LOCAL lock_timeout = '5s'",
+        "SET LOCAL statement_timeout = '30min'",
+        "DELETE FROM news_item_agent_runs AS runs",
+        "runs.execution_started = false",
+        "runs.outcome IN ('backpressure_circuit_open', 'backpressure_capacity_denied')",
+        "DELETE FROM news_projection_dirty_targets AS targets",
+        "targets.projection_name = 'brief_input'",
+        "sources.provider_type = 'opennews'",
+        "items.provider_signal_json ->> 'source' = 'provider'",
+        "ANALYZE news_item_agent_runs",
+        "ANALYZE news_projection_dirty_targets",
+        "ANALYZE news_items",
+        "ANALYZE news_page_rows",
+        "ANALYZE news_context_items",
+    ):
+        assert statement in text
+
+    assert "UPDATE news_item_agent_runs" not in text
+    assert "UPDATE news_projection_dirty_targets" not in text
+    assert "DELETE FROM news_items" not in text
+    assert "news_fetch_runs" not in text
+    assert (
+        "DELETE FROM news_projection_dirty_targets AS targets USING news_items AS items, news_sources AS sources"
+        in normalized_text
+    )
+
+
+def test_news_realtime_postgres_hotpath_migration_adds_concurrent_hotpath_indexes() -> None:
+    text = NEWS_REALTIME_POSTGRES_HOTPATH_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+    downgrade_text = text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+    assert "with op.get_context().autocommit_block():" in text
+    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_items_unprocessed_claim" in text
+    assert "ON news_items(published_at_ms ASC, news_item_id ASC)" in normalized_text
+    assert "WHERE lifecycle_status IN ('raw', 'process_failed')" in normalized_text
+    assert "OR ( lifecycle_status = 'processed' AND content_classification_json = '{}'::jsonb )" in normalized_text
+    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_page_rows_news_item" in text
+    assert "ON news_page_rows(news_item_id)" in normalized_text
+    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_projection_dirty_projection_due" in text
+    assert (
+        "ON news_projection_dirty_targets( projection_name, due_at_ms, leased_until_ms, priority, "
+        'updated_at_ms, target_kind, target_id, "window" )' in normalized_text
+    )
+    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_context_items_source_effective_time" in text
+    assert (
+        "ON news_context_items( source_id, (COALESCE(published_at_ms, created_at_ms)), parent_news_item_id )"
+        in normalized_text
+    )
+
+    for index_name in (
+        "ix_news_items_unprocessed_claim",
+        "ix_news_page_rows_news_item",
+        "ix_news_projection_dirty_projection_due",
+        "ix_news_context_items_source_effective_time",
+    ):
+        assert f"DROP INDEX CONCURRENTLY IF EXISTS {index_name}" in downgrade_text
+
+
+def test_news_source_status_hotpath_migration_adds_source_first_indexes() -> None:
+    text = NEWS_SOURCE_STATUS_HOTPATH_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+    downgrade_text = text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+    for statement in (
+        'revision = "20260528_0119"',
+        'down_revision = "20260528_0118"',
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_item_observation_edges_source_item",
+        "ON news_item_observation_edges(source_id, news_item_id)",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_fetch_runs_source_started_run",
+        "ON news_fetch_runs(source_id, started_at_ms DESC, fetch_run_id DESC)",
+        "ANALYZE news_item_observation_edges",
+        "ANALYZE news_fetch_runs",
+    ):
+        assert statement in normalized_text
+
+    for index_name in (
+        "ix_news_item_observation_edges_source_item",
+        "ix_news_fetch_runs_source_started_run",
+    ):
+        assert f"DROP INDEX CONCURRENTLY IF EXISTS {index_name}" in downgrade_text
+
+
 def test_token_image_unsupported_cleanup_follows_news_filter_indexes() -> None:
     text = TOKEN_IMAGE_UNSUPPORTED_CLEANUP_MIGRATION.read_text()
 
@@ -1647,8 +1741,8 @@ def test_token_equity_workerspace_root_fix_migration_contract() -> None:
     process_jobs_table = _migration_op_call(text, "create_table", "equity_event_process_jobs")
     process_jobs_columns = _sa_column_names(process_jobs_table)
 
-    assert 'revision = "20260528_0120"' in text
-    assert 'down_revision = "20260528_0119"' in text
+    assert 'revision = "20260528_0121"' in text
+    assert 'down_revision = "20260528_0120"' in text
     assert "raise RuntimeError" in downgrade_text
     assert 'op.add_column("token_radar_rank_source_events",sa.Column("source_payload_hash"' in compact_text
     for column_name in ("source_dirty", "market_dirty", "repair_dirty"):

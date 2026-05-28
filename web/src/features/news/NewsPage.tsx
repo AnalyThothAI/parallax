@@ -16,7 +16,6 @@ type NewsPageProps = {
 };
 
 const EMPTY_NEWS_ROWS: NewsRow[] = [];
-type TokenMode = "with-token" | "no-token";
 type SignalFilter = "all" | "bullish" | "bearish" | "neutral";
 
 export function NewsPage({ token, newsItemId = null }: NewsPageProps) {
@@ -26,7 +25,6 @@ export function NewsPage({ token, newsItemId = null }: NewsPageProps) {
 
 function NewsQueueRoute({ token }: { token: string }) {
   const navigate = useNavigate();
-  const [tokenMode, setTokenMode] = useState<TokenMode>("with-token");
   const [signalFilter, setSignalFilter] = useState<SignalFilter>("all");
   const [minScore, setMinScore] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -34,7 +32,6 @@ function NewsQueueRoute({ token }: { token: string }) {
   const cursor = cursorStack[cursorStack.length - 1] ?? null;
   const query = useNewsPageWithToken(token, {
     cursor,
-    has_token: tokenMode === "with-token",
     limit: NEWS_PAGE_SIZE,
     min_score: minScore,
     q: searchQuery.trim() || null,
@@ -47,28 +44,6 @@ function NewsQueueRoute({ token }: { token: string }) {
     <section className="radar-panel news-panel news-queue-shell" aria-label="News intel">
       <div aria-label="News intel page container" className="news-table-wrap">
         <div className="news-compact-controls" aria-label="News filters">
-          <div className="news-token-mode" aria-label="Token mode">
-            <button
-              aria-pressed={tokenMode === "with-token"}
-              type="button"
-              onClick={() => {
-                setTokenMode("with-token");
-                resetCursor();
-              }}
-            >
-              有 Token
-            </button>
-            <button
-              aria-pressed={tokenMode === "no-token"}
-              type="button"
-              onClick={() => {
-                setTokenMode("no-token");
-                resetCursor();
-              }}
-            >
-              无 Token
-            </button>
-          </div>
           <div className="news-signal-controls" aria-label="Signal filters">
             {(["all", "bullish", "bearish", "neutral"] as const).map((value) => (
               <button

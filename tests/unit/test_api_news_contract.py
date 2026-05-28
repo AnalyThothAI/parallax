@@ -22,7 +22,6 @@ def test_news_api_lists_provider_signal_news_rows_without_postgres() -> None:
             params={
                 "limit": 1,
                 "cursor": "2000:row-old",
-                "has_token": "true",
                 "signal": "bullish",
                 "min_score": "70",
                 "q": "btc",
@@ -34,7 +33,6 @@ def test_news_api_lists_provider_signal_news_rows_without_postgres() -> None:
     assert news.calls == [
         {
             "cursor": "2000:row-old",
-            "has_token": True,
             "limit": 1,
             "min_score": 70,
             "q": "btc",
@@ -94,6 +92,7 @@ def test_news_api_ignores_retired_source_classification_filters_without_postgres
                 "content_class": "regulation",
                 "content_tag": "sec",
                 "decision_class": "driver",
+                "has_token": "false",
                 "lane": "resolved",
                 "source": "example.com",
                 "target": "BTC",
@@ -104,7 +103,6 @@ def test_news_api_ignores_retired_source_classification_filters_without_postgres
     assert response.status_code == 200
     assert news.calls[-1] == {
         "cursor": None,
-        "has_token": None,
         "limit": 100,
         "min_score": None,
         "q": None,
@@ -197,7 +195,6 @@ class FakeNewsRepository:
         limit: int,
         cursor: str | None = None,
         status: str | None = None,
-        has_token: bool | None = None,
         signal: str | None = None,
         min_score: int | None = None,
         q: str | None = None,
@@ -205,7 +202,6 @@ class FakeNewsRepository:
         self.calls.append(
             {
                 "cursor": cursor,
-                "has_token": has_token,
                 "limit": limit,
                 "min_score": min_score,
                 "q": q,
