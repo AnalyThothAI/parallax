@@ -81,6 +81,46 @@ def test_enqueue_process_job_loads_document_artifacts_and_upserts_pending_hash()
     assert conn.commits == 0
 
 
+def test_enqueue_process_job_changed_hash_preserves_running_claim_sql_contract() -> None:
+    document = _document()
+    artifacts = [_artifact("artifact-1", artifact_payload_hash="changed-payload")]
+    conn = _ScriptedConnection(
+        [
+            [document],
+            artifacts,
+            [
+                {
+                    "event_document_id": "event-doc-1",
+                    "status": "running",
+                    "lease_owner": "process-a",
+                    "leased_until_ms": NOW_MS + 60_000,
+                    "attempt_count": 1,
+                    "input_payload_hash": "old-running-hash",
+                }
+            ],
+        ]
+    )
+
+    row = EquityEventRepository(conn).enqueue_process_job_for_document(
+        event_document_id="event-doc-1",
+        due_at_ms=NOW_MS + 5_000,
+        now_ms=NOW_MS,
+        commit=False,
+    )
+
+    upsert_sql = conn.sql[2]
+    assert row["status"] == "running"
+    for column in (
+        "status",
+        "attempt_count",
+        "input_payload_hash",
+        "started_at_ms",
+        "lease_owner",
+        "leased_until_ms",
+    ):
+        assert _running_preserve_branch(column) in upsert_sql
+
+
 def test_claim_due_process_jobs_moves_due_rows_to_running_with_attempt_token() -> None:
     conn = _ScriptedConnection(
         [
@@ -213,6 +253,13 @@ def test_expire_stale_process_jobs_reschedules_retryable_and_terminalizes_exhaus
 
 def _process_input_payload_hash(*, document: dict[str, Any], artifacts: list[dict[str, Any]]) -> str:
     return repo_module._process_input_payload_hash(document=document, artifacts=artifacts)
+
+
+def _running_preserve_branch(column: str) -> str:
+    return (
+        "WHEN equity_event_process_jobs.status = 'running'\n"
+        f"                  THEN equity_event_process_jobs.{column}"
+    )
 
 
 def _document() -> dict[str, Any]:
