@@ -456,6 +456,47 @@ def test_replace_source_quality_rows_updates_source_status_freshness() -> None:
     assert conn.commits == 1
 
 
+def test_source_quality_repository_query_uses_narrow_item_and_context_hotpaths() -> None:
+    conn = CapturingQualityConnection()
+    repo = NewsRepository(conn)
+
+    rows = repo.list_source_quality_inputs_for_targets(source_windows=[("coindesk", "24h")], now_ms=NOW_MS)
+
+    assert rows == []
+    query = next(sql for sql, _ in conn.calls if "WITH source_rows AS" in sql)
+    normalized_query = " ".join(query.split())
+    assert "SELECT items.*" not in query
+    assert (
+        "SELECT items.news_item_id, items.source_id, items.published_at_ms, items.fetched_at_ms, "
+        "items.lifecycle_status FROM source_rows AS sources JOIN news_items AS items"
+    ) in normalized_query
+    assert "ON context_items.source_id = items.source_id" in normalized_query
+    assert (
+        "AND COALESCE(context_items.published_at_ms, context_items.created_at_ms) >= %s "
+        "AND COALESCE(context_items.published_at_ms, context_items.created_at_ms) <= %s"
+    ) in normalized_query
+
+
+def test_source_status_query_uses_preaggregated_source_hotpaths() -> None:
+    conn = CapturingQualityConnection()
+    repo = NewsRepository(conn)
+
+    rows = repo.list_source_status()
+
+    assert rows == []
+    query = conn.calls[0][0]
+    normalized_query = " ".join(query.split())
+    assert "WITH edge_item_aggregate AS" in query
+    assert "page_row_aggregate AS" in query
+    assert "latest_fetch_run AS" in query
+    assert "LEFT JOIN LATERAL" not in query
+    assert "COUNT(DISTINCT edges.news_item_id)::int AS canonical_item_count" in normalized_query
+    assert "COUNT(DISTINCT rows.row_id)::int AS serving_row_count" in normalized_query
+    assert "ORDER BY fetch_runs.source_id, fetch_runs.started_at_ms DESC, fetch_runs.fetch_run_id DESC" in (
+        normalized_query
+    )
+
+
 def _source_quality_claim(
     source_id: str,
     *,
@@ -583,4 +624,5 @@ class CapturingQualityConnection:
 
 
 class CapturingQualityCursor:
-    pass
+    def fetchall(self):
+        return []

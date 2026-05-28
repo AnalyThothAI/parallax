@@ -12,6 +12,7 @@ from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.news_intel.services.news_content_classification import classify_news_item_content
 from gmgn_twitter_intel.domains.news_intel.services.news_entity_extraction import NewsEntity, extract_news_entities
 from gmgn_twitter_intel.domains.news_intel.services.news_fact_candidates import build_fact_candidates
+from gmgn_twitter_intel.domains.news_intel.services.news_item_agent_policy import needs_news_item_agent_brief
 from gmgn_twitter_intel.domains.news_intel.services.news_token_mentions import build_news_token_mentions
 from gmgn_twitter_intel.domains.token_intel.interfaces import TokenIdentityLookup
 
@@ -171,8 +172,7 @@ def _dirty_targets_for_processed_item(
 
 
 def _needs_agent_brief(item: Mapping[str, Any]) -> bool:
-    provider_signal = _json_dict(item.get("provider_signal_json"))
-    return not (str(item.get("provider_type") or "") == "opennews" and provider_signal.get("source") == "provider")
+    return needs_news_item_agent_brief(item)
 
 
 def _entities_from_provider_impacts(

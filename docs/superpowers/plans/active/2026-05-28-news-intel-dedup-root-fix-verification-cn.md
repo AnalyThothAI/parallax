@@ -139,7 +139,10 @@ Result: `Success: no issues found in 9 source files`.
 - Public `/api/news` list rows no longer expose provider article keys or canonical dedup keys.
 - Public item/story/fact detail sanitizes non-http URLs and omits raw/provider/internal identities such as `source_item_key`, `provider_item_id`, `raw_payload_json`, canonical keys and dedup key fields.
 - Public page/detail agent payloads omit internal run/hash/trace identities such as `agent_run_id`, `run_id`, `sdk_trace_id`, `input_hash`, `artifact_version_hash`, and `trace_metadata_json`.
-- OpenNews fetch policy has a single `fetch_mode` surface: `rest`, `websocket`, or `hybrid`.
+- Superseded by `2026-05-28-news-realtime-postgres-hotpath-hard-cut-plan-cn.md`:
+  OpenNews no longer has a runtime `fetch_mode` surface. `news_fetch` uses
+  REST-only `/open/news_search`; removed WebSocket/hybrid policy keys
+  hard-fail configuration.
 - Ops CLI now exposes `ops news-dedup-diagnostics` and `ops rebuild-news-canonical-items`.
 
 ## Blocked / Not Run

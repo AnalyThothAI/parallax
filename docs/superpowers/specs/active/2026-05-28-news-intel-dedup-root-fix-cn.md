@@ -5,6 +5,12 @@
 **Owner**: qinghuan / Codex
 **Related**: `docs/superpowers/specs/active/2026-05-19-news-intel-kappa-cqrs-cn.md`, `docs/superpowers/specs/active/2026-05-20-news-item-agent-brief-cn.md`, `src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md`, `docs/WORKERS.md`
 
+**Superseded OpenNews Runtime Note**: the later
+`docs/superpowers/plans/active/2026-05-28-news-realtime-postgres-hotpath-hard-cut-plan-cn.md`
+hard-cuts OpenNews runtime ingestion to REST-only `/open/news_search`.
+Historical references below to WebSocket/hybrid OpenNews fetch describe the
+pre-hard-cut state and are not a compatibility contract.
+
 ## Background
 
 News Intel 的既有边界是独立的 News domain：它拥有 `news_provider_items`、`news_items`、`news_item_entities`、`news_token_mentions`、`news_fact_candidates`、`news_story_groups`、`news_story_members`、`news_page_rows` 等事实与读模型，不拥有 Token Radar、Pulse 或 market read models；domain map 明确把 provider raw input、processed item/entity facts、story/page/source-quality projections 分层描述在 `src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md:14` 和 `src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md:39`。全局架构要求 PostgreSQL material facts 是业务真相，read models 必须稳定、可重建、单写者，并且 unchanged projections 写零 serving rows，见 `docs/ARCHITECTURE.md:70`、`docs/ARCHITECTURE.md:137`、`docs/ARCHITECTURE.md:157`。

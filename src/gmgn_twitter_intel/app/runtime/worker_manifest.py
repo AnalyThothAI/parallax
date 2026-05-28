@@ -475,10 +475,10 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         worker_class="gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker.NewsPageProjectionWorker",
         start_priority=95,
         input_contract=("news_projection_dirty_targets:page",),
-        ordering_keys=("page_id", "news_item_id"),
+        ordering_keys=("row_id", "news_item_id"),
         writes_read_models=("news_page_rows",),
         writes_control_plane=("news_projection_dirty_targets",),
-        current_read_model_identities=(("news_page_rows", ("page_id",)),),
+        current_read_model_identities=(("news_page_rows", ("row_id",)),),
         idempotency_evidence=("news page projection target identity", "dirty target payload hash"),
         dirty_target_tables=("news_projection_dirty_targets",),
         advisory_lock_key="2026051904",
@@ -1024,8 +1024,7 @@ def _validate_worker_manifests() -> None:
     }
     if forbidden_current_identities:
         raise ValueError(
-            "current read model identities include serving lifecycle columns: "
-            f"{forbidden_current_identities}"
+            f"current read model identities include serving lifecycle columns: {forbidden_current_identities}"
         )
 
 

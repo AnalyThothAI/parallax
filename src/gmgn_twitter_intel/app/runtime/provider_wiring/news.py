@@ -30,8 +30,6 @@ def news_feed_client(settings: Settings) -> NewsSourceProvider:
         opennews_client=OpenNewsFeedClient(
             token=opennews_settings.api_token,
             api_base_url=opennews_settings.api_base_url,
-            wss_url=opennews_settings.wss_url,
-            connect_timeout_seconds=opennews_settings.connect_timeout_seconds,
         ),
     )
     return RegistryBackedNewsSourceProvider(registry=registry)

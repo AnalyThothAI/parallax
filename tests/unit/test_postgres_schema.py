@@ -147,15 +147,13 @@ RUNTIME_RANK_SOURCE_EDGES_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0106_runtime_rank_source_edges.py"
 )
 MACRO_GENERATION_EQUITY_EVIDENCE_JOBS_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/"
-    "20260526_0107_macro_generation_equity_evidence_jobs.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0107_macro_generation_equity_evidence_jobs.py"
 )
 RUNTIME_PERF_LIFECYCLE_INDEXES_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0108_runtime_perf_lifecycle_indexes.py"
 )
 RANK_SOURCE_IDENTITY_CONFIDENCE_TEXT_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/"
-    "20260526_0109_rank_source_identity_confidence_text.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0109_rank_source_identity_confidence_text.py"
 )
 EQUITY_FETCH_RUN_REAPER_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0110_equity_fetch_run_reaper.py"
@@ -180,6 +178,12 @@ MACRO_WORKERSPACE_ROOT_FIX_MIGRATION = Path(
 )
 NEWS_INTEL_CANONICAL_DEDUP_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0117_news_intel_canonical_dedup_hard_cut.py"
+)
+NEWS_REALTIME_POSTGRES_HOTPATH_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0118_news_realtime_postgres_hotpath_hard_cut.py"
+)
+NEWS_SOURCE_STATUS_HOTPATH_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0119_news_source_status_hotpath_indexes.py"
 )
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
@@ -257,7 +261,7 @@ def test_token_radar_publication_state_migration_hard_cuts_online_tables() -> No
         "latest_attempt_finished_at_ms BIGINT",
         "latest_attempt_error TEXT",
         "updated_at_ms BIGINT NOT NULL",
-        "PRIMARY KEY(projection_version, \"window\", scope)",
+        'PRIMARY KEY(projection_version, "window", scope)',
         "latest_attempt_status IN ('ready', 'failed')",
         "latest_attempt_status = 'failed' OR current_generation_id = latest_attempt_generation_id",
     ):
@@ -461,9 +465,7 @@ def test_token_radar_current_row_runtime_insert_contract_matches_hard_cut_schema
     assert LEGACY_TOKEN_RADAR_CURRENT_JSON_COLUMNS.isdisjoint(insert_contract)
     for legacy_column in LEGACY_TOKEN_RADAR_CURRENT_JSON_COLUMNS:
         assert legacy_column not in RADAR_ROW_INSERT_COLUMNS_SQL
-    assert {"rank_score", "quality_status", "degraded_reasons_json", "factor_snapshot_json"}.issubset(
-        insert_contract
-    )
+    assert {"rank_score", "quality_status", "degraded_reasons_json", "factor_snapshot_json"}.issubset(insert_contract)
     for required_column in ("rank_score", "quality_status", "degraded_reasons_json", "factor_snapshot_json"):
         assert required_column in RADAR_ROW_INSERT_COLUMNS_SQL
 
@@ -716,9 +718,7 @@ def test_runtime_rank_source_edges_migration_contract() -> None:
         'PRIMARY KEY ( projection_version, "window", scope, lane, target_type_key, '
         "identity_id, source_kind, source_id )"
     )
-    assert (
-        rank_source_pk in normalized_text
-    )
+    assert rank_source_pk in normalized_text
     assert (
         'ON token_radar_rank_source_events( projection_version, "window", scope, target_type_key, identity_id )'
         in normalized_text
@@ -739,10 +739,7 @@ def test_macro_generation_and_equity_evidence_jobs_migration_contract() -> None:
     assert "ADD COLUMN IF NOT EXISTS generation_id TEXT NOT NULL DEFAULT 'initial-active'" in text
     assert "UPDATE macro_observation_series_rows" in text
     assert "SET generation_id = 'initial-active'" in text
-    assert (
-        "PRIMARY KEY (projection_version, concept_key, observed_at, generation_id)"
-        in text
-    )
+    assert "PRIMARY KEY (projection_version, concept_key, observed_at, generation_id)" in text
     assert (
         "ON CONFLICT (projection_version, concept_key) DO UPDATE SET generation_id = EXCLUDED.generation_id"
         in normalized_text
@@ -774,23 +771,15 @@ def test_macro_generation_and_equity_evidence_jobs_migration_contract() -> None:
     assert "DELETE FROM macro_observation_series_rows" not in upgrade_text
     assert "DELETE FROM macro_observation_series_rows" in downgrade_text
     assert "row_number() OVER" in downgrade_text
-    assert (
-        "PARTITION BY rows.projection_version, rows.concept_key, rows.observed_at"
-        in downgrade_text
-    )
-    assert (
-        "active.generation_id = rows.generation_id"
-        in downgrade_text
-    )
+    assert "PARTITION BY rows.projection_version, rows.concept_key, rows.observed_at" in downgrade_text
+    assert "active.generation_id = rows.generation_id" in downgrade_text
     assert "rows.generation_id = 'initial-active'" in downgrade_text
     assert "rows.projected_at_ms DESC" in downgrade_text
     assert "rows.generation_id DESC" in downgrade_text
     old_pk = "PRIMARY KEY (projection_version, concept_key, observed_at)"
     assert old_pk in downgrade_text
     assert "PRIMARY KEY (projection_version, concept_key, observed_at, generation_id)" not in downgrade_text
-    assert downgrade_text.index("DELETE FROM macro_observation_series_rows") < downgrade_text.index(
-        old_pk
-    )
+    assert downgrade_text.index("DELETE FROM macro_observation_series_rows") < downgrade_text.index(old_pk)
 
 
 def test_runtime_perf_lifecycle_indexes_migration_contract() -> None:
@@ -824,13 +813,9 @@ def test_runtime_perf_lifecycle_indexes_migration_contract() -> None:
     ):
         assert statement in text
     normalized_text = " ".join(text.split())
+    assert "ON equity_event_evidence_jobs(leased_until_ms, evidence_job_id) WHERE status = 'running'" in normalized_text
     assert (
-        "ON equity_event_evidence_jobs(leased_until_ms, evidence_job_id) WHERE status = 'running'"
-        in normalized_text
-    )
-    assert (
-        "ON equity_event_evidence_jobs(status, due_at_ms, leased_until_ms, evidence_job_id) "
-        "WHERE status <> 'success'"
+        "ON equity_event_evidence_jobs(status, due_at_ms, leased_until_ms, evidence_job_id) WHERE status <> 'success'"
     ) in normalized_text
     assert (
         "ON macro_observation_series_rows( projection_version, generation_id, concept_key ) "
@@ -865,10 +850,7 @@ def test_equity_fetch_run_reaper_migration_contract() -> None:
     assert "runs.status = 'running'" in text
     assert "runs.finished_at_ms = 0" in text
     assert "runs.started_at_ms < now_value.now_ms - 900000" in normalized_text
-    assert (
-        "CHECK (status IN ('running', 'success', 'failed_retryable', 'failed_terminal'))"
-        in normalized_text
-    )
+    assert "CHECK (status IN ('running', 'success', 'failed_retryable', 'failed_terminal'))" in normalized_text
     assert "WHERE status IN ('failed_retryable', 'failed_terminal')" in text
     assert "CHECK (status IN ('running', 'success', 'failed'))" in normalized_text
 
@@ -910,10 +892,7 @@ def test_macro_sync_worker_migration_adds_control_plane_tables() -> None:
         assert constraint in normalized_text
     assert "status IN ('pending', 'running', 'retryable', 'done', 'failed')" in normalized_text
     assert "CREATE UNIQUE INDEX IF NOT EXISTS ux_macro_sync_windows_identity" in text
-    assert (
-        "ON macro_sync_windows(priority ASC, due_at_ms ASC, updated_at_ms ASC, sync_window_id)"
-        in normalized_text
-    )
+    assert "ON macro_sync_windows(priority ASC, due_at_ms ASC, updated_at_ms ASC, sync_window_id)" in normalized_text
     assert "WHERE status IN ('pending', 'retryable')" in normalized_text
     assert "CREATE INDEX IF NOT EXISTS idx_macro_sync_windows_lease" in text
 
@@ -975,6 +954,8 @@ def test_runtime_performance_hard_cut_revision_chain() -> None:
         (NEXT_RUNTIME_LIFECYCLE_HARD_CUT_MIGRATION, "20260527_0115", "20260527_0114"),
         (MACRO_WORKERSPACE_ROOT_FIX_MIGRATION, "20260528_0116", "20260527_0115"),
         (NEWS_INTEL_CANONICAL_DEDUP_MIGRATION, "20260528_0117", "20260528_0116"),
+        (NEWS_REALTIME_POSTGRES_HOTPATH_MIGRATION, "20260528_0118", "20260528_0117"),
+        (NEWS_SOURCE_STATUS_HOTPATH_MIGRATION, "20260528_0119", "20260528_0118"),
     )
 
     for migration, revision, down_revision in migrations:
@@ -1442,6 +1423,96 @@ def test_opennews_provider_signal_migration_adds_jsonb_fact_columns() -> None:
         "'opennews'",
     ):
         assert statement in text
+
+
+def test_news_realtime_postgres_hotpath_migration_cleans_legacy_news_runtime_debt() -> None:
+    text = NEWS_REALTIME_POSTGRES_HOTPATH_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    for statement in (
+        'revision = "20260528_0118"',
+        'down_revision = "20260528_0117"',
+        "SET LOCAL lock_timeout = '5s'",
+        "SET LOCAL statement_timeout = '30min'",
+        "DELETE FROM news_item_agent_runs AS runs",
+        "runs.execution_started = false",
+        "runs.outcome IN ('backpressure_circuit_open', 'backpressure_capacity_denied')",
+        "DELETE FROM news_projection_dirty_targets AS targets",
+        "targets.projection_name = 'brief_input'",
+        "sources.provider_type = 'opennews'",
+        "items.provider_signal_json ->> 'source' = 'provider'",
+        "ANALYZE news_item_agent_runs",
+        "ANALYZE news_projection_dirty_targets",
+        "ANALYZE news_items",
+        "ANALYZE news_page_rows",
+        "ANALYZE news_context_items",
+    ):
+        assert statement in text
+
+    assert "UPDATE news_item_agent_runs" not in text
+    assert "UPDATE news_projection_dirty_targets" not in text
+    assert "DELETE FROM news_items" not in text
+    assert "news_fetch_runs" not in text
+    assert (
+        "DELETE FROM news_projection_dirty_targets AS targets USING news_items AS items, news_sources AS sources"
+        in normalized_text
+    )
+
+
+def test_news_realtime_postgres_hotpath_migration_adds_concurrent_hotpath_indexes() -> None:
+    text = NEWS_REALTIME_POSTGRES_HOTPATH_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+    downgrade_text = text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+    assert "with op.get_context().autocommit_block():" in text
+    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_items_unprocessed_claim" in text
+    assert "ON news_items(published_at_ms ASC, news_item_id ASC)" in normalized_text
+    assert "WHERE lifecycle_status IN ('raw', 'process_failed')" in normalized_text
+    assert "OR ( lifecycle_status = 'processed' AND content_classification_json = '{}'::jsonb )" in normalized_text
+    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_page_rows_news_item" in text
+    assert "ON news_page_rows(news_item_id)" in normalized_text
+    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_projection_dirty_projection_due" in text
+    assert (
+        "ON news_projection_dirty_targets( projection_name, due_at_ms, leased_until_ms, priority, "
+        'updated_at_ms, target_kind, target_id, "window" )' in normalized_text
+    )
+    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_context_items_source_effective_time" in text
+    assert (
+        "ON news_context_items( source_id, (COALESCE(published_at_ms, created_at_ms)), parent_news_item_id )"
+        in normalized_text
+    )
+
+    for index_name in (
+        "ix_news_items_unprocessed_claim",
+        "ix_news_page_rows_news_item",
+        "ix_news_projection_dirty_projection_due",
+        "ix_news_context_items_source_effective_time",
+    ):
+        assert f"DROP INDEX CONCURRENTLY IF EXISTS {index_name}" in downgrade_text
+
+
+def test_news_source_status_hotpath_migration_adds_source_first_indexes() -> None:
+    text = NEWS_SOURCE_STATUS_HOTPATH_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+    downgrade_text = text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+    for statement in (
+        'revision = "20260528_0119"',
+        'down_revision = "20260528_0118"',
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_item_observation_edges_source_item",
+        "ON news_item_observation_edges(source_id, news_item_id)",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_fetch_runs_source_started_run",
+        "ON news_fetch_runs(source_id, started_at_ms DESC, fetch_run_id DESC)",
+        "ANALYZE news_item_observation_edges",
+        "ANALYZE news_fetch_runs",
+    ):
+        assert statement in normalized_text
+
+    for index_name in (
+        "ix_news_item_observation_edges_source_item",
+        "ix_news_fetch_runs_source_started_run",
+    ):
+        assert f"DROP INDEX CONCURRENTLY IF EXISTS {index_name}" in downgrade_text
 
 
 def test_token_image_unsupported_cleanup_follows_news_filter_indexes() -> None:

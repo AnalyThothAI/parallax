@@ -35,6 +35,12 @@ CEX_OI_RADAR_BOARD_WORKER = SRC / "domains" / "cex_market_intel" / "runtime" / "
 EQUITY_EVENT_EVIDENCE_HARD_CUT_MIGRATION = (
     SRC / "platform/db/alembic/versions/20260526_0104_equity_event_evidence_hard_cut.py"
 )
+NEWS_INTEL_CANONICAL_DEDUP_MIGRATION = (
+    SRC / "platform/db/alembic/versions/20260528_0117_news_intel_canonical_dedup_hard_cut.py"
+)
+NEWS_REALTIME_POSTGRES_HOTPATH_MIGRATION = (
+    SRC / "platform/db/alembic/versions/20260528_0118_news_realtime_postgres_hotpath_hard_cut.py"
+)
 
 ZERO_HARD_TIMEOUT_ALLOWLIST = {"collector"}
 
@@ -265,6 +271,8 @@ CONTROL_PLANE_TABLES: dict[str, set[Path]] = {
         SRC / "domains/news_intel/repositories/news_projection_dirty_target_repository.py",
         SRC / "platform/db/alembic/versions/20260524_0094_projection_dirty_targets_hard_cut.py",
         SRC / "platform/db/alembic/versions/20260525_0097_agent_brief_dirty_targets.py",
+        NEWS_INTEL_CANONICAL_DEDUP_MIGRATION,
+        NEWS_REALTIME_POSTGRES_HOTPATH_MIGRATION,
     },
     "market_tick_current_dirty_targets": {
         SRC / "domains/asset_market/repositories/market_tick_current_dirty_target_repository.py",
@@ -412,6 +420,17 @@ def test_worker_manifest_forbids_semantic_read_model_aliases() -> None:
     }
 
     assert aliases == set()
+
+
+@pytest.mark.architecture
+def test_news_page_projection_manifest_uses_row_id_identity() -> None:
+    manifests = {manifest.name: manifest for manifest in all_worker_manifests()}
+    manifest = manifests["news_page_projection"]
+
+    assert manifest.ordering_keys == ("row_id", "news_item_id")
+    assert manifest.current_read_model_identities == (("news_page_rows", ("row_id",)),)
+    assert "page_id" not in manifest.ordering_keys
+    assert all("page_id" not in identity for _, identity in manifest.current_read_model_identities)
 
 
 @pytest.mark.architecture

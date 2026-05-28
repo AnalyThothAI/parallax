@@ -1875,8 +1875,10 @@ class NewsRepository:
         rows = self.conn.execute(
             """
             WITH target_items AS (
-              SELECT items.*
+              SELECT items.*,
+                     sources.provider_type
                 FROM news_items AS items
+                JOIN news_sources AS sources ON sources.source_id = items.source_id
                WHERE items.news_item_id = ANY(%s::text[])
                  AND items.lifecycle_status = 'processed'
             )
@@ -2637,7 +2639,11 @@ class NewsRepository:
                ORDER BY enabled DESC, source_id ASC
             ),
             window_items AS (
-              SELECT items.*
+              SELECT items.news_item_id,
+                     items.source_id,
+                     items.published_at_ms,
+                     items.fetched_at_ms,
+                     items.lifecycle_status
                 FROM source_rows AS sources
                 JOIN news_items AS items ON items.source_id = sources.source_id
                WHERE items.published_at_ms >= %s
@@ -2732,9 +2738,10 @@ class NewsRepository:
                          items.news_item_id
                     FROM window_items AS items
                     JOIN news_context_items AS context_items
-                      ON context_items.parent_news_item_id = items.news_item_id
-                   WHERE COALESCE(context_items.published_at_ms, context_items.created_at_ms) >= %s
+                      ON context_items.source_id = items.source_id
+                     AND COALESCE(context_items.published_at_ms, context_items.created_at_ms) >= %s
                      AND COALESCE(context_items.published_at_ms, context_items.created_at_ms) <= %s
+                     AND context_items.parent_news_item_id = items.news_item_id
                 ) AS useful_items
                GROUP BY useful_items.source_id
             )
@@ -2856,110 +2863,109 @@ class NewsRepository:
     def list_source_status(self) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
+            WITH edge_item_aggregate AS (
+              SELECT edges.source_id,
+                     COUNT(DISTINCT edges.news_item_id)::int AS canonical_item_count,
+                     COUNT(*)::int AS observation_edge_count,
+                     MAX(items.published_at_ms) AS latest_item_published_at_ms,
+                     MAX(items.fetched_at_ms) AS latest_item_fetched_at_ms
+                FROM news_item_observation_edges AS edges
+                JOIN news_items AS items ON items.news_item_id = edges.news_item_id
+               GROUP BY edges.source_id
+            ),
+            context_aggregate AS (
+              SELECT context_items.source_id,
+                     COUNT(context_items.context_item_id)::int AS context_item_count,
+                     MAX(
+                       GREATEST(
+                         COALESCE(context_items.published_at_ms, context_items.created_at_ms),
+                         context_items.created_at_ms
+                       )
+                     ) AS latest_context_seen_at_ms
+                FROM news_context_items AS context_items
+               GROUP BY context_items.source_id
+            ),
+            provider_item_aggregate AS (
+              SELECT provider_items.source_id,
+                     COUNT(*)::int AS raw_observation_count
+                FROM news_provider_items AS provider_items
+               GROUP BY provider_items.source_id
+            ),
+            page_row_aggregate AS (
+              SELECT edges.source_id,
+                     COUNT(DISTINCT rows.row_id)::int AS serving_row_count
+                FROM news_item_observation_edges AS edges
+                JOIN news_page_rows AS rows ON rows.news_item_id = edges.news_item_id
+               GROUP BY edges.source_id
+            ),
+            latest_fetch_run AS (
+              SELECT DISTINCT ON (fetch_runs.source_id)
+                     fetch_runs.source_id,
+                     jsonb_build_object(
+                       'status', fetch_runs.status,
+                       'started_at_ms', fetch_runs.started_at_ms,
+                       'finished_at_ms', fetch_runs.finished_at_ms,
+                       'http_status', fetch_runs.http_status,
+                       'fetched_count', fetch_runs.fetched_count,
+                       'inserted_count', fetch_runs.inserted_count,
+                       'updated_count', fetch_runs.updated_count,
+                       'duplicate_count', fetch_runs.duplicate_count,
+                       'error', fetch_runs.error
+                     ) AS latest_fetch_run_json
+                FROM news_fetch_runs AS fetch_runs
+               ORDER BY fetch_runs.source_id, fetch_runs.started_at_ms DESC, fetch_runs.fetch_run_id DESC
+            ),
+            latest_quality AS (
+              SELECT DISTINCT ON (quality.source_id)
+                     quality.*
+                FROM news_source_quality_rows AS quality
+               ORDER BY
+                 quality.source_id,
+                 quality.computed_at_ms DESC,
+                 CASE quality."window"
+                   WHEN '24h' THEN 0
+                   WHEN '4h' THEN 1
+                   WHEN '1h' THEN 2
+                   WHEN '7d' THEN 3
+                   ELSE 4
+                 END
+            )
             SELECT sources.*,
-                   COALESCE(item_aggregate.item_count, 0)::int AS item_count,
-                   item_aggregate.latest_item_published_at_ms,
-                   item_aggregate.latest_item_fetched_at_ms,
+                   COALESCE(edge_item_aggregate.canonical_item_count, 0)::int AS item_count,
+                   edge_item_aggregate.latest_item_published_at_ms,
+                   edge_item_aggregate.latest_item_fetched_at_ms,
                    COALESCE(context_aggregate.context_item_count, 0)::int AS context_item_count,
                    context_aggregate.latest_context_seen_at_ms,
                    latest_fetch_run.latest_fetch_run_json,
                    CASE
-                     WHEN latest_quality.row_id IS NULL THEN NULL
-                     ELSE to_jsonb(latest_quality.*)
+                     WHEN latest_quality.source_id IS NULL THEN NULL
+                     ELSE to_jsonb(latest_quality)
                    END AS latest_quality_json,
-                   dedup_aggregate.dedup_diagnostics_json
+                   jsonb_build_object(
+                     'raw_observation_count',
+                       COALESCE(provider_item_aggregate.raw_observation_count, 0)::int,
+                     'canonical_item_count',
+                       COALESCE(edge_item_aggregate.canonical_item_count, 0)::int,
+                     'observation_edge_count',
+                       COALESCE(edge_item_aggregate.observation_edge_count, 0)::int,
+                     'enabled_serving_row_count',
+                       CASE
+                         WHEN sources.enabled THEN COALESCE(page_row_aggregate.serving_row_count, 0)::int
+                         ELSE 0
+                       END,
+                     'disabled_serving_row_count',
+                       CASE
+                         WHEN sources.enabled THEN 0
+                         ELSE COALESCE(page_row_aggregate.serving_row_count, 0)::int
+                       END
+                   ) AS dedup_diagnostics_json
               FROM news_sources AS sources
-              LEFT JOIN LATERAL (
-                SELECT COUNT(DISTINCT items.news_item_id)::int AS item_count,
-                       MAX(items.published_at_ms) AS latest_item_published_at_ms,
-                       MAX(items.fetched_at_ms) AS latest_item_fetched_at_ms
-                  FROM news_item_observation_edges AS edges
-                  JOIN news_items AS items ON items.news_item_id = edges.news_item_id
-                 WHERE edges.source_id = sources.source_id
-              ) AS item_aggregate ON true
-              LEFT JOIN LATERAL (
-                SELECT COUNT(context_items.context_item_id)::int AS context_item_count,
-                       MAX(
-                         GREATEST(
-                           COALESCE(context_items.published_at_ms, context_items.created_at_ms),
-                           context_items.created_at_ms
-                         )
-                       ) AS latest_context_seen_at_ms
-                  FROM news_context_items AS context_items
-                 WHERE context_items.source_id = sources.source_id
-              ) AS context_aggregate ON true
-              LEFT JOIN LATERAL (
-                SELECT jsonb_build_object(
-                         'status', fetch_runs.status,
-                         'started_at_ms', fetch_runs.started_at_ms,
-                         'finished_at_ms', fetch_runs.finished_at_ms,
-                         'http_status', fetch_runs.http_status,
-                         'fetched_count', fetch_runs.fetched_count,
-                         'inserted_count', fetch_runs.inserted_count,
-                         'updated_count', fetch_runs.updated_count,
-                         'duplicate_count', fetch_runs.duplicate_count,
-                         'error', fetch_runs.error
-                       ) AS latest_fetch_run_json
-                  FROM news_fetch_runs AS fetch_runs
-                 WHERE fetch_runs.source_id = sources.source_id
-                 ORDER BY fetch_runs.started_at_ms DESC, fetch_runs.fetch_run_id DESC
-                 LIMIT 1
-              ) AS latest_fetch_run ON true
-              LEFT JOIN LATERAL (
-                SELECT *
-                  FROM news_source_quality_rows AS quality
-                 WHERE quality.source_id = sources.source_id
-                ORDER BY
-                   quality.computed_at_ms DESC,
-                   CASE quality."window"
-                     WHEN '24h' THEN 0
-                     WHEN '4h' THEN 1
-                     WHEN '1h' THEN 2
-                     WHEN '7d' THEN 3
-                     ELSE 4
-                   END
-                 LIMIT 1
-              ) AS latest_quality ON true
-              LEFT JOIN LATERAL (
-                SELECT jsonb_build_object(
-                         'raw_observation_count',
-                           (
-                             SELECT COUNT(*)::int
-                               FROM news_provider_items AS provider_items
-                              WHERE provider_items.source_id = sources.source_id
-                           ),
-                         'canonical_item_count',
-                           (
-                             SELECT COUNT(DISTINCT edges.news_item_id)::int
-                               FROM news_item_observation_edges AS edges
-                              WHERE edges.source_id = sources.source_id
-                           ),
-                         'observation_edge_count',
-                           (
-                             SELECT COUNT(*)::int
-                               FROM news_item_observation_edges AS edges
-                              WHERE edges.source_id = sources.source_id
-                           ),
-                         'enabled_serving_row_count',
-                           (
-                             SELECT COUNT(DISTINCT rows.row_id)::int
-                               FROM news_page_rows AS rows
-                               JOIN news_item_observation_edges AS edges
-                                 ON edges.news_item_id = rows.news_item_id
-                              WHERE edges.source_id = sources.source_id
-                                AND sources.enabled = true
-                           ),
-                         'disabled_serving_row_count',
-                           (
-                             SELECT COUNT(DISTINCT rows.row_id)::int
-                               FROM news_page_rows AS rows
-                               JOIN news_item_observation_edges AS edges
-                                 ON edges.news_item_id = rows.news_item_id
-                              WHERE edges.source_id = sources.source_id
-                                AND sources.enabled = false
-                           )
-                       ) AS dedup_diagnostics_json
-              ) AS dedup_aggregate ON true
+              LEFT JOIN edge_item_aggregate ON edge_item_aggregate.source_id = sources.source_id
+              LEFT JOIN context_aggregate ON context_aggregate.source_id = sources.source_id
+              LEFT JOIN provider_item_aggregate ON provider_item_aggregate.source_id = sources.source_id
+              LEFT JOIN page_row_aggregate ON page_row_aggregate.source_id = sources.source_id
+              LEFT JOIN latest_fetch_run ON latest_fetch_run.source_id = sources.source_id
+              LEFT JOIN latest_quality ON latest_quality.source_id = sources.source_id
              ORDER BY sources.enabled DESC, sources.source_domain ASC, sources.source_id ASC
             """
         ).fetchall()

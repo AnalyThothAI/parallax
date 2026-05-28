@@ -4,6 +4,8 @@ from collections.abc import Iterable
 from contextlib import nullcontext
 from typing import Any
 
+from gmgn_twitter_intel.domains.news_intel.services.news_item_agent_policy import needs_news_item_agent_brief
+
 DOMAIN_CHOICES = ("all", "equity", "news")
 PROJECTION_CHOICES = ("all", "story", "brief_input", "page", "timeline", "alert", "calendar", "source_quality")
 
@@ -155,16 +157,8 @@ def _enqueue_news_targets(
 ) -> dict[str, int]:
     news_item_projections = _selected_projections(projection, _NEWS_ITEM_PROJECTIONS)
     include_source_quality = projection in {"all", "source_quality"}
-    news_item_rows = _fetch_id_watermarks(
+    news_item_rows = _fetch_news_item_rows(
         repos.conn,
-        """
-        SELECT news_item_id, published_at_ms AS source_watermark_ms
-          FROM news_items
-         {where_clause}
-         ORDER BY news_item_id ASC
-        """,
-        "news_item_id",
-        since_column="published_at_ms",
         since_ms=since_ms,
     )
     source_ids = (
@@ -184,11 +178,12 @@ def _enqueue_news_targets(
         {
             "projection_name": selected_projection,
             "target_kind": "news_item",
-            "target_id": news_item_id,
-            "source_watermark_ms": source_watermark_ms,
+            "target_id": str(row["news_item_id"]),
+            "source_watermark_ms": int(row["source_watermark_ms"] or 0),
         }
-        for news_item_id, source_watermark_ms in news_item_rows
+        for row in news_item_rows
         for selected_projection in news_item_projections
+        if selected_projection != "brief_input" or needs_news_item_agent_brief(row)
     ]
     source_quality_targets = [
         {
@@ -258,6 +253,28 @@ def _fetch_id_watermarks(
         params["since_ms"] = int(since_ms)
     rows = conn.execute(sql_template.format(where_clause=where_clause), params).fetchall()
     return [(str(row[column]), int(row["source_watermark_ms"] or 0)) for row in rows if row[column] is not None]
+
+
+def _fetch_news_item_rows(conn: Any, *, since_ms: int | None) -> list[dict[str, Any]]:
+    params: dict[str, Any] = {}
+    where_clause = ""
+    if since_ms is not None:
+        where_clause = "WHERE items.published_at_ms >= %(since_ms)s"
+        params["since_ms"] = int(since_ms)
+    rows = conn.execute(
+        f"""
+        SELECT items.news_item_id,
+               items.published_at_ms AS source_watermark_ms,
+               items.provider_signal_json,
+               sources.provider_type
+          FROM news_items AS items
+          JOIN news_sources AS sources ON sources.source_id = items.source_id
+         {where_clause}
+         ORDER BY items.news_item_id ASC
+        """,
+        params,
+    ).fetchall()
+    return [dict(row) for row in rows if row["news_item_id"] is not None]
 
 
 def _source_quality_windows(windows: Iterable[str] | None) -> tuple[str, ...]:

@@ -36,7 +36,7 @@ def test_claimed_story_targets_load_only_claimed_ids_and_enqueue_page() -> None:
 
     assert result.processed == 1
     assert result.notes["story_rows"] == 1
-    assert news_repo.loaded_news_item_ids == [["news-1"]]
+    assert news_repo.loaded_news_item_ids == [["news-1"], ["news-1"]]
     assert news_repo.created_story_items == ["news-1"]
     assert news_repo.added_story_members == ["news-1"]
     assert dirty_repo.done == dirty_repo.claimed

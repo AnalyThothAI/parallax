@@ -12,6 +12,7 @@ from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.news_intel.providers import NewsSourceProvider
 from gmgn_twitter_intel.domains.news_intel.services.news_canonical_identity import canonical_identity_for_observation
+from gmgn_twitter_intel.domains.news_intel.services.news_item_agent_policy import needs_news_item_agent_brief
 from gmgn_twitter_intel.domains.news_intel.services.news_provider_contract import (
     NewsProviderContractError,
     validate_news_provider_contract,
@@ -247,6 +248,7 @@ class NewsFetchWorker(WorkerBase):
     ) -> dict[str, int]:
         counts = {"fetched": 0, "inserted": 0, "updated": 0, "duplicate": 0}
         dirty_news_item_ids: list[str] = []
+        brief_ineligible_news_item_ids: set[str] = set()
         repository = repos.news
         source_id = str(source["source_id"])
         parent_ids_by_source_key: dict[str, str] = {}
@@ -304,6 +306,13 @@ class NewsFetchWorker(WorkerBase):
             news_item_id = str(news.get("news_item_id") or "")
             if news_item_id:
                 parent_ids_by_source_key[observation.source_item_key] = news_item_id
+                if not needs_news_item_agent_brief(
+                    {
+                        "provider_type": source.get("provider_type"),
+                        "provider_signal_json": observation.provider_signal,
+                    }
+                ):
+                    brief_ineligible_news_item_ids.add(news_item_id)
             status = str(news.get("status") or provider.get("status") or "duplicate")
             if status in counts:
                 counts[status] += 1
@@ -330,6 +339,7 @@ class NewsFetchWorker(WorkerBase):
             projection_names=("page", "brief_input"),
             reason="news_context_written",
             now_ms=fetched_at_ms,
+            brief_ineligible_news_item_ids=brief_ineligible_news_item_ids,
         )
         return counts
 
@@ -402,11 +412,14 @@ def _enqueue_news_item_dirty_targets(
     projection_names: Iterable[str],
     reason: str,
     now_ms: int,
+    brief_ineligible_news_item_ids: Iterable[str] = (),
 ) -> int:
+    brief_ineligible_ids = set(str(item) for item in brief_ineligible_news_item_ids if str(item))
     targets = [
         {"projection_name": projection_name, "target_kind": "news_item", "target_id": news_item_id}
         for projection_name in dict.fromkeys(str(name) for name in projection_names if str(name))
         for news_item_id in dict.fromkeys(str(item) for item in news_item_ids if str(item))
+        if projection_name != "brief_input" or news_item_id not in brief_ineligible_ids
     ]
     if not targets:
         return 0
