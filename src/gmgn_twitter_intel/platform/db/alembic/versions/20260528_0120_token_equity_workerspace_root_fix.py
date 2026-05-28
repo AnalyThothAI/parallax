@@ -95,6 +95,49 @@ def upgrade() -> None:
 
     op.add_column("event_anchor_backfill_jobs", sa.Column("lease_owner", sa.Text(), nullable=True))
     op.add_column("event_anchor_backfill_jobs", sa.Column("leased_until_ms", sa.BigInteger(), nullable=True))
+    op.execute(
+        """
+        DO $$
+        DECLARE
+          status_constraint_name TEXT;
+        BEGIN
+          SELECT constraints.conname
+            INTO status_constraint_name
+            FROM pg_constraint constraints
+            JOIN pg_class tables
+              ON tables.oid = constraints.conrelid
+            JOIN pg_namespace namespaces
+              ON namespaces.oid = tables.relnamespace
+           WHERE namespaces.nspname = current_schema()
+             AND tables.relname = 'event_anchor_backfill_jobs'
+             AND constraints.contype = 'c'
+             AND pg_get_constraintdef(constraints.oid) LIKE '%status%'
+             AND pg_get_constraintdef(constraints.oid) LIKE '%pending%'
+             AND pg_get_constraintdef(constraints.oid) LIKE '%expired%'
+             AND pg_get_constraintdef(constraints.oid) LIKE '%failed%'
+           LIMIT 1;
+
+          IF status_constraint_name IS NOT NULL THEN
+            EXECUTE format(
+              'ALTER TABLE event_anchor_backfill_jobs DROP CONSTRAINT %I',
+              status_constraint_name
+            );
+          END IF;
+
+          IF NOT EXISTS (
+            SELECT 1
+              FROM pg_constraint
+             WHERE conrelid = 'event_anchor_backfill_jobs'::regclass
+               AND conname = 'ck_event_anchor_backfill_jobs_status'
+          ) THEN
+            ALTER TABLE event_anchor_backfill_jobs
+              ADD CONSTRAINT ck_event_anchor_backfill_jobs_status
+              CHECK (status IN ('pending', 'running', 'done', 'expired', 'failed'));
+          END IF;
+        END
+        $$;
+        """
+    )
     op.execute("DROP INDEX IF EXISTS idx_event_anchor_backfill_jobs_due")
     op.create_index(
         "idx_event_anchor_backfill_jobs_due",

@@ -1692,6 +1692,9 @@ def test_token_equity_workerspace_root_fix_migration_contract() -> None:
             f'op.add_column("event_anchor_backfill_jobs",sa.Column("{column_name}"'
             in compact_text
         )
+    assert "DROP CONSTRAINT" in text
+    assert "ck_event_anchor_backfill_jobs_status" in text
+    assert "CHECK(statusIN('pending','running','done','expired','failed'))" in compact_text
     for index_name in (
         "idx_equity_event_process_jobs_due",
         "idx_equity_event_process_jobs_running",
