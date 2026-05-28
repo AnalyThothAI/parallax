@@ -263,7 +263,10 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
             fetched_at_ms=now_ms,
         )
 
-        with self._repository_session() as repos:
+        with (
+            self._repository_session() as repos,
+            repos.unit_of_work(),
+        ):
             if not repos.equity_events.evidence_job_claim_is_current(
                 evidence_job_id=evidence_job_id,
                 attempt_count=attempt_count,
@@ -271,7 +274,6 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
                 event_document_id=event_document_id,
                 content_hash=document.get("content_hash"),
             ):
-                repos.conn.commit()
                 return WorkerResult(processed=0, notes={"stale_claim": 1, "evidence_job_id": evidence_job_id})
             repos.equity_events.replace_evidence_artifacts(
                 event_document_id=event_document_id,
@@ -284,6 +286,12 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
                 evidence_status=evidence_status,
                 evidence_reason=evidence_reason,
                 evidence_ready_at_ms=evidence_ready_at_ms,
+                now_ms=now_ms,
+                commit=False,
+            )
+            repos.equity_events.enqueue_process_job_for_document(
+                event_document_id=event_document_id,
+                due_at_ms=now_ms,
                 now_ms=now_ms,
                 commit=False,
             )
@@ -320,7 +328,6 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
                     now_ms=now_ms,
                     commit=False,
                 )
-            repos.conn.commit()
 
         if evidence_status in {"ready", "unavailable", "failed"} and source_id and self.wake_bus is not None:
             self.wake_bus.notify_equity_event_document_written(source_id=source_id, count=1)

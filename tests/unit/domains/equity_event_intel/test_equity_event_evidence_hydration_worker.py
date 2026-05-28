@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any
@@ -55,6 +56,7 @@ def test_hydration_worker_claims_job_writes_artifacts_finishes_and_wakes() -> No
         }
     ]
     assert repo.successes == [{"evidence_job_id": "job-event-document-id", "finished_at_ms": NOW_MS}]
+    assert repo.process_jobs == [{"event_document_id": "event-document-id", "due_at_ms": NOW_MS, "now_ms": NOW_MS}]
     assert repo.source_freshness == [{"source_id": "sec:MSFT", "evidence_ready_at_ms": NOW_MS}]
     assert wake_bus.documents_written == [("sec:MSFT", 1)]
 
@@ -109,6 +111,7 @@ def test_hydration_worker_terminalizes_reaped_stale_job_with_failed_artifact_and
             "content_hash": "content-hash",
         }
     ]
+    assert repo.process_jobs == [{"event_document_id": "event-document-id", "due_at_ms": NOW_MS, "now_ms": NOW_MS}]
     terminal_order = [
         item
         for item in repo.call_order
@@ -352,6 +355,7 @@ class _HydrationRepo:
         self.terminals: list[dict[str, Any]] = []
         self.source_freshness: list[dict[str, Any]] = []
         self.claim_validations: list[dict[str, Any]] = []
+        self.process_jobs: list[dict[str, Any]] = []
 
     def reap_stale_evidence_jobs(
         self,
@@ -446,6 +450,17 @@ class _HydrationRepo:
             }
         )
 
+    def enqueue_process_job_for_document(
+        self,
+        *,
+        event_document_id: str,
+        due_at_ms: int,
+        now_ms: int,
+        **_: Any,
+    ) -> None:
+        self.call_order.append("enqueue_process_job")
+        self.process_jobs.append({"event_document_id": event_document_id, "due_at_ms": due_at_ms, "now_ms": now_ms})
+
     def finish_evidence_job_success(self, *, evidence_job_id: str, finished_at_ms: int, **_: Any) -> None:
         self.call_order.append("finish_success")
         self.successes.append({"evidence_job_id": evidence_job_id, "finished_at_ms": finished_at_ms})
@@ -517,6 +532,13 @@ class _HydrationRepo:
             payload["actionable_error"] = actionable_error
         self.source_freshness.append(payload)
 
+    @contextmanager
+    def unit_of_work(self):
+        try:
+            yield
+        finally:
+            self.call_order.append("commit")
+
 
 def _broken_payload(*, content_hash: str | None) -> dict[str, Any]:
     return {
@@ -557,6 +579,9 @@ class _Session:
 
     def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
         return False
+
+    def unit_of_work(self):
+        return self.equity_events.unit_of_work()
 
 
 class _WakeBus:

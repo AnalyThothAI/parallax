@@ -156,6 +156,51 @@ def test_claim_due_process_jobs_moves_due_rows_to_running_with_attempt_token() -
     assert conn.params[-1]["limit"] == 10
 
 
+def test_load_process_packets_for_claims_matches_current_lease_and_omits_raw_payload() -> None:
+    conn = _ScriptedConnection(
+        [
+            [
+                {
+                    "event_document_id": "event-doc-1",
+                    "lease_owner": "process-a",
+                    "attempt_count": 1,
+                    "input_payload_hash": "hash-1",
+                    "provider_title": "MSFT 10-Q",
+                    "provider_summary": "Quarterly results",
+                    "primary_document_url": "https://example.test/msft-10q.htm",
+                    "evidence_artifacts": [{"id": "artifact-1", "artifact_payload_hash": "artifact-hash"}],
+                }
+            ]
+        ]
+    )
+
+    packets = EquityEventRepository(conn).load_process_packets_for_claims(
+        claims=[
+            {
+                "event_document_id": "event-doc-1",
+                "lease_owner": "process-a",
+                "attempt_count": 1,
+                "input_payload_hash": "hash-1",
+            }
+        ]
+    )
+
+    sql = conn.sql[-1]
+    assert packets[0]["event_document_id"] == "event-doc-1"
+    assert "jsonb_to_recordset" in sql
+    assert "JOIN equity_event_process_jobs AS jobs" in sql
+    assert "jobs.status = 'running'" in sql
+    assert "jobs.lease_owner = claims.lease_owner" in sql
+    assert "jobs.attempt_count = claims.attempt_count" in sql
+    assert "jobs.input_payload_hash = claims.input_payload_hash" in sql
+    assert "provider.raw_payload_json" not in sql
+    assert "raw_payload_json" not in sql
+    assert "documents.provider_title" in sql
+    assert "documents.provider_summary" in sql
+    assert "documents.primary_document_url" in sql
+    assert "artifacts.artifact_payload_hash" in sql
+
+
 def test_finish_process_job_success_requires_matching_lease_attempt_and_hash() -> None:
     conn = _ScriptedConnection([[], [{"event_document_id": "event-doc-1"}]])
     repo = EquityEventRepository(conn)

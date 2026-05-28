@@ -137,7 +137,9 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         ordering_keys=("event_id", "intent_id", "target_id"),
         writes_facts=("enriched_events", "market_ticks"),
         writes_control_plane=("event_anchor_backfill_jobs",),
+        uses_provider_io=True,
         idempotency_evidence=("event_anchor_backfill_jobs job state", "enriched_events event/intent identity"),
+        queue_depth_table="event_anchor_backfill_jobs",
         queue_health_tables=("event_anchor_backfill_jobs",),
     ),
     WorkerManifest(
@@ -585,7 +587,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
             "gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_process_worker.EquityEventProcessWorker"
         ),
         start_priority=99,
-        input_contract=("equity_event_documents awaiting processing",),
+        input_contract=("equity_event_process_jobs due rows",),
         ordering_keys=("document_id", "company_event_id"),
         writes_facts=(
             "equity_company_events",
@@ -593,11 +595,13 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
             "equity_event_fact_candidates",
             "equity_event_documents.lifecycle_status",
         ),
-        writes_control_plane=("equity_event_projection_dirty_targets",),
+        writes_control_plane=("equity_event_process_jobs", "equity_event_projection_dirty_targets"),
         idempotency_evidence=("equity event document processing state", "company_event_id identity"),
         advisory_lock_key="2026052303",
         wakes_on=("equity_event_document_written",),
         wakes_out=("equity_event_processed",),
+        queue_depth_table="equity_event_process_jobs",
+        queue_health_tables=("equity_event_process_jobs",),
     ),
     WorkerManifest(
         name="equity_event_story_projection",

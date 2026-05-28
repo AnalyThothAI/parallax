@@ -1775,6 +1775,102 @@ class EquityEventRepository:
             self.conn.commit()
         return [dict(row) for row in rows]
 
+    def load_process_packets_for_claims(self, *, claims: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+        claim_payloads = _process_job_claim_payloads(claims)
+        if not claim_payloads:
+            return []
+        rows = self.conn.execute(
+            """
+            WITH claims AS (
+              SELECT event_document_id,
+                     lease_owner,
+                     attempt_count,
+                     input_payload_hash,
+                     claim_ordinal
+                FROM jsonb_to_recordset(%(claims)s::jsonb) AS claim_rows (
+                  event_document_id text,
+                  lease_owner text,
+                  attempt_count integer,
+                  input_payload_hash text,
+                  claim_ordinal integer
+                )
+            )
+            SELECT documents.event_document_id,
+                   documents.provider_document_id,
+                   provider.provider_document_key,
+                   documents.company_id,
+                   documents.ticker,
+                   documents.cik,
+                   documents.source_id,
+                   documents.source_role,
+                   documents.document_type,
+                   documents.form_type,
+                   documents.accession_number,
+                   documents.fiscal_period,
+                   documents.document_url,
+                   documents.provider_title,
+                   documents.provider_summary,
+                   documents.primary_document_url,
+                   COALESCE(
+                     NULLIF(documents.provider_title, ''),
+                     NULLIF(documents.provider_summary, ''),
+                     NULLIF(provider.provider_document_key, ''),
+                     NULLIF(documents.form_type, ''),
+                     documents.document_type
+                   ) AS title,
+                   documents.event_time_ms,
+                   documents.discovered_at_ms,
+                   documents.content_hash,
+                   documents.evidence_status,
+                   documents.evidence_reason,
+                   documents.evidence_ready_at_ms,
+                   documents.fact_extraction_status,
+                   documents.fact_extraction_reason,
+                   documents.fact_extracted_at_ms,
+                   provider.payload_hash,
+                   provider.fetched_at_ms,
+                   jobs.status AS process_job_status,
+                   jobs.lease_owner,
+                   jobs.leased_until_ms,
+                   jobs.attempt_count,
+                   jobs.input_payload_hash,
+                   COALESCE(artifacts.evidence_artifacts, '[]'::jsonb) AS evidence_artifacts
+              FROM claims
+              JOIN equity_event_process_jobs AS jobs
+                ON jobs.event_document_id = claims.event_document_id
+               AND jobs.status = 'running'
+               AND jobs.lease_owner = claims.lease_owner
+               AND jobs.attempt_count = claims.attempt_count
+               AND jobs.input_payload_hash = claims.input_payload_hash
+              JOIN equity_event_documents AS documents
+                ON documents.event_document_id = jobs.event_document_id
+              JOIN equity_provider_documents AS provider
+                ON provider.provider_document_id = documents.provider_document_id
+              LEFT JOIN LATERAL (
+                SELECT jsonb_agg(
+                         jsonb_build_object(
+                           'id', artifacts.evidence_artifact_id,
+                           'evidence_artifact_id', artifacts.evidence_artifact_id,
+                           'artifact_kind', artifacts.artifact_kind,
+                           'source_id', artifacts.source_id,
+                           'source_url', artifacts.source_url,
+                           'content_hash', artifacts.content_hash,
+                           'excerpt_text', artifacts.excerpt_text,
+                           'content_text', artifacts.content_text,
+                           'extraction_status', artifacts.extraction_status,
+                           'artifact_payload_hash', artifacts.artifact_payload_hash
+                         )
+                         ORDER BY artifacts.artifact_kind ASC, artifacts.evidence_artifact_id ASC
+                       ) AS evidence_artifacts
+                  FROM equity_event_evidence_artifacts AS artifacts
+                 WHERE artifacts.event_document_id = documents.event_document_id
+              ) AS artifacts ON true
+             ORDER BY claims.claim_ordinal ASC
+            """,
+            {"claims": Jsonb(claim_payloads)},
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def finish_process_job_success(
         self,
         *,
@@ -3634,7 +3730,16 @@ class EquityEventRepository:
         rows = self.conn.execute(
             """
             SELECT documents.*,
-                   provider.raw_payload_json
+                   provider.provider_document_key,
+                   provider.payload_hash,
+                   provider.fetched_at_ms,
+                   COALESCE(
+                     NULLIF(documents.provider_title, ''),
+                     NULLIF(documents.provider_summary, ''),
+                     NULLIF(provider.provider_document_key, ''),
+                     NULLIF(documents.form_type, ''),
+                     documents.document_type
+                   ) AS title
               FROM equity_event_documents AS documents
               LEFT JOIN equity_provider_documents AS provider
                 ON provider.provider_document_id = documents.provider_document_id
@@ -3909,6 +4014,27 @@ def _process_input_payload_hash(
         separators=(",", ":"),
     )
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _process_job_claim_payloads(claims: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    payloads: list[dict[str, Any]] = []
+    for index, claim in enumerate(claims):
+        event_document_id = _optional_str(claim.get("event_document_id"))
+        lease_owner = _optional_str(claim.get("lease_owner"))
+        input_payload_hash = _optional_str(claim.get("input_payload_hash"))
+        attempt_count = claim.get("attempt_count")
+        if event_document_id is None or lease_owner is None or input_payload_hash is None or attempt_count is None:
+            continue
+        payloads.append(
+            {
+                "event_document_id": event_document_id,
+                "lease_owner": lease_owner,
+                "attempt_count": int(attempt_count),
+                "input_payload_hash": input_payload_hash,
+                "claim_ordinal": index,
+            }
+        )
+    return payloads
 
 
 def _stable_payload_hash(payload: Mapping[str, Any]) -> str:
