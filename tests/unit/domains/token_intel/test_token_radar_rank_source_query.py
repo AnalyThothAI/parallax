@@ -266,6 +266,38 @@ def test_rank_source_query_conflict_update_refreshes_consumed_market_columns():
     assert "event_price_holders = excluded.event_price_holders" in conn.sql
 
 
+def test_rank_source_query_uses_source_payload_hash_noop_gate():
+    conn = FakeConn(rows=[{"upserted_count": 1, "deleted_count": 0}])
+
+    TokenRadarRankSourceQuery(conn).populate_edges_for_requests(
+        [
+            TokenRadarSourceRequest(
+                request_key="request-1",
+                target_type_key="Asset",
+                identity_id="asset-1",
+                window="1h",
+                scope="all",
+                analysis_since_ms=1,
+                score_since_ms=2,
+                now_ms=3,
+            )
+        ],
+        projected_at_ms=4,
+        commit=False,
+    )
+
+    normalized_sql = " ".join(conn.sql.split())
+    assert "source_payload_hash" in conn.sql
+    assert "sha256(" in conn.sql
+    assert "convert_to(" in conn.sql
+    assert "source_payload_hash = excluded.source_payload_hash" in conn.sql
+    assert (
+        "WHERE token_radar_rank_source_events.source_payload_hash IS DISTINCT FROM "
+        "excluded.source_payload_hash"
+    ) in normalized_sql
+    assert "projected_at_ms = excluded.projected_at_ms" in conn.sql
+
+
 def test_rank_source_query_groups_rows_by_request_and_chunks():
     conn = FakeConn(
         rows=[

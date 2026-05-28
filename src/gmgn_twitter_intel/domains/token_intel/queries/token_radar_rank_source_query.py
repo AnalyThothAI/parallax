@@ -135,6 +135,7 @@ SELECT
   requested."window",
   requested.scope,
   requested.score_since_ms,
+  rank_source.source_payload_hash,
   rank_source.intent_id,
   rank_source.event_id,
   rank_source.intent_key,
@@ -549,14 +550,47 @@ ranked_source AS (
     (row_number() OVER (
       PARTITION BY "window", scope, target_type_key, identity_id
       ORDER BY event_received_at_ms ASC, event_id ASC
-    ) - 1)::integer AS source_rank
+  ) - 1)::integer AS source_rank
   FROM deduped_source
+),
+hashed_source AS (
+  SELECT
+    ranked_source.*,
+    encode(
+      sha256(
+        convert_to(
+          (
+            to_jsonb(ranked_source)
+            - 'resolution_confidence'
+            - 'event_source_choice_rank'
+            - 'latest_price_tick_id'
+            - 'latest_price_provider'
+            - 'latest_price_source_tier'
+            - 'latest_price_pricefeed_id'
+            - 'latest_price_observed_at_ms'
+            - 'latest_price_received_at_ms'
+            - 'latest_price_usd'
+            - 'latest_price_quote'
+            - 'latest_price_quote_symbol'
+            - 'latest_price_basis'
+            - 'latest_price_market_cap_usd'
+            - 'latest_price_liquidity_usd'
+            - 'latest_price_volume_24h_usd'
+            - 'latest_price_open_interest_usd'
+            - 'latest_price_holders'
+          )::text,
+          'UTF8'
+        )
+      ),
+      'hex'
+    ) AS source_payload_hash
+  FROM ranked_source
 ),
 upserted AS (
   INSERT INTO token_radar_rank_source_events(
     projection_version, "window", scope, lane, target_type_key, identity_id,
     source_kind, source_id, event_received_at_ms, source_rank, projected_at_ms,
-    intent_id, event_id, intent_key, construction_policy, primary_evidence_id,
+    source_payload_hash, intent_id, event_id, intent_key, construction_policy, primary_evidence_id,
     display_symbol, display_name, chain_hint, address_hint, intent_status,
     intent_created_at_ms, intent_updated_at_ms, resolution_id, target_type, target_id,
     pricefeed_id, resolution_status, reason_codes_json, candidate_ids_json,
@@ -595,6 +629,7 @@ upserted AS (
     ranked_source.event_received_at_ms,
     ranked_source.source_rank,
     %s,
+    ranked_source.source_payload_hash,
     ranked_source.intent_id,
     ranked_source.event_id,
     ranked_source.intent_key,
@@ -691,12 +726,13 @@ upserted AS (
     ranked_source.before_event_price_quote_symbol,
     ranked_source.before_event_price_basis,
     ranked_source.first_seen_global_24h
-  FROM ranked_source
+  FROM hashed_source AS ranked_source
   ON CONFLICT(projection_version, "window", scope, lane, target_type_key, identity_id, source_kind, source_id)
   DO UPDATE SET
     event_received_at_ms = excluded.event_received_at_ms,
     source_rank = excluded.source_rank,
     projected_at_ms = excluded.projected_at_ms,
+    source_payload_hash = excluded.source_payload_hash,
     intent_id = excluded.intent_id,
     event_id = excluded.event_id,
     intent_key = excluded.intent_key,
@@ -793,6 +829,7 @@ upserted AS (
     before_event_price_quote_symbol = excluded.before_event_price_quote_symbol,
     before_event_price_basis = excluded.before_event_price_basis,
     first_seen_global_24h = excluded.first_seen_global_24h
+  WHERE token_radar_rank_source_events.source_payload_hash IS DISTINCT FROM excluded.source_payload_hash
   RETURNING 1
 ),
 deleted AS (

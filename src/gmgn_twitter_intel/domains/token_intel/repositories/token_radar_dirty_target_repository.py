@@ -12,6 +12,66 @@ from gmgn_twitter_intel.platform.db.json_safety import postgres_safe_json
 
 MARKET_DIRTY_MIN_INTERVAL_MS = 60_000
 
+SOURCE_DIRTY_REASONS = frozenset(
+    {
+        "intent_written",
+        "resolution_updated",
+        "identity_updated",
+        "source_event_written",
+        "event_anchor_updated",
+        "ingest_resolution",
+        "projection_catch_up",
+        "ops_repair",
+    }
+)
+MARKET_DIRTY_REASONS = frozenset(
+    {
+        "market_tick_current_changed",
+        "market_tick_current_updated",
+        "market_tick_written",
+        "ops_repair",
+    }
+)
+DIRTY_PAYLOAD_LIFECYCLE_FIELDS = frozenset(
+    {
+        "dirty_at_ms",
+        "due_at_ms",
+        "leased_until_ms",
+        "lease_owner",
+        "attempt_count",
+        "updated_at_ms",
+        "first_dirty_at_ms",
+        "last_error",
+    }
+)
+
+
+def dirty_kind_flags(reason: str) -> dict[str, bool]:
+    normalized = str(reason or "").strip()
+    repair_dirty = normalized == "ops_repair" or (normalized.startswith("ops_") and normalized.endswith("_repair"))
+    mixed_dirty = normalized == "mixed"
+    market_dirty = mixed_dirty or repair_dirty or normalized in MARKET_DIRTY_REASONS or normalized.startswith("market_")
+    source_dirty = repair_dirty or normalized in SOURCE_DIRTY_REASONS or normalized not in MARKET_DIRTY_REASONS
+    if normalized.startswith("market_") and normalized not in SOURCE_DIRTY_REASONS:
+        source_dirty = repair_dirty
+    if mixed_dirty:
+        source_dirty = True
+    return {
+        "source_dirty": source_dirty,
+        "market_dirty": market_dirty,
+        "repair_dirty": repair_dirty,
+    }
+
+
+def dirty_payload_hash(payload: Mapping[str, Any]) -> str:
+    stable_payload = {
+        str(key): postgres_safe_json(value)
+        for key, value in payload.items()
+        if str(key) not in DIRTY_PAYLOAD_LIFECYCLE_FIELDS
+    }
+    encoded = json.dumps(stable_payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
 
 class TokenRadarDirtyTargetRepository:
     def __init__(self, conn: Any) -> None:
@@ -44,6 +104,9 @@ class TokenRadarDirtyTargetRepository:
               target_type_key,
               identity_id,
               dirty_reason,
+              source_dirty,
+              market_dirty,
+              repair_dirty,
               payload_hash,
               due_at_ms,
               leased_until_ms,
@@ -58,6 +121,9 @@ class TokenRadarDirtyTargetRepository:
               incoming.target_type_key,
               incoming.identity_id,
               %(dirty_reason)s,
+              %(source_dirty)s,
+              %(market_dirty)s,
+              %(repair_dirty)s,
               incoming.payload_hash,
               %(due_at_ms)s,
               NULL,
@@ -69,7 +135,14 @@ class TokenRadarDirtyTargetRepository:
               incoming.source_event_ids_json
             FROM incoming
             ON CONFLICT(target_type_key, identity_id) DO UPDATE SET
-              dirty_reason = EXCLUDED.dirty_reason,
+              dirty_reason = CASE
+                WHEN token_radar_dirty_targets.dirty_reason = EXCLUDED.dirty_reason
+                THEN token_radar_dirty_targets.dirty_reason
+                ELSE 'mixed'
+              END,
+              source_dirty = token_radar_dirty_targets.source_dirty OR EXCLUDED.source_dirty,
+              market_dirty = token_radar_dirty_targets.market_dirty OR EXCLUDED.market_dirty,
+              repair_dirty = token_radar_dirty_targets.repair_dirty OR EXCLUDED.repair_dirty,
               payload_hash = EXCLUDED.payload_hash,
               due_at_ms = LEAST(token_radar_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
               last_error = NULL,
@@ -88,6 +161,7 @@ class TokenRadarDirtyTargetRepository:
                 "payload_hashes": [record["payload_hash"] for record in records],
                 "source_event_ids_json": [Jsonb(record["source_event_ids"]) for record in records],
                 "dirty_reason": str(reason),
+                **dirty_kind_flags(reason),
                 "due_at_ms": int(due_at_ms if due_at_ms is not None else now_ms),
                 "now_ms": int(now_ms),
             },
@@ -202,6 +276,9 @@ class TokenRadarDirtyTargetRepository:
               target_type_key,
               identity_id,
               dirty_reason,
+              source_dirty,
+              market_dirty,
+              repair_dirty,
               payload_hash,
               due_at_ms,
               leased_until_ms,
@@ -216,7 +293,18 @@ class TokenRadarDirtyTargetRepository:
               eligible.target_type_key,
               eligible.identity_id,
               %(dirty_reason)s,
-              md5(eligible.target_type_key || ':' || eligible.identity_id || ':' || %(dirty_reason)s),
+              %(source_dirty)s,
+              %(market_dirty)s,
+              %(repair_dirty)s,
+              encode(
+                sha256(
+                  convert_to(
+                    eligible.target_type_key || ':' || eligible.identity_id || ':' || %(dirty_reason)s,
+                    'UTF8'
+                  )
+                ),
+                'hex'
+              ),
               %(due_at_ms)s,
               NULL,
               NULL,
@@ -227,7 +315,14 @@ class TokenRadarDirtyTargetRepository:
               '[]'::jsonb
             FROM eligible
             ON CONFLICT(target_type_key, identity_id) DO UPDATE SET
-              dirty_reason = EXCLUDED.dirty_reason,
+              dirty_reason = CASE
+                WHEN token_radar_dirty_targets.dirty_reason = EXCLUDED.dirty_reason
+                THEN token_radar_dirty_targets.dirty_reason
+                ELSE 'mixed'
+              END,
+              source_dirty = token_radar_dirty_targets.source_dirty OR EXCLUDED.source_dirty,
+              market_dirty = token_radar_dirty_targets.market_dirty OR EXCLUDED.market_dirty,
+              repair_dirty = token_radar_dirty_targets.repair_dirty OR EXCLUDED.repair_dirty,
               payload_hash = EXCLUDED.payload_hash,
               due_at_ms = LEAST(token_radar_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
               leased_until_ms = NULL,
@@ -240,12 +335,16 @@ class TokenRadarDirtyTargetRepository:
                OR token_radar_dirty_targets.due_at_ms > EXCLUDED.due_at_ms
                OR token_radar_dirty_targets.leased_until_ms IS NOT NULL
                OR token_radar_dirty_targets.last_error IS NOT NULL
+               OR (NOT token_radar_dirty_targets.source_dirty AND EXCLUDED.source_dirty)
+               OR (NOT token_radar_dirty_targets.market_dirty AND EXCLUDED.market_dirty)
+               OR (NOT token_radar_dirty_targets.repair_dirty AND EXCLUDED.repair_dirty)
             """,
             {
                 "target_types": [record["target_type"] for record in records],
                 "target_ids": [record["target_id"] for record in records],
                 "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
                 "dirty_reason": str(reason),
+                **dirty_kind_flags(reason),
                 "due_at_ms": int(due_at_ms if due_at_ms is not None else now_ms),
                 "now_ms": int(now_ms),
                 "market_dirty_min_interval_ms": MARKET_DIRTY_MIN_INTERVAL_MS,
@@ -310,6 +409,9 @@ class TokenRadarDirtyTargetRepository:
               target_type_key,
               identity_id,
               dirty_reason,
+              source_dirty,
+              market_dirty,
+              repair_dirty,
               payload_hash,
               due_at_ms,
               leased_until_ms,
@@ -324,12 +426,21 @@ class TokenRadarDirtyTargetRepository:
               eligible.target_type_key,
               eligible.identity_id,
               %(dirty_reason)s,
-              md5(
-                eligible.target_type_key || ':' ||
-                eligible.identity_id || ':' ||
-                %(dirty_reason)s || ':' ||
-                eligible.source_max_received_at_ms::text || ':' ||
-                array_to_string(eligible.source_event_ids, ',')
+              %(source_dirty)s,
+              %(market_dirty)s,
+              %(repair_dirty)s,
+              encode(
+                sha256(
+                  convert_to(
+                    eligible.target_type_key || ':' ||
+                    eligible.identity_id || ':' ||
+                    %(dirty_reason)s || ':' ||
+                    eligible.source_max_received_at_ms::text || ':' ||
+                    array_to_string(eligible.source_event_ids, ','),
+                    'UTF8'
+                  )
+                ),
+                'hex'
               ),
               %(now_ms)s,
               NULL,
@@ -341,7 +452,14 @@ class TokenRadarDirtyTargetRepository:
               to_jsonb(eligible.source_event_ids)
             FROM eligible
             ON CONFLICT(target_type_key, identity_id) DO UPDATE SET
-              dirty_reason = EXCLUDED.dirty_reason,
+              dirty_reason = CASE
+                WHEN token_radar_dirty_targets.dirty_reason = EXCLUDED.dirty_reason
+                THEN token_radar_dirty_targets.dirty_reason
+                ELSE 'mixed'
+              END,
+              source_dirty = token_radar_dirty_targets.source_dirty OR EXCLUDED.source_dirty,
+              market_dirty = token_radar_dirty_targets.market_dirty OR EXCLUDED.market_dirty,
+              repair_dirty = token_radar_dirty_targets.repair_dirty OR EXCLUDED.repair_dirty,
               payload_hash = EXCLUDED.payload_hash,
               due_at_ms = LEAST(token_radar_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
               leased_until_ms = CASE
@@ -375,12 +493,16 @@ class TokenRadarDirtyTargetRepository:
                  )
                )
                OR token_radar_dirty_targets.last_error IS NOT NULL
+               OR (NOT token_radar_dirty_targets.source_dirty AND EXCLUDED.source_dirty)
+               OR (NOT token_radar_dirty_targets.market_dirty AND EXCLUDED.market_dirty)
+               OR (NOT token_radar_dirty_targets.repair_dirty AND EXCLUDED.repair_dirty)
             """,
             {
                 "since_ms": int(since_ms),
                 "now_ms": int(now_ms),
                 "limit": max(0, int(limit)),
                 "dirty_reason": str(reason),
+                **dirty_kind_flags(reason),
                 "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
             },
         )
@@ -702,6 +824,9 @@ INSERT INTO token_radar_dirty_targets(
   target_type_key,
   identity_id,
   dirty_reason,
+  source_dirty,
+  market_dirty,
+  repair_dirty,
   payload_hash,
   due_at_ms,
   leased_until_ms,
@@ -716,11 +841,20 @@ SELECT
   eligible.target_type_key,
   eligible.identity_id,
   %(dirty_reason)s,
-  md5(
-    eligible.target_type_key || ':' ||
-    eligible.identity_id || ':' ||
-    %(dirty_reason)s || ':' ||
-    eligible.market_current_watermark_ms::text
+  %(source_dirty)s,
+  %(market_dirty)s,
+  %(repair_dirty)s,
+  encode(
+    sha256(
+      convert_to(
+        eligible.target_type_key || ':' ||
+        eligible.identity_id || ':' ||
+        %(dirty_reason)s || ':' ||
+        eligible.market_current_watermark_ms::text,
+        'UTF8'
+      )
+    ),
+    'hex'
   ),
   %(now_ms)s,
   NULL,
@@ -732,7 +866,14 @@ SELECT
   '[]'::jsonb
 FROM eligible
 ON CONFLICT(target_type_key, identity_id) DO UPDATE SET
-  dirty_reason = EXCLUDED.dirty_reason,
+  dirty_reason = CASE
+    WHEN token_radar_dirty_targets.dirty_reason = EXCLUDED.dirty_reason
+    THEN token_radar_dirty_targets.dirty_reason
+    ELSE 'mixed'
+  END,
+  source_dirty = token_radar_dirty_targets.source_dirty OR EXCLUDED.source_dirty,
+  market_dirty = token_radar_dirty_targets.market_dirty OR EXCLUDED.market_dirty,
+  repair_dirty = token_radar_dirty_targets.repair_dirty OR EXCLUDED.repair_dirty,
   payload_hash = EXCLUDED.payload_hash,
   due_at_ms = LEAST(token_radar_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
   leased_until_ms = NULL,
@@ -745,6 +886,9 @@ WHERE token_radar_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_h
    OR token_radar_dirty_targets.due_at_ms > EXCLUDED.due_at_ms
    OR token_radar_dirty_targets.leased_until_ms IS NOT NULL
    OR token_radar_dirty_targets.last_error IS NOT NULL
+   OR (NOT token_radar_dirty_targets.source_dirty AND EXCLUDED.source_dirty)
+   OR (NOT token_radar_dirty_targets.market_dirty AND EXCLUDED.market_dirty)
+   OR (NOT token_radar_dirty_targets.repair_dirty AND EXCLUDED.repair_dirty)
 """
 )
 
@@ -755,6 +899,7 @@ def _market_current_params(*, since_ms: int, now_ms: int, limit: int, reason: st
         "now_ms": int(now_ms),
         "limit": max(0, int(limit)),
         "dirty_reason": str(reason),
+        **dirty_kind_flags(reason),
         "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
         "market_dirty_min_interval_ms": MARKET_DIRTY_MIN_INTERVAL_MS,
     }
@@ -868,6 +1013,4 @@ def _source_event_ids(row: Mapping[str, Any]) -> list[str]:
 
 
 def _payload_hash(payload: Mapping[str, Any]) -> str:
-    safe_payload = postgres_safe_json(dict(payload))
-    encoded = json.dumps(safe_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+    return dirty_payload_hash(payload)

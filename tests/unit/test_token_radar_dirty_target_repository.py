@@ -34,6 +34,29 @@ def test_enqueue_targets_coalesces_by_identity_and_preserves_first_dirty_time() 
     assert conn.params[-1]["due_at_ms"] == 1_700_000_000_000
 
 
+def test_enqueue_targets_unions_dirty_kind_flags_on_conflict() -> None:
+    conn = _ScriptedConnection([])
+
+    TokenRadarDirtyTargetRepository(conn).enqueue_targets(
+        [{"target_type_key": "Asset", "identity_id": "asset-1"}],
+        reason="intent_written",
+        now_ms=1_700_000_000_000,
+        commit=False,
+    )
+
+    sql = conn.sql[-1]
+    assert "source_dirty" in sql
+    assert "market_dirty" in sql
+    assert "repair_dirty" in sql
+    assert "source_dirty = token_radar_dirty_targets.source_dirty OR EXCLUDED.source_dirty" in sql
+    assert "market_dirty = token_radar_dirty_targets.market_dirty OR EXCLUDED.market_dirty" in sql
+    assert "repair_dirty = token_radar_dirty_targets.repair_dirty OR EXCLUDED.repair_dirty" in sql
+    assert "ELSE 'mixed'" in sql
+    assert conn.params[-1]["source_dirty"] is True
+    assert conn.params[-1]["market_dirty"] is False
+    assert conn.params[-1]["repair_dirty"] is False
+
+
 def test_claim_due_uses_skip_locked_and_claims_stale_leases() -> None:
     conn = _ScriptedConnection([[{"target_type_key": "Asset", "identity_id": "asset-1", "payload_hash": "hash-1"}]])
 
@@ -181,8 +204,14 @@ def test_enqueue_market_targets_uses_stable_hash_and_coalesces_fresh_targets() -
     assert "leased_until_ms = NULL" in sql
     assert "lease_owner = NULL" in sql
     assert "token_radar_dirty_targets.last_error IS NOT NULL" in sql
+    assert "source_dirty = token_radar_dirty_targets.source_dirty OR EXCLUDED.source_dirty" in sql
+    assert "market_dirty = token_radar_dirty_targets.market_dirty OR EXCLUDED.market_dirty" in sql
+    assert "repair_dirty = token_radar_dirty_targets.repair_dirty OR EXCLUDED.repair_dirty" in sql
     assert conn.params[-1]["projection_version"] == "token-radar-v13-social-attention"
     assert conn.params[-1]["market_dirty_min_interval_ms"] == 60_000
+    assert conn.params[-1]["source_dirty"] is False
+    assert conn.params[-1]["market_dirty"] is True
+    assert conn.params[-1]["repair_dirty"] is False
 
 
 def test_enqueue_recent_resolved_targets_is_bounded_freshness_gated_catch_up() -> None:
@@ -260,9 +289,15 @@ def test_market_current_target_enqueue_maps_persisted_current_rows_since_waterma
     assert "JOIN registry_assets" in sql
     assert "JOIN price_feeds" in sql
     assert "INSERT INTO token_radar_dirty_targets" in sql
+    assert "source_dirty" in sql
+    assert "market_dirty" in sql
+    assert "repair_dirty" in sql
     assert conn.params[-1]["since_ms"] == 123
     assert conn.params[-1]["limit"] == 25
     assert conn.params[-1]["dirty_reason"] == "ops_market_current_repair"
+    assert conn.params[-1]["source_dirty"] is True
+    assert conn.params[-1]["market_dirty"] is True
+    assert conn.params[-1]["repair_dirty"] is True
 
 
 def test_market_current_target_candidate_counts_are_read_only() -> None:

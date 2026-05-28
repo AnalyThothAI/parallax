@@ -287,7 +287,6 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
                     "identity_id",
                     "source_kind",
                     "source_id",
-                    "intent_id",
                 ),
             ),
             (
