@@ -192,6 +192,9 @@ NEWS_TOKEN_PRESENCE_FILTER_INDEX_MIGRATION = Path(
 TOKEN_EQUITY_WORKERSPACE_ROOT_FIX_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0121_token_equity_workerspace_root_fix.py"
 )
+TOKEN_RADAR_RUNTIME_NOT_NULL_GUARDRAILS_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0122_token_radar_runtime_not_null_guardrails.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 LEGACY_TOKEN_RADAR_CURRENT_JSON_COLUMNS = {
@@ -965,6 +968,7 @@ def test_runtime_performance_hard_cut_revision_chain() -> None:
         (NEWS_SOURCE_STATUS_HOTPATH_MIGRATION, "20260528_0119", "20260528_0118"),
         (NEWS_TOKEN_PRESENCE_FILTER_INDEX_MIGRATION, "20260528_0120", "20260528_0119"),
         (TOKEN_EQUITY_WORKERSPACE_ROOT_FIX_MIGRATION, "20260528_0121", "20260528_0120"),
+        (TOKEN_RADAR_RUNTIME_NOT_NULL_GUARDRAILS_MIGRATION, "20260528_0122", "20260528_0121"),
     )
 
     for migration, revision, down_revision in migrations:
@@ -1769,6 +1773,20 @@ def test_token_equity_workerspace_root_fix_migration_contract() -> None:
     ):
         assert f'"{index_name}"' in text
     assert "queue_depth_table" not in text
+
+
+def test_token_radar_runtime_not_null_guardrails_do_not_rehash_payloads() -> None:
+    text = TOKEN_RADAR_RUNTIME_NOT_NULL_GUARDRAILS_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    assert 'revision = "20260528_0122"' in text
+    assert 'down_revision = "20260528_0121"' in text
+    assert "ALTER COLUMN source_dirty SET NOT NULL" in text
+    assert "ALTER COLUMN market_dirty SET NOT NULL" in text
+    assert "ALTER COLUMN repair_dirty SET NOT NULL" in text
+    assert "ALTER COLUMN source_payload_hash SET NOT NULL" in text
+    assert "md5" not in normalized_text.lower()
+    assert "UPDATE token_radar_rank_source_events" not in text
 
 
 def test_asset_migration_adds_identity_resolution_tables() -> None:
