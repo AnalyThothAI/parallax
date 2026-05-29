@@ -219,12 +219,12 @@
 | `current_published_at_ms` | `BIGINT` | True | `None` |
 | `current_source_frontier_ms` | `BIGINT` | True | `None` |
 | `current_row_count` | `BIGINT` | False | `0` |
-| `current_payload_hash` | `TEXT` | True | `None` |
 | `latest_attempt_status` | `TEXT` | False | `'pending'::text` |
 | `latest_attempt_started_at_ms` | `BIGINT` | True | `None` |
 | `latest_attempt_finished_at_ms` | `BIGINT` | True | `None` |
 | `latest_attempt_error` | `TEXT` | True | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
+| `current_payload_hash` | `TEXT` | True | `None` |
 
 ## `cex_oi_radar_rows`
 
@@ -336,481 +336,6 @@
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
 
-## `equity_company_events`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `company_event_id` | `TEXT` | False | `None` |
-| `company_id` | `TEXT` | False | `None` |
-| `ticker` | `TEXT` | False | `None` |
-| `primary_document_id` | `TEXT` | True | `None` |
-| `event_type` | `TEXT` | False | `None` |
-| `priority` | `TEXT` | False | `None` |
-| `source_role` | `TEXT` | False | `None` |
-| `fiscal_period` | `TEXT` | True | `None` |
-| `event_time_ms` | `BIGINT` | False | `None` |
-| `discovered_at_ms` | `BIGINT` | False | `None` |
-| `lifecycle_status` | `TEXT` | False | `'raw'::text` |
-| `validation_status` | `TEXT` | False | `'pending'::text` |
-| `summary` | `TEXT` | False | `''::text` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-| `evidence_status` | `TEXT` | False | `'pending'::text` |
-| `evidence_reason` | `TEXT` | False | `''::text` |
-| `brief_readiness_status` | `TEXT` | False | `'pending_due'::text` |
-| `brief_readiness_reason` | `TEXT` | False | `''::text` |
-
-## `equity_company_timeline_rows`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `row_id` | `TEXT` | False | `None` |
-| `company_id` | `TEXT` | False | `None` |
-| `ticker` | `TEXT` | False | `None` |
-| `company_event_id` | `TEXT` | True | `None` |
-| `story_id` | `TEXT` | True | `None` |
-| `event_type` | `TEXT` | False | `None` |
-| `priority` | `TEXT` | False | `None` |
-| `source_role` | `TEXT` | False | `None` |
-| `event_time_ms` | `BIGINT` | False | `None` |
-| `lifecycle_status` | `TEXT` | False | `None` |
-| `headline` | `TEXT` | False | `None` |
-| `summary` | `TEXT` | False | `''::text` |
-| `payload_json` | `JSONB` | False | `'{}'::jsonb` |
-| `computed_at_ms` | `BIGINT` | False | `None` |
-| `projection_version` | `TEXT` | False | `None` |
-| `payload_hash` | `TEXT` | False | `''::text` |
-| `source_watermark_ms` | `BIGINT` | False | `0` |
-
-## `equity_document_revisions`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `revision_id` | `TEXT` | False | `None` |
-| `event_document_id` | `TEXT` | False | `None` |
-| `provider_document_id` | `TEXT` | True | `None` |
-| `revision_number` | `INTEGER` | False | `None` |
-| `content_hash` | `TEXT` | False | `None` |
-| `diff_hash` | `TEXT` | True | `None` |
-| `revision_reason` | `TEXT` | False | `''::text` |
-| `fetched_at_ms` | `BIGINT` | False | `None` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-
-## `equity_event_agent_briefs`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `company_event_id` | `TEXT` | False | `None` |
-| `agent_run_id` | `TEXT` | False | `None` |
-| `status` | `TEXT` | False | `None` |
-| `validation_status` | `TEXT` | False | `'pending'::text` |
-| `brief_json` | `JSONB` | False | `'{}'::jsonb` |
-| `input_hash` | `TEXT` | False | `None` |
-| `artifact_version_hash` | `TEXT` | False | `None` |
-| `prompt_version` | `TEXT` | False | `None` |
-| `schema_version` | `TEXT` | False | `None` |
-| `validator_version` | `TEXT` | False | `None` |
-| `computed_at_ms` | `BIGINT` | False | `None` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-
-## `equity_event_agent_runs`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `run_id` | `TEXT` | False | `None` |
-| `company_event_id` | `TEXT` | False | `None` |
-| `provider` | `TEXT` | False | `None` |
-| `model` | `TEXT` | False | `None` |
-| `backend` | `TEXT` | False | `'openai_agents_sdk'::text` |
-| `sdk_trace_id` | `TEXT` | True | `None` |
-| `workflow_name` | `TEXT` | False | `None` |
-| `agent_name` | `TEXT` | False | `None` |
-| `lane` | `TEXT` | False | `None` |
-| `artifact_version_hash` | `TEXT` | False | `None` |
-| `prompt_version` | `TEXT` | False | `None` |
-| `schema_version` | `TEXT` | False | `None` |
-| `validator_version` | `TEXT` | False | `None` |
-| `guardrail_version` | `TEXT` | False | `None` |
-| `input_hash` | `TEXT` | False | `None` |
-| `output_hash` | `TEXT` | True | `None` |
-| `execution_started` | `BOOLEAN` | False | `false` |
-| `status` | `TEXT` | False | `None` |
-| `outcome` | `TEXT` | False | `None` |
-| `error_class` | `TEXT` | True | `None` |
-| `error` | `TEXT` | True | `None` |
-| `request_json` | `JSONB` | False | `'{}'::jsonb` |
-| `response_json` | `JSONB` | True | `None` |
-| `validation_errors_json` | `JSONB` | False | `'[]'::jsonb` |
-| `trace_metadata_json` | `JSONB` | False | `'{}'::jsonb` |
-| `usage_json` | `JSONB` | False | `'{}'::jsonb` |
-| `latency_ms` | `BIGINT` | False | `0` |
-| `started_at_ms` | `BIGINT` | False | `None` |
-| `finished_at_ms` | `BIGINT` | False | `None` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-
-## `equity_event_alert_candidates`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `alert_candidate_id` | `TEXT` | False | `None` |
-| `company_event_id` | `TEXT` | False | `None` |
-| `company_id` | `TEXT` | False | `None` |
-| `ticker` | `TEXT` | False | `None` |
-| `event_type` | `TEXT` | False | `None` |
-| `priority` | `TEXT` | False | `None` |
-| `lifecycle_status` | `TEXT` | False | `None` |
-| `validation_status` | `TEXT` | False | `'pending'::text` |
-| `alert_status` | `TEXT` | False | `'pending'::text` |
-| `reason_codes_json` | `JSONB` | False | `'[]'::jsonb` |
-| `payload_json` | `JSONB` | False | `'{}'::jsonb` |
-| `computed_at_ms` | `BIGINT` | False | `None` |
-| `projection_version` | `TEXT` | False | `None` |
-| `payload_hash` | `TEXT` | False | `''::text` |
-| `source_watermark_ms` | `BIGINT` | False | `0` |
-
-## `equity_event_brief_states`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `company_event_id` | `TEXT` | False | `None` |
-| `brief_readiness_status` | `TEXT` | False | `None` |
-| `reason_code` | `TEXT` | False | `''::text` |
-| `reason_detail` | `TEXT` | False | `''::text` |
-| `input_hash` | `TEXT` | False | `''::text` |
-| `source_updated_at_ms` | `BIGINT` | False | `0` |
-| `next_retry_after_ms` | `BIGINT` | True | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-
-## `equity_event_calendar_rows`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `row_id` | `TEXT` | False | `None` |
-| `expected_event_id` | `TEXT` | True | `None` |
-| `company_id` | `TEXT` | False | `None` |
-| `ticker` | `TEXT` | False | `None` |
-| `company_name` | `TEXT` | False | `''::text` |
-| `event_type` | `TEXT` | False | `None` |
-| `priority` | `TEXT` | False | `'P2'::text` |
-| `source_role` | `TEXT` | False | `None` |
-| `fiscal_period` | `TEXT` | True | `None` |
-| `expected_at_ms` | `BIGINT` | False | `None` |
-| `status` | `TEXT` | False | `None` |
-| `headline` | `TEXT` | False | `''::text` |
-| `calendar_json` | `JSONB` | False | `'{}'::jsonb` |
-| `computed_at_ms` | `BIGINT` | False | `None` |
-| `projection_version` | `TEXT` | False | `None` |
-| `payload_hash` | `TEXT` | False | `''::text` |
-| `source_watermark_ms` | `BIGINT` | False | `0` |
-
-## `equity_event_documents`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `event_document_id` | `TEXT` | False | `None` |
-| `provider_document_id` | `TEXT` | False | `None` |
-| `company_id` | `TEXT` | False | `None` |
-| `ticker` | `TEXT` | False | `None` |
-| `cik` | `TEXT` | True | `None` |
-| `source_id` | `TEXT` | False | `None` |
-| `source_role` | `TEXT` | False | `None` |
-| `document_type` | `TEXT` | False | `None` |
-| `form_type` | `TEXT` | True | `None` |
-| `accession_number` | `TEXT` | True | `None` |
-| `fiscal_period` | `TEXT` | True | `None` |
-| `document_url` | `TEXT` | False | `None` |
-| `event_time_ms` | `BIGINT` | False | `None` |
-| `discovered_at_ms` | `BIGINT` | False | `None` |
-| `content_hash` | `TEXT` | False | `None` |
-| `lifecycle_status` | `TEXT` | False | `'raw'::text` |
-| `processing_attempts` | `INTEGER` | False | `0` |
-| `processing_error` | `TEXT` | True | `None` |
-| `processed_at_ms` | `BIGINT` | True | `None` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-| `evidence_status` | `TEXT` | False | `'pending'::text` |
-| `evidence_reason` | `TEXT` | False | `''::text` |
-| `evidence_ready_at_ms` | `BIGINT` | True | `None` |
-| `fact_extraction_status` | `TEXT` | False | `'pending'::text` |
-| `fact_extraction_reason` | `TEXT` | False | `''::text` |
-| `fact_extracted_at_ms` | `BIGINT` | True | `None` |
-
-## `equity_event_evidence_artifacts`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `evidence_artifact_id` | `TEXT` | False | `None` |
-| `event_document_id` | `TEXT` | False | `None` |
-| `provider_document_id` | `TEXT` | True | `None` |
-| `source_id` | `TEXT` | True | `None` |
-| `artifact_kind` | `TEXT` | False | `None` |
-| `extraction_status` | `TEXT` | False | `None` |
-| `source_url` | `TEXT` | False | `''::text` |
-| `content_hash` | `TEXT` | False | `''::text` |
-| `content_text` | `TEXT` | False | `''::text` |
-| `content_json` | `JSONB` | False | `'{}'::jsonb` |
-| `excerpt_text` | `TEXT` | False | `''::text` |
-| `failure_reason` | `TEXT` | True | `None` |
-| `fetched_at_ms` | `BIGINT` | False | `0` |
-| `parsed_at_ms` | `BIGINT` | False | `0` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-
-## `equity_event_evidence_jobs`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `evidence_job_id` | `TEXT` | False | `None` |
-| `event_document_id` | `TEXT` | False | `None` |
-| `company_event_id` | `TEXT` | True | `None` |
-| `source_id` | `TEXT` | True | `None` |
-| `status` | `TEXT` | False | `'pending'::text` |
-| `priority` | `TEXT` | False | `'P2'::text` |
-| `due_at_ms` | `BIGINT` | False | `0` |
-| `started_at_ms` | `BIGINT` | True | `None` |
-| `finished_at_ms` | `BIGINT` | True | `None` |
-| `attempt_count` | `INTEGER` | False | `0` |
-| `max_attempts` | `INTEGER` | False | `3` |
-| `lease_owner` | `TEXT` | True | `None` |
-| `leased_until_ms` | `BIGINT` | True | `None` |
-| `last_error` | `TEXT` | True | `None` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-
-## `equity_event_fact_candidates`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `fact_candidate_id` | `TEXT` | False | `None` |
-| `company_event_id` | `TEXT` | False | `None` |
-| `event_document_id` | `TEXT` | True | `None` |
-| `source_span_id` | `TEXT` | True | `None` |
-| `company_id` | `TEXT` | True | `None` |
-| `ticker` | `TEXT` | True | `None` |
-| `event_type` | `TEXT` | True | `None` |
-| `fact_type` | `TEXT` | False | `None` |
-| `metric_name` | `TEXT` | True | `None` |
-| `value_numeric` | `DOUBLE PRECISION` | True | `None` |
-| `value_unit` | `TEXT` | True | `None` |
-| `period` | `TEXT` | True | `None` |
-| `direction` | `TEXT` | True | `None` |
-| `required_slots_json` | `JSONB` | False | `'{}'::jsonb` |
-| `claim` | `TEXT` | False | `None` |
-| `evidence_quote` | `TEXT` | False | `None` |
-| `evidence_span_start` | `INTEGER` | False | `0` |
-| `evidence_span_end` | `INTEGER` | False | `0` |
-| `source_role` | `TEXT` | False | `None` |
-| `validation_status` | `TEXT` | False | `None` |
-| `rejection_reasons_json` | `JSONB` | False | `'[]'::jsonb` |
-| `extraction_method` | `TEXT` | False | `None` |
-| `policy_version` | `TEXT` | False | `None` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-
-## `equity_event_fetch_runs`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `fetch_run_id` | `TEXT` | False | `None` |
-| `source_id` | `TEXT` | False | `None` |
-| `started_at_ms` | `BIGINT` | False | `None` |
-| `finished_at_ms` | `BIGINT` | False | `0` |
-| `status` | `TEXT` | False | `None` |
-| `fetched_count` | `INTEGER` | False | `0` |
-| `inserted_count` | `INTEGER` | False | `0` |
-| `updated_count` | `INTEGER` | False | `0` |
-| `duplicate_count` | `INTEGER` | False | `0` |
-| `http_status` | `INTEGER` | True | `None` |
-| `error` | `TEXT` | True | `None` |
-| `extra_json` | `JSONB` | False | `'{}'::jsonb` |
-
-## `equity_event_page_rows`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `row_id` | `TEXT` | False | `None` |
-| `company_event_id` | `TEXT` | False | `None` |
-| `story_id` | `TEXT` | True | `None` |
-| `company_id` | `TEXT` | False | `None` |
-| `ticker` | `TEXT` | False | `None` |
-| `company_name` | `TEXT` | False | `''::text` |
-| `event_type` | `TEXT` | False | `None` |
-| `priority` | `TEXT` | False | `None` |
-| `source_role` | `TEXT` | False | `None` |
-| `latest_event_at_ms` | `BIGINT` | False | `None` |
-| `lifecycle_status` | `TEXT` | False | `None` |
-| `headline` | `TEXT` | False | `None` |
-| `summary` | `TEXT` | False | `''::text` |
-| `facts_json` | `JSONB` | False | `'[]'::jsonb` |
-| `documents_json` | `JSONB` | False | `'[]'::jsonb` |
-| `brief_json` | `JSONB` | False | `'{"status": "pending"}'::jsonb` |
-| `computed_at_ms` | `BIGINT` | False | `None` |
-| `projection_version` | `TEXT` | False | `None` |
-| `payload_hash` | `TEXT` | False | `''::text` |
-| `source_watermark_ms` | `BIGINT` | False | `0` |
-| `evidence_status` | `TEXT` | False | `'pending'::text` |
-| `evidence_reason` | `TEXT` | False | `''::text` |
-| `fact_extraction_status` | `TEXT` | False | `'pending'::text` |
-| `fact_extraction_reason` | `TEXT` | False | `''::text` |
-| `freshness_json` | `JSONB` | False | `'{}'::jsonb` |
-
-## `equity_event_projection_dirty_targets`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `projection_name` | `TEXT` | False | `None` |
-| `target_kind` | `TEXT` | False | `None` |
-| `target_id` | `TEXT` | False | `None` |
-| `dirty_reason` | `TEXT` | False | `None` |
-| `payload_hash` | `TEXT` | False | `None` |
-| `source_watermark_ms` | `BIGINT` | False | `0` |
-| `priority` | `INTEGER` | False | `100` |
-| `due_at_ms` | `BIGINT` | False | `None` |
-| `leased_until_ms` | `BIGINT` | True | `None` |
-| `lease_owner` | `TEXT` | True | `None` |
-| `attempt_count` | `INTEGER` | False | `0` |
-| `last_error` | `TEXT` | True | `None` |
-| `first_dirty_at_ms` | `BIGINT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-
-## `equity_event_source_spans`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `span_id` | `TEXT` | False | `None` |
-| `company_event_id` | `TEXT` | False | `None` |
-| `event_document_id` | `TEXT` | True | `None` |
-| `source_id` | `TEXT` | True | `None` |
-| `span_type` | `TEXT` | False | `None` |
-| `section_key` | `TEXT` | True | `None` |
-| `span_start` | `INTEGER` | False | `0` |
-| `span_end` | `INTEGER` | False | `0` |
-| `evidence_quote` | `TEXT` | False | `''::text` |
-| `confidence` | `DOUBLE PRECISION` | False | `1` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-
-## `equity_event_sources`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `source_id` | `TEXT` | False | `None` |
-| `provider_type` | `TEXT` | False | `None` |
-| `company_id` | `TEXT` | False | `None` |
-| `ticker` | `TEXT` | False | `None` |
-| `cik` | `TEXT` | True | `None` |
-| `source_role` | `TEXT` | False | `None` |
-| `trust_tier` | `TEXT` | False | `'standard'::text` |
-| `enabled` | `BOOLEAN` | False | `true` |
-| `refresh_interval_seconds` | `INTEGER` | False | `300` |
-| `etag` | `TEXT` | True | `None` |
-| `last_modified` | `TEXT` | True | `None` |
-| `last_fetch_at_ms` | `BIGINT` | True | `None` |
-| `last_success_at_ms` | `BIGINT` | True | `None` |
-| `next_fetch_after_ms` | `BIGINT` | False | `0` |
-| `consecutive_failures` | `INTEGER` | False | `0` |
-| `last_error` | `TEXT` | True | `None` |
-| `extra_json` | `JSONB` | False | `'{}'::jsonb` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-| `last_material_document_at_ms` | `BIGINT` | True | `None` |
-| `last_evidence_ready_at_ms` | `BIGINT` | True | `None` |
-| `last_product_projection_at_ms` | `BIGINT` | True | `None` |
-| `last_no_new_data_at_ms` | `BIGINT` | True | `None` |
-| `last_actionable_error` | `TEXT` | True | `None` |
-
-## `equity_event_story_groups`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `story_id` | `TEXT` | False | `None` |
-| `policy_version` | `TEXT` | False | `None` |
-| `representative_headline` | `TEXT` | False | `None` |
-| `company_id` | `TEXT` | False | `None` |
-| `ticker` | `TEXT` | False | `None` |
-| `first_seen_at_ms` | `BIGINT` | False | `None` |
-| `latest_seen_at_ms` | `BIGINT` | False | `None` |
-| `event_count` | `INTEGER` | False | `0` |
-| `status` | `TEXT` | False | `'active'::text` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-
-## `equity_event_story_members`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `story_id` | `TEXT` | False | `None` |
-| `company_event_id` | `TEXT` | False | `None` |
-| `relation` | `TEXT` | False | `None` |
-| `match_reason` | `TEXT` | False | `None` |
-| `match_score` | `DOUBLE PRECISION` | False | `0` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-
-## `equity_event_universe_members`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `company_id` | `TEXT` | False | `None` |
-| `ticker` | `TEXT` | False | `None` |
-| `company_name` | `TEXT` | False | `''::text` |
-| `cik` | `TEXT` | True | `None` |
-| `exchange` | `TEXT` | True | `None` |
-| `active` | `BOOLEAN` | False | `true` |
-| `priority` | `TEXT` | False | `'P3'::text` |
-| `config_json` | `JSONB` | False | `'{}'::jsonb` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-
-## `equity_expected_events`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `expected_event_id` | `TEXT` | False | `None` |
-| `company_id` | `TEXT` | False | `None` |
-| `ticker` | `TEXT` | False | `None` |
-| `event_type` | `TEXT` | False | `None` |
-| `fiscal_period` | `TEXT` | True | `None` |
-| `expected_at_ms` | `BIGINT` | False | `None` |
-| `source_id` | `TEXT` | False | `None` |
-| `source_role` | `TEXT` | False | `None` |
-| `status` | `TEXT` | False | `'expected'::text` |
-| `confidence` | `DOUBLE PRECISION` | False | `1` |
-| `extra_json` | `JSONB` | False | `'{}'::jsonb` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-
-## `equity_provider_documents`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `provider_document_id` | `TEXT` | False | `None` |
-| `source_id` | `TEXT` | False | `None` |
-| `fetch_run_id` | `TEXT` | True | `None` |
-| `provider_document_key` | `TEXT` | False | `None` |
-| `company_id` | `TEXT` | False | `None` |
-| `ticker` | `TEXT` | False | `None` |
-| `cik` | `TEXT` | True | `None` |
-| `document_url` | `TEXT` | False | `None` |
-| `payload_hash` | `TEXT` | False | `None` |
-| `raw_payload_json` | `JSONB` | False | `None` |
-| `fetched_at_ms` | `BIGINT` | False | `None` |
-
-## `equity_section_diffs`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `diff_id` | `TEXT` | False | `None` |
-| `event_document_id` | `TEXT` | False | `None` |
-| `previous_revision_id` | `TEXT` | True | `None` |
-| `current_revision_id` | `TEXT` | True | `None` |
-| `section_key` | `TEXT` | False | `None` |
-| `change_type` | `TEXT` | False | `None` |
-| `previous_hash` | `TEXT` | True | `None` |
-| `current_hash` | `TEXT` | True | `None` |
-| `summary` | `TEXT` | False | `''::text` |
-| `diff_json` | `JSONB` | False | `'{}'::jsonb` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-
 ## `event_anchor_backfill_jobs`
 
 | Column | Type | Nullable | Default |
@@ -828,6 +353,8 @@
 | `last_reason` | `TEXT` | True | `None` |
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
+| `lease_owner` | `TEXT` | True | `None` |
+| `leased_until_ms` | `BIGINT` | True | `None` |
 
 ## `event_entities`
 
@@ -909,6 +436,10 @@
 | `reason_codes_json` | `JSONB` | False | `'[]'::jsonb` |
 | `started_at_ms` | `BIGINT` | False | `None` |
 | `completed_at_ms` | `BIGINT` | False | `None` |
+| `seen_observation_count` | `INTEGER` | False | `0` |
+| `inserted_observation_count` | `INTEGER` | False | `0` |
+| `changed_observation_count` | `INTEGER` | False | `0` |
+| `noop_observation_count` | `INTEGER` | False | `0` |
 
 ## `macro_observation_series_publication_state`
 
@@ -929,7 +460,7 @@
 |--------|------|----------|---------|
 | `projection_version` | `TEXT` | False | `None` |
 | `concept_key` | `TEXT` | False | `None` |
-| `observed_at` | `TIMESTAMP` | False | `None` |
+| `observed_at` | `DATE` | False | `None` |
 | `series_rank` | `INTEGER` | False | `None` |
 | `value_numeric` | `DOUBLE PRECISION` | False | `None` |
 | `source_name` | `TEXT` | False | `None` |
@@ -942,6 +473,7 @@
 | `raw_payload_json` | `JSONB` | False | `'{}'::jsonb` |
 | `ingested_at_ms` | `BIGINT` | False | `None` |
 | `projected_at_ms` | `BIGINT` | False | `None` |
+| `payload_hash` | `TEXT` | False | `None` |
 
 ## `macro_observations`
 
@@ -960,6 +492,7 @@
 | `ingested_at_ms` | `BIGINT` | False | `None` |
 | `concept_key` | `TEXT` | False | `None` |
 | `source_priority` | `INTEGER` | False | `None` |
+| `fact_payload_hash` | `TEXT` | False | `None` |
 
 ## `macro_projection_dirty_targets`
 
@@ -980,6 +513,10 @@
 | `last_error` | `TEXT` | True | `None` |
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
+| `concept_key` | `TEXT` | True | `None` |
+| `min_observed_at` | `DATE` | True | `None` |
+| `max_observed_at` | `DATE` | True | `None` |
+| `source_watermark_date` | `DATE` | True | `None` |
 
 ## `macro_sync_runs`
 
@@ -1009,6 +546,13 @@
 | `started_at_ms` | `BIGINT` | False | `None` |
 | `completed_at_ms` | `BIGINT` | False | `None` |
 | `duration_ms` | `BIGINT` | False | `None` |
+| `seen_observation_count` | `INTEGER` | False | `0` |
+| `inserted_observation_count` | `INTEGER` | False | `0` |
+| `changed_observation_count` | `INTEGER` | False | `0` |
+| `noop_observation_count` | `INTEGER` | False | `0` |
+| `max_seen_observed_at` | `DATE` | True | `None` |
+| `min_changed_observed_at` | `DATE` | True | `None` |
+| `max_changed_observed_at` | `DATE` | True | `None` |
 
 ## `macro_sync_windows`
 
@@ -1392,6 +936,21 @@
 | `extraction_policy_version` | `TEXT` | False | `None` |
 | `created_at_ms` | `BIGINT` | False | `None` |
 
+## `news_item_observation_edges`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `provider_item_id` | `TEXT` | False | `None` |
+| `news_item_id` | `TEXT` | False | `None` |
+| `source_id` | `TEXT` | False | `None` |
+| `provider_article_key` | `TEXT` | False | `''::text` |
+| `match_type` | `TEXT` | False | `None` |
+| `match_confidence` | `TEXT` | False | `None` |
+| `policy_version` | `TEXT` | False | `None` |
+| `evidence_json` | `JSONB` | False | `'{}'::jsonb` |
+| `first_seen_at_ms` | `BIGINT` | False | `None` |
+| `last_seen_at_ms` | `BIGINT` | False | `None` |
+
 ## `news_items`
 
 | Column | Type | Nullable | Default |
@@ -1420,6 +979,15 @@
 | `content_classification_json` | `JSONB` | False | `'{}'::jsonb` |
 | `provider_signal_json` | `JSONB` | False | `'{}'::jsonb` |
 | `provider_token_impacts_json` | `JSONB` | False | `'[]'::jsonb` |
+| `canonical_item_key` | `TEXT` | False | `''::text` |
+| `dedup_key_kind` | `TEXT` | False | `'unknown'::text` |
+| `dedup_key_confidence` | `TEXT` | False | `'weak'::text` |
+| `url_identity_kind` | `TEXT` | False | `'unknown'::text` |
+| `canonical_policy_version` | `TEXT` | False | `'news_canonical_item_v2'::text` |
+| `duplicate_observation_count` | `INTEGER` | False | `1` |
+| `source_ids_json` | `JSONB` | False | `'[]'::jsonb` |
+| `source_domains_json` | `JSONB` | False | `'[]'::jsonb` |
+| `provider_article_keys_json` | `JSONB` | False | `'[]'::jsonb` |
 
 ## `news_page_rows`
 
@@ -1450,6 +1018,11 @@
 | `source_watermark_ms` | `BIGINT` | False | `0` |
 | `signal_json` | `JSONB` | False | `'{}'::jsonb` |
 | `token_impacts_json` | `JSONB` | False | `'[]'::jsonb` |
+| `canonical_item_key` | `TEXT` | False | `''::text` |
+| `duplicate_count` | `INTEGER` | False | `1` |
+| `source_ids_json` | `JSONB` | False | `'[]'::jsonb` |
+| `source_domains_json` | `JSONB` | False | `'[]'::jsonb` |
+| `provider_article_keys_json` | `JSONB` | False | `'[]'::jsonb` |
 
 ## `news_projection_dirty_targets`
 
@@ -1483,6 +1056,11 @@
 | `payload_hash` | `TEXT` | False | `None` |
 | `raw_payload_json` | `JSONB` | False | `None` |
 | `fetched_at_ms` | `BIGINT` | False | `None` |
+| `provider_article_id` | `TEXT` | False | `''::text` |
+| `provider_article_key` | `TEXT` | False | `''::text` |
+| `provider_payload_status` | `TEXT` | False | `'partial'::text` |
+| `provider_published_at_ms` | `BIGINT` | True | `None` |
+| `provider_observed_at_ms` | `BIGINT` | False | `0` |
 
 ## `news_source_quality_rows`
 
@@ -1538,6 +1116,10 @@
 | `context_policy_json` | `JSONB` | False | `'{}'::jsonb` |
 | `cost_policy_json` | `JSONB` | False | `'{}'::jsonb` |
 | `source_quality_status` | `TEXT` | False | `'unknown'::text` |
+| `sync_cursor_json` | `JSONB` | False | `'{}'::jsonb` |
+| `sync_high_watermark_ms` | `BIGINT` | False | `0` |
+| `sync_overlap_ms` | `BIGINT` | False | `900000` |
+| `sync_diagnostics_json` | `JSONB` | False | `'{}'::jsonb` |
 
 ## `news_story_groups`
 
@@ -2601,6 +2183,9 @@
 | `first_dirty_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
 | `source_event_ids_json` | `JSONB` | False | `'[]'::jsonb` |
+| `source_dirty` | `BOOLEAN` | False | `false` |
+| `market_dirty` | `BOOLEAN` | False | `false` |
+| `repair_dirty` | `BOOLEAN` | False | `false` |
 
 ## `token_radar_publication_state`
 
@@ -2753,6 +2338,7 @@
 | `before_event_price_quote_symbol` | `TEXT` | True | `None` |
 | `before_event_price_basis` | `TEXT` | True | `None` |
 | `first_seen_global_24h` | `BOOLEAN` | False | `false` |
+| `source_payload_hash` | `TEXT` | False | `''::text` |
 
 ## `token_radar_storage_maintenance_runs`
 

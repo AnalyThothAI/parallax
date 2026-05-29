@@ -40,7 +40,6 @@ const featureClassPrefixes: Record<string, string[]> = {
     "watchlist-",
     "ws-status-beacon",
   ],
-  "equity-events": ["equity-event-"],
   live: [
     "bottom-deck",
     "listed-fact",

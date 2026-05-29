@@ -7,7 +7,6 @@ DB_NAME="${DB_NAME:-gmgn_twitter_intel}"
 APP_URL="${APP_URL:-http://127.0.0.1:8765}"
 TOKEN_RADAR_RANK_SOURCE_MAX_MS="${TOKEN_RADAR_RANK_SOURCE_MAX_MS:-100}"
 TOKEN_RADAR_TEMP_BLOCKS_MAX="${TOKEN_RADAR_TEMP_BLOCKS_MAX:-0}"
-STALE_EQUITY_FETCH_RUNS_MAX="${STALE_EQUITY_FETCH_RUNS_MAX:-0}"
 TOKEN_RADAR_TOP_SQL_SHARE_MAX="${TOKEN_RADAR_TOP_SQL_SHARE_MAX:-10}"
 
 psql_cmd() {
@@ -79,17 +78,6 @@ echo "${rank_source_mean_proxy}"
 assert_decimal_le "token radar rank source mean proxy ms" \
   "${rank_source_mean_proxy}" "${TOKEN_RADAR_RANK_SOURCE_MAX_MS}"
 
-echo "== stale equity fetch runs =="
-stale_equity_fetch_runs="$(
-  psql_cmd -Atc "
-SELECT count(*)
-FROM equity_event_fetch_runs
-WHERE status = 'running'
-  AND started_at_ms < ((extract(epoch FROM clock_timestamp()) * 1000)::bigint - 900000);"
-)"
-echo "${stale_equity_fetch_runs}"
-assert_int_le "stale equity fetch runs" "${stale_equity_fetch_runs}" "${STALE_EQUITY_FETCH_RUNS_MAX}"
-
 echo "== token radar temp blocks =="
 token_radar_temp_blocks="$(
   psql_cmd -Atc "
@@ -139,7 +127,7 @@ WITH lifecycle_targets AS (
         'token_radar_publication_state'
       )
         THEN 'hot compact rank/read path'
-      WHEN stat.relname IN ('events', 'enriched_events', 'equity_event_evidence_artifacts')
+      WHEN stat.relname IN ('events', 'enriched_events')
         THEN 'selected-row hydrate'
       WHEN stat.relname = 'raw_frames'
         THEN 'cold audit/history'
@@ -150,7 +138,6 @@ WITH lifecycle_targets AS (
       'raw_frames',
       'events',
       'enriched_events',
-      'equity_event_evidence_artifacts',
       'token_radar_rank_source_events',
       'token_radar_target_features',
       'token_radar_current_rows',

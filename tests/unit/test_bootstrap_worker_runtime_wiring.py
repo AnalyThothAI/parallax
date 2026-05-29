@@ -19,7 +19,6 @@ from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_stream_worker i
 from gmgn_twitter_intel.domains.asset_market.runtime.token_capture_tier_worker import TokenCaptureTierWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.token_image_mirror_worker import TokenImageMirrorWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.token_profile_current_worker import TokenProfileCurrentWorker
-from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_brief_worker import EquityEventBriefWorker
 from gmgn_twitter_intel.domains.macro_intel.runtime.macro_sync_worker import MacroSyncWorker
 from gmgn_twitter_intel.domains.macro_intel.runtime.macro_view_projection_worker import MacroViewProjectionWorker
 from gmgn_twitter_intel.domains.narrative_intel.runtime.mention_semantics_worker import MentionSemanticsWorker
@@ -357,27 +356,6 @@ def test_worker_factory_wires_news_item_brief_when_configured() -> None:
     assert workers["news_item_brief"].settings.advisory_lock_key == 2026052001
 
 
-def test_worker_factory_wires_equity_event_brief_when_configured() -> None:
-    db = FakeDB()
-    providers = FakeProviders(equity_brief_provider=object())
-
-    workers = construct_workers(
-        settings=_settings(equity_event_brief_configured=True),
-        db=db,
-        telemetry=object(),
-        providers=providers,
-        hub=SimpleNamespace(publish=lambda payload: None),
-        collector=FakeCollector(name="collector", settings=SimpleNamespace(enabled=False), db=db, telemetry=object()),
-        collector_enabled=False,
-        wake_bus=db.wake,
-    )
-
-    assert isinstance(workers["equity_event_brief"], EquityEventBriefWorker)
-    assert workers["equity_event_brief"].provider is providers.equity_event_intel.brief_provider
-    assert workers["equity_event_brief"].wake_bus is db.wake
-    assert workers["equity_event_brief"].wake_waiter.channels == ("equity_event_story_updated",)
-
-
 def test_worker_factory_rejects_returned_key_outside_owned_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     def rogue_factory(ctx):
         return {"token_radar_projection": ctx.collector}
@@ -413,7 +391,6 @@ def _settings(
     notifications_enabled: bool = False,
     narrative_intel_configured: bool = False,
     news_item_brief_configured: bool = False,
-    equity_event_brief_configured: bool = False,
     macro_view_projection_enabled: bool = True,
     macrodata_enabled: bool = True,
 ) -> Settings:
@@ -422,15 +399,9 @@ def _settings(
     if news_item_brief_configured:
         llm = {**llm, "api_key": "secret"}
         agent_lanes["news.item_brief"] = {"model": "gpt-5-mini"}
-    equity_event_intel = {"enabled": False}
-    if equity_event_brief_configured:
-        llm = {**llm, "api_key": "secret"}
-        agent_lanes["equity_event.brief"] = {"model": "gpt-5-mini"}
-        equity_event_intel = {"enabled": True, "agent": {"enabled": True}}
     return Settings(
         ws_token="secret",
         llm=llm,
-        equity_event_intel=equity_event_intel,
         providers={"macrodata": {"enabled": macrodata_enabled}},
         notifications={
             "enabled": notifications_enabled,
@@ -465,7 +436,6 @@ def _settings(
             "handle_summary": {"enabled": False},
             "notification_rule": {"enabled": notifications_enabled},
             "notification_delivery": {"enabled": notifications_enabled},
-            "equity_event_brief": {"enabled": equity_event_brief_configured},
         },
     )
 
@@ -479,7 +449,6 @@ class FakeProviders:
         stream_dex_market=_UNSET,
         upstream_client_factory=None,
         brief_provider=None,
-        equity_brief_provider=None,
     ) -> None:
         self.asset_market = SimpleNamespace(
             cex_market=object() if cex_market is _UNSET else cex_market,
@@ -495,7 +464,6 @@ class FakeProviders:
         self.macrodata = SimpleNamespace(stock_quote_provider=None)
         self.news_intel = SimpleNamespace(feed_client=object(), brief_provider=brief_provider)
         self.narrative_intel = SimpleNamespace(narrative_provider=object())
-        self.equity_event_intel = SimpleNamespace(document_provider=object(), brief_provider=equity_brief_provider)
 
 
 class FakeDB:

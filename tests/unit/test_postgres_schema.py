@@ -90,17 +90,8 @@ TOKEN_IMAGE_ASSETS_MIGRATION = Path(
 TOKEN_PROFILE_LOCAL_LOGO_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0079_token_profile_local_logo_hard_cut.py"
 )
-EQUITY_EVENT_INTEL_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0083_equity_event_intel.py"
-)
-EQUITY_EVENT_FACT_CANDIDATE_SHAPE_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0084_equity_event_fact_candidate_shape.py"
-)
 TOKEN_RADAR_STORAGE_ROOT_FIX_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0085_token_radar_storage_root_fix.py"
-)
-EQUITY_EVENT_RUNTIME_INDEXES_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0086_equity_event_runtime_indexes.py"
 )
 NEWS_CONTENT_CLASSIFICATION_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0087_news_content_classification.py"
@@ -116,9 +107,6 @@ TOKEN_RADAR_POSTGRES_HARD_CUT_MIGRATION = Path(
 )
 TOKEN_RADAR_TARGET_FEATURE_FRESHNESS_INDEX_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260524_0091_token_radar_target_feature_freshness_index.py"
-)
-EQUITY_PROJECTION_PAYLOAD_HASHES_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260524_0092_equity_projection_payload_hashes.py"
 )
 TOKEN_RADAR_TARGET_PROJECTION_COVERAGE_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260524_0093_token_radar_target_projection_coverage.py"
@@ -198,6 +186,11 @@ TOKEN_RADAR_RUNTIME_NOT_NULL_GUARDRAILS_MIGRATION = Path(
 NEWS_PUBLIC_URL_HARD_IDENTITY_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260529_0123_news_public_url_hard_identity.py"
 )
+DROP_RETIRED_PRODUCT_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260529_0124_drop_"
+    + "_".join(("equity", "event", "intel"))
+    + ".py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 LEGACY_TOKEN_RADAR_CURRENT_JSON_COLUMNS = {
@@ -237,6 +230,54 @@ def test_alembic_revision_graph_has_single_head() -> None:
     script = ScriptDirectory.from_config(alembic_config())
 
     assert script.get_heads() == [script.get_current_head()]
+
+
+def test_drop_retired_product_migration_removes_all_tables() -> None:
+    text = _migration_text(DROP_RETIRED_PRODUCT_MIGRATION)
+    tree = ast.parse(text)
+    equity_prefix = "equity"
+    deleted_event_prefix = "_".join(("equity", "event"))
+    deleted_company_prefix = "_".join(("equity", "company"))
+    deleted_tables = {
+        f"{deleted_event_prefix}_process_jobs",
+        f"{deleted_event_prefix}_evidence_jobs",
+        f"{deleted_event_prefix}_projection_dirty_targets",
+        f"{deleted_event_prefix}_brief_states",
+        f"{deleted_event_prefix}_evidence_artifacts",
+        f"{deleted_company_prefix}_timeline_rows",
+        f"{deleted_event_prefix}_alert_candidates",
+        f"{deleted_event_prefix}_calendar_rows",
+        f"{deleted_event_prefix}_page_rows",
+        f"{deleted_event_prefix}_agent_briefs",
+        f"{deleted_event_prefix}_agent_runs",
+        f"{deleted_event_prefix}_story_members",
+        f"{deleted_event_prefix}_story_groups",
+        f"{deleted_event_prefix}_fact_candidates",
+        f"{deleted_event_prefix}_source_spans",
+        f"{deleted_company_prefix}_events",
+        f"{equity_prefix}_section_diffs",
+        f"{equity_prefix}_document_revisions",
+        f"{deleted_event_prefix}_documents",
+        f"{equity_prefix}_provider_documents",
+        f"{equity_prefix}_expected_events",
+        f"{deleted_event_prefix}_universe_members",
+        f"{deleted_event_prefix}_fetch_runs",
+        f"{deleted_event_prefix}_sources",
+    }
+    drop_tables = next(
+        tuple(element.value for element in node.value.elts)
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "DROP_TABLES" for target in node.targets)
+        and isinstance(node.value, ast.Tuple)
+        and all(isinstance(element, ast.Constant) and isinstance(element.value, str) for element in node.value.elts)
+    )
+
+    assert 'revision = "20260529_0124"' in text
+    assert 'down_revision = "20260529_0123"' in text
+    assert set(drop_tables) == deleted_tables
+    assert 'op.execute(f"DROP TABLE IF EXISTS {table_name} CASCADE")' in text
+    assert "def downgrade() -> None:" in text
 
 
 def test_token_radar_publication_state_migration_hard_cuts_online_tables() -> None:
@@ -739,7 +780,7 @@ def test_runtime_rank_source_edges_migration_contract() -> None:
     assert "DROP TABLE IF EXISTS token_radar_rank_source_events" in text
 
 
-def test_macro_generation_and_equity_evidence_jobs_migration_contract() -> None:
+def test_macro_generation_migration_contract() -> None:
     text = MACRO_GENERATION_EQUITY_EVIDENCE_JOBS_MIGRATION.read_text()
     normalized_text = " ".join(text.split())
     upgrade_text, downgrade_text = text.split("def downgrade() -> None:", maxsplit=1)
@@ -757,27 +798,6 @@ def test_macro_generation_and_equity_evidence_jobs_migration_contract() -> None:
         "ON CONFLICT (projection_version, concept_key) DO UPDATE SET generation_id = EXCLUDED.generation_id"
         in normalized_text
     )
-    assert "CREATE TABLE IF NOT EXISTS equity_event_evidence_jobs" in text
-    for column in (
-        "evidence_job_id TEXT PRIMARY KEY",
-        "event_document_id TEXT NOT NULL REFERENCES equity_event_documents(event_document_id) ON DELETE CASCADE",
-        "status TEXT NOT NULL DEFAULT 'pending'",
-        "priority TEXT NOT NULL DEFAULT 'P2'",
-        "due_at_ms BIGINT NOT NULL DEFAULT 0",
-        "started_at_ms BIGINT",
-        "finished_at_ms BIGINT",
-        "attempt_count INTEGER NOT NULL DEFAULT 0",
-        "max_attempts INTEGER NOT NULL DEFAULT 3",
-        "lease_owner TEXT",
-        "leased_until_ms BIGINT",
-    ):
-        assert column in text
-    assert "CHECK (status IN ('pending', 'running', 'success', 'failed_retryable', 'failed_terminal'))" in text
-    assert "CREATE INDEX IF NOT EXISTS idx_equity_event_evidence_jobs_due" in text
-    assert "WHERE status IN ('pending', 'failed_retryable')" in text
-    assert "CREATE INDEX IF NOT EXISTS idx_equity_event_evidence_jobs_running" in text
-    assert "WHERE status = 'running'" in text
-    assert "DROP TABLE IF EXISTS equity_event_evidence_jobs" in text
     assert "DROP TABLE IF EXISTS macro_observation_series_active_generation" in text
     assert "DROP TABLE IF EXISTS macro_observation_series_generations" in text
     assert "DROP COLUMN IF EXISTS generation_id" in text
@@ -804,7 +824,6 @@ def test_runtime_perf_lifecycle_indexes_migration_contract() -> None:
         "token_radar_rank_source_events",
         "macro_observation_series_active_generation",
         "macro_observation_series_generations",
-        "equity_event_evidence_jobs",
     ):
         assert f"COMMENT ON TABLE {table_name}" in text
     for statement in (
@@ -812,24 +831,11 @@ def test_runtime_perf_lifecycle_indexes_migration_contract() -> None:
         "CREATE INDEX IF NOT EXISTS idx_macro_observation_series_generation_maintenance",
         "CREATE INDEX IF NOT EXISTS idx_macro_observation_series_generations_status",
         "CREATE INDEX IF NOT EXISTS idx_macro_observation_series_active_generation_generation",
-        "CREATE INDEX IF NOT EXISTS idx_equity_event_evidence_jobs_document",
-        "CREATE INDEX IF NOT EXISTS idx_equity_event_evidence_jobs_reap_running",
-        "CREATE INDEX IF NOT EXISTS idx_equity_event_evidence_jobs_active_health",
-        "CREATE INDEX IF NOT EXISTS idx_equity_event_fetch_runs_running_started",
-        "CREATE INDEX IF NOT EXISTS idx_equity_event_fetch_runs_status_started",
-        "DROP INDEX IF EXISTS idx_equity_event_fetch_runs_status_started",
-        "DROP INDEX IF EXISTS idx_equity_event_fetch_runs_running_started",
-        "DROP INDEX IF EXISTS idx_equity_event_evidence_jobs_active_health",
-        "DROP INDEX IF EXISTS idx_equity_event_evidence_jobs_reap_running",
         "DROP INDEX IF EXISTS idx_macro_observation_series_generation_maintenance",
         "COMMENT ON TABLE token_radar_rank_source_events IS NULL",
     ):
         assert statement in text
     normalized_text = " ".join(text.split())
-    assert "ON equity_event_evidence_jobs(leased_until_ms, evidence_job_id) WHERE status = 'running'" in normalized_text
-    assert (
-        "ON equity_event_evidence_jobs(status, due_at_ms, leased_until_ms, evidence_job_id) WHERE status <> 'success'"
-    ) in normalized_text
     assert (
         "ON macro_observation_series_rows( projection_version, generation_id, concept_key ) "
         "INCLUDE (projected_at_ms, observed_at)"
@@ -848,24 +854,6 @@ def test_rank_source_identity_confidence_text_migration_contract() -> None:
     assert "ALTER COLUMN asset_identity_confidence TYPE DOUBLE PRECISION" in normalized_text
     assert "asset_identity_confidence ~ '^-?[0-9]+(\\\\.[0-9]+)?$'" in text
     assert "ELSE NULL" in text
-
-
-def test_equity_fetch_run_reaper_migration_contract() -> None:
-    text = EQUITY_FETCH_RUN_REAPER_MIGRATION.read_text()
-    normalized_text = " ".join(text.split())
-
-    assert 'revision = "20260526_0110"' in text
-    assert 'down_revision = "20260526_0109"' in text
-    assert "DROP CONSTRAINT IF EXISTS equity_event_fetch_runs_status_check" in text
-    assert "runs.status = 'failed'" in text
-    assert "status = 'failed_retryable'" in text
-    assert "stale_fetch_run_timeout" in text
-    assert "runs.status = 'running'" in text
-    assert "runs.finished_at_ms = 0" in text
-    assert "runs.started_at_ms < now_value.now_ms - 900000" in normalized_text
-    assert "CHECK (status IN ('running', 'success', 'failed_retryable', 'failed_terminal'))" in normalized_text
-    assert "WHERE status IN ('failed_retryable', 'failed_terminal')" in text
-    assert "CHECK (status IN ('running', 'success', 'failed'))" in normalized_text
 
 
 def test_macro_sync_worker_migration_adds_control_plane_tables() -> None:
@@ -973,6 +961,7 @@ def test_runtime_performance_hard_cut_revision_chain() -> None:
         (TOKEN_EQUITY_WORKERSPACE_ROOT_FIX_MIGRATION, "20260528_0121", "20260528_0120"),
         (TOKEN_RADAR_RUNTIME_NOT_NULL_GUARDRAILS_MIGRATION, "20260528_0122", "20260528_0121"),
         (NEWS_PUBLIC_URL_HARD_IDENTITY_MIGRATION, "20260529_0123", "20260528_0122"),
+        (DROP_RETIRED_PRODUCT_MIGRATION, "20260529_0124", "20260529_0123"),
     )
 
     for migration, revision, down_revision in migrations:
@@ -1269,90 +1258,6 @@ def test_token_profile_local_logo_migration_removes_remote_public_logos() -> Non
     assert "quality_flags_json || '[\"logo_mirror_pending\"]'::jsonb" in normalized_text
 
 
-def test_equity_event_intel_migration_adds_domain_tables_and_indexes() -> None:
-    text = EQUITY_EVENT_INTEL_MIGRATION.read_text()
-
-    for statement in (
-        'revision = "20260523_0083"',
-        'down_revision = "20260522_0082"',
-        "CREATE TABLE IF NOT EXISTS equity_event_sources",
-        "CREATE TABLE IF NOT EXISTS equity_event_fetch_runs",
-        "CREATE TABLE IF NOT EXISTS equity_event_universe_members",
-        "CREATE TABLE IF NOT EXISTS equity_expected_events",
-        "CREATE TABLE IF NOT EXISTS equity_provider_documents",
-        "CREATE TABLE IF NOT EXISTS equity_event_documents",
-        "CREATE TABLE IF NOT EXISTS equity_document_revisions",
-        "CREATE TABLE IF NOT EXISTS equity_section_diffs",
-        "CREATE TABLE IF NOT EXISTS equity_company_events",
-        "CREATE TABLE IF NOT EXISTS equity_event_source_spans",
-        "CREATE TABLE IF NOT EXISTS equity_event_fact_candidates",
-        "source_span_id TEXT REFERENCES equity_event_source_spans(span_id) ON DELETE SET NULL",
-        "company_id TEXT",
-        "ticker TEXT",
-        "event_type TEXT",
-        "metric_name TEXT",
-        "value_numeric DOUBLE PRECISION",
-        "value_unit TEXT",
-        "period TEXT",
-        "direction TEXT",
-        "required_slots_json JSONB NOT NULL DEFAULT '{}'::jsonb",
-        "evidence_span_start INTEGER NOT NULL DEFAULT 0",
-        "evidence_span_end INTEGER NOT NULL DEFAULT 0",
-        "CREATE TABLE IF NOT EXISTS equity_event_story_groups",
-        "CREATE TABLE IF NOT EXISTS equity_event_story_members",
-        "CREATE TABLE IF NOT EXISTS equity_event_agent_runs",
-        "CREATE TABLE IF NOT EXISTS equity_event_agent_briefs",
-        "CREATE TABLE IF NOT EXISTS equity_event_page_rows",
-        "CREATE TABLE IF NOT EXISTS equity_event_calendar_rows",
-        "CREATE TABLE IF NOT EXISTS equity_event_alert_candidates",
-        "CREATE TABLE IF NOT EXISTS equity_company_timeline_rows",
-        "CHECK (provider_type IN ('sec_submissions', 'company_ir_rss', 'company_ir_atom', 'configured_calendar'))",
-        "CHECK (trust_tier IN ('official', 'high', 'standard', 'low'))",
-        "CHECK (priority IN ('P0', 'P1', 'P2', 'P3'))",
-        "CHECK (lifecycle_status IN ('raw', 'processed', 'process_failed', 'brief_ready', 'brief_stale'))",
-        "CHECK (validation_status IN ('accepted', 'attention', 'rejected', 'pending'))",
-        "idx_equity_event_sources_due",
-        "idx_equity_expected_events_due",
-        "idx_equity_event_documents_company_time",
-        "idx_equity_company_events_latest",
-        "idx_equity_event_fact_candidates_event",
-        "idx_equity_event_story_members_event",
-        "idx_equity_event_page_rows_latest",
-        "idx_equity_event_calendar_rows_time",
-    ):
-        assert statement in text
-
-    assert "'official_regulator'" in text
-    assert "'official_issuer'" in text
-    assert "'calendar'" in text
-    assert "'transcript'" in text
-    assert "'specialist_media'" in text
-    assert "'observed_source'" in text
-
-
-def test_equity_event_fact_candidate_shape_migration_backfills_feature_branch_schema() -> None:
-    text = EQUITY_EVENT_FACT_CANDIDATE_SHAPE_MIGRATION.read_text()
-
-    for statement in (
-        'revision = "20260523_0084"',
-        'down_revision = "20260523_0083"',
-        "ALTER TABLE equity_event_fact_candidates",
-        "ADD COLUMN IF NOT EXISTS source_span_id TEXT",
-        "ADD COLUMN IF NOT EXISTS company_id TEXT",
-        "ADD COLUMN IF NOT EXISTS ticker TEXT",
-        "ADD COLUMN IF NOT EXISTS event_type TEXT",
-        "ADD COLUMN IF NOT EXISTS metric_name TEXT",
-        "ADD COLUMN IF NOT EXISTS value_numeric DOUBLE PRECISION",
-        "ADD COLUMN IF NOT EXISTS value_unit TEXT",
-        "ADD COLUMN IF NOT EXISTS period TEXT",
-        "ADD COLUMN IF NOT EXISTS direction TEXT",
-        "ADD COLUMN IF NOT EXISTS required_slots_json JSONB NOT NULL DEFAULT '{}'::jsonb",
-        "ADD COLUMN IF NOT EXISTS evidence_span_start INTEGER NOT NULL DEFAULT 0",
-        "ADD COLUMN IF NOT EXISTS evidence_span_end INTEGER NOT NULL DEFAULT 0",
-    ):
-        assert statement in text
-
-
 def test_token_radar_storage_root_fix_migration_hard_cuts_old_storage() -> None:
     text = TOKEN_RADAR_STORAGE_ROOT_FIX_MIGRATION.read_text()
 
@@ -1374,22 +1279,6 @@ def test_token_radar_storage_root_fix_migration_hard_cuts_old_storage() -> None:
         "DELETE FROM token_radar_projection_coverage",
         "DELETE FROM projection_offsets",
         "DELETE FROM projection_runs",
-    ):
-        assert statement in text
-
-
-def test_equity_event_runtime_indexes_cover_page_projection_latest_lookups() -> None:
-    text = EQUITY_EVENT_RUNTIME_INDEXES_MIGRATION.read_text()
-
-    for statement in (
-        'revision = "20260523_0086"',
-        'down_revision = "20260523_0085"',
-        "idx_equity_event_page_rows_event_latest",
-        "ON equity_event_page_rows(company_event_id, computed_at_ms DESC, row_id ASC)",
-        "idx_equity_company_timeline_rows_event_latest",
-        "ON equity_company_timeline_rows(company_event_id, computed_at_ms DESC, row_id ASC)",
-        "idx_equity_event_alert_candidates_event_latest",
-        "ON equity_event_alert_candidates(company_event_id, computed_at_ms DESC, alert_candidate_id ASC)",
     ):
         assert statement in text
 
@@ -1631,27 +1520,7 @@ def test_token_radar_target_feature_freshness_index_migration_matches_dirty_enqu
     assert "DROP INDEX CONCURRENTLY IF EXISTS idx_token_radar_target_features_freshness" in text
 
 
-def test_equity_projection_payload_hashes_migration_follows_token_radar_freshness_index() -> None:
-    text = EQUITY_PROJECTION_PAYLOAD_HASHES_MIGRATION.read_text()
-
-    assert 'revision = "20260524_0092"' in text
-    assert 'down_revision = "20260524_0091"' in text
-    for table_name, index_name in (
-        ("equity_event_page_rows", "idx_equity_event_page_rows_payload_hash"),
-        ("equity_company_timeline_rows", "idx_equity_company_timeline_rows_payload_hash"),
-        ("equity_event_alert_candidates", "idx_equity_event_alert_candidates_payload_hash"),
-        ("equity_event_calendar_rows", "idx_equity_event_calendar_rows_payload_hash"),
-    ):
-        assert f"ALTER TABLE {table_name}" in text
-        assert "ADD COLUMN IF NOT EXISTS payload_hash TEXT NOT NULL DEFAULT ''" in text
-        assert "ADD COLUMN IF NOT EXISTS source_watermark_ms BIGINT NOT NULL DEFAULT 0" in text
-        assert f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {index_name}" in text
-        assert f"ON {table_name}(payload_hash)" in text
-    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_equity_event_calendar_rows_expected_event" in text
-    assert "ON equity_event_calendar_rows(expected_event_id)" in text
-
-
-def test_token_radar_target_projection_coverage_migration_follows_equity_projection_hashes() -> None:
+def test_token_radar_target_projection_coverage_migration_follows_revision_chain() -> None:
     text = TOKEN_RADAR_TARGET_PROJECTION_COVERAGE_MIGRATION.read_text()
     normalized_text = " ".join(text.split())
 
@@ -1746,8 +1615,6 @@ def test_token_equity_workerspace_root_fix_migration_contract() -> None:
     downgrade_marker = "def downgrade() -> None:"
     assert downgrade_marker in text, "migration must define irreversible downgrade"
     downgrade_text = text.split(downgrade_marker, maxsplit=1)[1]
-    process_jobs_table = _migration_op_call(text, "create_table", "equity_event_process_jobs")
-    process_jobs_columns = _sa_column_names(process_jobs_table)
 
     assert 'revision = "20260528_0121"' in text
     assert 'down_revision = "20260528_0120"' in text
@@ -1755,26 +1622,12 @@ def test_token_equity_workerspace_root_fix_migration_contract() -> None:
     assert 'op.add_column("token_radar_rank_source_events",sa.Column("source_payload_hash"' in compact_text
     for column_name in ("source_dirty", "market_dirty", "repair_dirty"):
         assert f'op.add_column("token_radar_dirty_targets",sa.Column("{column_name}"' in compact_text
-    for column_name in (
-        "event_document_id",
-        "status",
-        "lease_owner",
-        "leased_until_ms",
-        "input_payload_hash",
-    ):
-        assert column_name in process_jobs_columns
-    assert 'op.add_column("equity_event_evidence_artifacts",sa.Column("artifact_payload_hash"' in compact_text
     for column_name in ("lease_owner", "leased_until_ms"):
         assert f'op.add_column("event_anchor_backfill_jobs",sa.Column("{column_name}"' in compact_text
     assert "DROP CONSTRAINT" in text
     assert "ck_event_anchor_backfill_jobs_status" in text
     assert "CHECK(statusIN('pending','running','done','expired','failed'))" in compact_text
-    for index_name in (
-        "idx_equity_event_process_jobs_due",
-        "idx_equity_event_process_jobs_running",
-        "idx_event_anchor_backfill_jobs_due",
-        "idx_event_anchor_backfill_jobs_running",
-    ):
+    for index_name in ("idx_event_anchor_backfill_jobs_due", "idx_event_anchor_backfill_jobs_running"):
         assert f'"{index_name}"' in text
     assert "queue_depth_table" not in text
 

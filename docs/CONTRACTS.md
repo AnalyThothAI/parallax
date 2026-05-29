@@ -58,10 +58,7 @@ per manifest worker key, in manifest start-priority order:
 `token_radar_projection`, `narrative_admission`, `mention_semantics`,
 `token_discussion_digest`, `news_fetch`, `news_item_process`,
 `news_story_projection`, `news_item_brief`, `news_page_projection`,
-`news_source_quality_projection`, `equity_event_source_reconcile`,
-`equity_event_fetch`, `equity_event_evidence_hydration`, `equity_event_process`,
-`equity_event_story_projection`, `equity_event_brief`,
-`equity_event_page_projection`, `cex_oi_radar_board`,
+`news_source_quality_projection`, `cex_oi_radar_board`,
 `macro_sync`, `macro_view_projection`, `pulse_candidate`, `enrichment`, `handle_summary`,
 `notification_rule`, and `notification_delivery`.
 
@@ -213,33 +210,6 @@ News Intel contract:
   it is not a 5xx by itself. Frontend clients must render this state directly
   and must not synthesize Chinese summary, bull/bear thesis, decision class, or
   next-action text from the headline.
-
-Equity Event Intel contract:
-
-- `/api/equity-events*` routes are read-only, event-first surfaces backed by
-  current equity event read models. HTTP handlers must not fetch providers,
-  import workers, run LLMs, parse filings, or rebuild projections.
-- `/api/equity-events` serves `equity_event_page_rows` with stable cursor
-  pagination by `(latest_event_at_ms, company_event_id)`. It accepts optional
-  `window`, `universe`, `ticker`, `event_type`, `priority`, `source_role`,
-  `lifecycle_status`, `brief_status`, `q`, `cursor`, and bounded `limit`
-  filters.
-- `/api/equity-events/{event_id}` returns the current read-model detail for a
-  company event. Missing rows return `404` with `equity_event_not_found`.
-  Current brief payloads come only from persisted `equity_event_agent_briefs`;
-  handlers must not execute the brief agent or synthesize missing analysis.
-- `/api/equity-events/stories/{story_id}` returns the persisted story group and
-  its projected event rows. Missing stories return `404` with
-  `equity_event_story_not_found`.
-- `/api/equity-events/calendar` serves `equity_event_calendar_rows`.
-  Query aliases `from` and `to` map to millisecond bounds, with optional
-  `universe`, `ticker`, `status`, and `session` filters.
-- `/api/equity-events/companies/{ticker}/timeline` serves
-  `equity_company_timeline_rows` with stable cursor pagination by
-  `(event_time_ms, row_id)`.
-- `/api/equity-events/sources/status` exposes sanitized source-row status for
-  configured equity sources. `/api/equity-events/summary` returns counts for
-  open P0 rows, today rows, pending briefs, and the latest event timestamp.
 
 Token Radar market contract:
 

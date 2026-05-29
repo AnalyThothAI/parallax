@@ -61,17 +61,6 @@ def test_macro_projection_refresh_is_current_only_with_source_signature() -> Non
     assert replace_current_pattern.search(repo) is None
 
 
-def test_equity_fetch_worker_does_not_hydrate_document_evidence() -> None:
-    fetch_worker = _read("src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_fetch_worker.py")
-    assert "hydrate_document_evidence" not in fetch_worker
-    assert "replace_evidence_artifacts" not in fetch_worker
-
-
-def test_equity_evidence_hydration_worker_exists() -> None:
-    path = SRC / "domains/equity_event_intel/runtime/equity_event_evidence_hydration_worker.py"
-    assert path.exists()
-
-
 def test_news_fetch_validates_provider_contract_before_reconcile() -> None:
     worker = _read("src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py")
     validate_at = worker.index("validate_news_provider_contract")

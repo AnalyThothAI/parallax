@@ -51,6 +51,8 @@ def main() -> None:
             for col in inspector.get_columns(table, schema="public")
         )
         body.append("")
+    while body and body[-1] == "":
+        body.pop()
     OUTPUT.write_text(HEADER + "\n".join(body) + "\n", encoding="utf-8")
     engine.dispose()
 

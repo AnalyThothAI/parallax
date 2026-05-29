@@ -157,8 +157,7 @@ mistakes, not from PostgreSQL or asyncio being mysterious:
 - A worker writes while holding the wrong boundary open. Provider, publisher,
   wake-wait, file, subprocess, and network IO must run outside DB worker
   sessions; only materialization and persistence belong inside sessions.
-- A worker treats a broad table scan as a queue. Equity processing now consumes
-  `equity_event_process_jobs`; event-anchor catch-up consumes
+- A worker treats a broad table scan as a queue. Event-anchor catch-up consumes
   `event_anchor_backfill_jobs`; Token Radar consumes dirty targets with dirty
   kind flags. Empty queues mean idle, not "scan the fact table to be sure."
 - A status hook is treated as diagnostics-only. `status_payload()`,
@@ -235,8 +234,6 @@ expired, or failed?"
 Examples:
 
 - `event_anchor_backfill_jobs`
-- `equity_event_evidence_jobs`
-- `equity_event_process_jobs`
 - `pulse_agent_jobs`
 - `watchlist_handle_summary_jobs`
 - notification delivery rows

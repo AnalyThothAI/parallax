@@ -33,7 +33,7 @@ cold paths are retained by partition lifecycle, not by worker-loop deletes.
 | --- | --- | --- |
 | Hot online serving path | `token_radar_current_rows`, `token_radar_publication_state`, `macro_observation_series_rows`, `macro_view_snapshots`, `cex_oi_radar_rows`, `cex_oi_radar_publication_state` | No wide JSON/text scans. Online Token Radar reads only current rows plus publication state; `fresh` requires `ready` and matching `current_generation_id`. Current rows carry `rank_score`, `quality_status`, `degraded_reasons_json`, and `factor_snapshot_json`, not legacy top-level current-row JSON blocks. Macro and CEX serving rows are compact current rows; unchanged source signatures update publication state at most and write zero serving rows. |
 | Projection-private/detail path | `token_radar_target_features`, `token_radar_rank_source_events` | Used by the Token Radar projection and bounded evidence/detail lookups only. `token_radar_target_features` is not an API, CLI, Pulse, notification, or repair read path. `token_radar_rank_source_events` is lazy evidence/detail, not online leaderboard service. |
-| Selected-row hydrate | `events`, `enriched_events`, `equity_event_evidence_artifacts` | Access only after ranking, document selection, or explicit evidence selection has chosen stable row ids or payload hashes. Do not join these wide payload tables into rank/discovery scans. |
+| Selected-row hydrate | `events`, `enriched_events` | Access only after ranking or explicit evidence selection has chosen stable row ids or payload hashes. Do not join these wide payload tables into rank/discovery scans. |
 | Cold audit/history | `raw_frames` and future explicit cold projections | Partition lifecycle only. Runtime workers must not issue loop deletes against audit, history, or provider raw-frame tables. |
 | Control plane | Dirty targets, jobs, fetch runs | Leased, bounded, and terminal-evidence based. Queue state transitions must preserve attempts, lease ownership, payload hash/idempotency keys, and explicit terminal reasons. |
 
@@ -54,9 +54,6 @@ observable as zero serving-row writes.
 
 - Spec: `docs/superpowers/specs/active/2026-05-26-postgres-performance-queue-hard-cut-cn.md`
 - Plan: `docs/superpowers/plans/active/2026-05-26-postgres-performance-queue-hard-cut-plan-cn.md`
-- Baseline analysis: `docs/generated/postgres-observability/postgres-production-performance-analysis-2026-05-26-cn.md`
-- Worker audit: `docs/generated/postgres-observability/worker-architecture-audit-2026-05-26.md`
-- Worker contract review: `docs/generated/postgres-observability/worker-contract-spec-review-2026-05-26-cn.md`
 - Operational invariants: `docs/RELIABILITY.md`
 - Setup commands: `docs/SETUP.md`
 
@@ -174,9 +171,6 @@ Hard gates enforced by the check:
 - The largest Token Radar SQL fingerprint must stay below 10% of total
   `pg_stat_statements.total_exec_time` for the window by default, configurable
   with `TOKEN_RADAR_TOP_SQL_SHARE_MAX`.
-- Stale `equity_event_fetch_runs.status = 'running'` rows older than 15 minutes
-  must be at or below `STALE_EQUITY_FETCH_RUNS_MAX` (default `0`).
-
 The script also prints the current Alembic head. Runtime results are not
 accepted unless that head corresponds to the deployed runtime performance hard
 cut migration set.
@@ -212,14 +206,11 @@ Current example:
   `TokenRadarTargetFeatureBatchQuery.source_rows_for_requests(...)`. Runtime
   code no longer calls the single-target `source_rows(...)` path or the old
   `WITH source_intents AS MATERIALIZED` query.
-- Fixed in the 2026-05-28 Token/Equity/WorkerSpace hard cut: Token Radar
+- Fixed in the 2026-05-28 Token/WorkerSpace hard cut: Token Radar
   market-only dirty targets reuse stable `token_radar_rank_source_events`
   source packets and overlay latest market context instead of rewriting source
-  edges. Source-edge, provider-document, and evidence-artifact writes use
-  payload hashes to avoid unchanged TOAST rewrites.
-- Fixed in the same hard cut: `equity_event_process` consumes leased
-  `equity_event_process_jobs` and loads normalized document packets. It does
-  not poll `equity_event_documents` with raw provider payload hydration.
+  edges. Source-edge writes use payload hashes to avoid unchanged TOAST
+  rewrites.
 
 ### Match Indexes To Real Predicates
 
@@ -259,19 +250,15 @@ Broad discovery belongs in dry-run-first ops commands that enqueue bounded work:
 uv run gmgn-twitter-intel ops enqueue-token-radar-dirty-targets --dry-run
 ```
 
-### Hard Reset Token Rows And Equity Process Outputs
+### Hard Reset Token Rows
 
-Use this only after the Token Radar / Equity Event / WorkerSpace hard cut
-migration and code are deployed, all affected workers are stopped or in a
-maintenance window, and the operator has a bounded repair target list ready.
+Use this only after the Token Radar / WorkerSpace hard cut migration and code
+are deployed, all affected workers are stopped or in a maintenance window, and
+the operator has a bounded repair target list ready.
 This is a destructive maintenance reset, not routine cleanup and not a fact
 retention policy. The Token Radar tables in this recipe are rebuildable
-projection/control rows. The Equity Event tables include classifier process
-outputs (`equity_event_source_spans` and `equity_event_fact_candidates`) that
-are business fact tables in the global architecture; reset them only when the
-operator intends to regenerate them from official documents/evidence artifacts
-through re-enqueued `equity_event_process_jobs`. It must not be run while
-workers are concurrently claiming the same queues.
+projection/control rows. It must not be run while workers are concurrently
+claiming the same queues.
 
 After the reset, enqueue explicit bounded repair targets through the owning ops
 paths. Do not rely on runtime workers to scan facts and rediscover everything.
@@ -283,11 +270,6 @@ TRUNCATE token_radar_target_features;
 TRUNCATE token_radar_current_rows;
 DELETE FROM token_radar_publication_state
 WHERE projection_version = 'token-radar-v13-social-attention';
-
-TRUNCATE equity_event_process_jobs;
-TRUNCATE equity_event_evidence_artifacts;
-TRUNCATE equity_event_source_spans;
-TRUNCATE equity_event_fact_candidates;
 ```
 
 Recommended post-reset checks:
@@ -298,10 +280,6 @@ ANALYZE token_radar_rank_source_events;
 ANALYZE token_radar_target_features;
 ANALYZE token_radar_current_rows;
 ANALYZE token_radar_publication_state;
-ANALYZE equity_event_process_jobs;
-ANALYZE equity_event_evidence_artifacts;
-ANALYZE equity_event_source_spans;
-ANALYZE equity_event_fact_candidates;
 ```
 
 ### Treat Queue Terminal States As Evidence
@@ -738,32 +716,6 @@ VACUUM (ANALYZE) pulse_agent_runs;
 Run after the current drain/rebuild wave, not while the same tables are being
 heavily rewritten.
 
-### P2: Equity Provider Document Churn Is Still Noisy
-
-Fresh Top SQL includes high-call equity document select/upsert paths:
-
-```text
-SELECT * FROM equity_provider_documents WHERE source_id = ... AND provider_document_key = ...
-calls: 25,836
-
-equity_event_documents upsert
-calls: 25,836
-```
-
-Diagnosis:
-
-Single-call latency is low, but this pattern creates continuous CPU, WAL, index,
-and autovacuum pressure. It is not the first bottleneck, but it will matter as
-source volume grows.
-
-Next move:
-
-- Preserve provider natural-key idempotency with `payload_hash`.
-- Keep normalized scalar document fields on `equity_event_documents` for
-  process/page paths.
-- Measure WAL and dead tuples after the hash-gated provider-document and
-  evidence-artifact writes have run long enough to show deltas.
-
 ## Priority Order
 
 1. Verify post-deploy pg_stat deltas show no new
@@ -775,7 +727,6 @@ Next move:
 4. Schedule retention/partition review for Token Radar audit/history and
    market ticks.
 5. Vacuum/analyze high-churn control tables after the current live drain.
-6. Reduce equity provider document write churn with set-based idempotent writes.
 
 ## Completion Checklist For Future Performance PRs
 

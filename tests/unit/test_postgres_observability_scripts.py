@@ -27,9 +27,7 @@ def test_powa_configure_script_sets_bounded_history_and_does_not_print_secrets()
 
 
 def test_runtime_performance_check_prints_read_only_lifecycle_report() -> None:
-    script = (
-        ROOT / "scripts" / "runtime_performance_root_fix_check.sh"
-    ).read_text(encoding="utf-8")
+    script = (ROOT / "scripts" / "runtime_performance_root_fix_check.sh").read_text(encoding="utf-8")
 
     assert "== postgres lifecycle report ==" in script
     assert "psql_cmd --csv -c" in script
@@ -45,7 +43,6 @@ def test_runtime_performance_check_prints_read_only_lifecycle_report() -> None:
     assert "raw_frames" in script
     assert "events" in script
     assert "enriched_events" in script
-    assert "equity_event_evidence_artifacts" in script
     assert "token_radar_rank_source_events" in script
     assert "token_radar_current_rows" in script
     assert "token_radar_publication_state" in script

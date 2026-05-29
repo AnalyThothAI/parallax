@@ -67,15 +67,7 @@ export const queryKeys = {
     signal?: string | null;
     status?: string | null;
   }) =>
-    [
-      "news",
-      limit,
-      cursor ?? "",
-      signal ?? "",
-      min_score ?? "",
-      status ?? "",
-      q ?? "",
-    ] as const,
+    ["news", limit, cursor ?? "", signal ?? "", min_score ?? "", status ?? "", q ?? ""] as const,
   newsRowsInfinite: ({
     limit,
     min_score,
@@ -88,16 +80,7 @@ export const queryKeys = {
     q?: string | null;
     signal?: string | null;
     status?: string | null;
-  }) =>
-    [
-      "news",
-      "infinite",
-      limit,
-      signal ?? "",
-      min_score ?? "",
-      status ?? "",
-      q ?? "",
-    ] as const,
+  }) => ["news", "infinite", limit, signal ?? "", min_score ?? "", status ?? "", q ?? ""] as const,
   newsItem: (newsItemId: string) => ["news-item", newsItemId] as const,
   targetSocialTimeline: (targetKey: string | null, window: WindowKey, scope: ScopeKey) =>
     ["target-social-timeline", targetKey, window, scope] as const,
@@ -118,37 +101,6 @@ export const queryKeys = {
     ["ops-queue", queueName ?? "", status ?? "", limit] as const,
   watchlistHandlesOverview: () => ["watchlist-handles-overview"] as const,
   macroAssetCorrelation: (window: string) => ["macro", "asset-correlation", window] as const,
-  equityEvents: ({
-    cursor,
-    event_type,
-    limit,
-    priority,
-    q,
-    status,
-    ticker,
-  }: {
-    cursor?: string | null;
-    event_type?: string | null;
-    limit: number;
-    priority?: string | null;
-    q?: string | null;
-    status?: string | null;
-    ticker?: string | null;
-  }) =>
-    [
-      "equity-events",
-      limit,
-      cursor ?? "",
-      ticker ?? "",
-      event_type ?? "",
-      priority ?? "",
-      status ?? "",
-      q ?? "",
-    ] as const,
-  equityEvent: (eventId: string) => ["equity-event", eventId] as const,
-  equityEventCalendar: ({ status, ticker }: { status?: string | null; ticker?: string | null }) =>
-    ["equity-event-calendar", ticker ?? "", status ?? ""] as const,
-  equityEventSummary: () => ["equity-event-summary"] as const,
   watchlistHandleOverview: (handle: string, scope: WatchlistTimelineScope) =>
     ["watchlist-handle-overview", handle, scope] as const,
   watchlistHandleSummary: (handle: string) => ["watchlist-handle-summary", handle] as const,

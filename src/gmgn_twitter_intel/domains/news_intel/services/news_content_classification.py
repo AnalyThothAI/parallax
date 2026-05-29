@@ -37,11 +37,6 @@ _RULES: tuple[tuple[str, str, re.Pattern[str]], ...] = (
         re.compile(r"\b(?:mainnet|upgrade|hard fork|proposal|governance|developer)\b", re.I),
     ),
     (
-        "equity_earnings",
-        "text:equity_earnings",
-        re.compile(r"\b(?:earnings|revenue|eps|guidance|quarterly results)\b", re.I),
-    ),
-    (
         "ai_semiconductors",
         "text:ai_semiconductors",
         re.compile(r"\b(?:nvidia|semiconductor|chip|gpu|ai server|accelerator)\b", re.I),

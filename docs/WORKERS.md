@@ -99,7 +99,7 @@ Review workers by separating four categories:
 |----------|---------|----------|------|
 | Facts | Business observations and decisions that should be replayable | `events`, `token_intent_resolutions`, `asset_identity_evidence`, `asset_identity_current`, `market_ticks`, `enriched_events`, Pulse audit rows | Facts are product truth. |
 | Read models | Rebuildable projections for reads and product workflows | `market_tick_current`, `token_radar_current_rows`, `token_radar_publication_state`, `token_radar_target_first_seen`, `token_profile_current`, `pulse_candidates`, `watchlist_handle_signal_stats`, watchlist summaries | Exactly one runtime writer. |
-| Control plane | Scheduling, retry, lease, budget, and queue state | `event_anchor_backfill_jobs`, `equity_event_evidence_jobs`, `equity_event_process_jobs`, `market_tick_current_dirty_targets`, `token_radar_dirty_targets`, `token_discovery_dirty_lookup_keys`, `macro_projection_dirty_targets`, projection dirty targets, `pulse_trigger_dirty_targets`, `narrative_admission_dirty_targets`, `discussion_digest_dirty_targets`, `token_profile_current_dirty_targets`, `token_image_source_dirty_targets`, `asset_profile_refresh_targets`, `token_capture_tier_dirty_targets`, `pulse_agent_jobs`, `notification_deliveries` | Never treat job state as product truth. |
+| Control plane | Scheduling, retry, lease, budget, and queue state | `event_anchor_backfill_jobs`, `market_tick_current_dirty_targets`, `token_radar_dirty_targets`, `token_discovery_dirty_lookup_keys`, `macro_projection_dirty_targets`, projection dirty targets, `pulse_trigger_dirty_targets`, `narrative_admission_dirty_targets`, `discussion_digest_dirty_targets`, `token_profile_current_dirty_targets`, `token_image_source_dirty_targets`, `asset_profile_refresh_targets`, `token_capture_tier_dirty_targets`, `pulse_agent_jobs`, `notification_deliveries` | Never treat job state as product truth. |
 | Cache/fan-out | Process-local convenience state | `LivePriceGateway` latest cache and WebSocket fan-out | Cache is presentation-only unless persisted as facts. |
 | Local media mirrors | Rebuildable local copies of provider media | `token_image_assets` plus files under `cache/token-images` | Public image URLs must come from ready local rows, never provider URLs. |
 
@@ -142,8 +142,6 @@ asset_profile_refresh, token_image_mirror, token_radar_projection, token_profile
 narrative_admission, mention_semantics, token_discussion_digest,
 news_fetch, news_item_process, news_story_projection,
 news_item_brief, news_page_projection, news_source_quality_projection,
-equity_event_source_reconcile, equity_event_fetch, equity_event_evidence_hydration, equity_event_process,
-equity_event_story_projection, equity_event_brief, equity_event_page_projection,
 cex_oi_radar_board, macro_sync, macro_view_projection,
 pulse_candidate, enrichment, handle_summary, notification_rule,
 notification_delivery
@@ -172,13 +170,6 @@ notification_delivery
 | `news_item_brief` (`NewsItemBriefWorker`) | `news_intel` | `domains/news_intel/runtime/news_item_brief_worker.py` | due `news_projection_dirty_targets(projection_name='brief_input')`; processed `news_items`, `news_story_groups`, current brief state after reserving `news.item_brief` | `news_item_agent_runs`, `news_item_agent_briefs` | `news_item_processed`, `news_story_updated` | `news_item_brief_updated` | `interval_seconds`; no-start backpressure claims nothing and writes no run ledger |
 | `news_page_projection` (`NewsPageProjectionWorker`) | `news_intel` | `domains/news_intel/runtime/news_page_projection_worker.py` | due `news_projection_dirty_targets(projection_name='page')`; target-scoped `news_items`, `news_token_mentions`, `news_fact_candidates`, `news_story_groups`, current brief state | `news_page_rows` | `news_item_written`, `news_item_processed`, `news_story_updated`, `news_item_brief_updated`, `news_page_dirty` | none | `interval_seconds` |
 | `news_source_quality_projection` (`NewsSourceQualityProjectionWorker`) | `news_intel` | `domains/news_intel/runtime/news_source_quality_projection_worker.py` | due `news_projection_dirty_targets(projection_name='source_quality')`; target-scoped `news_sources`, `news_fetch_runs`, `news_items`, `news_token_mentions`, `news_fact_candidates`, `news_item_agent_briefs`, `news_context_items` by source/window | `news_source_quality_rows`, `news_sources.source_quality_status` | `news_item_written`, `news_item_processed`, `news_story_updated`, `news_item_brief_updated` | `news_page_dirty` when source status changes | `interval_seconds` |
-| `equity_event_source_reconcile` (`EquityEventSourceReconcileWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_source_reconcile_worker.py` | configured `equity_event_intel.companies`, expected events, registry US equity identity | `equity_event_sources`, `equity_event_universe_members`, `equity_expected_events` | poll | `equity_event_sources_reconciled` | `interval_seconds` |
-| `equity_event_fetch` (`EquityEventFetchWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_fetch_worker.py` | due `equity_event_sources`, SEC submissions provider payloads | `equity_event_fetch_runs`, `equity_provider_documents`, `equity_event_documents`, `equity_event_evidence_jobs` | `equity_event_sources_reconciled` | `equity_event_evidence_job_written` | `interval_seconds` |
-| `equity_event_evidence_hydration` (`EquityEventEvidenceHydrationWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_evidence_hydration_worker.py` | due leased `equity_event_evidence_jobs`, event document/source context, SEC document evidence provider | `equity_event_evidence_artifacts`, `equity_event_documents.evidence_status`, `equity_company_events.evidence_status`, evidence job status, `equity_event_process_jobs` | `equity_event_evidence_job_written` | `equity_event_document_written` | `interval_seconds` |
-| `equity_event_process` (`EquityEventProcessWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_process_worker.py` | due leased `equity_event_process_jobs`, normalized event document packet, source company identity | `equity_company_events`, `equity_event_source_spans`, `equity_event_fact_candidates`, document lifecycle status, process job status | `equity_event_document_written` | `equity_event_processed` | `interval_seconds` |
-| `equity_event_story_projection` (`EquityEventStoryProjectionWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_story_projection_worker.py` | due `equity_event_projection_dirty_targets(projection_name='story')`; target-scoped `equity_company_events`, existing story candidates | `equity_event_story_groups`, `equity_event_story_members` | `equity_event_processed` | `equity_event_story_updated` | `interval_seconds` |
-| `equity_event_brief` (`EquityEventBriefWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_brief_worker.py` | due `equity_event_projection_dirty_targets(projection_name='brief_input')`; `equity_company_events`, stories, official documents, spans, accepted facts, current brief state after reserving `equity_event.brief` | `equity_event_agent_runs`, `equity_event_agent_briefs`, event brief lifecycle status | `equity_event_story_updated` | `equity_event_brief_updated` | `interval_seconds`; no-start backpressure claims nothing and writes no run ledger |
-| `equity_event_page_projection` (`EquityEventPageProjectionWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_page_projection_worker.py` | due `equity_event_projection_dirty_targets(projection_name in page/timeline/alert/calendar)`; target-scoped `equity_company_events`, `equity_expected_events`, `equity_event_story_groups`, facts, documents, current brief state | `equity_event_page_rows`, `equity_event_calendar_rows`, `equity_event_alert_candidates`, `equity_company_timeline_rows` | `equity_event_document_written`, `equity_event_processed`, `equity_event_story_updated`, `equity_event_brief_updated` | `equity_event_page_updated` | `interval_seconds` |
 | `cex_oi_radar_board` (`CexOiRadarBoardWorker`) | `cex_market_intel` | `domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py` | Binance-backed `price_feeds`, Binance USD-M ticker/premium/OI history, bounded CoinGlass enrichment when available | `cex_oi_radar_rows`, `cex_oi_radar_publication_state`, `cex_detail_snapshots` | poll | none | `interval_seconds`; current board row ids are stable by provider/exchange/period/target |
 | `macro_sync` (`MacroSyncWorker`) | `macro_intel` | `domains/macro_intel/runtime/macro_sync_worker.py` | due `macro_sync_windows`; packaged `macrodata` history bundle after claim | `macro_observations`, `macro_import_runs`, `macro_sync_windows`, `macro_sync_runs` | poll | `macro_observations_imported` | claims one bounded window; idle cycles do no provider IO and no broad fact scan |
 | `macro_view_projection` (`MacroViewProjectionWorker`) | `macro_intel` | `domains/macro_intel/runtime/macro_view_projection_worker.py` | due `macro_projection_dirty_targets`; then exact `macro_observations` history and `macro_observation_series_rows` current projection | `macro_observation_series_rows`, `macro_view_snapshots`, `macro_observation_series_publication_state` | `macro_observations_imported` | none | `interval_seconds`; no dirty target means no broad fact scan; unchanged signatures write zero serving rows |
@@ -356,9 +347,8 @@ a fresh worker transaction for terminal writes, projection writes, and wake
 emission. The guard tracks both session depth and transaction depth; provider
 IO inside either boundary is a runtime error.
 
-Current enforced workers include `token_radar_projection`,
-`equity_event_fetch`, `equity_event_evidence_hydration`,
-`equity_event_process`, and `event_anchor_backfill`. These workers must be
+Current enforced workers include `token_radar_projection` and
+`event_anchor_backfill`. These workers must be
 constructed with an explicit manifest-derived WorkerSpace contract. There is
 no runtime fallback identity: a missing manifest contract is a construction
 bug, not an alternate execution mode.
@@ -376,14 +366,6 @@ bug, not an alternate execution mode.
 | `news_item_processed` | `NewsItemProcessWorker` | `NewsStoryProjectionWorker`, `NewsItemBriefWorker`, `NewsPageProjectionWorker` | `{count}` |
 | `news_story_updated` | `NewsStoryProjectionWorker` | `NewsItemBriefWorker`, `NewsPageProjectionWorker` | `{count}` |
 | `news_item_brief_updated` | `NewsItemBriefWorker` | `NewsPageProjectionWorker`, `NewsSourceQualityProjectionWorker` | `{count}` |
-| `equity_event_sources_reconciled` | `EquityEventSourceReconcileWorker` | `EquityEventFetchWorker` | `{count}` |
-| `equity_event_evidence_job_written` | `EquityEventFetchWorker` | `EquityEventEvidenceHydrationWorker` | `{source_id, count}` |
-| `equity_event_document_written` | `EquityEventEvidenceHydrationWorker` | `EquityEventProcessWorker`, `EquityEventPageProjectionWorker` | `{source_id, count}` |
-| `equity_event_processed` | `EquityEventProcessWorker` | `EquityEventStoryProjectionWorker`, `EquityEventPageProjectionWorker` | `{count}` |
-| `equity_event_story_updated` | `EquityEventStoryProjectionWorker` | `EquityEventBriefWorker`, `EquityEventPageProjectionWorker` | `{count}` |
-| `equity_event_brief_updated` | `EquityEventBriefWorker` | `EquityEventPageProjectionWorker` | `{count}` |
-| `equity_event_page_updated` | `EquityEventPageProjectionWorker` | none | `{count}` |
-
 Wake payloads are hints only. Consumers re-read DB on wake and catch up
 on their configured cadence. `DBPoolBundle` owns wake emission and
 listener construction through `wake_emitter()` and `wake_listener()`.
@@ -517,12 +499,6 @@ agent_runtime:
   target. No-start backpressure does not claim, burn attempts, or write an
   agent run ledger; provider-started validation failures write
   `execution_started=true`.
-- `equity_event_brief` builds a bounded official-evidence packet for each due
-  company event, validates cited output against packet evidence refs, writes
-  `equity_event_agent_runs` audit rows, and publishes current
-  `equity_event_agent_briefs` only through `AgentExecutionGateway` lane
-  `equity_event.brief`.
-
 If reservation is denied, the worker records `agent_backpressure_*` in its
 iteration notes and does not claim a job, so no-start backpressure does not
 burn attempts or write business run ledgers. Batch LLM workers must reserve

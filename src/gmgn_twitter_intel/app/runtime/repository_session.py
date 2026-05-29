@@ -45,12 +45,6 @@ from gmgn_twitter_intel.domains.cex_market_intel.repositories.cex_detail_snapsho
     CexDetailSnapshotRepository,
 )
 from gmgn_twitter_intel.domains.cex_market_intel.repositories.cex_oi_radar_repository import CexOiRadarRepository
-from gmgn_twitter_intel.domains.equity_event_intel.repositories.equity_event_repository import (
-    EquityEventRepository,
-)
-from gmgn_twitter_intel.domains.equity_event_intel.repositories.equity_projection_dirty_target_repository import (
-    EquityProjectionDirtyTargetRepository,
-)
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.domains.macro_intel.repositories.macro_intel_repository import MacroIntelRepository
@@ -158,8 +152,6 @@ class RepositorySession:
     watchlist_intel: WatchlistIntelRepository
     news: NewsRepository
     news_projection_dirty_targets: NewsProjectionDirtyTargetRepository
-    equity_events: EquityEventRepository
-    equity_projection_dirty_targets: EquityProjectionDirtyTargetRepository
     cex_derivative_series: CexDerivativeSeriesRepository
     cex_detail_snapshots: CexDetailSnapshotRepository
     cex_oi_radar: CexOiRadarRepository
@@ -227,8 +219,6 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         watchlist_intel=WatchlistIntelRepository(conn),
         news=NewsRepository(conn),
         news_projection_dirty_targets=NewsProjectionDirtyTargetRepository(conn),
-        equity_events=EquityEventRepository(conn),
-        equity_projection_dirty_targets=EquityProjectionDirtyTargetRepository(conn),
         cex_derivative_series=CexDerivativeSeriesRepository(conn),
         cex_detail_snapshots=CexDetailSnapshotRepository(conn),
         cex_oi_radar=CexOiRadarRepository(conn),

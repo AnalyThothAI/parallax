@@ -228,175 +228,49 @@ def test_token_radar_schema_supports_hard_cut_targets(tmp_path):
     assert radar_columns["factor_snapshot_json"]["is_nullable"] == "NO"
 
 
-def test_runtime_schema_contains_equity_projection_payload_hash_columns_and_indexes(tmp_path):
+def test_runtime_schema_drops_retired_product_tables(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        columns_by_table = {
-            table_name: {
-                row["column_name"]: row
-                for row in conn.execute(
-                    """
-                    SELECT column_name, data_type, is_nullable, column_default
-                    FROM information_schema.columns
-                    WHERE table_schema = 'public' AND table_name = %s
-                    """,
-                    (table_name,),
-                ).fetchall()
-            }
-            for table_name in (
-                "equity_event_page_rows",
-                "equity_company_timeline_rows",
-                "equity_event_alert_candidates",
-                "equity_event_calendar_rows",
-            )
+        equity_prefix = "equity"
+        deleted_event_prefix = "_".join(("equity", "event"))
+        deleted_company_prefix = "_".join(("equity", "company"))
+        deleted_tables = {
+            f"{deleted_event_prefix}_process_jobs",
+            f"{deleted_event_prefix}_evidence_jobs",
+            f"{deleted_event_prefix}_projection_dirty_targets",
+            f"{deleted_event_prefix}_brief_states",
+            f"{deleted_event_prefix}_evidence_artifacts",
+            f"{deleted_company_prefix}_timeline_rows",
+            f"{deleted_event_prefix}_alert_candidates",
+            f"{deleted_event_prefix}_calendar_rows",
+            f"{deleted_event_prefix}_page_rows",
+            f"{deleted_event_prefix}_agent_briefs",
+            f"{deleted_event_prefix}_agent_runs",
+            f"{deleted_event_prefix}_story_members",
+            f"{deleted_event_prefix}_story_groups",
+            f"{deleted_event_prefix}_fact_candidates",
+            f"{deleted_event_prefix}_source_spans",
+            f"{deleted_company_prefix}_events",
+            f"{equity_prefix}_section_diffs",
+            f"{equity_prefix}_document_revisions",
+            f"{deleted_event_prefix}_documents",
+            f"{equity_prefix}_provider_documents",
+            f"{equity_prefix}_expected_events",
+            f"{deleted_event_prefix}_universe_members",
+            f"{deleted_event_prefix}_fetch_runs",
+            f"{deleted_event_prefix}_sources",
         }
-        indexes = {
-            row["indexname"]
-            for row in conn.execute(
-                """
-                SELECT indexname
-                FROM pg_indexes
-                WHERE schemaname = 'public'
-                  AND tablename = ANY(%s::text[])
-                """,
-                (
-                    [
-                        "equity_event_page_rows",
-                        "equity_company_timeline_rows",
-                        "equity_event_alert_candidates",
-                        "equity_event_calendar_rows",
-                    ],
-                ),
-            ).fetchall()
-        }
-    finally:
-        conn.close()
-
-    for columns in columns_by_table.values():
-        assert columns["payload_hash"]["data_type"] == "text"
-        assert columns["payload_hash"]["is_nullable"] == "NO"
-        assert columns["payload_hash"]["column_default"] == "''::text"
-        assert columns["source_watermark_ms"]["data_type"] == "bigint"
-        assert columns["source_watermark_ms"]["is_nullable"] == "NO"
-        assert columns["source_watermark_ms"]["column_default"] == "0"
-    assert {
-        "idx_equity_event_page_rows_payload_hash",
-        "idx_equity_company_timeline_rows_payload_hash",
-        "idx_equity_event_alert_candidates_payload_hash",
-        "idx_equity_event_calendar_rows_payload_hash",
-        "idx_equity_event_calendar_rows_expected_event",
-    }.issubset(indexes)
-
-
-def test_runtime_schema_contains_equity_event_evidence_hard_cut_tables_and_columns(tmp_path):
-    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
-    try:
-        migrate(conn)
         table_names = {
             row["table_name"]
             for row in conn.execute(
                 "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
             ).fetchall()
         }
-        columns_by_table = {
-            table_name: {
-                row["column_name"]: row
-                for row in conn.execute(
-                    """
-                    SELECT column_name, data_type, is_nullable, column_default
-                    FROM information_schema.columns
-                    WHERE table_schema = 'public' AND table_name = %s
-                    """,
-                    (table_name,),
-                ).fetchall()
-            }
-            for table_name in ("equity_event_documents", "equity_company_events", "equity_event_sources")
-        }
-        indexes = {
-            row["indexname"]
-            for row in conn.execute(
-                """
-                SELECT indexname
-                FROM pg_indexes
-                WHERE schemaname = 'public'
-                  AND tablename = 'equity_event_evidence_artifacts'
-                """
-            ).fetchall()
-        }
-        constraints = {
-            row["conname"]
-            for row in conn.execute(
-                """
-                SELECT constraint_name AS conname
-                FROM information_schema.table_constraints
-                WHERE table_schema = 'public'
-                  AND table_name = ANY(%s::text[])
-                  AND constraint_type = 'CHECK'
-                """,
-                (["equity_event_documents", "equity_company_events"],),
-            ).fetchall()
-        }
     finally:
         conn.close()
 
-    assert {"equity_event_evidence_artifacts", "equity_event_brief_states"}.issubset(table_names)
-    assert "idx_equity_event_evidence_artifacts_document" in indexes
-    document_columns = columns_by_table["equity_event_documents"]
-    company_event_columns = columns_by_table["equity_company_events"]
-    source_columns = columns_by_table["equity_event_sources"]
-    assert {
-        "evidence_status",
-        "evidence_reason",
-        "evidence_ready_at_ms",
-        "fact_extraction_status",
-        "fact_extraction_reason",
-        "fact_extracted_at_ms",
-    }.issubset(document_columns)
-    assert document_columns["evidence_status"]["data_type"] == "text"
-    assert document_columns["evidence_status"]["is_nullable"] == "NO"
-    assert document_columns["evidence_status"]["column_default"] == "'pending'::text"
-    assert document_columns["evidence_reason"]["column_default"] == "''::text"
-    assert document_columns["evidence_ready_at_ms"]["data_type"] == "bigint"
-    assert document_columns["evidence_ready_at_ms"]["is_nullable"] == "YES"
-    assert document_columns["fact_extraction_status"]["data_type"] == "text"
-    assert document_columns["fact_extraction_status"]["is_nullable"] == "NO"
-    assert document_columns["fact_extraction_status"]["column_default"] == "'pending'::text"
-    assert document_columns["fact_extraction_reason"]["column_default"] == "''::text"
-    assert document_columns["fact_extracted_at_ms"]["data_type"] == "bigint"
-    assert document_columns["fact_extracted_at_ms"]["is_nullable"] == "YES"
-    assert {
-        "evidence_status",
-        "evidence_reason",
-        "brief_readiness_status",
-        "brief_readiness_reason",
-    }.issubset(company_event_columns)
-    assert company_event_columns["evidence_status"]["data_type"] == "text"
-    assert company_event_columns["evidence_status"]["is_nullable"] == "NO"
-    assert company_event_columns["evidence_status"]["column_default"] == "'pending'::text"
-    assert company_event_columns["evidence_reason"]["column_default"] == "''::text"
-    assert company_event_columns["brief_readiness_status"]["data_type"] == "text"
-    assert company_event_columns["brief_readiness_status"]["is_nullable"] == "NO"
-    assert company_event_columns["brief_readiness_status"]["column_default"] == "'pending_due'::text"
-    assert company_event_columns["brief_readiness_reason"]["column_default"] == "''::text"
-    assert {
-        "last_material_document_at_ms",
-        "last_evidence_ready_at_ms",
-        "last_product_projection_at_ms",
-        "last_no_new_data_at_ms",
-        "last_actionable_error",
-    }.issubset(source_columns)
-    assert source_columns["last_material_document_at_ms"]["data_type"] == "bigint"
-    assert source_columns["last_evidence_ready_at_ms"]["data_type"] == "bigint"
-    assert source_columns["last_product_projection_at_ms"]["data_type"] == "bigint"
-    assert source_columns["last_no_new_data_at_ms"]["data_type"] == "bigint"
-    assert source_columns["last_actionable_error"]["data_type"] == "text"
-    assert {
-        "ck_equity_event_documents_evidence_status",
-        "ck_equity_event_documents_fact_extraction_status",
-        "ck_equity_company_events_evidence_status",
-        "ck_equity_company_events_brief_readiness_status",
-    }.issubset(constraints)
+    assert deleted_tables.isdisjoint(table_names)
 
 
 def test_runtime_schema_contains_signal_pulse_tables(tmp_path):

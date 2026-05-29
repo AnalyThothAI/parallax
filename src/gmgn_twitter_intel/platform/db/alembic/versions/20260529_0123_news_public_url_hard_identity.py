@@ -98,13 +98,21 @@ _REMAPPING_PUBLIC_URL_EDGES_SQL = """
 UPDATE news_item_observation_edges AS edges
    SET news_item_id = url_map.representative_news_item_id,
        match_type = CASE
-         WHEN COALESCE(NULLIF(provider_items.canonical_url, ''), edges.evidence_json #>> '{item_payload,canonical_url}', '')
+         WHEN COALESCE(
+                NULLIF(provider_items.canonical_url, ''),
+                edges.evidence_json #>> '{item_payload,canonical_url}',
+                ''
+              )
               = url_map.canonical_url
            THEN 'same_canonical_url'
          ELSE edges.match_type
        END,
        match_confidence = CASE
-         WHEN COALESCE(NULLIF(provider_items.canonical_url, ''), edges.evidence_json #>> '{item_payload,canonical_url}', '')
+         WHEN COALESCE(
+                NULLIF(provider_items.canonical_url, ''),
+                edges.evidence_json #>> '{item_payload,canonical_url}',
+                ''
+              )
               = url_map.canonical_url
            THEN 'strong'
          ELSE edges.match_confidence

@@ -2,7 +2,6 @@ import { MACRO_NAVIGATION_TREE, type MacroNavigationNode } from "@features/macro
 import {
   BarChart3,
   BriefcaseBusiness,
-  CalendarDays,
   FlaskConical,
   Newspaper,
   Radar,
@@ -73,12 +72,6 @@ export const APP_NAVIGATION_GROUPS: AppNavigationGroup[] = [
         label: "News",
         matchPath: "/news/*",
         to: "/news",
-      },
-      {
-        icon: CalendarDays,
-        label: "Earnings",
-        matchPath: "/earnings/*",
-        to: "/earnings",
       },
       {
         children: macroNavigationChildren,

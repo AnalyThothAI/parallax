@@ -123,13 +123,6 @@ WORKER_CLASSIFICATION: dict[str, str] = {
     "news_item_brief": "dirty_target_consumer",
     "news_page_projection": "dirty_target_consumer",
     "news_source_quality_projection": "dirty_target_consumer",
-    "equity_event_source_reconcile": "bounded_provider_scheduler",
-    "equity_event_fetch": "bounded_provider_scheduler",
-    "equity_event_evidence_hydration": "leased_job_consumer",
-    "equity_event_process": "target_scoped_expansion",
-    "equity_event_story_projection": "dirty_target_consumer",
-    "equity_event_brief": "dirty_target_consumer",
-    "equity_event_page_projection": "dirty_target_consumer",
     "cex_oi_radar_board": "bounded_provider_scheduler",
     "macro_sync": "bounded_provider_scheduler",
     "macro_view_projection": "dirty_target_consumer",
@@ -183,9 +176,7 @@ BUSINESS_OUTPUT_TABLES = frozenset(
     }
 )
 
-BOUNDED_SCHEDULER_COUNTER_PATHS = (
-    SRC / "domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py",
-)
+BOUNDED_SCHEDULER_COUNTER_PATHS = (SRC / "domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py",)
 
 REMOVED_RUNTIME_REPAIR_PATHS = {
     SRC / "app/runtime/runtime_worker_dirty_targets.py",

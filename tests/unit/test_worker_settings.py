@@ -9,6 +9,7 @@ from gmgn_twitter_intel.platform.config.settings import (
     Settings,
     TokenDiscussionDigestWorkerSettings,
     WorkersSettings,
+    default_config_yaml,
     default_workers_yaml,
 )
 
@@ -150,92 +151,26 @@ def test_worker_settings_schema_matches_manifest_worker_names() -> None:
     assert worker_fields == _manifest_worker_names()
 
 
-def test_equity_event_intel_defaults_are_configured() -> None:
+def test_default_config_excludes_deleted_product_settings() -> None:
+    config_payload = yaml.safe_load(default_config_yaml())
+    workers_payload = yaml.safe_load(default_workers_yaml())
     settings = Settings(ws_token="secret")
+    deleted_product_prefix = "_".join(("equity", "event"))
 
-    assert settings.equity_event_intel.enabled is False
-    assert settings.equity_event_intel.default_universe == "nasdaq_tech"
-    assert settings.workers.equity_event_fetch.interval_seconds == 60.0
-    assert settings.workers.equity_event_fetch.evidence_job_max_attempts == 3
-    assert settings.workers.equity_event_page_projection.wakes_on == (
-        "equity_event_document_written",
-        "equity_event_processed",
-        "equity_event_story_updated",
-        "equity_event_brief_updated",
-    )
+    assert f"{deleted_product_prefix}_intel" not in config_payload
+    assert not hasattr(settings, f"{deleted_product_prefix}_intel")
+    assert f"{deleted_product_prefix}.brief" not in workers_payload["agent_runtime"]["lanes"]
+    assert all(not key.startswith(f"{deleted_product_prefix}_") for key in workers_payload)
+    assert all(not field.startswith(f"{deleted_product_prefix}_") for field in WorkersSettings.model_fields)
 
 
-def test_default_workers_yaml_contains_equity_event_workers_and_agent_lane() -> None:
-    payload = yaml.safe_load(default_workers_yaml())
+def test_deleted_product_config_keys_are_rejected() -> None:
+    deleted_product_prefix = "_".join(("equity", "event"))
 
-    assert "equity_event_fetch" in payload
-    assert payload["equity_event_fetch"]["evidence_job_max_attempts"] == 3
-    assert "equity_event_page_projection" in payload
-    assert "equity_event.brief" in payload["agent_runtime"]["lanes"]
-
-
-def test_equity_event_intel_settings_normalize_config_inputs() -> None:
-    settings = Settings(
-        ws_token="secret",
-        equity_event_intel={
-            "enabled": True,
-            "default_universe": " nasdaq_tech ",
-            "sec_user_agent": " gmgn-test contact@example.com ",
-            "agent": {"lane": " equity_event.brief "},
-            "companies": [
-                {
-                    "symbol": " aapl ",
-                    "cik": " CIK0000320193 ",
-                    "company_name": " Apple Inc. ",
-                    "exchange": " nasdaq ",
-                    "universe": " mega_cap ",
-                }
-            ],
-            "expected_events": [
-                {
-                    "expected_event_id": " earnings:AAPL:2026Q2 ",
-                    "symbol": " aapl ",
-                    "event_type": " earnings_release ",
-                    "source_id": " config:earnings ",
-                    "expected_at_ms": 0,
-                }
-            ],
-        },
-    )
-
-    company = settings.equity_event_intel.companies[0]
-    expected_event = settings.equity_event_intel.expected_events[0]
-    assert settings.equity_event_intel.default_universe == "nasdaq_tech"
-    assert settings.equity_event_intel.sec_user_agent == "gmgn-test contact@example.com"
-    assert settings.equity_event_intel.agent.lane == "equity_event.brief"
-    assert company.symbol == "AAPL"
-    assert company.cik == "0000320193"
-    assert company.company_name == "Apple Inc."
-    assert company.exchange == "nasdaq"
-    assert company.universe == "mega_cap"
-    assert expected_event.expected_event_id == "earnings:AAPL:2026Q2"
-    assert expected_event.symbol == "AAPL"
-    assert expected_event.event_type == "earnings_release"
-    assert expected_event.source_id == "config:earnings"
-
-
-@pytest.mark.parametrize(
-    "payload",
-    [
-        {"companies": [{"symbol": "   "}]},
-        {"companies": [{"symbol": "AAPL", "cik": "CIK-not-a-number"}]},
-        {"companies": [{"symbol": "AAPL", "universe": "   "}]},
-        {"expected_events": [{"expected_event_id": "", "symbol": "AAPL", "expected_at_ms": 1}]},
-        {"expected_events": [{"expected_event_id": "e1", "symbol": " ", "expected_at_ms": 1}]},
-        {"expected_events": [{"expected_event_id": "e1", "symbol": "AAPL", "expected_at_ms": -1}]},
-        {"expected_events": [{"expected_event_id": "e1", "symbol": "AAPL", "event_type": "", "expected_at_ms": 1}]},
-        {"expected_events": [{"expected_event_id": "e1", "symbol": "AAPL", "source_id": "", "expected_at_ms": 1}]},
-        {"agent": {"lane": " "}},
-    ],
-)
-def test_equity_event_intel_settings_reject_invalid_config_inputs(payload: dict[str, object]) -> None:
     with pytest.raises(ValidationError):
-        Settings(ws_token="secret", equity_event_intel=payload)
+        Settings(ws_token="secret", **{f"{deleted_product_prefix}_intel": {"enabled": False}})
+    with pytest.raises(ValidationError):
+        WorkersSettings(**{f"{deleted_product_prefix}_fetch": {"enabled": False}})
 
 
 def test_default_workers_yaml_hard_cuts_old_market_observation_runtime_keys():

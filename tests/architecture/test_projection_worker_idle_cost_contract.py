@@ -9,10 +9,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src" / "gmgn_twitter_intel"
 
-PROJECTION_RUNTIME_GLOBS = (
-    "domains/news_intel/runtime/*projection_worker.py",
-    "domains/equity_event_intel/runtime/*projection_worker.py",
-)
+PROJECTION_RUNTIME_GLOBS = ("domains/news_intel/runtime/*projection_worker.py",)
 
 ALLOWED_PROJECTION_REPOSITORY_CALLS = {
     "add_story_member",
@@ -20,23 +17,15 @@ ALLOWED_PROJECTION_REPOSITORY_CALLS = {
     "create_story_from_event",
     "create_story_from_item",
     "enqueue_targets",
-    "find_story_candidates_for_event",
     "list_news_item_ids_for_sources",
     "list_news_item_ids_for_stories",
-    "list_company_event_ids_for_stories",
     "list_source_quality_inputs_for_targets",
-    "load_event_page_projection_payloads",
-    "load_events_for_story_projection",
-    "load_expected_calendar_projection_payloads",
     "load_items_for_page_projection",
     "load_items_for_story_projection",
     "mark_done",
     "mark_error",
     "refresh_story_from_member",
-    "replace_alert_candidates",
-    "replace_calendar_rows",
     "replace_story_member_for_item",
-    "replace_company_timeline_rows",
     "replace_page_rows",
     "replace_page_rows_for_items",
     "replace_source_quality_rows",
@@ -59,13 +48,8 @@ NEWS_PROJECTION_WORKERS = {
     SRC / "domains/news_intel/runtime/news_source_quality_projection_worker.py",
     SRC / "domains/news_intel/runtime/news_story_projection_worker.py",
 }
-EQUITY_PROJECTION_WORKERS = {
-    SRC / "domains/equity_event_intel/runtime/equity_event_page_projection_worker.py",
-    SRC / "domains/equity_event_intel/runtime/equity_event_story_projection_worker.py",
-}
 AGENT_BRIEF_WORKERS = {
     SRC / "domains/news_intel/runtime/news_item_brief_worker.py",
-    SRC / "domains/equity_event_intel/runtime/equity_event_brief_worker.py",
 }
 BANNED_AGENT_BRIEF_DISCOVERY_CALLS = {
     "list_items_for_brief",
@@ -103,11 +87,6 @@ def test_dirty_target_claim_and_completion_are_projection_worker_owned() -> None
             chain = _attribute_chain(call.func)
             if "news_projection_dirty_targets" in chain and path not in NEWS_PROJECTION_WORKERS | AGENT_BRIEF_WORKERS:
                 violations.append(f"{_rel(path)} calls news dirty target {method_name}")
-            if (
-                "equity_projection_dirty_targets" in chain
-                and path not in EQUITY_PROJECTION_WORKERS | AGENT_BRIEF_WORKERS
-            ):
-                violations.append(f"{_rel(path)} calls equity dirty target {method_name}")
 
     assert violations == []
 

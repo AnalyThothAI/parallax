@@ -89,7 +89,7 @@ circuit, and RPM before claiming. Batch workers must pass explicit
 more rows than the actual `reservation.rate_units` returned by the gateway; one
 reservation must not cover multiple unreserved model calls. This applies to
 `pulse_candidate`, `enrichment`, `handle_summary`, `mention_semantics`,
-`token_discussion_digest`, `news_item_brief`, and `equity_event_brief`. If a
+`token_discussion_digest`, and `news_item_brief`. If a
 reservation is denied, the worker returns an `agent_backpressure_*` note and
 leaves the job unclaimed. This preserves retry budgets during provider
 congestion and lets the next bounded catch-up cycle retry naturally. For Pulse,
@@ -220,10 +220,9 @@ rows must have an unchanged path that is visible in publication state and writes
 zero serving rows, usually through `payload_hash` or `IS DISTINCT FROM` gates.
 
 Projection worker idle paths must be proportional to due dirty targets, not
-to fact-table size. Equity Event and News projection workers claim durable
-dirty targets (`equity_event_projection_dirty_targets`,
-`news_projection_dirty_targets`) and then load payloads by explicit target
-ids only. Runtime projection workers must not discover stale work by scanning
+to fact-table size. News projection workers claim durable dirty targets
+(`news_projection_dirty_targets`) and then load payloads by explicit target ids
+only. Runtime projection workers must not discover stale work by scanning
 material facts or read models, including missing-story scans, page-projection
 staleness scans, or source-quality all-source/window scans. Broad coverage
 discovery is allowed only in manual ops repair commands that enqueue dirty

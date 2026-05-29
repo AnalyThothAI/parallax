@@ -23,11 +23,8 @@ def test_enqueue_projection_dirty_targets_dry_run_reports_counts_without_writes(
     )
 
     assert result["execute"] is False
-    assert result["equity"]["company_event_targets"] == 10
-    assert result["equity"]["expected_event_targets"] == 1
     assert result["news"]["news_item_targets"] == 5
     assert result["news"]["source_quality_targets"] == 4
-    assert repos.equity_dirty.enqueued == []
     assert repos.news_dirty.enqueued == []
     assert repos.conn.transactions == 0
 
@@ -47,75 +44,6 @@ def test_enqueue_projection_dirty_targets_execute_enqueues_only_dirty_targets() 
 
     assert result["execute"] is True
     assert repos.conn.transactions == 1
-    assert [call["reason"] for call in repos.equity_dirty.enqueued] == [
-        "ops_projection_dirty_repair",
-        "ops_projection_dirty_repair",
-    ]
-    assert repos.equity_dirty.enqueued[0]["rows"] == [
-        {
-            "projection_name": "story",
-            "target_kind": "company_event",
-            "target_id": "event-1",
-            "source_watermark_ms": NOW_MS - 1_000,
-        },
-        {
-            "projection_name": "brief_input",
-            "target_kind": "company_event",
-            "target_id": "event-1",
-            "source_watermark_ms": NOW_MS - 1_000,
-        },
-        {
-            "projection_name": "page",
-            "target_kind": "company_event",
-            "target_id": "event-1",
-            "source_watermark_ms": NOW_MS - 1_000,
-        },
-        {
-            "projection_name": "timeline",
-            "target_kind": "company_event",
-            "target_id": "event-1",
-            "source_watermark_ms": NOW_MS - 1_000,
-        },
-        {
-            "projection_name": "alert",
-            "target_kind": "company_event",
-            "target_id": "event-1",
-            "source_watermark_ms": NOW_MS - 1_000,
-        },
-        {
-            "projection_name": "story",
-            "target_kind": "company_event",
-            "target_id": "event-2",
-            "source_watermark_ms": NOW_MS - 2_000,
-        },
-        {
-            "projection_name": "brief_input",
-            "target_kind": "company_event",
-            "target_id": "event-2",
-            "source_watermark_ms": NOW_MS - 2_000,
-        },
-        {
-            "projection_name": "page",
-            "target_kind": "company_event",
-            "target_id": "event-2",
-            "source_watermark_ms": NOW_MS - 2_000,
-        },
-        {
-            "projection_name": "timeline",
-            "target_kind": "company_event",
-            "target_id": "event-2",
-            "source_watermark_ms": NOW_MS - 2_000,
-        },
-        {
-            "projection_name": "alert",
-            "target_kind": "company_event",
-            "target_id": "event-2",
-            "source_watermark_ms": NOW_MS - 2_000,
-        },
-    ]
-    assert repos.equity_dirty.enqueued[1]["rows"] == [
-        {"projection_name": "calendar", "target_kind": "expected_event", "target_id": "expected-1"}
-    ]
     assert repos.news_dirty.enqueued[0]["rows"] == [
         {
             "projection_name": "story",
@@ -213,7 +141,6 @@ def test_enqueue_projection_dirty_targets_can_scope_brief_input_repair() -> None
 
     assert result["projection"] == "brief_input"
     assert result["news"]["news_item_targets"] == 1
-    assert repos.equity_dirty.enqueued == []
     assert repos.news_dirty.enqueued[0]["rows"] == [
         {
             "projection_name": "brief_input",
@@ -227,9 +154,7 @@ def test_enqueue_projection_dirty_targets_can_scope_brief_input_repair() -> None
 class FakeRepos:
     def __init__(self) -> None:
         self.conn = FakeConn()
-        self.equity_dirty = FakeDirtyRepo()
         self.news_dirty = FakeDirtyRepo()
-        self.equity_projection_dirty_targets = self.equity_dirty
         self.news_projection_dirty_targets = self.news_dirty
 
 
@@ -238,15 +163,6 @@ class FakeConn:
         self.transactions = 0
 
     def execute(self, sql: str, _params: dict[str, Any] | None = None) -> FakeCursor:
-        if "FROM equity_company_events" in sql:
-            return FakeCursor(
-                [
-                    {"company_event_id": "event-1", "source_watermark_ms": NOW_MS - 1_000},
-                    {"company_event_id": "event-2", "source_watermark_ms": NOW_MS - 2_000},
-                ]
-            )
-        if "FROM equity_expected_events" in sql:
-            return FakeCursor([{"expected_event_id": "expected-1"}])
         if "FROM news_items" in sql:
             return FakeCursor(
                 [

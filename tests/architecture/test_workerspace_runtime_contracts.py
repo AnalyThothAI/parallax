@@ -47,7 +47,6 @@ def test_dirty_target_workers_are_claim_first_read_model_publishers() -> None:
         "token_radar_projection",
         "token_profile_current",
         "news_story_projection",
-        "equity_event_story_projection",
         "pulse_candidate",
     ):
         contract = contracts[worker_name]
@@ -95,7 +94,6 @@ def test_projection_dirty_target_names_do_not_imply_provider_io() -> None:
 
     assert contracts["news_story_projection"].provider_io.allowed is False
     assert contracts["news_page_projection"].provider_io.allowed is False
-    assert contracts["equity_event_story_projection"].provider_io.allowed is False
     assert contracts["macro_view_projection"].provider_io.allowed is False
 
 

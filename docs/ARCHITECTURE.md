@@ -15,7 +15,6 @@ GMGN public stream
   → domains/pulse_lab           (candidate gate, agent route, decision, audit ledger)
   → domains/watchlist_intel     (handle timeline read model and account topic summaries)
   → domains/news_intel          (configured news ingestion, news facts, story and page read models)
-  → domains/equity_event_intel  (SEC/IR/company-event facts, calendar, cited briefs, earnings page read models)
   → domains/cex_market_intel    (centralized exchange derivative radar read models)
   → domains/macro_intel         (macro observation facts and regime view snapshots)
   → domains/notifications       (rules, delivery)
@@ -72,13 +71,9 @@ are wrong too.
    `registry_assets`, `asset_identity_evidence`, `asset_identity_current`,
    `market_ticks`, `enriched_events`, `news_provider_items`, `news_items`,
    `news_item_entities`, `news_token_mentions`, `news_fact_candidates`,
-   `equity_event_sources`, `equity_expected_events`,
-   `equity_provider_documents`, `equity_event_documents`,
-   `equity_company_events`, `equity_event_source_spans`,
-   `equity_event_fact_candidates`, and `macro_observations` are
+   and `macro_observations` are
    the business fact tables. Control plane tables such as
    `event_anchor_backfill_jobs`, `pulse_trigger_dirty_targets`,
-   `equity_event_evidence_jobs`, `equity_event_process_jobs`,
    `narrative_admission_dirty_targets`, `discussion_digest_dirty_targets`,
    `token_profile_current_dirty_targets`, `token_image_source_dirty_targets`,
    `asset_profile_refresh_targets`, `token_capture_tier_dirty_targets`, and
@@ -146,13 +141,6 @@ are wrong too.
    `NewsSourceQualityProjectionWorker`. `cex_oi_radar_rows`,
    `cex_oi_radar_publication_state`, and `cex_detail_snapshots` are written
    only by `CexOiRadarBoardWorker`;
-   `equity_event_story_groups` and `equity_event_story_members` are written
-   only by `EquityEventStoryProjectionWorker`;
-   `equity_event_agent_runs` and `equity_event_agent_briefs` are written only
-   by `EquityEventBriefWorker`;
-   `equity_event_page_rows`, `equity_event_calendar_rows`,
-   `equity_event_alert_candidates`, and `equity_company_timeline_rows` are
-   written only by `EquityEventPageProjectionWorker`;
    `macro_observation_series_rows` and `macro_view_snapshots` are written only
    by `MacroViewProjectionWorker`.
    Single writer is necessary but not sufficient for runtime safety. A current

@@ -745,111 +745,6 @@ class NewsIntelSettings(BaseModel):
         return sources
 
 
-class EquityEventCompanySettings(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    symbol: str
-    cik: str | None = None
-    company_name: str | None = None
-    exchange: str | None = None
-    universe: str = "nasdaq_tech"
-    enabled: bool = True
-
-    @field_validator("symbol", mode="before")
-    @classmethod
-    def parse_symbol(cls, value: Any) -> str:
-        return _parse_required_string(value, field_name="equity_event_intel.companies.symbol").upper()
-
-    @field_validator("cik", mode="before")
-    @classmethod
-    def parse_optional_cik(cls, value: Any) -> str | None:
-        if value is None:
-            return None
-        return _parse_optional_cik(value)
-
-    @field_validator("company_name", "exchange", mode="before")
-    @classmethod
-    def parse_optional_string(cls, value: Any) -> str | None:
-        return _parse_optional_string(value)
-
-    @field_validator("universe", mode="before")
-    @classmethod
-    def parse_universe(cls, value: Any) -> str:
-        return _parse_required_string(value, field_name="equity_event_intel.companies.universe")
-
-
-class EquityExpectedEventSettings(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    expected_event_id: str
-    symbol: str
-    event_type: str = "earnings_release"
-    fiscal_period: str | None = None
-    expected_at_ms: int = Field(ge=0)
-    session: str | None = None
-    source_id: str = "config:earnings"
-    enabled: bool = True
-
-    @field_validator("expected_event_id", "event_type", "source_id", mode="before")
-    @classmethod
-    def parse_required_string(cls, value: Any) -> str:
-        return _parse_required_string(value, field_name="equity_event_intel.expected_events field")
-
-    @field_validator("symbol", mode="before")
-    @classmethod
-    def parse_symbol(cls, value: Any) -> str:
-        return _parse_required_string(value, field_name="equity_event_intel.expected_events.symbol").upper()
-
-    @field_validator("fiscal_period", "session", mode="before")
-    @classmethod
-    def parse_optional_string(cls, value: Any) -> str | None:
-        return _parse_optional_string(value)
-
-
-class EquityEventAgentSettings(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    enabled: bool = True
-    lane: str = "equity_event.brief"
-
-    @field_validator("lane", mode="before")
-    @classmethod
-    def parse_lane(cls, value: Any) -> str:
-        return _parse_required_string(value, field_name="equity_event_intel.agent.lane")
-
-
-class EquityEventIntelSettings(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    enabled: bool = False
-    default_universe: str = "nasdaq_tech"
-    sec_user_agent: str | None = None
-    companies: tuple[EquityEventCompanySettings, ...] = ()
-    expected_events: tuple[EquityExpectedEventSettings, ...] = ()
-    agent: EquityEventAgentSettings = Field(default_factory=EquityEventAgentSettings)
-
-    @field_validator("default_universe", mode="before")
-    @classmethod
-    def parse_default_universe(cls, value: Any) -> str:
-        return _parse_required_string(value, field_name="equity_event_intel.default_universe")
-
-    @field_validator("sec_user_agent", mode="before")
-    @classmethod
-    def parse_optional_sec_user_agent(cls, value: Any) -> str | None:
-        return _parse_optional_string(value)
-
-    @field_validator("companies", "expected_events", mode="before")
-    @classmethod
-    def parse_tuple(cls, value: Any) -> tuple[Any, ...]:
-        if value is None:
-            return ()
-        if isinstance(value, tuple):
-            return value
-        if isinstance(value, list):
-            return tuple(value)
-        raise ValueError("equity_event_intel companies and expected_events must be lists")
-
-
 class BackoffPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -927,7 +822,6 @@ def _default_agent_lanes() -> dict[str, AgentLaneSettings]:
         "watchlist.handle_summary": AgentLaneSettings(priority="low", max_concurrency=1, timeout_seconds=180.0),
         "news.fact_candidate": AgentLaneSettings(priority="low", max_concurrency=1, timeout_seconds=180.0),
         "news.item_brief": AgentLaneSettings(priority="low", max_concurrency=1, timeout_seconds=180.0),
-        "equity_event.brief": AgentLaneSettings(priority="low", max_concurrency=1, timeout_seconds=180.0),
     }
 
 
@@ -1449,65 +1343,6 @@ class NewsSourceQualityProjectionWorkerSettings(PerWorkerSettings):
         return value
 
 
-class EquityEventSourceReconcileWorkerSettings(PerWorkerSettings):
-    interval_seconds: float = Field(default=300.0, ge=0)
-    advisory_lock_key: int = 2026052301
-
-
-class EquityEventFetchWorkerSettings(PerWorkerSettings):
-    interval_seconds: float = Field(default=60.0, ge=0)
-    batch_size: int = Field(default=20, ge=1)
-    evidence_job_max_attempts: int = Field(default=3, ge=1)
-    advisory_lock_key: int = 2026052302
-    wakes_on: tuple[str, ...] = ("equity_event_sources_reconciled",)
-
-
-class EquityEventEvidenceHydrationWorkerSettings(PerWorkerSettings):
-    interval_seconds: float = Field(default=30.0, ge=0)
-    batch_size: int = Field(default=20, ge=1)
-    max_attempts: int = Field(default=3, ge=1)
-    lease_ms: int = Field(default=60_000, ge=1)
-    retry_delay_ms: int = Field(default=60_000, ge=1)
-    advisory_lock_key: int = 2026052307
-    wakes_on: tuple[str, ...] = ("equity_event_evidence_job_written",)
-
-
-class EquityEventProcessWorkerSettings(PerWorkerSettings):
-    interval_seconds: float = Field(default=30.0, ge=0)
-    batch_size: int = Field(default=100, ge=1)
-    advisory_lock_key: int = 2026052303
-    wakes_on: tuple[str, ...] = ("equity_event_document_written",)
-
-
-class EquityEventStoryProjectionWorkerSettings(PerWorkerSettings):
-    interval_seconds: float = Field(default=30.0, ge=0)
-    batch_size: int = Field(default=100, ge=1)
-    advisory_lock_key: int = 2026052304
-    wakes_on: tuple[str, ...] = ("equity_event_processed",)
-
-
-class EquityEventBriefWorkerSettings(PerWorkerSettings):
-    interval_seconds: float = Field(default=60.0, ge=0)
-    soft_timeout_seconds: float = Field(default=180.0, ge=0)
-    hard_timeout_seconds: float = Field(default=240.0, ge=0)
-    batch_size: int = Field(default=5, ge=1)
-    advisory_lock_key: int = 2026052305
-    backpressure_cooldown_ms: int = Field(default=60_000, ge=1)
-    wakes_on: tuple[str, ...] = ("equity_event_story_updated",)
-
-
-class EquityEventPageProjectionWorkerSettings(PerWorkerSettings):
-    interval_seconds: float = Field(default=15.0, ge=0)
-    batch_size: int = Field(default=100, ge=1)
-    advisory_lock_key: int = 2026052306
-    wakes_on: tuple[str, ...] = (
-        "equity_event_document_written",
-        "equity_event_processed",
-        "equity_event_story_updated",
-        "equity_event_brief_updated",
-    )
-
-
 class WorkersSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -1552,21 +1387,6 @@ class WorkersSettings(BaseModel):
     news_source_quality_projection: NewsSourceQualityProjectionWorkerSettings = Field(
         default_factory=NewsSourceQualityProjectionWorkerSettings
     )
-    equity_event_source_reconcile: EquityEventSourceReconcileWorkerSettings = Field(
-        default_factory=EquityEventSourceReconcileWorkerSettings
-    )
-    equity_event_fetch: EquityEventFetchWorkerSettings = Field(default_factory=EquityEventFetchWorkerSettings)
-    equity_event_evidence_hydration: EquityEventEvidenceHydrationWorkerSettings = Field(
-        default_factory=EquityEventEvidenceHydrationWorkerSettings
-    )
-    equity_event_process: EquityEventProcessWorkerSettings = Field(default_factory=EquityEventProcessWorkerSettings)
-    equity_event_story_projection: EquityEventStoryProjectionWorkerSettings = Field(
-        default_factory=EquityEventStoryProjectionWorkerSettings
-    )
-    equity_event_brief: EquityEventBriefWorkerSettings = Field(default_factory=EquityEventBriefWorkerSettings)
-    equity_event_page_projection: EquityEventPageProjectionWorkerSettings = Field(
-        default_factory=EquityEventPageProjectionWorkerSettings
-    )
 
     @model_validator(mode="after")
     def reject_zero_hard_timeout_for_non_continuous_workers(self) -> WorkersSettings:
@@ -1592,7 +1412,6 @@ class Settings(BaseModel):
     gmgn: GmgnConfig = Field(default_factory=GmgnConfig)
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     news_intel: NewsIntelSettings = Field(default_factory=NewsIntelSettings)
-    equity_event_intel: EquityEventIntelSettings = Field(default_factory=EquityEventIntelSettings)
     upstream: UpstreamConfig = Field(default_factory=UpstreamConfig)
     notifications: NotificationsConfig = Field(default_factory=NotificationsConfig)
     workers: WorkersSettings = Field(default_factory=WorkersSettings)
@@ -1696,10 +1515,6 @@ class Settings(BaseModel):
     @property
     def news_item_brief_configured(self) -> bool:
         return bool(self.llm_api_key and self.agent_runtime_default_model)
-
-    @property
-    def equity_event_brief_configured(self) -> bool:
-        return bool(self.llm_api_key and self.agent_runtime_model_for_lane(self.equity_event_intel.agent.lane))
 
     @property
     def llm_trace_enabled(self) -> bool:
@@ -1989,16 +1804,6 @@ providers:
 
 {_default_news_intel_yaml()}
 
-equity_event_intel:
-  enabled: false
-  default_universe: "nasdaq_tech"
-  sec_user_agent:
-  companies: []
-  expected_events: []
-  agent:
-    enabled: true
-    lane: "equity_event.brief"
-
 upstream:
   chains: ["sol", "eth", "base", "bsc"]
   channels: ["twitter_monitor_basic", "twitter_monitor_token"]
@@ -2122,10 +1927,6 @@ agent_runtime:
       max_concurrency: 1
       timeout_seconds: 180.0
     news.item_brief:
-      priority: "low"
-      max_concurrency: 1
-      timeout_seconds: 180.0
-    equity_event.brief:
       priority: "low"
       max_concurrency: 1
       timeout_seconds: 180.0
@@ -2328,57 +2129,6 @@ news_source_quality_projection:
   advisory_lock_key: 2026052201
   wakes_on: ["news_item_written", "news_item_processed", "news_story_updated", "news_item_brief_updated"]
   windows: ["24h", "7d"]
-equity_event_source_reconcile:
-  enabled: true
-  interval_seconds: 300.0
-  advisory_lock_key: 2026052301
-equity_event_fetch:
-  enabled: true
-  interval_seconds: 60.0
-  batch_size: 20
-  evidence_job_max_attempts: 3
-  advisory_lock_key: 2026052302
-  wakes_on: ["equity_event_sources_reconciled"]
-equity_event_evidence_hydration:
-  enabled: true
-  interval_seconds: 30.0
-  batch_size: 20
-  max_attempts: 3
-  lease_ms: 60000
-  retry_delay_ms: 60000
-  advisory_lock_key: 2026052307
-  wakes_on: ["equity_event_evidence_job_written"]
-equity_event_process:
-  enabled: true
-  interval_seconds: 30.0
-  batch_size: 100
-  advisory_lock_key: 2026052303
-  wakes_on: ["equity_event_document_written"]
-equity_event_story_projection:
-  enabled: true
-  interval_seconds: 30.0
-  batch_size: 100
-  advisory_lock_key: 2026052304
-  wakes_on: ["equity_event_processed"]
-equity_event_brief:
-  enabled: true
-  interval_seconds: 60.0
-  soft_timeout_seconds: 180.0
-  hard_timeout_seconds: 240.0
-  batch_size: 5
-  advisory_lock_key: 2026052305
-  backpressure_cooldown_ms: 60000
-  wakes_on: ["equity_event_story_updated"]
-equity_event_page_projection:
-  enabled: true
-  interval_seconds: 15.0
-  batch_size: 100
-  advisory_lock_key: 2026052306
-  wakes_on:
-    - "equity_event_document_written"
-    - "equity_event_processed"
-    - "equity_event_story_updated"
-    - "equity_event_brief_updated"
 pulse_candidate:
   enabled: true
   interval_seconds: 60.0
@@ -2463,31 +2213,6 @@ def _split_values(value: Any) -> list[str]:
     if isinstance(value, list | tuple | set):
         return [str(item).strip() for item in value if str(item).strip()]
     return [str(value).strip()]
-
-
-def _parse_required_string(value: Any, *, field_name: str) -> str:
-    normalized = str(value or "").strip()
-    if not normalized:
-        raise ValueError(f"{field_name} must not be empty")
-    return normalized
-
-
-def _parse_optional_string(value: Any) -> str | None:
-    if value is None:
-        return None
-    normalized = str(value).strip()
-    return normalized or None
-
-
-def _parse_optional_cik(value: Any) -> str | None:
-    normalized = str(value or "").strip()
-    if not normalized:
-        raise ValueError("equity_event_intel.companies.cik must not be empty when set")
-    if normalized.lower().startswith("cik"):
-        normalized = normalized[3:].strip()
-    if not normalized.isdigit():
-        raise ValueError("equity_event_intel.companies.cik must be numeric or CIK-prefixed numeric")
-    return normalized
 
 
 def _validate_narrative_realtime_windows(field_name: str, value: tuple[str, ...]) -> tuple[str, ...]:

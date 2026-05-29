@@ -6,10 +6,9 @@ from typing import Any
 
 from gmgn_twitter_intel.domains.news_intel.services.news_item_agent_policy import needs_news_item_agent_brief
 
-DOMAIN_CHOICES = ("all", "equity", "news")
-PROJECTION_CHOICES = ("all", "story", "brief_input", "page", "timeline", "alert", "calendar", "source_quality")
+DOMAIN_CHOICES = ("all", "news")
+PROJECTION_CHOICES = ("all", "story", "brief_input", "page", "source_quality")
 
-_EQUITY_EVENT_PROJECTIONS = ("story", "brief_input", "page", "timeline", "alert")
 _NEWS_ITEM_PROJECTIONS = ("story", "brief_input", "page")
 _DEFAULT_SOURCE_QUALITY_WINDOWS = ("24h", "7d")
 
@@ -33,7 +32,6 @@ def enqueue_projection_dirty_targets(
     if execute and normalized_projection in {"all", "brief_input"} and since_ms is None:
         raise ValueError("executing brief_input repair requires --since-hours to bound expensive agent work")
     windows = _source_quality_windows(source_quality_windows)
-    include_equity = normalized_domain in {"all", "equity"}
     include_news = normalized_domain in {"all", "news"}
     result: dict[str, Any] = {
         "domain": normalized_domain,
@@ -41,20 +39,11 @@ def enqueue_projection_dirty_targets(
         "execute": bool(execute),
         "now_ms": int(now_ms),
         "since_ms": int(since_ms) if since_ms is not None else None,
-        "equity": {},
         "news": {},
     }
 
     context = _transaction(repos.conn) if execute else nullcontext()
     with context:
-        if include_equity:
-            result["equity"] = _enqueue_equity_targets(
-                repos,
-                execute=execute,
-                now_ms=now_ms,
-                projection=normalized_projection,
-                since_ms=since_ms,
-            )
         if include_news:
             result["news"] = _enqueue_news_targets(
                 repos,
@@ -65,85 +54,6 @@ def enqueue_projection_dirty_targets(
                 windows=windows,
             )
     return result
-
-
-def _enqueue_equity_targets(
-    repos: Any,
-    *,
-    execute: bool,
-    now_ms: int,
-    projection: str,
-    since_ms: int | None,
-) -> dict[str, int]:
-    company_event_projections = _selected_projections(projection, _EQUITY_EVENT_PROJECTIONS)
-    include_expected_events = projection in {"all", "calendar"}
-    company_event_rows = _fetch_id_watermarks(
-        repos.conn,
-        """
-        SELECT company_event_id, event_time_ms AS source_watermark_ms
-          FROM equity_company_events
-         {where_clause}
-         ORDER BY company_event_id ASC
-        """,
-        "company_event_id",
-        since_column="event_time_ms",
-        since_ms=since_ms,
-    )
-    expected_event_ids = (
-        _fetch_ids(
-            repos.conn,
-            """
-            SELECT expected_event_id
-              FROM equity_expected_events
-             ORDER BY expected_event_id ASC
-            """,
-            "expected_event_id",
-        )
-        if include_expected_events
-        else []
-    )
-    company_event_targets = [
-        {
-            "projection_name": selected_projection,
-            "target_kind": "company_event",
-            "target_id": company_event_id,
-            "source_watermark_ms": source_watermark_ms,
-        }
-        for company_event_id, source_watermark_ms in company_event_rows
-        for selected_projection in company_event_projections
-    ]
-    expected_event_targets = [
-        {"projection_name": "calendar", "target_kind": "expected_event", "target_id": expected_event_id}
-        for expected_event_id in expected_event_ids
-    ]
-    enqueued_company_events = (
-        repos.equity_projection_dirty_targets.enqueue_targets(
-            company_event_targets,
-            reason="ops_projection_dirty_repair",
-            now_ms=now_ms,
-            commit=False,
-        )
-        if execute and company_event_targets
-        else 0
-    )
-    enqueued_expected_events = (
-        repos.equity_projection_dirty_targets.enqueue_targets(
-            expected_event_targets,
-            reason="ops_projection_dirty_repair",
-            now_ms=now_ms,
-            commit=False,
-        )
-        if execute and expected_event_targets
-        else 0
-    )
-    return {
-        "company_event_ids": len(company_event_rows),
-        "company_event_targets": len(company_event_targets),
-        "company_event_targets_enqueued": int(enqueued_company_events),
-        "expected_event_ids": len(expected_event_ids),
-        "expected_event_targets": len(expected_event_targets),
-        "expected_event_targets_enqueued": int(enqueued_expected_events),
-    }
 
 
 def _enqueue_news_targets(
@@ -236,23 +146,6 @@ def _selected_projections(requested: str, available: tuple[str, ...]) -> tuple[s
 def _fetch_ids(conn: Any, sql: str, column: str) -> list[str]:
     rows = conn.execute(sql).fetchall()
     return [str(row[column]) for row in rows if row[column] is not None]
-
-
-def _fetch_id_watermarks(
-    conn: Any,
-    sql_template: str,
-    column: str,
-    *,
-    since_column: str,
-    since_ms: int | None,
-) -> list[tuple[str, int]]:
-    params: dict[str, Any] = {}
-    where_clause = ""
-    if since_ms is not None:
-        where_clause = f"WHERE {since_column} >= %(since_ms)s"
-        params["since_ms"] = int(since_ms)
-    rows = conn.execute(sql_template.format(where_clause=where_clause), params).fetchall()
-    return [(str(row[column]), int(row["source_watermark_ms"] or 0)) for row in rows if row[column] is not None]
 
 
 def _fetch_news_item_rows(conn: Any, *, since_ms: int | None) -> list[dict[str, Any]]:

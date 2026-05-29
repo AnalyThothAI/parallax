@@ -70,8 +70,8 @@ alongside configured provider types and source hygiene warnings.
 - Wave 3: add official RSS/manual API feeds for exchanges, regulators,
   protocols, and issuers. These are the feeds eligible for accepted fact
   candidates after authority-scope validation.
-- Wave 4: add OpenBB/macro/equity source adapters only where they do not cross
-  ownership with `equity_event_intel` or `macro_intel`.
+- Wave 4: add OpenBB/macro source adapters only where they do not cross
+  ownership with `macro_intel`.
 - Wave 5: add social/community/developer context sources. Replies, comments,
   and threads belong in `news_context_items`, not in `news_items.body_text`.
 

@@ -47,18 +47,6 @@ export function newsPath(): string {
   return "/news";
 }
 
-export function earningsPath(): string {
-  return "/earnings";
-}
-
-export function earningsCalendarPath(): string {
-  return "/earnings/calendar";
-}
-
-export function equityEventDetailPath(eventId: string): string {
-  return `/earnings/events/${encodeURIComponent(eventId)}`;
-}
-
 export function macroPath(): string {
   return "/macro";
 }

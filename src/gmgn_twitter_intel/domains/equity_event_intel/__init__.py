@@ -1,1 +1,0 @@
-"""Equity event intelligence domain."""

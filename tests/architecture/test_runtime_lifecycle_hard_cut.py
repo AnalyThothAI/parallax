@@ -49,7 +49,6 @@ def test_no_runtime_compatibility_fallbacks_for_agent_contracts() -> None:
             (SRC / "domains/narrative_intel/runtime/mention_semantics_worker.py").read_text(),
             (SRC / "domains/narrative_intel/runtime/token_discussion_digest_worker.py").read_text(),
             (SRC / "domains/news_intel/runtime/news_item_brief_worker.py").read_text(),
-            (SRC / "domains/equity_event_intel/runtime/equity_event_brief_worker.py").read_text(),
         )
     )
     assert "_fallback_request_audit" not in agent_worker_sources
@@ -129,10 +128,7 @@ def test_cex_failure_attempts_do_not_clear_current_board_rows() -> None:
 
 @pytest.mark.architecture
 def test_agent_dirty_queue_claims_do_not_consume_business_attempts() -> None:
-    paths = (
-        SRC / "domains/news_intel/repositories/news_projection_dirty_target_repository.py",
-        SRC / "domains/equity_event_intel/repositories/equity_projection_dirty_target_repository.py",
-    )
+    paths = (SRC / "domains/news_intel/repositories/news_projection_dirty_target_repository.py",)
     for path in paths:
         source = path.read_text()
         claim_method = source.split("def claim_due", maxsplit=1)[1].split("def mark_done", maxsplit=1)[0]
@@ -140,12 +136,7 @@ def test_agent_dirty_queue_claims_do_not_consume_business_attempts() -> None:
         assert "attempt_count + 1" not in claim_method
         assert "attempt_increment" in mark_error_method
 
-    worker_sources = "\n".join(
-        (
-            (SRC / "domains/news_intel/runtime/news_item_brief_worker.py").read_text(),
-            (SRC / "domains/equity_event_intel/runtime/equity_event_brief_worker.py").read_text(),
-        )
-    )
+    worker_sources = "\n".join(((SRC / "domains/news_intel/runtime/news_item_brief_worker.py").read_text(),))
     assert "def _claim_owner" in worker_sources
     assert "retry_counts_attempt=False" in worker_sources
 

@@ -58,27 +58,6 @@ class WakeBus:
     def notify_news_page_dirty(self, *, count: int, reason: str) -> None:
         self._notify("news_page_dirty", {"count": int(count), "reason": str(reason)})
 
-    def notify_equity_event_sources_reconciled(self, *, count: int) -> None:
-        self._notify("equity_event_sources_reconciled", {"count": int(count)})
-
-    def notify_equity_event_document_written(self, *, source_id: str, count: int) -> None:
-        self._notify("equity_event_document_written", {"source_id": str(source_id), "count": int(count)})
-
-    def notify_equity_event_evidence_job_written(self, *, source_id: str, count: int) -> None:
-        self._notify("equity_event_evidence_job_written", {"source_id": str(source_id), "count": int(count)})
-
-    def notify_equity_event_processed(self, *, count: int) -> None:
-        self._notify("equity_event_processed", {"count": int(count)})
-
-    def notify_equity_event_story_updated(self, *, count: int) -> None:
-        self._notify("equity_event_story_updated", {"count": int(count)})
-
-    def notify_equity_event_brief_updated(self, *, count: int) -> None:
-        self._notify("equity_event_brief_updated", {"count": int(count)})
-
-    def notify_equity_event_page_updated(self, *, count: int) -> None:
-        self._notify("equity_event_page_updated", {"count": int(count)})
-
     def notify_macro_observations_imported(
         self,
         *,

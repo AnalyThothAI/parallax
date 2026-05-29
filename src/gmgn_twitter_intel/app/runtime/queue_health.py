@@ -47,30 +47,6 @@ STATUS_QUEUE_SPECS: dict[str, StatusQueueSpec] = {
         blocked_statuses=(),
         terminal_statuses=("failed", "expired"),
     ),
-    "equity_event_evidence_jobs": StatusQueueSpec(
-        table="equity_event_evidence_jobs",
-        due_column="due_at_ms",
-        active_statuses=("pending", "running", "failed_retryable"),
-        due_statuses=("pending", "failed_retryable"),
-        running_statuses=("running",),
-        failed_statuses=("failed_retryable",),
-        blocked_statuses=("failed_terminal",),
-        terminal_statuses=("failed_terminal",),
-        lease_column="leased_until_ms",
-        running_age_column="started_at_ms",
-    ),
-    "equity_event_process_jobs": StatusQueueSpec(
-        table="equity_event_process_jobs",
-        due_column="due_at_ms",
-        active_statuses=("pending", "running", "failed_retryable"),
-        due_statuses=("pending", "failed_retryable"),
-        running_statuses=("running",),
-        failed_statuses=("failed_retryable",),
-        blocked_statuses=("failed_terminal",),
-        terminal_statuses=("failed_terminal",),
-        lease_column="leased_until_ms",
-        running_age_column="started_at_ms",
-    ),
     "token_mention_semantics": StatusQueueSpec(
         table="token_mention_semantics",
         due_column="next_retry_at_ms",
@@ -92,19 +68,6 @@ QUEUE_HEALTH_ADAPTER_SPECS: dict[str, QueueHealthAdapterSpec] = {
     ),
     "enrichment_jobs": QueueHealthAdapterSpec(
         table="enrichment_jobs", kind="status_queue", status_queue=STATUS_QUEUE_SPECS["enrichment_jobs"]
-    ),
-    "equity_event_projection_dirty_targets": QueueHealthAdapterSpec(
-        table="equity_event_projection_dirty_targets", kind="dirty_target"
-    ),
-    "equity_event_evidence_jobs": QueueHealthAdapterSpec(
-        table="equity_event_evidence_jobs",
-        kind="status_queue",
-        status_queue=STATUS_QUEUE_SPECS["equity_event_evidence_jobs"],
-    ),
-    "equity_event_process_jobs": QueueHealthAdapterSpec(
-        table="equity_event_process_jobs",
-        kind="status_queue",
-        status_queue=STATUS_QUEUE_SPECS["equity_event_process_jobs"],
     ),
     "event_anchor_backfill_jobs": QueueHealthAdapterSpec(
         table="event_anchor_backfill_jobs",
@@ -160,9 +123,6 @@ DIRTY_TARGET_WORKER_FILTERS: dict[tuple[str, str], tuple[str, str]] = {
     ("news_projection_dirty_targets", "news_item_brief"): ("projection_name", "brief_input"),
     ("news_projection_dirty_targets", "news_page_projection"): ("projection_name", "page"),
     ("news_projection_dirty_targets", "news_source_quality_projection"): ("projection_name", "source_quality"),
-    ("equity_event_projection_dirty_targets", "equity_event_story_projection"): ("projection_name", "story"),
-    ("equity_event_projection_dirty_targets", "equity_event_brief"): ("projection_name", "brief_input"),
-    ("equity_event_projection_dirty_targets", "equity_event_page_projection"): ("projection_name", "page"),
 }
 
 _IDENTIFIER_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")

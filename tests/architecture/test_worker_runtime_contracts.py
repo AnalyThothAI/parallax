@@ -32,9 +32,6 @@ API_ROUTES = SRC / "app" / "surfaces" / "api"
 WORKER_FACTORIES = SRC / "app" / "runtime" / "worker_factories"
 CEX_OI_RADAR_REPOSITORY = SRC / "domains" / "cex_market_intel" / "repositories" / "cex_oi_radar_repository.py"
 CEX_OI_RADAR_BOARD_WORKER = SRC / "domains" / "cex_market_intel" / "runtime" / "cex_oi_radar_board_worker.py"
-EQUITY_EVENT_EVIDENCE_HARD_CUT_MIGRATION = (
-    SRC / "platform/db/alembic/versions/20260526_0104_equity_event_evidence_hard_cut.py"
-)
 NEWS_INTEL_CANONICAL_DEDUP_MIGRATION = (
     SRC / "platform/db/alembic/versions/20260528_0117_news_intel_canonical_dedup_hard_cut.py"
 )
@@ -156,26 +153,6 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
         SRC / "domains/news_intel/runtime/news_source_quality_projection_worker.py",
         SRC / "platform/db/alembic/versions/20260522_0082_news_source_quality_rows.py",
     },
-    "equity_event_story_groups": {
-        SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
-        SRC / "domains/equity_event_intel/runtime/equity_event_story_projection_worker.py",
-        SRC / "platform/db/alembic/versions/20260523_0083_equity_event_intel.py",
-    },
-    "equity_event_story_members": {
-        SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
-        SRC / "domains/equity_event_intel/runtime/equity_event_story_projection_worker.py",
-        SRC / "platform/db/alembic/versions/20260523_0083_equity_event_intel.py",
-    },
-    "equity_event_agent_runs": {
-        SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
-        SRC / "domains/equity_event_intel/runtime/equity_event_brief_worker.py",
-        SRC / "platform/db/alembic/versions/20260523_0083_equity_event_intel.py",
-    },
-    "equity_event_agent_briefs": {
-        SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
-        SRC / "domains/equity_event_intel/runtime/equity_event_brief_worker.py",
-        SRC / "platform/db/alembic/versions/20260523_0083_equity_event_intel.py",
-    },
     "cex_oi_radar_rows": {
         CEX_OI_RADAR_REPOSITORY,
         CEX_OI_RADAR_BOARD_WORKER,
@@ -192,42 +169,9 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
         SRC / "domains/macro_intel/runtime/macro_view_projection_worker.py",
         SRC / "platform/db/alembic/versions/20260521_0076_macro_views.py",
     },
-    "equity_event_page_rows": {
-        SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
-        SRC / "domains/equity_event_intel/runtime/equity_event_page_projection_worker.py",
-        SRC / "platform/db/alembic/versions/20260523_0083_equity_event_intel.py",
-    },
-    "equity_event_calendar_rows": {
-        SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
-        SRC / "domains/equity_event_intel/runtime/equity_event_page_projection_worker.py",
-        SRC / "platform/db/alembic/versions/20260523_0083_equity_event_intel.py",
-    },
-    "equity_event_alert_candidates": {
-        SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
-        SRC / "domains/equity_event_intel/runtime/equity_event_page_projection_worker.py",
-        SRC / "platform/db/alembic/versions/20260523_0083_equity_event_intel.py",
-    },
-    "equity_company_timeline_rows": {
-        SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
-        SRC / "domains/equity_event_intel/runtime/equity_event_page_projection_worker.py",
-        SRC / "platform/db/alembic/versions/20260523_0083_equity_event_intel.py",
-    },
 }
 
-RUNTIME_WRITE_OWNER_ALLOWLISTS: dict[str, set[Path]] = {
-    "equity_event_evidence_artifacts": {
-        SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
-        SRC / "domains/equity_event_intel/runtime/equity_event_fetch_worker.py",
-        SRC / "domains/equity_event_intel/runtime/equity_event_process_worker.py",
-        EQUITY_EVENT_EVIDENCE_HARD_CUT_MIGRATION,
-    },
-    "equity_event_brief_states": {
-        SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
-        SRC / "domains/equity_event_intel/runtime/equity_event_brief_worker.py",
-        SRC / "domains/equity_event_intel/runtime/equity_event_page_projection_worker.py",
-        EQUITY_EVENT_EVIDENCE_HARD_CUT_MIGRATION,
-    },
-}
+RUNTIME_WRITE_OWNER_ALLOWLISTS: dict[str, set[Path]] = {}
 
 CONTROL_PLANE_TABLES: dict[str, set[Path]] = {
     "pulse_trigger_dirty_targets": {
@@ -262,17 +206,13 @@ CONTROL_PLANE_TABLES: dict[str, set[Path]] = {
         SRC / "domains/watchlist_intel/repositories/watchlist_intel_repository.py",
         SRC / "platform/db/alembic/versions/20260514_0045_watchlist_handle_intel.py",
     },
-    "equity_event_projection_dirty_targets": {
-        SRC / "domains/equity_event_intel/repositories/equity_projection_dirty_target_repository.py",
-        SRC / "platform/db/alembic/versions/20260524_0094_projection_dirty_targets_hard_cut.py",
-        SRC / "platform/db/alembic/versions/20260525_0097_agent_brief_dirty_targets.py",
-    },
     "news_projection_dirty_targets": {
         SRC / "domains/news_intel/repositories/news_projection_dirty_target_repository.py",
         SRC / "platform/db/alembic/versions/20260524_0094_projection_dirty_targets_hard_cut.py",
         SRC / "platform/db/alembic/versions/20260525_0097_agent_brief_dirty_targets.py",
         NEWS_INTEL_CANONICAL_DEDUP_MIGRATION,
         NEWS_REALTIME_POSTGRES_HOTPATH_MIGRATION,
+        SRC / "platform/db/alembic/versions/20260529_0123_news_public_url_hard_identity.py",
     },
     "market_tick_current_dirty_targets": {
         SRC / "domains/asset_market/repositories/market_tick_current_dirty_target_repository.py",
@@ -290,7 +230,6 @@ EXPECTED_WORKER_FACTORY_FILES = {
     "asset_market.py",
     "cex_market_intel.py",
     "enrichment.py",
-    "equity_event_intel.py",
     "ingestion.py",
     "macro_intel.py",
     "narrative_intel.py",
@@ -315,7 +254,7 @@ def test_all_long_running_workers_inherit_worker_base(worker_key: str, qualified
         if ".narrative_intel." in qualified_name:
             pytest.skip(f"{worker_key} runtime is owned by agent A: {exc.name}")
         if _is_stubbed_task_worker(qualified_name):
-            pytest.skip(f"{worker_key} runtime lands in equity-event Task 3+: {exc.name}")
+            pytest.skip(f"{worker_key} runtime lands in a follow-up task: {exc.name}")
         raise
 
     assert issubclass(worker_class, WorkerBase), f"{worker_key} must inherit WorkerBase"
@@ -404,8 +343,6 @@ def test_worker_manifest_owns_all_single_writer_tables() -> None:
 def test_worker_manifest_forbids_semantic_read_model_aliases() -> None:
     forbidden_aliases = {
         "cex_oi_radar_board",
-        "equity_event_pages",
-        "equity_event_stories",
         "macro_view",
         "news_pages",
         "news_source_quality",
@@ -489,7 +426,6 @@ def test_worker_manifest_declares_dirty_target_consumers() -> None:
     expected_dirty_targets = {
         "asset_profile_refresh_targets",
         "discussion_digest_dirty_targets",
-        "equity_event_projection_dirty_targets",
         "market_tick_current_dirty_targets",
         "macro_projection_dirty_targets",
         "narrative_admission_dirty_targets",
@@ -837,7 +773,6 @@ def test_runtime_table_sql_writes_stay_in_owner_allowlist(table_name: str) -> No
         if write_pattern.search(path.read_text())
     ]
 
-    assert migration_allowlist == {EQUITY_EVENT_EVIDENCE_HARD_CUT_MIGRATION}
     assert all(table_name in path.read_text() for path in migration_allowlist)
     assert violations == []
     assert api_route_violations == []

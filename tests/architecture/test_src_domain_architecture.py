@@ -19,7 +19,6 @@ DOMAINS = {
     "macro_intel",
     "narrative_intel",
     "news_intel",
-    "equity_event_intel",
     "social_enrichment",
     "notifications",
     "pulse_lab",
@@ -34,7 +33,6 @@ PROVIDER_DOMAINS = {
     "asset_market",
     "narrative_intel",
     "news_intel",
-    "equity_event_intel",
     "social_enrichment",
     "pulse_lab",
     "watchlist_intel",
@@ -57,6 +55,18 @@ REPOSITORY_UPWARD_IMPORT_ALLOWLIST = {
         SRC_ROOT / "domains/narrative_intel/repositories/narrative_repository.py",
         "gmgn_twitter_intel.domains.narrative_intel.services.fingerprints",
     ),
+    (
+        SRC_ROOT / "domains/news_intel/repositories/news_repository.py",
+        "gmgn_twitter_intel.domains.news_intel.services.news_canonical_identity",
+    ),
+    (
+        SRC_ROOT / "domains/news_intel/repositories/news_repository.py",
+        "gmgn_twitter_intel.domains.news_intel.services.news_url_identity",
+    ),
+    (
+        SRC_ROOT / "domains/token_intel/repositories/token_radar_repository.py",
+        "gmgn_twitter_intel.domains.token_intel.services.token_radar_payload_hash",
+    ),
 }
 PROVIDER_WIRING_DIR = SRC_ROOT / "app" / "runtime" / "provider_wiring"
 PROVIDER_WIRING_FACADE = SRC_ROOT / "app" / "runtime" / "providers_wiring.py"
@@ -67,7 +77,6 @@ PROVIDER_WIRING_FACADE_ALLOWED_IMPORTS = {
 }
 PROVIDER_WIRING_FACADE_PUBLIC_EXPORTS = {
     "AssetMarketProviders",
-    "EquityEventIntelProviders",
     "IngestionProviders",
     "MacrodataProviders",
     "NarrativeIntelProviders",
