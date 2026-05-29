@@ -267,6 +267,204 @@ def test_asset_context_uses_factor_snapshot_and_no_legacy_runtime_context() -> N
     assert "timeline_context" not in job["context_json"]
 
 
+def test_asset_context_without_source_events_does_not_hydrate_target_timeline() -> None:
+    repos = FakeRepos()
+    repos.token_radar.rows = [
+        {
+            **_radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82)),
+            "source_event_ids_json": [],
+        }
+    ]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    worker = _worker(repos)
+
+    result = worker.scan_triggers_once(now_ms=NOW_MS)
+
+    assert result["asset_seen"] == 1
+    assert result["asset_enqueued"] == 0
+    assert result["asset_skipped"] == 1
+    assert repos.pulse_jobs.jobs == []
+    assert repos.token_targets.event_id_calls == []
+    assert repos.token_targets.legacy_timeline_calls == []
+    assert repos.pulse_candidates.low_information_hides == []
+
+
+def test_asset_context_requires_explicit_source_event_ids_json() -> None:
+    repos = FakeRepos()
+    row = _radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82))
+    row.pop("source_event_ids_json", None)
+    repos.token_radar.rows = [row]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    worker = _worker(repos)
+
+    result = worker.scan_triggers_once(now_ms=NOW_MS)
+
+    assert result["asset_seen"] == 1
+    assert result["asset_enqueued"] == 0
+    assert result["asset_skipped"] == 1
+    assert repos.pulse_jobs.jobs == []
+    assert repos.token_targets.event_id_calls == []
+    assert repos.token_targets.legacy_timeline_calls == []
+
+
+def test_matched_asset_context_loads_only_source_event_rows_with_watched_filter() -> None:
+    repos = FakeRepos()
+    repos.token_radar.rows = [
+        {
+            **_radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82)),
+            "source_event_ids_json": ["event-2", "event-1"],
+        }
+    ]
+    repos.token_targets.rows = [
+        _timeline_row("event-1", NOW_MS - 1_000),
+        {**_timeline_row("event-2", NOW_MS - 500), "is_watched": True},
+    ]
+    worker = _worker(repos, settings=_settings(scopes=("matched",)))
+
+    result = worker.scan_triggers_once(now_ms=NOW_MS)
+
+    assert result["asset_enqueued"] == 1
+    assert repos.token_targets.legacy_timeline_calls == []
+    assert repos.token_targets.event_id_calls == [
+        {
+            "target_type": "Asset",
+            "target_id": "asset-1",
+            "event_ids": ["event-2", "event-1"],
+            "watched_only": True,
+            "limit": 200,
+        }
+    ]
+    job = repos.pulse_jobs.jobs[0]
+    assert job["context_json"]["source_event_ids"] == ["event-2", "event-1"]
+    assert [post["event_id"] for post in job["context_json"]["selected_posts"]] == ["event-2"]
+    assert job["context_json"]["post_clusters"]
+    assert job["context_json"]["post_clusters"][0]["event_ids"] == ["event-2"]
+    assert job["context_json"]["post_clusters"][0]["watched_author_present"] is True
+
+
+def test_low_information_gate_does_not_hydrate_source_timeline() -> None:
+    repos = FakeRepos()
+    snapshot = _factor_snapshot(rank_score=82)
+    snapshot["gates"]["eligible_for_high_alert"] = False
+    snapshot["gates"]["blocked_reasons"] = []
+    snapshot["gates"]["risk_reasons"] = []
+    repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    worker = _worker(repos)
+
+    result = worker.scan_triggers_once(now_ms=NOW_MS)
+
+    assert result["asset_seen"] == 1
+    assert result["asset_enqueued"] == 0
+    assert result["asset_skipped"] == 1
+    assert repos.pulse_jobs.jobs == []
+    assert repos.token_targets.event_id_calls == []
+    assert repos.token_targets.legacy_timeline_calls == []
+
+
+def test_low_information_gate_hides_existing_public_candidate_without_hydration() -> None:
+    repos = FakeRepos()
+    snapshot = _factor_snapshot(rank_score=82)
+    snapshot["gates"]["eligible_for_high_alert"] = False
+    snapshot["gates"]["blocked_reasons"] = []
+    snapshot["gates"]["risk_reasons"] = []
+    repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    candidate_id = _asset_candidate_id(
+        candidate_type="token_target",
+        window="1h",
+        scope="all",
+        target_type="Asset",
+        target_id="asset-1",
+    )
+    repos.pulse_candidates.candidates[candidate_id] = {
+        "candidate_id": candidate_id,
+        "display_status": "display_trade_candidate",
+        "pulse_status": "trade_candidate",
+        "decision_status": "trade_candidate",
+        "evidence_status": "complete",
+        "updated_at_ms": NOW_MS - 60_000,
+    }
+    worker = _worker(repos)
+
+    result = worker.scan_triggers_once(now_ms=NOW_MS)
+
+    assert result["asset_seen"] == 1
+    assert result["asset_enqueued"] == 0
+    assert result["asset_skipped"] == 1
+    assert repos.pulse_jobs.jobs == []
+    assert repos.token_targets.event_id_calls == []
+    assert repos.token_targets.legacy_timeline_calls == []
+    assert repos.pulse_candidates.candidates[candidate_id]["display_status"] == "hidden_blocked_low_information"
+    assert repos.pulse_candidates.candidates[candidate_id]["pulse_status"] == "blocked_low_information"
+    assert repos.pulse_candidates.candidates[candidate_id]["source_event_ids_json"] == ["event-1"]
+    assert repos.pulse_candidates.low_information_hides == [candidate_id]
+
+
+def test_low_information_hide_advances_edge_state_so_public_recovery_reenqueues() -> None:
+    repos = FakeRepos()
+    public_snapshot = _factor_snapshot(rank_score=82)
+    public_row = _radar_row(factor_snapshot_json=public_snapshot)
+    repos.token_radar.rows = [public_row]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    worker = _worker(repos)
+    candidate_id = _asset_candidate_id(
+        candidate_type="token_target",
+        window="1h",
+        scope="all",
+        target_type="Asset",
+        target_id="asset-1",
+    )
+    public_context = worker._asset_context(repos, public_row, window="1h", scope="all", now_ms=NOW_MS)
+    assert public_context is not None
+    public_state = _processed_edge_state(
+        candidate_id=candidate_id,
+        pulse_status="trade_candidate",
+        score_band="high_conviction",
+    )
+    public_state["trigger_signature"] = public_context.trigger_signature
+    public_state["timeline_signature"] = public_context.timeline_signature
+    repos.pulse_admission.edge_states[candidate_id] = {
+        "candidate_id": candidate_id,
+        "last_processed_state_json": public_state,
+        "latest_observed_state_json": public_state,
+    }
+    repos.pulse_candidates.candidates[candidate_id] = {
+        "candidate_id": candidate_id,
+        "display_status": "display_trade_candidate",
+        "pulse_status": "trade_candidate",
+        "decision_status": "trade_candidate",
+        "evidence_status": "complete",
+        "updated_at_ms": NOW_MS - 60_000,
+    }
+    repos.token_targets.event_id_calls.clear()
+    repos.token_targets.legacy_timeline_calls.clear()
+
+    low_info_snapshot = _factor_snapshot(rank_score=82)
+    low_info_snapshot["gates"]["eligible_for_high_alert"] = False
+    low_info_snapshot["gates"]["blocked_reasons"] = []
+    low_info_snapshot["gates"]["risk_reasons"] = []
+    repos.token_radar.rows = [_radar_row(factor_snapshot_json=low_info_snapshot)]
+
+    low_info_result = worker.scan_triggers_once(now_ms=NOW_MS)
+
+    assert low_info_result["asset_enqueued"] == 0
+    assert repos.pulse_jobs.jobs == []
+    assert repos.token_targets.event_id_calls == []
+    edge_after_hide = repos.pulse_admission.edge_states[candidate_id]
+    assert edge_after_hide["last_processed_state_json"]["pulse_status"] == "blocked_low_information"
+    assert edge_after_hide["last_processed_state_json"]["timeline_signature"] == "low_information"
+    assert edge_after_hide["last_suppressed_reason"] == "blocked_low_information"
+
+    repos.token_radar.rows = [public_row]
+    recovery_result = worker.scan_triggers_once(now_ms=NOW_MS + 1_000)
+
+    assert recovery_result["asset_enqueued"] == 1
+    assert len(repos.pulse_jobs.jobs) == 1
+    assert repos.pulse_admission.admission_claims[-1]["admission_action"] == "enqueue_agent"
+    assert "pulse_status_changed" in repos.pulse_admission.admission_claims[-1]["edge_events"]
+
+
 def test_worker_gates_before_agent_and_agent_cannot_upgrade_gate_status() -> None:
     repos = FakeRepos()
     repos.token_radar.rows = [_radar_row(factor_snapshot_json=_factor_snapshot(rank_score=50))]
@@ -1202,6 +1400,7 @@ def _pulse_context(*, factor_snapshot: dict[str, Any]) -> Any:
         symbol="TEST",
         factor_snapshot=factor_snapshot,
         selected_posts=[_timeline_row("event-1", NOW_MS - 1_000)],
+        post_clusters=[],
         gate_result=None,
         edge_state=None,
         edge_events=("pulse_status_changed",),
@@ -1510,9 +1709,24 @@ class FakePulseTriggerDirtyTargets:
 class FakeTokenTargets:
     def __init__(self) -> None:
         self.rows: list[dict[str, Any]] = []
+        self.legacy_timeline_calls: list[dict[str, Any]] = []
+        self.event_id_calls: list[dict[str, Any]] = []
 
-    def timeline_rows(self, **_: Any) -> list[dict[str, Any]]:
+    def timeline_rows(self, **kwargs: Any) -> list[dict[str, Any]]:
+        self.legacy_timeline_calls.append(dict(kwargs))
         return list(self.rows)
+
+    def timeline_rows_for_event_ids(self, **kwargs: Any) -> list[dict[str, Any]]:
+        call = {
+            **dict(kwargs),
+            "event_ids": list(kwargs.get("event_ids") or []),
+        }
+        self.event_id_calls.append(call)
+        event_ids = {str(event_id) for event_id in call["event_ids"]}
+        rows = [row for row in self.rows if str(row.get("event_id") or "") in event_ids]
+        if call.get("watched_only"):
+            rows = [row for row in rows if row.get("is_watched")]
+        return rows[: int(call.get("limit") or len(rows))]
 
 
 class FakePulseStore:
@@ -1532,6 +1746,7 @@ class FakePulseStore:
         self.eval_cases: list[dict[str, Any]] = []
         self.eval_results: list[dict[str, Any]] = []
         self.candidate_upserts: list[dict[str, Any]] = []
+        self.low_information_hides: list[str] = []
         self.playbook_upserts: list[dict[str, Any]] = []
         self.packets: list[Any] = []
         self.successes: list[str] = []
@@ -1573,6 +1788,32 @@ class FakePulseStore:
 
     def candidate_by_id(self, candidate_id: str) -> dict[str, Any] | None:
         return self.candidates.get(candidate_id)
+
+    def hide_public_candidate_for_low_information(self, **kwargs: Any) -> dict[str, Any] | None:
+        candidate_id = str(kwargs.get("candidate_id") or "")
+        row = self.candidates.get(candidate_id)
+        if row is None or row.get("display_status") not in {
+            "display_trade_candidate",
+            "display_token_watch",
+            "display_risk_rejected_high_info",
+        }:
+            return None
+        row.update(
+            {
+                "display_status": "hidden_blocked_low_information",
+                "pulse_status": "blocked_low_information",
+                "verdict": "blocked_low_information",
+                "score_band": "blocked",
+                "decision_status": "invalid",
+                "evidence_status": "insufficient",
+                "factor_snapshot_json": kwargs.get("factor_snapshot_json") or {},
+                "gate_json": kwargs.get("gate_json") or {},
+                "source_event_ids_json": list(kwargs.get("source_event_ids_json") or []),
+                "updated_at_ms": kwargs.get("updated_at_ms"),
+            }
+        )
+        self.low_information_hides.append(candidate_id)
+        return dict(row)
 
     def job_for_candidate(self, candidate_id: str) -> dict[str, Any] | None:
         for job in reversed(self.jobs):
@@ -1643,7 +1884,12 @@ class FakePulseStore:
         if kwargs.get("admission_action") != "enqueue_agent":
             score_band = edge_state.get("score_band")
             pending_count = int(row.get("pending_score_band_count") or 0)
-            if kwargs.get("admission_reason") == "score_band_pending":
+            if kwargs.get("admission_reason") == "blocked_low_information":
+                row["last_processed_state_json"] = edge_state
+                row["last_processed_at_ms"] = now_ms
+                row["pending_score_band"] = None
+                row["pending_score_band_count"] = 0
+            elif kwargs.get("admission_reason") == "score_band_pending":
                 pending_count = pending_count + 1 if row.get("pending_score_band") == score_band else 1
                 row["pending_score_band"] = score_band
                 row["pending_score_band_count"] = pending_count

@@ -1145,6 +1145,7 @@ def test_projection_rebuild_dirty_targets_marks_claim_done_with_payload_hash(mon
                 "payload_hash": "claim-hash",
                 "lease_owner": "projection-worker",
                 "attempt_count": 1,
+                "source_event_ids_json": ["event-1"],
             }
         ]
     )
@@ -1192,6 +1193,171 @@ def test_projection_rebuild_dirty_targets_marks_claim_done_with_payload_hash(mon
     assert dirty_targets.errors == []
 
 
+def test_projection_rebuild_dirty_targets_copies_source_event_ids_into_requests(monkeypatch):
+    token_radar = FakeTokenRadar()
+    dirty_targets = FakeDirtyTargets(
+        [
+            {
+                "target_type_key": "Asset",
+                "identity_id": "asset-1",
+                "payload_hash": "claim-hash",
+                "lease_owner": "projection-worker",
+                "attempt_count": 1,
+                "source_dirty": True,
+                "market_dirty": False,
+                "repair_dirty": False,
+                "source_event_ids_json": ["event-2", "event-1"],
+            }
+        ]
+    )
+    repos = type(
+        "Repos",
+        (),
+        {
+            "conn": FakeTransactionConn(),
+            "token_radar": token_radar,
+            "token_radar_dirty_targets": dirty_targets,
+            "token_radar_rank_sources": FakeRankSources(token_radar=token_radar, rows_by_request={}),
+        },
+    )()
+
+    monkeypatch.setattr(
+        TokenRadarProjection,
+        "_project_source_request",
+        lambda self, **kwargs: {"source_rows": 0, "status": "empty", "rank_set_changed": False},
+    )
+
+    result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
+        windows=("5m",),
+        scopes=("all",),
+        now_ms=1_777_800_060_000,
+        limit=20,
+    )
+
+    assert result["status"] == "ready"
+    populated_request = token_radar.rank_source_populate_batches[0]["requests"][0]
+    loaded_request = token_radar.source_request_batches[0][0]
+    assert populated_request.source_event_ids == ("event-2", "event-1")
+    assert loaded_request.source_event_ids == ("event-2", "event-1")
+    assert dirty_targets.done
+    assert dirty_targets.errors == []
+
+
+def test_projection_rebuild_dirty_targets_marks_source_dirty_without_event_ids_error(monkeypatch):
+    token_radar = FakeTokenRadar()
+    dirty_targets = FakeDirtyTargets(
+        [
+            {
+                "target_type_key": "Asset",
+                "identity_id": "asset-1",
+                "payload_hash": "claim-hash",
+                "lease_owner": "projection-worker",
+                "attempt_count": 1,
+                "source_dirty": True,
+                "market_dirty": False,
+                "repair_dirty": False,
+                "source_event_ids_json": [],
+            }
+        ]
+    )
+    repos = type(
+        "Repos",
+        (),
+        {
+            "conn": FakeTransactionConn(),
+            "token_radar": token_radar,
+            "token_radar_dirty_targets": dirty_targets,
+            "token_radar_rank_sources": FakeRankSources(token_radar=token_radar, rows_by_request={}),
+        },
+    )()
+
+    def fail_if_scored(self, **kwargs):
+        raise AssertionError("source-dirty claim without event ids should not be scored")
+
+    monkeypatch.setattr(TokenRadarProjection, "_project_source_request", fail_if_scored)
+
+    result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
+        windows=("5m",),
+        scopes=("all",),
+        now_ms=1_777_800_060_000,
+        limit=20,
+    )
+
+    assert result["status"] == "failed"
+    assert token_radar.rank_source_populate_batches == []
+    assert token_radar.source_request_batches == []
+    assert dirty_targets.done == []
+    assert dirty_targets.errors == [
+        {
+            "target_type_key": "Asset",
+            "identity_id": "asset-1",
+            "payload_hash": "claim-hash",
+            "lease_owner": "projection-worker",
+            "attempt_count": 1,
+            "error": "token_radar_source_event_ids_required",
+        }
+    ]
+
+
+def test_projection_rebuild_dirty_targets_does_not_populate_source_edges_for_market_only_claim(monkeypatch):
+    token_radar = FakeTokenRadar(upsert_return=0)
+    dirty_targets = FakeDirtyTargets(
+        [
+            {
+                "target_type_key": "Asset",
+                "identity_id": "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
+                "payload_hash": "claim-hash",
+                "lease_owner": "projection-worker",
+                "attempt_count": 1,
+                "source_dirty": False,
+                "market_dirty": True,
+                "repair_dirty": False,
+                "source_event_ids_json": [],
+            }
+        ]
+    )
+    repos = type(
+        "Repos",
+        (),
+        {
+            "conn": FakeTransactionConn(),
+            "token_radar": token_radar,
+            "token_radar_dirty_targets": dirty_targets,
+            "token_radar_rank_sources": FakeRankSources(
+                token_radar=token_radar,
+                rows_by_request={"*": [source_row("event-market-only", received_at_ms=1_777_800_000_000)]},
+            ),
+        },
+    )()
+
+    monkeypatch.setattr(
+        TokenRadarProjection,
+        "refresh_rank_set",
+        lambda self, **kwargs: {"rows_written": 0, "source_rows": 1, "status": "ready"},
+    )
+
+    result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
+        windows=("5m",),
+        scopes=("all",),
+        now_ms=1_777_800_060_000,
+        limit=20,
+    )
+
+    assert result["status"] == "ready"
+    assert token_radar.rank_source_populate_batches == []
+    assert len(token_radar.source_request_batches) == 1
+    assert dirty_targets.done == [
+        {
+            "target_type_key": "Asset",
+            "identity_id": "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
+            "payload_hash": "claim-hash",
+            "lease_owner": "projection-worker",
+            "attempt_count": 1,
+        }
+    ]
+    assert dirty_targets.errors == []
+
+
 def test_projection_rebuild_dirty_targets_unchanged_feature_claim_marks_done_without_rank_publish(monkeypatch):
     refresh_calls: list[tuple[str, str]] = []
     now_ms = 1_777_800_060_000
@@ -1201,6 +1367,7 @@ def test_projection_rebuild_dirty_targets_unchanged_feature_claim_marks_done_wit
         "payload_hash": "claim-hash",
         "lease_owner": "projection-worker",
         "attempt_count": 1,
+        "source_event_ids_json": ["event-unchanged"],
     }
     token_radar = FakeTokenRadar(upsert_return=0, delete_return=0)
     dirty_targets = FakeDirtyTargets([claim])
@@ -1234,7 +1401,15 @@ def test_projection_rebuild_dirty_targets_unchanged_feature_claim_marks_done_wit
     assert result["status"] == "ready"
     assert result["claimed"] == 1
     assert refresh_calls == []
-    assert dirty_targets.done == [claim]
+    assert dirty_targets.done == [
+        {
+            "target_type_key": "Asset",
+            "identity_id": "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
+            "payload_hash": "claim-hash",
+            "lease_owner": "projection-worker",
+            "attempt_count": 1,
+        }
+    ]
     assert dirty_targets.errors == []
     assert len(token_radar.upserts) == 1
 
@@ -1248,12 +1423,13 @@ def test_projection_rebuild_dirty_targets_explicit_due_work_item_publishes_even_
             {
                 "target_type_key": "Asset",
                 "identity_id": "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
-                "payload_hash": "claim-hash",
-                "lease_owner": "projection-worker",
-                "attempt_count": 1,
-            }
-        ]
-    )
+                    "payload_hash": "claim-hash",
+                    "lease_owner": "projection-worker",
+                    "attempt_count": 1,
+                    "source_event_ids_json": ["event-due-unchanged"],
+                }
+            ]
+        )
     repos = type(
         "Repos",
         (),
@@ -1294,6 +1470,7 @@ def test_projection_rebuild_dirty_targets_deleted_feature_claim_publishes_touche
         "payload_hash": "claim-hash",
         "lease_owner": "projection-worker",
         "attempt_count": 1,
+        "source_event_ids_json": ["event-deleted"],
     }
     token_radar = FakeTokenRadar(delete_return=1)
     dirty_targets = FakeDirtyTargets([claim])
@@ -1324,7 +1501,15 @@ def test_projection_rebuild_dirty_targets_deleted_feature_claim_publishes_touche
     assert result["status"] == "ready"
     assert refresh_calls == [("5m", "all")]
     assert len(token_radar.deletes) == 2
-    assert dirty_targets.done == [claim]
+    assert dirty_targets.done == [
+        {
+            "target_type_key": "Asset",
+            "identity_id": "asset-1",
+            "payload_hash": "claim-hash",
+            "lease_owner": "projection-worker",
+            "attempt_count": 1,
+        }
+    ]
 
 
 def test_projection_rebuild_dirty_targets_scores_only_selected_work_items(monkeypatch):
@@ -1339,6 +1524,7 @@ def test_projection_rebuild_dirty_targets_scores_only_selected_work_items(monkey
                 "payload_hash": "claim-hash",
                 "lease_owner": "projection-worker",
                 "attempt_count": 1,
+                "source_event_ids_json": ["event-score"],
             }
         ]
     )
@@ -1498,6 +1684,7 @@ def test_projection_rebuild_dirty_targets_marks_error_with_payload_hash_on_failu
                 "payload_hash": "claim-hash",
                 "lease_owner": "projection-worker",
                 "attempt_count": 1,
+                "source_event_ids_json": ["event-fail"],
             }
         ]
     )
@@ -1549,6 +1736,7 @@ def test_projection_keeps_claim_dirty_when_rank_refresh_fails(monkeypatch):
                 "payload_hash": "claim-hash",
                 "lease_owner": "projection-worker",
                 "attempt_count": 1,
+                "source_event_ids_json": ["event-rank-fail"],
             }
         ]
     )
@@ -1604,6 +1792,7 @@ def test_projection_marks_noop_claim_done_when_another_claim_publish_fails(monke
         "payload_hash": "noop-hash",
         "lease_owner": "projection-worker",
         "attempt_count": 1,
+        "source_event_ids_json": ["event-noop"],
     }
     changed_claim = {
         "target_type_key": "Asset",
@@ -1611,6 +1800,7 @@ def test_projection_marks_noop_claim_done_when_another_claim_publish_fails(monke
         "payload_hash": "changed-hash",
         "lease_owner": "projection-worker",
         "attempt_count": 1,
+        "source_event_ids_json": ["event-changed"],
     }
     dirty_targets = FakeDirtyTargets([noop_claim, changed_claim])
     token_radar = FakeTokenRadar()
@@ -1647,7 +1837,15 @@ def test_projection_marks_noop_claim_done_when_another_claim_publish_fails(monke
     )
 
     assert result["status"] == "failed"
-    assert dirty_targets.done == [noop_claim]
+    assert dirty_targets.done == [
+        {
+            "target_type_key": "Asset",
+            "identity_id": "asset-noop",
+            "payload_hash": "noop-hash",
+            "lease_owner": "projection-worker",
+            "attempt_count": 1,
+        }
+    ]
     assert dirty_targets.errors == [
         {
             "target_type_key": "Asset",
@@ -1669,6 +1867,7 @@ def test_projection_keeps_claim_dirty_when_rank_refresh_stale_skips(monkeypatch)
                 "payload_hash": "claim-hash",
                 "lease_owner": "projection-worker",
                 "attempt_count": 1,
+                "source_event_ids_json": ["event-stale-skip"],
             }
         ]
     )
@@ -2042,7 +2241,7 @@ class FakeRankSources:
             for request in request_list
         }
 
-    def populate_edges_for_requests(self, requests, *, projected_at_ms, commit):
+    def populate_edges_for_event_ids(self, requests, *, projected_at_ms, commit):
         self.token_radar.rank_source_populate_batches.append(
             {
                 "requests": list(requests),
@@ -2051,6 +2250,9 @@ class FakeRankSources:
             }
         )
         return len(requests)
+
+    def latest_market_context_for_targets(self, targets):
+        return {}
 
     def prune_edges(self, **kwargs):
         self.token_radar.operation_calls.append("prune_rank_source_edges")

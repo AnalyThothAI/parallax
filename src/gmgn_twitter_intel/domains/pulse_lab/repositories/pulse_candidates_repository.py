@@ -7,8 +7,10 @@ from gmgn_twitter_intel.domains.pulse_lab.repositories._pulse_repository_shared 
     _normalize_subject,
     _normalize_symbol,
     _now_ms,
+    _optional_row,
     _row,
 )
+from gmgn_twitter_intel.domains.pulse_lab.types.pulse_state import PUBLIC_DISPLAY_STATUSES
 
 
 class PulseCandidatesRepository:
@@ -173,3 +175,62 @@ class PulseCandidatesRepository:
         if commit:
             self.conn.commit()
         return _row(row)
+
+    def hide_public_candidate_for_low_information(
+        self,
+        *,
+        candidate_id: str,
+        candidate_score: float,
+        trigger_signature: str,
+        factor_snapshot_json: dict[str, Any],
+        gate_json: dict[str, Any],
+        gate_reasons_json: list[Any] | None = None,
+        risk_reasons_json: list[Any] | None = None,
+        evidence_event_ids_json: list[Any] | None = None,
+        source_event_ids_json: list[Any] | None = None,
+        last_edge_events_json: list[Any] | None = None,
+        updated_at_ms: int | None = None,
+        commit: bool = True,
+    ) -> dict[str, Any] | None:
+        now = int(updated_at_ms if updated_at_ms is not None else _now_ms())
+        row = self.conn.execute(
+            """
+            UPDATE pulse_candidates
+            SET pulse_status = 'blocked_low_information',
+                verdict = 'blocked_low_information',
+                candidate_score = %s,
+                score_band = 'blocked',
+                trigger_signature = %s,
+                factor_snapshot_json = %s,
+                gate_json = %s,
+                gate_reasons_json = %s,
+                risk_reasons_json = %s,
+                evidence_event_ids_json = %s,
+                source_event_ids_json = %s,
+                last_edge_events_json = %s,
+                evidence_status = 'insufficient',
+                decision_status = 'invalid',
+                display_status = 'hidden_blocked_low_information',
+                updated_at_ms = %s
+            WHERE candidate_id = %s
+              AND display_status = ANY(%s)
+            RETURNING *
+            """,
+            (
+                float(candidate_score),
+                trigger_signature,
+                _json(factor_snapshot_json),
+                _json(gate_json),
+                _json(gate_reasons_json or []),
+                _json(risk_reasons_json or []),
+                _json(evidence_event_ids_json or []),
+                _json(source_event_ids_json or []),
+                _json(last_edge_events_json or []),
+                now,
+                candidate_id,
+                list(PUBLIC_DISPLAY_STATUSES),
+            ),
+        ).fetchone()
+        if commit:
+            self.conn.commit()
+        return _optional_row(row)

@@ -1,0 +1,84 @@
+from __future__ import annotations
+
+import ast
+import re
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+SRC = ROOT / "src" / "gmgn_twitter_intel"
+
+
+def _read(path: str) -> str:
+    return (ROOT / path).read_text(encoding="utf-8")
+
+
+def _calls(path: str) -> list[str]:
+    tree = ast.parse(_read(path))
+    return [
+        node.func.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    ]
+
+
+def test_token_rank_source_population_is_event_id_bounded() -> None:
+    text = _read("src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_rank_source_query.py")
+
+    assert "populate_edges_for_event_ids" in text
+    assert "populate_edges_for_requests" not in text
+    assert "_POPULATE_RANK_SOURCE_EDGES_SQL" not in text
+    assert "source_event_ids_json" in text
+    assert "jsonb_array_elements_text" in text
+    assert re.search(
+        r"JOIN\s+events\s+ON\s+events\.event_id\s*=\s*requested_event(?:s|_ids)\.source_event_id",
+        text,
+    )
+    assert not re.search(
+        r"JOIN\s+token_intent_resolutions\s+ON\s+token_intent_resolutions\.target_type\s*=\s*requested\.target_type_key",
+        text,
+    )
+
+
+def test_token_projection_requires_source_event_ids_for_source_dirty_runtime() -> None:
+    text = _read("src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py")
+
+    assert "source_event_ids_json" in text
+    assert "token_radar_source_event_ids_required" in text
+    assert "populate_edges_for_event_ids" in text
+    assert "populate_edges_for_requests" not in text
+
+
+def test_pulse_worker_uses_bounded_evidence_loader() -> None:
+    worker_path = "src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py"
+    text = _read(worker_path)
+    calls = _calls(worker_path)
+
+    assert "timeline_rows_for_event_ids" in calls
+    assert "timeline_rows" not in calls
+    assert "_source_event_ids(row)" in text
+    assert "watched_only=scope == \"matched\"" in text
+
+
+def test_token_target_repository_exposes_event_id_timeline_loader() -> None:
+    text = _read("src/gmgn_twitter_intel/domains/token_intel/repositories/token_target_repository.py")
+
+    assert "def timeline_rows_for_event_ids" in text
+    assert "WITH ORDINALITY" in text
+    assert "events.event_id = requested_events.event_id" in text
+
+
+def test_equity_timeline_replace_has_no_or_delete_and_has_noop_gate() -> None:
+    text = _read("src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py")
+    match = re.search(
+        r"def replace_company_timeline_rows\(.*?(?=\n    def _list_event_facts\()",
+        text,
+        flags=re.DOTALL,
+    )
+    assert match is not None
+    body = match.group(0)
+
+    assert " OR company_event_id" not in body
+    assert "payload_hash" in body
+    assert "unchanged" in body
+    assert re.search(r"company_id\s*=\s*ANY", body)
+    assert re.search(r"company_event_id\s*=\s*ANY", body)

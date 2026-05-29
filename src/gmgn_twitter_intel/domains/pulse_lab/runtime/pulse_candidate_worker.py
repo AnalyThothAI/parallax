@@ -47,7 +47,6 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import (
     safe_int,
 )
 
-SOURCE_TIMELINE_LOOKBACK_MS = 24 * 60 * 60 * 1000
 DEFAULT_WINDOWS = SIGNAL_PULSE_WINDOWS
 DEFAULT_SCOPES = ("all",)
 PULSE_TRIGGER_METRICS_KEY = "pulse_trigger_metrics"
@@ -360,12 +359,34 @@ class PulseCandidateWorker(WorkerBase):
         target_id = _clean(row.get("target_id"))
         if not target_type or not target_id:
             return None
+        source_event_ids = _source_event_ids(row)
+        early_gate = self.gate_func(
+            factor_snapshot=factor_snapshot,
+            thresholds=self.gate_thresholds,
+        )
+        if early_gate.max_recommendation == "ignore":
+            _hide_existing_public_candidate_for_low_information(
+                repos,
+                row,
+                window=window,
+                scope=scope,
+                target_type=target_type,
+                target_id=target_id,
+                source_event_ids=source_event_ids,
+                gate=early_gate,
+                trigger_thresholds=self.trigger_thresholds,
+                gate_thresholds=self.gate_thresholds,
+                now_ms=now_ms,
+            )
+            return None
+        if not source_event_ids:
+            return None
         target = _target_payload(row)
-        rows = repos.token_targets.timeline_rows(
+        rows = repos.token_targets.timeline_rows_for_event_ids(
             target_type=target_type,
             target_id=target_id,
-            since_ms=now_ms - SOURCE_TIMELINE_LOOKBACK_MS,
-            watched_only=False,
+            event_ids=source_event_ids,
+            watched_only=scope == "matched",
             limit=200,
         )
         timeline_payload = build_pulse_timeline_context(
@@ -404,11 +425,12 @@ class PulseCandidateWorker(WorkerBase):
             symbol=_clean(target.get("symbol") or row.get("symbol")),
             factor_snapshot=factor_snapshot,
             selected_posts=list(timeline_payload.get("selected_posts") or []),
+            post_clusters=list(timeline_payload.get("post_clusters") or []),
             gate_result=None,
             edge_state=None,
             edge_events=(),
-            source_event_ids=_source_event_ids(row),
-            evidence_event_ids=_source_event_ids(row),
+            source_event_ids=source_event_ids,
+            evidence_event_ids=source_event_ids,
         )
 
     def _enqueue_if_due(self, repos: Any, context: PulseCandidateContext, *, now_ms: int) -> bool:
@@ -561,6 +583,9 @@ def _context_from_job(job: dict[str, Any]) -> PulseCandidateContext | None:
     selected_posts = context.get("selected_posts")
     if not isinstance(selected_posts, list):
         selected_posts = []
+    post_clusters = context.get("post_clusters")
+    if not isinstance(post_clusters, list):
+        post_clusters = []
     return PulseCandidateContext(
         candidate_id=candidate_id,
         candidate_type=candidate_type,
@@ -575,6 +600,7 @@ def _context_from_job(job: dict[str, Any]) -> PulseCandidateContext | None:
         symbol=_clean(context.get("symbol")),
         factor_snapshot=factor_snapshot,
         selected_posts=[post for post in selected_posts if isinstance(post, dict)],
+        post_clusters=[cluster for cluster in post_clusters if isinstance(cluster, dict)],
         gate_result=_mapping(context.get("gate_result")) or None,
         edge_state=_mapping(context.get("edge_state")) or None,
         edge_events=tuple(_stable_strings(context.get("edge_events"))),
@@ -674,6 +700,85 @@ def _recent_target_failure_count(
             reasons=PULSE_FAILURE_CIRCUIT_REASONS,
         )
     )
+
+
+def _hide_existing_public_candidate_for_low_information(
+    repos: Any,
+    row: dict[str, Any],
+    *,
+    window: str,
+    scope: str,
+    target_type: str,
+    target_id: str,
+    source_event_ids: list[str],
+    gate: PulseGateResult,
+    trigger_thresholds: PulseTriggerThresholds,
+    gate_thresholds: PulseGateThresholds,
+    now_ms: int,
+) -> dict[str, Any] | None:
+    hide_func = getattr(repos.pulse_candidates, "hide_public_candidate_for_low_information", None)
+    if hide_func is None:
+        return None
+    candidate_id = _asset_candidate_id(
+        candidate_type="token_target",
+        window=window,
+        scope=scope,
+        target_type=target_type,
+        target_id=target_id,
+    )
+    trigger_signature = _asset_trigger_signature(
+        row=row,
+        candidate_type="token_target",
+        window=window,
+        scope=scope,
+        trigger_thresholds=trigger_thresholds,
+        gate_thresholds=gate_thresholds,
+    )
+    hidden_row = hide_func(
+        candidate_id=candidate_id,
+        candidate_score=gate.candidate_score,
+        trigger_signature=trigger_signature,
+        factor_snapshot_json=_factor_snapshot(row) or {},
+        gate_json=gate.to_json(),
+        gate_reasons_json=gate.gate_reasons,
+        risk_reasons_json=gate.risk_reasons,
+        evidence_event_ids_json=source_event_ids,
+        source_event_ids_json=source_event_ids,
+        last_edge_events_json=["pulse_status_changed"],
+        updated_at_ms=now_ms,
+        commit=False,
+    )
+    if hidden_row is None:
+        return None
+    edge_state = build_pulse_edge_state(
+        candidate_id=candidate_id,
+        candidate_type="token_target",
+        target_type=target_type,
+        target_id=target_id,
+        window=window,
+        scope=scope,
+        trigger_signature=trigger_signature,
+        timeline_signature="low_information",
+        factor_snapshot=_factor_snapshot(row) or {},
+        gate=gate,
+        pulse_version=PULSE_VERSION,
+        gate_version=PULSE_GATE_VERSION,
+    )
+    repos.pulse_admission.claim_pulse_admission(
+        candidate_id=candidate_id,
+        target_type=target_type,
+        target_id=target_id,
+        hour_bucket_ms=int(now_ms) // 3_600_000 * 3_600_000,
+        now_ms=now_ms,
+        target_limit=PULSE_TARGET_EDGE_BUDGET_PER_HOUR,
+        candidate_limit=PULSE_EDGE_BUDGET_PER_HOUR,
+        edge_state=edge_state,
+        edge_events=("pulse_status_changed",),
+        admission_action="suppress",
+        admission_reason="blocked_low_information",
+        commit=False,
+    )
+    return hidden_row
 
 
 def _pending_agent_job_count(repos: Any) -> int:
@@ -801,7 +906,7 @@ def _priority(row: dict[str, Any]) -> int:
 def _source_event_ids(row: dict[str, Any]) -> list[str]:
     values = row.get("source_event_ids_json")
     if not isinstance(values, list):
-        values = [row.get("event_id")]
+        return []
     return _stable_strings(values)
 
 

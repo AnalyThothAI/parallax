@@ -198,6 +198,10 @@ TOKEN_RADAR_RUNTIME_NOT_NULL_GUARDRAILS_MIGRATION = Path(
 NEWS_PUBLIC_URL_HARD_IDENTITY_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260529_0123_news_public_url_hard_identity.py"
 )
+TOKEN_PULSE_EQUITY_CPU_HARD_CUT_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/"
+    "20260529_0124_token_pulse_equity_cpu_hard_cut.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 LEGACY_TOKEN_RADAR_CURRENT_JSON_COLUMNS = {
@@ -577,6 +581,45 @@ def test_postgres_performance_queue_hard_cut_indexes() -> None:
         'ON token_radar_target_features( projection_version, "window", scope, lane DESC, '
         "rank_score DESC, latest_event_received_at_ms DESC, identity_id ASC )"
     ) in normalized_text
+
+
+def test_token_pulse_equity_cpu_hard_cut_adds_runtime_indexes() -> None:
+    text = _migration_text(TOKEN_PULSE_EQUITY_CPU_HARD_CUT_MIGRATION)
+    normalized_text = " ".join(text.split())
+
+    assert 'revision = "20260529_0124"' in text
+    assert 'down_revision = "20260529_0123"' in text
+    assert "with op.get_context().autocommit_block():" in text
+    for index_name in (
+        "idx_token_intents_event_intent",
+        "idx_token_intent_resolutions_current_event_target",
+        "idx_price_feeds_cex_canonical_updated",
+        "idx_equity_company_timeline_rows_company_row",
+        "idx_equity_company_timeline_rows_event_row",
+    ):
+        assert f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {index_name}" in text
+        assert f"DROP INDEX CONCURRENTLY IF EXISTS {index_name}" in text
+
+    assert "ON token_intents(event_id, intent_id)" in normalized_text
+    assert (
+        "ON token_intent_resolutions( event_id, target_type, target_id, resolver_policy_version, "
+        "resolution_status, confidence DESC, decision_time_ms DESC, resolution_id DESC )"
+    ) in normalized_text
+    assert "WHERE is_current = true" in normalized_text
+    assert "target_type IN ('Asset', 'CexToken')" in normalized_text
+    assert "target_id IS NOT NULL" in normalized_text
+    assert "superseded_at_ms" not in text
+    assert "ON price_feeds(subject_id, updated_at_ms DESC, native_market_id ASC)" in normalized_text
+    assert (
+        "WHERE subject_type = 'CexToken' AND provider = 'binance' AND feed_type = 'cex_swap' "
+        "AND quote_symbol = 'USDT' AND status = 'canonical'"
+    ) in normalized_text
+    assert "ON equity_company_timeline_rows(company_id, row_id)" in normalized_text
+    assert "ON equity_company_timeline_rows(company_event_id, row_id)" in normalized_text
+    assert "INCLUDE ( company_event_id, projection_version, payload_hash, source_watermark_ms )" in normalized_text
+    assert "INCLUDE ( company_id, projection_version, payload_hash, source_watermark_ms )" in normalized_text
+    assert "payload_json" not in text
+    assert "summary" not in text
 
 
 def test_worker_queue_terminal_events_migration_contract() -> None:

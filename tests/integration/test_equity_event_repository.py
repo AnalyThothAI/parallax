@@ -1572,6 +1572,57 @@ def test_equity_event_repository_replace_timeline_rows_identical_payload_does_no
     assert after["xmin"] == before["xmin"]
 
 
+def test_replace_timeline_rows_ignores_watermark_only_advance_for_identical_payload(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    repos.equity_events.upsert_company_event(
+        company_event_id="event-timeline-watermark",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        primary_document_id=None,
+        event_type="quarterly_report",
+        priority="P0",
+        source_role="official_regulator",
+        fiscal_period="2026Q1",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS,
+        lifecycle_status="raw",
+        now_ms=NOW_MS,
+    )
+
+    row = _timeline_row("timeline-watermark-stable", "event-timeline-watermark")
+    repos.equity_events.replace_company_timeline_rows(company_event_ids=("event-timeline-watermark",), rows=[row])
+    before = postgres_conn.execute(
+        """
+        SELECT computed_at_ms, source_watermark_ms, xmin::text AS xmin
+          FROM equity_company_timeline_rows
+         WHERE row_id = %s
+        """,
+        ("timeline-watermark-stable",),
+    ).fetchone()
+
+    advanced_row = {
+        **row,
+        "computed_at_ms": NOW_MS + 10_000,
+        "source_watermark_ms": NOW_MS + 10_000,
+    }
+    repos.equity_events.replace_company_timeline_rows(
+        company_event_ids=("event-timeline-watermark",),
+        rows=[advanced_row],
+    )
+    after = postgres_conn.execute(
+        """
+        SELECT computed_at_ms, source_watermark_ms, xmin::text AS xmin
+          FROM equity_company_timeline_rows
+         WHERE row_id = %s
+        """,
+        ("timeline-watermark-stable",),
+    ).fetchone()
+
+    assert after["computed_at_ms"] == before["computed_at_ms"]
+    assert after["source_watermark_ms"] == before["source_watermark_ms"]
+    assert after["xmin"] == before["xmin"]
+
+
 def test_changed_event_document_content_resets_failed_processing_attempts_for_retry(postgres_conn) -> None:
     repos = repositories_for_connection(postgres_conn)
     repos.equity_events.upsert_source(

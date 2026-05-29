@@ -58,3 +58,42 @@ def test_runtime_performance_check_prints_read_only_lifecycle_report() -> None:
     assert "DROP " not in script
     assert "DETACH" not in script
     assert "VACUUM" not in script
+    assert "pg_stat_statements_reset" not in script
+    assert "pg_stat_reset" not in script
+
+
+def test_runtime_performance_check_hard_gates_runtime_sql_fingerprints() -> None:
+    script = (
+        ROOT / "scripts" / "runtime_performance_root_fix_check.sh"
+    ).read_text(encoding="utf-8")
+
+    assert "TOKEN_RADAR_EVENT_ID_POPULATE_MIN_CALLS" in script
+    assert "source_event_ids_json" in script
+    assert "requested_event_ids" in script
+    assert "jsonb_array_elements_text" in script
+    assert "token_intents.event_id = requested_event_ids.source_event_id" in script
+    assert "INSERT INTO token_radar_rank_source_events" in script
+
+    assert "OLD_TOKEN_RADAR_SOURCE_POPULATE_CALLS_BEFORE" in script
+    assert "query NOT ILIKE '%source_event_ids_json%'" in script
+    assert "query NOT ILIKE '%requested_event_ids%'" in script
+
+    assert "source_payload_hash IS NULL" in script
+    assert "query ILIKE '%count(*)%'" in script
+
+    assert "PULSE_TARGET_WIDE_TIMELINE_CALLS_BEFORE" in script
+    assert "pulse_candidate target-wide timeline_rows/WITH matched fingerprint" in script
+    assert "FROM token_intent_resolutions tir" in script
+    assert "JOIN events ON events.event_id = tir.event_id" in script
+    assert "ORDER BY received_at_ms DESC, event_id DESC" in script
+    assert "query NOT ILIKE '%requested_events%'" in script
+
+    assert "EQUITY_TIMELINE_OR_DELETE_CALLS_BEFORE" in script
+    assert "equity timeline delete OR predicate" in script
+    assert "equity_company_timeline_rows" in script
+    assert "query ILIKE '% OR %'" in script
+    assert "company_event_id" in script
+
+    assert "assert_zero_new_or_cumulative_calls" in script
+    assert "stale equity fetch runs\" \"${stale_equity_fetch_runs}\"" not in script
+    assert "top sql token radar share percent" not in script

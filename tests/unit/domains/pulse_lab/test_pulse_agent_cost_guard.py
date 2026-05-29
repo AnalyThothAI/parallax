@@ -147,6 +147,7 @@ def _context() -> PulseCandidateContext:
         symbol="ABC",
         factor_snapshot={},
         selected_posts=[],
+        post_clusters=[],
         gate_result=None,
         edge_state=None,
         edge_events=(),

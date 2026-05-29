@@ -3695,24 +3695,115 @@ class EquityEventRepository:
         company_ids: Sequence[str] = (),
         company_event_ids: Sequence[str] = (),
         commit: bool = True,
-    ) -> None:
+    ) -> dict[str, int]:
         payloads = [_company_timeline_row_payload(row) for row in rows]
-        scoped_company_ids = [str(company_id) for company_id in company_ids]
-        scoped_company_event_ids = [str(company_event_id) for company_event_id in company_event_ids]
-        scoped_row_ids = [payload["row_id"] for payload in payloads]
+        scoped_company_ids = _unique_str_values(str(company_id) for company_id in company_ids)
+        scoped_company_event_ids = _unique_str_values(str(company_event_id) for company_event_id in company_event_ids)
+        scoped_row_ids = _unique_str_values(str(payload["row_id"]) for payload in payloads)
+        empty_counts = {
+            "inserted_count": 0,
+            "updated_count": 0,
+            "deleted_count": 0,
+            "unchanged_count": 0,
+        }
         if not scoped_company_ids and not scoped_company_event_ids and not scoped_row_ids:
             if commit:
                 self.conn.commit()
-            return
-        self.conn.execute(
-            """
-            DELETE FROM equity_company_timeline_rows
-             WHERE (company_id = ANY(%s::text[]) OR company_event_id = ANY(%s::text[]))
-               AND NOT (row_id = ANY(%s::text[]))
-            """,
-            (scoped_company_ids, scoped_company_event_ids, scoped_row_ids),
-        )
+            return empty_counts
+
+        existing_by_row_id: dict[str, dict[str, Any]] = {}
+        if scoped_row_ids:
+            rows_by_id = self.conn.execute(
+                """
+                SELECT row_id, company_id, company_event_id, payload_hash, projection_version
+                  FROM equity_company_timeline_rows
+                 WHERE row_id = ANY(%s::text[])
+                """,
+                (scoped_row_ids,),
+            ).fetchall()
+            existing_by_row_id.update({str(row["row_id"]): dict(row) for row in rows_by_id})
+
+        scoped_existing: dict[str, dict[str, Any]] = {}
+        if scoped_company_ids:
+            company_rows = self.conn.execute(
+                """
+                SELECT row_id, company_id, company_event_id, payload_hash, projection_version
+                  FROM equity_company_timeline_rows
+                 WHERE company_id = ANY(%s::text[])
+                """,
+                (scoped_company_ids,),
+            ).fetchall()
+            scoped_existing.update({str(row["row_id"]): dict(row) for row in company_rows})
+        if scoped_company_event_ids:
+            event_rows = self.conn.execute(
+                """
+                SELECT row_id, company_id, company_event_id, payload_hash, projection_version
+                  FROM equity_company_timeline_rows
+                 WHERE company_event_id = ANY(%s::text[])
+                """,
+                (scoped_company_event_ids,),
+            ).fetchall()
+            scoped_existing.update({str(row["row_id"]): dict(row) for row in event_rows})
+
+        stale_row_ids = {row_id for row_id in scoped_existing if row_id not in scoped_row_ids}
+        changed_payloads: list[dict[str, Any]] = []
+        inserted_count = 0
+        updated_count = 0
+        unchanged_count = 0
         for payload in payloads:
+            existing = existing_by_row_id.get(str(payload["row_id"]))
+            if existing is None:
+                inserted_count += 1
+                changed_payloads.append(payload)
+                continue
+            payload_changed = (
+                existing.get("payload_hash") != payload["payload_hash"]
+                or existing.get("projection_version") != payload["projection_version"]
+            )
+            if payload_changed:
+                updated_count += 1
+                changed_payloads.append(payload)
+                continue
+            unchanged_count += 1
+
+        if not stale_row_ids and not changed_payloads:
+            if commit:
+                self.conn.commit()
+            return {
+                "inserted_count": 0,
+                "updated_count": 0,
+                "deleted_count": 0,
+                "unchanged_count": unchanged_count,
+            }
+
+        stale_row_id_list = sorted(stale_row_ids)
+        deleted_row_ids: set[str] = set()
+        if scoped_company_ids and stale_row_ids:
+            deleted_rows = self.conn.execute(
+                """
+                DELETE FROM equity_company_timeline_rows
+                 WHERE company_id = ANY(%s::text[])
+                   AND row_id = ANY(%s::text[])
+                   AND NOT (row_id = ANY(%s::text[]))
+                RETURNING row_id
+                """,
+                (scoped_company_ids, stale_row_id_list, scoped_row_ids),
+            ).fetchall()
+            deleted_row_ids.update(str(row["row_id"]) for row in deleted_rows)
+        if scoped_company_event_ids and stale_row_ids:
+            deleted_rows = self.conn.execute(
+                """
+                DELETE FROM equity_company_timeline_rows
+                 WHERE company_event_id = ANY(%s::text[])
+                   AND row_id = ANY(%s::text[])
+                   AND NOT (row_id = ANY(%s::text[]))
+                RETURNING row_id
+                """,
+                (scoped_company_event_ids, stale_row_id_list, scoped_row_ids),
+            ).fetchall()
+            deleted_row_ids.update(str(row["row_id"]) for row in deleted_rows)
+
+        for payload in changed_payloads:
             self.conn.execute(
                 """
                 INSERT INTO equity_company_timeline_rows (
@@ -3753,12 +3844,17 @@ class EquityEventRepository:
                   )
                 WHERE equity_company_timeline_rows.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
                    OR equity_company_timeline_rows.projection_version IS DISTINCT FROM EXCLUDED.projection_version
-                   OR equity_company_timeline_rows.source_watermark_ms < EXCLUDED.source_watermark_ms
                 """,
                 payload,
             )
         if commit:
             self.conn.commit()
+        return {
+            "inserted_count": inserted_count,
+            "updated_count": updated_count,
+            "deleted_count": len(deleted_row_ids),
+            "unchanged_count": unchanged_count,
+        }
 
     def _list_event_facts(self, company_event_id: str) -> list[dict[str, Any]]:
         rows = self.conn.execute(

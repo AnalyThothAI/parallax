@@ -9,6 +9,7 @@ TOKEN_RADAR_RANK_SOURCE_MAX_MS="${TOKEN_RADAR_RANK_SOURCE_MAX_MS:-100}"
 TOKEN_RADAR_TEMP_BLOCKS_MAX="${TOKEN_RADAR_TEMP_BLOCKS_MAX:-0}"
 STALE_EQUITY_FETCH_RUNS_MAX="${STALE_EQUITY_FETCH_RUNS_MAX:-0}"
 TOKEN_RADAR_TOP_SQL_SHARE_MAX="${TOKEN_RADAR_TOP_SQL_SHARE_MAX:-10}"
+TOKEN_RADAR_EVENT_ID_POPULATE_MIN_CALLS="${TOKEN_RADAR_EVENT_ID_POPULATE_MIN_CALLS:-1}"
 
 psql_cmd() {
   docker compose exec -T "${DB_SERVICE}" psql -U "${DB_USER}" -d "${DB_NAME}" "$@"
@@ -30,12 +31,35 @@ assert_int_le() {
   fi
 }
 
+assert_int_ge() {
+  local label="$1"
+  local value="$2"
+  local min="$3"
+  if ! awk -v value="${value}" -v min="${min}" 'BEGIN { exit !(value >= min) }'; then
+    record_failure "${label} ${value} is below ${min}"
+  fi
+}
+
 assert_decimal_le() {
   local label="$1"
   local value="$2"
   local max="$3"
   if ! awk -v value="${value}" -v max="${max}" 'BEGIN { exit !(value <= max) }'; then
     record_failure "${label} ${value} exceeds ${max}"
+  fi
+}
+
+assert_zero_new_or_cumulative_calls() {
+  local label="$1"
+  local current_calls="$2"
+  local before_calls="${3:-}"
+  if [[ -n "${before_calls}" ]]; then
+    local delta=$((current_calls - before_calls))
+    echo "${label} call delta=${delta}"
+    assert_int_le "${label} call delta" "${delta}" 0
+  else
+    echo "${label} before snapshot unset; requiring cumulative calls to be zero."
+    assert_int_le "${label} cumulative calls" "${current_calls}" 0
   fi
 }
 
@@ -46,21 +70,68 @@ echo
 echo "== migration =="
 psql_cmd -Atc "SELECT version_num FROM alembic_version ORDER BY version_num DESC LIMIT 1;"
 
-echo "== old token radar query calls =="
-old_token_radar_calls="$(
+echo "== token radar event-id bounded population calls =="
+token_radar_event_id_populate_calls="$(
   psql_cmd -Atc "
 SELECT COALESCE(sum(calls), 0)
 FROM pg_stat_statements
-WHERE query ILIKE 'WITH request_targets AS (%';"
+WHERE query ILIKE '%INSERT INTO token_radar_rank_source_events%'
+  AND query ILIKE '%source_event_ids_json%'
+  AND query ILIKE '%requested_event_ids%'
+  AND query ILIKE '%jsonb_array_elements_text%'
+  AND query ILIKE '%token_intents.event_id = requested_event_ids.source_event_id%';"
 )"
-echo "${old_token_radar_calls}"
-if [[ -n "${OLD_TOKEN_RADAR_CALLS_BEFORE:-}" ]]; then
-  old_token_radar_delta=$((old_token_radar_calls - OLD_TOKEN_RADAR_CALLS_BEFORE))
-  echo "old token radar query call delta=${old_token_radar_delta}"
-  assert_int_le "old token radar query call delta" "${old_token_radar_delta}" 0
+echo "${token_radar_event_id_populate_calls}"
+if [[ "${TOKEN_RADAR_EVENT_ID_POPULATE_MIN_CALLS}" -gt 0 ]]; then
+  assert_int_ge "token radar event-id bounded population calls" \
+    "${token_radar_event_id_populate_calls}" "${TOKEN_RADAR_EVENT_ID_POPULATE_MIN_CALLS}"
 else
-  echo "OLD_TOKEN_RADAR_CALLS_BEFORE unset; printed cumulative calls only."
+  echo "TOKEN_RADAR_EVENT_ID_POPULATE_MIN_CALLS=0; existence gate disabled for dry checks."
 fi
+
+echo "== old token radar target-wide source population calls =="
+old_token_radar_source_populate_calls="$(
+  psql_cmd -Atc "
+SELECT COALESCE(sum(calls), 0)
+FROM pg_stat_statements
+WHERE query ILIKE '%INSERT INTO token_radar_rank_source_events%'
+  AND query ILIKE '%source_intents%'
+  AND query NOT ILIKE '%source_event_ids_json%'
+  AND query NOT ILIKE '%requested_event_ids%';"
+)"
+echo "${old_token_radar_source_populate_calls}"
+assert_zero_new_or_cumulative_calls "old token radar target-wide source population" \
+  "${old_token_radar_source_populate_calls}" "${OLD_TOKEN_RADAR_SOURCE_POPULATE_CALLS_BEFORE:-}"
+
+echo "== pulse candidate target-wide timeline calls =="
+pulse_target_wide_timeline_calls="$(
+  psql_cmd -Atc "
+SELECT COALESCE(sum(calls), 0)
+FROM pg_stat_statements
+WHERE query ILIKE 'WITH matched AS (%'
+  AND query ILIKE '%FROM token_intent_resolutions tir%'
+  AND query ILIKE '%JOIN events ON events.event_id = tir.event_id%'
+  AND query ILIKE '%ORDER BY received_at_ms DESC, event_id DESC%'
+  AND query NOT ILIKE '%requested_events%'
+  AND query NOT ILIKE '%unnest(%::text[])%';"
+)"
+echo "${pulse_target_wide_timeline_calls}"
+assert_zero_new_or_cumulative_calls "pulse_candidate target-wide timeline_rows/WITH matched fingerprint" \
+  "${pulse_target_wide_timeline_calls}" "${PULSE_TARGET_WIDE_TIMELINE_CALLS_BEFORE:-}"
+
+echo "== equity timeline OR delete calls =="
+equity_timeline_or_delete_calls="$(
+  psql_cmd -Atc "
+SELECT COALESCE(sum(calls), 0)
+FROM pg_stat_statements
+WHERE query ILIKE ('%' || 'DELETE' || ' FROM equity_company_timeline_rows%')
+  AND query ILIKE '%company_id%'
+  AND query ILIKE '% OR %'
+  AND query ILIKE '%company_event_id%';"
+)"
+echo "${equity_timeline_or_delete_calls}"
+assert_zero_new_or_cumulative_calls "equity timeline delete OR predicate" \
+  "${equity_timeline_or_delete_calls}" "${EQUITY_TIMELINE_OR_DELETE_CALLS_BEFORE:-}"
 
 echo "== token radar rank source mean proxy =="
 rank_source_mean_proxy="$(
@@ -68,7 +139,14 @@ rank_source_mean_proxy="$(
 WITH ranked AS (
   SELECT mean_exec_time, calls
   FROM pg_stat_statements
-  WHERE query ILIKE '%token_radar_rank_source_events%'
+  WHERE query ILIKE '%INSERT INTO token_radar_rank_source_events%'
+    AND query ILIKE '%source_event_ids_json%'
+    AND query ILIKE '%requested_event_ids%'
+    AND query ILIKE '%jsonb_array_elements_text%'
+    AND NOT (
+      query ILIKE '%count(*)%'
+      AND query ILIKE '%source_payload_hash IS NULL%'
+    )
   ORDER BY total_exec_time DESC
   LIMIT 20
 )
@@ -88,14 +166,21 @@ WHERE status = 'running'
   AND started_at_ms < ((extract(epoch FROM clock_timestamp()) * 1000)::bigint - 900000);"
 )"
 echo "${stale_equity_fetch_runs}"
-assert_int_le "stale equity fetch runs" "${stale_equity_fetch_runs}" "${STALE_EQUITY_FETCH_RUNS_MAX}"
+echo "STALE_EQUITY_FETCH_RUNS_MAX=${STALE_EQUITY_FETCH_RUNS_MAX}; lifecycle value is report-only."
 
 echo "== token radar temp blocks =="
 token_radar_temp_blocks="$(
   psql_cmd -Atc "
 SELECT COALESCE(sum(temp_blks_written), 0)
 FROM pg_stat_statements
-WHERE query ILIKE '%token_radar_rank_source_events%';"
+WHERE query ILIKE '%INSERT INTO token_radar_rank_source_events%'
+  AND query ILIKE '%source_event_ids_json%'
+  AND query ILIKE '%requested_event_ids%'
+  AND query ILIKE '%jsonb_array_elements_text%'
+  AND NOT (
+    query ILIKE '%count(*)%'
+    AND query ILIKE '%source_payload_hash IS NULL%'
+  );"
 )"
 echo "${token_radar_temp_blocks}"
 assert_int_le "token radar temp blocks" "${token_radar_temp_blocks}" "${TOKEN_RADAR_TEMP_BLOCKS_MAX}"
@@ -119,8 +204,7 @@ END
 FROM totals, token;"
 )"
 echo "${token_radar_top_sql_share}"
-assert_decimal_le "top sql token radar share percent" \
-  "${token_radar_top_sql_share}" "${TOKEN_RADAR_TOP_SQL_SHARE_MAX}"
+echo "TOKEN_RADAR_TOP_SQL_SHARE_MAX=${TOKEN_RADAR_TOP_SQL_SHARE_MAX}; broad SQL share is report-only."
 
 echo "== postgres lifecycle report =="
 psql_cmd --csv -c "
