@@ -1180,6 +1180,137 @@ def test_news_high_signal_semantic_dedup_ignores_projection_and_summary_churn():
     assert candidates[0].payload["semantic_signature"] == candidates[1].payload["semantic_signature"]
 
 
+def test_news_high_signal_semantic_dedup_uses_top_level_story_id_when_story_payload_is_empty():
+    base_row = {
+        "news_item_id": "news-1",
+        "story_id": "story-1",
+        "latest_at_ms": NOW_MS - 5_000,
+        "agent_brief_computed_at_ms": NOW_MS - 1_000,
+        "headline": "Major listing catalyst",
+        "source_domain": "example.test",
+        "canonical_url": "https://example.test/news-1",
+        "duplicate_count": 1,
+        "story": {},
+        "signal": {
+            "direction": "bullish",
+            "alert_eligibility": {
+                "eligible": True,
+                "provider_score": 90,
+                "decision_class": "driver",
+            },
+        },
+        "token_impacts": [{"symbol": "BOV", "score": 90}],
+        "agent_brief": {
+            "status": "ready",
+            "direction": "bullish",
+            "decision_class": "driver",
+            "summary_zh": "第一版中文摘要。",
+            "brief_json": {
+                "summary_zh": "第一版中文摘要。",
+                "watch_triggers": ["成交量确认"],
+                "affected_assets": [{"symbol": "BOV"}],
+            },
+        },
+    }
+    revised_row = {
+        **base_row,
+        "news_item_id": "news-2",
+        "canonical_url": "https://example.test/news-2",
+        "agent_brief": {
+            **base_row["agent_brief"],
+            "summary_zh": "第二版中文摘要。",
+            "brief_json": {
+                **base_row["agent_brief"]["brief_json"],
+                "summary_zh": "第二版中文摘要。",
+            },
+        },
+    }
+
+    candidates = [
+        item for item in engine(news=FakeNews([base_row, revised_row])).evaluate(now_ms=NOW_MS)
+        if item.rule_id == "news_high_signal"
+    ]
+
+    assert len(candidates) == 2
+    assert candidates[0].dedup_key == candidates[1].dedup_key
+    assert candidates[0].payload["semantic_signature"] == candidates[1].payload["semantic_signature"]
+
+
+def test_news_high_signal_external_push_signature_uses_asset_cooldown_not_item_identity():
+    base_row = {
+        "news_item_id": "news-1",
+        "story_id": "story-1",
+        "latest_at_ms": NOW_MS - 5_000,
+        "agent_brief_computed_at_ms": NOW_MS - 1_000,
+        "headline": "Iran disruption lifts oil risk",
+        "source_domain": "example.test",
+        "canonical_url": "https://example.test/news-1",
+        "duplicate_count": 1,
+        "signal": {
+            "direction": "bullish",
+            "alert_eligibility": {
+                "eligible": True,
+                "provider_score": 90,
+                "decision_class": "driver",
+            },
+        },
+        "token_impacts": [{"symbol": "CL", "score": 90}, {"symbol": "BTC", "score": 25}],
+        "agent_brief": {
+            "status": "ready",
+            "direction": "bullish",
+            "decision_class": "driver",
+            "summary_zh": "第一条同主题新闻。",
+            "brief_json": {
+                "summary_zh": "第一条同主题新闻。",
+                "watch_triggers": ["原油冲击"],
+                "affected_assets": [{"symbol": "CL"}],
+            },
+        },
+    }
+    same_topic_row = {
+        **base_row,
+        "news_item_id": "news-2",
+        "story_id": "story-2",
+        "headline": "Hormuz risk sends crude higher",
+        "canonical_url": "https://example.test/news-2",
+        "agent_brief": {
+            **base_row["agent_brief"],
+            "summary_zh": "第二条同主题新闻。",
+            "brief_json": {
+                "summary_zh": "第二条同主题新闻。",
+                "watch_triggers": ["航运风险"],
+                "affected_assets": [{"symbol": "CL"}],
+            },
+        },
+    }
+    notifications = NotificationsConfig(
+        rules={
+            "news_high_signal": {
+                "enabled": True,
+                "channels": ["in_app", "pushdeer"],
+                "combined_score_min": 85,
+                "external_score_min": 85,
+                "cooldown_seconds": 3600,
+            }
+        }
+    )
+
+    candidates = [
+        item
+        for item in engine(news=FakeNews([base_row, same_topic_row]), notifications=notifications).evaluate(
+            now_ms=NOW_MS
+        )
+        if item.rule_id == "news_high_signal"
+    ]
+
+    assert len(candidates) == 2
+    assert candidates[0].payload["semantic_signature"] != candidates[1].payload["semantic_signature"]
+    assert candidates[0].payload["external_push_signature"] == candidates[1].payload["external_push_signature"]
+    assert candidates[0].channels == ("in_app", "pushdeer")
+    assert candidates[1].channels == ("in_app",)
+    assert candidates[1].payload["external_push_suppression_reason"] == "external_signature_duplicate"
+
+
 def _only_pulse_notification(row: dict, *, notifications: NotificationsConfig | None = None):
     candidates = engine(pulse=FakePulse([row]), notifications=notifications).evaluate(now_ms=NOW_MS)
     pulse_candidates = [item for item in candidates if item.rule_id == "signal_pulse_candidate"]

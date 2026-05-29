@@ -910,8 +910,7 @@ def _news_agent_summary(agent_brief: dict[str, Any]) -> str:
 
 def _news_semantic_signature(row: dict[str, Any], *, agent_brief: dict[str, Any]) -> str:
     brief_json = _dict(agent_brief.get("brief_json"))
-    story = _dict(row.get("story"))
-    story_id = str(story.get("story_id") or "").strip()
+    story_id = _news_story_id(row)
     semantic_item_key = f"story:{story_id}" if story_id else f"news_item:{row.get('news_item_id')}"
     return _stable_hash(
         {
@@ -931,15 +930,58 @@ def _news_external_push_signature(
     occurrence_at_ms: int,
     cooldown_seconds: int,
 ) -> str:
+    signal = _dict(row.get("signal"))
+    agent_brief = _dict(row.get("agent_brief"))
     return _stable_hash(
         {
-            "news_item_id": row.get("news_item_id"),
-            "canonical_url": row.get("canonical_url"),
+            "asset_bucket": _news_external_asset_bucket(row),
+            "direction": agent_brief.get("direction") or signal.get("direction"),
             "provider_score_band": provider_score // 5,
             "cooldown_bucket": _cooldown_bucket(occurrence_at_ms, cooldown_seconds),
-            "primary_symbol": _news_primary_symbol(row),
         }
     )
+
+
+def _news_story_id(row: dict[str, Any]) -> str:
+    story = _dict(row.get("story"))
+    return str(row.get("story_id") or story.get("story_id") or "").strip()
+
+
+def _news_external_asset_bucket(row: dict[str, Any]) -> str:
+    symbols: list[str] = []
+    brief_json = _dict(_dict(row.get("agent_brief")).get("brief_json"))
+    for symbol in _news_affected_asset_symbols(brief_json.get("affected_assets")):
+        normalized = _news_external_asset_symbol(symbol)
+        if normalized and normalized not in symbols:
+            symbols.append(normalized)
+    for impact in _list(row.get("token_impacts")):
+        if not isinstance(impact, dict):
+            continue
+        score = _int(impact.get("score") or impact.get("provider_score"))
+        if score and score < 70:
+            continue
+        normalized = _news_external_asset_symbol(impact.get("symbol") or impact.get("target_symbol"))
+        if normalized and normalized not in symbols:
+            symbols.append(normalized)
+    if not symbols:
+        primary = _news_external_asset_symbol(_news_primary_symbol(row))
+        if primary:
+            symbols.append(primary)
+    if "CL" in symbols:
+        return "CL"
+    if symbols:
+        return "|".join(symbols[:3])
+    story_id = _news_story_id(row)
+    return f"story:{story_id}" if story_id else str(row.get("news_item_id") or "unknown")
+
+
+def _news_external_asset_symbol(value: Any) -> str | None:
+    symbol = _symbol(value)
+    if not symbol:
+        return None
+    if symbol.startswith("XYZ-"):
+        symbol = symbol[4:]
+    return symbol or None
 
 
 def _news_primary_symbol(row: dict[str, Any]) -> str | None:

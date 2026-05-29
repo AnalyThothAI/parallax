@@ -1547,6 +1547,7 @@ class NewsRepository:
             SELECT
               row_id,
               news_item_id,
+              story_id,
               latest_at_ms,
               headline,
               summary,
