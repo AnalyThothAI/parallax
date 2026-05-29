@@ -474,20 +474,24 @@ agent_runtime:
       model: deepseek-v4-flash
 ```
 
-Repository defaults pin Signal Pulse research lanes to the free Qwen route and
-reserve DeepSeek for the public final judge:
+Repository defaults keep lane controls separate from the model choice: all
+agent lanes inherit `agent_runtime.defaults.model` unless an operator
+intentionally overrides a lane. The production default is DeepSeek:
 
 ```yaml
 agent_runtime:
+  defaults:
+    model: deepseek-v4-flash
+    provider_family: deepseek
   lanes:
     pulse.pipeline:
-      model: qwen3.6
+      priority: high
     pulse.signal_analyst:
-      model: qwen3.6
+      priority: high
     pulse.bear_case:
-      model: qwen3.6
+      priority: high
     pulse.risk_portfolio_judge:
-      model: deepseek-v4-flash
+      priority: high
 ```
 
 - `pulse_candidate` reserves `pulse.pipeline` before `pulse_agent_jobs`

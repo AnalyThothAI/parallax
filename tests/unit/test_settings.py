@@ -74,10 +74,10 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.llm_configured is False
     assert settings.llm_timeout_seconds == 120
     assert settings.llm_timeout_seconds * 1000 < RUNNING_TIMEOUT_MS
-    assert settings.agent_runtime_default_model == "qwen3.6"
-    assert settings.agent_runtime_model_for_lane("pulse.pipeline") == "qwen3.6"
-    assert settings.agent_runtime_model_for_lane("pulse.signal_analyst") == "qwen3.6"
-    assert settings.agent_runtime_model_for_lane("pulse.bear_case") == "qwen3.6"
+    assert settings.agent_runtime_default_model == "deepseek-v4-flash"
+    assert settings.agent_runtime_model_for_lane("pulse.pipeline") == "deepseek-v4-flash"
+    assert settings.agent_runtime_model_for_lane("pulse.signal_analyst") == "deepseek-v4-flash"
+    assert settings.agent_runtime_model_for_lane("pulse.bear_case") == "deepseek-v4-flash"
     assert settings.agent_runtime_model_for_lane("pulse.risk_portfolio_judge") == "deepseek-v4-flash"
     assert settings.pulse_agent_configured is False
     assert settings.watchlist_handle_summary_configured is False
@@ -469,9 +469,9 @@ def test_postgres_storage_and_llm_enrichment_can_be_explicitly_configured(tmp_pa
     assert settings.workers.pulse_candidate.interval_seconds == 1
     assert settings.workers.pulse_candidate.batch_size == 100
     assert settings.workers.pulse_candidate.max_attempts == 1
-    assert settings.agent_runtime_model_for_lane("pulse.signal_analyst") == "qwen3.6"
-    assert settings.agent_runtime_model_for_lane("pulse.bear_case") == "qwen3.6"
-    assert settings.agent_runtime_model_for_lane("pulse.risk_portfolio_judge") == "deepseek-v4-flash"
+    assert settings.agent_runtime_model_for_lane("pulse.signal_analyst") == "gpt-test"
+    assert settings.agent_runtime_model_for_lane("pulse.bear_case") == "gpt-test"
+    assert settings.agent_runtime_model_for_lane("pulse.risk_portfolio_judge") == "gpt-test"
     assert settings.pulse_agent_configured is True
     assert settings.workers.pulse_candidate.trigger_thresholds.min_rank_score == 60
     assert settings.workers.pulse_candidate.gate_thresholds.trade_candidate_min == 70
@@ -514,8 +514,8 @@ def test_agent_runtime_lane_model_can_override_default_model(tmp_path, monkeypat
 
     assert settings.agent_runtime_default_model == "gpt-base"
     assert settings.agent_runtime_model_for_lane("pulse.signal_analyst") == "gpt-pulse"
-    assert settings.agent_runtime_model_for_lane("pulse.bear_case") == "qwen3.6"
-    assert settings.agent_runtime_model_for_lane("pulse.risk_portfolio_judge") == "deepseek-v4-flash"
+    assert settings.agent_runtime_model_for_lane("pulse.bear_case") == "gpt-base"
+    assert settings.agent_runtime_model_for_lane("pulse.risk_portfolio_judge") == "gpt-base"
     assert settings.agent_runtime_model_for_lane("news.item_brief") == "gpt-news"
     assert settings.pulse_agent_configured is True
     assert settings.news_item_brief_configured is True
