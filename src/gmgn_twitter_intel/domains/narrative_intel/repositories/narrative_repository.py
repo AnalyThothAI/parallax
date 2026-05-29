@@ -207,6 +207,7 @@ class NarrativeRepository:
                 projection_version,
                 "window",
                 scope,
+                venue,
                 current_generation_id,
                 current_published_at_ms,
                 current_row_count
@@ -214,6 +215,7 @@ class NarrativeRepository:
               WHERE projection_version = %s
                 AND "window" = %s
                 AND scope = %s
+                AND venue = 'all'
                 AND latest_attempt_status = 'ready'
                 AND current_published_at_ms IS NOT NULL
                 AND current_generation_id IS NOT NULL
@@ -235,6 +237,7 @@ class NarrativeRepository:
               ON token_radar_current_rows.projection_version = latest.projection_version
              AND token_radar_current_rows."window" = latest."window"
              AND token_radar_current_rows.scope = latest.scope
+             AND token_radar_current_rows.venue = latest.venue
              AND token_radar_current_rows.generation_id = latest.current_generation_id
              AND token_radar_current_rows.target_type = %s
              AND token_radar_current_rows.target_id = %s

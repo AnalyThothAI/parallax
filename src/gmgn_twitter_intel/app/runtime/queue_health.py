@@ -110,6 +110,9 @@ QUEUE_HEALTH_ADAPTER_SPECS: dict[str, QueueHealthAdapterSpec] = {
     "token_profile_current_dirty_targets": QueueHealthAdapterSpec(
         table="token_profile_current_dirty_targets", kind="dirty_target"
     ),
+    "token_radar_source_dirty_events": QueueHealthAdapterSpec(
+        table="token_radar_source_dirty_events", kind="dirty_target"
+    ),
     "token_radar_dirty_targets": QueueHealthAdapterSpec(table="token_radar_dirty_targets", kind="dirty_target"),
     "watchlist_handle_summary_jobs": QueueHealthAdapterSpec(
         table="watchlist_handle_summary_jobs",

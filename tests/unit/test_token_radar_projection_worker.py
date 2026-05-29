@@ -17,8 +17,15 @@ class FakeTokenRadar:
         self.publication_state = publication_state
         self.publication_failures: list[dict[str, object]] = []
 
-    def latest_publication_state(self, *, projection_version, windows, scopes):
-        return dict(self.publication_state)
+    def latest_publication_state(self, *, projection_version, windows, scopes, venues):
+        normalized: dict[tuple[str, str, str], dict[str, object]] = {}
+        for key, value in self.publication_state.items():
+            if len(key) == 2:
+                window, scope = key
+                normalized[(window, scope, "all")] = value
+            else:
+                normalized[key] = value
+        return normalized
 
     def mark_publication_failed(self, **kwargs):
         self.publication_failures.append(kwargs)
@@ -28,6 +35,7 @@ class FakeRepos:
     def __init__(self, publication_state):
         self.token_radar = FakeTokenRadar(publication_state)
         self.token_radar_dirty_targets = FakeDirtyTargets()
+        self.token_radar_source_dirty_events = FakeSourceDirtyEvents()
 
 
 class FakeDirtyTargets:
@@ -50,6 +58,15 @@ class FakeDirtyTargets:
     def enqueue_recent_resolved_targets(self, **kwargs):
         self.catch_up_calls.append(kwargs)
         raise AssertionError("token radar runtime worker must not run recent resolved catch-up")
+
+
+class FakeSourceDirtyEvents:
+    def __init__(self):
+        self.claim_due_calls: list[dict[str, object]] = []
+
+    def claim_due(self, **kwargs):
+        self.claim_due_calls.append(kwargs)
+        return []
 
 
 class FakeSession:
@@ -138,17 +155,18 @@ def test_projection_worker_calls_dirty_incremental_projection_not_window_rebuild
             "limit": 7,
             "rank_limit": 7,
             "lease_owner": "token_radar_projection",
-            "claimed_targets": (
-                {
-                    "target_type_key": "Asset",
-                    "identity_id": "asset-1",
-                    "payload_hash": "claim-hash",
+                "claimed_targets": (
+                    {
+                        "target_type_key": "Asset",
+                        "identity_id": "asset-1",
+                        "payload_hash": "claim-hash",
                     "lease_owner": "token_radar_projection",
-                    "attempt_count": 1,
-                },
-            ),
-        }
-    ]
+                        "attempt_count": 1,
+                    },
+                ),
+                "claimed_source_events": (),
+            }
+        ]
     assert result["rows_written"] == 2
     assert result["windows"]["5m:all"]["status"] == "ready"
     assert wake_bus.token_radar_notifications == [{"window": "5m", "scope": "all"}]
@@ -606,12 +624,12 @@ def test_projection_worker_does_not_treat_ready_empty_publication_state_as_missi
     )
 
     missing = worker._missing_work_items(
-        {
-            ("5m", "all"): {"latest_attempt_status": "ready", "current_row_count": 0},
-            ("5m", "matched"): {"latest_attempt_status": "ready", "current_row_count": 0},
-            ("1h", "all"): {"latest_attempt_status": "ready", "current_row_count": 0},
-            ("1h", "matched"): {"latest_attempt_status": "ready", "current_row_count": 0},
-        },
+            {
+                ("5m", "all", "all"): {"latest_attempt_status": "ready", "current_row_count": 0},
+                ("5m", "matched", "all"): {"latest_attempt_status": "ready", "current_row_count": 0},
+                ("1h", "all", "all"): {"latest_attempt_status": "ready", "current_row_count": 0},
+                ("1h", "matched", "all"): {"latest_attempt_status": "ready", "current_row_count": 0},
+            },
         computed_at_ms=1_777_800_000_000,
     )
 
@@ -633,10 +651,10 @@ def test_projection_worker_missing_work_items_excludes_cold_failed_before_backgr
     )
 
     missing = worker._missing_work_items(
-        {
-            ("5m", "all"): {"latest_attempt_status": "ready", "current_published_at_ms": 1_000},
-            ("24h", "all"): {"latest_attempt_status": "failed", "current_published_at_ms": 1_000},
-        },
+            {
+                ("5m", "all", "all"): {"latest_attempt_status": "ready", "current_published_at_ms": 1_000},
+                ("24h", "all", "all"): {"latest_attempt_status": "failed", "current_published_at_ms": 1_000},
+            },
         computed_at_ms=30_000,
     )
 
@@ -658,10 +676,10 @@ def test_projection_worker_missing_work_items_excludes_cold_failed_even_after_in
     )
 
     missing = worker._missing_work_items(
-        {
-            ("5m", "all"): {"latest_attempt_status": "ready", "current_published_at_ms": 1_000},
-            ("24h", "all"): {"latest_attempt_status": "failed", "current_published_at_ms": 1_000},
-        },
+            {
+                ("5m", "all", "all"): {"latest_attempt_status": "ready", "current_published_at_ms": 1_000},
+                ("24h", "all", "all"): {"latest_attempt_status": "failed", "current_published_at_ms": 1_000},
+            },
         computed_at_ms=62_000,
     )
 
@@ -804,6 +822,7 @@ def _settings(**overrides):
         "wakes_on": ("market_tick_current_updated", "resolution_updated"),
         "windows": ("5m", "1h", "4h", "24h"),
         "scopes": ("all", "matched"),
+        "venues": ("all",),
         "hot_windows": ("5m",),
         "cold_interval_seconds": 60.0,
     }

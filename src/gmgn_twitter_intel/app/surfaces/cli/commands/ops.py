@@ -56,6 +56,7 @@ from gmgn_twitter_intel.domains.narrative_intel.runtime.token_discussion_digest_
 )
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
+    TOKEN_RADAR_DEFAULT_VENUE,
     TOKEN_RADAR_FACTOR_FAMILIES,
     TOKEN_RADAR_PROJECTION_VERSION,
     TOKEN_RADAR_RESOLVER_POLICY_VERSION,
@@ -210,6 +211,7 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
             rows = repos.token_radar.latest_current_rows(
                 window=args.window,
                 scope=args.scope,
+                venue=TOKEN_RADAR_DEFAULT_VENUE,
                 limit=args.limit,
                 projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             )
@@ -534,7 +536,6 @@ def _enqueue_token_radar_dirty_targets(
 ) -> dict[str, Any]:
     parsed_since_ms = max(0, int(since_ms))
     parsed_limit = max(0, int(limit))
-    repository = repos.token_radar_dirty_targets
     data: dict[str, Any] = {
         "source": str(source),
         "since_ms": parsed_since_ms,
@@ -543,32 +544,27 @@ def _enqueue_token_radar_dirty_targets(
         "execute": bool(execute),
     }
     if source == "events":
-        candidates = repository.count_recent_resolved_target_candidates(
+        repository = repos.token_radar_source_dirty_events
+        candidates = repository.count_recent_resolved_event_candidates(
             since_ms=parsed_since_ms,
             now_ms=now_ms,
             limit=parsed_limit,
         )
         data["candidates"] = int(candidates)
         if dry_run:
-            data["would_enqueue"] = int(
-                repository.count_recent_resolved_target_enqueue_candidates(
-                    since_ms=parsed_since_ms,
-                    now_ms=now_ms,
-                    limit=parsed_limit,
-                )
-            )
+            data["would_enqueue"] = int(candidates)
             return data
+        rows = repository.list_recent_resolved_events(
+            since_ms=parsed_since_ms,
+            now_ms=now_ms,
+            limit=parsed_limit,
+        )
         data["enqueued"] = int(
-            repository.enqueue_recent_resolved_targets(
-                since_ms=parsed_since_ms,
-                now_ms=now_ms,
-                limit=parsed_limit,
-                reason="ops_events_repair",
-                commit=True,
-            )
+            repository.enqueue_events(rows, reason="ops_events_repair", now_ms=now_ms, commit=True)
         )
         return data
     if source == "market-current":
+        repository = repos.token_radar_dirty_targets
         candidates = repository.count_market_current_target_candidates(
             since_ms=parsed_since_ms,
             now_ms=now_ms,
@@ -1196,6 +1192,7 @@ def _audit_token_radar(repos: object, *, window: str, scope: str, limit: int, no
     rows = repos.token_radar.latest_current_rows(
         window=window,
         scope=scope,
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         limit=limit,
         projection_version=TOKEN_RADAR_PROJECTION_VERSION,
     )

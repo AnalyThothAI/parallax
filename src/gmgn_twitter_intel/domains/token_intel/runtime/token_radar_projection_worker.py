@@ -8,7 +8,11 @@ from loguru import logger
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
-from gmgn_twitter_intel.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION
+from gmgn_twitter_intel.domains.token_intel._constants import (
+    TOKEN_RADAR_DEFAULT_VENUE,
+    TOKEN_RADAR_PROJECTION_VERSION,
+    TOKEN_RADAR_VENUES,
+)
 
 DEFAULT_WINDOWS = ("5m", "1h", "4h", "24h")
 DEFAULT_SCOPES = ("all", "matched")
@@ -43,6 +47,7 @@ class TokenRadarProjectionWorker(WorkerBase):
         )
         self.windows = tuple(getattr(settings, "windows", DEFAULT_WINDOWS) or DEFAULT_WINDOWS)
         self.scopes = tuple(getattr(settings, "scopes", DEFAULT_SCOPES) or DEFAULT_SCOPES)
+        self.venues = tuple(getattr(settings, "venues", TOKEN_RADAR_VENUES) or TOKEN_RADAR_VENUES)
         hot_windows = tuple(getattr(settings, "hot_windows", DEFAULT_HOT_WINDOWS) or DEFAULT_HOT_WINDOWS)
         self.hot_windows = tuple(window for window in hot_windows if window in self.windows)
         self.limit = max(1, int(getattr(settings, "batch_size", 100) or 100))
@@ -86,6 +91,7 @@ class TokenRadarProjectionWorker(WorkerBase):
         self.last_error = None
         original_windows = self.windows
         original_scopes = self.scopes
+        original_venues = self.venues
         original_hot_windows = self.hot_windows
         original_limit = self.limit
         if windows is not None:
@@ -100,6 +106,7 @@ class TokenRadarProjectionWorker(WorkerBase):
         finally:
             self.windows = original_windows
             self.scopes = original_scopes
+            self.venues = original_venues
             self.hot_windows = original_hot_windows
             self.limit = original_limit
 
@@ -112,10 +119,11 @@ class TokenRadarProjectionWorker(WorkerBase):
                         repos,
                         windows=self.windows,
                         scopes=self.scopes,
+                        venues=self.venues,
                     ),
                     computed_at_ms=computed_at_ms,
                 )[0]
-                claims = (
+                target_claims = (
                     repos.token_radar_dirty_targets.claim_due(
                         limit=self.limit,
                         lease_ms=_dirty_target_lease_ms(),
@@ -126,21 +134,42 @@ class TokenRadarProjectionWorker(WorkerBase):
                     if work_items
                     else []
                 )
-            runtime_context.mark_claimed(count=len(claims))
+                source_dirty_repo = getattr(repos, "token_radar_source_dirty_events", None)
+                source_claims = (
+                    source_dirty_repo.claim_due(
+                        limit=self.limit,
+                        lease_ms=_dirty_target_lease_ms(),
+                        now_ms=computed_at_ms,
+                        lease_owner=self.name,
+                        commit=True,
+                    )
+                    if work_items and source_dirty_repo is not None
+                    else []
+                )
+            runtime_context.mark_claimed(count=len(target_claims) + len(source_claims))
             if work_items:
-                session = runtime_context.payload_session() if claims else runtime_context.persist_session()
+                session = (
+                    runtime_context.payload_session()
+                    if target_claims or source_claims
+                    else runtime_context.persist_session()
+                )
                 with session as repos:
                     projection = _projection_class()(repos=repos)
-                    result = projection.rebuild_dirty_targets(
-                        windows=tuple(dict.fromkeys(window for window, _scope in work_items)),
-                        scopes=tuple(dict.fromkeys(scope for _window, scope in work_items)),
-                        work_items=tuple(work_items),
-                        now_ms=computed_at_ms,
-                        limit=self.limit,
-                        rank_limit=self.limit,
-                        lease_owner=self.name,
-                        claimed_targets=tuple(dict(claim) for claim in claims),
-                    )
+                    rebuild_kwargs: dict[str, Any] = {
+                        "windows": tuple(dict.fromkeys(window for window, _scope, _venue in work_items)),
+                        "scopes": tuple(dict.fromkeys(scope for _window, scope, _venue in work_items)),
+                        "work_items": _service_work_items(work_items),
+                        "now_ms": computed_at_ms,
+                        "limit": self.limit,
+                        "rank_limit": self.limit,
+                        "lease_owner": self.name,
+                        "claimed_targets": tuple(dict(claim) for claim in target_claims),
+                        "claimed_source_events": tuple(dict(claim) for claim in source_claims),
+                    }
+                    venues = tuple(dict.fromkeys(venue for _window, _scope, venue in work_items))
+                    if venues != (TOKEN_RADAR_DEFAULT_VENUE,):
+                        rebuild_kwargs["venues"] = venues
+                    result = projection.rebuild_dirty_targets(**rebuild_kwargs)
             else:
                 result = _idle_result(computed_at_ms=computed_at_ms)
         except Exception as exc:
@@ -165,7 +194,8 @@ class TokenRadarProjectionWorker(WorkerBase):
         for key, window_result in result["windows"].items():
             if str(window_result.get("status") or "") != "ready" or self.wake_bus is None:
                 continue
-            window, scope = str(key).split(":", 1)
+            parts = str(key).split(":", 2)
+            window, scope = parts[0], parts[1]
             self.wake_bus.notify_token_radar_updated(window=window, scope=scope)
         return result
 
@@ -178,14 +208,15 @@ class TokenRadarProjectionWorker(WorkerBase):
         result.setdefault("catch_up_enqueued", 0)
         result["window"] = self.windows[0] if self.windows else None
         result["scope"] = self.scopes[0] if self.scopes else None
+        result["venue"] = self.venues[0] if self.venues else None
         return result
 
     def _next_work_items(
         self,
         *,
-        publication_state: dict[tuple[str, str], dict[str, Any]],
+        publication_state: dict[tuple[str, str, str], dict[str, Any]],
         computed_at_ms: int,
-    ) -> tuple[list[tuple[str, str]], tuple[str, str] | None]:
+    ) -> tuple[list[tuple[str, str, str]], tuple[str, str, str] | None]:
         hot_items = self._hot_work_items(
             publication_state=publication_state,
             computed_at_ms=computed_at_ms,
@@ -207,11 +238,15 @@ class TokenRadarProjectionWorker(WorkerBase):
     def _next_background_window_scope(
         self,
         *,
-        publication_state: dict[tuple[str, str], dict[str, Any]],
+        publication_state: dict[tuple[str, str, str], dict[str, Any]],
         computed_at_ms: int,
-    ) -> tuple[str, str] | None:
+    ) -> tuple[str, str, str] | None:
         work_items = [
-            (window, scope) for window in self.windows if window not in self.hot_windows for scope in self.scopes
+            (window, scope, venue)
+            for window in self.windows
+            if window not in self.hot_windows
+            for scope in self.scopes
+            for venue in self.venues
         ]
         if not work_items:
             return None
@@ -230,59 +265,70 @@ class TokenRadarProjectionWorker(WorkerBase):
     def _hot_work_items(
         self,
         *,
-        publication_state: dict[tuple[str, str], dict[str, Any]],
+        publication_state: dict[tuple[str, str, str], dict[str, Any]],
         computed_at_ms: int,
-    ) -> list[tuple[str, str]]:
-        due: list[tuple[str, str]] = []
+    ) -> list[tuple[str, str, str]]:
+        due: list[tuple[str, str, str]] = []
         for window in self.hot_windows:
             for scope in self.scopes:
-                item = (window, scope)
-                if _publication_due(
-                    publication_state.get(item),
-                    computed_at_ms=computed_at_ms,
-                    interval_ms=self.hot_interval_ms,
-                    failed_retry_ms=self.cold_interval_ms,
-                ):
-                    due.append(item)
+                for venue in self.venues:
+                    item = (window, scope, venue)
+                    if _publication_due(
+                        publication_state.get(item),
+                        computed_at_ms=computed_at_ms,
+                        interval_ms=self.hot_interval_ms,
+                        failed_retry_ms=self.cold_interval_ms,
+                    ):
+                        due.append(item)
         return due
 
-    def _latest_publication_state(self) -> dict[tuple[str, str], dict[str, Any]]:
+    def _latest_publication_state(self) -> dict[tuple[str, str, str], dict[str, Any]]:
         runtime_context = self._runtime_context()
         with runtime_context.persist_session() as repos:
             return _latest_publication_state_from_repos(
                 repos,
                 windows=self.windows,
                 scopes=self.scopes,
+                venues=self.venues,
             )
 
     def _missing_work_items(
         self,
-        publication_state: dict[tuple[str, str], dict[str, Any]],
+        publication_state: dict[tuple[str, str, str], dict[str, Any]],
         *,
         computed_at_ms: int,
-    ) -> list[tuple[str, str]]:
-        missing: list[tuple[str, str]] = []
+    ) -> list[tuple[str, str, str]]:
+        missing: list[tuple[str, str, str]] = []
         for window in self.windows:
             if window not in self.hot_windows:
                 continue
             for scope in self.scopes:
-                item = (window, scope)
-                item_state = publication_state.get(item, {})
-                status = str(item_state.get("latest_attempt_status") or "")
-                if status == "ready":
-                    continue
-                interval_ms = self.hot_interval_ms if window in self.hot_windows else self.cold_interval_ms
-                if not _publication_due(
-                    item_state or None,
-                    computed_at_ms=computed_at_ms,
-                    interval_ms=interval_ms,
-                    failed_retry_ms=self.cold_interval_ms,
-                ):
-                    continue
-                missing.append(item)
+                for venue in self.venues:
+                    item = (window, scope, venue)
+                    item_state = publication_state.get(item, {})
+                    status = str(item_state.get("latest_attempt_status") or "")
+                    if status == "ready":
+                        continue
+                    interval_ms = self.hot_interval_ms if window in self.hot_windows else self.cold_interval_ms
+                    if not _publication_due(
+                        item_state or None,
+                        computed_at_ms=computed_at_ms,
+                        interval_ms=interval_ms,
+                        failed_retry_ms=self.cold_interval_ms,
+                    ):
+                        continue
+                    missing.append(item)
         return missing
 
-    def _mark_publication_failed(self, *, window: str, scope: str, computed_at_ms: int, error: str) -> None:
+    def _mark_publication_failed(
+        self,
+        *,
+        window: str,
+        scope: str,
+        venue: str = TOKEN_RADAR_DEFAULT_VENUE,
+        computed_at_ms: int,
+        error: str,
+    ) -> None:
         runtime_context = self._runtime_context()
         try:
             with runtime_context.persist_session() as repos:
@@ -290,7 +336,8 @@ class TokenRadarProjectionWorker(WorkerBase):
                     projection_version=TOKEN_RADAR_PROJECTION_VERSION,
                     window=window,
                     scope=scope,
-                    generation_id=f"worker-failed:{window}:{scope}:{computed_at_ms}",
+                    venue=venue,
+                    generation_id=f"worker-failed:{window}:{scope}:{venue}:{computed_at_ms}",
                     started_at_ms=computed_at_ms,
                     finished_at_ms=_now_ms(),
                     error=error,
@@ -390,9 +437,9 @@ def _state_ms(state: dict[str, Any], *keys: str) -> int | None:
     return None
 
 
-def _dedupe_work_items(items: list[tuple[str, str]]) -> list[tuple[str, str]]:
-    seen: set[tuple[str, str]] = set()
-    out: list[tuple[str, str]] = []
+def _dedupe_work_items(items: list[tuple[str, str, str]]) -> list[tuple[str, str, str]]:
+    seen: set[tuple[str, str, str]] = set()
+    out: list[tuple[str, str, str]] = []
     for item in items:
         if item in seen:
             continue
@@ -401,18 +448,26 @@ def _dedupe_work_items(items: list[tuple[str, str]]) -> list[tuple[str, str]]:
     return out
 
 
+def _service_work_items(items: list[tuple[str, str, str]]) -> tuple[tuple[str, ...], ...]:
+    if all(venue == TOKEN_RADAR_DEFAULT_VENUE for _window, _scope, venue in items):
+        return tuple((window, scope) for window, scope, _venue in items)
+    return tuple(items)
+
+
 def _latest_publication_state_from_repos(
     repos: Any,
     *,
     windows: tuple[str, ...],
     scopes: tuple[str, ...],
-) -> dict[tuple[str, str], dict[str, Any]]:
+    venues: tuple[str, ...],
+) -> dict[tuple[str, str, str], dict[str, Any]]:
     return cast(
-        dict[tuple[str, str], dict[str, Any]],
+        dict[tuple[str, str, str], dict[str, Any]],
         repos.token_radar.latest_publication_state(
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             windows=windows,
             scopes=scopes,
+            venues=venues,
         ),
     )
 

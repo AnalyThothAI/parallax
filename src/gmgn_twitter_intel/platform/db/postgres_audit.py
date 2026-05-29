@@ -69,7 +69,8 @@ FOREIGN_KEY_CHECKS = {
         SELECT COUNT(*) AS count
         FROM token_radar_current_rows child
         LEFT JOIN token_intents parent ON parent.intent_id = child.intent_id
-        WHERE parent.intent_id IS NULL
+        WHERE child.venue = 'all'
+          AND parent.intent_id IS NULL
     """,
 }
 
@@ -138,6 +139,7 @@ HOT_QUERIES: tuple[dict[str, Any], ...] = (
             WHERE projection_version = %(token_radar_projection_version)s
               AND "window" = '5m'
               AND scope = 'all'
+              AND venue = 'all'
             ORDER BY computed_at_ms DESC, lane DESC, rank ASC
             LIMIT 50
         """,
@@ -289,6 +291,7 @@ class ProjectionValidationAudit:
             """
             SELECT row_id, intent_id, target_type, target_id
             FROM token_radar_current_rows
+            WHERE venue = 'all'
             ORDER BY computed_at_ms DESC, rank ASC
             LIMIT %s
             """,
@@ -310,7 +313,7 @@ class ProjectionValidationAudit:
                 if asset is None:
                     missing_refs += 1
         latest = self.conn.execute(
-            "SELECT MAX(computed_at_ms) AS computed_at_ms FROM token_radar_current_rows"
+            "SELECT MAX(computed_at_ms) AS computed_at_ms FROM token_radar_current_rows WHERE venue = 'all'"
         ).fetchone()
         status = "ready" if latest and latest["computed_at_ms"] is not None else "projection_missing"
         return {

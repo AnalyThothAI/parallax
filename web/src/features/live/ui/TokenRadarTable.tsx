@@ -2,7 +2,6 @@ import { tokenKey } from "@lib/format";
 import type { ScopeKey, TokenFlowItem, WindowKey } from "@lib/types";
 import {
   TOKEN_RADAR_VENUE_FILTERS,
-  tokenRadarVenueMatches,
   tokenVenueDisplayLabel,
   type TokenRadarVenueFilter,
 } from "@lib/venue";
@@ -43,7 +42,9 @@ type TokenRadarTableProps = {
   error?: Error | null;
   onSelect?: (item: TokenFlowItem) => void;
   onScopeChange: (scope: ScopeKey) => void;
+  onVenueChange?: (venue: TokenRadarVenueFilter) => void;
   onWindowChange: (window: WindowKey) => void;
+  venueFilter?: TokenRadarVenueFilter;
 };
 
 export function TokenRadarTable(props: TokenRadarTableProps) {
@@ -57,23 +58,16 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
     error,
     onSelect,
     onScopeChange,
+    onVenueChange = () => undefined,
     onWindowChange,
+    venueFilter = "all",
   } = props;
-  const [venueFilter, setVenueFilter] = useState<TokenRadarVenueFilter>("all");
-  const filteredItems = useMemo(
-    () => items.filter((item) => tokenRadarVenueMatches(item, venueFilter)),
-    [items, venueFilter],
-  );
   const showLoading = !error && isLoading && items.length === 0;
-  const showEmpty = !error && !showLoading && filteredItems.length === 0;
-  const visibleCountLabel =
-    venueFilter === "all" || filteredItems.length === items.length
-      ? `${filteredItems.length}`
-      : `${filteredItems.length} of ${items.length}`;
+  const showEmpty = !error && !showLoading && items.length === 0;
   const resultLabel = showLoading
     ? "loading"
-    : filteredItems.length
-      ? `${visibleCountLabel} live ${filteredItems.length === 1 ? "case" : "cases"}${
+    : items.length
+      ? `${items.length} live ${items.length === 1 ? "case" : "cases"}${
           isRefreshing ? " · updating" : ""
         }`
       : "no live cases";
@@ -81,9 +75,9 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
     () => tokenRadarColumns({ onSelect, scope, selectedKey }),
     [onSelect, scope, selectedKey],
   );
-  const [sorting, setSorting] = useState<SortingState>([{ id: "score", desc: true }]);
+  const [sorting, setSorting] = useState<SortingState>([]);
   const table = useReactTable({
-    data: filteredItems,
+    data: items,
     columns,
     getCoreRowModel: getCoreRowModel(),
     getRowId: (item, index) =>
@@ -101,7 +95,7 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
           <span>{resultLabel}</span>
         </div>
         <div className="toolbar-controls" aria-label="token radar scan controls">
-          <VenueFilter value={venueFilter} onChange={setVenueFilter} />
+          <VenueFilter value={venueFilter} onChange={onVenueChange} />
           <RadarControls
             scope={scope}
             windowKey={windowKey}
@@ -117,7 +111,7 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
         ) : null}
         {error ? <PageState.Error error={`Token Radar 暂不可用 · ${error.message}`} /> : null}
         {showEmpty ? <PageState.Empty title="当前窗口暂无可交易 token 热度" /> : null}
-        {!showLoading && !error && filteredItems.length ? (
+        {!showLoading && !error && items.length ? (
           <PageState.Stale updating={isRefreshing}>
             <div className="radar-data-table">
               <div>

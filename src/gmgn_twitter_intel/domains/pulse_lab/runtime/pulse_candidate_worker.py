@@ -42,6 +42,7 @@ from gmgn_twitter_intel.domains.pulse_lab.services.pulse_horizon_policy import S
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_timeline_context import build_pulse_timeline_context
 from gmgn_twitter_intel.domains.pulse_lab.types.pulse_candidate_context import PulseCandidateContext
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
+    TOKEN_RADAR_DEFAULT_VENUE,
     TOKEN_RADAR_PROJECTION_VERSION,
     require_token_factor_snapshot,
     safe_int,
@@ -226,6 +227,7 @@ class PulseCandidateWorker(WorkerBase):
                             target_id=target_id,
                             window=window,
                             scope=scope,
+                            venue=TOKEN_RADAR_DEFAULT_VENUE,
                         )
                         if row is None:
                             result["asset_skipped"] += 1

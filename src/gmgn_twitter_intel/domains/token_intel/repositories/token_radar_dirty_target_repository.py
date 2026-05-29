@@ -5,33 +5,20 @@ import json
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from psycopg.types.json import Jsonb
-
 from gmgn_twitter_intel.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION
 from gmgn_twitter_intel.platform.db.json_safety import postgres_safe_json
 
 MARKET_DIRTY_MIN_INTERVAL_MS = 60_000
 
-SOURCE_DIRTY_REASONS = frozenset(
-    {
-        "intent_written",
-        "resolution_updated",
-        "identity_updated",
-        "source_event_written",
-        "event_anchor_updated",
-        "ingest_resolution",
-        "projection_catch_up",
-        "ops_repair",
-    }
-)
 MARKET_DIRTY_REASONS = frozenset(
     {
         "market_tick_current_changed",
         "market_tick_current_updated",
         "market_tick_written",
-        "ops_repair",
+        "ops_market_current_repair",
     }
 )
+REPAIR_DIRTY_REASONS = frozenset({"ops_repair", "ops_events_repair", "projection_catch_up"})
 DIRTY_PAYLOAD_LIFECYCLE_FIELDS = frozenset(
     {
         "dirty_at_ms",
@@ -48,16 +35,11 @@ DIRTY_PAYLOAD_LIFECYCLE_FIELDS = frozenset(
 
 def dirty_kind_flags(reason: str) -> dict[str, bool]:
     normalized = str(reason or "").strip()
-    repair_dirty = normalized == "ops_repair" or (normalized.startswith("ops_") and normalized.endswith("_repair"))
-    mixed_dirty = normalized == "mixed"
-    market_dirty = mixed_dirty or repair_dirty or normalized in MARKET_DIRTY_REASONS or normalized.startswith("market_")
-    source_dirty = repair_dirty or normalized in SOURCE_DIRTY_REASONS or normalized not in MARKET_DIRTY_REASONS
-    if normalized.startswith("market_") and normalized not in SOURCE_DIRTY_REASONS:
-        source_dirty = repair_dirty
-    if mixed_dirty:
-        source_dirty = True
+    repair_dirty = normalized in REPAIR_DIRTY_REASONS or (
+        normalized.startswith("ops_") and normalized.endswith("_repair")
+    )
+    market_dirty = normalized in MARKET_DIRTY_REASONS or normalized.startswith("market_")
     return {
-        "source_dirty": source_dirty,
         "market_dirty": market_dirty,
         "repair_dirty": repair_dirty,
     }
@@ -89,86 +71,39 @@ class TokenRadarDirtyTargetRepository:
         records = _dirty_records(rows, reason=reason, now_ms=int(now_ms), due_at_ms=due_at_ms)
         if not records:
             return 0
-        self.conn.execute(
-            """
-            WITH incoming AS (
-              SELECT *
-              FROM unnest(
-                %(target_type_keys)s::text[],
-                %(identity_ids)s::text[],
-                %(payload_hashes)s::text[],
-                %(source_event_ids_json)s::jsonb[]
-              ) AS incoming(target_type_key, identity_id, payload_hash, source_event_ids_json)
-            )
-            INSERT INTO token_radar_dirty_targets(
-              target_type_key,
-              identity_id,
-              dirty_reason,
-              source_dirty,
-              market_dirty,
-              repair_dirty,
-              payload_hash,
-              due_at_ms,
-              leased_until_ms,
-              lease_owner,
-              attempt_count,
-              last_error,
-              first_dirty_at_ms,
-              updated_at_ms,
-              source_event_ids_json
-            )
-            SELECT
-              incoming.target_type_key,
-              incoming.identity_id,
-              %(dirty_reason)s,
-              %(source_dirty)s,
-              %(market_dirty)s,
-              %(repair_dirty)s,
-              incoming.payload_hash,
-              %(due_at_ms)s,
-              NULL,
-              NULL,
-              0,
-              NULL,
-              %(now_ms)s,
-              %(now_ms)s,
-              incoming.source_event_ids_json
-            FROM incoming
-            ON CONFLICT(target_type_key, identity_id) DO UPDATE SET
-              dirty_reason = CASE
-                WHEN token_radar_dirty_targets.dirty_reason = EXCLUDED.dirty_reason
-                THEN token_radar_dirty_targets.dirty_reason
-                ELSE 'mixed'
-              END,
-              source_dirty = token_radar_dirty_targets.source_dirty OR EXCLUDED.source_dirty,
-              market_dirty = token_radar_dirty_targets.market_dirty OR EXCLUDED.market_dirty,
-              repair_dirty = token_radar_dirty_targets.repair_dirty OR EXCLUDED.repair_dirty,
-              payload_hash = EXCLUDED.payload_hash,
-              due_at_ms = LEAST(token_radar_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
-              last_error = NULL,
-              first_dirty_at_ms = token_radar_dirty_targets.first_dirty_at_ms,
-              updated_at_ms = EXCLUDED.updated_at_ms,
-              source_event_ids_json = (
-                SELECT COALESCE(jsonb_agg(DISTINCT source_id ORDER BY source_id), '[]'::jsonb)
-                FROM jsonb_array_elements_text(
-                  token_radar_dirty_targets.source_event_ids_json || EXCLUDED.source_event_ids_json
-                ) AS source_ids(source_id)
-              )
-            """,
+        self.conn.execute(_TARGET_DIRTY_INSERT_SQL, _target_dirty_params(records, reason=reason, now_ms=now_ms))
+        if commit:
+            self.conn.commit()
+        return len(records)
+
+    def enqueue_market_targets(
+        self,
+        rows: Iterable[Mapping[str, Any] | tuple[str, str]],
+        *,
+        reason: str,
+        now_ms: int,
+        due_at_ms: int | None = None,
+        commit: bool = True,
+    ) -> int:
+        records = _market_target_records(rows)
+        if not records:
+            return 0
+        cursor = self.conn.execute(
+            _MARKET_TARGET_INSERT_SQL,
             {
-                "target_type_keys": [record["target_type_key"] for record in records],
-                "identity_ids": [record["identity_id"] for record in records],
-                "payload_hashes": [record["payload_hash"] for record in records],
-                "source_event_ids_json": [Jsonb(record["source_event_ids"]) for record in records],
+                "target_types": [record["target_type"] for record in records],
+                "target_ids": [record["target_id"] for record in records],
+                "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
                 "dirty_reason": str(reason),
                 **dirty_kind_flags(reason),
                 "due_at_ms": int(due_at_ms if due_at_ms is not None else now_ms),
                 "now_ms": int(now_ms),
+                "market_dirty_min_interval_ms": MARKET_DIRTY_MIN_INTERVAL_MS,
             },
         )
         if commit:
             self.conn.commit()
-        return len(records)
+        return int(getattr(cursor, "rowcount", 0) or 0)
 
     def claim_due(
         self,
@@ -190,16 +125,16 @@ class TokenRadarDirtyTargetRepository:
               LIMIT %(limit)s
               FOR UPDATE SKIP LOCKED
             )
-            UPDATE token_radar_dirty_targets
+            UPDATE token_radar_dirty_targets queue
             SET leased_until_ms = %(leased_until_ms)s,
                 lease_owner = %(lease_owner)s,
-                attempt_count = token_radar_dirty_targets.attempt_count + 1,
+                attempt_count = queue.attempt_count + 1,
                 last_error = NULL,
                 updated_at_ms = %(now_ms)s
             FROM due
-            WHERE token_radar_dirty_targets.target_type_key = due.target_type_key
-              AND token_radar_dirty_targets.identity_id = due.identity_id
-            RETURNING token_radar_dirty_targets.*
+            WHERE queue.target_type_key = due.target_type_key
+              AND queue.identity_id = due.identity_id
+            RETURNING queue.*
             """,
             {
                 "now_ms": int(now_ms),
@@ -212,148 +147,6 @@ class TokenRadarDirtyTargetRepository:
             self.conn.commit()
         return [dict(row) for row in rows]
 
-    def enqueue_market_targets(
-        self,
-        rows: Iterable[Mapping[str, Any] | tuple[str, str]],
-        *,
-        reason: str,
-        now_ms: int,
-        due_at_ms: int | None = None,
-        commit: bool = True,
-    ) -> int:
-        records = _market_target_records(rows)
-        if not records:
-            return 0
-        cursor = self.conn.execute(
-            """
-            WITH incoming(target_type, target_id) AS (
-              SELECT *
-              FROM unnest(%(target_types)s::text[], %(target_ids)s::text[])
-            ),
-            mapped AS (
-              SELECT DISTINCT
-                'Asset'::text AS target_type_key,
-                registry_assets.asset_id AS identity_id
-              FROM incoming
-              JOIN registry_assets
-                ON incoming.target_type = 'chain_token'
-               AND lower(registry_assets.chain_id || ':' || registry_assets.address) = lower(incoming.target_id)
-              UNION
-              SELECT DISTINCT
-                'CexToken'::text AS target_type_key,
-                price_feeds.subject_id AS identity_id
-              FROM incoming
-              JOIN price_feeds
-                ON incoming.target_type = 'cex_symbol'
-               AND price_feeds.subject_type = 'CexToken'
-               AND lower(price_feeds.provider || ':' || price_feeds.native_market_id) = lower(incoming.target_id)
-            ),
-            latest_feature AS (
-              SELECT
-                features.target_type_key,
-                features.identity_id,
-                MAX(features.latest_market_observed_at_ms) AS latest_market_observed_at_ms
-              FROM token_radar_target_features features
-              JOIN mapped
-                ON mapped.target_type_key = features.target_type_key
-               AND mapped.identity_id = features.identity_id
-              WHERE features.projection_version = %(projection_version)s
-              GROUP BY features.target_type_key, features.identity_id
-            ),
-            eligible AS (
-              SELECT mapped.*
-              FROM mapped
-              LEFT JOIN latest_feature
-                ON latest_feature.target_type_key = mapped.target_type_key
-               AND latest_feature.identity_id = mapped.identity_id
-              WHERE mapped.identity_id IS NOT NULL
-                AND (
-                  latest_feature.latest_market_observed_at_ms IS NULL
-                  OR latest_feature.latest_market_observed_at_ms <= %(now_ms)s - %(market_dirty_min_interval_ms)s
-                )
-            )
-            INSERT INTO token_radar_dirty_targets(
-              target_type_key,
-              identity_id,
-              dirty_reason,
-              source_dirty,
-              market_dirty,
-              repair_dirty,
-              payload_hash,
-              due_at_ms,
-              leased_until_ms,
-              lease_owner,
-              attempt_count,
-              last_error,
-              first_dirty_at_ms,
-              updated_at_ms,
-              source_event_ids_json
-            )
-            SELECT
-              eligible.target_type_key,
-              eligible.identity_id,
-              %(dirty_reason)s,
-              %(source_dirty)s,
-              %(market_dirty)s,
-              %(repair_dirty)s,
-              encode(
-                sha256(
-                  convert_to(
-                    eligible.target_type_key || ':' || eligible.identity_id || ':' || %(dirty_reason)s,
-                    'UTF8'
-                  )
-                ),
-                'hex'
-              ),
-              %(due_at_ms)s,
-              NULL,
-              NULL,
-              0,
-              NULL,
-              %(now_ms)s,
-              %(now_ms)s,
-              '[]'::jsonb
-            FROM eligible
-            ON CONFLICT(target_type_key, identity_id) DO UPDATE SET
-              dirty_reason = CASE
-                WHEN token_radar_dirty_targets.dirty_reason = EXCLUDED.dirty_reason
-                THEN token_radar_dirty_targets.dirty_reason
-                ELSE 'mixed'
-              END,
-              source_dirty = token_radar_dirty_targets.source_dirty OR EXCLUDED.source_dirty,
-              market_dirty = token_radar_dirty_targets.market_dirty OR EXCLUDED.market_dirty,
-              repair_dirty = token_radar_dirty_targets.repair_dirty OR EXCLUDED.repair_dirty,
-              payload_hash = EXCLUDED.payload_hash,
-              due_at_ms = LEAST(token_radar_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
-              leased_until_ms = NULL,
-              lease_owner = NULL,
-              last_error = NULL,
-              first_dirty_at_ms = token_radar_dirty_targets.first_dirty_at_ms,
-              updated_at_ms = EXCLUDED.updated_at_ms
-            WHERE token_radar_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
-               OR token_radar_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
-               OR token_radar_dirty_targets.due_at_ms > EXCLUDED.due_at_ms
-               OR token_radar_dirty_targets.leased_until_ms IS NOT NULL
-               OR token_radar_dirty_targets.last_error IS NOT NULL
-               OR (NOT token_radar_dirty_targets.source_dirty AND EXCLUDED.source_dirty)
-               OR (NOT token_radar_dirty_targets.market_dirty AND EXCLUDED.market_dirty)
-               OR (NOT token_radar_dirty_targets.repair_dirty AND EXCLUDED.repair_dirty)
-            """,
-            {
-                "target_types": [record["target_type"] for record in records],
-                "target_ids": [record["target_id"] for record in records],
-                "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
-                "dirty_reason": str(reason),
-                **dirty_kind_flags(reason),
-                "due_at_ms": int(due_at_ms if due_at_ms is not None else now_ms),
-                "now_ms": int(now_ms),
-                "market_dirty_min_interval_ms": MARKET_DIRTY_MIN_INTERVAL_MS,
-            },
-        )
-        if commit:
-            self.conn.commit()
-        return int(getattr(cursor, "rowcount", 0) or 0)
-
     def enqueue_recent_resolved_targets(
         self,
         *,
@@ -364,139 +157,7 @@ class TokenRadarDirtyTargetRepository:
         commit: bool = True,
     ) -> int:
         cursor = self.conn.execute(
-            """
-            WITH recent AS (
-              SELECT
-                token_intent_resolutions.target_type AS target_type_key,
-                token_intent_resolutions.target_id AS identity_id,
-                MAX(events.received_at_ms) AS source_max_received_at_ms,
-                array_agg(DISTINCT events.event_id ORDER BY events.event_id) AS source_event_ids
-              FROM token_intent_resolutions
-              JOIN token_intents ON token_intents.intent_id = token_intent_resolutions.intent_id
-              JOIN events ON events.event_id = token_intents.event_id
-              WHERE events.received_at_ms >= %(since_ms)s
-                AND events.received_at_ms <= %(now_ms)s
-                AND token_intent_resolutions.is_current = true
-                AND token_intent_resolutions.target_type IN ('Asset', 'CexToken')
-                AND token_intent_resolutions.target_id IS NOT NULL
-              GROUP BY token_intent_resolutions.target_type, token_intent_resolutions.target_id
-              ORDER BY MAX(events.received_at_ms) DESC,
-                       token_intent_resolutions.target_type ASC,
-                       token_intent_resolutions.target_id ASC
-              LIMIT %(limit)s
-            ),
-            latest_feature AS (
-              SELECT
-                features.target_type_key,
-                features.identity_id,
-                MAX(features.latest_event_received_at_ms) AS latest_event_received_at_ms
-              FROM token_radar_target_features features
-              JOIN recent
-                ON recent.target_type_key = features.target_type_key
-               AND recent.identity_id = features.identity_id
-              WHERE features.projection_version = %(projection_version)s
-              GROUP BY features.target_type_key, features.identity_id
-            ),
-            eligible AS (
-              SELECT recent.*
-              FROM recent
-              LEFT JOIN latest_feature
-                ON latest_feature.target_type_key = recent.target_type_key
-               AND latest_feature.identity_id = recent.identity_id
-              WHERE COALESCE(latest_feature.latest_event_received_at_ms, 0) < recent.source_max_received_at_ms
-            )
-            INSERT INTO token_radar_dirty_targets(
-              target_type_key,
-              identity_id,
-              dirty_reason,
-              source_dirty,
-              market_dirty,
-              repair_dirty,
-              payload_hash,
-              due_at_ms,
-              leased_until_ms,
-              lease_owner,
-              attempt_count,
-              last_error,
-              first_dirty_at_ms,
-              updated_at_ms,
-              source_event_ids_json
-            )
-            SELECT
-              eligible.target_type_key,
-              eligible.identity_id,
-              %(dirty_reason)s,
-              %(source_dirty)s,
-              %(market_dirty)s,
-              %(repair_dirty)s,
-              encode(
-                sha256(
-                  convert_to(
-                    eligible.target_type_key || ':' ||
-                    eligible.identity_id || ':' ||
-                    %(dirty_reason)s || ':' ||
-                    eligible.source_max_received_at_ms::text || ':' ||
-                    array_to_string(eligible.source_event_ids, ','),
-                    'UTF8'
-                  )
-                ),
-                'hex'
-              ),
-              %(now_ms)s,
-              NULL,
-              NULL,
-              0,
-              NULL,
-              %(now_ms)s,
-              %(now_ms)s,
-              to_jsonb(eligible.source_event_ids)
-            FROM eligible
-            ON CONFLICT(target_type_key, identity_id) DO UPDATE SET
-              dirty_reason = CASE
-                WHEN token_radar_dirty_targets.dirty_reason = EXCLUDED.dirty_reason
-                THEN token_radar_dirty_targets.dirty_reason
-                ELSE 'mixed'
-              END,
-              source_dirty = token_radar_dirty_targets.source_dirty OR EXCLUDED.source_dirty,
-              market_dirty = token_radar_dirty_targets.market_dirty OR EXCLUDED.market_dirty,
-              repair_dirty = token_radar_dirty_targets.repair_dirty OR EXCLUDED.repair_dirty,
-              payload_hash = EXCLUDED.payload_hash,
-              due_at_ms = LEAST(token_radar_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
-              leased_until_ms = CASE
-                WHEN token_radar_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
-                  OR token_radar_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
-                  THEN NULL
-                ELSE token_radar_dirty_targets.leased_until_ms
-              END,
-              lease_owner = CASE
-                WHEN token_radar_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
-                  OR token_radar_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
-                  THEN NULL
-                ELSE token_radar_dirty_targets.lease_owner
-              END,
-              last_error = NULL,
-              first_dirty_at_ms = token_radar_dirty_targets.first_dirty_at_ms,
-              updated_at_ms = EXCLUDED.updated_at_ms,
-              source_event_ids_json = (
-                SELECT COALESCE(jsonb_agg(DISTINCT source_id ORDER BY source_id), '[]'::jsonb)
-                FROM jsonb_array_elements_text(
-                  token_radar_dirty_targets.source_event_ids_json || EXCLUDED.source_event_ids_json
-                ) AS source_ids(source_id)
-              )
-            WHERE token_radar_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
-               OR token_radar_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
-               OR (
-                 token_radar_dirty_targets.due_at_ms > EXCLUDED.due_at_ms
-                 AND (
-                   token_radar_dirty_targets.leased_until_ms IS NULL
-                   OR token_radar_dirty_targets.leased_until_ms <= %(now_ms)s
-                 )
-               )
-               OR token_radar_dirty_targets.last_error IS NOT NULL
-               OR (NOT token_radar_dirty_targets.source_dirty AND EXCLUDED.source_dirty)
-               OR (NOT token_radar_dirty_targets.market_dirty AND EXCLUDED.market_dirty)
-               OR (NOT token_radar_dirty_targets.repair_dirty AND EXCLUDED.repair_dirty)
-            """,
+            _RECENT_RESOLVED_TARGET_ENQUEUE_SQL,
             {
                 "since_ms": int(since_ms),
                 "now_ms": int(now_ms),
@@ -517,8 +178,7 @@ class TokenRadarDirtyTargetRepository:
               SELECT
                 token_intent_resolutions.target_type AS target_type_key,
                 token_intent_resolutions.target_id AS identity_id,
-                MAX(events.received_at_ms) AS source_max_received_at_ms,
-                array_agg(DISTINCT events.event_id ORDER BY events.event_id) AS source_event_ids
+                MAX(events.received_at_ms) AS source_max_received_at_ms
               FROM token_intent_resolutions
               JOIN token_intents ON token_intents.intent_id = token_intent_resolutions.intent_id
               JOIN events ON events.event_id = token_intents.event_id
@@ -536,60 +196,13 @@ class TokenRadarDirtyTargetRepository:
             SELECT COUNT(*) AS count
             FROM recent
             """,
-            {
-                "since_ms": int(since_ms),
-                "now_ms": int(now_ms),
-                "limit": max(0, int(limit)),
-            },
+            {"since_ms": int(since_ms), "now_ms": int(now_ms), "limit": max(0, int(limit))},
         ).fetchone()
         return _count(row)
 
     def count_recent_resolved_target_enqueue_candidates(self, *, since_ms: int, now_ms: int, limit: int) -> int:
         row = self.conn.execute(
-            """
-            WITH recent AS (
-              SELECT
-                token_intent_resolutions.target_type AS target_type_key,
-                token_intent_resolutions.target_id AS identity_id,
-                MAX(events.received_at_ms) AS source_max_received_at_ms,
-                array_agg(DISTINCT events.event_id ORDER BY events.event_id) AS source_event_ids
-              FROM token_intent_resolutions
-              JOIN token_intents ON token_intents.intent_id = token_intent_resolutions.intent_id
-              JOIN events ON events.event_id = token_intents.event_id
-              WHERE events.received_at_ms >= %(since_ms)s
-                AND events.received_at_ms <= %(now_ms)s
-                AND token_intent_resolutions.is_current = true
-                AND token_intent_resolutions.target_type IN ('Asset', 'CexToken')
-                AND token_intent_resolutions.target_id IS NOT NULL
-              GROUP BY token_intent_resolutions.target_type, token_intent_resolutions.target_id
-              ORDER BY MAX(events.received_at_ms) DESC,
-                       token_intent_resolutions.target_type ASC,
-                       token_intent_resolutions.target_id ASC
-              LIMIT %(limit)s
-            ),
-            latest_feature AS (
-              SELECT
-                features.target_type_key,
-                features.identity_id,
-                MAX(features.latest_event_received_at_ms) AS latest_event_received_at_ms
-              FROM token_radar_target_features features
-              JOIN recent
-                ON recent.target_type_key = features.target_type_key
-               AND recent.identity_id = features.identity_id
-              WHERE features.projection_version = %(projection_version)s
-              GROUP BY features.target_type_key, features.identity_id
-            ),
-            eligible AS (
-              SELECT recent.*
-              FROM recent
-              LEFT JOIN latest_feature
-                ON latest_feature.target_type_key = recent.target_type_key
-               AND latest_feature.identity_id = recent.identity_id
-              WHERE COALESCE(latest_feature.latest_event_received_at_ms, 0) < recent.source_max_received_at_ms
-            )
-            SELECT COUNT(*) AS count
-            FROM eligible
-            """,
+            _RECENT_RESOLVED_TARGET_ELIGIBLE_CTES + "SELECT COUNT(*) AS count FROM eligible",
             {
                 "since_ms": int(since_ms),
                 "now_ms": int(now_ms),
@@ -616,23 +229,14 @@ class TokenRadarDirtyTargetRepository:
             SELECT COUNT(*) AS count
             FROM market_current_candidates
             """,
-            {
-                "since_ms": int(since_ms),
-                "now_ms": int(now_ms),
-                "limit": max(0, int(limit)),
-            },
+            {"since_ms": int(since_ms), "now_ms": int(now_ms), "limit": max(0, int(limit))},
         ).fetchone()
         return _count(row)
 
     def count_market_current_target_enqueue_candidates(self, *, since_ms: int, now_ms: int, limit: int) -> int:
         row = self.conn.execute(
-            _MARKET_CURRENT_ELIGIBLE_COUNT_SQL,
-            _market_current_params(
-                since_ms=since_ms,
-                now_ms=now_ms,
-                limit=limit,
-                reason="ops_market_current_repair",
-            ),
+            _MARKET_CURRENT_ELIGIBLE_CTES + "SELECT COUNT(*) AS count FROM eligible",
+            _market_current_params(since_ms=since_ms, now_ms=now_ms, limit=limit, reason="ops_market_current_repair"),
         ).fetchone()
         return _count(row)
 
@@ -647,12 +251,7 @@ class TokenRadarDirtyTargetRepository:
     ) -> int:
         cursor = self.conn.execute(
             _MARKET_CURRENT_ENQUEUE_SQL,
-            _market_current_params(
-                since_ms=since_ms,
-                now_ms=now_ms,
-                limit=limit,
-                reason=reason,
-            ),
+            _market_current_params(since_ms=since_ms, now_ms=now_ms, limit=limit, reason=reason),
         )
         if commit:
             self.conn.commit()
@@ -746,6 +345,291 @@ class TokenRadarDirtyTargetRepository:
         return int(getattr(cursor, "rowcount", 0) or 0)
 
 
+_TARGET_DIRTY_INSERT_SQL = """
+WITH incoming AS (
+  SELECT *
+  FROM unnest(
+    %(target_type_keys)s::text[],
+    %(identity_ids)s::text[],
+    %(payload_hashes)s::text[]
+  ) AS incoming(target_type_key, identity_id, payload_hash)
+)
+INSERT INTO token_radar_dirty_targets(
+  target_type_key,
+  identity_id,
+  dirty_reason,
+  market_dirty,
+  repair_dirty,
+  payload_hash,
+  due_at_ms,
+  leased_until_ms,
+  lease_owner,
+  attempt_count,
+  last_error,
+  first_dirty_at_ms,
+  updated_at_ms
+)
+SELECT
+  incoming.target_type_key,
+  incoming.identity_id,
+  %(dirty_reason)s,
+  %(market_dirty)s,
+  %(repair_dirty)s,
+  incoming.payload_hash,
+  %(due_at_ms)s,
+  NULL,
+  NULL,
+  0,
+  NULL,
+  %(now_ms)s,
+  %(now_ms)s
+FROM incoming
+ON CONFLICT(target_type_key, identity_id) DO UPDATE SET
+  dirty_reason = CASE
+    WHEN token_radar_dirty_targets.dirty_reason = EXCLUDED.dirty_reason
+    THEN token_radar_dirty_targets.dirty_reason
+    ELSE 'mixed'
+  END,
+  market_dirty = token_radar_dirty_targets.market_dirty OR EXCLUDED.market_dirty,
+  repair_dirty = token_radar_dirty_targets.repair_dirty OR EXCLUDED.repair_dirty,
+  payload_hash = EXCLUDED.payload_hash,
+  due_at_ms = LEAST(token_radar_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
+  leased_until_ms = NULL,
+  lease_owner = NULL,
+  last_error = NULL,
+  first_dirty_at_ms = token_radar_dirty_targets.first_dirty_at_ms,
+  updated_at_ms = EXCLUDED.updated_at_ms
+WHERE token_radar_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+   OR token_radar_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
+   OR token_radar_dirty_targets.market_dirty IS DISTINCT FROM EXCLUDED.market_dirty
+   OR token_radar_dirty_targets.repair_dirty IS DISTINCT FROM EXCLUDED.repair_dirty
+   OR token_radar_dirty_targets.due_at_ms > EXCLUDED.due_at_ms
+   OR token_radar_dirty_targets.leased_until_ms IS NOT NULL
+   OR token_radar_dirty_targets.lease_owner IS NOT NULL
+   OR token_radar_dirty_targets.last_error IS NOT NULL
+"""
+
+
+_MARKET_TARGET_INSERT_SQL = """
+WITH incoming(target_type, target_id) AS (
+  SELECT *
+  FROM unnest(%(target_types)s::text[], %(target_ids)s::text[])
+),
+mapped AS (
+  SELECT DISTINCT
+    'Asset'::text AS target_type_key,
+    registry_assets.asset_id AS identity_id
+  FROM incoming
+  JOIN registry_assets
+    ON incoming.target_type = 'chain_token'
+   AND lower(registry_assets.chain_id || ':' || registry_assets.address) = lower(incoming.target_id)
+  UNION
+  SELECT DISTINCT
+    'CexToken'::text AS target_type_key,
+    price_feeds.subject_id AS identity_id
+  FROM incoming
+  JOIN price_feeds
+    ON incoming.target_type = 'cex_symbol'
+   AND price_feeds.subject_type = 'CexToken'
+   AND lower(price_feeds.provider || ':' || price_feeds.native_market_id) = lower(incoming.target_id)
+),
+latest_feature AS (
+  SELECT
+    features.target_type_key,
+    features.identity_id,
+    MAX(features.latest_market_observed_at_ms) AS latest_market_observed_at_ms
+  FROM token_radar_target_features features
+  JOIN mapped
+    ON mapped.target_type_key = features.target_type_key
+   AND mapped.identity_id = features.identity_id
+  WHERE features.projection_version = %(projection_version)s
+  GROUP BY features.target_type_key, features.identity_id
+),
+eligible AS (
+  SELECT mapped.*
+  FROM mapped
+  LEFT JOIN latest_feature
+    ON latest_feature.target_type_key = mapped.target_type_key
+   AND latest_feature.identity_id = mapped.identity_id
+  WHERE mapped.identity_id IS NOT NULL
+    AND (
+      latest_feature.latest_market_observed_at_ms IS NULL
+      OR latest_feature.latest_market_observed_at_ms <= %(now_ms)s - %(market_dirty_min_interval_ms)s
+    )
+)
+INSERT INTO token_radar_dirty_targets(
+  target_type_key,
+  identity_id,
+  dirty_reason,
+  market_dirty,
+  repair_dirty,
+  payload_hash,
+  due_at_ms,
+  leased_until_ms,
+  lease_owner,
+  attempt_count,
+  last_error,
+  first_dirty_at_ms,
+  updated_at_ms
+)
+SELECT
+  eligible.target_type_key,
+  eligible.identity_id,
+  %(dirty_reason)s,
+  %(market_dirty)s,
+  %(repair_dirty)s,
+  encode(
+    sha256(convert_to(eligible.target_type_key || ':' || eligible.identity_id || ':' || %(dirty_reason)s, 'UTF8')),
+    'hex'
+  ),
+  %(due_at_ms)s,
+  NULL,
+  NULL,
+  0,
+  NULL,
+  %(now_ms)s,
+  %(now_ms)s
+FROM eligible
+ON CONFLICT(target_type_key, identity_id) DO UPDATE SET
+  dirty_reason = CASE
+    WHEN token_radar_dirty_targets.dirty_reason = EXCLUDED.dirty_reason
+    THEN token_radar_dirty_targets.dirty_reason
+    ELSE 'mixed'
+  END,
+  market_dirty = token_radar_dirty_targets.market_dirty OR EXCLUDED.market_dirty,
+  repair_dirty = token_radar_dirty_targets.repair_dirty OR EXCLUDED.repair_dirty,
+  payload_hash = EXCLUDED.payload_hash,
+  due_at_ms = LEAST(token_radar_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
+  leased_until_ms = NULL,
+  lease_owner = NULL,
+  last_error = NULL,
+  first_dirty_at_ms = token_radar_dirty_targets.first_dirty_at_ms,
+  updated_at_ms = EXCLUDED.updated_at_ms
+WHERE token_radar_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+   OR token_radar_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
+   OR token_radar_dirty_targets.market_dirty IS DISTINCT FROM EXCLUDED.market_dirty
+   OR token_radar_dirty_targets.repair_dirty IS DISTINCT FROM EXCLUDED.repair_dirty
+   OR token_radar_dirty_targets.due_at_ms > EXCLUDED.due_at_ms
+   OR token_radar_dirty_targets.leased_until_ms IS NOT NULL
+   OR token_radar_dirty_targets.lease_owner IS NOT NULL
+   OR token_radar_dirty_targets.last_error IS NOT NULL
+"""
+
+
+_RECENT_RESOLVED_TARGET_ELIGIBLE_CTES = """
+WITH recent AS (
+  SELECT
+    token_intent_resolutions.target_type AS target_type_key,
+    token_intent_resolutions.target_id AS identity_id,
+    MAX(events.received_at_ms) AS source_max_received_at_ms
+  FROM token_intent_resolutions
+  JOIN token_intents ON token_intents.intent_id = token_intent_resolutions.intent_id
+  JOIN events ON events.event_id = token_intents.event_id
+  WHERE events.received_at_ms >= %(since_ms)s
+    AND events.received_at_ms <= %(now_ms)s
+    AND token_intent_resolutions.is_current = true
+    AND token_intent_resolutions.target_type IN ('Asset', 'CexToken')
+    AND token_intent_resolutions.target_id IS NOT NULL
+  GROUP BY token_intent_resolutions.target_type, token_intent_resolutions.target_id
+  ORDER BY MAX(events.received_at_ms) DESC,
+           token_intent_resolutions.target_type ASC,
+           token_intent_resolutions.target_id ASC
+  LIMIT %(limit)s
+),
+latest_feature AS (
+  SELECT
+    features.target_type_key,
+    features.identity_id,
+    MAX(features.latest_event_received_at_ms) AS latest_event_received_at_ms
+  FROM token_radar_target_features features
+  JOIN recent
+    ON recent.target_type_key = features.target_type_key
+   AND recent.identity_id = features.identity_id
+  WHERE features.projection_version = %(projection_version)s
+  GROUP BY features.target_type_key, features.identity_id
+),
+eligible AS (
+  SELECT recent.*
+  FROM recent
+  LEFT JOIN latest_feature
+    ON latest_feature.target_type_key = recent.target_type_key
+   AND latest_feature.identity_id = recent.identity_id
+  WHERE COALESCE(latest_feature.latest_event_received_at_ms, 0) < recent.source_max_received_at_ms
+)
+"""
+
+
+_RECENT_RESOLVED_TARGET_ENQUEUE_SQL = (
+    _RECENT_RESOLVED_TARGET_ELIGIBLE_CTES
+    + """
+INSERT INTO token_radar_dirty_targets(
+  target_type_key,
+  identity_id,
+  dirty_reason,
+  market_dirty,
+  repair_dirty,
+  payload_hash,
+  due_at_ms,
+  leased_until_ms,
+  lease_owner,
+  attempt_count,
+  last_error,
+  first_dirty_at_ms,
+  updated_at_ms
+)
+SELECT
+  eligible.target_type_key,
+  eligible.identity_id,
+  %(dirty_reason)s,
+  %(market_dirty)s,
+  %(repair_dirty)s,
+  encode(
+    sha256(
+      convert_to(
+        eligible.target_type_key || ':' ||
+        eligible.identity_id || ':' ||
+        %(dirty_reason)s || ':' ||
+        eligible.source_max_received_at_ms::text,
+        'UTF8'
+      )
+    ),
+    'hex'
+  ),
+  %(now_ms)s,
+  NULL,
+  NULL,
+  0,
+  NULL,
+  %(now_ms)s,
+  %(now_ms)s
+FROM eligible
+ON CONFLICT(target_type_key, identity_id) DO UPDATE SET
+  dirty_reason = CASE
+    WHEN token_radar_dirty_targets.dirty_reason = EXCLUDED.dirty_reason
+    THEN token_radar_dirty_targets.dirty_reason
+    ELSE 'mixed'
+  END,
+  market_dirty = token_radar_dirty_targets.market_dirty OR EXCLUDED.market_dirty,
+  repair_dirty = token_radar_dirty_targets.repair_dirty OR EXCLUDED.repair_dirty,
+  payload_hash = EXCLUDED.payload_hash,
+  due_at_ms = LEAST(token_radar_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
+  leased_until_ms = NULL,
+  lease_owner = NULL,
+  last_error = NULL,
+  first_dirty_at_ms = token_radar_dirty_targets.first_dirty_at_ms,
+  updated_at_ms = EXCLUDED.updated_at_ms
+WHERE token_radar_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+   OR token_radar_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
+   OR token_radar_dirty_targets.market_dirty IS DISTINCT FROM EXCLUDED.market_dirty
+   OR token_radar_dirty_targets.repair_dirty IS DISTINCT FROM EXCLUDED.repair_dirty
+   OR token_radar_dirty_targets.due_at_ms > EXCLUDED.due_at_ms
+   OR token_radar_dirty_targets.leased_until_ms IS NOT NULL
+   OR token_radar_dirty_targets.lease_owner IS NOT NULL
+   OR token_radar_dirty_targets.last_error IS NOT NULL
+"""
+)
+
+
 _MARKET_CURRENT_ELIGIBLE_CTES = """
 WITH market_current_candidates AS (
   SELECT
@@ -808,15 +692,6 @@ eligible AS (
 """
 
 
-_MARKET_CURRENT_ELIGIBLE_COUNT_SQL = (
-    _MARKET_CURRENT_ELIGIBLE_CTES
-    + """
-SELECT COUNT(*) AS count
-FROM eligible
-"""
-)
-
-
 _MARKET_CURRENT_ENQUEUE_SQL = (
     _MARKET_CURRENT_ELIGIBLE_CTES
     + """
@@ -824,7 +699,6 @@ INSERT INTO token_radar_dirty_targets(
   target_type_key,
   identity_id,
   dirty_reason,
-  source_dirty,
   market_dirty,
   repair_dirty,
   payload_hash,
@@ -834,14 +708,12 @@ INSERT INTO token_radar_dirty_targets(
   attempt_count,
   last_error,
   first_dirty_at_ms,
-  updated_at_ms,
-  source_event_ids_json
+  updated_at_ms
 )
 SELECT
   eligible.target_type_key,
   eligible.identity_id,
   %(dirty_reason)s,
-  %(source_dirty)s,
   %(market_dirty)s,
   %(repair_dirty)s,
   encode(
@@ -862,8 +734,7 @@ SELECT
   0,
   NULL,
   %(now_ms)s,
-  %(now_ms)s,
-  '[]'::jsonb
+  %(now_ms)s
 FROM eligible
 ON CONFLICT(target_type_key, identity_id) DO UPDATE SET
   dirty_reason = CASE
@@ -871,7 +742,6 @@ ON CONFLICT(target_type_key, identity_id) DO UPDATE SET
     THEN token_radar_dirty_targets.dirty_reason
     ELSE 'mixed'
   END,
-  source_dirty = token_radar_dirty_targets.source_dirty OR EXCLUDED.source_dirty,
   market_dirty = token_radar_dirty_targets.market_dirty OR EXCLUDED.market_dirty,
   repair_dirty = token_radar_dirty_targets.repair_dirty OR EXCLUDED.repair_dirty,
   payload_hash = EXCLUDED.payload_hash,
@@ -883,32 +753,27 @@ ON CONFLICT(target_type_key, identity_id) DO UPDATE SET
   updated_at_ms = EXCLUDED.updated_at_ms
 WHERE token_radar_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
    OR token_radar_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
+   OR token_radar_dirty_targets.market_dirty IS DISTINCT FROM EXCLUDED.market_dirty
+   OR token_radar_dirty_targets.repair_dirty IS DISTINCT FROM EXCLUDED.repair_dirty
    OR token_radar_dirty_targets.due_at_ms > EXCLUDED.due_at_ms
    OR token_radar_dirty_targets.leased_until_ms IS NOT NULL
+   OR token_radar_dirty_targets.lease_owner IS NOT NULL
    OR token_radar_dirty_targets.last_error IS NOT NULL
-   OR (NOT token_radar_dirty_targets.source_dirty AND EXCLUDED.source_dirty)
-   OR (NOT token_radar_dirty_targets.market_dirty AND EXCLUDED.market_dirty)
-   OR (NOT token_radar_dirty_targets.repair_dirty AND EXCLUDED.repair_dirty)
 """
 )
 
 
-def _market_current_params(*, since_ms: int, now_ms: int, limit: int, reason: str) -> dict[str, Any]:
+def _target_dirty_params(records: list[dict[str, Any]], *, reason: str, now_ms: int) -> dict[str, Any]:
+    due_at_ms = records[0]["due_at_ms"] if records else now_ms
     return {
-        "since_ms": int(since_ms),
-        "now_ms": int(now_ms),
-        "limit": max(0, int(limit)),
+        "target_type_keys": [record["target_type_key"] for record in records],
+        "identity_ids": [record["identity_id"] for record in records],
+        "payload_hashes": [record["payload_hash"] for record in records],
         "dirty_reason": str(reason),
         **dirty_kind_flags(reason),
-        "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
-        "market_dirty_min_interval_ms": MARKET_DIRTY_MIN_INTERVAL_MS,
+        "due_at_ms": int(due_at_ms),
+        "now_ms": int(now_ms),
     }
-
-
-def _count(row: Mapping[str, Any] | None) -> int:
-    if not row:
-        return 0
-    return int(row.get("count") or 0)
 
 
 def _dirty_records(
@@ -923,13 +788,11 @@ def _dirty_records(
         target_type_key, identity_id = _target_key(row)
         if not identity_id:
             continue
-        source_event_ids = _source_event_ids(row)
-        payload_hash = _payload_hash(
+        payload_hash = dirty_payload_hash(
             {
                 "target_type_key": target_type_key,
                 "identity_id": identity_id,
                 "dirty_reason": str(reason),
-                "source_event_ids": source_event_ids,
                 "dirty_at_ms": int(now_ms),
             }
         )
@@ -937,7 +800,6 @@ def _dirty_records(
             "target_type_key": target_type_key,
             "identity_id": identity_id,
             "payload_hash": payload_hash,
-            "source_event_ids": source_event_ids,
             "due_at_ms": int(due_at_ms if due_at_ms is not None else now_ms),
         }
     return list(records.values())
@@ -1003,14 +865,19 @@ def _target_key(row: Mapping[str, Any]) -> tuple[str, str]:
     return target_type_key, identity_id
 
 
-def _source_event_ids(row: Mapping[str, Any]) -> list[str]:
-    raw = row.get("source_event_ids") if "source_event_ids" in row else row.get("source_event_ids_json")
-    if isinstance(raw, str):
-        return [raw]
-    if not isinstance(raw, Iterable):
-        return []
-    return sorted({str(item) for item in raw if str(item)})
+def _market_current_params(*, since_ms: int, now_ms: int, limit: int, reason: str) -> dict[str, Any]:
+    return {
+        "since_ms": int(since_ms),
+        "now_ms": int(now_ms),
+        "limit": max(0, int(limit)),
+        "dirty_reason": str(reason),
+        **dirty_kind_flags(reason),
+        "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+        "market_dirty_min_interval_ms": MARKET_DIRTY_MIN_INTERVAL_MS,
+    }
 
 
-def _payload_hash(payload: Mapping[str, Any]) -> str:
-    return dirty_payload_hash(payload)
+def _count(row: Mapping[str, Any] | None) -> int:
+    if not row:
+        return 0
+    return int(row.get("count") or 0)

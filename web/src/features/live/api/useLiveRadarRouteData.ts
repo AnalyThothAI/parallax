@@ -1,6 +1,7 @@
-import { countDecisions, sortTokenItems, tokenRadarItems } from "@lib/tokenRadar";
+import { countDecisions, tokenRadarItems } from "@lib/tokenRadar";
 import type { AssetFlowData, ScopeKey, TokenFlowItem, WindowKey } from "@lib/types";
-import { useEffect, useMemo, useRef } from "react";
+import type { TokenRadarVenueFilter } from "@lib/venue";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { targetRefFromTokenItem } from "../../../domain/tokenTarget";
 
@@ -22,9 +23,17 @@ export function useLiveRadarRouteData({
   token: string;
   window: WindowKey;
 }) {
-  const assetFlowQuery = useTokenRadarQuery({ token, window, scope, limit: 48, enabled });
+  const [venueFilter, setVenueFilter] = useState<TokenRadarVenueFilter>("all");
+  const assetFlowQuery = useTokenRadarQuery({
+    token,
+    window,
+    scope,
+    venue: venueFilter,
+    limit: 48,
+    enabled,
+  });
   const lastReadyFrames = useRef(new Map<string, RadarFrame>());
-  const cacheKey = `${window}:${scope}`;
+  const cacheKey = `${window}:${scope}:${venueFilter}`;
   const projectionStatus = assetFlowQuery.data?.data?.projection?.status ?? null;
   const projectionPending = projectionStatus === "pending";
   const parsed = useMemo(
@@ -34,7 +43,7 @@ export function useLiveRadarRouteData({
   const currentFrame = useMemo(
     () => ({
       rawTokenItems: parsed.items,
-      tokenItems: sortTokenItems(parsed.items),
+      tokenItems: parsed.items,
     }),
     [parsed.items],
   );
@@ -85,7 +94,9 @@ export function useLiveRadarRouteData({
     isAssetFlowRefreshing,
     marketTargets,
     projectionStatus,
+    setVenueFilter,
     tokenItems,
+    venueFilter,
   };
 }
 

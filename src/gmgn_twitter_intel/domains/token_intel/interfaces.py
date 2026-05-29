@@ -5,11 +5,13 @@ from typing import Protocol
 
 from gmgn_twitter_intel.domains.token_intel._constants import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
+    TOKEN_RADAR_DEFAULT_VENUE,
     TOKEN_RADAR_FACTOR_FAMILIES,
     TOKEN_RADAR_PROJECTION_NAME,
     TOKEN_RADAR_PROJECTION_VERSION,
     TOKEN_RADAR_RESOLVER_POLICY_VERSION,
     TOKEN_RADAR_SOURCE_TABLE,
+    TOKEN_RADAR_VENUES,
     WINDOW_MS,
 )
 from gmgn_twitter_intel.domains.token_intel.queries.event_token_projection_query import EventTokenProjectionQuery
@@ -65,11 +67,13 @@ __all__ = [
     "DEFAULT_REPROCESS_LIMIT",
     "DEFAULT_REPROCESS_WINDOW",
     "TOKEN_FACTOR_SNAPSHOT_VERSION",
+    "TOKEN_RADAR_DEFAULT_VENUE",
     "TOKEN_RADAR_FACTOR_FAMILIES",
     "TOKEN_RADAR_PROJECTION_NAME",
     "TOKEN_RADAR_PROJECTION_VERSION",
     "TOKEN_RADAR_RESOLVER_POLICY_VERSION",
     "TOKEN_RADAR_SOURCE_TABLE",
+    "TOKEN_RADAR_VENUES",
     "WINDOW_MS",
     "EventTokenProjectionQuery",
     "IntentResolutionRepository",

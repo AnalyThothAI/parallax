@@ -79,6 +79,7 @@ class IngestService:
         enriched_events: EnrichedEventRepository | None = None,
         event_anchor_jobs: EventAnchorBackfillJobRepository | None = None,
         token_radar_dirty_targets: Any | None = None,
+        token_radar_source_dirty_events: Any | None = None,
         event_anchor_active_window_ms: int = DEFAULT_EVENT_ANCHOR_ACTIVE_WINDOW_MS,
     ) -> None:
         self.conn = evidence.conn
@@ -100,6 +101,7 @@ class IngestService:
         self.enriched_events = enriched_events or EnrichedEventRepository(evidence.conn)
         self.event_anchor_jobs = event_anchor_jobs or EventAnchorBackfillJobRepository(evidence.conn)
         self.token_radar_dirty_targets = token_radar_dirty_targets
+        self.token_radar_source_dirty_events = token_radar_source_dirty_events
         self.event_anchor_active_window_ms = max(1, int(event_anchor_active_window_ms))
 
     def require_transaction(self, *, operation: str) -> None:
@@ -229,10 +231,10 @@ class IngestService:
                     now_ms=prepared.event_ms,
                     commit=False,
                 )
-            dirty_targets = _dirty_targets_for_resolutions(resolutions)
-            if dirty_targets and self.token_radar_dirty_targets is not None:
-                self.token_radar_dirty_targets.enqueue_targets(
-                    dirty_targets,
+            source_dirty_events = _source_dirty_events_for_resolutions(resolutions)
+            if source_dirty_events and self.token_radar_source_dirty_events is not None:
+                self.token_radar_source_dirty_events.enqueue_events(
+                    source_dirty_events,
                     reason="ingest_resolution",
                     now_ms=prepared.event_ms,
                     commit=False,
@@ -538,21 +540,21 @@ def _decision_value(decision: Any, key: str) -> Any:
     return getattr(decision, key)
 
 
-def _dirty_targets_for_resolutions(resolutions: list[Any]) -> list[dict[str, Any]]:
-    dirty_targets: list[dict[str, Any]] = []
+def _source_dirty_events_for_resolutions(resolutions: list[Any]) -> list[dict[str, Any]]:
+    dirty_events: list[dict[str, Any]] = []
     for decision in resolutions:
         event_id = str(_decision_value(decision, "event_id") or "")
         target_type = _decision_value(decision, "target_type")
         target_id = _decision_value(decision, "target_id")
-        if target_type in {"Asset", "CexToken"} and target_id:
-            dirty_targets.append(
+        if event_id and target_type in {"Asset", "CexToken"} and target_id:
+            dirty_events.append(
                 {
+                    "source_event_id": event_id,
                     "target_type_key": str(target_type),
                     "identity_id": str(target_id),
-                    "source_event_ids": [event_id] if event_id else [],
                 }
             )
-    return dirty_targets
+    return dirty_events
 
 
 def _discovery_lookup_keys_for_resolutions(resolutions: list[Any]) -> list[str]:

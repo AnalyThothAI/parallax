@@ -999,10 +999,11 @@ class TokenRadarProjectionWorkerSettings(PerWorkerSettings):
     wakes_on: tuple[str, ...] = ("market_tick_current_updated", "resolution_updated")
     windows: tuple[str, ...] = ("5m", "1h", "4h", "24h")
     scopes: tuple[str, ...] = ("all", "matched")
+    venues: tuple[str, ...] = ("all", "sol", "eth", "base", "bsc", "cex")
     hot_windows: tuple[str, ...] = ("5m",)
     cold_interval_seconds: float = Field(default=60.0, ge=0)
 
-    @field_validator("wakes_on", "windows", "scopes", "hot_windows", mode="before")
+    @field_validator("wakes_on", "windows", "scopes", "venues", "hot_windows", mode="before")
     @classmethod
     def parse_tuple(cls, value: Any) -> tuple[str, ...]:
         return tuple(_split_values(value))
@@ -2001,6 +2002,7 @@ token_radar_projection:
   wakes_on: ["market_tick_current_updated", "resolution_updated"]
   windows: ["5m", "1h", "4h", "24h"]
   scopes: ["all", "matched"]
+  venues: ["all", "sol", "eth", "base", "bsc", "cex"]
   hot_windows: ["5m"]
   cold_interval_seconds: 60.0
 token_profile_current:

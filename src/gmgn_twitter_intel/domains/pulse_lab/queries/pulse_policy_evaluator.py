@@ -55,11 +55,13 @@ def fetch_radar_rows(conn: Any, *, now_ms: int, lookback_hours: int) -> list[dic
                   ON state.projection_version = token_radar_current_rows.projection_version
                  AND state."window" = token_radar_current_rows."window"
                  AND state.scope = token_radar_current_rows.scope
+                 AND state.venue = token_radar_current_rows.venue
                  AND state.current_generation_id = token_radar_current_rows.generation_id
                  AND state.latest_attempt_status = 'ready'
                 WHERE token_radar_current_rows.projection_version = %s
                   AND token_radar_current_rows."window" = %s
                   AND token_radar_current_rows.scope = %s
+                  AND token_radar_current_rows.venue = 'all'
                   AND state.current_published_at_ms >= %s
                   AND state.current_published_at_ms <= %s
                 ORDER BY token_radar_current_rows.rank ASC

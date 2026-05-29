@@ -206,6 +206,7 @@ class TokenRadarRowData(ApiSchema):
 class TokenRadarData(ApiSchema):
     window: str
     scope: str
+    venue: str
     targets: list[TokenRadarRowData] = Field(default_factory=list)
     attention: list[TokenRadarRowData] = Field(default_factory=list)
     projection: JsonObject = Field(default_factory=dict)

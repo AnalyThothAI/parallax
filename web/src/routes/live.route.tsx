@@ -65,9 +65,11 @@ export function Component() {
           scope={context.scope}
           selectedTokenKey={null}
           tokenItems={liveRadar.tokenItems}
+          venueFilter={liveRadar.venueFilter}
           windowKey={context.windowKey}
           onScopeChange={context.updateScope}
           onSelectToken={context.selectToken}
+          onVenueChange={liveRadar.setVenueFilter}
           onWindowChange={context.updateWindow}
         />
       </LiveMarketSubscription>

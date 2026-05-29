@@ -320,6 +320,7 @@ def _ingest_service_for_repos(
         enriched_events=getattr(repos, "enriched_events", None),
         event_anchor_jobs=getattr(repos, "event_anchor_jobs", None),
         token_radar_dirty_targets=getattr(repos, "token_radar_dirty_targets", None),
+        token_radar_source_dirty_events=getattr(repos, "token_radar_source_dirty_events", None),
         event_anchor_active_window_ms=event_anchor_active_window_ms,
     )
 

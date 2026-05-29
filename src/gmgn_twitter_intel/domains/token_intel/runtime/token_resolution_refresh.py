@@ -87,9 +87,9 @@ def reprocess_recent_token_intents(
             discovery_lookup_keys.update(
                 key for key in decision.lookup_keys if str(key).startswith(("symbol:", "address:"))
             )
-        dirty_target = _dirty_target_for_decision(decision)
-        if dirty_target is not None:
-            dirty_targets.append(dirty_target)
+        dirty_event = _source_dirty_event_for_decision(decision)
+        if dirty_event is not None:
+            dirty_targets.append(dirty_event)
     if discovery_lookup_keys:
         repos.discovery.enqueue_lookup_keys(
             sorted(discovery_lookup_keys),
@@ -97,9 +97,9 @@ def reprocess_recent_token_intents(
             now_ms=now_ms,
             commit=False,
         )
-    dirty_repo = getattr(repos, "token_radar_dirty_targets", None)
+    dirty_repo = getattr(repos, "token_radar_source_dirty_events", None)
     if dirty_targets and dirty_repo is not None:
-        dirty_repo.enqueue_targets(
+        dirty_repo.enqueue_events(
             dirty_targets,
             reason="resolution_refresh",
             now_ms=now_ms,
@@ -125,14 +125,14 @@ def deferred_token_radar_projection() -> dict[str, Any]:
     }
 
 
-def _dirty_target_for_decision(decision: Any) -> dict[str, Any] | None:
+def _source_dirty_event_for_decision(decision: Any) -> dict[str, Any] | None:
     target_type = getattr(decision, "target_type", None)
     target_id = getattr(decision, "target_id", None)
     event_id = str(getattr(decision, "event_id", "") or "")
-    if target_type in {"Asset", "CexToken"} and target_id:
+    if event_id and target_type in {"Asset", "CexToken"} and target_id:
         return {
+            "source_event_id": event_id,
             "target_type_key": str(target_type),
             "identity_id": str(target_id),
-            "source_event_ids": [event_id] if event_id else [],
         }
     return None

@@ -239,7 +239,7 @@ def test_asset_flow_hydrates_row_profile_from_profile_batch():
         profiles=profiles,
     )
 
-    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
+    result = service.asset_flow(window="1h", limit=20, scope="all", venue="all", now_ms=1_700_000_060_000)
 
     assert result["targets"][0]["profile"] == profile_block
     assert profiles.calls[0][0]["target_type"] == "Asset"
@@ -276,9 +276,11 @@ class FakeTokenRadar:
         *,
         window: str,
         scope: str,
+        venue: str,
         limit: int,
         projection_version: str,
     ) -> list[dict[str, Any]]:
+        del window, scope, venue, projection_version
         return self.rows[:limit]
 
     def current_rows_for_generation(
@@ -286,10 +288,12 @@ class FakeTokenRadar:
         *,
         window: str,
         scope: str,
+        venue: str,
         generation_id: str,
         limit: int,
         projection_version: str,
     ) -> list[dict[str, Any]]:
+        del window, scope, venue, generation_id, projection_version
         return self.rows[:limit]
 
     def latest_coverage(self, *, projection_version: str, windows: tuple[str, ...], scopes: tuple[str, ...]):
@@ -311,11 +315,12 @@ class FakeTokenRadar:
         projection_version: str,
         windows: tuple[str, ...],
         scopes: tuple[str, ...],
-    ) -> dict[tuple[str, str], dict[str, Any]]:
+        venues: tuple[str, ...],
+    ) -> dict[tuple[str, str, str], dict[str, Any]]:
         del projection_version
         max_computed_at_ms = max((int(row.get("computed_at_ms") or 0) for row in self.rows), default=0) or None
         return {
-            (window, scope): {
+            (window, scope, venue): {
                 "latest_attempt_status": "ready",
                 "current_generation_id": "gen-default",
                 "current_row_count": len(self.rows),
@@ -326,6 +331,7 @@ class FakeTokenRadar:
             }
             for window in windows
             for scope in scopes
+            for venue in venues
         }
 
 

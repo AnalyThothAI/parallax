@@ -34,16 +34,6 @@ export function tokenVenueAction(item: TokenFlowItem): VenueAction | null {
   return null;
 }
 
-export function tokenRadarVenueMatches(
-  item: TokenFlowItem,
-  filter: TokenRadarVenueFilter,
-): boolean {
-  if (filter === "all") {
-    return true;
-  }
-  return tokenRadarVenueKey(item) === filter;
-}
-
 export function tokenRadarVenueKey(
   item: TokenFlowItem,
 ): Exclude<TokenRadarVenueFilter, "all"> | null {

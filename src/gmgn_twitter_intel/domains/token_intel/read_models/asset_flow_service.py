@@ -23,13 +23,15 @@ class AssetFlowService:
         window: str,
         limit: int,
         scope: str,
+        venue: str,
         now_ms: int | None = None,
     ) -> dict[str, Any]:
         publication_state = self.token_radar.latest_publication_state(
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             windows=(window,),
             scopes=(scope,),
-        ).get((window, scope))
+            venues=(venue,),
+        ).get((window, scope, venue))
         row_limit = max(0, int(limit)) * 2
         publication_status = str((publication_state or {}).get("latest_attempt_status") or "")
         current_generation = str((publication_state or {}).get("current_generation_id") or "")
@@ -37,6 +39,7 @@ class AssetFlowService:
             rows = self.token_radar.current_rows_for_generation(
                 window=window,
                 scope=scope,
+                venue=venue,
                 generation_id=current_generation,
                 limit=row_limit,
                 projection_version=TOKEN_RADAR_PROJECTION_VERSION,
@@ -45,6 +48,7 @@ class AssetFlowService:
             rows = self.token_radar.latest_current_rows(
                 window=window,
                 scope=scope,
+                venue=venue,
                 limit=row_limit,
                 projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             )
@@ -65,7 +69,7 @@ class AssetFlowService:
                 "projection_window_failed" if publication_status == "failed" else "projection_rows_stale"
             )
         elif publication_status != "ready":
-            return _pending_projection_payload(publication_state)
+            return _pending_projection_payload(publication_state, venue=venue)
         else:
             projection_status = "stale"
             projection_reason = "projection_generation_mismatch"
@@ -94,6 +98,7 @@ class AssetFlowService:
                 "status": projection_status,
                 "version": TOKEN_RADAR_PROJECTION_VERSION,
                 "source": "token_radar_current_rows",
+                "venue": venue,
                 "reason": projection_reason,
                 "latest_attempt_status": publication_status or "missing",
                 "row_count": state_row_count or len(rows),
@@ -302,7 +307,7 @@ def _float_or_none(value: Any) -> float | None:
         return None
 
 
-def _pending_projection_payload(publication_state: dict[str, Any] | None) -> dict[str, Any]:
+def _pending_projection_payload(publication_state: dict[str, Any] | None, *, venue: str) -> dict[str, Any]:
     publication_status = str((publication_state or {}).get("latest_attempt_status") or "")
     if not publication_state:
         projection_status = "pending"
@@ -321,6 +326,7 @@ def _pending_projection_payload(publication_state: dict[str, Any] | None) -> dic
             "status": projection_status,
             "version": TOKEN_RADAR_PROJECTION_VERSION,
             "source": "token_radar_current_rows",
+            "venue": venue,
             "reason": reason,
             "latest_attempt_status": publication_status or "missing",
             "row_count": int((publication_state or {}).get("current_row_count") or 0),

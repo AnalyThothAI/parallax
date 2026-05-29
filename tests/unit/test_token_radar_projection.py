@@ -10,7 +10,7 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_RADAR_PROJECTION_VERSION,
     TOKEN_RADAR_SOURCE_TABLE,
 )
-from gmgn_twitter_intel.domains.token_intel.queries.token_radar_rank_source_query import TokenRadarSourceRequest
+from gmgn_twitter_intel.domains.token_intel.queries.token_radar_rank_source_query import TokenRadarFeatureSourceRequest
 from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import (
     PROJECTION_VERSION,
     WINDOW_MS,
@@ -720,8 +720,6 @@ def test_refresh_rank_set_prunes_private_cache_before_loading_rank_inputs(monkey
     assert token_radar.prune_rank_source_edge_calls == [
         {
             "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
-            "window": window,
-            "scope": "all",
             "event_received_before_ms": expected_cutoff,
         }
     ]
@@ -1180,7 +1178,8 @@ def test_projection_rebuild_dirty_targets_marks_claim_done_with_payload_hash(mon
     )
 
     assert result["status"] == "ready"
-    assert token_radar.rank_source_populate_batches[0]["commit"] is False
+    assert token_radar.rank_source_populate_batches == []
+    assert len(token_radar.source_request_batches) == 1
     assert dirty_targets.done == [
         {
             "target_type_key": "Asset",
@@ -1235,10 +1234,9 @@ def test_projection_rebuild_dirty_targets_copies_source_event_ids_into_requests(
     )
 
     assert result["status"] == "ready"
-    populated_request = token_radar.rank_source_populate_batches[0]["requests"][0]
     loaded_request = token_radar.source_request_batches[0][0]
-    assert populated_request.source_event_ids == ("event-2", "event-1")
-    assert loaded_request.source_event_ids == ("event-2", "event-1")
+    assert token_radar.rank_source_populate_batches == []
+    assert not hasattr(loaded_request, "source_event_ids")
     assert dirty_targets.done
     assert dirty_targets.errors == []
 
@@ -1285,7 +1283,7 @@ def test_projection_rebuild_dirty_targets_marks_source_dirty_without_event_ids_e
 
     assert result["status"] == "failed"
     assert token_radar.rank_source_populate_batches == []
-    assert token_radar.source_request_batches == []
+    assert len(token_radar.source_request_batches) == 1
     assert dirty_targets.done == []
     assert dirty_targets.errors == [
         {
@@ -1294,7 +1292,7 @@ def test_projection_rebuild_dirty_targets_marks_source_dirty_without_event_ids_e
             "payload_hash": "claim-hash",
             "lease_owner": "projection-worker",
             "attempt_count": 1,
-            "error": "token_radar_source_event_ids_required",
+            "error": "source-dirty claim without event ids should not be scored",
         }
     ]
 
@@ -1559,14 +1557,14 @@ def test_projection_rebuild_dirty_targets_scores_only_selected_work_items(monkey
     )
 
     assert result["status"] == "ready"
-    assert token_radar.rank_source_populate_batches[0]["commit"] is False
+    assert token_radar.rank_source_populate_batches == []
     assert [(request.window, request.scope) for request in token_radar.source_request_batches[0]] == [
         ("5m", "all"),
         ("1h", "matched"),
     ]
     assert score_calls == [("5m", "all"), ("1h", "matched")]
     assert refresh_calls == [("1h", "matched"), ("5m", "all")]
-    assert set(result["windows"]) == {"5m:all", "1h:matched"}
+    assert set(result["windows"]) == {"5m:all:all", "1h:matched:all"}
 
 
 def test_projection_rebuild_dirty_targets_publishes_requested_work_items_without_dirty_claims(monkeypatch):
@@ -1601,7 +1599,7 @@ def test_projection_rebuild_dirty_targets_publishes_requested_work_items_without
     assert result["status"] == "ready"
     assert result["claimed"] == 0
     assert refresh_calls == [("5m", "all")]
-    assert result["windows"]["5m:all"]["status"] == "ready"
+    assert result["windows"]["5m:all:all"]["status"] == "ready"
 
 
 def test_projection_rebuild_dirty_targets_accepts_unchanged_due_rank_result(monkeypatch):
@@ -1634,7 +1632,7 @@ def test_projection_rebuild_dirty_targets_accepts_unchanged_due_rank_result(monk
     assert result["status"] == "ready"
     assert result["rows_written"] == 0
     assert refresh_calls == [("5m", "all")]
-    assert result["windows"]["5m:all"] == {"rows_written": 0, "source_rows": 10, "status": "unchanged"}
+    assert result["windows"]["5m:all:all"] == {"rows_written": 0, "source_rows": 10, "status": "unchanged"}
     assert dirty_targets.errors == []
 
 
@@ -2293,7 +2291,7 @@ class FakeTokenRadar:
         self.list_rebuild_calls: list[dict[str, object]] = []
         self.score_calls: list[dict[str, object]] = []
         self.refresh_calls: list[dict[str, object]] = []
-        self.source_request_batches: list[list[TokenRadarSourceRequest]] = []
+        self.source_request_batches: list[list[TokenRadarFeatureSourceRequest]] = []
         self.rank_source_populate_batches: list[dict[str, object]] = []
         self.list_rank_input_calls: list[dict[str, object]] = []
         self.publish_calls: list[dict[str, object]] = []

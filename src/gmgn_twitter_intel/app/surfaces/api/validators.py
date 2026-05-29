@@ -6,6 +6,7 @@ from gmgn_twitter_intel.domains.pulse_lab.services.pulse_horizon_policy import S
 WINDOWS = {"5m", "1h", "4h", "24h"}
 SIGNAL_PULSE_WINDOWS = set(SIGNAL_PULSE_WINDOW_SET)
 SCOPES = {"all", "matched"}
+TOKEN_RADAR_VENUES = {"all", "sol", "eth", "base", "bsc", "cex"}
 ALERT_TYPES = {"account_token", "token"}
 JOB_STATUSES = {"pending", "running", "failed", "dead", "done"}
 DELIVERY_STATUSES = {"pending", "running", "failed", "dead", "delivered"}
@@ -29,6 +30,12 @@ def _csv_set(raw: str) -> set[str]:
 
 def _scope(value: str) -> str:
     return value if value in SCOPES else "matched"
+
+
+def _token_radar_venue(value: str) -> str:
+    if value in TOKEN_RADAR_VENUES:
+        return value
+    raise ApiBadRequest("invalid_venue", field="venue")
 
 
 def _watchlist_timeline_scope(value: str) -> str:

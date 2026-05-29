@@ -136,6 +136,7 @@ def test_public_narrative_contract_requires_currentness_and_delta() -> None:
         {
             "window": "5m",
             "scope": "all",
+            "venue": "all",
             "targets": [
                 {
                     "target": {"target_type": "Asset", "target_id": "asset:solana:token:hansa"},

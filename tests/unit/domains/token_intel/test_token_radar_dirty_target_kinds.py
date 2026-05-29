@@ -6,29 +6,25 @@ from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_dirty_targe
 )
 
 
-def test_dirty_kind_flags_classify_source_and_market_reasons() -> None:
+def test_dirty_kind_flags_classify_target_queue_reasons() -> None:
     assert dirty_kind_flags("intent_written") == {
-        "source_dirty": True,
         "market_dirty": False,
         "repair_dirty": False,
     }
     assert dirty_kind_flags("market_tick_current_changed") == {
-        "source_dirty": False,
         "market_dirty": True,
         "repair_dirty": False,
     }
     assert dirty_kind_flags("ops_market_current_repair") == {
-        "source_dirty": True,
         "market_dirty": True,
         "repair_dirty": True,
     }
 
 
-def test_dirty_kind_flags_default_unknown_reasons_to_source_dirty() -> None:
+def test_dirty_kind_flags_classify_repair_without_source_dirty() -> None:
     assert dirty_kind_flags("projection_catch_up") == {
-        "source_dirty": True,
         "market_dirty": False,
-        "repair_dirty": False,
+        "repair_dirty": True,
     }
 
 

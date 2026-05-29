@@ -184,8 +184,11 @@ COUNT_SQL: dict[str, str] = {
     "token_radar_current_rows_to_reset": """
         SELECT COUNT(*)::bigint AS token_radar_current_rows_to_reset
         FROM token_radar_current_rows
-        WHERE target_type = 'CexToken'
-           OR pricefeed_id LIKE 'pricefeed:cex:okx:%'
+        WHERE venue = 'all'
+          AND (
+            target_type = 'CexToken'
+            OR pricefeed_id LIKE 'pricefeed:cex:okx:%'
+          )
     """,
     "enriched_events_to_detach": """
         SELECT COUNT(*)::bigint AS enriched_events_to_detach

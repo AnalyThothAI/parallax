@@ -95,6 +95,9 @@ from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_rank_source
     TokenRadarRankSourceRepository,
 )
 from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import TokenRadarRepository
+from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_source_dirty_event_repository import (
+    TokenRadarSourceDirtyEventRepository,
+)
 from gmgn_twitter_intel.domains.token_intel.repositories.token_target_repository import TokenTargetRepository
 from gmgn_twitter_intel.domains.watchlist_intel.repositories.watchlist_intel_repository import WatchlistIntelRepository
 from gmgn_twitter_intel.platform.db.postgres_client import require_transaction, transaction
@@ -129,6 +132,7 @@ class RepositorySession:
     token_intent_lookup: TokenIntentLookupRepository
     event_tokens: EventTokenProjectionQuery
     token_radar_dirty_targets: TokenRadarDirtyTargetRepository
+    token_radar_source_dirty_events: TokenRadarSourceDirtyEventRepository
     token_radar_rank_sources: TokenRadarRankSourceRepository
     token_radar: TokenRadarRepository
     token_factor_evaluations: TokenFactorEvaluationRepository
@@ -196,6 +200,7 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         token_intent_lookup=TokenIntentLookupRepository(conn),
         event_tokens=EventTokenProjectionQuery(conn),
         token_radar_dirty_targets=TokenRadarDirtyTargetRepository(conn),
+        token_radar_source_dirty_events=TokenRadarSourceDirtyEventRepository(conn),
         token_radar_rank_sources=TokenRadarRankSourceRepository(conn),
         token_radar=TokenRadarRepository(conn),
         token_factor_evaluations=TokenFactorEvaluationRepository(conn),

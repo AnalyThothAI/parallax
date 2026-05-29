@@ -1,4 +1,5 @@
 import type { ScopeKey, TokenFlowItem, WindowKey } from "@lib/types";
+import type { TokenRadarVenueFilter } from "@lib/venue";
 
 import { TokenRadarTable } from "./TokenRadarTable";
 import "./live.css";
@@ -13,7 +14,9 @@ type LiveRadarProps = {
   scope: ScopeKey;
   windowKey: WindowKey;
   onScopeChange: (scope: ScopeKey) => void;
+  onVenueChange: (venue: TokenRadarVenueFilter) => void;
   onWindowChange: (window: WindowKey) => void;
+  venueFilter: TokenRadarVenueFilter;
 };
 
 export function LiveRadar({
@@ -26,7 +29,9 @@ export function LiveRadar({
   scope,
   windowKey,
   onScopeChange,
+  onVenueChange,
   onWindowChange,
+  venueFilter,
 }: LiveRadarProps) {
   return (
     <section className="mobile-task-surface" data-mobile-task-panel="radar">
@@ -40,7 +45,9 @@ export function LiveRadar({
         windowKey={windowKey}
         onScopeChange={onScopeChange}
         onSelect={onSelectToken}
+        onVenueChange={onVenueChange}
         onWindowChange={onWindowChange}
+        venueFilter={venueFilter}
       />
     </section>
   );

@@ -89,7 +89,8 @@ describe("TokenRadarTable rows", () => {
     expect(row).not.toHaveTextContent("eip155:8453");
   });
 
-  it("filters rows by one selected chain or CEX venue while defaulting to all", () => {
+  it("requests one selected chain or CEX venue without filtering server-ranked rows locally", () => {
+    const onVenueChange = vi.fn();
     const eth = tokenWithVenue({
       symbol: "ETHY",
       chain: "eip155:1",
@@ -106,7 +107,7 @@ describe("TokenRadarTable rows", () => {
       chain: "solana",
       targetId: "asset:solana:token:33eum82LaAhtv5YkUq1BdwEviSErH5CnFxqVNLT5pump",
     });
-    renderTokenRadarTable([eth, base, sol, cexToken()]);
+    renderTokenRadarTable([eth, base, sol, cexToken()], { onVenueChange, venueFilter: "all" });
 
     expect(screen.getByRole("button", { name: "All" })).toHaveClass("active");
     expect(screen.getByRole("article", { name: "Token Radar item $ETHY" })).toBeInTheDocument();
@@ -116,28 +117,21 @@ describe("TokenRadarTable rows", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "BASE" }));
 
-    expect(screen.getByRole("button", { name: "BASE" })).toHaveClass("active");
+    expect(onVenueChange).toHaveBeenLastCalledWith("base");
+    expect(screen.getByRole("button", { name: "All" })).toHaveClass("active");
     expect(screen.getByRole("article", { name: "Token Radar item $BASER" })).toBeInTheDocument();
-    expect(
-      screen.queryByRole("article", { name: "Token Radar item $ETHY" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("article", { name: "Token Radar item $SOLLY" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("article", { name: "Token Radar item $OPN" }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole("article", { name: "Token Radar item $ETHY" })).toBeInTheDocument();
+    expect(screen.getByRole("article", { name: "Token Radar item $SOLLY" })).toBeInTheDocument();
+    expect(screen.getByRole("article", { name: "Token Radar item $OPN" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "CEX" }));
 
-    expect(screen.getByRole("button", { name: "CEX" })).toHaveClass("active");
+    expect(onVenueChange).toHaveBeenLastCalledWith("cex");
     expect(screen.getByRole("article", { name: "Token Radar item $OPN" })).toBeInTheDocument();
-    expect(
-      screen.queryByRole("article", { name: "Token Radar item $BASER" }),
-    ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "All" }));
 
+    expect(onVenueChange).toHaveBeenLastCalledWith("all");
     expect(screen.getAllByRole("article")).toHaveLength(4);
   });
 
@@ -447,7 +441,7 @@ describe("TokenRadarTable rows", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("uses score ranking as the default table sort", () => {
+  it("keeps the server-ranked order as the default table order", () => {
     const low = withRadarMeta(
       {
         ...mixedFreshnessToken(),
@@ -480,14 +474,16 @@ describe("TokenRadarTable rows", () => {
 
     const rows = Array.from(container.querySelectorAll(".token-radar-row"));
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toHaveTextContent("$HIGH");
-    expect(rows[1]).toHaveTextContent("$LOW");
+    expect(rows[0]).toHaveTextContent("$LOW");
+    expect(rows[1]).toHaveTextContent("$HIGH");
   });
 });
 
 function renderTokenRadarTable(
   items: TokenFlowItem[],
-  overrides: Partial<Pick<ComponentProps<typeof TokenRadarTable>, "onSelect">> = {},
+  overrides: Partial<
+    Pick<ComponentProps<typeof TokenRadarTable>, "onSelect" | "onVenueChange" | "venueFilter">
+  > = {},
 ) {
   return render(
     <TokenRadarTable
@@ -499,7 +495,9 @@ function renderTokenRadarTable(
       windowKey="1h"
       onScopeChange={vi.fn()}
       onSelect={overrides.onSelect ?? vi.fn()}
+      onVenueChange={overrides.onVenueChange ?? vi.fn()}
       onWindowChange={vi.fn()}
+      venueFilter={overrides.venueFilter ?? "all"}
     />,
   );
 }

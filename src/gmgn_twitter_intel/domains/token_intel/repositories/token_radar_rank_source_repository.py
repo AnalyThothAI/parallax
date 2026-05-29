@@ -4,8 +4,9 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from gmgn_twitter_intel.domains.token_intel.queries.token_radar_rank_source_query import (
+    TokenRadarFeatureSourceRequest,
     TokenRadarRankSourceQuery,
-    TokenRadarSourceRequest,
+    TokenRadarSourceEdgeRequest,
 )
 
 
@@ -15,7 +16,7 @@ class TokenRadarRankSourceRepository:
 
     def load_rows_for_requests(
         self,
-        requests: Sequence[TokenRadarSourceRequest],
+        requests: Sequence[TokenRadarFeatureSourceRequest],
     ) -> dict[str, list[dict[str, Any]]]:
         return TokenRadarRankSourceQuery(self.conn).load_rows_for_requests(requests)
 
@@ -25,9 +26,15 @@ class TokenRadarRankSourceRepository:
     ) -> dict[tuple[str, str], dict[str, Any]]:
         return TokenRadarRankSourceQuery(self.conn).latest_market_context_for_targets(targets)
 
+    def affected_targets_for_event_ids(
+        self,
+        requests: Sequence[TokenRadarSourceEdgeRequest | str],
+    ) -> list[dict[str, str]]:
+        return TokenRadarRankSourceQuery(self.conn).affected_targets_for_event_ids(requests)
+
     def populate_edges_for_event_ids(
         self,
-        requests: Sequence[TokenRadarSourceRequest],
+        requests: Sequence[TokenRadarSourceEdgeRequest | str],
         *,
         projected_at_ms: int,
         commit: bool = True,
@@ -42,15 +49,11 @@ class TokenRadarRankSourceRepository:
         self,
         *,
         projection_version: str,
-        window: str,
-        scope: str,
         event_received_before_ms: int,
         commit: bool = True,
     ) -> int:
         return TokenRadarRankSourceQuery(self.conn).prune_edges(
             projection_version=projection_version,
-            window=window,
-            scope=scope,
             event_received_before_ms=event_received_before_ms,
             commit=commit,
         )

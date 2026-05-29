@@ -260,8 +260,8 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
             "gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker.TokenRadarProjectionWorker"
         ),
         start_priority=80,
-        input_contract=("token_radar_dirty_targets",),
-        ordering_keys=("window", "scope", "target_type", "target_id"),
+        input_contract=("token_radar_source_dirty_events", "token_radar_dirty_targets"),
+        ordering_keys=("window", "scope", "venue", "target_type", "target_id", "source_event_id"),
         writes_read_models=(
             "token_radar_rank_source_events",
             "token_radar_target_features",
@@ -272,6 +272,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
             "token_score_evaluations",
         ),
         writes_control_plane=(
+            "token_radar_source_dirty_events",
             "token_radar_dirty_targets",
             "projection_runs",
             "pulse_trigger_dirty_targets",
@@ -282,9 +283,6 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
                 "token_radar_rank_source_events",
                 (
                     "projection_version",
-                    "window",
-                    "scope",
-                    "lane",
                     "target_type_key",
                     "identity_id",
                     "source_kind",
@@ -297,18 +295,18 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
             ),
             (
                 "token_radar_current_rows",
-                ("projection_version", "window", "scope", "lane", "target_type_key", "identity_id"),
+                ("projection_version", "window", "scope", "venue", "lane", "target_type_key", "identity_id"),
             ),
-            ("token_radar_publication_state", ("projection_version", "window", "scope")),
+            ("token_radar_publication_state", ("projection_version", "window", "scope", "venue")),
             (
                 "token_radar_target_first_seen",
-                ("projection_version", "window", "scope", "target_type_key", "identity_id"),
+                ("projection_version", "window", "scope", "venue", "target_type_key", "identity_id"),
             ),
             ("projection_offsets", ("projection_name",)),
             ("token_score_evaluations", ("horizon", "window", "scope", "score_version", "bucket_label")),
         ),
         idempotency_evidence=("token radar window/scope/target primary key", "projection version"),
-        dirty_target_tables=("token_radar_dirty_targets",),
+        dirty_target_tables=("token_radar_source_dirty_events", "token_radar_dirty_targets"),
         advisory_lock_key="2026051501",
         wakes_on=("market_tick_current_updated", "resolution_updated"),
         wakes_out=("token_radar_updated",),

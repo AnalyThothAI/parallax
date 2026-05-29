@@ -19,7 +19,7 @@ def test_asset_flow_returns_market_context_and_no_legacy_market_fields():
         ]
     )
 
-    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
+    result = service.asset_flow(window="1h", limit=20, scope="all", venue="all", now_ms=1_700_000_060_000)
 
     btc = result["targets"][0]
     assert btc["target"]["symbol"] == "BTC"
@@ -55,7 +55,7 @@ def test_asset_flow_returns_market_context_and_no_legacy_market_fields():
 def test_asset_flow_marks_ready_empty_projection_without_missing_rows():
     service = asset_flow_service(rows=[])
 
-    result = service.asset_flow(window="5m", limit=20, scope="all", now_ms=1_700_000_060_000)
+    result = service.asset_flow(window="5m", limit=20, scope="all", venue="all", now_ms=1_700_000_060_000)
 
     assert result["targets"] == []
     assert result["attention"] == []
@@ -78,7 +78,7 @@ def test_asset_flow_projection_metadata_prefers_publication_state_timestamp():
             )
         ],
         publication_state={
-            ("1h", "all"): {
+            ("1h", "all", "all"): {
                 "latest_attempt_status": "ready",
                 "current_generation_id": "gen-1",
                 "current_row_count": 1,
@@ -90,7 +90,7 @@ def test_asset_flow_projection_metadata_prefers_publication_state_timestamp():
         },
     )
 
-    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_130_000)
+    result = service.asset_flow(window="1h", limit=20, scope="all", venue="all", now_ms=1_700_000_130_000)
 
     assert result["targets"][0]["radar"]["computed_at_ms"] == 1_700_000_060_000
     assert result["projection"]["computed_at_ms"] == 1_700_000_120_000
@@ -100,7 +100,7 @@ def test_asset_flow_ready_state_with_missing_current_generation_rows_is_stale():
     service = asset_flow_service(
         rows=[],
         publication_state={
-            ("1h", "all"): {
+            ("1h", "all", "all"): {
                 "latest_attempt_status": "ready",
                 "current_generation_id": "gen-missing",
                 "current_row_count": 1,
@@ -112,7 +112,7 @@ def test_asset_flow_ready_state_with_missing_current_generation_rows_is_stale():
         },
     )
 
-    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_130_000)
+    result = service.asset_flow(window="1h", limit=20, scope="all", venue="all", now_ms=1_700_000_130_000)
 
     assert result["targets"] == []
     assert result["projection"]["status"] == "stale"
@@ -123,7 +123,7 @@ def test_asset_flow_ready_state_with_missing_current_generation_rows_is_stale():
 def test_asset_flow_marks_projection_pending_when_publication_state_is_missing():
     service = asset_flow_service(rows=[], publication_state={})
 
-    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
+    result = service.asset_flow(window="1h", limit=20, scope="all", venue="all", now_ms=1_700_000_060_000)
 
     assert result["targets"] == []
     assert result["attention"] == []
@@ -146,7 +146,7 @@ def test_asset_flow_failed_attempt_with_previous_rows_is_stale_not_fresh():
             )
         ],
         publication_state={
-            ("1h", "all"): {
+            ("1h", "all", "all"): {
                 "latest_attempt_status": "failed",
                 "latest_attempt_generation_id": "gen-failed",
                 "current_generation_id": "gen-previous",
@@ -159,7 +159,7 @@ def test_asset_flow_failed_attempt_with_previous_rows_is_stale_not_fresh():
         },
     )
 
-    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_130_000)
+    result = service.asset_flow(window="1h", limit=20, scope="all", venue="all", now_ms=1_700_000_130_000)
 
     assert result["targets"][0]["target"]["symbol"] == "BTC"
     assert result["attention"] == []
@@ -176,7 +176,7 @@ def test_asset_flow_failed_projection_without_rows_has_failed_quality():
     service = asset_flow_service(
         rows=[],
         publication_state={
-            ("1h", "all"): {
+            ("1h", "all", "all"): {
                 "latest_attempt_status": "failed",
                 "latest_attempt_generation_id": "gen-failed",
                 "current_generation_id": None,
@@ -189,7 +189,7 @@ def test_asset_flow_failed_projection_without_rows_has_failed_quality():
         },
     )
 
-    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_130_000)
+    result = service.asset_flow(window="1h", limit=20, scope="all", venue="all", now_ms=1_700_000_130_000)
 
     assert result["projection"]["status"] == "failed"
     assert result["projection"]["quality_status"] == "failed"
@@ -204,7 +204,7 @@ def test_asset_flow_does_not_fallback_to_legacy_payloads_when_snapshot_missing()
     row["score_json"] = {"heat": {"score": 99}}
     service = asset_flow_service(rows=[row])
 
-    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
+    result = service.asset_flow(window="1h", limit=20, scope="all", venue="all", now_ms=1_700_000_060_000)
 
     assert result["targets"] == []
     assert result["attention"] == []
@@ -227,7 +227,7 @@ def test_asset_flow_uses_backend_symbol_without_inventing_contract_label():
         ]
     )
 
-    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
+    result = service.asset_flow(window="1h", limit=20, scope="all", venue="all", now_ms=1_700_000_060_000)
 
     assert result["targets"][0]["intent"]["display_symbol"] == "CTc4y2eH"
     assert result["targets"][0]["target"]["symbol"] is None
@@ -248,7 +248,7 @@ def test_asset_flow_fresh_projection_can_be_quality_degraded():
         ]
     )
 
-    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
+    result = service.asset_flow(window="1h", limit=20, scope="all", venue="all", now_ms=1_700_000_060_000)
 
     assert result["projection"]["status"] == "fresh"
     assert result["projection"]["quality_status"] == "degraded"
@@ -264,7 +264,7 @@ def test_asset_flow_ready_market_returns_quality_ready():
         rows=[radar_row(lane="resolved", symbol="BTC", target_type="CexToken", target_id="cex_token:BTC")]
     )
 
-    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
+    result = service.asset_flow(window="1h", limit=20, scope="all", venue="all", now_ms=1_700_000_060_000)
 
     assert result["projection"]["status"] == "fresh"
     assert result["projection"]["quality_status"] == "ready"
@@ -278,15 +278,18 @@ class FakeTokenRadar:
         self.publication_state = publication_state
         self.calls = []
 
-    def latest_current_rows(self, *, window, scope, limit, projection_version):
-        self.calls.append({"window": window, "scope": scope, "limit": limit, "projection_version": projection_version})
+    def latest_current_rows(self, *, window, scope, venue, limit, projection_version):
+        self.calls.append(
+            {"window": window, "scope": scope, "venue": venue, "limit": limit, "projection_version": projection_version}
+        )
         return self.rows[:limit]
 
-    def current_rows_for_generation(self, *, window, scope, generation_id, limit, projection_version):
+    def current_rows_for_generation(self, *, window, scope, venue, generation_id, limit, projection_version):
         self.calls.append(
             {
                 "window": window,
                 "scope": scope,
+                "venue": venue,
                 "generation_id": generation_id,
                 "limit": limit,
                 "projection_version": projection_version,
@@ -294,10 +297,10 @@ class FakeTokenRadar:
         )
         return [row for row in self.rows if str(row.get("generation_id") or "") == str(generation_id)][:limit]
 
-    def latest_publication_state(self, *, projection_version, windows, scopes):
+    def latest_publication_state(self, *, projection_version, windows, scopes, venues):
         if self.publication_state is None:
             return {
-                (window, scope): {
+                (window, scope, venue): {
                     "latest_attempt_status": "ready",
                     "current_generation_id": "gen-default",
                     "current_row_count": len(self.rows),
@@ -314,6 +317,7 @@ class FakeTokenRadar:
                 }
                 for window in windows
                 for scope in scopes
+                for venue in venues
             }
         return dict(self.publication_state)
 
@@ -321,7 +325,7 @@ class FakeTokenRadar:
 def asset_flow_service(
     *,
     rows: list[dict],
-    publication_state: dict[tuple[str, str], dict] | None = None,
+    publication_state: dict[tuple[str, str, str], dict] | None = None,
 ) -> AssetFlowService:
     return AssetFlowService(
         token_radar=FakeTokenRadar(rows=rows, publication_state=publication_state),
