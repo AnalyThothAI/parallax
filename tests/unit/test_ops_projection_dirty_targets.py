@@ -52,12 +52,6 @@ def test_enqueue_projection_dirty_targets_execute_enqueues_only_dirty_targets() 
             "source_watermark_ms": NOW_MS - 1_000,
         },
         {
-            "projection_name": "brief_input",
-            "target_kind": "news_item",
-            "target_id": "news-1",
-            "source_watermark_ms": NOW_MS - 1_000,
-        },
-        {
             "projection_name": "page",
             "target_kind": "news_item",
             "target_id": "news-1",
@@ -68,6 +62,13 @@ def test_enqueue_projection_dirty_targets_execute_enqueues_only_dirty_targets() 
             "target_kind": "news_item",
             "target_id": "news-2",
             "source_watermark_ms": NOW_MS - 2_000,
+        },
+        {
+            "projection_name": "brief_input",
+            "target_kind": "news_item",
+            "target_id": "news-2",
+            "source_watermark_ms": NOW_MS - 2_000,
+            "priority": 12,
         },
         {
             "projection_name": "page",
@@ -145,8 +146,9 @@ def test_enqueue_projection_dirty_targets_can_scope_brief_input_repair() -> None
         {
             "projection_name": "brief_input",
             "target_kind": "news_item",
-            "target_id": "news-1",
-            "source_watermark_ms": NOW_MS - 1_000,
+            "target_id": "news-2",
+            "source_watermark_ms": NOW_MS - 2_000,
+            "priority": 12,
         },
     ]
 
@@ -176,7 +178,7 @@ class FakeConn:
                         "news_item_id": "news-2",
                         "source_watermark_ms": NOW_MS - 2_000,
                         "provider_type": "opennews",
-                        "provider_signal_json": {"source": "provider", "provider": "opennews"},
+                        "provider_signal_json": {"source": "provider", "provider": "opennews", "score": 88},
                     },
                 ]
             )

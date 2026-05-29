@@ -89,7 +89,10 @@ def test_rebuild_dirty_targets_market_only_loads_existing_edges_without_populati
     scored_source = score_calls[0]["source_rows"][0]
     assert scored_source["latest_price_tick_id"] == "fresh-tick"
     assert scored_source["latest_price_usd"] == 2.5
-    assert refresh_calls == [{"window": "5m", "scope": "all", "venue": "bsc", "now_ms": now_ms, "limit": 7}]
+    assert refresh_calls == [
+        {"window": "5m", "scope": "all", "venue": "all", "now_ms": now_ms, "limit": 7},
+        {"window": "5m", "scope": "all", "venue": "bsc", "now_ms": now_ms, "limit": 7},
+    ]
     assert dirty_targets.done[0]["identity_id"] == "asset-1"
     assert source_dirty.done == []
     assert dirty_targets.errors == []
@@ -178,6 +181,10 @@ class FakeRankSources:
     def populate_edges_for_event_ids(self, requests, *, projected_at_ms, commit):
         self.populate_calls.append({"requests": list(requests), "projected_at_ms": projected_at_ms, "commit": commit})
         return len(self.populate_calls[-1]["requests"])
+
+    def populate_edges_for_targets(self, targets, *, projected_at_ms, commit):
+        self.populate_calls.append({"targets": list(targets), "projected_at_ms": projected_at_ms, "commit": commit})
+        return len(self.populate_calls[-1]["targets"])
 
     def affected_targets_for_event_ids(self, requests):
         self.affected_calls.append(list(requests))

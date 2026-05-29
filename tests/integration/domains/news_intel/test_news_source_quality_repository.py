@@ -109,10 +109,10 @@ def test_source_quality_repository_aggregates_and_replaces_rows(tmp_path) -> Non
         repo.insert_news_item_agent_run(
             run_id="run-1",
             news_item_id=news_item_id,
-            provider="openai",
+            provider="litellm",
             model="gpt-test",
-            backend="openai_agents_sdk",
-            sdk_trace_id=None,
+            backend="litellm_sdk",
+            execution_trace_id=None,
             workflow_name="news.item_brief",
             agent_name="news_item_brief",
             lane="news.item_brief",

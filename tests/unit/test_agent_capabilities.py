@@ -7,7 +7,7 @@ def test_qwen_profile_uses_json_object_with_client_validation() -> None:
 
     profile = resolve_agent_capability_profile(model="qwen3.6")
 
-    assert profile.provider_family == "openai_compatible"
+    assert profile.provider_family == "litellm"
     assert profile.request_options.extra_body == {"chat_template_kwargs": {"enable_thinking": False}}
 
 
@@ -27,7 +27,7 @@ def test_explicit_profile_override_wins_for_arbitrary_model() -> None:
     )
 
     override = AgentCapabilityProfile(
-        provider_family="openai_compatible",
+        provider_family="litellm",
         client_validation_retries=2,
     )
 
@@ -58,6 +58,6 @@ def test_profile_rejects_legacy_output_strategy_fields() -> None:
 
     with pytest.raises(ValidationError, match="output_strategy"):
         AgentCapabilityProfile(
-            provider_family="openai_compatible",
+            provider_family="litellm",
             output_strategy="legacy",
         )

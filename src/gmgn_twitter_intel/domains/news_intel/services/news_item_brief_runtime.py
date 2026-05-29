@@ -38,8 +38,6 @@ def build_news_item_brief_stage(*, packet: NewsItemBriefInputPacket, run_id: str
             "prompt_version": packet.prompt_version,
             "schema_version": packet.schema_version,
         },
-        max_turns=1,
-        tools=[],
     )
 
 

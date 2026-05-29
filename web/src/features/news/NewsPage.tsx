@@ -16,6 +16,7 @@ type NewsPageProps = {
 };
 
 const EMPTY_NEWS_ROWS: NewsRow[] = [];
+const DEFAULT_NEWS_MIN_SCORE = 70;
 type SignalFilter = "all" | "bullish" | "bearish" | "neutral";
 
 export function NewsPage({ token, newsItemId = null }: NewsPageProps) {
@@ -26,7 +27,7 @@ export function NewsPage({ token, newsItemId = null }: NewsPageProps) {
 function NewsQueueRoute({ token }: { token: string }) {
   const navigate = useNavigate();
   const [signalFilter, setSignalFilter] = useState<SignalFilter>("all");
-  const [minScore, setMinScore] = useState<number | null>(null);
+  const [minScore, setMinScore] = useState<number | null>(DEFAULT_NEWS_MIN_SCORE);
   const [searchQuery, setSearchQuery] = useState("");
   const [cursorStack, setCursorStack] = useState<Array<string | null>>([null]);
   const cursor = cursorStack[cursorStack.length - 1] ?? null;
@@ -59,10 +60,10 @@ function NewsQueueRoute({ token }: { token: string }) {
               </button>
             ))}
             <button
-              aria-pressed={minScore === 70}
+              aria-pressed={minScore === DEFAULT_NEWS_MIN_SCORE}
               type="button"
               onClick={() => {
-                setMinScore((current) => (current === 70 ? null : 70));
+                setMinScore((current) => (current === DEFAULT_NEWS_MIN_SCORE ? null : DEFAULT_NEWS_MIN_SCORE));
                 resetCursor();
               }}
             >

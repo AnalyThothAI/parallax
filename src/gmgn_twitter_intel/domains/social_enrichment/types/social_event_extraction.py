@@ -42,7 +42,7 @@ SOURCE_ACTIONS = {"posted", "replied", "quoted", "retweeted", "profile_changed"}
 
 PROMPT_VERSION = "social-event-agents-sdk-v1"
 SCHEMA_VERSION = "social_event_v2"
-BACKEND = "openai_agents_sdk"
+BACKEND = "litellm_sdk"
 WORKFLOW_NAME = "gmgn-twitter-intel.social_event_extraction"
 AGENT_NAME = "SocialEventExtractionAgent"
 

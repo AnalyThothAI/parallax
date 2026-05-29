@@ -51,10 +51,10 @@ class PulseDecisionAgentResult:
     stage_audits: tuple[StageRunAudit, ...]
 
 
-class OpenAIAgentsPulseDecisionClient:
+class LiteLLMPulseDecisionClient:
     """Packet-only SignalAnalyst -> BearCase -> RiskPortfolioJudge client."""
 
-    provider = "openai"
+    provider = "litellm"
 
     def __init__(
         self,
@@ -62,9 +62,6 @@ class OpenAIAgentsPulseDecisionClient:
         agent_gateway: Any,
         decision_runtime: PulseDecisionRuntime,
         workflow_name: str = WORKFLOW_NAME,
-        signal_analyst_max_turns: int = 1,
-        bear_case_max_turns: int = 1,
-        risk_portfolio_judge_max_turns: int = 1,
     ) -> None:
         if agent_gateway is None:
             raise ValueError("agent_gateway is required")
@@ -73,9 +70,6 @@ class OpenAIAgentsPulseDecisionClient:
         self._agent_gateway = agent_gateway
         self._decision_runtime = decision_runtime
         self.workflow_name = str(workflow_name or "").strip() or WORKFLOW_NAME
-        self._signal_analyst_max_turns = max(1, int(signal_analyst_max_turns))
-        self._bear_case_max_turns = max(1, int(bear_case_max_turns))
-        self._risk_portfolio_judge_max_turns = max(1, int(risk_portfolio_judge_max_turns))
 
     @property
     def timeout_seconds(self) -> float:
@@ -114,16 +108,6 @@ class OpenAIAgentsPulseDecisionClient:
     def runtime_contract(self) -> PulseAgentRuntimeContract:
         return PulseAgentRuntimeContract(
             stage_names=("signal_analyst", "bear_case", "risk_portfolio_judge"),
-            max_turns_per_stage={
-                "signal_analyst": self._signal_analyst_max_turns,
-                "bear_case": self._bear_case_max_turns,
-                "risk_portfolio_judge": self._risk_portfolio_judge_max_turns,
-            },
-            tool_names_by_stage={
-                "signal_analyst": (),
-                "bear_case": (),
-                "risk_portfolio_judge": (),
-            },
             safety_net_enabled=True,
             evidence_packet_schema_version=DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT.evidence_packet_schema_version,
         )
@@ -387,7 +371,6 @@ class OpenAIAgentsPulseDecisionClient:
             spec=spec,
             route=route,
             output_type=SignalAnalystMemo,
-            max_turns=self._signal_analyst_max_turns,
             run_id=run_id,
             audit=audit,
             parent_reservation=parent_reservation,
@@ -414,7 +397,6 @@ class OpenAIAgentsPulseDecisionClient:
             spec=spec,
             route=route,
             output_type=BearCaseMemo,
-            max_turns=self._bear_case_max_turns,
             run_id=run_id,
             audit=audit,
             parent_reservation=parent_reservation,
@@ -444,7 +426,6 @@ class OpenAIAgentsPulseDecisionClient:
             spec=spec,
             route=route,
             output_type=FinalDecision,
-            max_turns=self._risk_portfolio_judge_max_turns,
             run_id=run_id,
             audit=audit,
             parent_reservation=parent_reservation,
@@ -456,7 +437,6 @@ class OpenAIAgentsPulseDecisionClient:
         spec: PulseDecisionStageSpec,
         route: DecisionRoute,
         output_type: type[Any],
-        max_turns: int,
         run_id: str,
         audit: dict[str, Any],
         parent_reservation: AgentCapacityReservation | None = None,
@@ -465,7 +445,6 @@ class OpenAIAgentsPulseDecisionClient:
             spec=spec,
             route=route,
             output_type=output_type,
-            max_turns=max_turns,
             run_id=run_id,
             audit=audit,
         )
@@ -527,7 +506,6 @@ class OpenAIAgentsPulseDecisionClient:
         spec: PulseDecisionStageSpec,
         route: DecisionRoute,
         output_type: type[Any],
-        max_turns: int,
         run_id: str,
         audit: dict[str, Any],
     ) -> AgentStageSpec:
@@ -549,7 +527,6 @@ class OpenAIAgentsPulseDecisionClient:
                 "route": route,
                 "lane": _stage_lane(spec.stage),
             },
-            max_turns=max_turns,
         )
 
     def _pipeline_model_manifest(self) -> str:
@@ -826,6 +803,6 @@ def _latency_ms(value: Any) -> int:
 __all__ = [
     "AGENT_NAME",
     "WORKFLOW_NAME",
-    "OpenAIAgentsPulseDecisionClient",
+    "LiteLLMPulseDecisionClient",
     "PulseDecisionAgentResult",
 ]

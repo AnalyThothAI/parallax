@@ -191,7 +191,7 @@ def test_fill_worker_queue_healths_attaches_all_manifest_queue_tables() -> None:
 
     fill_worker_queue_healths(workers, runtime, now_ms=1_000)
 
-    assert workers["token_radar_projection"]["queue_depth"] == 1
+    assert workers["token_radar_projection"]["queue_depth"] == 2
     assert "token_radar_dirty_targets" in workers["token_radar_projection"]["queue_health"]["tables"]
     assert workers["pulse_candidate"]["queue_depth"] == 2
     assert set(workers["pulse_candidate"]["queue_health"]["tables"]) == {
@@ -247,7 +247,7 @@ def test_fill_worker_queue_healths_reuses_short_ttl_cache_without_db_query() -> 
     fill_worker_queue_healths(second_workers, runtime, now_ms=1_500)
 
     assert ConnectionContext.enter_count == 1
-    assert second_workers["token_radar_projection"]["queue_depth"] == 1
+    assert second_workers["token_radar_projection"]["queue_depth"] == 2
     assert (
         second_workers["token_radar_projection"]["queue_health"]["tables"]["token_radar_dirty_targets"]["queue_depth"]
         == 1
@@ -310,7 +310,7 @@ def test_missing_connection_is_reported_on_manifest_workers() -> None:
     health = workers["token_radar_projection"]["queue_health"]
     table_health = health["tables"]["token_radar_dirty_targets"]
     assert health["status"] == "unavailable"
-    assert health["unavailable_table_count"] == 1
+    assert health["unavailable_table_count"] == 2
     assert table_health["error_code"] == "missing_connection"
 
 

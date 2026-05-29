@@ -112,7 +112,7 @@ def test_projection_worker_calls_dirty_incremental_projection_not_window_rebuild
     wake_bus = FakeWakeBus()
 
     class FakeProjection:
-        def __init__(self, *, repos):
+        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
@@ -177,7 +177,7 @@ def test_projection_worker_calls_dirty_incremental_projection_not_window_rebuild
 
 def test_projection_worker_run_once_returns_worker_result(monkeypatch):
     class FakeProjection:
-        def __init__(self, *, repos):
+        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
@@ -214,7 +214,7 @@ def test_token_radar_wake_does_not_bypass_hot_interval_gate(monkeypatch):
     publication_state = {("5m", "all"): _ready_state(now_ms - 1_000)}
 
     class FakeProjection:
-        def __init__(self, *, repos):
+        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
@@ -250,7 +250,7 @@ def test_token_radar_worker_runs_only_due_hot_items_after_interval(monkeypatch):
     }
 
     class FakeProjection:
-        def __init__(self, *, repos):
+        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
@@ -295,7 +295,7 @@ def test_token_radar_worker_idles_when_cold_grouped_window_is_fresh(monkeypatch)
     }
 
     class FakeProjection:
-        def __init__(self, *, repos):
+        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
@@ -335,7 +335,7 @@ def test_token_radar_worker_runs_due_cold_grouped_window_after_interval(monkeypa
     }
 
     class FakeProjection:
-        def __init__(self, *, repos):
+        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
@@ -383,7 +383,7 @@ def test_token_radar_failed_without_current_backs_off_recent_attempt(monkeypatch
     }
 
     class FakeProjection:
-        def __init__(self, *, repos):
+        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
@@ -419,7 +419,7 @@ def test_token_radar_failed_with_previous_generation_uses_attempt_backoff(monkey
     }
 
     class FakeProjection:
-        def __init__(self, *, repos):
+        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
@@ -456,7 +456,7 @@ def test_token_radar_ready_state_without_publish_time_is_due(monkeypatch):
     }
 
     class FakeProjection:
-        def __init__(self, *, repos):
+        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
@@ -493,7 +493,7 @@ def test_token_radar_worker_limits_partial_cold_missing_to_one_background_item(m
     }
 
     class FakeProjection:
-        def __init__(self, *, repos):
+        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
@@ -533,7 +533,7 @@ def test_projection_worker_limits_dirty_rebuild_to_hot_and_due_cold_work_items(m
     calls: list[dict[str, object]] = []
 
     class FakeProjection:
-        def __init__(self, *, repos):
+        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
@@ -571,7 +571,7 @@ def test_projection_worker_treats_failed_publication_state_as_due_work(monkeypat
     calls: list[dict[str, object]] = []
 
     class FakeProjection:
-        def __init__(self, *, repos):
+        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
@@ -690,7 +690,7 @@ def test_projection_worker_records_partial_window_results_before_background_fail
     sessions: list[FakeSession] = []
 
     class FakeProjection:
-        def __init__(self, *, repos):
+        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
@@ -736,7 +736,7 @@ def test_projection_worker_uses_wake_waiter_before_interval(monkeypatch):
 
     async def scenario() -> None:
         class FakeProjection:
-            def __init__(self, *, repos):
+            def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
                 self.repos = repos
 
             def rebuild_dirty_targets(self, **kwargs):
@@ -866,7 +866,7 @@ def _worker(
     import pytest
 
     class _FakeProjection:
-        def __init__(self, *, repos):
+        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
@@ -901,7 +901,7 @@ def _worker(
 
 def test_projection_worker_leaves_catch_up_to_projection_service(monkeypatch) -> None:
     class _FakeProjection:
-        def __init__(self, *, repos):
+        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):

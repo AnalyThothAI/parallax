@@ -155,7 +155,7 @@ class FakePulseDecisionProvider:
     ) -> dict[str, Any]:
         return {
             "backend": "fake",
-            "sdk_trace_id": f"trace-{run_id}",
+            "execution_trace_id": f"trace-{run_id}",
             "workflow_name": "pulse-hot-path",
             "agent_name": "pulse-hot-path-agent",
             "prompt_version": "pulse-decision-prompt-v2",

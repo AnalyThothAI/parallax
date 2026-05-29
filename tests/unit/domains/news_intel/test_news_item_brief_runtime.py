@@ -15,7 +15,7 @@ from gmgn_twitter_intel.domains.news_intel.types.news_item_brief import (
 )
 
 
-def test_stage_spec_is_single_turn_toolless_and_traceable() -> None:
+def test_stage_spec_is_traceable() -> None:
     packet = build_news_item_brief_input_packet(
         item={
             "news_item_id": "item-1",
@@ -45,8 +45,6 @@ def test_stage_spec_is_single_turn_toolless_and_traceable() -> None:
     assert stage.stage == "news_item_brief"
     assert stage.workflow_name == NEWS_ITEM_BRIEF_WORKFLOW_NAME
     assert stage.agent_name == NEWS_ITEM_BRIEF_AGENT_NAME
-    assert stage.tools == []
-    assert stage.max_turns == 1
     assert stage.output_type is NewsItemBriefPayload
     assert stage.group_id == "news_item:item-1"
     assert stage.prompt_version == "prompt-v1"

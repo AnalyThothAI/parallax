@@ -257,6 +257,72 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
     }
 
 
+def test_build_news_page_row_preserves_provider_signal_without_masking_ready_agent_brief() -> None:
+    row = build_news_page_row(
+        item={
+            "news_item_id": "news-1",
+            "title": "SOL ETF filing",
+            "summary": "",
+            "source_domain": "example.test",
+            "canonical_url": "https://example.test/a",
+            "published_at_ms": 1000,
+            "provider_signal_json": {
+                "source": "provider",
+                "provider": "opennews",
+                "status": "ready",
+                "direction": "bullish",
+                "signal": "long",
+                "score": 92,
+                "grade": "A",
+                "summary_en": "Provider summary",
+                "method": "opennews.aiRating",
+            },
+        },
+        story=None,
+        token_mentions=[],
+        fact_candidates=[],
+        agent_brief={
+            "agent_run_id": "run-1",
+            "status": "ready",
+            "direction": "bearish",
+            "decision_class": "watch",
+            "brief_json": {
+                "summary_zh": "Agent sees event risk.",
+                "market_read_zh": "风险仍待确认。",
+                "bull_view": {"strength": "weak"},
+                "bear_view": {"strength": "moderate"},
+            },
+            "computed_at_ms": 3000,
+        },
+        computed_at_ms=4000,
+    )
+
+    assert row["agent_status"] == "ready"
+    assert row["agent_brief_status"] == "ready"
+    assert row["signal"]["source"] == "agent"
+    assert row["signal"]["direction"] == "bearish"
+    assert row["signal"]["score"] == 92
+    assert row["signal"]["provider_signal"] == {
+        "source": "provider",
+        "provider": "opennews",
+        "status": "ready",
+        "direction": "bullish",
+        "label_zh": "利好",
+        "signal": "long",
+        "score": 92,
+        "grade": "A",
+        "summary_en": "Provider summary",
+        "method": "opennews.aiRating",
+    }
+    assert row["signal"]["alert_eligibility"] == {
+        "agent_status": "ready",
+        "decision_class": "watch",
+        "provider_status": "ready",
+        "provider_score": 92,
+        "eligible": True,
+    }
+
+
 def test_build_news_page_row_uses_pending_agent_brief_when_missing() -> None:
     row = build_news_page_row(
         item={

@@ -36,8 +36,8 @@ def test_no_runtime_compatibility_fallbacks_for_agent_contracts() -> None:
 
     pulse_provider_sources = "\n".join(
         (
-            (SRC / "app/runtime/provider_wiring/openai.py").read_text(),
-            (SRC / "integrations/openai_agents/pulse_decision_agent_client.py").read_text(),
+            (SRC / "app/runtime/provider_wiring/model_execution.py").read_text(),
+            (SRC / "integrations/model_execution/pulse_decision_agent_client.py").read_text(),
         )
     )
     assert "return self.model" not in pulse_provider_sources

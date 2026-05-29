@@ -837,6 +837,45 @@ def test_projection_enqueues_narrative_admission_for_realtime_rank_changes() -> 
     ]
 
 
+def test_projection_runtime_gate_suppresses_narrative_admission_dirty_targets() -> None:
+    now_ms = 1_777_800_060_000
+    row = {
+        "target_type": "Asset",
+        "target_id": "asset-1",
+        "rank": 1,
+        "lane": "resolved",
+        "decision": "high_alert",
+        "factor_snapshot_json": {"schema_version": "factor"},
+        "source_event_ids_json": ["event-1"],
+        "source_max_received_at_ms": now_ms - 1_000,
+        "payload_hash": "row-hash",
+    }
+    repos = type(
+        "Repos",
+        (),
+        {
+            "pulse_trigger_dirty_targets": FakeRuntimeDirtyTargets(),
+            "narrative_admission_dirty_targets": FakeRuntimeDirtyTargets(),
+            "token_profile_current_dirty_targets": FakeRuntimeDirtyTargets(),
+        },
+    )()
+
+    projection = TokenRadarProjection(repos=repos, enqueue_narrative_admission=False)
+    projection._enqueue_runtime_dirty_targets_for_rank_changes(
+        window="1h",
+        scope="all",
+        venue="all",
+        rows=[row],
+        exited_rows=[],
+        previous_by_key={},
+        computed_at_ms=now_ms,
+    )
+
+    assert repos.pulse_trigger_dirty_targets.enqueued
+    assert repos.token_profile_current_dirty_targets.enqueued
+    assert repos.narrative_admission_dirty_targets.enqueued == []
+
+
 def test_projection_enqueues_pulse_trigger_for_matched_realtime_rank_changes() -> None:
     now_ms = 1_777_800_060_000
     row = {
@@ -1178,7 +1217,22 @@ def test_projection_rebuild_dirty_targets_marks_claim_done_with_payload_hash(mon
     )
 
     assert result["status"] == "ready"
-    assert token_radar.rank_source_populate_batches == []
+    assert token_radar.rank_source_populate_batches == [
+        {
+            "targets": [
+                {
+                    "target_type_key": "Asset",
+                    "identity_id": "asset-1",
+                    "payload_hash": "claim-hash",
+                    "lease_owner": "projection-worker",
+                    "attempt_count": 1,
+                    "source_event_ids_json": ["event-1"],
+                }
+            ],
+            "projected_at_ms": now_ms,
+            "commit": False,
+        }
+    ]
     assert len(token_radar.source_request_batches) == 1
     assert dirty_targets.done == [
         {
@@ -1235,7 +1289,9 @@ def test_projection_rebuild_dirty_targets_copies_source_event_ids_into_requests(
 
     assert result["status"] == "ready"
     loaded_request = token_radar.source_request_batches[0][0]
-    assert token_radar.rank_source_populate_batches == []
+    assert len(token_radar.rank_source_populate_batches) == 1
+    assert token_radar.rank_source_populate_batches[0]["commit"] is False
+    assert token_radar.rank_source_populate_batches[0]["targets"][0]["target_type_key"] == "Asset"
     assert not hasattr(loaded_request, "source_event_ids")
     assert dirty_targets.done
     assert dirty_targets.errors == []
@@ -1282,7 +1338,9 @@ def test_projection_rebuild_dirty_targets_marks_source_dirty_without_event_ids_e
     )
 
     assert result["status"] == "failed"
-    assert token_radar.rank_source_populate_batches == []
+    assert len(token_radar.rank_source_populate_batches) == 1
+    assert token_radar.rank_source_populate_batches[0]["commit"] is False
+    assert token_radar.rank_source_populate_batches[0]["targets"][0]["target_type_key"] == "Asset"
     assert len(token_radar.source_request_batches) == 1
     assert dirty_targets.done == []
     assert dirty_targets.errors == [
@@ -1557,7 +1615,9 @@ def test_projection_rebuild_dirty_targets_scores_only_selected_work_items(monkey
     )
 
     assert result["status"] == "ready"
-    assert token_radar.rank_source_populate_batches == []
+    assert len(token_radar.rank_source_populate_batches) == 1
+    assert token_radar.rank_source_populate_batches[0]["commit"] is False
+    assert token_radar.rank_source_populate_batches[0]["targets"][0]["target_type_key"] == "Asset"
     assert [(request.window, request.scope) for request in token_radar.source_request_batches[0]] == [
         ("5m", "all"),
         ("1h", "matched"),
@@ -2248,6 +2308,16 @@ class FakeRankSources:
             }
         )
         return len(requests)
+
+    def populate_edges_for_targets(self, targets, *, projected_at_ms, commit):
+        self.token_radar.rank_source_populate_batches.append(
+            {
+                "targets": list(targets),
+                "projected_at_ms": projected_at_ms,
+                "commit": commit,
+            }
+        )
+        return len(targets)
 
     def latest_market_context_for_targets(self, targets):
         return {}

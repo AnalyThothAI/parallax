@@ -7,7 +7,7 @@ import pytest
 from pydantic import BaseModel
 
 from gmgn_twitter_intel.app.runtime.llm_gateway import LLMGateway
-from gmgn_twitter_intel.integrations.openai_agents.agent_execution_gateway import AgentExecutionGateway
+from gmgn_twitter_intel.integrations.model_execution.execution_gateway import AgentExecutionGateway
 from gmgn_twitter_intel.platform.agent_execution import (
     AgentLanePolicy,
     AgentRuntimeDefaultsPolicy,

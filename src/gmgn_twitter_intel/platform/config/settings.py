@@ -21,6 +21,7 @@ NOTIFICATION_RULE_IDS = (
     "hot_quality_token_5m",
     "quality_token_5m",
     "signal_pulse_candidate",
+    "news_high_signal",
 )
 PULSE_CANDIDATE_WINDOWS = ("1h", "4h")
 PULSE_CANDIDATE_WINDOW_SET = frozenset(PULSE_CANDIDATE_WINDOWS)
@@ -326,9 +327,9 @@ class StorageConfig(BaseModel):
 class LlmConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    provider: str = "openai"
+    provider: str = "litellm"
     api_key: str | None = None
-    base_url: str = "https://api.openai.com/v1"
+    base_url: str = ""
     timeout_seconds: float = 120.0
     trace_enabled: bool = True
     trace_api_key: str | None = None
@@ -337,9 +338,9 @@ class LlmConfig(BaseModel):
     @field_validator("provider", mode="before")
     @classmethod
     def parse_provider(cls, value: Any) -> str:
-        normalized = str(value or "openai").strip().lower()
-        if normalized != "openai":
-            raise ValueError("llm.provider must be 'openai'")
+        normalized = str(value or "litellm").strip().lower()
+        if normalized != "litellm":
+            raise ValueError("llm.provider must be 'litellm'")
         return normalized
 
     @field_validator(
@@ -357,8 +358,7 @@ class LlmConfig(BaseModel):
     @field_validator("base_url", mode="before")
     @classmethod
     def parse_base_url(cls, value: Any) -> str:
-        normalized = str(value or "https://api.openai.com/v1").strip().rstrip("/")
-        return normalized or "https://api.openai.com/v1"
+        return str(value or "").strip().rstrip("/")
 
 
 class GmgnConfig(BaseModel):
@@ -431,6 +431,7 @@ class NotificationRuleConfig(BaseModel):
     window: str | None = None
     scopes: tuple[str, ...] | None = None
     statuses: tuple[str, ...] | None = None
+    external_score_min: int | None = Field(default=None, ge=0, le=100)
 
     @field_validator("channels", mode="before")
     @classmethod
@@ -533,6 +534,12 @@ class NotificationsConfig(BaseModel):
                     unsupported = sorted(parsed_statuses - allowed_statuses)
                     if unsupported:
                         raise ValueError(f"unsupported Signal Pulse statuses: {unsupported}")
+            if key == "news_high_signal":
+                forbidden = {"social_heat_min", "discussion_quality_min", "opportunity_min", "statuses"}
+                present = sorted(forbidden.intersection(payload))
+                if present:
+                    joined = ", ".join(present)
+                    raise ValueError(f"notifications.rules.{key} does not accept token-flow/pulse thresholds: {joined}")
             merged[key] = {**merged[key], **dict(payload)}
         return merged
 
@@ -765,7 +772,7 @@ class AgentLaneSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     model: str | None = None
-    provider_family: Literal["openai_compatible", "deepseek"] | None = None
+    provider_family: Literal["litellm", "deepseek"] | None = None
     client_validation_retries: int | None = Field(default=None, ge=0)
     priority: Literal["high", "normal", "bulk", "low"] = "normal"
     max_concurrency: int = Field(default=1, ge=1)
@@ -820,7 +827,6 @@ def _default_agent_lanes() -> dict[str, AgentLaneSettings]:
         "narrative.discussion_digest": AgentLaneSettings(priority="normal", max_concurrency=1, timeout_seconds=180.0),
         "social.event_enrichment": AgentLaneSettings(priority="normal", max_concurrency=2, timeout_seconds=180.0),
         "watchlist.handle_summary": AgentLaneSettings(priority="low", max_concurrency=1, timeout_seconds=180.0),
-        "news.fact_candidate": AgentLaneSettings(priority="low", max_concurrency=1, timeout_seconds=180.0),
         "news.item_brief": AgentLaneSettings(priority="low", max_concurrency=1, timeout_seconds=180.0),
     }
 
@@ -829,7 +835,7 @@ class AgentRuntimeDefaultsSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     model: str = "qwen3.6"
-    provider_family: Literal["openai_compatible", "deepseek"] | None = None
+    provider_family: Literal["litellm", "deepseek"] | None = None
     client_validation_retries: int | None = Field(default=None, ge=0)
     disable_thinking: bool = True
     include_usage: bool = True
@@ -1531,13 +1537,7 @@ class Settings(BaseModel):
 
     @property
     def llm_trace_export_configured(self) -> bool:
-        if self.llm_trace_api_key:
-            return True
-        normalized_base_url = self.llm_base_url.rstrip("/")
-        is_openai_base_url = normalized_base_url == "https://api.openai.com" or normalized_base_url.startswith(
-            "https://api.openai.com/"
-        )
-        return is_openai_base_url and bool(self.llm_api_key)
+        return False
 
     @property
     def llm_configured(self) -> bool:
@@ -1766,9 +1766,9 @@ storage:
     connect_timeout_seconds: 5
 
 llm:
-  provider: "openai"
+  provider: "litellm"
   api_key:
-  base_url: "https://api.openai.com/v1"
+  base_url: ""
   timeout_seconds: 120
   trace_enabled: true
   trace_api_key:
@@ -1844,6 +1844,12 @@ notifications:
       scopes: ["all", "matched"]
       statuses: ["trade_candidate", "token_watch", "risk_rejected_high_info"]
       cooldown_seconds: 0
+    news_high_signal:
+      enabled: true
+      channels: ["in_app", "pushdeer"]
+      combined_score_min: 85
+      external_score_min: 85
+      cooldown_seconds: 3600
   channels: {{}}
 """
 
@@ -1920,10 +1926,6 @@ agent_runtime:
       max_concurrency: 2
       timeout_seconds: 180.0
     watchlist.handle_summary:
-      priority: "low"
-      max_concurrency: 1
-      timeout_seconds: 180.0
-    news.fact_candidate:
       priority: "low"
       max_concurrency: 1
       timeout_seconds: 180.0
@@ -2290,5 +2292,12 @@ def _default_notification_rule_payloads() -> dict[str, dict[str, Any]]:
             "scopes": ("all", "matched"),
             "statuses": ("trade_candidate", "token_watch", "risk_rejected_high_info"),
             "cooldown_seconds": 0,
+        },
+        "news_high_signal": {
+            "enabled": True,
+            "channels": ("in_app", "pushdeer"),
+            "combined_score_min": 85,
+            "external_score_min": 85,
+            "cooldown_seconds": 3600,
         },
     }

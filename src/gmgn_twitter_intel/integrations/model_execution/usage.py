@@ -23,7 +23,7 @@ def _json_safe(value: Any, depth: int = 0) -> Any:
     return str(value)
 
 
-def extract_sdk_usage(result: Any) -> dict[str, Any]:
+def extract_model_usage(result: Any) -> dict[str, Any]:
     if result is None:
         return {}
     candidates: list[Any] = [
@@ -46,4 +46,4 @@ def extract_sdk_usage(result: Any) -> dict[str, Any]:
     return {}
 
 
-__all__ = ["extract_sdk_usage"]
+__all__ = ["extract_model_usage"]

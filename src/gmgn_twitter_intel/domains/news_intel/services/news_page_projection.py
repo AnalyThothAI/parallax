@@ -214,42 +214,96 @@ def _page_signal(
     provider_signal: Mapping[str, Any],
     agent_signal: Mapping[str, Any],
 ) -> dict[str, Any]:
-    if provider_signal.get("source") == "provider":
-        return _compact_mapping(
-            {
-                "source": "provider",
-                "provider": provider_signal.get("provider") or "opennews",
-                "status": provider_signal.get("status") or "partial",
-                "direction": provider_signal.get("direction") or "neutral",
-                "label_zh": provider_signal.get("label_zh")
-                or _direction_label(str(provider_signal.get("direction") or "neutral")),
-                "signal": provider_signal.get("signal"),
-                "score": _optional_int_or_none(provider_signal.get("score")),
-                "grade": provider_signal.get("grade"),
-                "summary_zh": provider_signal.get("summary_zh"),
-                "summary_en": provider_signal.get("summary_en"),
-                "method": provider_signal.get("method") or "opennews.provider_signal",
-            }
-        )
+    provider_payload = _provider_signal_payload(provider_signal)
+    provider_score = _optional_int_or_none(provider_payload.get("score")) if provider_payload else None
     if str(agent_signal.get("status") or "") == "ready":
         direction = str(agent_signal.get("direction") or "neutral")
-        return _compact_mapping(
+        return _signal_with_independent_state(
             {
                 "source": "agent",
                 "status": "ready",
                 "direction": direction,
                 "label_zh": _direction_label(direction),
+                "score": provider_score,
+                "grade": provider_payload.get("grade") if provider_payload else None,
                 "summary_zh": agent_signal.get("summary_zh"),
                 "method": "news_item_brief",
-            }
+            },
+            provider_signal=provider_payload,
+            agent_signal=agent_signal,
         )
-    return {
-        "source": "partial",
-        "status": "partial",
-        "direction": "neutral",
-        "label_zh": "中性",
-        "method": "pending",
-    }
+    if provider_payload:
+        return _signal_with_independent_state(
+            provider_payload,
+            provider_signal=provider_payload,
+            agent_signal=agent_signal,
+        )
+    return _signal_with_independent_state(
+        {
+            "source": "partial",
+            "status": "partial",
+            "direction": "neutral",
+            "label_zh": "中性",
+            "method": "pending",
+        },
+        provider_signal=None,
+        agent_signal=agent_signal,
+    )
+
+
+def _provider_signal_payload(provider_signal: Mapping[str, Any]) -> dict[str, Any] | None:
+    if provider_signal.get("source") != "provider":
+        return None
+    return _compact_mapping(
+        {
+            "source": "provider",
+            "provider": provider_signal.get("provider") or "opennews",
+            "status": provider_signal.get("status") or "partial",
+            "direction": provider_signal.get("direction") or "neutral",
+            "label_zh": provider_signal.get("label_zh")
+            or _direction_label(str(provider_signal.get("direction") or "neutral")),
+            "signal": provider_signal.get("signal"),
+            "score": _optional_int_or_none(provider_signal.get("score")),
+            "grade": provider_signal.get("grade"),
+            "summary_zh": provider_signal.get("summary_zh"),
+            "summary_en": provider_signal.get("summary_en"),
+            "method": provider_signal.get("method") or "opennews.provider_signal",
+        }
+    )
+
+
+def _signal_with_independent_state(
+    signal: Mapping[str, Any],
+    *,
+    provider_signal: Mapping[str, Any] | None,
+    agent_signal: Mapping[str, Any],
+) -> dict[str, Any]:
+    agent_status = str(agent_signal.get("status") or "pending")
+    provider_score = _optional_int_or_none(provider_signal.get("score")) if provider_signal else None
+    return _compact_mapping(
+        {
+            **signal,
+            "provider_signal": dict(provider_signal) if provider_signal else None,
+            "alert_eligibility": _compact_mapping(
+                {
+                    "agent_status": agent_status,
+                    "decision_class": agent_signal.get("decision_class"),
+                    "provider_status": provider_signal.get("status") if provider_signal else None,
+                    "provider_score": provider_score,
+                    "eligible": _alert_eligible(agent_signal=agent_signal, provider_score=provider_score),
+                }
+            ),
+        }
+    )
+
+
+def _alert_eligible(*, agent_signal: Mapping[str, Any], provider_score: int | None) -> bool:
+    if str(agent_signal.get("status") or "") == "ready" and str(agent_signal.get("decision_class") or "") in {
+        "driver",
+        "watch",
+    }:
+        return True
+    return provider_score is not None and provider_score >= 70
 
 
 def _direction_label(direction: str) -> str:

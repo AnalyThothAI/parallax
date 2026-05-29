@@ -20,6 +20,20 @@ def test_page_projection_loader_reads_source_payload_for_claimed_targets() -> No
     assert "'coverage_tags_json', source_rep.coverage_tags_json" in conn.sql
 
 
+def test_brief_target_loader_includes_provider_duplicate_aggregation() -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    rows = repo.load_items_for_brief_targets(news_item_ids=["news-1"])
+
+    assert rows == []
+    assert "edge_summary.duplicate_count" in conn.sql
+    assert "'duplicate_count', COALESCE(edge_summary.duplicate_count, 1)" in conn.sql
+    assert "'source_ids_json', COALESCE(edge_summary.source_ids_json, '[]'::jsonb)" in conn.sql
+    assert "'source_domains_json', COALESCE(edge_summary.source_domains_json, '[]'::jsonb)" in conn.sql
+    assert "'provider_article_keys_json', COALESCE(edge_summary.provider_article_keys_json, '[]'::jsonb)" in conn.sql
+
+
 class CapturingConnection:
     def __init__(self) -> None:
         self.sql = ""

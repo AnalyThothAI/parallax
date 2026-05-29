@@ -248,7 +248,7 @@ class PulseDecisionRuntimeService:
         }
         return {
             "backend": BACKEND,
-            "sdk_trace_id": _trace_id(run_id),
+            "execution_trace_id": _trace_id(run_id),
             "workflow_name": str(workflow_name or ""),
             "agent_name": str(agent_name or ""),
             "prompt_version": PULSE_DECISION_PROMPT_VERSION,

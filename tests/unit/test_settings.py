@@ -395,7 +395,7 @@ def test_postgres_storage_and_llm_enrichment_can_be_explicitly_configured(tmp_pa
                 }
             },
             "llm": {
-                "provider": "openai",
+                "provider": "litellm",
                 "api_key": "sk-test",
                 "base_url": "https://example.test/v1/",
                 "timeout_seconds": 7,
@@ -462,7 +462,7 @@ def test_postgres_storage_and_llm_enrichment_can_be_explicitly_configured(tmp_pa
     assert settings.llm_timeout_seconds == 7
     assert settings.llm_trace_enabled is True
     assert settings.llm_trace_api_key == "sk-trace"
-    assert settings.llm_trace_export_configured is True
+    assert settings.llm_trace_export_configured is False
     assert settings.llm_trace_include_sensitive_data is False
     assert settings.workers.enrichment.interval_seconds == 0.5
     assert settings.workers.enrichment.concurrency == 3
@@ -499,7 +499,7 @@ def test_agent_runtime_lane_model_can_override_default_model(tmp_path, monkeypat
             "ws_token": "secret",
             "handles": ["toly"],
             "llm": {
-                "provider": "openai",
+                "provider": "litellm",
                 "api_key": "sk-test",
             },
         },
@@ -529,7 +529,7 @@ def test_load_settings_rejects_legacy_llm_model_fields(tmp_path, monkeypatch):
             "ws_token": "secret",
             "handles": ["toly"],
             "llm": {
-                "provider": "openai",
+                "provider": "litellm",
                 "api_key": "sk-test",
                 "model": "gpt-base",
                 "pulse_agent_model": "gpt-pulse",
@@ -544,7 +544,7 @@ def test_load_settings_rejects_legacy_llm_model_fields(tmp_path, monkeypatch):
         load_settings()
 
 
-def test_openai_root_base_url_with_api_key_counts_as_trace_export_configured(tmp_path, monkeypatch):
+def test_litellm_does_not_infer_trace_export_from_base_url(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     write_config(
         tmp_path,
@@ -552,17 +552,17 @@ def test_openai_root_base_url_with_api_key_counts_as_trace_export_configured(tmp
             "ws_token": "secret",
             "handles": ["toly"],
             "llm": {
-                "provider": "openai",
+                "provider": "litellm",
                 "api_key": "sk-test",
-                "base_url": "https://api.openai.com",
+                "base_url": "https://provider.example/v1",
             },
         },
     )
 
     settings = load_settings()
 
-    assert settings.llm_base_url == "https://api.openai.com"
-    assert settings.llm_trace_export_configured is True
+    assert settings.llm_base_url == "https://provider.example/v1"
+    assert settings.llm_trace_export_configured is False
 
 
 def test_load_settings_accepts_gmgn_openapi_config(tmp_path, monkeypatch):

@@ -492,7 +492,7 @@ def test_agent_runtime_default_model_uses_registered_capability_profile() -> Non
 
     profile = policy.capability_for_lane("pulse.signal_analyst")
 
-    assert profile.provider_family == "openai_compatible"
+    assert profile.provider_family == "litellm"
     assert profile.request_options.extra_body == {"chat_template_kwargs": {"enable_thinking": False}}
 
 

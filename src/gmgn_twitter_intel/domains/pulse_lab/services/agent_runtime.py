@@ -26,16 +26,6 @@ PULSE_FAILURE_TAXONOMY_CODES = (
 )
 
 _DEFAULT_STAGE_NAMES = ("signal_analyst", "bear_case", "risk_portfolio_judge")
-_DEFAULT_MAX_TURNS_PER_STAGE = {
-    "signal_analyst": 1,
-    "bear_case": 1,
-    "risk_portfolio_judge": 1,
-}
-_DEFAULT_TOOL_NAMES_BY_STAGE = {
-    "signal_analyst": (),
-    "bear_case": (),
-    "risk_portfolio_judge": (),
-}
 _DEFAULT_VALIDATORS_ENABLED = (
     "pydantic_final_decision_schema",
     "runtime_evidence_ref_subset",
@@ -50,8 +40,6 @@ def build_pulse_runtime_manifest(
     artifact_version_hash: str,
     timeout_seconds: float,
     stage_names: tuple[str, ...] | list[str] | None = None,
-    max_turns_per_stage: dict[str, Any] | None = None,
-    tool_names_by_stage: dict[str, Any] | None = None,
     safety_net_enabled: bool = False,
     validators_enabled: tuple[str, ...] | list[str] | None = None,
     failure_taxonomy_version: str = PULSE_FAILURE_TAXONOMY_VERSION,
@@ -62,15 +50,9 @@ def build_pulse_runtime_manifest(
         "runtime_version": PULSE_AGENT_RUNTIME_VERSION,
         "strategy": PULSE_AGENT_STRATEGY,
         "runtime": {
-            "framework": "openai-agents-python",
+            "framework": "litellm",
             "orchestration": "sequential_stage_runner",
             "stages": stages,
-            "max_turns_per_stage": _int_mapping(
-                max_turns_per_stage,
-                default=_DEFAULT_MAX_TURNS_PER_STAGE,
-                keys=stages,
-            ),
-            "tool_names_by_stage": _tool_names_by_stage(tool_names_by_stage, stages=stages),
             "safety_net_enabled": bool(safety_net_enabled),
             "timeout_seconds": float(timeout_seconds),
         },
@@ -126,25 +108,6 @@ def pulse_runtime_hash(manifest: dict[str, Any]) -> str:
     return f"sha256:{hashlib.sha256(payload.encode('utf-8')).hexdigest()}"
 
 
-def _tool_names_by_stage(value: dict[str, Any] | None, *, stages: list[str]) -> dict[str, list[str]]:
-    source = value if isinstance(value, dict) else _DEFAULT_TOOL_NAMES_BY_STAGE
-    return {stage: _stable_strings(source.get(stage)) for stage in stages}
-
-
-def _int_mapping(
-    value: dict[str, Any] | None,
-    *,
-    default: dict[str, int],
-    keys: list[str] | None = None,
-) -> dict[str, int]:
-    source = value if isinstance(value, dict) else default
-    selected = keys if keys is not None else sorted(set(default) | {str(key) for key in source})
-    result: dict[str, int] = {}
-    for key in selected:
-        result[str(key)] = max(0, _int(source.get(key, default.get(str(key), 0))))
-    return result
-
-
 def _stable_strings(values: Any) -> list[str]:
     result: list[str] = []
     seen: set[str] = set()
@@ -154,13 +117,6 @@ def _stable_strings(values: Any) -> list[str]:
             seen.add(item)
             result.append(item)
     return result
-
-
-def _int(value: Any) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return 0
 
 
 __all__ = [

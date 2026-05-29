@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from gmgn_twitter_intel.integrations.openai_agents.social_event_agent_client import OpenAIAgentsSocialEventClient
+from gmgn_twitter_intel.integrations.model_execution.social_event_agent_client import LiteLLMSocialEventClient
 
 
 class FakeAudit(BaseModel):
@@ -92,7 +92,7 @@ class FakeGateway:
 
 def test_social_event_client_uses_agent_execution_gateway() -> None:
     gateway = FakeGateway()
-    client = OpenAIAgentsSocialEventClient(agent_gateway=gateway)
+    client = LiteLLMSocialEventClient(agent_gateway=gateway)
 
     result = asyncio.run(
         client.enrich_event(
@@ -130,7 +130,7 @@ def test_social_event_client_uses_agent_execution_gateway() -> None:
 
 def test_social_event_client_request_audit_delegates_to_gateway_and_returns_dict() -> None:
     gateway = FakeGateway()
-    client = OpenAIAgentsSocialEventClient(agent_gateway=gateway)
+    client = LiteLLMSocialEventClient(agent_gateway=gateway)
 
     audit = client.request_audit(
         event={"event_id": "event-fail", "search_text": "$FAIL"},

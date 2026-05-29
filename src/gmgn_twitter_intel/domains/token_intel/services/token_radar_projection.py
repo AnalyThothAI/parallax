@@ -69,8 +69,10 @@ class TokenRadarProjection:
         self,
         *,
         repos: Any,
+        enqueue_narrative_admission: bool = True,
     ) -> None:
         self.repos = repos
+        self.enqueue_narrative_admission = bool(enqueue_narrative_admission)
         self._last_stale_cleanup_at_ms: dict[tuple[str, str, str], int] = {}
 
     def rebuild(
@@ -183,6 +185,28 @@ class TokenRadarProjection:
             successful_source_claims.extend((_source_claim_key(claim), set()) for claim in source_claims)
 
         if target_claims or source_projection_targets:
+            edge_refresh_claims = [claim for claim in target_claims if not bool(claim.get("market_dirty"))]
+            if edge_refresh_claims:
+                try:
+                    self.repos.token_radar_rank_sources.populate_edges_for_targets(
+                        edge_refresh_claims,
+                        projected_at_ms=computed_at_ms,
+                        commit=False,
+                    )
+                except Exception as exc:
+                    failures += len(edge_refresh_claims)
+                    first_error = first_error or str(exc)
+                    self.repos.token_radar_dirty_targets.mark_error(
+                        [_claim_key(claim) for claim in edge_refresh_claims],
+                        error=str(exc),
+                        retry_ms=DIRTY_TARGET_RETRY_MS,
+                        now_ms=computed_at_ms,
+                        commit=True,
+                    )
+                    failed_edge_refresh_keys = {_claim_identity_key(claim) for claim in edge_refresh_claims}
+                    target_claims = [
+                        claim for claim in target_claims if _claim_identity_key(claim) not in failed_edge_refresh_keys
+                    ]
             source_requests = _source_requests_for_targets(
                 source_projection_targets,
                 source_work_items,
@@ -217,9 +241,9 @@ class TokenRadarProjection:
                             )
                             result["source_rows"] += int(score_result.get("source_rows") or 0)
                             if bool(score_result.get("rank_set_changed")):
-                                item = (request.window, request.scope, request.venue)
-                                touched.add(item)
-                                source_touched.add(item)
+                                items = _rank_items_for_projection_change(request=request, score_result=score_result)
+                                touched.update(items)
+                                source_touched.update(items)
                     successful_source_claims.extend(
                         (_source_claim_key(claim), set(source_touched)) for claim in source_claims
                     )
@@ -255,9 +279,9 @@ class TokenRadarProjection:
                         )
                         result["source_rows"] += int(score_result.get("source_rows") or 0)
                         if bool(score_result.get("rank_set_changed")):
-                            item = (request.window, request.scope, request.venue)
-                            touched.add(item)
-                            claim_touched.add(item)
+                            items = _rank_items_for_projection_change(request=request, score_result=score_result)
+                            touched.update(items)
+                            claim_touched.update(items)
                     successful_target_claims.append((claim_key, claim_touched))
                 except Exception as exc:
                     failures += 1
@@ -415,8 +439,10 @@ class TokenRadarProjection:
                 "source_rows": len(source_rows),
                 "rows_written": 0,
                 "rank_set_changed": deleted > 0,
+                "target_venue": _venue_for_identity(target_type_key=target_type_key, identity_id=identity_id),
             }
 
+        target_venue = token_radar_venue_for_rank_input(projected)
         written = int(
             self.repos.token_radar.upsert_target_feature(
                 projection_version=PROJECTION_VERSION,
@@ -447,6 +473,7 @@ class TokenRadarProjection:
             "source_rows": len(source_rows),
             "rows_written": written,
             "rank_set_changed": changed,
+            "target_venue": target_venue,
         }
 
     def refresh_rank_set(
@@ -745,14 +772,15 @@ class TokenRadarProjection:
             previous_by_key=previous_by_key,
             computed_at_ms=computed_at_ms,
         )
-        self._enqueue_narrative_admission_for_rank_changes(
-            window=window,
-            scope=scope,
-            rows=rows,
-            exited_rows=exited_rows,
-            previous_by_key=previous_by_key,
-            computed_at_ms=computed_at_ms,
-        )
+        if self.enqueue_narrative_admission:
+            self._enqueue_narrative_admission_for_rank_changes(
+                window=window,
+                scope=scope,
+                rows=rows,
+                exited_rows=exited_rows,
+                previous_by_key=previous_by_key,
+                computed_at_ms=computed_at_ms,
+            )
         self._enqueue_token_profile_current_for_rank_changes(
             window=window,
             scope=scope,
@@ -1036,6 +1064,29 @@ def _source_requests_by_target(
     return grouped
 
 
+def _rank_items_for_projection_change(
+    *,
+    request: TokenRadarFeatureSourceRequest,
+    score_result: Mapping[str, Any],
+) -> tuple[tuple[str, str, str], ...]:
+    target_venue = str(score_result.get("target_venue") or request.venue or "").strip()
+    venues = [TOKEN_RADAR_DEFAULT_VENUE]
+    if target_venue and target_venue != TOKEN_RADAR_DEFAULT_VENUE and target_venue in TOKEN_RADAR_VENUES:
+        venues.append(target_venue)
+    return tuple((request.window, request.scope, venue) for venue in dict.fromkeys(venues))
+
+
+def _venue_for_identity(*, target_type_key: str, identity_id: str) -> str:
+    if str(target_type_key) == "CexToken":
+        return "cex"
+    if str(target_type_key) != "Asset":
+        return TOKEN_RADAR_DEFAULT_VENUE
+    parts = str(identity_id).split(":")
+    if len(parts) >= 3 and parts[0] == "asset" and parts[1] == "eip155":
+        return _venue_for_chain(parts[2])
+    return TOKEN_RADAR_DEFAULT_VENUE
+
+
 LATEST_MARKET_FIELDS = (
     "latest_price_tick_id",
     "latest_price_provider",
@@ -1102,6 +1153,13 @@ def _claim_key(claim: dict[str, Any]) -> dict[str, str | int]:
         "lease_owner": str(claim.get("lease_owner") or ""),
         "attempt_count": int(claim.get("attempt_count") or 0),
     }
+
+
+def _claim_identity_key(claim: Mapping[str, Any]) -> tuple[str, str]:
+    return (
+        str(claim.get("target_type_key") or claim.get("target_type") or ""),
+        str(claim.get("identity_id") or claim.get("target_id") or ""),
+    )
 
 
 def _source_claim_key(claim: Mapping[str, Any]) -> dict[str, str | int]:

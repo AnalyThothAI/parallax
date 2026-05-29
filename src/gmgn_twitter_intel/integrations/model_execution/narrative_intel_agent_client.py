@@ -33,21 +33,19 @@ class DiscussionDigestAgentPayload(BaseModel):
     digest: dict[str, Any]
 
 
-class OpenAIAgentsNarrativeIntelClient:
-    provider = "openai"
+class LiteLLMNarrativeIntelClient:
+    provider = "litellm"
 
     def __init__(
         self,
         *,
         agent_gateway: Any,
         workflow_name: str = WORKFLOW_NAME,
-        max_turns: int = 1,
     ) -> None:
         if agent_gateway is None:
             raise ValueError("agent_gateway is required")
         self._agent_gateway = agent_gateway
         self.workflow_name = str(workflow_name or "").strip() or WORKFLOW_NAME
-        self.max_turns = max(1, int(max_turns))
 
     @property
     def model(self) -> str:
@@ -165,7 +163,6 @@ class OpenAIAgentsNarrativeIntelClient:
                 "target_count": len(_mention_targets(request)),
                 "targets": _mention_targets(request),
             },
-            max_turns=self.max_turns,
         )
 
     def _summarize_discussion_stage(
@@ -197,7 +194,6 @@ class OpenAIAgentsNarrativeIntelClient:
                 "scope": request.scope,
                 "mention_count": len(request.mentions),
             },
-            max_turns=self.max_turns,
         )
 
 
@@ -264,6 +260,6 @@ def _coerce_digest_payload(value: Any) -> DiscussionDigestAgentPayload:
 
 __all__ = [
     "DiscussionDigestAgentPayload",
+    "LiteLLMNarrativeIntelClient",
     "MentionSemanticsAgentPayload",
-    "OpenAIAgentsNarrativeIntelClient",
 ]

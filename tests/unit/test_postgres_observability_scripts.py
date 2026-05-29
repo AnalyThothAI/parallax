@@ -85,12 +85,6 @@ def test_runtime_performance_check_hard_gates_runtime_sql_fingerprints() -> None
     assert "ORDER BY received_at_ms DESC, event_id DESC" in script
     assert "query NOT ILIKE '%requested_events%'" in script
 
-    assert "EQUITY_TIMELINE_OR_DELETE_CALLS_BEFORE" in script
-    assert "equity timeline delete OR predicate" in script
-    assert "equity_company_timeline_rows" in script
-    assert "query ILIKE '% OR %'" in script
-    assert "company_event_id" in script
-
     assert "assert_zero_new_or_cumulative_calls" in script
     assert "stale equity fetch runs\" \"${stale_equity_fetch_runs}\"" not in script
     assert "top sql token radar share percent" not in script

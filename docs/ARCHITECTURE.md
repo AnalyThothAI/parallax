@@ -189,13 +189,12 @@ are wrong too.
    return a decision without an audit row, and no path may invent a
    confidence or display status to avoid abstaining.
 11. **Agent execution is an operational plane, not product truth.**
-   `AgentExecutionGateway` owns OpenAI Agents SDK execution mechanics:
-   runner construction, structured-output strategy selection, trace
-   metadata, usage, safety-net fallback, lane bulkheads, rate limits,
-   timeouts, circuit breakers, reservation, and request/result audit
-   envelopes. Model capability adaptation belongs here: domains submit
-   stage specs with Pydantic output types and never branch on provider,
-   model, or response format. Domain
+   `AgentExecutionGateway` owns project execution mechanics around LiteLLM:
+   structured JSON object dispatch, application-side Pydantic validation,
+   trace metadata, usage, lane bulkheads, rate limits, timeouts, circuit
+   breakers, reservation, and request/result audit envelopes. Model capability
+   adaptation belongs here: domains submit stage specs with Pydantic output
+   types and never branch on provider, model, or response format. Domain
    workers still own admission, claim, retry, finalize, read-model writes,
    and business validation. There is no central durable `agent_tasks`
    queue; PostgreSQL domain facts and read models remain the truth. Pulse
@@ -250,7 +249,7 @@ Cross-cutting primitives that implement these invariants:
 |------|----------------|
 | `app/` | Composition root plus HTTP, WebSocket, and CLI surfaces. `app/runtime/bootstrap.py` wires `DBPoolBundle`, providers, repositories, manifest-owned workers, `WorkerScheduler`, readiness, and lifecycle. `app/surfaces/{api,cli}/` translate public inputs and outputs. Wake mechanics flow through `DBPoolBundle.wake_emitter()` / `wake_listener()`. |
 | `domains/` | Product domains. Each domain owns its repositories, queries, services / scoring, read models, and runtime workers. |
-| `integrations/` | External adapters for GMGN, OKX, and OpenAI Agents. They translate third-party API shapes but do not own product decisions. |
+| `integrations/` | External adapters for GMGN, OKX, LiteLLM, and other provider APIs. They translate third-party API shapes but do not own product decisions. |
 | `platform/` | Config, PostgreSQL infrastructure (client, migrations, audit, Alembic), logging, and runtime paths. Platform never imports product domains. |
 
 Top-level entry shims `cli.py` and `__main__.py` exist only because `pyproject.toml` points the installed command at `gmgn_twitter_intel.cli:main`. They contain no logic.
@@ -263,7 +262,7 @@ direction is still enforced by the package rules below.
 
 | Marker | Meaning |
 |--------|---------|
-| `[ADAPTER]` | Translates third-party shapes such as GMGN, OKX, macrodata-cli, or OpenAI Agents into internal values. Does not own product decisions. |
+| `[ADAPTER]` | Translates third-party shapes such as GMGN, OKX, macrodata-cli, or LiteLLM into internal values. Does not own product decisions. |
 | `[COMMAND]` | Handles write-side use cases: ingesting events, resolving identity, refreshing facts, or writing material observations. |
 | `[FACT]` | Owns persisted business facts or value types that represent those facts. |
 | `[WAKE]` | Emits or consumes wake hints such as LISTEN/NOTIFY. Wake hints are never the source of correctness. |
@@ -284,7 +283,7 @@ direction is still enforced by the package rules below.
 | `domains/asset_market/` | Asset registry, chain/address identity, asset identity evidence/current identity selection, exact-token profile source cache and current profile projection, append-only `market_ticks`, rebuildable `token_capture_tier`, cache/publish-only live price gateway, discovery, and CEX route sync. |
 | `domains/token_intel/` | Token evidence, token intents, deterministic resolution, target-first search read model, token-target views, Token Radar feature aggregation, current-row publication state, `token_factor_snapshot_v3_social_attention` construction, factor-snapshot projection, evaluation diagnostics, signal alerts. |
 | `domains/narrative_intel/` | Per-mention trade stance / attention valence labels, token-window discussion digests, semantic coverage, narrative evidence refs, and the narrative read model consumed by API composition and Pulse evidence packets. |
-| `domains/social_enrichment/` | Watched-event gate, social-event extraction schema and facts, OpenAI Agents enrichment lifecycle, enrichment worker. |
+| `domains/social_enrichment/` | Watched-event gate, social-event extraction schema and facts, LLM enrichment lifecycle, enrichment worker. |
 | `domains/notifications/` | Notification rules, repository, delivery, workers, candidate types. |
 | `domains/pulse_lab/` | Signal Pulse read model, factor-snapshot candidate gate / worker, unified decision runtime policy, stage replay ledger, and pulse persistence. |
 | `domains/watchlist_intel/` | Watchlist handle-level topic summaries, signal/all handle timeline read model, summary job queue, and handle summary worker. |
@@ -364,23 +363,17 @@ turns a factor snapshot into a route, writes an agent run, short-circuits
 research-only or hard-blocked rows to an abstain decision, and otherwise calls
 the configured `PulseDecisionProvider`.
 
-OpenAI-specific SDK execution lives only under `integrations/openai_agents/`.
-Signal Pulse uses the two-stage `Investigator -> DecisionMaker` runtime, with
-`research_only_gate` for deterministic hard-blocks. Pulse-specific orchestration
-is domain-owned: `domains/pulse_lab/services/pulse_decision_runtime.py` loads
-stage prompts, builds stage input contracts, assembles request audit hashes,
-validates cited evidence ids, and enriches final evidence URLs;
-`domains/pulse_lab/services/agent_tool_runtime.py` owns tool query behavior,
-budgets, truncation, and contributed event ids. The OpenAI adapter wraps Agent / Runner /
-`function_tool`, schema parsing, usage/tool-call extraction, safety net, and SDK
-errors only. It may import Pulse provider protocols/types, but not Pulse
-queries or services.
-The runtime manifest's `runtime.tool_names_by_stage` is the only tool contract:
-"tools enabled" means a stage has a non-empty tool list; there is no separate
-boolean flag.
-`app/runtime/provider_wiring/openai.py` is the composition point that creates the
-domain runtimes and injects them into the concrete adapter bound to the
-`pulse_lab` provider protocol.
+LiteLLM-specific model calls live only under `integrations/model_execution/`.
+Signal Pulse uses a three-stage, tool-free runtime:
+`signal_analyst -> bear_case -> risk_portfolio_judge`, with deterministic
+hard-blocks before provider execution. Pulse-specific orchestration is
+domain-owned: `domains/pulse_lab/services/pulse_decision_runtime.py` loads stage
+prompts, builds packet-only input contracts, assembles request audit hashes,
+validates cited evidence ids, and enriches final evidence URLs. The model
+adapter only dispatches typed stage specs through `AgentExecutionGateway` and
+returns audit envelopes. `app/runtime/provider_wiring/model_execution.py` is the
+composition point that creates the domain runtimes and injects concrete LiteLLM
+adapters bound to provider protocols.
 
 The audit ledger is PostgreSQL: `pulse_agent_runs` records the final outcome and
 route, `pulse_agent_run_steps` records replayable stage inputs/prompts/outputs,

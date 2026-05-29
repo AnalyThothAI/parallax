@@ -46,8 +46,8 @@ eval, and write-gate audit rows so operators can see why nothing was published.
 | Evidence source repository | `repositories/pulse_evidence_source_repository.py` | none | Reads events, enriched events, market ticks/price observations, and identity/profile facts. Provider raw frames are not facts. |
 | Evidence packet builder | `services/evidence_packet_builder.py` | `pulse_evidence_packets` through repository | Constructs a sealed packet with stable `allowed_evidence_refs`, source fingerprints, quality metrics, and data gaps before any LLM call. |
 | Evidence completeness gate | `services/evidence_completeness_gate.py` | run-step audit only | Decides whether packet evidence is complete, partial, stale, or insufficient; sets max decision status and public display ceiling. |
-| Decision runtime | `services/pulse_decision_runtime.py` | none | Builds packet-only committee payloads, loads prompts, validates committee refs, and enriches event URLs. No OpenAI SDK import. |
-| OpenAI adapter | `integrations/openai_agents/pulse_decision_agent_client.py` | none directly | Runs exactly three tool-free stages: `signal_analyst`, `bear_case`, and `risk_portfolio_judge`. Tools are not registered for Pulse. |
+| Decision runtime | `services/pulse_decision_runtime.py` | none | Builds packet-only committee payloads, loads prompts, validates committee refs, and enriches event URLs. No provider SDK import. |
+| Model execution adapter | `integrations/model_execution/pulse_decision_agent_client.py` | none directly | Runs exactly three tool-free stages: `signal_analyst`, `bear_case`, and `risk_portfolio_judge`. Tools are not registered for Pulse. |
 | Job service | `services/pulse_candidate_job_service.py` | runs, steps, packets, candidates, eval, playbooks | Owns per-job orchestration and persistence; writes hidden audit rows for invalid/abstain/hold-publish outputs. |
 | Public read model | `read_models/signal_pulse_service.py` and `repositories/pulse_read_repository.py` | none | Lists only public `display_*` rows with `evidence_packet_hash`; hidden states remain operator/audit data. |
 
@@ -114,11 +114,11 @@ not good enough for default discovery.
 
 ## Provider Boundary
 
-- Only `integrations/openai_agents/` imports OpenAI Agents SDK primitives.
+- Only `integrations/model_execution/` imports LiteLLM primitives.
 - Pulse domain services own prompt loading, packet validation, evidence
   verification, runtime manifests, and deterministic eval.
-- `app/runtime/provider_wiring/openai.py` composes `PulseDecisionRuntimeService`
-  with `OpenAIAgentsPulseDecisionClient`; it does not register Pulse tools.
+- `app/runtime/provider_wiring/model_execution.py` composes `PulseDecisionRuntimeService`
+  with `LiteLLMPulseDecisionClient`; it does not register Pulse tools.
 
 ## Hard Boundaries
 

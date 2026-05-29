@@ -72,8 +72,8 @@ class HangingClient:
 
     def request_audit(self, *, event, entities, run_id, job):
         return {
-            "backend": "openai_agents_sdk",
-            "sdk_trace_id": "trace_timeout",
+            "backend": "litellm_sdk",
+            "execution_trace_id": "trace_timeout",
             "workflow_name": "gmgn-twitter-intel.social_event_extraction",
             "agent_name": "SocialEventExtractionAgent",
             "prompt_version": "social-event-agents-sdk-v1",
@@ -292,6 +292,6 @@ def test_enrichment_worker_times_out_hung_llm_job(tmp_path):
     assert "timed out" in job["last_error"].lower()
     assert run["status"] == "model_error"
     assert "timed out" in run["error"].lower()
-    assert run["backend"] == "openai_agents_sdk"
-    assert run["sdk_trace_id"] == "trace_timeout"
+    assert run["backend"] == "litellm_sdk"
+    assert run["execution_trace_id"] == "trace_timeout"
     assert run["workflow_name"] == "gmgn-twitter-intel.social_event_extraction"

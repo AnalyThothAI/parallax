@@ -330,7 +330,7 @@ def test_news_fetch_worker_persists_context_observations() -> None:
     ]
 
 
-def test_news_fetch_worker_skips_brief_dirty_for_opennews_provider_signal_context() -> None:
+def test_news_fetch_worker_keeps_brief_dirty_for_opennews_provider_signal_context() -> None:
     source = {
         "source_id": "opennews-news",
         "provider_type": "opennews",
@@ -353,7 +353,7 @@ def test_news_fetch_worker_skips_brief_dirty_for_opennews_provider_signal_contex
                     language="en",
                     published_at_ms=NOW_MS,
                     raw_payload={"id": "opennews-1", "title": "BTC headline"},
-                    provider_signal={"source": "provider", "provider": "opennews", "status": "ready"},
+                    provider_signal={"source": "provider", "provider": "opennews", "status": "ready", "score": 88},
                 )
             ],
             context_observations=[
@@ -376,7 +376,10 @@ def test_news_fetch_worker_skips_brief_dirty_for_opennews_provider_signal_contex
     worker.run_once_sync(now_ms=NOW_MS)
 
     context_dirty = next(batch for batch in db.dirty.enqueued if batch["reason"] == "news_context_written")
-    assert context_dirty["rows"] == [{"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"}]
+    assert context_dirty["rows"] == [
+        {"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"},
+        {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-1"},
+    ]
 
 
 def test_news_fetch_worker_persists_context_only_observations_without_processing_items() -> None:
@@ -571,7 +574,7 @@ def test_news_item_process_worker_passes_authority_scope_to_fact_candidates() ->
     assert "event_type_out_of_authority_scope" in candidate.rejection_reasons
 
 
-def test_news_item_process_uses_opennews_provider_tokens_and_skips_brief_input() -> None:
+def test_news_item_process_uses_opennews_provider_tokens_and_enqueues_brief_input() -> None:
     item = {
         "news_item_id": "news-1",
         "source_id": "opennews-realtime",
@@ -587,6 +590,7 @@ def test_news_item_process_uses_opennews_provider_tokens_and_skips_brief_input()
             "provider": "opennews",
             "status": "ready",
             "direction": "bullish",
+            "score": 82,
         },
         "provider_token_impacts_json": [{"symbol": "BTC", "score": 82, "signal": "long", "grade": "A"}],
     }
@@ -608,6 +612,7 @@ def test_news_item_process_uses_opennews_provider_tokens_and_skips_brief_input()
     assert db.dirty.enqueued[0]["rows"] == [
         {"projection_name": "story", "target_kind": "news_item", "target_id": "news-1"},
         {"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"},
+        {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-1", "priority": 18},
         {
             "projection_name": "source_quality",
             "target_kind": "source",
@@ -645,7 +650,7 @@ def test_news_story_projection_worker_assigns_items_in_worker_session_and_notifi
     assert wake_bus.notifications == [{"channel": "news_story_updated", "count": 1}]
 
 
-def test_news_story_projection_worker_skips_brief_dirty_for_opennews_provider_signal() -> None:
+def test_news_story_projection_worker_enqueues_brief_dirty_for_opennews_provider_signal() -> None:
     repo = FakeStoryProjectionRepository(
         items=[
             {
@@ -653,7 +658,12 @@ def test_news_story_projection_worker_skips_brief_dirty_for_opennews_provider_si
                 "canonical_item_key": "opennews:article-1",
                 "source_id": "opennews-news",
                 "provider_type": "opennews",
-                "provider_signal_json": {"source": "provider", "provider": "opennews", "status": "ready"},
+                "provider_signal_json": {
+                    "source": "provider",
+                    "provider": "opennews",
+                    "status": "ready",
+                    "score": 91,
+                },
                 "canonical_url": "https://opennews.test/a",
                 "url_identity_kind": "article",
                 "content_hash": "hash-1",
@@ -682,11 +692,18 @@ def test_news_story_projection_worker_skips_brief_dirty_for_opennews_provider_si
             "target_kind": "news_item",
             "target_id": "news-1",
             "source_watermark_ms": NOW_MS,
-        }
+        },
+        {
+            "projection_name": "brief_input",
+            "target_kind": "news_item",
+            "target_id": "news-1",
+            "source_watermark_ms": NOW_MS,
+            "priority": 9,
+        },
     ]
 
 
-def test_news_story_projection_worker_filters_provider_signal_across_story_members() -> None:
+def test_news_story_projection_worker_keeps_provider_signal_across_story_members() -> None:
     repo = FakeStoryProjectionRepository(
         items_by_load=[
             [
@@ -723,7 +740,12 @@ def test_news_story_projection_worker_filters_provider_signal_across_story_membe
                     "canonical_item_key": "opennews:article-2",
                     "source_id": "opennews-news",
                     "provider_type": "opennews",
-                    "provider_signal_json": {"source": "provider", "provider": "opennews", "status": "ready"},
+                    "provider_signal_json": {
+                        "source": "provider",
+                        "provider": "opennews",
+                        "status": "ready",
+                        "score": 77,
+                    },
                     "canonical_url": "https://opennews.test/b",
                     "url_identity_kind": "article",
                     "content_hash": "hash-2",
@@ -756,16 +778,17 @@ def test_news_story_projection_worker_filters_provider_signal_across_story_membe
             "source_watermark_ms": NOW_MS,
         },
         {
-            "projection_name": "brief_input",
-            "target_kind": "news_item",
-            "target_id": "news-1",
-            "source_watermark_ms": NOW_MS,
-        },
-        {
             "projection_name": "page",
             "target_kind": "news_item",
             "target_id": "news-2",
             "source_watermark_ms": NOW_MS,
+        },
+        {
+            "projection_name": "brief_input",
+            "target_kind": "news_item",
+            "target_id": "news-2",
+            "source_watermark_ms": NOW_MS,
+            "priority": 23,
         },
     ]
 

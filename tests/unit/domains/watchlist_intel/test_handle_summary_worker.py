@@ -79,7 +79,7 @@ def test_handle_summary_worker_records_failed_run_audit():
         assert repo.failed_runs[0]["status"] == "failed"
         assert repo.failed_runs[0]["handle"] == "toly"
         assert repo.failed_runs[0]["error"] == "provider exploded"
-        assert repo.failed_runs[0]["request_json"]["agent_run_audit"]["sdk_trace_id"] == "trace-toly"
+        assert repo.failed_runs[0]["request_json"]["agent_run_audit"]["execution_trace_id"] == "trace-toly"
         assert repo.failed_runs[0]["usage_json"] == {"input_tokens": 12}
         assert repo.failed_jobs[0]["handle"] == "toly"
 
@@ -288,7 +288,7 @@ class BarrierSummaryProvider:
         return AgentCapacityReservation(lane=lane, acquired=True)
 
     def request_audit(self, *, handle, events, run_id, job, context):
-        return {"sdk_trace_id": f"trace-{handle}", "usage": {"input_tokens": 12}}
+        return {"execution_trace_id": f"trace-{handle}", "usage": {"input_tokens": 12}}
 
     async def summarize_handle(self, **kwargs):
         self.started += 1
@@ -307,7 +307,7 @@ class FailingSummaryProvider:
         return AgentCapacityReservation(lane=lane, acquired=True)
 
     def request_audit(self, *, handle, events, run_id, job, context):
-        return {"sdk_trace_id": f"trace-{handle}", "usage": {"input_tokens": 12}}
+        return {"execution_trace_id": f"trace-{handle}", "usage": {"input_tokens": 12}}
 
     async def summarize_handle(self, **kwargs):
         raise RuntimeError("provider exploded")

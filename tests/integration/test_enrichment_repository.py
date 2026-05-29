@@ -195,8 +195,8 @@ def test_complete_social_event_job_records_agents_sdk_run_audit(tmp_path):
             summary_zh="Solana XDP 形成注意力种子。",
             raw_response={"is_signal_event": True},
             agent_run_audit={
-                "backend": "openai_agents_sdk",
-                "sdk_trace_id": "trace_0123456789abcdef0123456789abcdef",
+                "backend": "litellm_sdk",
+                "execution_trace_id": "trace_0123456789abcdef0123456789abcdef",
                 "workflow_name": "gmgn-twitter-intel.social_event_extraction",
                 "agent_name": "SocialEventExtractionAgent",
                 "prompt_version": "social-event-agents-sdk-v1",
@@ -214,7 +214,7 @@ def test_complete_social_event_job_records_agents_sdk_run_audit(tmp_path):
             job=job,
             run_id="run-agent-audit",
             result=result,
-            provider="openai",
+            provider="litellm",
             model="gpt-test",
             request={"job_id": job["job_id"]},
         )
@@ -222,8 +222,8 @@ def test_complete_social_event_job_records_agents_sdk_run_audit(tmp_path):
     finally:
         conn.close()
 
-    assert run["backend"] == "openai_agents_sdk"
-    assert run["sdk_trace_id"] == "trace_0123456789abcdef0123456789abcdef"
+    assert run["backend"] == "litellm_sdk"
+    assert run["execution_trace_id"] == "trace_0123456789abcdef0123456789abcdef"
     assert run["workflow_name"] == "gmgn-twitter-intel.social_event_extraction"
     assert run["agent_name"] == "SocialEventExtractionAgent"
     assert run["prompt_version"] == "social-event-agents-sdk-v1"

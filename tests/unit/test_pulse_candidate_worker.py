@@ -1027,7 +1027,7 @@ def test_worker_persists_failed_stage_audits_when_provider_raises_stage_failure(
                 started_at_ms=NOW_MS - 42,
                 finished_at_ms=NOW_MS,
                 status="failed",
-                error="ModelBehaviorError: invalid JSON",
+                error="ValidationError: invalid JSON",
             )
             raise PulseStageFailure("model_validate failed", audits=(failed_audit,))
 
@@ -1040,7 +1040,7 @@ def test_worker_persists_failed_stage_audits_when_provider_raises_stage_failure(
     assert result["failed"] == 1
     step = next(row for row in repos.pulse_runs.agent_run_steps if row["stage"] == "signal_analyst")
     assert step["status"] == "failed"
-    assert step["error"] == "ModelBehaviorError: invalid JSON"
+    assert step["error"] == "ValidationError: invalid JSON"
     assert step["response_json"] == {"raw_output": "**Investigation Report:** prose only"}
     assert step["started_at_ms"] == NOW_MS - 42
     assert step["finished_at_ms"] == NOW_MS
@@ -1122,12 +1122,6 @@ def test_worker_runtime_manifest_uses_decision_client_runtime_contract() -> None
     class ContractClient(FakeClient):
         runtime_contract = PulseAgentRuntimeContract(
             stage_names=("signal_analyst", "bear_case", "risk_portfolio_judge"),
-            tool_names_by_stage={
-                "signal_analyst": (),
-                "bear_case": (),
-                "risk_portfolio_judge": (),
-            },
-            max_turns_per_stage={"signal_analyst": 4, "bear_case": 3, "risk_portfolio_judge": 2},
             safety_net_enabled=False,
             validators_enabled=("runtime_evidence_id_subset",),
             failure_taxonomy_version="pulse-failure-taxonomy-test",
@@ -1140,16 +1134,8 @@ def test_worker_runtime_manifest_uses_decision_client_runtime_contract() -> None
 
     assert result["processed"] == 1
     manifest = repos.pulse_agent_eval.runtime_versions[0]["manifest_json"]
-    assert manifest["runtime"]["tool_names_by_stage"] == {
-        "signal_analyst": [],
-        "bear_case": [],
-        "risk_portfolio_judge": [],
-    }
-    assert manifest["runtime"]["max_turns_per_stage"] == {
-        "signal_analyst": 4,
-        "bear_case": 3,
-        "risk_portfolio_judge": 2,
-    }
+    assert "tool_names_by_stage" not in manifest["runtime"]
+    assert "max_turns_per_stage" not in manifest["runtime"]
     assert manifest["runtime"]["safety_net_enabled"] is False
     assert manifest["contracts"]["validators_enabled"] == ["runtime_evidence_id_subset"]
     assert manifest["failure_taxonomy"]["version"] == "pulse-failure-taxonomy-test"
@@ -1190,11 +1176,7 @@ def test_worker_runtime_manifest_uses_wired_provider_evidence_first_contract(mon
     assert result["processed"] == 1
     manifest = repos.pulse_agent_eval.runtime_versions[0]["manifest_json"]
     assert manifest["runtime"]["stages"] == ["signal_analyst", "bear_case", "risk_portfolio_judge"]
-    assert manifest["runtime"]["tool_names_by_stage"] == {
-        "signal_analyst": [],
-        "bear_case": [],
-        "risk_portfolio_judge": [],
-    }
+    assert "tool_names_by_stage" not in manifest["runtime"]
     assert manifest["runtime"]["safety_net_enabled"] is True
 
 
@@ -2206,7 +2188,7 @@ class FakeClient:
         self.contexts.append(context)
         return {
             "backend": "fake",
-            "sdk_trace_id": f"trace-{run_id}",
+            "execution_trace_id": f"trace-{run_id}",
             "workflow_name": "test-flow",
             "agent_name": "test-agent",
             "prompt_version": "prompt-v1",

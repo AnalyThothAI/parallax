@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_FACTOR_SNAPSHOT_VERSION
+from gmgn_twitter_intel.domains.token_intel.interfaces import (
+    TOKEN_FACTOR_SNAPSHOT_VERSION,
+    TOKEN_RADAR_DEFAULT_VENUE,
+)
 from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import TokenRadarRepository
 
 
@@ -17,6 +20,7 @@ def test_first_seen_lookup_reads_compact_table_only() -> None:
         projection_version="token-radar-v13-social-attention",
         window="1h",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         rows=[
             {"target_type": "Asset", "target_id": "asset-1", "intent_id": "intent-1"},
             {"target_type": None, "target_id": None, "intent_id": "intent-attention"},
@@ -32,6 +36,7 @@ def test_first_seen_lookup_reads_compact_table_only() -> None:
         "token-radar-v13-social-attention",
         "1h",
         "all",
+        TOKEN_RADAR_DEFAULT_VENUE,
     )
 
 
@@ -42,6 +47,7 @@ def test_first_seen_lookup_skips_empty_identity_rows_without_querying() -> None:
         projection_version="token-radar-v13-social-attention",
         window="1h",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         rows=[{"target_type": None, "target_id": None, "intent_id": None}],
     )
 
@@ -71,6 +77,7 @@ def test_upsert_first_seen_batch_uses_identity_key_and_keeps_first_seen_stable()
         projection_version="token-radar-v13-social-attention",
         window="1h",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         rows=rows,
         computed_at_ms=200,
         commit=False,
@@ -96,6 +103,7 @@ def test_publish_current_generation_uses_compact_first_seen_before_insert_and_up
         projection_version="token-radar-v13-social-attention",
         window="1h",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         generation_id="gen-200",
         published_at_ms=200,
         source_frontier_ms=200,
@@ -137,20 +145,21 @@ class UpsertFirstSeenConn:
     def execute(self, sql: str, params: Any = None) -> UpsertFirstSeenConn:
         self.sql = str(sql)
         flat_params = list(params or [])
-        width = 11
+        width = 12
         self.records = [
             {
                 "projection_version": flat_params[index],
                 "window": flat_params[index + 1],
                 "scope": flat_params[index + 2],
-                "target_type_key": flat_params[index + 3],
-                "identity_id": flat_params[index + 4],
-                "first_seen_ms": flat_params[index + 5],
-                "last_seen_ms": flat_params[index + 6],
-                "first_row_id": flat_params[index + 7],
-                "latest_row_id": flat_params[index + 8],
-                "created_at_ms": flat_params[index + 9],
-                "updated_at_ms": flat_params[index + 10],
+                "venue": flat_params[index + 3],
+                "target_type_key": flat_params[index + 4],
+                "identity_id": flat_params[index + 5],
+                "first_seen_ms": flat_params[index + 6],
+                "last_seen_ms": flat_params[index + 7],
+                "first_row_id": flat_params[index + 8],
+                "latest_row_id": flat_params[index + 9],
+                "created_at_ms": flat_params[index + 10],
+                "updated_at_ms": flat_params[index + 11],
             }
             for index in range(0, len(flat_params), width)
         ]

@@ -1427,7 +1427,7 @@ class NewsRepository:
         row = self.conn.execute(
             """
             INSERT INTO news_item_agent_runs (
-              run_id, news_item_id, provider, model, backend, sdk_trace_id, workflow_name,
+              run_id, news_item_id, provider, model, backend, execution_trace_id, workflow_name,
               agent_name, lane, artifact_version_hash, prompt_version, schema_version,
               validator_version, guardrail_version, input_hash, output_hash, execution_started,
               status, outcome, error_class, error, request_json, response_json,
@@ -1435,7 +1435,7 @@ class NewsRepository:
               started_at_ms, finished_at_ms, created_at_ms
             )
             VALUES (
-              %(run_id)s, %(news_item_id)s, %(provider)s, %(model)s, %(backend)s, %(sdk_trace_id)s,
+              %(run_id)s, %(news_item_id)s, %(provider)s, %(model)s, %(backend)s, %(execution_trace_id)s,
               %(workflow_name)s, %(agent_name)s, %(lane)s, %(artifact_version_hash)s,
               %(prompt_version)s, %(schema_version)s, %(validator_version)s, %(guardrail_version)s,
               %(input_hash)s, %(output_hash)s, %(execution_started)s, %(status)s, %(outcome)s,
@@ -1536,6 +1536,62 @@ class NewsRepository:
             q=q,
         )
 
+    def list_news_high_signal_notification_candidates(
+        self,
+        *,
+        min_score: int,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT
+              row_id,
+              news_item_id,
+              latest_at_ms,
+              headline,
+              summary,
+              source_domain,
+              canonical_url,
+              duplicate_count,
+              source_ids_json AS source_ids,
+              source_domains_json AS source_domains,
+              signal_json AS signal,
+              token_impacts_json AS token_impacts,
+              content_class,
+              content_tags_json AS content_tags,
+              story_json AS story,
+              source_json AS source,
+              agent_brief_json AS agent_brief,
+              agent_status,
+              agent_brief_computed_at_ms,
+              computed_at_ms,
+              projection_version
+            FROM news_page_rows
+            WHERE agent_status = 'ready'
+              AND COALESCE((signal_json -> 'alert_eligibility' ->> 'eligible')::boolean, false) = true
+              AND COALESCE(NULLIF(signal_json -> 'alert_eligibility' ->> 'provider_score', '')::int, -1) >= %s
+              AND EXISTS (
+                SELECT 1
+                  FROM news_item_observation_edges AS edges
+                  JOIN news_sources AS sources ON sources.source_id = edges.source_id
+                 WHERE edges.news_item_id = news_page_rows.news_item_id
+                   AND sources.enabled = true
+              )
+            ORDER BY
+              COALESCE(NULLIF(signal_json -> 'alert_eligibility' ->> 'provider_score', '')::int, -1) DESC,
+              latest_at_ms DESC,
+              row_id DESC
+            LIMIT %s
+            """,
+            (int(min_score), max(0, int(limit))),
+        ).fetchall()
+        payloads: list[dict[str, Any]] = []
+        for row in rows:
+            payload = dict(row)
+            payload["agent_brief"] = _public_agent_brief_payload(payload.get("agent_brief"))
+            payloads.append(payload)
+        return payloads
+
     def _list_projected_news_page_rows(
         self,
         *,
@@ -1594,6 +1650,7 @@ class NewsRepository:
               story_json AS story,
               source_json AS source,
               agent_brief_json AS agent_brief,
+              agent_status,
               agent_brief_computed_at_ms,
               computed_at_ms,
               projection_version
@@ -2211,7 +2268,11 @@ class NewsRepository:
                 || jsonb_build_object(
                   'source_name', sources.source_name,
                   'source_role', sources.source_role,
-                  'trust_tier', sources.trust_tier
+                  'trust_tier', sources.trust_tier,
+                  'duplicate_count', COALESCE(edge_summary.duplicate_count, 1),
+                  'source_ids_json', COALESCE(edge_summary.source_ids_json, '[]'::jsonb),
+                  'source_domains_json', COALESCE(edge_summary.source_domains_json, '[]'::jsonb),
+                  'provider_article_keys_json', COALESCE(edge_summary.provider_article_keys_json, '[]'::jsonb)
                 ) AS item,
               CASE WHEN stories.story_id IS NULL THEN NULL ELSE to_jsonb(stories.*) END AS story,
               CASE
@@ -2229,6 +2290,25 @@ class NewsRepository:
             JOIN news_sources AS sources ON sources.source_id = items.source_id
             LEFT JOIN news_story_groups AS stories ON stories.story_id = candidates.story_id
             LEFT JOIN news_item_agent_briefs AS current_brief ON current_brief.news_item_id = items.news_item_id
+            LEFT JOIN LATERAL (
+              SELECT COUNT(*)::int AS duplicate_count,
+                     COALESCE(jsonb_agg(DISTINCT edges.source_id ORDER BY edges.source_id), '[]'::jsonb)
+                       AS source_ids_json,
+                     COALESCE(
+                       jsonb_agg(DISTINCT edge_sources.source_domain ORDER BY edge_sources.source_domain)
+                         FILTER (WHERE edge_sources.source_domain IS NOT NULL),
+                       '[]'::jsonb
+                     ) AS source_domains_json,
+                     COALESCE(
+                       jsonb_agg(DISTINCT edges.provider_article_key ORDER BY edges.provider_article_key)
+                         FILTER (WHERE edges.provider_article_key <> ''),
+                       '[]'::jsonb
+                     ) AS provider_article_keys_json
+                FROM news_item_observation_edges AS edges
+                JOIN news_sources AS edge_sources ON edge_sources.source_id = edges.source_id
+               WHERE edges.news_item_id = items.news_item_id
+                 AND edge_sources.enabled = true
+            ) AS edge_summary ON true
             LEFT JOIN LATERAL (
               SELECT *
                 FROM news_item_agent_runs AS runs
@@ -2353,7 +2433,7 @@ class NewsRepository:
                          'model', runs.model,
                          'provider', runs.provider,
                          'lane', runs.lane,
-                         'sdk_trace_id', runs.sdk_trace_id,
+                         'execution_trace_id', runs.execution_trace_id,
                          'error_class', runs.error_class,
                          'error', runs.error,
                          'usage_json', runs.usage_json,
@@ -3485,26 +3565,93 @@ def _signal_from_provider_or_agent(
     provider_signal: Mapping[str, Any],
     agent_brief: Mapping[str, Any],
 ) -> dict[str, Any]:
-    if provider_signal.get("source") == "provider":
-        return {
+    provider_payload = _provider_signal_payload(provider_signal)
+    provider_score = _optional_int(provider_payload.get("score")) if provider_payload else None
+    if str(agent_brief.get("status") or "") == "ready":
+        direction = str(agent_brief.get("direction") or "neutral")
+        return _signal_with_independent_state(
+            {
+                "source": "agent",
+                "status": "ready",
+                "direction": direction,
+                "label_zh": _direction_label(direction),
+                "score": provider_score,
+                "grade": provider_payload.get("grade") if provider_payload else None,
+                "summary_zh": _json_dict(agent_brief.get("brief_json")).get("summary_zh"),
+                "method": "news_item_brief",
+            },
+            provider_signal=provider_payload,
+            agent_brief=agent_brief,
+        )
+    if provider_payload:
+        return _signal_with_independent_state(
+            provider_payload,
+            provider_signal=provider_payload,
+            agent_brief=agent_brief,
+        )
+    return _signal_with_independent_state(
+        _signal_from_agent_brief(agent_brief),
+        provider_signal=None,
+        agent_brief=agent_brief,
+    )
+
+
+def _provider_signal_payload(provider_signal: Mapping[str, Any]) -> dict[str, Any] | None:
+    if provider_signal.get("source") != "provider":
+        return None
+    return {
+        key: value
+        for key, value in {
+            "source": "provider",
+            "provider": provider_signal.get("provider") or "opennews",
+            "status": provider_signal.get("status") or "partial",
+            "direction": provider_signal.get("direction") or "neutral",
+            "label_zh": provider_signal.get("label_zh")
+            or _direction_label(str(provider_signal.get("direction") or "neutral")),
+            "signal": provider_signal.get("signal"),
+            "score": _optional_int(provider_signal.get("score")),
+            "grade": provider_signal.get("grade"),
+            "summary_zh": provider_signal.get("summary_zh"),
+            "summary_en": provider_signal.get("summary_en"),
+            "method": provider_signal.get("method") or "opennews.provider_signal",
+        }.items()
+        if value is not None
+    }
+
+
+def _signal_with_independent_state(
+    signal: Mapping[str, Any],
+    *,
+    provider_signal: Mapping[str, Any] | None,
+    agent_brief: Mapping[str, Any],
+) -> dict[str, Any]:
+    agent_status = str(agent_brief.get("status") or "pending")
+    provider_score = _optional_int(provider_signal.get("score")) if provider_signal else None
+    payload = {
+        **signal,
+        "provider_signal": dict(provider_signal) if provider_signal else None,
+        "alert_eligibility": {
             key: value
             for key, value in {
-                "source": "provider",
-                "provider": provider_signal.get("provider") or "opennews",
-                "status": provider_signal.get("status") or "partial",
-                "direction": provider_signal.get("direction") or "neutral",
-                "label_zh": provider_signal.get("label_zh")
-                or _direction_label(str(provider_signal.get("direction") or "neutral")),
-                "signal": provider_signal.get("signal"),
-                "score": _optional_int(provider_signal.get("score")),
-                "grade": provider_signal.get("grade"),
-                "summary_zh": provider_signal.get("summary_zh"),
-                "summary_en": provider_signal.get("summary_en"),
-                "method": provider_signal.get("method") or "opennews.provider_signal",
+                "agent_status": agent_status,
+                "decision_class": agent_brief.get("decision_class"),
+                "provider_status": provider_signal.get("status") if provider_signal else None,
+                "provider_score": provider_score,
+                "eligible": _alert_eligible(agent_brief=agent_brief, provider_score=provider_score),
             }.items()
             if value is not None
-        }
-    return _signal_from_agent_brief(agent_brief)
+        },
+    }
+    return {key: value for key, value in payload.items() if value is not None}
+
+
+def _alert_eligible(*, agent_brief: Mapping[str, Any], provider_score: int | None) -> bool:
+    if str(agent_brief.get("status") or "") == "ready" and str(agent_brief.get("decision_class") or "") in {
+        "driver",
+        "watch",
+    }:
+        return True
+    return provider_score is not None and provider_score >= 70
 
 
 def _token_lanes_from_mentions(
@@ -3643,8 +3790,8 @@ def _agent_run_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
         "news_item_id": str(payload["news_item_id"]),
         "provider": str(payload["provider"]),
         "model": str(payload["model"]),
-        "backend": str(payload.get("backend") or "openai_agents_sdk"),
-        "sdk_trace_id": payload.get("sdk_trace_id"),
+        "backend": str(payload.get("backend") or "litellm_sdk"),
+        "execution_trace_id": payload.get("execution_trace_id"),
         "workflow_name": str(payload["workflow_name"]),
         "agent_name": str(payload["agent_name"]),
         "lane": str(payload["lane"]),

@@ -9,10 +9,7 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     FinalDecision,
     SignalAnalystMemo,
 )
-from gmgn_twitter_intel.integrations.openai_agents.agent_model_settings import (
-    default_agent_model_settings,
-)
-from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import (
+from gmgn_twitter_intel.integrations.model_execution.output_schema import (
     StrictJsonOutputSchema,
 )
 
@@ -51,7 +48,7 @@ def test_strict_json_output_schema_flattens_refs_and_forces_strict_objects() -> 
     assert all(node.get("additionalProperties") is False for node in object_nodes)
 
 
-def test_pulse_agent_output_schemas_match_openai_strict_subset() -> None:
+def test_pulse_agent_output_schemas_match_litellm_json_object_subset() -> None:
     forbidden_keywords = {
         "$defs",
         "$ref",
@@ -96,11 +93,3 @@ def test_strict_json_output_schema_extracts_json_from_prose_before_validation() 
 
     assert isinstance(payload, _Payload)
     assert payload.name == "alpha"
-
-
-def test_default_agent_model_settings_disable_thinking_and_include_usage_by_default() -> None:
-    settings = default_agent_model_settings()
-
-    assert settings.include_usage is True
-    assert settings.extra_body == {"chat_template_kwargs": {"enable_thinking": False}}
-    assert settings.retry is not None

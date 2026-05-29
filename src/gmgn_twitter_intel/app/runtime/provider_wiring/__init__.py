@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from gmgn_twitter_intel.app.runtime.narrative_bulk_analysis_gate import narrative_bulk_analysis_enabled
 from gmgn_twitter_intel.app.runtime.provider_wiring.types import (
     AssetMarketProviders,
     IngestionProviders,
@@ -27,8 +28,8 @@ def wire_providers(
         asset_market,
         gmgn,
         macrodata,
+        model_execution,
         news,
-        openai,
     )
 
     return WiredProviders(
@@ -37,7 +38,7 @@ def wire_providers(
         ),
         asset_market=asset_market.wire_asset_market(settings),
         social_enrichment=SocialEnrichmentProviders(
-            event_enrichment=openai.openai_social_event_provider(
+            event_enrichment=model_execution.litellm_social_event_provider(
                 settings,
                 agent_gateway=_require_agent_execution_gateway(agent_execution_gateway),
             )
@@ -45,19 +46,18 @@ def wire_providers(
             else None,
         ),
         narrative_intel=NarrativeIntelProviders(
-            narrative_provider=openai.openai_narrative_intel_provider(
+            narrative_provider=model_execution.litellm_narrative_intel_provider(
                 settings,
                 agent_gateway=_require_agent_execution_gateway(agent_execution_gateway),
             )
-            if (settings.workers.mention_semantics.enabled or settings.workers.token_discussion_digest.enabled)
-            and settings.narrative_intel_configured
+            if narrative_bulk_analysis_enabled(settings)
             else None,
         ),
         news_intel=NewsIntelProviders(
             feed_client=news.news_feed_client(settings)
             if settings.news_intel.enabled and settings.workers.news_fetch.enabled
             else None,
-            brief_provider=openai.openai_news_item_brief_provider(
+            brief_provider=model_execution.litellm_news_item_brief_provider(
                 settings,
                 agent_gateway=_require_agent_execution_gateway(agent_execution_gateway),
             )
@@ -69,7 +69,7 @@ def wire_providers(
             else None,
         ),
         pulse_lab=PulseLabProviders(
-            decision_provider=openai.openai_pulse_decision_provider(
+            decision_provider=model_execution.litellm_pulse_decision_provider(
                 settings,
                 agent_gateway=_require_agent_execution_gateway(agent_execution_gateway),
                 db_pool=db_pool,
@@ -78,7 +78,7 @@ def wire_providers(
             else None,
         ),
         watchlist_intel=WatchlistIntelProviders(
-            summary_provider=openai.openai_watchlist_summary_provider(
+            summary_provider=model_execution.litellm_watchlist_summary_provider(
                 settings,
                 agent_gateway=_require_agent_execution_gateway(agent_execution_gateway),
             )
@@ -98,7 +98,7 @@ def wire_asset_market_providers(settings: Settings, *, start_collector: bool) ->
 
 def _require_agent_execution_gateway(agent_execution_gateway: object | None) -> object:
     if agent_execution_gateway is None:
-        raise RuntimeError("AgentExecutionGateway is required for configured OpenAI providers")
+        raise RuntimeError("AgentExecutionGateway is required for configured LiteLLM providers")
     return agent_execution_gateway
 
 

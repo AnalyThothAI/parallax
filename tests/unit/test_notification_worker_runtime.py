@@ -167,15 +167,15 @@ def test_signal_pulse_duplicate_lookup_uses_in_app_and_external_signatures():
     conn = RecordingConn()
     repo = NotificationRepository(conn)
 
-    row = repo._pulse_signature_duplicate(
+    row = repo._semantic_signature_duplicate(
         rule_id="signal_pulse_candidate",
         payload={"in_app_signature": "sha256:in-app", "external_push_signature": "sha256:external"},
     )
 
     assert row == {"notification_id": "existing"}
     sql, params = conn.calls[-1]
-    assert "payload_json->>'in_app_signature'" in sql
-    assert "payload_json->>'external_push_signature'" in sql
+    assert "COALESCE(payload_json->>'semantic_signature', payload_json->>'in_app_signature')" in sql
+    assert "COALESCE(payload_json->>'external_push_signature', 'in_app')" in sql
     assert "notification_signature" not in sql
     assert params == ("signal_pulse_candidate", "sha256:in-app", "sha256:external")
 

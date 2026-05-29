@@ -2717,7 +2717,7 @@ class EventRefAliasNarrativeProvider(AcquiringNarrativeProvider):
 
 def _request_audit(*, stage, run_id):
     return {
-        "backend": "openai_agents_sdk",
+        "backend": "litellm_sdk",
         "stage": stage,
         "run_id": run_id,
         "lane": f"narrative.{stage}",

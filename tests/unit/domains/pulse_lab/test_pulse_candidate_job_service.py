@@ -73,7 +73,7 @@ def test_provider_stage_failure_records_failed_run_eval_and_job_failure() -> Non
                 started_at_ms=NOW_MS - 42,
                 finished_at_ms=NOW_MS,
                 status="failed",
-                error="ModelBehaviorError: invalid JSON",
+                error="ValidationError: invalid JSON",
             )
             raise PulseStageFailure("model_validate failed", audits=(failed_audit,))
 

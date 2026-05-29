@@ -11,7 +11,7 @@ from gmgn_twitter_intel.domains.news_intel.types.news_item_brief import (
     NewsItemBriefInputPacket,
     NewsItemBriefPayload,
 )
-from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import StrictJsonOutputSchema
+from gmgn_twitter_intel.integrations.model_execution.output_schema import StrictJsonOutputSchema
 from gmgn_twitter_intel.platform.agent_execution import (
     RUNTIME_VERSION,
     AgentCapacityReservation,
@@ -19,8 +19,8 @@ from gmgn_twitter_intel.platform.agent_execution import (
 from gmgn_twitter_intel.platform.agent_hashing import artifact_hash_for, json_sha256
 
 
-class OpenAIAgentsNewsItemBriefClient:
-    provider = "openai"
+class LiteLLMNewsItemBriefClient:
+    provider = "litellm"
 
     def __init__(
         self,
@@ -77,4 +77,4 @@ def _coerce_news_item_brief_payload(value: Any) -> NewsItemBriefPayload:
     return NewsItemBriefPayload.model_validate(value)
 
 
-__all__ = ["OpenAIAgentsNewsItemBriefClient"]
+__all__ = ["LiteLLMNewsItemBriefClient"]

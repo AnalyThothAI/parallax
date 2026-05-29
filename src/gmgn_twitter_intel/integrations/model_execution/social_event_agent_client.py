@@ -21,21 +21,19 @@ from gmgn_twitter_intel.platform.agent_execution import (
 from gmgn_twitter_intel.platform.agent_hashing import artifact_hash_for, json_sha256
 
 
-class OpenAIAgentsSocialEventClient:
-    provider = "openai"
+class LiteLLMSocialEventClient:
+    provider = "litellm"
 
     def __init__(
         self,
         *,
         agent_gateway: Any,
         workflow_name: str = WORKFLOW_NAME,
-        max_turns: int = 1,
     ):
         if agent_gateway is None:
             raise ValueError("agent_gateway is required")
         self._agent_gateway = agent_gateway
         self.workflow_name = str(workflow_name or "").strip() or WORKFLOW_NAME
-        self.max_turns = max(1, min(2, int(max_turns)))
 
     @property
     def model(self) -> str:
@@ -110,7 +108,6 @@ class OpenAIAgentsSocialEventClient:
                 "job_type": str(job.get("job_type") or ""),
                 "attempt_count": int(job.get("attempt_count") or 0),
             },
-            max_turns=self.max_turns,
         )
 
 

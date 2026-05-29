@@ -10,7 +10,7 @@ DELETED_PATHS = (
     ROOT / "src/gmgn_twitter_intel/app/runtime/worker_factories/equity_event_intel.py",
     ROOT / "src/gmgn_twitter_intel/app/runtime/provider_wiring/equity_events.py",
     ROOT / "src/gmgn_twitter_intel/integrations/equity_events",
-    ROOT / "src/gmgn_twitter_intel/integrations/openai_agents/equity_event_brief_agent_client.py",
+    ROOT / "src/gmgn_twitter_intel/integrations/model_execution/equity_event_brief_agent_client.py",
     ROOT / "web/src/features/equity-events",
     ROOT / "web/src/routes/equity-events.route.tsx",
 )

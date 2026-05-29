@@ -22,6 +22,7 @@ from gmgn_twitter_intel.domains.asset_market.runtime.token_profile_current_worke
 from gmgn_twitter_intel.domains.macro_intel.runtime.macro_sync_worker import MacroSyncWorker
 from gmgn_twitter_intel.domains.macro_intel.runtime.macro_view_projection_worker import MacroViewProjectionWorker
 from gmgn_twitter_intel.domains.narrative_intel.runtime.mention_semantics_worker import MentionSemanticsWorker
+from gmgn_twitter_intel.domains.narrative_intel.runtime.narrative_admission_worker import NarrativeAdmissionWorker
 from gmgn_twitter_intel.domains.narrative_intel.runtime.token_discussion_digest_worker import (
     TokenDiscussionDigestWorker,
 )
@@ -35,6 +36,7 @@ from gmgn_twitter_intel.domains.news_intel.runtime.news_source_quality_projectio
 from gmgn_twitter_intel.domains.news_intel.runtime.news_story_projection_worker import NewsStoryProjectionWorker
 from gmgn_twitter_intel.domains.notifications.runtime.notification_delivery import NotificationDeliveryWorker
 from gmgn_twitter_intel.domains.notifications.runtime.notification_worker import NotificationWorker
+from gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
 from gmgn_twitter_intel.platform.config.settings import Settings
 
 _UNSET = object()
@@ -334,6 +336,32 @@ def test_worker_factory_wires_narrative_mention_and_digest_wake_waiters() -> Non
     )
 
 
+def test_worker_factory_hard_gates_narrative_bulk_queue_producers() -> None:
+    db = FakeDB()
+    providers = FakeProviders()
+
+    workers = construct_workers(
+        settings=_settings(
+            narrative_intel_configured=True,
+            token_radar_projection_enabled=True,
+            mention_semantics_enabled=False,
+        ),
+        db=db,
+        telemetry=object(),
+        providers=providers,
+        hub=SimpleNamespace(publish=lambda payload: None),
+        collector=FakeCollector(name="collector", settings=SimpleNamespace(enabled=False), db=db, telemetry=object()),
+        collector_enabled=False,
+        wake_bus=db.wake,
+    )
+
+    assert isinstance(workers["token_radar_projection"], TokenRadarProjectionWorker)
+    assert workers["token_radar_projection"].enqueue_narrative_admission is False
+    assert not isinstance(workers["narrative_admission"], NarrativeAdmissionWorker)
+    assert not isinstance(workers["mention_semantics"], MentionSemanticsWorker)
+    assert not isinstance(workers["token_discussion_digest"], TokenDiscussionDigestWorker)
+
+
 def test_worker_factory_wires_news_item_brief_when_configured() -> None:
     db = FakeDB()
     providers = FakeProviders(brief_provider=object())
@@ -393,6 +421,10 @@ def _settings(
     news_item_brief_configured: bool = False,
     macro_view_projection_enabled: bool = True,
     macrodata_enabled: bool = True,
+    token_radar_projection_enabled: bool = False,
+    narrative_admission_enabled: bool = True,
+    mention_semantics_enabled: bool = True,
+    token_discussion_digest_enabled: bool = True,
 ) -> Settings:
     llm = {"api_key": "secret"} if narrative_intel_configured else {}
     agent_lanes = {}
@@ -429,8 +461,11 @@ def _settings(
             "asset_profile_refresh": {"enabled": False},
             "token_image_mirror": {"enabled": True},
             "token_profile_current": {"enabled": True},
-            "token_radar_projection": {"enabled": False},
+            "token_radar_projection": {"enabled": token_radar_projection_enabled},
             "macro_view_projection": {"enabled": macro_view_projection_enabled},
+            "narrative_admission": {"enabled": narrative_admission_enabled},
+            "mention_semantics": {"enabled": mention_semantics_enabled},
+            "token_discussion_digest": {"enabled": token_discussion_digest_enabled},
             "pulse_candidate": {"enabled": False},
             "enrichment": {"enabled": False},
             "handle_summary": {"enabled": False},

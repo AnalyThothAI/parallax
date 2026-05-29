@@ -233,7 +233,7 @@ class PulseCandidateJobService:
                     provider=provider,
                     model=model,
                     backend=str(audit.get("backend") or BACKEND),
-                    sdk_trace_id=audit.get("sdk_trace_id"),
+                    execution_trace_id=audit.get("execution_trace_id"),
                     workflow_name=str(audit.get("workflow_name") or WORKFLOW_NAME),
                     agent_name=str(audit.get("agent_name") or AGENT_NAME),
                     artifact_version_hash=str(

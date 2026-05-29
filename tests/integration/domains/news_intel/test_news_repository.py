@@ -798,8 +798,8 @@ def test_ready_representative_tie_breaker_is_order_independent(tmp_path) -> None
     }
     assert {key: alpha_then_beta[key] for key in expected} == expected
     assert {key: beta_then_alpha[key] for key in expected} == expected
-    assert alpha_then_beta["canonical_item_key"].startswith("content-hash:")
-    assert beta_then_alpha["canonical_item_key"].startswith("content-hash:")
+    assert alpha_then_beta["canonical_item_key"] == "canonical-url:https://example.com/news/2367422"
+    assert beta_then_alpha["canonical_item_key"] == "canonical-url:https://example.com/news/2367422"
 
 
 def test_provider_item_identity_and_ready_status_do_not_downgrade_on_later_partial(tmp_path) -> None:
@@ -891,7 +891,7 @@ def test_provider_item_identity_and_ready_status_do_not_downgrade_on_later_parti
     assert provider_row["payload_hash"] == "payload-ready"
     assert provider_row["raw_payload_json"]["aiRating"] == {"status": "done"}
     assert provider_row["fetched_at_ms"] == NOW_MS
-    assert stored_news["canonical_item_key"] == "content-hash:content-ready"
+    assert stored_news["canonical_item_key"] == "canonical-url:https://example.com/news/2367422"
     assert stored_news["title"] == "Ready headline"
     assert stored_news["canonical_url"] == "https://example.com/news/2367422"
     assert edge["news_item_id"] == stored_news["news_item_id"]
@@ -990,12 +990,12 @@ def test_provider_item_identity_promotion_remaps_edge_and_removes_zero_edge_item
     assert first_provider["provider_article_id"] == ""
     assert first_news["canonical_item_key"] == "content-hash:content-pending-2367422"
     assert second_news["status"] == "updated"
-    assert second_news["canonical_item_key"] == "content-hash:content-ready-2367422"
+    assert second_news["canonical_item_key"] == "canonical-url:https://example.com/news/2367422"
     assert old_item_count == 0
     assert [dict(row) for row in rows] == [
         {
             "news_item_id": second_news["news_item_id"],
-            "canonical_item_key": "content-hash:content-ready-2367422",
+            "canonical_item_key": "canonical-url:https://example.com/news/2367422",
             "duplicate_observation_count": 1,
             "source_ids_json": ["opennews-realtime"],
             "provider_article_keys_json": ["opennews:2367422"],
@@ -1006,7 +1006,7 @@ def test_provider_item_identity_promotion_remaps_edge_and_removes_zero_edge_item
             "provider_item_id": second_provider["provider_item_id"],
             "news_item_id": second_news["news_item_id"],
             "provider_article_key": "opennews:2367422",
-            "match_type": "same_content_hash",
+            "match_type": "same_canonical_url",
         }
     ]
 
@@ -1136,7 +1136,7 @@ def test_opennews_partial_first_promotes_to_ready_content_hash_and_collapses_mir
     assert [dict(row) for row in rows] == [
         {
             "news_item_id": ready_news["news_item_id"],
-            "canonical_item_key": "content-hash:content-ready-2367422",
+            "canonical_item_key": "canonical-url:https://example.com/news/2367422",
             "duplicate_observation_count": 2,
             "source_ids_json": ["opennews-realtime", "rss-mirror"],
             "provider_article_keys_json": ["opennews:2367422", "rss:mirror-2367422"],
@@ -1147,13 +1147,13 @@ def test_opennews_partial_first_promotes_to_ready_content_hash_and_collapses_mir
             "source_id": "opennews-realtime",
             "news_item_id": ready_news["news_item_id"],
             "provider_article_key": "opennews:2367422",
-            "match_type": "same_content_hash",
+            "match_type": "same_canonical_url",
         },
         {
             "source_id": "rss-mirror",
             "news_item_id": ready_news["news_item_id"],
             "provider_article_key": "rss:mirror-2367422",
-            "match_type": "same_content_hash",
+            "match_type": "same_canonical_url",
         },
     ]
 
@@ -1237,14 +1237,14 @@ def test_opennews_ready_content_hash_promotes_even_when_url_is_not_article_ident
     assert [dict(row) for row in rows] == [
         {
             "news_item_id": ready_news["news_item_id"],
-            "canonical_item_key": "content-hash:content-ready-homepage",
+            "canonical_item_key": "canonical-url:https://example.com/",
             "url_identity_kind": "homepage",
         }
     ]
     assert dict(edge) == {
         "news_item_id": ready_news["news_item_id"],
         "provider_article_key": "opennews:2367422",
-        "match_type": "same_content_hash",
+        "match_type": "same_canonical_url",
     }
 
 
@@ -2008,7 +2008,8 @@ def test_news_item_agent_brief_migration_backfills_pending_page_rows(tmp_path) -
     finally:
         conn.close()
 
-    assert "agent_status" not in rows[0]
+    assert rows[0]["agent_status"] == "pending"
+    assert rows[0]["agent_brief_computed_at_ms"] is None
     assert "agent_brief_json" not in rows[0]
     assert rows[0]["agent_brief"]["status"] == "pending"
     assert rows[0]["signal"]["status"] == "partial"
@@ -2099,7 +2100,7 @@ def test_canonical_dedup_migration_backfills_identity_and_observation_edges(tmp_
     assert [dict(row) for row in rows] == [
         {
             "news_item_id": "news-item-legacy-a",
-            "canonical_item_key": "content-hash:content-shared",
+            "canonical_item_key": "canonical-url:https://example.com/news/shared",
             "duplicate_observation_count": 2,
             "source_ids_json": ["source-legacy"],
             "source_domains_json": ["example.com"],
@@ -2114,7 +2115,7 @@ def test_canonical_dedup_migration_backfills_identity_and_observation_edges(tmp_
             "news_item_id": "news-item-legacy-a",
             "source_id": "source-legacy",
             "provider_article_key": "rss:guid-a",
-            "match_type": "same_content_hash",
+            "match_type": "same_canonical_url",
             "match_confidence": "strong",
         },
         {
@@ -2122,13 +2123,13 @@ def test_canonical_dedup_migration_backfills_identity_and_observation_edges(tmp_
             "news_item_id": "news-item-legacy-a",
             "source_id": "source-legacy",
             "provider_article_key": "rss:guid-b",
-            "match_type": "same_content_hash",
+            "match_type": "same_canonical_url",
             "match_confidence": "strong",
         },
     ]
 
 
-def test_canonical_dedup_migration_keeps_aggregators_and_live_urls_out_of_article_identity(tmp_path) -> None:
+def test_canonical_dedup_migration_promotes_public_urls_to_hard_identity(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
@@ -2176,14 +2177,14 @@ def test_canonical_dedup_migration_keeps_aggregators_and_live_urls_out_of_articl
         conn.close()
 
     assert [row["canonical_item_key"] for row in rows] == [
-        "content-hash:content-news-root",
-        "content-hash:content-tass-world",
-        "content-hash:content-afp-news",
-        "content-hash:content-nyt-live",
+        "canonical-url:https://example.com/news",
+        "canonical-url:https://tass.com/world",
+        "canonical-url:https://www.afp.com/en/news",
+        "canonical-url:https://www.nytimes.com/live/2026/05/28/business/markets-fed",
     ]
-    assert {row["dedup_key_kind"] for row in rows} == {"content_hash"}
+    assert {row["dedup_key_kind"] for row in rows} == {"canonical_url"}
     assert {row["url_identity_kind"] for row in rows} == {"aggregator", "live_page"}
-    assert {row["match_type"] for row in edges} == {"same_content_hash"}
+    assert {row["match_type"] for row in edges} == {"same_canonical_url"}
 
 
 def test_canonical_dedup_migration_backfills_opennews_provider_id_only_from_payload(tmp_path) -> None:
@@ -2341,7 +2342,8 @@ def test_page_projection_rebuilds_and_lists_agent_brief_columns_when_brief_updat
 
     assert [candidate["item"]["news_item_id"] for candidate in candidates] == [news_item_id]
     assert row["current_brief"]["agent_run_id"] == "run-brief-1"
-    assert "agent_status" not in rows[0]
+    assert rows[0]["agent_status"] == "ready"
+    assert rows[0]["agent_brief_computed_at_ms"] == NOW_MS + 100
     assert "agent_brief_status" not in rows[0]
     assert "agent_brief_json" not in rows[0]
     assert rows[0]["agent_brief"]["summary_zh"] == "SOL ETF 申请提升关注。"
@@ -2934,7 +2936,7 @@ def test_get_news_item_detail_hydrates_agent_brief_and_latest_run_summary(tmp_pa
         "outcome": "ready",
         "execution_started": True,
         "model": "gpt-5-mini",
-        "provider": "openai",
+        "provider": "litellm",
         "lane": NEWS_ITEM_BRIEF_LANE,
         "error_class": None,
         "error": None,
@@ -3489,9 +3491,9 @@ def _insert_agent_run(repo: NewsRepository, *, news_item_id: str, run_id: str) -
     return repo.insert_news_item_agent_run(
         run_id=run_id,
         news_item_id=news_item_id,
-        provider="openai",
+        provider="litellm",
         model="gpt-5-mini",
-        sdk_trace_id=f"trace-{run_id}",
+        execution_trace_id=f"trace-{run_id}",
         workflow_name=NEWS_ITEM_BRIEF_WORKFLOW_NAME,
         agent_name=NEWS_ITEM_BRIEF_AGENT_NAME,
         lane=NEWS_ITEM_BRIEF_LANE,

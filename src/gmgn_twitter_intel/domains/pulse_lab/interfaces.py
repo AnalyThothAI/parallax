@@ -9,7 +9,7 @@ PULSE_DECISION_SCHEMA_VERSION = "pulse-decision-v2"
 PULSE_DECISION_PROMPT_VERSION = "pulse-decision-prompt-v2"
 PULSE_GATE_VERSION = "pulse-factor-gate-v2-edge-state"
 PULSE_PLAYBOOK_VERSION = "shadow-playbook-v1"
-BACKEND = "openai_agents_sdk"
+BACKEND = "litellm_sdk"
 WORKFLOW_NAME = "gmgn-twitter-intel.pulse_decision"
 AGENT_NAME = "PulseDecisionPipeline"
 

@@ -102,6 +102,27 @@ def test_rank_source_query_deletes_stale_edges_for_requested_event_ids_only() ->
     assert "fresh.source_id = stale_edges.source_id" in conn.sql
 
 
+def test_rank_source_query_populates_edges_for_repair_targets() -> None:
+    conn = FakeConn(rows=[{"upserted_count": 2, "deleted_count": 1}])
+
+    changed = TokenRadarRankSourceQuery(conn).populate_edges_for_targets(
+        [{"target_type_key": "Asset", "identity_id": "asset-1"}],
+        projected_at_ms=4,
+        commit=False,
+    )
+
+    assert changed == 3
+    assert "requested_targets AS" in conn.sql
+    assert "token_intent_resolutions.target_type = requested_targets.target_type_key" in conn.sql
+    assert "token_intent_resolutions.target_id = requested_targets.identity_id" in conn.sql
+    assert "DELETE FROM token_radar_rank_source_events stale_edges" in conn.sql
+    assert "USING requested_targets requested" in conn.sql
+    assert "stale_edges.target_type_key = requested.target_type_key" in conn.sql
+    assert "stale_edges.identity_id = requested.identity_id" in conn.sql
+    assert '"window"' not in conn.sql
+    assert conn.commit_count == 0
+
+
 def test_rank_source_query_loads_existing_and_current_affected_targets_for_events() -> None:
     conn = FakeConn(
         rows=[

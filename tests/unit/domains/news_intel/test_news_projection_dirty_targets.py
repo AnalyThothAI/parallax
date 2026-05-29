@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any
 
+from gmgn_twitter_intel.app.runtime.projection_dirty_targets import enqueue_projection_dirty_targets
 from gmgn_twitter_intel.domains.news_intel.repositories.news_repository import NewsRepository
 from gmgn_twitter_intel.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
 from gmgn_twitter_intel.domains.news_intel.runtime.news_item_brief_worker import NewsItemBriefWorker
@@ -334,7 +335,6 @@ def test_process_worker_enqueues_story_page_and_source_quality_dirty_in_same_tra
             "rows": [
                 {"projection_name": "story", "target_kind": "news_item", "target_id": "news-1"},
                 {"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"},
-                {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-1"},
                 {"projection_name": "source_quality", "target_kind": "source", "target_id": "source-1", "window": "4h"},
                 {
                     "projection_name": "source_quality",
@@ -352,6 +352,37 @@ def test_process_worker_enqueues_story_page_and_source_quality_dirty_in_same_tra
     assert "tx:dirty:news_item_processed" in repos.conn.events
     assert "autocommit:dirty:news_item_processed" not in repos.conn.events
     assert "direct_commit" not in repos.conn.events
+
+
+def test_ops_projection_repair_enqueues_provider_signal_brief_input_dirty_target() -> None:
+    repos = FakeOpsProjectionRepos()
+
+    result = enqueue_projection_dirty_targets(
+        repos,
+        domain="news",
+        execute=True,
+        now_ms=NOW_MS,
+        projection="brief_input",
+        since_ms=NOW_MS - 60_000,
+    )
+
+    assert result["news"]["news_item_targets"] == 1
+    assert repos.dirty.enqueued == [
+        {
+            "rows": [
+                {
+                    "projection_name": "brief_input",
+                    "target_kind": "news_item",
+                    "target_id": "news-provider",
+                    "source_watermark_ms": NOW_MS - 1_000,
+                    "priority": 5,
+                }
+            ],
+            "reason": "ops_projection_dirty_repair",
+            "now_ms": NOW_MS,
+            "commit": False,
+        }
+    ]
 
 
 def test_brief_worker_enqueues_page_and_source_quality_dirty_in_same_transaction_after_current_brief_write() -> None:
@@ -538,6 +569,48 @@ class FakePageRepos:
         self.news = FakePageNewsRepository()
         self.dirty = FakeDirtyRepository(claimed)
         self.news_projection_dirty_targets = self.dirty
+
+
+class FakeOpsProjectionRepos:
+    def __init__(self) -> None:
+        self.conn = FakeOpsProjectionConn()
+        self.dirty = FakeDirtyRepository(expected_projection_name=None)
+        self.news_projection_dirty_targets = self.dirty
+
+
+class FakeOpsProjectionConn:
+    def execute(self, sql: str, _params: dict[str, Any] | None = None) -> Any:
+        if "FROM news_items" in sql:
+            return FakeRowsCursor(
+                [
+                    {
+                        "news_item_id": "news-provider",
+                        "source_watermark_ms": NOW_MS - 1_000,
+                        "provider_type": "opennews",
+                        "provider_signal_json": {
+                            "source": "provider",
+                            "provider": "opennews",
+                            "status": "ready",
+                            "score": 95,
+                        },
+                    }
+                ]
+            )
+        if "FROM news_sources" in sql:
+            return FakeRowsCursor([])
+        raise AssertionError(f"unexpected SQL: {sql}")
+
+    @contextmanager
+    def transaction(self) -> Iterator[None]:
+        yield
+
+
+class FakeRowsCursor:
+    def __init__(self, rows: list[dict[str, Any]]) -> None:
+        self.rows = rows
+
+    def fetchall(self) -> list[dict[str, Any]]:
+        return list(self.rows)
 
 
 class FakePageNewsRepository:

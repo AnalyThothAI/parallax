@@ -11,7 +11,7 @@ from typing import Any
 
 from gmgn_twitter_intel.app.runtime.db_pool_bundle import DBPoolBundle
 from gmgn_twitter_intel.app.runtime.llm_gateway import LLMGateway
-from gmgn_twitter_intel.app.runtime.provider_wiring.openai import build_agent_execution_gateway
+from gmgn_twitter_intel.app.runtime.provider_wiring.model_execution import build_agent_execution_gateway
 from gmgn_twitter_intel.app.runtime.providers_wiring import WiredProviders, wire_providers
 from gmgn_twitter_intel.app.runtime.repository_session import PooledRepository
 from gmgn_twitter_intel.app.runtime.telemetry import TelemetryRegistry

@@ -645,7 +645,7 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     assert account_alerts.json()["data"]["items"][0]["token_resolution_status"] == "EXACT"
 
 
-def test_token_radar_public_payload_keeps_targetless_rows_in_diagnostics(tmp_path):
+def test_token_radar_public_payload_excludes_unresolved_source_dirty_rows(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
@@ -684,8 +684,8 @@ def test_token_radar_public_payload_keeps_targetless_rows_in_diagnostics(tmp_pat
     assert public_rows
     assert all(row["target"]["target_id"] for row in public_rows)
     assert "NEWTOKEN" not in {row["target"]["symbol"] for row in public_rows}
-    assert data["projection"]["unresolved"]["identity_missing_count"] >= 1
-    assert "NEWTOKEN" in data["projection"]["unresolved"]["sample_symbols"]
+    assert data["projection"]["unresolved"]["identity_missing_count"] == 0
+    assert "NEWTOKEN" not in data["projection"]["unresolved"]["sample_symbols"]
 
 
 def test_token_radar_uses_live_market_endpoint_without_legacy_overlay(tmp_path):
@@ -1047,6 +1047,7 @@ def test_api_exposes_signal_pulse_empty_contract_after_hard_cut(tmp_path):
         "status": "token_watch",
         "handle": "toly",
         "q": "PEPE",
+        "visibility": "public",
     }
     assert data["health"]["pulse_ready"] is False
     assert data["summary"] == {
@@ -1253,7 +1254,7 @@ def test_api_signal_pulse_status_filter_uses_public_display_status_after_evidenc
                 target_type="Asset",
                 target_id="asset:watch",
                 symbol="WATCH",
-                window="5m",
+                window="1h",
                 scope="all",
                 pulse_status="risk_rejected_high_info",
                 verdict="risk_rejected_high_info",
@@ -1292,7 +1293,7 @@ def test_api_signal_pulse_status_filter_uses_public_display_status_after_evidenc
                 target_type="Asset",
                 target_id="asset:hidden",
                 symbol="HIDDEN",
-                window="5m",
+                window="1h",
                 scope="all",
                 pulse_status="token_watch",
                 verdict="token_watch",
@@ -1327,7 +1328,7 @@ def test_api_signal_pulse_status_filter_uses_public_display_status_after_evidenc
 
         response = client.get(
             "/api/signal-lab/pulse",
-            params={"window": "5m", "scope": "all", "status": "token_watch", "limit": 10},
+            params={"window": "1h", "scope": "all", "status": "token_watch", "limit": 10},
             headers={"Authorization": "Bearer secret"},
         )
 
@@ -1870,7 +1871,7 @@ def test_api_signal_pulse_by_id_returns_stages(tmp_path):
                 run_id="run-stages",
                 job_id="job-stages",
                 candidate_id="cand-stages",
-                provider="openai",
+                provider="litellm",
                 model="qwen3.6",
                 workflow_name="pulse-decision",
                 agent_name="pulse-agent",
@@ -1898,7 +1899,7 @@ def test_api_signal_pulse_by_id_returns_stages(tmp_path):
                     stage=stage,
                     route="meme",
                     attempt_index=0,
-                    provider="openai",
+                    provider="litellm",
                     model="qwen3.6",
                     prompt_version="prompt-v1",
                     schema_version="schema-v1",

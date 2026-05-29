@@ -5,8 +5,8 @@ from types import SimpleNamespace
 from typing import Any
 
 from gmgn_twitter_intel.app.runtime import provider_wiring
-from gmgn_twitter_intel.app.runtime.provider_wiring import openai
-from gmgn_twitter_intel.app.runtime.provider_wiring.openai import build_agent_execution_gateway
+from gmgn_twitter_intel.app.runtime.provider_wiring import model_execution
+from gmgn_twitter_intel.app.runtime.provider_wiring.model_execution import build_agent_execution_gateway
 from gmgn_twitter_intel.platform.config.settings import Settings
 
 
@@ -15,7 +15,7 @@ class FakeLLMGateway:
 
 
 class FakePulseClient:
-    provider = "openai"
+    provider = "litellm"
     model = "gpt-pulse"
     artifact_version_hash = "artifact-hash"
     runtime_contract = object()
@@ -86,7 +86,7 @@ def test_build_agent_execution_gateway_hard_cuts_safety_net() -> None:
     assert not hasattr(gateway, "_safety_net")
 
 
-def test_wire_providers_passes_one_agent_execution_gateway_to_openai_factories(monkeypatch) -> None:
+def test_wire_providers_passes_one_agent_execution_gateway_to_model_execution_factories(monkeypatch) -> None:
     settings = Settings(
         ws_token="secret",
         llm={
@@ -165,11 +165,11 @@ def test_wire_providers_passes_one_agent_execution_gateway_to_openai_factories(m
         return object()
 
     db_pool_token = object()
-    monkeypatch.setattr(openai, "openai_social_event_provider", fake_social)
-    monkeypatch.setattr(openai, "openai_narrative_intel_provider", fake_narrative)
-    monkeypatch.setattr(openai, "openai_pulse_decision_provider", fake_pulse)
-    monkeypatch.setattr(openai, "openai_watchlist_summary_provider", fake_watchlist)
-    monkeypatch.setattr(openai, "openai_news_item_brief_provider", fake_news_item_brief)
+    monkeypatch.setattr(model_execution, "litellm_social_event_provider", fake_social)
+    monkeypatch.setattr(model_execution, "litellm_narrative_intel_provider", fake_narrative)
+    monkeypatch.setattr(model_execution, "litellm_pulse_decision_provider", fake_pulse)
+    monkeypatch.setattr(model_execution, "litellm_watchlist_summary_provider", fake_watchlist)
+    monkeypatch.setattr(model_execution, "litellm_news_item_brief_provider", fake_news_item_brief)
 
     providers = provider_wiring.wire_providers(
         settings,
@@ -206,7 +206,7 @@ def test_pulse_provider_uses_agent_runtime_pipeline_timeout() -> None:
         },
     )
 
-    provider = openai.openai_pulse_decision_provider(
+    provider = model_execution.litellm_pulse_decision_provider(
         settings,
         agent_gateway=object(),
         db_pool=object(),
@@ -215,9 +215,9 @@ def test_pulse_provider_uses_agent_runtime_pipeline_timeout() -> None:
     assert provider.timeout_seconds == 305
 
 
-def test_pulse_provider_maps_agent_run_audit_from_openai_client() -> None:
+def test_pulse_provider_maps_agent_run_audit_from_litellm_client() -> None:
     client = FakePulseClient()
-    provider = openai.OpenAIPulseDecisionProvider(client, pipeline_timeout_seconds=305)
+    provider = model_execution.LiteLLMPulseDecisionProvider(client, pipeline_timeout_seconds=305)
     stage_plan = object()
 
     result = asyncio.run(

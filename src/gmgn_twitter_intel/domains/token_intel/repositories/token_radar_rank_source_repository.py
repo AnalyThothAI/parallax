@@ -45,6 +45,19 @@ class TokenRadarRankSourceRepository:
             commit=commit,
         )
 
+    def populate_edges_for_targets(
+        self,
+        targets: Sequence[Mapping[str, Any]],
+        *,
+        projected_at_ms: int,
+        commit: bool = True,
+    ) -> int:
+        return TokenRadarRankSourceQuery(self.conn).populate_edges_for_targets(
+            targets,
+            projected_at_ms=projected_at_ms,
+            commit=commit,
+        )
+
     def prune_edges(
         self,
         *,

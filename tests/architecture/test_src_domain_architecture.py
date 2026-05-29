@@ -70,7 +70,7 @@ REPOSITORY_UPWARD_IMPORT_ALLOWLIST = {
 }
 PROVIDER_WIRING_DIR = SRC_ROOT / "app" / "runtime" / "provider_wiring"
 PROVIDER_WIRING_FACADE = SRC_ROOT / "app" / "runtime" / "providers_wiring.py"
-OPENAI_AGENTS_DIR = SRC_ROOT / "integrations" / "openai_agents"
+MODEL_EXECUTION_DIR = SRC_ROOT / "integrations" / "model_execution"
 PROVIDER_WIRING_FACADE_ALLOWED_IMPORTS = {
     "gmgn_twitter_intel.app.runtime.provider_wiring",
     "gmgn_twitter_intel.app.runtime.provider_wiring.types",
@@ -93,7 +93,7 @@ PROVIDER_WIRING_FAMILY_PREFIX = "gmgn_twitter_intel.app.runtime.provider_wiring.
 OPERATOR_CLI_PROVIDER_FAMILY_IMPORTS = {
     (
         SRC_ROOT / "app" / "surfaces" / "cli" / "commands" / "ops.py",
-        "gmgn_twitter_intel.app.runtime.provider_wiring.openai",
+        "gmgn_twitter_intel.app.runtime.provider_wiring.model_execution",
     ),
 }
 FACADE_CONCRETE_EXPORTS = {
@@ -105,9 +105,9 @@ FACADE_CONCRETE_EXPORTS = {
     "OkxDexQuoteProvider",
     "OkxDexWebSocketMarketProviderAdapter",
     "OkxProviderBundle",
-    "OpenAINarrativeIntelProvider",
-    "OpenAIPulseDecisionProvider",
-    "openai_narrative_intel_provider",
+    "LiteLLMNarrativeIntelProvider",
+    "LiteLLMPulseDecisionProvider",
+    "litellm_narrative_intel_provider",
     "okx_chain_index",
     "okx_chain_indexes_to_chain_ids",
     "okx_index_to_chain_id",
@@ -520,7 +520,7 @@ def test_service_provider_wiring_is_the_only_integration_provider_join_point() -
             imported.startswith("gmgn_twitter_intel.domains.") and ".providers" in imported for imported in imports
         )
         allowed_adapter_protocol_import = (
-            OPENAI_AGENTS_DIR in path.parents and "gmgn_twitter_intel.domains.pulse_lab.providers" in imports
+            MODEL_EXECUTION_DIR in path.parents and "gmgn_twitter_intel.domains.pulse_lab.providers" in imports
         )
         if (
             imports_integrations
@@ -634,14 +634,14 @@ def test_pulse_agent_route_policy_stays_in_domain() -> None:
     _assert_no_offenders(
         offenders,
         invariant="pulse agent route policy stays in the domain",
-        reason="Route/completeness policy is product behavior; importing OpenAI or an agent framework hides it.",
-        fix="Move integration-specific code into integrations/openai_agents or app/runtime/providers_wiring.py.",
+        reason="Route/completeness policy is product behavior; importing provider SDKs hides it.",
+        fix="Move integration-specific code into integrations/model_execution or app/runtime/providers_wiring.py.",
     )
 
 
-def test_pulse_lab_domain_does_not_import_openai_sdk_primitives() -> None:
+def test_pulse_lab_domain_does_not_import_model_sdk_primitives() -> None:
     offenders: list[str] = []
-    forbidden_prefixes = ("agents", "openai")
+    forbidden_prefixes = ("agents", "openai", "litellm")
     for path in (SRC_ROOT / "domains" / "pulse_lab").rglob("*.py"):
         if "__pycache__" in path.parts:
             continue
@@ -650,44 +650,46 @@ def test_pulse_lab_domain_does_not_import_openai_sdk_primitives() -> None:
                 offenders.append(f"{path.relative_to(ROOT).as_posix()}:{lineno} imports {imported}")
     _assert_no_offenders(
         offenders,
-        invariant="pulse_lab domain stays independent of OpenAI SDK primitives",
+        invariant="pulse_lab domain stays independent of model SDK primitives",
         reason=(
             "Pulse domain services own prompts, tool query behavior, validation, and audit assembly; "
-            "SDK classes such as agents.Agent/Runner and openai clients belong in integrations/openai_agents."
+            "model SDK calls belong in integrations/model_execution."
         ),
-        fix="Move SDK imports to integrations/openai_agents and inject domain provider protocols or services instead.",
+        fix=(
+            "Move SDK imports to integrations/model_execution and inject domain provider protocols or services instead."
+        ),
     )
 
 
-def test_openai_agent_integrations_do_not_import_repositories() -> None:
+def test_model_execution_integrations_do_not_import_repositories() -> None:
     offenders: list[str] = []
-    for path in (SRC_ROOT / "integrations" / "openai_agents").rglob("*.py"):
+    for path in MODEL_EXECUTION_DIR.rglob("*.py"):
         for imported, lineno in _import_records(path):
             if ".repositories" in imported:
                 offenders.append(f"{path.relative_to(ROOT).as_posix()}:{lineno} imports {imported}")
     _assert_no_offenders(
         offenders,
-        invariant="OpenAI agent integrations do not import repositories",
+        invariant="model execution integrations do not import repositories",
         reason="The adapter may run stages, but persistence belongs to domain repositories and workers.",
         fix="Return typed values from the adapter and let the owning domain runtime persist them.",
     )
 
 
-def test_openai_agent_integrations_do_not_import_pulse_queries_or_services() -> None:
+def test_model_execution_integrations_do_not_import_pulse_queries_or_services() -> None:
     offenders: list[str] = []
     forbidden = (
         "gmgn_twitter_intel.domains.pulse_lab.queries",
         "gmgn_twitter_intel.domains.pulse_lab.services",
     )
-    for path in (SRC_ROOT / "integrations" / "openai_agents").rglob("*.py"):
+    for path in MODEL_EXECUTION_DIR.rglob("*.py"):
         for imported, lineno in _import_records(path):
             if imported.startswith(forbidden):
                 offenders.append(f"{path.relative_to(ROOT).as_posix()}:{lineno} imports {imported}")
     _assert_no_offenders(
         offenders,
-        invariant="OpenAI agent integrations depend only on Pulse provider protocols and types",
+        invariant="model execution integrations depend only on Pulse provider protocols and types",
         reason="Pulse tool queries, prompts, evidence validation, and audit assembly are domain behavior.",
-        fix="Inject pulse_lab service runtimes from app/runtime/provider_wiring/openai.py instead.",
+        fix="Inject pulse_lab service runtimes from app/runtime/provider_wiring/model_execution.py instead.",
     )
 
 

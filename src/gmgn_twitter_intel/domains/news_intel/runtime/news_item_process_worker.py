@@ -12,7 +12,10 @@ from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.news_intel.services.news_content_classification import classify_news_item_content
 from gmgn_twitter_intel.domains.news_intel.services.news_entity_extraction import NewsEntity, extract_news_entities
 from gmgn_twitter_intel.domains.news_intel.services.news_fact_candidates import build_fact_candidates
-from gmgn_twitter_intel.domains.news_intel.services.news_item_agent_policy import needs_news_item_agent_brief
+from gmgn_twitter_intel.domains.news_intel.services.news_item_agent_policy import (
+    needs_news_item_agent_brief,
+    news_item_agent_brief_priority,
+)
 from gmgn_twitter_intel.domains.news_intel.services.news_token_mentions import build_news_token_mentions
 from gmgn_twitter_intel.domains.token_intel.interfaces import TokenIdentityLookup
 
@@ -158,7 +161,14 @@ def _dirty_targets_for_processed_item(
         {"projection_name": "page", "target_kind": "news_item", "target_id": news_item_id},
     ]
     if _needs_agent_brief(item):
-        targets.append({"projection_name": "brief_input", "target_kind": "news_item", "target_id": news_item_id})
+        targets.append(
+            {
+                "projection_name": "brief_input",
+                "target_kind": "news_item",
+                "target_id": news_item_id,
+                "priority": news_item_agent_brief_priority(item),
+            }
+        )
     targets.extend(
         {
             "projection_name": "source_quality",

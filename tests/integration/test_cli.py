@@ -131,7 +131,7 @@ def write_runtime_config(home: Path, *, db_path: Path, ws_token: str | None = No
     payload["gmgn"] = {"api_key": "gmgn-test", "openapi_base_url": "https://openapi.gmgn.ai"}
     workers_payload = yaml.safe_load(default_workers_yaml())
     if llm:
-        payload["llm"] = {"provider": "openai", "api_key": "sk-test"}
+        payload["llm"] = {"provider": "litellm", "api_key": "sk-test"}
         workers_payload["agent_runtime"]["defaults"]["model"] = "gpt-test"
     path = app_home / "config.yaml"
     path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
@@ -286,7 +286,7 @@ class CliTests(unittest.TestCase):
         )
         self.assertTrue(payload["data"]["enrichment"]["llm_configured"])
         self.assertEqual(payload["data"]["enrichment"]["model"], "gpt-test")
-        self.assertEqual(payload["data"]["enrichment"]["provider"], "openai")
+        self.assertEqual(payload["data"]["enrichment"]["provider"], "litellm")
         self.assertEqual(
             payload["data"]["providers"]["gmgn"],
             {
@@ -855,11 +855,12 @@ def test_cli_ops_factor_diagnostics_reads_latest_token_radar_current_rows(monkey
     payload = json.loads(stdout.getvalue())
     assert code == 0
     assert captured == {
-        "window": "1h",
-        "scope": "all",
-        "limit": 7,
-        "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
-    }
+            "window": "1h",
+            "scope": "all",
+            "venue": "all",
+            "limit": 7,
+            "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+        }
     assert payload["ok"] is True
     assert payload["data"]["row_count"] == 1
 

@@ -241,7 +241,7 @@ class EnrichmentRepository:
             self.conn.execute(
                 """
                 INSERT INTO model_runs(
-                  run_id, job_id, event_id, provider, model, backend, sdk_trace_id,
+                  run_id, job_id, event_id, provider, model, backend, execution_trace_id,
                   workflow_name, agent_name, artifact_version_hash, prompt_version,
                   schema_version, input_hash, output_hash, trace_metadata_json,
                   usage_json, latency_ms, status, request_json, response_json, error,
@@ -260,8 +260,8 @@ class EnrichmentRepository:
                     job["event_id"],
                     provider,
                     model,
-                    str(audit.get("backend") or "openai_agents_sdk"),
-                    audit.get("sdk_trace_id"),
+                    str(audit.get("backend") or "litellm_sdk"),
+                    audit.get("execution_trace_id"),
                     audit.get("workflow_name"),
                     audit.get("agent_name"),
                     audit.get("artifact_version_hash"),
@@ -319,7 +319,7 @@ class EnrichmentRepository:
         self.conn.execute(
             """
             INSERT INTO model_runs(
-              run_id, job_id, event_id, provider, model, backend, sdk_trace_id,
+              run_id, job_id, event_id, provider, model, backend, execution_trace_id,
               workflow_name, agent_name, artifact_version_hash, prompt_version,
               schema_version, input_hash, output_hash, trace_metadata_json,
               usage_json, latency_ms, status, request_json, response_json, error,
@@ -339,8 +339,8 @@ class EnrichmentRepository:
                 job["event_id"],
                 provider,
                 model,
-                str(run_audit.get("backend") or "openai_agents_sdk"),
-                run_audit.get("sdk_trace_id"),
+                str(run_audit.get("backend") or "litellm_sdk"),
+                run_audit.get("execution_trace_id"),
                 run_audit.get("workflow_name"),
                 run_audit.get("agent_name"),
                 run_audit.get("artifact_version_hash"),

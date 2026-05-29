@@ -134,8 +134,8 @@ def test_agent_stage_spec_request_audit_shape() -> None:
         model="qwen3.6",
     )
 
-    assert audit.provider == "openai"
-    assert audit.backend == "openai_agents_sdk"
+    assert audit.provider == "litellm"
+    assert audit.backend == "litellm_sdk"
     assert audit.lane == "social.event_enrichment"
     assert audit.stage == "social_event"
     assert audit.runtime_version == RUNTIME_VERSION
@@ -248,7 +248,7 @@ def test_result_audit_and_result_keep_execution_facts_separate() -> None:
         stage="stage",
         workflow_name="workflow",
         agent_name="agent",
-        sdk_trace_id="trace_abc",
+        execution_trace_id="trace_abc",
         group_id="g1",
         prompt_version="p1",
         schema_version="s1",
@@ -278,7 +278,7 @@ def test_audit_rejects_invalid_status_and_error_class() -> None:
         "stage": "stage",
         "workflow_name": "workflow",
         "agent_name": "agent",
-        "sdk_trace_id": "trace_abc",
+        "execution_trace_id": "trace_abc",
         "group_id": "g1",
         "prompt_version": "p1",
         "schema_version": "s1",

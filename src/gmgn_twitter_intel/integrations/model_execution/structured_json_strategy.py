@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from agents.exceptions import ModelBehaviorError
+import litellm
 from pydantic import ValidationError
 
-from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import StrictJsonOutputSchema
-from gmgn_twitter_intel.integrations.openai_agents.agent_usage import extract_sdk_usage
+from gmgn_twitter_intel.integrations.model_execution.output_schema import StrictJsonOutputSchema
+from gmgn_twitter_intel.integrations.model_execution.usage import extract_model_usage
 from gmgn_twitter_intel.platform.agent_capabilities import AgentCapabilityProfile, AgentRequestOptions
 from gmgn_twitter_intel.platform.agent_execution import AgentStageSpec
 
@@ -34,18 +33,13 @@ class StructuredOutputStrategy(Protocol):
 
 
 class ChatJsonObjectStrategy:
-    def __init__(self, *, openai_client_factory: Callable[..., Any]) -> None:
-        self._openai_client_factory = openai_client_factory
+    def __init__(self, *, api_key: str, base_url: str | None = None) -> None:
+        self._api_key = str(api_key or "")
+        self._base_url = str(base_url or "").strip().rstrip("/")
 
     async def run(self, context: StructuredOutputContext) -> StructuredOutputOutcome:
-        if context.stage.max_turns != 1:
-            raise ValueError("json_object strategy supports max_turns=1 only")
         output_schema = StrictJsonOutputSchema(context.stage.output_type)
         schema = output_schema.json_schema()
-        client = self._openai_client_factory(
-            model=context.model_name,
-            timeout_s=context.timeout_seconds,
-        )
         messages = _json_object_messages(
             instructions=context.stage.instructions,
             input_payload=context.stage.input_payload,
@@ -56,10 +50,13 @@ class ChatJsonObjectStrategy:
         raw_response: Any | None = None
         request_options = _chat_completion_request_options(context.capability_profile.request_options)
         for attempt_index in range(attempts):
-            raw_response = await client.chat.completions.create(
-                model=context.model_name,
+            raw_response = await litellm.acompletion(
+                model=_litellm_model_name(context.model_name, base_url=self._base_url),
                 messages=messages,
                 response_format={"type": "json_object"},
+                api_key=self._api_key or None,
+                base_url=self._base_url or None,
+                timeout=float(context.timeout_seconds),
                 **request_options,
             )
             text = _first_message_content(raw_response)
@@ -73,10 +70,10 @@ class ChatJsonObjectStrategy:
                         "safety_net_retries": attempt_index,
                         "parse_mode": "json_object_client_validate",
                         "schema_enforcement": "client_validate",
-                        "usage": extract_sdk_usage(raw_response),
+                        "usage": extract_model_usage(raw_response),
                     },
                 )
-            except (ModelBehaviorError, ValidationError, ValueError) as exc:
+            except (ValidationError, ValueError) as exc:
                 last_error = exc
                 messages = _append_validation_reask(messages, error=str(exc), schema=schema)
         raise last_error or ValueError("json_object response validation failed")
@@ -105,12 +102,18 @@ def _json_object_messages(*, instructions: str, input_payload: Any, schema: dict
 
 
 def _first_message_content(response: Any) -> str:
-    choices = getattr(response, "choices", None) or []
+    choices = _response_get(response, "choices") or []
     if not choices:
         return ""
-    message = getattr(choices[0], "message", None)
-    content = getattr(message, "content", None)
+    message = _response_get(choices[0], "message")
+    content = _response_get(message, "content")
     return str(content or "")
+
+
+def _response_get(value: Any, key: str) -> Any:
+    if isinstance(value, dict):
+        return value.get(key)
+    return getattr(value, key, None)
 
 
 def _append_validation_reask(
@@ -140,6 +143,13 @@ def _chat_completion_request_options(request_options: AgentRequestOptions) -> di
     if request_options.max_tokens is not None:
         kwargs["max_tokens"] = request_options.max_tokens
     return kwargs
+
+
+def _litellm_model_name(model_name: str, *, base_url: str) -> str:
+    normalized = str(model_name or "").strip()
+    if "/" in normalized or not str(base_url or "").strip():
+        return normalized
+    return f"openai/{normalized}"
 
 
 __all__ = [

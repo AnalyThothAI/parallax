@@ -82,7 +82,7 @@ def test_project_uses_domain_package_src_layout():
         assert (base / "domains" / domain / "__init__.py").is_file()
     assert (base / "integrations" / "gmgn" / "__init__.py").is_file()
     assert (base / "integrations" / "okx" / "__init__.py").is_file()
-    assert (base / "integrations" / "openai_agents" / "__init__.py").is_file()
+    assert (base / "integrations" / "model_execution" / "__init__.py").is_file()
     assert (base / "platform" / "db" / "postgres_client.py").is_file()
     assert (ROOT / "Makefile").is_file()
     assert (ROOT / "Dockerfile").is_file()

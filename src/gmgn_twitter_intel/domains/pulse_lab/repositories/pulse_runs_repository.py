@@ -35,8 +35,8 @@ class PulseRunsRepository:
         input_hash: str,
         outcome: str,
         request_json: dict[str, Any] | None = None,
-        backend: str = "openai_agents_sdk",
-        sdk_trace_id: str | None = None,
+        backend: str = "litellm_sdk",
+        execution_trace_id: str | None = None,
         output_hash: str | None = None,
         trace_metadata_json: dict[str, Any] | None = None,
         usage_json: dict[str, Any] | None = None,
@@ -55,7 +55,7 @@ class PulseRunsRepository:
         row = self.conn.execute(
             """
             INSERT INTO pulse_agent_runs(
-              run_id, job_id, candidate_id, provider, model, backend, sdk_trace_id,
+              run_id, job_id, candidate_id, provider, model, backend, execution_trace_id,
               workflow_name, agent_name, artifact_version_hash, prompt_version,
               schema_version, runtime_version, runtime_hash, input_hash, output_hash, trace_metadata_json,
               usage_json, latency_ms, status, outcome, decision_route, decision_stage_count,
@@ -74,7 +74,7 @@ class PulseRunsRepository:
                 provider,
                 model,
                 backend,
-                sdk_trace_id,
+                execution_trace_id,
                 workflow_name,
                 agent_name,
                 artifact_version_hash,

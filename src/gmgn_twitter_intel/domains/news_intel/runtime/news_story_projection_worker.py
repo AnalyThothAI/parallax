@@ -9,7 +9,10 @@ from typing import Any
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.news_intel._constants import NEWS_STORY_POLICY_VERSION
-from gmgn_twitter_intel.domains.news_intel.services.news_item_agent_policy import needs_news_item_agent_brief
+from gmgn_twitter_intel.domains.news_intel.services.news_item_agent_policy import (
+    needs_news_item_agent_brief,
+    news_item_agent_brief_priority,
+)
 from gmgn_twitter_intel.domains.news_intel.services.news_story_grouping import (
     new_story_id,
     story_key_for_item,
@@ -191,18 +194,29 @@ def _downstream_targets(
     source_watermark_ms: int,
 ) -> list[dict[str, Any]]:
     item_by_id = {str(item.get("news_item_id") or ""): item for item in items}
-    return [
-        {
-            "projection_name": projection_name,
-            "target_kind": "news_item",
-            "target_id": news_item_id,
-            "source_watermark_ms": int(source_watermark_ms),
-        }
-        for news_item_id in _unique_values(str(item_id) for item_id in news_item_ids)
-        for projection_name in ("page", "brief_input")
-        if projection_name != "brief_input"
-        or (news_item_id in item_by_id and needs_news_item_agent_brief(item_by_id[news_item_id]))
-    ]
+    targets: list[dict[str, Any]] = []
+    for news_item_id in _unique_values(str(item_id) for item_id in news_item_ids):
+        targets.append(
+            {
+                "projection_name": "page",
+                "target_kind": "news_item",
+                "target_id": news_item_id,
+                "source_watermark_ms": int(source_watermark_ms),
+            }
+        )
+        item = item_by_id.get(news_item_id)
+        if item is None or not needs_news_item_agent_brief(item):
+            continue
+        targets.append(
+            {
+                "projection_name": "brief_input",
+                "target_kind": "news_item",
+                "target_id": news_item_id,
+                "source_watermark_ms": int(source_watermark_ms),
+                "priority": news_item_agent_brief_priority(item),
+            }
+        )
+    return targets
 
 
 def _item_ids(items: Iterable[Mapping[str, Any]]) -> list[str]:

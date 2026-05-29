@@ -30,6 +30,9 @@ TOKEN_RADAR_REGISTRY_MIGRATION = Path(
 AGENTS_SDK_AUDIT_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260507_0010_agents_sdk_model_run_audit.py"
 )
+LITELLM_AUDIT_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260529_0128_litellm_execution_audit_hard_cut.py"
+)
 EVENT_PRICE_OBSERVATION_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260508_0011_event_price_" + "observations.py"
 )
@@ -1038,9 +1041,9 @@ def test_enrichment_stale_running_migration_indexes_postgres_recovery_path() -> 
 
 
 def test_agents_sdk_audit_migration_adds_traceable_model_run_columns() -> None:
-    text = AGENTS_SDK_AUDIT_MIGRATION.read_text()
+    text = AGENTS_SDK_AUDIT_MIGRATION.read_text() + "\n" + LITELLM_AUDIT_MIGRATION.read_text()
 
-    assert "sdk_trace_id" in text
+    assert "execution_trace_id" in text
     assert "workflow_name" in text
     assert "artifact_version_hash" in text
     assert "trace_metadata_json JSONB" in text

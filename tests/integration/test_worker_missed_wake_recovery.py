@@ -20,6 +20,7 @@ from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import P
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_RADAR_PROJECTION_VERSION,
     TOKEN_RADAR_RESOLVER_POLICY_VERSION,
+    TOKEN_RADAR_VENUES,
 )
 from gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
 from tests.factories import make_event
@@ -40,7 +41,14 @@ def test_token_radar_projection_worker_does_not_scan_recent_facts_when_no_dirty_
     try:
         migrate(conn)
         _seed_resolved_radar_source(conn)
-        _insert_ready_radar_publication_state(conn, window="1h", scope="all", computed_at_ms=FIXED_NOW_MS)
+        for venue in TOKEN_RADAR_VENUES:
+            _insert_ready_radar_publication_state(
+                conn,
+                window="1h",
+                scope="all",
+                venue=venue,
+                computed_at_ms=FIXED_NOW_MS,
+            )
         conn.commit()
 
         worker = TokenRadarProjectionWorker(
@@ -111,7 +119,7 @@ def test_pulse_candidate_worker_catches_up_from_persisted_token_radar_without_wa
             gate_thresholds=PulseGateThresholds(
                 trade_candidate_min=72,
                 token_watch_min=1,
-                high_info_rejection_min=30,
+                high_info_rejection_min=1,
                 high_conviction_min=78,
             ),
         )
@@ -185,23 +193,25 @@ def _insert_ready_radar_publication_state(
     *,
     window: str,
     scope: str,
+    venue: str,
     computed_at_ms: int,
 ) -> None:
-    generation_id = f"ready-empty:{window}:{scope}:{computed_at_ms}"
+    generation_id = f"ready-empty:{window}:{scope}:{venue}:{computed_at_ms}"
     conn.execute(
         """
         INSERT INTO token_radar_publication_state(
-          projection_version, "window", scope, current_generation_id, current_published_at_ms,
+          projection_version, "window", scope, venue, current_generation_id, current_published_at_ms,
           current_source_frontier_ms, current_row_count, current_source_rows,
           latest_attempt_generation_id, latest_attempt_status, latest_attempt_started_at_ms,
           latest_attempt_finished_at_ms, latest_attempt_error, updated_at_ms
         )
-        VALUES (%s, %s, %s, %s, %s, 0, 0, 0, %s, 'ready', %s, %s, NULL, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, 0, 0, 0, %s, 'ready', %s, %s, NULL, %s)
         """,
         (
             TOKEN_RADAR_PROJECTION_VERSION,
             window,
             scope,
+            venue,
             generation_id,
             computed_at_ms,
             generation_id,
@@ -250,6 +260,7 @@ def _seed_resolved_radar_source(conn: Any) -> None:
         observed_at_ms=FIXED_NOW_MS - 30_000,
         received_at_ms=FIXED_NOW_MS - 30_000,
     )
+    _refresh_market_tick_current(conn, now_ms=FIXED_NOW_MS)
     _insert_enriched_event(
         conn,
         event_id=event_id,
@@ -354,6 +365,14 @@ def _insert_market_tick(conn: Any, *, tick_id: str, observed_at_ms: int, receive
         """,
         (tick_id, target_id, ASSET_ADDRESS.lower(), observed_at_ms, received_at_ms, Jsonb({}), received_at_ms),
     )
+
+
+def _refresh_market_tick_current(conn: Any, *, now_ms: int) -> None:
+    target_id = f"eip155:1:{ASSET_ADDRESS.lower()}"
+    repos = repositories_for_connection(conn)
+    tick_row = repos.market_tick_current.latest_tick_for_target(target_type="chain_token", target_id=target_id)
+    assert tick_row is not None
+    repos.market_tick_current.upsert_current_from_tick(tick_row, now_ms=now_ms)
 
 
 def _insert_enriched_event(

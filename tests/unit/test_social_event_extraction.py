@@ -139,13 +139,12 @@ def test_typed_social_event_payload_rejects_low_confidence_signal():
 
 def test_typed_social_event_payload_requires_canonical_schema():
     # 2026-05-16: ConfigDict(extra="ignore") drops additionalProperties from the bare
-    # Pydantic schema. The SDK still enforces extras at the request layer via
-    # AgentOutputSchema(..., strict_json_schema=True) which is the default and adds
-    # additionalProperties=False in the response_format sent to llama.cpp.
-    from agents.agent_output import AgentOutputSchema
+    # Pydantic schema. The model execution schema wrapper tightens the JSON schema
+    # sent to the provider and validates the returned object application-side.
+    from gmgn_twitter_intel.integrations.model_execution.output_schema import StrictJsonOutputSchema
 
-    sdk_schema = AgentOutputSchema(SocialEventPayload, strict_json_schema=True).json_schema()
-    assert sdk_schema["additionalProperties"] is False
+    execution_schema = StrictJsonOutputSchema(SocialEventPayload).json_schema()
+    assert execution_schema["additionalProperties"] is False
 
     schema = SocialEventPayload.model_json_schema()
     assert schema["properties"]["impact_hint"]["maximum"] == 1

@@ -21,8 +21,8 @@ def test_worker_writes_ready_brief_and_emits_wake() -> None:
     asyncio.run(_test_worker_writes_ready_brief_and_emits_wake())
 
 
-def test_worker_marks_opennews_provider_signal_target_done_without_llm() -> None:
-    asyncio.run(_test_worker_marks_opennews_provider_signal_target_done_without_llm())
+def test_worker_processes_provider_signal_target_with_llm_context() -> None:
+    asyncio.run(_test_worker_processes_provider_signal_target_with_llm_context())
 
 
 async def _test_worker_writes_ready_brief_and_emits_wake() -> None:
@@ -49,14 +49,17 @@ async def _test_worker_writes_ready_brief_and_emits_wake() -> None:
     assert result.notes["claimed"] == 1
 
 
-async def _test_worker_marks_opennews_provider_signal_target_done_without_llm() -> None:
+async def _test_worker_processes_provider_signal_target_with_llm_context() -> None:
     candidate = _candidate()
     candidate["item"]["provider_signal_json"] = {
         "source": "provider",
         "provider": "opennews",
         "status": "ready",
         "direction": "bullish",
+        "score": 88,
+        "grade": "A",
     }
+    candidate["item"]["provider_token_impacts_json"] = [{"symbol": "SOL", "score": 88, "signal": "long", "grade": "A"}]
     db = FakeDB([candidate])
     provider = FakeBriefProvider(payload=_ready_payload())
     worker = _worker(db=db, provider=provider)
@@ -65,13 +68,15 @@ async def _test_worker_marks_opennews_provider_signal_target_done_without_llm() 
 
     assert provider.reserve_calls == [NEWS_ITEM_BRIEF_LANE]
     assert provider.reserve_rate_units == [1]
-    assert provider.execution_calls == 0
-    assert db.news.runs == []
-    assert db.news.briefs == []
+    assert provider.execution_calls == 1
+    assert provider.seen_packets[0].provider_signal_evidence.score == 88
+    assert provider.seen_packets[0].provider_signal_evidence.token_impacts[0].symbol == "SOL"
+    assert db.news.runs[0]["status"] == "completed"
+    assert db.news.briefs[0]["status"] == "ready"
     assert len(db.dirty.done) == 1
-    assert result.processed == 0
-    assert result.skipped == 1
-    assert result.notes["provider_signal_skip"] == 1
+    assert result.processed == 1
+    assert result.skipped == 0
+    assert "provider_signal_skip" not in result.notes
 
 
 def test_worker_claims_dirty_targets_off_event_loop_thread() -> None:
@@ -89,16 +94,14 @@ def test_worker_status_payload_reads_current_queue_depth() -> None:
 
 
 async def _test_worker_claims_dirty_targets_off_event_loop_thread() -> None:
-    candidate = _candidate()
-    candidate["item"]["provider_signal_json"] = {"source": "provider", "status": "ready"}
-    db = FakeDB([candidate])
+    db = FakeDB([_candidate()])
     provider = FakeBriefProvider()
     worker = _worker(db=db, provider=provider)
     event_loop_thread_id = threading.get_ident()
 
     result = await worker.run_once()
 
-    assert result.skipped == 1
+    assert result.processed == 1
     assert db.dirty.claim_thread_ids
     assert db.dirty.claim_thread_ids[0] != event_loop_thread_id
     assert db.news.loaded_target_ids == [["news-item-1"]]
@@ -346,7 +349,7 @@ def _ready_payload() -> dict[str, Any]:
 
 
 class FakeBriefProvider:
-    provider = "openai"
+    provider = "litellm"
     model = "gpt-5-mini"
     artifact_version_hash = "artifact-hash-1"
 
@@ -368,6 +371,7 @@ class FakeBriefProvider:
         self.reserve_rate_units: list[int] = []
         self.execution_calls = 0
         self.saw_db_session_during_execution: bool | None = None
+        self.seen_packets: list[Any] = []
         self.db: FakeDB | None = None
 
     def try_reserve_execution(self, lane: str, *, rate_units: int = 1) -> AgentCapacityReservation:
@@ -388,6 +392,7 @@ class FakeBriefProvider:
 
     async def brief_item(self, *, run_id: str, packet: Any, reservation: Any | None = None) -> dict[str, Any]:
         self.execution_calls += 1
+        self.seen_packets.append(packet)
         self.saw_db_session_during_execution = bool(self.db and self.db.in_session)
         assert self.saw_db_session_during_execution is False
         if self.brief_error is not None:
@@ -400,14 +405,14 @@ class FakeBriefProvider:
 
 def _audit(*, run_id: str, packet: Any, execution_started: bool) -> dict[str, Any]:
     return {
-        "provider": "openai",
-        "backend": "openai_agents_sdk",
+        "provider": "litellm",
+        "backend": "litellm_sdk",
         "model": "gpt-5-mini",
         "lane": NEWS_ITEM_BRIEF_LANE,
         "stage": "news_item_brief",
         "workflow_name": "gmgn-twitter-intel.news_item_brief",
         "agent_name": "NewsItemBriefAgent",
-        "sdk_trace_id": f"trace-{run_id}",
+        "execution_trace_id": f"trace-{run_id}",
         "group_id": "news_item:news-item-1",
         "prompt_version": packet.prompt_version,
         "schema_version": packet.schema_version,

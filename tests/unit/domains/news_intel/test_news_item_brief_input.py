@@ -182,6 +182,59 @@ def test_packet_includes_bounded_context_items_and_evidence_refs() -> None:
     assert packet.input_hash == json_sha256(packet.model_dump(mode="json", exclude={"input_hash"}))
 
 
+def test_packet_includes_bounded_provider_signal_evidence() -> None:
+    packet = build_news_item_brief_input_packet(
+        item={
+            "news_item_id": "item-provider-signal",
+            "title": "BTC provider signal",
+            "summary": "Provider supplied AI rating and token impacts.",
+            "published_at_ms": 1_779_000_000_000,
+            "content_hash": "sha256:provider-signal",
+            "provider_signal_json": {
+                "source": "provider",
+                "provider": "opennews",
+                "status": "ready",
+                "direction": "bullish",
+                "signal": "long",
+                "score": 91,
+                "grade": "A",
+                "summary_zh": "z" * 900,
+                "summary_en": "e" * 900,
+                "method": "opennews.aiRating",
+            },
+            "provider_token_impacts_json": [
+                {"symbol": f"T{index:02d}", "score": 100 - index, "signal": "long", "grade": "A"} for index in range(20)
+            ],
+            "duplicate_count": 17,
+            "source_ids_json": [f"source-{index:02d}" for index in range(20)],
+            "source_domains_json": [f"source-{index:02d}.example" for index in range(20)],
+            "provider_article_keys_json": [f"opennews:{index:02d}" for index in range(20)],
+        },
+        story=None,
+        token_mentions=[],
+        fact_candidates=[],
+        story_members=[],
+        agent_config=_agent_config(),
+    )
+
+    evidence = packet.provider_signal_evidence
+    assert evidence is not None
+    assert evidence.score == 91
+    assert evidence.direction == "bullish"
+    assert evidence.grade == "A"
+    assert len(evidence.summary_zh) == 600
+    assert len(evidence.summary_en) == 600
+    assert [impact.symbol for impact in evidence.token_impacts] == [f"T{index:02d}" for index in range(12)]
+    assert len(evidence.source_ids) == 12
+    assert len(evidence.source_domains) == 12
+    assert len(evidence.provider_article_keys) == 12
+    assert evidence.duplicate_count == 17
+    assert "provider:signal" in packet.evidence_refs
+    assert "provider:token:T00" in packet.evidence_refs
+    assert "provider:token:T12" not in packet.evidence_refs
+    assert packet.input_hash == json_sha256(packet.model_dump(mode="json", exclude={"input_hash"}))
+
+
 def test_packet_context_items_are_deterministic_for_reversed_input() -> None:
     context_items = [
         {

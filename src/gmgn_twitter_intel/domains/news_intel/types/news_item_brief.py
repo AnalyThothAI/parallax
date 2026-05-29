@@ -169,6 +169,43 @@ class NewsItemBriefContextItem(BaseModel):
     engagement: dict[str, object] = Field(default_factory=dict)
 
 
+class NewsItemBriefProviderTokenImpact(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    symbol: str = Field(min_length=1, max_length=32)
+    market_type: str | None = Field(default=None, max_length=64)
+    score: int | None = Field(default=None, ge=0, le=100)
+    direction: NewsItemBriefDirection = "neutral"
+    signal: str | None = Field(default=None, max_length=32)
+    grade: str | None = Field(default=None, max_length=32)
+
+
+class NewsItemBriefProviderSignalEvidence(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source: str = Field(default="provider", max_length=64)
+    provider: str = Field(default="", max_length=64)
+    status: str = Field(default="partial", max_length=32)
+    direction: NewsItemBriefDirection = "neutral"
+    signal: str | None = Field(default=None, max_length=32)
+    score: int | None = Field(default=None, ge=0, le=100)
+    grade: str | None = Field(default=None, max_length=32)
+    summary_zh: str = Field(default="", max_length=600)
+    summary_en: str = Field(default="", max_length=600)
+    method: str = Field(default="", max_length=128)
+    token_impacts: list[NewsItemBriefProviderTokenImpact] = Field(default_factory=list, max_length=12)
+    duplicate_count: int = Field(default=1, ge=1, le=1000)
+    source_ids: list[Annotated[str, Field(min_length=1, max_length=160)]] = Field(default_factory=list, max_length=12)
+    source_domains: list[Annotated[str, Field(min_length=1, max_length=255)]] = Field(
+        default_factory=list,
+        max_length=12,
+    )
+    provider_article_keys: list[Annotated[str, Field(min_length=1, max_length=255)]] = Field(
+        default_factory=list,
+        max_length=12,
+    )
+
+
 class NewsItemBriefConstraints(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -195,6 +232,7 @@ class NewsItemBriefInputPacket(BaseModel):
     token_lanes: list[NewsItemBriefTokenLane] = Field(default_factory=list, max_length=50)
     fact_lanes: list[NewsItemBriefFactLane] = Field(default_factory=list, max_length=50)
     context_items: list[NewsItemBriefContextItem] = Field(default_factory=list, max_length=8)
+    provider_signal_evidence: NewsItemBriefProviderSignalEvidence | None = None
     evidence_refs: list[Annotated[str, Field(min_length=1, max_length=160)]] = Field(
         default_factory=list,
         max_length=120,
@@ -211,7 +249,7 @@ class NewsItemBriefAgentConfig(BaseModel):
     workflow_name: str = NEWS_ITEM_BRIEF_WORKFLOW_NAME
     agent_name: str = NEWS_ITEM_BRIEF_AGENT_NAME
     lane: str = NEWS_ITEM_BRIEF_LANE
-    provider: str = Field(default="openai", max_length=64)
+    provider: str = Field(default="litellm", max_length=64)
     model: str = Field(min_length=1, max_length=120)
     artifact_version_hash: str = Field(min_length=1, max_length=128)
     prompt_version: str = Field(min_length=1, max_length=128)
@@ -248,6 +286,8 @@ __all__ = [
     "NewsItemBriefInputPacket",
     "NewsItemBriefNewsItem",
     "NewsItemBriefPayload",
+    "NewsItemBriefProviderSignalEvidence",
+    "NewsItemBriefProviderTokenImpact",
     "NewsItemBriefSideStrength",
     "NewsItemBriefSideView",
     "NewsItemBriefSource",

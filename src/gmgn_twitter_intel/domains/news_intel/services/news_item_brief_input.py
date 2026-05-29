@@ -11,6 +11,8 @@ from gmgn_twitter_intel.domains.news_intel.types.news_item_brief import (
     NewsItemBriefFactLane,
     NewsItemBriefInputPacket,
     NewsItemBriefNewsItem,
+    NewsItemBriefProviderSignalEvidence,
+    NewsItemBriefProviderTokenImpact,
     NewsItemBriefSource,
     NewsItemBriefStoryContext,
     NewsItemBriefStoryMember,
@@ -24,6 +26,9 @@ MAX_FACT_LANES = 50
 MAX_STORY_MEMBERS = 8
 MAX_CONTEXT_ITEMS = 8
 CONTEXT_BODY_EXCERPT_MAX_CHARS = 500
+MAX_PROVIDER_TOKEN_IMPACTS = 12
+MAX_PROVIDER_AGGREGATION_VALUES = 12
+PROVIDER_SUMMARY_MAX_CHARS = 600
 
 
 def build_news_item_brief_input_packet(
@@ -55,6 +60,7 @@ def build_news_item_brief_input_packet(
     token_lanes = [_token_lane(row) for row in sorted(token_mentions, key=_mention_sort_key)[:MAX_TOKEN_LANES]]
     fact_lanes = [_fact_lane(row) for row in sorted(fact_candidates, key=_fact_sort_key)[:MAX_FACT_LANES]]
     context_item_lanes = _context_items(context_items or _json_list(item.get("context_items")))
+    provider_signal_evidence = _provider_signal_evidence(item)
     story_context = _story_context(
         story=story,
         story_members=story_members,
@@ -65,6 +71,7 @@ def build_news_item_brief_input_packet(
         token_lanes=token_lanes,
         fact_lanes=fact_lanes,
         context_items=context_item_lanes,
+        provider_signal_evidence=provider_signal_evidence,
         story_context=story_context,
     )
     packet_id = _packet_id(
@@ -73,6 +80,7 @@ def build_news_item_brief_input_packet(
         token_lanes=token_lanes,
         fact_lanes=fact_lanes,
         context_items=context_item_lanes,
+        provider_signal_evidence=provider_signal_evidence,
         agent_config=agent_config,
     )
     packet = NewsItemBriefInputPacket(
@@ -82,6 +90,7 @@ def build_news_item_brief_input_packet(
         token_lanes=token_lanes,
         fact_lanes=fact_lanes,
         context_items=context_item_lanes,
+        provider_signal_evidence=provider_signal_evidence,
         evidence_refs=evidence_refs,
         constraints=NewsItemBriefConstraints(),
         prompt_version=agent_config.prompt_version,
@@ -149,6 +158,61 @@ def _context_item_sort_key(row: Any) -> tuple[int, int, str]:
     return (published_at_ms is None, -(published_at_ms or 0), _str(payload.get("context_item_id")))
 
 
+def _provider_signal_evidence(item: Mapping[str, Any]) -> NewsItemBriefProviderSignalEvidence | None:
+    provider_signal = _json_object(item.get("provider_signal_json") or item.get("provider_signal"))
+    provider_impacts = [
+        impact
+        for impact in (
+            _provider_token_impact(row)
+            for row in _json_list(item.get("provider_token_impacts_json") or item.get("provider_token_impacts"))
+        )
+        if impact is not None
+    ]
+    has_provider_signal = str(provider_signal.get("source") or "").strip().lower() == "provider"
+    if not has_provider_signal and not provider_impacts:
+        return None
+    return NewsItemBriefProviderSignalEvidence(
+        source=_bounded(provider_signal.get("source") or "provider", 64),
+        provider=_bounded(provider_signal.get("provider") or "opennews", 64),
+        status=_bounded(provider_signal.get("status") or "partial", 32),
+        direction=_provider_direction(provider_signal.get("direction") or provider_signal.get("signal")),
+        signal=_optional_bounded(provider_signal.get("signal"), 32),
+        score=_optional_score(provider_signal.get("score")),
+        grade=_optional_bounded(provider_signal.get("grade"), 32),
+        summary_zh=_bounded(provider_signal.get("summary_zh"), PROVIDER_SUMMARY_MAX_CHARS),
+        summary_en=_bounded(provider_signal.get("summary_en"), PROVIDER_SUMMARY_MAX_CHARS),
+        method=_bounded(provider_signal.get("method") or "provider.signal", 128),
+        token_impacts=sorted(provider_impacts, key=_provider_impact_sort_key)[:MAX_PROVIDER_TOKEN_IMPACTS],
+        duplicate_count=_bounded_count(item.get("duplicate_count")),
+        source_ids=_bounded_string_list(item.get("source_ids_json") or item.get("source_ids"), 160),
+        source_domains=_bounded_string_list(item.get("source_domains_json") or item.get("source_domains"), 255),
+        provider_article_keys=_bounded_string_list(
+            item.get("provider_article_keys_json") or item.get("provider_article_keys"),
+            255,
+        ),
+    )
+
+
+def _provider_token_impact(row: Any) -> NewsItemBriefProviderTokenImpact | None:
+    payload = _json_object(row)
+    symbol = _bounded(payload.get("symbol"), 32).upper()
+    if not symbol:
+        return None
+    signal = _optional_bounded(payload.get("signal"), 32)
+    return NewsItemBriefProviderTokenImpact(
+        symbol=symbol,
+        market_type=_optional_bounded(payload.get("market_type"), 64),
+        score=_optional_score(payload.get("score")),
+        direction=_provider_direction(payload.get("direction") or signal),
+        signal=signal,
+        grade=_optional_bounded(payload.get("grade"), 32),
+    )
+
+
+def _provider_impact_sort_key(row: NewsItemBriefProviderTokenImpact) -> tuple[int, str]:
+    return (-(row.score if row.score is not None else -1), row.symbol)
+
+
 def _story_context(
     *,
     story: Mapping[str, Any] | None,
@@ -182,6 +246,7 @@ def _evidence_refs(
     token_lanes: list[NewsItemBriefTokenLane],
     fact_lanes: list[NewsItemBriefFactLane],
     context_items: list[NewsItemBriefContextItem],
+    provider_signal_evidence: NewsItemBriefProviderSignalEvidence | None,
     story_context: NewsItemBriefStoryContext | None,
 ) -> list[str]:
     refs: list[str] = []
@@ -194,6 +259,9 @@ def _evidence_refs(
     refs.extend(f"fact:{row.fact_candidate_id}" for row in fact_lanes if row.fact_candidate_id)
     refs.extend(f"token:{row.mention_id}" for row in token_lanes if row.mention_id)
     refs.extend(f"context:{row.context_item_id}" for row in context_items if row.context_item_id)
+    if provider_signal_evidence is not None:
+        refs.append("provider:signal")
+        refs.extend(f"provider:token:{row.symbol}" for row in provider_signal_evidence.token_impacts if row.symbol)
     if story_context is not None:
         refs.extend(f"story:{row.news_item_id}" for row in story_context.members if row.news_item_id)
     return _stable_unique(refs)
@@ -206,6 +274,7 @@ def _packet_id(
     token_lanes: list[NewsItemBriefTokenLane],
     fact_lanes: list[NewsItemBriefFactLane],
     context_items: list[NewsItemBriefContextItem],
+    provider_signal_evidence: NewsItemBriefProviderSignalEvidence | None,
     agent_config: NewsItemBriefAgentConfig,
 ) -> str:
     digest = json_sha256(
@@ -217,6 +286,9 @@ def _packet_id(
             "tokens": [row.mention_id for row in token_lanes],
             "facts": [row.fact_candidate_id for row in fact_lanes],
             "context_items": [row.context_item_id for row in context_items],
+            "provider_signal_evidence": provider_signal_evidence.model_dump(mode="json")
+            if provider_signal_evidence is not None
+            else None,
             "prompt_version": agent_config.prompt_version,
             "schema_version": agent_config.schema_version,
         }
@@ -253,6 +325,12 @@ def _json_list(value: Any) -> list[Any]:
 
 
 def _json_object(value: Any) -> dict[str, object]:
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return _json_object(parsed)
     if isinstance(value, Mapping):
         return {str(key): child for key, child in value.items() if child is not None}
     return {}
@@ -301,6 +379,37 @@ def _optional_float(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return min(1.0, max(0.0, parsed))
+
+
+def _optional_score(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return max(0, min(100, parsed))
+
+
+def _bounded_count(value: Any) -> int:
+    return max(1, min(1000, _int(value) or 1))
+
+
+def _provider_direction(value: Any) -> str:
+    normalized = _str(value).lower()
+    if normalized in {"bullish", "long"}:
+        return "bullish"
+    if normalized in {"bearish", "short"}:
+        return "bearish"
+    if normalized == "mixed":
+        return "mixed"
+    return "neutral"
+
+
+def _bounded_string_list(value: Any, max_length: int) -> list[str]:
+    return [cleaned for cleaned in (_bounded(item, max_length) for item in _json_list(value)) if cleaned][
+        :MAX_PROVIDER_AGGREGATION_VALUES
+    ]
 
 
 __all__ = ["BODY_EXCERPT_MAX_CHARS", "build_news_item_brief_input_packet"]

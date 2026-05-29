@@ -64,6 +64,7 @@ def _notification_rule_engine(settings: Settings, repos: Any) -> NotificationRul
             profiles=TokenProfileReadModel(token_profiles=repos.token_profiles),
         ),
         pulse=repos.pulse_read,
+        news=repos.news,
     )
 
 

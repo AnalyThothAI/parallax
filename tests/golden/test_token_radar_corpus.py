@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
+from gmgn_twitter_intel.domains.token_intel.interfaces import (
+    TOKEN_RADAR_DEFAULT_VENUE,
+    TOKEN_RADAR_PROJECTION_VERSION,
+)
 from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import TokenRadarProjection
 from tests.factories_token_radar import (
     VERSA_BASE_CA,
@@ -53,6 +56,7 @@ def test_unresolved_attention_never_projects_as_driver(tmp_path):
     rows = repos.token_radar.latest_current_rows(
         window="5m",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         limit=20,
         projection_version=TOKEN_RADAR_PROJECTION_VERSION,
     )
@@ -80,6 +84,7 @@ def test_address_like_payload_symbol_does_not_mask_missing_real_symbol(tmp_path)
     rows = repos.token_radar.latest_current_rows(
         window="5m",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         limit=20,
         projection_version=TOKEN_RADAR_PROJECTION_VERSION,
     )
@@ -104,6 +109,7 @@ def test_gmgn_payload_identity_does_not_project_market_snapshot_into_radar(tmp_p
     rows = repos.token_radar.latest_current_rows(
         window="5m",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         limit=20,
         projection_version=TOKEN_RADAR_PROJECTION_VERSION,
     )

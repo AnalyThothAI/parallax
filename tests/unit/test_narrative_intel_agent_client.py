@@ -11,8 +11,8 @@ from gmgn_twitter_intel.domains.narrative_intel.types.mention_semantics import (
     MentionSemanticsBatchRequest,
     MentionSemanticsBatchResult,
 )
-from gmgn_twitter_intel.integrations.openai_agents.narrative_intel_agent_client import (
-    OpenAIAgentsNarrativeIntelClient,
+from gmgn_twitter_intel.integrations.model_execution.narrative_intel_agent_client import (
+    LiteLLMNarrativeIntelClient,
 )
 from gmgn_twitter_intel.platform.agent_execution import (
     AgentExecutionRequestAudit,
@@ -41,7 +41,7 @@ class FakeGateway:
             stage=stage.stage,
             workflow_name=stage.workflow_name,
             agent_name=stage.agent_name,
-            sdk_trace_id=f"trace-{stage.stage}",
+            execution_trace_id=f"trace-{stage.stage}",
             group_id=stage.group_id,
             prompt_version=stage.prompt_version,
             schema_version=stage.schema_version,
@@ -79,7 +79,7 @@ class FakeGateway:
 
 def test_narrative_label_mentions_request_audit_builds_gateway_stage():
     gateway = FakeGateway({"labels": [], "failures": []})
-    client = OpenAIAgentsNarrativeIntelClient(agent_gateway=gateway)
+    client = LiteLLMNarrativeIntelClient(agent_gateway=gateway)
     request = _mention_request()
 
     audit = client.request_audit_for_label_mentions(run_id="run-mention-1", request=request)
@@ -119,10 +119,7 @@ def test_narrative_client_labels_mentions_through_execution_gateway():
             "failures": [],
         }
     )
-    client = OpenAIAgentsNarrativeIntelClient(
-        agent_gateway=gateway,
-        max_turns=2,
-    )
+    client = LiteLLMNarrativeIntelClient(agent_gateway=gateway)
     request = _mention_request()
 
     result = asyncio.run(client.label_mentions(run_id="run-mention-1", request=request))
@@ -130,7 +127,7 @@ def test_narrative_client_labels_mentions_through_execution_gateway():
     assert isinstance(result, MentionSemanticsBatchResult)
     assert result.labels[0].trade_stance == "bullish"
     assert result.raw_response["labels"][0]["event_id"] == "event-1"
-    assert result.agent_run_audit["backend"] == "openai_agents_sdk"
+    assert result.agent_run_audit["backend"] == "litellm_sdk"
     assert result.agent_run_audit["input_hash"].startswith("sha256:")
     assert result.agent_run_audit["output_hash"] == "sha256:output"
     assert len(gateway.execute_calls) == 1
@@ -138,12 +135,11 @@ def test_narrative_client_labels_mentions_through_execution_gateway():
     assert stage.lane == "narrative.mention_semantics"
     assert client.model == "gpt-narrative"
     assert stage.group_id == "event-1"
-    assert stage.max_turns == 2
 
 
 def test_narrative_summarize_discussion_request_audit_builds_gateway_stage():
     gateway = FakeGateway({"digest": _digest_payload()})
-    client = OpenAIAgentsNarrativeIntelClient(agent_gateway=gateway)
+    client = LiteLLMNarrativeIntelClient(agent_gateway=gateway)
     request = _digest_request()
 
     audit = client.request_audit_for_summarize_discussion(run_id="run-digest-1", request=request)
@@ -163,7 +159,7 @@ def test_narrative_summarize_discussion_request_audit_builds_gateway_stage():
 
 def test_narrative_client_summarizes_discussion_through_execution_gateway():
     gateway = FakeGateway({"digest": _digest_payload()})
-    client = OpenAIAgentsNarrativeIntelClient(
+    client = LiteLLMNarrativeIntelClient(
         agent_gateway=gateway,
     )
     request = _digest_request()

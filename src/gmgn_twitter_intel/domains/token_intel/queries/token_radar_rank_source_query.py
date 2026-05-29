@@ -118,6 +118,34 @@ class TokenRadarRankSourceQuery:
             self.conn.commit()
         return changed
 
+    def populate_edges_for_targets(
+        self,
+        targets: Sequence[Mapping[str, Any]],
+        *,
+        projected_at_ms: int,
+        commit: bool = True,
+    ) -> int:
+        target_payloads = _target_payloads(targets)
+        if not target_payloads:
+            return 0
+        changed = 0
+        for chunk in _target_chunks(tuple(target_payloads), self.chunk_size):
+            row = self.conn.execute(
+                _POPULATE_RANK_SOURCE_EDGES_FOR_TARGETS_SQL,
+                (
+                    Jsonb(list(chunk)),
+                    TOKEN_RADAR_PROJECTION_VERSION,
+                    int(projected_at_ms),
+                    TOKEN_RADAR_RESOLVER_POLICY_VERSION,
+                    TOKEN_RADAR_PROJECTION_VERSION,
+                ),
+            ).fetchone()
+            changed += int((row or {}).get("upserted_count") or 0)
+            changed += int((row or {}).get("deleted_count") or 0)
+        if commit:
+            self.conn.commit()
+        return changed
+
     def prune_edges(
         self,
         *,
@@ -150,6 +178,13 @@ def _edge_chunks(
     chunk_size: int,
 ) -> Sequence[tuple[TokenRadarSourceEdgeRequest | str, ...]]:
     return tuple(requests[index : index + chunk_size] for index in range(0, len(requests), chunk_size))
+
+
+def _target_chunks(
+    targets: tuple[dict[str, str], ...],
+    chunk_size: int,
+) -> Sequence[tuple[dict[str, str], ...]]:
+    return tuple(targets[index : index + chunk_size] for index in range(0, len(targets), chunk_size))
 
 
 def _feature_request_payload(request: TokenRadarFeatureSourceRequest) -> dict[str, Any]:
@@ -691,6 +726,143 @@ deleted AS (
   WHERE stale_edges.projection_version = %s
     AND stale_edges.source_kind = 'event'
     AND stale_edges.source_id = requested.source_event_id
+    AND NOT EXISTS (
+      SELECT 1
+      FROM fresh_edges fresh
+      WHERE fresh.projection_version = stale_edges.projection_version
+        AND fresh.target_type_key = stale_edges.target_type_key
+        AND fresh.identity_id = stale_edges.identity_id
+        AND fresh.source_kind = stale_edges.source_kind
+        AND fresh.source_id = stale_edges.source_id
+    )
+  RETURNING 1
+)
+SELECT
+  (SELECT COUNT(*) FROM upserted) AS upserted_count,
+  (SELECT COUNT(*) FROM deleted) AS deleted_count
+"""
+
+
+_POPULATE_RANK_SOURCE_EDGES_FOR_TARGETS_SQL = """
+WITH requested_targets AS (
+  SELECT DISTINCT target_type_key, identity_id
+  FROM jsonb_to_recordset(%s::jsonb) AS r(
+    target_type_key text,
+    identity_id text
+  )
+  WHERE target_type_key IN ('Asset', 'CexToken')
+    AND identity_id IS NOT NULL
+    AND identity_id <> ''
+),
+raw_edges AS (
+  SELECT
+    %s::text AS projection_version,
+    token_intent_resolutions.target_type AS target_type_key,
+    token_intent_resolutions.target_id AS identity_id,
+    'event'::text AS source_kind,
+    events.event_id AS source_id,
+    events.received_at_ms AS event_received_at_ms,
+    %s::bigint AS projected_at_ms,
+    md5(
+      concat_ws(
+        '|',
+        events.event_id,
+        token_intents.intent_id,
+        token_intent_resolutions.resolution_id,
+        token_intent_resolutions.target_type,
+        token_intent_resolutions.target_id,
+        COALESCE(token_intent_resolutions.pricefeed_id, ''),
+        COALESCE(token_intent_resolutions.resolution_status, ''),
+        events.received_at_ms::text,
+        events.is_watched::text
+      )
+    ) AS source_payload_hash,
+    token_intents.intent_id,
+    events.event_id,
+    token_intent_resolutions.resolution_id,
+    token_intent_resolutions.target_type,
+    token_intent_resolutions.target_id,
+    token_intent_resolutions.pricefeed_id,
+    token_intent_resolutions.resolution_status,
+    events.is_watched
+  FROM requested_targets
+  JOIN token_intent_resolutions
+    ON token_intent_resolutions.target_type = requested_targets.target_type_key
+   AND token_intent_resolutions.target_id = requested_targets.identity_id
+  JOIN events
+    ON events.event_id = token_intent_resolutions.event_id
+  JOIN token_intents
+    ON token_intents.intent_id = token_intent_resolutions.intent_id
+   AND token_intents.event_id = events.event_id
+  WHERE token_intent_resolutions.is_current = true
+    AND token_intent_resolutions.resolver_policy_version = %s
+    AND token_intent_resolutions.target_type IN ('Asset', 'CexToken')
+    AND token_intent_resolutions.target_id IS NOT NULL
+),
+fresh_edges AS (
+  SELECT DISTINCT ON (projection_version, target_type_key, identity_id, source_kind, source_id)
+    projection_version,
+    target_type_key,
+    identity_id,
+    source_kind,
+    source_id,
+    event_received_at_ms,
+    projected_at_ms,
+    source_payload_hash,
+    intent_id,
+    event_id,
+    resolution_id,
+    target_type,
+    target_id,
+    pricefeed_id,
+    resolution_status,
+    is_watched
+  FROM raw_edges
+  ORDER BY
+    projection_version,
+    target_type_key,
+    identity_id,
+    source_kind,
+    source_id,
+    intent_id ASC,
+    resolution_id ASC
+),
+upserted AS (
+  INSERT INTO token_radar_rank_source_events(
+    projection_version, target_type_key, identity_id, source_kind, source_id,
+    event_received_at_ms, projected_at_ms, source_payload_hash,
+    intent_id, event_id, resolution_id, target_type, target_id, pricefeed_id,
+    resolution_status, is_watched
+  )
+  SELECT
+    projection_version, target_type_key, identity_id, source_kind, source_id,
+    event_received_at_ms, projected_at_ms, source_payload_hash,
+    intent_id, event_id, resolution_id, target_type, target_id, pricefeed_id,
+    resolution_status, is_watched
+  FROM fresh_edges
+  ON CONFLICT(projection_version, target_type_key, identity_id, source_kind, source_id)
+  DO UPDATE SET
+    event_received_at_ms = excluded.event_received_at_ms,
+    projected_at_ms = excluded.projected_at_ms,
+    source_payload_hash = excluded.source_payload_hash,
+    intent_id = excluded.intent_id,
+    event_id = excluded.event_id,
+    resolution_id = excluded.resolution_id,
+    target_type = excluded.target_type,
+    target_id = excluded.target_id,
+    pricefeed_id = excluded.pricefeed_id,
+    resolution_status = excluded.resolution_status,
+    is_watched = excluded.is_watched
+  WHERE token_radar_rank_source_events.source_payload_hash IS DISTINCT FROM excluded.source_payload_hash
+  RETURNING 1
+),
+deleted AS (
+  DELETE FROM token_radar_rank_source_events stale_edges
+  USING requested_targets requested
+  WHERE stale_edges.projection_version = %s
+    AND stale_edges.source_kind = 'event'
+    AND stale_edges.target_type_key = requested.target_type_key
+    AND stale_edges.identity_id = requested.identity_id
     AND NOT EXISTS (
       SELECT 1
       FROM fresh_edges fresh

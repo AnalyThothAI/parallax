@@ -30,9 +30,9 @@ storage:
     connect_timeout_seconds: 5
 
 llm:
-  provider: "openai"
+  provider: "litellm"
   api_key:
-  base_url: "https://api.openai.com/v1"
+  base_url: ""
   timeout_seconds: 120
   trace_enabled: true
   trace_api_key:

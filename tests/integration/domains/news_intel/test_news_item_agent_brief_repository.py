@@ -338,9 +338,9 @@ def test_agent_run_and_current_brief_round_trip_gateway_audit_metadata(tmp_path)
         run = repo.insert_news_item_agent_run(
             run_id="news-item-agent-run-1",
             news_item_id=news_item_id,
-            provider="openai",
+            provider="litellm",
             model="gpt-5-mini",
-            sdk_trace_id="trace-news-brief-1",
+            execution_trace_id="trace-news-brief-1",
             workflow_name=NEWS_ITEM_BRIEF_WORKFLOW_NAME,
             agent_name=NEWS_ITEM_BRIEF_AGENT_NAME,
             lane=NEWS_ITEM_BRIEF_LANE,
@@ -357,7 +357,7 @@ def test_agent_run_and_current_brief_round_trip_gateway_audit_metadata(tmp_path)
             request_json={"gateway": {"lane": NEWS_ITEM_BRIEF_LANE}},
             response_json=brief_payload,
             validation_errors_json=[],
-            trace_metadata_json={"sdk_trace_id": "trace-news-brief-1", "attempt": 1},
+            trace_metadata_json={"execution_trace_id": "trace-news-brief-1", "attempt": 1},
             usage_json={"input_tokens": 321, "output_tokens": 123},
             latency_ms=987,
             started_at_ms=NOW_MS,
@@ -384,7 +384,7 @@ def test_agent_run_and_current_brief_round_trip_gateway_audit_metadata(tmp_path)
     finally:
         conn.close()
 
-    assert run["sdk_trace_id"] == "trace-news-brief-1"
+    assert run["execution_trace_id"] == "trace-news-brief-1"
     assert run["request_json"]["gateway"]["lane"] == NEWS_ITEM_BRIEF_LANE
     assert run["response_json"]["summary_zh"] == "ETF filing lifts SOL attention."
     assert run["usage_json"] == {"input_tokens": 321, "output_tokens": 123}
@@ -547,9 +547,9 @@ def _insert_run(
     return repo.insert_news_item_agent_run(
         run_id=run_id,
         news_item_id=news_item_id,
-        provider="openai",
+        provider="litellm",
         model="gpt-5-mini",
-        sdk_trace_id=f"trace-{run_id}",
+        execution_trace_id=f"trace-{run_id}",
         workflow_name=NEWS_ITEM_BRIEF_WORKFLOW_NAME,
         agent_name=NEWS_ITEM_BRIEF_AGENT_NAME,
         lane=NEWS_ITEM_BRIEF_LANE,

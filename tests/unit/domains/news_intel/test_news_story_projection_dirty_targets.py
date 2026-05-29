@@ -48,12 +48,6 @@ def test_claimed_story_targets_load_only_claimed_ids_and_enqueue_page() -> None:
             "target_id": "news-1",
             "source_watermark_ms": NOW_MS,
         },
-        {
-            "projection_name": "brief_input",
-            "target_kind": "news_item",
-            "target_id": "news-1",
-            "source_watermark_ms": NOW_MS,
-        },
     ]
 
 
@@ -164,12 +158,11 @@ def test_process_worker_enqueues_story_and_page_in_same_transaction(monkeypatch)
         (row["projection_name"], row["target_kind"], row["target_id"])
         for call in dirty_repo.enqueue_calls
         for row in call["rows"]
-    } == {
-        ("story", "news_item", "news-1"),
-        ("page", "news_item", "news-1"),
-        ("brief_input", "news_item", "news-1"),
-        ("source_quality", "source", "source-1"),
-    }
+        } == {
+            ("story", "news_item", "news-1"),
+            ("page", "news_item", "news-1"),
+            ("source_quality", "source", "source-1"),
+        }
     assert "tx:replace_item_entities" in news_repo.conn.events
     assert "tx:dirty:news_item_processed" in news_repo.conn.events
     assert "autocommit:dirty:news_item_processed" not in news_repo.conn.events

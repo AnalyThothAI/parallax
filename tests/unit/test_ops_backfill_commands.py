@@ -196,10 +196,14 @@ def test_enqueue_token_radar_dirty_targets_dry_run_counts_without_writing(monkey
     from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
 
     dirty_targets = _FakeDirtyTargetsRepository()
+    source_dirty_events = _FakeSourceDirtyEventsRepository()
 
     @contextmanager
     def fake_repositories(_settings: object):
-        yield SimpleNamespace(token_radar_dirty_targets=dirty_targets)
+        yield SimpleNamespace(
+            token_radar_dirty_targets=dirty_targets,
+            token_radar_source_dirty_events=source_dirty_events,
+        )
 
     monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
     monkeypatch.setattr(ops_module, "repositories", fake_repositories)
@@ -228,11 +232,10 @@ def test_enqueue_token_radar_dirty_targets_dry_run_counts_without_writing(monkey
         "dry_run": True,
         "execute": False,
         "candidates": 8,
-        "would_enqueue": 5,
+        "would_enqueue": 8,
     }
-    assert dirty_targets.calls == [
-        ("count_recent_resolved_target_candidates", 0, 1_700_000_100_000, 5000),
-        ("count_recent_resolved_target_enqueue_candidates", 0, 1_700_000_100_000, 5000),
+    assert source_dirty_events.calls == [
+        ("count_recent_resolved_event_candidates", 0, 1_700_000_100_000, 5000),
     ]
 
 
@@ -456,3 +459,12 @@ class _FakeDirtyTargetsRepository:
     ) -> int:
         self.calls.append(("enqueue_market_current_targets", since_ms, now_ms, limit, reason, commit))
         return 4
+
+
+class _FakeSourceDirtyEventsRepository:
+    def __init__(self) -> None:
+        self.calls: list[tuple[Any, ...]] = []
+
+    def count_recent_resolved_event_candidates(self, *, since_ms: int, now_ms: int, limit: int) -> int:
+        self.calls.append(("count_recent_resolved_event_candidates", since_ms, now_ms, limit))
+        return 8

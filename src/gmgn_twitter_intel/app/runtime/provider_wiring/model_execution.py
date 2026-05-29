@@ -7,15 +7,15 @@ from gmgn_twitter_intel.domains.pulse_lab.services.pulse_decision_runtime import
     PulseDecisionRuntimeService,
 )
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import DecisionRoute
-from gmgn_twitter_intel.integrations.openai_agents.agent_execution_gateway import AgentExecutionGateway
-from gmgn_twitter_intel.integrations.openai_agents.narrative_intel_agent_client import OpenAIAgentsNarrativeIntelClient
-from gmgn_twitter_intel.integrations.openai_agents.news_item_brief_agent_client import (
-    OpenAIAgentsNewsItemBriefClient,
+from gmgn_twitter_intel.integrations.model_execution.execution_gateway import AgentExecutionGateway
+from gmgn_twitter_intel.integrations.model_execution.narrative_intel_agent_client import LiteLLMNarrativeIntelClient
+from gmgn_twitter_intel.integrations.model_execution.news_item_brief_agent_client import (
+    LiteLLMNewsItemBriefClient,
 )
-from gmgn_twitter_intel.integrations.openai_agents.pulse_decision_agent_client import OpenAIAgentsPulseDecisionClient
-from gmgn_twitter_intel.integrations.openai_agents.social_event_agent_client import OpenAIAgentsSocialEventClient
-from gmgn_twitter_intel.integrations.openai_agents.watchlist_summary_agent_client import (
-    OpenAIAgentsWatchlistSummaryClient,
+from gmgn_twitter_intel.integrations.model_execution.pulse_decision_agent_client import LiteLLMPulseDecisionClient
+from gmgn_twitter_intel.integrations.model_execution.social_event_agent_client import LiteLLMSocialEventClient
+from gmgn_twitter_intel.integrations.model_execution.watchlist_summary_agent_client import (
+    LiteLLMWatchlistSummaryClient,
 )
 from gmgn_twitter_intel.platform.agent_execution import (
     AgentCapacityReservation,
@@ -24,7 +24,7 @@ from gmgn_twitter_intel.platform.agent_execution import (
 from gmgn_twitter_intel.platform.config.settings import Settings
 
 
-class OpenAINarrativeIntelProvider:
+class LiteLLMNarrativeIntelProvider:
     def __init__(self, client: Any) -> None:
         self._client = client
 
@@ -59,8 +59,8 @@ class OpenAINarrativeIntelProvider:
         await self._client.aclose()
 
 
-class OpenAIPulseDecisionProvider:
-    def __init__(self, client: OpenAIAgentsPulseDecisionClient, *, pipeline_timeout_seconds: float) -> None:
+class LiteLLMPulseDecisionProvider:
+    def __init__(self, client: LiteLLMPulseDecisionClient, *, pipeline_timeout_seconds: float) -> None:
         self._client = client
         self._pipeline_timeout_seconds = float(pipeline_timeout_seconds)
 
@@ -153,26 +153,26 @@ class OpenAIPulseDecisionProvider:
         await self._client.aclose()
 
 
-def openai_social_event_provider(
+def litellm_social_event_provider(
     settings: Settings,
     *,
     agent_gateway: AgentExecutionGateway,
-) -> OpenAIAgentsSocialEventClient:
-    return OpenAIAgentsSocialEventClient(
+) -> LiteLLMSocialEventClient:
+    return LiteLLMSocialEventClient(
         agent_gateway=agent_gateway,
     )
 
 
-def openai_pulse_decision_provider(
+def litellm_pulse_decision_provider(
     settings: Settings,
     *,
     agent_gateway: AgentExecutionGateway,
     db_pool: Any | None,
-) -> OpenAIPulseDecisionProvider:
+) -> LiteLLMPulseDecisionProvider:
     if db_pool is None:
-        raise RuntimeError("db_pool is required for OpenAIPulseDecisionProvider")
-    return OpenAIPulseDecisionProvider(
-        OpenAIAgentsPulseDecisionClient(
+        raise RuntimeError("db_pool is required for LiteLLMPulseDecisionProvider")
+    return LiteLLMPulseDecisionProvider(
+        LiteLLMPulseDecisionClient(
             decision_runtime=PulseDecisionRuntimeService(db_pool=db_pool),
             agent_gateway=agent_gateway,
         ),
@@ -180,34 +180,34 @@ def openai_pulse_decision_provider(
     )
 
 
-def openai_narrative_intel_provider(
+def litellm_narrative_intel_provider(
     settings: Settings,
     *,
     agent_gateway: AgentExecutionGateway,
-) -> OpenAINarrativeIntelProvider:
-    return OpenAINarrativeIntelProvider(
-        OpenAIAgentsNarrativeIntelClient(
+) -> LiteLLMNarrativeIntelProvider:
+    return LiteLLMNarrativeIntelProvider(
+        LiteLLMNarrativeIntelClient(
             agent_gateway=agent_gateway,
         )
     )
 
 
-def openai_watchlist_summary_provider(
+def litellm_watchlist_summary_provider(
     settings: Settings,
     *,
     agent_gateway: AgentExecutionGateway,
-) -> OpenAIAgentsWatchlistSummaryClient:
-    return OpenAIAgentsWatchlistSummaryClient(
+) -> LiteLLMWatchlistSummaryClient:
+    return LiteLLMWatchlistSummaryClient(
         agent_gateway=agent_gateway,
     )
 
 
-def openai_news_item_brief_provider(
+def litellm_news_item_brief_provider(
     settings: Settings,
     *,
     agent_gateway: AgentExecutionGateway,
-) -> OpenAIAgentsNewsItemBriefClient:
-    return OpenAIAgentsNewsItemBriefClient(
+) -> LiteLLMNewsItemBriefClient:
+    return LiteLLMNewsItemBriefClient(
         agent_gateway=agent_gateway,
     )
 
@@ -240,17 +240,17 @@ def _agent_runtime_lane_timeout_seconds(settings: Settings, lane: str) -> float:
 
 def _require_llm_gateway(llm_gateway: object | None) -> object:
     if llm_gateway is None:
-        raise RuntimeError("LLMGateway is required for configured OpenAI providers")
+        raise RuntimeError("LLMGateway is required for configured LiteLLM providers")
     return llm_gateway
 
 
 __all__ = [
-    "OpenAINarrativeIntelProvider",
-    "OpenAIPulseDecisionProvider",
+    "LiteLLMNarrativeIntelProvider",
+    "LiteLLMPulseDecisionProvider",
     "build_agent_execution_gateway",
-    "openai_narrative_intel_provider",
-    "openai_news_item_brief_provider",
-    "openai_pulse_decision_provider",
-    "openai_social_event_provider",
-    "openai_watchlist_summary_provider",
+    "litellm_narrative_intel_provider",
+    "litellm_news_item_brief_provider",
+    "litellm_pulse_decision_provider",
+    "litellm_social_event_provider",
+    "litellm_watchlist_summary_provider",
 ]

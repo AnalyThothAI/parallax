@@ -40,7 +40,7 @@ def artifact_hash_for(
     schema_version: str,
     runtime_version: str,
     output_schema_hash: str,
-    provider_family: str = "openai_compatible",
+    provider_family: str = "litellm",
     output_strategy: str = "json_object",
     schema_enforcement: str = "client_validate",
     request_options_hash: str | None = None,

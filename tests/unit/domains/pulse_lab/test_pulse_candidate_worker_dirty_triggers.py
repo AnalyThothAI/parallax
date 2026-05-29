@@ -56,6 +56,7 @@ def test_claimed_dirty_trigger_loads_exact_target_context_and_marks_done() -> No
             "target_id": "asset-1",
             "window": "1h",
             "scope": "all",
+            "venue": "all",
         }
     ]
     assert repos.pulse_trigger_dirty_targets.done == [claim]
@@ -225,6 +226,9 @@ class _FakePulseTriggerDirtyTargets:
         self.rescheduled.append({"claims": list(claims), **kwargs})
         return len(claims)
 
+    def mark_error(self, claims: list[dict[str, Any]], **_: Any) -> int:
+        return len(claims)
+
     def queue_depth(self, **_: Any) -> int:
         return len(self.claims)
 
@@ -254,7 +258,7 @@ class _FakeTokenTargets:
     def __init__(self) -> None:
         self.rows: list[dict[str, Any]] = []
 
-    def timeline_rows(self, **_: Any) -> list[dict[str, Any]]:
+    def timeline_rows_for_event_ids(self, **_: Any) -> list[dict[str, Any]]:
         return list(self.rows)
 
 

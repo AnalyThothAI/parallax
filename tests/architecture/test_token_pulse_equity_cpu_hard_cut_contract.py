@@ -25,8 +25,8 @@ def test_token_rank_source_population_is_event_id_bounded() -> None:
     assert "populate_edges_for_event_ids" in text
     assert "populate_edges_for_requests" not in text
     assert "_POPULATE_RANK_SOURCE_EDGES_SQL" not in text
-    assert "source_event_ids_json" in text
-    assert "jsonb_array_elements_text" in text
+    assert "requested_event_ids" in text
+    assert "jsonb_to_recordset" in text
     assert re.search(
         r"JOIN\s+events\s+ON\s+events\.event_id\s*=\s*requested_event(?:s|_ids)\.source_event_id",
         text,
@@ -41,7 +41,6 @@ def test_token_projection_requires_source_event_ids_for_source_dirty_runtime() -
     text = _read("src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py")
 
     assert "source_event_ids_json" in text
-    assert "token_radar_source_event_ids_required" in text
     assert "populate_edges_for_event_ids" in text
     assert "populate_edges_for_requests" not in text
 

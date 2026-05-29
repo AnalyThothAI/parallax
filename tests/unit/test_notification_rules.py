@@ -63,7 +63,17 @@ class FakePulse:
         return {"items": page_rows, "next_cursor": next_cursor}
 
 
-def engine(*, events=None, alerts=None, asset_flow=None, pulse=None, notifications=None):
+class FakeNews:
+    def __init__(self, rows):
+        self.rows = rows
+        self.calls = []
+
+    def list_news_high_signal_notification_candidates(self, **kwargs):
+        self.calls.append(kwargs)
+        return self.rows
+
+
+def engine(*, events=None, alerts=None, asset_flow=None, pulse=None, news=None, notifications=None):
     return NotificationRuleEngine(
         settings=Settings(
             ws_token="secret",
@@ -74,6 +84,7 @@ def engine(*, events=None, alerts=None, asset_flow=None, pulse=None, notificatio
         account_alerts=FakeAccountAlerts(alerts or []),
         asset_flow=FakeAssetFlow(asset_flow or {"targets": [], "attention": []}),
         pulse=pulse or FakePulse([]),
+        news=news,
     )
 
 
@@ -1047,6 +1058,126 @@ def test_signal_pulse_notifications_follow_candidate_pages():
     assert [item.source_id for item in candidates] == ["page-1", "page-2", "page-3"]
     token_watch_calls = [call for call in pulse.calls if call["status"] == "token_watch"]
     assert [call["cursor"] for call in token_watch_calls[:3]] == [None, "1", "2"]
+
+
+def test_news_high_signal_requires_ready_agent_brief_and_builds_push_signatures():
+    news = FakeNews(
+        [
+            {
+                "news_item_id": "news-1",
+                "latest_at_ms": NOW_MS - 5_000,
+                "agent_brief_computed_at_ms": NOW_MS - 1_000,
+                "headline": "Major listing catalyst",
+                "source_domain": "example.test",
+                "canonical_url": "https://example.test/news-1",
+                "duplicate_count": 3,
+                "projection_version": "news-page-v1",
+                "signal": {
+                    "direction": "bullish",
+                    "alert_eligibility": {
+                        "eligible": True,
+                        "provider_score": 85,
+                        "decision_class": "driver",
+                    },
+                },
+                "token_impacts": [{"symbol": "BOV"}],
+                "agent_brief": {
+                    "status": "ready",
+                    "direction": "bullish",
+                    "decision_class": "driver",
+                    "summary_zh": "高分新闻已由 agent 归纳。",
+                    "brief_json": {
+                        "summary_zh": "高分新闻已由 agent 归纳。",
+                        "watch_triggers": ["成交量确认"],
+                        "affected_assets": [{"symbol": "BOV"}],
+                    },
+                },
+            }
+        ]
+    )
+    notifications = NotificationsConfig(
+        rules={
+            "news_high_signal": {
+                "enabled": True,
+                "channels": ["in_app", "pushdeer"],
+                "combined_score_min": 85,
+                "external_score_min": 85,
+                "cooldown_seconds": 3600,
+            }
+        }
+    )
+
+    candidates = [
+        item for item in engine(news=news, notifications=notifications).evaluate(now_ms=NOW_MS)
+        if item.rule_id == "news_high_signal"
+    ]
+
+    assert news.calls == [{"min_score": 85, "limit": 50}]
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate.severity == "critical"
+    assert candidate.symbol == "BOV"
+    assert candidate.channels == ("in_app", "pushdeer")
+    assert candidate.payload["semantic_signature"].startswith("sha256:")
+    assert candidate.payload["external_push_signature"].startswith("sha256:")
+    assert candidate.payload["external_push_eligible"] is True
+    assert candidate.dedup_key == f"news_high_signal:{candidate.payload['semantic_signature']}"
+    assert "高分新闻已由 agent 归纳" in candidate.body
+
+
+def test_news_high_signal_semantic_dedup_ignores_projection_and_summary_churn():
+    base_row = {
+        "news_item_id": "news-1",
+        "latest_at_ms": NOW_MS - 5_000,
+        "agent_brief_computed_at_ms": NOW_MS - 1_000,
+        "headline": "Major listing catalyst",
+        "source_domain": "example.test",
+        "canonical_url": "https://example.test/news-1",
+        "duplicate_count": 3,
+        "story": {"story_id": "story-1"},
+        "signal": {
+            "direction": "bullish",
+            "alert_eligibility": {
+                "eligible": True,
+                "provider_score": 90,
+                "decision_class": "driver",
+            },
+        },
+        "token_impacts": [{"symbol": "BOV"}],
+        "agent_brief": {
+            "status": "ready",
+            "direction": "bullish",
+            "decision_class": "driver",
+            "summary_zh": "第一版中文摘要。",
+            "brief_json": {
+                "summary_zh": "第一版中文摘要。",
+                "watch_triggers": ["成交量确认"],
+                "affected_assets": [{"symbol": "BOV"}],
+            },
+        },
+    }
+    revised_row = {
+        **base_row,
+        "news_item_id": "news-2",
+        "projection_version": "news-page-v2",
+        "agent_brief": {
+            **base_row["agent_brief"],
+            "summary_zh": "第二版中文摘要，措辞不同。",
+            "brief_json": {
+                **base_row["agent_brief"]["brief_json"],
+                "summary_zh": "第二版中文摘要，措辞不同。",
+            },
+        },
+    }
+
+    candidates = [
+        item for item in engine(news=FakeNews([base_row, revised_row])).evaluate(now_ms=NOW_MS)
+        if item.rule_id == "news_high_signal"
+    ]
+
+    assert len(candidates) == 2
+    assert candidates[0].dedup_key == candidates[1].dedup_key
+    assert candidates[0].payload["semantic_signature"] == candidates[1].payload["semantic_signature"]
 
 
 def _only_pulse_notification(row: dict, *, notifications: NotificationsConfig | None = None):

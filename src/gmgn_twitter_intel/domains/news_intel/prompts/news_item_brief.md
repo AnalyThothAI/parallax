@@ -27,6 +27,18 @@ Every material claim must cite `evidence_refs` copied from the packet. Valid ref
 
 If the packet lacks enough evidence, set `status="insufficient"` and explain the missing evidence in `data_gaps`.
 
+# Impact Detail
+
+For provider score >=70 news, write the analytical fields in Simplified Chinese with enough detail for an operator to decide whether the event deserves attention:
+
+- `summary_zh`: state what changed, who/what is involved, and the source-backed confidence boundary.
+- `market_read_zh`: explain likely crypto-market transmission channels such as listing access, regulatory overhang, liquidity, derivatives attention, protocol/user impact, or narrative spillover.
+- `affected_assets[].reason_zh`: describe the asset-specific impact and cite evidence; do not infer unrelated tokens from ticker similarity.
+- `bull_view` and `bear_view`: keep both sides source-backed, including why the opposite side may still matter.
+- `watch_triggers` and `invalidation_conditions`: use observable follow-ups only, not trading instructions.
+
+Treat provider scores and provider token impacts as evidence, not final truth. If the packet cannot support a detailed impact read, return `insufficient` with explicit Chinese `data_gaps`.
+
 # Trading Boundary
 
 This is shadow analysis only. Never give order instructions, target prices, stop loss, take profit, position size, leverage, execution permission, or portfolio advice.

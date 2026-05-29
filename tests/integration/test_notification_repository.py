@@ -179,6 +179,59 @@ def test_insert_notification_aggregates_each_source_once_per_dedup_key(tmp_path)
     assert rows[0]["payload_json"]["event_id"] == "event-2"
 
 
+def test_insert_notification_suppresses_same_news_semantic_signature_across_external_buckets(tmp_path):
+    repo = repository(tmp_path)
+
+    first = repo.insert_notification(
+        dedup_key="news_high_signal:semantic:external",
+        rule_id="news_high_signal",
+        severity="critical",
+        title="News high signal",
+        body="Agent brief",
+        entity_type="news_item",
+        entity_key="news_item:news-1",
+        symbol="BOV",
+        source_table="news_page_rows",
+        source_id="news-1",
+        occurrence_at_ms=1_700_000_000_000,
+        payload={
+            "news_item_id": "news-1",
+            "semantic_signature": "sha256:news-semantic",
+            "external_push_signature": "sha256:news-external",
+            "external_push_eligible": True,
+        },
+        channels=["in_app", "pushdeer"],
+    )
+    duplicate = repo.insert_notification(
+        dedup_key="news_high_signal:semantic:external:new-row",
+        rule_id="news_high_signal",
+        severity="critical",
+        title="News high signal update",
+        body="Agent brief again",
+        entity_type="news_item",
+        entity_key="news_item:news-1",
+        symbol="BOV",
+        source_table="news_page_rows",
+        source_id="news-1-duplicate",
+        occurrence_at_ms=1_700_000_060_000,
+        payload={
+            "news_item_id": "news-1",
+            "semantic_signature": "sha256:news-semantic",
+            "external_push_signature": "sha256:news-external-next-bucket",
+            "external_push_eligible": True,
+        },
+        channels=["in_app", "pushdeer"],
+    )
+
+    rows = repo.list_notifications(limit=10, rule_id="news_high_signal")
+
+    assert first is not None
+    assert duplicate is None
+    assert len(rows) == 1
+    assert rows[0]["occurrence_count"] == 2
+    assert rows[0]["payload_json"]["external_push_signature"] == "sha256:news-external-next-bucket"
+
+
 def test_insert_notification_suppresses_same_pulse_signature_only(tmp_path):
     repo = repository(tmp_path)
 

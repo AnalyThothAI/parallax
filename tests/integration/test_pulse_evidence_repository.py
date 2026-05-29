@@ -239,7 +239,7 @@ def _insert_run(conn: Any, *, run_id: str, candidate_id: str) -> None:
     conn.execute(
         """
         INSERT INTO pulse_agent_runs(
-          run_id, job_id, candidate_id, provider, model, backend, sdk_trace_id,
+          run_id, job_id, candidate_id, provider, model, backend, execution_trace_id,
           workflow_name, agent_name, artifact_version_hash, prompt_version,
           schema_version, runtime_version, runtime_hash, input_hash, output_hash,
           trace_metadata_json, usage_json, latency_ms, status, outcome,

@@ -9,9 +9,9 @@ from gmgn_twitter_intel.app.runtime import providers_wiring
 from gmgn_twitter_intel.app.runtime.provider_wiring import asset_market as asset_market_wiring
 from gmgn_twitter_intel.app.runtime.provider_wiring import binance as binance_wiring
 from gmgn_twitter_intel.app.runtime.provider_wiring import gmgn as gmgn_wiring
+from gmgn_twitter_intel.app.runtime.provider_wiring import model_execution as model_execution_wiring
 from gmgn_twitter_intel.app.runtime.provider_wiring import news as news_wiring
 from gmgn_twitter_intel.app.runtime.provider_wiring import okx as okx_wiring
-from gmgn_twitter_intel.app.runtime.provider_wiring import openai as openai_wiring
 from gmgn_twitter_intel.app.runtime.provider_wiring.gmgn import GmgnDexMarketProvider
 from gmgn_twitter_intel.app.runtime.provider_wiring.okx import (
     OkxDexDiscoveryProvider,
@@ -317,19 +317,19 @@ def test_okx_bundle_wiring_preserves_original_error_when_partial_cleanup_fails(m
     assert "quote close failed" in notes
 
 
-def test_openai_providers_receive_agent_execution_gateway(monkeypatch) -> None:
+def test_litellm_providers_receive_agent_execution_gateway(monkeypatch) -> None:
     gateway = object()
     db_pool = object()
     created: list[object] = []
 
     def fake_social_client(**kwargs):
-        client = SimpleNamespace(provider="openai", _agent_gateway=kwargs["agent_gateway"])
+        client = SimpleNamespace(provider="litellm", _agent_gateway=kwargs["agent_gateway"])
         created.append(client)
         return client
 
     def fake_narrative_client(**kwargs):
         client = SimpleNamespace(
-            provider="openai",
+            provider="litellm",
             artifact_version_hash="artifact:narrative",
             _agent_gateway=kwargs["agent_gateway"],
         )
@@ -338,12 +338,11 @@ def test_openai_providers_receive_agent_execution_gateway(monkeypatch) -> None:
 
     def fake_pulse_client(**kwargs):
         client = SimpleNamespace(
-            provider="openai",
+            provider="litellm",
             timeout_seconds=120.0,
             artifact_version_hash="artifact:pulse",
             runtime_contract=SimpleNamespace(
                 stage_names=("signal_analyst", "bear_case", "risk_portfolio_judge"),
-                tool_names_by_stage={"signal_analyst": (), "bear_case": (), "risk_portfolio_judge": ()},
                 safety_net_enabled=True,
             ),
             _agent_gateway=kwargs["agent_gateway"],
@@ -352,20 +351,20 @@ def test_openai_providers_receive_agent_execution_gateway(monkeypatch) -> None:
         return client
 
     def fake_watchlist_client(**kwargs):
-        client = SimpleNamespace(provider="openai", _agent_gateway=kwargs["agent_gateway"])
+        client = SimpleNamespace(provider="litellm", _agent_gateway=kwargs["agent_gateway"])
         created.append(client)
         return client
 
     def fake_news_item_brief_client(**kwargs):
-        client = SimpleNamespace(provider="openai", _agent_gateway=kwargs["agent_gateway"])
+        client = SimpleNamespace(provider="litellm", _agent_gateway=kwargs["agent_gateway"])
         created.append(client)
         return client
 
-    monkeypatch.setattr(openai_wiring, "OpenAIAgentsSocialEventClient", fake_social_client)
-    monkeypatch.setattr(openai_wiring, "OpenAIAgentsNarrativeIntelClient", fake_narrative_client)
-    monkeypatch.setattr(openai_wiring, "OpenAIAgentsPulseDecisionClient", fake_pulse_client)
-    monkeypatch.setattr(openai_wiring, "OpenAIAgentsWatchlistSummaryClient", fake_watchlist_client)
-    monkeypatch.setattr(openai_wiring, "OpenAIAgentsNewsItemBriefClient", fake_news_item_brief_client)
+    monkeypatch.setattr(model_execution_wiring, "LiteLLMSocialEventClient", fake_social_client)
+    monkeypatch.setattr(model_execution_wiring, "LiteLLMNarrativeIntelClient", fake_narrative_client)
+    monkeypatch.setattr(model_execution_wiring, "LiteLLMPulseDecisionClient", fake_pulse_client)
+    monkeypatch.setattr(model_execution_wiring, "LiteLLMWatchlistSummaryClient", fake_watchlist_client)
+    monkeypatch.setattr(model_execution_wiring, "LiteLLMNewsItemBriefClient", fake_news_item_brief_client)
 
     providers = providers_wiring.wire_providers(
         _settings_with_all_llm_models(),
@@ -379,7 +378,6 @@ def test_openai_providers_receive_agent_execution_gateway(monkeypatch) -> None:
     assert providers.pulse_lab.decision_provider is not None
     contract = providers.pulse_lab.decision_provider.runtime_contract
     assert contract.stage_names == ("signal_analyst", "bear_case", "risk_portfolio_judge")
-    assert contract.tool_names_by_stage == {"signal_analyst": (), "bear_case": (), "risk_portfolio_judge": ()}
     assert contract.safety_net_enabled is True
     assert providers.narrative_intel.narrative_provider is not None
     assert providers.narrative_intel.narrative_provider._client._agent_gateway is gateway
@@ -390,12 +388,12 @@ def test_openai_providers_receive_agent_execution_gateway(monkeypatch) -> None:
     assert all(getattr(client, "_agent_gateway", None) is gateway for client in created)
 
 
-def test_openai_pulse_provider_rejects_removed_tool_budget_config() -> None:
+def test_litellm_pulse_provider_rejects_removed_tool_budget_config() -> None:
     settings = _settings_with_all_llm_models()
     assert not hasattr(settings.workers.pulse_candidate, "investigator_max_tool_calls")
 
 
-def test_openai_provider_wiring_requires_agent_execution_gateway() -> None:
+def test_litellm_provider_wiring_requires_agent_execution_gateway() -> None:
     with pytest.raises(RuntimeError, match="AgentExecutionGateway is required"):
         providers_wiring.wire_providers(
             _settings_with_all_llm_models(),
@@ -405,7 +403,7 @@ def test_openai_provider_wiring_requires_agent_execution_gateway() -> None:
         )
 
 
-def test_openai_narrative_provider_exposes_worker_audit_contract() -> None:
+def test_litellm_narrative_provider_exposes_worker_audit_contract() -> None:
     client = SimpleNamespace(
         request_audit_for_label_mentions=lambda **kwargs: {
             "stage": "mention_semantics",
@@ -416,7 +414,7 @@ def test_openai_narrative_provider_exposes_worker_audit_contract() -> None:
             "kwargs": kwargs,
         },
     )
-    provider = openai_wiring.OpenAINarrativeIntelProvider(client)
+    provider = model_execution_wiring.LiteLLMNarrativeIntelProvider(client)
 
     mention_audit = provider.request_audit_for_label_mentions(run_id="mention-run", request=object())
     digest_audit = provider.request_audit_for_summarize_discussion(run_id="digest-run", request=object())
@@ -466,7 +464,7 @@ def test_news_feed_client_returns_registry_backed_provider_and_closes_underlying
     assert cryptopanic_client.close_count == 1
 
 
-def test_openai_pulse_provider_wiring_requires_db_pool() -> None:
+def test_litellm_pulse_provider_wiring_requires_db_pool() -> None:
     with pytest.raises(RuntimeError, match="db_pool is required"):
         providers_wiring.wire_providers(
             _settings_with_all_llm_models(),

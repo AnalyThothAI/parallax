@@ -74,14 +74,14 @@ class NewsItemBriefWorker(WorkerBase):
                 },
             )
         if not reservation.acquired:
-            outcome = _backpressure_outcome(reservation)
+            backpressure_outcome = _backpressure_outcome(reservation)
             return WorkerResult(
                 skipped=1,
                 notes={
                     "claimed": 0,
                     "queue_depth": queue_depth,
                     "backpressure": 1,
-                    outcome: 1,
+                    backpressure_outcome: 1,
                 },
             )
 
@@ -115,7 +115,6 @@ class NewsItemBriefWorker(WorkerBase):
                 "backpressure": 0,
                 "validation_failed": 0,
                 "missing_target": 0,
-                "provider_signal_skip": 0,
             }
             skipped = 0
             current_updates = 0
@@ -128,12 +127,6 @@ class NewsItemBriefWorker(WorkerBase):
                     await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
                     skipped += 1
                     continue
-                if _has_provider_signal(candidate):
-                    notes["provider_signal_skip"] += 1
-                    await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
-                    skipped += 1
-                    continue
-
                 try:
                     packet = _packet_from_candidate(candidate, agent_config=agent_config)
                     if _current_brief_is_fresh(candidate, packet=packet, agent_config=agent_config):
@@ -461,8 +454,8 @@ class NewsItemBriefWorker(WorkerBase):
                 news_item_id=packet.news_item.news_item_id,
                 provider=str(audit.get("provider") or self.provider.provider),
                 model=str(audit.get("model") or agent_config.model),
-                backend=str(audit.get("backend") or "openai_agents_sdk"),
-                sdk_trace_id=audit.get("sdk_trace_id"),
+                backend=str(audit.get("backend") or "litellm_sdk"),
+                execution_trace_id=audit.get("execution_trace_id"),
                 workflow_name=str(audit.get("workflow_name") or agent_config.workflow_name),
                 agent_name=str(audit.get("agent_name") or agent_config.agent_name),
                 lane=str(audit.get("lane") or agent_config.lane),
@@ -611,14 +604,9 @@ def _packet_from_candidate(
         token_mentions=_list_of_dicts(candidate.get("token_mentions")),
         fact_candidates=_list_of_dicts(candidate.get("fact_candidates")),
         story_members=_list_of_dicts(candidate.get("story_members")),
+        context_items=_list_of_dicts(candidate.get("context_items")),
         agent_config=agent_config,
     )
-
-
-def _has_provider_signal(candidate: Mapping[str, Any]) -> bool:
-    item = _dict(candidate.get("item") or candidate)
-    provider_signal = _dict(item.get("provider_signal_json"))
-    return provider_signal.get("source") == "provider"
 
 
 def _current_brief_is_fresh(

@@ -14,17 +14,17 @@ from gmgn_twitter_intel.domains.news_intel.types.news_item_brief import (
     NewsItemBriefNewsItem,
     NewsItemBriefPayload,
 )
-from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import StrictJsonOutputSchema
-from gmgn_twitter_intel.integrations.openai_agents.news_item_brief_agent_client import (
-    OpenAIAgentsNewsItemBriefClient,
+from gmgn_twitter_intel.integrations.model_execution.news_item_brief_agent_client import (
+    LiteLLMNewsItemBriefClient,
 )
+from gmgn_twitter_intel.integrations.model_execution.output_schema import StrictJsonOutputSchema
 from gmgn_twitter_intel.platform.agent_execution import RUNTIME_VERSION
 from gmgn_twitter_intel.platform.agent_hashing import artifact_hash_for, json_sha256
 
 
 def test_news_item_brief_client_builds_stage_and_delegates_reservation() -> None:
     gateway = FakeGateway()
-    client = OpenAIAgentsNewsItemBriefClient(agent_gateway=gateway)
+    client = LiteLLMNewsItemBriefClient(agent_gateway=gateway)
     packet = _packet()
 
     reservation = client.try_reserve_execution(NEWS_ITEM_BRIEF_LANE)
@@ -39,14 +39,12 @@ def test_news_item_brief_client_builds_stage_and_delegates_reservation() -> None
     assert stage.workflow_name == NEWS_ITEM_BRIEF_WORKFLOW_NAME
     assert stage.agent_name == NEWS_ITEM_BRIEF_AGENT_NAME
     assert client.model == "gpt-news"
-    assert stage.tools == []
-    assert stage.max_turns == 1
     assert stage.output_type is NewsItemBriefPayload
 
 
 def test_news_item_brief_client_executes_strict_payload_with_caller_reservation() -> None:
     gateway = FakeGateway()
-    client = OpenAIAgentsNewsItemBriefClient(agent_gateway=gateway)
+    client = LiteLLMNewsItemBriefClient(agent_gateway=gateway)
     packet = _packet()
     reservation = object()
 
@@ -57,8 +55,6 @@ def test_news_item_brief_client_executes_strict_payload_with_caller_reservation(
     assert stage.lane == NEWS_ITEM_BRIEF_LANE
     assert stage.workflow_name == NEWS_ITEM_BRIEF_WORKFLOW_NAME
     assert stage.agent_name == NEWS_ITEM_BRIEF_AGENT_NAME
-    assert stage.tools == []
-    assert stage.max_turns == 1
     assert stage.output_type is NewsItemBriefPayload
     assert result == {
         "payload": gateway.payload.model_dump(mode="json"),

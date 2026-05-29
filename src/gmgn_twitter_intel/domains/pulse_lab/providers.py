@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 from gmgn_twitter_intel.domains.pulse_lab.services.evidence_completeness_gate import (
@@ -45,16 +45,6 @@ class PulseStagePlan:
 
 
 _DEFAULT_STAGE_NAMES = ("signal_analyst", "bear_case", "risk_portfolio_judge")
-_DEFAULT_MAX_TURNS_PER_STAGE = {
-    "signal_analyst": 1,
-    "bear_case": 1,
-    "risk_portfolio_judge": 1,
-}
-_DEFAULT_TOOL_NAMES_BY_STAGE = {
-    "signal_analyst": (),
-    "bear_case": (),
-    "risk_portfolio_judge": (),
-}
 _DEFAULT_VALIDATORS_ENABLED = (
     "pydantic_final_decision_schema",
     "runtime_evidence_ref_subset",
@@ -66,8 +56,6 @@ _DEFAULT_FAILURE_TAXONOMY_VERSION = "pulse-failure-taxonomy-v1"
 @dataclass(frozen=True, slots=True)
 class PulseAgentRuntimeContract:
     stage_names: tuple[str, ...] = _DEFAULT_STAGE_NAMES
-    max_turns_per_stage: dict[str, int] = field(default_factory=lambda: dict(_DEFAULT_MAX_TURNS_PER_STAGE))
-    tool_names_by_stage: dict[str, tuple[str, ...]] = field(default_factory=lambda: dict(_DEFAULT_TOOL_NAMES_BY_STAGE))
     safety_net_enabled: bool = False
     validators_enabled: tuple[str, ...] = _DEFAULT_VALIDATORS_ENABLED
     failure_taxonomy_version: str = _DEFAULT_FAILURE_TAXONOMY_VERSION
@@ -76,8 +64,6 @@ class PulseAgentRuntimeContract:
     def manifest_kwargs(self) -> dict[str, Any]:
         return {
             "stage_names": tuple(self.stage_names),
-            "max_turns_per_stage": dict(self.max_turns_per_stage),
-            "tool_names_by_stage": {str(stage): tuple(names) for stage, names in self.tool_names_by_stage.items()},
             "safety_net_enabled": bool(self.safety_net_enabled),
             "validators_enabled": tuple(self.validators_enabled),
             "failure_taxonomy_version": str(self.failure_taxonomy_version),

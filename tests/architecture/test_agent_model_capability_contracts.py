@@ -18,13 +18,13 @@ CAPABILITY_OWNER_ALLOWLIST = {
     SRC / "platform" / "agent_capabilities.py",
     SRC / "platform" / "config" / "settings.py",
 }
-STRUCTURED_OUTPUT_STRATEGY = SRC / "integrations" / "openai_agents" / "structured_output_strategy.py"
+STRUCTURED_OUTPUT_STRATEGY = SRC / "integrations" / "model_execution" / "structured_json_strategy.py"
 
 pytestmark = pytest.mark.architecture
 
 
 def test_domains_and_provider_wiring_do_not_own_concrete_model_or_provider_tokens() -> None:
-    forbidden_tokens = ("qwen", "deepseek", "litellm")
+    forbidden_tokens = ("qwen", "deepseek")
     violations: list[str] = []
 
     for path in _production_python_files(DOMAINS, *PROVIDER_WIRING_ROOTS):
@@ -59,15 +59,16 @@ def test_response_format_is_owned_by_structured_output_strategy() -> None:
     assert violations == []
 
 
-def test_litellm_is_not_introduced_in_src_or_project_metadata() -> None:
+def test_openai_sdks_are_not_runtime_dependencies() -> None:
     violations: list[str] = []
 
     for path in _production_python_files(SRC):
         text = path.read_text(encoding="utf-8").lower()
-        if "litellm" in text:
+        if "openai-agents" in text or "openai_agents" in text:
             violations.append(path.relative_to(ROOT).as_posix())
 
-    if "litellm" in PYPROJECT.read_text(encoding="utf-8").lower():
+    pyproject_text = PYPROJECT.read_text(encoding="utf-8")
+    if '"openai' in pyproject_text or "openai-agents" in pyproject_text:
         violations.append(PYPROJECT.relative_to(ROOT).as_posix())
 
     assert violations == []
@@ -84,7 +85,7 @@ def test_agent_runtime_has_single_json_object_output_path() -> None:
         "AgentsJsonSchemaStrategy",
     )
     allowlist = {
-        SRC / "integrations" / "openai_agents" / "agent_output_schema.py",
+        SRC / "integrations" / "model_execution" / "output_schema.py",
     }
     violations: list[str] = []
 

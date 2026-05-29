@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-BACKEND = "openai_agents_sdk"
+BACKEND = "litellm_sdk"
 WORKFLOW_NAME = "gmgn-twitter-intel.watchlist_handle_summary"
 AGENT_NAME = "WatchlistHandleSummaryAgent"
 PROMPT_VERSION = "watchlist-handle-summary-v1"

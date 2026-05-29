@@ -8,7 +8,7 @@ from typing import Any
 from urllib.parse import quote
 
 from gmgn_twitter_intel.domains.pulse_lab.interfaces import contains_trading_execution_instruction
-from gmgn_twitter_intel.domains.token_intel.interfaces import is_token_factor_snapshot
+from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_DEFAULT_VENUE, is_token_factor_snapshot
 from gmgn_twitter_intel.platform.config.settings import NotificationRuleConfig, Settings
 
 from ..types import NotificationCandidate
@@ -17,6 +17,7 @@ WATCHED_ACTIVITY_WINDOW_MS = 60 * 60_000
 DEFAULT_LIMIT = 50
 MAX_SIGNAL_PULSE_NOTIFICATION_PAGES = 5
 SIGNAL_PULSE_RULE_ID = "signal_pulse_candidate"
+NEWS_HIGH_SIGNAL_RULE_ID = "news_high_signal"
 DEFAULT_SIGNAL_PULSE_WINDOW = "1h"
 DEFAULT_SIGNAL_PULSE_SCOPES = ("all", "matched")
 DEFAULT_SIGNAL_PULSE_STATUSES = ("trade_candidate", "token_watch", "risk_rejected_high_info")
@@ -42,12 +43,14 @@ class NotificationRuleEngine:
         account_alerts: Any,
         asset_flow: Any,
         pulse: Any = None,
+        news: Any = None,
     ) -> None:
         self.settings = settings
         self.evidence = evidence
         self.account_alerts = account_alerts
         self.asset_flow = asset_flow
         self.pulse = pulse
+        self.news = news
 
     def evaluate(self, *, now_ms: int | None = None) -> list[NotificationCandidate]:
         now = int(now_ms if now_ms is not None else _now_ms())
@@ -62,6 +65,7 @@ class NotificationRuleEngine:
         candidates.extend(hot_candidates)
         candidates.extend(self._quality_tokens(now_ms=now, skip_entity_keys=hot_entity_keys))
         candidates.extend(self._signal_pulse_candidates(now_ms=now))
+        candidates.extend(self._news_high_signal_candidates(now_ms=now))
         return candidates
 
     def _watched_account_activity(self, *, now_ms: int) -> list[NotificationCandidate]:
@@ -221,6 +225,7 @@ class NotificationRuleEngine:
             window="5m",
             limit=self._limit(),
             scope="all",
+            venue=TOKEN_RADAR_DEFAULT_VENUE,
             now_ms=now_ms,
         )
         items: list[dict[str, Any]] = []
@@ -406,6 +411,89 @@ class NotificationRuleEngine:
                     source_id=candidate_id,
                     occurrence_at_ms=occurrence_at_ms,
                     payload=payload,
+                    channels=channels,
+                )
+            )
+        return candidates
+
+    def _news_high_signal_candidates(self, *, now_ms: int) -> list[NotificationCandidate]:
+        rule = self._rule(NEWS_HIGH_SIGNAL_RULE_ID)
+        if not rule.enabled or self.news is None:
+            return []
+        min_score = int(rule.combined_score_min if rule.combined_score_min is not None else 85)
+        external_min_score = int(rule.external_score_min if rule.external_score_min is not None else 85)
+        rows = self.news.list_news_high_signal_notification_candidates(
+            min_score=min_score,
+            limit=self._limit(),
+        )
+        candidates: list[NotificationCandidate] = []
+        seen_external_push_signatures: set[str] = set()
+        for row in rows:
+            news_item_id = str(row.get("news_item_id") or "")
+            if not news_item_id:
+                continue
+            signal = _dict(row.get("signal"))
+            eligibility = _dict(signal.get("alert_eligibility"))
+            provider_score = _int(eligibility.get("provider_score") or signal.get("score"))
+            agent_brief = _dict(row.get("agent_brief"))
+            if str(agent_brief.get("status") or "") != "ready":
+                continue
+            decision_class = str(agent_brief.get("decision_class") or eligibility.get("decision_class") or "")
+            if decision_class not in {"driver", "watch"}:
+                continue
+            occurrence_at_ms = _int(row.get("agent_brief_computed_at_ms") or row.get("latest_at_ms") or now_ms)
+            semantic_signature = _news_semantic_signature(row, agent_brief=agent_brief)
+            external_push_signature = _news_external_push_signature(
+                row,
+                provider_score=provider_score,
+                occurrence_at_ms=occurrence_at_ms,
+                cooldown_seconds=rule.cooldown_seconds,
+            )
+            external_push_eligible = (
+                provider_score >= external_min_score and _has_external_channels(rule.channels)
+            )
+            suppression_reason = None
+            if not external_push_eligible:
+                suppression_reason = "external_threshold_or_channel"
+            elif external_push_signature in seen_external_push_signatures:
+                external_push_eligible = False
+                suppression_reason = "external_signature_duplicate"
+            if external_push_eligible:
+                seen_external_push_signatures.add(external_push_signature)
+            channels = rule.channels if external_push_eligible else tuple(c for c in rule.channels if c == "in_app")
+            source_id = news_item_id
+            summary = _news_agent_summary(agent_brief)
+            title = _compact_text(row.get("headline") or "News high signal", limit=96)
+            body = _news_body(row, provider_score=provider_score, summary=summary)
+            candidates.append(
+                NotificationCandidate(
+                    dedup_key=f"{NEWS_HIGH_SIGNAL_RULE_ID}:{semantic_signature}",
+                    rule_id=NEWS_HIGH_SIGNAL_RULE_ID,
+                    severity="high" if provider_score < external_min_score else "critical",
+                    title=title,
+                    body=body,
+                    entity_type="news_item",
+                    entity_key=f"news_item:{news_item_id}",
+                    symbol=_news_primary_symbol(row),
+                    source_table="news_page_rows",
+                    source_id=source_id,
+                    occurrence_at_ms=occurrence_at_ms,
+                    payload={
+                        "news_item_id": news_item_id,
+                        "provider_score": provider_score,
+                        "decision_class": decision_class,
+                        "direction": agent_brief.get("direction") or signal.get("direction"),
+                        "semantic_signature": semantic_signature,
+                        "in_app_signature": semantic_signature,
+                        "external_push_signature": external_push_signature,
+                        "external_push_eligible": external_push_eligible,
+                        "external_push_suppression_reason": suppression_reason,
+                        "agent_brief": agent_brief,
+                        "canonical_url": row.get("canonical_url"),
+                        "source_domain": row.get("source_domain"),
+                        "duplicate_count": _int(row.get("duplicate_count")),
+                        "token_impacts": _safe_signature_list(row.get("token_impacts")),
+                    },
                     channels=channels,
                 )
             )
@@ -802,6 +890,90 @@ def _compact_text(value: Any, *, limit: int = 180) -> str:
     if len(text) <= limit:
         return text
     return text[: limit - 1].rstrip() + "..."
+
+
+def _has_external_channels(channels: tuple[str, ...]) -> bool:
+    return any(channel != "in_app" for channel in channels)
+
+
+def _news_agent_summary(agent_brief: dict[str, Any]) -> str:
+    brief_json = _dict(agent_brief.get("brief_json"))
+    return _compact_text(
+        agent_brief.get("summary_zh")
+        or brief_json.get("summary_zh")
+        or agent_brief.get("market_read_zh")
+        or brief_json.get("market_read_zh")
+        or "",
+        limit=360,
+    )
+
+
+def _news_semantic_signature(row: dict[str, Any], *, agent_brief: dict[str, Any]) -> str:
+    brief_json = _dict(agent_brief.get("brief_json"))
+    story = _dict(row.get("story"))
+    story_id = str(story.get("story_id") or "").strip()
+    semantic_item_key = f"story:{story_id}" if story_id else f"news_item:{row.get('news_item_id')}"
+    return _stable_hash(
+        {
+            "semantic_item_key": semantic_item_key,
+            "decision_class": agent_brief.get("decision_class"),
+            "direction": agent_brief.get("direction"),
+            "watch_triggers": _safe_signature_list(brief_json.get("watch_triggers")),
+            "affected_assets": _news_affected_asset_symbols(brief_json.get("affected_assets")),
+        }
+    )
+
+
+def _news_external_push_signature(
+    row: dict[str, Any],
+    *,
+    provider_score: int,
+    occurrence_at_ms: int,
+    cooldown_seconds: int,
+) -> str:
+    return _stable_hash(
+        {
+            "news_item_id": row.get("news_item_id"),
+            "canonical_url": row.get("canonical_url"),
+            "provider_score_band": provider_score // 5,
+            "cooldown_bucket": _cooldown_bucket(occurrence_at_ms, cooldown_seconds),
+            "primary_symbol": _news_primary_symbol(row),
+        }
+    )
+
+
+def _news_primary_symbol(row: dict[str, Any]) -> str | None:
+    for impact in _list(row.get("token_impacts")):
+        if isinstance(impact, dict):
+            symbol = _symbol(impact.get("symbol") or impact.get("target_symbol"))
+            if symbol:
+                return symbol
+    brief_json = _dict(_dict(row.get("agent_brief")).get("brief_json"))
+    symbols = _news_affected_asset_symbols(brief_json.get("affected_assets"))
+    return symbols[0] if symbols else None
+
+
+def _news_affected_asset_symbols(value: Any) -> list[str]:
+    symbols: list[str] = []
+    for item in _list(value):
+        if isinstance(item, dict):
+            symbol = _symbol(item.get("symbol") or item.get("asset"))
+            if symbol and symbol not in symbols:
+                symbols.append(symbol)
+    return symbols[:12]
+
+
+def _news_body(row: dict[str, Any], *, provider_score: int, summary: str) -> str:
+    lines = [
+        f"Score: {provider_score}",
+        f"Source: {_compact_text(row.get('source_domain') or 'unknown', limit=80)}",
+    ]
+    if summary:
+        lines.append(summary)
+    url = str(row.get("canonical_url") or "").strip()
+    if url:
+        lines.append(url)
+    return "\n".join(lines)
 
 
 def _token_markdown_body(

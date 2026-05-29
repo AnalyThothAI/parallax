@@ -7,6 +7,7 @@ import pytest
 
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
+    TOKEN_RADAR_DEFAULT_VENUE,
 )
 from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import (
     TokenRadarRepository,
@@ -56,6 +57,7 @@ def test_publish_current_generation_replaces_current_rows_and_marks_ready_public
         projection_version="token-radar-v13-social-attention",
         window="1h",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         generation_id="gen-1h-1778",
         published_at_ms=1_778_000_000_000,
         source_frontier_ms=1_778_000_030_000,
@@ -110,12 +112,14 @@ def test_stable_generation_id_is_content_addressed_not_time_addressed():
         projection_version="token-radar-v13-social-attention",
         window="5m",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         rows=[first],
     )
     second_generation_id = stable_generation_id(
         projection_version="token-radar-v13-social-attention",
         window="5m",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         rows=[second],
     )
 
@@ -137,6 +141,7 @@ def test_runtime_row_payload_hash_ignores_factor_snapshot_computed_at_noise():
         projection_version="token-radar-v13-social-attention",
         window="1h",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         generation_id="gen-1",
         published_at_ms=1_778_000_000_000,
         source_frontier_ms=1_778_000_030_000,
@@ -147,6 +152,7 @@ def test_runtime_row_payload_hash_ignores_factor_snapshot_computed_at_noise():
         projection_version="token-radar-v13-social-attention",
         window="1h",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         generation_id="gen-1",
         published_at_ms=1_778_000_000_000,
         source_frontier_ms=1_778_000_030_000,
@@ -179,6 +185,7 @@ def test_runtime_row_payload_hash_keeps_non_factor_provenance_computed_at_signif
         projection_version="token-radar-v13-social-attention",
         window="1h",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         generation_id="gen-1",
         published_at_ms=1_778_000_000_000,
         source_frontier_ms=1_778_000_030_000,
@@ -189,6 +196,7 @@ def test_runtime_row_payload_hash_keeps_non_factor_provenance_computed_at_signif
         projection_version="token-radar-v13-social-attention",
         window="1h",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         generation_id="gen-1",
         published_at_ms=1_778_000_000_000,
         source_frontier_ms=1_778_000_030_000,
@@ -211,12 +219,14 @@ def test_stable_generation_id_changes_when_row_quality_changes_even_with_same_pa
         projection_version="token-radar-v13-social-attention",
         window="5m",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         rows=[ready],
     )
     degraded_generation_id = stable_generation_id(
         projection_version="token-radar-v13-social-attention",
         window="5m",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         rows=[degraded],
     )
 
@@ -235,6 +245,7 @@ def test_publish_current_generation_rewrites_when_only_row_quality_changes():
         projection_version="token-radar-v13-social-attention",
         window="1h",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         generation_id="gen-degraded",
         published_at_ms=1_778_000_060_000,
         source_frontier_ms=1_778_000_030_000,
@@ -245,6 +256,7 @@ def test_publish_current_generation_rewrites_when_only_row_quality_changes():
         projection_version="token-radar-v13-social-attention",
         window="1h",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         generation_id="gen-existing",
         published_at_ms=1_778_000_000_000,
         source_frontier_ms=1_778_000_030_000,
@@ -263,6 +275,7 @@ def test_publish_current_generation_rewrites_when_only_row_quality_changes():
         projection_version="token-radar-v13-social-attention",
         window="1h",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         generation_id="gen-degraded",
         published_at_ms=1_778_000_060_000,
         source_frontier_ms=1_778_000_030_000,
@@ -283,6 +296,7 @@ def test_publish_current_generation_unchanged_does_not_delete_insert_or_emit_cur
         projection_version="token-radar-v13-social-attention",
         window="1h",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         generation_id="gen-existing",
         published_at_ms=1_778_000_000_000,
         source_frontier_ms=1_778_000_030_000,
@@ -301,6 +315,7 @@ def test_publish_current_generation_unchanged_does_not_delete_insert_or_emit_cur
         projection_version="token-radar-v13-social-attention",
         window="1h",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         generation_id="gen-incoming-stable",
         published_at_ms=1_778_000_060_000,
         source_frontier_ms=1_778_000_030_000,
@@ -327,6 +342,7 @@ def test_publish_current_generation_replaces_rows_without_payload_hash_retry_pat
             projection_version="token-radar-v13-social-attention",
             window="1h",
             scope="all",
+            venue=TOKEN_RADAR_DEFAULT_VENUE,
             generation_id="gen-existing",
             published_at_ms=1_778_000_000_000,
             source_frontier_ms=1_778_000_000_000,
@@ -352,6 +368,7 @@ def test_publish_current_generation_replaces_rows_without_payload_hash_retry_pat
         projection_version="token-radar-v13-social-attention",
         window="1h",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         generation_id="gen-next",
         published_at_ms=1_778_000_060_000,
         source_frontier_ms=1_778_000_060_000,
@@ -377,6 +394,7 @@ def test_publish_rows_requires_factor_snapshot_json_before_insert():
             projection_version="token-radar-v9-factor-snapshot",
             window="1h",
             scope="all",
+            venue=TOKEN_RADAR_DEFAULT_VENUE,
             generation_id="gen-invalid",
             published_at_ms=1_778_000_000_000,
             source_frontier_ms=1_778_000_000_000,
@@ -397,6 +415,7 @@ def test_publish_rows_rejects_empty_factor_snapshot_json_before_insert():
             projection_version="token-radar-v9-factor-snapshot",
             window="1h",
             scope="all",
+            venue=TOKEN_RADAR_DEFAULT_VENUE,
             generation_id="gen-invalid",
             published_at_ms=1_778_000_000_000,
             source_frontier_ms=1_778_000_000_000,
@@ -417,6 +436,7 @@ def test_publish_rows_requires_factor_version_before_insert():
             projection_version="token-radar-v9-factor-snapshot",
             window="1h",
             scope="all",
+            venue=TOKEN_RADAR_DEFAULT_VENUE,
             generation_id="gen-invalid",
             published_at_ms=1_778_000_000_000,
             source_frontier_ms=1_778_000_000_000,
@@ -437,6 +457,7 @@ def test_publish_rows_rejects_hard_gates_before_insert():
             projection_version="token-radar-v13-social-attention",
             window="1h",
             scope="all",
+            venue=TOKEN_RADAR_DEFAULT_VENUE,
             generation_id="gen-invalid",
             published_at_ms=1_778_000_000_000,
             source_frontier_ms=1_778_000_000_000,
@@ -457,6 +478,7 @@ def test_publish_rows_rejects_missing_v3_factor_family_before_insert():
             projection_version="token-radar-v13-social-attention",
             window="1h",
             scope="all",
+            venue=TOKEN_RADAR_DEFAULT_VENUE,
             generation_id="gen-invalid",
             published_at_ms=1_778_000_000_000,
             source_frontier_ms=1_778_000_000_000,
@@ -477,6 +499,7 @@ def test_publish_rows_rejects_factor_snapshot_version_mismatch_before_insert():
             projection_version="token-radar-v13-social-attention",
             window="1h",
             scope="all",
+            venue=TOKEN_RADAR_DEFAULT_VENUE,
             generation_id="gen-invalid",
             published_at_ms=1_778_000_000_000,
             source_frontier_ms=1_778_000_000_000,
@@ -493,6 +516,7 @@ def test_latest_current_rows_limits_each_lane_independently():
     rows = TokenRadarRepository(conn).latest_current_rows(
         window="5m",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         limit=8,
         projection_version="token-radar-v13-social-attention",
     )
@@ -513,6 +537,7 @@ def test_latest_current_rows_reads_materialized_listed_at_without_history_latera
     TokenRadarRepository(conn).latest_current_rows(
         window="1h",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         limit=50,
         projection_version="token-radar-v13-social-attention",
     )
@@ -527,6 +552,7 @@ def test_current_rows_for_generation_reads_current_generation_without_ready_filt
     rows = TokenRadarRepository(conn).current_rows_for_generation(
         window="1h",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         generation_id="gen-previous",
         limit=20,
         projection_version="token-radar-v13-social-attention",
@@ -548,6 +574,7 @@ def test_current_row_for_target_reads_only_ready_published_generation():
         projection_version="token-radar-v13-social-attention",
         window="1h",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         target_type="Asset",
         target_id="asset-1",
     )
@@ -751,6 +778,7 @@ def test_publish_current_generation_rejects_stale_projection_writer():
         projection_version="token-radar-v13-social-attention",
         window="5m",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         generation_id="gen-old",
         published_at_ms=1_700_000_000_000,
         source_frontier_ms=1_700_000_000_000,
@@ -769,6 +797,7 @@ def test_publish_current_generation_rejects_stale_writer_after_newer_zero_row_pu
         projection_version="token-radar-v13-social-attention",
         window="5m",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         generation_id="gen-old",
         published_at_ms=1_700_000_000_000,
         source_frontier_ms=1_700_000_000_000,
@@ -791,6 +820,7 @@ def test_mark_publication_failed_records_failed_attempt_without_replacing_curren
         projection_version="token-radar-v13-social-attention",
         window="1h",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         generation_id="gen-failed",
         started_at_ms=1_778_000_000_000,
         finished_at_ms=1_778_000_060_000,
@@ -801,17 +831,18 @@ def test_mark_publication_failed_records_failed_attempt_without_replacing_curren
     assert "INSERT INTO token_radar_publication_state" in conn.sql
     assert "latest_attempt_status" in conn.sql
     assert "current_generation_id" not in conn.sql.split("DO UPDATE SET", 1)[1]
-    assert conn.params[3] == "gen-failed"
-    assert conn.params[4] == "failed"
+    assert conn.params[4] == "gen-failed"
+    assert conn.params[5] == "failed"
 
 
 def test_latest_publication_state_reads_state_for_requested_sets():
     conn = FakeConn(
         rows=[
-            {
-                "window": "1h",
-                "scope": "all",
-                "latest_attempt_status": "failed",
+                {
+                    "window": "1h",
+                    "scope": "all",
+                    "venue": TOKEN_RADAR_DEFAULT_VENUE,
+                    "latest_attempt_status": "failed",
                 "latest_attempt_started_at_ms": 1_778_000_000_000,
                 "latest_attempt_finished_at_ms": 1_778_000_001_000,
                 "updated_at_ms": 1_778_000_002_000,
@@ -823,12 +854,13 @@ def test_latest_publication_state_reads_state_for_requested_sets():
         projection_version="token-radar-v13-social-attention",
         windows=("1h",),
         scopes=("all",),
+        venues=(TOKEN_RADAR_DEFAULT_VENUE,),
     )
 
-    assert state[("1h", "all")]["latest_attempt_status"] == "failed"
-    assert state[("1h", "all")]["latest_attempt_started_at_ms"] == 1_778_000_000_000
-    assert state[("1h", "all")]["latest_attempt_finished_at_ms"] == 1_778_000_001_000
-    assert state[("1h", "all")]["updated_at_ms"] == 1_778_000_002_000
+    assert state[("1h", "all", TOKEN_RADAR_DEFAULT_VENUE)]["latest_attempt_status"] == "failed"
+    assert state[("1h", "all", TOKEN_RADAR_DEFAULT_VENUE)]["latest_attempt_started_at_ms"] == 1_778_000_000_000
+    assert state[("1h", "all", TOKEN_RADAR_DEFAULT_VENUE)]["latest_attempt_finished_at_ms"] == 1_778_000_001_000
+    assert state[("1h", "all", TOKEN_RADAR_DEFAULT_VENUE)]["updated_at_ms"] == 1_778_000_002_000
     assert "FROM requested" in conn.sql
     assert "JOIN token_radar_publication_state state" in conn.sql
     assert "token_radar_projection_coverage" not in conn.sql

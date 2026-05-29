@@ -72,10 +72,10 @@ def test_reprocess_enqueues_dirty_targets_for_incremental_token_radar(monkeypatc
     assert result["reprocessed_intents"] == 2
     assert result["resolved_intents"] == 1
     assert result["dirty_targets"] == 1
-    assert repos.token_radar_dirty_targets.enqueues == [
+    assert repos.token_radar_source_dirty_events.enqueues == [
         {
             "rows": [
-                {"target_type_key": "Asset", "identity_id": "asset-1", "source_event_ids": ["event-1"]},
+                {"target_type_key": "Asset", "identity_id": "asset-1", "source_event_id": "event-1"},
             ],
             "reason": "resolution_refresh",
             "now_ms": 1_778_162_003_774,
@@ -140,7 +140,7 @@ class FakeRepos:
         self.token_evidence = FakeTokenEvidence()
         self.registry = object()
         self.intent_resolutions = object()
-        self.token_radar_dirty_targets = FakeDirtyTargets()
+        self.token_radar_source_dirty_events = FakeDirtyTargets()
         self.discovery = FakeDiscovery()
         self.conn = FakeConn()
 
@@ -154,7 +154,7 @@ class FakeDirtyTargets:
     def __init__(self):
         self.enqueues = []
 
-    def enqueue_targets(self, rows, *, reason, now_ms, commit):
+    def enqueue_events(self, rows, *, reason, now_ms, commit):
         self.enqueues.append(
             {
                 "rows": list(rows),

@@ -7,6 +7,7 @@ from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_servic
 from gmgn_twitter_intel.domains.account_quality.read_models.account_quality_service import AccountQualityService
 from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
 from gmgn_twitter_intel.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
+from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_DEFAULT_VENUE
 from gmgn_twitter_intel.domains.token_intel.queries.search_events_query import SearchEventsQuery
 from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
 from gmgn_twitter_intel.domains.token_intel.read_models.search_service import SearchCursorError, SearchService
@@ -79,6 +80,7 @@ def handle_read_model(args: object) -> tuple[int, dict[str, Any]]:
                 window=args.window,
                 limit=args.limit,
                 scope=args.scope,
+                venue=TOKEN_RADAR_DEFAULT_VENUE,
                 now_ms=_now_ms(),
             )
             return 0, {"ok": True, "data": {"window": args.window, "scope": args.scope, **data}}

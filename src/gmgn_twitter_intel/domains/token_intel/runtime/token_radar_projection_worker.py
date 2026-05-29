@@ -36,6 +36,7 @@ class TokenRadarProjectionWorker(WorkerBase):
         wake_bus: Any | None = None,
         wake_waiter: Any | None = None,
         worker_space_contract: Any | None = None,
+        enqueue_narrative_admission: bool = True,
     ) -> None:
         super().__init__(
             name=name,
@@ -54,6 +55,7 @@ class TokenRadarProjectionWorker(WorkerBase):
         self.hot_interval_ms = int(self.interval_seconds * 1000)
         self.cold_interval_ms = int(float(getattr(settings, "cold_interval_seconds", 60.0) or 0) * 1000)
         self.wake_bus = wake_bus
+        self.enqueue_narrative_admission = bool(enqueue_narrative_admission)
         self._cursor = 0
 
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
@@ -154,7 +156,10 @@ class TokenRadarProjectionWorker(WorkerBase):
                     else runtime_context.persist_session()
                 )
                 with session as repos:
-                    projection = _projection_class()(repos=repos)
+                    projection = _projection_class()(
+                        repos=repos,
+                        enqueue_narrative_admission=self.enqueue_narrative_admission,
+                    )
                     rebuild_kwargs: dict[str, Any] = {
                         "windows": tuple(dict.fromkeys(window for window, _scope, _venue in work_items)),
                         "scopes": tuple(dict.fromkeys(scope for _window, scope, _venue in work_items)),

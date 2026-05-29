@@ -5,15 +5,14 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from agents.exceptions import ModelBehaviorError
 from pydantic import ValidationError
 
-from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import StrictJsonOutputSchema
-from gmgn_twitter_intel.integrations.openai_agents.agent_usage import extract_sdk_usage
-from gmgn_twitter_intel.integrations.openai_agents.structured_output_strategy import (
+from gmgn_twitter_intel.integrations.model_execution.output_schema import StrictJsonOutputSchema
+from gmgn_twitter_intel.integrations.model_execution.structured_json_strategy import (
     ChatJsonObjectStrategy,
     StructuredOutputContext,
 )
+from gmgn_twitter_intel.integrations.model_execution.usage import extract_model_usage
 from gmgn_twitter_intel.platform.agent_execution import (
     RUNTIME_VERSION,
     AgentCapacityReservation,
@@ -103,14 +102,14 @@ class AgentExecutionGateway:
         if llm_gateway is None:
             raise ValueError("llm_gateway is required")
         self._llm_gateway = llm_gateway
-        self._base_url = _api_base(base_url)
+        self._base_url = _model_base(base_url)
         self._trace_enabled = bool(trace_enabled and getattr(llm_gateway, "trace_export_enabled", False))
         self._trace_include_sensitive_data = bool(trace_include_sensitive_data)
         self._policy = policy
         self._telemetry = telemetry
-        self._chat_client_cache: dict[tuple[str, str, float], Any] = {}
         self._json_object_strategy = ChatJsonObjectStrategy(
-            openai_client_factory=lambda model, timeout_s: self._chat_client_for(model=model, timeout_s=timeout_s),
+            api_key=getattr(llm_gateway, "api_key", ""),
+            base_url=self._base_url or getattr(llm_gateway, "base_url", ""),
         )
         self._reservation_owner_token = object()
         self._global_semaphore = asyncio.BoundedSemaphore(policy.global_max_concurrency)
@@ -329,7 +328,7 @@ class AgentExecutionGateway:
                 status=AgentExecutionStatus.DONE,
                 execution_started=True,
                 latency_ms=_latency_ms(started),
-                usage=dict(audit_extra.get("usage") or extract_sdk_usage(raw_result)),
+                usage=dict(audit_extra.get("usage") or extract_model_usage(raw_result)),
                 parse_mode=str(audit_extra.get("parse_mode") or "strict"),
                 safety_net={
                     "safety_net_used": bool(audit_extra.get("safety_net_used", False)),
@@ -368,7 +367,7 @@ class AgentExecutionGateway:
             ) from exc
         except AgentExecutionError:
             raise
-        except (ModelBehaviorError, ValidationError) as exc:
+        except (ValidationError, ValueError) as exc:
             self.record_lane_failure(stage.lane)
             failed = self._failed_audit(
                 audit,
@@ -618,19 +617,6 @@ class AgentExecutionGateway:
         if stage.lane not in reservation.child_lanes:
             raise ValueError(f"parent reservation for {reservation.lane!r} does not allow child lane {stage.lane!r}")
 
-    def _chat_client_for(self, *, model: str, timeout_s: float) -> Any:
-        key = (str(model), self._base_url, float(timeout_s))
-        cached = self._chat_client_cache.get(key)
-        if cached is not None:
-            return cached
-        client = self._llm_gateway.openai_client(
-            model=model,
-            base_url=self._base_url,
-            timeout_s=float(timeout_s),
-        )
-        self._chat_client_cache[key] = client
-        return client
-
     def _record_provider_running(self, stage: AgentStageSpec, *, delta: int) -> None:
         lane_state = self._lane_state(stage.lane)
         lane_state.provider_running_count = max(0, lane_state.provider_running_count + delta)
@@ -671,11 +657,9 @@ class AgentExecutionGateway:
             )
 
 
-def _api_base(base_url: str) -> str:
+def _model_base(base_url: str) -> str:
     value = str(base_url or "").strip().rstrip("/")
-    if not value:
-        return "https://api.openai.com/v1"
-    return value if value.endswith("/v1") else f"{value}/v1"
+    return value
 
 
 def _audit_base(audit: AgentExecutionRequestAudit) -> dict[str, Any]:

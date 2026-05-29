@@ -27,7 +27,6 @@ def build_handle_summary_stage(
     run_id: str,
     job: dict[str, Any],
     context: dict[str, Any],
-    max_turns: int = 1,
 ) -> AgentStageSpec:
     input_json = {
         "handle": handle,
@@ -51,7 +50,6 @@ def build_handle_summary_stage(
             "job_handle": str(job.get("handle") or ""),
             "attempt_count": int(job.get("attempt_count") or 0),
         },
-        max_turns=max_turns,
     )
 
 

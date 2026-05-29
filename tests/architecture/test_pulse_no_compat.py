@@ -25,7 +25,7 @@ REMOVED_PROMPT_FILES = ("evidence_debate.md", "decision_maker.md")
 RESEARCH_COMMITTEE_PROMPT_FILES = ("signal_analyst.md", "bear_case.md", "risk_portfolio_judge.md")
 RUNTIME_SOURCE_ROOTS = (
     SRC / "domains" / "pulse_lab",
-    SRC / "integrations" / "openai_agents",
+    SRC / "integrations" / "model_execution",
     SRC / "app" / "runtime" / "provider_wiring",
 )
 

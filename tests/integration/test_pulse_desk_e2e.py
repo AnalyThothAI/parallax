@@ -261,7 +261,7 @@ class _ResearchCommitteeClient:
     ) -> dict[str, Any]:
         return {
             "backend": "fake",
-            "sdk_trace_id": f"trace-{run_id}",
+            "execution_trace_id": f"trace-{run_id}",
             "workflow_name": "pulse-test",
             "agent_name": "pulse-test-agent",
             "prompt_version": "pulse-decision-prompt-v2",
@@ -480,6 +480,12 @@ class _StaticRows:
 
     def timeline_rows(self, **_: Any) -> list[dict[str, Any]]:
         return list(self.rows)
+
+    def timeline_rows_for_event_ids(self, **kwargs: Any) -> list[dict[str, Any]]:
+        event_ids = {str(event_id) for event_id in kwargs.get("event_ids", [])}
+        if not event_ids:
+            return []
+        return [row for row in self.rows if str(row.get("event_id") or "") in event_ids]
 
     def current_row_for_target(self, **kwargs: Any) -> dict[str, Any] | None:
         for row in self.rows:

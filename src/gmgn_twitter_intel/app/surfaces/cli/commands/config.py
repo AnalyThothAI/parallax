@@ -64,7 +64,7 @@ def handle_config(_args: object) -> tuple[int, dict[str, Any]]:
                     "provider": settings.llm_provider,
                     "model": settings.agent_runtime_default_model,
                     "base_url": settings.llm_base_url,
-                    "backend": "openai_agents_sdk",
+                    "backend": "litellm_sdk",
                     "trace_enabled": settings.llm_trace_enabled,
                     "trace_export_configured": settings.llm_trace_export_configured,
                     "trace_include_sensitive_data": settings.llm_trace_include_sensitive_data,

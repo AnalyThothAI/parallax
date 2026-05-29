@@ -3,8 +3,11 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.integrations.openai_agents.watchlist_summary_agent_client import (
-    OpenAIAgentsWatchlistSummaryClient,
+import pytest
+from pydantic import ValidationError
+
+from gmgn_twitter_intel.integrations.model_execution.watchlist_summary_agent_client import (
+    LiteLLMWatchlistSummaryClient,
     _coerce_summary_payload,
 )
 from gmgn_twitter_intel.platform.agent_execution import (
@@ -33,7 +36,7 @@ class FakeAgentGateway:
             stage=stage.stage,
             workflow_name=stage.workflow_name,
             agent_name=stage.agent_name,
-            sdk_trace_id="trace-run-1",
+            execution_trace_id="trace-run-1",
             group_id=stage.group_id,
             prompt_version=stage.prompt_version,
             schema_version=stage.schema_version,
@@ -76,10 +79,7 @@ def test_watchlist_summary_client_runs_summary_through_gateway():
             "residual_risks": [],
         }
     )
-    client = OpenAIAgentsWatchlistSummaryClient(
-        agent_gateway=gateway,
-        max_turns=2,
-    )
+    client = LiteLLMWatchlistSummaryClient(agent_gateway=gateway)
 
     result = asyncio.run(
         client.summarize_handle(
@@ -96,86 +96,44 @@ def test_watchlist_summary_client_runs_summary_through_gateway():
     assert stage.lane == "watchlist.handle_summary"
     assert client.model == "gpt-test"
     assert stage.group_id == "watched"
-    assert stage.max_turns == 2
     assert result["summary_zh"] == "账户围绕 SOL 客户端进展反复发声。"
     assert result["agent_run_audit"]["status"] == "done"
 
 
-def test_watchlist_summary_client_parses_fenced_json_output():
-    payload = _coerce_summary_payload(
-        """
-```json
-{
-  "summary_zh": "账户围绕 SOL 客户端进展反复发声。",
-  "topics": [{
-    "title": "SOL 客户端",
-    "description": "Firedancer 进展被连续提及。",
-    "event_count": 2,
-    "top_event_ids": ["event-1"],
-    "symbols": ["SOL"],
-    "confidence": 0.82
-  }],
-  "residual_risks": []
-}
-```
-"""
-    )
-
-    assert payload.summary_zh == "账户围绕 SOL 客户端进展反复发声。"
-    assert payload.topics[0].title == "SOL 客户端"
-    assert payload.topics[0].top_event_ids == ["event-1"]
-
-
-def test_watchlist_summary_client_recovers_markdown_topic_output():
-    payload = _coerce_summary_payload(
-        """
+def test_watchlist_summary_client_rejects_compat_markdown_output():
+    with pytest.raises(ValidationError):
+        _coerce_summary_payload(
+            """
 **1. Coinbase 内部高管变动**
 *   **描述**：Brian Armstrong 宣布辞去 0x 联合 CEO 职务，但保留董事会席位。
 *   **事件数**：1
 *   **Top Event IDs**：2d70702b-62cc-4300-8101-afa9a6d56da4
 *   **关联标的**：0x
 *   **置信度**：高
-
-**2. 美国加密监管政策利好**
-*   **描述**：转发内容高度评价数字资产市场清晰度法案听证会。
-*   **事件数**：2
-*   **Top Event IDs**：event-a,event-b
-*   **关联标的**：BTC, ETH
-*   **置信度**：0.7
 """
-    )
-
-    assert "Coinbase 内部高管变动" in payload.summary_zh
-    assert len(payload.topics) == 2
-    assert payload.topics[0].event_count == 1
-    assert payload.topics[0].symbols == ["0x"]
-    assert payload.topics[0].confidence == 0.85
-    assert payload.topics[1].top_event_ids == ["event-a", "event-b"]
+        )
 
 
-def test_watchlist_summary_client_wraps_single_topic_json_object():
-    payload = _coerce_summary_payload(
-        {
-            "title": "Solana P-Token",
-            "description": "账号围绕 P-Token 质押叙事持续发声。",
-            "event_count": 3,
-            "top_event_ids": ["event-1", "event-2"],
-            "symbols": ["P"],
-            "confidence": 0.95,
-        }
-    )
-
-    assert payload.summary_zh == "Solana P-Token：账号围绕 P-Token 质押叙事持续发声。"
-    assert payload.topics[0].event_count == 3
-    assert payload.topics[0].symbols == ["P"]
+def test_watchlist_summary_client_rejects_topic_only_object():
+    with pytest.raises(ValidationError):
+        _coerce_summary_payload(
+            {
+                "title": "Solana P-Token",
+                "description": "账号围绕 P-Token 质押叙事持续发声。",
+                "event_count": 3,
+                "top_event_ids": ["event-1", "event-2"],
+                "symbols": ["P"],
+                "confidence": 0.95,
+            }
+        )
 
 
-def test_watchlist_summary_client_wraps_topic_json_array():
-    payload = _coerce_summary_payload(
-        """[
+def test_watchlist_summary_client_rejects_topic_array_string():
+    with pytest.raises(ValidationError):
+        _coerce_summary_payload(
+            """
+[
   {"title":"宏观风险","description":"霍尔木兹紧张推高能源风险。","event_count":2,"confidence":0.8}
-]"""
-    )
-
-    assert payload.summary_zh == "宏观风险：霍尔木兹紧张推高能源风险。"
-    assert payload.topics[0].confidence == 0.8
+]
+"""
+        )

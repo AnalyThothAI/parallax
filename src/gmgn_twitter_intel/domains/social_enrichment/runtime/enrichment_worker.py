@@ -88,7 +88,7 @@ class EnrichmentWorker(WorkerBase):
                     timeout=timeout_seconds,
                 )
             except TimeoutError:
-                error = f"Agents SDK request timed out after {timeout_seconds:g}s"
+                error = f"LLM request timed out after {timeout_seconds:g}s"
                 await asyncio.to_thread(
                     self._record_model_run_failure_sync,
                     job=job,

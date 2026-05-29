@@ -15,7 +15,7 @@ from gmgn_twitter_intel.platform.agent_capabilities import (
 )
 from gmgn_twitter_intel.platform.agent_hashing import json_sha256
 
-RUNTIME_VERSION = "agent-execution-plane-v1"
+RUNTIME_VERSION = "litellm-execution-plane-v1"
 
 
 class AgentExecutionErrorClass(StrEnum):
@@ -140,8 +140,6 @@ class AgentStageSpec(BaseModel):
     agent_name: str
     group_id: str = ""
     trace_metadata: dict[str, Any] = Field(default_factory=dict)
-    max_turns: int = Field(default=1, ge=1)
-    tools: list[Any] = Field(default_factory=list)
 
     @property
     def input_hash(self) -> str:
@@ -151,9 +149,9 @@ class AgentStageSpec(BaseModel):
 class AgentExecutionRequestAudit(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    provider: str = "openai"
-    backend: str = "openai_agents_sdk"
-    provider_family: str = "openai_compatible"
+    provider: str = "litellm"
+    backend: str = "litellm_sdk"
+    provider_family: str = "litellm"
     output_strategy: str = "json_object"
     schema_enforcement: str = "client_validate"
     request_options_hash: str = Field(default_factory=lambda: json_sha256({}))
@@ -162,7 +160,7 @@ class AgentExecutionRequestAudit(BaseModel):
     stage: str
     workflow_name: str
     agent_name: str
-    sdk_trace_id: str
+    execution_trace_id: str
     group_id: str
     prompt_version: str
     schema_version: str
@@ -194,7 +192,7 @@ class AgentExecutionRequestAudit(BaseModel):
         request_options_hash = json_sha256(profile.request_options)
         trace_metadata = {
             **stage.trace_metadata,
-            "backend": "openai_agents_sdk",
+            "backend": "litellm_sdk",
             "model": model,
             "provider_family": profile.provider_family.value,
             "output_strategy": "json_object",
@@ -219,7 +217,7 @@ class AgentExecutionRequestAudit(BaseModel):
             stage=stage.stage,
             workflow_name=stage.workflow_name,
             agent_name=stage.agent_name,
-            sdk_trace_id=trace_id,
+            execution_trace_id=trace_id,
             group_id=stage.group_id,
             prompt_version=stage.prompt_version,
             schema_version=stage.schema_version,

@@ -3,7 +3,7 @@
 Coverage focus:
 - ``StrictJsonOutputSchema`` strict + jsonref flattening (qwen3.6 / llama.cpp).
 - Pulse stages route through ``AgentExecutionGateway`` stage specs.
-- Pulse public runtime no longer registers critical data-acquisition tools.
+- Pulse public runtime keeps provider mechanics outside the stage contract.
 """
 
 from __future__ import annotations
@@ -21,9 +21,9 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     FinalDecision,
     PulseStageFailure,
 )
-from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import StrictJsonOutputSchema
-from gmgn_twitter_intel.integrations.openai_agents.pulse_decision_agent_client import (
-    OpenAIAgentsPulseDecisionClient,
+from gmgn_twitter_intel.integrations.model_execution.output_schema import StrictJsonOutputSchema
+from gmgn_twitter_intel.integrations.model_execution.pulse_decision_agent_client import (
+    LiteLLMPulseDecisionClient,
 )
 from gmgn_twitter_intel.platform.agent_execution import (
     AgentExecutionError,
@@ -55,7 +55,7 @@ class _FakeAgentGateway:
             stage=stage.stage,
             workflow_name=stage.workflow_name,
             agent_name=stage.agent_name,
-            sdk_trace_id=f"trace-{stage.stage}",
+            execution_trace_id=f"trace-{stage.stage}",
             group_id=stage.group_id,
             prompt_version=stage.prompt_version,
             schema_version=stage.schema_version,
@@ -213,14 +213,14 @@ def test_pulse_client_requires_decision_runtime_only() -> None:
     import pytest
 
     with pytest.raises(ValueError, match="decision_runtime is required"):
-        OpenAIAgentsPulseDecisionClient(
+        LiteLLMPulseDecisionClient(
             agent_gateway=_FakeAgentGateway(),
             decision_runtime=None,  # type: ignore[arg-type]
         )
 
 
-def test_pulse_client_runtime_contract_is_packet_only_without_tools() -> None:
-    client = OpenAIAgentsPulseDecisionClient(
+def test_pulse_client_runtime_contract_is_packet_only() -> None:
+    client = LiteLLMPulseDecisionClient(
         agent_gateway=_FakeAgentGateway(),
         decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
     )
@@ -228,39 +228,23 @@ def test_pulse_client_runtime_contract_is_packet_only_without_tools() -> None:
     contract = client.runtime_contract
 
     assert contract.stage_names == ("signal_analyst", "bear_case", "risk_portfolio_judge")
-    assert contract.max_turns_per_stage == {
-        "signal_analyst": 1,
-        "bear_case": 1,
-        "risk_portfolio_judge": 1,
-    }
-    assert contract.tool_names_by_stage == {
-        "signal_analyst": (),
-        "bear_case": (),
-        "risk_portfolio_judge": (),
-    }
     assert contract.safety_net_enabled is True
-    assert contract.manifest_kwargs()["tool_names_by_stage"] == {
-        "signal_analyst": (),
-        "bear_case": (),
-        "risk_portfolio_judge": (),
-    }
+    assert "max_turns_per_stage" not in contract.manifest_kwargs()
+    assert "tool_names_by_stage" not in contract.manifest_kwargs()
     assert "route_tool_budgets" not in contract.manifest_kwargs()
 
 
 def test_pulse_runtime_manifest_declares_packet_schema_and_no_tools() -> None:
     manifest = build_pulse_runtime_manifest(
-        provider="openai",
+        provider="litellm",
         model="gpt-test",
         artifact_version_hash="artifact:gpt-test",
         timeout_seconds=20.0,
     )
 
     assert manifest["runtime"]["stages"] == ["signal_analyst", "bear_case", "risk_portfolio_judge"]
-    assert manifest["runtime"]["tool_names_by_stage"] == {
-        "signal_analyst": [],
-        "bear_case": [],
-        "risk_portfolio_judge": [],
-    }
+    assert "tool_names_by_stage" not in manifest["runtime"]
+    assert "max_turns_per_stage" not in manifest["runtime"]
     assert "evidence_debate" not in json.dumps(manifest)
     assert "decision_maker" not in json.dumps(manifest)
     assert "route_tool_budgets" not in manifest["runtime"]
@@ -315,12 +299,9 @@ def test_pulse_client_routes_stages_through_gateway_and_preserves_stage_audit_fi
             ),
         }
     )
-    client = OpenAIAgentsPulseDecisionClient(
+    client = LiteLLMPulseDecisionClient(
         agent_gateway=gateway,
         decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
-        signal_analyst_max_turns=2,
-        bear_case_max_turns=3,
-        risk_portfolio_judge_max_turns=4,
     )
 
     result = asyncio.run(
@@ -347,7 +328,6 @@ def test_pulse_client_routes_stages_through_gateway_and_preserves_stage_audit_fi
     assert gateway.execute_calls[0]["stage"].output_type is SignalAnalystMemo
     assert gateway.execute_calls[1]["stage"].output_type is BearCaseMemo
     assert gateway.execute_calls[2]["stage"].output_type is FinalDecision
-    assert [call["stage"].max_turns for call in gateway.execute_calls] == [2, 3, 4]
     assert isinstance(gateway.execute_calls[0]["stage"].input_payload, dict)
     assert result.stage_audits[0].usage_json == {"input_tokens": 11, "output_tokens": 5}
     assert result.stage_audits[0].parse_mode == "safety_net_repaired"
@@ -366,7 +346,7 @@ def test_pulse_client_stage_plan_research_only_skips_public_judge() -> None:
             "bear_case": _bear_case_raw(["event:event-1"]),
         }
     )
-    client = OpenAIAgentsPulseDecisionClient(
+    client = LiteLLMPulseDecisionClient(
         agent_gateway=gateway,
         decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
     )
@@ -416,7 +396,7 @@ def test_pulse_client_stage_plan_public_judge_runs_all_three_stages() -> None:
             ),
         }
     )
-    client = OpenAIAgentsPulseDecisionClient(
+    client = LiteLLMPulseDecisionClient(
         agent_gateway=gateway,
         decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
     )
@@ -463,7 +443,7 @@ def test_pulse_client_passes_parent_reservation_to_stage_execution() -> None:
             ),
         }
     )
-    client = OpenAIAgentsPulseDecisionClient(
+    client = LiteLLMPulseDecisionClient(
         agent_gateway=gateway,
         decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
     )
@@ -504,7 +484,7 @@ def test_pulse_client_normalizes_gateway_output_before_domain_ref_validation() -
             ),
         }
     )
-    client = OpenAIAgentsPulseDecisionClient(
+    client = LiteLLMPulseDecisionClient(
         agent_gateway=gateway,
         decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
     )
@@ -543,7 +523,7 @@ def test_pulse_client_normalizes_gateway_output_before_domain_ref_validation() -
 
 def test_invalid_evidence_refs_remain_pulse_domain_failures_not_gateway_failures() -> None:
     gateway = _FakeAgentGateway({"signal_analyst": _signal_analyst_raw(["event:outside"])})
-    client = OpenAIAgentsPulseDecisionClient(
+    client = LiteLLMPulseDecisionClient(
         agent_gateway=gateway,
         decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
     )
@@ -581,7 +561,7 @@ def test_schema_invalid_signal_analyst_returns_invalid_model_output_abstain() ->
             }
         }
     )
-    client = OpenAIAgentsPulseDecisionClient(
+    client = LiteLLMPulseDecisionClient(
         agent_gateway=gateway,
         decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
     )
@@ -605,7 +585,7 @@ def test_schema_invalid_signal_analyst_returns_invalid_model_output_abstain() ->
 
 def test_provider_transport_failure_preserves_error_class_without_unknown_ref_label() -> None:
     gateway = _TransportFailingAgentGateway()
-    client = OpenAIAgentsPulseDecisionClient(
+    client = LiteLLMPulseDecisionClient(
         agent_gateway=gateway,
         decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
     )
@@ -632,7 +612,7 @@ def test_provider_transport_failure_preserves_error_class_without_unknown_ref_la
 
 def test_gateway_execution_timeout_degrades_to_abstain_without_retrying_job() -> None:
     gateway = _FailingAgentGateway()
-    client = OpenAIAgentsPulseDecisionClient(
+    client = LiteLLMPulseDecisionClient(
         agent_gateway=gateway,
         decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
     )
@@ -659,7 +639,7 @@ def test_gateway_execution_timeout_degrades_to_abstain_without_retrying_job() ->
 
 def test_no_start_agent_execution_error_is_not_collapsed_into_stage_failure() -> None:
     gateway = _NoStartBackpressureGateway()
-    client = OpenAIAgentsPulseDecisionClient(
+    client = LiteLLMPulseDecisionClient(
         agent_gateway=gateway,
         decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
     )

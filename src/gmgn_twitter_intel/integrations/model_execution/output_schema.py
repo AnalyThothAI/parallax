@@ -3,16 +3,16 @@ from __future__ import annotations
 from typing import Any
 
 import jsonref
-from agents.agent_output import AgentOutputSchema, AgentOutputSchemaBase
+from pydantic import TypeAdapter
 
 
-class StrictJsonOutputSchema(AgentOutputSchemaBase):
-    """OpenAI-compatible structured-output wrapper."""
+class StrictJsonOutputSchema:
+    """Application-side JSON schema and validation wrapper."""
 
     def __init__(self, output_type: type[Any]) -> None:
         self._output_type = output_type
-        self._schema = AgentOutputSchema(output_type, strict_json_schema=False)
-        raw = self._schema.json_schema()
+        self._adapter = TypeAdapter(output_type)
+        raw = self._adapter.json_schema()
         cleaned = _coerce_dict_additional_properties_to_false(raw)
         replaced = jsonref.replace_refs(cleaned, proxies=False, lazy_load=False)
         flattened = _strip_defs(replaced)
@@ -25,10 +25,10 @@ class StrictJsonOutputSchema(AgentOutputSchemaBase):
         return self._output_type
 
     def is_plain_text(self) -> bool:
-        return self._schema.is_plain_text()
+        return False
 
     def name(self) -> str:
-        return self._schema.name()
+        return str(getattr(self._output_type, "__name__", "structured_output"))
 
     def json_schema(self) -> dict[str, Any]:
         return self._flat
@@ -41,7 +41,7 @@ class StrictJsonOutputSchema(AgentOutputSchemaBase):
         start = text.find("{")
         end = text.rfind("}")
         candidate = text[start : end + 1] if start != -1 and end > start else text
-        return self._schema.validate_json(candidate)
+        return self._adapter.validate_json(candidate)
 
 
 def _strip_defs(schema: Any) -> Any:

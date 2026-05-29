@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from gmgn_twitter_intel.app.runtime.narrative_bulk_analysis_gate import narrative_bulk_analysis_enabled
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_factories import WorkerFactoryContext
 from gmgn_twitter_intel.app.runtime.worker_manifest import manifest_names_for_factory, require_worker_manifest
@@ -23,5 +24,6 @@ def construct_token_intel_workers(ctx: WorkerFactoryContext) -> dict[str, Worker
             wake_bus=ctx.wake_bus,
             wake_waiter=ctx.db.wake_listener(worker_name, workers.token_radar_projection.wakes_on),
             worker_space_contract=contract_from_manifest(require_worker_manifest(worker_name)),
+            enqueue_narrative_admission=narrative_bulk_analysis_enabled(ctx.settings),
         )
     }

@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from gmgn_twitter_intel.integrations.openai_agents.agent_execution_gateway import AgentExecutionGateway
+from gmgn_twitter_intel.integrations.model_execution.execution_gateway import AgentExecutionGateway
 from gmgn_twitter_intel.platform.agent_execution import (
     AgentCapacityReservation,
     AgentExecutionCancelled,
@@ -80,12 +80,26 @@ class FakeLLMGateway:
     trace_export_enabled = False
 
     def __init__(self, *, completions: FakeJsonCompletions | None = None) -> None:
-        self.openai_client_calls: list[dict[str, Any]] = []
-        self.client = FakeJsonClient(completions)
+        self.api_key = "sk-test"
+        self.base_url = "https://example.com/v1"
+        self.completions = completions or FakeJsonCompletions()
 
-    def openai_client(self, *, model: str, base_url: str, timeout_s: float) -> object:
-        self.openai_client_calls.append({"model": model, "base_url": base_url, "timeout_s": timeout_s})
-        return self.client
+
+_active_completions: list[FakeJsonCompletions | None] = [None]
+
+
+@pytest.fixture(autouse=True)
+def patch_litellm(monkeypatch: pytest.MonkeyPatch):
+    async def fake_acompletion(**kwargs: Any) -> FakeJsonResponse:
+        completions = _active_completions[0]
+        if completions is None:
+            raise AssertionError("active fake LiteLLM completion not configured")
+        return await completions.create(**kwargs)
+
+    monkeypatch.setattr(
+        "gmgn_twitter_intel.integrations.model_execution.structured_json_strategy.litellm.acompletion",
+        fake_acompletion,
+    )
 
 
 def _spec(lane: str = "test.lane") -> AgentStageSpec:
@@ -173,8 +187,10 @@ def _gateway(
     llm_gateway: FakeLLMGateway | None = None,
     policy: AgentRuntimePolicy | None = None,
 ) -> AgentExecutionGateway:
+    llm_gateway = llm_gateway or FakeLLMGateway()
+    _active_completions[0] = llm_gateway.completions
     return AgentExecutionGateway(
-        llm_gateway=llm_gateway or FakeLLMGateway(),
+        llm_gateway=llm_gateway,
         base_url="https://example.com/v1",
         trace_enabled=False,
         trace_include_sensitive_data=False,
@@ -199,10 +215,10 @@ def test_execute_returns_normalized_audit_using_json_object_client() -> None:
         assert result.audit.trace_metadata["source"] == "unit"
         assert result.audit.trace_metadata["output_strategy"] == "json_object"
         assert result.audit.trace_metadata["schema_enforcement"] == "client_validate"
-        assert len(llm_gateway.client.chat.completions.calls) == 1
-        assert llm_gateway.openai_client_calls == [
-            {"model": "local-json-object-model", "base_url": "https://example.com/v1", "timeout_s": 10.0}
-        ]
+        assert len(llm_gateway.completions.calls) == 1
+        assert llm_gateway.completions.calls[0]["model"] == "openai/local-json-object-model"
+        assert llm_gateway.completions.calls[0]["base_url"] == "https://example.com/v1"
+        assert llm_gateway.completions.calls[0]["timeout"] == 10.0
 
     asyncio.run(scenario())
 
@@ -244,7 +260,7 @@ def test_execute_uses_caller_reservation_without_double_acquiring_lane_capacity(
             await reservation.release()
 
         assert result.audit.status is AgentExecutionStatus.DONE
-        assert len(llm_gateway.client.chat.completions.calls) == 1
+        assert len(llm_gateway.completions.calls) == 1
         snapshot_after_release = gateway.status_snapshot()
         assert snapshot_after_release["global_in_flight"] == 0
         assert snapshot_after_release["lanes"]["test.lane"]["in_flight"] == 0
@@ -277,7 +293,7 @@ def test_parent_pipeline_reservation_reuses_global_slot_for_child_stage() -> Non
         assert snapshot["global_in_flight"] == 0
         assert snapshot["lanes"]["pulse.pipeline"]["in_flight"] == 0
         assert snapshot["lanes"]["pulse.signal_analyst"]["in_flight"] == 0
-        assert len(llm_gateway.client.chat.completions.calls) == 1
+        assert len(llm_gateway.completions.calls) == 1
 
     asyncio.run(scenario())
 
@@ -401,7 +417,7 @@ def test_lane_rpm_limit_applies_even_when_global_rpm_is_high() -> None:
 
         assert err.value.error_class is AgentExecutionErrorClass.RATE_LIMITED
         assert err.value.execution_started is False
-        assert len(llm_gateway.client.chat.completions.calls) == 1
+        assert len(llm_gateway.completions.calls) == 1
         snapshot = gateway.status_snapshot()
         lane = snapshot["lanes"]["test.lane"]
         assert snapshot["global_in_flight"] == 0
@@ -440,7 +456,7 @@ def test_execute_rejects_invalid_reservations_before_provider_call() -> None:
         with pytest.raises(ValueError, match="not issued by this gateway"):
             await gateway.execute(_spec(), reservation=AgentCapacityReservation(lane="test.lane", acquired=True))
 
-        assert llm_gateway.client.chat.completions.calls == []
+        assert llm_gateway.completions.calls == []
 
     asyncio.run(scenario())
 
@@ -458,7 +474,7 @@ def test_execute_rejects_other_gateway_reservation_before_provider_call() -> Non
         finally:
             await reservation.release()
 
-        assert llm_gateway.client.chat.completions.calls == []
+        assert llm_gateway.completions.calls == []
 
     asyncio.run(scenario())
 
@@ -471,9 +487,10 @@ def test_execute_reuses_chat_client_for_same_stage_policy() -> None:
         await gateway.execute(_spec())
         await gateway.execute(_spec())
 
-        assert len(llm_gateway.client.chat.completions.calls) == 2
-        assert llm_gateway.openai_client_calls == [
-            {"model": "local-json-object-model", "base_url": "https://example.com/v1", "timeout_s": 10.0}
+        assert len(llm_gateway.completions.calls) == 2
+        assert [call["model"] for call in llm_gateway.completions.calls] == [
+            "openai/local-json-object-model",
+            "openai/local-json-object-model",
         ]
 
     asyncio.run(scenario())
@@ -491,10 +508,10 @@ def test_execute_uses_registered_model_request_options() -> None:
         assert result.audit.output_strategy == "json_object"
         assert result.audit.schema_enforcement == "client_validate"
         assert result.audit.parse_mode == "json_object_client_validate"
-        assert llm_gateway.openai_client_calls == [
-            {"model": "deepseek-v4-flash", "base_url": "https://example.com/v1", "timeout_s": 10.0}
-        ]
-        call = llm_gateway.client.chat.completions.calls[0]
+        call = llm_gateway.completions.calls[0]
+        assert call["model"] == "openai/deepseek-v4-flash"
+        assert call["base_url"] == "https://example.com/v1"
+        assert call["timeout"] == 10.0
         assert call["response_format"] == {"type": "json_object"}
         assert call["extra_body"] == {"thinking": {"type": "disabled"}}
         assert "tool_choice" not in call
@@ -515,7 +532,7 @@ def test_circuit_open_fails_fast_without_provider_call() -> None:
         assert err.value.execution_started is False
         assert err.value.audit is not None
         assert err.value.audit.execution_started is False
-        assert llm_gateway.client.chat.completions.calls == []
+        assert llm_gateway.completions.calls == []
 
     asyncio.run(scenario())
 

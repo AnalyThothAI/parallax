@@ -119,8 +119,8 @@ collector
   -> resolution_refresh and profile refresh lanes
   -> token_image_mirror
   -> token_radar_projection
-  -> narrative_admission
-  -> mention_semantics / token_discussion_digest
+  -> narrative_admission (only when narrative bulk analysis gate is enabled)
+  -> mention_semantics / token_discussion_digest (same gate)
   -> macro_sync / macro_view_projection
   -> pulse_candidate / notifications / API / WebSocket / CLI
 ```
@@ -132,6 +132,14 @@ sync windows, runs the packaged `macrodata` executable outside DB
 transactions, writes `macro_observations`, `macro_import_runs`, and
 sync control/audit rows, then wakes projection as a hint. The
 `macro import-bundle` CLI is offline replay/seed only.
+
+Narrative bulk analysis is all-or-nothing at runtime. The gate requires
+`narrative_admission`, `mention_semantics`, and `token_discussion_digest`
+to be enabled and the shared LLM model config to be present. When any part
+of that trio is disabled, Token Radar does not enqueue new
+`narrative_admission_dirty_targets`, and the narrative worker factory keeps
+the whole trio disabled. Existing rows remain inspectable operational state;
+they do not gate News high-signal notifications or Signal Pulse.
 
 ## Worker Inventory
 
@@ -173,8 +181,8 @@ notification_delivery
 | `cex_oi_radar_board` (`CexOiRadarBoardWorker`) | `cex_market_intel` | `domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py` | Binance-backed `price_feeds`, Binance USD-M ticker/premium/OI history, bounded CoinGlass enrichment when available | `cex_oi_radar_rows`, `cex_oi_radar_publication_state`, `cex_detail_snapshots` | poll | none | `interval_seconds`; current board row ids are stable by provider/exchange/period/target |
 | `macro_sync` (`MacroSyncWorker`) | `macro_intel` | `domains/macro_intel/runtime/macro_sync_worker.py` | due `macro_sync_windows`; packaged `macrodata` history bundle after claim | `macro_observations`, `macro_import_runs`, `macro_sync_windows`, `macro_sync_runs` | poll | `macro_observations_imported` | claims one bounded window; idle cycles do no provider IO and no broad fact scan |
 | `macro_view_projection` (`MacroViewProjectionWorker`) | `macro_intel` | `domains/macro_intel/runtime/macro_view_projection_worker.py` | due `macro_projection_dirty_targets`; then exact `macro_observations` history and `macro_observation_series_rows` current projection | `macro_observation_series_rows`, `macro_view_snapshots`, `macro_observation_series_publication_state` | `macro_observations_imported` | none | `interval_seconds`; no dirty target means no broad fact scan; unchanged signatures write zero serving rows |
-| `pulse_candidate` (`PulseCandidateWorker`) | `pulse_lab` | `domains/pulse_lab/runtime/pulse_candidate_worker.py` | due `pulse_trigger_dirty_targets`; exact Token Radar current row and evidence context for Pulse `1h`/`4h` horizons | `pulse_agent_jobs`, `pulse_candidate_edge_state`, `pulse_candidate_run_budget`, `pulse_target_run_budget`, `pulse_agent_runs`, `pulse_agent_run_steps`, `pulse_agent_runtime_versions`, `pulse_agent_eval_cases`, `pulse_agent_eval_results`, `pulse_candidates`, `pulse_candidates.decision_*`, `pulse_candidates.decision_json`, `pulse_playbook_snapshots` | `token_radar_updated` | none | `interval_seconds` |
-| `enrichment` (`EnrichmentWorker`) | `social_enrichment` | `domains/social_enrichment/runtime/enrichment_worker.py` | watched events queue, OpenAI Agents enrichment | enrichment label rows, `model_run` audit, `social_event_extractions.normalized_handle`, `watchlist_handle_signal_events`, `watchlist_handle_signal_stats`, outbound watchlist summary enqueue hook | poll | none | `interval_seconds` |
+| `pulse_candidate` (`PulseCandidateWorker`) | `pulse_lab` | `domains/pulse_lab/runtime/pulse_candidate_worker.py` | due `pulse_trigger_dirty_targets`; exact Token Radar current row and evidence context for Pulse `1h`/`4h` horizons | read models: `pulse_candidate_edge_state`, `pulse_candidates`, `pulse_candidates.decision_*`, `pulse_candidates.decision_json`, `pulse_playbook_snapshots`; control/audit: `pulse_agent_jobs`, run-budget tables, `pulse_agent_runs`, `pulse_agent_run_steps`, runtime-version and eval tables | `token_radar_updated` | none | `interval_seconds` |
+| `enrichment` (`EnrichmentWorker`) | `social_enrichment` | `domains/social_enrichment/runtime/enrichment_worker.py` | watched events queue, LiteLLM-backed event enrichment | enrichment label rows, `model_run` audit, `social_event_extractions.normalized_handle`, `watchlist_handle_signal_events`, `watchlist_handle_signal_stats`, outbound watchlist summary enqueue hook | poll | none | `interval_seconds` |
 | `handle_summary` (`HandleSummaryWorker`) | `watchlist_intel` | `domains/watchlist_intel/runtime/handle_summary_worker.py` | due `watchlist_handle_summary_jobs`, recent signal extractions for claimed summary input | `watchlist_handle_summaries`, `watchlist_handle_summary_runs`, job status | poll | none | `interval_seconds` |
 | `notification_rule` (`NotificationWorker`) | `notifications` | `domains/notifications/runtime/notification_worker.py` | notification rules, candidate rows | `notifications` facts and `notification_deliveries` control rows | poll | none | `interval_seconds` |
 | `notification_delivery` (`NotificationDeliveryWorker`) | `notifications` | `domains/notifications/runtime/notification_delivery.py` | pending `notification_deliveries` | `notification_deliveries` side-effect/control ledger | poll | none | `interval_seconds` |
@@ -434,9 +442,10 @@ object execution, application-side validation, and ops status. It does
 not claim domain jobs, write domain queues, or persist product read
 models.
 
-The low-level `LLMGateway` is transport-only. It owns OpenAI client
-construction, trace export configuration, and cleanup. It does not expose
-worker/stage execution limits.
+The low-level `LLMGateway` is transport-only. It owns redacted LiteLLM
+configuration, shared model policy, and lifecycle cleanup. Concrete provider
+calls live in `integrations/model_execution`; gateway objects do not construct
+provider SDK clients or expose worker/stage execution limits.
 
 Current lanes are configured under `workers.agent_runtime` in
 `workers.yaml`. `agent_runtime.defaults.model` is the single global
@@ -445,8 +454,9 @@ inherits that default. Current lanes are `pulse.pipeline`, `pulse.signal_analyst
 `pulse.bear_case`, `pulse.risk_portfolio_judge`,
 `narrative.mention_semantics`, `narrative.discussion_digest`,
 `social.event_enrichment`, `watchlist.handle_summary`,
-`news.fact_candidate`, and `news.item_brief`. Attempt-burning workers
-reserve capacity before claiming DB work:
+and `news.item_brief`. News fact candidates are deterministic outputs of
+`news_item_process`, not a separate LLM lane. Attempt-burning workers reserve
+capacity before claiming DB work:
 
 `agent_runtime.defaults.model` and lane `model` select the registered model
 capability profile. The profile owns provider family, client-validation

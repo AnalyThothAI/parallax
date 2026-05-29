@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from contextlib import nullcontext
 from typing import Any
 
-from gmgn_twitter_intel.domains.news_intel.services.news_item_agent_policy import needs_news_item_agent_brief
+from gmgn_twitter_intel.domains.news_intel.services.news_item_agent_policy import (
+    needs_news_item_agent_brief,
+    news_item_agent_brief_priority,
+)
 
 DOMAIN_CHOICES = ("all", "news")
 PROJECTION_CHOICES = ("all", "story", "brief_input", "page", "source_quality")
@@ -85,12 +88,10 @@ def _enqueue_news_targets(
         else []
     )
     news_item_targets = [
-        {
-            "projection_name": selected_projection,
-            "target_kind": "news_item",
-            "target_id": str(row["news_item_id"]),
-            "source_watermark_ms": int(row["source_watermark_ms"] or 0),
-        }
+        _news_item_dirty_target(
+            projection_name=selected_projection,
+            row=row,
+        )
         for row in news_item_rows
         for selected_projection in news_item_projections
         if selected_projection != "brief_input" or needs_news_item_agent_brief(row)
@@ -141,6 +142,18 @@ def _selected_projections(requested: str, available: tuple[str, ...]) -> tuple[s
     if requested in available:
         return (requested,)
     return ()
+
+
+def _news_item_dirty_target(*, projection_name: str, row: Mapping[str, Any]) -> dict[str, Any]:
+    target = {
+        "projection_name": projection_name,
+        "target_kind": "news_item",
+        "target_id": str(row["news_item_id"]),
+        "source_watermark_ms": int(row["source_watermark_ms"] or 0),
+    }
+    if projection_name == "brief_input":
+        target["priority"] = news_item_agent_brief_priority(row)
+    return target
 
 
 def _fetch_ids(conn: Any, sql: str, column: str) -> list[str]:

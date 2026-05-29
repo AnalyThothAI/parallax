@@ -28,7 +28,7 @@ type ObservedNewsParams = {
 const defaultNewsFetchParams: ObservedNewsParams = {
   cursor: null,
   limit: 100,
-  min_score: null,
+  min_score: 70,
   q: null,
   signal: null,
   status: null,
@@ -83,7 +83,7 @@ describe("NewsPage", () => {
     await waitFor(() =>
       expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
         ...defaultNewsFetchParams,
-        min_score: 70,
+        min_score: null,
         signal: "bearish",
       }),
     );
@@ -92,7 +92,7 @@ describe("NewsPage", () => {
     await waitFor(() =>
       expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
         ...defaultNewsFetchParams,
-        min_score: 70,
+        min_score: null,
         q: "eth",
         signal: "bearish",
       }),
