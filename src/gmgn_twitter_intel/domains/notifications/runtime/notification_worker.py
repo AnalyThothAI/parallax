@@ -82,7 +82,7 @@ class NotificationWorker(WorkerBase):
     def _process_once_sync(self, *, now_ms: int) -> NotificationProcessResult:
         with self._repository_session() as repos, _unit_of_work_if_available(repos):
             rule_engine = self.rule_engine_factory(repos) if self.rule_engine_factory is not None else self.rule_engine
-            candidates = list(rule_engine.evaluate(now_ms=now_ms))[: self.batch_limit]
+            candidates = list(rule_engine.evaluate(now_ms=now_ms))
             created: list[dict[str, Any]] = []
             external_deliveries_enqueued = False
             for candidate in candidates:
@@ -94,6 +94,8 @@ class NotificationWorker(WorkerBase):
                     or external_deliveries_enqueued
                 )
                 created.append(row)
+                if len(created) >= self.batch_limit:
+                    break
             if not _has_unit_of_work(repos):
                 _commit_if_available(getattr(repos, "notifications", None))
         return NotificationProcessResult(

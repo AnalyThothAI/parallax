@@ -8,6 +8,7 @@ from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.notifications.repositories.notification_repository import NotificationRepository
 from gmgn_twitter_intel.domains.notifications.runtime.notification_worker import NotificationWorker
+from gmgn_twitter_intel.domains.notifications.types import NotificationCandidate
 from tests.unit.test_notification_rules import (
     NOW_MS,
     FakePulse,
@@ -155,6 +156,28 @@ def test_worker_suppresses_delivery_when_external_signature_already_exists_for_n
     assert [delivery["notification_id"] for delivery in repository.deliveries] == [first_created[0]["notification_id"]]
 
 
+def test_worker_batch_limit_counts_created_rows_not_duplicate_candidates():
+    duplicate_a = _notification_candidate("duplicate-a", rule_id="watched_account_activity")
+    duplicate_b = _notification_candidate("duplicate-b", rule_id="watched_account_activity")
+    news = _notification_candidate("news-ready", rule_id="news_high_signal")
+    repository = DedupConflictNotificationRepository()
+    repository.rows_by_dedup[duplicate_a.dedup_key] = {"notification_id": "existing-a"}
+    repository.rows_by_dedup[duplicate_b.dedup_key] = {"notification_id": "existing-b"}
+    worker = NotificationWorker(
+        name="notification_rule",
+        settings=SimpleNamespace(enabled=True, interval_seconds=0.2, batch_size=1),
+        db=SimpleNamespace(worker_session=lambda *_args, **_kwargs: repository_session(repository)),
+        telemetry=SimpleNamespace(),
+        rule_engine=SequenceRuleEngine([[duplicate_a, duplicate_b, news]]),
+    )
+
+    created = asyncio.run(worker.process_once(now_ms=NOW_MS))
+
+    assert len(created) == 1
+    assert created[0]["dedup_key"] == "news-ready"
+    assert created[0]["rule_id"] == "news_high_signal"
+
+
 def test_signal_pulse_duplicate_lookup_uses_in_app_and_external_signatures():
     class RecordingConn:
         def __init__(self):
@@ -204,6 +227,7 @@ class DedupConflictNotificationRepository:
         row = {
             "notification_id": notification_id,
             "dedup_key": dedup_key,
+            "rule_id": kwargs["rule_id"],
             "channels_json": list(kwargs.get("channels") or []),
             "payload_json": kwargs.get("payload") or {},
         }
@@ -340,3 +364,20 @@ def _only_signal_pulse_candidate(row: dict, *, notifications):
     pulse_candidates = [item for item in candidates if item.rule_id == "signal_pulse_candidate"]
     assert len(pulse_candidates) == 1
     return pulse_candidates[0]
+
+
+def _notification_candidate(dedup_key: str, *, rule_id: str) -> NotificationCandidate:
+    return NotificationCandidate(
+        dedup_key=dedup_key,
+        rule_id=rule_id,
+        severity="high",
+        title=dedup_key,
+        body=dedup_key,
+        entity_type="news_item",
+        entity_key=dedup_key,
+        source_table="test",
+        source_id=dedup_key,
+        occurrence_at_ms=NOW_MS,
+        payload={"in_app_signature": dedup_key},
+        channels=("in_app",),
+    )
