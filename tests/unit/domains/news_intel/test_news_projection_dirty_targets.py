@@ -728,7 +728,7 @@ class FakeFetchRepos:
 
     def upsert_canonical_news_item(self, **payload: Any) -> dict[str, Any]:
         self.conn.record("upsert_canonical_news_item")
-        assert payload["canonical_identity"].canonical_item_key.startswith("content-hash:")
+        assert payload["canonical_identity"].canonical_item_key.startswith("canonical-url:")
         return dict(self.news_statuses.pop(0))
 
     def update_source_http_cache(self, **payload: Any) -> None:

@@ -5,13 +5,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from gmgn_twitter_intel.domains.news_intel.services.news_url_identity import (
-    is_article_identity,
-)
-from gmgn_twitter_intel.domains.news_intel.services.news_url_identity import (
     url_identity_kind as classify_url_identity_kind,
 )
 
-CANONICAL_POLICY_VERSION = "news_canonical_item_v1"
+CANONICAL_POLICY_VERSION = "news_canonical_item_v2"
 _HOUR_MS = 3_600_000
 
 
@@ -47,7 +44,7 @@ def canonical_identity_for_observation(
     title_fingerprint: str,
     published_at_ms: int,
 ) -> CanonicalIdentity:
-    """Choose provider article id, article URL, or content hash as the canonical hard key."""
+    """Choose the canonical hard key for one provider observation."""
 
     normalized_provider_type = str(provider_type or "").strip().lower()
     normalized_source_id = str(source_id or "").strip()
@@ -60,6 +57,25 @@ def canonical_identity_for_observation(
         provider_type=normalized_provider_type,
         provider_article_id=normalized_article_id,
     )
+
+    if _is_public_canonical_url(normalized_url):
+        return _identity(
+            canonical_item_key=f"canonical-url:{normalized_url}",
+            dedup_key_kind="canonical_url",
+            dedup_key_confidence="strong",
+            url_identity_kind=url_kind,
+            match_type="same_canonical_url",
+            match_confidence="strong",
+            evidence={
+                "canonical_url": normalized_url,
+                "url_identity_kind": url_kind,
+                "source_id": normalized_source_id,
+                "provider_type": normalized_provider_type,
+                "provider_article_id": normalized_article_id or None,
+                "provider_article_key": article_key or None,
+                "content_hash": normalized_content_hash or None,
+            },
+        )
 
     if normalized_content_hash:
         return _identity(
@@ -96,21 +112,6 @@ def canonical_identity_for_observation(
             },
         )
 
-    if is_article_identity(normalized_url, kind=url_kind):
-        return _identity(
-            canonical_item_key=f"article-url:{normalized_url}",
-            dedup_key_kind="article_url",
-            dedup_key_confidence="strong",
-            url_identity_kind=url_kind,
-            match_type="same_article_url",
-            match_confidence="strong",
-            evidence={
-                "canonical_url": normalized_url,
-                "url_identity_kind": url_kind,
-                "source_id": normalized_source_id,
-            },
-        )
-
     published_hour_ms = _published_hour_ms(published_at_ms)
     return _identity(
         canonical_item_key=(f"weak-title-source-window:{normalized_source_id}:{published_hour_ms}:{normalized_title}"),
@@ -134,6 +135,11 @@ def stable_news_item_id(canonical_item_key: str) -> str:
 
     digest = hashlib.sha256(str(canonical_item_key or "").encode("utf-8")).hexdigest()
     return f"news-item-{digest[:32]}"
+
+
+def _is_public_canonical_url(canonical_url: str) -> bool:
+    normalized = str(canonical_url or "").strip().lower()
+    return normalized.startswith(("http://", "https://"))
 
 
 def _identity(

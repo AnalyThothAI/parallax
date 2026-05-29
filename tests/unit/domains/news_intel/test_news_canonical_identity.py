@@ -14,49 +14,52 @@ def _service() -> Any:
         pytest.fail(f"news_canonical_identity service is required: {exc}")
 
 
-def test_content_hash_wins_over_opennews_id_and_url() -> None:
+def test_public_canonical_url_wins_over_opennews_id_and_content_hash() -> None:
     service = _service()
+    canonical_url = "https://www.binance.com/en/support/announcement/binance-will-list-example-abc123"
 
     identity = service.canonical_identity_for_observation(
         provider_type="opennews",
         source_id="opennews-news",
         provider_article_id="2367422",
-        canonical_url="https://www.binance.com/en/support/announcement/binance-will-list-example-abc123",
+        canonical_url=canonical_url,
         content_hash="hash-abc",
         title_fingerprint="binance will list example",
         published_at_ms=1_714_004_321_000,
     )
 
-    assert identity.canonical_item_key == "content-hash:hash-abc"
-    assert identity.news_item_id == service.stable_news_item_id("content-hash:hash-abc")
-    assert identity.dedup_key_kind == "content_hash"
+    assert identity.canonical_item_key == f"canonical-url:{canonical_url}"
+    assert identity.news_item_id == service.stable_news_item_id(f"canonical-url:{canonical_url}")
+    assert identity.dedup_key_kind == "canonical_url"
     assert identity.dedup_key_confidence == "strong"
-    assert identity.match_type == "same_content_hash"
+    assert identity.match_type == "same_canonical_url"
     assert identity.match_confidence == "strong"
     assert identity.evidence["provider_article_key"] == "opennews:2367422"
+    assert identity.evidence["content_hash"] == "hash-abc"
 
 
-def test_container_url_does_not_win_over_content_hash() -> None:
+def test_homepage_url_is_still_a_hard_canonical_url_identity() -> None:
     service = _service()
+    canonical_url = "https://tass.ru/"
 
     identity = service.canonical_identity_for_observation(
         provider_type="opennews",
         source_id="opennews-news",
         provider_article_id="",
-        canonical_url="https://tass.ru/",
+        canonical_url=canonical_url,
         content_hash="hash-same-content",
         title_fingerprint="market update",
         published_at_ms=1_714_004_321_000,
     )
 
-    assert identity.canonical_item_key == "content-hash:hash-same-content"
+    assert identity.canonical_item_key == f"canonical-url:{canonical_url}"
     assert identity.url_identity_kind == "homepage"
-    assert identity.dedup_key_kind == "content_hash"
+    assert identity.dedup_key_kind == "canonical_url"
     assert identity.dedup_key_confidence == "strong"
-    assert identity.match_type == "same_content_hash"
+    assert identity.match_type == "same_canonical_url"
 
 
-def test_article_url_wins_when_provider_id_and_content_hash_missing() -> None:
+def test_article_url_uses_the_global_canonical_url_key() -> None:
     service = _service()
     canonical_url = "https://www.binance.com/en/support/announcement/binance-will-list-example-abc123"
 
@@ -70,11 +73,30 @@ def test_article_url_wins_when_provider_id_and_content_hash_missing() -> None:
         published_at_ms=1_714_004_321_000,
     )
 
-    assert identity.canonical_item_key == f"article-url:{canonical_url}"
+    assert identity.canonical_item_key == f"canonical-url:{canonical_url}"
     assert identity.url_identity_kind == "article"
-    assert identity.dedup_key_kind == "article_url"
+    assert identity.dedup_key_kind == "canonical_url"
     assert identity.dedup_key_confidence == "strong"
-    assert identity.match_type == "same_article_url"
+    assert identity.match_type == "same_canonical_url"
+
+
+def test_opennews_provider_id_wins_without_public_url_or_content_hash() -> None:
+    service = _service()
+
+    identity = service.canonical_identity_for_observation(
+        provider_type="opennews",
+        source_id="opennews-news",
+        provider_article_id="2367422",
+        canonical_url="opennews://item/2367422",
+        content_hash="",
+        title_fingerprint="binance will list example",
+        published_at_ms=1_714_004_321_000,
+    )
+
+    assert identity.canonical_item_key == "provider:opennews:2367422"
+    assert identity.dedup_key_kind == "provider_article_id"
+    assert identity.dedup_key_confidence == "strong"
+    assert identity.match_type == "same_provider_article_id"
 
 
 def test_stable_news_item_id_is_order_independent() -> None:

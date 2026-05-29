@@ -195,6 +195,9 @@ TOKEN_EQUITY_WORKERSPACE_ROOT_FIX_MIGRATION = Path(
 TOKEN_RADAR_RUNTIME_NOT_NULL_GUARDRAILS_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0122_token_radar_runtime_not_null_guardrails.py"
 )
+NEWS_PUBLIC_URL_HARD_IDENTITY_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260529_0123_news_public_url_hard_identity.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 LEGACY_TOKEN_RADAR_CURRENT_JSON_COLUMNS = {
@@ -969,6 +972,7 @@ def test_runtime_performance_hard_cut_revision_chain() -> None:
         (NEWS_TOKEN_PRESENCE_FILTER_INDEX_MIGRATION, "20260528_0120", "20260528_0119"),
         (TOKEN_EQUITY_WORKERSPACE_ROOT_FIX_MIGRATION, "20260528_0121", "20260528_0120"),
         (TOKEN_RADAR_RUNTIME_NOT_NULL_GUARDRAILS_MIGRATION, "20260528_0122", "20260528_0121"),
+        (NEWS_PUBLIC_URL_HARD_IDENTITY_MIGRATION, "20260529_0123", "20260528_0122"),
     )
 
     for migration, revision, down_revision in migrations:
@@ -1787,6 +1791,24 @@ def test_token_radar_runtime_not_null_guardrails_do_not_rehash_payloads() -> Non
     assert "ALTER COLUMN source_payload_hash SET NOT NULL" in text
     assert "md5" not in normalized_text.lower()
     assert "UPDATE token_radar_rank_source_events" not in text
+
+
+def test_news_public_url_hard_identity_migration_guards_database_duplicates() -> None:
+    text = NEWS_PUBLIC_URL_HARD_IDENTITY_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    assert 'revision = "20260529_0123"' in text
+    assert 'down_revision = "20260528_0122"' in text
+    assert "same_canonical_url" in text
+    assert "canonical-url:" in text
+    assert "dedup_key_kind = 'canonical_url'" in text
+    assert "ux_news_items_public_canonical_url" in text
+    assert "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS ux_news_items_public_canonical_url" in text
+    assert "ix_news_provider_items_canonical_url" in text
+    assert "PARTITION BY public_items.canonical_url" in text
+    assert "DELETE FROM news_items AS items" in text
+    assert "news_public_url_hard_identity_rebuild" in text
+    assert "canonical_url ~* '^https?://'" in normalized_text
 
 
 def test_asset_migration_adds_identity_resolution_tables() -> None:

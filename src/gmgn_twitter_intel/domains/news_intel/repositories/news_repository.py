@@ -755,19 +755,21 @@ class NewsRepository:
             raise ValueError(f"news provider item does not exist: {provider_item_id}")
         observation_source_id = str(observation["source_id"])
         observation_source_domain = str(observation["source_domain"])
-        identity = (
-            canonical_identity
-            if canonical_identity is not None
-            else canonical_identity_for_observation(
-                provider_type=str(observation["provider_type"]),
-                source_id=observation_source_id,
-                provider_article_id=str(observation["provider_article_id"] or ""),
-                canonical_url=canonical_url,
-                content_hash=content_hash,
-                title_fingerprint=title_fingerprint,
-                published_at_ms=item_published_at_ms,
-            )
+        computed_identity = canonical_identity_for_observation(
+            provider_type=str(observation["provider_type"]),
+            source_id=observation_source_id,
+            provider_article_id=str(observation["provider_article_id"] or ""),
+            canonical_url=canonical_url,
+            content_hash=content_hash,
+            title_fingerprint=title_fingerprint,
+            published_at_ms=item_published_at_ms,
         )
+        identity = canonical_identity if canonical_identity is not None else computed_identity
+        if (
+            computed_identity.dedup_key_kind == "canonical_url"
+            and identity.canonical_item_key != computed_identity.canonical_item_key
+        ):
+            identity = computed_identity
         provider_article_key = str(observation["provider_article_key"] or "")
         observation_payload_status = str(observation["provider_payload_status"] or "").strip().lower()
         incoming_payload_status = str(provider_payload_status or "").strip().lower()
@@ -775,6 +777,8 @@ class NewsRepository:
             incoming_payload_status if incoming_payload_status in {"partial", "ready"} else observation_payload_status
         )
         ready_content_identity = identity.dedup_key_kind == "content_hash" and effective_payload_status == "ready"
+        hard_url_identity = identity.dedup_key_kind == "canonical_url"
+        promotes_provider_article_identity = hard_url_identity or ready_content_identity
         if provider_article_key:
             existing_provider_article_item = self.conn.execute(
                 """
@@ -810,27 +814,30 @@ class NewsRepository:
                 and str(existing_provider_article_item["canonical_item_key"] or "")
                 and str(existing_provider_article_item["canonical_item_key"]) != identity.canonical_item_key
             )
-            if reuse_provider_article_item and ready_content_identity:
-                existing_ready_content_identity = (
-                    str(existing_provider_article_item["dedup_key_kind"] or "") == "content_hash"
-                    and str(existing_provider_article_item["url_identity_kind"] or "") == "article"
-                    and str(existing_provider_article_item["provider_payload_status"] or "") == "ready"
-                )
-                same_provider_item = str(existing_provider_article_item["provider_item_id"] or "") == str(
-                    provider_item_id
-                )
-                if same_provider_item:
+            if reuse_provider_article_item and promotes_provider_article_identity:
+                if hard_url_identity:
                     reuse_provider_article_item = False
-                elif existing_ready_content_identity:
-                    existing_tie_breaker = (
-                        provider_article_key,
-                        str(existing_provider_article_item["source_id"] or ""),
-                        str(existing_provider_article_item["provider_item_id"] or ""),
-                    )
-                    incoming_tie_breaker = (provider_article_key, observation_source_id, str(provider_item_id))
-                    reuse_provider_article_item = existing_tie_breaker <= incoming_tie_breaker
                 else:
-                    reuse_provider_article_item = False
+                    existing_ready_content_identity = (
+                        str(existing_provider_article_item["dedup_key_kind"] or "") == "content_hash"
+                        and str(existing_provider_article_item["url_identity_kind"] or "") == "article"
+                        and str(existing_provider_article_item["provider_payload_status"] or "") == "ready"
+                    )
+                    same_provider_item = str(existing_provider_article_item["provider_item_id"] or "") == str(
+                        provider_item_id
+                    )
+                    if same_provider_item:
+                        reuse_provider_article_item = False
+                    elif existing_ready_content_identity:
+                        existing_tie_breaker = (
+                            provider_article_key,
+                            str(existing_provider_article_item["source_id"] or ""),
+                            str(existing_provider_article_item["provider_item_id"] or ""),
+                        )
+                        incoming_tie_breaker = (provider_article_key, observation_source_id, str(provider_item_id))
+                        reuse_provider_article_item = existing_tie_breaker <= incoming_tie_breaker
+                    else:
+                        reuse_provider_article_item = False
             if reuse_provider_article_item and existing_provider_article_item is not None:
                 identity = CanonicalIdentity(
                     canonical_item_key=str(existing_provider_article_item["canonical_item_key"]),
@@ -1101,11 +1108,12 @@ class NewsRepository:
             ),
         )
         provider_article_remapped_old_item_ids: list[str] = []
-        if provider_article_key and ready_content_identity:
+        if provider_article_key and promotes_provider_article_identity:
             provider_article_remapped_old_item_ids = self._remap_provider_article_edges_to_news_item(
                 provider_article_key=provider_article_key,
                 news_item_id=str(row["news_item_id"]),
                 now_ms=now_ms,
+                remap_reason="hard_canonical_url" if hard_url_identity else "ready_content_hash",
             )
         row = self._refresh_news_item_observation_summary(news_item_id=str(row["news_item_id"]), now_ms=now_ms)
         aggregate_changed = existing is not None and _news_item_aggregate_changed(existing, row)
@@ -1165,6 +1173,7 @@ class NewsRepository:
         provider_article_key: str,
         news_item_id: str,
         now_ms: int,
+        remap_reason: str = "ready_content_hash",
     ) -> list[str]:
         rows = self.conn.execute(
             """
@@ -1181,7 +1190,7 @@ class NewsRepository:
                      match_confidence = 'strong',
                      policy_version = %s,
                      evidence_json = edges.evidence_json || jsonb_build_object(
-                       'provider_article_remap_reason', 'ready_content_hash',
+                       'provider_article_remap_reason', %s::text,
                        'provider_article_remapped_to_news_item_id', %s::text,
                        'provider_article_remapped_at_ms', %s::bigint
                      ),
@@ -1198,6 +1207,7 @@ class NewsRepository:
                 str(news_item_id),
                 str(news_item_id),
                 CANONICAL_POLICY_VERSION,
+                str(remap_reason),
                 str(news_item_id),
                 int(now_ms),
                 int(now_ms),

@@ -358,7 +358,7 @@ def test_opennews_article_id_collapses_across_sources_into_observation_edges(tmp
         edge_count = conn.execute("SELECT COUNT(*) AS count FROM news_item_observation_edges").fetchone()["count"]
         stored_news = conn.execute(
             "SELECT * FROM news_items WHERE canonical_item_key = %s",
-            ("content-hash:content-btc-headline",),
+            ("canonical-url:https://example.com/news/2367422",),
         ).fetchone()
         edges = conn.execute(
             """
@@ -404,7 +404,7 @@ def test_opennews_article_id_collapses_across_sources_into_observation_edges(tmp
     assert first_news["news_item_id"] == second_news["news_item_id"] == stored_news["news_item_id"]
     assert news_count == 1
     assert edge_count == 2
-    assert stored_news["canonical_item_key"] == "content-hash:content-btc-headline"
+    assert stored_news["canonical_item_key"] == "canonical-url:https://example.com/news/2367422"
     assert stored_news["duplicate_observation_count"] == 2
     assert stored_news["source_ids_json"] == ["opennews-listing", "opennews-news"]
     assert stored_news["source_domains_json"] == ["6551.io"]
@@ -415,7 +415,7 @@ def test_opennews_article_id_collapses_across_sources_into_observation_edges(tmp
             "news_item_id": stored_news["news_item_id"],
             "source_id": "opennews-listing",
             "provider_article_key": "opennews:2367422",
-            "match_type": "same_content_hash",
+            "match_type": "same_canonical_url",
             "match_confidence": "strong",
         },
         {
@@ -423,7 +423,7 @@ def test_opennews_article_id_collapses_across_sources_into_observation_edges(tmp
             "news_item_id": stored_news["news_item_id"],
             "source_id": "opennews-news",
             "provider_article_key": "opennews:2367422",
-            "match_type": "same_content_hash",
+            "match_type": "same_canonical_url",
             "match_confidence": "strong",
         },
     ]
@@ -450,14 +450,14 @@ def test_exact_content_hash_collapses_different_opennews_article_ids(tmp_path) -
                 source_id="opennews-news",
                 fetch_run_id=run_id,
                 source_item_key=f"source-key-{article_id}",
-                canonical_url=f"https://example.com/news/{article_id}",
+                canonical_url=f"opennews://item/{article_id}",
                 payload_hash=f"payload-{article_id}",
                 raw_payload_json={"id": article_id, "title": "Shared body", "aiRating": {"status": "done"}},
                 fetched_at_ms=NOW_MS,
             )
             news = repo.upsert_canonical_news_item(
                 provider_item_id=provider["provider_item_id"],
-                canonical_url=f"https://example.com/news/{article_id}",
+                canonical_url=f"opennews://item/{article_id}",
                 title="Shared body",
                 summary="Shared summary",
                 body_text="Shared body",
