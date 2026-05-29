@@ -359,13 +359,23 @@ class PulseAdmissionRepository:
             """
             UPDATE pulse_candidate_edge_state
             SET last_edge_events_json = %s,
+                last_processed_state_json = CASE
+                  WHEN %s = 'blocked_low_information' THEN %s
+                  ELSE last_processed_state_json
+                END,
+                last_processed_at_ms = CASE
+                  WHEN %s = 'blocked_low_information' THEN %s
+                  ELSE last_processed_at_ms
+                END,
                 last_suppressed_reason = %s,
                 last_suppressed_at_ms = %s,
                 pending_score_band = CASE
+                  WHEN %s = 'blocked_low_information' THEN NULL
                   WHEN %s = 'score_band_pending' THEN %s
                   ELSE pending_score_band
                 END,
                 pending_score_band_count = CASE
+                  WHEN %s = 'blocked_low_information' THEN 0
                   WHEN %s = 'score_band_pending' AND pending_score_band = %s
                     THEN pending_score_band_count + 1
                   WHEN %s = 'score_band_pending'
@@ -379,9 +389,15 @@ class PulseAdmissionRepository:
             (
                 _json(edge_events_json),
                 reason,
+                _json(current_state_json),
+                reason,
                 int(suppressed_at_ms),
                 reason,
+                int(suppressed_at_ms),
+                reason,
+                reason,
                 score_band,
+                reason,
                 reason,
                 score_band,
                 reason,

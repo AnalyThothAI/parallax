@@ -12,7 +12,7 @@ from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection impo
 
 
 def _claim(*, source_dirty: bool, market_dirty: bool, repair_dirty: bool) -> dict[str, Any]:
-    return {
+    claim = {
         "target_type_key": "Asset",
         "identity_id": "asset-1",
         "payload_hash": "claim-hash",
@@ -22,6 +22,8 @@ def _claim(*, source_dirty: bool, market_dirty: bool, repair_dirty: bool) -> dic
         "market_dirty": market_dirty,
         "repair_dirty": repair_dirty,
     }
+    claim["source_event_ids_json"] = ["event-claim"] if source_dirty or repair_dirty else []
+    return claim
 
 
 def test_claim_requires_source_rebuild_classifies_dirty_kind_flags() -> None:
@@ -304,7 +306,7 @@ class FakeRankSources:
             for request in request_list
         }
 
-    def populate_edges_for_requests(self, requests, *, projected_at_ms, commit):
+    def populate_edges_for_event_ids(self, requests, *, projected_at_ms, commit):
         self.populate_calls.append(
             {
                 "requests": list(requests),

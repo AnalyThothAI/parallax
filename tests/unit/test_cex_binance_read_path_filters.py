@@ -85,6 +85,31 @@ def test_token_target_repository_cex_reads_are_binance_usdt_swap_only() -> None:
     _assert_token_target_timeline_rejects_legacy_cex_event_tick(conn.sql_calls[-1])
 
 
+def test_token_target_repository_event_id_timeline_starts_from_event_id_unnest() -> None:
+    conn = RecordingConn()
+
+    TokenTargetRepository(conn).timeline_rows_for_event_ids(
+        target_type="CexToken",
+        target_id="cex_token:BTC",
+        event_ids=["event-2", "event-1"],
+        watched_only=True,
+        limit=25,
+    )
+
+    sql = conn.sql_calls[-1]
+    assert re.search(r"WITH\s+requested_events\s+AS\s*\(\s*SELECT", sql)
+    assert "FROM unnest(%s::text[]) WITH ORDINALITY AS event_ids(event_id, ordinality)" in sql
+    assert "JOIN events ON events.event_id = requested_events.event_id" in sql
+    assert "JOIN token_intent_resolutions tir" in sql
+    assert "tir.is_current = true" in sql
+    assert "events.is_watched = true" in sql
+    assert "events.received_at_ms >= %s" not in sql
+    assert conn.params_calls[-1][0] == ["event-2", "event-1"]
+    _assert_binance_usdt_swap_only(sql)
+    _assert_no_legacy_cex_preference_ordering(sql)
+    _assert_token_target_timeline_rejects_legacy_cex_event_tick(sql)
+
+
 def test_account_quality_cex_market_target_read_is_binance_usdt_swap_only() -> None:
     conn = RecordingConn()
 

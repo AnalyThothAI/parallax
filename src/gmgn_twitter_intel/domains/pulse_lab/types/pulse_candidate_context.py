@@ -21,6 +21,7 @@ class PulseCandidateContext:
     symbol: str | None
     factor_snapshot: dict[str, Any]
     selected_posts: list[dict[str, Any]]
+    post_clusters: list[dict[str, Any]]
     gate_result: dict[str, Any] | None
     edge_state: dict[str, Any] | None
     edge_events: tuple[str, ...]
@@ -45,6 +46,7 @@ class PulseCandidateContext:
             "edge_state": self.edge_state or {},
             "edge_events": list(self.edge_events),
             "selected_posts": self.selected_posts,
+            "post_clusters": self.post_clusters,
             "source_event_ids": self.source_event_ids,
             "evidence_event_ids": self.evidence_event_ids,
         }

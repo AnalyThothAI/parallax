@@ -24,6 +24,7 @@ class TokenRadarSourceRequest:
     analysis_since_ms: int
     score_since_ms: int
     now_ms: int
+    source_event_ids: tuple[str, ...] = ()
 
 
 class TokenRadarRankSourceQuery:
@@ -65,7 +66,7 @@ class TokenRadarRankSourceQuery:
             rows_by_target[target_key] = payload
         return rows_by_target
 
-    def populate_edges_for_requests(
+    def populate_edges_for_event_ids(
         self,
         requests: Sequence[TokenRadarSourceRequest],
         *,
@@ -75,7 +76,7 @@ class TokenRadarRankSourceQuery:
         changed = 0
         for chunk in _chunks(tuple(requests), self.chunk_size):
             row = self.conn.execute(
-                _POPULATE_RANK_SOURCE_EDGES_SQL,
+                _POPULATE_RANK_SOURCE_EDGES_FOR_EVENT_IDS_SQL,
                 (
                     Jsonb([_request_payload(r) for r in chunk]),
                     TOKEN_RADAR_RESOLVER_POLICY_VERSION,
@@ -131,6 +132,7 @@ def _request_payload(request: TokenRadarSourceRequest) -> dict[str, Any]:
         "analysis_since_ms": int(request.analysis_since_ms),
         "score_since_ms": int(request.score_since_ms),
         "now_ms": int(request.now_ms),
+        "source_event_ids_json": list(request.source_event_ids),
     }
 
 
@@ -365,7 +367,7 @@ ORDER BY
 """
 
 
-_POPULATE_RANK_SOURCE_EDGES_SQL = """
+_POPULATE_RANK_SOURCE_EDGES_FOR_EVENT_IDS_SQL = """
 WITH raw_requested AS (
   SELECT *
   FROM jsonb_to_recordset(%s::jsonb) AS r(
@@ -376,11 +378,12 @@ WITH raw_requested AS (
     scope text,
     analysis_since_ms bigint,
     score_since_ms bigint,
-    now_ms bigint
+    now_ms bigint,
+    source_event_ids_json jsonb
   )
 ),
-requested AS (
-  SELECT DISTINCT ON ("window", scope, target_type_key, identity_id)
+requested_event_ids AS (
+  SELECT DISTINCT
     request_key,
     target_type_key,
     identity_id,
@@ -388,24 +391,20 @@ requested AS (
     scope,
     analysis_since_ms,
     score_since_ms,
-    now_ms
+    now_ms,
+    source_ids.source_event_id
   FROM raw_requested
-  ORDER BY
-    "window",
-    scope,
-    target_type_key,
-    identity_id,
-    analysis_since_ms ASC,
-    score_since_ms ASC,
-    now_ms DESC,
-    request_key ASC
+  CROSS JOIN LATERAL jsonb_array_elements_text(
+    COALESCE(raw_requested.source_event_ids_json, '[]'::jsonb)
+  ) AS source_ids(source_event_id)
+  WHERE source_ids.source_event_id <> ''
 ),
 source_intents AS (
   SELECT
-    requested."window",
-    requested.scope,
-    requested.target_type_key,
-    requested.identity_id,
+    requested_event_ids."window",
+    requested_event_ids.scope,
+    requested_event_ids.target_type_key,
+    requested_event_ids.identity_id,
     token_intents.intent_id,
     token_intents.event_id,
     token_intents.intent_key,
@@ -521,28 +520,32 @@ source_intents AS (
     NULL::text AS before_event_price_quote_symbol,
     NULL::text AS before_event_price_basis,
     false AS first_seen_global_24h
-  FROM requested
+  FROM requested_event_ids
+  JOIN token_intents
+    ON token_intents.event_id = requested_event_ids.source_event_id
+  JOIN events
+    ON events.event_id = requested_event_ids.source_event_id
   JOIN token_intent_resolutions
-    ON token_intent_resolutions.target_type = requested.target_type_key
-   AND token_intent_resolutions.target_id = requested.identity_id
-  JOIN token_intents ON token_intents.intent_id = token_intent_resolutions.intent_id
-  JOIN events ON events.event_id = token_intents.event_id
+    ON token_intent_resolutions.intent_id = token_intents.intent_id
+   AND token_intent_resolutions.event_id = requested_event_ids.source_event_id
+   AND token_intent_resolutions.target_type = requested_event_ids.target_type_key
+   AND token_intent_resolutions.target_id = requested_event_ids.identity_id
   LEFT JOIN account_profiles ap
-    ON events.received_at_ms >= requested.score_since_ms
+    ON events.received_at_ms >= requested_event_ids.score_since_ms
    AND ap.handle = LOWER(events.author_handle)
   LEFT JOIN social_event_extractions see
-    ON events.received_at_ms >= requested.score_since_ms
+    ON events.received_at_ms >= requested_event_ids.score_since_ms
    AND see.event_id = token_intents.event_id
   LEFT JOIN registry_assets
-    ON events.received_at_ms >= requested.score_since_ms
+    ON events.received_at_ms >= requested_event_ids.score_since_ms
    AND token_intent_resolutions.target_type = 'Asset'
    AND registry_assets.asset_id = token_intent_resolutions.target_id
   LEFT JOIN asset_identity_current
-    ON events.received_at_ms >= requested.score_since_ms
+    ON events.received_at_ms >= requested_event_ids.score_since_ms
    AND token_intent_resolutions.target_type = 'Asset'
    AND asset_identity_current.asset_id = token_intent_resolutions.target_id
   LEFT JOIN cex_tokens
-    ON events.received_at_ms >= requested.score_since_ms
+    ON events.received_at_ms >= requested_event_ids.score_since_ms
    AND token_intent_resolutions.target_type = 'CexToken'
    AND cex_tokens.cex_token_id = token_intent_resolutions.target_id
   LEFT JOIN LATERAL (
@@ -557,9 +560,9 @@ source_intents AS (
       AND price_feeds.status = 'canonical'
     ORDER BY price_feeds.updated_at_ms DESC, price_feeds.native_market_id ASC
     LIMIT 1
-  ) preferred_price_feed ON events.received_at_ms >= requested.score_since_ms
+  ) preferred_price_feed ON events.received_at_ms >= requested_event_ids.score_since_ms
   LEFT JOIN price_feeds
-    ON events.received_at_ms >= requested.score_since_ms
+    ON events.received_at_ms >= requested_event_ids.score_since_ms
    AND price_feeds.pricefeed_id = CASE
       WHEN token_intent_resolutions.target_type = 'CexToken'
         THEN preferred_price_feed.pricefeed_id
@@ -589,7 +592,7 @@ source_intents AS (
           THEN price_feeds.provider || ':' || price_feeds.native_market_id
         ELSE NULL
       END AS target_id
-  ) market_target ON events.received_at_ms >= requested.score_since_ms
+  ) market_target ON events.received_at_ms >= requested_event_ids.score_since_ms
   LEFT JOIN LATERAL (
     SELECT
       enriched_events.tick_observed_at_ms,
@@ -599,7 +602,7 @@ source_intents AS (
       enriched_events.tick_lag_ms,
       enriched_events.created_at_ms
     FROM enriched_events
-    WHERE events.received_at_ms >= requested.score_since_ms
+    WHERE events.received_at_ms >= requested_event_ids.score_since_ms
       AND enriched_events.event_id = token_intents.event_id
       AND enriched_events.intent_id = token_intents.intent_id
       AND enriched_events.resolution_id = token_intent_resolutions.resolution_id
@@ -618,13 +621,13 @@ source_intents AS (
   LEFT JOIN market_tick_current latest_price_tick
     ON latest_price_tick.target_type = market_target.target_type
    AND latest_price_tick.target_id = market_target.target_id
-  WHERE events.received_at_ms >= requested.analysis_since_ms
-    AND events.received_at_ms <= requested.now_ms
+  WHERE events.received_at_ms >= requested_event_ids.analysis_since_ms
+    AND events.received_at_ms <= requested_event_ids.now_ms
     AND token_intent_resolutions.is_current = true
     AND token_intent_resolutions.resolver_policy_version = %s
     AND token_intent_resolutions.target_type IN ('Asset', 'CexToken')
     AND token_intent_resolutions.target_id IS NOT NULL
-    AND CASE WHEN requested.scope = 'matched' THEN events.is_watched = true ELSE true END
+    AND CASE WHEN requested_event_ids.scope = 'matched' THEN events.is_watched = true ELSE true END
 ),
 deduped_source AS (
   SELECT *
@@ -946,7 +949,7 @@ upserted AS (
 ),
 deleted AS (
   DELETE FROM token_radar_rank_source_events stale_edges
-  USING requested
+  USING requested_event_ids requested
   WHERE stale_edges.projection_version = %s
     AND stale_edges."window" = requested."window"
     AND stale_edges.scope = requested.scope
@@ -954,8 +957,7 @@ deleted AS (
     AND stale_edges.target_type_key = requested.target_type_key
     AND stale_edges.identity_id = requested.identity_id
     AND stale_edges.source_kind = 'event'
-    AND stale_edges.event_received_at_ms >= requested.analysis_since_ms
-    AND stale_edges.event_received_at_ms <= requested.now_ms
+    AND stale_edges.source_id = requested.source_event_id
     AND NOT EXISTS (
       SELECT 1
       FROM ranked_source fresh

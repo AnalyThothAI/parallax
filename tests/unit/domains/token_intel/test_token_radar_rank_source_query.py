@@ -69,7 +69,7 @@ def test_rank_source_query_reads_compact_rank_source_events_without_legacy_sourc
 def test_rank_source_query_populates_compact_edges_without_event_text_or_legacy_cte():
     conn = FakeConn(rows=[{"upserted_count": 3, "deleted_count": 1}])
 
-    changed = TokenRadarRankSourceQuery(conn).populate_edges_for_requests(
+    changed = TokenRadarRankSourceQuery(conn).populate_edges_for_event_ids(
         [
             TokenRadarSourceRequest(
                 request_key="request-1",
@@ -104,7 +104,7 @@ def test_rank_source_query_populates_compact_edges_without_event_text_or_legacy_
 def test_rank_source_query_dedupes_event_sources_before_upsert():
     conn = FakeConn(rows=[{"upserted_count": 1, "deleted_count": 0}])
 
-    TokenRadarRankSourceQuery(conn).populate_edges_for_requests(
+    TokenRadarRankSourceQuery(conn).populate_edges_for_event_ids(
         [
             TokenRadarSourceRequest(
                 request_key="request-1",
@@ -133,10 +133,10 @@ def test_rank_source_query_dedupes_event_sources_before_upsert():
     assert normalized_sql.index("FROM deduped_source") < normalized_sql.index("INSERT INTO")
 
 
-def test_rank_source_query_dedupes_duplicate_populate_requests_to_widest_range():
+def test_rank_source_query_expands_requested_source_event_ids():
     conn = FakeConn(rows=[{"upserted_count": 1, "deleted_count": 0}])
 
-    TokenRadarRankSourceQuery(conn).populate_edges_for_requests(
+    TokenRadarRankSourceQuery(conn).populate_edges_for_event_ids(
         [
             TokenRadarSourceRequest(
                 request_key="narrow",
@@ -165,19 +165,20 @@ def test_rank_source_query_dedupes_duplicate_populate_requests_to_widest_range()
 
     normalized_sql = " ".join(conn.sql.split())
     assert "raw_requested AS" in conn.sql
-    assert 'SELECT DISTINCT ON ("window", scope, target_type_key, identity_id)' in conn.sql
-    assert "FROM raw_requested" in conn.sql
-    assert "analysis_since_ms ASC" in conn.sql
-    assert "score_since_ms ASC" in conn.sql
-    assert "now_ms DESC" in conn.sql
-    assert normalized_sql.index("raw_requested AS") < normalized_sql.index("requested AS")
-    assert normalized_sql.index("requested AS") < normalized_sql.index("source_intents AS")
+    assert "requested_event_ids AS" in conn.sql
+    assert "source_event_ids_json jsonb" in conn.sql
+    assert "jsonb_array_elements_text" in conn.sql
+    assert "token_intents.event_id = requested_event_ids.source_event_id" in conn.sql
+    assert "token_intent_resolutions.event_id = requested_event_ids.source_event_id" in conn.sql
+    assert 'SELECT DISTINCT ON ("window", scope, target_type_key, identity_id)' not in conn.sql
+    assert normalized_sql.index("raw_requested AS") < normalized_sql.index("requested_event_ids AS")
+    assert normalized_sql.index("requested_event_ids AS") < normalized_sql.index("source_intents AS")
 
 
 def test_rank_source_query_deletes_stale_edges_inside_requested_window_only():
     conn = FakeConn(rows=[{"upserted_count": 3, "deleted_count": 1}])
 
-    changed = TokenRadarRankSourceQuery(conn).populate_edges_for_requests(
+    changed = TokenRadarRankSourceQuery(conn).populate_edges_for_event_ids(
         [
             TokenRadarSourceRequest(
                 request_key="request-1",
@@ -196,13 +197,14 @@ def test_rank_source_query_deletes_stale_edges_inside_requested_window_only():
 
     assert changed == 4
     assert "DELETE FROM token_radar_rank_source_events stale_edges" in conn.sql
-    assert "USING requested" in conn.sql
+    assert "USING requested_event_ids requested" in conn.sql
     assert 'stale_edges."window" = requested."window"' in conn.sql
     assert "stale_edges.scope = requested.scope" in conn.sql
     assert "stale_edges.target_type_key = requested.target_type_key" in conn.sql
     assert "stale_edges.identity_id = requested.identity_id" in conn.sql
-    assert "stale_edges.event_received_at_ms >= requested.analysis_since_ms" in conn.sql
-    assert "stale_edges.event_received_at_ms <= requested.now_ms" in conn.sql
+    assert "stale_edges.source_id = requested.source_event_id" in conn.sql
+    assert "stale_edges.event_received_at_ms >= requested.analysis_since_ms" not in conn.sql
+    assert "stale_edges.event_received_at_ms <= requested.now_ms" not in conn.sql
     assert "NOT EXISTS" in conn.sql
     assert "fresh.event_id = stale_edges.source_id" in conn.sql
 
@@ -237,7 +239,7 @@ def test_rank_source_query_prunes_edges_by_projection_window_scope_and_cutoff():
 def test_rank_source_query_conflict_update_refreshes_consumed_market_columns():
     conn = FakeConn(rows=[{"upserted_count": 1, "deleted_count": 0}])
 
-    TokenRadarRankSourceQuery(conn).populate_edges_for_requests(
+    TokenRadarRankSourceQuery(conn).populate_edges_for_event_ids(
         [
             TokenRadarSourceRequest(
                 request_key="request-1",
@@ -269,7 +271,7 @@ def test_rank_source_query_conflict_update_refreshes_consumed_market_columns():
 def test_rank_source_query_uses_source_payload_hash_noop_gate():
     conn = FakeConn(rows=[{"upserted_count": 1, "deleted_count": 0}])
 
-    TokenRadarRankSourceQuery(conn).populate_edges_for_requests(
+    TokenRadarRankSourceQuery(conn).populate_edges_for_event_ids(
         [
             TokenRadarSourceRequest(
                 request_key="request-1",
@@ -404,7 +406,7 @@ def test_rank_source_repository_loads_latest_market_context_through_compact_quer
 def test_rank_source_repository_populates_compact_edges():
     conn = FakeConn(rows=[{"upserted_count": 1, "deleted_count": 0}])
 
-    changed = TokenRadarRankSourceRepository(conn).populate_edges_for_requests(
+    changed = TokenRadarRankSourceRepository(conn).populate_edges_for_event_ids(
         [
             TokenRadarSourceRequest(
                 request_key="request-1",

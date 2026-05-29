@@ -125,6 +125,22 @@ class TokenRadarProjection:
                 else:
                     market_only_claims.append(claim)
 
+            valid_source_rebuild_claims: list[dict[str, Any]] = []
+            for claim in source_rebuild_claims:
+                if _claim_source_event_ids(claim):
+                    valid_source_rebuild_claims.append(claim)
+                    continue
+                failures += 1
+                first_error = first_error or "token_radar_source_event_ids_required"
+                self.repos.token_radar_dirty_targets.mark_error(
+                    [_claim_key(claim)],
+                    error="token_radar_source_event_ids_required",
+                    retry_ms=DIRTY_TARGET_RETRY_MS,
+                    now_ms=computed_at_ms,
+                    commit=True,
+                )
+            source_rebuild_claims = valid_source_rebuild_claims
+
             source_requests = _source_requests_for_targets(
                 source_rebuild_claims,
                 source_work_items,
@@ -136,13 +152,14 @@ class TokenRadarProjection:
                 now_ms=computed_at_ms,
             )
             if source_requests:
-                self.repos.token_radar_rank_sources.populate_edges_for_requests(
+                self.repos.token_radar_rank_sources.populate_edges_for_event_ids(
                     source_requests,
                     projected_at_ms=computed_at_ms,
                     commit=False,
                 )
-            rows_by_request = self.repos.token_radar_rank_sources.load_rows_for_requests(
-                [*source_requests, *market_requests]
+            all_requests = [*source_requests, *market_requests]
+            rows_by_request = (
+                self.repos.token_radar_rank_sources.load_rows_for_requests(all_requests) if all_requests else {}
             )
             market_patch_claims = [claim for claim in claims if bool(claim.get("market_dirty"))]
             market_context_by_target = (
@@ -224,7 +241,7 @@ class TokenRadarProjection:
         if failures:
             result["status"] = "failed"
             errors = [str(item.get("error")) for item in result["windows"].values() if item.get("error")]
-            result["error"] = errors[0] if errors else "dirty target projection failed"
+            result["error"] = errors[0] if errors else first_error or "dirty target projection failed"
             if successful_claims:
                 done_claims = [claim_key for claim_key, touched_items in successful_claims if not touched_items]
                 retry_claims = [
@@ -844,6 +861,7 @@ def _source_requests_for_targets(
     for target_index, target in enumerate(targets):
         target_type_key = str(target.get("target_type_key") or target.get("target_type") or "")
         identity_id = str(target.get("identity_id") or target.get("target_id") or "")
+        source_event_ids = tuple(_claim_source_event_ids(target))
         for window, scope in work_items:
             window_ms = WINDOW_MS.get(window, WINDOW_MS["1h"])
             score_since_ms = int(now_ms) - window_ms
@@ -863,6 +881,7 @@ def _source_requests_for_targets(
                     analysis_since_ms=_analysis_since_ms(computed_at_ms=int(now_ms), window_ms=window_ms),
                     score_since_ms=score_since_ms,
                     now_ms=int(now_ms),
+                    source_event_ids=source_event_ids,
                 )
             )
     return requests
@@ -949,6 +968,10 @@ def _claim_requires_source_rebuild(claim: Mapping[str, Any]) -> bool:
     if bool(claim.get("source_dirty")):
         return True
     return not bool(claim.get("market_dirty"))
+
+
+def _claim_source_event_ids(claim: Mapping[str, Any]) -> tuple[str, ...]:
+    return tuple(_json_list(claim.get("source_event_ids_json")))
 
 
 def _current_key(row: Mapping[str, Any]) -> tuple[str, str, str]:

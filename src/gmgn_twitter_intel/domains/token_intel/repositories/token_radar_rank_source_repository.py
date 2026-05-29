@@ -25,14 +25,14 @@ class TokenRadarRankSourceRepository:
     ) -> dict[tuple[str, str], dict[str, Any]]:
         return TokenRadarRankSourceQuery(self.conn).latest_market_context_for_targets(targets)
 
-    def populate_edges_for_requests(
+    def populate_edges_for_event_ids(
         self,
         requests: Sequence[TokenRadarSourceRequest],
         *,
         projected_at_ms: int,
         commit: bool = True,
     ) -> int:
-        return TokenRadarRankSourceQuery(self.conn).populate_edges_for_requests(
+        return TokenRadarRankSourceQuery(self.conn).populate_edges_for_event_ids(
             requests,
             projected_at_ms=projected_at_ms,
             commit=commit,

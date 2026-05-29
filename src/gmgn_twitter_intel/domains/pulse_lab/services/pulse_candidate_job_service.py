@@ -1103,6 +1103,7 @@ def _context_with_gate(
         symbol=context.symbol,
         factor_snapshot=context.factor_snapshot,
         selected_posts=context.selected_posts,
+        post_clusters=context.post_clusters,
         gate_result=gate.to_json(),
         edge_state=edge_state if edge_state is not None else context.edge_state,
         edge_events=tuple(edge_events if edge_events is not None else context.edge_events),
