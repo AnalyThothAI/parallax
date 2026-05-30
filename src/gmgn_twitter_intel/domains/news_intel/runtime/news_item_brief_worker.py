@@ -404,6 +404,15 @@ class NewsItemBriefWorker(WorkerBase):
                 count_attempt=outcome.retry_counts_attempt,
             )
             return
+        terminalized_count = self._terminalize_claimed_target(
+            target,
+            outcome=outcome,
+            packet=packet,
+            now_ms=now_ms,
+            terminal_attempt_count=attempt_after_failure,
+        )
+        if terminalized_count <= 0:
+            return
         if outcome.terminal_run_id and outcome.terminal_errors:
             self._upsert_terminal_failed_current(
                 run_id=outcome.terminal_run_id,
@@ -413,13 +422,6 @@ class NewsItemBriefWorker(WorkerBase):
                 terminal_reason=outcome.retry_reason,
                 computed_at_ms=now_ms,
             )
-        self._terminalize_claimed_target(
-            target,
-            outcome=outcome,
-            packet=packet,
-            now_ms=now_ms,
-            terminal_attempt_count=attempt_after_failure,
-        )
 
     def _mark_targets_done(self, targets: Iterable[Mapping[str, Any]], *, now_ms: int) -> None:
         with self._repository_session() as repos:
@@ -451,16 +453,18 @@ class NewsItemBriefWorker(WorkerBase):
         packet: NewsItemBriefInputPacket,
         now_ms: int,
         terminal_attempt_count: int | None = None,
-    ) -> None:
+    ) -> int:
         with self._repository_session() as repos:
-            repos.news_projection_dirty_targets.terminalize_targets(
-                [target],
-                worker_name=self.name,
-                final_reason=outcome.retry_reason,
-                final_reason_bucket=outcome.retry_reason,
-                now_ms=now_ms,
-                semantic_payload_hash=packet.input_hash,
-                terminal_attempt_count=terminal_attempt_count,
+            return int(
+                repos.news_projection_dirty_targets.terminalize_targets(
+                    [target],
+                    worker_name=self.name,
+                    final_reason=outcome.retry_reason,
+                    final_reason_bucket=outcome.retry_reason,
+                    now_ms=now_ms,
+                    semantic_payload_hash=packet.input_hash,
+                    terminal_attempt_count=terminal_attempt_count,
+                )
             )
 
     def _insert_run(

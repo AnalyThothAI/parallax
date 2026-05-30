@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from gmgn_twitter_intel.domains.news_intel.runtime.news_item_brief_worker import NewsItemBriefWorker
-from gmgn_twitter_intel.domains.news_intel.types.news_item_brief import NEWS_ITEM_BRIEF_LANE
+from gmgn_twitter_intel.domains.news_intel.types.news_item_brief import NEWS_ITEM_BRIEF_LANE, NewsItemBriefPayload
 from gmgn_twitter_intel.platform.agent_execution import (
     AgentCapacityReservation,
     AgentExecutionError,
@@ -329,6 +329,26 @@ async def _test_worker_terminalizes_after_max_attempts_without_permanent_dirty_f
     assert result.failed == 1
 
 
+def test_worker_skips_terminal_current_when_terminalize_claim_is_stale() -> None:
+    asyncio.run(_test_worker_skips_terminal_current_when_terminalize_claim_is_stale())
+
+
+async def _test_worker_skips_terminal_current_when_terminalize_claim_is_stale() -> None:
+    target = _dirty_target(attempt_count=2)
+    db = FakeDB([_candidate()], targets=[target], terminalize_return_count=0)
+    provider = FakeBriefProvider(brief_error=RuntimeError("provider bad output"))
+    worker = _worker(db=db, provider=provider, settings=SimpleNamespace(batch_size=1, max_attempts=3))
+
+    result = await worker.run_once()
+
+    assert provider.execution_calls == 1
+    assert db.dirty.errors == []
+    assert len(db.dirty.terminalized) == 1
+    assert db.dirty.terminalized[0]["terminal_attempt_count"] == 3
+    assert db.news.briefs == []
+    assert result.failed == 1
+
+
 def _worker(
     *,
     db: FakeDB,
@@ -395,11 +415,10 @@ def _dirty_target(*, attempt_count: int = 1) -> dict[str, Any]:
 
 
 def _ready_payload() -> dict[str, Any]:
-    return {
+    payload = {
         "status": "ready",
         "direction": "bullish",
         "decision_class": "driver",
-        "title_zh": "SOL ETF 申请",
         "summary_zh": "SOL ETF filing boosts attention.",
         "market_read_zh": "SOL ETF 申请强化监管叙事，但审批时间仍不确定。",
         "bull_view": {
@@ -425,6 +444,9 @@ def _ready_payload() -> dict[str, Any]:
         "data_gaps": [],
         "evidence_refs": ["item:summary"],
     }
+    if "title_zh" in NewsItemBriefPayload.model_fields:
+        payload["title_zh"] = "SOL ETF 申请"
+    return payload
 
 
 class FakeBriefProvider:
@@ -530,10 +552,16 @@ def _audit(*, run_id: str, packet: Any, execution_started: bool) -> dict[str, An
 
 
 class FakeDB:
-    def __init__(self, candidates: list[dict[str, Any]], *, targets: list[dict[str, Any]] | None = None) -> None:
+    def __init__(
+        self,
+        candidates: list[dict[str, Any]],
+        *,
+        targets: list[dict[str, Any]] | None = None,
+        terminalize_return_count: int | None = None,
+    ) -> None:
         self.news = FakeNewsRepository(candidates)
         self.conn = FakeConn()
-        self.dirty = FakeDirtyRepository(
+        resolved_targets = (
             targets
             if targets is not None
             else [
@@ -548,6 +576,10 @@ class FakeDB:
                 }
                 for candidate in candidates
             ]
+        )
+        self.dirty = FakeDirtyRepository(
+            resolved_targets,
+            terminalize_return_count=terminalize_return_count,
         )
         self.in_session = False
 
@@ -597,8 +629,14 @@ class FakeNewsRepository:
 
 
 class FakeDirtyRepository:
-    def __init__(self, targets: list[dict[str, Any]] | None = None) -> None:
+    def __init__(
+        self,
+        targets: list[dict[str, Any]] | None = None,
+        *,
+        terminalize_return_count: int | None = None,
+    ) -> None:
         self.targets = [dict(target) for target in targets or []]
+        self.terminalize_return_count = terminalize_return_count
         self.enqueued: list[dict[str, Any]] = []
         self.done: list[dict[str, Any]] = []
         self.errors: list[dict[str, Any]] = []
@@ -630,6 +668,8 @@ class FakeDirtyRepository:
 
     def terminalize_targets(self, keys: list[dict[str, Any]], **kwargs: Any) -> int:
         self.terminalized.append({"keys": [dict(key) for key in keys], **dict(kwargs)})
+        if self.terminalize_return_count is not None:
+            return self.terminalize_return_count
         return len(keys)
 
     def enqueue_targets(self, rows: list[dict[str, Any]], *, reason: str, now_ms: int, commit: bool = True) -> int:
