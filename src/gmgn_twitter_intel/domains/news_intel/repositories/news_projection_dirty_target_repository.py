@@ -262,6 +262,47 @@ class NewsProjectionDirtyTargetRepository:
             self.conn.commit()
         return int(getattr(cursor, "rowcount", 0) or 0)
 
+    def delete_claimed_targets(self, keys: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+        records = _key_records(keys)
+        if not records:
+            return []
+        rows = self.conn.execute(
+            """
+            WITH done AS (
+              SELECT *
+              FROM unnest(
+                %(projection_names)s::text[],
+                %(target_kinds)s::text[],
+                %(target_ids)s::text[],
+                %(windows)s::text[],
+                %(payload_hashes)s::text[],
+                %(lease_owners)s::text[],
+                %(attempt_counts)s::bigint[]
+              ) AS done(
+                projection_name,
+                target_kind,
+                target_id,
+                "window",
+                payload_hash,
+                lease_owner,
+                attempt_count
+              )
+            )
+            DELETE FROM news_projection_dirty_targets queue
+            USING done
+            WHERE queue.projection_name = done.projection_name
+              AND queue.target_kind = done.target_kind
+              AND queue.target_id = done.target_id
+              AND queue."window" = done."window"
+              AND queue.payload_hash = done.payload_hash
+              AND queue.lease_owner = done.lease_owner
+              AND queue.attempt_count = done.attempt_count
+            RETURNING queue.*
+            """,
+            _key_params(records),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def mark_error(
         self,
         keys: Iterable[Mapping[str, Any]],
@@ -335,17 +376,18 @@ class NewsProjectionDirtyTargetRepository:
         final_reason_bucket: str,
         now_ms: int,
         semantic_payload_hash: str | None = None,
+        terminal_attempt_count: int | None = None,
         commit: bool = True,
     ) -> int:
         records = _key_records(keys)
         if not records:
             return 0
-        terminalized = 0
         transaction_factory = getattr(self.conn, "transaction", None) if commit else None
         owns_transaction = callable(transaction_factory)
         transaction = transaction_factory() if owns_transaction else nullcontext()
         with transaction:
-            for record in records:
+            deleted_records = self.delete_claimed_targets(records)
+            for record in deleted_records:
                 target_key = _terminal_target_key(record, semantic_payload_hash=semantic_payload_hash)
                 terminalize_source_row(
                     self.conn,
@@ -357,14 +399,15 @@ class NewsProjectionDirtyTargetRepository:
                     final_reason=final_reason,
                     final_reason_bucket=final_reason_bucket,
                     now_ms=int(now_ms),
-                    attempt_count=int(record["attempt_count"]),
+                    attempt_count=int(
+                        terminal_attempt_count if terminal_attempt_count is not None else record["attempt_count"]
+                    ),
                     payload_hash=str(semantic_payload_hash or record["payload_hash"]),
                     commit=False,
                 )
-            terminalized = self.mark_done(records, now_ms=now_ms, commit=False)
         if commit and not owns_transaction:
             self.conn.commit()
-        return terminalized
+        return len(deleted_records)
 
     def queue_depth(
         self,

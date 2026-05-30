@@ -347,8 +347,16 @@ def test_mark_done_deletes_rows_and_mark_error_schedules_retry() -> None:
 
 
 def test_terminalize_targets_commit_false_does_not_open_or_commit_transaction(monkeypatch: pytest.MonkeyPatch) -> None:
-    conn = _ScriptedConnection([])
-    conn.rowcount = 1
+    claimed = {
+        "projection_name": "brief_input",
+        "target_kind": "news_item",
+        "target_id": "item-1",
+        "window": "",
+        "payload_hash": "claim-hash",
+        "lease_owner": "worker-a",
+        "attempt_count": 2,
+    }
+    conn = _ScriptedConnection([[claimed]])
     terminal_events: list[dict[str, Any]] = []
 
     def fake_terminalize_source_row(conn_arg: Any, **kwargs: Any) -> dict[str, Any]:
@@ -359,17 +367,7 @@ def test_terminalize_targets_commit_false_does_not_open_or_commit_transaction(mo
     monkeypatch.setattr(dirty_target_repository_module, "terminalize_source_row", fake_terminalize_source_row)
 
     count = NewsProjectionDirtyTargetRepository(conn).terminalize_targets(
-        [
-            {
-                "projection_name": "brief_input",
-                "target_kind": "news_item",
-                "target_id": "item-1",
-                "window": "",
-                "payload_hash": "claim-hash",
-                "lease_owner": "worker-a",
-                "attempt_count": 2,
-            }
-        ],
+        [claimed],
         worker_name="news_item_brief",
         final_reason="domain_validation_failed",
         final_reason_bucket="domain_validation_failed",
@@ -383,7 +381,9 @@ def test_terminalize_targets_commit_false_does_not_open_or_commit_transaction(mo
     assert conn.commits == 0
     assert terminal_events[0]["commit"] is False
     assert terminal_events[0]["payload_hash"] == "semantic-hash"
+    assert terminal_events[0]["attempt_count"] == 2
     assert "DELETE FROM news_projection_dirty_targets queue" in conn.sql[-1]
+    assert "RETURNING queue.*" in conn.sql[-1]
 
 
 def test_queue_depth_counts_due_unleased_and_expired_leases() -> None:
@@ -706,6 +706,59 @@ def test_terminalize_targets_deletes_hot_row_and_records_terminal_event(tmp_path
     assert depth == 0
     assert row is not None
     assert row["final_reason_bucket"] == "domain_validation_failed"
+
+
+def test_terminalize_targets_skips_event_when_claim_token_is_stale(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsProjectionDirtyTargetRepository(conn)
+        now = 1_779_000_000_000
+        repo.enqueue_targets(
+            [
+                {
+                    "projection_name": "brief_input",
+                    "target_kind": "news_item",
+                    "target_id": "item-stale-terminal",
+                    "payload_hash": "claim-hash",
+                }
+            ],
+            reason="unit",
+            now_ms=now,
+        )
+        claimed = repo.claim_due(limit=1, lease_ms=60_000, now_ms=now, lease_owner="worker:test")
+        conn.execute(
+            """
+            UPDATE news_projection_dirty_targets
+            SET payload_hash = 'replacement-hash'
+            WHERE target_id = 'item-stale-terminal'
+            """
+        )
+        conn.commit()
+
+        count = repo.terminalize_targets(
+            claimed,
+            worker_name="news_item_brief",
+            final_reason="domain_validation_failed",
+            final_reason_bucket="domain_validation_failed",
+            semantic_payload_hash="semantic-stale-hash",
+            now_ms=now + 1,
+        )
+
+        row = conn.execute(
+            """
+            SELECT *
+            FROM worker_queue_terminal_events
+            WHERE worker_name = 'news_item_brief'
+              AND source_table = 'news_projection_dirty_targets'
+              AND target_key LIKE '%semantic-stale-hash'
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert count == 0
+    assert row is None
 
 
 @pytest.fixture

@@ -413,7 +413,13 @@ class NewsItemBriefWorker(WorkerBase):
                 terminal_reason=outcome.retry_reason,
                 computed_at_ms=now_ms,
             )
-        self._terminalize_claimed_target(target, outcome=outcome, packet=packet, now_ms=now_ms)
+        self._terminalize_claimed_target(
+            target,
+            outcome=outcome,
+            packet=packet,
+            now_ms=now_ms,
+            terminal_attempt_count=attempt_after_failure,
+        )
 
     def _mark_targets_done(self, targets: Iterable[Mapping[str, Any]], *, now_ms: int) -> None:
         with self._repository_session() as repos:
@@ -444,6 +450,7 @@ class NewsItemBriefWorker(WorkerBase):
         outcome: _CandidateOutcome,
         packet: NewsItemBriefInputPacket,
         now_ms: int,
+        terminal_attempt_count: int | None = None,
     ) -> None:
         with self._repository_session() as repos:
             repos.news_projection_dirty_targets.terminalize_targets(
@@ -453,6 +460,7 @@ class NewsItemBriefWorker(WorkerBase):
                 final_reason_bucket=outcome.retry_reason,
                 now_ms=now_ms,
                 semantic_payload_hash=packet.input_hash,
+                terminal_attempt_count=terminal_attempt_count,
             )
 
     def _insert_run(

@@ -321,6 +321,7 @@ async def _test_worker_terminalizes_after_max_attempts_without_permanent_dirty_f
     assert provider.execution_calls == 1
     assert db.dirty.errors == []
     assert len(db.dirty.terminalized) == 1
+    assert db.dirty.terminalized[0]["terminal_attempt_count"] == 3
     assert db.dirty.done == []
     assert db.news.briefs[0]["status"] == "failed"
     assert db.news.briefs[0]["brief_json"]["terminal"] is True
