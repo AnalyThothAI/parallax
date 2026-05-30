@@ -77,6 +77,7 @@ _NO_START_BACKPRESSURE_CLASSES = {
     AgentExecutionErrorClass.CAPACITY_DENIED,
     AgentExecutionErrorClass.CIRCUIT_OPEN,
     AgentExecutionErrorClass.RATE_LIMITED,
+    AgentExecutionErrorClass.QUOTA_EXHAUSTED,
     AgentExecutionErrorClass.PROVIDER_ERROR,
     AgentExecutionErrorClass.TRANSPORT_ERROR,
 }
@@ -894,7 +895,7 @@ def _provider_cooldown_delay_ms(reason: str) -> int:
     normalized = str(reason or "").strip().lower()
     if normalized in {"provider_error", "transport_error"}:
         return 300_000
-    if normalized in {"circuit_open", "capacity_denied", "rate_limited"}:
+    if normalized in {"circuit_open", "capacity_denied", "rate_limited", "quota_exhausted"}:
         return 120_000
     return 120_000
 

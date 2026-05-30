@@ -549,7 +549,7 @@ def _is_agent_no_start_backpressure(exc: Exception) -> bool:
     error_class = getattr(exc, "error_class", None)
     execution_started = bool(getattr(exc, "execution_started", True))
     value = getattr(error_class, "value", error_class)
-    return not execution_started and value in {"capacity_denied", "circuit_open", "rate_limited"}
+    return not execution_started and value in {"capacity_denied", "circuit_open", "rate_limited", "quota_exhausted"}
 
 
 def _agent_backpressure_reason(exc: Exception) -> str:

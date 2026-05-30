@@ -204,6 +204,31 @@ async def _test_worker_execute_no_start_rate_limit_does_not_write_business_ledge
     assert result.notes["backpressure_rate_limited"] == 1
 
 
+def test_worker_quota_exhausted_does_not_write_failed_current_or_attempt() -> None:
+    asyncio.run(_test_worker_quota_exhausted_does_not_write_failed_current_or_attempt())
+
+
+async def _test_worker_quota_exhausted_does_not_write_failed_current_or_attempt() -> None:
+    db = FakeDB([_candidate()])
+    provider = FakeBriefProvider(
+        brief_error=AgentExecutionError(
+            AgentExecutionErrorClass.QUOTA_EXHAUSTED,
+            "Insufficient Balance",
+            execution_started=False,
+        )
+    )
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.execution_calls == 1
+    assert db.news.runs == []
+    assert db.news.briefs == []
+    assert len(db.dirty.errors) == 1
+    assert db.dirty.error_kwargs[-1]["count_attempt"] is False
+    assert result.notes["backpressure_quota_exhausted"] == 1
+
+
 def test_worker_request_audit_error_requeues_without_business_ledger_or_current_write() -> None:
     asyncio.run(_test_worker_request_audit_error_requeues_without_business_ledger_or_current_write())
 

@@ -24,6 +24,7 @@ class AgentExecutionErrorClass(StrEnum):
     CIRCUIT_OPEN = "circuit_open"
     TIMEOUT = "timeout"
     RATE_LIMITED = "rate_limited"
+    QUOTA_EXHAUSTED = "quota_exhausted"
     TRANSPORT_ERROR = "transport_error"
     PROVIDER_ERROR = "provider_error"
     SCHEMA_INVALID = "schema_invalid"

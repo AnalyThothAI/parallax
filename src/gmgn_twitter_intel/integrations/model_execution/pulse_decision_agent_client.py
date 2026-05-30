@@ -639,6 +639,7 @@ def _is_no_start_agent_backpressure(exc: AgentExecutionError) -> bool:
         AgentExecutionErrorClass.CAPACITY_DENIED,
         AgentExecutionErrorClass.CIRCUIT_OPEN,
         AgentExecutionErrorClass.RATE_LIMITED,
+        AgentExecutionErrorClass.QUOTA_EXHAUSTED,
     }
 
 

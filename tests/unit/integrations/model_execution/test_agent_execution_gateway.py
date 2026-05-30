@@ -537,6 +537,28 @@ def test_circuit_open_fails_fast_without_provider_call() -> None:
     asyncio.run(scenario())
 
 
+def test_insufficient_balance_is_quota_exhausted_no_start_and_opens_circuit() -> None:
+    async def scenario() -> None:
+        completions = FakeJsonCompletions(exception=RuntimeError("OpenAIException - Insufficient Balance"))
+        gateway = _gateway(
+            llm_gateway=FakeLLMGateway(completions=completions),
+            policy=_policy(failure_threshold=1),
+        )
+
+        with pytest.raises(AgentExecutionError) as err:
+            await gateway.execute(_spec())
+
+        assert err.value.error_class is AgentExecutionErrorClass.QUOTA_EXHAUSTED
+        assert err.value.execution_started is False
+        assert len(completions.calls) == 1
+
+        denied = gateway.try_reserve("test.lane")
+        assert denied.acquired is False
+        assert denied.reason is AgentExecutionErrorClass.CIRCUIT_OPEN
+
+    asyncio.run(scenario())
+
+
 def test_timeout_maps_to_execution_error_with_started_audit() -> None:
     async def scenario() -> None:
         completions = FakeJsonCompletions(delay_seconds=2)

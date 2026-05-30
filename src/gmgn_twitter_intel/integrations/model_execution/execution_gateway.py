@@ -390,13 +390,17 @@ class AgentExecutionGateway:
             ) from exc
         except Exception as exc:
             error_class = _classify_provider_error(exc)
-            self.record_lane_failure(stage.lane)
+            execution_started = error_class not in {AgentExecutionErrorClass.QUOTA_EXHAUSTED}
+            if error_class is AgentExecutionErrorClass.QUOTA_EXHAUSTED:
+                self.open_lane_circuit(stage.lane)
+            else:
+                self.record_lane_failure(stage.lane)
             failed = self._failed_audit(
                 audit,
                 started=started,
                 error_class=error_class,
                 message=str(exc),
-                execution_started=runner_entered["value"],
+                execution_started=execution_started,
             )
             self._record_execution_call(
                 stage,
@@ -408,7 +412,7 @@ class AgentExecutionGateway:
                 error_class,
                 str(exc),
                 audit=failed,
-                execution_started=runner_entered["value"],
+                execution_started=execution_started,
             ) from exc
         finally:
             if provider_running_recorded:
@@ -425,6 +429,16 @@ class AgentExecutionGateway:
         lane_state.failure_timestamps.append(now)
         if len(lane_state.failure_timestamps) >= breaker.failure_threshold:
             lane_state.circuit_open_until = now + float(breaker.open_seconds)
+
+    def open_lane_circuit(self, lane: str) -> None:
+        now = time.monotonic()
+        lane_state = self._lane_state(lane)
+        breaker = lane_state.policy.circuit_breaker
+        lane_state.failure_timestamps.append(now)
+        lane_state.circuit_open_until = max(
+            lane_state.circuit_open_until,
+            now + float(breaker.open_seconds),
+        )
 
     def status_snapshot(self) -> dict[str, Any]:
         now = time.monotonic()
@@ -734,9 +748,38 @@ def _audit_trace_extra(audit_extra: dict[str, Any]) -> dict[str, Any]:
 
 def _classify_provider_error(exc: Exception) -> AgentExecutionErrorClass:
     name = type(exc).__name__.lower()
-    if "ratelimit" in name or "rate_limit" in name:
+    message = str(exc).lower()
+    text = f"{name} {message}"
+    quota_markers = (
+        "insufficient balance",
+        "insufficient_quota",
+        "quota exceeded",
+        "quota_exceeded",
+        "billing",
+        "payment required",
+        "402",
+        "account balance",
+        "no credit",
+    )
+    auth_markers = (
+        "invalid api key",
+        "unauthorized",
+        "authentication",
+        "permission denied",
+        "401",
+        "403",
+    )
+    config_markers = (
+        "missing api key",
+        "api key required",
+        "credentials",
+        "invalid credentials",
+    )
+    if any(marker in text for marker in (*quota_markers, *auth_markers, *config_markers)):
+        return AgentExecutionErrorClass.QUOTA_EXHAUSTED
+    if "ratelimit" in text or "rate_limit" in text or "rate limit" in text:
         return AgentExecutionErrorClass.RATE_LIMITED
-    if "timeout" in name or "transport" in name or "connection" in name:
+    if "timeout" in text or "transport" in text or "connection" in text:
         return AgentExecutionErrorClass.TRANSPORT_ERROR
     return AgentExecutionErrorClass.PROVIDER_ERROR
 

@@ -736,6 +736,8 @@ def _backpressure_outcome_for_reason(reason: Any) -> str:
         return "backpressure_circuit_open"
     if reason == AgentExecutionErrorClass.RATE_LIMITED:
         return "backpressure_rate_limited"
+    if reason == AgentExecutionErrorClass.QUOTA_EXHAUSTED:
+        return "backpressure_quota_exhausted"
     return "backpressure_capacity_denied"
 
 
@@ -815,6 +817,7 @@ def _is_no_start_backpressure_error(error: Exception) -> bool:
         AgentExecutionErrorClass.CAPACITY_DENIED,
         AgentExecutionErrorClass.CIRCUIT_OPEN,
         AgentExecutionErrorClass.RATE_LIMITED,
+        AgentExecutionErrorClass.QUOTA_EXHAUSTED,
     }
 
 
