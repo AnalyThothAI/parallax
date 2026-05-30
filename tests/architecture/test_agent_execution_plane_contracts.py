@@ -175,3 +175,22 @@ def test_agent_model_selection_is_worker_runtime_owned() -> None:
     assert "model: str" not in agent_stage_spec_text
     assert "agent_runtime:" in settings_text
     assert "defaults:" in settings_text
+
+
+def test_news_item_brief_has_no_runtime_legacy_hash_fallback() -> None:
+    forbidden = (
+        "legacy_hash",
+        "legacy input_hash",
+        "request_json.packet",
+        "historical packet",
+        "old_hash",
+    )
+    paths = [
+        "src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py",
+        "src/gmgn_twitter_intel/domains/news_intel/services/news_item_brief_input.py",
+    ]
+    for path in paths:
+        text = Path(path).read_text(encoding="utf-8")
+        lowered = text.lower()
+        for token in forbidden:
+            assert token not in lowered, f"{path} contains runtime compatibility token {token!r}"

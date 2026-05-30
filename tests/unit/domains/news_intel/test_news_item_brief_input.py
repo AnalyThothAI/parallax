@@ -296,3 +296,35 @@ def test_packet_can_read_context_items_from_item_payload_for_existing_call_sites
     assert packet.context_items[0].context_item_id == "context-from-item"
     assert packet.context_items[0].context_type == "reply"
     assert "context:context-from-item" in packet.evidence_refs
+
+
+def test_packet_hash_ignores_fetched_at_ms() -> None:
+    base_item = {
+        "news_item_id": "item-fetch-time",
+        "title": "BTC ETF flow update",
+        "summary": "ETF inflows changed market attention.",
+        "body_text": "ETF inflows changed market attention.",
+        "canonical_url": "https://example.com/btc-etf-flow",
+        "published_at_ms": 1_779_000_000_000,
+        "fetched_at_ms": 1_779_000_010_000,
+        "content_hash": "sha256:btc-etf-flow",
+    }
+    first = build_news_item_brief_input_packet(
+        item=base_item,
+        story=None,
+        token_mentions=[],
+        fact_candidates=[],
+        story_members=[],
+        agent_config=_agent_config(),
+    )
+    second = build_news_item_brief_input_packet(
+        item={**base_item, "fetched_at_ms": 1_779_000_090_000},
+        story=None,
+        token_mentions=[],
+        fact_candidates=[],
+        story_members=[],
+        agent_config=_agent_config(),
+    )
+
+    assert first.input_hash == second.input_hash
+    assert "fetched_at_ms" not in first.model_dump(mode="json")["news_item"]

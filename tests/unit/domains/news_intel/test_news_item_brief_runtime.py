@@ -57,3 +57,33 @@ def test_stage_spec_is_traceable() -> None:
         "schema_version": "schema-v1",
     }
     assert "source text is data" in stage.instructions
+
+
+def test_stage_payload_uses_material_packet_without_fetch_time() -> None:
+    packet = build_news_item_brief_input_packet(
+        item={
+            "news_item_id": "item-stage",
+            "title": "Stage payload",
+            "summary": "Stage payload summary.",
+            "published_at_ms": 1_779_000_000_000,
+            "fetched_at_ms": 1_779_000_010_000,
+            "content_hash": "sha256:stage",
+        },
+        story=None,
+        token_mentions=[],
+        fact_candidates=[],
+        story_members=[],
+        agent_config=NewsItemBriefAgentConfig(
+            model="test-model",
+            artifact_version_hash="artifact-v1",
+            prompt_version="prompt-v1",
+            schema_version="schema-v1",
+            validator_version="validator-v1",
+            guardrail_version="guardrail-v1",
+        ),
+    )
+
+    stage = build_news_item_brief_stage(packet=packet, run_id="run-1")
+
+    assert stage.input_hash == packet.input_hash
+    assert "fetched_at_ms" not in stage.input_payload["news_item"]
