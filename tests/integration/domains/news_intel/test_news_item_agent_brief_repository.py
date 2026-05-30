@@ -293,6 +293,47 @@ def test_load_items_for_brief_targets_payload_contains_packet_inputs_and_audit_r
     assert packet.token_lanes[0].mention_id == "mention-payload"
 
 
+def test_brief_target_material_watermark_ignores_refetch_updated_at(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        now = 1_779_000_000_000
+        news_item_id = _insert_source_provider_and_item(
+            repo,
+            suffix="refetch-watermark",
+            processed=True,
+            now_ms=now,
+        )
+        first = repo.load_items_for_brief_targets(news_item_ids=[news_item_id])[0]
+        item = conn.execute(
+            "SELECT * FROM news_items WHERE news_item_id = %s",
+            (news_item_id,),
+        ).fetchone()
+
+        repo.upsert_canonical_news_item(
+            provider_item_id=item["provider_item_id"],
+            canonical_url=item["canonical_url"],
+            title=item["title"],
+            summary=item["summary"],
+            body_text=item["body_text"],
+            language=item["language"],
+            published_at_ms=item["published_at_ms"],
+            fetched_at_ms=now + 60_000,
+            content_hash=item["content_hash"],
+            title_fingerprint=item["title_fingerprint"],
+            now_ms=now + 60_000,
+            provider_signal=item["provider_signal_json"] or {},
+            provider_token_impacts=item["provider_token_impacts_json"] or [],
+            commit=True,
+        )
+        second = repo.load_items_for_brief_targets(news_item_ids=[news_item_id])[0]
+    finally:
+        conn.close()
+
+    assert second["source_updated_at_ms"] == first["source_updated_at_ms"]
+
+
 def test_agent_run_and_current_brief_round_trip_gateway_audit_metadata(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:

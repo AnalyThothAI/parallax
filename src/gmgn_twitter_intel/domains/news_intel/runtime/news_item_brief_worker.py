@@ -618,13 +618,27 @@ def _current_brief_is_fresh(
     current = _optional_dict(candidate.get("current_brief"))
     if current is None:
         return False
-    if str(current.get("status") or "") == "failed":
+    status = str(current.get("status") or "")
+    if status == "failed" and not _current_brief_is_terminal_failure(current):
+        return False
+    if status not in {"ready", "insufficient", "failed"}:
         return False
     if str(current.get("input_hash") or "") != packet.input_hash:
         return False
     if str(current.get("artifact_version_hash") or "") != agent_config.artifact_version_hash:
         return False
-    return int(current.get("computed_at_ms") or 0) >= int(candidate.get("source_updated_at_ms") or 0)
+    if str(current.get("prompt_version") or "") != agent_config.prompt_version:
+        return False
+    if str(current.get("schema_version") or "") != agent_config.schema_version:
+        return False
+    if str(current.get("validator_version") or "") != agent_config.validator_version:
+        return False
+    return True
+
+
+def _current_brief_is_terminal_failure(current: Mapping[str, Any]) -> bool:
+    brief = _optional_dict(current.get("brief_json"))
+    return bool(brief and brief.get("terminal") is True)
 
 
 def _target_ids(rows: Iterable[Mapping[str, Any]]) -> list[str]:

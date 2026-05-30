@@ -25,6 +25,10 @@ def test_worker_processes_provider_signal_target_with_llm_context() -> None:
     asyncio.run(_test_worker_processes_provider_signal_target_with_llm_context())
 
 
+def test_worker_skips_fresh_current_even_when_source_updated_is_noisy() -> None:
+    asyncio.run(_test_worker_skips_fresh_current_even_when_source_updated_is_noisy())
+
+
 async def _test_worker_writes_ready_brief_and_emits_wake() -> None:
     db = FakeDB([_candidate()])
     provider = FakeBriefProvider(payload=_ready_payload())
@@ -77,6 +81,35 @@ async def _test_worker_processes_provider_signal_target_with_llm_context() -> No
     assert result.processed == 1
     assert result.skipped == 0
     assert "provider_signal_skip" not in result.notes
+
+
+async def _test_worker_skips_fresh_current_even_when_source_updated_is_noisy() -> None:
+    candidate = _candidate()
+    provider = FakeBriefProvider(payload=_ready_payload())
+    packet = provider.packet_for_candidate(candidate)
+    agent_config = provider.agent_config()
+    candidate["source_updated_at_ms"] = NOW_MS + 60_000
+    candidate["current_brief"] = {
+        "news_item_id": candidate["item"]["news_item_id"],
+        "status": "ready",
+        "input_hash": packet.input_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
+        "prompt_version": packet.prompt_version,
+        "schema_version": packet.schema_version,
+        "validator_version": agent_config.validator_version,
+        "computed_at_ms": NOW_MS - 60_000,
+        "brief_json": _ready_payload(),
+    }
+    db = FakeDB([candidate])
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.execution_calls == 0
+    assert db.news.runs == []
+    assert db.news.briefs == []
+    assert len(db.dirty.done) == 1
+    assert result.skipped == 1
 
 
 def test_worker_claims_dirty_targets_off_event_loop_thread() -> None:
@@ -321,6 +354,7 @@ def _ready_payload() -> dict[str, Any]:
         "status": "ready",
         "direction": "bullish",
         "decision_class": "driver",
+        "title_zh": "SOL ETF 申请",
         "summary_zh": "SOL ETF filing boosts attention.",
         "market_read_zh": "SOL ETF 申请强化监管叙事，但审批时间仍不确定。",
         "bull_view": {
@@ -401,6 +435,24 @@ class FakeBriefProvider:
             "payload": self.payload,
             "agent_run_audit": _audit(run_id=run_id, packet=packet, execution_started=True),
         }
+
+    def packet_for_candidate(self, candidate: dict[str, Any]) -> Any:
+        from gmgn_twitter_intel.domains.news_intel.runtime.news_item_brief_worker import _packet_from_candidate
+
+        return _packet_from_candidate(
+            candidate,
+            agent_config=self.agent_config(),
+        )
+
+    def agent_config(self) -> Any:
+        from gmgn_twitter_intel.domains.news_intel.types.news_item_brief import (
+            default_news_item_brief_agent_config,
+        )
+
+        return default_news_item_brief_agent_config(
+            model=self.model,
+            artifact_version_hash=self.artifact_version_hash,
+        )
 
 
 def _audit(*, run_id: str, packet: Any, execution_started: bool) -> dict[str, Any]:

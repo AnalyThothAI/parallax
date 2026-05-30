@@ -2225,8 +2225,7 @@ class NewsRepository:
                 member.story_id,
                 items.published_at_ms,
                 GREATEST(
-                  items.updated_at_ms,
-                  COALESCE(stories.updated_at_ms, 0),
+                  COALESCE(items.processed_at_ms, items.created_at_ms, 0),
                   COALESCE(mention_updates.updated_at_ms, 0),
                   COALESCE(fact_updates.updated_at_ms, 0),
                   COALESCE(context_updates.updated_at_ms, 0),
@@ -2241,7 +2240,6 @@ class NewsRepository:
                  ORDER BY created_at_ms DESC, story_id DESC
                  LIMIT 1
               ) AS member ON true
-              LEFT JOIN news_story_groups AS stories ON stories.story_id = member.story_id
               LEFT JOIN LATERAL (
                 SELECT MAX(created_at_ms) AS updated_at_ms
                   FROM news_token_mentions
