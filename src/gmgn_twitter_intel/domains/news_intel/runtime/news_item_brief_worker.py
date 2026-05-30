@@ -693,9 +693,7 @@ def _current_brief_is_fresh(
         return False
     if str(current.get("schema_version") or "") != agent_config.schema_version:
         return False
-    if str(current.get("validator_version") or "") != agent_config.validator_version:
-        return False
-    return True
+    return str(current.get("validator_version") or "") == agent_config.validator_version
 
 
 def _current_brief_is_terminal_failure(current: Mapping[str, Any]) -> bool:

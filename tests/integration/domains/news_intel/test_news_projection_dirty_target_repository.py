@@ -6,7 +6,9 @@ from typing import Any
 import pytest
 
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
-from gmgn_twitter_intel.domains.news_intel.repositories import news_projection_dirty_target_repository as dirty_target_repository_module
+from gmgn_twitter_intel.domains.news_intel.repositories import (
+    news_projection_dirty_target_repository as dirty_target_repository_module,
+)
 from gmgn_twitter_intel.domains.news_intel.repositories.news_projection_dirty_target_repository import (
     NewsProjectionDirtyTargetRepository,
 )
