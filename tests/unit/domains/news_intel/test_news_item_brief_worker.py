@@ -105,6 +105,8 @@ async def _test_worker_skips_fresh_current_even_when_source_updated_is_noisy() -
 
     result = await worker.run_once()
 
+    assert provider.reserve_calls == [NEWS_ITEM_BRIEF_LANE]
+    assert provider.request_audit_calls == []
     assert provider.execution_calls == 0
     assert db.news.runs == []
     assert db.news.briefs == []
@@ -403,6 +405,7 @@ class FakeBriefProvider:
         self.brief_error = brief_error
         self.reserve_calls: list[str] = []
         self.reserve_rate_units: list[int] = []
+        self.request_audit_calls: list[str] = []
         self.execution_calls = 0
         self.saw_db_session_during_execution: bool | None = None
         self.seen_packets: list[Any] = []
@@ -420,6 +423,7 @@ class FakeBriefProvider:
 
     def request_audit(self, *, run_id: str, packet: Any) -> dict[str, Any]:
         assert self.db is None or self.db.in_session is False
+        self.request_audit_calls.append(run_id)
         if self.audit_error is not None:
             raise self.audit_error
         return _audit(run_id=run_id, packet=packet, execution_started=False)
