@@ -281,11 +281,11 @@ async def _test_worker_provider_error_releases_acquired_reservation() -> None:
     assert result.failed == 1
 
 
-def test_worker_validation_failure_records_failed_current_without_ready_publish() -> None:
-    asyncio.run(_test_worker_validation_failure_records_failed_current_without_ready_publish())
+def test_worker_validation_failure_requeues_without_failed_current() -> None:
+    asyncio.run(_test_worker_validation_failure_requeues_without_failed_current())
 
 
-async def _test_worker_validation_failure_records_failed_current_without_ready_publish() -> None:
+async def _test_worker_validation_failure_requeues_without_failed_current() -> None:
     db = FakeDB([_candidate()])
     provider = FakeBriefProvider(payload={**_ready_payload(), "evidence_refs": ["fact:unknown"]})
     wake_bus = FakeWakeBus()
@@ -297,26 +297,56 @@ async def _test_worker_validation_failure_records_failed_current_without_ready_p
     assert db.news.runs[0]["status"] == "failed"
     assert db.news.runs[0]["outcome"] == "failed"
     assert db.news.runs[0]["validation_errors_json"][0]["code"] == "unknown_evidence_ref"
-    assert db.news.briefs[0]["status"] == "failed"
-    assert db.news.briefs[0]["direction"] == "neutral"
-    assert db.news.briefs[0]["decision_class"] == "discard"
-    assert db.news.briefs[0]["brief_json"]["data_gaps"][0]["severity"] == "high"
-    assert wake_bus.brief_updates == [1]
+    assert db.news.briefs == []
+    assert len(db.dirty.errors) == 1
+    assert db.dirty.error_kwargs[-1]["count_attempt"] is True
+    assert wake_bus.brief_updates == []
     assert result.failed == 1
     assert result.notes["validation_failed"] == 1
     assert result.notes["ready"] == 0
 
 
-def _worker(*, db: FakeDB, provider: FakeBriefProvider, wake_bus: Any | None = None) -> NewsItemBriefWorker:
+def test_worker_terminalizes_after_max_attempts_without_permanent_dirty_failure() -> None:
+    asyncio.run(_test_worker_terminalizes_after_max_attempts_without_permanent_dirty_failure())
+
+
+async def _test_worker_terminalizes_after_max_attempts_without_permanent_dirty_failure() -> None:
+    target = _dirty_target(attempt_count=2)
+    db = FakeDB([_candidate()], targets=[target])
+    provider = FakeBriefProvider(brief_error=RuntimeError("provider bad output"))
+    worker = _worker(db=db, provider=provider, settings=SimpleNamespace(batch_size=1, max_attempts=3))
+
+    result = await worker.run_once()
+
+    assert provider.execution_calls == 1
+    assert db.dirty.errors == []
+    assert len(db.dirty.terminalized) == 1
+    assert db.dirty.done == []
+    assert db.news.briefs[0]["status"] == "failed"
+    assert db.news.briefs[0]["brief_json"]["terminal"] is True
+    assert db.news.briefs[0]["brief_json"]["terminal_reason"] == "RuntimeError"
+    assert result.failed == 1
+
+
+def _worker(
+    *,
+    db: FakeDB,
+    provider: FakeBriefProvider,
+    wake_bus: Any | None = None,
+    settings: SimpleNamespace | None = None,
+) -> NewsItemBriefWorker:
     provider.db = db
+    resolved_settings = SimpleNamespace(
+        batch_size=5,
+        max_attempts=3,
+        backpressure_cooldown_ms=60_000,
+        statement_timeout_seconds=30,
+    )
+    if settings is not None:
+        resolved_settings.__dict__.update(settings.__dict__)
     return NewsItemBriefWorker(
         name="news_item_brief",
-        settings=SimpleNamespace(
-            batch_size=5,
-            max_attempts=3,
-            backpressure_cooldown_ms=60_000,
-            statement_timeout_seconds=30,
-        ),
+        settings=resolved_settings,
         db=db,
         telemetry=object(),
         provider=provider,
@@ -348,6 +378,18 @@ def _candidate() -> dict[str, Any]:
         "current_brief": None,
         "latest_run": None,
         "source_updated_at_ms": NOW_MS - 500,
+    }
+
+
+def _dirty_target(*, attempt_count: int = 1) -> dict[str, Any]:
+    return {
+        "projection_name": "brief_input",
+        "target_kind": "news_item",
+        "target_id": "news-item-1",
+        "window": "",
+        "payload_hash": "payload:news-item-1",
+        "lease_owner": "news_item_brief",
+        "attempt_count": attempt_count,
     }
 
 
@@ -487,11 +529,13 @@ def _audit(*, run_id: str, packet: Any, execution_started: bool) -> dict[str, An
 
 
 class FakeDB:
-    def __init__(self, candidates: list[dict[str, Any]]) -> None:
+    def __init__(self, candidates: list[dict[str, Any]], *, targets: list[dict[str, Any]] | None = None) -> None:
         self.news = FakeNewsRepository(candidates)
         self.conn = FakeConn()
         self.dirty = FakeDirtyRepository(
-            [
+            targets
+            if targets is not None
+            else [
                 {
                     "projection_name": "brief_input",
                     "target_kind": "news_item",
@@ -557,6 +601,7 @@ class FakeDirtyRepository:
         self.enqueued: list[dict[str, Any]] = []
         self.done: list[dict[str, Any]] = []
         self.errors: list[dict[str, Any]] = []
+        self.terminalized: list[dict[str, Any]] = []
         self.error_kwargs: list[dict[str, Any]] = []
         self.claim_thread_ids: list[int] = []
 
@@ -580,6 +625,10 @@ class FakeDirtyRepository:
     def mark_error(self, keys: list[dict[str, Any]], **kwargs: Any) -> int:
         self.errors.extend(dict(key) for key in keys)
         self.error_kwargs.append(dict(kwargs))
+        return len(keys)
+
+    def terminalize_targets(self, keys: list[dict[str, Any]], **kwargs: Any) -> int:
+        self.terminalized.append({"keys": [dict(key) for key in keys], **dict(kwargs)})
         return len(keys)
 
     def enqueue_targets(self, rows: list[dict[str, Any]], *, reason: str, now_ms: int, commit: bool = True) -> int:

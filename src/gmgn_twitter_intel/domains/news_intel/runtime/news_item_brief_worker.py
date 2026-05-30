@@ -154,7 +154,14 @@ class NewsItemBriefWorker(WorkerBase):
                 for key, value in outcome.notes.items():
                     notes[key] = int(notes.get(key, 0)) + int(value)
                 current_updates += outcome.current_updates
-                await asyncio.to_thread(self._complete_claimed_target, target, outcome=outcome, now_ms=now)
+                await asyncio.to_thread(
+                    self._complete_claimed_target,
+                    target,
+                    outcome=outcome,
+                    packet=packet,
+                    agent_config=agent_config,
+                    now_ms=now,
+                )
 
             if current_updates > 0 and self.wake_bus is not None:
                 self.wake_bus.notify_news_item_brief_updated(count=current_updates)
@@ -227,20 +234,15 @@ class NewsItemBriefWorker(WorkerBase):
                 execution_started=True,
                 output_hash=_output_hash(payload),
             )
-            await asyncio.to_thread(
-                self._upsert_failed_current,
-                run_id=run_id,
-                packet=packet,
-                agent_config=agent_config,
-                errors=validation.errors,
-                computed_at_ms=finished_at_ms,
-            )
             return _CandidateOutcome(
                 notes={"failed": 1, "validation_failed": 1},
-                current_updates=1,
+                current_updates=0,
                 retry_ms=self._retry_ms(),
                 retry_reason="domain_validation_failed",
                 retry_attempt_limited=True,
+                retry_counts_attempt=True,
+                terminal_run_id=run_id,
+                terminal_errors=validation.errors,
             )
 
         payload_dict = validation.payload or {}
@@ -308,21 +310,15 @@ class NewsItemBriefWorker(WorkerBase):
             validation_errors=[],
             execution_started=resolved_execution_started,
         )
-        await asyncio.to_thread(
-            self._upsert_failed_current,
-            run_id=run_id,
-            packet=packet,
-            agent_config=agent_config,
-            errors=[{"code": _provider_error_class(error), "message": str(error)[:500]}],
-            computed_at_ms=finished_at_ms,
-        )
         return _CandidateOutcome(
             notes={"failed": 1},
-            current_updates=1,
+            current_updates=0,
             retry_ms=self._retry_ms(),
             retry_reason=_provider_error_class(error),
             retry_attempt_limited=resolved_execution_started,
             retry_counts_attempt=resolved_execution_started,
+            terminal_run_id=run_id,
+            terminal_errors=[{"code": _provider_error_class(error), "message": str(error)[:500]}],
         )
 
     async def _record_execute_backpressure(
@@ -390,11 +386,16 @@ class NewsItemBriefWorker(WorkerBase):
         target: Mapping[str, Any],
         *,
         outcome: _CandidateOutcome,
+        packet: NewsItemBriefInputPacket,
+        agent_config: NewsItemBriefAgentConfig,
         now_ms: int,
     ) -> None:
-        if outcome.retry_ms is not None and (
-            not outcome.retry_attempt_limited or int(target.get("attempt_count") or 0) < self._max_attempts()
-        ):
+        if outcome.retry_ms is None:
+            self._mark_targets_done([target], now_ms=now_ms)
+            return
+        attempted_now = 1 if outcome.retry_counts_attempt else 0
+        attempt_after_failure = int(target.get("attempt_count") or 0) + attempted_now
+        if not outcome.retry_attempt_limited or attempt_after_failure < self._max_attempts():
             self._mark_targets_error(
                 [target],
                 error=outcome.retry_reason,
@@ -403,7 +404,16 @@ class NewsItemBriefWorker(WorkerBase):
                 count_attempt=outcome.retry_counts_attempt,
             )
             return
-        self._mark_targets_done([target], now_ms=now_ms)
+        if outcome.terminal_run_id and outcome.terminal_errors:
+            self._upsert_terminal_failed_current(
+                run_id=outcome.terminal_run_id,
+                packet=packet,
+                agent_config=agent_config,
+                errors=outcome.terminal_errors,
+                terminal_reason=outcome.retry_reason,
+                computed_at_ms=now_ms,
+            )
+        self._terminalize_claimed_target(target, outcome=outcome, packet=packet, now_ms=now_ms)
 
     def _mark_targets_done(self, targets: Iterable[Mapping[str, Any]], *, now_ms: int) -> None:
         with self._repository_session() as repos:
@@ -425,6 +435,24 @@ class NewsItemBriefWorker(WorkerBase):
                 retry_ms=retry_ms,
                 now_ms=now_ms,
                 count_attempt=count_attempt,
+            )
+
+    def _terminalize_claimed_target(
+        self,
+        target: Mapping[str, Any],
+        *,
+        outcome: _CandidateOutcome,
+        packet: NewsItemBriefInputPacket,
+        now_ms: int,
+    ) -> None:
+        with self._repository_session() as repos:
+            repos.news_projection_dirty_targets.terminalize_targets(
+                [target],
+                worker_name=self.name,
+                final_reason=outcome.retry_reason,
+                final_reason_bucket=outcome.retry_reason,
+                now_ms=now_ms,
+                semantic_payload_hash=packet.input_hash,
             )
 
     def _insert_run(
@@ -552,6 +580,24 @@ class NewsItemBriefWorker(WorkerBase):
             computed_at_ms=computed_at_ms,
         )
 
+    def _upsert_terminal_failed_current(
+        self,
+        *,
+        run_id: str,
+        packet: NewsItemBriefInputPacket,
+        agent_config: NewsItemBriefAgentConfig,
+        errors: list[dict[str, str]],
+        terminal_reason: str,
+        computed_at_ms: int,
+    ) -> None:
+        self._upsert_current(
+            run_id=run_id,
+            packet=packet,
+            agent_config=agent_config,
+            payload=_failed_brief(errors, terminal=True, terminal_reason=terminal_reason),
+            computed_at_ms=computed_at_ms,
+        )
+
     def _repository_session(self) -> Any:
         return self.db.worker_session(
             self.name,
@@ -584,6 +630,8 @@ class _CandidateOutcome:
         retry_reason: str = "",
         retry_attempt_limited: bool = False,
         retry_counts_attempt: bool = True,
+        terminal_run_id: str = "",
+        terminal_errors: list[dict[str, str]] | None = None,
     ) -> None:
         self.notes = dict(notes)
         self.current_updates = int(current_updates)
@@ -591,6 +639,8 @@ class _CandidateOutcome:
         self.retry_reason = retry_reason or "agent_brief_retry"
         self.retry_attempt_limited = bool(retry_attempt_limited)
         self.retry_counts_attempt = bool(retry_counts_attempt)
+        self.terminal_run_id = str(terminal_run_id or "")
+        self.terminal_errors = list(terminal_errors or [])
 
 
 def _packet_from_candidate(
@@ -684,10 +734,15 @@ def _request_json(*, packet: NewsItemBriefInputPacket, audit: Mapping[str, Any])
     }
 
 
-def _failed_brief(errors: list[dict[str, str]]) -> dict[str, Any]:
+def _failed_brief(
+    errors: list[dict[str, str]],
+    *,
+    terminal: bool = False,
+    terminal_reason: str = "",
+) -> dict[str, Any]:
     reason = "; ".join(str(error.get("message") or error.get("code") or "")[:120] for error in errors[:3])
-    suffix = f"原因：{reason}" if reason else "已记录失败原因供后续重试。"
-    return {
+    suffix = f"原因：{reason}" if reason else "已记录失败原因。"
+    payload: dict[str, Any] = {
         "status": "failed",
         "direction": "neutral",
         "decision_class": "discard",
@@ -700,12 +755,16 @@ def _failed_brief(errors: list[dict[str, str]]) -> dict[str, Any]:
         "invalidation_conditions": [],
         "data_gaps": [
             {
-                "description_zh": f"新闻条目智能摘要暂不可发布，{suffix}",
+                "description_zh": f"新闻条目智能摘要不可发布，{suffix}",
                 "severity": "high",
             }
         ],
         "evidence_refs": [],
     }
+    if terminal:
+        payload["terminal"] = True
+        payload["terminal_reason"] = terminal_reason
+    return payload
 
 
 def _source_quality_windows(windows: Iterable[str] | None) -> tuple[str, ...]:

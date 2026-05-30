@@ -3,9 +3,11 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Iterable, Mapping
+from contextlib import nullcontext
 from typing import Any
 
 from gmgn_twitter_intel.platform.db.json_safety import postgres_safe_json
+from gmgn_twitter_intel.platform.db.queue_terminal import terminalize_source_row
 
 
 class NewsProjectionDirtyTargetRepository:
@@ -324,6 +326,45 @@ class NewsProjectionDirtyTargetRepository:
             self.conn.commit()
         return int(getattr(cursor, "rowcount", 0) or 0)
 
+    def terminalize_targets(
+        self,
+        keys: Iterable[Mapping[str, Any]],
+        *,
+        worker_name: str,
+        final_reason: str,
+        final_reason_bucket: str,
+        now_ms: int,
+        semantic_payload_hash: str | None = None,
+        commit: bool = True,
+    ) -> int:
+        records = _key_records(keys)
+        if not records:
+            return 0
+        terminalized = 0
+        transaction_factory = getattr(self.conn, "transaction", None)
+        transaction = transaction_factory() if callable(transaction_factory) else nullcontext()
+        with transaction:
+            for record in records:
+                target_key = _terminal_target_key(record, semantic_payload_hash=semantic_payload_hash)
+                terminalize_source_row(
+                    self.conn,
+                    worker_name=worker_name,
+                    source_table="news_projection_dirty_targets",
+                    target_key=target_key,
+                    source_row=record,
+                    final_status="terminal",
+                    final_reason=final_reason,
+                    final_reason_bucket=final_reason_bucket,
+                    now_ms=int(now_ms),
+                    attempt_count=int(record["attempt_count"]),
+                    payload_hash=str(semantic_payload_hash or record["payload_hash"]),
+                    commit=False,
+                )
+            terminalized = self.mark_done(records, now_ms=now_ms, commit=False)
+        if commit:
+            self.conn.commit()
+        return terminalized
+
     def queue_depth(
         self,
         *,
@@ -460,6 +501,18 @@ def _key_params(records: list[dict[str, Any]]) -> dict[str, list[Any]]:
         "lease_owners": [str(record["lease_owner"]) for record in records],
         "attempt_counts": [int(record["attempt_count"]) for record in records],
     }
+
+
+def _terminal_target_key(record: Mapping[str, Any], *, semantic_payload_hash: str | None) -> str:
+    return "|".join(
+        [
+            str(record["projection_name"]),
+            str(record["target_kind"]),
+            str(record["target_id"]),
+            str(record["window"]),
+            str(semantic_payload_hash or record["payload_hash"]),
+        ]
+    )
 
 
 def _dirty_payload_hash(record: Mapping[str, Any], *, reason: str) -> str:

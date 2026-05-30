@@ -10,6 +10,7 @@ from gmgn_twitter_intel.domains.news_intel.repositories.news_projection_dirty_ta
     NewsProjectionDirtyTargetRepository,
 )
 from tests.postgres_test_utils import connect_postgres_test
+from tests.postgres_test_utils import reset_postgres_schema as migrate
 
 
 def test_enqueue_coalesces_by_news_item_target_and_preserves_first_dirty_time() -> None:
@@ -623,6 +624,47 @@ def test_postgres_news_source_quality_window_uniqueness(postgres_conn) -> None:
         {"target_id": "source-1", "window": "24h", "payload_hash": "hash-24h"},
         {"target_id": "source-1", "window": "7d", "payload_hash": "hash-7d"},
     ]
+
+
+def test_terminalize_targets_deletes_hot_row_and_records_terminal_event(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsProjectionDirtyTargetRepository(conn)
+        now = 1_779_000_000_000
+        repo.enqueue_targets(
+            [{"projection_name": "brief_input", "target_kind": "news_item", "target_id": "item-terminal"}],
+            reason="unit",
+            now_ms=now,
+        )
+        claimed = repo.claim_due(limit=1, lease_ms=60_000, now_ms=now, lease_owner="worker:test")
+
+        count = repo.terminalize_targets(
+            claimed,
+            worker_name="news_item_brief",
+            final_reason="domain_validation_failed",
+            final_reason_bucket="domain_validation_failed",
+            semantic_payload_hash="semantic-hash-1",
+            now_ms=now + 1,
+        )
+
+        row = conn.execute(
+            """
+            SELECT *
+            FROM worker_queue_terminal_events
+            WHERE worker_name = 'news_item_brief'
+              AND source_table = 'news_projection_dirty_targets'
+              AND target_key LIKE '%semantic-hash-1'
+            """
+        ).fetchone()
+        depth = repo.queue_depth(now_ms=now + 1, projection_name="brief_input")
+    finally:
+        conn.close()
+
+    assert count == 1
+    assert depth == 0
+    assert row is not None
+    assert row["final_reason_bucket"] == "domain_validation_failed"
 
 
 @pytest.fixture
