@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
+from gmgn_twitter_intel.domains.news_intel.repositories import news_projection_dirty_target_repository as dirty_target_repository_module
 from gmgn_twitter_intel.domains.news_intel.repositories.news_projection_dirty_target_repository import (
     NewsProjectionDirtyTargetRepository,
 )
@@ -343,6 +344,46 @@ def test_mark_done_deletes_rows_and_mark_error_schedules_retry() -> None:
     assert 'queue."window" = failed."window"' in sql
     assert conn.params[-1]["due_at_ms"] == 1_700_000_040_000
     assert conn.params[-1]["last_error"] == "projection failed"
+
+
+def test_terminalize_targets_commit_false_does_not_open_or_commit_transaction(monkeypatch: pytest.MonkeyPatch) -> None:
+    conn = _ScriptedConnection([])
+    conn.rowcount = 1
+    terminal_events: list[dict[str, Any]] = []
+
+    def fake_terminalize_source_row(conn_arg: Any, **kwargs: Any) -> dict[str, Any]:
+        assert conn_arg is conn
+        terminal_events.append(dict(kwargs))
+        return {}
+
+    monkeypatch.setattr(dirty_target_repository_module, "terminalize_source_row", fake_terminalize_source_row)
+
+    count = NewsProjectionDirtyTargetRepository(conn).terminalize_targets(
+        [
+            {
+                "projection_name": "brief_input",
+                "target_kind": "news_item",
+                "target_id": "item-1",
+                "window": "",
+                "payload_hash": "claim-hash",
+                "lease_owner": "worker-a",
+                "attempt_count": 2,
+            }
+        ],
+        worker_name="news_item_brief",
+        final_reason="domain_validation_failed",
+        final_reason_bucket="domain_validation_failed",
+        now_ms=1_700_000_010_000,
+        semantic_payload_hash="semantic-hash",
+        commit=False,
+    )
+
+    assert count == 1
+    assert conn.transaction_enters == 0
+    assert conn.commits == 0
+    assert terminal_events[0]["commit"] is False
+    assert terminal_events[0]["payload_hash"] == "semantic-hash"
+    assert "DELETE FROM news_projection_dirty_targets queue" in conn.sql[-1]
 
 
 def test_queue_depth_counts_due_unleased_and_expired_leases() -> None:
@@ -706,6 +747,7 @@ class _ScriptedConnection:
         self.params: list[dict[str, Any]] = []
         self.rowcount = 0
         self.commits = 0
+        self.transaction_enters = 0
 
     def execute(self, sql: str, params: dict[str, Any] | None = None) -> _ScriptedConnection:
         self.sql.append(str(sql))
@@ -725,3 +767,19 @@ class _ScriptedConnection:
 
     def commit(self) -> None:
         self.commits += 1
+
+    def transaction(self) -> _ScriptedTransaction:
+        return _ScriptedTransaction(self)
+
+
+class _ScriptedTransaction:
+    def __init__(self, conn: _ScriptedConnection) -> None:
+        self.conn = conn
+
+    def __enter__(self) -> _ScriptedTransaction:
+        self.conn.transaction_enters += 1
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+        if exc_type is None:
+            self.conn.commit()

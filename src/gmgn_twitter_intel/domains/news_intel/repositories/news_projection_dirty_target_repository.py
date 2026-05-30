@@ -341,8 +341,9 @@ class NewsProjectionDirtyTargetRepository:
         if not records:
             return 0
         terminalized = 0
-        transaction_factory = getattr(self.conn, "transaction", None)
-        transaction = transaction_factory() if callable(transaction_factory) else nullcontext()
+        transaction_factory = getattr(self.conn, "transaction", None) if commit else None
+        owns_transaction = callable(transaction_factory)
+        transaction = transaction_factory() if owns_transaction else nullcontext()
         with transaction:
             for record in records:
                 target_key = _terminal_target_key(record, semantic_payload_hash=semantic_payload_hash)
@@ -361,7 +362,7 @@ class NewsProjectionDirtyTargetRepository:
                     commit=False,
                 )
             terminalized = self.mark_done(records, now_ms=now_ms, commit=False)
-        if commit:
+        if commit and not owns_transaction:
             self.conn.commit()
         return terminalized
 
