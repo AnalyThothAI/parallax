@@ -111,7 +111,7 @@ class MentionSemanticsWorker(WorkerBase):
                 )
 
             started_at_ms = _now_ms()
-            input_hash = _hash_json(rows)
+            input_hash = _hash_json(_mention_semantics_input_rows(rows))
             run_id = deterministic_run_id(stage="mention_semantics", input_hash=input_hash, started_at_ms=started_at_ms)
             request = self.service.build_batch_request(
                 rows,
@@ -633,6 +633,19 @@ def _hash_json(payload: Any) -> str:
         separators=(",", ":"),
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _mention_semantics_input_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "event_id": str(row.get("event_id") or ""),
+            "target_type": str(row.get("target_type") or ""),
+            "target_id": str(row.get("target_id") or ""),
+            "text_clean": str(row.get("text_clean") or row.get("text") or ""),
+            "text_fingerprint": str(row.get("text_fingerprint") or ""),
+        }
+        for row in rows
+    ]
 
 
 def _provider_request_audit(provider: Any, method_name: str, **kwargs: Any) -> dict[str, Any]:
