@@ -559,6 +559,63 @@ def test_insufficient_balance_is_quota_exhausted_no_start_and_opens_circuit() ->
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize("message", ["quota unavailable", "payment failed"])
+def test_quota_and_payment_provider_messages_are_quota_exhausted(message: str) -> None:
+    async def scenario() -> None:
+        completions = FakeJsonCompletions(exception=RuntimeError(message))
+        gateway = _gateway(
+            llm_gateway=FakeLLMGateway(completions=completions),
+            policy=_policy(failure_threshold=1),
+        )
+
+        with pytest.raises(AgentExecutionError) as err:
+            await gateway.execute(_spec())
+
+        assert err.value.error_class is AgentExecutionErrorClass.QUOTA_EXHAUSTED
+        assert err.value.execution_started is False
+        assert len(completions.calls) == 1
+
+        denied = gateway.try_reserve("test.lane")
+        assert denied.acquired is False
+        assert denied.reason is AgentExecutionErrorClass.CIRCUIT_OPEN
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    ("message", "expected_error_class"),
+    [
+        ("rate limit: insufficient quota", AgentExecutionErrorClass.RATE_LIMITED),
+        ("transport connection lost after payment check", AgentExecutionErrorClass.TRANSPORT_ERROR),
+    ],
+)
+def test_rate_limit_and_transport_precede_quota_provider_markers(
+    message: str,
+    expected_error_class: AgentExecutionErrorClass,
+) -> None:
+    async def scenario() -> None:
+        completions = FakeJsonCompletions(exception=RuntimeError(message))
+        gateway = _gateway(
+            llm_gateway=FakeLLMGateway(completions=completions),
+            policy=_policy(failure_threshold=2),
+        )
+
+        with pytest.raises(AgentExecutionError) as err:
+            await gateway.execute(_spec())
+
+        assert err.value.error_class is expected_error_class
+        assert err.value.execution_started is True
+        assert len(completions.calls) == 1
+
+        reservation = gateway.try_reserve("test.lane")
+        try:
+            assert reservation.acquired is True
+        finally:
+            await reservation.release()
+
+    asyncio.run(scenario())
+
+
 def test_timeout_maps_to_execution_error_with_started_audit() -> None:
     async def scenario() -> None:
         completions = FakeJsonCompletions(delay_seconds=2)

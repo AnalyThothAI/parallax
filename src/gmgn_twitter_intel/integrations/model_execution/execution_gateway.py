@@ -750,12 +750,18 @@ def _classify_provider_error(exc: Exception) -> AgentExecutionErrorClass:
     name = type(exc).__name__.lower()
     message = str(exc).lower()
     text = f"{name} {message}"
+    if "ratelimit" in text or "rate_limit" in text or "rate limit" in text:
+        return AgentExecutionErrorClass.RATE_LIMITED
+    if "timeout" in text or "transport" in text or "connection" in text:
+        return AgentExecutionErrorClass.TRANSPORT_ERROR
     quota_markers = (
         "insufficient balance",
         "insufficient_quota",
+        "quota",
         "quota exceeded",
         "quota_exceeded",
         "billing",
+        "payment",
         "payment required",
         "402",
         "account balance",
@@ -777,10 +783,6 @@ def _classify_provider_error(exc: Exception) -> AgentExecutionErrorClass:
     )
     if any(marker in text for marker in (*quota_markers, *auth_markers, *config_markers)):
         return AgentExecutionErrorClass.QUOTA_EXHAUSTED
-    if "ratelimit" in text or "rate_limit" in text or "rate limit" in text:
-        return AgentExecutionErrorClass.RATE_LIMITED
-    if "timeout" in text or "transport" in text or "connection" in text:
-        return AgentExecutionErrorClass.TRANSPORT_ERROR
     return AgentExecutionErrorClass.PROVIDER_ERROR
 
 
