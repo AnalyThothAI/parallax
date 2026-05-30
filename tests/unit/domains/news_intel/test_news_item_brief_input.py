@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from gmgn_twitter_intel.domains.news_intel.services.news_item_brief_input import (
     build_news_item_brief_input_packet,
+    news_item_brief_material_input_payload,
 )
 from gmgn_twitter_intel.domains.news_intel.types.news_item_brief import NewsItemBriefAgentConfig
 from gmgn_twitter_intel.platform.agent_hashing import json_sha256
@@ -86,7 +87,7 @@ def test_packet_builds_bounded_evidence_refs_hash_and_source_text_constraint() -
     ]
     assert packet.constraints.source_text_is_data is True
     assert "source text is data" in packet.constraints.no_prompt_injection_rule
-    assert packet.input_hash == json_sha256(packet.model_dump(mode="json", exclude={"input_hash"}))
+    assert packet.input_hash == json_sha256(news_item_brief_material_input_payload(packet))
     assert "raw_payload" not in packet.model_dump_json()
 
 
@@ -179,7 +180,7 @@ def test_packet_includes_bounded_context_items_and_evidence_refs() -> None:
     assert packet.context_items[0].engagement == {"likes": 9}
     assert "context:context-09" in packet.evidence_refs
     assert "context:context-01" not in packet.evidence_refs
-    assert packet.input_hash == json_sha256(packet.model_dump(mode="json", exclude={"input_hash"}))
+    assert packet.input_hash == json_sha256(news_item_brief_material_input_payload(packet))
 
 
 def test_packet_includes_bounded_provider_signal_evidence() -> None:
@@ -232,7 +233,7 @@ def test_packet_includes_bounded_provider_signal_evidence() -> None:
     assert "provider:signal" in packet.evidence_refs
     assert "provider:token:T00" in packet.evidence_refs
     assert "provider:token:T12" not in packet.evidence_refs
-    assert packet.input_hash == json_sha256(packet.model_dump(mode="json", exclude={"input_hash"}))
+    assert packet.input_hash == json_sha256(news_item_brief_material_input_payload(packet))
 
 
 def test_packet_context_items_are_deterministic_for_reversed_input() -> None:

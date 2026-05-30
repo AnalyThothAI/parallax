@@ -104,7 +104,6 @@ class NewsItemBriefNewsItem(BaseModel):
     body_excerpt: str = Field(default="", max_length=2000)
     canonical_url: str = Field(default="", max_length=2000)
     published_at_ms: int = Field(default=0, ge=0)
-    fetched_at_ms: int | None = Field(default=None, ge=0)
     content_hash: str = Field(default="", max_length=160)
     source: NewsItemBriefSource = Field(default_factory=NewsItemBriefSource)
 

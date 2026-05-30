@@ -48,7 +48,6 @@ def build_news_item_brief_input_packet(
         body_excerpt=_bounded(item.get("body_text") or item.get("body_excerpt"), BODY_EXCERPT_MAX_CHARS),
         canonical_url=_bounded(item.get("canonical_url"), 2000),
         published_at_ms=_int(item.get("published_at_ms")),
-        fetched_at_ms=_optional_int(item.get("fetched_at_ms")),
         content_hash=_bounded(item.get("content_hash"), 160),
         source=NewsItemBriefSource(
             source_domain=_bounded(item.get("source_domain"), 255),
@@ -96,7 +95,20 @@ def build_news_item_brief_input_packet(
         prompt_version=agent_config.prompt_version,
         schema_version=agent_config.schema_version,
     )
-    return packet.model_copy(update={"input_hash": json_sha256(packet.model_dump(mode="json", exclude={"input_hash"}))})
+    return packet.model_copy(update={"input_hash": news_item_brief_material_input_hash(packet)})
+
+
+def news_item_brief_material_input_payload(packet: NewsItemBriefInputPacket) -> dict[str, Any]:
+    return packet.model_dump(
+        mode="json",
+        exclude={
+            "input_hash",
+        },
+    )
+
+
+def news_item_brief_material_input_hash(packet: NewsItemBriefInputPacket) -> str:
+    return json_sha256(news_item_brief_material_input_payload(packet))
 
 
 def _token_lane(row: Mapping[str, Any]) -> NewsItemBriefTokenLane:
@@ -412,4 +424,9 @@ def _bounded_string_list(value: Any, max_length: int) -> list[str]:
     ]
 
 
-__all__ = ["BODY_EXCERPT_MAX_CHARS", "build_news_item_brief_input_packet"]
+__all__ = [
+    "BODY_EXCERPT_MAX_CHARS",
+    "build_news_item_brief_input_packet",
+    "news_item_brief_material_input_hash",
+    "news_item_brief_material_input_payload",
+]

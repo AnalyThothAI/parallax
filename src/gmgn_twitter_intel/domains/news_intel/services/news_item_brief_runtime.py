@@ -3,6 +3,9 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
+from gmgn_twitter_intel.domains.news_intel.services.news_item_brief_input import (
+    news_item_brief_material_input_payload,
+)
 from gmgn_twitter_intel.domains.news_intel.types.news_item_brief import (
     NEWS_ITEM_BRIEF_AGENT_NAME,
     NEWS_ITEM_BRIEF_LANE,
@@ -24,7 +27,7 @@ def build_news_item_brief_stage(*, packet: NewsItemBriefInputPacket, run_id: str
         lane=NEWS_ITEM_BRIEF_LANE,
         stage="news_item_brief",
         instructions=news_item_brief_instructions(),
-        input_payload=packet.model_dump(mode="json", exclude={"input_hash"}),
+        input_payload=news_item_brief_material_input_payload(packet),
         output_type=NewsItemBriefPayload,
         prompt_version=packet.prompt_version,
         schema_version=packet.schema_version,
