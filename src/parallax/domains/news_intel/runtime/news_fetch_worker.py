@@ -251,6 +251,7 @@ class NewsFetchWorker(WorkerBase):
     ) -> dict[str, int]:
         counts = {"fetched": 0, "inserted": 0, "updated": 0, "duplicate": 0}
         dirty_news_item_ids: list[str] = []
+        brief_dirty_news_item_ids: list[str] = []
         brief_ineligible_news_item_ids: set[str] = set()
         repository = repos.news
         source_id = str(source["source_id"])
@@ -307,6 +308,7 @@ class NewsFetchWorker(WorkerBase):
                 commit=False,
             )
             news_item_id = str(news.get("news_item_id") or "")
+            eligible_for_brief = False
             if news_item_id:
                 parent_ids_by_source_key[observation.source_item_key] = news_item_id
                 eligibility = news_item_agent_brief_eligibility(
@@ -316,7 +318,8 @@ class NewsFetchWorker(WorkerBase):
                     },
                     now_ms=fetched_at_ms,
                 )
-                if not eligibility.eligible:
+                eligible_for_brief = eligibility.eligible
+                if not eligible_for_brief:
                     brief_ineligible_news_item_ids.add(news_item_id)
             status = str(news.get("status") or provider.get("status") or "duplicate")
             if status in counts:
@@ -324,10 +327,19 @@ class NewsFetchWorker(WorkerBase):
             if news_item_id and status in {"inserted", "updated"}:
                 affected_item_ids = _affected_news_item_ids(news, fallback_news_item_id=news_item_id)
                 dirty_news_item_ids.extend(affected_item_ids)
+                if eligible_for_brief:
+                    brief_dirty_news_item_ids.append(news_item_id)
         _enqueue_news_item_dirty_targets(
             repos,
             news_item_ids=dirty_news_item_ids,
             projection_names=("page",),
+            reason="news_item_written",
+            now_ms=fetched_at_ms,
+        )
+        _enqueue_news_item_dirty_targets(
+            repos,
+            news_item_ids=brief_dirty_news_item_ids,
+            projection_names=("brief_input",),
             reason="news_item_written",
             now_ms=fetched_at_ms,
         )

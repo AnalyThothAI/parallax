@@ -5,6 +5,7 @@ import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
 from parallax.app.runtime.worker_base import WorkerBase
@@ -86,16 +87,28 @@ class NotificationWorker(WorkerBase):
             created: list[dict[str, Any]] = []
             external_deliveries_enqueued = False
             for candidate in candidates:
-                row = self._insert_candidate_with_repository(repos.notifications, candidate)
+                outcome = self._insert_candidate_with_repository(repos.notifications, candidate)
+                row = getattr(outcome, "row", outcome)
                 if row is None:
                     continue
-                external_deliveries_enqueued = (
-                    self._enqueue_external_deliveries_with_repository(repos.notifications, row, candidate)
-                    or external_deliveries_enqueued
-                )
-                created.append(row)
-                if len(created) >= self.batch_limit:
-                    break
+                if bool(getattr(outcome, "created", True)):
+                    external_deliveries_enqueued = (
+                        self._enqueue_external_deliveries_with_repository(repos.notifications, row, candidate)
+                        or external_deliveries_enqueued
+                    )
+                    created.append(row)
+                    if len(created) >= self.batch_limit:
+                        break
+                elif bool(getattr(outcome, "aggregated", False)) and _reactivate_aggregated_delivery(candidate):
+                    external_deliveries_enqueued = (
+                        self._enqueue_external_deliveries_with_repository(
+                            repos.notifications,
+                            row,
+                            candidate,
+                            reactivate_failed=True,
+                        )
+                        or external_deliveries_enqueued
+                    )
             if not _has_unit_of_work(repos):
                 _commit_if_available(getattr(repos, "notifications", None))
         return NotificationProcessResult(
@@ -104,9 +117,29 @@ class NotificationWorker(WorkerBase):
         )
 
     @staticmethod
-    def _insert_candidate_with_repository(
-        repository: NotificationRepository, candidate: NotificationCandidate
-    ) -> dict[str, Any] | None:
+    def _insert_candidate_with_repository(repository: NotificationRepository, candidate: NotificationCandidate) -> Any:
+        insert_with_outcome = getattr(repository, "insert_notification_with_outcome", None)
+        if insert_with_outcome is not None:
+            return insert_with_outcome(
+                dedup_key=candidate.dedup_key,
+                rule_id=candidate.rule_id,
+                severity=candidate.severity,
+                title=candidate.title,
+                body=candidate.body,
+                entity_type=candidate.entity_type,
+                entity_key=candidate.entity_key,
+                author_handle=candidate.author_handle,
+                symbol=candidate.symbol,
+                chain=candidate.chain,
+                address=candidate.address,
+                event_id=candidate.event_id,
+                source_table=candidate.source_table,
+                source_id=candidate.source_id,
+                occurrence_at_ms=candidate.occurrence_at_ms,
+                payload=candidate.payload,
+                channels=candidate.channels,
+                commit=False,
+            )
         result: dict[str, Any] | None = repository.insert_notification(
             dedup_key=candidate.dedup_key,
             rule_id=candidate.rule_id,
@@ -127,13 +160,15 @@ class NotificationWorker(WorkerBase):
             channels=candidate.channels,
             commit=False,
         )
-        return result
+        return SimpleNamespace(row=result, created=result is not None, aggregated=False)
 
     def _enqueue_external_deliveries_with_repository(
         self,
         repository: NotificationRepository,
         row: dict[str, Any],
         candidate: NotificationCandidate,
+        *,
+        reactivate_failed: bool = False,
     ) -> bool:
         enqueued = False
         for channel_id in _delivery_channels(row, candidate):
@@ -146,7 +181,14 @@ class NotificationWorker(WorkerBase):
                 continue
             if SEVERITY_RANK.get(candidate.severity, 0) < SEVERITY_RANK.get(channel.min_severity, 1):
                 continue
-            delivery = repository.enqueue_delivery(
+            enqueue = (
+                getattr(repository, "enqueue_or_requeue_delivery", None)
+                if reactivate_failed
+                else repository.enqueue_delivery
+            )
+            if enqueue is None:
+                enqueue = repository.enqueue_delivery
+            delivery = enqueue(
                 notification_id=str(row["notification_id"]),
                 channel_id=channel_id,
                 provider=channel.provider,
@@ -194,3 +236,9 @@ def _delivery_channels(row: dict[str, Any], candidate: NotificationCandidate) ->
         channels = tuple(str(channel).strip() for channel in row_channels if str(channel).strip())
         return channels or ("in_app",)
     return candidate.channels
+
+
+def _reactivate_aggregated_delivery(candidate: NotificationCandidate) -> bool:
+    if candidate.rule_id != "news_high_signal":
+        return False
+    return candidate.payload.get("external_push_eligible") is True

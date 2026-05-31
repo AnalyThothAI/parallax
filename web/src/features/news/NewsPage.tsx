@@ -16,7 +16,7 @@ type NewsPageProps = {
 };
 
 const EMPTY_NEWS_ROWS: NewsRow[] = [];
-const DEFAULT_NEWS_MIN_SCORE = 70;
+const DEFAULT_NEWS_MIN_SCORE = 80;
 type SignalFilter = "all" | "bullish" | "bearish" | "neutral";
 
 export function NewsPage({ token, newsItemId = null }: NewsPageProps) {
@@ -67,7 +67,7 @@ function NewsQueueRoute({ token }: { token: string }) {
                 resetCursor();
               }}
             >
-              ≥70
+              ≥80
             </button>
             <label className="news-search-filter">
               <span>Search</span>

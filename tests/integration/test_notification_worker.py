@@ -58,7 +58,14 @@ def worker_settings(**overrides):
     return SimpleNamespace(**values)
 
 
-def candidate(dedup_key="watched_account_activity:event:event-1", channels=("in_app",), severity="info"):
+def candidate(
+    dedup_key="watched_account_activity:event:event-1",
+    channels=("in_app",),
+    severity="info",
+    event_id="event-1",
+    source_id="event-1",
+    occurrence_at_ms=1_700_000_000_000,
+):
     return NotificationCandidate(
         dedup_key=dedup_key,
         rule_id="watched_account_activity",
@@ -68,11 +75,42 @@ def candidate(dedup_key="watched_account_activity:event:event-1", channels=("in_
         entity_type="account",
         entity_key="account:toly",
         author_handle="toly",
-        event_id="event-1",
+        event_id=event_id,
         source_table="events",
-        source_id="event-1",
-        occurrence_at_ms=1_700_000_000_000,
-        payload={"event_id": "event-1"},
+        source_id=source_id,
+        occurrence_at_ms=occurrence_at_ms,
+        payload={"event_id": event_id},
+        channels=channels,
+    )
+
+
+def news_candidate(
+    *,
+    news_item_id: str,
+    source_id: str,
+    occurrence_at_ms: int,
+    semantic_signature: str = "sha256:news-semantic",
+    external_push_eligible: bool = True,
+    channels=("in_app", "pushdeer"),
+):
+    return NotificationCandidate(
+        dedup_key=f"news_high_signal:{semantic_signature}",
+        rule_id="news_high_signal",
+        severity="critical",
+        title=f"news {news_item_id}",
+        body=f"news body {news_item_id}",
+        entity_type="news_item",
+        entity_key=f"news_item:{news_item_id}",
+        source_table="news_page_rows",
+        source_id=source_id,
+        occurrence_at_ms=occurrence_at_ms,
+        payload={
+            "news_item_id": news_item_id,
+            "semantic_signature": semantic_signature,
+            "in_app_signature": semantic_signature,
+            "external_push_signature": "sha256:news-external",
+            "external_push_eligible": external_push_eligible,
+        },
         channels=channels,
     )
 
@@ -152,6 +190,189 @@ def test_process_once_enqueues_external_deliveries_for_new_notifications(tmp_pat
     assert deliveries[0]["channel_id"] == "pushdeer"
     assert deliveries[0]["provider"] == "apprise"
     assert duplicate == []
+
+
+def test_process_once_requeues_failed_delivery_for_new_aggregated_news_occurrence(tmp_path):
+    conn, repo, worker = open_worker(
+        tmp_path,
+        candidates=[
+            news_candidate(
+                news_item_id="news-1",
+                source_id="news-1",
+                occurrence_at_ms=1_700_000_000_000,
+            )
+        ],
+        delivery_channels={
+            "pushdeer": NotificationChannelConfig(
+                enabled=True,
+                provider="pushdeer",
+                url="pushdeer://test-key",
+                min_severity="high",
+            )
+        },
+    )
+    try:
+        inserted = asyncio.run(worker.process_once(now_ms=1_700_000_100_000))
+        assert len(inserted) == 1
+        deliveries = repo.list_deliveries(limit=10)
+        assert len(deliveries) == 1
+        repo.conn.execute(
+            """
+            UPDATE notification_deliveries
+               SET status = 'dead',
+                   attempt_count = 5,
+                   max_attempts = 5,
+                   last_error = 'pushdeer_notify_failed:80501',
+                   updated_at_ms = 1_700_000_120_000
+             WHERE delivery_id = %s
+            """,
+            (deliveries[0]["delivery_id"],),
+        )
+        repo.conn.commit()
+
+        worker.rule_engine = StaticRuleEngine(
+            [
+                news_candidate(
+                    news_item_id="news-2",
+                    source_id="news-2",
+                    occurrence_at_ms=1_700_000_300_000,
+                )
+            ]
+        )
+        duplicate = asyncio.run(worker.process_once(now_ms=1_700_000_300_500))
+        notifications = repo.list_notifications(limit=10, rule_id="news_high_signal")
+        deliveries = repo.list_deliveries(limit=10)
+    finally:
+        conn.close()
+
+    assert duplicate == []
+    assert len(notifications) == 1
+    assert notifications[0]["occurrence_count"] == 2
+    assert notifications[0]["payload_json"]["news_item_id"] == "news-2"
+    assert deliveries[0]["status"] == "pending"
+    assert deliveries[0]["attempt_count"] == 0
+    assert deliveries[0]["last_error"] is None
+
+
+def test_process_once_does_not_requeue_failed_delivery_for_non_news_aggregation(tmp_path):
+    conn, repo, worker = open_worker(
+        tmp_path,
+        candidates=[
+            candidate(
+                dedup_key="watched_account_activity:toly:post:bucket",
+                channels=("in_app", "pushdeer"),
+                severity="high",
+            )
+        ],
+        delivery_channels={
+            "pushdeer": NotificationChannelConfig(
+                enabled=True,
+                provider="pushdeer",
+                url="pushdeer://test-key",
+                min_severity="high",
+            )
+        },
+    )
+    try:
+        inserted = asyncio.run(worker.process_once(now_ms=1_700_000_100_000))
+        assert len(inserted) == 1
+        deliveries = repo.list_deliveries(limit=10)
+        assert len(deliveries) == 1
+        repo.conn.execute(
+            """
+            UPDATE notification_deliveries
+               SET status = 'dead',
+                   attempt_count = 5,
+                   max_attempts = 5,
+                   last_error = 'pushdeer_notify_failed:80501',
+                   updated_at_ms = 1_700_000_120_000
+             WHERE delivery_id = %s
+            """,
+            (deliveries[0]["delivery_id"],),
+        )
+        repo.conn.commit()
+
+        worker.rule_engine = StaticRuleEngine(
+            [
+                candidate(
+                    dedup_key="watched_account_activity:toly:post:bucket",
+                    channels=("in_app", "pushdeer"),
+                    severity="high",
+                    event_id="event-2",
+                    source_id="event-2",
+                    occurrence_at_ms=1_700_000_300_000,
+                )
+            ]
+        )
+        duplicate = asyncio.run(worker.process_once(now_ms=1_700_000_300_500))
+        deliveries = repo.list_deliveries(limit=10)
+    finally:
+        conn.close()
+
+    assert duplicate == []
+    assert deliveries[0]["status"] == "dead"
+    assert deliveries[0]["attempt_count"] == 5
+    assert deliveries[0]["last_error"] == "pushdeer_notify_failed:80501"
+
+
+def test_process_once_does_not_requeue_suppressed_news_external_delivery(tmp_path):
+    conn, repo, worker = open_worker(
+        tmp_path,
+        candidates=[
+            news_candidate(
+                news_item_id="news-1",
+                source_id="news-1",
+                occurrence_at_ms=1_700_000_000_000,
+            )
+        ],
+        delivery_channels={
+            "pushdeer": NotificationChannelConfig(
+                enabled=True,
+                provider="pushdeer",
+                url="pushdeer://test-key",
+                min_severity="high",
+            )
+        },
+    )
+    try:
+        inserted = asyncio.run(worker.process_once(now_ms=1_700_000_100_000))
+        assert len(inserted) == 1
+        deliveries = repo.list_deliveries(limit=10)
+        assert len(deliveries) == 1
+        repo.conn.execute(
+            """
+            UPDATE notification_deliveries
+               SET status = 'dead',
+                   attempt_count = 5,
+                   max_attempts = 5,
+                   last_error = 'pushdeer_notify_failed:80501',
+                   updated_at_ms = 1_700_000_120_000
+             WHERE delivery_id = %s
+            """,
+            (deliveries[0]["delivery_id"],),
+        )
+        repo.conn.commit()
+
+        worker.rule_engine = StaticRuleEngine(
+            [
+                news_candidate(
+                    news_item_id="news-2",
+                    source_id="news-2",
+                    occurrence_at_ms=1_700_000_300_000,
+                    external_push_eligible=False,
+                    channels=("in_app", "pushdeer"),
+                )
+            ]
+        )
+        duplicate = asyncio.run(worker.process_once(now_ms=1_700_000_300_500))
+        deliveries = repo.list_deliveries(limit=10)
+    finally:
+        conn.close()
+
+    assert duplicate == []
+    assert deliveries[0]["status"] == "dead"
+    assert deliveries[0]["attempt_count"] == 5
+    assert deliveries[0]["last_error"] == "pushdeer_notify_failed:80501"
 
 
 def test_run_once_returns_result_and_wakes_delivery_after_external_enqueue(tmp_path):

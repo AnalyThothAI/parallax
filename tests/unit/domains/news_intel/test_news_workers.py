@@ -244,6 +244,60 @@ def test_news_fetch_worker_enqueues_dirty_targets_for_all_affected_news_items() 
     ]
 
 
+def test_news_fetch_worker_enqueues_brief_input_for_eligible_provider_signal_update() -> None:
+    source = {
+        "source_id": "opennews-news",
+        "provider_type": "opennews",
+        "feed_url": "https://opennews.test/news",
+        "source_domain": "opennews.test",
+        "source_name": "OpenNews",
+    }
+    db = FakeDB(FakeNewsRepository([source]))
+    db.repo.news_results = [
+        {
+            "news_item_id": "news-eligible",
+            "status": "updated",
+            "affected_news_item_ids": ["news-eligible"],
+        }
+    ]
+    feed = FakeNewsSourceProvider(
+        db,
+        NewsProviderFetchResult(
+            status_code=200,
+            observations=[
+                NewsProviderObservation(
+                    source_item_key="opennews-eligible",
+                    canonical_url="https://opennews.test/eligible",
+                    title="Eligible provider signal",
+                    summary="Summary",
+                    body_text="Body",
+                    language="en",
+                    published_at_ms=NOW_MS,
+                    raw_payload={"id": "opennews-eligible", "title": "Eligible provider signal"},
+                    provider_signal={"source": "provider", "provider": "opennews", "status": "ready", "score": 85},
+                )
+            ],
+        ),
+    )
+    worker = _worker(db=db, feed_client=feed, wake_bus=FakeWakeBus(), sources=[source])
+
+    worker.run_once_sync(now_ms=NOW_MS)
+
+    news_item_written_rows = [
+        row for batch in db.dirty.enqueued if batch["reason"] == "news_item_written" for row in batch["rows"]
+    ]
+    assert {
+        "projection_name": "page",
+        "target_kind": "news_item",
+        "target_id": "news-eligible",
+    } in news_item_written_rows
+    assert {
+        "projection_name": "brief_input",
+        "target_kind": "news_item",
+        "target_id": "news-eligible",
+    } in news_item_written_rows
+
+
 def test_news_fetch_worker_persists_context_observations() -> None:
     source = {
         "source_id": "example-rss",

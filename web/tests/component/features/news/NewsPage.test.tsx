@@ -28,7 +28,7 @@ type ObservedNewsParams = {
 const defaultNewsFetchParams: ObservedNewsParams = {
   cursor: null,
   limit: 100,
-  min_score: 70,
+  min_score: 80,
   q: null,
   signal: null,
   status: null,
@@ -79,7 +79,7 @@ describe("NewsPage", () => {
       }),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "≥70" }));
+    fireEvent.click(screen.getByRole("button", { name: "≥80" }));
     await waitFor(() =>
       expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
         ...defaultNewsFetchParams,

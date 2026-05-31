@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from dataclasses import dataclass
 from typing import Any
 
 from psycopg.types.json import Jsonb
@@ -11,6 +12,13 @@ from parallax.platform.db.postgres_client import transaction
 
 SEVERITY_RANK = {"info": 0, "warning": 1, "high": 2, "critical": 3}
 _AGGREGATION_SOURCE_REFS_KEY = "_aggregation_source_refs"
+
+
+@dataclass(frozen=True, slots=True)
+class NotificationInsertOutcome:
+    row: dict[str, Any] | None
+    created: bool
+    aggregated: bool
 
 
 class NotificationRepository:
@@ -40,6 +48,50 @@ class NotificationRepository:
         channels: list[str] | tuple[str, ...] = ("in_app",),
         commit: bool = True,
     ) -> dict[str, Any] | None:
+        outcome = self.insert_notification_with_outcome(
+            dedup_key=dedup_key,
+            rule_id=rule_id,
+            severity=severity,
+            title=title,
+            body=body,
+            entity_type=entity_type,
+            entity_key=entity_key,
+            author_handle=author_handle,
+            symbol=symbol,
+            chain=chain,
+            address=address,
+            event_id=event_id,
+            source_table=source_table,
+            source_id=source_id,
+            occurrence_at_ms=occurrence_at_ms,
+            payload=payload,
+            channels=channels,
+            commit=commit,
+        )
+        return outcome.row if outcome.created else None
+
+    def insert_notification_with_outcome(
+        self,
+        *,
+        dedup_key: str,
+        rule_id: str,
+        severity: str,
+        title: str,
+        body: str,
+        entity_type: str | None,
+        entity_key: str | None,
+        author_handle: str | None = None,
+        symbol: str | None = None,
+        chain: str | None = None,
+        address: str | None = None,
+        event_id: str | None = None,
+        source_table: str,
+        source_id: str,
+        occurrence_at_ms: int,
+        payload: dict[str, Any] | None = None,
+        channels: list[str] | tuple[str, ...] = ("in_app",),
+        commit: bool = True,
+    ) -> NotificationInsertOutcome:
         now_ms = _now_ms()
         notification_id = _id("notification", dedup_key)
         normalized_severity = _normalize_severity(severity)
@@ -50,7 +102,7 @@ class NotificationRepository:
             payload=normalized_payload,
         )
         if semantic_duplicate is not None:
-            self._aggregate_notification_row(
+            aggregated = self._aggregate_notification_row(
                 existing=semantic_duplicate,
                 normalized_severity=normalized_severity,
                 title=title,
@@ -69,7 +121,12 @@ class NotificationRepository:
             )
             if commit:
                 self.conn.commit()
-            return None
+            row = (
+                self.notification_by_id(str(semantic_duplicate["notification_id"]), subscriber_key=None)
+                if aggregated
+                else None
+            )
+            return NotificationInsertOutcome(row=row, created=False, aggregated=aggregated)
         if self._external_push_cooldown_duplicate(rule_id=rule_id, payload=normalized_payload):
             normalized_payload = {
                 **normalized_payload,
@@ -118,8 +175,9 @@ class NotificationRepository:
                 "SELECT * FROM notifications WHERE dedup_key = %s FOR UPDATE",
                 (dedup_key,),
             ).fetchone()
-            self._aggregate_notification_row(
-                existing=dict(existing) if existing is not None else None,
+            existing_dict = dict(existing) if existing is not None else None
+            aggregated = self._aggregate_notification_row(
+                existing=existing_dict,
                 normalized_severity=normalized_severity,
                 title=title,
                 body=body,
@@ -137,10 +195,19 @@ class NotificationRepository:
             )
             if commit:
                 self.conn.commit()
-            return None
+            row = (
+                self.notification_by_id(str(existing_dict["notification_id"]), subscriber_key=None)
+                if aggregated and existing_dict is not None
+                else None
+            )
+            return NotificationInsertOutcome(row=row, created=False, aggregated=aggregated)
         if commit:
             self.conn.commit()
-        return self.notification_by_id(notification_id, subscriber_key=None)
+        return NotificationInsertOutcome(
+            row=self.notification_by_id(notification_id, subscriber_key=None),
+            created=True,
+            aggregated=False,
+        )
 
     def _semantic_signature_duplicate(
         self,
@@ -217,9 +284,9 @@ class NotificationRepository:
         payload: dict[str, Any],
         channels: list[str],
         now_ms: int,
-    ) -> None:
+    ) -> bool:
         if existing is None:
-            return
+            return False
         existing_payload = _payload_dict(existing.get("payload_json"))
         existing_refs = _aggregation_source_refs(existing_payload)
         existing_ref = _aggregation_source_ref(
@@ -231,7 +298,7 @@ class NotificationRepository:
             existing_refs = _append_unique(existing_refs, existing_ref)
         incoming_ref = _aggregation_source_ref(source_table, source_id, event_id)
         if incoming_ref and incoming_ref in existing_refs:
-            return
+            return False
         merged_refs = _append_unique(existing_refs, incoming_ref)
         next_payload = dict(payload)
         if merged_refs:
@@ -274,6 +341,7 @@ class NotificationRepository:
                 existing["notification_id"],
             ),
         )
+        return True
 
     def notification_by_id(
         self,
@@ -492,6 +560,59 @@ class NotificationRepository:
         if cursor.rowcount == 0:
             return None
         return self.delivery_by_id(delivery_id)
+
+    def enqueue_or_requeue_delivery(
+        self,
+        *,
+        notification_id: str,
+        channel_id: str,
+        provider: str,
+        max_attempts: int,
+        next_run_at_ms: int | None = None,
+        commit: bool = True,
+    ) -> dict[str, Any] | None:
+        now_ms = _now_ms()
+        delivery_id = _id("delivery", notification_id, channel_id)
+        cursor = self.conn.execute(
+            """
+            INSERT INTO notification_deliveries(
+              delivery_id, notification_id, channel_id, provider, status, attempt_count, max_attempts,
+              next_run_at_ms, last_attempt_at_ms, delivered_at_ms, last_error, created_at_ms, updated_at_ms
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(notification_id, channel_id) DO UPDATE SET
+              provider = EXCLUDED.provider,
+              status = 'pending',
+              attempt_count = 0,
+              max_attempts = EXCLUDED.max_attempts,
+              next_run_at_ms = EXCLUDED.next_run_at_ms,
+              last_attempt_at_ms = NULL,
+              delivered_at_ms = NULL,
+              last_error = NULL,
+              updated_at_ms = EXCLUDED.updated_at_ms
+            WHERE notification_deliveries.status IN ('failed', 'dead')
+            RETURNING *
+            """,
+            (
+                delivery_id,
+                notification_id,
+                channel_id,
+                provider,
+                "pending",
+                0,
+                max(1, int(max_attempts)),
+                int(next_run_at_ms if next_run_at_ms is not None else now_ms),
+                None,
+                None,
+                None,
+                now_ms,
+                now_ms,
+            ),
+        )
+        if commit:
+            self.conn.commit()
+        row = cursor.fetchone()
+        return dict(row) if row is not None else None
 
     def delivery_by_id(self, delivery_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(

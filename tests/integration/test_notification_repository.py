@@ -232,6 +232,78 @@ def test_insert_notification_suppresses_same_news_semantic_signature_across_exte
     assert rows[0]["payload_json"]["external_push_signature"] == "sha256:news-external-next-bucket"
 
 
+def test_insert_notification_with_outcome_reports_created_and_aggregated_rows(tmp_path):
+    repo = repository(tmp_path)
+
+    created = repo.insert_notification_with_outcome(
+        dedup_key="news_high_signal:semantic:first",
+        rule_id="news_high_signal",
+        severity="critical",
+        title="News high signal",
+        body="Agent brief",
+        entity_type="news_item",
+        entity_key="news_item:news-1",
+        source_table="news_page_rows",
+        source_id="news-1",
+        occurrence_at_ms=1_700_000_000_000,
+        payload={
+            "news_item_id": "news-1",
+            "semantic_signature": "sha256:news-semantic",
+            "external_push_signature": "sha256:news-external",
+            "external_push_eligible": True,
+        },
+        channels=["in_app", "pushdeer"],
+    )
+    aggregated = repo.insert_notification_with_outcome(
+        dedup_key="news_high_signal:semantic:second",
+        rule_id="news_high_signal",
+        severity="critical",
+        title="News high signal update",
+        body="Agent brief update",
+        entity_type="news_item",
+        entity_key="news_item:news-2",
+        source_table="news_page_rows",
+        source_id="news-2",
+        occurrence_at_ms=1_700_000_060_000,
+        payload={
+            "news_item_id": "news-2",
+            "semantic_signature": "sha256:news-semantic",
+            "external_push_signature": "sha256:news-external",
+            "external_push_eligible": True,
+        },
+        channels=["in_app", "pushdeer"],
+    )
+    legacy_duplicate = repo.insert_notification(
+        dedup_key="news_high_signal:semantic:third",
+        rule_id="news_high_signal",
+        severity="critical",
+        title="News high signal legacy update",
+        body="Agent brief legacy update",
+        entity_type="news_item",
+        entity_key="news_item:news-3",
+        source_table="news_page_rows",
+        source_id="news-3",
+        occurrence_at_ms=1_700_000_120_000,
+        payload={
+            "news_item_id": "news-3",
+            "semantic_signature": "sha256:news-semantic",
+            "external_push_signature": "sha256:news-external",
+            "external_push_eligible": True,
+        },
+        channels=["in_app", "pushdeer"],
+    )
+
+    assert created.created is True
+    assert created.aggregated is False
+    assert created.row is not None
+    assert aggregated.created is False
+    assert aggregated.aggregated is True
+    assert aggregated.row is not None
+    assert aggregated.row["notification_id"] == created.row["notification_id"]
+    assert aggregated.row["occurrence_count"] == 2
+    assert legacy_duplicate is None
+
+
 def test_insert_notification_suppresses_same_pulse_signature_only(tmp_path):
     repo = repository(tmp_path)
 
@@ -560,3 +632,74 @@ def test_claim_next_delivery_reclaims_stale_running_delivery(tmp_path):
     assert claimed["delivery_id"] == delivery["delivery_id"]
     assert claimed["status"] == "running"
     assert claimed["attempt_count"] == 2
+
+
+def test_enqueue_or_requeue_delivery_only_reactivates_failed_or_dead_rows(tmp_path):
+    repo = repository(tmp_path)
+    rows_by_status = {}
+    for index, status in enumerate(("pending", "running", "delivered", "failed", "dead"), start=1):
+        notification = repo.insert_notification(
+            dedup_key=f"delivery:reactivate:{status}",
+            rule_id="news_high_signal",
+            severity="critical",
+            title=status,
+            body=status,
+            entity_type="news_item",
+            entity_key=f"news_item:{status}",
+            source_table="news_page_rows",
+            source_id=f"news-{status}",
+            occurrence_at_ms=1_700_000_000_000 + index,
+            payload={},
+            channels=["pushdeer"],
+        )
+        assert notification is not None
+        delivery = repo.enqueue_delivery(
+            notification_id=notification["notification_id"],
+            channel_id="pushdeer",
+            provider="pushdeer",
+            max_attempts=5,
+            next_run_at_ms=1_700_000_100_000,
+        )
+        assert delivery is not None
+        repo.conn.execute(
+            """
+            UPDATE notification_deliveries
+               SET status = %s,
+                   attempt_count = 3,
+                   last_error = 'previous_error',
+                   delivered_at_ms = CASE WHEN %s = 'delivered' THEN 1700000120000 ELSE NULL END,
+                   updated_at_ms = 1700000110000
+             WHERE delivery_id = %s
+            """,
+            (status, status, delivery["delivery_id"]),
+        )
+        rows_by_status[status] = (notification, delivery)
+    repo.conn.commit()
+
+    results = {}
+    for status, (notification, delivery) in rows_by_status.items():
+        result = repo.enqueue_or_requeue_delivery(
+            notification_id=notification["notification_id"],
+            channel_id="pushdeer",
+            provider="pushdeer",
+            max_attempts=5,
+            next_run_at_ms=1_700_000_200_000,
+        )
+        stored = repo.delivery_by_id(delivery["delivery_id"])
+        assert stored is not None
+        results[status] = (result, stored)
+
+    for status in ("failed", "dead"):
+        result, stored = results[status]
+        assert result is not None
+        assert stored["status"] == "pending"
+        assert stored["attempt_count"] == 0
+        assert stored["last_error"] is None
+        assert stored["next_run_at_ms"] == 1_700_000_200_000
+
+    for status in ("pending", "running", "delivered"):
+        result, stored = results[status]
+        assert result is None
+        assert stored["status"] == status
+        assert stored["attempt_count"] == 3
+        assert stored["last_error"] == "previous_error"
