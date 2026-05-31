@@ -1313,6 +1313,7 @@ def test_cli_ops_repair_token_profile_images_enqueues_profiles_then_runs_worker(
     assert "quality_flags_json ? 'logo_mirror_pending'" in captured["sql"]
     assert "quality_flags_json ? 'source_not_admitted'" in captured["sql"]
     assert "quality_flags_json ? 'logo_mirror_unsupported'" in captured["sql"]
+    assert "quality_flags_json ? 'logo_mirror_failed'" in captured["sql"]
     assert captured["params"] == (3,)
     assert captured["enqueued"] == {
         "targets": [
