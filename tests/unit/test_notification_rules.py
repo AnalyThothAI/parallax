@@ -872,7 +872,7 @@ def test_signal_pulse_notifications_follow_candidate_pages():
     assert [call["cursor"] for call in token_watch_calls[:3]] == [None, "1", "2"]
 
 
-def test_news_high_signal_requires_ready_agent_brief_and_builds_push_signatures():
+def test_news_high_signal_uses_ready_agent_brief_for_display_and_builds_push_signatures():
     news = FakeNews(
         [
             {
@@ -940,6 +940,69 @@ def test_news_high_signal_requires_ready_agent_brief_and_builds_push_signatures(
     assert candidate.payload["display_title"] == "AI 标题：重大上所催化"
     assert "高分新闻已由 agent 归纳" in candidate.body
     assert candidate.occurrence_at_ms == NOW_MS - 5_000
+
+
+def test_news_high_signal_uses_provider_score_when_agent_brief_is_insufficient():
+    news = FakeNews(
+        [
+            {
+                "news_item_id": "news-provider-high",
+                "latest_at_ms": NOW_MS - 5_000,
+                "headline": "Provider high signal should alert",
+                "source_domain": "example.test",
+                "canonical_url": "https://example.test/high",
+                "duplicate_count": 1,
+                "content_class": "low_signal",
+                "content_tags": ["low_context"],
+                "signal": {
+                    "direction": "bullish",
+                    "alert_eligibility": {
+                        "eligible": True,
+                        "provider_score": 90,
+                        "decision_class": "context",
+                    },
+                },
+                "token_impacts": [{"symbol": "BTC", "score": 90}],
+                "agent_brief": {
+                    "status": "insufficient",
+                    "direction": "neutral",
+                    "decision_class": "context",
+                    "summary_zh": "证据不足，不应作为通知准入 gate。",
+                    "brief_json": {
+                        "summary_zh": "证据不足，不应作为通知准入 gate。",
+                        "data_gaps": [{"kind": "missing_detail"}],
+                    },
+                },
+            }
+        ]
+    )
+    notifications = NotificationsConfig(
+        rules={
+            "news_high_signal": {
+                "enabled": True,
+                "channels": ["in_app", "pushdeer"],
+                "combined_score_min": 85,
+                "external_score_min": 85,
+                "cooldown_seconds": 3600,
+            }
+        }
+    )
+
+    candidates = [
+        item for item in engine(news=news, notifications=notifications).evaluate(now_ms=NOW_MS)
+        if item.rule_id == "news_high_signal"
+    ]
+
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate.severity == "critical"
+    assert candidate.channels == ("in_app", "pushdeer")
+    assert candidate.title == "Provider high signal should alert"
+    assert "Score: 90" in candidate.body
+    assert "证据不足" not in candidate.body
+    assert candidate.payload["provider_score"] == 90
+    assert candidate.payload["decision_class"] == "context"
+    assert candidate.payload["external_push_eligible"] is True
 
 
 def test_news_high_signal_skips_stale_source_items_even_when_agent_finished_now():

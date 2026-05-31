@@ -2352,6 +2352,45 @@ def test_page_projection_rebuilds_and_lists_agent_brief_columns_when_brief_updat
     assert "artifact_version_hash" not in rows[0]["agent_brief"]
 
 
+def test_news_high_signal_candidates_do_not_require_ready_agent_status(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo)
+        repo.replace_page_rows_for_items(
+            news_item_ids=[news_item_id],
+            rows=[
+                {
+                    **_page_row("row-provider-high", news_item_id, source_id="source-1"),
+                    "signal_json": {
+                        "direction": "bullish",
+                        "alert_eligibility": {
+                            "eligible": True,
+                            "provider_score": 90,
+                            "decision_class": "context",
+                        },
+                    },
+                    "token_impacts_json": [{"symbol": "BTC", "score": 90}],
+                    "agent_status": "insufficient",
+                    "agent_brief_json": {
+                        "status": "insufficient",
+                        "direction": "neutral",
+                        "decision_class": "context",
+                    },
+                }
+            ],
+        )
+
+        rows = repo.list_news_high_signal_notification_candidates(min_score=85, limit=10)
+    finally:
+        conn.close()
+
+    assert [row["news_item_id"] for row in rows] == [news_item_id]
+    assert rows[0]["agent_status"] == "insufficient"
+    assert rows[0]["signal"]["alert_eligibility"]["provider_score"] == 90
+
+
 def test_list_news_page_rows_uses_composite_cursor(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:

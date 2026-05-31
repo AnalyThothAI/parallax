@@ -1551,8 +1551,7 @@ class NewsRepository:
               computed_at_ms,
               projection_version
             FROM news_page_rows
-            WHERE agent_status = 'ready'
-              AND COALESCE((signal_json -> 'alert_eligibility' ->> 'eligible')::boolean, false) = true
+            WHERE COALESCE((signal_json -> 'alert_eligibility' ->> 'eligible')::boolean, false) = true
               AND COALESCE(NULLIF(signal_json -> 'alert_eligibility' ->> 'provider_score', '')::int, -1) >= %s
               AND EXISTS (
                 SELECT 1

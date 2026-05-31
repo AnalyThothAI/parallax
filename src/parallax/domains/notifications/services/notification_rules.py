@@ -301,13 +301,10 @@ class NotificationRuleEngine:
             eligibility = _dict(signal.get("alert_eligibility"))
             provider_score = _int(eligibility.get("provider_score") or signal.get("score"))
             agent_brief = _dict(row.get("agent_brief"))
-            if str(agent_brief.get("status") or "") != "ready":
-                continue
-            decision_class = str(agent_brief.get("decision_class") or eligibility.get("decision_class") or "")
-            if decision_class not in {"driver", "watch"}:
-                continue
+            ready_agent_brief = _ready_news_agent_brief(agent_brief)
+            decision_class = str(eligibility.get("decision_class") or ready_agent_brief.get("decision_class") or "")
             occurrence_at_ms = _int(row.get("latest_at_ms") or row.get("agent_brief_computed_at_ms") or now_ms)
-            semantic_signature = _news_semantic_signature(row, agent_brief=agent_brief)
+            semantic_signature = _news_semantic_signature(row, agent_brief=ready_agent_brief)
             if semantic_signature in seen_semantic_signatures:
                 continue
             seen_semantic_signatures.add(semantic_signature)
@@ -330,8 +327,8 @@ class NotificationRuleEngine:
                 seen_external_push_signatures.add(external_push_signature)
             channels = rule.channels if external_push_eligible else tuple(c for c in rule.channels if c == "in_app")
             source_id = news_item_id
-            summary = _news_agent_summary(agent_brief)
-            title = _news_display_title(row, agent_brief=agent_brief)
+            summary = _news_agent_summary(ready_agent_brief)
+            title = _news_display_title(row, agent_brief=ready_agent_brief)
             body = _news_body(row, provider_score=provider_score, summary=summary)
             candidates.append(
                 NotificationCandidate(
@@ -752,6 +749,12 @@ def _news_agent_summary(agent_brief: dict[str, Any]) -> str:
     )
 
 
+def _ready_news_agent_brief(agent_brief: dict[str, Any]) -> dict[str, Any]:
+    if str(agent_brief.get("status") or "") != "ready":
+        return {}
+    return agent_brief
+
+
 def _news_display_title(row: dict[str, Any], *, agent_brief: dict[str, Any]) -> str:
     brief_json = _dict(agent_brief.get("brief_json"))
     signal = _dict(row.get("signal"))
@@ -767,11 +770,13 @@ def _news_display_title(row: dict[str, Any], *, agent_brief: dict[str, Any]) -> 
 
 def _news_semantic_signature(row: dict[str, Any], *, agent_brief: dict[str, Any]) -> str:
     brief_json = _dict(agent_brief.get("brief_json"))
+    signal = _dict(row.get("signal"))
+    eligibility = _dict(signal.get("alert_eligibility"))
     return _stable_hash(
         {
             "asset_bucket": _news_external_asset_bucket(row),
-            "decision_class": agent_brief.get("decision_class"),
-            "direction": agent_brief.get("direction"),
+            "decision_class": agent_brief.get("decision_class") or eligibility.get("decision_class"),
+            "direction": agent_brief.get("direction") or signal.get("direction"),
             "content_class": row.get("content_class"),
             "content_tags": _safe_signature_list(row.get("content_tags") or row.get("content_tags_json")),
             "affected_assets": _news_affected_asset_symbols(brief_json.get("affected_assets")),
@@ -787,7 +792,7 @@ def _news_external_push_signature(
     cooldown_seconds: int,
 ) -> str:
     signal = _dict(row.get("signal"))
-    agent_brief = _dict(row.get("agent_brief"))
+    agent_brief = _ready_news_agent_brief(_dict(row.get("agent_brief")))
     return _stable_hash(
         {
             "asset_bucket": _news_external_asset_bucket(row),
