@@ -1,42 +1,190 @@
-# GMGN Twitter Intel
+# Parallax
 
-监听 GMGN 匿名公共 Twitter WebSocket，把可解析推文写入 PostgreSQL evidence store，并在 evidence、entity、token signal、social-event harness 层上提供 `/ws` 实时推送、HTTP 健康检查和 JSON CLI 查询。
+**Parallax Market Research System** is an evidence-first research system for
+turning social, news, macro, DEX/CEX market flow, and auditable agent runs into
+replayable market decisions and outcome attribution.
 
-## 运行模型
+The project began as a GMGN Twitter stream ingestor, but the current system is
+broader: GMGN is one source adapter, not the product boundary. Parallax is built
+around the idea that a market event becomes more trustworthy when it can be
+observed from several angles: social attention, token identity, liquidity,
+derivatives positioning, news, macro regime, agent reasoning, and realized
+outcomes.
 
-- `make serve`：本地前台运行，适合开发和排查。
-- `make docker-up`：Docker 运行，适合长期跑。
-- 不提供 macOS LaunchAgent、systemd 或系统自启动命令。
-- 外部程序只调用本服务的 `/ws`、`/readyz` 或 JSON CLI，不直接调用 GMGN 公共频道。
+## Research Direction
 
-数据流：
+Parallax is a market research workbench, not a trading bot and not a chat UI.
+Its core research loop is:
 
 ```text
-GMGN public WS
-  -> normalize tweet
-  -> PostgreSQL evidence
-  -> deterministic entity extraction
-  -> token signal windows
-  -> deterministic social heat / quality / propagation / tradeability / timing scores
-  -> immutable token signal snapshots
-  -> watched-account social-event extraction jobs
-  -> OpenAI Agents SDK typed social-event-v2 extraction + traceable run audit
-  -> attention seeds
-  -> event clusters
-  -> immutable harness snapshots
-  -> shadow decisions
-  -> local-market settlement
-  -> credit attribution
-  -> report-only weights
-  -> /ws live push + replay
-  -> CLI search / asset-flow / token-signal-snapshots / social-events / harness-snapshots / harness-credits
+Information flow
+  -> Evidence ledger
+  -> Identity and market context
+  -> Signal projections
+  -> Agent research runtime
+  -> Decision ledger
+  -> Outcome attribution
+  -> Research feedback loop
 ```
 
-Harness 链路有一条硬边界：只有 `handles` 中的 watched accounts 会进入 OpenAI Agents SDK social-event-v2 抽取；全量 GMGN public stream 仍只作为确定性 token flow / market evidence 和 token signal scoring，不会被全量送进模型层。
+The system should answer six questions for every asset, event, or candidate:
 
-Agents SDK 模型层不做交易决策，只抽取 typed social event。Harness 负责落库、快照、shadow decision、结算、信用分配和 report-only 权重；`model_runs` 记录 SDK trace id、prompt/schema/artifact 版本、输入输出 hash 与 trace metadata。
+- **What happened?** Preserve the raw market/social/news observation as durable
+  evidence.
+- **What is it really about?** Resolve token identity, asset venue, author,
+  topic, macro concept, and related market target.
+- **Why is it worth attention?** Show deterministic gates, factor snapshots,
+  source quality, data freshness, and missing fields.
+- **What did the agent conclude?** Record typed model outputs, validation,
+  trace metadata, route, prompt/schema/artifact versions, usage, and abstains.
+- **What decision was persisted?** Keep a replayable decision ledger with data
+  gaps, confidence, risk flags, and why-not explanations.
+- **Was it useful?** Settle outcomes, attribute credit, inspect score buckets,
+  and keep report-only weights separate from production truth.
 
-## 快速开始
+## Architecture At A Glance
+
+```text
+GMGN public stream       News feeds / OpenNews / CryptoPanic
+Macrodata bundles       Binance / OKX / GMGN OpenAPI / CEX sources
+         |              |
+         v              v
+  ingestion and provider adapters
+         |
+         v
+  PostgreSQL material facts
+         |
+         v
+  identity, market context, and deterministic projections
+         |
+         v
+  Token Radar / Search / Token Case / Watchlist / News / Macro / CEX OI
+         |
+         v
+  audited agent runtime: Narrative, News briefs, Signal Pulse, summaries
+         |
+         v
+  decisions, settlements, attribution, diagnostics, notifications
+         |
+         v
+  React console / HTTP API / WebSocket / JSON CLI
+```
+
+Parallax follows a Kappa/CQRS model:
+
+- **Facts are truth.** Business observations live in PostgreSQL tables such as
+  `events`, `token_intents`, `token_intent_resolutions`, `asset_identity_*`,
+  `market_ticks`, `enriched_events`, `news_items`, and `macro_observations`.
+- **Read models are rebuildable.** Current serving rows use stable product,
+  window, scope, and target keys. They are not keyed by run ids, attempts,
+  timestamp-derived generations, or UUIDs.
+- **One writer per read model.** Each derived model has exactly one runtime
+  writer declared in the worker manifest and documented in the owning domain.
+- **Wake hints are not truth.** PostgreSQL `NOTIFY` wakes listeners only.
+  Consumers re-read durable state and run bounded catch-up loops.
+- **Agent execution is operational.** The shared execution gateway owns model
+  transport, structured JSON dispatch, validation, tracing, quotas, and
+  backpressure. Domains still own facts, gates, decisions, and read-model writes.
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
+[docs/WORKERS.md](docs/WORKERS.md) for the canonical implementation map.
+
+## Product Surfaces
+
+| Surface | Role |
+| --- | --- |
+| React console | Operator workbench for Radar, Search, Token Case, Signal Lab, Stocks/CEX, News, Macro, Watchlist, Ops, and notifications. |
+| HTTP API | Authenticated `/api/*` read surfaces, health checks, bootstrap, token images, status, and diagnostics. |
+| WebSocket | Authenticated `/ws` replay/live stream for events, subscriptions, notifications, and live market updates. |
+| JSON CLI | Scriptable local/operator interface for config, DB health, read-model queries, macro sync/status, and ops repair commands. |
+| PostgreSQL | Durable system of record for facts, control-plane rows, read models, audit ledgers, and settlement results. |
+
+## Research Console Model
+
+The agent-facing product should be organized around information flow rather
+than a generic chat pane:
+
+| Panel | Purpose |
+| --- | --- |
+| Flow Tape | Chronological social, news, macro, market, and watchlist events with provenance and data-health badges. |
+| Candidate Board | Deterministic gates and ranked targets before agent execution: why a target entered Radar, Pulse, News, or Watchlist workflows. |
+| Evidence Dossier | One selected target with source posts, resolved identity, market ticks, profiles, narrative digest, news facts, macro context, and CEX context. |
+| Agent Run Trace | Stage-by-stage run ledger with route, prompt/schema/artifact versions, input/output hashes, trace id, validation status, usage, timeout, and abstain reason. |
+| Decision Ledger | Persisted decisions, confidence, data gaps, risk flags, and why-not explanations. No decision should appear without an audit row. |
+| Outcome Lab | Settlement, forward returns, credit attribution, score buckets, report-only weights, and drift diagnostics. |
+| Ops Console | Worker status, lane capacity, queue depth, circuit state, provider health, retries, stale projections, and safe repair actions. |
+
+Tooling should be safe by default:
+
+- Prefer read-only inspection and dry-run repair commands.
+- Show the exact fact rows or read-model keys a tool will touch before execute.
+- Keep prompts, raw model inputs/outputs, credentials, and tokens out of public
+  UI unless the route is explicitly ops-only and sanitized.
+- Expose replay, rebuild, enqueue, settle, attribute, and export actions as
+  operator tools, not hidden side effects inside read APIs.
+- Treat model output as typed analysis bound to evidence, never as a material
+  fact unless a domain service validates and persists it.
+
+## Main Domains
+
+| Domain | Responsibility |
+| --- | --- |
+| `ingestion` | GMGN frame parsing, event normalization, provider lifecycle, and ingest entrypoint. |
+| `evidence` | Canonical event model, entity extraction, material evidence, and transactional persistence. |
+| `asset_market` | Asset identity, discovery, profiles, token images, market ticks, capture tiers, and live market fan-out. |
+| `token_intel` | Token evidence, deterministic resolution, Token Radar scoring, search, factor snapshots, and signal diagnostics. |
+| `narrative_intel` | Per-mention semantics and token-window discussion digests with evidence references. |
+| `pulse_lab` | Signal Pulse candidate gate, route policy, agent run ledger, decisions, abstains, and outcome attribution. |
+| `news_intel` | Configured news ingestion, item facts, token/fact extraction, item briefs, source quality, and News page rows. |
+| `cex_market_intel` | Binance-backed CEX universe, derivatives/OI board rows, and CEX detail snapshots. |
+| `macro_intel` | Macrodata sync, macro observations, deterministic regime/features, and Macro module views. |
+| `watchlist_intel` | Watched-handle timelines, summaries, and account-level signal read models. |
+| `notifications` | Notification rules, candidates, side-effect delivery, and delivery ledger state. |
+
+## Runtime Compatibility
+
+Parallax currently keeps several legacy runtime identifiers stable:
+
+| Compatibility surface | Current value |
+| --- | --- |
+| Python package/distribution | `gmgn-twitter-intel` |
+| Installed CLI command | `gmgn-twitter-intel` |
+| Python import package | `gmgn_twitter_intel` |
+| Operator config directory | `~/.gmgn-twitter-intel/` |
+| Compose project/data volume names | `gmgn-twitter-intel*` |
+| Current GitHub repository target | `AnalyThothAI/parallax` |
+
+This avoids breaking local deployments, Docker volumes, generated docs,
+existing scripts, and operator-owned config. A future runtime migration can add
+`parallax` CLI aliases and config-directory migration once those compatibility
+contracts have an explicit plan.
+
+## Runtime Configuration
+
+Live-data runs use operator-owned files under `~/.gmgn-twitter-intel/`.
+Repository fixtures, generated examples, and `.env` files are not runtime truth.
+
+```text
+~/.gmgn-twitter-intel/config.yaml       application, providers, credentials, storage
+~/.gmgn-twitter-intel/workers.yaml      worker cadence, leases, retries, agent lane budgets
+~/.gmgn-twitter-intel/postgres_password local PostgreSQL secret for Compose
+~/.gmgn-twitter-intel/logs/             service logs
+~/.gmgn-twitter-intel/cache/            local media mirrors and runtime cache
+```
+
+Before debugging real provider data, always confirm the active paths:
+
+```bash
+uv run gmgn-twitter-intel config
+```
+
+Report only paths, redacted booleans, status fields, and command results. Do not
+paste WebSocket tokens, API keys, provider passwords, secret-bearing DSNs, or raw
+credential payloads into issues, docs, commits, or chat.
+
+## Quick Start
+
+Install dependencies and create local runtime config:
 
 ```bash
 make sync
@@ -44,23 +192,20 @@ make init
 make config
 ```
 
-`make init` 会创建：
-
-```text
-~/.gmgn-twitter-intel/config.yaml
-~/.gmgn-twitter-intel/postgres_password
-~/.gmgn-twitter-intel/logs/
-```
-
-编辑 `config.yaml` 中的 `handles`，如需启用 watched-account social-event extraction，再配置 `llm.api_key` 与 `llm.model`。`ws_token` 是本服务的 Web/API 访问令牌；内置 cockpit 会从后端启动配置自动读取，不需要在页面里单独填写。
-
-本地前台运行：
+Run the service in the foreground:
 
 ```bash
 make serve
 ```
 
-Docker 运行：
+Apply database migrations when needed:
+
+```bash
+make db-migrate
+make db-health
+```
+
+Run with Docker Compose:
 
 ```bash
 make docker-up
@@ -69,212 +214,90 @@ make docker-logs
 make docker-down
 ```
 
-FastAPI 会直接服务前端构建产物。Docker 镜像会在构建阶段自动执行前端构建，运行后访问 `http://127.0.0.1:8765/`。页面会先读取 `/api/bootstrap`，再自动带上 `config.yaml` 里的 `ws_token` 访问 `/api/*` 快照并连接 `/ws` 实时流，不需要输入 token。
+The app serves the production frontend at:
 
-本地后端检查：
+```text
+http://127.0.0.1:8765/
+```
+
+The frontend reads `/api/bootstrap`, then uses the configured token for
+authenticated API and WebSocket calls. External clients should authenticate with
+`Authorization: Bearer <ws_token>` for HTTP and an auth message for `/ws`.
+
+## Common Operator Commands
+
+```bash
+uv run gmgn-twitter-intel --help
+uv run gmgn-twitter-intel config
+uv run gmgn-twitter-intel db health
+uv run gmgn-twitter-intel recent --limit 20
+uv run gmgn-twitter-intel asset-flow --window 1h --scope all --limit 20
+uv run gmgn-twitter-intel ops worker-status
+uv run gmgn-twitter-intel macro status
+```
+
+The CLI is intentionally JSON-oriented so it can be called from scripts and
+other agents. Treat `uv run gmgn-twitter-intel --help` as the source of truth for
+the current command surface. A generated snapshot lives at
+[docs/generated/cli-help.md](docs/generated/cli-help.md).
+
+## Frontend Development
+
+```bash
+cd web
+npm install
+npm run dev
+npm run typecheck
+npm run lint
+npm run build
+```
+
+Frontend architecture is harness-constrained. Before changing UI code, read
+[docs/FRONTEND.md](docs/FRONTEND.md). Feature CSS must live with the owning
+feature or component, shared UI primitives own their own styles, and
+`npm run lint` runs both ESLint and the frontend architecture harness.
+
+## Verification
+
+Fast local gates:
 
 ```bash
 make check
 ```
 
-## 数据库
-
-本地前台和 Docker Compose 共用宿主配置文件。Docker Compose 启动专用 PostgreSQL 容器，并通过 Alembic 在 `migrate` 服务里执行 schema migration；应用容器只在 migration 完成后启动。
-
-```text
-~/.gmgn-twitter-intel/config.yaml
-~/.gmgn-twitter-intel/postgres_password
-~/.gmgn-twitter-intel/logs/gmgn-twitter-intel.log
-```
-
-Docker Compose 挂载：
-
-```text
-宿主配置: ~/.gmgn-twitter-intel -> /root/.gmgn-twitter-intel
-PostgreSQL 数据: gmgn-twitter-intel-postgres -> /var/lib/postgresql
-```
-
-查询 Docker 内数据：
+Full completion gate:
 
 ```bash
-docker compose exec app gmgn-twitter-intel recent --limit 20
+make check-all
 ```
 
-宿主机 CLI 也可以直接查询同一个 Docker PostgreSQL：
+`make check-all` runs backend lint/type/unit/architecture/contract checks,
+frontend type/lint/architecture checks, integration/e2e/golden lanes, and
+coverage. See [docs/TESTING.md](docs/TESTING.md) and
+[docs/WORKFLOW.md](docs/WORKFLOW.md) before claiming a behavior change is done.
 
-```bash
-uv run gmgn-twitter-intel db health
-uv run gmgn-twitter-intel asset-flow --window 5m --limit 20
-```
+## Documentation Map
 
-手动执行 migration / health check：
+| Need | Source |
+| --- | --- |
+| Install, local run, Docker | [docs/SETUP.md](docs/SETUP.md) |
+| Backend architecture and boundaries | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Frontend architecture | [docs/FRONTEND.md](docs/FRONTEND.md) |
+| Public config/API/WS/CLI contracts | [docs/CONTRACTS.md](docs/CONTRACTS.md) |
+| Worker inventory and runtime ownership | [docs/WORKERS.md](docs/WORKERS.md) |
+| Worker flow and debugging | [docs/WORKER_FLOW.md](docs/WORKER_FLOW.md) |
+| Testing and completion gates | [docs/TESTING.md](docs/TESTING.md) |
+| Spec, plan, verification workflow | [docs/WORKFLOW.md](docs/WORKFLOW.md) |
+| Security and secrets handling | [docs/SECURITY.md](docs/SECURITY.md) |
+| Reliability invariants | [docs/RELIABILITY.md](docs/RELIABILITY.md) |
+| Design discipline | [docs/DESIGN_DISCIPLINE.md](docs/DESIGN_DISCIPLINE.md) |
+| PostgreSQL performance diagnostics | [docs/references/POSTGRES_PERFORMANCE.md](docs/references/POSTGRES_PERFORMANCE.md) |
 
-```bash
-docker compose run --rm migrate
-docker compose exec app gmgn-twitter-intel db health
-```
+## Non-Goals
 
-不要从宿主机直接读取或复制 Docker named volume 里的热数据库；Docker 模式下通过 `/api/*`、`/ws`、宿主机 CLI 或 `docker compose exec app gmgn-twitter-intel ...` 查询。
-
-## 配置
-
-唯一应用配置源是 `~/.gmgn-twitter-intel/config.yaml`。服务不读取 `.env`、`SQLITE_PATH`、`MONITOR_HANDLES`、`WS_TOKEN` 等环境变量。PostgreSQL 容器自身使用 Compose `environment` 初始化数据库名、用户和 password secret；应用从 YAML 读取数据库连接，并通过 `password_file` 自动注入 secret，不需要在本地命令里输入数据库密码。
-
-核心字段：
-
-```yaml
-ws_token: "replace-with-a-strong-token"
-handles:
-  - toly
-api:
-  host: "0.0.0.0"
-  port: 8765
-  heartbeat_interval: 30
-  replay_limit: 100
-storage:
-  postgres:
-    dsn: "postgresql://gmgn_app@postgres:5432/gmgn_twitter_intel"
-    password_file: "postgres_password"
-    pool_min_size: 1
-    pool_max_size: 10
-    connect_timeout_seconds: 5
-llm:
-  provider: "openai"
-  api_key:
-  model:
-  base_url: "https://api.openai.com/v1"
-  timeout_seconds: 120
-  enrichment_poll_interval: 2
-  enrichment_concurrency: 4
-  trace_enabled: true
-  trace_api_key:
-  trace_include_sensitive_data: false
-```
-
-`storage.postgres.password_file` 相对 `~/.gmgn-twitter-intel` 解析；`make init` 会创建该 secret 文件。Docker Compose 默认只把 PostgreSQL 暴露到宿主机 `127.0.0.1:56532`，容器内仍使用 `postgres:5432`。宿主机 CLI 会把这个 Docker service hostname 确定性映射到 loopback，所以同一份 DSN 可以同时用于容器和本地命令。端口冲突时可用 `GMGN_POSTGRES_PORT=56533 docker compose up -d --build app` 改宿主机端口，并在宿主机 CLI 前同样带上 `GMGN_POSTGRES_PORT=56533`。内部 collector 参数在同一个 `config.yaml` 的 `upstream` 与 `collector` 段中维护。
-
-## 外部调用
-
-健康检查：
-
-```bash
-curl http://127.0.0.1:8765/healthz
-curl http://127.0.0.1:8765/readyz
-```
-
-WebSocket：
-
-```text
-ws://127.0.0.1:8765/ws
-```
-
-外部 WebSocket 客户端先发送 auth 消息：
-
-```json
-{"type":"auth","token":"replace-with-a-strong-token"}
-```
-
-订阅：
-
-```json
-{"type":"subscribe","handles":["toly"],"replay":20}
-{"type":"subscribe","cas":[{"chain":"eth","ca":"0x6982508145454ce325ddbe47a25d4ec3d2311933"}],"replay":20}
-{"type":"subscribe","symbols":["PEPE"],"replay":20}
-```
-
-推送 payload 使用同一个可回放读模型：
-
-```json
-{
-  "type": "event",
-  "event": {"event_id": "...", "author": {"handle": "toly"}, "content": {"text": "..."}},
-  "entities": [{"entity_type": "symbol", "normalized_value": "PEPE"}],
-  "alerts": [{"alert_type": "account_token", "author_handle": "toly"}],
-  "token_attributions": [],
-  "harness": null
-}
-```
-
-内置 cockpit 会自动带鉴权；外部只读 HTTP API 调用需要 `Authorization: Bearer <ws_token>`，只有 `/api/bootstrap` 供同源前端启动使用：
-
-```bash
-TOKEN="replace-with-a-strong-token"
-curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/status"
-curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/recent?limit=20"
-curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/search?q=%24PEPE&limit=20"
-curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/token-radar?window=5m&limit=20"
-curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/stocks-radar?window=1h&limit=20"
-curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/token-posts?token_id=token:eth:0x...&window=5m&limit=50"
-curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/account-alerts?window=24h&limit=50"
-curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/social-events?window=1h&limit=50"
-curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/attention-seeds?window=1h&limit=50"
-curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/harness-snapshots?horizon=6h&limit=50"
-curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/harness-outcomes?horizon=6h&limit=50"
-curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/harness-credits?horizon=6h&limit=80"
-curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/harness-score-buckets?horizon=6h"
-curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/harness-health"
-curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/token-signal-snapshots?window=5m&limit=50"
-curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/token-signal-outcomes?horizon=6h&limit=50"
-curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/token-signal-evaluations?horizon=6h"
-curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/enrichment-jobs?limit=50"
-```
-
-## CLI
-
-所有查询命令输出 JSON，适合下游用 subprocess 调用。
-
-```bash
-uv run gmgn-twitter-intel init
-uv run gmgn-twitter-intel config
-uv run gmgn-twitter-intel db health
-uv run gmgn-twitter-intel db audit
-uv run gmgn-twitter-intel db query-audit
-uv run gmgn-twitter-intel recent --limit 20
-uv run gmgn-twitter-intel search --symbol PEPE --limit 20
-uv run gmgn-twitter-intel search --ca 0x6982508145454ce325ddbe47a25d4ec3d2311933 --limit 20
-uv run gmgn-twitter-intel search "base stablecoin" --limit 20
-uv run gmgn-twitter-intel asset-flow --window 5m --limit 20
-uv run gmgn-twitter-intel account-alerts --window 24h --limit 50
-uv run gmgn-twitter-intel social-events --window 1h --limit 50
-uv run gmgn-twitter-intel attention-seeds --window 1h --limit 50
-uv run gmgn-twitter-intel harness-snapshots --horizon 6h --limit 50
-uv run gmgn-twitter-intel harness-outcomes --horizon 6h --limit 50
-uv run gmgn-twitter-intel harness-credits --horizon 6h --limit 80
-uv run gmgn-twitter-intel harness-weights --horizon 6h --limit 100
-uv run gmgn-twitter-intel harness-score-buckets --horizon 6h
-uv run gmgn-twitter-intel harness-health
-uv run gmgn-twitter-intel token-signal-snapshots --window 5m --limit 50
-uv run gmgn-twitter-intel token-signal-outcomes --horizon 6h --limit 50
-uv run gmgn-twitter-intel token-signal-evaluations --horizon 6h
-uv run gmgn-twitter-intel enrichment-jobs --limit 50
-uv run gmgn-twitter-intel ops rebuild-attributions --symbol PEPE
-uv run gmgn-twitter-intel ops backfill-harness-jobs --limit 1000
-uv run gmgn-twitter-intel ops settle-harness --horizon 6h
-uv run gmgn-twitter-intel ops attribute-harness-credits --horizon 6h
-uv run gmgn-twitter-intel ops update-harness-weights
-uv run gmgn-twitter-intel ops freeze-token-signals --window 5m --limit 200
-uv run gmgn-twitter-intel ops settle-token-signals --horizon 6h --limit 500
-uv run gmgn-twitter-intel ops projection-status
-uv run gmgn-twitter-intel ops validate-projections --sample 100
-```
-
-`search --symbol PEPE` 等价于查 `$PEPE`，但不会触发 shell 的 `$` 环境变量展开问题。
-
-`db audit` 是只读 PostgreSQL 审计，返回核心表 count、关键 FK orphan check、projection schema presence 和 Alembic version。`db query-audit` 默认只跑 `EXPLAIN`，带 `--analyze` 才执行 `EXPLAIN ANALYZE`。Projection commands 暴露 read model offset/run/validation 状态；投影表是可重建派生数据，不是事实源。
-
-## 范围边界
-
-- 所有可解析公共事件都会入库。
-- `config.yaml` 的 `handles` 决定哪些事件触发 watched account 实时推送和默认 replay。
-- CA、cashtag、hashtag、mention、URL/domain 都是确定性抽取。
-- token 社交热度来自确定性 CA/cashtag attribution、rolling windows、timeline features、market snapshot 和可解释评分模块；Harness signal 来自 watched-account Agents SDK typed social-event-v2 extraction 加确定性 scoring。
-- V1 不接外部新闻源，不自动实盘，不自动推广配置；`harness_weights.status` 先保持 `report_only`。
-- 旧 narrative API/CLI 产品入口已移除；历史 narrative rows 不会被解释成新的 harness event。已有 watched 原始事件可用 `ops backfill-harness-jobs` 重新进入 social-event-v2 抽取队列。
-- `asset-flow` 返回 resolved 与 attention 两条 lane，以及 target、price、posts、timeline 和 data health。
-- Projection/read model 层只做 PostgreSQL 查询优化和审计闭环，不改变 token attribution、scoring、Agents SDK extraction 或 source facts 语义。
-- `rebuild-token-radar` 会按当前 token radar 投影重新物化窗口排名。
-- `token-posts` 按 token attribution 返回全量帖子分页，包含 `post_quality`、`total_count`、`has_more` 和 `next_cursor`。
-- `token-social-timeline` 返回 bucket、authors、posts 和传播 summary，用于查看单币社交传播路径。
-- 模型输出必须绑定原文 evidence substring；不把模型猜测直接当事实。
-- cashtag 没有 CA 时保持 unresolved symbol，不强行映射成某个 token。
-- `coverage=public_stream` 代表 GMGN 匿名公共流覆盖，不是完整 Twitter firehose。
+- Parallax is not a trading bot and does not execute trades.
+- Parallax is not a complete Twitter firehose; GMGN public stream coverage is
+  provider-specific.
+- Parallax does not treat job queues, provider raw frames, process caches, or
+  model guesses as business facts.
+- Parallax does not use repository-local `.env` files as live runtime config.

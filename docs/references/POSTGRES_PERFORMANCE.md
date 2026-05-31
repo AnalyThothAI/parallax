@@ -7,7 +7,7 @@
 
 ## Why This Exists
 
-`gmgn-twitter-intel` is PostgreSQL-first Kappa/CQRS. The database is not just
+Parallax is PostgreSQL-first Kappa/CQRS. The database is not just
 storage; it is the durable execution plane for facts, read models, dirty
 targets, run ledgers, and queue state. Performance work must therefore preserve
 these invariants:

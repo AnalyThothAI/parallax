@@ -4,7 +4,7 @@ Router for coding agents (Codex, Cursor, generic LLM tooling). Project-wide rule
 
 ## What this is
 
-`gmgn-twitter-intel`: a single Python service that ingests GMGN's anonymous public WebSocket, extracts Twitter-mentioned crypto entities, scores them, and serves results over HTTP / WebSocket / CLI to a small React frontend. One PostgreSQL store. See `docs/ARCHITECTURE.md`.
+`Parallax Market Research System` (legacy runtime package / CLI: `gmgn-twitter-intel`): a single Python service that ingests social, news, macro, DEX/CEX market, and provider evidence, extracts crypto entities, scores and audits research signals, and serves results over HTTP / WebSocket / CLI to a React operator console. GMGN's anonymous public WebSocket is one source adapter, not the product boundary. One PostgreSQL store. See `docs/ARCHITECTURE.md`.
 
 The pipeline is Kappa/CQRS: PostgreSQL material facts (`events`, `token_intents`, `token_intent_resolutions`, `asset_identity_*`, `market_ticks`, `enriched_events`) are the only business truth. Derived read models (`token_radar_rows`, `pulse_candidates`, ...) each have exactly one runtime writer and are rebuildable. Current read models must use stable product/window keys, never run/generation/attempt/timestamp/UUID identity; unchanged projections must write zero serving rows. `NOTIFY` is a wake hint; every listener re-reads DB and runs a bounded `interval_seconds` catch-up. Provider raw frames are inputs, not facts.
 

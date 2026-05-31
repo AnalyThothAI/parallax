@@ -28,3 +28,4 @@ web/coverage/
 .idea/
 .DS_Store
 *.swp
+.claire

@@ -1,7 +1,7 @@
 [project]
 name = "gmgn-twitter-intel"
 version = "0.1.0"
-description = "Evidence-first GMGN Twitter intelligence service with PostgreSQL-backed entity and signal retrieval."
+description = "Parallax Market Research System: evidence-first market research with PostgreSQL-backed facts, signals, agent audit, and outcome attribution."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

@@ -1,8 +1,8 @@
 # Architecture
 
-> **Scope.** Owns Python-service package boundaries, dependency direction, and conceptual data flow for `gmgn-twitter-intel`. Frontend (`web/`) architecture lives in `FRONTEND.md`. Public interface contracts live in `CONTRACTS.md`.
+> **Scope.** Owns Python-service package boundaries, dependency direction, and conceptual data flow for Parallax Market Research System. The legacy runtime package and CLI are still `gmgn-twitter-intel`. Frontend (`web/`) architecture lives in `FRONTEND.md`. Public interface contracts live in `CONTRACTS.md`.
 
-The service is organised around domain packages, explicit integration adapters, platform infrastructure, and app surfaces. Boundaries are mechanically enforced by `tests/architecture/test_src_domain_architecture.py` and `tests/architecture/test_project_structure.py::test_project_uses_domain_package_src_layout`.
+Parallax is organised around domain packages, explicit integration adapters, platform infrastructure, and app surfaces. Boundaries are mechanically enforced by `tests/architecture/test_src_domain_architecture.py` and `tests/architecture/test_project_structure.py::test_project_uses_domain_package_src_layout`.
 
 ```
 GMGN public stream
