@@ -56,6 +56,7 @@ class OpenNewsFeedClient:
         *,
         source: dict[str, Any] | None = None,
         cursor: Mapping[str, Any] | None = None,
+        since_ms: int | None = None,
         limit: int | None = None,
     ) -> FeedFetchResult:
         if not self._token:
@@ -68,6 +69,7 @@ class OpenNewsFeedClient:
                 subscription=subscription,
                 policy=policy,
                 cursor=cursor or {},
+                since_ms=since_ms,
                 limit=limit,
             )
         )
@@ -95,9 +97,11 @@ class OpenNewsFeedClient:
         subscription: Mapping[str, Any],
         policy: Mapping[str, Any],
         cursor: Mapping[str, Any],
+        since_ms: int | None,
         limit: int | None,
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         previous_high_watermark_ms = _cursor_int(cursor, "high_watermark_ms")
+        published_after_ms = _positive_int_or_none(since_ms) or 0
         overlap_ms = _rest_overlap_ms(policy=policy, cursor=cursor)
         max_pages = _max_rest_pages(policy)
         stop_threshold_ms = previous_high_watermark_ms - overlap_ms
@@ -108,7 +112,13 @@ class OpenNewsFeedClient:
         pages_scanned = 0
         stop_reason = "max_pages"
         for page in range(1, max_pages + 1):
-            body = _rest_search_body(subscription=subscription, policy=policy, limit=limit, page=page)
+            body = _rest_search_body(
+                subscription=subscription,
+                policy=policy,
+                limit=limit,
+                page=page,
+                since_ms=published_after_ms,
+            )
             payload_result = self._post_json(
                 f"{self._api_base_url}/open/news_search",
                 token=self._token or "",
@@ -138,7 +148,12 @@ class OpenNewsFeedClient:
                 oldest_seen_ms = published_ms if oldest_seen_ms <= 0 else min(oldest_seen_ms, published_ms)
                 page_oldest_ms = published_ms if page_oldest_ms is None else min(page_oldest_ms, published_ms)
                 rest_received += 1
+                if published_after_ms > 0 and published_ms < published_after_ms:
+                    continue
                 entries_by_id[entry_key] = _merge_entry(entries_by_id.get(entry_key), entry)
+            if published_after_ms > 0 and page_oldest_ms is not None and page_oldest_ms < published_after_ms:
+                stop_reason = "oldest_before_since"
+                break
             if previous_high_watermark_ms > 0 and page_oldest_ms is not None and page_oldest_ms < stop_threshold_ms:
                 stop_reason = "oldest_before_overlap"
                 break
@@ -251,6 +266,7 @@ def _rest_search_body(
     policy: Mapping[str, Any],
     limit: int | None,
     page: int | None = None,
+    since_ms: int | None = None,
 ) -> dict[str, Any]:
     body: dict[str, Any] = {
         "limit": _rest_limit(policy=policy, limit=limit),
@@ -267,6 +283,9 @@ def _rest_search_body(
     score = _positive_int_or_none(policy.get("score", policy.get("min_score", policy.get("minScore"))))
     if score is not None:
         body["score"] = score
+    published_after_ms = _positive_int_or_none(since_ms)
+    if published_after_ms is not None:
+        body["publishedAfterMs"] = published_after_ms
     return body
 
 

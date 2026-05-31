@@ -29,6 +29,14 @@ def test_worker_skips_fresh_current_even_when_source_updated_is_noisy() -> None:
     asyncio.run(_test_worker_skips_fresh_current_even_when_source_updated_is_noisy())
 
 
+def test_worker_skips_claimed_target_below_current_provider_score_floor() -> None:
+    asyncio.run(_test_worker_skips_claimed_target_below_current_provider_score_floor())
+
+
+def test_worker_skips_claimed_target_older_than_brief_window() -> None:
+    asyncio.run(_test_worker_skips_claimed_target_older_than_brief_window())
+
+
 async def _test_worker_writes_ready_brief_and_emits_wake() -> None:
     db = FakeDB([_candidate()])
     provider = FakeBriefProvider(payload=_ready_payload())
@@ -112,6 +120,45 @@ async def _test_worker_skips_fresh_current_even_when_source_updated_is_noisy() -
     assert db.news.briefs == []
     assert len(db.dirty.done) == 1
     assert result.skipped == 1
+
+
+async def _test_worker_skips_claimed_target_below_current_provider_score_floor() -> None:
+    candidate = _candidate(provider_score=79)
+    db = FakeDB([candidate])
+    provider = FakeBriefProvider(payload=_ready_payload())
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.reserve_calls == [NEWS_ITEM_BRIEF_LANE]
+    assert provider.request_audit_calls == []
+    assert provider.execution_calls == 0
+    assert db.news.runs == []
+    assert db.news.briefs == []
+    assert len(db.dirty.done) == 1
+    assert result.processed == 0
+    assert result.skipped == 1
+    assert result.notes["policy_skipped"] == 1
+
+
+async def _test_worker_skips_claimed_target_older_than_brief_window() -> None:
+    candidate = _candidate(provider_score=95)
+    candidate["item"]["published_at_ms"] = NOW_MS - (8 * 3_600_000) - 1
+    db = FakeDB([candidate])
+    provider = FakeBriefProvider(payload=_ready_payload())
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.reserve_calls == [NEWS_ITEM_BRIEF_LANE]
+    assert provider.request_audit_calls == []
+    assert provider.execution_calls == 0
+    assert db.news.runs == []
+    assert db.news.briefs == []
+    assert len(db.dirty.done) == 1
+    assert result.processed == 0
+    assert result.skipped == 1
+    assert result.notes["policy_skipped"] == 1
 
 
 def test_worker_claims_dirty_targets_off_event_loop_thread() -> None:
@@ -306,11 +353,11 @@ async def _test_worker_provider_error_releases_acquired_reservation() -> None:
     assert result.failed == 1
 
 
-def test_worker_validation_failure_requeues_without_failed_current() -> None:
-    asyncio.run(_test_worker_validation_failure_requeues_without_failed_current())
+def test_worker_validation_failure_terminalizes_without_retrying() -> None:
+    asyncio.run(_test_worker_validation_failure_terminalizes_without_retrying())
 
 
-async def _test_worker_validation_failure_requeues_without_failed_current() -> None:
+async def _test_worker_validation_failure_terminalizes_without_retrying() -> None:
     db = FakeDB([_candidate()])
     provider = FakeBriefProvider(payload={**_ready_payload(), "evidence_refs": ["fact:unknown"]})
     wake_bus = FakeWakeBus()
@@ -322,9 +369,12 @@ async def _test_worker_validation_failure_requeues_without_failed_current() -> N
     assert db.news.runs[0]["status"] == "failed"
     assert db.news.runs[0]["outcome"] == "failed"
     assert db.news.runs[0]["validation_errors_json"][0]["code"] == "unknown_evidence_ref"
-    assert db.news.briefs == []
-    assert len(db.dirty.errors) == 1
-    assert db.dirty.error_kwargs[-1]["count_attempt"] is True
+    assert db.dirty.errors == []
+    assert len(db.dirty.terminalized) == 1
+    assert db.dirty.terminalized[0]["terminal_attempt_count"] == 1
+    assert db.news.briefs[0]["status"] == "failed"
+    assert db.news.briefs[0]["brief_json"]["terminal"] is True
+    assert db.news.briefs[0]["brief_json"]["terminal_reason"] == "domain_validation_failed"
     assert wake_bus.brief_updates == []
     assert result.failed == 1
     assert result.notes["validation_failed"] == 1
@@ -401,7 +451,7 @@ def _worker(
     )
 
 
-def _candidate() -> dict[str, Any]:
+def _candidate(*, provider_score: int = 88) -> dict[str, Any]:
     return {
         "item": {
             "news_item_id": "news-item-1",
@@ -416,6 +466,14 @@ def _candidate() -> dict[str, Any]:
             "source_name": "Example",
             "source_role": "observed_source",
             "trust_tier": "standard",
+            "provider_signal_json": {
+                "source": "provider",
+                "provider": "opennews",
+                "status": "ready",
+                "direction": "bullish",
+                "score": provider_score,
+                "grade": "A",
+            },
         },
         "token_mentions": [],
         "fact_candidates": [],

@@ -128,10 +128,25 @@ def test_ops_news_dedup_commands_are_registered_without_compatibility_flags() ->
     parser = build_parser()
 
     diagnostics = parser.parse_args(["ops", "news-dedup-diagnostics"])
+    diagnostics_custom = parser.parse_args(
+        ["ops", "news-dedup-diagnostics", "--window-hours", "4", "--score-threshold", "90"]
+    )
+    cleanup = parser.parse_args(
+        ["ops", "cleanup-news-brief-input", "--window-hours", "4", "--score-threshold", "90", "--dry-run"]
+    )
     rebuild_dry_run = parser.parse_args(["ops", "rebuild-news-canonical-items", "--limit", "25", "--dry-run"])
     rebuild_execute = parser.parse_args(["ops", "rebuild-news-canonical-items", "--limit", "25", "--execute"])
 
     assert diagnostics.ops_command == "news-dedup-diagnostics"
+    assert diagnostics.window_hours == 8.0
+    assert diagnostics.score_threshold == 80
+    assert diagnostics_custom.window_hours == 4.0
+    assert diagnostics_custom.score_threshold == 90
+    assert cleanup.ops_command == "cleanup-news-brief-input"
+    assert cleanup.window_hours == 4.0
+    assert cleanup.score_threshold == 90
+    assert cleanup.dry_run is True
+    assert cleanup.execute is False
     assert rebuild_dry_run.ops_command == "rebuild-news-canonical-items"
     assert rebuild_dry_run.limit == 25
     assert rebuild_dry_run.dry_run is True
@@ -143,3 +158,5 @@ def test_ops_news_dedup_commands_are_registered_without_compatibility_flags() ->
 
     with pytest.raises(SystemExit):
         parser.parse_args(["ops", "rebuild-news-canonical-items"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ops", "cleanup-news-brief-input"])

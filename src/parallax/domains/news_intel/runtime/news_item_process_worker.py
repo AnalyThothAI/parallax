@@ -13,7 +13,7 @@ from parallax.domains.news_intel.services.news_content_classification import cla
 from parallax.domains.news_intel.services.news_entity_extraction import NewsEntity, extract_news_entities
 from parallax.domains.news_intel.services.news_fact_candidates import build_fact_candidates
 from parallax.domains.news_intel.services.news_item_agent_policy import (
-    needs_news_item_agent_brief,
+    news_item_agent_brief_eligibility,
     news_item_agent_brief_priority,
 )
 from parallax.domains.news_intel.services.news_token_mentions import build_news_token_mentions
@@ -115,6 +115,7 @@ class NewsItemProcessWorker(WorkerBase):
                             item=item_payload,
                             news_item_id=news_item_id,
                             source_quality_windows=self.source_quality_windows,
+                            now_ms=now,
                         ),
                         reason="news_item_processed",
                         now_ms=now,
@@ -155,11 +156,12 @@ def _dirty_targets_for_processed_item(
     item: Mapping[str, Any],
     news_item_id: str,
     source_quality_windows: Iterable[str],
+    now_ms: int,
 ) -> list[dict[str, Any]]:
     targets: list[dict[str, Any]] = [
         {"projection_name": "page", "target_kind": "news_item", "target_id": news_item_id},
     ]
-    if _needs_agent_brief(item):
+    if _needs_agent_brief(item, now_ms=now_ms):
         targets.append(
             {
                 "projection_name": "brief_input",
@@ -180,8 +182,8 @@ def _dirty_targets_for_processed_item(
     return targets
 
 
-def _needs_agent_brief(item: Mapping[str, Any]) -> bool:
-    return needs_news_item_agent_brief(item)
+def _needs_agent_brief(item: Mapping[str, Any], *, now_ms: int) -> bool:
+    return news_item_agent_brief_eligibility(item, now_ms=now_ms).eligible
 
 
 def _entities_from_provider_impacts(

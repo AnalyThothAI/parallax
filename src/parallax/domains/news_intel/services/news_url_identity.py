@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from urllib.parse import urlsplit
 
+from parallax.domains.news_intel.services.text_normalization import canonicalize_url
+
 URL_IDENTITY_KINDS = ("article", "live_page", "homepage", "aggregator", "unknown")
 
 _ARTICLE_ID_RE = re.compile(r"(?:^|[-_/])(?:[0-9]{6,}|[0-9a-f]{8,})(?:$|[-_/])", re.IGNORECASE)
@@ -28,6 +30,14 @@ _ROOT_LIKE_SECTIONS = {
     "tech",
     "world",
 }
+_SOCIAL_STATUS_HOSTS = {
+    "mobile.twitter.com",
+    "twitter.com",
+    "www.twitter.com",
+    "x.com",
+    "www.x.com",
+}
+_PREVIEW_SEGMENTS = {"preview", "preview_article", "preview-article"}
 
 
 def url_identity_kind(canonical_url: str) -> str:
@@ -69,6 +79,30 @@ def is_article_identity(canonical_url: str, *, kind: str | None = None) -> bool:
     return (kind or url_identity_kind(canonical_url)) == "article"
 
 
+def hard_public_url_identity_key(canonical_url: str) -> str:
+    """Return a trusted hard public URL key, or an empty string for generic URLs."""
+
+    normalized_url = canonicalize_url(canonical_url)
+    if not normalized_url:
+        return ""
+
+    split = urlsplit(normalized_url)
+    if split.scheme.lower() not in {"http", "https"} or not split.netloc:
+        return ""
+
+    social_status_key = _social_status_identity_key(split.hostname or "", split.path or "")
+    if social_status_key:
+        return social_status_key
+
+    lower_segments = _path_segments(split.path or "")
+    if _is_preview_path(lower_segments) or _is_generic_announcement_path(lower_segments):
+        return ""
+
+    if not is_article_identity(normalized_url):
+        return ""
+    return f"canonical-url:{normalized_url}"
+
+
 def _is_live_page(lower_segments: list[str]) -> bool:
     return any(
         segment == "live"
@@ -91,3 +125,28 @@ def _is_root_like_aggregator_path(lower_segments: list[str]) -> bool:
 
 def _has_article_id_or_date_slug(path: str) -> bool:
     return bool(_ARTICLE_ID_RE.search(path) or _DATE_SLUG_RE.search(path))
+
+
+def _path_segments(path: str) -> list[str]:
+    return [segment.lower() for segment in str(path or "").strip("/").split("/") if segment]
+
+
+def _is_preview_path(lower_segments: list[str]) -> bool:
+    return any(segment in _PREVIEW_SEGMENTS or segment.startswith("preview") for segment in lower_segments)
+
+
+def _is_generic_announcement_path(lower_segments: list[str]) -> bool:
+    content_segments = _strip_locale_prefix(lower_segments)
+    return content_segments in (["support", "announcement"], ["support", "announcements"])
+
+
+def _social_status_identity_key(hostname: str, path: str) -> str:
+    normalized_host = str(hostname or "").lower()
+    if normalized_host not in _SOCIAL_STATUS_HOSTS:
+        return ""
+
+    segments = _path_segments(path)
+    for index, segment in enumerate(segments[:-1]):
+        if segment == "status" and segments[index + 1].isdigit():
+            return f"social-status:twitter:{segments[index + 1]}"
+    return ""

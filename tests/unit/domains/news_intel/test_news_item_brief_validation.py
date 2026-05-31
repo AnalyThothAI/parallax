@@ -188,6 +188,31 @@ def test_validation_rejects_forbidden_execution_language() -> None:
     assert any(error["code"] == "forbidden_execution_language" for error in result.errors)
 
 
+def test_validation_rejects_explicit_leveraged_trade_advice() -> None:
+    packet = _packet()
+    result = validate_news_item_brief_output(
+        payload=_ready_payload(market_read_zh="建议做多并使用 5 倍杠杆。"),
+        packet=packet,
+        audit={},
+    )
+
+    assert result.publishable is False
+    assert result.status == "failed"
+    assert any(error["code"] == "forbidden_execution_language" for error in result.errors)
+
+
+def test_validation_allows_buy_crypto_product_name() -> None:
+    packet = _packet()
+    result = validate_news_item_brief_output(
+        payload=_ready_payload(market_read_zh="公告提到交易所的 Buy Crypto 产品入口，但没有给出交易执行建议。"),
+        packet=packet,
+        audit={},
+    )
+
+    assert result.publishable is True
+    assert result.status == "ready"
+
+
 def test_validation_rejects_forbidden_execution_language_in_title() -> None:
     packet = _packet()
     result = validate_news_item_brief_output(

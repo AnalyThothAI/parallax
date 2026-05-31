@@ -57,7 +57,6 @@ class RegistryBackedNewsSourceProvider:
         cache: NewsSourceHttpCache | None = None,
         limit: int | None = None,
     ) -> NewsProviderFetchResult:
-        del since_ms
         feed_result = self._registry.fetch(
             provider_type=source.provider_type,
             feed_url=source.feed_url,
@@ -65,6 +64,7 @@ class RegistryBackedNewsSourceProvider:
             last_modified=cache.last_modified if cache else None,
             source=source.raw,
             cursor=cursor or {},
+            since_ms=since_ms,
             limit=limit,
         )
         observations = [_observation_from_entry(source, entry) for entry in feed_result.entries]

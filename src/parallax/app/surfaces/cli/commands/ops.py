@@ -182,7 +182,30 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
 
     with repositories(settings) as repos:
         if args.ops_command == "news-dedup-diagnostics":
-            return 0, {"ok": True, "data": repos.news.news_dedup_diagnostics()}
+            window_hours = max(0.0, float(args.window_hours))
+            score_threshold = max(0, int(args.score_threshold))
+            return (
+                0,
+                {
+                    "ok": True,
+                    "data": repos.news.news_dedup_diagnostics(
+                        window_ms=int(window_hours * 3_600_000),
+                        score_threshold=score_threshold,
+                        now_ms=_now_ms(),
+                    ),
+                },
+            )
+
+        if args.ops_command == "cleanup-news-brief-input":
+            window_hours = max(0.0, float(args.window_hours))
+            score_threshold = max(0, int(args.score_threshold))
+            data = repos.news_projection_dirty_targets.cleanup_stale_brief_input_targets(
+                now_ms=_now_ms(),
+                window_ms=int(window_hours * 3_600_000),
+                score_threshold=score_threshold,
+                execute=bool(args.execute),
+            )
+            return 0, {"ok": True, "data": data}
 
         if args.ops_command == "rebuild-news-canonical-items":
             data = _rebuild_news_canonical_items(

@@ -433,6 +433,107 @@ class NewsProjectionDirtyTargetRepository:
         ).fetchone()
         return int(row["count"] if row else 0)
 
+    def cleanup_stale_brief_input_targets(
+        self,
+        *,
+        now_ms: int,
+        window_ms: int,
+        score_threshold: int,
+        execute: bool,
+        commit: bool = True,
+    ) -> dict[str, Any]:
+        params = {
+            "now_ms": int(now_ms),
+            "window_ms": max(0, int(window_ms)),
+            "score_threshold": max(0, int(score_threshold)),
+        }
+        rows = self.conn.execute(
+            _cleanup_stale_brief_input_targets_sql(execute=execute),
+            params,
+        ).fetchall()
+        if execute and commit:
+            self.conn.commit()
+        reasons = {str(row["reason"]): int(row["count"]) for row in rows}
+        count = sum(reasons.values())
+        return {
+            "execute": bool(execute),
+            "now_ms": int(now_ms),
+            "window_ms": max(0, int(window_ms)),
+            "score_threshold": max(0, int(score_threshold)),
+            "candidate_count": count,
+            "deleted_count": count if execute else 0,
+            "reasons": reasons,
+        }
+
+
+def _cleanup_stale_brief_input_targets_sql(*, execute: bool) -> str:
+    candidates_cte = """
+    WITH scored AS (
+      SELECT
+        targets.projection_name,
+        targets.target_kind,
+        targets.target_id,
+        targets."window" AS target_window,
+        CASE
+          WHEN items.news_item_id IS NULL THEN 'missing_news_item'
+          WHEN COALESCE(lower(items.provider_signal_json ->> 'source'), '') <> 'provider'
+            THEN 'source_not_provider_signal'
+          WHEN NOT (
+            COALESCE(items.provider_signal_json ->> 'score', '') ~ '^-?[0-9]+$'
+            AND (items.provider_signal_json ->> 'score')::integer >= %(score_threshold)s
+          )
+            THEN 'below_score_threshold'
+          WHEN items.published_at_ms > %(now_ms)s THEN 'published_in_future'
+          WHEN items.published_at_ms < (%(now_ms)s - %(window_ms)s) THEN 'published_too_old'
+          ELSE 'eligible'
+        END AS reason
+      FROM news_projection_dirty_targets AS targets
+      LEFT JOIN news_items AS items ON items.news_item_id = targets.target_id
+      WHERE targets.projection_name = 'brief_input'
+        AND targets.target_kind = 'news_item'
+        AND targets."window" = ''
+        AND (targets.leased_until_ms IS NULL OR targets.leased_until_ms <= %(now_ms)s)
+    ),
+    candidates AS (
+      SELECT *
+      FROM scored
+      WHERE reason <> 'eligible'
+    )
+    """
+    if not execute:
+        return (
+            candidates_cte
+            + """
+            SELECT reason, COUNT(*)::int AS count
+            FROM candidates
+            GROUP BY reason
+            ORDER BY reason ASC
+            """
+        )
+    return (
+        candidates_cte
+        + """
+        , deleted AS (
+          DELETE FROM news_projection_dirty_targets AS queue
+          USING candidates
+          WHERE queue.projection_name = candidates.projection_name
+            AND queue.target_kind = candidates.target_kind
+            AND queue.target_id = candidates.target_id
+            AND queue."window" = candidates.target_window
+          RETURNING queue.projection_name, queue.target_kind, queue.target_id, queue."window" AS target_window
+        )
+        SELECT candidates.reason, COUNT(*)::int AS count
+        FROM candidates
+        JOIN deleted
+          ON deleted.projection_name = candidates.projection_name
+         AND deleted.target_kind = candidates.target_kind
+         AND deleted.target_id = candidates.target_id
+         AND deleted.target_window = candidates.target_window
+        GROUP BY candidates.reason
+        ORDER BY candidates.reason ASC
+        """
+    )
+
 
 def _dirty_records(
     rows: Iterable[Mapping[str, Any]],

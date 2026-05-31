@@ -30,7 +30,7 @@ If the packet lacks enough evidence, set `status="insufficient"` and explain the
 
 # Impact Detail
 
-For provider score >=70 news, write the analytical fields in Simplified Chinese with enough detail for an operator to decide whether the event deserves attention:
+For provider score >=80 news, write the analytical fields in Simplified Chinese with enough detail for an operator to decide whether the event deserves attention:
 
 - `title_zh`: short operator-facing Chinese title for the core source-backed change; no trading instruction or unsupported hype.
 - `summary_zh`: state what changed, who/what is involved, and the source-backed confidence boundary.

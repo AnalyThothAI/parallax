@@ -5,7 +5,7 @@ from contextlib import nullcontext
 from typing import Any
 
 from parallax.domains.news_intel.services.news_item_agent_policy import (
-    needs_news_item_agent_brief,
+    news_item_agent_brief_eligibility,
     news_item_agent_brief_priority,
 )
 
@@ -94,7 +94,7 @@ def _enqueue_news_targets(
         )
         for row in news_item_rows
         for selected_projection in news_item_projections
-        if selected_projection != "brief_input" or needs_news_item_agent_brief(row)
+        if selected_projection != "brief_input" or news_item_agent_brief_eligibility(row, now_ms=now_ms).eligible
     ]
     source_quality_targets = [
         {
@@ -170,6 +170,7 @@ def _fetch_news_item_rows(conn: Any, *, since_ms: int | None) -> list[dict[str, 
     rows = conn.execute(
         f"""
         SELECT items.news_item_id,
+               items.published_at_ms,
                items.published_at_ms AS source_watermark_ms,
                items.provider_signal_json,
                sources.provider_type

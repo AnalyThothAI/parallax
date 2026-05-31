@@ -34,6 +34,7 @@ class RegistryNewsFeedProvider(Protocol):
         last_modified: str | None = None,
         source: Mapping[str, Any] | None = None,
         cursor: Mapping[str, Any] | None = None,
+        since_ms: int | None = None,
         limit: int | None = None,
     ) -> FeedFetchResult: ...
 
@@ -47,6 +48,7 @@ class OpenNewsClient(Protocol):
         *,
         source: dict[str, Any] | None = None,
         cursor: Mapping[str, Any] | None = None,
+        since_ms: int | None = None,
         limit: int | None = None,
     ) -> FeedFetchResult: ...
 
@@ -66,9 +68,10 @@ class RssLikeNewsFeedProvider:
         last_modified: str | None = None,
         source: Mapping[str, Any] | None = None,
         cursor: Mapping[str, Any] | None = None,
+        since_ms: int | None = None,
         limit: int | None = None,
     ) -> FeedFetchResult:
-        del cursor, limit
+        del cursor, since_ms, limit
         return self._client.fetch(
             feed_url,
             etag=etag,
@@ -94,9 +97,10 @@ class CryptopanicNewsFeedProvider:
         last_modified: str | None = None,
         source: Mapping[str, Any] | None = None,
         cursor: Mapping[str, Any] | None = None,
+        since_ms: int | None = None,
         limit: int | None = None,
     ) -> FeedFetchResult:
-        del provider_type, cursor, limit
+        del provider_type, cursor, since_ms, limit
         return self._client.fetch(
             feed_url,
             etag=etag,
@@ -122,6 +126,7 @@ class OpenNewsNewsFeedProvider:
         last_modified: str | None = None,
         source: Mapping[str, Any] | None = None,
         cursor: Mapping[str, Any] | None = None,
+        since_ms: int | None = None,
         limit: int | None = None,
     ) -> FeedFetchResult:
         del provider_type, etag, last_modified
@@ -129,6 +134,7 @@ class OpenNewsNewsFeedProvider:
             feed_url,
             source=dict(source or {}),
             cursor=dict(cursor or {}),
+            since_ms=since_ms,
             limit=limit,
         )
 
@@ -162,6 +168,7 @@ class NewsFeedProviderRegistry:
         last_modified: str | None = None,
         source: Mapping[str, Any] | None = None,
         cursor: Mapping[str, Any] | None = None,
+        since_ms: int | None = None,
         limit: int | None = None,
     ) -> FeedFetchResult:
         provider = self.provider_for(provider_type)
@@ -172,6 +179,7 @@ class NewsFeedProviderRegistry:
             last_modified=last_modified,
             source=source,
             cursor=cursor,
+            since_ms=since_ms,
             limit=limit,
         )
 

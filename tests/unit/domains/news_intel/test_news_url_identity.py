@@ -48,3 +48,32 @@ def test_binance_announcement_url_is_article_identity() -> None:
 
     assert service.url_identity_kind(canonical_url) == "article"
     assert service.is_article_identity(canonical_url) is True
+
+
+def test_twitter_status_url_has_stable_hard_public_identity() -> None:
+    service = _service()
+
+    assert (
+        service.hard_public_url_identity_key("https://twitter.com/CoinbaseMarkets/status/2057891761607889216")
+        == "social-status:twitter:2057891761607889216"
+    )
+    assert (
+        service.hard_public_url_identity_key("https://x.com/coinbasemarkets/status/2057891761607889216?s=20")
+        == "social-status:twitter:2057891761607889216"
+    )
+
+
+def test_preview_and_generic_urls_do_not_get_hard_public_identity() -> None:
+    service = _service()
+
+    assert service.hard_public_url_identity_key("https://news.6551.io/preview/abc") == ""
+    assert service.hard_public_url_identity_key("https://www.treeofalpha.com/preview_article?id=123") == ""
+    assert service.hard_public_url_identity_key("https://www.binance.com/en/support/announcement") == ""
+    assert service.hard_public_url_identity_key("https://tass.ru/") == ""
+
+
+def test_article_url_gets_canonical_hard_public_identity() -> None:
+    service = _service()
+    canonical_url = "https://www.binance.com/en/support/announcement/binance-will-list-example-abc123"
+
+    assert service.hard_public_url_identity_key(canonical_url) == f"canonical-url:{canonical_url}"

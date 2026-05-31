@@ -181,6 +181,24 @@ def test_news_fetch_worker_passes_source_sync_cursor_and_updates_after_success()
     assert db.repo.events.index("update_source_sync_state") < db.repo.events.index("finish_fetch_run")
 
 
+def test_news_fetch_worker_bounds_opennews_since_ms_to_brief_window_without_cursor() -> None:
+    source = {
+        "source_id": "opennews-realtime",
+        "provider_type": "opennews",
+        "feed_url": "opennews://subscribe",
+        "source_domain": "6551.io",
+        "source_name": "OpenNews",
+    }
+    db = FakeDB(FakeNewsRepository([source]))
+    feed = FakeNewsSourceProvider(db, NewsProviderFetchResult(status_code=200, observations=[]))
+    worker = _worker(db=db, feed_client=feed, wake_bus=FakeWakeBus(), sources=[source])
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.failed == 0
+    assert feed.calls[0]["since_ms"] == NOW_MS - (8 * 3_600_000)
+
+
 def test_news_fetch_worker_enqueues_dirty_targets_for_all_affected_news_items() -> None:
     source = {
         "source_id": "example-rss",
@@ -582,6 +600,7 @@ def test_news_item_process_uses_opennews_provider_tokens_and_enqueues_brief_inpu
         "title": "BTC headline",
         "summary": "",
         "body_text": "",
+        "published_at_ms": NOW_MS - 1_000,
         "provider_signal_json": {
             "source": "provider",
             "provider": "opennews",

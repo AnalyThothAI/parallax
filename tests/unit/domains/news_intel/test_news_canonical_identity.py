@@ -38,7 +38,7 @@ def test_public_canonical_url_wins_over_opennews_id_and_content_hash() -> None:
     assert identity.evidence["content_hash"] == "hash-abc"
 
 
-def test_homepage_url_is_still_a_hard_canonical_url_identity() -> None:
+def test_homepage_url_falls_back_to_content_hash_instead_of_hard_url_identity() -> None:
     service = _service()
     canonical_url = "https://tass.ru/"
 
@@ -52,10 +52,46 @@ def test_homepage_url_is_still_a_hard_canonical_url_identity() -> None:
         published_at_ms=1_714_004_321_000,
     )
 
-    assert identity.canonical_item_key == f"canonical-url:{canonical_url}"
+    assert identity.canonical_item_key == "content-hash:hash-same-content"
     assert identity.url_identity_kind == "homepage"
-    assert identity.dedup_key_kind == "canonical_url"
+    assert identity.dedup_key_kind == "content_hash"
     assert identity.dedup_key_confidence == "strong"
+    assert identity.match_type == "same_content_hash"
+
+
+def test_generic_announcement_url_falls_back_to_provider_id() -> None:
+    service = _service()
+
+    identity = service.canonical_identity_for_observation(
+        provider_type="opennews",
+        source_id="opennews-news",
+        provider_article_id="2367422",
+        canonical_url="https://www.binance.com/en/support/announcement",
+        content_hash="",
+        title_fingerprint="binance announcement",
+        published_at_ms=1_714_004_321_000,
+    )
+
+    assert identity.canonical_item_key == "provider:opennews:2367422"
+    assert identity.dedup_key_kind == "provider_article_id"
+    assert identity.match_type == "same_provider_article_id"
+
+
+def test_twitter_status_url_uses_social_status_identity() -> None:
+    service = _service()
+
+    identity = service.canonical_identity_for_observation(
+        provider_type="opennews",
+        source_id="opennews-news",
+        provider_article_id="2367422",
+        canonical_url="https://twitter.com/CoinbaseMarkets/status/2057891761607889216",
+        content_hash="hash-abc",
+        title_fingerprint="coinbase update",
+        published_at_ms=1_714_004_321_000,
+    )
+
+    assert identity.canonical_item_key == "social-status:twitter:2057891761607889216"
+    assert identity.dedup_key_kind == "canonical_url"
     assert identity.match_type == "same_canonical_url"
 
 

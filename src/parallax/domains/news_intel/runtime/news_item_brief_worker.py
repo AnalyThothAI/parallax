@@ -8,6 +8,9 @@ from typing import Any, cast
 
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
+from parallax.domains.news_intel.services.news_item_agent_policy import (
+    news_item_agent_brief_eligibility,
+)
 from parallax.domains.news_intel.services.news_item_brief_input import (
     build_news_item_brief_input_packet,
 )
@@ -115,6 +118,7 @@ class NewsItemBriefWorker(WorkerBase):
                 "backpressure": 0,
                 "validation_failed": 0,
                 "missing_target": 0,
+                "policy_skipped": 0,
             }
             skipped = 0
             current_updates = 0
@@ -124,6 +128,12 @@ class NewsItemBriefWorker(WorkerBase):
                 candidate = candidates_by_id.get(target_id)
                 if candidate is None:
                     notes["missing_target"] += 1
+                    await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
+                    skipped += 1
+                    continue
+                eligibility = news_item_agent_brief_eligibility(_dict(candidate.get("item") or candidate), now_ms=now)
+                if not eligibility.eligible:
+                    notes["policy_skipped"] += 1
                     await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
                     skipped += 1
                     continue
@@ -241,6 +251,7 @@ class NewsItemBriefWorker(WorkerBase):
                 retry_reason="domain_validation_failed",
                 retry_attempt_limited=True,
                 retry_counts_attempt=True,
+                force_terminal=True,
                 terminal_run_id=run_id,
                 terminal_errors=validation.errors,
             )
@@ -390,6 +401,24 @@ class NewsItemBriefWorker(WorkerBase):
         agent_config: NewsItemBriefAgentConfig,
         now_ms: int,
     ) -> None:
+        if outcome.force_terminal:
+            terminalized_count = self._terminalize_claimed_target(
+                target,
+                outcome=outcome,
+                packet=packet,
+                now_ms=now_ms,
+                terminal_attempt_count=max(1, int(target.get("attempt_count") or 0)),
+            )
+            if terminalized_count > 0 and outcome.terminal_run_id and outcome.terminal_errors:
+                self._upsert_terminal_failed_current(
+                    run_id=outcome.terminal_run_id,
+                    packet=packet,
+                    agent_config=agent_config,
+                    errors=outcome.terminal_errors,
+                    terminal_reason=outcome.retry_reason,
+                    computed_at_ms=now_ms,
+                )
+            return
         if outcome.retry_ms is None:
             self._mark_targets_done([target], now_ms=now_ms)
             return
@@ -642,6 +671,7 @@ class _CandidateOutcome:
         retry_reason: str = "",
         retry_attempt_limited: bool = False,
         retry_counts_attempt: bool = True,
+        force_terminal: bool = False,
         terminal_run_id: str = "",
         terminal_errors: list[dict[str, str]] | None = None,
     ) -> None:
@@ -651,6 +681,7 @@ class _CandidateOutcome:
         self.retry_reason = retry_reason or "agent_brief_retry"
         self.retry_attempt_limited = bool(retry_attempt_limited)
         self.retry_counts_attempt = bool(retry_counts_attempt)
+        self.force_terminal = bool(force_terminal)
         self.terminal_run_id = str(terminal_run_id or "")
         self.terminal_errors = list(terminal_errors or [])
 

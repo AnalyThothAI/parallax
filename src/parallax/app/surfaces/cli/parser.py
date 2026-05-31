@@ -160,10 +160,21 @@ def build_parser() -> argparse.ArgumentParser:
     enqueue_projection_dirty_targets_mode = enqueue_projection_dirty_targets.add_mutually_exclusive_group(required=True)
     enqueue_projection_dirty_targets_mode.add_argument("--dry-run", action="store_true")
     enqueue_projection_dirty_targets_mode.add_argument("--execute", action="store_true")
-    ops_subcommands.add_parser(
+    news_dedup_diagnostics = ops_subcommands.add_parser(
         "news-dedup-diagnostics",
         help="print News canonical dedup and OpenNews sync diagnostics",
     )
+    news_dedup_diagnostics.add_argument("--window-hours", type=float, default=8.0)
+    news_dedup_diagnostics.add_argument("--score-threshold", type=int, default=80)
+    cleanup_news_brief_input = ops_subcommands.add_parser(
+        "cleanup-news-brief-input",
+        help="delete stale News brief_input dirty targets that no longer pass the brief policy",
+    )
+    cleanup_news_brief_input.add_argument("--window-hours", type=float, default=8.0)
+    cleanup_news_brief_input.add_argument("--score-threshold", type=int, default=80)
+    cleanup_news_brief_input_mode = cleanup_news_brief_input.add_mutually_exclusive_group(required=True)
+    cleanup_news_brief_input_mode.add_argument("--dry-run", action="store_true")
+    cleanup_news_brief_input_mode.add_argument("--execute", action="store_true")
     rebuild_news_canonical_items = ops_subcommands.add_parser(
         "rebuild-news-canonical-items",
         help="enqueue a bounded rebuild of News canonical item derived projections",

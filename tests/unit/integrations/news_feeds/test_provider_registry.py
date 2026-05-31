@@ -60,6 +60,7 @@ def test_registry_routes_rss_atom_json_feed_and_cryptopanic_to_expected_wrappers
         feed_url="opennews://subscribe",
         source={"source_id": "opennews-realtime"},
         cursor={"high_watermark_ms": 123},
+        since_ms=999,
         limit=2,
     )
 
@@ -81,6 +82,7 @@ def test_registry_routes_rss_atom_json_feed_and_cryptopanic_to_expected_wrappers
             "url": "opennews://subscribe",
             "limit": 2,
             "cursor": {"high_watermark_ms": 123},
+            "since_ms": 999,
             "source_id": "opennews-realtime",
         }
     ]
@@ -170,6 +172,7 @@ class RecordingOpenNewsClient:
         *,
         source: dict[str, Any] | None = None,
         cursor: dict[str, Any] | None = None,
+        since_ms: int | None = None,
         limit: int | None = None,
     ) -> FeedFetchResult:
         self.calls.append(
@@ -177,6 +180,7 @@ class RecordingOpenNewsClient:
                 "url": url,
                 "limit": limit,
                 "cursor": dict(cursor or {}),
+                "since_ms": since_ms,
                 "source_id": (source or {}).get("source_id"),
             }
         )
@@ -197,6 +201,7 @@ def test_opennews_registry_wrapper_uses_rest_client_shape() -> None:
         provider_type="opennews",
         source={"source_id": "opennews-realtime"},
         cursor={"high_watermark_ms": 456},
+        since_ms=789,
         limit=3,
     )
 
@@ -206,6 +211,7 @@ def test_opennews_registry_wrapper_uses_rest_client_shape() -> None:
             "url": "opennews://subscribe",
             "limit": 3,
             "cursor": {"high_watermark_ms": 456},
+            "since_ms": 789,
             "source_id": "opennews-realtime",
         }
     ]

@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from typing import Any
 
 import pytest
+from psycopg.types.json import Jsonb
 
 from parallax.app.runtime.repository_session import repositories_for_connection
 from parallax.domains.news_intel.repositories import (
@@ -710,6 +711,78 @@ def test_terminalize_targets_deletes_hot_row_and_records_terminal_event(tmp_path
     assert row["final_reason_bucket"] == "domain_validation_failed"
 
 
+def test_cleanup_stale_brief_input_targets_deletes_only_currently_ineligible_brief_targets(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsProjectionDirtyTargetRepository(conn)
+        now = 1_779_000_000_000
+        _insert_news_item_for_brief_cleanup(
+            conn,
+            news_item_id="news-fresh-high",
+            provider_item_id="provider-fresh-high",
+            published_at_ms=now - 60_000,
+            provider_score=95,
+        )
+        _insert_news_item_for_brief_cleanup(
+            conn,
+            news_item_id="news-old-high",
+            provider_item_id="provider-old-high",
+            published_at_ms=now - (8 * 3_600_000) - 1,
+            provider_score=95,
+        )
+        _insert_news_item_for_brief_cleanup(
+            conn,
+            news_item_id="news-fresh-low",
+            provider_item_id="provider-fresh-low",
+            published_at_ms=now - 60_000,
+            provider_score=79,
+        )
+        repo.enqueue_targets(
+            [
+                {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-fresh-high"},
+                {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-old-high"},
+                {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-fresh-low"},
+                {"projection_name": "page", "target_kind": "news_item", "target_id": "news-old-high"},
+            ],
+            reason="unit",
+            now_ms=now,
+        )
+
+        dry_run = repo.cleanup_stale_brief_input_targets(
+            now_ms=now,
+            window_ms=8 * 3_600_000,
+            score_threshold=80,
+            execute=False,
+        )
+        execute = repo.cleanup_stale_brief_input_targets(
+            now_ms=now,
+            window_ms=8 * 3_600_000,
+            score_threshold=80,
+            execute=True,
+        )
+        remaining = conn.execute(
+            """
+            SELECT projection_name, target_id
+              FROM news_projection_dirty_targets
+             ORDER BY projection_name, target_id
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert dry_run["candidate_count"] == 2
+    assert dry_run["deleted_count"] == 0
+    assert dry_run["reasons"] == {"below_score_threshold": 1, "published_too_old": 1}
+    assert execute["candidate_count"] == 2
+    assert execute["deleted_count"] == 2
+    assert execute["reasons"] == {"below_score_threshold": 1, "published_too_old": 1}
+    assert [dict(row) for row in remaining] == [
+        {"projection_name": "brief_input", "target_id": "news-fresh-high"},
+        {"projection_name": "page", "target_id": "news-old-high"},
+    ]
+
+
 def test_terminalize_targets_skips_event_when_claim_token_is_stale(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
@@ -761,6 +834,76 @@ def test_terminalize_targets_skips_event_when_claim_token_is_stale(tmp_path) -> 
 
     assert count == 0
     assert row is None
+
+
+def _insert_news_item_for_brief_cleanup(
+    conn: Any,
+    *,
+    news_item_id: str,
+    provider_item_id: str,
+    published_at_ms: int,
+    provider_score: int,
+) -> None:
+    now = 1_779_000_000_000
+    conn.execute(
+        """
+        INSERT INTO news_sources (
+          source_id, provider_type, feed_url, source_domain, source_name,
+          source_role, trust_tier, created_at_ms, updated_at_ms
+        )
+        VALUES (
+          'source-opennews', 'opennews', 'opennews://subscribe', '6551.io', 'OpenNews',
+          'observed_source', 'standard', %s, %s
+        )
+        ON CONFLICT (source_id) DO NOTHING
+        """,
+        (now, now),
+    )
+    conn.execute(
+        """
+        INSERT INTO news_provider_items (
+          provider_item_id, source_id, source_item_key, canonical_url, payload_hash,
+          raw_payload_json, fetched_at_ms
+        )
+        VALUES (%s, 'source-opennews', %s, %s, %s, %s, %s)
+        """,
+        (
+            provider_item_id,
+            provider_item_id,
+            f"https://example.com/{news_item_id}",
+            f"payload-{news_item_id}",
+            Jsonb({"id": provider_item_id}),
+            now,
+        ),
+    )
+    conn.execute(
+        """
+        INSERT INTO news_items (
+          news_item_id, provider_item_id, source_id, source_domain, canonical_url,
+          title, summary, body_text, language, published_at_ms, fetched_at_ms,
+          content_hash, title_fingerprint, provider_signal_json, created_at_ms, updated_at_ms
+        )
+        VALUES (
+          %s, %s, 'source-opennews', '6551.io', %s,
+          %s, 'Summary', 'Body', 'en', %s, %s,
+          %s, %s, %s, %s, %s
+        )
+        """,
+        (
+            news_item_id,
+            provider_item_id,
+            f"https://example.com/{news_item_id}",
+            f"Title {news_item_id}",
+            published_at_ms,
+            now,
+            f"content-{news_item_id}",
+            f"title {news_item_id}",
+            Jsonb({"source": "provider", "status": "ready", "score": provider_score}),
+            now,
+            now,
+        ),
+    )
+    conn.commit()
 
 
 @pytest.fixture

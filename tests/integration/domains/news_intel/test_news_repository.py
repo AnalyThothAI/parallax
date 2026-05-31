@@ -3143,6 +3143,75 @@ def test_news_dedup_diagnostics_reports_disabled_rows_and_visible_duplicate_exce
     assert diagnostics["source_sync_diagnostics"][0]["watermark_lag_ms"] >= 0
 
 
+def test_news_dedup_diagnostics_reports_material_risk_without_repair_actions(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        repo.upsert_source(
+            source_id="opennews-listing",
+            provider_type="opennews",
+            feed_url="opennews://listing",
+            source_domain="6551.io",
+            source_name="OpenNews Listing",
+            refresh_interval_seconds=60,
+            now_ms=NOW_MS,
+        )
+        fetch_run_id = repo.start_fetch_run(source_id="opennews-listing", started_at_ms=NOW_MS)
+
+        for source_item_key, canonical_url, content_hash, now_ms in (
+            (
+                "2305268",
+                "https://news.6551.io/preview/Coinbase-Axelar-AXL",
+                "hash-lower",
+                NOW_MS,
+            ),
+            (
+                "2305269",
+                "https://news.6551.io/preview/coinbase-axelar-axl",
+                "hash-upper",
+                NOW_MS + 1,
+            ),
+        ):
+            provider = repo.upsert_provider_item(
+                source_id="opennews-listing",
+                fetch_run_id=fetch_run_id,
+                source_item_key=source_item_key,
+                canonical_url=canonical_url,
+                payload_hash=f"payload-{source_item_key}",
+                raw_payload_json={"id": source_item_key, "title": "Coinbase Axelar AXL"},
+                fetched_at_ms=now_ms,
+            )
+            repo.upsert_canonical_news_item(
+                provider_item_id=provider["provider_item_id"],
+                canonical_url=canonical_url,
+                title="Coinbase Axelar AXL is now available to New York residents",
+                summary="Coinbase enables AXL for New York residents.",
+                body_text="Coinbase enables AXL for New York residents.",
+                language="en",
+                published_at_ms=NOW_MS - 60_000,
+                fetched_at_ms=now_ms,
+                content_hash=content_hash,
+                title_fingerprint="coinbase axelar axl is now available to new york residents",
+                now_ms=now_ms,
+                provider_signal={"source": "provider", "status": "ready", "score": 80},
+            )
+
+        diagnostics = repo.news_dedup_diagnostics(
+            window_ms=8 * 3_600_000,
+            score_threshold=80,
+            now_ms=NOW_MS + 2,
+        )
+    finally:
+        conn.close()
+
+    assert diagnostics["material_title_duplicate_groups"]["groups"] == 1
+    assert diagnostics["case_insensitive_url_duplicate_groups"]["groups"] == 1
+    assert diagnostics["case_insensitive_url_duplicate_groups"]["ge_threshold_duplicate_rows"] == 1
+    assert "repair_groups" not in diagnostics
+    assert "would_merge" not in diagnostics
+
+
 def _insert_source_provider_and_item(
     repo: NewsRepository,
     *,

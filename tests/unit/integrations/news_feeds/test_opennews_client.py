@@ -176,6 +176,41 @@ def test_opennews_client_rest_scan_uses_cursor_overlap_and_returns_next_cursor()
     }
 
 
+def test_opennews_client_rest_fetch_sends_since_ms_and_filters_older_entries() -> None:
+    rest_requests: list[dict[str, Any]] = []
+    since_ms = NOW_MS - 60_000
+
+    async def fake_post_json(url: str, *, token: str, body: dict[str, Any]) -> dict[str, Any]:
+        rest_requests.append({"url": url, "token": token, "body": body})
+        return {
+            "data": [
+                {
+                    "id": 2378201,
+                    "text": "Fresh alert",
+                    "link": "https://example.com/news/fresh",
+                    "ts": since_ms + 1,
+                },
+                {
+                    "id": 2378202,
+                    "text": "Old alert",
+                    "link": "https://example.com/news/old",
+                    "ts": since_ms - 1,
+                },
+            ]
+        }
+
+    client = OpenNewsFeedClient(token="test-token", post_json=fake_post_json, now_ms=lambda: NOW_MS)
+
+    result = client.fetch(
+        "opennews://subscribe",
+        since_ms=since_ms,
+        source={"fetch_policy_json": {"engineTypes": {"news": ["6551News"]}, "max_rest_pages": 1}},
+    )
+
+    assert rest_requests[0]["body"]["publishedAfterMs"] == since_ms
+    assert [entry["id"] for entry in result.entries] == ["2378201"]
+
+
 def test_opennews_client_rest_scan_merges_article_fragments_and_counts_visible_entries() -> None:
     async def fake_post_json(_url: str, *, token: str, body: dict[str, Any]) -> dict[str, Any]:
         assert token == "test-token"

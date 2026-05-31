@@ -77,7 +77,8 @@ def test_opennews_client_runtime_reports_rest_transport_without_fetch_mode_surfa
 
 
 def test_opennews_provider_signal_never_reenters_news_brief_input_hot_path() -> None:
-    policy = "needs_news_item_agent_brief"
+    policy = "news_item_agent_brief_eligibility"
+    retired_policy = "needs_news_item_agent_brief"
     hot_path_files = (
         "src/parallax/domains/news_intel/runtime/news_fetch_worker.py",
         "src/parallax/domains/news_intel/runtime/news_item_process_worker.py",
@@ -85,4 +86,6 @@ def test_opennews_provider_signal_never_reenters_news_brief_input_hot_path() -> 
     )
 
     for path in hot_path_files:
-        assert policy in _read(path), f"{path} must apply the provider-signal brief policy"
+        source = _read(path)
+        assert policy in source, f"{path} must apply the provider-signal brief policy"
+        assert retired_policy not in source, f"{path} must not keep the retired boolean wrapper"

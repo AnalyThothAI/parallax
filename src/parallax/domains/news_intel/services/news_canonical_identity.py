@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from parallax.domains.news_intel.services.news_url_identity import (
+    hard_public_url_identity_key,
     url_identity_kind as classify_url_identity_kind,
 )
 
@@ -58,9 +59,10 @@ def canonical_identity_for_observation(
         provider_article_id=normalized_article_id,
     )
 
-    if _is_public_canonical_url(normalized_url):
+    public_url_identity_key = hard_public_url_identity_key(normalized_url)
+    if public_url_identity_key:
         return _identity(
-            canonical_item_key=f"canonical-url:{normalized_url}",
+            canonical_item_key=public_url_identity_key,
             dedup_key_kind="canonical_url",
             dedup_key_confidence="strong",
             url_identity_kind=url_kind,
@@ -68,6 +70,7 @@ def canonical_identity_for_observation(
             match_confidence="strong",
             evidence={
                 "canonical_url": normalized_url,
+                "public_url_identity_key": public_url_identity_key,
                 "url_identity_kind": url_kind,
                 "source_id": normalized_source_id,
                 "provider_type": normalized_provider_type,
@@ -135,11 +138,6 @@ def stable_news_item_id(canonical_item_key: str) -> str:
 
     digest = hashlib.sha256(str(canonical_item_key or "").encode("utf-8")).hexdigest()
     return f"news-item-{digest[:32]}"
-
-
-def _is_public_canonical_url(canonical_url: str) -> bool:
-    normalized = str(canonical_url or "").strip().lower()
-    return normalized.startswith(("http://", "https://"))
 
 
 def _identity(

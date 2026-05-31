@@ -2711,10 +2711,26 @@ class NewsRepository:
         ).fetchall()
         return [_source_status_payload(row) for row in rows]
 
-    def news_dedup_diagnostics(self) -> dict[str, Any]:
+    def news_dedup_diagnostics(
+        self,
+        *,
+        window_ms: int = 8 * 3_600_000,
+        score_threshold: int = 80,
+        now_ms: int | None = None,
+    ) -> dict[str, Any]:
+        resolved_now_ms = int(now_ms) if now_ms is not None else 0
         row = self.conn.execute(
             """
-            WITH visible_rows AS (
+            WITH params AS (
+              SELECT
+                CASE
+                  WHEN %(now_ms)s::bigint > 0 THEN %(now_ms)s::bigint
+                  ELSE (extract(epoch FROM clock_timestamp()) * 1000)::bigint
+                END AS now_ms,
+                GREATEST(%(window_ms)s::bigint, 0) AS window_ms,
+                GREATEST(%(score_threshold)s::numeric, 0) AS score_threshold
+            ),
+            visible_rows AS (
               SELECT rows.row_id,
                      rows.news_item_id,
                      rows.canonical_item_key,
@@ -2769,8 +2785,113 @@ class NewsRepository:
                ORDER BY COUNT(*) DESC, rows.canonical_item_key ASC
                LIMIT 20
             ),
-            clock AS (
-              SELECT (extract(epoch FROM clock_timestamp()) * 1000)::bigint AS now_ms
+            scoped_items AS (
+              SELECT items.news_item_id,
+                     items.source_id,
+                     items.title_fingerprint,
+                     items.canonical_url,
+                     items.published_at_ms,
+                     items.fetched_at_ms,
+                     items.created_at_ms,
+                     CASE
+                       WHEN items.provider_signal_json ->> 'score' ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                         THEN (items.provider_signal_json ->> 'score')::numeric
+                       ELSE 0
+                     END AS provider_score
+                FROM news_items AS items
+                CROSS JOIN params
+               WHERE COALESCE(NULLIF(items.created_at_ms, 0), items.fetched_at_ms, 0)
+                     >= params.now_ms - params.window_ms
+            ),
+            material_title_duplicates AS (
+              SELECT scoped_items.source_id,
+                     scoped_items.title_fingerprint,
+                     COUNT(*)::int AS row_count,
+                     COUNT(*) FILTER (WHERE scoped_items.provider_score >= params.score_threshold)::int
+                       AS ge_threshold_rows
+                FROM scoped_items
+                CROSS JOIN params
+               WHERE COALESCE(scoped_items.title_fingerprint, '') <> ''
+               GROUP BY scoped_items.source_id, scoped_items.title_fingerprint
+              HAVING COUNT(*) > 1
+            ),
+            top_material_title_duplicate_groups AS (
+              SELECT jsonb_build_object(
+                       'source_id', duplicates.source_id,
+                       'title_fingerprint', duplicates.title_fingerprint,
+                       'row_count', duplicates.row_count,
+                       'duplicate_rows', duplicates.row_count - 1,
+                       'ge_threshold_rows', duplicates.ge_threshold_rows,
+                       'ge_threshold_duplicate_rows', GREATEST(duplicates.ge_threshold_rows - 1, 0),
+                       'news_item_ids',
+                         (
+                           SELECT COALESCE(jsonb_agg(items.news_item_id ORDER BY items.news_item_id), '[]'::jsonb)
+                             FROM scoped_items AS items
+                            WHERE items.source_id = duplicates.source_id
+                              AND items.title_fingerprint = duplicates.title_fingerprint
+                         )
+                     ) AS payload
+                FROM material_title_duplicates AS duplicates
+               ORDER BY duplicates.ge_threshold_rows DESC, duplicates.row_count DESC,
+                        duplicates.source_id ASC, duplicates.title_fingerprint ASC
+               LIMIT 20
+            ),
+            case_insensitive_url_duplicates AS (
+              SELECT lower(scoped_items.canonical_url) AS normalized_url,
+                     COUNT(*)::int AS row_count,
+                     COUNT(*) FILTER (WHERE scoped_items.provider_score >= params.score_threshold)::int
+                       AS ge_threshold_rows
+                FROM scoped_items
+                CROSS JOIN params
+               WHERE scoped_items.canonical_url ~* '^https?://'
+               GROUP BY lower(scoped_items.canonical_url)
+              HAVING COUNT(*) > 1
+            ),
+            top_case_insensitive_url_duplicate_groups AS (
+              SELECT jsonb_build_object(
+                       'normalized_url', duplicates.normalized_url,
+                       'row_count', duplicates.row_count,
+                       'duplicate_rows', duplicates.row_count - 1,
+                       'ge_threshold_rows', duplicates.ge_threshold_rows,
+                       'ge_threshold_duplicate_rows', GREATEST(duplicates.ge_threshold_rows - 1, 0),
+                       'news_item_ids',
+                         (
+                           SELECT COALESCE(jsonb_agg(items.news_item_id ORDER BY items.news_item_id), '[]'::jsonb)
+                             FROM scoped_items AS items
+                            WHERE lower(items.canonical_url) = duplicates.normalized_url
+                         )
+                     ) AS payload
+                FROM case_insensitive_url_duplicates AS duplicates
+               ORDER BY duplicates.ge_threshold_rows DESC, duplicates.row_count DESC, duplicates.normalized_url ASC
+               LIMIT 20
+            ),
+            preview_or_generic_url_rows AS (
+              SELECT COUNT(*)::int AS row_count,
+                     COUNT(*) FILTER (WHERE scoped_items.provider_score >= params.score_threshold)::int
+                       AS ge_threshold_rows
+                FROM scoped_items
+                CROSS JOIN params
+               WHERE scoped_items.canonical_url ~* '^https?://news\\.6551\\.io/preview/'
+                  OR scoped_items.canonical_url ~* '^https?://([^/]+\\.)?treeofalpha\\.com/preview_article'
+                  OR scoped_items.canonical_url ~* '^https?://([^/]+\\.)?binance\\.com/[^?]*/support/announcement/?$'
+            ),
+            historical_high_score_items AS (
+              SELECT COUNT(*)::int AS row_count
+                FROM scoped_items
+                CROSS JOIN params
+               WHERE scoped_items.provider_score >= params.score_threshold
+                 AND COALESCE(scoped_items.published_at_ms, 0) < params.now_ms - params.window_ms
+            ),
+            brief_input_risk AS (
+              SELECT COUNT(*)::int AS row_count,
+                     COUNT(*) FILTER (
+                       WHERE COALESCE(items.published_at_ms, 0) < params.now_ms - params.window_ms
+                     )::int AS stale_rows
+                FROM news_projection_dirty_targets AS targets
+                JOIN news_items AS items ON items.news_item_id = targets.target_id
+                CROSS JOIN params
+               WHERE targets.projection_name = 'brief_input'
+                 AND targets.target_kind = 'news_item'
             ),
             source_sync AS (
               SELECT jsonb_build_object(
@@ -2782,7 +2903,7 @@ class NewsRepository:
                        'watermark_lag_ms',
                          CASE
                            WHEN sources.sync_high_watermark_ms > 0
-                           THEN GREATEST(clock.now_ms - sources.sync_high_watermark_ms, 0)
+                           THEN GREATEST(params.now_ms - sources.sync_high_watermark_ms, 0)
                            ELSE NULL
                          END,
                        'pages_scanned', sources.sync_diagnostics_json -> 'pages_scanned',
@@ -2791,7 +2912,7 @@ class NewsRepository:
                        'stop_reason', sources.sync_diagnostics_json ->> 'stop_reason'
                      ) AS payload
                 FROM news_sources AS sources
-                CROSS JOIN clock
+                CROSS JOIN params
                WHERE sources.provider_type = 'opennews'
                ORDER BY sources.enabled DESC, sources.source_id ASC
             )
@@ -2809,8 +2930,47 @@ class NewsRepository:
                 AS top_visible_content_duplicate_groups,
               COALESCE((SELECT jsonb_agg(payload) FROM top_canonical_duplicate_groups), '[]'::jsonb)
                 AS top_visible_canonical_duplicate_groups,
+              jsonb_build_object(
+                'groups', COALESCE((SELECT COUNT(*)::int FROM material_title_duplicates), 0),
+                'rows', COALESCE((SELECT SUM(row_count)::int FROM material_title_duplicates), 0),
+                'duplicate_rows', COALESCE((SELECT SUM(row_count - 1)::int FROM material_title_duplicates), 0),
+                'ge_threshold_rows', COALESCE((SELECT SUM(ge_threshold_rows)::int FROM material_title_duplicates), 0),
+                'ge_threshold_duplicate_rows',
+                  COALESCE((SELECT SUM(GREATEST(ge_threshold_rows - 1, 0))::int FROM material_title_duplicates), 0),
+                'top_groups', COALESCE((SELECT jsonb_agg(payload) FROM top_material_title_duplicate_groups), '[]'::jsonb)
+              ) AS material_title_duplicate_groups,
+              jsonb_build_object(
+                'groups', COALESCE((SELECT COUNT(*)::int FROM case_insensitive_url_duplicates), 0),
+                'rows', COALESCE((SELECT SUM(row_count)::int FROM case_insensitive_url_duplicates), 0),
+                'duplicate_rows', COALESCE((SELECT SUM(row_count - 1)::int FROM case_insensitive_url_duplicates), 0),
+                'ge_threshold_rows',
+                  COALESCE((SELECT SUM(ge_threshold_rows)::int FROM case_insensitive_url_duplicates), 0),
+                'ge_threshold_duplicate_rows',
+                  COALESCE(
+                    (SELECT SUM(GREATEST(ge_threshold_rows - 1, 0))::int FROM case_insensitive_url_duplicates),
+                    0
+                  ),
+                'top_groups',
+                  COALESCE((SELECT jsonb_agg(payload) FROM top_case_insensitive_url_duplicate_groups), '[]'::jsonb)
+              ) AS case_insensitive_url_duplicate_groups,
+              jsonb_build_object(
+                'rows', COALESCE((SELECT row_count FROM preview_or_generic_url_rows), 0),
+                'ge_threshold_rows', COALESCE((SELECT ge_threshold_rows FROM preview_or_generic_url_rows), 0)
+              ) AS preview_or_generic_url_rows,
+              jsonb_build_object(
+                'rows', COALESCE((SELECT row_count FROM historical_high_score_items), 0)
+              ) AS historical_high_score_items,
+              jsonb_build_object(
+                'rows', COALESCE((SELECT row_count FROM brief_input_risk), 0),
+                'stale_rows', COALESCE((SELECT stale_rows FROM brief_input_risk), 0)
+              ) AS brief_input_risk,
               COALESCE((SELECT jsonb_agg(payload) FROM source_sync), '[]'::jsonb) AS source_sync_diagnostics
-            """
+            """,
+            {
+                "now_ms": resolved_now_ms,
+                "window_ms": max(0, int(window_ms)),
+                "score_threshold": max(0, int(score_threshold)),
+            },
         ).fetchone()
         if row is None:
             return {
@@ -2822,6 +2982,11 @@ class NewsRepository:
                 "enabled_exact_content_visible_duplicate_excess": 0,
                 "top_visible_content_duplicate_groups": [],
                 "top_visible_canonical_duplicate_groups": [],
+                "material_title_duplicate_groups": {},
+                "case_insensitive_url_duplicate_groups": {},
+                "preview_or_generic_url_rows": {},
+                "historical_high_score_items": {},
+                "brief_input_risk": {},
                 "source_sync_diagnostics": [],
             }
         return {
@@ -2835,6 +3000,11 @@ class NewsRepository:
             ),
             "top_visible_content_duplicate_groups": _json_list(row["top_visible_content_duplicate_groups"]),
             "top_visible_canonical_duplicate_groups": _json_list(row["top_visible_canonical_duplicate_groups"]),
+            "material_title_duplicate_groups": _json_dict(row["material_title_duplicate_groups"]),
+            "case_insensitive_url_duplicate_groups": _json_dict(row["case_insensitive_url_duplicate_groups"]),
+            "preview_or_generic_url_rows": _json_dict(row["preview_or_generic_url_rows"]),
+            "historical_high_score_items": _json_dict(row["historical_high_score_items"]),
+            "brief_input_risk": _json_dict(row["brief_input_risk"]),
             "source_sync_diagnostics": _json_list(row["source_sync_diagnostics"]),
         }
 

@@ -12,7 +12,10 @@ from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.news_intel.providers import NewsSourceProvider
 from parallax.domains.news_intel.services.news_canonical_identity import canonical_identity_for_observation
-from parallax.domains.news_intel.services.news_item_agent_policy import needs_news_item_agent_brief
+from parallax.domains.news_intel.services.news_item_agent_policy import (
+    NEWS_ITEM_AGENT_BRIEF_MAX_PUBLISHED_AGE_MS,
+    news_item_agent_brief_eligibility,
+)
 from parallax.domains.news_intel.services.news_provider_contract import (
     NewsProviderContractError,
     validate_news_provider_contract,
@@ -142,7 +145,7 @@ class NewsFetchWorker(WorkerBase):
             )
             feed_result = self.feed_client.fetch(
                 snapshot,
-                since_ms=_cursor_high_watermark_ms(source_cursor),
+                since_ms=_source_fetch_since_ms(source=source, source_cursor=source_cursor, now_ms=now_ms),
                 cursor=source_cursor,
                 cache=cache,
                 limit=self._batch_size(),
@@ -306,12 +309,14 @@ class NewsFetchWorker(WorkerBase):
             news_item_id = str(news.get("news_item_id") or "")
             if news_item_id:
                 parent_ids_by_source_key[observation.source_item_key] = news_item_id
-                if not needs_news_item_agent_brief(
+                eligibility = news_item_agent_brief_eligibility(
                     {
-                        "provider_type": source.get("provider_type"),
+                        "published_at_ms": item_published_at_ms,
                         "provider_signal_json": observation.provider_signal,
-                    }
-                ):
+                    },
+                    now_ms=fetched_at_ms,
+                )
+                if not eligibility.eligible:
                     brief_ineligible_news_item_ids.add(news_item_id)
             status = str(news.get("status") or provider.get("status") or "duplicate")
             if status in counts:
@@ -464,6 +469,19 @@ def _cursor_high_watermark_ms(cursor: Mapping[str, Any]) -> int | None:
     except (TypeError, ValueError):
         return None
     return value if value > 0 else None
+
+
+def _source_fetch_since_ms(
+    *,
+    source: Mapping[str, Any],
+    source_cursor: Mapping[str, Any],
+    now_ms: int,
+) -> int | None:
+    if str(source.get("provider_type") or "").strip().lower() != "opennews":
+        return None
+    live_floor_ms = max(0, int(now_ms) - NEWS_ITEM_AGENT_BRIEF_MAX_PUBLISHED_AGE_MS)
+    cursor_high_watermark_ms = _cursor_high_watermark_ms(source_cursor) or 0
+    return max(live_floor_ms, cursor_high_watermark_ms)
 
 
 def _affected_news_item_ids(news: Mapping[str, Any], *, fallback_news_item_id: str) -> list[str]:

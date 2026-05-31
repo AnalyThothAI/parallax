@@ -582,6 +582,7 @@ class FakeOpsProjectionConn:
                 [
                     {
                         "news_item_id": "news-provider",
+                        "published_at_ms": NOW_MS - 1_000,
                         "source_watermark_ms": NOW_MS - 1_000,
                         "provider_type": "opennews",
                         "provider_signal_json": {
