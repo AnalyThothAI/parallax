@@ -26,7 +26,7 @@ Residual project gate: `make check-all` is blocked before tests by unrelated rep
   - `ruff format --check`: pass for branch Python changes.
 - Docker/live:
   - `docker compose ps`: app healthy, postgres healthy.
-  - `gmgn-twitter-intel db health`: `migration_version=20260528_0119`, `expected_migration_version=20260528_0119`, `migration_status=ready`.
+  - `parallax db health`: `migration_version=20260528_0119`, `expected_migration_version=20260528_0119`, `migration_status=ready`.
   - New indexes present: `ix_news_item_observation_edges_source_item`, `ix_news_fetch_runs_source_started_run`.
   - OpenNews provider-signal `brief_input` dirty targets: 0.
   - No-start backpressure agent runs: 0.

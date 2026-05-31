@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.domains.asset_market.runtime import token_profile_current_worker as module
+from parallax.domains.asset_market.runtime import token_profile_current_worker as module
 
 
 def test_token_profile_current_worker_run_once_records_result_and_uses_one_db_session(monkeypatch):

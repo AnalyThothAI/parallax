@@ -42,7 +42,7 @@ in test files; the remaining 21 were skipped with this anchor in their `reason=`
 To unstick: rewrite each test against the current API surface — most need to seed
 `asset_identity_evidence`/`asset_identity_current` instead of `registry_assets.symbol`,
 and price-observation tests need to use the full `events(source_provider, source_transport, …)`
-INSERT shape (cf. `src/gmgn_twitter_intel/domains/evidence/repositories/evidence_repository.py:60`).
+INSERT shape (cf. `src/parallax/domains/evidence/repositories/evidence_repository.py:60`).
 
 | Test | Surface to rewrite against | Notes |
 |------|----------------------------|-------|
@@ -67,7 +67,7 @@ Suggested follow-up owner: `unowned` (whoever next picks up the hard-cut family 
 `tests/integration/test_cli.py::test_cli_ops_sync_gmgn_directory_dispatches_to_runner` and
 `::test_cli_ops_sync_gmgn_directory_emits_error_on_directory_failure` invoke `cli.main(...)`
 without isolating `HOME`, so `load_settings()` reads the developer's
-`~/.gmgn-twitter-intel/config.yaml`. The current dev environment has legacy
+`~/.parallax/config.yaml`. The current dev environment has legacy
 `pulse_agent_trigger_min_rank_score`, `pulse_agent_gate_*` keys that `LlmConfig(extra='forbid')`
 rejects.
 
@@ -80,8 +80,8 @@ To unstick: either (a) `monkeypatch.setenv("HOME", str(tmp_path))` and seed a mi
 
 | 模块 glob | 放宽项 | follow-up |
 |---|---|---|
-| `gmgn_twitter_intel.app.*` | `disallow_untyped_defs/incomplete_defs/untyped_decorators = false`；`disallow_any_generics/disallow_subclassing_any/warn_return_any = false`；`disable_error_code = [arg-type, attr-defined, union-attr, index, operator, assignment, no-untyped-call]` | TODO: 由独立 spec 处理 wiring & runtime 类型注解；目标是按子包逐条移除放宽项 |
-| `gmgn_twitter_intel.integrations.*` | 同上 | TODO: external connector 类型注解；目标是逐 connector（GMGN/OKX/notification providers）补齐 Protocol 与返回类型 |
+| `parallax.app.*` | `disallow_untyped_defs/incomplete_defs/untyped_decorators = false`；`disallow_any_generics/disallow_subclassing_any/warn_return_any = false`；`disable_error_code = [arg-type, attr-defined, union-attr, index, operator, assignment, no-untyped-call]` | TODO: 由独立 spec 处理 wiring & runtime 类型注解；目标是按子包逐条移除放宽项 |
+| `parallax.integrations.*` | 同上 | TODO: external connector 类型注解；目标是逐 connector（GMGN/OKX/notification providers）补齐 Protocol 与返回类型 |
 
 ## Closed
 

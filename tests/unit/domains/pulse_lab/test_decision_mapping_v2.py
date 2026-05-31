@@ -9,10 +9,10 @@ v2 field so ``SignalPulseService._decision`` can project them later.
 
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.pulse_lab.services.decision_mapping import (
+from parallax.domains.pulse_lab.services.decision_mapping import (
     candidate_fields_from_decision,
 )
-from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
+from parallax.domains.pulse_lab.types.agent_decision import (
     BullBearView,
     FinalDecision,
     TradePlaybook,

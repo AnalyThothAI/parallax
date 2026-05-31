@@ -34,12 +34,12 @@ The UI still carries design-board assumptions into production:
 
 Observed state on 2026-05-14:
 
-- Running container: `gmgn-twitter-intel-main-app-1`, image `gmgn-twitter-intel-main-app`, port `8765:8765`.
+- Running container: `parallax-main-app-1`, image `parallax-main-app`, port `8765:8765`.
 - `http://127.0.0.1:8765/` serves `/assets/index-DqbcU3fJ.css` and `/assets/index-afyGRmqT.js`.
 - The Vite render from this worktree serves source assets and measures `.selected-case-file { display: grid; border-top-width: 1px }`.
 - The running `8765` bundle measured `.selected-case-file { display: block; border: 0 }`, which is consistent with an old or mismatched built asset.
 
-To test this branch through Docker, stop the root container that owns `8765`, then run `make docker-up` from `/Users/qinghuan/Documents/code/gmgn-twitter-intel/.worktrees/obsidian-desk-production-cleanup`. Running `make docker-up` from `/Users/qinghuan/Documents/code/gmgn-twitter-intel` will continue to build whatever is present in the root checkout.
+To test this branch through Docker, stop the root container that owns `8765`, then run `make docker-up` from `/Users/qinghuan/Documents/code/parallax/.worktrees/obsidian-desk-production-cleanup`. Running `make docker-up` from `/Users/qinghuan/Documents/code/parallax` will continue to build whatever is present in the root checkout.
 
 ## Audit Alignment
 
@@ -134,4 +134,4 @@ The Playwright cold-load golden path will assert:
 | 2026-05-14 07:36 CST | Measured Vite and `8765` visual baselines. | Vite shell `1500x920`, selected case `display:grid`; `8765` selected case `display:block`, `border:0`, confirming production CSS asset mismatch/staleness. |
 | 2026-05-14 07:43 CST | Implemented production viewport and selected-case CSS hardening. | Vite measurement at `1920x1080`: shell `0,0,1920,1080`; detail pane `461px`; selected case `display:grid`, `border-top-width:1px`. Measurement at `1366x768`: shell `0,0,1366,768`, body overflow hidden, detail pane `420px`. |
 | 2026-05-14 07:48 CST | Completed frontend verification. | `npm --prefix web run format:check` PASS; `npm --prefix web run lint` PASS; `npm --prefix web run typecheck` PASS; targeted Vitest PASS (`58 passed`); `npm --prefix web run test:e2e -- live-cold-load.spec.ts` PASS; `npm --prefix web run build` PASS with existing chunk-size warning; full `npm --prefix web run test` PASS (`36 files`, `161 tests`). |
-| 2026-05-14 08:05 CST | Re-checked Docker `8765` and mapped the architecture audit against current source. | `8765` is served by `gmgn-twitter-intel-main-app-1` from the root checkout and still references old asset hashes; audit matrix added above to separate this spec's production layout fix from the remaining case-file architecture cleanup. |
+| 2026-05-14 08:05 CST | Re-checked Docker `8765` and mapped the architecture audit against current source. | `8765` is served by `parallax-main-app-1` from the root checkout and still references old asset hashes; audit matrix added above to separate this spec's production layout fix from the remaining case-file architecture cleanup. |

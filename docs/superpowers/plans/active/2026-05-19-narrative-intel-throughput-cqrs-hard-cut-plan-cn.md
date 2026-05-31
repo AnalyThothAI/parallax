@@ -31,9 +31,9 @@
   ```
 - [ ] Confirm real runtime config paths before any live-data diagnosis:
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
-  Expected: `config_path` and `workers_config_path` point at `~/.gmgn-twitter-intel/`. Do not print secrets.
+  Expected: `config_path` and `workers_config_path` point at `~/.parallax/`. Do not print secrets.
 - [ ] Capture baseline without changing data:
   - authenticated `/api/status/narrative-health?since_hours=4`;
   - authenticated `/api/status`;
@@ -115,7 +115,7 @@ uv run pytest tests/unit/domains/narrative_intel/test_narrative_workers.py -q
 ## Step 2 — Migration 0064 For Source-Set Admission
 
 - [ ] Create Alembic revision after `20260518_0063`:
-  - `src/gmgn_twitter_intel/platform/db/alembic/versions/20260519_0064_narrative_admission_source_sets.py`
+  - `src/parallax/platform/db/alembic/versions/20260519_0064_narrative_admission_source_sets.py`
 
 - [ ] Add source-set metadata to `narrative_admissions`:
   ```sql
@@ -188,8 +188,8 @@ LIMIT %(limit)s
 
 Target files:
 
-- `src/gmgn_twitter_intel/domains/narrative_intel/queries/narrative_source_query.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py`
+- `src/parallax/domains/narrative_intel/queries/narrative_source_query.py`
+- `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`
 - `tests/integration/test_narrative_repository.py`
 
 Run:
@@ -202,7 +202,7 @@ uv run pytest tests/integration/test_narrative_repository.py -q
 
 ## Step 4 — Add NarrativeAdmissionWorker
 
-- [ ] Create `src/gmgn_twitter_intel/domains/narrative_intel/runtime/narrative_admission_worker.py`.
+- [ ] Create `src/parallax/domains/narrative_intel/runtime/narrative_admission_worker.py`.
 
 Responsibilities:
 
@@ -223,9 +223,9 @@ Responsibilities:
 - [ ] Move admission reconciliation ownership out of `MentionSemanticsWorker`.
 
 - [ ] Wire worker settings and factory:
-  - `src/gmgn_twitter_intel/app/runtime/worker_factories/narrative_intel.py`
-  - `src/gmgn_twitter_intel/app/runtime/worker_registry.py`
-  - `src/gmgn_twitter_intel/platform/config/settings.py`
+  - `src/parallax/app/runtime/worker_factories/narrative_intel.py`
+  - `src/parallax/app/runtime/worker_registry.py`
+  - `src/parallax/platform/config/settings.py`
   - `tests/unit/test_worker_settings.py`
   - `tests/unit/test_bootstrap_worker_runtime_wiring.py`
 
@@ -310,9 +310,9 @@ uv run pytest tests/unit/domains/narrative_intel/test_mention_semantics_service.
 
 Target files:
 
-- `src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/services/discussion_digest_service.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
+- `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`
+- `src/parallax/domains/narrative_intel/services/discussion_digest_service.py`
+- `src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
 - `tests/unit/domains/narrative_intel/test_discussion_digest_service.py`
 - `tests/integration/test_narrative_repository.py`
 
@@ -328,13 +328,13 @@ uv run pytest tests/unit/domains/narrative_intel/test_discussion_digest_service.
 
 - [ ] Add an ops command under the existing CLI style. Suggested public surface:
   ```bash
-  uv run gmgn-twitter-intel narrative rebuild --windows 1h,4h,24h --scopes all,matched
+  uv run parallax narrative rebuild --windows 1h,4h,24h --scopes all,matched
   ```
 
 If the project prefers `ops` grouping, use:
 
 ```bash
-uv run gmgn-twitter-intel ops narrative-rebuild --windows 1h,4h,24h --scopes all,matched
+uv run parallax ops narrative-rebuild --windows 1h,4h,24h --scopes all,matched
 ```
 
 Pick the shape that matches current CLI conventions; do not create both.
@@ -354,8 +354,8 @@ Pick the shape that matches current CLI conventions; do not create both.
 
 Target files:
 
-- `src/gmgn_twitter_intel/app/surfaces/cli.py` or existing CLI module
-- `src/gmgn_twitter_intel/domains/narrative_intel/services/`
+- `src/parallax/app/surfaces/cli.py` or existing CLI module
+- `src/parallax/domains/narrative_intel/services/`
 - `tests/unit/test_cli_search_query.py` or a new CLI ops test
 - `tests/integration/test_narrative_repository.py`
 
@@ -391,10 +391,10 @@ uv run pytest tests/unit/test_cli_search_query.py tests/integration/test_narrati
 
 Target files:
 
-- `src/gmgn_twitter_intel/domains/narrative_intel/queries/narrative_backlog_health_query.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/routes_status.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/routes_radar.py`
+- `src/parallax/domains/narrative_intel/queries/narrative_backlog_health_query.py`
+- `src/parallax/app/surfaces/api/schemas.py`
+- `src/parallax/app/surfaces/api/routes_status.py`
+- `src/parallax/app/surfaces/api/routes_radar.py`
 - `web/src/shared/model/tokenRadarCompactCase.ts`
 - `web/tests/unit/shared/model/tokenRadarCompactCaseNarrative.test.ts`
 - `docs/CONTRACTS.md`
@@ -411,7 +411,7 @@ cd web && npm test -- --run web/tests/unit/shared/model/tokenRadarCompactCaseNar
 
 ## Step 9 — Documentation And Generated Artefacts
 
-- [ ] Add `src/gmgn_twitter_intel/domains/narrative_intel/ARCHITECTURE.md` if still missing.
+- [ ] Add `src/parallax/domains/narrative_intel/ARCHITECTURE.md` if still missing.
 - [ ] Update:
   - `docs/ARCHITECTURE.md`
   - `docs/WORKERS.md`
@@ -440,7 +440,7 @@ uv run pytest tests/integration/test_docs_generated.py tests/contract/test_opena
 Run backend:
 
 ```bash
-uv run ruff check src/gmgn_twitter_intel/domains/narrative_intel tests/unit/domains/narrative_intel tests/integration/test_narrative_repository.py
+uv run ruff check src/parallax/domains/narrative_intel tests/unit/domains/narrative_intel tests/integration/test_narrative_repository.py
 uv run pytest tests/unit/domains/narrative_intel -q
 uv run pytest tests/integration/test_narrative_repository.py -q
 uv run pytest tests/architecture/test_worker_runtime_contracts.py tests/architecture/test_src_domain_architecture.py -q
@@ -457,7 +457,7 @@ cd web && npm test -- --run web/tests/unit/shared/model/tokenRadarCompactCaseNar
 Run live-data verification:
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 ```
 
 Then, without printing secrets:
@@ -487,7 +487,7 @@ Expected after at least one full cycle:
 ## Completion Gate
 
 - [ ] All required tests pass or skipped tests have documented environment reason.
-- [ ] Live config paths were confirmed from `~/.gmgn-twitter-intel/`.
+- [ ] Live config paths were confirmed from `~/.parallax/`.
 - [ ] Formal rebuild/drain was run or a dry-run report was attached for review before production execution.
 - [ ] No runtime compatibility branch remains for old admission/digest behavior.
 - [ ] No API request path writes narrative read models or calls provider.

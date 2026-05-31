@@ -9,7 +9,7 @@
 - `docs/WORKERS.md`
 - `docs/CONTRACTS.md`
 - `docs/FRONTEND.md`
-- `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
+- `src/parallax/domains/token_intel/ARCHITECTURE.md`
 - `docs/superpowers/specs/active/2026-05-18-token-narrative-intelligence-hard-cut-cn.md`
 - `docs/superpowers/plans/active/2026-05-18-token-narrative-intelligence-hard-cut-plan-cn.md`
 
@@ -19,10 +19,10 @@
 
 ## 当前事故判断
 
-2026-05-19 对本地真实运行做过一次诊断。按项目规则先运行 `uv run gmgn-twitter-intel config`，确认 live-data 配置来自 operator-owned 文件：
+2026-05-19 对本地真实运行做过一次诊断。按项目规则先运行 `uv run parallax config`，确认 live-data 配置来自 operator-owned 文件：
 
-- `config_path`: `/Users/qinghuan/.gmgn-twitter-intel/config.yaml`
-- `workers_config_path`: `/Users/qinghuan/.gmgn-twitter-intel/workers.yaml`
+- `config_path`: `/Users/qinghuan/.parallax/config.yaml`
+- `workers_config_path`: `/Users/qinghuan/.parallax/workers.yaml`
 
 诊断结论不是 Token Radar projection 坏了。`token_radar_projection` 仍在产出新鲜 rows，问题集中在 Narrative Intelligence 的 admission、semantic labeling 和 digest 状态判定。
 
@@ -340,7 +340,7 @@ This is not a text-only patch: UI text must reflect backend state produced by co
 Minimum local verification:
 
 ```bash
-uv run ruff check src/gmgn_twitter_intel/domains/narrative_intel tests/unit/domains/narrative_intel tests/integration/test_narrative_repository.py
+uv run ruff check src/parallax/domains/narrative_intel tests/unit/domains/narrative_intel tests/integration/test_narrative_repository.py
 uv run pytest tests/unit/domains/narrative_intel -q
 uv run pytest tests/integration/test_narrative_repository.py -q
 uv run pytest tests/architecture/test_worker_runtime_contracts.py tests/architecture/test_src_domain_architecture.py -q
@@ -350,7 +350,7 @@ uv run pytest tests/unit/test_api_narrative_contract.py tests/integration/test_a
 Live-data verification must start by confirming config paths:
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 ```
 
 Then inspect authenticated status endpoints without printing secrets:

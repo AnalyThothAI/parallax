@@ -116,7 +116,7 @@ Current V3 good spine:
 - keep `token_intents`;
 - keep `token_radar_rows`;
 - keep `projection_runs/projection_offsets`;
-- keep provider adapters under `src/gmgn_twitter_intel/market`.
+- keep provider adapters under `src/parallax/market`.
 
 Current V3 boundaries to replace:
 

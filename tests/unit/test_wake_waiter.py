@@ -6,7 +6,7 @@ import time
 from contextlib import contextmanager
 from typing import Any
 
-from gmgn_twitter_intel.app.runtime.wake_waiter import WakeWaiter
+from parallax.app.runtime.wake_waiter import WakeWaiter
 
 
 class FakeConn:

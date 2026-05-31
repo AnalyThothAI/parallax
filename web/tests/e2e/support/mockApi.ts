@@ -1492,7 +1492,7 @@ function opsDiagnosticsData() {
     schema_version: "ops_diagnostics_v1",
     generated_at_ms: NOW,
     overall: { status: "ok", severity: "info", reasons: [], section_status_counts: { ok: 4 } },
-    config: { status: "ok", config_path: "~/.gmgn-twitter-intel/config.yaml" },
+    config: { status: "ok", config_path: "~/.parallax/config.yaml" },
     database: { status: "ok", latency_ms: 4 },
     collector: { status: "ok", frames_received: 88, matched_twitter_events: 7 },
     providers: [

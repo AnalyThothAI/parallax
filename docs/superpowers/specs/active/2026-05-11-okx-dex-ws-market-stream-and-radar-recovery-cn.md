@@ -9,15 +9,15 @@
 
 Token Radar 的公开 HTTP 合同要求 `/api/token-radar` 行暴露 `current_market`，前端必须从 `current_market.fields` 读取 live price、market cap、liquidity、holders、volume、provider、freshness；旧的 `factor_snapshot` market facts 不能作为价格兼容层，见 `docs/CONTRACTS.md:36`.
 
-当前行情事实表是 `price_observations`。`PriceObservationRepository.insert_observation(...)` 已经支持 `price_usd`、`market_cap_usd`、`liquidity_usd`、`volume_24h_usd`、`open_interest_usd`、`holders` 等字段，见 `src/gmgn_twitter_intel/domains/asset_market/repositories/price_observation_repository.py:13`.
+当前行情事实表是 `price_observations`。`PriceObservationRepository.insert_observation(...)` 已经支持 `price_usd`、`market_cap_usd`、`liquidity_usd`、`volume_24h_usd`、`open_interest_usd`、`holders` 等字段，见 `src/parallax/domains/asset_market/repositories/price_observation_repository.py:13`.
 
-当前 OKX DEX REST adapter 只有 `search_tokens(...)` 和 `token_prices(...)` 两个同步方法，见 `src/gmgn_twitter_intel/integrations/okx/dex_client.py:39` 和 `src/gmgn_twitter_intel/integrations/okx/dex_client.py:55`。领域 provider contract 也只暴露 `DexMarketProvider.search_tokens(...)` 与 `DexMarketProvider.token_prices(...)`，见 `src/gmgn_twitter_intel/domains/asset_market/providers.py:52`.
+当前 OKX DEX REST adapter 只有 `search_tokens(...)` 和 `token_prices(...)` 两个同步方法，见 `src/parallax/integrations/okx/dex_client.py:39` 和 `src/parallax/integrations/okx/dex_client.py:55`。领域 provider contract 也只暴露 `DexMarketProvider.search_tokens(...)` 与 `DexMarketProvider.token_prices(...)`，见 `src/parallax/domains/asset_market/providers.py:52`.
 
-最新 hard cut 正确地阻止了 price-only provider 污染 metadata：`sync_dex_prices(...)` 写入 `okx_dex_price` 时明确把 `market_cap_usd`、`liquidity_usd`、`holders` 置空，见 `src/gmgn_twitter_intel/domains/asset_market/services/asset_market_sync.py:256`. Current market 只从 field-fact read model 读取，DEX metadata-capable provider 为 `okx_dex_search` 与 `okx_dex_ws_price_info`；GMGN payload 不作为 market provider。
+最新 hard cut 正确地阻止了 price-only provider 污染 metadata：`sync_dex_prices(...)` 写入 `okx_dex_price` 时明确把 `market_cap_usd`、`liquidity_usd`、`holders` 置空，见 `src/parallax/domains/asset_market/services/asset_market_sync.py:256`. Current market 只从 field-fact read model 读取，DEX metadata-capable provider 为 `okx_dex_search` 与 `okx_dex_ws_price_info`；GMGN payload 不作为 market provider。
 
-Token Radar projection worker 每轮总是重建 `5m` hot windows，然后轮询一个 background window/scope，见 `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py:89`. Projection 本身先跑 source query，再批量 hydrate current market，见 `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py:51` 和 `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py:156`.
+Token Radar projection worker 每轮总是重建 `5m` hot windows，然后轮询一个 background window/scope，见 `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py:89`. Projection 本身先跑 source query，再批量 hydrate current market，见 `src/parallax/domains/token_intel/services/token_radar_projection.py:51` 和 `src/parallax/domains/token_intel/services/token_radar_projection.py:156`.
 
-API read path 仍会在每次 `/api/token-radar` 请求时再次读取 `CurrentMarketRepository.current_for_subjects(...)`，见 `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py:30` 和 `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py:42`. 前端当前通过 HTTP polling 每 10 秒拉 `/api/token-radar`，见 `web/src/App.tsx:132`.
+API read path 仍会在每次 `/api/token-radar` 请求时再次读取 `CurrentMarketRepository.current_for_subjects(...)`，见 `src/parallax/domains/token_intel/read_models/asset_flow_service.py:30` 和 `src/parallax/domains/token_intel/read_models/asset_flow_service.py:42`. 前端当前通过 HTTP polling 每 10 秒拉 `/api/token-radar`，见 `web/src/App.tsx:132`.
 
 OKX 官方 Onchain OS DEX WebSocket endpoint 是 `wss://wsdex.okx.com/ws/v6/dex`。官方 `price` channel 返回实时 token price；`price-info` channel 返回 price、marketCap、liquidity、holders、volume、price changes 等字段；price/trading channels 订阅前需要 HMAC login。参考：
 

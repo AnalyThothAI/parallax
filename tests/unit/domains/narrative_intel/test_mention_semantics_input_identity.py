@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.narrative_intel.runtime.mention_semantics_worker import (
+from parallax.domains.narrative_intel.runtime.mention_semantics_worker import (
     _hash_json,
     _mention_semantics_input_rows,
 )

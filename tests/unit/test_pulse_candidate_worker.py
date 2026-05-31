@@ -6,30 +6,30 @@ from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
 
-from gmgn_twitter_intel.app.runtime import providers_wiring
-from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
-from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
-from gmgn_twitter_intel.domains.pulse_lab.providers import (
+from parallax.app.runtime import providers_wiring
+from parallax.app.runtime.worker_base import WorkerBase
+from parallax.app.runtime.worker_result import WorkerResult
+from parallax.domains.pulse_lab.providers import (
     DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT,
     PulseAgentRuntimeContract,
     PulseDecisionResult,
 )
-from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import (
+from parallax.domains.pulse_lab.runtime.pulse_candidate_worker import (
     PulseCandidateWorker,
     _asset_candidate_id,
     _asset_trigger_metrics,
 )
-from gmgn_twitter_intel.domains.pulse_lab.services import pulse_candidate_job_service as job_module
-from gmgn_twitter_intel.domains.pulse_lab.services.evidence_completeness_gate import (
+from parallax.domains.pulse_lab.services import pulse_candidate_job_service as job_module
+from parallax.domains.pulse_lab.services.evidence_completeness_gate import (
     EvidenceCompletenessGateResult,
 )
-from gmgn_twitter_intel.domains.pulse_lab.services.pulse_admission_policy import PulseAdmissionPolicy
-from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import PulseGateResult
-from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_job_service import (
+from parallax.domains.pulse_lab.services.pulse_admission_policy import PulseAdmissionPolicy
+from parallax.domains.pulse_lab.services.pulse_candidate_gate import PulseGateResult
+from parallax.domains.pulse_lab.services.pulse_candidate_job_service import (
     _normalized_failure_reason,
     _run_outcome,
 )
-from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
+from parallax.domains.pulse_lab.types.agent_decision import (
     BearCaseMemo,
     BullBearView,
     EvidenceClaim,
@@ -39,13 +39,13 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     StageRunAudit,
     TradePlaybook,
 )
-from gmgn_twitter_intel.domains.pulse_lab.types.pulse_candidate_context import PulseCandidateContext
-from gmgn_twitter_intel.platform.agent_execution import (
+from parallax.domains.pulse_lab.types.pulse_candidate_context import PulseCandidateContext
+from parallax.platform.agent_execution import (
     AgentCapacityReservation,
     AgentExecutionError,
     AgentExecutionErrorClass,
 )
-from gmgn_twitter_intel.platform.config.settings import Settings
+from parallax.platform.config.settings import Settings
 
 NOW_MS = 1_800_000
 

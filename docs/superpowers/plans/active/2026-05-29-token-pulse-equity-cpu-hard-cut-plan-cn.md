@@ -26,7 +26,7 @@
 
 Live runtime checks on 2026-05-29 showed the root cause is still present, but narrowed:
 
-- Token Radar old `WITH request_targets AS` and `WITH source_intents AS MATERIALIZED` paths are gone. The remaining cost is the new source-edge hydrate query in `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_rank_source_query.py`, which still starts from target/window/scope and re-reads the whole source window for each source-dirty target.
+- Token Radar old `WITH request_targets AS` and `WITH source_intents AS MATERIALIZED` paths are gone. The remaining cost is the new source-edge hydrate query in `src/parallax/domains/token_intel/queries/token_radar_rank_source_query.py`, which still starts from target/window/scope and re-reads the whole source window for each source-dirty target.
 - `token_radar_dirty_targets.source_event_ids_json` already captures exact dirty events, but `TokenRadarProjection.rebuild_dirty_targets()` does not pass that event set into rank-source population.
 - Pulse is triggered from `token_radar_current_rows`, which already has `source_event_ids_json`, but `PulseCandidateWorker._asset_context()` still calls `repos.token_targets.timeline_rows(... watched_only=False, limit=200)` and filters `matched` in Python.
 - Equity `replace_company_timeline_rows()` always executes a `DELETE` before upsert, and that delete uses `(company_id = ANY(...) OR company_event_id = ANY(...))`. On live stats, this was a high-frequency sequential scan on `equity_company_timeline_rows`.
@@ -41,7 +41,7 @@ Live runtime checks on 2026-05-29 showed the root cause is still present, but na
 - Pulse must use the evidence set carried by the Token Radar current row. It must not reconstruct a full 24h target timeline in the hot path.
 - Equity timeline replacement must determine unchanged/stale state before deleting. Identical payloads must produce zero serving-row writes.
 - Rebuild must run only with workers stopped or paused, after migrations and code are deployed.
-- Real-data diagnostics must first run `uv run gmgn-twitter-intel config` and report only paths, booleans, and counts, never secrets.
+- Real-data diagnostics must first run `uv run parallax config` and report only paths, booleans, and counts, never secrets.
 
 ## Target Data Flow
 
@@ -96,7 +96,7 @@ Run before code changes:
 
 ```bash
 git status --short
-uv run gmgn-twitter-intel config
+uv run parallax config
 uv run pytest tests/architecture/test_worker_runtime_contracts.py tests/architecture/test_projection_worker_idle_cost_contract.py -q
 ```
 
@@ -104,14 +104,14 @@ Capture live evidence without resetting stats:
 
 ```bash
 docker stats --no-stream
-uv run gmgn-twitter-intel ops worker-status
-uv run gmgn-twitter-intel ops queue-inspect --status active --limit 20
+uv run parallax ops worker-status
+uv run parallax ops queue-inspect --status active --limit 20
 ```
 
 Expected config evidence:
 
-- `config_path` is `/Users/qinghuan/.gmgn-twitter-intel/config.yaml`
-- `workers_config_path` is `/Users/qinghuan/.gmgn-twitter-intel/workers.yaml`
+- `config_path` is `/Users/qinghuan/.parallax/config.yaml`
+- `workers_config_path` is `/Users/qinghuan/.parallax/workers.yaml`
 - no secret values are printed
 
 ### Task 1: Add Hard-Cut Architecture Guards First
@@ -130,7 +130,7 @@ Required guards:
 5. Pulse runtime must call an event-id bounded evidence loader and pass `watched_only=True` for `scope == "matched"`.
 6. `replace_company_timeline_rows()` must not contain a delete predicate with ` OR company_event_id`.
 7. `replace_company_timeline_rows()` must have a pre-delete existing-state/no-op gate.
-8. No file under `src/gmgn_twitter_intel/domains/news_intel` is modified by this implementation.
+8. No file under `src/parallax/domains/news_intel` is modified by this implementation.
 
 Run this test alone and confirm it fails before implementation:
 
@@ -140,7 +140,7 @@ uv run pytest tests/architecture/test_token_pulse_equity_cpu_hard_cut_contract.p
 
 ### Task 2: Add Targeted Database Support
 
-Create Alembic migration `src/gmgn_twitter_intel/platform/db/alembic/versions/20260529_0124_token_pulse_equity_cpu_hard_cut.py` with `down_revision = "20260529_0123"`.
+Create Alembic migration `src/parallax/platform/db/alembic/versions/20260529_0124_token_pulse_equity_cpu_hard_cut.py` with `down_revision = "20260529_0123"`.
 
 Add indexes for the new bounded paths. Use `with op.get_context().autocommit_block():` for every `CREATE INDEX CONCURRENTLY`; do not execute concurrent indexes inside Alembic's normal transaction block.
 
@@ -202,9 +202,9 @@ Expected result: zero rows.
 
 Files:
 
-- `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_rank_source_query.py`
-- `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_dirty_target_repository.py`
+- `src/parallax/domains/token_intel/queries/token_radar_rank_source_query.py`
+- `src/parallax/domains/token_intel/services/token_radar_projection.py`
+- `src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py`
 - `tests/unit/test_token_radar_projection.py`
 - `tests/integration/test_token_radar_idempotency.py`
 - `tests/integration/test_token_radar_repository.py`
@@ -277,9 +277,9 @@ Test cases:
 
 Files:
 
-- `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_timeline_context.py`
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_target_repository.py`
+- `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- `src/parallax/domains/pulse_lab/services/pulse_timeline_context.py`
+- `src/parallax/domains/token_intel/repositories/token_target_repository.py`
 - `tests/unit/test_pulse_candidate_worker.py`
 - `tests/unit/test_pulse_timeline_context.py`
 - `tests/unit/test_cex_binance_read_path_filters.py`
@@ -333,8 +333,8 @@ Test cases:
 
 Files:
 
-- `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py`
-- `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_page_projection_worker.py`
+- `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py`
+- `src/parallax/domains/equity_event_intel/runtime/equity_event_page_projection_worker.py`
 - `tests/integration/test_equity_event_repository.py`
 - `tests/architecture/test_projection_worker_idle_cost_contract.py`
 
@@ -402,7 +402,7 @@ Preconditions:
 
 - App workers are stopped or paused.
 - Code and Alembic migration are deployed.
-- `uv run gmgn-twitter-intel config` reports operator-owned config paths.
+- `uv run parallax config` reports operator-owned config paths.
 - A recent database backup exists.
 
 Stop runtime workers in the active deployment shape. For Docker Compose:
@@ -446,13 +446,13 @@ If the operator explicitly wants a full Pulse public-surface reset, write a sepa
 Re-enqueue Token Radar from event facts. Use an epoch-millis value for the lookback start; for an 8h rebuild this is `now_ms - 8 * 60 * 60 * 1000`.
 
 ```bash
-uv run gmgn-twitter-intel ops enqueue-token-radar-dirty-targets --source events --since-ms "$SINCE_MS" --limit 200000 --execute
+uv run parallax ops enqueue-token-radar-dirty-targets --source events --since-ms "$SINCE_MS" --limit 200000 --execute
 ```
 
 Re-enqueue Equity timeline only, leaving News out:
 
 ```bash
-uv run gmgn-twitter-intel ops enqueue-projection-dirty-targets --domain equity --projection timeline --since-hours 72 --execute
+uv run parallax ops enqueue-projection-dirty-targets --domain equity --projection timeline --since-hours 72 --execute
 ```
 
 Restart workers:
@@ -464,14 +464,14 @@ docker compose up -d app
 Drain the bounded workers with the current worker config. If a one-shot CLI run is needed, run each Token Radar window/scope explicitly:
 
 ```bash
-uv run gmgn-twitter-intel ops rebuild-token-radar --window 5m --scope all --limit 5000
-uv run gmgn-twitter-intel ops rebuild-token-radar --window 5m --scope matched --limit 5000
-uv run gmgn-twitter-intel ops rebuild-token-radar --window 1h --scope all --limit 5000
-uv run gmgn-twitter-intel ops rebuild-token-radar --window 1h --scope matched --limit 5000
-uv run gmgn-twitter-intel ops rebuild-token-radar --window 4h --scope all --limit 5000
-uv run gmgn-twitter-intel ops rebuild-token-radar --window 4h --scope matched --limit 5000
-uv run gmgn-twitter-intel ops rebuild-token-radar --window 24h --scope all --limit 5000
-uv run gmgn-twitter-intel ops rebuild-token-radar --window 24h --scope matched --limit 5000
+uv run parallax ops rebuild-token-radar --window 5m --scope all --limit 5000
+uv run parallax ops rebuild-token-radar --window 5m --scope matched --limit 5000
+uv run parallax ops rebuild-token-radar --window 1h --scope all --limit 5000
+uv run parallax ops rebuild-token-radar --window 1h --scope matched --limit 5000
+uv run parallax ops rebuild-token-radar --window 4h --scope all --limit 5000
+uv run parallax ops rebuild-token-radar --window 4h --scope matched --limit 5000
+uv run parallax ops rebuild-token-radar --window 24h --scope all --limit 5000
+uv run parallax ops rebuild-token-radar --window 24h --scope matched --limit 5000
 ```
 
 ### Task 8: Verification Gates
@@ -501,8 +501,8 @@ uv run pytest tests/unit/test_postgres_schema.py tests/unit/test_postgres_observ
 Runtime checks after rebuild:
 
 ```bash
-uv run gmgn-twitter-intel ops worker-status
-uv run gmgn-twitter-intel ops queue-inspect --status active --limit 50
+uv run parallax ops worker-status
+uv run parallax ops queue-inspect --status active --limit 50
 scripts/runtime_performance_root_fix_check.sh
 ```
 

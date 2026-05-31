@@ -4,14 +4,14 @@ from collections.abc import Iterable
 from types import SimpleNamespace
 from typing import Any
 
-from gmgn_twitter_intel.app.runtime.ops_diagnostics import (
+from parallax.app.runtime.ops_diagnostics import (
     INVALID_QUEUE,
     ops_diagnostics_payload,
     ops_queue_payload,
     redact_diagnostics,
 )
-from gmgn_twitter_intel.domains.asset_market.providers import MarketCapability, ProviderHealth
-from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_version
+from parallax.domains.asset_market.providers import MarketCapability, ProviderHealth
+from parallax.platform.db.postgres_migrations import latest_migration_version
 
 
 def test_redact_diagnostics_masks_secret_like_keys() -> None:
@@ -299,7 +299,7 @@ class FakeRuntime:
         agent_execution_error: Exception | None = None,
     ) -> None:
         self.settings = SimpleNamespace(
-            app_home="/var/lib/gmgn-twitter-intel-test",
+            app_home="/var/lib/parallax-test",
             handles=("alpha",),
             upstream_channels=("twitter_monitor_basic",),
             gmgn_configured=True,

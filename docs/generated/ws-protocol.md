@@ -2,7 +2,7 @@
 
 # WebSocket Protocol
 
-Source: `src/gmgn_twitter_intel/app/surfaces/api/ws.py`
+Source: `src/parallax/app/surfaces/api/ws.py`
 
 | Message class | Doc |
 |---------------|-----|

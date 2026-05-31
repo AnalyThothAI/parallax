@@ -3,14 +3,14 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import (
+from parallax.domains.account_quality.repositories.account_quality_repository import (
     AccountQualityRepository,
 )
-from gmgn_twitter_intel.domains.asset_market.repositories.registry_repository import RegistryRepository
-from gmgn_twitter_intel.domains.token_intel.queries.event_token_projection_query import (
+from parallax.domains.asset_market.repositories.registry_repository import RegistryRepository
+from parallax.domains.token_intel.queries.event_token_projection_query import (
     EventTokenProjectionQuery,
 )
-from gmgn_twitter_intel.domains.token_intel.repositories.token_target_repository import TokenTargetRepository
+from parallax.domains.token_intel.repositories.token_target_repository import TokenTargetRepository
 
 
 def test_registry_preferred_cex_reads_are_binance_usdt_swap_only() -> None:

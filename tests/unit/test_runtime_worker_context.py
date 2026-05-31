@@ -5,10 +5,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from gmgn_twitter_intel.app.runtime.runtime_worker_context import RuntimeWorkerContext
-from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
-from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
-from gmgn_twitter_intel.app.runtime.worker_space import (
+from parallax.app.runtime.runtime_worker_context import RuntimeWorkerContext
+from parallax.app.runtime.worker_base import WorkerBase
+from parallax.app.runtime.worker_result import WorkerResult
+from parallax.app.runtime.worker_space import (
     ClaimContract,
     ClaimDiscipline,
     ProviderIOContract,

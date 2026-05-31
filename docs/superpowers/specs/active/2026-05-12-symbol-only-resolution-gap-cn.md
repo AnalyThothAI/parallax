@@ -4,10 +4,10 @@
 **Date**: 2026-05-12
 **Owner**: Claude
 **Related**:
-- `src/gmgn_twitter_intel/domains/token_intel/services/deterministic_token_resolver.py`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/discovery_repository.py`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/token_discovery_worker.py`
+- `src/parallax/domains/token_intel/services/deterministic_token_resolver.py`
+- `src/parallax/domains/asset_market/repositories/registry_repository.py`
+- `src/parallax/domains/asset_market/repositories/discovery_repository.py`
+- `src/parallax/domains/asset_market/runtime/token_discovery_worker.py`
 
 ---
 
@@ -208,7 +208,7 @@ Worker 在跑、有写入、有 error。107 + 146 = 253 个 lookup 卡在 error 
 
 ### 3.1 `_market_dominant_asset` 算法（精确版）
 
-`src/gmgn_twitter_intel/domains/token_intel/services/deterministic_token_resolver.py:301-317`：
+`src/parallax/domains/token_intel/services/deterministic_token_resolver.py:301-317`：
 
 ```python
 def _market_dominant_asset(rows):
@@ -344,10 +344,10 @@ A 是头号目标。B/D 是值得一并处理的独立子问题。C 里"无 chai
 ### 4.1 准备
 
 ```bash
-# 容器名 + 凭证（compose.yaml + ~/.gmgn-twitter-intel/postgres_password）
-CONTAINER=gmgn-twitter-intel-postgres-1
-DB=gmgn_twitter_intel
-USER=gmgn_app
+# 容器名 + 凭证（compose.yaml + ~/.parallax/postgres_password）
+CONTAINER=parallax-postgres-1
+DB=parallax
+USER=parallax_app
 
 # 进 psql 用：
 docker exec $CONTAINER psql -U $USER -d $DB
@@ -361,7 +361,7 @@ SELECT to_timestamp(MAX(last_lookup_at_ms)/1000) AS last_call,
 FROM token_discovery_results;
 ```
 
-**预期**：age_ms < 60000（最近 1 分钟内有 OKX 调用）。如果 age_ms 远大于 30 秒，先看 `~/.gmgn-twitter-intel/logs/gmgn-twitter-intel.log` 检查 worker 异常。
+**预期**：age_ms < 60000（最近 1 分钟内有 OKX 调用）。如果 age_ms 远大于 30 秒，先看 `~/.parallax/logs/parallax.log` 检查 worker 异常。
 
 ### 4.3 Step 2：confirm reason 分布
 
@@ -467,8 +467,8 @@ FROM per_intent GROUP BY eligible_count ORDER BY eligible_count;
 如果想确认任意 intent 的 resolver 输出，跑：
 
 ```bash
-docker exec gmgn-twitter-intel-app-1 python -c "
-from gmgn_twitter_intel.app.runtime import boot
+docker exec parallax-app-1 python -c "
+from parallax.app.runtime import boot
 runtime = boot()
 result = runtime.resolver.resolve(intent_id='<intent_id>')
 print(result)

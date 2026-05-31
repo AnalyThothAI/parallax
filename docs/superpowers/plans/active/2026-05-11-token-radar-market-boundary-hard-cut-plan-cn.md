@@ -85,7 +85,7 @@ Fresh verification after implementation:
   in `web/`: 16 files passed, 90 tests passed.
 
 Implementation note: `market_field_facts.py` lives at
-`src/gmgn_twitter_intel/domains/asset_market/market_field_facts.py`, not under
+`src/parallax/domains/asset_market/market_field_facts.py`, not under
 `services/`, so repositories can consume pure field policy without violating the
 repository/query architecture guard.
 
@@ -93,60 +93,60 @@ repository/query architecture guard.
 
 ### New Python files
 
-- `src/gmgn_twitter_intel/domains/asset_market/market_field_facts.py`
+- `src/parallax/domains/asset_market/market_field_facts.py`
   - Owns field capability policy, field freshness calculation, aggregate market status, and pure `MarketFieldFact` / `CurrentMarketSnapshot` assembly helpers.
   - No SQL, no provider calls, no imports from `token_intel`.
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/current_market_repository.py`
+- `src/parallax/domains/asset_market/repositories/current_market_repository.py`
   - Owns SQL for field-aware current market snapshots derived from `price_observations`.
   - Reads latest capable observation per field; excludes `okx_dex_price` from market cap/liquidity/holders by policy.
-- `src/gmgn_twitter_intel/domains/asset_market/read_models/__init__.py`
+- `src/parallax/domains/asset_market/read_models/__init__.py`
   - Package marker for asset-market read models.
-- `src/gmgn_twitter_intel/domains/asset_market/read_models/current_market_service.py`
+- `src/parallax/domains/asset_market/read_models/current_market_service.py`
   - Small read service wrapper used by API/CLI; delegates SQL to `CurrentMarketRepository`.
 
 ### Modified Python files
 
-- `src/gmgn_twitter_intel/domains/asset_market/interfaces.py`
+- `src/parallax/domains/asset_market/interfaces.py`
   - Export `CurrentMarketRepository` and `CurrentMarketService`.
-- `src/gmgn_twitter_intel/app/runtime/repository_session.py`
+- `src/parallax/app/runtime/repository_session.py`
   - Add `current_market: CurrentMarketRepository` to `RepositorySession`.
-- `src/gmgn_twitter_intel/domains/asset_market/services/asset_market_sync.py`
+- `src/parallax/domains/asset_market/services/asset_market_sync.py`
   - Stop copying stale market metadata into `okx_dex_price` observations.
-- `src/gmgn_twitter_intel/domains/asset_market/services/message_market_observation.py`
+- `src/parallax/domains/asset_market/services/message_market_observation.py`
   - Stop copying stale market metadata into DEX `message_quote` observations.
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py`
+- `src/parallax/domains/asset_market/repositories/registry_repository.py`
   - Make `find_assets_by_symbol_with_latest_observation()` return field-aware market fields using provider capability filters.
   - Add `market_cap_status`, `liquidity_status`, `holders_status`, and field observed-at columns for resolver use.
-- `src/gmgn_twitter_intel/domains/token_intel/services/deterministic_token_resolver.py`
+- `src/parallax/domains/token_intel/services/deterministic_token_resolver.py`
   - Require resolver dominance fields to have current field provenance; stale/missing provider fields cannot create `MARKET_DOMINANT_CHAIN_ASSET`.
-- `src/gmgn_twitter_intel/domains/token_intel/_constants.py`
+- `src/parallax/domains/token_intel/_constants.py`
   - Bump `TOKEN_RADAR_PROJECTION_VERSION` to `token-radar-v10-current-market`.
   - Change `TOKEN_RADAR_SOURCE_TABLE` to `token_intent_resolutions+asset_identity_current+current_market`.
-- `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py`
+- `src/parallax/domains/token_intel/queries/token_radar_source_query.py`
   - Remove current-market latest-row lateral joins from `price_observations`.
   - Keep event-history/message/before/first price joins for timing evidence.
-- `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
+- `src/parallax/domains/token_intel/services/token_radar_projection.py`
   - Hydrate source rows with `repos.current_market.current_for_subjects(subjects, now_ms=now_ms)`.
   - Build market context from field-aware snapshots.
   - Keep projection provider-free.
-- `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py`
+- `src/parallax/domains/token_intel/scoring/factor_snapshot.py`
   - Keep market-quality facts as scoring provenance, not live price.
   - Add field status/provenance facts needed for gates and audits.
-- `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`
+- `src/parallax/domains/token_intel/read_models/asset_flow_service.py`
   - Require a current-market repository/service.
   - Return `current_market` per row.
   - Remove `market` and `price` aliases sourced from factor snapshot.
-- `src/gmgn_twitter_intel/app/surfaces/api/http.py`
+- `src/parallax/app/surfaces/api/http.py`
   - Construct `AssetFlowService(token_radar=repos.token_radar, current_market=repos.current_market)`.
   - Add `/api/current-market` for direct target reads.
-- `src/gmgn_twitter_intel/app/surfaces/cli/main.py`
+- `src/parallax/app/surfaces/cli/main.py`
   - Construct `AssetFlowService` with `current_market`.
   - Add or extend ops audit output for current-market field facts.
-- `src/gmgn_twitter_intel/app/runtime/app.py`
+- `src/parallax/app/runtime/app.py`
   - Construct notification `AssetFlowService` with current-market repository.
-- `src/gmgn_twitter_intel/app/runtime/providers_wiring.py`
+- `src/parallax/app/runtime/providers_wiring.py`
   - Share one serialized OKX DEX provider across sync/message/discovery to avoid independent client quota races.
-- `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
+- `src/parallax/domains/token_intel/ARCHITECTURE.md`
   - Document `asset_market current market read model -> TokenRadarProjection` boundary.
 - `docs/ARCHITECTURE.md`
   - Link `asset_market` current market read model responsibility.
@@ -189,8 +189,8 @@ repository/query architecture guard.
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/services/asset_market_sync.py:256-271`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/services/message_market_observation.py:169-187`
+- Modify: `src/parallax/domains/asset_market/services/asset_market_sync.py:256-271`
+- Modify: `src/parallax/domains/asset_market/services/message_market_observation.py:169-187`
 - Test: `tests/test_asset_market_sync.py`
 - Test: `tests/test_message_market_observation.py`
 
@@ -281,7 +281,7 @@ repository/query architecture guard.
 - [ ] **Step 7: Commit**
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/asset_market/services/asset_market_sync.py src/gmgn_twitter_intel/domains/asset_market/services/message_market_observation.py tests/test_asset_market_sync.py tests/test_message_market_observation.py
+  git add src/parallax/domains/asset_market/services/asset_market_sync.py src/parallax/domains/asset_market/services/message_market_observation.py tests/test_asset_market_sync.py tests/test_message_market_observation.py
   git commit -m "fix: stop copying dex market metadata into price-only observations"
   ```
 
@@ -289,12 +289,12 @@ repository/query architecture guard.
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/domains/asset_market/services/market_field_facts.py`
-- Create: `src/gmgn_twitter_intel/domains/asset_market/repositories/current_market_repository.py`
-- Create: `src/gmgn_twitter_intel/domains/asset_market/read_models/__init__.py`
-- Create: `src/gmgn_twitter_intel/domains/asset_market/read_models/current_market_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/interfaces.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/repository_session.py`
+- Create: `src/parallax/domains/asset_market/services/market_field_facts.py`
+- Create: `src/parallax/domains/asset_market/repositories/current_market_repository.py`
+- Create: `src/parallax/domains/asset_market/read_models/__init__.py`
+- Create: `src/parallax/domains/asset_market/read_models/current_market_service.py`
+- Modify: `src/parallax/domains/asset_market/interfaces.py`
+- Modify: `src/parallax/app/runtime/repository_session.py`
 - Test: `tests/test_current_market_repository.py`
 - Test: `tests/test_project_structure.py`
 
@@ -304,8 +304,8 @@ repository/query architecture guard.
   ```python
   from __future__ import annotations
 
-  from gmgn_twitter_intel.domains.asset_market.repositories.current_market_repository import CurrentMarketRepository
-  from gmgn_twitter_intel.domains.asset_market.repositories.price_observation_repository import PriceObservationRepository
+  from parallax.domains.asset_market.repositories.current_market_repository import CurrentMarketRepository
+  from parallax.domains.asset_market.repositories.price_observation_repository import PriceObservationRepository
   from tests.postgres_test_utils import connect_postgres_test
   from tests.postgres_test_utils import reset_postgres_schema as migrate
 
@@ -666,7 +666,7 @@ repository/query architecture guard.
 - [ ] **Step 8: Commit**
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/asset_market/services/market_field_facts.py src/gmgn_twitter_intel/domains/asset_market/repositories/current_market_repository.py src/gmgn_twitter_intel/domains/asset_market/read_models src/gmgn_twitter_intel/domains/asset_market/interfaces.py src/gmgn_twitter_intel/app/runtime/repository_session.py tests/test_current_market_repository.py tests/test_project_structure.py
+  git add src/parallax/domains/asset_market/services/market_field_facts.py src/parallax/domains/asset_market/repositories/current_market_repository.py src/parallax/domains/asset_market/read_models src/parallax/domains/asset_market/interfaces.py src/parallax/app/runtime/repository_session.py tests/test_current_market_repository.py tests/test_project_structure.py
   git commit -m "feat: add field-aware current market read model"
   ```
 
@@ -674,8 +674,8 @@ repository/query architecture guard.
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py:193-225`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/deterministic_token_resolver.py:299-340`
+- Modify: `src/parallax/domains/asset_market/repositories/registry_repository.py:193-225`
+- Modify: `src/parallax/domains/token_intel/services/deterministic_token_resolver.py:299-340`
 - Test: `tests/test_registry_repository.py`
 - Test: `tests/test_deterministic_token_resolver.py`
 
@@ -880,7 +880,7 @@ repository/query architecture guard.
 - [ ] **Step 8: Commit**
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py src/gmgn_twitter_intel/domains/token_intel/services/deterministic_token_resolver.py tests/test_registry_repository.py tests/test_deterministic_token_resolver.py
+  git add src/parallax/domains/asset_market/repositories/registry_repository.py src/parallax/domains/token_intel/services/deterministic_token_resolver.py tests/test_registry_repository.py tests/test_deterministic_token_resolver.py
   git commit -m "fix: use field-provenance market data for symbol dominance"
   ```
 
@@ -888,10 +888,10 @@ repository/query architecture guard.
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/_constants.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py`
+- Modify: `src/parallax/domains/token_intel/_constants.py`
+- Modify: `src/parallax/domains/token_intel/queries/token_radar_source_query.py`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py`
+- Modify: `src/parallax/domains/token_intel/scoring/factor_snapshot.py`
 - Test: `tests/test_token_radar_projection.py`
 - Test: `tests/golden/test_token_radar_corpus.py`
 
@@ -1058,7 +1058,7 @@ repository/query architecture guard.
 - [ ] **Step 8: Commit**
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/token_intel/_constants.py src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py tests/test_token_radar_projection.py tests/golden/test_token_radar_corpus.py
+  git add src/parallax/domains/token_intel/_constants.py src/parallax/domains/token_intel/queries/token_radar_source_query.py src/parallax/domains/token_intel/services/token_radar_projection.py src/parallax/domains/token_intel/scoring/factor_snapshot.py tests/test_token_radar_projection.py tests/golden/test_token_radar_corpus.py
   git commit -m "feat: hydrate token radar from current market snapshots"
   ```
 
@@ -1066,10 +1066,10 @@ repository/query architecture guard.
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/http.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/main.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/app.py`
+- Modify: `src/parallax/domains/token_intel/read_models/asset_flow_service.py`
+- Modify: `src/parallax/app/surfaces/api/http.py`
+- Modify: `src/parallax/app/surfaces/cli/main.py`
+- Modify: `src/parallax/app/runtime/app.py`
 - Modify: `web/src/api/types.ts`
 - Modify: `web/src/lib/tokenRadar.ts`
 - Modify: `web/src/components/TokenRadarRow.tsx`
@@ -1251,7 +1251,7 @@ repository/query architecture guard.
 - [ ] **Step 8: Commit**
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py src/gmgn_twitter_intel/app/surfaces/api/http.py src/gmgn_twitter_intel/app/surfaces/cli/main.py src/gmgn_twitter_intel/app/runtime/app.py web/src/api/types.ts web/src/lib/tokenRadar.ts web/src/components/TokenRadarRow.tsx tests/test_asset_flow_service.py tests/test_api_http.py web/src/lib/tokenRadar.test.ts web/src/components/TokenRadarRow.test.tsx web/src/App.test.tsx
+  git add src/parallax/domains/token_intel/read_models/asset_flow_service.py src/parallax/app/surfaces/api/http.py src/parallax/app/surfaces/cli/main.py src/parallax/app/runtime/app.py web/src/api/types.ts web/src/lib/tokenRadar.ts web/src/components/TokenRadarRow.tsx tests/test_asset_flow_service.py tests/test_api_http.py web/src/lib/tokenRadar.test.ts web/src/components/TokenRadarRow.test.tsx web/src/App.test.tsx
   git commit -m "feat: hard cut token radar api to current market"
   ```
 
@@ -1259,7 +1259,7 @@ repository/query architecture guard.
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/app/runtime/providers_wiring.py`
+- Modify: `src/parallax/app/runtime/providers_wiring.py`
 - Test: `tests/test_api_health.py`
 - Test: `tests/test_asset_market_sync.py`
 
@@ -1279,7 +1279,7 @@ repository/query architecture guard.
       assert providers.asset_market.sync_dex_market is providers.asset_market.message_dex_market
       assert providers.asset_market.sync_dex_market is providers.asset_market.discovery_dex_market
   ```
-  Import `Settings` from `gmgn_twitter_intel.platform.config.settings` and `wire_providers` from `gmgn_twitter_intel.app.runtime.providers_wiring` in `tests/test_api_health.py`.
+  Import `Settings` from `parallax.platform.config.settings` and `wire_providers` from `parallax.app.runtime.providers_wiring` in `tests/test_api_health.py`.
 
 - [ ] **Step 2: Implement serialized provider wrapper**
 
@@ -1329,7 +1329,7 @@ repository/query architecture guard.
 - [ ] **Step 4: Commit**
 
   ```bash
-  git add src/gmgn_twitter_intel/app/runtime/providers_wiring.py tests/test_api_health.py tests/test_asset_market_sync.py
+  git add src/parallax/app/runtime/providers_wiring.py tests/test_api_health.py tests/test_asset_market_sync.py
   git commit -m "fix: share serialized okx dex provider across market workers"
   ```
 
@@ -1337,8 +1337,8 @@ repository/query architecture guard.
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/main.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
+- Modify: `src/parallax/app/surfaces/cli/main.py`
+- Modify: `src/parallax/domains/token_intel/ARCHITECTURE.md`
 - Modify: `docs/ARCHITECTURE.md`
 - Modify: `docs/CONTRACTS.md`
 - Test: `tests/test_cli.py`
@@ -1365,7 +1365,7 @@ repository/query architecture guard.
 
 - [ ] **Step 3: Update architecture docs**
 
-  In `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`, replace the Radar projection market observation sentence with:
+  In `src/parallax/domains/token_intel/ARCHITECTURE.md`, replace the Radar projection market observation sentence with:
   ```text
   Projection consumes `asset_market` current-market snapshots for scoring context. It does not read latest price-observation rows as a live market contract and does not call providers.
   ```
@@ -1385,7 +1385,7 @@ repository/query architecture guard.
 - [ ] **Step 5: Commit**
 
   ```bash
-  git add src/gmgn_twitter_intel/app/surfaces/cli/main.py src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md docs/ARCHITECTURE.md docs/CONTRACTS.md tests/test_cli.py tests/test_token_radar_audit_cli.py
+  git add src/parallax/app/surfaces/cli/main.py src/parallax/domains/token_intel/ARCHITECTURE.md docs/ARCHITECTURE.md docs/CONTRACTS.md tests/test_cli.py tests/test_token_radar_audit_cli.py
   git commit -m "docs: document current market boundary and audit path"
   ```
 
@@ -1407,7 +1407,7 @@ repository/query architecture guard.
 6. Restart service workers so `providers_wiring.py` uses the shared serialized DEX provider.
 7. Run a production audit for `$TROLL`:
    ```bash
-   uv run gmgn-twitter-intel current-market --target-type Asset --target-id 'asset:solana:token:5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2'
+   uv run parallax current-market --target-type Asset --target-id 'asset:solana:token:5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2'
    ```
    Expected: price field can be fresh while market cap field shows stale until a full metadata source refreshes it.
 

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import (
+from parallax.domains.pulse_lab.services.pulse_candidate_gate import (
     gate_pulse_candidate_from_factor_snapshot,
 )
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_FACTOR_SNAPSHOT_VERSION
+from parallax.domains.token_intel.interfaces import TOKEN_FACTOR_SNAPSHOT_VERSION
 
 
 def _snapshot(

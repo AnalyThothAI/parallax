@@ -11,13 +11,13 @@ The repository already has a good documentation harness: root routers point into
 
 The current source confirms that layer structure:
 
-- The collector owns GMGN frame parsing, snapshot gating, watched-handle matching, store-first ingestion, and publish after insert in `src/gmgn_twitter_intel/collector/service.py:48-171`. It imports the ingest result from `pipeline` at `src/gmgn_twitter_intel/collector/service.py:10-13`, so a lower input adapter already depends on downstream pipeline code.
-- The ingest service is a large orchestration point. It imports storage repositories and domain functions from several concerns at `src/gmgn_twitter_intel/pipeline/ingest_service.py:9-24`, then handles event insertion, entity extraction, token evidence, token intent resolution, registry writes, price observations, alerting, and enrichment enqueueing in one transaction at `src/gmgn_twitter_intel/pipeline/ingest_service.py:61-148`.
-- Repository construction is centralised in a flat storage session at `src/gmgn_twitter_intel/storage/repository_session.py:8-27` and exposes every aggregate from one dataclass at `src/gmgn_twitter_intel/storage/repository_session.py:29-50`. This is useful for app wiring but does not reveal domain ownership.
-- Several boundaries are already inverted in practice. Token-radar projection imports scoring from `retrieval` at `src/gmgn_twitter_intel/pipeline/token_radar_projection.py:8-14`, while asset-flow retrieval imports a projection constant from `pipeline` at `src/gmgn_twitter_intel/retrieval/asset_flow_service.py:5-6`. `query_parser` imports normalisation from `pipeline` at `src/gmgn_twitter_intel/retrieval/query_parser.py:5`.
-- Some storage modules import pipeline logic directly. `EvidenceRepository` imports entity extraction constants, tweet identity helpers, and text projection helpers from `pipeline` at `src/gmgn_twitter_intel/storage/evidence_repository.py:12-16`, so storage cannot be understood as a pure persistence boundary.
-- Harness is functionally present but not domain-isolated. Enrichment materialises harness snapshots inside `EnrichmentWorker` at `src/gmgn_twitter_intel/pipeline/enrichment_worker.py:124-143`. Harness ops query SQL directly through `harness.conn` at `src/gmgn_twitter_intel/pipeline/harness_ops.py:19-65`, `src/gmgn_twitter_intel/pipeline/harness_ops.py:68-145`, `src/gmgn_twitter_intel/pipeline/harness_ops.py:165-210`, and `src/gmgn_twitter_intel/pipeline/harness_ops.py:273-333`. Harness retrieval also queries `harness.conn` directly for score buckets at `src/gmgn_twitter_intel/retrieval/harness_service.py:76-125`.
-- API routes are surface code but import read services and repositories from the flat technical packages at `src/gmgn_twitter_intel/api/http.py:11-25`. The harness HTTP endpoints call `HarnessService` directly inside route handlers at `src/gmgn_twitter_intel/api/http.py:350-507`.
+- The collector owns GMGN frame parsing, snapshot gating, watched-handle matching, store-first ingestion, and publish after insert in `src/parallax/collector/service.py:48-171`. It imports the ingest result from `pipeline` at `src/parallax/collector/service.py:10-13`, so a lower input adapter already depends on downstream pipeline code.
+- The ingest service is a large orchestration point. It imports storage repositories and domain functions from several concerns at `src/parallax/pipeline/ingest_service.py:9-24`, then handles event insertion, entity extraction, token evidence, token intent resolution, registry writes, price observations, alerting, and enrichment enqueueing in one transaction at `src/parallax/pipeline/ingest_service.py:61-148`.
+- Repository construction is centralised in a flat storage session at `src/parallax/storage/repository_session.py:8-27` and exposes every aggregate from one dataclass at `src/parallax/storage/repository_session.py:29-50`. This is useful for app wiring but does not reveal domain ownership.
+- Several boundaries are already inverted in practice. Token-radar projection imports scoring from `retrieval` at `src/parallax/pipeline/token_radar_projection.py:8-14`, while asset-flow retrieval imports a projection constant from `pipeline` at `src/parallax/retrieval/asset_flow_service.py:5-6`. `query_parser` imports normalisation from `pipeline` at `src/parallax/retrieval/query_parser.py:5`.
+- Some storage modules import pipeline logic directly. `EvidenceRepository` imports entity extraction constants, tweet identity helpers, and text projection helpers from `pipeline` at `src/parallax/storage/evidence_repository.py:12-16`, so storage cannot be understood as a pure persistence boundary.
+- Harness is functionally present but not domain-isolated. Enrichment materialises harness snapshots inside `EnrichmentWorker` at `src/parallax/pipeline/enrichment_worker.py:124-143`. Harness ops query SQL directly through `harness.conn` at `src/parallax/pipeline/harness_ops.py:19-65`, `src/parallax/pipeline/harness_ops.py:68-145`, `src/parallax/pipeline/harness_ops.py:165-210`, and `src/parallax/pipeline/harness_ops.py:273-333`. Harness retrieval also queries `harness.conn` directly for score buckets at `src/parallax/retrieval/harness_service.py:76-125`.
+- API routes are surface code but import read services and repositories from the flat technical packages at `src/parallax/api/http.py:11-25`. The harness HTTP endpoints call `HarnessService` directly inside route handlers at `src/parallax/api/http.py:350-507`.
 - The project has structural tests, but they pin the current technical-layer paths instead of a domain-package architecture. `tests/test_project_structure.py:18-60` asserts the existence of `collector/`, `pipeline/`, `retrieval/`, and `storage/` modules, while `tests/test_harness_structure.py` mechanically protects the docs harness rather than `src` import direction.
 
 The design discipline file already requires audit-before-design and actual file citations for data-flow claims at `docs/DESIGN_DISCIPLINE.md:15-24`. Workflow also requires this spec to be approved before plan work begins at `docs/WORKFLOW.md:5-20`, and any `src` / `tests` implementation to use an isolated worktree at `docs/WORKFLOW.md:22-30`.
@@ -52,10 +52,10 @@ The codebase has grown enough product domains that technical-layer packages no l
 
 ## Target architecture
 
-The final `src/gmgn_twitter_intel/` tree is organised around domains and explicit composition roots:
+The final `src/parallax/` tree is organised around domains and explicit composition roots:
 
 ```
-src/gmgn_twitter_intel/
+src/parallax/
   app/
     runtime/
     surfaces/
@@ -84,7 +84,7 @@ src/gmgn_twitter_intel/
   cli.py
 ```
 
-`__main__.py` and `cli.py` may remain as tiny public entry shims because `pyproject.toml` points the installed command at `gmgn_twitter_intel.cli:main`. API modules remain surface code under `app/surfaces/api/`, with any old import path retained only if it is needed as a temporary compatibility bridge during migration. The business logic moves under `domains/`.
+`__main__.py` and `cli.py` may remain as tiny public entry shims because `pyproject.toml` points the installed command at `parallax.cli:main`. API modules remain surface code under `app/surfaces/api/`, with any old import path retained only if it is needed as a temporary compatibility bridge during migration. The business logic moves under `domains/`.
 
 Each domain uses the same conceptual layer sequence:
 
@@ -165,10 +165,10 @@ Raw SQL is not removed from the codebase; it is moved to domain repository/query
 
 Public user-facing contracts are preserved:
 
-- Config remains `~/.gmgn-twitter-intel/config.yaml`.
+- Config remains `~/.parallax/config.yaml`.
 - FastAPI still exposes `/healthz`, `/readyz`, and existing `/api/*` routes.
 - The authenticated WebSocket hub still accepts the current auth/subscribe messages and includes event, entity, alert, token-intent, token-resolution, and harness payloads after store commit.
-- CLI command semantics remain defined by `uv run gmgn-twitter-intel --help`.
+- CLI command semantics remain defined by `uv run parallax --help`.
 - Score payloads continue to expose component breakdowns and existing score-version strings unless a separate scoring spec changes them.
 - Privacy boundaries around GMGN channels/protocol details remain internal.
 
@@ -177,7 +177,7 @@ Internal Python import paths are not public contracts except for installed entry
 ## Acceptance criteria
 
 - **AC1.** WHEN a coding agent opens `docs/ARCHITECTURE.md` after the migration THEN it SHALL see a domain-package map, allowed dependency directions, and the cross-domain interface rule instead of only the old technical-layer table.
-- **AC2.** WHEN structural architecture tests inspect imports under `src/gmgn_twitter_intel/` THEN they SHALL report zero forbidden domain-internal imports, zero repository-to-service/runtime imports, zero platform-to-domain imports, and zero raw `.conn.execute` calls outside approved repository/query/composition modules.
+- **AC2.** WHEN structural architecture tests inspect imports under `src/parallax/` THEN they SHALL report zero forbidden domain-internal imports, zero repository-to-service/runtime imports, zero platform-to-domain imports, and zero raw `.conn.execute` calls outside approved repository/query/composition modules.
 - **AC3.** WHEN the source tree is inspected after completion THEN old flat technical-layer packages SHALL contain no business logic modules. Any remaining root modules SHALL be documented compatibility shims or public app entrypoints.
 - **AC4.** WHEN API, WebSocket, CLI, repository, scoring, and worker tests run after import updates THEN public behaviour SHALL remain unchanged except for expected module-path assertions being rewritten to the new architecture.
 - **AC5.** WHEN generated docs are regenerated THEN `docs/generated/cli-help.md`, `docs/generated/ws-protocol.md`, and `docs/generated/score-versions.md` SHALL remain semantically stable unless a separate approved spec changes those contracts.

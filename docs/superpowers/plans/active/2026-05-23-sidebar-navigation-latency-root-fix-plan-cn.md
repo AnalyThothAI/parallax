@@ -32,7 +32,7 @@ The third risk is moving too much at once. The KISS line is: keep existing route
 - Modify `web/src/features/cockpit/ui/CockpitTopbar.tsx`: remove server-derived `stats` prop and top-stats values that depended on route data. Keep search, status, ops, notifications, and refresh controls.
 - Modify `web/src/features/notifications/useNotificationsController.ts`: fetch summary/list only when drawer is open or after explicit mutation actions; no closed-drawer 12s polling; no unthrottled socket invalidation loop while closed.
 - Modify `web/src/features/notifications/ui/NotificationBell.tsx`: accept a best-effort local unread hint through the same `summary` prop shape; display no count when there is no local hint or loaded summary.
-- Modify `src/gmgn_twitter_intel/domains/notifications/repositories/notification_repository.py`: replace Python row aggregation in `summary()` with SQL aggregate queries.
+- Modify `src/parallax/domains/notifications/repositories/notification_repository.py`: replace Python row aggregation in `summary()` with SQL aggregate queries.
 - Modify `tests/integration/test_notification_repository.py`: add coverage proving summary remains correct and uses aggregate SQL shape.
 - Modify `tests/integration/test_api_http.py`: keep existing API summary contract coverage; add high/critical/author count assertion if missing.
 - Modify `web/tests/routes/live-radar.route.test.tsx`: replace badge expectation with pure navigation expectation.
@@ -804,7 +804,7 @@ git commit -m "fix: make notification summary on demand"
 ## Task 4: Aggregate Notification Summary In PostgreSQL
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/notifications/repositories/notification_repository.py`
+- Modify: `src/parallax/domains/notifications/repositories/notification_repository.py`
 - Modify: `tests/integration/test_notification_repository.py`
 - Modify: `tests/integration/test_api_http.py`
 
@@ -882,7 +882,7 @@ Expected before implementation: fails because `summary()` still selects `n.notif
 
 - [ ] **Step 3: Replace Python row aggregation with SQL aggregates**
 
-In `src/gmgn_twitter_intel/domains/notifications/repositories/notification_repository.py`, replace `summary()` with:
+In `src/parallax/domains/notifications/repositories/notification_repository.py`, replace `summary()` with:
 
 ```python
     def summary(self, *, subscriber_key: str = "local", since_ms: int | None = None) -> dict[str, Any]:
@@ -984,7 +984,7 @@ Expected: both API tests pass.
 - [ ] **Step 6: Commit backend aggregate fix**
 
 ```bash
-git add src/gmgn_twitter_intel/domains/notifications/repositories/notification_repository.py tests/integration/test_notification_repository.py tests/integration/test_api_http.py
+git add src/parallax/domains/notifications/repositories/notification_repository.py tests/integration/test_notification_repository.py tests/integration/test_api_http.py
 git commit -m "fix: aggregate notification summary in sql"
 ```
 

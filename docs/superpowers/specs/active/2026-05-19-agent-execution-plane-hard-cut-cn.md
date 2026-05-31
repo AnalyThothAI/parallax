@@ -29,10 +29,10 @@
 
 ## Runtime Snapshot
 
-本 spec 基于 2026-05-19 对真实 runtime 的只读检查。`uv run gmgn-twitter-intel config` 确认 live config 来自 operator-owned paths：
+本 spec 基于 2026-05-19 对真实 runtime 的只读检查。`uv run parallax config` 确认 live config 来自 operator-owned paths：
 
-- config: `~/.gmgn-twitter-intel/config.yaml`
-- workers config: `~/.gmgn-twitter-intel/workers.yaml`
+- config: `~/.parallax/config.yaml`
+- workers config: `~/.parallax/workers.yaml`
 - LLM configured: true
 - active model family: `qwen3.6`
 
@@ -430,7 +430,7 @@ Add or extend architecture tests to enforce:
 
 ## Acceptance Criteria
 
-- AC1. WHEN `rg "Runner.run|Agent\\(|RunConfig\\(" src/gmgn_twitter_intel` is run, THEN live execution sites SHALL be limited to `integrations/openai_agents` gateway code and tests.
+- AC1. WHEN `rg "Runner.run|Agent\\(|RunConfig\\(" src/parallax` is run, THEN live execution sites SHALL be limited to `integrations/openai_agents` gateway code and tests.
 - AC2. WHEN Pulse, Narrative, Social, or Watchlist OpenAI providers execute, THEN each call SHALL pass through `AgentExecutionGateway`.
 - AC3. WHEN a lane has no available capacity, THEN the worker SHALL skip or defer claim and SHALL NOT increment provider attempts.
 - AC4. WHEN a circuit is open for a lane, THEN calls SHALL fail fast with `circuit_open`, report operational backpressure, and SHALL NOT call the provider.

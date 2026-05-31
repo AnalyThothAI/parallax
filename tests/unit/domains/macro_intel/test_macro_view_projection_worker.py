@@ -3,8 +3,8 @@ from __future__ import annotations
 from contextlib import contextmanager
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_CORE_CONCEPTS
-from gmgn_twitter_intel.domains.macro_intel.runtime.macro_view_projection_worker import (
+from parallax.domains.macro_intel._constants import MACRO_CORE_CONCEPTS
+from parallax.domains.macro_intel.runtime.macro_view_projection_worker import (
     MacroViewProjectionWorker,
 )
 

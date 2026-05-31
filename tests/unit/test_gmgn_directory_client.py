@@ -6,7 +6,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from gmgn_twitter_intel.integrations.gmgn.directory_client import (
+from parallax.integrations.gmgn.directory_client import (
     GmgnDirectoryClient,
     GmgnDirectoryEntry,
     GmgnDirectoryError,

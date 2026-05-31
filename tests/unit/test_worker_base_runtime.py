@@ -6,10 +6,10 @@ from typing import Any
 
 import pytest
 
-from gmgn_twitter_intel.app.runtime.telemetry import TelemetryRegistry
-from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
-from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
-from gmgn_twitter_intel.platform.cancellation import WORKER_HARD_TIMEOUT_CANCEL_REASON
+from parallax.app.runtime.telemetry import TelemetryRegistry
+from parallax.app.runtime.worker_base import WorkerBase
+from parallax.app.runtime.worker_result import WorkerResult
+from parallax.platform.cancellation import WORKER_HARD_TIMEOUT_CANCEL_REASON
 
 
 class FakeTelemetry:

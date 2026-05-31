@@ -15,7 +15,7 @@
 ### Task 1: DEX Quote Provider Exception Isolation
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/app/runtime/providers_wiring.py`
+- Modify: `src/parallax/app/runtime/providers_wiring.py`
 - Test: `tests/unit/test_providers_wiring.py`
 
 - [x] **Step 1: Write the failing test**
@@ -49,8 +49,8 @@ Expected: PASS.
 ### Task 2: Token Radar Materialized Listed Time
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260517_0054_token_radar_materialized_listed_at.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260517_0054_token_radar_materialized_listed_at.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
 - Test: `tests/unit/test_token_radar_repository.py`
 
 - [x] **Step 1: Write failing repository tests**
@@ -88,7 +88,7 @@ Expected: PASS.
 ### Task 3: Recent API Batch Token Resolution
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/http.py`
+- Modify: `src/parallax/app/surfaces/api/http.py`
 - Test: `tests/unit/test_public_event_token_payloads.py`
 
 - [x] **Step 1: Write failing HTTP payload test**
@@ -122,8 +122,8 @@ Expected: PASS.
 ### Task 4: Event Token Projection Query Hard Cut
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/queries/event_token_projection_query.py`
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260517_0055_public_read_path_indexes.py`
+- Modify: `src/parallax/domains/token_intel/queries/event_token_projection_query.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260517_0055_public_read_path_indexes.py`
 - Test: `tests/unit/test_event_token_projection.py`
 
 - [x] **Step 1: Write failing SQL-shape test**
@@ -166,12 +166,12 @@ Expected: PASS.
 ### Task 5: Recent API Full Payload Batch Hydration
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/http.py`
-- Modify: `src/gmgn_twitter_intel/domains/evidence/repositories/entity_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_intent_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/signal_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/closed_loop_harness/repositories/harness_repository.py`
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260517_0056_recent_payload_batch_indexes.py`
+- Modify: `src/parallax/app/surfaces/api/http.py`
+- Modify: `src/parallax/domains/evidence/repositories/entity_repository.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_intent_repository.py`
+- Modify: `src/parallax/domains/token_intel/repositories/signal_repository.py`
+- Modify: `src/parallax/domains/closed_loop_harness/repositories/harness_repository.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260517_0056_recent_payload_batch_indexes.py`
 - Test: `tests/unit/test_public_event_token_payloads.py`
 
 - [x] **Step 1: Extend failing HTTP payload test**
@@ -229,8 +229,8 @@ uv run pytest tests/unit/test_public_event_token_payloads.py tests/unit/test_eve
 - [x] **Step 2: Run migration and projection health checks**
 
 ```bash
-uv run gmgn-twitter-intel db migrate
-docker compose exec -T app gmgn-twitter-intel db health
+uv run parallax db migrate
+docker compose exec -T app parallax db health
 ```
 
 - [x] **Step 3: Rebuild production container**
@@ -245,7 +245,7 @@ Check:
 
 ```bash
 curl -fsS http://127.0.0.1:8765/healthz
-docker compose exec -T app gmgn-twitter-intel ops projection-status
+docker compose exec -T app parallax ops projection-status
 ```
 
 Then confirm `market_tick_poll` inserts DEX ticks when OKX returns quotes even if GMGN is blocked, and confirm `/api/token-radar?window=1h&scope=all&limit=50` no longer performs request-time history scan.
@@ -266,14 +266,14 @@ Then confirm `market_tick_poll` inserts DEX ticks when OKX returns quotes even i
 ### Task 7: CEX Static Icon Sync Without Runtime Provider
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260517_0057_cex_token_static_icons.py`
-- Create: `src/gmgn_twitter_intel/domains/asset_market/services/cex_token_icon_sync.py`
-- Create: `src/gmgn_twitter_intel/integrations/binance/cex_icon_client.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/queries/token_profile_source_query.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/services/token_profile_current_projection.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/token_profile_current_worker.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/main.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260517_0057_cex_token_static_icons.py`
+- Create: `src/parallax/domains/asset_market/services/cex_token_icon_sync.py`
+- Create: `src/parallax/integrations/binance/cex_icon_client.py`
+- Modify: `src/parallax/domains/asset_market/repositories/registry_repository.py`
+- Modify: `src/parallax/domains/asset_market/queries/token_profile_source_query.py`
+- Modify: `src/parallax/domains/asset_market/services/token_profile_current_projection.py`
+- Modify: `src/parallax/domains/asset_market/runtime/token_profile_current_worker.py`
+- Modify: `src/parallax/app/surfaces/cli/main.py`
 
 - [x] **Step 1: Write failing tests**
 

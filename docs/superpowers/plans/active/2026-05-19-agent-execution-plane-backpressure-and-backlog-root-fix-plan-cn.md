@@ -55,9 +55,9 @@
 
 - [ ] Confirm live config paths before any live-data verification:
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
-  Expected: `config_path` and `workers_config_path` point at `~/.gmgn-twitter-intel/`. Do not print secrets.
+  Expected: `config_path` and `workers_config_path` point at `~/.parallax/`. Do not print secrets.
 
 - [ ] Run baseline tests:
   ```bash
@@ -72,20 +72,20 @@
 
 ### Gateway / Platform
 
-- Modify `src/gmgn_twitter_intel/platform/agent_execution.py`
+- Modify `src/parallax/platform/agent_execution.py`
   - Extend `AgentCapacityReservation` with parent/child lane semantics and explicit global ownership.
   - Keep this as the only live source for agent execution value types.
 
-- Modify `src/gmgn_twitter_intel/platform/agent_hashing.py`
+- Modify `src/parallax/platform/agent_hashing.py`
   - Keep as the only live hashing helper module.
 
-- Delete `src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_types.py`
+- Delete `src/parallax/integrations/openai_agents/agent_execution_types.py`
   - Remove duplicate stale type definitions.
 
-- Delete `src/gmgn_twitter_intel/integrations/openai_agents/agent_hashing.py`
+- Delete `src/parallax/integrations/openai_agents/agent_hashing.py`
   - Remove duplicate stale hashing helpers if no imports remain after the previous cleanup.
 
-- Modify `src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_gateway.py`
+- Modify `src/parallax/integrations/openai_agents/agent_execution_gateway.py`
   - Add parent reservation execution path.
   - Add per-lane RPM limiters without holding scarce capacity during unbounded limiter waits.
   - Preserve global limiter and per-lane bulkhead behavior.
@@ -93,58 +93,58 @@
 
 ### Pulse
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/providers.py`
+- Modify `src/parallax/domains/pulse_lab/providers.py`
   - Allow `PulseDecisionProvider.try_reserve_execution(...)` to accept child lanes/scope.
   - Allow `PulseDecisionProvider.run_decision_pipeline(...)` to accept a parent pipeline reservation.
 
-- Modify `src/gmgn_twitter_intel/app/runtime/provider_wiring/openai.py`
+- Modify `src/parallax/app/runtime/provider_wiring/openai.py`
   - Expose pipeline timeout from `settings.workers.agent_runtime`.
 
-- Modify `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`
+- Modify `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py`
   - Pass the parent reservation to both Pulse stages.
   - Use stage lane timeouts from gateway and provider pipeline timeout from policy.
   - Preserve no-start `AgentExecutionError` metadata instead of collapsing it into an untyped failed stage audit.
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py`
+- Modify `src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py`
   - Accept parent reservation from worker.
   - Use configured pipeline timeout.
   - Map no-start `AgentExecutionError` to job backpressure/release instead of provider failure.
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- Modify `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
   - Create a parent reservation with allowed child lanes.
   - Pass it into `job_service.run_job(...)`.
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_jobs_repository.py`
+- Modify `src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py`
   - Add a narrow no-start release/reschedule method that compensates the claim attempt increment.
 
 - Modify Pulse run outcome schema/migration only if a new non-provider backpressure outcome is required to avoid leaving `pulse_agent_runs` running.
 
 ### Narrative / Social / Watchlist
 
-- Modify `src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py`
+- Modify `src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py`
   - Branch on no-start `AgentExecutionError` before building row failures.
 
-- Modify `src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
+- Modify `src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
   - Branch on no-start `AgentExecutionError` and mark the admission for short backoff without writing a failed model run as provider failure.
 
-- Modify `src/gmgn_twitter_intel/domains/social_enrichment/runtime/enrichment_worker.py`
+- Modify `src/parallax/domains/social_enrichment/runtime/enrichment_worker.py`
   - Branch on no-start errors and release/reschedule jobs without burning attempts.
 
-- Modify `src/gmgn_twitter_intel/domains/watchlist_intel/runtime/handle_summary_worker.py`
+- Modify `src/parallax/domains/watchlist_intel/runtime/handle_summary_worker.py`
   - Branch on no-start errors and release/reschedule jobs without burning attempts.
 
 - Modify repositories only if needed:
-  - `src/gmgn_twitter_intel/domains/social_enrichment/repositories/*.py`
-  - `src/gmgn_twitter_intel/domains/watchlist_intel/repositories/*.py`
+  - `src/parallax/domains/social_enrichment/repositories/*.py`
+  - `src/parallax/domains/watchlist_intel/repositories/*.py`
   - Social and Watchlist claims already increment attempts; release methods must clear running/lease state and compensate that claim increment.
   - Keep methods named around domain language, e.g. `release_job_for_backpressure(...)`.
 
 ### Ops / Docs / Tests
 
-- Modify `src/gmgn_twitter_intel/app/runtime/ops_diagnostics.py`
+- Modify `src/parallax/app/runtime/ops_diagnostics.py`
   - Add `agent_execution` section.
 
-- Modify `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
+- Modify `src/parallax/app/surfaces/api/schemas.py`
   - Add loose named schemas if existing ops schemas need explicit fields.
 
 - Modify docs:
@@ -255,10 +255,10 @@
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/platform/agent_execution.py`
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_gateway.py`
-- Delete: `src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_types.py`
-- Delete: `src/gmgn_twitter_intel/integrations/openai_agents/agent_hashing.py`
+- Modify: `src/parallax/platform/agent_execution.py`
+- Modify: `src/parallax/integrations/openai_agents/agent_execution_gateway.py`
+- Delete: `src/parallax/integrations/openai_agents/agent_execution_types.py`
+- Delete: `src/parallax/integrations/openai_agents/agent_hashing.py`
 
 - [ ] **Step 1: Extend `AgentCapacityReservation`**
 
@@ -455,8 +455,8 @@
   Delete:
 
   ```text
-  src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_types.py
-  src/gmgn_twitter_intel/integrations/openai_agents/agent_hashing.py
+  src/parallax/integrations/openai_agents/agent_execution_types.py
+  src/parallax/integrations/openai_agents/agent_hashing.py
   ```
 
   Run:
@@ -481,12 +481,12 @@
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/providers.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/provider_wiring/openai.py`
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_jobs_repository.py`
+- Modify: `src/parallax/domains/pulse_lab/providers.py`
+- Modify: `src/parallax/app/runtime/provider_wiring/openai.py`
+- Modify: `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py`
+- Modify: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- Modify: `src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py`
 - Modify: `tests/unit/test_pulse_candidate_worker.py`
 - Modify: `tests/unit/test_pulse_decision_agent_client.py`
 
@@ -709,10 +709,10 @@
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/social_enrichment/runtime/enrichment_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/watchlist_intel/runtime/handle_summary_worker.py`
+- Modify: `src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py`
+- Modify: `src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
+- Modify: `src/parallax/domains/social_enrichment/runtime/enrichment_worker.py`
+- Modify: `src/parallax/domains/watchlist_intel/runtime/handle_summary_worker.py`
 - Modify repository files only where no attempt-preserving release method exists.
 - Modify tests listed below.
 
@@ -809,8 +809,8 @@
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/app/runtime/ops_diagnostics.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py` if needed.
+- Modify: `src/parallax/app/runtime/ops_diagnostics.py`
+- Modify: `src/parallax/app/surfaces/api/schemas.py` if needed.
 - Modify: `tests/unit/test_ops_diagnostics.py`
 - Modify frontend ops model only if strict typing requires it:
   - `web/src/features/ops/model/*`
@@ -928,7 +928,7 @@
 - [ ] **Step 1: Confirm live config paths**
 
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
 
   Record only:
@@ -960,9 +960,9 @@
 - [ ] **Step 3: Run formal Narrative drain**
 
   ```bash
-  uv run gmgn-twitter-intel ops rebuild-narrative-intel --window 1h --scope all --drain --cycles 2
-  uv run gmgn-twitter-intel ops rebuild-narrative-intel --window 4h --scope all --drain --cycles 2
-  uv run gmgn-twitter-intel ops rebuild-narrative-intel --window 24h --scope all --drain --cycles 2
+  uv run parallax ops rebuild-narrative-intel --window 1h --scope all --drain --cycles 2
+  uv run parallax ops rebuild-narrative-intel --window 4h --scope all --drain --cycles 2
+  uv run parallax ops rebuild-narrative-intel --window 24h --scope all --drain --cycles 2
   ```
 
   Expected: JSON `ok=true`, no manual SQL, no secret output.
@@ -1066,7 +1066,7 @@
 
 - AC7:
   ```bash
-  rg -n "strict priority|priority scheduling|priority-aware" docs src/gmgn_twitter_intel | grep -v backpressure-and-backlog-root-fix || true
+  rg -n "strict priority|priority scheduling|priority-aware" docs src/parallax | grep -v backpressure-and-backlog-root-fix || true
   ```
   Expected: no production docs claim strict priority scheduling.
 
@@ -1078,7 +1078,7 @@
 
 - AC9:
   ```bash
-  uv run gmgn-twitter-intel ops rebuild-narrative-intel --window 1h --scope all --drain --cycles 1
+  uv run parallax ops rebuild-narrative-intel --window 1h --scope all --drain --cycles 1
   ```
   Expected: JSON `ok=true`, no manual SQL.
 
@@ -1104,7 +1104,7 @@
 Run the focused suite:
 
 ```bash
-uv run ruff check src/gmgn_twitter_intel tests
+uv run ruff check src/parallax tests
 uv run pytest tests/unit/integrations/openai_agents/test_agent_execution_gateway.py -q
 uv run pytest tests/unit/test_pulse_candidate_worker.py tests/unit/test_pulse_decision_agent_client.py -q
 uv run pytest tests/unit/domains/narrative_intel/test_narrative_workers.py tests/unit/domains/narrative_intel/test_discussion_digest_service.py -q

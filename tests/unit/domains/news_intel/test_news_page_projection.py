@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION
-from gmgn_twitter_intel.domains.news_intel.services.news_page_projection import build_news_page_row
+from parallax.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION
+from parallax.domains.news_intel.services.news_page_projection import build_news_page_row
 
 
 def test_build_news_page_row_includes_token_and_fact_lanes() -> None:

@@ -12,7 +12,7 @@ def test_compose_runs_postgres_and_migration_before_app() -> None:
     assert "postgres" in services
     assert "migrate" in services
     assert services["postgres"]["image"].startswith("postgres:")
-    assert "gmgn-twitter-intel-postgres:/var/lib/postgresql" in services["postgres"]["volumes"]
+    assert "parallax-postgres:/var/lib/postgresql" in services["postgres"]["volumes"]
     assert services["postgres"]["healthcheck"]["test"][0] == "CMD-SHELL"
     assert "pg_isready" in services["postgres"]["healthcheck"]["test"][1]
 
@@ -27,5 +27,5 @@ def test_compose_no_longer_mounts_sqlite_data_volume_into_app() -> None:
     compose = yaml.safe_load(Path("compose.yaml").read_text())
     app_volumes = compose["services"]["app"].get("volumes", [])
 
-    assert all("/root/.gmgn-twitter-intel/data" not in volume for volume in app_volumes)
-    assert "gmgn-twitter-intel-postgres" in compose["volumes"]
+    assert all("/root/.parallax/data" not in volume for volume in app_volumes)
+    assert "parallax-postgres" in compose["volumes"]

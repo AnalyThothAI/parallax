@@ -58,7 +58,7 @@ Known baseline risks:
 Record these outputs before code changes:
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 curl -sS http://127.0.0.1:8765/readyz | jq '{ok,reasons,worker_lanes}'
 docker compose ps --all
 ./scripts/pgbadger_report.sh
@@ -78,7 +78,7 @@ SELECT round((exec_user_time + exec_system_time)::numeric, 2) AS exec_cpu_s,
        exec_reads_blks, exec_writes_blks,
        left(regexp_replace(query, '\s+', ' ', 'g'), 220) AS query
 FROM pg_stat_kcache_detail
-WHERE datname = 'gmgn_twitter_intel'
+WHERE datname = 'parallax'
 ORDER BY (exec_user_time + exec_system_time) DESC
 LIMIT 20;
 ```
@@ -175,7 +175,7 @@ Migration implementation rules:
 
 Create:
 
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0099_postgres_performance_queue_hard_cut.py`
+- `src/parallax/platform/db/alembic/versions/20260526_0099_postgres_performance_queue_hard_cut.py`
 
 Revision metadata:
 
@@ -259,7 +259,7 @@ SET
 Mandatory rebuild:
 
 - Add an ops command:
-  `gmgn-twitter-intel ops rebuild-token-radar-rank-inputs --execute --reason <text>`.
+  `parallax ops rebuild-token-radar-rank-inputs --execute --reason <text>`.
 - The command enqueues or recomputes every currently publishable Token Radar
   target through the owner projection path so all scalar rank columns, cohort
   counters, tie-breakers, and `rank_input_version` are written by the same code
@@ -320,8 +320,8 @@ Tests:
 
 Modify:
 
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
-- `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
+- `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
+- `src/parallax/domains/token_intel/services/token_radar_projection.py`
 - `tests/unit/test_token_radar_repository.py`
 - `tests/unit/test_token_radar_projection.py`
 
@@ -423,14 +423,14 @@ Tests:
 - Hydration test: repository loads JSON payloads only for selected ranked keys,
   not for every rank input, and refuses to publish when `payload_hash` changed
   between compact rank and hydration.
-- Contract test: `rg "list_target_features_for_rank_set|SELECT \\*\\s+FROM token_radar_target_features" src/gmgn_twitter_intel/domains/token_intel` does not find the old rank-set path.
+- Contract test: `rg "list_target_features_for_rank_set|SELECT \\*\\s+FROM token_radar_target_features" src/parallax/domains/token_intel` does not find the old rank-set path.
 
 ## Phase 3 — Lookup-Key And Projection Cleanup
 
 Modify:
 
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_intent_lookup_repository.py`
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/projection_repository.py`
+- `src/parallax/domains/token_intel/repositories/token_intent_lookup_repository.py`
+- `src/parallax/domains/token_intel/repositories/projection_repository.py`
 - `tests/unit/test_token_intent_lookup_repository.py`
 - `tests/integration/test_projection_repository.py`
 
@@ -475,8 +475,8 @@ ROLLBACK;
 
 Modify:
 
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/event_anchor_backfill_worker.py`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/event_anchor_backfill_job_repository.py`
+- `src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py`
+- `src/parallax/domains/asset_market/repositories/event_anchor_backfill_job_repository.py`
 - `tests/unit/test_event_anchor_backfill_worker.py`
 
 Hard cut:
@@ -491,7 +491,7 @@ Hard cut:
 Mandatory one-time reconciliation:
 
 - Add an ops command for existing historical rows:
-  `gmgn-twitter-intel ops reconcile-event-anchor-jobs --limit N --execute`.
+  `parallax ops reconcile-event-anchor-jobs --limit N --execute`.
 - The command is not used by normal runtime.
 - The command either marks ready historical rows done or writes terminal
   evidence, then exits. It requires `--execute`.
@@ -518,14 +518,14 @@ Tests:
 
 Create:
 
-- `src/gmgn_twitter_intel/app/runtime/queue_terminal.py`
-- `src/gmgn_twitter_intel/app/surfaces/cli/commands/queue_ops.py`
+- `src/parallax/app/runtime/queue_terminal.py`
+- `src/parallax/app/surfaces/cli/commands/queue_ops.py`
 - `tests/unit/test_queue_terminal.py`
 - `tests/unit/test_cli_queue_ops.py`
 
 Create migration:
 
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0100_worker_queue_terminal_events.py`
+- `src/parallax/platform/db/alembic/versions/20260526_0100_worker_queue_terminal_events.py`
 
 Revision metadata:
 
@@ -608,13 +608,13 @@ Runtime changes:
 
 CLI changes:
 
-Extend `src/gmgn_twitter_intel/app/surfaces/cli/parser.py` and wire execution
-through `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py::handle_ops`.
+Extend `src/parallax/app/surfaces/cli/parser.py` and wire execution
+through `src/parallax/app/surfaces/cli/commands/ops.py::handle_ops`.
 Do not create parser-only commands.
 
 ```text
-gmgn-twitter-intel ops queue-inspect [--worker <name>] [--source-table <table>] [--status terminal|active] [--limit N]
-gmgn-twitter-intel ops queue-resolve --terminal-id <id> --action retry|quarantine|archive --reason <text> --execute
+parallax ops queue-inspect [--worker <name>] [--source-table <table>] [--status terminal|active] [--limit N]
+parallax ops queue-resolve --terminal-id <id> --action retry|quarantine|archive --reason <text> --execute
 ```
 
 Rules:
@@ -668,7 +668,7 @@ Tests:
   duplicate terminal events.
 - Runtime test proving an exhausted `resolution_refresh` dirty lookup row
   writes terminal evidence with `source_row_json` and deletes the active row.
-- CLI dry-run/execute tests through `gmgn_twitter_intel.app.surfaces.cli.main`.
+- CLI dry-run/execute tests through `parallax.app.surfaces.cli.main`.
 - Queue health test with active due rows, running leases, and terminal evidence.
 - Readiness test proving queue adapter failure makes `/readyz` unhealthy while
   ordinary backlog keeps `/readyz` healthy.
@@ -683,9 +683,9 @@ current head. Never modify `20260526_0099` or `20260526_0100` after they land.
 
 Modify:
 
-- `src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py`
-- `src/gmgn_twitter_intel/domains/macro_intel/runtime/*`
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0101_macro_latest_rows.py`
+- `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`
+- `src/parallax/domains/macro_intel/runtime/*`
+- `src/parallax/platform/db/alembic/versions/20260526_0101_macro_latest_rows.py`
 
 Hard cut:
 
@@ -730,7 +730,7 @@ Script:
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
-docker compose exec -T postgres psql -U gmgn_app -d powa -v ON_ERROR_STOP=1 <<'SQL'
+docker compose exec -T postgres psql -U parallax_app -d powa -v ON_ERROR_STOP=1 <<'SQL'
 SELECT id, hostname, port, username, dbname, frequency, powa_coalesce, retention
 FROM powa_servers
 WHERE id = 0;
@@ -867,7 +867,7 @@ AC1:
 
 ```bash
 uv run pytest tests/unit/test_token_radar_repository.py tests/unit/test_token_radar_projection.py -q
-docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -P pager=off -c "
+docker compose exec -T postgres psql -U parallax_app -d parallax -P pager=off -c "
 SELECT calls, total_exec_time, left(regexp_replace(query, '\\s+', ' ', 'g'), 220) AS query
 FROM pg_stat_statements
 WHERE query ILIKE '%SELECT *%token_radar_target_features%'
@@ -883,7 +883,7 @@ AC2:
 
 ```bash
 uv run pytest tests/unit/test_token_intent_lookup_repository.py tests/unit/test_postgres_schema.py -q
-docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -P pager=off -c "
+docker compose exec -T postgres psql -U parallax_app -d parallax -P pager=off -c "
 BEGIN;
 EXPLAIN (ANALYZE, BUFFERS)
 DELETE FROM token_intent_lookup_keys
@@ -907,7 +907,7 @@ AC4:
 
 ```bash
 uv run pytest tests/integration/test_projection_repository.py -q
-docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -P pager=off -c "
+docker compose exec -T postgres psql -U parallax_app -d parallax -P pager=off -c "
 BEGIN;
 EXPLAIN (ANALYZE, BUFFERS)
 UPDATE projection_runs
@@ -926,7 +926,7 @@ AC5 and AC6:
 ```bash
 uv run pytest tests/unit/test_queue_health.py tests/unit/test_queue_terminal.py tests/unit/test_cli_queue_ops.py -q
 curl -sS http://127.0.0.1:8765/readyz | jq '.worker_lanes'
-uv run gmgn-twitter-intel ops queue-inspect --worker resolution_refresh --limit 20
+uv run parallax ops queue-inspect --worker resolution_refresh --limit 20
 ```
 
 Expected: active vs terminal queue counts are visible, readiness stays true for
@@ -938,7 +938,7 @@ AC7 and AC8:
 ```bash
 ./scripts/pgbadger_report.sh
 scripts/powa_configure.sh
-docker compose exec -T postgres psql -U gmgn_app -d powa -P pager=off -c "
+docker compose exec -T postgres psql -U parallax_app -d powa -P pager=off -c "
 SELECT count(*) AS current_rows FROM powa_statements_history_current;
 SELECT count(*) AS history_rows FROM powa_statements_history;"
 ```
@@ -964,7 +964,7 @@ uv run pytest \
   tests/architecture/test_runtime_worker_constraint_hard_cut.py \
   -q
 
-uv run ruff check src/gmgn_twitter_intel tests
+uv run ruff check src/parallax tests
 make check-all
 git diff --check
 ```

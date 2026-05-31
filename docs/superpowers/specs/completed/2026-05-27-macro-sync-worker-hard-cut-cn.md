@@ -8,7 +8,7 @@
 - `docs/WORKERS.md`
 - `docs/WORKFLOW.md`
 - `docs/DESIGN_DISCIPLINE.md`
-- `src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md`
+- `src/parallax/domains/macro_intel/ARCHITECTURE.md`
 - `docs/superpowers/specs/active/2026-05-25-macro-terminal-hard-cut-spec-cn.md`
 - `docs/superpowers/specs/active/2026-05-25-runtime-worker-constraint-hard-cut-cn.md`
 
@@ -19,12 +19,12 @@ runtime fact-ingest worker. The domain architecture says the service does not
 fetch FRED, NY Fed, Treasury, Cboe, CFTC, or crypto provider data directly; it
 receives normalized observations from the packaged `macrodata-cli` bundle
 command or an operator-maintained path
-(`src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md:3`). The same
+(`src/parallax/domains/macro_intel/ARCHITECTURE.md:3`). The same
 document defines `macro_observations` as facts written by
-`gmgn-twitter-intel macro import-bundle` or operator maintenance, while
+`parallax macro import-bundle` or operator maintenance, while
 `macro_observation_series_rows`, generation pointers, and
 `macro_view_snapshots` are read models owned by `MacroViewProjectionWorker`
-(`src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md:11`).
+(`src/parallax/domains/macro_intel/ARCHITECTURE.md:11`).
 
 The project-wide worker inventory makes the same distinction: the macro bundle
 importer is not a long-running worker; the CLI writes `macro_observations` and
@@ -32,28 +32,28 @@ importer is not a long-running worker; the CLI writes `macro_observations` and
 (`docs/WORKERS.md:87`). The runtime manifest registers only
 `macro_view_projection` for Macro Intel, and it is classified as a projection
 worker that writes `macro_view_snapshots`
-(`src/gmgn_twitter_intel/app/runtime/worker_manifest.py:633`). The macro worker
+(`src/parallax/app/runtime/worker_manifest.py:633`). The macro worker
 factory also constructs only `MacroViewProjectionWorker`
-(`src/gmgn_twitter_intel/app/runtime/worker_factories/macro_intel.py:13`).
+(`src/parallax/app/runtime/worker_factories/macro_intel.py:13`).
 
 The current projection worker refreshes projected observation rows from
 persisted observations, reads bounded concept series, builds a deterministic
 snapshot, and writes the read model
-(`src/gmgn_twitter_intel/domains/macro_intel/runtime/macro_view_projection_worker.py:33`).
+(`src/parallax/domains/macro_intel/runtime/macro_view_projection_worker.py:33`).
 It does not call providers. The public macro routes likewise read the latest
 snapshot or projected observation rows from repositories; they do not fetch
 provider data at request time
-(`src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py:41`).
+(`src/parallax/app/surfaces/api/routes_macro.py:41`).
 
 The CLI has one-shot macro import, sync, and status commands
-(`src/gmgn_twitter_intel/app/surfaces/cli/parser.py:55`). The sync runner
+(`src/parallax/app/surfaces/cli/parser.py:55`). The sync runner
 currently launches `uv run macrodata bundle history ...` and injects the configured
 FRED key into child env
-(`src/gmgn_twitter_intel/integrations/macrodata/runner.py:25`). Runtime provider
+(`src/parallax/integrations/macrodata/runner.py:25`). Runtime provider
 wiring for `macrodata` currently exposes only a stock quote provider, not a
 macro fact sync provider
-(`src/gmgn_twitter_intel/app/runtime/provider_wiring/macrodata.py:8`). Docker
-mounts `~/.gmgn-twitter-intel` into `/root/.gmgn-twitter-intel`, but it does not
+(`src/parallax/app/runtime/provider_wiring/macrodata.py:8`). Docker
+mounts `~/.parallax` into `/root/.parallax`, but it does not
 mount host-local source checkouts or pass FRED env by default
 (`compose.yaml:95`).
 

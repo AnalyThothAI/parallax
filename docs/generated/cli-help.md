@@ -5,13 +5,13 @@
 ## Top level
 
 ```
-usage: gmgn-twitter-intel [-h]
+usage: parallax [-h]
                           {serve,init,config,pulse,db,macro,recent,search,asset-flow,account-alerts,account-quality,notification-deliveries,ops} ...
 
 positional arguments:
   {serve,init,config,pulse,db,macro,recent,search,asset-flow,account-alerts,account-quality,notification-deliveries,ops}
     serve               run the collector service
-    init                create ~/.gmgn-twitter-intel/config.yaml
+    init                create ~/.parallax/config.yaml
     config              print effective runtime configuration
     pulse               Signal Pulse diagnostics
     db                  database lifecycle commands
@@ -34,7 +34,7 @@ options:
 ## `db`
 
 ```
-usage: gmgn-twitter-intel db [-h] {migrate,health,audit,query-audit} ...
+usage: parallax db [-h] {migrate,health,audit,query-audit} ...
 
 positional arguments:
   {migrate,health,audit,query-audit}
@@ -51,7 +51,7 @@ options:
 ## `ops`
 
 ```
-usage: gmgn-twitter-intel ops [-h]
+usage: parallax ops [-h]
                               {backfill-account-quality,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,projection-status,worker-status,queue-inspect,queue-resolve,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,rebuild-news-canonical-items,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors} ...
 
 positional arguments:

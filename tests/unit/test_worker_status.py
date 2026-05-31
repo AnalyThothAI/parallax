@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from gmgn_twitter_intel.app.runtime.worker_status import manifest_worker_statuses, worker_lane_statuses
+from parallax.app.runtime.worker_status import manifest_worker_statuses, worker_lane_statuses
 
 
 def test_manifest_worker_statuses_rejects_unknown_worker_entries() -> None:

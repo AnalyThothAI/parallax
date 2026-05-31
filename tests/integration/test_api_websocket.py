@@ -4,10 +4,10 @@ from contextlib import contextmanager
 
 from fastapi.testclient import TestClient
 
-from gmgn_twitter_intel.app.runtime.app import create_app
-from gmgn_twitter_intel.app.surfaces.api.ws import ClientSubscription, PublicWebSocketHub
-from gmgn_twitter_intel.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
-from gmgn_twitter_intel.platform.config.settings import Settings
+from parallax.app.runtime.app import create_app
+from parallax.app.surfaces.api.ws import ClientSubscription, PublicWebSocketHub
+from parallax.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
+from parallax.platform.config.settings import Settings
 from tests.postgres_test_utils import postgres_settings_storage, prepare_postgres_database
 
 

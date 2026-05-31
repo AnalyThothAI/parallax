@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.asset_market.identity_evidence_policy import (
+from parallax.domains.asset_market.identity_evidence_policy import (
     EVIDENCE_OKX_DEX_EXACT_ADDRESS,
     EVIDENCE_TWEET_CONTRACT_MENTION,
 )
-from gmgn_twitter_intel.domains.asset_market.repositories.identity_evidence_repository import (
+from parallax.domains.asset_market.repositories.identity_evidence_repository import (
     IdentityEvidenceRepository,
 )
 

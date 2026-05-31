@@ -39,7 +39,7 @@ uv run pytest tests/integration/test_notification_repository.py::test_summary_us
 uv run pytest tests/integration/test_api_http.py::test_api_exposes_notification_list_summary_and_read_state tests/integration/test_api_http.py::test_api_marks_author_notifications_read -q
 2 passed in 151.98s
 
-uv run ruff check src/gmgn_twitter_intel/domains/notifications/repositories/notification_repository.py tests/integration/test_notification_repository.py
+uv run ruff check src/parallax/domains/notifications/repositories/notification_repository.py tests/integration/test_notification_repository.py
 All checks passed
 
 make check-all

@@ -1,4 +1,4 @@
-from gmgn_twitter_intel.domains.narrative_intel.services.narrative_epoch_policy import (
+from parallax.domains.narrative_intel.services.narrative_epoch_policy import (
     DEFAULT_THRESHOLDS,
     DIGEST_WINDOWS,
     EPOCH_POLICY_VERSION,

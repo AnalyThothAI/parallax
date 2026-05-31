@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from gmgn_twitter_intel.domains.news_intel.repositories.news_repository import NewsRepository
+from parallax.domains.news_intel.repositories.news_repository import NewsRepository
 
 
 def test_page_projection_loader_reads_source_payload_for_claimed_targets() -> None:

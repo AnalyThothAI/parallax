@@ -4,13 +4,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_trigger_dirty_target_repository import (
+from parallax.app.runtime.repository_session import repositories_for_connection
+from parallax.domains.pulse_lab.repositories.pulse_trigger_dirty_target_repository import (
     PulseTriggerDirtyTargetRepository,
 )
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
-from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import TokenRadarRepository
-from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import TokenRadarProjection
+from parallax.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
+from parallax.domains.token_intel.repositories.token_radar_repository import TokenRadarRepository
+from parallax.domains.token_intel.services.token_radar_projection import TokenRadarProjection
 from tests.integration.test_token_radar_repository import _insert_pricefeed, _insert_token_intent, _valid_factor_row
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate

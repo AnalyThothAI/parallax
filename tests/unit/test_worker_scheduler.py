@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from gmgn_twitter_intel.app.runtime.worker_scheduler import WorkerScheduler
+from parallax.app.runtime.worker_scheduler import WorkerScheduler
 
 
 class FakePool:

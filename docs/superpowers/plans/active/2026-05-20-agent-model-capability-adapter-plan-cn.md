@@ -36,7 +36,7 @@
 ## Hard-Cut Rules
 
 - [ ] Do not add `if model.startswith("deepseek")`, `if "qwen" in model`, or provider-specific branching outside the capability registry and strategy selection code.
-- [ ] Do not modify `src/gmgn_twitter_intel/domains/pulse_lab/**` to know about DeepSeek, qwen, response formats, OpenAI SDK classes, or LiteLLM.
+- [ ] Do not modify `src/parallax/domains/pulse_lab/**` to know about DeepSeek, qwen, response formats, OpenAI SDK classes, or LiteLLM.
 - [ ] Do not catch provider 400 errors and retry through a different output strategy. Strategy selection happens before the provider call.
 - [ ] Do not use `drop_params`, silent parameter stripping, or best-effort compatibility behavior.
 - [ ] Do not keep `parse_mode="strict"` for non-strict provider behavior. `json_object` must audit as client-validated JSON, not provider-enforced schema.
@@ -64,10 +64,10 @@ Expected branch: `codex/agent-model-capability-adapter`; expected status: clean.
 - [ ] Confirm runtime config paths before any live-data or live-LLM verification:
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 ```
 
-Expected: `config_path` and `workers_config_path` point at `~/.gmgn-twitter-intel/`. Do not print or copy secrets.
+Expected: `config_path` and `workers_config_path` point at `~/.parallax/`. Do not print or copy secrets.
 
 - [ ] Capture the current execution boundary:
 
@@ -91,11 +91,11 @@ Expected: pass in the worktree before edits. If local Postgres-backed integratio
 
 ### Create
 
-- `src/gmgn_twitter_intel/platform/agent_capabilities.py`
+- `src/parallax/platform/agent_capabilities.py`
   - Owns `AgentOutputStrategy`, `AgentSchemaEnforcement`, `AgentProviderFamily`, `AgentCapabilityProfile`, and profile resolution helpers.
   - This is the only platform file allowed to mention concrete model capability defaults such as `deepseek-v4-flash -> json_object`.
 
-- `src/gmgn_twitter_intel/integrations/openai_agents/structured_output_strategy.py`
+- `src/parallax/integrations/openai_agents/structured_output_strategy.py`
   - Owns the execution strategy protocol, shared execution context/outcome types, `AgentsJsonSchemaStrategy`, and `ChatJsonObjectStrategy`.
   - This is the only integration file allowed to set `response_format`.
 
@@ -113,24 +113,24 @@ Expected: pass in the worktree before edits. If local Postgres-backed integratio
 
 ### Modify
 
-- `src/gmgn_twitter_intel/platform/agent_execution.py`
+- `src/parallax/platform/agent_execution.py`
   - Add capability fields to `AgentLanePolicy`, `AgentRuntimeDefaultsPolicy`, `AgentExecutionRequestAudit`, and `AgentExecutionResultAudit`.
   - Add methods to resolve a lane's capability profile without importing integration code.
 
-- `src/gmgn_twitter_intel/platform/config/settings.py`
+- `src/parallax/platform/config/settings.py`
   - Add worker YAML fields for capability policy.
   - Keep defaults compatible with the current qwen path by defaulting to `json_schema`.
   - Accept explicit lane override for `deepseek-v4-flash` using `json_object`.
 
-- `src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_gateway.py`
+- `src/parallax/integrations/openai_agents/agent_execution_gateway.py`
   - Replace in-method structured-output construction with strategy selection.
   - Preserve reservation, rate-limit, timeout, circuit breaker, telemetry, and audit behavior.
 
-- `src/gmgn_twitter_intel/integrations/openai_agents/agent_output_schema.py`
+- `src/parallax/integrations/openai_agents/agent_output_schema.py`
   - Keep current strict schema wrapper for `json_schema`.
   - Expose schema name/hash helpers if needed by `ChatJsonObjectStrategy`; do not add provider-specific logic here.
 
-- `src/gmgn_twitter_intel/app/runtime/provider_wiring/openai.py`
+- `src/parallax/app/runtime/provider_wiring/openai.py`
   - Pass policy through as today. Do not add model/provider if branches.
 
 - `docs/CONTRACTS.md`
@@ -188,7 +188,7 @@ from __future__ import annotations
 
 import pytest
 
-from gmgn_twitter_intel.platform.agent_capabilities import (
+from parallax.platform.agent_capabilities import (
     AgentCapabilityProfile,
     AgentOutputStrategy,
     AgentProviderFamily,
@@ -291,7 +291,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src" / "gmgn_twitter_intel"
+SRC = ROOT / "src" / "parallax"
 
 pytestmark = pytest.mark.architecture
 
@@ -367,12 +367,12 @@ Expected: fail only because the new capability contract is not implemented yet.
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/platform/agent_capabilities.py`
-- Modify: `src/gmgn_twitter_intel/platform/agent_execution.py`
+- Create: `src/parallax/platform/agent_capabilities.py`
+- Modify: `src/parallax/platform/agent_execution.py`
 
 - [ ] **Step 1: Implement capability profile types**
 
-Create `src/gmgn_twitter_intel/platform/agent_capabilities.py`:
+Create `src/parallax/platform/agent_capabilities.py`:
 
 ```python
 from __future__ import annotations
@@ -457,10 +457,10 @@ __all__ = [
 
 - [ ] **Step 2: Add capability fields to runtime policy**
 
-In `src/gmgn_twitter_intel/platform/agent_execution.py`, import the capability types and extend `AgentLanePolicy` plus `AgentRuntimeDefaultsPolicy`:
+In `src/parallax/platform/agent_execution.py`, import the capability types and extend `AgentLanePolicy` plus `AgentRuntimeDefaultsPolicy`:
 
 ```python
-from gmgn_twitter_intel.platform.agent_capabilities import (
+from parallax.platform.agent_capabilities import (
     AgentCapabilityProfile,
     AgentOutputStrategy,
     AgentProviderFamily,
@@ -548,7 +548,7 @@ Expected: pass after updating audit tests to assert the default `json_schema/pro
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
+- Modify: `src/parallax/platform/config/settings.py`
 - Modify: `tests/unit/test_worker_settings.py`
 
 - [ ] **Step 1: Add config fields to settings models**
@@ -612,8 +612,8 @@ Expected: pass with default gateway policy carrying `json_schema/provider` and e
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/integrations/openai_agents/structured_output_strategy.py`
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_gateway.py`
+- Create: `src/parallax/integrations/openai_agents/structured_output_strategy.py`
+- Modify: `src/parallax/integrations/openai_agents/agent_execution_gateway.py`
 - Create: `tests/unit/integrations/openai_agents/test_structured_output_strategy.py`
 - Modify: `tests/unit/integrations/openai_agents/test_agent_execution_gateway.py`
 
@@ -630,17 +630,17 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from gmgn_twitter_intel.integrations.openai_agents.structured_output_strategy import (
+from parallax.integrations.openai_agents.structured_output_strategy import (
     ChatJsonObjectStrategy,
     StructuredOutputContext,
 )
-from gmgn_twitter_intel.platform.agent_capabilities import (
+from parallax.platform.agent_capabilities import (
     AgentCapabilityProfile,
     AgentOutputStrategy,
     AgentProviderFamily,
     AgentSchemaEnforcement,
 )
-from gmgn_twitter_intel.platform.agent_execution import AgentRuntimeDefaultsPolicy, AgentStageSpec
+from parallax.platform.agent_execution import AgentRuntimeDefaultsPolicy, AgentStageSpec
 
 
 class Payload(BaseModel):
@@ -741,14 +741,14 @@ from agents import Agent, RunConfig, Runner
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from pydantic import ValidationError
 
-from gmgn_twitter_intel.integrations.openai_agents.agent_model_settings import default_agent_model_settings
-from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import StrictJsonOutputSchema
-from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import (
+from parallax.integrations.openai_agents.agent_model_settings import default_agent_model_settings
+from parallax.integrations.openai_agents.agent_output_schema import StrictJsonOutputSchema
+from parallax.integrations.openai_agents.instructor_safety_net import (
     InstructorSafetyNet,
     extract_sdk_usage,
 )
-from gmgn_twitter_intel.platform.agent_capabilities import AgentCapabilityProfile
-from gmgn_twitter_intel.platform.agent_execution import AgentRuntimeDefaultsPolicy, AgentStageSpec
+from parallax.platform.agent_capabilities import AgentCapabilityProfile
+from parallax.platform.agent_execution import AgentRuntimeDefaultsPolicy, AgentStageSpec
 
 
 @dataclass(frozen=True, slots=True)
@@ -1009,8 +1009,8 @@ Expected: pass. Existing json_schema gateway behavior remains unchanged except `
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_gateway.py`
-- Modify: `src/gmgn_twitter_intel/platform/agent_execution.py`
+- Modify: `src/parallax/integrations/openai_agents/agent_execution_gateway.py`
+- Modify: `src/parallax/platform/agent_execution.py`
 - Modify: `tests/unit/integrations/openai_agents/test_agent_execution_audit.py`
 - Modify: `tests/unit/test_pulse_decision_agent_client.py`
 - Modify: `tests/unit/integrations/openai_agents/test_news_item_brief_agent_client.py`
@@ -1116,7 +1116,7 @@ ALLOWED_MODEL_CAPABILITY_FILES = {
 }
 ```
 
-Do not allow `src/gmgn_twitter_intel/domains/pulse_lab/**`.
+Do not allow `src/parallax/domains/pulse_lab/**`.
 
 - [ ] **Step 2: Add Pulse client test with json_object lane policy**
 
@@ -1171,15 +1171,15 @@ import os
 import pytest
 from pydantic import BaseModel
 
-from gmgn_twitter_intel.app.runtime.llm_gateway import LLMGateway
-from gmgn_twitter_intel.integrations.openai_agents.agent_execution_gateway import AgentExecutionGateway
-from gmgn_twitter_intel.platform.agent_execution import (
+from parallax.app.runtime.llm_gateway import LLMGateway
+from parallax.integrations.openai_agents.agent_execution_gateway import AgentExecutionGateway
+from parallax.platform.agent_execution import (
     AgentLanePolicy,
     AgentRuntimeDefaultsPolicy,
     AgentRuntimePolicy,
     AgentStageSpec,
 )
-from gmgn_twitter_intel.platform.config.settings import load_settings
+from parallax.platform.config.settings import load_settings
 
 
 pytestmark = pytest.mark.live
@@ -1204,7 +1204,7 @@ def _stage(lane: str) -> AgentStageSpec:
         output_type=ProbePayload,
         prompt_version="probe-v1",
         schema_version="probe-v1",
-        workflow_name="gmgn-twitter-intel.probe",
+        workflow_name="parallax.probe",
         agent_name="ProbeAgent",
     )
 
@@ -1271,7 +1271,7 @@ Expected: skipped when `GMGN_LIVE_LLM_SMOKE` is not set.
 - [ ] **Step 4: Run live smoke only after config path verification**
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 GMGN_LIVE_LLM_SMOKE=1 uv run pytest tests/live/test_agent_model_capabilities_live.py -q
 ```
 
@@ -1390,7 +1390,7 @@ Expected: skipped unless `GMGN_LIVE_LLM_SMOKE=1`.
 - [ ] **Step 5: Run live smoke with operator approval/config**
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 GMGN_LIVE_LLM_SMOKE=1 uv run pytest tests/live/test_agent_model_capabilities_live.py -q
 ```
 
@@ -1409,7 +1409,7 @@ Expected: exit 0. If unavailable, record the failing prerequisite and the focuse
 ## Rollout Plan
 
 - [ ] Ship code with defaults unchanged: existing lanes continue using `qwen3.6` and `json_schema/provider`.
-- [ ] Update `~/.gmgn-twitter-intel/workers.yaml` for one low-risk Pulse lane first:
+- [ ] Update `~/.parallax/workers.yaml` for one low-risk Pulse lane first:
 
 ```yaml
 agent_runtime:
@@ -1426,7 +1426,7 @@ agent_runtime:
 - [ ] Watch Pulse health for at least one 1h cycle:
 
 ```bash
-uv run gmgn-twitter-intel pulse health
+uv run parallax pulse health
 ```
 
 - [ ] If signal analyst is healthy, move `pulse.bear_case`, then `pulse.risk_portfolio_judge`. Do not switch all lanes at once.

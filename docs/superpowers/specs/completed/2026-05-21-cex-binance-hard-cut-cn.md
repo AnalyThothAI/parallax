@@ -75,8 +75,8 @@ Binance USD-M USDT perpetual universe
 新增或正式化：
 
 ```text
-src/gmgn_twitter_intel/integrations/binance/usdm_futures_client.py
-src/gmgn_twitter_intel/app/runtime/provider_wiring/binance.py
+src/parallax/integrations/binance/usdm_futures_client.py
+src/parallax/app/runtime/provider_wiring/binance.py
 ```
 
 Binance CEX provider 负责：
@@ -196,7 +196,7 @@ CHECK (source_provider IN ('okx_dex_ws', 'okx_dex_rest', 'gmgn_dex_quote', 'bina
 新增：
 
 ```text
-uv run gmgn-twitter-intel ops sync-binance-usdt-perp-universe --execute
+uv run parallax ops sync-binance-usdt-perp-universe --execute
 ```
 
 语义：
@@ -325,7 +325,7 @@ WHERE NOT EXISTS (
 
 删除：
 
-- `src/gmgn_twitter_intel/integrations/okx/cex_client.py`
+- `src/parallax/integrations/okx/cex_client.py`
 - `OkxCexMarketProvider`
 - `okx_cex_market(...)`
 - `sync-okx-cex-universe` parser + command handler
@@ -383,7 +383,7 @@ WHERE NOT EXISTS (
 
 这是 breaking cleanup/migration，不按滚动兼容发布。推荐维护窗口：
 
-1. 备份 DB 和 `~/.gmgn-twitter-intel/config.yaml`。
+1. 备份 DB 和 `~/.parallax/config.yaml`。
 2. 执行 standalone config migration，移除旧 OKX CEX config keys，添加 Binance futures config。
 3. 停止 app / workers。
 4. 构建 Docker image，并验证 `coinglass-cli --help` / `coinglass-cli canary`。

@@ -6,17 +6,17 @@ from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
 
-from gmgn_twitter_intel.app.runtime.providers_wiring import AssetMarketProviders
-from gmgn_twitter_intel.app.runtime.worker_manifest import require_worker_manifest
-from gmgn_twitter_intel.app.runtime.worker_space import WorkerSpaceContract, contract_from_manifest
-from gmgn_twitter_intel.domains.asset_market.providers import DexTokenQuote
-from gmgn_twitter_intel.domains.asset_market.runtime.event_anchor_backfill_worker import (
+from parallax.app.runtime.providers_wiring import AssetMarketProviders
+from parallax.app.runtime.worker_manifest import require_worker_manifest
+from parallax.app.runtime.worker_space import WorkerSpaceContract, contract_from_manifest
+from parallax.domains.asset_market.providers import DexTokenQuote
+from parallax.domains.asset_market.runtime.event_anchor_backfill_worker import (
     EventAnchorBackfillWorker,
 )
-from gmgn_twitter_intel.domains.asset_market.services.event_market_capture import (
+from parallax.domains.asset_market.services.event_market_capture import (
     EventMarketCaptureService,
 )
-from gmgn_twitter_intel.domains.asset_market.types import EnrichedEventCapture, MarketTick
+from parallax.domains.asset_market.types import EnrichedEventCapture, MarketTick
 
 NOW_MS = 1_777_800_000_000
 EVENT_MS = NOW_MS - 5_000
@@ -378,7 +378,7 @@ def test_run_once_cex_target_dispatches_to_message_cex_provider() -> None:
                 capture_reason="inline_ticker",
                 created_at_ms=NOW_MS,
             )
-            from gmgn_twitter_intel.domains.asset_market.services.event_market_capture import CaptureResult
+            from parallax.domains.asset_market.services.event_market_capture import CaptureResult
 
             return CaptureResult(tick=tick, capture=capture)
 
@@ -415,7 +415,7 @@ def test_run_once_provider_no_quote_terminalizes_job_and_does_not_wake() -> None
 
     class _Service:
         def capture_backfill_quote(self, **kwargs: Any):
-            from gmgn_twitter_intel.domains.asset_market.services.event_market_capture import CaptureResult
+            from parallax.domains.asset_market.services.event_market_capture import CaptureResult
 
             capture = EnrichedEventCapture(
                 event_id=kwargs["event_id"],
@@ -512,7 +512,7 @@ def test_run_once_wakes_only_targets_that_were_attached() -> None:
 
     class _Service:
         def capture_backfill_quote(self, **kwargs: Any):
-            from gmgn_twitter_intel.domains.asset_market.services.event_market_capture import CaptureResult
+            from parallax.domains.asset_market.services.event_market_capture import CaptureResult
 
             target_id = kwargs["resolution"]["target_id"]
             tick = MarketTick(
@@ -645,7 +645,7 @@ class _UnavailableService:
         self.reason = reason
 
     def capture_backfill_quote(self, **kwargs: Any):
-        from gmgn_twitter_intel.domains.asset_market.services.event_market_capture import CaptureResult
+        from parallax.domains.asset_market.services.event_market_capture import CaptureResult
 
         capture = EnrichedEventCapture(
             event_id=kwargs["event_id"],

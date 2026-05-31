@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.app.runtime.telemetry import TelemetryRegistry
+from parallax.app.runtime.telemetry import TelemetryRegistry
 
 
 def test_telemetry_registries_do_not_collide_and_render_prometheus_text() -> None:

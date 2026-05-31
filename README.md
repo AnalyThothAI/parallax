@@ -4,12 +4,12 @@
 turning social, news, macro, DEX/CEX market flow, and auditable agent runs into
 replayable market decisions and outcome attribution.
 
-The project began as a GMGN Twitter stream ingestor, but the current system is
-broader: GMGN is one source adapter, not the product boundary. Parallax is built
-around the idea that a market event becomes more trustworthy when it can be
-observed from several angles: social attention, token identity, liquidity,
-derivatives positioning, news, macro regime, agent reasoning, and realized
-outcomes.
+Parallax is built around the idea that a market event becomes more trustworthy
+when it can be observed from several independent angles: social attention,
+token identity, liquidity, derivatives positioning, news, macro regime, agent
+reasoning, and realized outcomes. Provider adapters are inputs to that research
+loop; the product boundary is the durable evidence, auditable decisions, and
+operator workflows built on top of them.
 
 ## Research Direction
 
@@ -45,8 +45,8 @@ The system should answer six questions for every asset, event, or candidate:
 ## Architecture At A Glance
 
 ```text
-GMGN public stream       News feeds / OpenNews / CryptoPanic
-Macrodata bundles       Binance / OKX / GMGN OpenAPI / CEX sources
+Social/event streams     News feeds / OpenNews / CryptoPanic
+Macrodata bundles       DEX / CEX / market-data providers
          |              |
          v              v
   ingestion and provider adapters
@@ -129,7 +129,7 @@ Tooling should be safe by default:
 
 | Domain | Responsibility |
 | --- | --- |
-| `ingestion` | GMGN frame parsing, event normalization, provider lifecycle, and ingest entrypoint. |
+| `ingestion` | Provider event normalization, source lifecycle, snapshot gates, and ingest entrypoint. |
 | `evidence` | Canonical event model, entity extraction, material evidence, and transactional persistence. |
 | `asset_market` | Asset identity, discovery, profiles, token images, market ticks, capture tiers, and live market fan-out. |
 | `token_intel` | Token evidence, deterministic resolution, Token Radar scoring, search, factor snapshots, and signal diagnostics. |
@@ -141,41 +141,36 @@ Tooling should be safe by default:
 | `watchlist_intel` | Watched-handle timelines, summaries, and account-level signal read models. |
 | `notifications` | Notification rules, candidates, side-effect delivery, and delivery ledger state. |
 
-## Runtime Compatibility
+## Runtime Names
 
-Parallax currently keeps several legacy runtime identifiers stable:
+Parallax uses one product/runtime identity across the active project:
 
-| Compatibility surface | Current value |
+| Surface | Value |
 | --- | --- |
-| Python package/distribution | `gmgn-twitter-intel` |
-| Installed CLI command | `gmgn-twitter-intel` |
-| Python import package | `gmgn_twitter_intel` |
-| Operator config directory | `~/.gmgn-twitter-intel/` |
-| Compose project/data volume names | `gmgn-twitter-intel*` |
+| Python package/distribution | `parallax` |
+| Installed CLI command | `parallax` |
+| Python import package | `parallax` |
+| Operator config directory | `~/.parallax/` |
+| Compose project/data volume names | `parallax*` |
 | Current GitHub repository target | `AnalyThothAI/parallax` |
-
-This avoids breaking local deployments, Docker volumes, generated docs,
-existing scripts, and operator-owned config. A future runtime migration can add
-`parallax` CLI aliases and config-directory migration once those compatibility
-contracts have an explicit plan.
 
 ## Runtime Configuration
 
-Live-data runs use operator-owned files under `~/.gmgn-twitter-intel/`.
+Live-data runs use operator-owned files under `~/.parallax/`.
 Repository fixtures, generated examples, and `.env` files are not runtime truth.
 
 ```text
-~/.gmgn-twitter-intel/config.yaml       application, providers, credentials, storage
-~/.gmgn-twitter-intel/workers.yaml      worker cadence, leases, retries, agent lane budgets
-~/.gmgn-twitter-intel/postgres_password local PostgreSQL secret for Compose
-~/.gmgn-twitter-intel/logs/             service logs
-~/.gmgn-twitter-intel/cache/            local media mirrors and runtime cache
+~/.parallax/config.yaml       application, providers, credentials, storage
+~/.parallax/workers.yaml      worker cadence, leases, retries, agent lane budgets
+~/.parallax/postgres_password local PostgreSQL secret for Compose
+~/.parallax/logs/             service logs
+~/.parallax/cache/            local media mirrors and runtime cache
 ```
 
 Before debugging real provider data, always confirm the active paths:
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 ```
 
 Report only paths, redacted booleans, status fields, and command results. Do not
@@ -227,17 +222,17 @@ authenticated API and WebSocket calls. External clients should authenticate with
 ## Common Operator Commands
 
 ```bash
-uv run gmgn-twitter-intel --help
-uv run gmgn-twitter-intel config
-uv run gmgn-twitter-intel db health
-uv run gmgn-twitter-intel recent --limit 20
-uv run gmgn-twitter-intel asset-flow --window 1h --scope all --limit 20
-uv run gmgn-twitter-intel ops worker-status
-uv run gmgn-twitter-intel macro status
+uv run parallax --help
+uv run parallax config
+uv run parallax db health
+uv run parallax recent --limit 20
+uv run parallax asset-flow --window 1h --scope all --limit 20
+uv run parallax ops worker-status
+uv run parallax macro status
 ```
 
 The CLI is intentionally JSON-oriented so it can be called from scripts and
-other agents. Treat `uv run gmgn-twitter-intel --help` as the source of truth for
+other agents. Treat `uv run parallax --help` as the source of truth for
 the current command surface. A generated snapshot lives at
 [docs/generated/cli-help.md](docs/generated/cli-help.md).
 
@@ -296,8 +291,8 @@ coverage. See [docs/TESTING.md](docs/TESTING.md) and
 ## Non-Goals
 
 - Parallax is not a trading bot and does not execute trades.
-- Parallax is not a complete Twitter firehose; GMGN public stream coverage is
-  provider-specific.
+- Parallax is not a complete social or market-data firehose; coverage depends
+  on the configured provider set and each provider's permitted data surface.
 - Parallax does not treat job queues, provider raw frames, process caches, or
   model guesses as business facts.
 - Parallax does not use repository-local `.env` files as live runtime config.

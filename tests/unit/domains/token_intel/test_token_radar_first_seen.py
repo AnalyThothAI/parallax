@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from gmgn_twitter_intel.domains.token_intel.interfaces import (
+from parallax.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_DEFAULT_VENUE,
 )
-from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import TokenRadarRepository
+from parallax.domains.token_intel.repositories.token_radar_repository import TokenRadarRepository
 
 
 def test_first_seen_lookup_reads_compact_table_only() -> None:

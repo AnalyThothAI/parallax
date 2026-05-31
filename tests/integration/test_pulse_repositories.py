@@ -8,18 +8,18 @@ from typing import Any
 
 import pytest
 
-from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
-from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_admission_repository import PulseAdmissionRepository
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_agent_eval_repository import PulseAgentEvalRepository
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_candidates_repository import PulseCandidatesRepository
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_jobs_repository import PulseJobsRepository
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_playbooks_repository import PulsePlaybooksRepository
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_read_repository import (
+from parallax.app.runtime.repository_session import repositories_for_connection
+from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
+from parallax.domains.pulse_lab.repositories.pulse_admission_repository import PulseAdmissionRepository
+from parallax.domains.pulse_lab.repositories.pulse_agent_eval_repository import PulseAgentEvalRepository
+from parallax.domains.pulse_lab.repositories.pulse_candidates_repository import PulseCandidatesRepository
+from parallax.domains.pulse_lab.repositories.pulse_jobs_repository import PulseJobsRepository
+from parallax.domains.pulse_lab.repositories.pulse_playbooks_repository import PulsePlaybooksRepository
+from parallax.domains.pulse_lab.repositories.pulse_read_repository import (
     PulseReadRepository,
     _candidate_handle_filter_clause,
 )
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_runs_repository import PulseRunsRepository
+from parallax.domains.pulse_lab.repositories.pulse_runs_repository import PulseRunsRepository
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate

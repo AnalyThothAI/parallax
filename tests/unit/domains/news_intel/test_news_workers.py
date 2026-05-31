@@ -3,17 +3,17 @@ from __future__ import annotations
 from contextlib import contextmanager
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
-from gmgn_twitter_intel.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
-from gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
-from gmgn_twitter_intel.domains.news_intel.types.source_provider import (
+from parallax.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
+from parallax.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
+from parallax.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
+from parallax.domains.news_intel.types.source_provider import (
     NewsProviderContextObservation,
     NewsProviderFetchResult,
     NewsProviderObservation,
     NewsSourceHttpCache,
     NewsSourceSnapshot,
 )
-from gmgn_twitter_intel.domains.token_intel.interfaces import TokenIdentityLookupResult
+from parallax.domains.token_intel.interfaces import TokenIdentityLookupResult
 
 NOW_MS = 1_779_000_000_000
 

@@ -117,11 +117,11 @@ git diff --check
 ## Config Check
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 ```
 
 Result: failed as expected against the operator-owned
-`~/.gmgn-twitter-intel/workers.yaml` because that file still contains old
+`~/.parallax/workers.yaml` because that file still contains old
 worker-level `timeout_seconds` keys.
 
 Observed validation errors were limited to stale worker config keys:
@@ -132,7 +132,7 @@ Observed validation errors were limited to stale worker config keys:
 - `news_fetch.timeout_seconds`
 
 Before running this branch against live data, update
-`~/.gmgn-twitter-intel/workers.yaml` to use `soft_timeout_seconds` and
+`~/.parallax/workers.yaml` to use `soft_timeout_seconds` and
 `hard_timeout_seconds` for worker supervision. Agent lane/provider
 `timeout_seconds` keys remain valid because they are stage/provider
 timeouts, not worker supervision timeouts.

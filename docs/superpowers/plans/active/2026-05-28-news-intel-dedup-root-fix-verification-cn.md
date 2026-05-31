@@ -31,7 +31,7 @@ uv run ruff check .
 Result: `All checks passed!`.
 
 ```bash
-uv run ruff format --check src/gmgn_twitter_intel/domains/news_intel/services/news_canonical_identity.py src/gmgn_twitter_intel/domains/news_intel/services/news_url_identity.py src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0117_news_intel_canonical_dedup_hard_cut.py tests/unit/domains/news_intel/test_news_canonical_identity.py tests/unit/domains/news_intel/test_news_url_identity.py $(git diff --name-only -- '*.py')
+uv run ruff format --check src/parallax/domains/news_intel/services/news_canonical_identity.py src/parallax/domains/news_intel/services/news_url_identity.py src/parallax/platform/db/alembic/versions/20260528_0117_news_intel_canonical_dedup_hard_cut.py tests/unit/domains/news_intel/test_news_canonical_identity.py tests/unit/domains/news_intel/test_news_url_identity.py $(git diff --name-only -- '*.py')
 ```
 
 Result: `36 files already formatted`.
@@ -43,7 +43,7 @@ git diff --check
 Result: no output.
 
 ```bash
-uv run mypy src/gmgn_twitter_intel/app/runtime/provider_wiring/news.py src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py src/gmgn_twitter_intel/app/surfaces/cli/parser.py src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py src/gmgn_twitter_intel/domains/news_intel/runtime/news_story_projection_worker.py src/gmgn_twitter_intel/domains/news_intel/services/feed_item_normalizer.py src/gmgn_twitter_intel/domains/news_intel/services/news_canonical_identity.py src/gmgn_twitter_intel/domains/news_intel/services/news_page_projection.py src/gmgn_twitter_intel/domains/news_intel/services/news_story_grouping.py src/gmgn_twitter_intel/domains/news_intel/services/news_url_identity.py src/gmgn_twitter_intel/domains/news_intel/services/opennews_provider_signal.py src/gmgn_twitter_intel/integrations/news_feeds/feed_client.py src/gmgn_twitter_intel/integrations/news_feeds/opennews_client.py src/gmgn_twitter_intel/integrations/news_feeds/provider_registry.py
+uv run mypy src/parallax/app/runtime/provider_wiring/news.py src/parallax/app/surfaces/cli/commands/ops.py src/parallax/app/surfaces/cli/parser.py src/parallax/domains/news_intel/repositories/news_repository.py src/parallax/domains/news_intel/runtime/news_fetch_worker.py src/parallax/domains/news_intel/runtime/news_story_projection_worker.py src/parallax/domains/news_intel/services/feed_item_normalizer.py src/parallax/domains/news_intel/services/news_canonical_identity.py src/parallax/domains/news_intel/services/news_page_projection.py src/parallax/domains/news_intel/services/news_story_grouping.py src/parallax/domains/news_intel/services/news_url_identity.py src/parallax/domains/news_intel/services/opennews_provider_signal.py src/parallax/integrations/news_feeds/feed_client.py src/parallax/integrations/news_feeds/opennews_client.py src/parallax/integrations/news_feeds/provider_registry.py
 ```
 
 Result: `Success: no issues found in 15 source files`.
@@ -113,7 +113,7 @@ git diff --check
 Result: no output.
 
 ```bash
-uv run mypy src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py src/gmgn_twitter_intel/domains/news_intel/runtime/news_story_projection_worker.py src/gmgn_twitter_intel/domains/news_intel/services/news_canonical_identity.py src/gmgn_twitter_intel/domains/news_intel/services/news_page_projection.py src/gmgn_twitter_intel/domains/news_intel/services/news_story_grouping.py src/gmgn_twitter_intel/integrations/news_feeds/opennews_client.py src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py src/gmgn_twitter_intel/app/surfaces/cli/parser.py
+uv run mypy src/parallax/domains/news_intel/repositories/news_repository.py src/parallax/domains/news_intel/runtime/news_fetch_worker.py src/parallax/domains/news_intel/runtime/news_story_projection_worker.py src/parallax/domains/news_intel/services/news_canonical_identity.py src/parallax/domains/news_intel/services/news_page_projection.py src/parallax/domains/news_intel/services/news_story_grouping.py src/parallax/integrations/news_feeds/opennews_client.py src/parallax/app/surfaces/cli/commands/ops.py src/parallax/app/surfaces/cli/parser.py
 ```
 
 Result: `Success: no issues found in 9 source files`.
@@ -149,7 +149,7 @@ Result: `Success: no issues found in 9 source files`.
 
 - `make check-all` was not rerun after final story/detail fixes because `uv run ruff format --check .` still fails on existing repository-wide format debt outside this News slice. The final direct global format check reported 24 files before formatting this slice; after formatting this slice, remaining blockers are unrelated files. To avoid unrelated churn, only this branch's touched Python files were formatted and checked.
 - `uv run mypy src` was attempted. It still reports pre-existing type errors outside this slice in `news_item_brief_worker.py`, `equity_event_*`, `macro_intel`, and `narrative_intel`; this branch's touched source files pass scoped mypy.
-- Live `uv run gmgn-twitter-intel ops news-dedup-diagnostics` has not been run yet against operator config in this slice.
+- Live `uv run parallax ops news-dedup-diagnostics` has not been run yet against operator config in this slice.
 - Production-like OpenNews credentialed fetch was not run; tests use local fakes and no secrets.
 
 ## Residual Risks

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.cex_market_intel.services.coinglass_detail_enricher import (
+from parallax.domains.cex_market_intel.services.coinglass_detail_enricher import (
     enrich_rows_with_coinglass,
 )
 

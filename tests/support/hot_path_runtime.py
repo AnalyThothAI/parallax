@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from gmgn_twitter_intel.app.runtime.worker_manifest import all_worker_manifests
-from gmgn_twitter_intel.platform.config.settings import Settings
+from parallax.app.runtime.worker_manifest import all_worker_manifests
+from parallax.platform.config.settings import Settings
 from tests.postgres_test_utils import postgres_settings_storage
 
 WS_TOKEN = "hot-path-token"

@@ -11,7 +11,7 @@ def _text(path: str) -> str:
 
 def test_source_edge_populate_is_windowless_narrow_event_edge() -> None:
     query = _text(
-        "src/gmgn_twitter_intel/domains/token_intel/queries/"
+        "src/parallax/domains/token_intel/queries/"
         "token_radar_rank_source_query.py"
     )
     populate = query.rsplit("_POPULATE_RANK_SOURCE_EDGES_FOR_EVENT_IDS_SQL", 1)[1]
@@ -40,7 +40,7 @@ def test_source_edge_populate_is_windowless_narrow_event_edge() -> None:
 
 def test_rank_source_table_is_not_window_or_payload_coupled() -> None:
     migration = _text(
-        "src/gmgn_twitter_intel/platform/db/alembic/versions/"
+        "src/parallax/platform/db/alembic/versions/"
         "20260529_0126_token_radar_venue_source_width_hard_cut.py"
     )
     create_table = migration.split("CREATE TABLE token_radar_rank_source_events", 1)[1].split(
@@ -58,14 +58,14 @@ def test_rank_source_table_is_not_window_or_payload_coupled() -> None:
 
 def test_source_dirty_is_event_edge_queue_not_target_union() -> None:
     projection = _text(
-        "src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py"
+        "src/parallax/domains/token_intel/services/token_radar_projection.py"
     )
     source_dirty_repo = _text(
-        "src/gmgn_twitter_intel/domains/token_intel/repositories/"
+        "src/parallax/domains/token_intel/repositories/"
         "token_radar_source_dirty_event_repository.py"
     )
     target_dirty_repo = _text(
-        "src/gmgn_twitter_intel/domains/token_intel/repositories/"
+        "src/parallax/domains/token_intel/repositories/"
         "token_radar_dirty_target_repository.py"
     )
 

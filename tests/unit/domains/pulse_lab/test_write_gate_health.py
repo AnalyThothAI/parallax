@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.domains.pulse_lab.services.pulse_freshness_health import PulseFreshnessHealthService
-from gmgn_twitter_intel.domains.pulse_lab.services.write_gate import PulseWriteGate
-from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import BullBearView, FinalDecision, TradePlaybook
+from parallax.domains.pulse_lab.services.pulse_freshness_health import PulseFreshnessHealthService
+from parallax.domains.pulse_lab.services.write_gate import PulseWriteGate
+from parallax.domains.pulse_lab.types.agent_decision import BullBearView, FinalDecision, TradePlaybook
 
 
 def test_write_gate_does_not_hide_current_valid_candidate_due_to_aggregate_hold_health() -> None:

@@ -4,11 +4,11 @@ import json
 from contextlib import contextmanager
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.domains.news_intel.repositories.news_repository import NewsRepository, _source_status_payload
-from gmgn_twitter_intel.domains.news_intel.runtime.news_source_quality_projection_worker import (
+from parallax.domains.news_intel.repositories.news_repository import NewsRepository, _source_status_payload
+from parallax.domains.news_intel.runtime.news_source_quality_projection_worker import (
     NewsSourceQualityProjectionWorker,
 )
-from gmgn_twitter_intel.domains.news_intel.services.source_quality_projection import (
+from parallax.domains.news_intel.services.source_quality_projection import (
     SOURCE_QUALITY_PROJECTION_VERSION,
     build_source_quality_row,
     build_source_quality_rows,

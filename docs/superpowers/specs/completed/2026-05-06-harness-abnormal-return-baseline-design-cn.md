@@ -5,7 +5,7 @@
 
 ## 1. 背景
 
-Signal Lab Harness 是 gmgn-twitter-intel 的闭环度量子系统：把 watched accounts 发出的社交事件抽取为结构化信号、锁定决策时刻的市场快照、在指定 horizon 后结算价格变动、把结果反向归因到原始事件与来源。Pulse 是这条闭环对外的展示面：哪类事件、哪些来源在 horizon 后被市场验证有预测力。
+Signal Lab Harness 是 parallax 的闭环度量子系统：把 watched accounts 发出的社交事件抽取为结构化信号、锁定决策时刻的市场快照、在指定 horizon 后结算价格变动、把结果反向归因到原始事件与来源。Pulse 是这条闭环对外的展示面：哪类事件、哪些来源在 horizon 后被市场验证有预测力。
 
 整套产品价值的核心断言是：「系统能用真实价格变动证伪或证实社交信号的预测力。」
 

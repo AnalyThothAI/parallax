@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.macro_intel.observation_identity import (
+from parallax.domains.macro_intel.observation_identity import (
     macro_series_current_row_payload_hash,
 )
-from gmgn_twitter_intel.domains.macro_intel.repositories.macro_intel_repository import MacroIntelRepository
+from parallax.domains.macro_intel.repositories.macro_intel_repository import MacroIntelRepository
 
 
 def test_partition_refresh_selects_and_replaces_only_claimed_concepts() -> None:

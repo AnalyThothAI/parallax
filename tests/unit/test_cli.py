@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from gmgn_twitter_intel.app.surfaces.cli.parser import build_parser
+from parallax.app.surfaces.cli.parser import build_parser
 
 
 def test_ops_backfill_watchlist_signal_stats_parser_accepts_batch_controls() -> None:

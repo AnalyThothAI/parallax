@@ -7,19 +7,19 @@
 - Plan: `docs/superpowers/plans/active/2026-05-26-macro-terminal-ui-navigation-hard-cut-plan-cn.md`
 - Prior macro terminal spec: `docs/superpowers/specs/active/2026-05-25-macro-terminal-hard-cut-spec-cn.md`
 - Frontend rules: `docs/FRONTEND.md`
-- Macro domain architecture: `src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md`
+- Macro domain architecture: `src/parallax/domains/macro_intel/ARCHITECTURE.md`
 - Local benchmark snapshot: `timsun-assets-snapshot.md`
 
 ## Background
 
 The current Macro Terminal has the correct deterministic data lane, but the UI and module view contract still mix navigation, global macro regime, module facts, and data-health concerns.
 
-- The backend module view builder projects every module through one generic payload path. It returns tiles, chart, tables, read, evidence, provenance, data gaps, and related routes from `build_macro_module_view` in `src/gmgn_twitter_intel/domains/macro_intel/services/macro_module_views.py:22`.
-- Non-overview module reads currently reuse the global scenario/regime from `snapshot.scenario_json`, so every module can inherit the same global macro headline instead of answering the module's own question. See `_read` in `src/gmgn_twitter_intel/domains/macro_intel/services/macro_module_views.py:385`.
-- Non-overview evidence currently reuses global scenario confirmations, contradictions, watch triggers, and invalidations. See `_evidence` in `src/gmgn_twitter_intel/domains/macro_intel/services/macro_module_views.py:398`.
-- Module data gaps currently start with global snapshot gaps, then append feature and module gaps. This makes unrelated global gaps appear on every child page. See `_data_gaps` in `src/gmgn_twitter_intel/domains/macro_intel/services/macro_module_views.py:559`.
+- The backend module view builder projects every module through one generic payload path. It returns tiles, chart, tables, read, evidence, provenance, data gaps, and related routes from `build_macro_module_view` in `src/parallax/domains/macro_intel/services/macro_module_views.py:22`.
+- Non-overview module reads currently reuse the global scenario/regime from `snapshot.scenario_json`, so every module can inherit the same global macro headline instead of answering the module's own question. See `_read` in `src/parallax/domains/macro_intel/services/macro_module_views.py:385`.
+- Non-overview evidence currently reuses global scenario confirmations, contradictions, watch triggers, and invalidations. See `_evidence` in `src/parallax/domains/macro_intel/services/macro_module_views.py:398`.
+- Module data gaps currently start with global snapshot gaps, then append feature and module gaps. This makes unrelated global gaps appear on every child page. See `_data_gaps` in `src/parallax/domains/macro_intel/services/macro_module_views.py:559`.
 - The frontend Macro header renders primary and secondary macro tabs on every module page. See `MacroPageHeader` in `web/src/features/macro/ui/shell/MacroPageHeader.tsx:56`.
-- The frontend route model duplicates the macro module list and tab helpers in `web/src/features/macro/model/macroRoutes.ts:1` and `web/src/features/macro/model/macroRoutes.ts:81`, while the backend catalog owns the runtime module list in `src/gmgn_twitter_intel/domains/macro_intel/services/macro_module_catalog.py:41`.
+- The frontend route model duplicates the macro module list and tab helpers in `web/src/features/macro/model/macroRoutes.ts:1` and `web/src/features/macro/model/macroRoutes.ts:81`, while the backend catalog owns the runtime module list in `src/parallax/domains/macro_intel/services/macro_module_catalog.py:41`.
 - The current page frame repeats a generic sequence of KPI strip, chart/table, data status, structure map, rule evidence, provenance, and data gaps for all modules. See `MacroModulePageFrame` in `web/src/features/macro/ui/pages/MacroModulePageFrame.tsx:72`.
 - The current transmission map is derived from the same semantic record fields rather than a distinct chain contract. See `transmissionNodes` in `web/src/features/macro/ui/pages/MacroModulePageFrame.tsx:416`.
 - The app shell already uses a shadcn `AppSidebar`, but the macro section only exposes three macro links: overview, assets, and correlation. See `web/src/features/cockpit/ui/appNavigation.ts:61`.
@@ -32,7 +32,7 @@ Users experience the Macro Terminal as logically noisy because each child page r
 
 ## First Principles
 
-- Macro pages render persisted deterministic macro facts. They do not infer regime, score, direction, or narrative in React. This follows the Macro route rule in `docs/FRONTEND.md` and the domain rule that module pages consume the backend module view contract in `src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md`.
+- Macro pages render persisted deterministic macro facts. They do not infer regime, score, direction, or narrative in React. This follows the Macro route rule in `docs/FRONTEND.md` and the domain rule that module pages consume the backend module view contract in `src/parallax/domains/macro_intel/ARCHITECTURE.md`.
 - Navigation belongs to the shell/sidebar. Page headers may show breadcrumbs and local page state, but they must not repeat full macro navigation trees. This follows the shell navigation rule in `docs/FRONTEND.md` and the current shadcn sidebar ownership in `web/src/features/cockpit/ui/CockpitShell.tsx:40`.
 - Module pages answer one module question. Global regime, global scenario evidence, and global source health belong to the overview or a data-health surface, not every leaf route.
 - This is a hard cut. No legacy macro UI compatibility layer, v2/v3 adapter, fallback rendering path, duplicated route tab model, or "keep old classes hidden" code is allowed.

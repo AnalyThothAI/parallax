@@ -27,7 +27,7 @@
 
 ## Pre-flight
 
-- [ ] Confirm runtime config paths with `uv run gmgn-twitter-intel config`; report only paths and redacted booleans.
+- [ ] Confirm runtime config paths with `uv run parallax config`; report only paths and redacted booleans.
 - [ ] Create worktree:
   ```bash
   git worktree add .worktrees/token-image-local-mirror-hard-cut -b codex/token-image-local-mirror-hard-cut main
@@ -52,7 +52,7 @@ Known-failing baseline tests (none expected):
 
 ### Storage / migrations
 
-- Create `src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0078_token_image_assets.py`.
+- Create `src/parallax/platform/db/alembic/versions/20260521_0078_token_image_assets.py`.
   ```sql
   CREATE TABLE IF NOT EXISTS token_image_assets (
     image_id TEXT PRIMARY KEY,
@@ -110,21 +110,21 @@ Known-failing baseline tests (none expected):
 
 ### Asset Market Domain
 
-- Create `src/gmgn_twitter_intel/domains/asset_market/repositories/token_image_asset_repository.py`.
+- Create `src/parallax/domains/asset_market/repositories/token_image_asset_repository.py`.
   - `upsert_pending_sources(rows: list[dict[str, Any]], now_ms: int, commit: bool = True) -> int`
   - `claim_due_sources(now_ms: int, limit: int) -> list[dict[str, Any]]`
   - `mark_ready(source_url: str, media_type: str, file_extension: str, content_sha256: str, byte_size: int, storage_path: str, now_ms: int, commit: bool = True) -> dict[str, Any]`
   - `mark_error(source_url: str, error: str, now_ms: int, retry_ms: int, commit: bool = True) -> None`
   - `ready_by_source_urls(source_urls: list[str]) -> dict[str, dict[str, Any]]`
   - `ready_by_image_id(image_id: str) -> dict[str, Any] | None`
-- Create `src/gmgn_twitter_intel/domains/asset_market/queries/token_image_source_query.py`.
+- Create `src/parallax/domains/asset_market/queries/token_image_source_query.py`.
   - Select bounded candidate URLs from current/recent targets only:
     - `asset_profiles.logo_url` for `gmgn_dex_profile` and `binance_web3_profile`.
     - `asset_identity_evidence.raw_payload_json->>'i'` for exact GMGN stream evidence.
     - `asset_identity_evidence.raw_payload_json->>'tokenLogoUrl'` for exact OKX evidence.
     - `cex_token_profiles.logo_url` for current routed CEX tokens.
   - Return `source_url`, `source_provider`, `source_kind`, and `raw_ref_json`.
-- Create `src/gmgn_twitter_intel/domains/asset_market/services/token_image_mirror.py`.
+- Create `src/parallax/domains/asset_market/services/token_image_mirror.py`.
   - Validate URL scheme/host/path against a server-side allowlist.
   - Fetch with existing HTTP stack and browser-like headers.
   - Verify media type and magic bytes:
@@ -135,53 +135,53 @@ Known-failing baseline tests (none expected):
   - Enforce `TOKEN_IMAGE_MAX_BYTES = 3 * 1024 * 1024`.
   - Write atomically under `Path(settings.app_home) / "cache" / "token-images" / f"{content_sha256}{ext}"`.
   - Mark provider/TLS/404 failures as `error` with retry backoff.
-- Create `src/gmgn_twitter_intel/domains/asset_market/runtime/token_image_mirror_worker.py`.
+- Create `src/parallax/domains/asset_market/runtime/token_image_mirror_worker.py`.
   - First upsert source candidates from `TokenImageSourceQuery`.
   - Then mirror due rows with `TokenImageMirrorService`.
   - Return counts: `selected`, `pending_upserted`, `mirrored`, `error`, `unsupported`, `ready_existing`.
-- Modify `src/gmgn_twitter_intel/domains/asset_market/runtime/token_profile_current_worker.py`.
+- Modify `src/parallax/domains/asset_market/runtime/token_profile_current_worker.py`.
   - Load ready image assets for all profile candidate remote URLs before projection.
   - Pass a `ready_images_by_source_url` map into the projection.
-- Modify `src/gmgn_twitter_intel/domains/asset_market/services/token_profile_current_projection.py`.
+- Modify `src/parallax/domains/asset_market/services/token_profile_current_projection.py`.
   - Split metadata source selection from logo source selection.
   - Keep provider metadata priority: GMGN OpenAPI, Binance Web3, GMGN stream, OKX, Binance CEX.
   - Set `logo_url` only to `token_image_assets.public_url`.
   - Set `logo_url = None` when no mirrored image exists.
   - Populate `logo_image_id`, `logo_source_provider`, and `logo_source_url_hash`.
   - Add quality flags such as `logo_mirror_pending`, `logo_mirror_error`, or `source_without_logo`; do not use remote URLs as fallback.
-- Modify `src/gmgn_twitter_intel/domains/asset_market/repositories/token_profile_current_repository.py`.
+- Modify `src/parallax/domains/asset_market/repositories/token_profile_current_repository.py`.
   - Include the three new logo provenance columns in insert/update/select.
-- Modify `src/gmgn_twitter_intel/app/runtime/repository_session.py`.
+- Modify `src/parallax/app/runtime/repository_session.py`.
   - Add `repos.token_image_assets`.
-- Modify `src/gmgn_twitter_intel/app/runtime/worker_registry.py`.
+- Modify `src/parallax/app/runtime/worker_registry.py`.
   - Register `token_image_mirror` with an order after `asset_profile_refresh` and before `token_profile_current`.
-- Modify `src/gmgn_twitter_intel/platform/config/settings.py`.
+- Modify `src/parallax/platform/config/settings.py`.
   - Add `TokenImageMirrorWorkerSettings`.
   - Add default `workers.token_image_mirror` block.
   - Add generated workers YAML default.
 
 ### API Surface
 
-- Delete `src/gmgn_twitter_intel/app/surfaces/api/routes_token_image.py`.
-- Create `src/gmgn_twitter_intel/app/surfaces/api/routes_token_images.py`.
+- Delete `src/parallax/app/surfaces/api/routes_token_image.py`.
+- Create `src/parallax/app/surfaces/api/routes_token_images.py`.
   - Route: `GET /api/token-images/{image_id}`.
   - Accept only 64-character lowercase hex IDs.
   - Look up `token_image_assets.status = 'ready'`.
   - Resolve file path below `settings.app_home/cache/token-images`; reject missing file with 404.
   - Return `FileResponse` with `Cache-Control: public, max-age=86400` and stored `media_type`.
   - No `url` query parameter.
-- Modify `src/gmgn_twitter_intel/app/surfaces/api/http.py`.
+- Modify `src/parallax/app/surfaces/api/http.py`.
   - Remove old router include.
   - Include `routes_token_images.router`.
-- Modify `src/gmgn_twitter_intel/app/surfaces/api/schemas.py` if schema docs need to state local image URL semantics.
+- Modify `src/parallax/app/surfaces/api/schemas.py` if schema docs need to state local image URL semantics.
 - Modify `tests/architecture/test_project_structure.py`.
   - Replace `routes_token_image.py` with `routes_token_images.py`.
 
 ### CLI / Ops
 
-- Modify `src/gmgn_twitter_intel/app/surfaces/cli/parser.py`.
+- Modify `src/parallax/app/surfaces/cli/parser.py`.
   - Add `ops mirror-token-images --limit 500 --source-limit 5000`.
-- Modify `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`.
+- Modify `src/parallax/app/surfaces/cli/commands/ops.py`.
   - Run `TokenImageMirrorWorker` once.
   - Emit JSON with mirror counts and no secret/provider payload values.
 - Regenerate `docs/generated/cli-help.md` after implementation if this project normally updates CLI snapshots in the same PR.
@@ -221,8 +221,8 @@ Known-failing baseline tests (none expected):
 - Modify `docs/SETUP.md`.
   - Add live smoke command:
     ```bash
-    uv run gmgn-twitter-intel ops mirror-token-images --limit 50 --source-limit 500
-    uv run gmgn-twitter-intel ops rebuild-token-profiles --limit 500
+    uv run parallax ops mirror-token-images --limit 50 --source-limit 500
+    uv run parallax ops rebuild-token-profiles --limit 500
     ```
 
 ## TDD Task Breakdown
@@ -230,9 +230,9 @@ Known-failing baseline tests (none expected):
 ### Task 1: Storage and Repository Foundation
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0078_token_image_assets.py`
-- Create: `src/gmgn_twitter_intel/domains/asset_market/repositories/token_image_asset_repository.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/repository_session.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260521_0078_token_image_assets.py`
+- Create: `src/parallax/domains/asset_market/repositories/token_image_asset_repository.py`
+- Modify: `src/parallax/app/runtime/repository_session.py`
 - Test: `tests/unit/test_postgres_schema.py`
 - Test: `tests/integration/test_token_image_asset_repository.py`
 
@@ -245,9 +245,9 @@ Known-failing baseline tests (none expected):
   ```
 - [ ] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0078_token_image_assets.py \
-    src/gmgn_twitter_intel/domains/asset_market/repositories/token_image_asset_repository.py \
-    src/gmgn_twitter_intel/app/runtime/repository_session.py \
+  git add src/parallax/platform/db/alembic/versions/20260521_0078_token_image_assets.py \
+    src/parallax/domains/asset_market/repositories/token_image_asset_repository.py \
+    src/parallax/app/runtime/repository_session.py \
     tests/unit/test_postgres_schema.py \
     tests/integration/test_token_image_asset_repository.py
   git commit -m "feat: add token image asset storage"
@@ -256,8 +256,8 @@ Known-failing baseline tests (none expected):
 ### Task 2: Mirror Source Query and Mirror Service
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/asset_market/queries/token_image_source_query.py`
-- Create: `src/gmgn_twitter_intel/domains/asset_market/services/token_image_mirror.py`
+- Create: `src/parallax/domains/asset_market/queries/token_image_source_query.py`
+- Create: `src/parallax/domains/asset_market/services/token_image_mirror.py`
 - Test: `tests/unit/test_token_image_mirror.py`
 - Test: `tests/integration/test_token_image_source_query.py`
 
@@ -270,8 +270,8 @@ Known-failing baseline tests (none expected):
   ```
 - [ ] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/domains/asset_market/queries/token_image_source_query.py \
-    src/gmgn_twitter_intel/domains/asset_market/services/token_image_mirror.py \
+  git add src/parallax/domains/asset_market/queries/token_image_source_query.py \
+    src/parallax/domains/asset_market/services/token_image_mirror.py \
     tests/unit/test_token_image_mirror.py \
     tests/integration/test_token_image_source_query.py
   git commit -m "feat: mirror token images into local assets"
@@ -280,11 +280,11 @@ Known-failing baseline tests (none expected):
 ### Task 3: Worker and Ops Command
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/asset_market/runtime/token_image_mirror_worker.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_registry.py`
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/parser.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`
+- Create: `src/parallax/domains/asset_market/runtime/token_image_mirror_worker.py`
+- Modify: `src/parallax/app/runtime/worker_registry.py`
+- Modify: `src/parallax/platform/config/settings.py`
+- Modify: `src/parallax/app/surfaces/cli/parser.py`
+- Modify: `src/parallax/app/surfaces/cli/commands/ops.py`
 - Test: `tests/unit/test_worker_runtime_contracts.py`
 - Test: `tests/unit/test_worker_settings.py`
 - Test: `tests/unit/test_bootstrap_worker_runtime_wiring.py`
@@ -299,11 +299,11 @@ Known-failing baseline tests (none expected):
   ```
 - [ ] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/domains/asset_market/runtime/token_image_mirror_worker.py \
-    src/gmgn_twitter_intel/app/runtime/worker_registry.py \
-    src/gmgn_twitter_intel/platform/config/settings.py \
-    src/gmgn_twitter_intel/app/surfaces/cli/parser.py \
-    src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py \
+  git add src/parallax/domains/asset_market/runtime/token_image_mirror_worker.py \
+    src/parallax/app/runtime/worker_registry.py \
+    src/parallax/platform/config/settings.py \
+    src/parallax/app/surfaces/cli/parser.py \
+    src/parallax/app/surfaces/cli/commands/ops.py \
     tests/unit/test_worker_runtime_contracts.py \
     tests/unit/test_worker_settings.py \
     tests/unit/test_bootstrap_worker_runtime_wiring.py \
@@ -314,10 +314,10 @@ Known-failing baseline tests (none expected):
 ### Task 4: Token Profile Current Hard Cut
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/token_profile_current_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/services/token_profile_current_projection.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/token_profile_current_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/queries/token_profile_source_query.py`
+- Modify: `src/parallax/domains/asset_market/runtime/token_profile_current_worker.py`
+- Modify: `src/parallax/domains/asset_market/services/token_profile_current_projection.py`
+- Modify: `src/parallax/domains/asset_market/repositories/token_profile_current_repository.py`
+- Modify: `src/parallax/domains/asset_market/queries/token_profile_source_query.py`
 - Test: `tests/unit/test_token_profile_current_projection.py`
 - Test: `tests/unit/test_token_profile_current_repository.py`
 - Test: `tests/unit/test_token_profile_source_query.py`
@@ -332,10 +332,10 @@ Known-failing baseline tests (none expected):
   ```
 - [ ] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/domains/asset_market/runtime/token_profile_current_worker.py \
-    src/gmgn_twitter_intel/domains/asset_market/services/token_profile_current_projection.py \
-    src/gmgn_twitter_intel/domains/asset_market/repositories/token_profile_current_repository.py \
-    src/gmgn_twitter_intel/domains/asset_market/queries/token_profile_source_query.py \
+  git add src/parallax/domains/asset_market/runtime/token_profile_current_worker.py \
+    src/parallax/domains/asset_market/services/token_profile_current_projection.py \
+    src/parallax/domains/asset_market/repositories/token_profile_current_repository.py \
+    src/parallax/domains/asset_market/queries/token_profile_source_query.py \
     tests/unit/test_token_profile_current_projection.py \
     tests/unit/test_token_profile_current_repository.py \
     tests/unit/test_token_profile_source_query.py \
@@ -346,9 +346,9 @@ Known-failing baseline tests (none expected):
 ### Task 5: API Route Replacement
 
 **Files:**
-- Delete: `src/gmgn_twitter_intel/app/surfaces/api/routes_token_image.py`
-- Create: `src/gmgn_twitter_intel/app/surfaces/api/routes_token_images.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/http.py`
+- Delete: `src/parallax/app/surfaces/api/routes_token_image.py`
+- Create: `src/parallax/app/surfaces/api/routes_token_images.py`
+- Modify: `src/parallax/app/surfaces/api/http.py`
 - Modify: `tests/architecture/test_project_structure.py`
 - Modify: `tests/integration/test_api_http.py`
 
@@ -361,11 +361,11 @@ Known-failing baseline tests (none expected):
   ```
 - [ ] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/app/surfaces/api/http.py \
-    src/gmgn_twitter_intel/app/surfaces/api/routes_token_images.py \
+  git add src/parallax/app/surfaces/api/http.py \
+    src/parallax/app/surfaces/api/routes_token_images.py \
     tests/architecture/test_project_structure.py \
     tests/integration/test_api_http.py
-  git rm src/gmgn_twitter_intel/app/surfaces/api/routes_token_image.py
+  git rm src/parallax/app/surfaces/api/routes_token_image.py
   git commit -m "feat: replace token image proxy with local asset serving"
   ```
 
@@ -415,7 +415,7 @@ Known-failing baseline tests (none expected):
 - [ ] Run:
   ```bash
   uv run pytest tests/architecture
-  uv run gmgn-twitter-intel --help > docs/generated/cli-help.md
+  uv run parallax --help > docs/generated/cli-help.md
   git diff -- docs/generated/cli-help.md
   ```
 - [ ] Commit:
@@ -435,14 +435,14 @@ Known-failing baseline tests (none expected):
   ```
 - [ ] Run live-data smoke after applying migration in the deployment environment:
   ```bash
-  uv run gmgn-twitter-intel config
-  uv run gmgn-twitter-intel ops mirror-token-images --limit 50 --source-limit 500
-  uv run gmgn-twitter-intel ops rebuild-token-profiles --limit 500
+  uv run parallax config
+  uv run parallax ops mirror-token-images --limit 50 --source-limit 500
+  uv run parallax ops rebuild-token-profiles --limit 500
   curl -s 'http://127.0.0.1:8765/api/token-radar?window=1h&scope=all&limit=20' | jq '.. | objects | select(has("logo_url")) | .logo_url'
   curl -i 'http://127.0.0.1:8765/api/token-image?url=https%3A%2F%2Fgmgn.ai%2Fexternal-res%2Ftoken.webp'
   ```
 - [ ] Expected smoke evidence:
-  - `config_path` and `workers_config_path` point at `~/.gmgn-twitter-intel/`.
+  - `config_path` and `workers_config_path` point at `~/.parallax/`.
   - `profile.identity.logo_url` values are `null` or `/api/token-images/{image_id}`.
   - No token radar API response contains `https://gmgn.ai/external-res/`.
   - Old `/api/token-image?url=...` returns 404.
@@ -466,15 +466,15 @@ For a strict hard cut, land all PRs together in one release train and deploy aft
 1. Build and deploy image containing migration and new worker.
 2. Apply migration:
    ```bash
-   uv run gmgn-twitter-intel db migrate
+   uv run parallax db migrate
    ```
 3. Run mirror warmup:
    ```bash
-   uv run gmgn-twitter-intel ops mirror-token-images --limit 500 --source-limit 5000
+   uv run parallax ops mirror-token-images --limit 500 --source-limit 5000
    ```
 4. Rebuild token profiles so `token_profile_current.logo_url` points at local assets:
    ```bash
-   uv run gmgn-twitter-intel ops rebuild-token-profiles --limit 5000
+   uv run parallax ops rebuild-token-profiles --limit 5000
    ```
 5. Restart app workers or wait one worker interval.
 6. Verify public API:

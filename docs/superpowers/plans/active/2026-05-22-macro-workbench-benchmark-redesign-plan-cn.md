@@ -15,7 +15,7 @@
 - [ ] **经济日历和 Fed 文本走 `macrodata-cli` 增强。**
   - `macrodata-cli` 已是 JSON-first public macro data CLI/MCP，当前覆盖 FRED、NY Fed SOFR、Treasury Fiscal DTS operating cash balance、`rates-core`、`liquidity-core`。
   - 新上游 bundle 建议：`calendar-core`、`fed-text-core`、`auctions-core`。
-  - `gmgn-twitter-intel` 只导入 normalized facts；Fed hawkish/dovish scoring 属于产品解释逻辑，放在本 repo 的 derived fact/read model，不放进 source CLI。
+  - `parallax` 只导入 normalized facts；Fed hawkish/dovish scoring 属于产品解释逻辑，放在本 repo 的 derived fact/read model，不放进 source CLI。
 - [ ] **经济日历目标事实。**
   - `macro_calendar_events`
   - 字段：`event_id`, `source_name`, `event_type`, `title`, `scheduled_at`, `period`, `importance`, `actual_value`, `prior_value`, `consensus_value`, `surprise_value`, `unit`, `release_status`, `source_url`, `raw_payload_json`, `ingested_at_ms`
@@ -43,10 +43,10 @@
 **Owner:** backend agent
 
 **Files:**
-- `src/gmgn_twitter_intel/domains/macro_intel/_constants.py`
-- `src/gmgn_twitter_intel/domains/macro_intel/services/macro_module_catalog.py`
-- `src/gmgn_twitter_intel/domains/macro_intel/services/macro_module_views.py`
-- `src/gmgn_twitter_intel/domains/macro_intel/services/macro_series_view.py`
+- `src/parallax/domains/macro_intel/_constants.py`
+- `src/parallax/domains/macro_intel/services/macro_module_catalog.py`
+- `src/parallax/domains/macro_intel/services/macro_module_views.py`
+- `src/parallax/domains/macro_intel/services/macro_series_view.py`
 - `tests/unit/domains/macro_intel/test_macro_module_catalog.py`
 - `tests/unit/domains/macro_intel/test_macro_module_views.py`
 - `tests/unit/domains/macro_intel/test_macro_series_view.py`
@@ -93,8 +93,8 @@
 **Tests:**
 ```bash
 uv run pytest tests/unit/domains/macro_intel/test_macro_module_catalog.py tests/unit/domains/macro_intel/test_macro_module_views.py tests/unit/domains/macro_intel/test_macro_series_view.py
-uv run ruff check src/gmgn_twitter_intel/domains/macro_intel tests/unit/domains/macro_intel
-uv run mypy src/gmgn_twitter_intel/domains/macro_intel
+uv run ruff check src/parallax/domains/macro_intel tests/unit/domains/macro_intel
+uv run mypy src/parallax/domains/macro_intel
 ```
 
 **Commit checkpoint:** `macro module view services`
@@ -104,7 +104,7 @@ uv run mypy src/gmgn_twitter_intel/domains/macro_intel
 **Owner:** backend/API agent
 
 **Files:**
-- `src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py`
+- `src/parallax/app/surfaces/api/routes_macro.py`
 - `tests/unit/test_api_macro_contract.py`
 - `docs/CONTRACTS.md`
 - `docs/generated/openapi.json`
@@ -128,7 +128,7 @@ uv run mypy src/gmgn_twitter_intel/domains/macro_intel
 **Tests:**
 ```bash
 uv run pytest tests/unit/test_api_macro_contract.py tests/unit/domains/macro_intel/test_macro_module_views.py tests/unit/domains/macro_intel/test_macro_series_view.py
-uv run ruff check src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py tests/unit/test_api_macro_contract.py
+uv run ruff check src/parallax/app/surfaces/api/routes_macro.py tests/unit/test_api_macro_contract.py
 cd web && npm run generate:types
 ```
 
@@ -287,14 +287,14 @@ cd web && npm run build
 **Trigger:** Start this only after Phase 1A proves module payload shape and tests are stable.
 
 **Files:**
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260522_0081_macro_module_snapshots.py`
-- `src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py`
-- `src/gmgn_twitter_intel/domains/macro_intel/runtime/macro_module_projection_worker.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_factories/macro_intel.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_registry.py`
-- `src/gmgn_twitter_intel/platform/config/settings.py`
-- `src/gmgn_twitter_intel/app/surfaces/cli/parser.py`
-- `src/gmgn_twitter_intel/app/surfaces/cli/commands/macro.py`
+- `src/parallax/platform/db/alembic/versions/20260522_0081_macro_module_snapshots.py`
+- `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`
+- `src/parallax/domains/macro_intel/runtime/macro_module_projection_worker.py`
+- `src/parallax/app/runtime/worker_factories/macro_intel.py`
+- `src/parallax/app/runtime/worker_registry.py`
+- `src/parallax/platform/config/settings.py`
+- `src/parallax/app/surfaces/cli/parser.py`
+- `src/parallax/app/surfaces/cli/commands/macro.py`
 - `tests/unit/domains/macro_intel/test_macro_module_projection_worker.py`
 - `tests/unit/test_bootstrap_worker_runtime_wiring.py`
 - `tests/unit/test_cli_macro_commands.py`
@@ -310,7 +310,7 @@ cd web && npm run build
 **Tests:**
 ```bash
 uv run pytest tests/unit/domains/macro_intel/test_macro_module_projection_worker.py tests/unit/test_bootstrap_worker_runtime_wiring.py tests/unit/test_cli_macro_commands.py tests/architecture/test_worker_runtime_contracts.py
-uv run ruff check src/gmgn_twitter_intel/domains/macro_intel src/gmgn_twitter_intel/app/runtime src/gmgn_twitter_intel/app/surfaces/cli tests/unit
+uv run ruff check src/parallax/domains/macro_intel src/parallax/app/runtime src/parallax/app/surfaces/cli tests/unit
 ```
 
 **Commit checkpoint:** `macro module snapshot hardening`
@@ -329,12 +329,12 @@ uv run ruff check src/gmgn_twitter_intel/domains/macro_intel src/gmgn_twitter_in
 - `docs/superpowers/plans/active/2026-05-22-macrodata-calendar-fed-text-expansion-plan-cn.md`
 - `docs/superpowers/plans/active/2026-05-22-greeks-cli-crypto-options-integration-plan-cn.md`
 - `docs/ARCHITECTURE.md`
-- `src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md`
-- `src/gmgn_twitter_intel/domains/cex_market_intel/ARCHITECTURE.md`
+- `src/parallax/domains/macro_intel/ARCHITECTURE.md`
+- `src/parallax/domains/cex_market_intel/ARCHITECTURE.md`
 
 **Steps:**
 - [ ] Spec `macrodata-cli` calendar/Fed text expansion using official/public sources first.
-- [ ] Spec `gmgn-twitter-intel` import facts for `macro_calendar_events`, `macro_policy_documents`, and `macro_policy_text_scores`.
+- [ ] Spec `parallax` import facts for `macro_calendar_events`, `macro_policy_documents`, and `macro_policy_text_scores`.
 - [ ] Spec `greeks-cli` pinned dependency and options snapshot worker.
 - [ ] Document that CEX perps stay in `cex_market_intel` with `coinglass-cli`; Deribit options use future crypto options snapshots; neither belongs to `macrodata-cli`.
 
@@ -369,7 +369,7 @@ uv run pytest tests/architecture
 ```bash
 uv run pytest tests/unit/domains/macro_intel tests/unit/test_api_macro_contract.py tests/architecture
 uv run ruff check src tests docs
-uv run mypy src/gmgn_twitter_intel/domains/macro_intel src/gmgn_twitter_intel/app/surfaces/api
+uv run mypy src/parallax/domains/macro_intel src/parallax/app/surfaces/api
 cd web && npm test -- --run tests/component/features/macro tests/routes/macro.route.test.tsx
 cd web && npm run typecheck
 cd web && npm run lint

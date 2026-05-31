@@ -7,7 +7,7 @@
 **Architecture:** Backend extends the `/api/signal-lab/pulse/{id}` payload with a `stages` projection from `pulse_agent_run_steps`, and adds a new `/api/social-events/by-ids` batch endpoint. Frontend builds a pure view-model (`buildPulseDetailView`) from `(SignalPulseItem, SocialEventDetail[], now)`, then renders 6 leaf components (`PulseHero / PulseTimeline / PulseFactorFamilies / PulseMarketContext / PulseEvidenceList / PulseAgentRail`) inside `PulseDetailView`. Route topology is flattened so the dedicated route exits the queue 2-column layout. Hard cut — `SignalLabInspector`, `pulseCase.ts`, and `signal-pulse-*` CSS are deleted in the same PR. No coupling: components import zero routing / data-fetching code; CSS uses `*.module.css`, never globals.
 
 **Tech Stack:**
-- Backend: Python 3, FastAPI, psycopg, pytest. New code in `src/gmgn_twitter_intel/domains/pulse_lab/read_models/` and `src/gmgn_twitter_intel/app/surfaces/api/http.py`.
+- Backend: Python 3, FastAPI, psycopg, pytest. New code in `src/parallax/domains/pulse_lab/read_models/` and `src/parallax/app/surfaces/api/http.py`.
 - Frontend: React 18, TypeScript, Vite, vitest, @testing-library/react, CSS modules, react-router-dom, @tanstack/react-query. New code in `web/src/features/signal-lab/ui/PulseDetail/`, `web/src/features/signal-lab/model/`, `web/src/features/signal-lab/api/`.
 - E2E: Playwright (`web/e2e/golden-paths/`).
 - Fixture: real `$TITTY` pulse (`pulse-fa2a12fedd9332271732110ed8bd7b1b49065282`) loaded from production DB.
@@ -20,16 +20,16 @@
 - Frontend typecheck: `cd web && pnpm typecheck`
 - Frontend lint: `cd web && pnpm lint`
 - Frontend e2e: `cd web && pnpm test:e2e -- pulse-detail.spec.ts`
-- DB shell: `docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel`
+- DB shell: `docker exec parallax-postgres-1 psql -U parallax_app -d parallax`
 
 **File Structure (created or modified):**
 
 ```
 Backend
-  src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py   [MODIFY]
-  src/gmgn_twitter_intel/app/surfaces/api/http.py                                [MODIFY]
-  src/gmgn_twitter_intel/app/surfaces/api/schemas.py                             [MODIFY]
-  src/gmgn_twitter_intel/domains/evidence/repositories/evidence_repository.py    [REUSE events_by_ids]
+  src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py   [MODIFY]
+  src/parallax/app/surfaces/api/http.py                                [MODIFY]
+  src/parallax/app/surfaces/api/schemas.py                             [MODIFY]
+  src/parallax/domains/evidence/repositories/evidence_repository.py    [REUSE events_by_ids]
   tests/unit/test_signal_pulse_service.py                                        [MODIFY]
   tests/integration/test_api_http.py                                             [MODIFY]
 
@@ -83,7 +83,7 @@ Frontend
 ## Task 1: Backend — Extend pulse-by-id payload with `stages`
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`
+- Modify: `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py`
 - Test: `tests/unit/test_signal_pulse_service.py`
 
 **Background:** `SignalPulseService.candidate(candidate_id)` projects a single row via `pulse_item_from_row`. We add an optional `stages` block keyed by `analyst / critic / judge / research_only_gate`, populated from `repos.pulse.list_agent_run_steps(agent_run_id)`. List endpoint is untouched (perf).
@@ -241,7 +241,7 @@ Expected: FAIL — `KeyError: 'stages'` (or `assert "stages" in item`).
 
 - [ ] **Step 3: Implement stages projection in `signal_pulse_service.py`**
 
-In `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`, change the `candidate` method:
+In `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py`, change the `candidate` method:
 
 ```python
 def candidate(self, *, candidate_id: str) -> dict[str, Any] | None:
@@ -320,7 +320,7 @@ Expected: all pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py tests/unit/test_signal_pulse_service.py
+git add src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py tests/unit/test_signal_pulse_service.py
 git commit -m "Add stages projection to pulse_by_id payload"
 ```
 
@@ -329,7 +329,7 @@ git commit -m "Add stages projection to pulse_by_id payload"
 ## Task 2: Backend — Update API schema and add HTTP-level test for `stages`
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
+- Modify: `src/parallax/app/surfaces/api/schemas.py`
 - Test: `tests/integration/test_api_http.py`
 
 **Background:** `api_schemas.SignalPulseItem` is the response model that pyantic enforces. We add `stages` as a typed nested dict so OpenAPI docs reflect it, then add a TestClient integration test that hits `/api/signal-lab/pulse/{id}`.
@@ -337,12 +337,12 @@ git commit -m "Add stages projection to pulse_by_id payload"
 - [ ] **Step 1: Inspect current schema for `SignalPulseItem`**
 
 ```bash
-grep -n "SignalPulseItem\|class SignalPulse" src/gmgn_twitter_intel/app/surfaces/api/schemas.py | head -20
+grep -n "SignalPulseItem\|class SignalPulse" src/parallax/app/surfaces/api/schemas.py | head -20
 ```
 
 - [ ] **Step 2: Extend the schema**
 
-In `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`, locate `class SignalPulseItem(BaseModel)` (or the dict-typed equivalent) and add — alongside the existing fields:
+In `src/parallax/app/surfaces/api/schemas.py`, locate `class SignalPulseItem(BaseModel)` (or the dict-typed equivalent) and add — alongside the existing fields:
 
 ```python
 class SignalPulseStagePayload(BaseModel):
@@ -437,7 +437,7 @@ Expected: all green.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/app/surfaces/api/schemas.py tests/integration/test_api_http.py
+git add src/parallax/app/surfaces/api/schemas.py tests/integration/test_api_http.py
 git commit -m "Expose pulse stages on /api/signal-lab/pulse/{id}"
 ```
 
@@ -446,15 +446,15 @@ git commit -m "Expose pulse stages on /api/signal-lab/pulse/{id}"
 ## Task 3: Backend — New endpoint `/api/social-events/by-ids`
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/http.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
+- Modify: `src/parallax/app/surfaces/api/http.py`
+- Modify: `src/parallax/app/surfaces/api/schemas.py`
 - Test: `tests/integration/test_api_http.py`
 
 **Background:** The endpoint accepts a comma-separated `ids` query parameter, looks up events via `repos.evidence.events_by_ids(ids)`, joins each author handle against `account_profiles.watched_status` to populate `author_watched`, and returns a typed list. Hard cap 200 ids per request.
 
 - [ ] **Step 1: Add the response schema**
 
-In `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`:
+In `src/parallax/app/surfaces/api/schemas.py`:
 
 ```python
 class SocialEventDetail(BaseModel):
@@ -552,7 +552,7 @@ Expected: 404 / 4 FAILs (route not yet registered).
 
 - [ ] **Step 4: Implement the endpoint**
 
-In `src/gmgn_twitter_intel/app/surfaces/api/http.py`, add this route (near the other social-event routes, around line 459 `social-events`):
+In `src/parallax/app/surfaces/api/http.py`, add this route (near the other social-event routes, around line 459 `social-events`):
 
 ```python
 @router.get(
@@ -635,7 +635,7 @@ def _social_event_detail(event: dict[str, Any], watched: set[str]) -> dict[str, 
 Check first:
 
 ```bash
-grep -n "profiles_by_handles\|def profiles_by\|watched_status" src/gmgn_twitter_intel/domains/account_profiles -r
+grep -n "profiles_by_handles\|def profiles_by\|watched_status" src/parallax/domains/account_profiles -r
 ```
 
 If absent, add to the repository:
@@ -672,7 +672,7 @@ Expected: all pass.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/app/surfaces/api/http.py src/gmgn_twitter_intel/app/surfaces/api/schemas.py src/gmgn_twitter_intel/domains/account_profiles tests/integration/test_api_http.py
+git add src/parallax/app/surfaces/api/http.py src/parallax/app/surfaces/api/schemas.py src/parallax/domains/account_profiles tests/integration/test_api_http.py
 git commit -m "Add GET /api/social-events/by-ids batch endpoint"
 ```
 
@@ -911,7 +911,7 @@ git commit -m "Type stages and SocialEventDetail contracts"
 Run this command and copy the output:
 
 ```bash
-docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel -At -c "
+docker exec parallax-postgres-1 psql -U parallax_app -d parallax -At -c "
   SELECT jsonb_pretty(
     jsonb_build_object(
       'candidate_id', candidate_id,

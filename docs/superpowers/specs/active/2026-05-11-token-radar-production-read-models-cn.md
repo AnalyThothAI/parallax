@@ -9,19 +9,19 @@
 - `docs/superpowers/plans/active/2026-05-11-token-radar-production-read-models-cn.md`
 - `docs/ARCHITECTURE.md`
 - `docs/CONTRACTS.md`
-- `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
+- `src/parallax/domains/token_intel/ARCHITECTURE.md`
 
 ## Background
 
-当前系统已经完成了第一层 hard cut：`asset_market` 拥有 price observations/current market，`token_intel` 拥有 Token Radar factor snapshot 和 ranking，见 `docs/ARCHITECTURE.md:40` 到 `docs/ARCHITECTURE.md:41`。Token Intel 局部架构也写明 projection 消费 asset-market current-market snapshots，不调用 provider、不把 latest price-observation row 当 live market contract，见 `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md:38` 到 `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md:40`。
+当前系统已经完成了第一层 hard cut：`asset_market` 拥有 price observations/current market，`token_intel` 拥有 Token Radar factor snapshot 和 ranking，见 `docs/ARCHITECTURE.md:40` 到 `docs/ARCHITECTURE.md:41`。Token Intel 局部架构也写明 projection 消费 asset-market current-market snapshots，不调用 provider、不把 latest price-observation row 当 live market contract，见 `src/parallax/domains/token_intel/ARCHITECTURE.md:38` 到 `src/parallax/domains/token_intel/ARCHITECTURE.md:40`。
 
 公开合同要求 `/api/token-radar` 行暴露 `current_market`，前端必须从 `current_market.fields` 读取 live price、market cap、liquidity、holders、volume、provider 和 freshness；同时禁止 `price`/`market` alias 从 factor snapshot 反推，见 `docs/CONTRACTS.md:31` 到 `docs/CONTRACTS.md:45`。
 
-但当前实现仍有三个生产级缺口。第一，`TokenRadarProjection.rebuild(...)` 在重建开始时把窗口 coverage 标成 `running` 并立即 commit，见 `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py:47` 到 `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py:65`。`AssetFlowService.asset_flow(...)` 又只要 coverage 不是 `ready` 就返回 pending empty，见 `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py:27` 到 `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py:33`。因此一个长时间 running 的 `24h/all` refresh 会隐藏上一版已发布 rows。
+但当前实现仍有三个生产级缺口。第一，`TokenRadarProjection.rebuild(...)` 在重建开始时把窗口 coverage 标成 `running` 并立即 commit，见 `src/parallax/domains/token_intel/services/token_radar_projection.py:47` 到 `src/parallax/domains/token_intel/services/token_radar_projection.py:65`。`AssetFlowService.asset_flow(...)` 又只要 coverage 不是 `ready` 就返回 pending empty，见 `src/parallax/domains/token_intel/read_models/asset_flow_service.py:27` 到 `src/parallax/domains/token_intel/read_models/asset_flow_service.py:33`。因此一个长时间 running 的 `24h/all` refresh 会隐藏上一版已发布 rows。
 
-第二，当前 `CurrentMarketRepository.current_for_subjects(...)` 每次读 current market 都对 append-only `price_observations` 做多个 lateral latest lookup，见 `src/gmgn_twitter_intel/domains/asset_market/repositories/current_market_repository.py:31` 到 `src/gmgn_twitter_intel/domains/asset_market/repositories/current_market_repository.py:150`。这虽然有 partial indexes，但热点 API/projection 仍把当前状态构建压力放在历史 ledger 上。
+第二，当前 `CurrentMarketRepository.current_for_subjects(...)` 每次读 current market 都对 append-only `price_observations` 做多个 lateral latest lookup，见 `src/parallax/domains/asset_market/repositories/current_market_repository.py:31` 到 `src/parallax/domains/asset_market/repositories/current_market_repository.py:150`。这虽然有 partial indexes，但热点 API/projection 仍把当前状态构建压力放在历史 ledger 上。
 
-第三，`TokenRadarSourceQuery.source_rows(...)` 已经从 source query 中硬切掉历史 price observation joins，并把 first/event/before price fields 全部置为 `NULL`，见 `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py:80` 到 `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py:97`。这修掉了慢查询，却让 `price_change_since_social_pct` 和 `price_change_before_social_pct` 长期没有输入，进而让前端相对涨跌显示退化为 insufficient history。
+第三，`TokenRadarSourceQuery.source_rows(...)` 已经从 source query 中硬切掉历史 price observation joins，并把 first/event/before price fields 全部置为 `NULL`，见 `src/parallax/domains/token_intel/queries/token_radar_source_query.py:80` 到 `src/parallax/domains/token_intel/queries/token_radar_source_query.py:97`。这修掉了慢查询，却让 `price_change_since_social_pct` 和 `price_change_before_social_pct` 长期没有输入，进而让前端相对涨跌显示退化为 insufficient history。
 
 前端的 `Cannot redefine property: ethereum` 堆栈来自 `evmAsk.js` 注入脚本，不来自仓库代码；仓库中没有定义 `window.ethereum` 的业务逻辑。它应被作为浏览器钱包扩展噪音从监控中过滤，不作为 Token Radar 数据链路根因。
 

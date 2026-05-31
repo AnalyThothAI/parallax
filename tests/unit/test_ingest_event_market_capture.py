@@ -5,11 +5,11 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
-from gmgn_twitter_intel.app.runtime import bootstrap as bootstrap_module
-from gmgn_twitter_intel.app.runtime.bootstrap import _PooledIngestStore
-from gmgn_twitter_intel.app.runtime.providers_wiring import AssetMarketProviders
-from gmgn_twitter_intel.domains.asset_market.providers import DexTokenQuote
-from gmgn_twitter_intel.domains.ingestion.interfaces import IngestedEvent
+from parallax.app.runtime import bootstrap as bootstrap_module
+from parallax.app.runtime.bootstrap import _PooledIngestStore
+from parallax.app.runtime.providers_wiring import AssetMarketProviders
+from parallax.domains.asset_market.providers import DexTokenQuote
+from parallax.domains.ingestion.interfaces import IngestedEvent
 from tests.factories import make_event
 
 

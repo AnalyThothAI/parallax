@@ -9,9 +9,9 @@
 
 - `docs/ARCHITECTURE.md`
 - `docs/WORKERS.md`
-- `src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`
-- `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
-- `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py`
+- `src/parallax/domains/pulse_lab/ARCHITECTURE.md`
+- `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- `src/parallax/domains/notifications/services/notification_rules.py`
 - `/Users/qinghuan/Documents/code/openai-cookbook/examples/agents_sdk/agent_improvement_loop.ipynb`
 - `/Users/qinghuan/Documents/code/openai-cookbook/examples/How_to_use_guardrails.ipynb`
 - `/Users/qinghuan/Documents/code/openai-cookbook/examples/evaluation/use-cases/structured-outputs-evaluation.ipynb`
@@ -41,8 +41,8 @@ No new worker. No new notification-intents table. No frontend throttling. No par
 
 Read-only runtime diagnostics used the operator-owned config:
 
-- `config_path`: `/Users/qinghuan/.gmgn-twitter-intel/config.yaml`
-- `workers_config_path`: `/Users/qinghuan/.gmgn-twitter-intel/workers.yaml`
+- `config_path`: `/Users/qinghuan/.parallax/config.yaml`
+- `workers_config_path`: `/Users/qinghuan/.parallax/workers.yaml`
 
 Safe observed facts:
 

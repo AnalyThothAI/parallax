@@ -511,8 +511,8 @@ file:///.../docs/prototypes/news-trading-desk-static.html#/news/items/htx-sancti
 Regenerate screenshots:
 
 ```bash
-npx playwright screenshot --viewport-size=1440,1000 'file:///Users/qinghuan/Documents/code/gmgn-twitter-intel/docs/prototypes/news-trading-desk-static.html#/news' docs/generated/frontend-verification/news-router-list-static-desktop.png
-npx playwright screenshot --viewport-size=1440,1000 'file:///Users/qinghuan/Documents/code/gmgn-twitter-intel/docs/prototypes/news-trading-desk-static.html#/news/items/htx-sanctions' docs/generated/frontend-verification/news-router-detail-static-desktop.png
+npx playwright screenshot --viewport-size=1440,1000 'file:///Users/qinghuan/Documents/code/parallax/docs/prototypes/news-trading-desk-static.html#/news' docs/generated/frontend-verification/news-router-list-static-desktop.png
+npx playwright screenshot --viewport-size=1440,1000 'file:///Users/qinghuan/Documents/code/parallax/docs/prototypes/news-trading-desk-static.html#/news/items/htx-sanctions' docs/generated/frontend-verification/news-router-detail-static-desktop.png
 ```
 
 - [ ] **Step 4: Commit docs and prototype**

@@ -16,20 +16,20 @@
 
 ## File Structure
 
-- Modify `src/gmgn_twitter_intel/domains/asset_market/repositories/discovery_repository.py`
+- Modify `src/parallax/domains/asset_market/repositories/discovery_repository.py`
   - Add hot-window lookup selection inputs and deterministic ordering.
-- Modify `src/gmgn_twitter_intel/domains/asset_market/runtime/resolution_refresh_worker.py`
+- Modify `src/parallax/domains/asset_market/runtime/resolution_refresh_worker.py`
   - Refactor existing worker behavior into the single ResolutionRefreshWorker concept.
   - Keep one worker, no hot/background split.
   - Add hot retry TTL and immediate downstream repair.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/runtime/token_resolution_refresh.py`
+- Modify `src/parallax/domains/token_intel/runtime/token_resolution_refresh.py`
   - Expose a small hot-window rebuild helper for `5m/1h` only.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`
+- Modify `src/parallax/domains/token_intel/read_models/asset_flow_service.py`
   - Filter public targetless rows and add unresolved diagnostics.
   - Overlay optional live market snapshots.
-- Modify `src/gmgn_twitter_intel/app/surfaces/api/http.py`
+- Modify `src/parallax/app/surfaces/api/http.py`
   - Pass `runtime.live_price_gateway` into `AssetFlowService`.
-- Modify `src/gmgn_twitter_intel/app/runtime/app.py`
+- Modify `src/parallax/app/runtime/app.py`
   - Wire the refactored single worker if the class name changes.
 - Test `tests/integration/test_resolution_refresh_worker.py`
   - Add hot retry and downstream repair coverage.
@@ -42,7 +42,7 @@
 ### Task 1: Lock Public API Semantics For Targetless Rows
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`
+- Modify: `src/parallax/domains/token_intel/read_models/asset_flow_service.py`
 - Test: `tests/integration/test_api_http.py`
 
 - [ ] **Step 1: Write failing API test for unresolved diagnostics**
@@ -146,8 +146,8 @@ Expected: PASS.
 ### Task 2: Overlay Live Market Cache In `/api/token-radar`
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/http.py`
+- Modify: `src/parallax/domains/token_intel/read_models/asset_flow_service.py`
+- Modify: `src/parallax/app/surfaces/api/http.py`
 - Test: `tests/integration/test_api_http.py`
 
 - [ ] **Step 1: Write failing API test for live overlay**
@@ -243,8 +243,8 @@ Expected: PASS.
 ### Task 3: Hot Lookup Selection And Retry TTL
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/discovery_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/resolution_refresh_worker.py`
+- Modify: `src/parallax/domains/asset_market/repositories/discovery_repository.py`
+- Modify: `src/parallax/domains/asset_market/runtime/resolution_refresh_worker.py`
 - Test: `tests/integration/test_resolution_refresh_worker.py`
 
 - [ ] **Step 1: Write failing test for launch-race retry**
@@ -398,8 +398,8 @@ Expected: PASS.
 ### Task 4: Immediate Anchor And Hot Projection After Successful Refresh
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/resolution_refresh_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/runtime/token_resolution_refresh.py`
+- Modify: `src/parallax/domains/asset_market/runtime/resolution_refresh_worker.py`
+- Modify: `src/parallax/domains/token_intel/runtime/token_resolution_refresh.py`
 - Test: `tests/integration/test_resolution_refresh_worker.py`
 
 - [ ] **Step 1: Write failing test for downstream repair**
@@ -459,8 +459,8 @@ In `run_resolution_refresh_once(...)`, after `reprocess_recent_token_intents(...
 
 ```python
 if reprocess_result["resolved_intents"]:
-    from gmgn_twitter_intel.domains.asset_market.services.anchor_price_observation import observe_anchor_prices
-    from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh import (
+    from parallax.domains.asset_market.services.anchor_price_observation import observe_anchor_prices
+    from parallax.domains.token_intel.runtime.token_resolution_refresh import (
         rebuild_hot_token_radar_windows,
     )
 
@@ -497,9 +497,9 @@ Expected: PASS.
 ### Task 5: Rename Mental Model Without Compatibility Code
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/resolution_refresh_worker.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/app.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/main.py`
+- Modify: `src/parallax/domains/asset_market/runtime/resolution_refresh_worker.py`
+- Modify: `src/parallax/app/runtime/app.py`
+- Modify: `src/parallax/app/surfaces/cli/main.py`
 - Test: `tests/integration/test_cli.py`
 
 - [ ] **Step 1: Rename class if it stays readable**
@@ -524,7 +524,7 @@ In `app.py`, instantiate `ResolutionRefreshWorker` for `runtime.resolution_refre
 Replace imports in tests:
 
 ```python
-from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import (
+from parallax.domains.asset_market.runtime.resolution_refresh_worker import (
     ResolutionRefreshWorker,
 )
 ```
@@ -586,9 +586,9 @@ Expected: app container healthy.
 Run:
 
 ```bash
-docker compose exec -T app uv run gmgn-twitter-intel ops run-resolution-refresh --limit 120 --reprocess-limit 500
-docker compose exec -T app uv run gmgn-twitter-intel ops rebuild-token-radar --window 5m --scope all --limit 300
-docker compose exec -T app uv run gmgn-twitter-intel ops rebuild-token-radar --window 1h --scope all --limit 300
+docker compose exec -T app uv run parallax ops run-resolution-refresh --limit 120 --reprocess-limit 500
+docker compose exec -T app uv run parallax ops rebuild-token-radar --window 5m --scope all --limit 300
+docker compose exec -T app uv run parallax ops rebuild-token-radar --window 1h --scope all --limit 300
 ```
 
 Expected:

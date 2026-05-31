@@ -11,7 +11,7 @@
 - `docs/superpowers/plans/active/2026-05-13-token-profile-facts-read-model-plan-cn.md`
 - `docs/ARCHITECTURE.md`
 - `docs/CONTRACTS.md`
-- `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
+- `src/parallax/domains/token_intel/ARCHITECTURE.md`
 
 > Superseded on 2026-05-17 by
 > `docs/superpowers/specs/active/2026-05-17-token-profile-current-facts-hard-cut-cn.md`.
@@ -26,25 +26,25 @@ Add one asset-level profile fact read model, one GMGN-backed refresh worker, and
 
 ## Background
 
-The current GMGN provider split already exposes the exact-token profile capability. `AssetMarketProviders` has separate `dex_discovery_market`, `dex_quote_market`, `dex_candle_market`, `dex_profile_market`, and `stream_dex_market` roles in `src/gmgn_twitter_intel/app/runtime/providers_wiring.py:46`. `GmgnDexMarketProvider.token_profile(chain_id,address)` maps GMGN token info into `DexTokenProfile` fields such as `website`, `twitter_username`, `telegram`, `gmgn_url`, `geckoterminal_url`, `description`, logo, and banner in `src/gmgn_twitter_intel/app/runtime/providers_wiring.py:161`.
+The current GMGN provider split already exposes the exact-token profile capability. `AssetMarketProviders` has separate `dex_discovery_market`, `dex_quote_market`, `dex_candle_market`, `dex_profile_market`, and `stream_dex_market` roles in `src/parallax/app/runtime/providers_wiring.py:46`. `GmgnDexMarketProvider.token_profile(chain_id,address)` maps GMGN token info into `DexTokenProfile` fields such as `website`, `twitter_username`, `telegram`, `gmgn_url`, `geckoterminal_url`, `description`, logo, and banner in `src/parallax/app/runtime/providers_wiring.py:161`.
 
-The underlying GMGN OpenAPI client already parses these profile fields. `GmgnTokenInfo` includes website, Twitter/X, Telegram, provider links, description, pool, dev, stat, link, and raw payload fields in `src/gmgn_twitter_intel/integrations/gmgn/openapi_client.py:16`. `_token_info_from_response` extracts link fields in `src/gmgn_twitter_intel/integrations/gmgn/openapi_client.py:205`.
+The underlying GMGN OpenAPI client already parses these profile fields. `GmgnTokenInfo` includes website, Twitter/X, Telegram, provider links, description, pool, dev, stat, link, and raw payload fields in `src/parallax/integrations/gmgn/openapi_client.py:16`. `_token_info_from_response` extracts link fields in `src/parallax/integrations/gmgn/openapi_client.py:205`.
 
-The domain provider contract already names profile as a resolved-token capability. `DexTokenProfile` is defined in `src/gmgn_twitter_intel/domains/asset_market/providers.py:52`, and `DexTokenProfileProvider.token_profile(chain_id,address)` requires exact `chain_id + address` in `src/gmgn_twitter_intel/domains/asset_market/providers.py:125`.
+The domain provider contract already names profile as a resolved-token capability. `DexTokenProfile` is defined in `src/parallax/domains/asset_market/providers.py:52`, and `DexTokenProfileProvider.token_profile(chain_id,address)` requires exact `chain_id + address` in `src/parallax/domains/asset_market/providers.py:125`.
 
-The runtime still only uses the resolved-token provider roles for quote/candle paths. `ResolutionRefreshWorker` accepts `dex_discovery_market` and `dex_quote_market`, then uses discovery and quote roles in `src/gmgn_twitter_intel/domains/asset_market/runtime/resolution_refresh_worker.py:46`. No worker currently calls `dex_profile_market`.
+The runtime still only uses the resolved-token provider roles for quote/candle paths. `ResolutionRefreshWorker` accepts `dex_discovery_market` and `dex_quote_market`, then uses discovery and quote roles in `src/parallax/domains/asset_market/runtime/resolution_refresh_worker.py:46`. No worker currently calls `dex_profile_market`.
 
-Public read surfaces do not expose profile facts. `/api/search/inspect` builds `SearchInspectService` with search, token radar, and target repositories only in `src/gmgn_twitter_intel/app/surfaces/api/http.py:160`. `/api/token-radar` builds `AssetFlowService` with `token_radar` and `live_market_gateway` in `src/gmgn_twitter_intel/app/surfaces/api/http.py:186`.
+Public read surfaces do not expose profile facts. `/api/search/inspect` builds `SearchInspectService` with search, token radar, and target repositories only in `src/parallax/app/surfaces/api/http.py:160`. `/api/token-radar` builds `AssetFlowService` with `token_radar` and `live_market_gateway` in `src/parallax/app/surfaces/api/http.py:186`.
 
-`AssetFlowService._public_row` emits intent, target, attention, anchor price, live market, resolution, score, factor snapshot, data health, and source event ids in `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py:75`. `_target_from_snapshot` only returns target identity fields such as target type, id, symbol, chain, address, and market type in `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py:113`.
+`AssetFlowService._public_row` emits intent, target, attention, anchor price, live market, resolution, score, factor snapshot, data health, and source event ids in `src/parallax/domains/token_intel/read_models/asset_flow_service.py:75`. `_target_from_snapshot` only returns target identity fields such as target type, id, symbol, chain, address, and market type in `src/parallax/domains/token_intel/read_models/asset_flow_service.py:113`.
 
-`SearchInspectService._token_result` composes target timeline, posts, radar item, market overlay, and deterministic agent brief in `src/gmgn_twitter_intel/domains/token_intel/read_models/search_inspect_service.py:81`. It does not read a profile repository.
+`SearchInspectService._token_result` composes target timeline, posts, radar item, market overlay, and deterministic agent brief in `src/parallax/domains/token_intel/read_models/search_inspect_service.py:81`. It does not read a profile repository.
 
 The frontend types mirror the same gap. `SearchTokenResult` contains target, timeline, posts, radar item, market overlay, and agent brief in `web/src/api/types.ts:257`. `AssetFlowTargetBlock` contains target identity and venue-ish fields but no official links in `web/src/api/types.ts:318`. `AssetFlowRow` contains intent, target, attention, source ids, anchor price, live market, resolution, factor snapshot, and data health in `web/src/api/types.ts:416`.
 
 The selected-token drawer has tabs for Timeline, Posts, Score, Lab, and Accounts in `web/src/components/TokenDetailDrawer.tsx:33`. Search Intel token result renders the case header, metrics, timeline, Twitter results, deterministic brief, and radar panel in `web/src/components/SearchIntelPage.tsx:215`. Neither surface has a shared profile component.
 
-The existing social enrichment harness is not immediately reusable as-is for token narrative jobs. `EnrichmentRepository.claim_next_job` marks non-`watched_social_event_extraction` jobs as dead in `src/gmgn_twitter_intel/domains/social_enrichment/repositories/enrichment_repository.py:146`. A future token narrative agent must either use a separate queue or first generalize that harness.
+The existing social enrichment harness is not immediately reusable as-is for token narrative jobs. `EnrichmentRepository.claim_next_job` marks non-`watched_social_event_extraction` jobs as dead in `src/parallax/domains/social_enrichment/repositories/enrichment_repository.py:146`. A future token narrative agent must either use a separate queue or first generalize that harness.
 
 ## Problem
 

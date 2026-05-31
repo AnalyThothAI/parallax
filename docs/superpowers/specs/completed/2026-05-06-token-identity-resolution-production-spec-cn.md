@@ -880,12 +880,12 @@ New expectations:
 Add:
 
 ```bash
-uv run gmgn-twitter-intel ops sync-okx-cex-universe --inst-type SPOT --inst-type SWAP
-uv run gmgn-twitter-intel ops resolve-asset-symbol --symbol MIRROR
-uv run gmgn-twitter-intel ops asset-resolution-health --window 24h
-uv run gmgn-twitter-intel ops audit-asset-attribution --event-id ...
-uv run gmgn-twitter-intel ops backfill-asset-mentions --since-ms ...
-uv run gmgn-twitter-intel ops rebuild-asset-flow --window 1h
+uv run parallax ops sync-okx-cex-universe --inst-type SPOT --inst-type SWAP
+uv run parallax ops resolve-asset-symbol --symbol MIRROR
+uv run parallax ops asset-resolution-health --window 24h
+uv run parallax ops audit-asset-attribution --event-id ...
+uv run parallax ops backfill-asset-mentions --since-ms ...
+uv run parallax ops rebuild-asset-flow --window 1h
 ```
 
 ### Health Metrics

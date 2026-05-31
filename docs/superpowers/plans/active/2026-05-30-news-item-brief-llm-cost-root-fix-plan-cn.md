@@ -29,12 +29,12 @@ Story 是本地 page read-model context，不是 6551/OpenNews provider truth，
 
 ### News Brief Semantic Identity
 
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/types/news_item_brief.py`
+- Modify: `src/parallax/domains/news_intel/types/news_item_brief.py`
   - Remove `fetched_at_ms` from `NewsItemBriefNewsItem`.
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/services/news_item_brief_input.py`
+- Modify: `src/parallax/domains/news_intel/services/news_item_brief_input.py`
   - Add `news_item_brief_material_input_payload(packet)` and `news_item_brief_material_input_hash(packet)`.
   - Build `packet.input_hash` from the material payload helper.
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/services/news_item_brief_runtime.py`
+- Modify: `src/parallax/domains/news_intel/services/news_item_brief_runtime.py`
   - Use the same material payload helper for `AgentStageSpec.input_payload`.
 - Modify: `tests/unit/domains/news_intel/test_news_item_brief_input.py`
   - Prove volatile fetch metadata does not change hash.
@@ -43,13 +43,13 @@ Story 是本地 page read-model context，不是 6551/OpenNews provider truth，
 
 ### Freshness And Candidate Loading
 
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
+- Modify: `src/parallax/domains/news_intel/repositories/news_repository.py`
   - Remove `items.updated_at_ms`, projection-only `stories.updated_at_ms`, story joins, and story member timestamps from brief `source_updated_at_ms`.
   - Prefer item processed/material timestamps and child material rows.
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py`
+- Modify: `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py`
   - Make freshness an exact semantic hash + version match.
   - Treat terminal failed current brief as fresh only when its terminal marker and input hash match.
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py` and `src/gmgn_twitter_intel/app/runtime/worker_manifest.py`
+- Modify: `src/parallax/platform/config/settings.py` and `src/parallax/app/runtime/worker_manifest.py`
   - Remove `news_story_projection` and all `news_story_updated` wake inputs.
 - Modify: `tests/unit/domains/news_intel/test_news_item_brief_worker.py`
   - Prove volatile source watermark does not trigger provider call.
@@ -58,10 +58,10 @@ Story 是本地 page read-model context，不是 6551/OpenNews provider truth，
 
 ### Dirty Target Terminalization
 
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/repositories/news_projection_dirty_target_repository.py`
+- Modify: `src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py`
   - Add `terminalize_targets(...)` for claimed dirty targets.
   - Delete the hot dirty row and write `worker_queue_terminal_events`.
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py`
+- Modify: `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py`
   - Do not upsert failed current on retryable provider/model/domain failures.
   - Terminalize after bounded attempts using `attempt_count + attempted_now >= max_attempts`.
   - Upsert failed current only for terminal item-level failure, with `brief_json.terminal = true`.
@@ -73,21 +73,21 @@ Story 是本地 page read-model context，不是 6551/OpenNews provider truth，
 
 ### Shared Provider Quota Backpressure
 
-- Modify: `src/gmgn_twitter_intel/platform/agent_execution.py`
+- Modify: `src/parallax/platform/agent_execution.py`
   - Add `AgentExecutionErrorClass.QUOTA_EXHAUSTED = "quota_exhausted"`.
-- Modify: `src/gmgn_twitter_intel/integrations/model_execution/execution_gateway.py`
+- Modify: `src/parallax/integrations/model_execution/execution_gateway.py`
   - Classify balance/quota/auth/config errors from exception type, HTTP code, provider body, and message text.
   - Mark quota/balance/auth/config as `execution_started=False`.
   - Open lane circuit immediately for quota/balance/auth/config classes.
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py`
+- Modify: `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py`
   - Add quota to no-start backpressure set and `backpressure_quota_exhausted` notes.
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py`
+- Modify: `src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py`
   - Add quota to no-start backpressure set.
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
+- Modify: `src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
   - Add quota to no-start backpressure set.
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py`
   - Add quota to no-start backpressure set and provider cooldown reason.
-- Modify: `src/gmgn_twitter_intel/integrations/model_execution/pulse_decision_agent_client.py`
+- Modify: `src/parallax/integrations/model_execution/pulse_decision_agent_client.py`
   - Add quota to stage no-start set.
 - Modify: `tests/unit/integrations/model_execution/test_agent_execution_gateway.py`
   - Prove `Insufficient Balance` becomes `QUOTA_EXHAUSTED` and opens circuit.
@@ -123,17 +123,17 @@ Expected: status says hard-cut implementation required; hard-cut rules mention n
 Run:
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 ```
 
-Expected: `config_path=/Users/qinghuan/.gmgn-twitter-intel/config.yaml` and `workers_config_path=/Users/qinghuan/.gmgn-twitter-intel/workers.yaml`; no secret values printed.
+Expected: `config_path=/Users/qinghuan/.parallax/config.yaml` and `workers_config_path=/Users/qinghuan/.parallax/workers.yaml`; no secret values printed.
 
 - [ ] **Step 3: Capture baseline cost and backlog**
 
 Run:
 
 ```bash
-uv run gmgn-twitter-intel ops worker-status
+uv run parallax ops worker-status
 ```
 
 Expected: output includes `news_item_brief` queue health. Save due count, running count, and last error buckets in the verification artifact.
@@ -200,13 +200,13 @@ def test_packet_hash_ignores_fetched_at_ms() -> None:
 Append to `tests/unit/domains/news_intel/test_news_item_brief_runtime.py`:
 
 ```python
-from gmgn_twitter_intel.domains.news_intel.services.news_item_brief_input import (
+from parallax.domains.news_intel.services.news_item_brief_input import (
     build_news_item_brief_input_packet,
 )
-from gmgn_twitter_intel.domains.news_intel.services.news_item_brief_runtime import (
+from parallax.domains.news_intel.services.news_item_brief_runtime import (
     build_news_item_brief_stage,
 )
-from gmgn_twitter_intel.domains.news_intel.types.news_item_brief import NewsItemBriefAgentConfig
+from parallax.domains.news_intel.types.news_item_brief import NewsItemBriefAgentConfig
 
 
 def test_stage_payload_uses_material_packet_without_fetch_time() -> None:
@@ -251,8 +251,8 @@ def test_news_item_brief_has_no_runtime_legacy_hash_fallback() -> None:
         "old_hash",
     )
     paths = [
-        "src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py",
-        "src/gmgn_twitter_intel/domains/news_intel/services/news_item_brief_input.py",
+        "src/parallax/domains/news_intel/runtime/news_item_brief_worker.py",
+        "src/parallax/domains/news_intel/services/news_item_brief_input.py",
     ]
     for path in paths:
         text = Path(path).read_text(encoding="utf-8")
@@ -278,7 +278,7 @@ from pathlib import Path
 
 
 def test_news_brief_semantic_packet_excludes_fetch_time() -> None:
-    type_text = Path("src/gmgn_twitter_intel/domains/news_intel/types/news_item_brief.py").read_text(
+    type_text = Path("src/parallax/domains/news_intel/types/news_item_brief.py").read_text(
         encoding="utf-8"
     )
     assert "fetched_at_ms" not in type_text
@@ -286,7 +286,7 @@ def test_news_brief_semantic_packet_excludes_fetch_time() -> None:
 
 def test_news_brief_input_builder_does_not_read_fetch_time() -> None:
     builder_text = Path(
-        "src/gmgn_twitter_intel/domains/news_intel/services/news_item_brief_input.py"
+        "src/parallax/domains/news_intel/services/news_item_brief_input.py"
     ).read_text(encoding="utf-8")
     assert "fetched_at_ms" not in builder_text
 ```
@@ -320,14 +320,14 @@ git commit -m "test: pin news item brief semantic identity hard cut"
 ## Task 2: Implement Semantic Material Payload Hard Cut
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/types/news_item_brief.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/services/news_item_brief_input.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/services/news_item_brief_runtime.py`
+- Modify: `src/parallax/domains/news_intel/types/news_item_brief.py`
+- Modify: `src/parallax/domains/news_intel/services/news_item_brief_input.py`
+- Modify: `src/parallax/domains/news_intel/services/news_item_brief_runtime.py`
 - Modify: `tests/unit/domains/news_intel/test_news_item_brief_input.py`
 
 - [ ] **Step 1: Remove `fetched_at_ms` from `NewsItemBriefNewsItem`**
 
-In `src/gmgn_twitter_intel/domains/news_intel/types/news_item_brief.py`, change:
+In `src/parallax/domains/news_intel/types/news_item_brief.py`, change:
 
 ```python
 class NewsItemBriefNewsItem(BaseModel):
@@ -345,7 +345,7 @@ class NewsItemBriefNewsItem(BaseModel):
 
 - [ ] **Step 2: Add material payload/hash helpers**
 
-In `src/gmgn_twitter_intel/domains/news_intel/services/news_item_brief_input.py`, add near the builder:
+In `src/parallax/domains/news_intel/services/news_item_brief_input.py`, add near the builder:
 
 ```python
 def news_item_brief_material_input_payload(packet: NewsItemBriefInputPacket) -> dict[str, Any]:
@@ -379,10 +379,10 @@ return packet.model_copy(update={"input_hash": news_item_brief_material_input_ha
 
 - [ ] **Step 4: Use material payload in stage runtime**
 
-In `src/gmgn_twitter_intel/domains/news_intel/services/news_item_brief_runtime.py`, import:
+In `src/parallax/domains/news_intel/services/news_item_brief_runtime.py`, import:
 
 ```python
-from gmgn_twitter_intel.domains.news_intel.services.news_item_brief_input import (
+from parallax.domains.news_intel.services.news_item_brief_input import (
     news_item_brief_material_input_payload,
 )
 ```
@@ -417,7 +417,7 @@ assert packet.input_hash == json_sha256(packet.model_dump(mode="json", exclude={
 with:
 
 ```python
-from gmgn_twitter_intel.domains.news_intel.services.news_item_brief_input import (
+from parallax.domains.news_intel.services.news_item_brief_input import (
     news_item_brief_material_input_payload,
 )
 
@@ -442,9 +442,9 @@ Expected: PASS.
 Run:
 
 ```bash
-git add src/gmgn_twitter_intel/domains/news_intel/types/news_item_brief.py \
-  src/gmgn_twitter_intel/domains/news_intel/services/news_item_brief_input.py \
-  src/gmgn_twitter_intel/domains/news_intel/services/news_item_brief_runtime.py \
+git add src/parallax/domains/news_intel/types/news_item_brief.py \
+  src/parallax/domains/news_intel/services/news_item_brief_input.py \
+  src/parallax/domains/news_intel/services/news_item_brief_runtime.py \
   tests/unit/domains/news_intel/test_news_item_brief_input.py \
   tests/unit/domains/news_intel/test_news_item_brief_runtime.py
 git commit -m "fix: hard cut news brief semantic input hash"
@@ -453,8 +453,8 @@ git commit -m "fix: hard cut news brief semantic input hash"
 ## Task 3: Fix Material Freshness And Worker Skip Gate
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py`
+- Modify: `src/parallax/domains/news_intel/repositories/news_repository.py`
+- Modify: `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py`
 - Modify: `tests/unit/domains/news_intel/test_news_item_brief_worker.py`
 - Modify: `tests/integration/domains/news_intel/test_news_item_agent_brief_repository.py`
 
@@ -499,8 +499,8 @@ Add this helper to `FakeBriefProvider`:
 
 ```python
 def packet_for_candidate(self, candidate: dict[str, Any]):
-    from gmgn_twitter_intel.domains.news_intel.runtime.news_item_brief_worker import _packet_from_candidate
-    from gmgn_twitter_intel.domains.news_intel.types.news_item_brief import default_news_item_brief_agent_config
+    from parallax.domains.news_intel.runtime.news_item_brief_worker import _packet_from_candidate
+    from parallax.domains.news_intel.types.news_item_brief import default_news_item_brief_agent_config
 
     return _packet_from_candidate(
         candidate,
@@ -513,7 +513,7 @@ def packet_for_candidate(self, candidate: dict[str, Any]):
 
 - [ ] **Step 2: Change freshness gate to exact semantic identity**
 
-In `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py`, replace `_current_brief_is_fresh` with:
+In `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py`, replace `_current_brief_is_fresh` with:
 
 ```python
 def _current_brief_is_fresh(
@@ -642,8 +642,8 @@ Expected: PASS.
 Run:
 
 ```bash
-git add src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py \
-  src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py \
+git add src/parallax/domains/news_intel/repositories/news_repository.py \
+  src/parallax/domains/news_intel/runtime/news_item_brief_worker.py \
   tests/unit/domains/news_intel/test_news_item_brief_worker.py \
   tests/integration/domains/news_intel/test_news_item_agent_brief_repository.py
 git commit -m "fix: use semantic freshness for news item briefs"
@@ -652,8 +652,8 @@ git commit -m "fix: use semantic freshness for news item briefs"
 ## Task 4: Terminalize Failed Dirty Targets And Remove Permanent Failed Queue
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/repositories/news_projection_dirty_target_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py`
+- Modify: `src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py`
+- Modify: `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py`
 - Modify: `tests/integration/domains/news_intel/test_news_projection_dirty_target_repository.py`
 - Modify: `tests/unit/domains/news_intel/test_news_item_brief_worker.py`
 
@@ -664,7 +664,7 @@ In `news_projection_dirty_target_repository.py`, import:
 ```python
 from contextlib import nullcontext
 
-from gmgn_twitter_intel.platform.db.queue_terminal import terminalize_source_row
+from parallax.platform.db.queue_terminal import terminalize_source_row
 ```
 
 Add method:
@@ -1013,8 +1013,8 @@ Expected: PASS.
 Run:
 
 ```bash
-git add src/gmgn_twitter_intel/domains/news_intel/repositories/news_projection_dirty_target_repository.py \
-  src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py \
+git add src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py \
+  src/parallax/domains/news_intel/runtime/news_item_brief_worker.py \
   tests/integration/domains/news_intel/test_news_projection_dirty_target_repository.py \
   tests/unit/domains/news_intel/test_news_item_brief_worker.py
 git commit -m "fix: terminalize failed news brief dirty targets"
@@ -1023,19 +1023,19 @@ git commit -m "fix: terminalize failed news brief dirty targets"
 ## Task 5: Shared Quota Exhausted Backpressure
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/platform/agent_execution.py`
-- Modify: `src/gmgn_twitter_intel/integrations/model_execution/execution_gateway.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py`
-- Modify: `src/gmgn_twitter_intel/integrations/model_execution/pulse_decision_agent_client.py`
+- Modify: `src/parallax/platform/agent_execution.py`
+- Modify: `src/parallax/integrations/model_execution/execution_gateway.py`
+- Modify: `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py`
+- Modify: `src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py`
+- Modify: `src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py`
+- Modify: `src/parallax/integrations/model_execution/pulse_decision_agent_client.py`
 - Modify: `tests/unit/integrations/model_execution/test_agent_execution_gateway.py`
 - Modify: `tests/unit/domains/news_intel/test_news_item_brief_worker.py`
 
 - [ ] **Step 1: Add enum value**
 
-In `src/gmgn_twitter_intel/platform/agent_execution.py`:
+In `src/parallax/platform/agent_execution.py`:
 
 ```python
 class AgentExecutionErrorClass(StrEnum):
@@ -1213,13 +1213,13 @@ Expected: PASS.
 Run:
 
 ```bash
-git add src/gmgn_twitter_intel/platform/agent_execution.py \
-  src/gmgn_twitter_intel/integrations/model_execution/execution_gateway.py \
-  src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py \
-  src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py \
-  src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py \
-  src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py \
-  src/gmgn_twitter_intel/integrations/model_execution/pulse_decision_agent_client.py \
+git add src/parallax/platform/agent_execution.py \
+  src/parallax/integrations/model_execution/execution_gateway.py \
+  src/parallax/domains/news_intel/runtime/news_item_brief_worker.py \
+  src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py \
+  src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py \
+  src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py \
+  src/parallax/integrations/model_execution/pulse_decision_agent_client.py \
   tests/unit/integrations/model_execution/test_agent_execution_gateway.py \
   tests/unit/domains/news_intel/test_news_item_brief_worker.py
 git commit -m "fix: classify llm quota exhaustion as backpressure"
@@ -1228,7 +1228,7 @@ git commit -m "fix: classify llm quota exhaustion as backpressure"
 ## Task 6: Cross-Agent Identity Guard And Narrative Hash Cleanup
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py`
+- Modify: `src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py`
 - Modify: `tests/architecture/test_agent_input_identity_contracts.py`
 - Create: `tests/unit/domains/narrative_intel/test_mention_semantics_input_identity.py`
 
@@ -1269,7 +1269,7 @@ Create `tests/unit/domains/narrative_intel/test_mention_semantics_input_identity
 ```python
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.narrative_intel.runtime.mention_semantics_worker import (
+from parallax.domains.narrative_intel.runtime.mention_semantics_worker import (
     _hash_json,
     _mention_semantics_input_rows,
 )
@@ -1298,7 +1298,7 @@ Append to `tests/architecture/test_agent_input_identity_contracts.py`:
 
 ```python
 def test_narrative_mention_semantics_does_not_hash_claimed_rows_directly() -> None:
-    text = Path("src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py").read_text(
+    text = Path("src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py").read_text(
         encoding="utf-8"
     )
     assert "input_hash = _hash_json(rows)" not in text
@@ -1323,7 +1323,7 @@ Expected: PASS.
 Run:
 
 ```bash
-git add src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py \
+git add src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py \
   tests/unit/domains/narrative_intel/test_mention_semantics_input_identity.py \
   tests/architecture/test_agent_input_identity_contracts.py
 git commit -m "test: guard agent input hashes against claim metadata"
@@ -1369,13 +1369,13 @@ Expected: PASS.
 - [ ] **Run live-safe diagnostics**
 
 ```bash
-uv run gmgn-twitter-intel config
-uv run gmgn-twitter-intel ops worker-status
+uv run parallax config
+uv run parallax ops worker-status
 ```
 
 Expected:
 
-- config paths point to `/Users/qinghuan/.gmgn-twitter-intel/...`;
+- config paths point to `/Users/qinghuan/.parallax/...`;
 - no secrets printed;
 - `news_item_brief` due backlog is visible;
 - after worker dry run or controlled run, unchanged targets are marked done/terminalized without provider-started run growth.

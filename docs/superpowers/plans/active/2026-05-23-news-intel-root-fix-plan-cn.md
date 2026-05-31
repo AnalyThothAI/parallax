@@ -30,7 +30,7 @@ This is a root-fix plan only if implemented as the full sequence below.
 ## Current Evidence
 
 - `/news` static page can render, but `/api/news?limit=100` intermittently fails under runtime load with `psycopg.errors.QueryCanceled: canceling statement due to statement timeout`.
-- The hot query is `NewsRepository.list_news_page_rows()` in `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`, currently using `news_page_rows UNION ALL fallback news_items`.
+- The hot query is `NewsRepository.list_news_page_rows()` in `src/parallax/domains/news_intel/repositories/news_repository.py`, currently using `news_page_rows UNION ALL fallback news_items`.
 - DB has live News data: about 4.5k `news_items` and matching `news_page_rows`, 319 `news_fact_candidates`, 4.5k `news_item_agent_briefs`, and 20 source-quality rows.
 - Current runtime sources are 10 enabled RSS sources only. Roles are `specialist_media` and `aggregator`; all `coverage_tags_json` are empty.
 - Provider type literals already include `openbb`, `telegram_public`, `twitter_profile`, `reddit`, `hackernews`, `github`, `ossinsight`, and `manual_api`, but the live provider registry only implements `rss`, `atom`, `json_feed`, and `cryptopanic`.
@@ -100,9 +100,9 @@ If the team wants one branch, use separate commits matching the tasks below.
 
 - [ ] Confirm real runtime config paths before live-data debugging:
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
-  Expected: `config_path` and `workers_config_path` point at `~/.gmgn-twitter-intel/`. Do not print secret values.
+  Expected: `config_path` and `workers_config_path` point at `~/.parallax/`. Do not print secret values.
 
 - [ ] Capture the current `/api/news` failure or baseline latency:
   ```bash
@@ -116,11 +116,11 @@ If the team wants one branch, use separate commits matching the tasks below.
 
 ### Create
 
-- `src/gmgn_twitter_intel/domains/news_intel/types/content_classification.py`
+- `src/parallax/domains/news_intel/types/content_classification.py`
   Canonical `content_class` and `content_tags` literals plus deterministic normalization helpers.
-- `src/gmgn_twitter_intel/domains/news_intel/services/news_content_classification.py`
+- `src/parallax/domains/news_intel/services/news_content_classification.py`
   Pure deterministic classifier from headline/summary/source/fact lanes to content class and tags.
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0087_news_content_classification.py`
+- `src/parallax/platform/db/alembic/versions/20260523_0087_news_content_classification.py`
   Adds item-level classification storage and read-model indexes.
 - `tests/unit/domains/news_intel/test_news_content_classification.py`
   Unit tests for deterministic class assignment.
@@ -131,16 +131,16 @@ If the team wants one branch, use separate commits matching the tasks below.
 
 ### Modify
 
-- `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
-- `src/gmgn_twitter_intel/domains/news_intel/queries/news_page_query.py`
-- `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_process_worker.py`
-- `src/gmgn_twitter_intel/domains/news_intel/runtime/news_page_projection_worker.py`
-- `src/gmgn_twitter_intel/domains/news_intel/services/news_page_projection.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/routes_news.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
-- `src/gmgn_twitter_intel/integrations/news_feeds/provider_registry.py`
-- `src/gmgn_twitter_intel/app/runtime/provider_wiring/news.py`
-- `src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md`
+- `src/parallax/domains/news_intel/repositories/news_repository.py`
+- `src/parallax/domains/news_intel/queries/news_page_query.py`
+- `src/parallax/domains/news_intel/runtime/news_item_process_worker.py`
+- `src/parallax/domains/news_intel/runtime/news_page_projection_worker.py`
+- `src/parallax/domains/news_intel/services/news_page_projection.py`
+- `src/parallax/app/surfaces/api/routes_news.py`
+- `src/parallax/app/surfaces/api/schemas.py`
+- `src/parallax/integrations/news_feeds/provider_registry.py`
+- `src/parallax/app/runtime/provider_wiring/news.py`
+- `src/parallax/domains/news_intel/ARCHITECTURE.md`
 - `docs/ARCHITECTURE.md`
 - `docs/CONTRACTS.md`
 - `docs/WORKERS.md`
@@ -154,17 +154,17 @@ If the team wants one branch, use separate commits matching the tasks below.
 
 ### Do Not Modify
 
-- `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/*`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_*`
+- `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py`
+- `src/parallax/domains/pulse_lab/*`
+- `src/parallax/domains/asset_market/runtime/market_tick_*`
 
 If implementation appears to require these files, stop and split that work into a separate plan.
 
 ## Task 1: Make `/api/news` Read Path Bounded
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/queries/news_page_query.py`
+- Modify: `src/parallax/domains/news_intel/repositories/news_repository.py`
+- Modify: `src/parallax/domains/news_intel/queries/news_page_query.py`
 - Test: `tests/integration/domains/news_intel/test_news_page_rows_read_path.py`
 - Test: `tests/unit/test_api_news_contract.py`
 
@@ -302,17 +302,17 @@ If implementation appears to require these files, stop and split that work into 
 ## Task 2: Materialize Item-Level Content Classification
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/news_intel/types/content_classification.py`
-- Create: `src/gmgn_twitter_intel/domains/news_intel/services/news_content_classification.py`
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0087_news_content_classification.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_process_worker.py`
+- Create: `src/parallax/domains/news_intel/types/content_classification.py`
+- Create: `src/parallax/domains/news_intel/services/news_content_classification.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260523_0087_news_content_classification.py`
+- Modify: `src/parallax/domains/news_intel/repositories/news_repository.py`
+- Modify: `src/parallax/domains/news_intel/runtime/news_item_process_worker.py`
 - Test: `tests/unit/domains/news_intel/test_news_content_classification.py`
 - Test: `tests/integration/domains/news_intel/test_news_repository.py`
 
 - [ ] **Step 1: Add deterministic classifier tests**
   ```python
-  from gmgn_twitter_intel.domains.news_intel.services.news_content_classification import classify_news_item_content
+  from parallax.domains.news_intel.services.news_content_classification import classify_news_item_content
 
   def test_classifies_sec_tokenized_stock_delay_as_regulation() -> None:
       result = classify_news_item_content(
@@ -449,13 +449,13 @@ If implementation appears to require these files, stop and split that work into 
 
 - [ ] **Step 7: Backfill existing rows through normal worker catch-up**
   ```bash
-  uv run gmgn-twitter-intel db migrate
+  uv run parallax db migrate
   docker compose up -d --build
   sleep 45
-  uv run gmgn-twitter-intel ops worker-status
-  docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel \
+  uv run parallax ops worker-status
+  docker exec parallax-postgres-1 psql -U parallax_app -d parallax \
     -c "select content_class, count(*) from news_items group by content_class order by count(*) desc;"
-  docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel \
+  docker exec parallax-postgres-1 psql -U parallax_app -d parallax \
     -c "select content_class, count(*) from news_page_rows group by content_class order by count(*) desc;"
   ```
   Expected: `news_item_process` and `news_page_projection` show successful recent runs, and existing rows are no longer all default `low_signal`.
@@ -463,11 +463,11 @@ If implementation appears to require these files, stop and split that work into 
 ## Task 3: Project Classification And Extend API Filters
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/services/news_page_projection.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/queries/news_page_query.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/routes_news.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
+- Modify: `src/parallax/domains/news_intel/services/news_page_projection.py`
+- Modify: `src/parallax/domains/news_intel/repositories/news_repository.py`
+- Modify: `src/parallax/domains/news_intel/queries/news_page_query.py`
+- Modify: `src/parallax/app/surfaces/api/routes_news.py`
+- Modify: `src/parallax/app/surfaces/api/schemas.py`
 - Test: `tests/unit/domains/news_intel/test_news_page_projection.py`
 - Test: `tests/unit/test_api_news_contract.py`
 
@@ -667,10 +667,10 @@ If implementation appears to require these files, stop and split that work into 
 ## Task 5: Provider Capability Diagnostics And Runtime Source Hygiene
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/integrations/news_feeds/provider_registry.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/provider_wiring/news.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/routes_news.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
+- Modify: `src/parallax/integrations/news_feeds/provider_registry.py`
+- Modify: `src/parallax/app/runtime/provider_wiring/news.py`
+- Modify: `src/parallax/app/surfaces/api/routes_news.py`
+- Modify: `src/parallax/domains/news_intel/repositories/news_repository.py`
 - Modify: `docs/CONTRACTS.md`
 - Test: `tests/unit/integrations/news_feeds/test_provider_registry.py`
 - Test: `tests/unit/test_api_news_contract.py`
@@ -714,7 +714,7 @@ If implementation appears to require these files, stop and split that work into 
 - Modify: `docs/WORKERS.md`
 - Modify: `docs/CONTRACTS.md`
 - Modify: `docs/ARCHITECTURE.md`
-- Optionally modify operator-owned `~/.gmgn-twitter-intel/config.yaml` only after explicit operator approval.
+- Optionally modify operator-owned `~/.parallax/config.yaml` only after explicit operator approval.
 
 - [ ] **Step 1: Document current supported provider set**
   Supported now:
@@ -742,7 +742,7 @@ If implementation appears to require these files, stop and split that work into 
 
 - [ ] **Step 3: Provide safe operator checklist**
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   curl -sS -H "Authorization: Bearer $GMGN_API_TOKEN" \
     http://127.0.0.1:8765/api/news/sources/status | jq '.data.provider_capabilities'
   ```
@@ -803,7 +803,7 @@ If implementation appears to require these files, stop and split that work into 
   Expected: no `/api/news` `QueryCanceled` or ASGI exception.
 
 - [ ] **Step 6: Update docs**
-  Ensure `docs/ARCHITECTURE.md`, `docs/CONTRACTS.md`, `docs/WORKERS.md`, and `src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md` describe:
+  Ensure `docs/ARCHITECTURE.md`, `docs/CONTRACTS.md`, `docs/WORKERS.md`, and `src/parallax/domains/news_intel/ARCHITECTURE.md` describe:
   - source/content/decision axes;
   - provider capability diagnostics;
   - normal `/api/news` projected-only read path;

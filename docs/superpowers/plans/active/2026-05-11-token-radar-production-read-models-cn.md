@@ -20,7 +20,7 @@ Known process deviation:
 
 ## File-level edits
 
-### `src/gmgn_twitter_intel/platform/db/alembic/versions/20260511_0025_token_radar_production_read_models.py`
+### `src/parallax/platform/db/alembic/versions/20260511_0025_token_radar_production_read_models.py`
 
 - Add Alembic revision `20260511_0025`, down revision `20260511_0024`.
 - Create `token_radar_publications`.
@@ -38,7 +38,7 @@ Known process deviation:
     ON token_market_price_baselines(resolution_id);
   ```
 
-### `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
+### `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
 
 - Replace public coverage methods with publication methods:
   - `mark_refresh_status(...) -> None`
@@ -48,7 +48,7 @@ Known process deviation:
 - Keep `replace_rows(...)` as row writer, but stale-writer guard checks publication/row max and publish only happens after successful replace.
 - Remove public reads from `token_radar_projection_coverage`; no compatibility fallback.
 
-### `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
+### `src/parallax/domains/token_intel/services/token_radar_projection.py`
 
 - At start, call `mark_refresh_status(refresh_status="running", ...)`.
 - On success:
@@ -58,12 +58,12 @@ Known process deviation:
 - On failure, call `mark_refresh_status(refresh_status="failed", ...)` without moving published pointer.
 - Keep provider-free projection.
 
-### `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py`
+### `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py`
 
 - Replace `latest_coverage(...)` and `mark_coverage(...)` calls with publication methods.
 - Missing-work logic treats a window/scope as ready only when it has `published_computed_at_ms`; refresh failure/running does not erase publication.
 
-### `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`
+### `src/parallax/domains/token_intel/read_models/asset_flow_service.py`
 
 - Constructor becomes `AssetFlowService(token_radar, current_market)`.
 - Use `latest_publications(...)`.
@@ -72,34 +72,34 @@ Known process deviation:
 - Hydrate `current_market` from injected current-market repository for returned target rows.
 - Delete factor-snapshot current-market reconstruction helpers.
 
-### `src/gmgn_twitter_intel/app/surfaces/api/http.py`
+### `src/parallax/app/surfaces/api/http.py`
 
 - Construct `AssetFlowService(token_radar=repos.token_radar, current_market=repos.current_market)`.
 
-### `src/gmgn_twitter_intel/app/surfaces/cli/main.py`
+### `src/parallax/app/surfaces/cli/main.py`
 
 - Construct `AssetFlowService(token_radar=repos.token_radar, current_market=repos.current_market)`.
 - Add ops command:
   ```text
-  gmgn-twitter-intel ops backfill-token-price-baselines --limit N
+  parallax ops backfill-token-price-baselines --limit N
   ```
 
-### `src/gmgn_twitter_intel/app/runtime/app.py`
+### `src/parallax/app/runtime/app.py`
 
 - Notification rule engine receives `AssetFlowService(token_radar=repos.token_radar, current_market=repos.current_market)`.
 
-### `src/gmgn_twitter_intel/domains/asset_market/repositories/price_observation_repository.py`
+### `src/parallax/domains/asset_market/repositories/price_observation_repository.py`
 
 - After inserting/upserting `price_observations`, write capable non-null fields into `current_market_field_facts`.
 - If `source_resolution_id`, `source_event_id`, and `event_received_at_ms` are present, upsert `token_market_price_baselines`.
 - Add repository helper for backfilling baselines in batches.
 
-### `src/gmgn_twitter_intel/domains/asset_market/repositories/current_market_repository.py`
+### `src/parallax/domains/asset_market/repositories/current_market_repository.py`
 
 - Replace `price_observations` lateral reads with a single query over `current_market_field_facts`.
 - Build the same field-aware snapshot shape as the current public contract.
 
-### `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py`
+### `src/parallax/domains/token_intel/queries/token_radar_source_query.py`
 
 - Join `token_market_price_baselines` by `resolution_id`.
 - Select first/event/before fields from the baseline table.
@@ -107,7 +107,7 @@ Known process deviation:
 
 ### Docs
 
-- Update `docs/ARCHITECTURE.md`, `docs/CONTRACTS.md`, and `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md` to describe:
+- Update `docs/ARCHITECTURE.md`, `docs/CONTRACTS.md`, and `src/parallax/domains/token_intel/ARCHITECTURE.md` to describe:
   - publication pointer;
   - current-market field facts;
   - token market price baselines.
@@ -138,10 +138,10 @@ This is intentionally one PR because partial rollout would either publish withou
 
 ## Rollout order
 
-1. Apply migration: `uv run gmgn-twitter-intel db migrate`.
-2. Backfill field facts from existing `price_observations`: `uv run gmgn-twitter-intel ops backfill-current-market-field-facts --limit <N>`.
-3. Backfill token price baselines: `uv run gmgn-twitter-intel ops backfill-token-price-baselines --limit <N>`.
-4. Run `uv run gmgn-twitter-intel ops rebuild-token-radar --window 24h --scope all`.
+1. Apply migration: `uv run parallax db migrate`.
+2. Backfill field facts from existing `price_observations`: `uv run parallax ops backfill-current-market-field-facts --limit <N>`.
+3. Backfill token price baselines: `uv run parallax ops backfill-token-price-baselines --limit <N>`.
+4. Run `uv run parallax ops rebuild-token-radar --window 24h --scope all`.
 5. Verify `/api/token-radar?window=24h&scope=all` returns published rows while refresh metadata is observable.
 
 ## Rollback

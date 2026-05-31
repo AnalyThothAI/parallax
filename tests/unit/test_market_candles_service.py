@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.asset_market.read_models.market_candles_service import MarketCandlesService
+from parallax.domains.asset_market.read_models.market_candles_service import MarketCandlesService
 
 
 def test_market_candles_service_is_provider_free_for_cex_payloads():

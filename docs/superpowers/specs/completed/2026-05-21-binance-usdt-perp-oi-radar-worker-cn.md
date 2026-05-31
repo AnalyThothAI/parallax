@@ -112,8 +112,8 @@ V1 输出：
 新增一个 Binance futures universe provider：
 
 ```text
-src/gmgn_twitter_intel/integrations/binance/usdm_futures_client.py
-src/gmgn_twitter_intel/app/runtime/provider_wiring/binance.py
+src/parallax/integrations/binance/usdm_futures_client.py
+src/parallax/app/runtime/provider_wiring/binance.py
 ```
 
 Provider 输出显式 route，不输出 OKX 风格 ticker：
@@ -151,7 +151,7 @@ Binance exchangeInfo
 
 入口：
 
-- `uv run gmgn-twitter-intel ops sync-binance-usdt-perp-universe`
+- `uv run parallax ops sync-binance-usdt-perp-universe`
 - `scripts/sync_binance_usdt_perp_universe.sh` 只作为 cron/launchd wrapper，业务逻辑仍在 app service + repository。
 - 可选新增轻量 worker `binance_cex_universe_sync`，默认 disabled；如果开启，建议 `interval_seconds=21600`。
 
@@ -328,7 +328,7 @@ binance_cex_universe_sync:
 新增独立 worker，建议放在新 domain：
 
 ```text
-src/gmgn_twitter_intel/domains/cex_market_intel/
+src/parallax/domains/cex_market_intel/
   runtime/cex_oi_radar_board_worker.py
   repositories/cex_derivative_series_repository.py
   repositories/cex_oi_radar_repository.py

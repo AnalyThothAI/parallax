@@ -8,7 +8,7 @@ Branch: `codex/macro-views-worker`
 - Rebased onto current `main` (`9b93ed5c update web`) before the final verification pass.
 - `uv run --no-sync ruff check .`
   - Passed: `All checks passed!`
-- `uv run --no-sync mypy src/gmgn_twitter_intel/domains/macro_intel src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py src/gmgn_twitter_intel/app/runtime/worker_factories/macro_intel.py`
+- `uv run --no-sync mypy src/parallax/domains/macro_intel src/parallax/app/surfaces/api/routes_macro.py src/parallax/app/runtime/worker_factories/macro_intel.py`
   - Passed: `Success: no issues found in 10 source files`
 - `uv run --no-sync python -m pytest tests/unit/domains/macro_intel/test_macro_regime_engine.py tests/unit/domains/macro_intel/test_macro_view_projection_worker.py tests/unit/test_api_macro_contract.py tests/unit/test_bootstrap_worker_runtime_wiring.py::test_worker_factory_wires_news_fetch_by_default tests/architecture/test_worker_inventory_contract.py tests/architecture/test_worker_runtime_contracts.py -q`
   - Passed: `73 passed in 10.17s`

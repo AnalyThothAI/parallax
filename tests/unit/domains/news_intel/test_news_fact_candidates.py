@@ -1,5 +1,5 @@
-from gmgn_twitter_intel.domains.news_intel.services.news_fact_candidates import build_fact_candidates
-from gmgn_twitter_intel.domains.news_intel.services.news_token_mentions import NewsTokenMention
+from parallax.domains.news_intel.services.news_fact_candidates import build_fact_candidates
+from parallax.domains.news_intel.services.news_token_mentions import NewsTokenMention
 
 
 def test_official_listing_candidate_can_be_accepted() -> None:

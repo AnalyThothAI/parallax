@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from gmgn_twitter_intel.domains.macro_intel._constants import (
+from parallax.domains.macro_intel._constants import (
     MACRO_CORE_CONCEPTS,
     MACRO_HISTORY_REQUIRED_CONCEPTS,
 )
-from gmgn_twitter_intel.domains.macro_intel.services.macro_regime_engine import (
+from parallax.domains.macro_intel.services.macro_regime_engine import (
     build_macro_view_snapshot,
 )
 

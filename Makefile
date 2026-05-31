@@ -1,4 +1,4 @@
-GMGN := uv run gmgn-twitter-intel
+PARALLAX := uv run parallax
 
 .PHONY: help sync install uninstall tool-path test lint compile check init config db-migrate db-health serve status recent asset-flow account-alerts token-radar-cex-recover docker-up docker-status docker-logs docker-down docker-shell clean test-unit test-integration test-e2e test-golden test-architecture test-contract check-all coverage contract-check regen-contract install-hooks
 
@@ -12,7 +12,7 @@ install: ## install or update the global CLI with uv tool
 	@uv tool install --force --reinstall .
 
 uninstall: ## uninstall the global CLI installed by uv tool
-	@uv tool uninstall gmgn-twitter-intel
+	@uv tool uninstall parallax
 
 tool-path: ## ensure uv tool executables are on PATH
 	@uv tool update-shell
@@ -72,41 +72,41 @@ regen-contract: ## regenerate openapi.json + web/src/lib/types/openapi.ts
 install-hooks: ## install pre-commit hooks
 	@uv run pre-commit install
 
-init: ## create ~/.gmgn-twitter-intel/config.yaml + workers.yaml
-	@$(GMGN) init
+init: ## create ~/.parallax/config.yaml + workers.yaml
+	@$(PARALLAX) init
 
 config: ## print effective runtime config
-	@$(GMGN) config
+	@$(PARALLAX) config
 
 db-migrate: ## apply PostgreSQL migrations
-	@$(GMGN) db migrate
+	@$(PARALLAX) db migrate
 
 db-health: ## check PostgreSQL liveness and migration version
-	@$(GMGN) db health
+	@$(PARALLAX) db health
 
 serve: ## run collector and API in foreground
-	@$(GMGN) serve
+	@$(PARALLAX) serve
 
 status: ## print health and readiness for the running API
 	@curl -fsS http://127.0.0.1:8765/healthz
 	@curl -fsS http://127.0.0.1:8765/readyz
 
 recent: ## print recent matched events
-	@$(GMGN) recent --limit 20
+	@$(PARALLAX) recent --limit 20
 
 asset-flow: ## print 5m token activity
-	@$(GMGN) asset-flow --window 5m --limit 20
+	@$(PARALLAX) asset-flow --window 5m --limit 20
 
 account-alerts: ## print watched-account token alerts
-	@$(GMGN) account-alerts --window 24h --limit 50
+	@$(PARALLAX) account-alerts --window 24h --limit 50
 
 token-radar-cex-recover: ## recover Token Radar CEX recognition
-	@$(GMGN) ops sync-binance-usdt-perp-universe --execute
-	@$(GMGN) ops sync-binance-cex-profiles
-	@$(GMGN) ops cex-binance-hard-cut-cleanup --dry-run --min-binance-feeds 400
-	@$(GMGN) ops cex-binance-hard-cut-cleanup --execute --min-binance-feeds 400
-	@$(GMGN) ops rebuild-token-intents --window 24h --limit 5000 --projection-limit 5000
-	@$(GMGN) ops audit-token-radar --window 1h --scope all --limit 20
+	@$(PARALLAX) ops sync-binance-usdt-perp-universe --execute
+	@$(PARALLAX) ops sync-binance-cex-profiles
+	@$(PARALLAX) ops cex-binance-hard-cut-cleanup --dry-run --min-binance-feeds 400
+	@$(PARALLAX) ops cex-binance-hard-cut-cleanup --execute --min-binance-feeds 400
+	@$(PARALLAX) ops rebuild-token-intents --window 24h --limit 5000 --projection-limit 5000
+	@$(PARALLAX) ops audit-token-radar --window 1h --scope all --limit 20
 
 docker-up: init ## build and start container service
 	@if [ -n "$${GITHUB_TOKEN:-}" ]; then \

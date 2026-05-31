@@ -26,61 +26,61 @@ rank-set read, added queue terminal evidence, and exposed backlog through
 `/readyz`. The current follow-up diagnosis shows the bottleneck moved rather
 than disappeared. `TokenRadarProjection.score_target_window(...)` calls
 `TokenRadarTargetFeatureQuery.source_rows(...)` once per target/window/scope in
-`src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py:244`.
+`src/parallax/domains/token_intel/services/token_radar_projection.py:244`.
 That source query starts with `WITH source_intents AS MATERIALIZED` in
-`src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_target_feature_query.py:26`
+`src/parallax/domains/token_intel/queries/token_radar_target_feature_query.py:26`
 and later performs lateral price-feed and enriched-event joins in
-`src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_target_feature_query.py:193`
-and `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_target_feature_query.py:238`.
+`src/parallax/domains/token_intel/queries/token_radar_target_feature_query.py:193`
+and `src/parallax/domains/token_intel/queries/token_radar_target_feature_query.py:238`.
 
 The rank publish path now correctly refuses stale compact rank inputs. The
 guard is in
-`src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py:459`;
+`src/parallax/domains/token_intel/services/token_radar_projection.py:459`;
 when stale rows exist, it raises
 `token_radar_rank_inputs_require_full_rebuild` at
-`src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py:472`.
+`src/parallax/domains/token_intel/services/token_radar_projection.py:472`.
 The current runtime problem is ordering: dirty targets are still claimed in
-`src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_dirty_target_repository.py:99`,
+`src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py:99`,
 then expensive source hydration runs, and only later does rank publish fail
 because the global rebuild prerequisite is still unmet. Failed dirty targets
 are rescheduled by
-`src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_dirty_target_repository.py:660`,
+`src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py:660`,
 so attempts keep growing while no read model is published.
 
 Queue terminal evidence is now first-class. `terminalize_source_row(...)` writes
 `worker_queue_terminal_events` in
-`src/gmgn_twitter_intel/app/runtime/queue_terminal.py:20`, and
+`src/parallax/app/runtime/queue_terminal.py:20`, and
 `inspect_terminal_events(...)` reads unresolved terminal evidence in
-`src/gmgn_twitter_intel/app/runtime/queue_terminal.py:136`. Queue health is
+`src/parallax/app/runtime/queue_terminal.py:136`. Queue health is
 filled from runtime manifests by
-`src/gmgn_twitter_intel/app/runtime/queue_health.py:156`. The current backlog is
+`src/parallax/app/runtime/queue_health.py:156`. The current backlog is
 therefore visible, but several terminal classes still need root fixes:
 provider `522`, no quote, no market data, stale TTL, and retry-budget
 exhaustion.
 
 Pulse has a concrete state-machine edge case. `claim_due_job(...)` only reclaims
 stale `running` rows while `attempt_count < max_attempts` in
-`src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_jobs_repository.py:139`;
+`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:139`;
 a row that is `running` and already at `attempt_count=max_attempts` can remain
 running forever unless a separate cleanup path terminalizes it.
 
 Macro reads still compute deduped latest observations at request/read time.
 `latest_observations(...)` uses `row_number() OVER (...)` over
 `macro_observations` in
-`src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py:91`.
+`src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:91`.
 `observations_for_concepts(...)` performs request-time dedupe and series ranking
 over `macro_observations` in
-`src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py:139`.
+`src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:139`.
 This is visible in `pg_stat_statements` as temp-block writes.
 
 The previous migration hygiene is uneven. Revision `20260526_0099` includes an
 invalid concurrent-index check in
-`src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0099_postgres_performance_queue_hard_cut.py:208`
+`src/parallax/platform/db/alembic/versions/20260526_0099_postgres_performance_queue_hard_cut.py:208`
 and analyzes hot changed tables in
-`src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0099_postgres_performance_queue_hard_cut.py:259`.
+`src/parallax/platform/db/alembic/versions/20260526_0099_postgres_performance_queue_hard_cut.py:259`.
 Revision `20260526_0100` creates concurrent indexes and analyzes
 `worker_queue_terminal_events` in
-`src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0100_worker_queue_terminal_events.py:74`,
+`src/parallax/platform/db/alembic/versions/20260526_0100_worker_queue_terminal_events.py:74`,
 but does not mirror the invalid-index assertion.
 
 Fresh live evidence from 2026-05-26 18:15 Asia/Shanghai:
@@ -321,7 +321,7 @@ Changed arrows:
 - Marks readiness false only for contract failures such as unavailable queue
   tables, manifest mismatches, DB liveness failure, or migration mismatch.
 
-`gmgn-twitter-intel ops queue-inspect`
+`parallax ops queue-inspect`
 
 - Remains read-only by default.
 - Supports filtering by worker, source table, terminal status, and normalized
@@ -329,13 +329,13 @@ Changed arrows:
 - Shows enough source-row identity for an operator to decide retry/archive/
   quarantine without raw secret leakage.
 
-`gmgn-twitter-intel ops queue-resolve`
+`parallax ops queue-resolve`
 
 - Requires `--execute` plus an operator reason.
 - Uses owner repository transitions for retry.
 - Never updates source queue tables by ad hoc SQL.
 
-`gmgn-twitter-intel ops rebuild-token-radar-rank-inputs`
+`parallax ops rebuild-token-radar-rank-inputs`
 
 - Is the only accepted path to finish compact rank-input migration.
 - Writes through the Token Radar owner path.
@@ -414,7 +414,7 @@ Macro HTTP APIs
 
 | Target | Required Check |
 | --- | --- |
-| Runtime config | `uv run gmgn-twitter-intel config` reports operator-owned config and workers paths under `~/.gmgn-twitter-intel/`, with secrets redacted. |
+| Runtime config | `uv run parallax config` reports operator-owned config and workers paths under `~/.parallax/`, with secrets redacted. |
 | Docker health | `docker compose ps --all` shows app/postgres healthy and migrate exited 0. |
 | Readiness | `curl -sS http://127.0.0.1:8765/readyz` shows `ok=true` and no contract-failure reasons. |
 | Blockers | `pg_stat_activity` and `pg_blocking_pids(...)` show no unexpected blockers or persistent `idle in transaction`. |

@@ -11,18 +11,18 @@ from unittest.mock import patch
 
 import yaml
 
-from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
-from gmgn_twitter_intel.app.surfaces.cli.parser import build_parser
-from gmgn_twitter_intel.cli import main
-from gmgn_twitter_intel.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
-from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
-from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
-from gmgn_twitter_intel.domains.evidence.services.ingest_service import IngestService
-from gmgn_twitter_intel.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
-from gmgn_twitter_intel.domains.notifications.repositories.notification_repository import NotificationRepository
-from gmgn_twitter_intel.domains.token_intel.interfaces import SignalRepository
-from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import TokenRadarProjection
-from gmgn_twitter_intel.platform.config.settings import default_workers_yaml
+from parallax.app.runtime.repository_session import repositories_for_connection
+from parallax.app.surfaces.cli.parser import build_parser
+from parallax.cli import main
+from parallax.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
+from parallax.domains.evidence.repositories.entity_repository import EntityRepository
+from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
+from parallax.domains.evidence.services.ingest_service import IngestService
+from parallax.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
+from parallax.domains.notifications.repositories.notification_repository import NotificationRepository
+from parallax.domains.token_intel.interfaces import SignalRepository
+from parallax.domains.token_intel.services.token_radar_projection import TokenRadarProjection
+from parallax.platform.config.settings import default_workers_yaml
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 from tests.postgres_test_utils import test_postgres_dsn as postgres_test_dsn
@@ -117,7 +117,7 @@ def seed_postgres(db_path: Path) -> None:
 
 
 def write_runtime_config(home: Path, *, db_path: Path, ws_token: str | None = None, llm: bool = False) -> Path:
-    app_home = home / ".gmgn-twitter-intel"
+    app_home = home / ".parallax"
     app_home.mkdir(parents=True, exist_ok=True)
     payload = {
         "handles": ["toly", "traderpow"],
@@ -265,7 +265,7 @@ class CliTests(unittest.TestCase):
     def test_config_prints_effective_runtime_settings(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
-            db_path = home / ".gmgn-twitter-intel" / "postgres_test_db"
+            db_path = home / ".parallax" / "postgres_test_db"
             write_runtime_config(home, db_path=db_path, ws_token="secret", llm=True)
             stdout = io.StringIO()
             with patch.dict("os.environ", {"HOME": str(home)}, clear=False):
@@ -279,7 +279,7 @@ class CliTests(unittest.TestCase):
         self.assertTrue(payload["data"]["api"]["ws_token_configured"])
         self.assertEqual(
             payload["data"]["config_path"],
-            str(home / ".gmgn-twitter-intel" / "config.yaml"),
+            str(home / ".parallax" / "config.yaml"),
         )
         self.assertTrue(payload["data"]["enrichment"]["llm_configured"])
         self.assertEqual(payload["data"]["enrichment"]["model"], "gpt-test")
@@ -299,7 +299,7 @@ class CliTests(unittest.TestCase):
         self.assertNotIn("embed" + "ding_dim", payload["data"]["store"])
         self.assertEqual(
             payload["data"]["workers_config_path"],
-            str(home / ".gmgn-twitter-intel" / "workers.yaml"),
+            str(home / ".parallax" / "workers.yaml"),
         )
         self.assertEqual(payload["data"]["workers"]["collector"]["mode"], "continuous")
         self.assertTrue(payload["data"]["workers"]["collector"]["enabled"])
@@ -308,7 +308,7 @@ class CliTests(unittest.TestCase):
     def test_config_redacts_notification_channel_urls(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
-            app_home = home / ".gmgn-twitter-intel"
+            app_home = home / ".parallax"
             app_home.mkdir(parents=True, exist_ok=True)
             (app_home / "config.yaml").write_text(
                 yaml.safe_dump(
@@ -346,7 +346,7 @@ class CliTests(unittest.TestCase):
     def test_recent_search_asset_flow_and_alerts_use_postgres_runtime_store(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
-            db_path = home / ".gmgn-twitter-intel" / "postgres_test_db"
+            db_path = home / ".parallax" / "postgres_test_db"
             write_runtime_config(home, db_path=db_path)
             seed_postgres(db_path)
             stdout = io.StringIO()
@@ -382,7 +382,7 @@ class CliTests(unittest.TestCase):
     def test_notification_deliveries_command_reads_delivery_audit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
-            db_path = home / ".gmgn-twitter-intel" / "postgres_test_db"
+            db_path = home / ".parallax" / "postgres_test_db"
             write_runtime_config(home, db_path=db_path)
             conn = connect_postgres_test(db_path, read_only=False)
             try:
@@ -425,7 +425,7 @@ class CliTests(unittest.TestCase):
     def test_db_audit_query_audit_and_token_radar_projection_ops_use_postgres_only(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
-            db_path = home / ".gmgn-twitter-intel" / "postgres_test_db"
+            db_path = home / ".parallax" / "postgres_test_db"
             write_runtime_config(home, db_path=db_path)
             conn = connect_postgres_test(db_path, read_only=False)
             try:
@@ -481,7 +481,7 @@ class CliTests(unittest.TestCase):
 
 
 def test_recent_defaults_to_runtime_postgres_store_without_ws_token(tmp_path, monkeypatch):
-    app_home = tmp_path / ".gmgn-twitter-intel"
+    app_home = tmp_path / ".parallax"
     db_path = app_home / "postgres_test_db"
     write_runtime_config(tmp_path, db_path=db_path)
     seed_postgres(db_path)
@@ -496,7 +496,7 @@ def test_recent_defaults_to_runtime_postgres_store_without_ws_token(tmp_path, mo
 
 
 def test_rebuild_token_radar_one_shot_acquires_projection_advisory_lock(monkeypatch):
-    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+    from parallax.app.surfaces.cli.commands import ops as ops_module
 
     events: list[tuple] = []
     configured_lock_key = 909090
@@ -580,7 +580,7 @@ def test_rebuild_token_radar_one_shot_acquires_projection_advisory_lock(monkeypa
 
 
 def test_rebuild_token_radar_one_shot_skips_when_live_worker_holds_lock(monkeypatch):
-    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+    from parallax.app.surfaces.cli.commands import ops as ops_module
 
     events: list[tuple] = []
     configured_lock_key = 909090
@@ -659,12 +659,12 @@ def test_init_creates_runtime_config(tmp_path, monkeypatch):
     payload = json.loads(stdout.getvalue())
     assert exit_code == 0
     assert payload["data"]["created"] is True
-    assert (tmp_path / ".gmgn-twitter-intel" / "config.yaml").is_file()
+    assert (tmp_path / ".parallax" / "config.yaml").is_file()
 
 
 def test_run_sync_gmgn_directory_walks_all_pages_and_upserts():
-    from gmgn_twitter_intel.app.surfaces.cli.commands.ops import _run_sync_gmgn_directory
-    from gmgn_twitter_intel.integrations.gmgn.directory_client import GmgnDirectoryEntry
+    from parallax.app.surfaces.cli.commands.ops import _run_sync_gmgn_directory
+    from parallax.integrations.gmgn.directory_client import GmgnDirectoryEntry
 
     class FakeClient:
         def __init__(self, entries):
@@ -722,7 +722,7 @@ def test_cli_ops_sync_gmgn_directory_dispatches_to_runner(monkeypatch, tmp_path)
     import io
     import json
 
-    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+    from parallax.app.surfaces.cli.commands import ops as ops_module
 
     captured = {}
 
@@ -743,7 +743,7 @@ def test_cli_ops_sync_gmgn_directory_dispatches_to_runner(monkeypatch, tmp_path)
     monkeypatch.setattr(ops_module, "_run_sync_gmgn_directory", fake_runner)
     monkeypatch.setattr(ops_module, "GmgnDirectoryClient", FakeClient)
     monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_000_000)
-    write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db")
+    write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db")
     conn = connect_postgres_test(read_only=False)
     try:
         migrate(conn)
@@ -774,8 +774,8 @@ def test_cli_ops_sync_gmgn_directory_dispatches_to_runner(monkeypatch, tmp_path)
 
 
 def test_cli_ops_factor_diagnostics_reads_latest_token_radar_current_rows(monkeypatch, tmp_path):
-    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
-    from gmgn_twitter_intel.domains.token_intel.interfaces import (
+    from parallax.app.surfaces.cli.commands import ops as ops_module
+    from parallax.domains.token_intel.interfaces import (
         TOKEN_FACTOR_SNAPSHOT_VERSION,
         TOKEN_RADAR_FACTOR_FAMILIES,
         TOKEN_RADAR_PROJECTION_VERSION,
@@ -809,7 +809,7 @@ def test_cli_ops_factor_diagnostics_reads_latest_token_radar_current_rows(monkey
     def fake_repositories(_settings):
         yield FakeRepos()
 
-    write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db")
+    write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db")
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(ops_module, "repositories", fake_repositories)
     stdout = io.StringIO()
@@ -833,7 +833,7 @@ def test_cli_ops_factor_diagnostics_reads_latest_token_radar_current_rows(monkey
 
 
 def test_cli_ops_settle_token_factors_dispatches_to_service_with_hidden_now_ms(monkeypatch, tmp_path):
-    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+    from parallax.app.surfaces.cli.commands import ops as ops_module
 
     captured = {}
 
@@ -848,7 +848,7 @@ def test_cli_ops_settle_token_factors_dispatches_to_service_with_hidden_now_ms(m
         captured.update(kwargs)
         return {"settled_count": 3, "generated_at_ms": kwargs["generated_at_ms"]}
 
-    write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db")
+    write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db")
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(ops_module, "repositories", fake_repositories)
     monkeypatch.setattr(ops_module, "settle_token_factor_scores", fake_settle_token_factor_scores)
@@ -884,7 +884,7 @@ def test_cli_ops_settle_token_factors_dispatches_to_service_with_hidden_now_ms(m
 
 
 def test_cli_ops_settle_token_factors_respects_zero_hidden_now_ms(monkeypatch, tmp_path):
-    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+    from parallax.app.surfaces.cli.commands import ops as ops_module
 
     captured = {}
 
@@ -899,7 +899,7 @@ def test_cli_ops_settle_token_factors_respects_zero_hidden_now_ms(monkeypatch, t
         captured.update(kwargs)
         return {"generated_at_ms": kwargs["generated_at_ms"]}
 
-    write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db")
+    write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db")
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(ops_module, "repositories", fake_repositories)
     monkeypatch.setattr(ops_module, "settle_token_factor_scores", fake_settle_token_factor_scores)
@@ -917,7 +917,7 @@ def test_cli_ops_settle_token_factors_respects_zero_hidden_now_ms(monkeypatch, t
 
 
 def test_cli_ops_refresh_asset_profiles_emits_skipped_without_profile_provider(monkeypatch, tmp_path):
-    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+    from parallax.app.surfaces.cli.commands import ops as ops_module
 
     captured = {}
 
@@ -934,7 +934,7 @@ def test_cli_ops_refresh_asset_profiles_emits_skipped_without_profile_provider(m
         captured["start_collector"] = start_collector
         return SimpleNamespace(dex_profile_sources=())
 
-    write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db", llm=True)
+    write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db", llm=True)
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(ops_module, "repositories", fake_repositories)
     monkeypatch.setattr(ops_module.DBPoolBundle, "create", lambda settings, *, telemetry: FakeDB())
@@ -973,7 +973,7 @@ def test_cli_ops_refresh_asset_profiles_emits_skipped_without_profile_provider(m
 
 
 def test_cli_ops_run_resolution_refresh_uses_worker_without_outer_repository_session(monkeypatch, tmp_path):
-    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+    from parallax.app.surfaces.cli.commands import ops as ops_module
 
     captured = {}
 
@@ -1021,7 +1021,7 @@ def test_cli_ops_run_resolution_refresh_uses_worker_without_outer_repository_ses
             discovery_chain_ids=("solana",),
         )
 
-    write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db")
+    write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db")
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(ops_module, "repositories", fake_repositories)
     monkeypatch.setattr(ops_module.DBPoolBundle, "create", lambda settings, *, telemetry: FakeDB())
@@ -1040,7 +1040,7 @@ def test_cli_ops_run_resolution_refresh_uses_worker_without_outer_repository_ses
 
 
 def test_cli_ops_rebuild_token_profiles_is_db_only_and_closes_db(monkeypatch, tmp_path):
-    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+    from parallax.app.surfaces.cli.commands import ops as ops_module
 
     captured: dict[str, object] = {}
     closed: list[str] = []
@@ -1090,7 +1090,7 @@ def test_cli_ops_rebuild_token_profiles_is_db_only_and_closes_db(monkeypatch, tm
     def fail_wire_asset_market_providers(*_args, **_kwargs):
         raise AssertionError("rebuild-token-profiles must not wire asset providers")
 
-    write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db", llm=True)
+    write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db", llm=True)
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(ops_module, "repositories", fake_repositories)
     monkeypatch.setattr(ops_module.DBPoolBundle, "create", lambda settings, *, telemetry: FakeDB())
@@ -1111,7 +1111,7 @@ def test_cli_ops_rebuild_token_profiles_is_db_only_and_closes_db(monkeypatch, tm
 
 
 def test_cli_ops_mirror_token_images_is_db_only_and_closes_db(monkeypatch, tmp_path):
-    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+    from parallax.app.surfaces.cli.commands import ops as ops_module
 
     captured: dict[str, object] = {}
     closed: list[str] = []
@@ -1161,7 +1161,7 @@ def test_cli_ops_mirror_token_images_is_db_only_and_closes_db(monkeypatch, tmp_p
     def fail_wire_asset_market_providers(*_args, **_kwargs):
         raise AssertionError("mirror-token-images must not wire asset providers")
 
-    write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db", llm=True)
+    write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db", llm=True)
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(ops_module, "repositories", fake_repositories)
     monkeypatch.setattr(ops_module.DBPoolBundle, "create", lambda settings, *, telemetry: FakeDB())
@@ -1183,7 +1183,7 @@ def test_cli_ops_mirror_token_images_is_db_only_and_closes_db(monkeypatch, tmp_p
 
 
 def test_cli_ops_refresh_asset_profiles_closes_db_when_provider_wiring_fails(monkeypatch, tmp_path):
-    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+    from parallax.app.surfaces.cli.commands import ops as ops_module
 
     closed: list[str] = []
 
@@ -1203,7 +1203,7 @@ def test_cli_ops_refresh_asset_profiles_closes_db_when_provider_wiring_fails(mon
     def fake_wire_asset_market_providers(settings, *, start_collector):
         raise RuntimeError("provider wiring failed")
 
-    write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db")
+    write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db")
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(ops_module.DBPoolBundle, "create", lambda settings, *, telemetry: FakeDB())
     monkeypatch.setattr(ops_module, "wire_asset_market_providers", fake_wire_asset_market_providers)
@@ -1222,8 +1222,8 @@ def test_cli_ops_sync_gmgn_directory_emits_error_on_directory_failure(monkeypatc
     import io
     import json
 
-    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
-    from gmgn_twitter_intel.integrations.gmgn.directory_client import GmgnDirectoryError
+    from parallax.app.surfaces.cli.commands import ops as ops_module
+    from parallax.integrations.gmgn.directory_client import GmgnDirectoryError
 
     def boom(*, client, repository, now_ms, max_pages):
         raise GmgnDirectoryError("Cloudflare 403")
@@ -1237,7 +1237,7 @@ def test_cli_ops_sync_gmgn_directory_emits_error_on_directory_failure(monkeypatc
 
     monkeypatch.setattr(ops_module, "_run_sync_gmgn_directory", boom)
     monkeypatch.setattr(ops_module, "GmgnDirectoryClient", FakeClient)
-    write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db")
+    write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db")
     conn = connect_postgres_test(read_only=False)
     try:
         migrate(conn)

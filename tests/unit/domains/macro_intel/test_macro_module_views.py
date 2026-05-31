@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import pytest
 
-from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_CORE_CONCEPTS
-from gmgn_twitter_intel.domains.macro_intel.services.macro_gap_payloads import build_macro_data_gaps
-from gmgn_twitter_intel.domains.macro_intel.services.macro_module_catalog import (
+from parallax.domains.macro_intel._constants import MACRO_CORE_CONCEPTS
+from parallax.domains.macro_intel.services.macro_gap_payloads import build_macro_data_gaps
+from parallax.domains.macro_intel.services.macro_module_catalog import (
     UnsupportedMacroModuleError,
     list_macro_module_configs,
 )
-from gmgn_twitter_intel.domains.macro_intel.services.macro_module_views import build_macro_module_view
-from gmgn_twitter_intel.domains.macro_intel.services.macro_regime_engine import build_macro_view_snapshot
+from parallax.domains.macro_intel.services.macro_module_views import build_macro_module_view
+from parallax.domains.macro_intel.services.macro_regime_engine import build_macro_view_snapshot
 
 NOW_MS = 1_779_000_000_000
 

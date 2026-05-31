@@ -12,11 +12,11 @@
 
 ## File Structure
 
-- Create `src/gmgn_twitter_intel/app/runtime/ops_diagnostics.py`: pure read-only diagnostics aggregator, status classification, redaction, queue allowlist query helpers.
-- Create `src/gmgn_twitter_intel/app/surfaces/api/routes_ops.py`: authenticated ops endpoints; no business logic beyond input validation and response envelopes.
-- Modify `src/gmgn_twitter_intel/app/surfaces/api/http.py`: include the ops router.
-- Modify `src/gmgn_twitter_intel/app/runtime/app.py`: add SPA fallback routes for `/ops`.
-- Modify `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`: add loose named `OpsDiagnosticsData` and `OpsQueueData` envelope models.
+- Create `src/parallax/app/runtime/ops_diagnostics.py`: pure read-only diagnostics aggregator, status classification, redaction, queue allowlist query helpers.
+- Create `src/parallax/app/surfaces/api/routes_ops.py`: authenticated ops endpoints; no business logic beyond input validation and response envelopes.
+- Modify `src/parallax/app/surfaces/api/http.py`: include the ops router.
+- Modify `src/parallax/app/runtime/app.py`: add SPA fallback routes for `/ops`.
+- Modify `src/parallax/app/surfaces/api/schemas.py`: add loose named `OpsDiagnosticsData` and `OpsQueueData` envelope models.
 - Create `tests/unit/test_ops_diagnostics.py`: unit tests for redaction, section failure isolation, queue classification, and invalid queue protection.
 - Create `tests/unit/test_api_ops_contract.py`: FastAPI contract tests for auth, diagnostics response, and queue drilldown.
 - Create `web/src/features/ops/api/useOpsDiagnosticsQuery.ts`: TanStack Query hooks for diagnostics and queue drilldown.
@@ -35,7 +35,7 @@
 ## Task 1: Backend Diagnostics Aggregator
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/app/runtime/ops_diagnostics.py`
+- Create: `src/parallax/app/runtime/ops_diagnostics.py`
 - Test: `tests/unit/test_ops_diagnostics.py`
 
 - [x] **Step 1: Write failing tests**
@@ -43,7 +43,7 @@
 ```python
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.app.runtime.ops_diagnostics import (
+from parallax.app.runtime.ops_diagnostics import (
     INVALID_QUEUE,
     ops_diagnostics_payload,
     ops_queue_payload,
@@ -101,7 +101,7 @@ def test_ops_queue_payload_marks_dead_queue_blocked():
 
 Run: `uv run pytest tests/unit/test_ops_diagnostics.py -q`
 
-Expected: fail with `ModuleNotFoundError` for `gmgn_twitter_intel.app.runtime.ops_diagnostics`.
+Expected: fail with `ModuleNotFoundError` for `parallax.app.runtime.ops_diagnostics`.
 
 - [x] **Step 3: Implement aggregator**
 
@@ -123,10 +123,10 @@ Expected: all tests pass.
 ## Task 2: Backend API Routes
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/app/surfaces/api/routes_ops.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/http.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/app.py`
+- Create: `src/parallax/app/surfaces/api/routes_ops.py`
+- Modify: `src/parallax/app/surfaces/api/http.py`
+- Modify: `src/parallax/app/surfaces/api/schemas.py`
+- Modify: `src/parallax/app/runtime/app.py`
 - Test: `tests/unit/test_api_ops_contract.py`
 
 - [x] **Step 1: Write failing API contract tests**
@@ -135,13 +135,13 @@ Expected: all tests pass.
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from gmgn_twitter_intel.app.surfaces.api.exceptions import (
+from parallax.app.surfaces.api.exceptions import (
     ApiBadRequest,
     ApiUnauthorized,
     api_bad_request_response,
     api_unauthorized_response,
 )
-from gmgn_twitter_intel.app.surfaces.api.http import create_api_router
+from parallax.app.surfaces.api.http import create_api_router
 
 
 def test_ops_diagnostics_requires_authentication():

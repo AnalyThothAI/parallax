@@ -10,9 +10,9 @@
 
 ## Background
 
-`market_tick_stream` 是 asset market 域的 Tier 1 行情流 worker。它从 token capture tier 取 hot `chain_token` 目标，调用 streaming provider 订阅 OKX DEX WS，然后把收到的行情写入 `market_ticks`，并把变化目标送入 Token Radar dirty queue。这个 worker 的 DB 写入边界在 `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_stream_worker.py:112`，订阅和接收边界在 `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_stream_worker.py:121` 和 `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_stream_worker.py:125`。
+`market_tick_stream` 是 asset market 域的 Tier 1 行情流 worker。它从 token capture tier 取 hot `chain_token` 目标，调用 streaming provider 订阅 OKX DEX WS，然后把收到的行情写入 `market_ticks`，并把变化目标送入 Token Radar dirty queue。这个 worker 的 DB 写入边界在 `src/parallax/domains/asset_market/runtime/market_tick_stream_worker.py:112`，订阅和接收边界在 `src/parallax/domains/asset_market/runtime/market_tick_stream_worker.py:121` 和 `src/parallax/domains/asset_market/runtime/market_tick_stream_worker.py:125`。
 
-OKX DEX WS client 当前负责连接、登录、订阅、接收 price-info 数据。连接使用 `websockets.connect(..., ping_interval=20, open_timeout=5, close_timeout=5)`，见 `src/gmgn_twitter_intel/integrations/okx/dex_ws_client.py:81` 到 `src/gmgn_twitter_intel/integrations/okx/dex_ws_client.py:87`。接收循环是直接 `await websocket.recv()` 后 `json.loads(str(raw_message))`，见 `src/gmgn_twitter_intel/integrations/okx/dex_ws_client.py:145` 到 `src/gmgn_twitter_intel/integrations/okx/dex_ws_client.py:160`。这里没有 OKX 文档要求的应用层字符串 `ping` / `pong` 处理，也没有 idle watchdog、`notice` 事件重连、或订阅 ack 错误分类。
+OKX DEX WS client 当前负责连接、登录、订阅、接收 price-info 数据。连接使用 `websockets.connect(..., ping_interval=20, open_timeout=5, close_timeout=5)`，见 `src/parallax/integrations/okx/dex_ws_client.py:81` 到 `src/parallax/integrations/okx/dex_ws_client.py:87`。接收循环是直接 `await websocket.recv()` 后 `json.loads(str(raw_message))`，见 `src/parallax/integrations/okx/dex_ws_client.py:145` 到 `src/parallax/integrations/okx/dex_ws_client.py:160`。这里没有 OKX 文档要求的应用层字符串 `ping` / `pong` 处理，也没有 idle watchdog、`notice` 事件重连、或订阅 ack 错误分类。
 
 2026-05-11 的既有恢复计划已经写明目标形态应是 `connect -> login -> subscribe -> ping loop -> yield price-info updates`，并要求每 25 秒发送纯文本 `"ping"`、期待 `"pong"`、在 close/timeout/notice/non-zero error 后重连，见 `docs/superpowers/plans/active/2026-05-11-okx-dex-ws-market-stream-and-radar-recovery-cn.md:371` 到 `docs/superpowers/plans/active/2026-05-11-okx-dex-ws-market-stream-and-radar-recovery-cn.md:375`。当前代码没有落完这个设计。
 
@@ -26,9 +26,9 @@ OKX WS 失败的根因不是“OKX 永久不可用”或“配置凭证错误”
 
 ## First Principles
 
-PostgreSQL facts are truth; provider raw frames are inputs, not facts. OKX WS 只能写入 `market_ticks` 这类物化事实，不能成为 Token Radar 或 asset identity 的业务真相。这个边界由 `MarketTickStreamWorker._persist_ticks()` 维护：它只在 tick 插入成功后 enqueue dirty targets，见 `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_stream_worker.py:155`。
+PostgreSQL facts are truth; provider raw frames are inputs, not facts. OKX WS 只能写入 `market_ticks` 这类物化事实，不能成为 Token Radar 或 asset identity 的业务真相。这个边界由 `MarketTickStreamWorker._persist_ticks()` 维护：它只在 tick 插入成功后 enqueue dirty targets，见 `src/parallax/domains/asset_market/runtime/market_tick_stream_worker.py:155`。
 
-Worker `run_once()` 是业务边界；外部 IO 不应让单次 run 长时间逃出 runtime supervision。`market_tick_stream` 已在订阅和 `__anext__()` 外层使用 `asyncio.wait_for`，见 `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_stream_worker.py:121` 和 `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_stream_worker.py:133`，但 provider 的 recv/close/reconnect 生命周期仍缺少更细的协议级边界。
+Worker `run_once()` 是业务边界；外部 IO 不应让单次 run 长时间逃出 runtime supervision。`market_tick_stream` 已在订阅和 `__anext__()` 外层使用 `asyncio.wait_for`，见 `src/parallax/domains/asset_market/runtime/market_tick_stream_worker.py:121` 和 `src/parallax/domains/asset_market/runtime/market_tick_stream_worker.py:133`，但 provider 的 recv/close/reconnect 生命周期仍缺少更细的协议级边界。
 
 Streaming lane 是加速路径，不是唯一真相路径。`market_tick_poll` 可以提供 Tier 2 行情事实；因此 OKX WS 不可用时，系统应进入 degraded/poll-backed 状态，而不是让整体服务失败。
 
@@ -139,7 +139,7 @@ Worker status:
 
 CLI config/status:
 
-- `uv run gmgn-twitter-intel config` remains the source of truth for config paths.
+- `uv run parallax config` remains the source of truth for config paths.
 - Diagnostics must report path/boolean/provider status only; no secret values.
 
 ## Acceptance Criteria

@@ -16,9 +16,9 @@
 ## Background
 
 This spec is based on the operator-owned live runtime config and live PostgreSQL
-data, not repository fixtures. `uv run gmgn-twitter-intel config` reported
-`config_path=/Users/qinghuan/.gmgn-twitter-intel/config.yaml` and
-`workers_config_path=/Users/qinghuan/.gmgn-twitter-intel/workers.yaml`; no
+data, not repository fixtures. `uv run parallax config` reported
+`config_path=/Users/qinghuan/.parallax/config.yaml` and
+`workers_config_path=/Users/qinghuan/.parallax/workers.yaml`; no
 secrets were printed.
 
 Signal Pulse currently has a correctly separated Kappa/CQRS shape: the worker
@@ -26,72 +26,72 @@ reads Token Radar rows, admits agent jobs, executes bounded LLM stages, and
 writes rebuildable Pulse read models. `PulseCandidateWorker.scan_triggers_once`
 iterates configured `windows` and `scopes`, reads `token_radar.latest_rows`,
 builds a `PulseCandidateContext`, and calls `_enqueue_if_due`:
-`src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py:139-201`.
+`src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:139-201`.
 `_enqueue_if_due` builds the gate and edge state, asks `PulseAdmissionPolicy`,
 claims admission budget, enqueues a `pulse_agent_jobs` row, and records the
 edge job:
-`src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py:335-418`.
+`src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:335-418`.
 
 Admission and execution are not one budget today. `PulseAdmissionPolicy` blocks
 active jobs, unchanged state, and repeated recent failure, but immediately
 admits escalation, hard-risk, and material evidence changes:
-`src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_admission_policy.py:33-53`.
+`src/parallax/domains/pulse_lab/services/pulse_admission_policy.py:33-53`.
 The repository budget counts accepted enqueue operations by candidate and target
 hour bucket in `claim_pulse_admission`:
-`src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_admission_repository.py:158-254`.
+`src/parallax/domains/pulse_lab/repositories/pulse_admission_repository.py:158-254`.
 Once a job exists, retries are controlled by the jobs repository, not by the
 admission budget. `claim_due_job` increments `attempt_count` when a pending or
 failed job is claimed:
-`src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_jobs_repository.py:137-208`.
+`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:137-208`.
 `release_running_job_for_backpressure` puts the same job back to `pending`,
 schedules it 30 seconds later by default, and decrements `attempt_count`:
-`src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_jobs_repository.py:321-357`.
+`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:321-357`.
 
 The job service inserts a `pulse_agent_runs` audit row before LLM stages run.
 It builds the evidence packet, evaluates the completeness gate, constructs
 runtime/audit metadata, inserts the run and deterministic pre-stage steps, and
 only then either returns a deterministic abstain for hard-blocked evidence or
 calls the LLM pipeline:
-`src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py:149-279`.
+`src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py:149-279`.
 When a no-start child lane backpressure exception happens after run insertion,
 the service marks the run as `skipped/backpressure_*` and releases the job for
 retry:
-`src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py:530-628`.
+`src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py:530-628`.
 
 The current Pulse agent client is a three-stage packet-only committee:
 `signal_analyst`, `bear_case`, and `risk_portfolio_judge`. It always attempts
 those stages in order when evidence is not hard-blocked:
-`src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py:181-336`.
+`src/parallax/integrations/openai_agents/pulse_decision_agent_client.py:181-336`.
 Each stage maps to a lane through `_stage_lane` and calls
 `AgentExecutionGateway.execute`:
-`src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py:420-542`.
+`src/parallax/integrations/openai_agents/pulse_decision_agent_client.py:420-542`.
 Contract-stage failures such as invalid JSON, schema invalid, and refs outside
 `allowed_evidence_refs` are converted to abstain decisions, but only after the
 model call has already happened:
-`src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py:716-742`.
+`src/parallax/integrations/openai_agents/pulse_decision_agent_client.py:716-742`.
 
 The execution gateway has in-memory lane circuit breakers. Provider, schema,
 and timeout failures call `record_lane_failure`, which opens the lane when the
 failure threshold is reached:
-`src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_gateway.py:372-453`.
+`src/parallax/integrations/openai_agents/agent_execution_gateway.py:372-453`.
 Reservation rejects an open circuit before provider execution:
-`src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_gateway.py:162-178`
+`src/parallax/integrations/openai_agents/agent_execution_gateway.py:162-178`
 and
-`src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_gateway.py:563-565`.
+`src/parallax/integrations/openai_agents/agent_execution_gateway.py:563-565`.
 This protects the provider but does not by itself prevent Pulse from claiming
 and repeatedly releasing the same DB job every 30 seconds.
 
 Write gating is intentionally strict. Claim verification failures and
 deterministic eval failures become `hidden_invalid_output`:
-`src/gmgn_twitter_intel/domains/pulse_lab/services/write_gate.py:51-69`.
+`src/parallax/domains/pulse_lab/services/write_gate.py:51-69`.
 Source-quality failures become `hidden_source_quality`:
-`src/gmgn_twitter_intel/domains/pulse_lab/services/write_gate.py:70-78`.
+`src/parallax/domains/pulse_lab/services/write_gate.py:70-78`.
 The source-quality evaluator already identifies single-author, low-effective
 author, high top-author-share, duplicate-text, and watched-only risk:
-`src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_source_quality.py:23-78`.
+`src/parallax/domains/pulse_lab/services/pulse_source_quality.py:23-78`.
 However, source quality is evaluated after the LLM stages in the current job
 service:
-`src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py:356-375`.
+`src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py:356-375`.
 
 Live data on 2026-05-21, Asia/Shanghai, showed the cost/performance leak:
 
@@ -131,12 +131,12 @@ Pulse output.
    may classify capacity and provider behavior, but Pulse admission, jobs, run
    audit, eval, and read-model writes stay in the Pulse domain. The existing
    worker and repositories already enforce this split:
-   `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py:139-201`,
-   `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_jobs_repository.py:137-208`.
+   `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:139-201`,
+   `src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:137-208`.
 
 2. **No-start backpressure is not a business attempt.** The platform already
    models `execution_started` on `AgentExecutionError`:
-   `src/gmgn_twitter_intel/platform/agent_execution.py:254-267`. If a provider
+   `src/parallax/platform/agent_execution.py:254-267`. If a provider
    was not called, Pulse may record pressure diagnostics, but must not burn paid
    retry budget or generate high-frequency skipped audit noise.
 
@@ -405,7 +405,7 @@ future offline evaluation, but it must not require a central agent-task queue.
 | Always | Preserve public write-gate semantics, evidence verification, and Pulse single-writer ownership. |
 | Always | Use Qwen3.6 for cheap research where product risk is low; reserve DeepSeek for public-eligible final judgment. |
 | Always | Produce dry-run evidence before enabling enforcement. |
-| Ask first | Changing operator-owned `~/.gmgn-twitter-intel/workers.yaml` values. |
+| Ask first | Changing operator-owned `~/.parallax/workers.yaml` values. |
 | Ask first | Introducing persistent platform-level lane cooldown storage if Pulse-owned cooldown release is not enough. |
 | Never | Print secrets, DSNs with passwords, prompts containing sensitive payloads, or raw API keys in reports. |
 | Never | Relax eval/write gates to reduce invalid output counts. |

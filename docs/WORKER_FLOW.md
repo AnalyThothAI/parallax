@@ -355,9 +355,9 @@ Use these rules when adding or reviewing a worker:
 Use this order for real-data investigations:
 
 1. Confirm runtime config.
-   Run `uv run gmgn-twitter-intel config` and confirm
+   Run `uv run parallax config` and confirm
    `config_path` and `workers_config_path` point at
-   `~/.gmgn-twitter-intel/`. Report paths and redacted booleans only.
+   `~/.parallax/`. Report paths and redacted booleans only.
 
 2. Check worker status.
    Use `/api/status`, `/readyz`, or `ops worker-status`. Look under the
@@ -473,5 +473,5 @@ Avoid these common mistakes:
 - Letting status or readiness hooks drift from `WorkerBase` call signatures.
 - Testing fake providers but not the concrete runtime provider wrapper.
 - Debugging real data from repo fixtures instead of
-  `~/.gmgn-twitter-intel/config.yaml` and `workers.yaml`.
+  `~/.parallax/config.yaml` and `workers.yaml`.
 - Updating `AGENTS.md` without mirroring `CLAUDE.md`.

@@ -48,9 +48,9 @@ This plan is only complete if the scan-based runtime paths are removed from norm
 
 - [ ] Confirm real runtime config paths before live verification:
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
-  Expected: `config_path` and `workers_config_path` point at `~/.gmgn-twitter-intel/`; secret values are not printed.
+  Expected: `config_path` and `workers_config_path` point at `~/.parallax/`; secret values are not printed.
 
 - [ ] Capture baseline live table counts and worker statuses:
   ```bash
@@ -71,13 +71,13 @@ This plan is only complete if the scan-based runtime paths are removed from norm
 
 ### Create
 
-- `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_projection_dirty_target_repository.py`
+- `src/parallax/domains/equity_event_intel/repositories/equity_projection_dirty_target_repository.py`
   Domain-owned enqueue, claim, mark-done, mark-error, queue-depth, and backfill target selection for Equity projection control rows.
-- `src/gmgn_twitter_intel/domains/news_intel/repositories/news_projection_dirty_target_repository.py`
+- `src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py`
   Domain-owned enqueue, claim, mark-done, mark-error, queue-depth, and backfill target selection for News projection control rows.
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260524_0094_projection_dirty_targets_hard_cut.py`
+- `src/parallax/platform/db/alembic/versions/20260524_0094_projection_dirty_targets_hard_cut.py`
   Creates `equity_event_projection_dirty_targets`, `news_projection_dirty_targets`, News projection payload hash/source watermark columns, and lease/due indexes.
-- `src/gmgn_twitter_intel/app/ops/projection_dirty_targets.py`
+- `src/parallax/app/ops/projection_dirty_targets.py`
   One-shot dry-run/execute command that enqueues dirty targets from existing facts for rollout repair only.
 - `tests/unit/domains/equity_event_intel/test_equity_projection_dirty_target_repository.py`
   Tests coalescing, lease claim, done, error, and queue depth.
@@ -92,33 +92,33 @@ This plan is only complete if the scan-based runtime paths are removed from norm
 
 ### Modify
 
-- `src/gmgn_twitter_intel/app/runtime/repository_session.py`
+- `src/parallax/app/runtime/repository_session.py`
   Add `equity_projection_dirty_targets` and `news_projection_dirty_targets` repository session attributes.
-- `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py`
+- `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py`
   Delete normal-use scan methods and add target-id payload loaders.
-- `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_process_worker.py`
+- `src/parallax/domains/equity_event_intel/runtime/equity_event_process_worker.py`
   Enqueue Equity dirty targets after company event, old replaced/rejected event, fact, and document writes.
-- `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_story_projection_worker.py`
+- `src/parallax/domains/equity_event_intel/runtime/equity_event_story_projection_worker.py`
   Claim story dirty targets and enqueue page/brief targets after story writes.
-- `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_brief_worker.py`
+- `src/parallax/domains/equity_event_intel/runtime/equity_event_brief_worker.py`
   Enqueue page/timeline/alert dirty targets after current brief writes.
-- `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_source_reconcile_worker.py`
+- `src/parallax/domains/equity_event_intel/runtime/equity_event_source_reconcile_worker.py`
   Enqueue calendar dirty targets after expected-event reconcile writes and page/timeline/alert/calendar targets after universe metadata changes.
-- `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_page_projection_worker.py`
+- `src/parallax/domains/equity_event_intel/runtime/equity_event_page_projection_worker.py`
   Replace summary/scan logic with dirty-target claim and target-scoped projection.
-- `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
+- `src/parallax/domains/news_intel/repositories/news_repository.py`
   Delete normal-use page scan method and add target-id payload loaders plus source/window quality input loader.
-- `src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py`
+- `src/parallax/domains/news_intel/runtime/news_fetch_worker.py`
   Enqueue News Page, Story, and Source Quality dirty targets after source metadata, provider item, news item, and old replaced item writes.
-- `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_process_worker.py`
+- `src/parallax/domains/news_intel/runtime/news_item_process_worker.py`
   Enqueue News Page, Story, and Source Quality targets after entity, mention, fact, and classification writes.
-- `src/gmgn_twitter_intel/domains/news_intel/runtime/news_story_projection_worker.py`
+- `src/parallax/domains/news_intel/runtime/news_story_projection_worker.py`
   Claim story dirty targets and enqueue page/brief targets after story writes.
-- `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py`
+- `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py`
   Enqueue News Page and Source Quality targets after brief writes.
-- `src/gmgn_twitter_intel/domains/news_intel/runtime/news_page_projection_worker.py`
+- `src/parallax/domains/news_intel/runtime/news_page_projection_worker.py`
   Claim news-item page dirty targets and project by explicit ids.
-- `src/gmgn_twitter_intel/domains/news_intel/runtime/news_source_quality_projection_worker.py`
+- `src/parallax/domains/news_intel/runtime/news_source_quality_projection_worker.py`
   Claim source/window dirty targets, aggregate only those targets, reschedule time-driven windows, and enqueue page targets when source quality status changes.
 - `tests/architecture/test_worker_runtime_contracts.py`
   Add dirty-target tables to single-writer read/control model ownership if needed.
@@ -219,10 +219,10 @@ The repository claim query uses `FOR UPDATE SKIP LOCKED` inside an update CTE an
 ## Task 1: Add Dirty Target Storage And Repositories
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260524_0094_projection_dirty_targets_hard_cut.py`
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_projection_dirty_target_repository.py`
-- Create: `src/gmgn_twitter_intel/domains/news_intel/repositories/news_projection_dirty_target_repository.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/repository_session.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260524_0094_projection_dirty_targets_hard_cut.py`
+- Create: `src/parallax/domains/equity_event_intel/repositories/equity_projection_dirty_target_repository.py`
+- Create: `src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py`
+- Modify: `src/parallax/app/runtime/repository_session.py`
 - Test: `tests/unit/domains/equity_event_intel/test_equity_projection_dirty_target_repository.py`
 - Test: `tests/unit/domains/news_intel/test_news_projection_dirty_target_repository.py`
 
@@ -265,11 +265,11 @@ The repository claim query uses `FOR UPDATE SKIP LOCKED` inside an update CTE an
 ## Task 2: Hard-Cut Equity Page, Calendar, Timeline, Alert Projection
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_page_projection_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_process_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_brief_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_source_reconcile_worker.py`
+- Modify: `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py`
+- Modify: `src/parallax/domains/equity_event_intel/runtime/equity_event_page_projection_worker.py`
+- Modify: `src/parallax/domains/equity_event_intel/runtime/equity_event_process_worker.py`
+- Modify: `src/parallax/domains/equity_event_intel/runtime/equity_event_brief_worker.py`
+- Modify: `src/parallax/domains/equity_event_intel/runtime/equity_event_source_reconcile_worker.py`
 - Test: `tests/unit/domains/equity_event_intel/test_equity_page_projection_dirty_targets.py`
 - Test: existing `tests/unit/domains/equity_event_intel/test_equity_page_projection_worker.py`
 
@@ -334,9 +334,9 @@ The repository claim query uses `FOR UPDATE SKIP LOCKED` inside an update CTE an
 ## Task 3: Hard-Cut Equity Story Projection Discovery
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_story_projection_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_process_worker.py`
+- Modify: `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py`
+- Modify: `src/parallax/domains/equity_event_intel/runtime/equity_event_story_projection_worker.py`
+- Modify: `src/parallax/domains/equity_event_intel/runtime/equity_event_process_worker.py`
 - Test: `tests/unit/domains/equity_event_intel/test_equity_story_projection_dirty_targets.py`
 
 - [ ] **Step 1: Add failing story worker tests**
@@ -360,11 +360,11 @@ The repository claim query uses `FOR UPDATE SKIP LOCKED` inside an update CTE an
 ## Task 4: Hard-Cut News Page Projection
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_process_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_page_projection_worker.py`
+- Modify: `src/parallax/domains/news_intel/repositories/news_repository.py`
+- Modify: `src/parallax/domains/news_intel/runtime/news_fetch_worker.py`
+- Modify: `src/parallax/domains/news_intel/runtime/news_item_process_worker.py`
+- Modify: `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py`
+- Modify: `src/parallax/domains/news_intel/runtime/news_page_projection_worker.py`
 - Test: `tests/unit/domains/news_intel/test_news_projection_dirty_targets.py`
 
 - [ ] **Step 1: Add failing News Page worker tests**
@@ -403,9 +403,9 @@ The repository claim query uses `FOR UPDATE SKIP LOCKED` inside an update CTE an
 ## Task 5: Hard-Cut News Story Projection Discovery
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_process_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_story_projection_worker.py`
+- Modify: `src/parallax/domains/news_intel/repositories/news_repository.py`
+- Modify: `src/parallax/domains/news_intel/runtime/news_item_process_worker.py`
+- Modify: `src/parallax/domains/news_intel/runtime/news_story_projection_worker.py`
 - Test: `tests/unit/domains/news_intel/test_news_story_projection_dirty_targets.py`
 
 - [ ] **Step 1: Add failing story worker tests**
@@ -429,11 +429,11 @@ The repository claim query uses `FOR UPDATE SKIP LOCKED` inside an update CTE an
 ## Task 6: Hard-Cut News Source Quality Projection
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_process_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_source_quality_projection_worker.py`
+- Modify: `src/parallax/domains/news_intel/repositories/news_repository.py`
+- Modify: `src/parallax/domains/news_intel/runtime/news_fetch_worker.py`
+- Modify: `src/parallax/domains/news_intel/runtime/news_item_process_worker.py`
+- Modify: `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py`
+- Modify: `src/parallax/domains/news_intel/runtime/news_source_quality_projection_worker.py`
 - Test: `tests/unit/domains/news_intel/test_news_source_quality_dirty_targets.py`
 
 - [ ] **Step 1: Add failing Source Quality tests**
@@ -472,8 +472,8 @@ The repository claim query uses `FOR UPDATE SKIP LOCKED` inside an update CTE an
 ## Task 7: Add One-Shot Repair Enqueue Command
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/app/ops/projection_dirty_targets.py`
-- Modify: CLI registration file that owns `gmgn-twitter-intel ops` commands
+- Create: `src/parallax/app/ops/projection_dirty_targets.py`
+- Modify: CLI registration file that owns `parallax ops` commands
 - Test: `tests/unit/test_ops_projection_dirty_targets.py`
 
 - [ ] **Step 1: Add failing CLI tests**
@@ -487,8 +487,8 @@ The repository claim query uses `FOR UPDATE SKIP LOCKED` inside an update CTE an
 - [ ] **Step 2: Implement repair command**
   Add:
   ```bash
-  uv run gmgn-twitter-intel ops enqueue-projection-dirty-targets --domain all --dry-run
-  uv run gmgn-twitter-intel ops enqueue-projection-dirty-targets --domain all --execute
+  uv run parallax ops enqueue-projection-dirty-targets --domain all --dry-run
+  uv run parallax ops enqueue-projection-dirty-targets --domain all --execute
   ```
   The command only enqueues dirty targets. It does not write read-model rows.
 
@@ -508,7 +508,7 @@ The repository claim query uses `FOR UPDATE SKIP LOCKED` inside an update CTE an
 - Modify: `docs/WORKER_FLOW.md`
 
 - [ ] **Step 1: Add architecture test for forbidden runtime discovery**
-  The test parses files under `src/gmgn_twitter_intel/domains/*/runtime/*projection_worker.py` and fails on calls matching:
+  The test parses files under `src/parallax/domains/*/runtime/*projection_worker.py` and fails on calls matching:
   - `list_*_for_*_projection`
   - `list_*_missing_*`
   - `list_source_quality_inputs`
@@ -551,11 +551,11 @@ The repository claim query uses `FOR UPDATE SKIP LOCKED` inside an update CTE an
   ```bash
   uv run ruff check .
   uv run mypy \
-    src/gmgn_twitter_intel/domains/equity_event_intel \
-    src/gmgn_twitter_intel/domains/news_intel \
-    src/gmgn_twitter_intel/app/ops \
-    src/gmgn_twitter_intel/app/surfaces/cli \
-    src/gmgn_twitter_intel/app/runtime/repository_session.py
+    src/parallax/domains/equity_event_intel \
+    src/parallax/domains/news_intel \
+    src/parallax/app/ops \
+    src/parallax/app/surfaces/cli \
+    src/parallax/app/runtime/repository_session.py
   ```
   Expected: both commands exit 0.
 
@@ -596,7 +596,7 @@ The repository claim query uses `FOR UPDATE SKIP LOCKED` inside an update CTE an
 
 1. Stop app workers or deploy code with workers disabled for the projection lanes during migration.
 2. Apply Alembic revision `20260524_0094`.
-3. Run `gmgn-twitter-intel ops enqueue-projection-dirty-targets --domain all --execute` once against real config.
+3. Run `parallax ops enqueue-projection-dirty-targets --domain all --execute` once against real config.
 4. Start app workers with hard-cut code.
 5. Watch `/readyz` until dirty queues drain.
 6. Confirm `pg_stat_activity` has no repeating broad projection scans.

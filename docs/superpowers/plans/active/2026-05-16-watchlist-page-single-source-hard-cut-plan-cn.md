@@ -46,23 +46,23 @@ Known-failing baseline tests:
 
 ### Backend API And Domain Reads
 
-- Modify `src/gmgn_twitter_intel/domains/watchlist_intel/repositories/watchlist_intel_repository.py:376-440`
+- Modify `src/parallax/domains/watchlist_intel/repositories/watchlist_intel_repository.py:376-440`
   - Add derived overview methods using existing facts.
   - Keep raw SQL in the repository.
   - Reuse `EventTokenProjectionQuery(self.conn).for_events(...)` for resolved token projection.
   - Extract shared row decoding/aggregation helpers so timeline and overview do not duplicate token/candidate parsing.
 
-- Modify `src/gmgn_twitter_intel/domains/watchlist_intel/services/handle_summary_service.py:177-223`
+- Modify `src/parallax/domains/watchlist_intel/services/handle_summary_service.py:177-223`
   - Extend `WatchlistHandleReadService` with handle-list overview and selected-handle overview methods.
   - Keep summary/timeline methods intact.
   - Validate configured handle membership through the same `_configured_handle(...)` path.
 
-- Modify `src/gmgn_twitter_intel/app/surfaces/api/schemas.py:225-244`
+- Modify `src/parallax/app/surfaces/api/schemas.py:225-244`
   - Add `WatchlistHandleOverviewData`.
   - Add `WatchlistHandlesOverviewData`.
   - Use typed Pydantic submodels for overview query, metrics, clusters, and handle rows.
 
-- Modify `src/gmgn_twitter_intel/app/surfaces/api/http.py:132-186`
+- Modify `src/parallax/app/surfaces/api/http.py:132-186`
   - Add authenticated `GET /api/watchlist/handles/overview`.
   - Add authenticated `GET /api/watchlist/handle/{handle}/overview`.
   - Use the same handle normalization and unknown-handle 404 behavior as summary/timeline.
@@ -295,10 +295,10 @@ Expected: fail because overview endpoints and repository methods do not exist ye
 ## Task 2: Backend GREEN Implementation
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/watchlist_intel/repositories/watchlist_intel_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/watchlist_intel/services/handle_summary_service.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/http.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
+- Modify: `src/parallax/domains/watchlist_intel/repositories/watchlist_intel_repository.py`
+- Modify: `src/parallax/domains/watchlist_intel/services/handle_summary_service.py`
+- Modify: `src/parallax/app/surfaces/api/http.py`
+- Modify: `src/parallax/app/surfaces/api/schemas.py`
 - Regenerate: `docs/generated/openapi.json`, `web/src/lib/types/openapi.ts`
 
 - [ ] **Step 1: Add repository overview methods**
@@ -370,7 +370,7 @@ Expected changed files:
 
 ```bash
 uv run pytest tests/integration/watchlist/test_watchlist_overview_api.py tests/integration/watchlist/test_watchlist_intel_api.py tests/integration/watchlist/test_watchlist_intel_repository.py -q
-uv run ruff check src/gmgn_twitter_intel/domains/watchlist_intel src/gmgn_twitter_intel/app/surfaces/api tests/integration/watchlist
+uv run ruff check src/parallax/domains/watchlist_intel src/parallax/app/surfaces/api tests/integration/watchlist
 ```
 
 Expected: pass.
@@ -687,7 +687,7 @@ Expected: pass.
 
 ```bash
 uv run pytest tests/integration/watchlist/ tests/unit/domains/watchlist_intel/ tests/integration/test_api_http.py -q
-uv run ruff check src/gmgn_twitter_intel/domains/watchlist_intel src/gmgn_twitter_intel/app/surfaces/api tests/integration/watchlist
+uv run ruff check src/parallax/domains/watchlist_intel src/parallax/app/surfaces/api tests/integration/watchlist
 ```
 
 - [ ] **Step 2: Run frontend verification**

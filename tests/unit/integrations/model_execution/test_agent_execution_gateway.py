@@ -6,8 +6,8 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from gmgn_twitter_intel.integrations.model_execution.execution_gateway import AgentExecutionGateway
-from gmgn_twitter_intel.platform.agent_execution import (
+from parallax.integrations.model_execution.execution_gateway import AgentExecutionGateway
+from parallax.platform.agent_execution import (
     AgentCapacityReservation,
     AgentExecutionCancelled,
     AgentExecutionError,
@@ -97,7 +97,7 @@ def patch_litellm(monkeypatch: pytest.MonkeyPatch):
         return await completions.create(**kwargs)
 
     monkeypatch.setattr(
-        "gmgn_twitter_intel.integrations.model_execution.structured_json_strategy.litellm.acompletion",
+        "parallax.integrations.model_execution.structured_json_strategy.litellm.acompletion",
         fake_acompletion,
     )
 

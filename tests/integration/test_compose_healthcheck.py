@@ -11,4 +11,4 @@ def test_container_healthcheck_uses_liveness_endpoint():
 def test_postgres_is_bound_to_loopback_for_host_cli():
     compose_yaml = Path("compose.yaml").read_text()
 
-    assert '"${GMGN_POSTGRES_HOST:-127.0.0.1}:${GMGN_POSTGRES_PORT:-56532}:5432"' in compose_yaml
+    assert '"${PARALLAX_POSTGRES_HOST:-127.0.0.1}:${PARALLAX_POSTGRES_PORT:-56532}:5432"' in compose_yaml

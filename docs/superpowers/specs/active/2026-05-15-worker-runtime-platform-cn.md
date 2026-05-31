@@ -24,7 +24,7 @@
 
 ### 当前事实
 
-`gmgn-twitter-intel` 是单 ASGI 进程的 Kappa/CQRS 服务，运行 12 个长期 asyncio worker 任务（含 GMGN WS collector）+ 1 个 per-frame transactional `IngestService`（不是后台任务但本 spec 也作为合规参照），共享三个 psycopg 连接池（`api_db_pool` / `worker_db_pool` / `wake_db_pool`，`app.py:241-269`）。worker 清单见 `docs/WORKERS.md:17-35`；`WORKERS.md:33-35` 明确 `IngestService` 是事务性、不是长期任务。
+`parallax` 是单 ASGI 进程的 Kappa/CQRS 服务，运行 12 个长期 asyncio worker 任务（含 GMGN WS collector）+ 1 个 per-frame transactional `IngestService`（不是后台任务但本 spec 也作为合规参照），共享三个 psycopg 连接池（`api_db_pool` / `worker_db_pool` / `wake_db_pool`，`app.py:241-269`）。worker 清单见 `docs/WORKERS.md:17-35`；`WORKERS.md:33-35` 明确 `IngestService` 是事务性、不是长期任务。
 
 2026-05-15 的 worker 全审计（综合分 6.4/10）揭示以下系统级事实：
 
@@ -417,11 +417,11 @@ OTel messaging semantic conventions：每 iteration 一个 process span，attrib
 
 ### CLI 暴露
 
-`gmgn-twitter-intel ops worker status` — 一次性打印所有 worker 的健康度，离线运维工具。不替换 `/readyz`。
+`parallax ops worker status` — 一次性打印所有 worker 的健康度，离线运维工具。不替换 `/readyz`。
 
 ### 配置文件
 
-`~/.gmgn-twitter-intel/workers.yaml`（新文件，与 `config.yaml` 并存）。**不在 `config.yaml` 内合并**，避免 schema 膨胀。`load_settings()` 合并 `config.yaml + workers.yaml + env override`。这会同步修改 `docs/RELIABILITY.md` 当前“`config.yaml` 是唯一应用配置源”的表述：hard cut 后 `config.yaml` 是应用/provider 配置源，`workers.yaml` 是 worker runtime 配置源。
+`~/.parallax/workers.yaml`（新文件，与 `config.yaml` 并存）。**不在 `config.yaml` 内合并**，避免 schema 膨胀。`load_settings()` 合并 `config.yaml + workers.yaml + env override`。这会同步修改 `docs/RELIABILITY.md` 当前“`config.yaml` 是唯一应用配置源”的表述：hard cut 后 `config.yaml` 是应用/provider 配置源，`workers.yaml` 是 worker runtime 配置源。
 
 ---
 

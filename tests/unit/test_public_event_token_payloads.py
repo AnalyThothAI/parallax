@@ -3,9 +3,9 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
-from gmgn_twitter_intel.app.surfaces.api.routes_events import _payload_for_event as http_payload_for_event
-from gmgn_twitter_intel.app.surfaces.api.routes_events import _recent_data
-from gmgn_twitter_intel.app.surfaces.api.ws import PublicWebSocketHub
+from parallax.app.surfaces.api.routes_events import _payload_for_event as http_payload_for_event
+from parallax.app.surfaces.api.routes_events import _recent_data
+from parallax.app.surfaces.api.ws import PublicWebSocketHub
 
 
 def test_http_event_payload_uses_projected_event_tokens() -> None:

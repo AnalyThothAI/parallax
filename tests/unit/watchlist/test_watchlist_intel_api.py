@@ -1,15 +1,15 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from gmgn_twitter_intel.app.surfaces.api.exceptions import (
+from parallax.app.surfaces.api.exceptions import (
     ApiBadRequest,
     ApiUnauthorized,
     api_bad_request_response,
     api_unauthorized_response,
 )
-from gmgn_twitter_intel.app.surfaces.api.http import create_api_router
-from gmgn_twitter_intel.domains.watchlist_intel.types import encode_watchlist_timeline_cursor
-from gmgn_twitter_intel.platform.config.settings import Settings
+from parallax.app.surfaces.api.http import create_api_router
+from parallax.domains.watchlist_intel.types import encode_watchlist_timeline_cursor
+from parallax.platform.config.settings import Settings
 
 
 def test_watchlist_handle_timeline_endpoint_validates_cursor_and_scope():
@@ -62,7 +62,7 @@ def test_watchlist_handle_overview_endpoint_requires_configured_handle():
 
 class FakeWatchlistIntelRepository:
     def timeline(self, *, handle, scope, cursor, limit):
-        from gmgn_twitter_intel.domains.watchlist_intel.types import decode_watchlist_timeline_cursor
+        from parallax.domains.watchlist_intel.types import decode_watchlist_timeline_cursor
 
         if cursor:
             decode_watchlist_timeline_cursor(cursor)

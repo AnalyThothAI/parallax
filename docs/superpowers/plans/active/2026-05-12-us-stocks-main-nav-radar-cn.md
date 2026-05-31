@@ -14,7 +14,7 @@
 
 ## Current Baseline
 
-- `make check` 在新 worktree 的基线已经失败，原因是 3 个既有文件需要格式化：`src/gmgn_twitter_intel/app/runtime/app.py`、`src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`、`tests/integration/test_resolution_refresh_worker.py`。
+- `make check` 在新 worktree 的基线已经失败，原因是 3 个既有文件需要格式化：`src/parallax/app/runtime/app.py`、`src/parallax/domains/token_intel/read_models/asset_flow_service.py`、`tests/integration/test_resolution_refresh_worker.py`。
 - `/api/token-radar` 只读 `AssetFlowService`，而 `TokenRadarSourceQuery` 已经把 `MarketInstrument` 排除在 token radar 投影之外。
 - US equity universe、`MarketInstrument` resolver、marketlane quote 能力已经存在。
 
@@ -23,7 +23,7 @@
 Create `StocksRadarService` for current `MarketInstrument` + `CONFIRMED_US_EQUITY` rows.
 
 Implementation:
-- Add `src/gmgn_twitter_intel/domains/token_intel/read_models/stocks_radar_service.py`.
+- Add `src/parallax/domains/token_intel/read_models/stocks_radar_service.py`.
 - Query `events -> token_intents -> token_intent_resolutions -> us_equity_symbols`.
 - Filter:
   - `token_intent_resolutions.is_current = true`
@@ -51,7 +51,7 @@ Tests:
 Add a narrow adapter instead of shelling out.
 
 Implementation:
-- Add `src/gmgn_twitter_intel/integrations/marketlane/quote_provider.py`.
+- Add `src/parallax/integrations/marketlane/quote_provider.py`.
 - Provide an async `quote(symbol)` method backed by `marketlane.client.AsyncMarketlaneClient`.
 - Package `marketlane-cli` from `https://github.com/AnalyThothAI/marketlane-cli` through `uv`, not from a local filesystem path.
 - Add short in-process TTL caching and per-symbol timeout.

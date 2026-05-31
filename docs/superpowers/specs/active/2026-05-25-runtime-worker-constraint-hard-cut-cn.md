@@ -414,7 +414,7 @@ For each converted worker family:
 5. Delete old broad discovery methods and test fakes.
 6. Add bounded ops repair.
 7. Run targeted unit/integration/architecture tests.
-8. Run `uv run ruff check src/gmgn_twitter_intel tests`.
+8. Run `uv run ruff check src/parallax tests`.
 9. Rebuild Docker, apply migrations, verify `/readyz`, queue counts,
    `pg_stat_activity`, and `docker stats`.
 

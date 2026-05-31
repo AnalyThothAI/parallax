@@ -76,10 +76,10 @@ GMGN frame
 
 当前文件：
 
-- `src/gmgn_twitter_intel/pipeline/entity_extractor.py`
-- `src/gmgn_twitter_intel/pipeline/tweet_text.py`
-- `src/gmgn_twitter_intel/pipeline/asset_mention_builder.py`
-- `src/gmgn_twitter_intel/pipeline/ingest_service.py`
+- `src/parallax/pipeline/entity_extractor.py`
+- `src/parallax/pipeline/tweet_text.py`
+- `src/parallax/pipeline/asset_mention_builder.py`
+- `src/parallax/pipeline/ingest_service.py`
 
 观察：
 
@@ -98,9 +98,9 @@ V3 影响：
 
 当前文件：
 
-- `src/gmgn_twitter_intel/pipeline/asset_resolver.py`
-- `src/gmgn_twitter_intel/pipeline/asset_resolution_worker.py`
-- `src/gmgn_twitter_intel/storage/asset_repository.py`
+- `src/parallax/pipeline/asset_resolver.py`
+- `src/parallax/pipeline/asset_resolution_worker.py`
+- `src/parallax/storage/asset_repository.py`
 
 观察：
 
@@ -120,11 +120,11 @@ V3 影响：
 
 当前文件：
 
-- `src/gmgn_twitter_intel/pipeline/asset_market_sync.py`
-- `src/gmgn_twitter_intel/pipeline/asset_market_sync_worker.py`
-- `src/gmgn_twitter_intel/retrieval/asset_flow_service.py`
-- `src/gmgn_twitter_intel/storage/asset_repository.py`
-- `src/gmgn_twitter_intel/storage/projection_repository.py`
+- `src/parallax/pipeline/asset_market_sync.py`
+- `src/parallax/pipeline/asset_market_sync_worker.py`
+- `src/parallax/retrieval/asset_flow_service.py`
+- `src/parallax/storage/asset_repository.py`
+- `src/parallax/storage/projection_repository.py`
 
 观察：
 
@@ -143,10 +143,10 @@ V3 影响：
 
 当前文件：
 
-- `src/gmgn_twitter_intel/api/http.py`
-- `src/gmgn_twitter_intel/api/ws.py`
-- `src/gmgn_twitter_intel/api/app.py`
-- `src/gmgn_twitter_intel/pipeline/notification_rules.py`
+- `src/parallax/api/http.py`
+- `src/parallax/api/ws.py`
+- `src/parallax/api/app.py`
+- `src/parallax/pipeline/notification_rules.py`
 
 观察：
 
@@ -232,7 +232,7 @@ Exit:
 
 ### Task 2: Add V3 Schema Migration
 
-- [ ] Create `src/gmgn_twitter_intel/storage/alembic/versions/20260507_0006_token_radar_v3_intents.py`.
+- [ ] Create `src/parallax/storage/alembic/versions/20260507_0006_token_radar_v3_intents.py`.
 - [ ] Add columns to `event_entities`:
   - `text_surface TEXT`
   - `span_start BIGINT`
@@ -276,13 +276,13 @@ uv run pytest tests/test_postgres_schema.py tests/test_postgres_schema_runtime.p
 
 ### Task 3: Split Repositories By Context
 
-- [ ] Create `src/gmgn_twitter_intel/storage/token_evidence_repository.py`.
-- [ ] Create `src/gmgn_twitter_intel/storage/token_intent_repository.py`.
-- [ ] Create `src/gmgn_twitter_intel/storage/intent_resolution_repository.py`.
-- [ ] Create `src/gmgn_twitter_intel/storage/market_repository.py`.
-- [ ] Create `src/gmgn_twitter_intel/storage/token_radar_repository.py`.
-- [ ] Create `src/gmgn_twitter_intel/storage/asset_signal_repository.py`.
-- [ ] Update `src/gmgn_twitter_intel/storage/repository_session.py` to expose:
+- [ ] Create `src/parallax/storage/token_evidence_repository.py`.
+- [ ] Create `src/parallax/storage/token_intent_repository.py`.
+- [ ] Create `src/parallax/storage/intent_resolution_repository.py`.
+- [ ] Create `src/parallax/storage/market_repository.py`.
+- [ ] Create `src/parallax/storage/token_radar_repository.py`.
+- [ ] Create `src/parallax/storage/asset_signal_repository.py`.
+- [ ] Update `src/parallax/storage/repository_session.py` to expose:
   - `token_evidence`
   - `token_intents`
   - `intent_resolutions`
@@ -321,7 +321,7 @@ uv run pytest tests/test_token_evidence_repository.py tests/test_token_intent_re
 
 ### Task 4: Make Entity Extraction Span-Aware
 
-- [ ] Add a `TextSurface` dataclass in `src/gmgn_twitter_intel/pipeline/entity_extractor.py`:
+- [ ] Add a `TextSurface` dataclass in `src/parallax/pipeline/entity_extractor.py`:
 
 ```python
 @dataclass(frozen=True, slots=True)
@@ -342,8 +342,8 @@ class TextSurface:
   - local group key is `"{surface}:{sentence_id}"`.
 - [ ] Add `extract_entities_from_surfaces(surfaces: Sequence[TextSurface])`.
 - [ ] Keep `extract_entities(text)` as a non-runtime wrapper used only by old tests and debug commands.
-- [ ] Update `src/gmgn_twitter_intel/storage/entity_repository.py` to persist span fields.
-- [ ] Update `_entity_payload()` in `src/gmgn_twitter_intel/pipeline/ingest_service.py`.
+- [ ] Update `src/parallax/storage/entity_repository.py` to persist span fields.
+- [ ] Update `_entity_payload()` in `src/parallax/pipeline/ingest_service.py`.
 
 Tests:
 
@@ -359,7 +359,7 @@ uv run pytest tests/test_entity_extractor.py
 
 ### Task 5: Build Token Evidence
 
-- [ ] Create `src/gmgn_twitter_intel/pipeline/token_evidence_builder.py`.
+- [ ] Create `src/parallax/pipeline/token_evidence_builder.py`.
 - [ ] Convert span-aware entities to token evidence:
   - CA -> `evidence_type="ca"`, `strength="strong"`.
   - cashtag -> `evidence_type="cashtag"`, `strength="medium"`.
@@ -383,7 +383,7 @@ uv run pytest tests/test_token_evidence_builder.py
 
 ### Task 6: Build Event Token Intents
 
-- [ ] Create `src/gmgn_twitter_intel/pipeline/token_intent_builder.py`.
+- [ ] Create `src/parallax/pipeline/token_intent_builder.py`.
 - [ ] Implement deterministic clustering:
   - GMGN payload chain/address creates one intent.
   - CA-only creates one intent per CA.
@@ -407,7 +407,7 @@ uv run pytest tests/test_token_intent_builder.py tests/golden/test_token_radar_v
 
 ### Task 7: Implement Intent Resolver V3
 
-- [ ] Create `src/gmgn_twitter_intel/pipeline/token_intent_resolver.py`.
+- [ ] Create `src/parallax/pipeline/token_intent_resolver.py`.
 - [ ] Resolver input is one intent plus its evidence rows.
 - [ ] Implement decision priority:
   - GMGN payload chain/address.
@@ -437,7 +437,7 @@ uv run pytest tests/test_token_intent_resolver.py tests/golden/test_token_radar_
 
 ### Task 8: Rewrite Ingest To Intent Runtime
 
-- [ ] Update `src/gmgn_twitter_intel/pipeline/ingest_service.py`.
+- [ ] Update `src/parallax/pipeline/ingest_service.py`.
 - [ ] Build surfaces:
   - `primary` from `event.content.text`.
   - `reference` from `event.reference.text`.
@@ -469,7 +469,7 @@ uv run pytest tests/test_ingest_service.py tests/test_api_websocket.py tests/gol
 
 ### Task 9: Provider Observation And Re-Resolution Worker
 
-- [ ] Create `src/gmgn_twitter_intel/pipeline/token_resolution_worker.py`.
+- [ ] Create `src/parallax/pipeline/token_resolution_worker.py`.
 - [ ] Replace mention-oriented jobs with intent-oriented jobs:
   - `intent_exact_contract_resolution`
   - `intent_symbol_resolution`
@@ -501,7 +501,7 @@ uv run pytest tests/test_token_resolution_worker.py tests/test_asset_resolution_
 
 ### Task 10: Market Semantics And Venue-Specific Tradeability
 
-- [ ] Create `src/gmgn_twitter_intel/pipeline/asset_market_observer.py` or extend `asset_market_sync.py` through `MarketRepository`.
+- [ ] Create `src/parallax/pipeline/asset_market_observer.py` or extend `asset_market_sync.py` through `MarketRepository`.
 - [ ] Keep OKX CEX universe sync but write through `MarketRepository`.
 - [ ] Keep OKX DEX price refresh but write provider observations and market snapshots through `MarketRepository`.
 - [ ] Add `market_status_for_resolution()`:
@@ -534,8 +534,8 @@ uv run pytest tests/test_market_status_v3.py tests/test_tradeability_scoring.py 
 
 ### Task 11: Implement Token Radar Projection V3
 
-- [ ] Create `src/gmgn_twitter_intel/pipeline/token_radar_projection.py`.
-- [ ] Create `src/gmgn_twitter_intel/retrieval/token_radar_service.py`.
+- [ ] Create `src/parallax/pipeline/token_radar_projection.py`.
+- [ ] Create `src/parallax/retrieval/token_radar_service.py`.
 - [ ] Projection builder reads:
   - active token intents.
   - active token intent resolutions.
@@ -582,7 +582,7 @@ uv run pytest tests/test_token_radar_projection.py tests/test_opportunity_scorin
 
 ### Task 12: Hard-Cut HTTP And WS Contracts
 
-- [ ] Update `src/gmgn_twitter_intel/retrieval/asset_flow_service.py` to become a wrapper over `TokenRadarService` or replace its use with `TokenRadarService`.
+- [ ] Update `src/parallax/retrieval/asset_flow_service.py` to become a wrapper over `TokenRadarService` or replace its use with `TokenRadarService`.
 - [ ] `/api/asset-flow` reads `token_radar_rows`.
 - [ ] Response projection:
   - `version="token-radar-v3"`
@@ -664,7 +664,7 @@ npm test -- --run
 
 ### Task 14: Notifications Read Server Decisions
 
-- [ ] Update `src/gmgn_twitter_intel/pipeline/notification_rules.py`.
+- [ ] Update `src/parallax/pipeline/notification_rules.py`.
 - [ ] Delete `_asset_scores()` from the notification runtime path.
 - [ ] Notification rules read from `token_radar_rows.score_json` and `decision`.
 - [ ] Rules can filter on:
@@ -688,7 +688,7 @@ uv run pytest tests/test_notification_rules.py
 
 ### Task 15: Asset/Venue Outcome Closure
 
-- [ ] Create `src/gmgn_twitter_intel/pipeline/asset_signal_settlement.py`.
+- [ ] Create `src/parallax/pipeline/asset_signal_settlement.py`.
 - [ ] Create `AssetSignalRepository`.
 - [ ] Projection writes `asset_signal_snapshots` for rows that cross configured decision thresholds.
 - [ ] Settlement selects entry/exit from `asset_market_snapshots` by `asset_id + primary_venue_id`.
@@ -713,10 +713,10 @@ uv run pytest tests/test_asset_signal_settlement.py tests/test_account_quality_s
 
 ### Task 16: Quarantine Old Runtime Paths
 
-- [ ] Update `src/gmgn_twitter_intel/api/app.py`:
+- [ ] Update `src/parallax/api/app.py`:
   - remove `TokenRepository` and `TokenSignalRepository` from normal runtime dataclass fields.
   - mount old repos only for archive/debug routes when explicitly invoked.
-- [ ] Update `src/gmgn_twitter_intel/storage/repository_session.py`:
+- [ ] Update `src/parallax/storage/repository_session.py`:
   - V3 normal session exposes V3 repositories.
   - old token repos are not available to hot path services.
 - [ ] Move `MarketObservationWorker` old token-market path to archive/debug package or remove from runtime task startup.
@@ -732,10 +732,10 @@ def test_token_radar_v3_runtime_does_not_import_old_token_market_paths():
         "token_signal_snapshots",
     }
     runtime_files = [
-        ROOT / "src/gmgn_twitter_intel/api/app.py",
-        ROOT / "src/gmgn_twitter_intel/api/http.py",
-        ROOT / "src/gmgn_twitter_intel/pipeline/ingest_service.py",
-        ROOT / "src/gmgn_twitter_intel/pipeline/token_radar_projection.py",
+        ROOT / "src/parallax/api/app.py",
+        ROOT / "src/parallax/api/http.py",
+        ROOT / "src/parallax/pipeline/ingest_service.py",
+        ROOT / "src/parallax/pipeline/token_radar_projection.py",
     ]
     text = "\n".join(path.read_text() for path in runtime_files)
     for item in forbidden:
@@ -750,7 +750,7 @@ uv run pytest tests/test_project_structure.py
 
 ### Task 17: CLI And Ops Trace
 
-- [ ] Add CLI commands in `src/gmgn_twitter_intel/cli.py`:
+- [ ] Add CLI commands in `src/parallax/cli.py`:
   - `ops audit-token-intent --event-id ...`
   - `ops audit-token-intent --intent-id ...`
   - `ops token-intent-health --window 24h`
@@ -817,8 +817,8 @@ npm run build
 
 ```bash
 rg "assetFlowRowToTokenItem|opportunityScore|const decision: Decision" web/src
-rg "asset_attributions" src/gmgn_twitter_intel/retrieval src/gmgn_twitter_intel/api src/gmgn_twitter_intel/pipeline
-rg "TokenRepository|TokenSignalRepository|token_market_snapshots|token_signal_snapshots" src/gmgn_twitter_intel
+rg "asset_attributions" src/parallax/retrieval src/parallax/api src/parallax/pipeline
+rg "TokenRepository|TokenSignalRepository|token_market_snapshots|token_signal_snapshots" src/parallax
 ```
 
 Acceptable `rg` results:
@@ -863,23 +863,23 @@ The implementation is not complete until all gates pass:
 
 Create:
 
-- `src/gmgn_twitter_intel/storage/alembic/versions/20260507_0006_token_radar_v3_intents.py`
-- `src/gmgn_twitter_intel/storage/token_evidence_repository.py`
-- `src/gmgn_twitter_intel/storage/token_intent_repository.py`
-- `src/gmgn_twitter_intel/storage/intent_resolution_repository.py`
-- `src/gmgn_twitter_intel/storage/market_repository.py`
-- `src/gmgn_twitter_intel/storage/token_radar_repository.py`
-- `src/gmgn_twitter_intel/storage/asset_signal_repository.py`
-- `src/gmgn_twitter_intel/pipeline/token_evidence_builder.py`
-- `src/gmgn_twitter_intel/pipeline/token_intent_builder.py`
-- `src/gmgn_twitter_intel/pipeline/token_intent_resolver.py`
-- `src/gmgn_twitter_intel/pipeline/token_resolution_worker.py`
-- `src/gmgn_twitter_intel/pipeline/asset_market_observer.py`
-- `src/gmgn_twitter_intel/pipeline/token_radar_projection.py`
-- `src/gmgn_twitter_intel/pipeline/asset_signal_settlement.py`
-- `src/gmgn_twitter_intel/retrieval/token_radar_service.py`
-- `src/gmgn_twitter_intel/retrieval/token_intent_search_service.py`
-- `src/gmgn_twitter_intel/retrieval/token_intent_trace_service.py`
+- `src/parallax/storage/alembic/versions/20260507_0006_token_radar_v3_intents.py`
+- `src/parallax/storage/token_evidence_repository.py`
+- `src/parallax/storage/token_intent_repository.py`
+- `src/parallax/storage/intent_resolution_repository.py`
+- `src/parallax/storage/market_repository.py`
+- `src/parallax/storage/token_radar_repository.py`
+- `src/parallax/storage/asset_signal_repository.py`
+- `src/parallax/pipeline/token_evidence_builder.py`
+- `src/parallax/pipeline/token_intent_builder.py`
+- `src/parallax/pipeline/token_intent_resolver.py`
+- `src/parallax/pipeline/token_resolution_worker.py`
+- `src/parallax/pipeline/asset_market_observer.py`
+- `src/parallax/pipeline/token_radar_projection.py`
+- `src/parallax/pipeline/asset_signal_settlement.py`
+- `src/parallax/retrieval/token_radar_service.py`
+- `src/parallax/retrieval/token_intent_search_service.py`
+- `src/parallax/retrieval/token_intent_trace_service.py`
 - `tests/factories_token_radar_v3.py`
 - `tests/golden/test_token_radar_v3_corpus.py`
 - `tests/test_token_evidence_builder.py`
@@ -892,22 +892,22 @@ Create:
 
 Modify:
 
-- `src/gmgn_twitter_intel/pipeline/entity_extractor.py`
-- `src/gmgn_twitter_intel/pipeline/ingest_service.py`
-- `src/gmgn_twitter_intel/storage/entity_repository.py`
-- `src/gmgn_twitter_intel/storage/asset_repository.py`
-- `src/gmgn_twitter_intel/storage/repository_session.py`
-- `src/gmgn_twitter_intel/retrieval/asset_flow_service.py`
-- `src/gmgn_twitter_intel/retrieval/asset_posts_service.py`
-- `src/gmgn_twitter_intel/retrieval/asset_social_timeline_service.py`
-- `src/gmgn_twitter_intel/retrieval/asset_search_service.py`
-- `src/gmgn_twitter_intel/api/http.py`
-- `src/gmgn_twitter_intel/api/ws.py`
-- `src/gmgn_twitter_intel/api/app.py`
-- `src/gmgn_twitter_intel/pipeline/asset_market_sync.py`
-- `src/gmgn_twitter_intel/pipeline/asset_market_sync_worker.py`
-- `src/gmgn_twitter_intel/pipeline/notification_rules.py`
-- `src/gmgn_twitter_intel/cli.py`
+- `src/parallax/pipeline/entity_extractor.py`
+- `src/parallax/pipeline/ingest_service.py`
+- `src/parallax/storage/entity_repository.py`
+- `src/parallax/storage/asset_repository.py`
+- `src/parallax/storage/repository_session.py`
+- `src/parallax/retrieval/asset_flow_service.py`
+- `src/parallax/retrieval/asset_posts_service.py`
+- `src/parallax/retrieval/asset_social_timeline_service.py`
+- `src/parallax/retrieval/asset_search_service.py`
+- `src/parallax/api/http.py`
+- `src/parallax/api/ws.py`
+- `src/parallax/api/app.py`
+- `src/parallax/pipeline/asset_market_sync.py`
+- `src/parallax/pipeline/asset_market_sync_worker.py`
+- `src/parallax/pipeline/notification_rules.py`
+- `src/parallax/cli.py`
 - `web/src/api/types.ts`
 - `web/src/App.tsx`
 - `web/src/components/TokenRadarRow.tsx`
@@ -919,10 +919,10 @@ Modify:
 
 Archive or remove from live runtime:
 
-- `src/gmgn_twitter_intel/pipeline/asset_mention_builder.py`
-- mention-level Radar use in `src/gmgn_twitter_intel/pipeline/asset_attribution.py`
-- live worker use of `src/gmgn_twitter_intel/pipeline/market_observation_worker.py`
-- live settlement use of `src/gmgn_twitter_intel/pipeline/token_signal_settlement.py`
+- `src/parallax/pipeline/asset_mention_builder.py`
+- mention-level Radar use in `src/parallax/pipeline/asset_attribution.py`
+- live worker use of `src/parallax/pipeline/market_observation_worker.py`
+- live settlement use of `src/parallax/pipeline/token_signal_settlement.py`
 - live endpoint use of old token signal commands.
 
 ## Final Readiness Check
@@ -940,9 +940,9 @@ npm run build
 Use this product trace before shipping:
 
 ```bash
-uv run gmgn-twitter-intel ops audit-token-intent --event-id event-versa
-uv run gmgn-twitter-intel ops rebuild-token-radar --window 1h --scope all
-uv run gmgn-twitter-intel asset-flow --window 1h --scope all --limit 20
+uv run parallax ops audit-token-intent --event-id event-versa
+uv run parallax ops rebuild-token-radar --window 1h --scope all
+uv run parallax asset-flow --window 1h --scope all --limit 20
 ```
 
 Expected VERSA result:

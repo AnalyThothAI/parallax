@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src" / "gmgn_twitter_intel"
+SRC = ROOT / "src" / "parallax"
 
 
 def test_search_read_paths_do_not_reach_runtime_asset_market_providers() -> None:

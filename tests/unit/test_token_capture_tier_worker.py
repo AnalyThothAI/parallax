@@ -5,16 +5,16 @@ from decimal import Decimal
 
 import yaml
 
-from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
-from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
-from gmgn_twitter_intel.domains.asset_market.repositories.registry_repository import RegistryRepository
-from gmgn_twitter_intel.domains.asset_market.runtime.token_capture_tier_worker import (
+from parallax.app.runtime.worker_base import WorkerBase
+from parallax.app.runtime.worker_result import WorkerResult
+from parallax.domains.asset_market.repositories.registry_repository import RegistryRepository
+from parallax.domains.asset_market.runtime.token_capture_tier_worker import (
     ADVISORY_LOCK_KEY,
     TokenCaptureTierWorker,
     project_once,
 )
-from gmgn_twitter_intel.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION, WINDOW_MS
-from gmgn_twitter_intel.platform.config.settings import WorkersSettings, default_workers_yaml
+from parallax.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION, WINDOW_MS
+from parallax.platform.config.settings import WorkersSettings, default_workers_yaml
 
 
 def test_project_once_promotes_hottest_targets_to_tier1_ws_subscribed() -> None:

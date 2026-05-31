@@ -145,7 +145,7 @@ make check-all
 ```text
 All checks passed!
 Would reformat: scripts/regen_pulse_agent_desk_decisions.py
-Would reformat: src/gmgn_twitter_intel/app/runtime/ops_diagnostics.py
+Would reformat: src/parallax/app/runtime/ops_diagnostics.py
 ...
 Would reformat: tests/unit/test_token_radar_projection.py
 74 files would be reformatted, 873 files already formatted

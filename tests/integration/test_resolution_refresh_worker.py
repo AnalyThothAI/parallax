@@ -3,16 +3,16 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
-from gmgn_twitter_intel.domains.asset_market.providers import DexTokenCandidate, DexTokenQuote
-from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import (
+from parallax.app.runtime.repository_session import repositories_for_connection
+from parallax.domains.asset_market.providers import DexTokenCandidate, DexTokenQuote
+from parallax.domains.asset_market.runtime.resolution_refresh_worker import (
     ResolutionRefreshWorker,
     _process_address_lookup,
 )
-from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
-from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
-from gmgn_twitter_intel.domains.evidence.services.ingest_service import IngestService
-from gmgn_twitter_intel.domains.token_intel.interfaces import SignalRepository
+from parallax.domains.evidence.repositories.entity_repository import EntityRepository
+from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
+from parallax.domains.evidence.services.ingest_service import IngestService
+from parallax.domains.token_intel.interfaces import SignalRepository
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test, repository_session_for_connection
 from tests.postgres_test_utils import reset_postgres_schema as migrate

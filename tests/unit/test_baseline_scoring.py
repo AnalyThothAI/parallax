@@ -1,4 +1,4 @@
-from gmgn_twitter_intel.domains.token_intel.scoring import baseline_scoring
+from parallax.domains.token_intel.scoring import baseline_scoring
 
 
 def test_baseline_v2_reports_ready_ewma_and_robust_surprise():

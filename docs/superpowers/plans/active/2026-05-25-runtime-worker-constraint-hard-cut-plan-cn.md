@@ -24,7 +24,7 @@
 
 Verification from this pass:
 
-- `uv run ruff check src/gmgn_twitter_intel tests` — passed.
+- `uv run ruff check src/parallax tests` — passed.
 - Narrative targeted integration set — `8 passed`.
 - Runtime worker hard-cut focused regression — `231 passed`.
 - Pulse dirty-trigger regression — `91 passed`.
@@ -46,7 +46,7 @@ Known verification caveat:
 
 Verification from this pass:
 
-- `uv run ruff check src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py src/gmgn_twitter_intel/app/ops/runtime_worker_dirty_targets.py tests/unit/domains/narrative_intel/test_narrative_workers.py tests/integration/test_narrative_repository.py tests/architecture/test_runtime_worker_constraint_hard_cut.py tests/unit/test_ops_runtime_worker_dirty_targets.py tests/unit/test_cli.py` — passed.
+- `uv run ruff check src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py src/parallax/domains/narrative_intel/repositories/narrative_repository.py src/parallax/domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py src/parallax/app/ops/runtime_worker_dirty_targets.py tests/unit/domains/narrative_intel/test_narrative_workers.py tests/integration/test_narrative_repository.py tests/architecture/test_runtime_worker_constraint_hard_cut.py tests/unit/test_ops_runtime_worker_dirty_targets.py tests/unit/test_cli.py` — passed.
 - `uv run pytest tests/unit/domains/narrative_intel/test_narrative_workers.py -q` — `36 passed`.
 - `uv run pytest tests/integration/test_narrative_repository.py::test_repository_enqueues_completes_and_hydrates_semantics -q` — `1 passed`.
 - `uv run pytest tests/architecture/test_runtime_worker_constraint_hard_cut.py -q` — `16 passed`.
@@ -156,7 +156,7 @@ Remaining after this pass:
 
 Parallel source audit on 2026-05-25 found several plan gaps that must be treated as implementation requirements, not optional follow-ups:
 
-- [ ] The plan must be registry-aware. In addition to the eight spec examples, classify every worker in `src/gmgn_twitter_intel/app/runtime/worker_registry.py` as one of:
+- [ ] The plan must be registry-aware. In addition to the eight spec examples, classify every worker in `src/parallax/app/runtime/worker_registry.py` as one of:
   - dirty-target/leased-job consumer;
   - bounded provider/source scheduler with documented finite universe and explicit limits;
   - target-scoped expansion from already claimed/changed ids;
@@ -254,25 +254,25 @@ Create:
 
 The test must inspect runtime files with AST/string guards and fail on these broad discovery calls inside converted worker files:
 
-- `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
   - banned after conversion: `latest_current_rows`
-- `src/gmgn_twitter_intel/domains/narrative_intel/runtime/narrative_admission_worker.py`
+- `src/parallax/domains/narrative_intel/runtime/narrative_admission_worker.py`
   - banned after conversion: `admitted_radar_rows`, `admissions_for_window_scope`, `delete_admissions_outside_frontier`
-- `src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py`
+- `src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py`
   - banned after conversion: `_enqueue_missing_from_admissions_sync`, `due_admissions_for_semantics`, `missing_source_rows_for_mention_semantics`
-- `src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
+- `src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
   - banned after conversion: `due_digest_targets`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/token_profile_current_worker.py`
+- `src/parallax/domains/asset_market/runtime/token_profile_current_worker.py`
   - banned after conversion: `recent_profile_targets`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/token_image_mirror_worker.py`
+- `src/parallax/domains/asset_market/runtime/token_image_mirror_worker.py`
   - banned after conversion: `candidate_sources`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/asset_profile_refresh_worker.py`
+- `src/parallax/domains/asset_market/runtime/asset_profile_refresh_worker.py`
   - banned after conversion: `select_due_asset_profile_rows`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/token_capture_tier_worker.py`
+- `src/parallax/domains/asset_market/runtime/token_capture_tier_worker.py`
   - banned after conversion: `active_live_market_targets`, `demote_absent_hot_rows`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/live_price_gateway.py`
+- `src/parallax/domains/asset_market/runtime/live_price_gateway.py`
   - banned after conversion: `active_live_market_targets`
-- `src/gmgn_twitter_intel/domains/watchlist_intel/runtime/handle_summary_worker.py`
+- `src/parallax/domains/watchlist_intel/runtime/handle_summary_worker.py`
   - banned unless explicitly classified as bounded repair-only: `handles_missing_summary_jobs`, `reconcile_missing_jobs_once`
 
 The same file must also assert:
@@ -315,7 +315,7 @@ Create or extend:
 
 Required classification source:
 
-- `src/gmgn_twitter_intel/app/runtime/worker_registry.py`
+- `src/parallax/app/runtime/worker_registry.py`
 
 The test must fail when a registered worker is not classified. Initial classification must include:
 
@@ -342,8 +342,8 @@ Required helper behavior:
 
 Do not create a production abstraction unless the implementation proves the repositories are diverging in unsafe ways. Prefer the existing local repository pattern from:
 
-- `src/gmgn_twitter_intel/domains/news_intel/repositories/news_projection_dirty_target_repository.py`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py`
+- `src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py`
+- `src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py`
 
 Run:
 
@@ -363,7 +363,7 @@ Expected:
 
 Create migration:
 
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py`
+- `src/parallax/platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py`
 
 Add table:
 
@@ -398,12 +398,12 @@ Indexes and constraints:
 
 Create:
 
-- `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_trigger_dirty_target_repository.py`
+- `src/parallax/domains/pulse_lab/repositories/pulse_trigger_dirty_target_repository.py`
 
 Modify:
 
-- `src/gmgn_twitter_intel/app/runtime/repository_session.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/repositories/__init__.py`
+- `src/parallax/app/runtime/repository_session.py`
+- `src/parallax/domains/pulse_lab/repositories/__init__.py`
 - `tests/architecture/test_worker_runtime_contracts.py`
 
 Required repository methods:
@@ -428,9 +428,9 @@ Claim must use `FOR UPDATE SKIP LOCKED` or atomic `UPDATE ... RETURNING` and ret
 
 Modify likely write edges:
 
-- `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py`
-- `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
+- `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py`
+- `src/parallax/domains/token_intel/services/token_radar_projection.py`
+- `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
 
 Required behavior:
 
@@ -449,7 +449,7 @@ Tests:
 
 Modify:
 
-- `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
 
 Required behavior:
 
@@ -476,12 +476,12 @@ Delete or move to ops-only:
 
 Modify:
 
-- `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`
+- `src/parallax/app/surfaces/cli/commands/ops.py`
 
 Add command:
 
 ```bash
-uv run gmgn-twitter-intel ops enqueue-runtime-worker-dirty-targets \
+uv run parallax ops enqueue-runtime-worker-dirty-targets \
   --work pulse_trigger \
   --window 1h \
   --scope all \
@@ -564,13 +564,13 @@ Add due/lease indexes over semantic status and `next_retry_at_ms` or the existin
 
 Create:
 
-- `src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/repositories/discussion_digest_dirty_target_repository.py`
+- `src/parallax/domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py`
+- `src/parallax/domains/narrative_intel/repositories/discussion_digest_dirty_target_repository.py`
 
 Modify:
 
-- `src/gmgn_twitter_intel/app/runtime/repository_session.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/repositories/__init__.py`
+- `src/parallax/app/runtime/repository_session.py`
+- `src/parallax/domains/narrative_intel/repositories/__init__.py`
 
 Required methods mirror Phase 2:
 
@@ -585,9 +585,9 @@ Required methods mirror Phase 2:
 
 Modify producer edges:
 
-- `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/intent_resolution_repository.py`
+- `src/parallax/domains/token_intel/services/token_radar_projection.py`
+- `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
+- `src/parallax/domains/token_intel/repositories/intent_resolution_repository.py`
 - Any runtime path that mutates target identity/resolution used by narrative admission.
 
 Required behavior:
@@ -602,9 +602,9 @@ Required behavior:
 
 Modify:
 
-- `src/gmgn_twitter_intel/domains/narrative_intel/runtime/narrative_admission_worker.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/services/narrative_admission.py`
+- `src/parallax/domains/narrative_intel/runtime/narrative_admission_worker.py`
+- `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`
+- `src/parallax/domains/narrative_intel/services/narrative_admission.py`
 
 Required behavior:
 
@@ -633,12 +633,12 @@ Delete or move to bounded ops-only:
 
 Modify:
 
-- `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`
+- `src/parallax/app/surfaces/cli/commands/ops.py`
 
 Add bounded dry-run command shape:
 
 ```bash
-uv run gmgn-twitter-intel ops enqueue-runtime-worker-dirty-targets \
+uv run parallax ops enqueue-runtime-worker-dirty-targets \
   --work narrative_admission \
   --window 1h \
   --scope all \
@@ -709,8 +709,8 @@ Migration behavior:
 
 Modify:
 
-- `src/gmgn_twitter_intel/domains/narrative_intel/runtime/narrative_admission_worker.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py`
+- `src/parallax/domains/narrative_intel/runtime/narrative_admission_worker.py`
+- `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`
 
 Required behavior:
 
@@ -729,8 +729,8 @@ Delete from runtime:
 
 Modify:
 
-- `src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py`
+- `src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py`
+- `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`
 
 Required repository method:
 
@@ -793,7 +793,7 @@ Key:
 
 Verify:
 
-- `src/gmgn_twitter_intel/app/runtime/repository_session.py`
+- `src/parallax/app/runtime/repository_session.py`
 - `tests/architecture/test_worker_runtime_contracts.py`
 - `tests/architecture/test_runtime_worker_constraint_hard_cut.py`
 
@@ -803,9 +803,9 @@ Driver pass 2 completed the admission/source-set and semantics-completion produc
 
 Modify:
 
-- `src/gmgn_twitter_intel/domains/narrative_intel/runtime/narrative_admission_worker.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py`
+- `src/parallax/domains/narrative_intel/runtime/narrative_admission_worker.py`
+- `src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py`
+- `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`
 - Market threshold enqueue edge in the asset market/token radar producer path that can change digest freshness.
 
 Required behavior:
@@ -819,8 +819,8 @@ Required behavior:
 
 Modify:
 
-- `src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py`
+- `src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
+- `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`
 
 Required behavior:
 
@@ -878,19 +878,19 @@ Key:
 
 Create:
 
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py`
+- `src/parallax/domains/asset_market/repositories/token_profile_current_dirty_target_repository.py`
 
 Modify:
 
-- `src/gmgn_twitter_intel/app/runtime/repository_session.py`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/token_profile_current_worker.py`
-- `src/gmgn_twitter_intel/domains/asset_market/services/token_profile_current_projection.py`
-- `src/gmgn_twitter_intel/domains/asset_market/services/asset_profile_refresh.py`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/asset_profile_repository.py`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/cex_token_profile_repository.py`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/identity_evidence_repository.py`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/token_image_asset_repository.py`
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
+- `src/parallax/app/runtime/repository_session.py`
+- `src/parallax/domains/asset_market/runtime/token_profile_current_worker.py`
+- `src/parallax/domains/asset_market/services/token_profile_current_projection.py`
+- `src/parallax/domains/asset_market/services/asset_profile_refresh.py`
+- `src/parallax/domains/asset_market/repositories/asset_profile_repository.py`
+- `src/parallax/domains/asset_market/repositories/cex_token_profile_repository.py`
+- `src/parallax/domains/asset_market/repositories/identity_evidence_repository.py`
+- `src/parallax/domains/asset_market/repositories/token_image_asset_repository.py`
+- `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
 
 Producer edges:
 
@@ -921,16 +921,16 @@ Add table or use existing `token_image_assets` as the durable job table only if 
 
 Create if new table is used:
 
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/token_image_source_dirty_target_repository.py`
+- `src/parallax/domains/asset_market/repositories/token_image_source_dirty_target_repository.py`
 
 Modify:
 
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/token_image_mirror_worker.py`
-- `src/gmgn_twitter_intel/domains/asset_market/queries/token_image_source_query.py`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/token_image_asset_repository.py`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/asset_profile_repository.py`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/cex_token_profile_repository.py`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/identity_evidence_repository.py`
+- `src/parallax/domains/asset_market/runtime/token_image_mirror_worker.py`
+- `src/parallax/domains/asset_market/queries/token_image_source_query.py`
+- `src/parallax/domains/asset_market/repositories/token_image_asset_repository.py`
+- `src/parallax/domains/asset_market/repositories/asset_profile_repository.py`
+- `src/parallax/domains/asset_market/repositories/cex_token_profile_repository.py`
+- `src/parallax/domains/asset_market/repositories/identity_evidence_repository.py`
 
 Producer edges:
 
@@ -965,16 +965,16 @@ Key:
 
 Create:
 
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/asset_profile_refresh_target_repository.py`
+- `src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py`
 
 Modify:
 
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/asset_profile_refresh_worker.py`
-- `src/gmgn_twitter_intel/domains/asset_market/services/asset_profile_refresh.py`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/asset_profile_repository.py`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/discovery_repository.py`
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
-- `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
+- `src/parallax/domains/asset_market/runtime/asset_profile_refresh_worker.py`
+- `src/parallax/domains/asset_market/services/asset_profile_refresh.py`
+- `src/parallax/domains/asset_market/repositories/asset_profile_repository.py`
+- `src/parallax/domains/asset_market/repositories/discovery_repository.py`
+- `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
+- `src/parallax/domains/token_intel/services/token_radar_projection.py`
 
 Producer edges:
 
@@ -1008,16 +1008,16 @@ Key:
 
 Create:
 
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py`
+- `src/parallax/domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py`
 
 Modify:
 
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/token_capture_tier_worker.py`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/token_capture_tier_repository.py`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py`
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
-- `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/identity_evidence_repository.py`
+- `src/parallax/domains/asset_market/runtime/token_capture_tier_worker.py`
+- `src/parallax/domains/asset_market/repositories/token_capture_tier_repository.py`
+- `src/parallax/domains/asset_market/repositories/registry_repository.py`
+- `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
+- `src/parallax/domains/token_intel/services/token_radar_projection.py`
+- `src/parallax/domains/asset_market/repositories/identity_evidence_repository.py`
 
 Producer edges:
 
@@ -1044,9 +1044,9 @@ Tests:
 
 Modify:
 
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/live_price_gateway.py`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/token_capture_tier_repository.py`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py`
+- `src/parallax/domains/asset_market/runtime/live_price_gateway.py`
+- `src/parallax/domains/asset_market/repositories/token_capture_tier_repository.py`
+- `src/parallax/domains/asset_market/repositories/registry_repository.py`
 
 Required behavior:
 
@@ -1091,14 +1091,14 @@ Expected:
 
 Modify:
 
-- `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`
+- `src/parallax/app/surfaces/cli/commands/ops.py`
 - `docs/generated/cli-help.md`
 - `docs/CONTRACTS.md` if CLI contract docs list ops commands.
 
 Command shape:
 
 ```bash
-uv run gmgn-twitter-intel ops enqueue-runtime-worker-dirty-targets \
+uv run parallax ops enqueue-runtime-worker-dirty-targets \
   --work <pulse_trigger|narrative_admission|mention_semantics|discussion_digest|profile_current|image_source|asset_profile_refresh|capture_tier|live_market_targets> \
   --since-hours <N> \
   --window <window> \
@@ -1159,14 +1159,14 @@ Expected:
 
 Modify converted workers:
 
-- `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/runtime/narrative_admission_worker.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/token_profile_current_worker.py`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/token_image_mirror_worker.py`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/asset_profile_refresh_worker.py`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/token_capture_tier_worker.py`
+- `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- `src/parallax/domains/narrative_intel/runtime/narrative_admission_worker.py`
+- `src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py`
+- `src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
+- `src/parallax/domains/asset_market/runtime/token_profile_current_worker.py`
+- `src/parallax/domains/asset_market/runtime/token_image_mirror_worker.py`
+- `src/parallax/domains/asset_market/runtime/asset_profile_refresh_worker.py`
+- `src/parallax/domains/asset_market/runtime/token_capture_tier_worker.py`
 
 Required notes:
 
@@ -1181,7 +1181,7 @@ Required notes:
 
 Modify:
 
-- `src/gmgn_twitter_intel/app/surfaces/api/routes_health.py` or the current health route file found by `rg "readyz"`
+- `src/parallax/app/surfaces/api/routes_health.py` or the current health route file found by `rg "readyz"`
 - any diagnostics command or worker status serializer that emits large payloads.
 
 Required behavior:
@@ -1204,10 +1204,10 @@ Expected:
 
 Modify or document:
 
-- `src/gmgn_twitter_intel/domains/watchlist_intel/runtime/handle_summary_worker.py`
-- `src/gmgn_twitter_intel/domains/watchlist_intel/repositories/watchlist_intel_repository.py`
-- `src/gmgn_twitter_intel/domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py`
-- `src/gmgn_twitter_intel/domains/macro_intel/runtime/macro_view_projection_worker.py`
+- `src/parallax/domains/watchlist_intel/runtime/handle_summary_worker.py`
+- `src/parallax/domains/watchlist_intel/repositories/watchlist_intel_repository.py`
+- `src/parallax/domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py`
+- `src/parallax/domains/macro_intel/runtime/macro_view_projection_worker.py`
 - `tests/architecture/test_runtime_worker_constraint_hard_cut.py`
 - `docs/WORKERS.md`
 
@@ -1235,9 +1235,9 @@ Modify:
 - `docs/WORKER_FLOW.md`
 - `docs/RELIABILITY.md`
 - `docs/ARCHITECTURE.md`
-- `src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`
-- `src/gmgn_twitter_intel/domains/narrative_intel/ARCHITECTURE.md`
-- `src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md`
+- `src/parallax/domains/pulse_lab/ARCHITECTURE.md`
+- `src/parallax/domains/narrative_intel/ARCHITECTURE.md`
+- `src/parallax/domains/asset_market/ARCHITECTURE.md`
 
 Required doc changes:
 
@@ -1267,7 +1267,7 @@ Only after P0/P1 are complete:
 Run:
 
 ```bash
-uv run ruff check src/gmgn_twitter_intel tests
+uv run ruff check src/parallax tests
 uv run pytest tests/architecture -q
 uv run pytest \
   tests/unit/domains/pulse_lab \
@@ -1300,12 +1300,12 @@ If the full suite is too slow, record the reason and run all architecture tests 
 Before live checks, confirm real config paths without printing secrets:
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 ```
 
 Expected:
 
-- `config_path` and `workers_config_path` point to `~/.gmgn-twitter-intel/`.
+- `config_path` and `workers_config_path` point to `~/.parallax/`.
 - Report only paths/redacted booleans, not secret values.
 
 Rebuild and migrate:
@@ -1388,7 +1388,7 @@ Expected:
 Run:
 
 ```bash
-rg -n "latest_current_rows|admitted_radar_rows|admissions_for_window_scope|delete_admissions_outside_frontier|_enqueue_missing_from_admissions_sync|_missing_source_rows_for_semantics|due_admissions_for_semantics|missing_source_rows_for_mention_semantics|due_digest_targets|recent_profile_targets|candidate_sources|PendingAssetProfileQuery|select_due_asset_profile_rows|active_live_market_targets|demote_absent_hot_rows|handles_missing_summary_jobs|fallback_source_rows|fallback_scan|compat|audit loop|catch-up scan" src/gmgn_twitter_intel tests
+rg -n "latest_current_rows|admitted_radar_rows|admissions_for_window_scope|delete_admissions_outside_frontier|_enqueue_missing_from_admissions_sync|_missing_source_rows_for_semantics|due_admissions_for_semantics|missing_source_rows_for_mention_semantics|due_digest_targets|recent_profile_targets|candidate_sources|PendingAssetProfileQuery|select_due_asset_profile_rows|active_live_market_targets|demote_absent_hot_rows|handles_missing_summary_jobs|fallback_source_rows|fallback_scan|compat|audit loop|catch-up scan" src/parallax tests
 ```
 
 Expected:
@@ -1417,7 +1417,7 @@ git diff --stat
 git add \
   docs/superpowers/specs/active/2026-05-25-runtime-worker-constraint-hard-cut-cn.md \
   docs/superpowers/plans/active/2026-05-25-runtime-worker-constraint-hard-cut-plan-cn.md \
-  src/gmgn_twitter_intel \
+  src/parallax \
   tests \
   docs
 git commit -m "Hard-cut runtime worker discovery to dirty targets"

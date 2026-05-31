@@ -5,13 +5,13 @@ from types import SimpleNamespace
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from gmgn_twitter_intel.app.surfaces.api.exceptions import (
+from parallax.app.surfaces.api.exceptions import (
     ApiBadRequest,
     ApiUnauthorized,
     api_bad_request_response,
     api_unauthorized_response,
 )
-from gmgn_twitter_intel.app.surfaces.api.http import create_api_router
+from parallax.app.surfaces.api.http import create_api_router
 
 
 def test_signal_pulse_api_uses_fake_runtime_without_postgres():

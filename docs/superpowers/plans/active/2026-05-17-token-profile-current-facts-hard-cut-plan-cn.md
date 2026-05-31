@@ -46,14 +46,14 @@
 - [ ] Record current live DEX coverage for later comparison:
 
   ```bash
-  uv run gmgn-twitter-intel asset-flow --window 1h --scope all --limit 100 > /tmp/before-token-profile-current.json
+  uv run parallax asset-flow --window 1h --scope all --limit 100 > /tmp/before-token-profile-current.json
   ```
 
 ## Phase 1 - Schema: Canonical Current Profile Table
 
 - [ ] Add Alembic migration after the current head:
 
-  `src/gmgn_twitter_intel/platform/db/alembic/versions/<next>_token_profile_current.py`
+  `src/parallax/platform/db/alembic/versions/<next>_token_profile_current.py`
 
 - [ ] Create `token_profile_current`:
 
@@ -103,7 +103,7 @@
 
 ## Phase 2 - Repository and Session Wiring
 
-- [ ] Add `src/gmgn_twitter_intel/domains/asset_market/repositories/token_profile_current_repository.py`.
+- [ ] Add `src/parallax/domains/asset_market/repositories/token_profile_current_repository.py`.
 
 - [ ] Implement repository methods:
 
@@ -125,9 +125,9 @@
 
 - [ ] Add repository to `RepositorySession`:
 
-  `src/gmgn_twitter_intel/app/runtime/repository_session.py`
+  `src/parallax/app/runtime/repository_session.py`
 
-- [ ] Export it from `src/gmgn_twitter_intel/domains/asset_market/interfaces.py`.
+- [ ] Export it from `src/parallax/domains/asset_market/interfaces.py`.
 
 - [ ] Add unit tests:
 
@@ -137,7 +137,7 @@
 
 - [ ] Add a narrow source-query module:
 
-  `src/gmgn_twitter_intel/domains/asset_market/queries/token_profile_source_query.py`
+  `src/parallax/domains/asset_market/queries/token_profile_source_query.py`
 
 - [ ] Implement `recent_profile_targets(now_ms, limit, lookback_ms)`:
 
@@ -156,7 +156,7 @@
 
 - [ ] Add policy module:
 
-  `src/gmgn_twitter_intel/domains/asset_market/services/token_profile_current_projection.py`
+  `src/parallax/domains/asset_market/services/token_profile_current_projection.py`
 
 - [ ] Implement deterministic priority:
 
@@ -199,7 +199,7 @@
 
 - [ ] Add runtime worker:
 
-  `src/gmgn_twitter_intel/domains/asset_market/runtime/token_profile_current_worker.py`
+  `src/parallax/domains/asset_market/runtime/token_profile_current_worker.py`
 
 - [ ] Worker behavior:
 
@@ -211,9 +211,9 @@
 
 - [ ] Register worker in:
 
-  - `src/gmgn_twitter_intel/app/runtime/worker_registry.py`;
-  - `src/gmgn_twitter_intel/app/runtime/bootstrap.py`;
-  - `src/gmgn_twitter_intel/platform/config/settings.py`;
+  - `src/parallax/app/runtime/worker_registry.py`;
+  - `src/parallax/app/runtime/bootstrap.py`;
+  - `src/parallax/platform/config/settings.py`;
   - `docs/WORKERS.md`;
   - `docs/CONTRACTS.md` if CLI/config surface changes.
 
@@ -229,7 +229,7 @@
 - [ ] Add CLI command:
 
   ```bash
-  uv run gmgn-twitter-intel ops rebuild-token-profiles --limit 500
+  uv run parallax ops rebuild-token-profiles --limit 500
   ```
 
 - [ ] Keep `ops refresh-asset-profiles` only as GMGN OpenAPI source refresh. Do not use it in public reads.
@@ -242,7 +242,7 @@
 
 ## Phase 5 - Public Read Path Hard Cut
 
-- [ ] Rewrite `src/gmgn_twitter_intel/domains/asset_market/read_models/token_profile_read_model.py`.
+- [ ] Rewrite `src/parallax/domains/asset_market/read_models/token_profile_read_model.py`.
 
 - [ ] Constructor changes:
 
@@ -268,15 +268,15 @@
 
 - [ ] Update all wiring:
 
-  - `src/gmgn_twitter_intel/app/surfaces/api/http.py`;
-  - `src/gmgn_twitter_intel/app/surfaces/cli/main.py`;
-  - `src/gmgn_twitter_intel/app/runtime/bootstrap.py`;
+  - `src/parallax/app/surfaces/api/http.py`;
+  - `src/parallax/app/surfaces/cli/main.py`;
+  - `src/parallax/app/runtime/bootstrap.py`;
   - tests that instantiate `TokenProfileReadModel`.
 
 - [ ] Add architecture guard:
 
   ```bash
-  ! rg -n "GMGN_DEX_PROFILE_PROVIDER|profiles_for_asset_ids" src/gmgn_twitter_intel/domains/asset_market/read_models/token_profile_read_model.py
+  ! rg -n "GMGN_DEX_PROFILE_PROVIDER|profiles_for_asset_ids" src/parallax/domains/asset_market/read_models/token_profile_read_model.py
   ```
 
 ## Phase 6 - Frontend Contract Check
@@ -310,7 +310,7 @@
 
   - public read model does not import `GMGN_DEX_PROFILE_PROVIDER`;
   - public read model does not call `asset_profiles`;
-  - no source file under `src/gmgn_twitter_intel` imports a Binance profile client or defines a Binance token profile provider;
+  - no source file under `src/parallax` imports a Binance profile client or defines a Binance token profile provider;
   - HTTP/API read paths do not call GMGN/OKX provider methods for profiles.
 
 - [ ] Update existing tests:
@@ -338,25 +338,25 @@
 - [ ] Use the real local config path:
 
   ```bash
-  uv run gmgn-twitter-intel config | jq '.paths, .providers.gmgn, .providers.okx'
+  uv run parallax config | jq '.paths, .providers.gmgn, .providers.okx'
   ```
 
 - [ ] Run GMGN source refresh. Provider block is acceptable if it reports no token-level errors:
 
   ```bash
-  uv run gmgn-twitter-intel ops refresh-asset-profiles --limit 20
+  uv run parallax ops refresh-asset-profiles --limit 20
   ```
 
 - [ ] Rebuild current profiles:
 
   ```bash
-  uv run gmgn-twitter-intel ops rebuild-token-profiles --limit 500
+  uv run parallax ops rebuild-token-profiles --limit 500
   ```
 
 - [ ] Inspect current coverage:
 
   ```bash
-  uv run gmgn-twitter-intel asset-flow --window 1h --scope all --limit 100 > /tmp/after-token-profile-current.json
+  uv run parallax asset-flow --window 1h --scope all --limit 100 > /tmp/after-token-profile-current.json
   ```
 
 - [ ] Compare:

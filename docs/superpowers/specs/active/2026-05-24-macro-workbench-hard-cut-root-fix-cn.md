@@ -9,7 +9,7 @@
 - Benchmark: `https://timsun.net/assets/`
 - Existing spec: `docs/superpowers/specs/active/2026-05-22-macro-workbench-benchmark-redesign-cn.md`
 - Existing plan: `docs/superpowers/plans/active/2026-05-22-macro-workbench-benchmark-redesign-plan-cn.md`
-- Architecture: `src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md`
+- Architecture: `src/parallax/domains/macro_intel/ARCHITECTURE.md`
 - Frontend rules: `docs/FRONTEND.md`
 - Contracts: `docs/CONTRACTS.md`
 
@@ -22,10 +22,10 @@
 2026-05-24 检查结果：
 
 - Runtime config 已确认走 operator-owned 文件：
-  - `config_path=/Users/qinghuan/.gmgn-twitter-intel/config.yaml`
-  - `workers_config_path=/Users/qinghuan/.gmgn-twitter-intel/workers.yaml`
-- `uv run gmgn-twitter-intel db health` 报告 migration ready，版本 `20260524_0093`。
-- `uv run gmgn-twitter-intel macro status` 报告 latest import `status=ok`、`coverage=36/36`、snapshot `ready`，但 `observations_count=36` 且 `concept_count=36`，说明每个 concept 实际只有一个点。
+  - `config_path=/Users/qinghuan/.parallax/config.yaml`
+  - `workers_config_path=/Users/qinghuan/.parallax/workers.yaml`
+- `uv run parallax db health` 报告 migration ready，版本 `20260524_0093`。
+- `uv run parallax macro status` 报告 latest import `status=ok`、`coverage=36/36`、snapshot `ready`，但 `observations_count=36` 且 `concept_count=36`，说明每个 concept 实际只有一个点。
 - `/api/macro/series?window=60d` 对核心概念只返回 1 个点，导致 normalized return 图表显示 `0%`，z-score、percentile、5d/20d/60d delta 全部是 `insufficient_history:*`。
 - 模块 `data_gaps` 没有聚合 feature-level gaps，所以页面可以同时显示满屏 `insufficient_history:*` 和“暂无数据缺口”。
 - 页面直接展示 `asset:spx`、`rates:dgs10`、`millions_usd`、`insufficient_history:zscore`、raw JSON provenance、英文 trigger code，读起来像内部调试面板。
@@ -73,7 +73,7 @@
   - Crypto derivatives: CEX OI/funding when worker data exists, explicit missing state when disabled.
 - G5. Replace debug UI with terminal-grade page grammar: header, KPI strip, primary chart, supporting table, current read, confirmations, contradictions, watch triggers, invalidations, provenance, and gaps.
 - G6. Make invalid data visually honest: a chart with fewer than 2 usable points renders an explicit insufficient-history state, not a line chart or `0%`.
-- G7. Document the operator workflow for backfilling history with `macrodata bundle history macro-core --start --end | uv run gmgn-twitter-intel macro import-bundle --stdin`, then projecting once.
+- G7. Document the operator workflow for backfilling history with `macrodata bundle history macro-core --start --end | uv run parallax macro import-bundle --stdin`, then projecting once.
 
 ## Non-Goals
 
@@ -167,7 +167,7 @@ Module payload must be semantic and display-ready:
 
 ## Acceptance Criteria
 
-- `uv run gmgn-twitter-intel macro status` reports history readiness and lists concepts below minimum history.
+- `uv run parallax macro status` reports history readiness and lists concepts below minimum history.
 - With a fixture containing one point per concept, `/api/macro` status is `partial`, not `ready`.
 - With a 60-day fixture for core concepts, `/api/macro/series` returns multi-point data and charts render non-zero normalized returns where prices moved.
 - `/macro/assets`, `/macro/rates`, `/macro/fed`, `/macro/liquidity`, `/macro/volatility`, and `/macro/credit` no longer expose `asset:spx`, `rates:dgs10`, `insufficient_history:*`, or raw JSON provenance in visible page text.

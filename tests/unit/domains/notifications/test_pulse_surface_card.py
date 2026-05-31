@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from gmgn_twitter_intel.domains.notifications.services.pulse_surface_card import render_pulse_surface_card
+from parallax.domains.notifications.services.pulse_surface_card import render_pulse_surface_card
 
 
 def _decision(

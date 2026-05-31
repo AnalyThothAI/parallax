@@ -5,8 +5,8 @@ from contextlib import nullcontext
 from types import SimpleNamespace
 from typing import Any
 
-from gmgn_twitter_intel.app.surfaces.api import routes_radar, routes_search, routes_status
-from gmgn_twitter_intel.app.surfaces.api.schemas import NarrativeBacklogHealthData, TokenCaseData, TokenRadarData
+from parallax.app.surfaces.api import routes_radar, routes_search, routes_status
+from parallax.app.surfaces.api.schemas import NarrativeBacklogHealthData, TokenCaseData, TokenRadarData
 
 NOW_MS = 1_778_562_000_000
 

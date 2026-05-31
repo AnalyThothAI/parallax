@@ -1,5 +1,5 @@
-from gmgn_twitter_intel.domains.account_quality.read_models.account_quality_service import AccountQualityService
-from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
+from parallax.domains.account_quality.read_models.account_quality_service import AccountQualityService
+from parallax.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
 from tests.factories import open_runtime, token_event
 
 

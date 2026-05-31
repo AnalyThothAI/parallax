@@ -46,11 +46,11 @@ Expected:
 ### Task 2: Add The Event-Anchor Job Control Plane
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/asset_market/repositories/event_anchor_backfill_job_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/interfaces.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/repository_session.py`
-- Modify: `src/gmgn_twitter_intel/domains/evidence/services/ingest_service.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/bootstrap.py`
+- Create: `src/parallax/domains/asset_market/repositories/event_anchor_backfill_job_repository.py`
+- Modify: `src/parallax/domains/asset_market/interfaces.py`
+- Modify: `src/parallax/app/runtime/repository_session.py`
+- Modify: `src/parallax/domains/evidence/services/ingest_service.py`
+- Modify: `src/parallax/app/runtime/bootstrap.py`
 
 - [ ] **Step 1: Create repository methods**
 
@@ -73,10 +73,10 @@ When ingest writes an `EnrichedEventCapture` with `capture_method='unavailable'`
 ### Task 3: Make Worker Consume Jobs, Not Facts
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/event_anchor_backfill_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/market_tick_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/enriched_event_repository.py`
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
+- Modify: `src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py`
+- Modify: `src/parallax/domains/asset_market/repositories/market_tick_repository.py`
+- Modify: `src/parallax/domains/asset_market/repositories/enriched_event_repository.py`
+- Modify: `src/parallax/platform/config/settings.py`
 
 - [ ] **Step 1: Add explicit runtime knobs**
 
@@ -102,7 +102,7 @@ Worker flow:
 ### Task 4: Add Hard-Cut Migration
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260518_0060_event_anchor_backfill_jobs.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260518_0060_event_anchor_backfill_jobs.py`
 
 - [ ] **Step 1: Create job table and indexes**
 
@@ -122,8 +122,8 @@ Expire existing `pending_backfill` rows older than five minutes. Insert jobs onl
 
 **Files:**
 - Modify: `docs/ARCHITECTURE.md`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/asset_market/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/token_intel/ARCHITECTURE.md`
 
 - [ ] **Step 1: Document the new boundary**
 

@@ -4,8 +4,8 @@ import asyncio
 from types import SimpleNamespace
 from typing import Any
 
-from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
-from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
+from parallax.app.runtime.worker_base import WorkerBase
+from parallax.app.runtime.worker_result import WorkerResult
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 

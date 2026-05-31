@@ -276,11 +276,11 @@ V1 can compute this read-time from `event_token_attributions` plus `events`, usi
 Create dedicated modules:
 
 ```text
-src/gmgn_twitter_intel/retrieval/social_heat_scoring.py
-src/gmgn_twitter_intel/retrieval/discussion_quality_scoring.py
-src/gmgn_twitter_intel/retrieval/propagation_scoring.py
-src/gmgn_twitter_intel/retrieval/opportunity_scoring.py
-src/gmgn_twitter_intel/retrieval/token_social_timeline_service.py
+src/parallax/retrieval/social_heat_scoring.py
+src/parallax/retrieval/discussion_quality_scoring.py
+src/parallax/retrieval/propagation_scoring.py
+src/parallax/retrieval/opportunity_scoring.py
+src/parallax/retrieval/token_social_timeline_service.py
 ```
 
 Rules:
@@ -519,13 +519,13 @@ Hard rules:
 
 Files:
 
-- `src/gmgn_twitter_intel/retrieval/social_heat_scoring.py`
-- `src/gmgn_twitter_intel/retrieval/discussion_quality_scoring.py`
-- `src/gmgn_twitter_intel/retrieval/propagation_scoring.py`
-- `src/gmgn_twitter_intel/retrieval/opportunity_scoring.py`
-- `src/gmgn_twitter_intel/retrieval/token_social_timeline_service.py`
-- `src/gmgn_twitter_intel/retrieval/token_flow_service.py`
-- `src/gmgn_twitter_intel/api/http.py`
+- `src/parallax/retrieval/social_heat_scoring.py`
+- `src/parallax/retrieval/discussion_quality_scoring.py`
+- `src/parallax/retrieval/propagation_scoring.py`
+- `src/parallax/retrieval/opportunity_scoring.py`
+- `src/parallax/retrieval/token_social_timeline_service.py`
+- `src/parallax/retrieval/token_flow_service.py`
+- `src/parallax/api/http.py`
 - `web/src/api/types.ts`
 - `web/src/components/LiveSignalTape.tsx`
 - `web/src/App.tsx`
@@ -544,10 +544,10 @@ Tasks:
 
 Files:
 
-- `src/gmgn_twitter_intel/pipeline/llm_enrichment.py`
-- `src/gmgn_twitter_intel/storage/enrichment_repository.py`
-- `src/gmgn_twitter_intel/storage/sqlite_schema.py`
-- `src/gmgn_twitter_intel/retrieval/narrative_service.py`
+- `src/parallax/pipeline/llm_enrichment.py`
+- `src/parallax/storage/enrichment_repository.py`
+- `src/parallax/storage/sqlite_schema.py`
+- `src/parallax/retrieval/narrative_service.py`
 - `web/src/api/types.ts`
 - `web/src/App.tsx`
 
@@ -563,11 +563,11 @@ Tasks:
 
 Files:
 
-- `src/gmgn_twitter_intel/storage/sqlite_schema.py`
-- `src/gmgn_twitter_intel/storage/account_quality_repository.py`
-- `src/gmgn_twitter_intel/pipeline/account_quality_worker.py`
-- `src/gmgn_twitter_intel/retrieval/account_quality_service.py`
-- `src/gmgn_twitter_intel/api/http.py`
+- `src/parallax/storage/sqlite_schema.py`
+- `src/parallax/storage/account_quality_repository.py`
+- `src/parallax/pipeline/account_quality_worker.py`
+- `src/parallax/retrieval/account_quality_service.py`
+- `src/parallax/api/http.py`
 
 Tasks:
 
@@ -580,10 +580,10 @@ Tasks:
 
 Files:
 
-- `src/gmgn_twitter_intel/pipeline/agent_jobs.py`
-- `src/gmgn_twitter_intel/storage/agent_repository.py`
-- `src/gmgn_twitter_intel/pipeline/post_quality_agent.py`
-- `src/gmgn_twitter_intel/pipeline/signal_critic_agent.py`
+- `src/parallax/pipeline/agent_jobs.py`
+- `src/parallax/storage/agent_repository.py`
+- `src/parallax/pipeline/post_quality_agent.py`
+- `src/parallax/pipeline/signal_critic_agent.py`
 
 Tasks:
 

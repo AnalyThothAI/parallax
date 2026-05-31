@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
-from gmgn_twitter_intel.domains.token_intel.interfaces import (
+from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
+from parallax.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_PROJECTION_VERSION,
 )
-from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_dirty_target_repository import (
+from parallax.domains.token_intel.repositories.token_radar_dirty_target_repository import (
     TokenRadarDirtyTargetRepository,
 )
-from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import (
+from parallax.domains.token_intel.repositories.token_radar_repository import (
     TokenRadarRepository,
     stable_generation_id,
 )

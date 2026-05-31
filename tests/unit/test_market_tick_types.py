@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import get_type_hints
 
-from gmgn_twitter_intel.domains.asset_market.types.market_tick import EnrichedEventCapture, MarketTick
+from parallax.domains.asset_market.types.market_tick import EnrichedEventCapture, MarketTick
 
 
 def test_enriched_event_capture_requires_resolution_and_capture_reason() -> None:

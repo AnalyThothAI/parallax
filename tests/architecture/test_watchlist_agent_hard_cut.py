@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from gmgn_twitter_intel.app.runtime.worker_manifest import worker_names
-from gmgn_twitter_intel.platform.config.settings import WorkersSettings
+from parallax.app.runtime.worker_manifest import worker_names
+from parallax.platform.config.settings import WorkersSettings
 
-SRC = Path(__file__).resolve().parents[2] / "src" / "gmgn_twitter_intel"
+SRC = Path(__file__).resolve().parents[2] / "src" / "parallax"
 
 
 def test_watchlist_and_social_agent_workers_are_not_runtime_workers() -> None:

@@ -3,11 +3,11 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import date
 
-from gmgn_twitter_intel.domains.macro_intel.observation_identity import (
+from parallax.domains.macro_intel.observation_identity import (
     macro_observation_fact_payload_hash,
     macro_observation_id,
 )
-from gmgn_twitter_intel.domains.macro_intel.services.macrodata_bundle_importer import import_macrodata_bundle
+from parallax.domains.macro_intel.services.macrodata_bundle_importer import import_macrodata_bundle
 from tests.unit.domains.macro_intel.test_macrodata_bundle_importer import ENVELOPE, NOW_MS, FakeRepositorySession
 
 

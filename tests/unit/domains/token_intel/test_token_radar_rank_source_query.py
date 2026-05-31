@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.token_intel.queries.token_radar_rank_source_query import (
+from parallax.domains.token_intel.queries.token_radar_rank_source_query import (
     TokenRadarFeatureSourceRequest,
     TokenRadarRankSourceQuery,
     TokenRadarSourceEdgeRequest,
 )
-from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_rank_source_repository import (
+from parallax.domains.token_intel.repositories.token_radar_rank_source_repository import (
     TokenRadarRankSourceRepository,
 )
 

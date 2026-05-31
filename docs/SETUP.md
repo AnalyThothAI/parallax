@@ -14,19 +14,19 @@ uv run python -m compileall src tests
 Bring up the service:
 
 ```bash
-uv run gmgn-twitter-intel init      # create config.yaml + workers.yaml
-uv run gmgn-twitter-intel serve     # run collector + API in one ASGI worker
-uv run gmgn-twitter-intel db migrate
+uv run parallax init      # create config.yaml + workers.yaml
+uv run parallax serve     # run collector + API in one ASGI worker
+uv run parallax db migrate
 ```
 
-`init` writes `~/.gmgn-twitter-intel/config.yaml` for application and
-provider settings, plus `~/.gmgn-twitter-intel/workers.yaml` for worker
+`init` writes `~/.parallax/config.yaml` for application and
+provider settings, plus `~/.parallax/workers.yaml` for worker
 runtime knobs. Existing deployments from before the worker-runtime hard
 cut must create `workers.yaml` before starting the service; rerun
-`uv run gmgn-twitter-intel init --force` only when you intentionally
+`uv run parallax init --force` only when you intentionally
 want to rewrite the default config files.
 
-For real data, edit the operator-owned files in `~/.gmgn-twitter-intel/`
+For real data, edit the operator-owned files in `~/.parallax/`
 instead of adding repository-local `.env` files or editing generated examples.
 `config.yaml` must point at the live PostgreSQL store and contain the provider
 credentials/endpoints needed by the enabled data lanes, including GMGN OpenAPI
@@ -34,35 +34,35 @@ for exact token profiles and OKX provider settings for discovery, market data,
 or DEX WebSocket lanes when those workers are enabled. Keep secrets out of
 terminal output, docs, tests, and commits.
 
-Use `uv run gmgn-twitter-intel config` to inspect both config paths and
+Use `uv run parallax config` to inspect both config paths and
 the effective worker settings. Use
-`uv run gmgn-twitter-intel ops worker-status` to inspect the canonical
+`uv run parallax ops worker-status` to inspect the canonical
 worker status map and queue depths without starting the upstream
 collector.
 
 Useful live-data smoke checks:
 
 ```bash
-uv run gmgn-twitter-intel config
-uv run gmgn-twitter-intel ops worker-status
-uv run gmgn-twitter-intel ops refresh-asset-profiles --limit 5
-uv run gmgn-twitter-intel ops mirror-token-images --limit 50 --source-limit 500
-uv run gmgn-twitter-intel ops rebuild-token-profiles --limit 500
-uv run gmgn-twitter-intel asset-flow --window 1h --scope all --limit 20
+uv run parallax config
+uv run parallax ops worker-status
+uv run parallax ops refresh-asset-profiles --limit 5
+uv run parallax ops mirror-token-images --limit 50 --source-limit 500
+uv run parallax ops rebuild-token-profiles --limit 500
+uv run parallax asset-flow --window 1h --scope all --limit 20
 ```
 
 The first command confirms the real config paths. The profile refresh command
 exercises the GMGN exact-token profile lane that feeds `asset_profiles.logo_url`
 for DEX token icon source URLs. The mirror command copies eligible provider
-images into `~/.gmgn-twitter-intel/cache/token-images`, and the rebuild command
+images into `~/.parallax/cache/token-images`, and the rebuild command
 projects `token_profile_current.logo_url` to local `/api/token-images/{image_id}`
 paths or `NULL`. Provider blocks, rate limits, unsupported image types, and
 missing mirror rows should surface as explicit diagnostic results or fallback
 marks, not as fake public profile facts.
 
 Macro live-data debugging starts the same way: first run
-`uv run gmgn-twitter-intel config` and confirm `config_path` /
-`workers_config_path` point at `~/.gmgn-twitter-intel/`. Report only paths,
+`uv run parallax config` and confirm `config_path` /
+`workers_config_path` point at `~/.parallax/`. Report only paths,
 booleans, and diagnostic command status; do not paste WebSocket tokens, API
 keys, provider passwords, or full config payloads into docs or chat.
 
@@ -79,8 +79,8 @@ For an operator-triggered repair of one bounded window, use the same sync
 service as the worker:
 
 ```bash
-uv run gmgn-twitter-intel macro sync --bundle macro-core --start YYYY-MM-DD --end YYYY-MM-DD
-uv run gmgn-twitter-intel macro status
+uv run parallax macro sync --bundle macro-core --start YYYY-MM-DD --end YYYY-MM-DD
+uv run parallax macro status
 ```
 
 A good macro status has `history_ready=true`, a history coverage ratio above
@@ -93,7 +93,7 @@ that source facts are missing. FRED public CSV timeouts or a missing optional FR
 source-health gaps; they should appear as partial coverage/data gaps and are
 not frontend defects.
 
-The full CLI surface is documented by `uv run gmgn-twitter-intel --help`.
+The full CLI surface is documented by `uv run parallax --help`.
 Treat that output as the source of truth — do not enumerate commands
 here. A snapshot lives at `generated/cli-help.md`.
 
@@ -107,14 +107,14 @@ docker compose logs -f --tail=100 app
 docker compose down
 ```
 
-Bind-mounts host `~/.gmgn-twitter-intel/` into the container, including
+Bind-mounts host `~/.parallax/` into the container, including
 both `config.yaml` and `workers.yaml`; PostgreSQL data is pinned to the
-`gmgn-twitter-intel-postgres` named volume.
+`parallax-postgres` named volume.
 
 PostgreSQL observability is part of the compose runtime. The PostgreSQL image
 loads `pg_stat_statements`, PoWA, `pg_stat_kcache`, `pg_qualstats`, and
 `pg_wait_sampling`; slow logs are mounted under
-`~/.gmgn-twitter-intel/postgres-logs`.
+`~/.parallax/postgres-logs`.
 
 ```bash
 ./scripts/pgbadger_report.sh
@@ -122,7 +122,7 @@ loads `pg_stat_statements`, PoWA, `pg_stat_kcache`, `pg_qualstats`, and
 ```
 
 `pgbadger_report.sh` writes
-`~/.gmgn-twitter-intel/reports/pgbadger/pgbadger-latest.html`.
+`~/.parallax/reports/pgbadger/pgbadger-latest.html`.
 `powa_configure.sh` configures the local PoWA GUCs and server row with bounded
 retention, takes snapshots, and prints only non-secret server metadata plus
 current/history row counts.

@@ -54,15 +54,15 @@
 
 ### Backend
 
-- `src/gmgn_twitter_intel/app/surfaces/api/http.py:160-189` owns `/api/search/inspect`, constructs `SearchInspectService`, then calls `_enrich_search_inspect_market_overlay(...)` at `http.py:702-710`.
-- `src/gmgn_twitter_intel/app/surfaces/api/http.py:232-247` already exposes `/api/live-market`, which is the correct source for `market_live` snapshot shape.
-- `src/gmgn_twitter_intel/app/surfaces/api/http.py:249-285` owns `/api/target-posts`, which remains the cursor pagination source for load-more.
-- `src/gmgn_twitter_intel/domains/token_intel/read_models/search_inspect_service.py:82-132` currently builds token_result directly from timeline, posts, radar scan, profile, and agent brief. This is the duplicate path to replace.
-- `src/gmgn_twitter_intel/domains/token_intel/read_models/token_target_social_timeline_service.py:17-75` already builds timeline summary, stages, buckets, authors, posts, and market overlay from `TokenTargetRepository.timeline_rows(...)`.
-- `src/gmgn_twitter_intel/domains/token_intel/read_models/token_target_posts_service.py:28-88` already builds `TargetPostsData` with post quality contribution payloads and cursor semantics.
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_target_repository.py:12-158` can fetch target-scoped rows, but it has no target identity lookup that works when the target has zero rows in the current window. The new dossier service needs one.
-- `src/gmgn_twitter_intel/domains/asset_market/read_models/token_profile_read_model.py:12-34` already returns `profile` blocks keyed by target.
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/live_price_gateway.py:174-200` already returns missing and ready live market snapshots with price, market cap, liquidity, holders, provider, and timestamps.
+- `src/parallax/app/surfaces/api/http.py:160-189` owns `/api/search/inspect`, constructs `SearchInspectService`, then calls `_enrich_search_inspect_market_overlay(...)` at `http.py:702-710`.
+- `src/parallax/app/surfaces/api/http.py:232-247` already exposes `/api/live-market`, which is the correct source for `market_live` snapshot shape.
+- `src/parallax/app/surfaces/api/http.py:249-285` owns `/api/target-posts`, which remains the cursor pagination source for load-more.
+- `src/parallax/domains/token_intel/read_models/search_inspect_service.py:82-132` currently builds token_result directly from timeline, posts, radar scan, profile, and agent brief. This is the duplicate path to replace.
+- `src/parallax/domains/token_intel/read_models/token_target_social_timeline_service.py:17-75` already builds timeline summary, stages, buckets, authors, posts, and market overlay from `TokenTargetRepository.timeline_rows(...)`.
+- `src/parallax/domains/token_intel/read_models/token_target_posts_service.py:28-88` already builds `TargetPostsData` with post quality contribution payloads and cursor semantics.
+- `src/parallax/domains/token_intel/repositories/token_target_repository.py:12-158` can fetch target-scoped rows, but it has no target identity lookup that works when the target has zero rows in the current window. The new dossier service needs one.
+- `src/parallax/domains/asset_market/read_models/token_profile_read_model.py:12-34` already returns `profile` blocks keyed by target.
+- `src/parallax/domains/asset_market/runtime/live_price_gateway.py:174-200` already returns missing and ready live market snapshots with price, market cap, liquidity, holders, provider, and timestamps.
 
 ### Frontend
 
@@ -87,15 +87,15 @@
 
 ### Backend Create
 
-- `src/gmgn_twitter_intel/domains/token_intel/read_models/token_case_service.py`
+- `src/parallax/domains/token_intel/read_models/token_case_service.py`
 - `tests/unit/test_token_case_service.py`
 
 ### Backend Modify
 
-- `src/gmgn_twitter_intel/domains/token_intel/read_models/search_inspect_service.py`
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_target_repository.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/http.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
+- `src/parallax/domains/token_intel/read_models/search_inspect_service.py`
+- `src/parallax/domains/token_intel/repositories/token_target_repository.py`
+- `src/parallax/app/surfaces/api/http.py`
+- `src/parallax/app/surfaces/api/schemas.py`
 - `tests/unit/test_search_inspect_service.py`
 - `tests/integration/test_api_http.py`
 - `docs/CONTRACTS.md`
@@ -242,7 +242,7 @@ Error responses:
 
 ### Service Signature
 
-Add to `src/gmgn_twitter_intel/domains/token_intel/read_models/token_case_service.py`:
+Add to `src/parallax/domains/token_intel/read_models/token_case_service.py`:
 
 ```python
 class TokenCaseTargetNotFound(Exception):
@@ -354,7 +354,7 @@ Implementation rules:
 
 ### Repository Signature
 
-Add to `src/gmgn_twitter_intel/domains/token_intel/repositories/token_target_repository.py`:
+Add to `src/parallax/domains/token_intel/repositories/token_target_repository.py`:
 
 Method signature: `def target_identity(self, *, target_type: str, target_id: str) -> dict[str, Any] | None`.
 
@@ -524,8 +524,8 @@ type TokenCasePanelProps = {
 ## Task 1: Backend TokenCaseService And Target Identity
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/token_intel/read_models/token_case_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_target_repository.py`
+- Create: `src/parallax/domains/token_intel/read_models/token_case_service.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_target_repository.py`
 - Create: `tests/unit/test_token_case_service.py`
 
 - [ ] **Step 1: Write service unit tests first**
@@ -633,16 +633,16 @@ type TokenCasePanelProps = {
 - [ ] **Step 6: Commit backend read model slice**
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/token_intel/read_models/token_case_service.py src/gmgn_twitter_intel/domains/token_intel/repositories/token_target_repository.py tests/unit/test_token_case_service.py
+  git add src/parallax/domains/token_intel/read_models/token_case_service.py src/parallax/domains/token_intel/repositories/token_target_repository.py tests/unit/test_token_case_service.py
   git commit -m "feat: add token case dossier service"
   ```
 
 ## Task 2: HTTP Endpoint And Search Inspect Reuse
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/http.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/search_inspect_service.py`
+- Modify: `src/parallax/app/surfaces/api/http.py`
+- Modify: `src/parallax/app/surfaces/api/schemas.py`
+- Modify: `src/parallax/domains/token_intel/read_models/search_inspect_service.py`
 - Modify: `tests/unit/test_search_inspect_service.py`
 - Modify: `tests/integration/test_api_http.py`
 
@@ -760,7 +760,7 @@ type TokenCasePanelProps = {
 
 - [ ] **Step 3: Add API schema**
 
-  Add to `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`:
+  Add to `src/parallax/app/surfaces/api/schemas.py`:
 
   ```python
   class TokenCaseData(ApiSchema):
@@ -879,7 +879,7 @@ type TokenCasePanelProps = {
 - [ ] **Step 8: Commit backend endpoint slice**
 
   ```bash
-  git add src/gmgn_twitter_intel/app/surfaces/api/http.py src/gmgn_twitter_intel/app/surfaces/api/schemas.py src/gmgn_twitter_intel/domains/token_intel/read_models/search_inspect_service.py tests/unit/test_search_inspect_service.py tests/integration/test_api_http.py
+  git add src/parallax/app/surfaces/api/http.py src/parallax/app/surfaces/api/schemas.py src/parallax/domains/token_intel/read_models/search_inspect_service.py tests/unit/test_search_inspect_service.py tests/integration/test_api_http.py
   git commit -m "feat: expose token case dossier endpoint"
   ```
 

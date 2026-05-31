@@ -5,10 +5,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 RUNTIME_FILES = (
-    "src/gmgn_twitter_intel/app/runtime/worker_manifest.py",
-    "src/gmgn_twitter_intel/app/runtime/queue_health.py",
-    "src/gmgn_twitter_intel/app/runtime/worker_factories/__init__.py",
-    "src/gmgn_twitter_intel/platform/config/settings.py",
+    "src/parallax/app/runtime/worker_manifest.py",
+    "src/parallax/app/runtime/queue_health.py",
+    "src/parallax/app/runtime/worker_factories/__init__.py",
+    "src/parallax/platform/config/settings.py",
     "docs/WORKERS.md",
 )
 

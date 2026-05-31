@@ -15,9 +15,9 @@
 ## File Structure
 
 **Create:**
-- `src/gmgn_twitter_intel/pipeline/atomic_mention.py` — 纯函数：`tweet_quality()` + `mention_confidence_from_status()`
-- `src/gmgn_twitter_intel/pipeline/factor_cohort.py` — 纯函数：cohort 成员判定 + stablecoin 黑名单
-- `src/gmgn_twitter_intel/pipeline/cross_section_normalizer.py` — 纯函数：cohort 内 rank
+- `src/parallax/pipeline/atomic_mention.py` — 纯函数：`tweet_quality()` + `mention_confidence_from_status()`
+- `src/parallax/pipeline/factor_cohort.py` — 纯函数：cohort 成员判定 + stablecoin 黑名单
+- `src/parallax/pipeline/cross_section_normalizer.py` — 纯函数：cohort 内 rank
 - `tests/test_atomic_mention.py`
 - `tests/test_factor_cohort.py`
 - `tests/test_cross_section_normalizer.py`
@@ -26,15 +26,15 @@
 - `tools/factor_baseline_diff.py` — 一次性比对脚本（不入主代码）
 
 **Modify:**
-- `src/gmgn_twitter_intel/pipeline/token_radar_projection.py:143` — 扩展 `_source_rows` SQL（JOIN account_profiles + social_event_extractions）
-- `src/gmgn_twitter_intel/pipeline/token_radar_projection.py:683` — `_market_prefix_for_features` 修 B2 chase-risk 取数
-- `src/gmgn_twitter_intel/pipeline/token_radar_projection.py:38` — `rebuild()` 末尾加 cross-section pass
-- `src/gmgn_twitter_intel/pipeline/token_radar_feature_builder.py:127` — `_heat_features` 用新 quality 公式重算 weighted_mentions
-- `src/gmgn_twitter_intel/pipeline/token_radar_feature_builder.py:183` — `_quality_features` 用 social_event_extractions 的 LLM hints
-- `src/gmgn_twitter_intel/retrieval/social_heat_scoring.py:106` — bump `social_heat_v2` → `social_heat_v3`
-- `src/gmgn_twitter_intel/retrieval/discussion_quality_scoring.py` — bump `discussion_quality_v2` → `discussion_quality_v3`
-- `src/gmgn_twitter_intel/retrieval/timing_scoring.py:49` — bump `timing_v4` → `timing_v5`
-- `src/gmgn_twitter_intel/retrieval/opportunity_scoring.py:54` — bump `social_opportunity_v3` → `social_opportunity_v4`
+- `src/parallax/pipeline/token_radar_projection.py:143` — 扩展 `_source_rows` SQL（JOIN account_profiles + social_event_extractions）
+- `src/parallax/pipeline/token_radar_projection.py:683` — `_market_prefix_for_features` 修 B2 chase-risk 取数
+- `src/parallax/pipeline/token_radar_projection.py:38` — `rebuild()` 末尾加 cross-section pass
+- `src/parallax/pipeline/token_radar_feature_builder.py:127` — `_heat_features` 用新 quality 公式重算 weighted_mentions
+- `src/parallax/pipeline/token_radar_feature_builder.py:183` — `_quality_features` 用 social_event_extractions 的 LLM hints
+- `src/parallax/retrieval/social_heat_scoring.py:106` — bump `social_heat_v2` → `social_heat_v3`
+- `src/parallax/retrieval/discussion_quality_scoring.py` — bump `discussion_quality_v2` → `discussion_quality_v3`
+- `src/parallax/retrieval/timing_scoring.py:49` — bump `timing_v4` → `timing_v5`
+- `src/parallax/retrieval/opportunity_scoring.py:54` — bump `social_opportunity_v3` → `social_opportunity_v4`
 - `tests/test_token_radar_feature_builder.py` — 更新现有 fixture 以提供新字段
 - `tests/test_social_heat_scoring.py` — 验证 v3 字符串
 - `tests/test_opportunity_scoring.py` — 验证 v4 字符串
@@ -50,9 +50,9 @@
 - [ ] **Step 1:** 跑一次现有 token-radar rebuild 把过去 1 小时数据生成为 1h 窗口
 
 ```bash
-GMGN_TEST_POSTGRES_DSN="$(docker exec gmgn-twitter-intel-postgres-1 cat /run/secrets/postgres_password \
-  | sed 's|.*|postgresql://gmgn_app:&@127.0.0.1:56532/gmgn_twitter_intel_test|')" \
-  uv run gmgn-twitter-intel ops rebuild-token-radar --window 1h --limit 200 --scope all
+GMGN_TEST_POSTGRES_DSN="$(docker exec parallax-postgres-1 cat /run/secrets/postgres_password \
+  | sed 's|.*|postgresql://parallax_app:&@127.0.0.1:56532/parallax_test|')" \
+  uv run parallax ops rebuild-token-radar --window 1h --limit 200 --scope all
 ```
 
 Expected: JSON `{"ok": true, "data": {...}}` with at least dozens of upserted radar rows.
@@ -61,7 +61,7 @@ Expected: JSON `{"ok": true, "data": {...}}` with at least dozens of upserted ra
 
 ```bash
 mkdir -p /tmp/factor-baseline
-docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel -A -t -c "
+docker exec parallax-postgres-1 psql -U parallax_app -d parallax -A -t -c "
   SELECT json_agg(row_to_json(t))
   FROM (
     SELECT target_id, target_type, window, scope, generated_at_ms, score_json
@@ -81,7 +81,7 @@ Expected: file has > 1KB, `length` returns N rows (typically 50-500).
 - [ ] **Step 3:** 记录当前 git HEAD 作为对比基准
 
 ```bash
-git -C /Users/qinghuan/Documents/code/gmgn-twitter-intel rev-parse HEAD > /tmp/factor-baseline/before-sha.txt
+git -C /Users/qinghuan/Documents/code/parallax rev-parse HEAD > /tmp/factor-baseline/before-sha.txt
 cat /tmp/factor-baseline/before-sha.txt
 ```
 
@@ -94,7 +94,7 @@ Expected: 40-char SHA. Should match current `main` HEAD (`253d1a9` 或更新的 
 ## Task 1: Atomic mention 纯函数模块
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/pipeline/atomic_mention.py`
+- Create: `src/parallax/pipeline/atomic_mention.py`
 - Create: `tests/test_atomic_mention.py`
 
 - [ ] **Step 1: 写失败测试**
@@ -104,7 +104,7 @@ Create `tests/test_atomic_mention.py`:
 ```python
 from __future__ import annotations
 
-from gmgn_twitter_intel.pipeline.atomic_mention import (
+from parallax.pipeline.atomic_mention import (
     KOL_TIER_TAGS,
     MID_TIER_TAGS,
     LOW_TIER_TAGS,
@@ -185,11 +185,11 @@ def test_kol_mid_low_tier_constants_exhaust_known_tags():
 uv run pytest tests/test_atomic_mention.py -v
 ```
 
-Expected: FAIL with `ModuleNotFoundError: No module named 'gmgn_twitter_intel.pipeline.atomic_mention'`.
+Expected: FAIL with `ModuleNotFoundError: No module named 'parallax.pipeline.atomic_mention'`.
 
 - [ ] **Step 3: 实现模块**
 
-Create `src/gmgn_twitter_intel/pipeline/atomic_mention.py`:
+Create `src/parallax/pipeline/atomic_mention.py`:
 
 ```python
 """Per-mention atomic signal helpers (pure functions, no I/O)."""
@@ -271,7 +271,7 @@ Expected: 7 PASS.
 - [ ] **Step 5: 跑 ruff**
 
 ```bash
-uv run ruff check src/gmgn_twitter_intel/pipeline/atomic_mention.py tests/test_atomic_mention.py
+uv run ruff check src/parallax/pipeline/atomic_mention.py tests/test_atomic_mention.py
 ```
 
 Expected: clean.
@@ -279,7 +279,7 @@ Expected: clean.
 - [ ] **Step 6: 提交**
 
 ```bash
-git add src/gmgn_twitter_intel/pipeline/atomic_mention.py tests/test_atomic_mention.py
+git add src/parallax/pipeline/atomic_mention.py tests/test_atomic_mention.py
 git commit -m "feat(pipeline): add per-mention atomic quality and confidence helpers"
 ```
 
@@ -288,7 +288,7 @@ git commit -m "feat(pipeline): add per-mention atomic quality and confidence hel
 ## Task 2: Factor cohort 模块
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/pipeline/factor_cohort.py`
+- Create: `src/parallax/pipeline/factor_cohort.py`
 - Create: `tests/test_factor_cohort.py`
 
 定义"哪些 token 进入横截面 rank 的参与者集合"。spec §8.2 是设计依据。
@@ -300,7 +300,7 @@ Create `tests/test_factor_cohort.py`:
 ```python
 from __future__ import annotations
 
-from gmgn_twitter_intel.pipeline.factor_cohort import (
+from parallax.pipeline.factor_cohort import (
     COHORT_DEFINITION_VERSION,
     STABLECOIN_SYMBOLS,
     is_active_cohort_member,
@@ -377,7 +377,7 @@ Expected: FAIL with `ModuleNotFoundError`.
 
 - [ ] **Step 3: 实现模块**
 
-Create `src/gmgn_twitter_intel/pipeline/factor_cohort.py`:
+Create `src/parallax/pipeline/factor_cohort.py`:
 
 ```python
 """Cohort membership for cross-sectional factor normalization."""
@@ -421,7 +421,7 @@ Expected: 7 PASS.
 - [ ] **Step 5: 跑 ruff**
 
 ```bash
-uv run ruff check src/gmgn_twitter_intel/pipeline/factor_cohort.py tests/test_factor_cohort.py
+uv run ruff check src/parallax/pipeline/factor_cohort.py tests/test_factor_cohort.py
 ```
 
 Expected: clean.
@@ -429,7 +429,7 @@ Expected: clean.
 - [ ] **Step 6: 提交**
 
 ```bash
-git add src/gmgn_twitter_intel/pipeline/factor_cohort.py tests/test_factor_cohort.py
+git add src/parallax/pipeline/factor_cohort.py tests/test_factor_cohort.py
 git commit -m "feat(pipeline): add factor cohort membership helper"
 ```
 
@@ -438,7 +438,7 @@ git commit -m "feat(pipeline): add factor cohort membership helper"
 ## Task 3: Cross-section normalizer 模块
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/pipeline/cross_section_normalizer.py`
+- Create: `src/parallax/pipeline/cross_section_normalizer.py`
 - Create: `tests/test_cross_section_normalizer.py`
 
 - [ ] **Step 1: 写失败测试**
@@ -448,7 +448,7 @@ Create `tests/test_cross_section_normalizer.py`:
 ```python
 from __future__ import annotations
 
-from gmgn_twitter_intel.pipeline.cross_section_normalizer import (
+from parallax.pipeline.cross_section_normalizer import (
     NORMALIZER_VERSION,
     rank_within_cohort,
 )
@@ -522,7 +522,7 @@ Expected: FAIL.
 
 - [ ] **Step 3: 实现模块**
 
-Create `src/gmgn_twitter_intel/pipeline/cross_section_normalizer.py`:
+Create `src/parallax/pipeline/cross_section_normalizer.py`:
 
 ```python
 """Per-window cross-sectional rank normalization within an active cohort."""
@@ -571,7 +571,7 @@ Expected: 7 PASS.
 - [ ] **Step 5: 跑 ruff**
 
 ```bash
-uv run ruff check src/gmgn_twitter_intel/pipeline/cross_section_normalizer.py tests/test_cross_section_normalizer.py
+uv run ruff check src/parallax/pipeline/cross_section_normalizer.py tests/test_cross_section_normalizer.py
 ```
 
 Expected: clean.
@@ -579,7 +579,7 @@ Expected: clean.
 - [ ] **Step 6: 提交**
 
 ```bash
-git add src/gmgn_twitter_intel/pipeline/cross_section_normalizer.py tests/test_cross_section_normalizer.py
+git add src/parallax/pipeline/cross_section_normalizer.py tests/test_cross_section_normalizer.py
 git commit -m "feat(pipeline): add cross-section rank normalizer for factor scoring"
 ```
 
@@ -588,12 +588,12 @@ git commit -m "feat(pipeline): add cross-section rank normalizer for factor scor
 ## Task 4: SQL 扩展 + atomic 接入 + LLM hints 接入
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/pipeline/token_radar_projection.py:143` (`_source_rows` SQL)
-- Modify: `src/gmgn_twitter_intel/pipeline/token_radar_feature_builder.py:127` (`_heat_features`)
-- Modify: `src/gmgn_twitter_intel/pipeline/token_radar_feature_builder.py:183` (`_quality_features`)
-- Modify: `src/gmgn_twitter_intel/pipeline/token_radar_feature_builder.py:287` (`_confidence` 与新增 `_atomic_quality` helper)
-- Modify: `src/gmgn_twitter_intel/retrieval/social_heat_scoring.py:106` (bump `social_heat_v3`)
-- Modify: `src/gmgn_twitter_intel/retrieval/discussion_quality_scoring.py` (bump `discussion_quality_v3`)
+- Modify: `src/parallax/pipeline/token_radar_projection.py:143` (`_source_rows` SQL)
+- Modify: `src/parallax/pipeline/token_radar_feature_builder.py:127` (`_heat_features`)
+- Modify: `src/parallax/pipeline/token_radar_feature_builder.py:183` (`_quality_features`)
+- Modify: `src/parallax/pipeline/token_radar_feature_builder.py:287` (`_confidence` 与新增 `_atomic_quality` helper)
+- Modify: `src/parallax/retrieval/social_heat_scoring.py:106` (bump `social_heat_v3`)
+- Modify: `src/parallax/retrieval/discussion_quality_scoring.py` (bump `discussion_quality_v3`)
 - Modify: `tests/test_token_radar_feature_builder.py` (fixture rows 加新字段)
 - Modify: `tests/test_social_heat_scoring.py` (assert v3)
 
@@ -605,7 +605,7 @@ In `tests/test_token_radar_feature_builder.py`，add at the bottom:
 
 ```python
 def test_weighted_mentions_uses_quality_when_account_profiles_present():
-    from gmgn_twitter_intel.pipeline.token_radar_feature_builder import build_radar_features
+    from parallax.pipeline.token_radar_feature_builder import build_radar_features
 
     now_ms = 1_700_000_000_000
     base_row = {
@@ -639,7 +639,7 @@ def test_weighted_mentions_uses_quality_when_account_profiles_present():
 
 
 def test_weighted_mentions_lower_for_no_tag_account():
-    from gmgn_twitter_intel.pipeline.token_radar_feature_builder import build_radar_features
+    from parallax.pipeline.token_radar_feature_builder import build_radar_features
 
     now_ms = 1_700_000_000_000
 
@@ -681,7 +681,7 @@ def test_weighted_mentions_lower_for_no_tag_account():
 
 
 def test_quality_features_consume_llm_hints_when_present():
-    from gmgn_twitter_intel.pipeline.token_radar_feature_builder import build_radar_features
+    from parallax.pipeline.token_radar_feature_builder import build_radar_features
 
     now_ms = 1_700_000_000_000
     row = {
@@ -741,7 +741,7 @@ Expected: 3 new tests FAIL (assertions about `weighted_mentions` magnitude or `l
 
 - [ ] **Step 3: 修改 `_heat_features` 用 atomic quality**
 
-In `src/gmgn_twitter_intel/pipeline/token_radar_feature_builder.py`, at the top of the file add import:
+In `src/parallax/pipeline/token_radar_feature_builder.py`, at the top of the file add import:
 
 ```python
 from .atomic_mention import mention_confidence_from_status, tweet_quality
@@ -844,7 +844,7 @@ def _llm_utility(row: dict[str, Any]) -> float | None:
 
 - [ ] **Step 5: 修改 `_source_rows` SQL 加 JOIN**
 
-In `src/gmgn_twitter_intel/pipeline/token_radar_projection.py`, find `_source_rows` (line 143). The query currently has no JOIN to `account_profiles` or `social_event_extractions`.
+In `src/parallax/pipeline/token_radar_projection.py`, find `_source_rows` (line 143). The query currently has no JOIN to `account_profiles` or `social_event_extractions`.
 
 Add to the FROM clause (after `JOIN events ON events.event_id = tir.event_id`):
 
@@ -871,7 +871,7 @@ Note: the existing `events.author_followers AS author_followers` may stay too as
 
 - [ ] **Step 6: Bump score_version 字符串**
 
-In `src/gmgn_twitter_intel/retrieval/social_heat_scoring.py:106`, change:
+In `src/parallax/retrieval/social_heat_scoring.py:106`, change:
 
 ```python
 score_version="social_heat_v2",
@@ -883,15 +883,15 @@ to:
 score_version="social_heat_v3",
 ```
 
-In `src/gmgn_twitter_intel/retrieval/discussion_quality_scoring.py`, find `score_version="discussion_quality_v2"` and change to `discussion_quality_v3`.
+In `src/parallax/retrieval/discussion_quality_scoring.py`, find `score_version="discussion_quality_v2"` and change to `discussion_quality_v3`.
 
 In `tests/test_social_heat_scoring.py`, search for any string `social_heat_v2` and replace with `social_heat_v3`. Same for discussion_quality test.
 
 - [ ] **Step 7: 跑所有相关测试**
 
 ```bash
-GMGN_TEST_POSTGRES_DSN="$(docker exec gmgn-twitter-intel-postgres-1 cat /run/secrets/postgres_password \
-  | sed 's|.*|postgresql://gmgn_app:&@127.0.0.1:56532/gmgn_twitter_intel_test|')" \
+GMGN_TEST_POSTGRES_DSN="$(docker exec parallax-postgres-1 cat /run/secrets/postgres_password \
+  | sed 's|.*|postgresql://parallax_app:&@127.0.0.1:56532/parallax_test|')" \
   uv run pytest tests/test_atomic_mention.py tests/test_token_radar_feature_builder.py \
                 tests/test_social_heat_scoring.py tests/test_opportunity_scoring.py \
                 tests/test_propagation_scoring.py -v
@@ -911,10 +911,10 @@ Expected: clean.
 - [ ] **Step 9: 提交**
 
 ```bash
-git add src/gmgn_twitter_intel/pipeline/token_radar_projection.py \
-        src/gmgn_twitter_intel/pipeline/token_radar_feature_builder.py \
-        src/gmgn_twitter_intel/retrieval/social_heat_scoring.py \
-        src/gmgn_twitter_intel/retrieval/discussion_quality_scoring.py \
+git add src/parallax/pipeline/token_radar_projection.py \
+        src/parallax/pipeline/token_radar_feature_builder.py \
+        src/parallax/retrieval/social_heat_scoring.py \
+        src/parallax/retrieval/discussion_quality_scoring.py \
         tests/test_token_radar_feature_builder.py \
         tests/test_social_heat_scoring.py
 git commit -m "feat(scoring): wire account_profiles + LLM hints into atomic mention quality
@@ -930,8 +930,8 @@ git commit -m "feat(scoring): wire account_profiles + LLM hints into atomic ment
 ## Task 5: B2 fix — timing chase-risk 不幂等
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/pipeline/token_radar_projection.py` (`_source_rows` 的 `before_event_price` LATERAL JOIN)
-- Modify: `src/gmgn_twitter_intel/retrieval/timing_scoring.py:49` (bump `timing_v5`)
+- Modify: `src/parallax/pipeline/token_radar_projection.py` (`_source_rows` 的 `before_event_price` LATERAL JOIN)
+- Modify: `src/parallax/retrieval/timing_scoring.py:49` (bump `timing_v5`)
 - Modify: `tests/test_timing_scoring.py` (assert v5)
 
 **Bug**：同 token 30 秒内被两条 tweet 触发时，第二条事件的 "before" 价取了第一条事件 payload 写入的 price observation，假触发 chase_risk。
@@ -946,7 +946,7 @@ In `tests/test_timing_scoring.py`, add at the bottom:
 
 ```python
 def test_timing_v5_version_string():
-    from gmgn_twitter_intel.retrieval.timing_scoring import timing_score
+    from parallax.retrieval.timing_scoring import timing_score
     result = timing_score({"market_observation_status": "ready"})
     assert result["score_version"] == "timing_v5"
 ```
@@ -961,7 +961,7 @@ Expected: FAIL — score_version 仍是 `timing_v4`.
 
 - [ ] **Step 3: 修改 SQL — `before_event_price` LATERAL JOIN 加 5 分钟 buffer**
 
-In `src/gmgn_twitter_intel/pipeline/token_radar_projection.py`, find the `before_event_price` LATERAL JOIN (search for `AS before_event_price`). It currently has a `WHERE observed_at_ms < events.received_at_ms` (or equivalent). Change to:
+In `src/parallax/pipeline/token_radar_projection.py`, find the `before_event_price` LATERAL JOIN (search for `AS before_event_price`). It currently has a `WHERE observed_at_ms < events.received_at_ms` (or equivalent). Change to:
 
 ```sql
 WHERE observed_at_ms < events.received_at_ms - 300000
@@ -971,7 +971,7 @@ WHERE observed_at_ms < events.received_at_ms - 300000
 
 - [ ] **Step 4: Bump `timing_v4` → `timing_v5`**
 
-In `src/gmgn_twitter_intel/retrieval/timing_scoring.py:49`, change:
+In `src/parallax/retrieval/timing_scoring.py:49`, change:
 
 ```python
 score_version="timing_v4",
@@ -996,8 +996,8 @@ Expected: all PASS, including new `test_timing_v5_version_string`.
 - [ ] **Step 6: 跑 ruff**
 
 ```bash
-uv run ruff check src/gmgn_twitter_intel/pipeline/token_radar_projection.py \
-                  src/gmgn_twitter_intel/retrieval/timing_scoring.py \
+uv run ruff check src/parallax/pipeline/token_radar_projection.py \
+                  src/parallax/retrieval/timing_scoring.py \
                   tests/test_timing_scoring.py
 ```
 
@@ -1006,8 +1006,8 @@ Expected: clean.
 - [ ] **Step 7: 提交**
 
 ```bash
-git add src/gmgn_twitter_intel/pipeline/token_radar_projection.py \
-        src/gmgn_twitter_intel/retrieval/timing_scoring.py \
+git add src/parallax/pipeline/token_radar_projection.py \
+        src/parallax/retrieval/timing_scoring.py \
         tests/test_timing_scoring.py
 git commit -m "fix(scoring): exclude last 5min from chase-risk baseline (timing_v5)
 
@@ -1021,9 +1021,9 @@ read back as the chase-risk baseline for an immediately-following mention."
 ## Task 6: Cross-section rank 集成进 `rebuild()`
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/pipeline/token_radar_projection.py:38` (`rebuild()` method)
-- Modify: `src/gmgn_twitter_intel/pipeline/token_radar_projection.py:377` (`_project_group` — add cohort metadata to `score_json`)
-- Modify: `src/gmgn_twitter_intel/retrieval/opportunity_scoring.py:54` (bump `social_opportunity_v4`)
+- Modify: `src/parallax/pipeline/token_radar_projection.py:38` (`rebuild()` method)
+- Modify: `src/parallax/pipeline/token_radar_projection.py:377` (`_project_group` — add cohort metadata to `score_json`)
+- Modify: `src/parallax/retrieval/opportunity_scoring.py:54` (bump `social_opportunity_v4`)
 - Modify: `tests/test_opportunity_scoring.py` (assert v4)
 - Create: tests for the rebuild cross-section pass (use existing rebuild test pattern if available)
 
@@ -1034,7 +1034,7 @@ read back as the chase-risk baseline for an immediately-following mention."
 
 - [ ] **Step 1: Bump opportunity_v4**
 
-In `src/gmgn_twitter_intel/retrieval/opportunity_scoring.py:54`, change:
+In `src/parallax/retrieval/opportunity_scoring.py:54`, change:
 
 ```python
 score_version="social_opportunity_v3",
@@ -1068,7 +1068,7 @@ The real verification is the golden test in Task 7. Skip the placeholder for now
 
 - [ ] **Step 3: 实现 `rebuild()` 末尾的 cross-section pass**
 
-In `src/gmgn_twitter_intel/pipeline/token_radar_projection.py`, at the top of the file add imports:
+In `src/parallax/pipeline/token_radar_projection.py`, at the top of the file add imports:
 
 ```python
 from .cross_section_normalizer import NORMALIZER_VERSION, rank_within_cohort
@@ -1161,15 +1161,15 @@ If `score_json["timeline"]["mentions"]` doesn't already carry `resolution_status
 - [ ] **Step 4: Run integration smoke test against the live PG**
 
 ```bash
-GMGN_TEST_POSTGRES_DSN="$(docker exec gmgn-twitter-intel-postgres-1 cat /run/secrets/postgres_password \
-  | sed 's|.*|postgresql://gmgn_app:&@127.0.0.1:56532/gmgn_twitter_intel_test|')" \
-  uv run gmgn-twitter-intel ops rebuild-token-radar --window 1h --limit 50 --scope all
+GMGN_TEST_POSTGRES_DSN="$(docker exec parallax-postgres-1 cat /run/secrets/postgres_password \
+  | sed 's|.*|postgresql://parallax_app:&@127.0.0.1:56532/parallax_test|')" \
+  uv run parallax ops rebuild-token-radar --window 1h --limit 50 --scope all
 ```
 
 Verify via `psql` that `score_json` now has the new keys:
 
 ```bash
-docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel -c "
+docker exec parallax-postgres-1 psql -U parallax_app -d parallax -c "
   SELECT 
     target_id,
     score_json->>'cross_section_rank' AS rank,
@@ -1194,8 +1194,8 @@ Expected: all PASS.
 - [ ] **Step 6: 提交**
 
 ```bash
-git add src/gmgn_twitter_intel/pipeline/token_radar_projection.py \
-        src/gmgn_twitter_intel/retrieval/opportunity_scoring.py \
+git add src/parallax/pipeline/token_radar_projection.py \
+        src/parallax/retrieval/opportunity_scoring.py \
         tests/test_opportunity_scoring.py
 git commit -m "feat(scoring): cross-section rank pass in rebuild() (social_opportunity_v4)
 
@@ -1220,13 +1220,13 @@ Stablecoin symbols are excluded from the cohort by design."
 Run a small rebuild and capture both inputs and the resulting score_json:
 
 ```bash
-GMGN_TEST_POSTGRES_DSN="$(docker exec gmgn-twitter-intel-postgres-1 cat /run/secrets/postgres_password \
-  | sed 's|.*|postgresql://gmgn_app:&@127.0.0.1:56532/gmgn_twitter_intel_test|')" \
-  uv run gmgn-twitter-intel ops rebuild-token-radar --window 1h --limit 5 --scope all > /tmp/rebuild-1.json
+GMGN_TEST_POSTGRES_DSN="$(docker exec parallax-postgres-1 cat /run/secrets/postgres_password \
+  | sed 's|.*|postgresql://parallax_app:&@127.0.0.1:56532/parallax_test|')" \
+  uv run parallax ops rebuild-token-radar --window 1h --limit 5 --scope all > /tmp/rebuild-1.json
 
-GMGN_TEST_POSTGRES_DSN="$(docker exec gmgn-twitter-intel-postgres-1 cat /run/secrets/postgres_password \
-  | sed 's|.*|postgresql://gmgn_app:&@127.0.0.1:56532/gmgn_twitter_intel_test|')" \
-  uv run gmgn-twitter-intel ops rebuild-token-radar --window 1h --limit 5 --scope all > /tmp/rebuild-2.json
+GMGN_TEST_POSTGRES_DSN="$(docker exec parallax-postgres-1 cat /run/secrets/postgres_password \
+  | sed 's|.*|postgresql://parallax_app:&@127.0.0.1:56532/parallax_test|')" \
+  uv run parallax ops rebuild-token-radar --window 1h --limit 5 --scope all > /tmp/rebuild-2.json
 
 diff /tmp/rebuild-1.json /tmp/rebuild-2.json | head -30
 ```
@@ -1253,7 +1253,7 @@ from typing import Any
 
 import pytest
 
-from gmgn_twitter_intel.pipeline.token_radar_projection import TokenRadarProjection
+from parallax.pipeline.token_radar_projection import TokenRadarProjection
 from tests.postgres_test_utils import (
     connect_postgres_test,
     repository_session_for_connection,
@@ -1310,8 +1310,8 @@ Note: `now_ms=FIXED_NOW_MS` keyword arg requires `rebuild()` to accept it (it do
 - [ ] **Step 3: 跑测试**
 
 ```bash
-GMGN_TEST_POSTGRES_DSN="$(docker exec gmgn-twitter-intel-postgres-1 cat /run/secrets/postgres_password \
-  | sed 's|.*|postgresql://gmgn_app:&@127.0.0.1:56532/gmgn_twitter_intel_test|')" \
+GMGN_TEST_POSTGRES_DSN="$(docker exec parallax-postgres-1 cat /run/secrets/postgres_password \
+  | sed 's|.*|postgresql://parallax_app:&@127.0.0.1:56532/parallax_test|')" \
   uv run pytest tests/test_token_radar_idempotency.py -v
 ```
 
@@ -1337,9 +1337,9 @@ git commit -m "test(scoring): assert token-radar rebuild() is byte-idempotent (G
 - [ ] **Step 1: 重跑 token-radar 用相同窗口**
 
 ```bash
-GMGN_TEST_POSTGRES_DSN="$(docker exec gmgn-twitter-intel-postgres-1 cat /run/secrets/postgres_password \
-  | sed 's|.*|postgresql://gmgn_app:&@127.0.0.1:56532/gmgn_twitter_intel_test|')" \
-  uv run gmgn-twitter-intel ops rebuild-token-radar --window 1h --limit 200 --scope all
+GMGN_TEST_POSTGRES_DSN="$(docker exec parallax-postgres-1 cat /run/secrets/postgres_password \
+  | sed 's|.*|postgresql://parallax_app:&@127.0.0.1:56532/parallax_test|')" \
+  uv run parallax ops rebuild-token-radar --window 1h --limit 200 --scope all
 ```
 
 Expected: JSON `{"ok": true, "data": {...}}`.
@@ -1347,7 +1347,7 @@ Expected: JSON `{"ok": true, "data": {...}}`.
 - [ ] **Step 2: dump 新状态**
 
 ```bash
-docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel -A -t -c "
+docker exec parallax-postgres-1 psql -U parallax_app -d parallax -A -t -c "
   SELECT json_agg(row_to_json(t))
   FROM (
     SELECT target_id, target_type, window, scope, generated_at_ms, score_json
@@ -1523,7 +1523,7 @@ The diff output itself (terminal printout) is not committed — it's a verificat
 
 ```bash
 grep -rn "from.*diffusion_health import.*diffusion_health\b\|diffusion_health()" \
-     /Users/qinghuan/Documents/code/gmgn-twitter-intel/src/ | grep -v "text_fingerprint"
+     /Users/qinghuan/Documents/code/parallax/src/ | grep -v "text_fingerprint"
 ```
 
 Expected: zero hits. **Decision**: 保留。Phase 2.1 会接它进 propagation 替换 `_propagation_features`；现在删了 Phase 2.1 又得重写。
@@ -1531,7 +1531,7 @@ Expected: zero hits. **Decision**: 保留。Phase 2.1 会接它进 propagation �
 - [ ] **Step 2: 确认 `harness_weights` 表的写但不读现状**
 
 ```bash
-grep -rn "harness_weights\|HarnessWeight" /Users/qinghuan/Documents/code/gmgn-twitter-intel/src/
+grep -rn "harness_weights\|HarnessWeight" /Users/qinghuan/Documents/code/parallax/src/
 ```
 
 Expected output: 写在 `pipeline/harness_credit.py` 的 `update_harness_weights`，CLI 暴露在 `ops update-harness-weights`，retrieval 端有 `cli.py` 的 `harness-weights` 子命令在读这张表的内容用于人工 inspect。**Decision**: 保留。虽然不被 scoring 服务消费，但是 harness/eval 评估面板的输入。
@@ -1539,7 +1539,7 @@ Expected output: 写在 `pipeline/harness_credit.py` 的 `update_harness_weights
 - [ ] **Step 3: 确认 `event_clusters` 表的状态**
 
 ```bash
-grep -rn "event_clusters\|EventCluster" /Users/qinghuan/Documents/code/gmgn-twitter-intel/src/
+grep -rn "event_clusters\|EventCluster" /Users/qinghuan/Documents/code/parallax/src/
 ```
 
 Expected: 写在 `harness_repository`，读在 harness snapshot 路径。**Decision**: 保留。Phase 2.1 会接进 `seed_lag_ms`。
@@ -1593,9 +1593,9 @@ uv run ruff check src tests
 uv run python -m compileall src tests
 
 # 5. Integration: rebuild + verify new fields
-GMGN_TEST_POSTGRES_DSN="..." uv run gmgn-twitter-intel ops rebuild-token-radar \
+GMGN_TEST_POSTGRES_DSN="..." uv run parallax ops rebuild-token-radar \
   --window 1h --limit 50 --scope all
-docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel -c "
+docker exec parallax-postgres-1 psql -U parallax_app -d parallax -c "
   SELECT score_json->>'cross_section_rank' AS rank,
          score_json->'cohort'->>'in_cohort' AS in_cohort
   FROM token_radar_rows WHERE window='1h' ORDER BY generated_at_ms DESC LIMIT 5

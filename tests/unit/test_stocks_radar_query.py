@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.token_intel._constants import TOKEN_RADAR_RESOLVER_POLICY_VERSION
-from gmgn_twitter_intel.domains.token_intel.queries.stocks_radar_query import StocksRadarQuery
+from parallax.domains.token_intel._constants import TOKEN_RADAR_RESOLVER_POLICY_VERSION
+from parallax.domains.token_intel.queries.stocks_radar_query import StocksRadarQuery
 
 
 def test_stock_rows_materializes_recent_intents_before_resolution_lookup() -> None:

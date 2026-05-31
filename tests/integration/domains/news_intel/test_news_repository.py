@@ -7,22 +7,22 @@ from types import SimpleNamespace
 from alembic import command
 from psycopg.types.json import Jsonb
 
-from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
-from gmgn_twitter_intel.domains.news_intel._constants import (
+from parallax.app.runtime.repository_session import repositories_for_connection
+from parallax.domains.news_intel._constants import (
     NEWS_ITEM_BRIEF_GUARDRAIL_VERSION,
     NEWS_ITEM_BRIEF_PROMPT_VERSION,
     NEWS_ITEM_BRIEF_SCHEMA_VERSION,
     NEWS_ITEM_BRIEF_VALIDATOR_VERSION,
     NEWS_PAGE_PROJECTION_VERSION,
 )
-from gmgn_twitter_intel.domains.news_intel.repositories.news_repository import NewsRepository, news_page_cursor
-from gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
-from gmgn_twitter_intel.domains.news_intel.types.news_item_brief import (
+from parallax.domains.news_intel.repositories.news_repository import NewsRepository, news_page_cursor
+from parallax.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
+from parallax.domains.news_intel.types.news_item_brief import (
     NEWS_ITEM_BRIEF_AGENT_NAME,
     NEWS_ITEM_BRIEF_LANE,
     NEWS_ITEM_BRIEF_WORKFLOW_NAME,
 )
-from gmgn_twitter_intel.platform.db.postgres_migrations import alembic_config
+from parallax.platform.db.postgres_migrations import alembic_config
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 from tests.postgres_test_utils import test_postgres_dsn as _test_postgres_dsn

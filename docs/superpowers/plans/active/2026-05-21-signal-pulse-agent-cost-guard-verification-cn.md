@@ -6,11 +6,11 @@
 
 ## Config Confirmation
 
-`uv run gmgn-twitter-intel config` confirmed the live runtime files are the
+`uv run parallax config` confirmed the live runtime files are the
 operator-owned paths:
 
-- `config_path=/Users/qinghuan/.gmgn-twitter-intel/config.yaml`
-- `workers_config_path=/Users/qinghuan/.gmgn-twitter-intel/workers.yaml`
+- `config_path=/Users/qinghuan/.parallax/config.yaml`
+- `workers_config_path=/Users/qinghuan/.parallax/workers.yaml`
 
 No secret values were printed. The live operator config still has Pulse lanes
 set to `deepseek-v4-flash`; this change updates repository defaults and code
@@ -45,7 +45,7 @@ Result: `2 passed`.
 Passed:
 
 ```bash
-uv run ruff check src/gmgn_twitter_intel/domains/pulse_lab src/gmgn_twitter_intel/integrations/openai_agents src/gmgn_twitter_intel/platform/config/settings.py scripts/evaluate_signal_pulse_agent_cost_guard.py tests/unit/domains/pulse_lab tests/unit/test_pulse_decision_agent_client.py tests/unit/test_pulse_candidate_worker.py tests/unit/test_settings.py tests/integration/test_pulse_repositories.py
+uv run ruff check src/parallax/domains/pulse_lab src/parallax/integrations/openai_agents src/parallax/platform/config/settings.py scripts/evaluate_signal_pulse_agent_cost_guard.py tests/unit/domains/pulse_lab tests/unit/test_pulse_decision_agent_client.py tests/unit/test_pulse_candidate_worker.py tests/unit/test_settings.py tests/integration/test_pulse_repositories.py
 ```
 
 Result: `All checks passed`.
@@ -83,7 +83,7 @@ the DeepSeek judge.
 
 ## Residual Risk
 
-- Operator `~/.gmgn-twitter-intel/workers.yaml` still explicitly routes Pulse
+- Operator `~/.parallax/workers.yaml` still explicitly routes Pulse
   lanes to DeepSeek. Switching live traffic to the repository default model
   split requires an operator config edit.
 - The read-only report estimates public preservation from current

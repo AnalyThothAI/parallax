@@ -28,7 +28,7 @@ Known-failing baseline tests:
 
 ## File-level Edits
 
-### `src/gmgn_twitter_intel/storage/notification_repository.py`
+### `src/parallax/storage/notification_repository.py`
 
 - Change `insert_notification()` conflict handling from unconditional aggregate update to source-aware aggregation:
   - Insert payload stores a small internal `_aggregation_source_refs` list.
@@ -39,7 +39,7 @@ Known-failing baseline tests:
   - For Pulse payloads, include `payload_json->>'pulse_status'` so real status changes can still create a new alert.
   - This is a root invariant, not a legacy key fallback: one user-visible source/status alert should not be re-delivered only because key construction changed.
 
-### `src/gmgn_twitter_intel/pipeline/pulse_candidate_worker.py`
+### `src/parallax/pipeline/pulse_candidate_worker.py`
 
 - Remove `_STATUS_RANK` based bypass from `_cooldown_bypass()`. Keep explicit material bypasses only: trade eligibility, first watched confirmation, +5 independent authors, new chase risk, and new hard risks.
 - Add a terminal-job cooldown check for `done` and `dead` jobs when no existing candidate cooldown is available.

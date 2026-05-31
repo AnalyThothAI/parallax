@@ -2,8 +2,8 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from gmgn_twitter_intel.platform.agent_execution import AgentRuntimePolicy
-from gmgn_twitter_intel.platform.config.settings import (
+from parallax.platform.agent_execution import AgentRuntimePolicy
+from parallax.platform.config.settings import (
     NarrativeAdmissionWorkerSettings,
     PulseCandidateWorkerSettings,
     Settings,
@@ -15,7 +15,7 @@ from gmgn_twitter_intel.platform.config.settings import (
 
 
 def _manifest_worker_names() -> set[str]:
-    from gmgn_twitter_intel.app.runtime.worker_manifest import all_worker_manifests
+    from parallax.app.runtime.worker_manifest import all_worker_manifests
 
     return {manifest.name for manifest in all_worker_manifests()}
 
@@ -297,7 +297,7 @@ def test_worker_settings_reject_unknown_nested_key():
 
 
 def test_agent_runtime_settings_default_lanes() -> None:
-    from gmgn_twitter_intel.platform.config.settings import WorkersSettings
+    from parallax.platform.config.settings import WorkersSettings
 
     settings = WorkersSettings()
 
@@ -317,7 +317,7 @@ def test_agent_runtime_settings_default_lanes() -> None:
 
 
 def test_agent_runtime_settings_partial_lane_override_preserves_default_lanes() -> None:
-    from gmgn_twitter_intel.platform.config.settings import WorkersSettings
+    from parallax.platform.config.settings import WorkersSettings
 
     settings = WorkersSettings(
         agent_runtime={
@@ -352,7 +352,7 @@ def test_agent_runtime_settings_partial_lane_override_preserves_default_lanes() 
 
 
 def test_agent_runtime_settings_accepts_news_item_brief_lane_override() -> None:
-    from gmgn_twitter_intel.platform.config.settings import WorkersSettings
+    from parallax.platform.config.settings import WorkersSettings
 
     settings = WorkersSettings(
         agent_runtime={

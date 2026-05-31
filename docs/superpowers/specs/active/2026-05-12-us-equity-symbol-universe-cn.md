@@ -5,10 +5,10 @@
 **Owner**: Codex
 **Related**:
 - `docs/superpowers/specs/active/2026-05-12-symbol-only-resolution-gap-cn.md`
-- `src/gmgn_twitter_intel/domains/token_intel/services/deterministic_token_resolver.py`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/token_discovery_worker.py`
-- `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py`
+- `src/parallax/domains/token_intel/services/deterministic_token_resolver.py`
+- `src/parallax/domains/asset_market/repositories/registry_repository.py`
+- `src/parallax/domains/asset_market/runtime/token_discovery_worker.py`
+- `src/parallax/domains/token_intel/queries/token_radar_source_query.py`
 
 ---
 
@@ -153,7 +153,7 @@ Token radar 是 crypto radar，不展示股票 instrument。
 新增：
 
 ```bash
-uv run gmgn-twitter-intel ops sync-us-equity-symbols
+uv run parallax ops sync-us-equity-symbols
 ```
 
 输出：

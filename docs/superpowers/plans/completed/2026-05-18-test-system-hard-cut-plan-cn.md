@@ -59,7 +59,7 @@ Known red baseline that should remain documented until fixed in the relevant bra
 - No compatibility code: no `_compat_*`, no `legacy_*_fallback`, no dual read of old and new schema, no "if old field exists then use it".
 - A test that describes a deleted runtime path must be deleted or rewritten to the current model.
 - A skipped business test is not an acceptable long-term state. Environment skips are allowed only for unavailable external infrastructure and must say they cannot count as verification evidence.
-- Unit tests must not touch PostgreSQL, real network, real `~/.gmgn-twitter-intel`, or production DSNs.
+- Unit tests must not touch PostgreSQL, real network, real `~/.parallax`, or production DSNs.
 - Integration tests must hit real PostgreSQL/testcontainers when asserting storage, repository, worker, API read-model, or query behavior.
 - Fake provider tests are allowed only when they exercise the current adapter boundary and are named as unit/contract tests, not as production integration coverage.
 - Provider live drift checks must be opt-in or scheduled; CI must use captured, redacted protocol fixtures.
@@ -398,10 +398,10 @@ Root `tests/test_*.py` must be empty after this plan.
 
 **Files:**
 - Create: `tests/integration/test_market_tick_wake_idempotency.py`
-- Potentially modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/market_tick_repository.py`
-- Potentially modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_poll_worker.py`
-- Potentially modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_stream_worker.py`
-- Potentially modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/event_anchor_backfill_worker.py`
+- Potentially modify: `src/parallax/domains/asset_market/repositories/market_tick_repository.py`
+- Potentially modify: `src/parallax/domains/asset_market/runtime/market_tick_poll_worker.py`
+- Potentially modify: `src/parallax/domains/asset_market/runtime/market_tick_stream_worker.py`
+- Potentially modify: `src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py`
 
 - [x] Write failing test proving duplicate deterministic ticks do not count as newly inserted.
 - [x] Write failing test proving duplicate ticks do not emit repeated `market_tick_written` wakes.

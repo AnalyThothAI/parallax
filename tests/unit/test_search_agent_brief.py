@@ -1,4 +1,4 @@
-from gmgn_twitter_intel.domains.token_intel.read_models.search_agent_brief import (
+from parallax.domains.token_intel.read_models.search_agent_brief import (
     build_topic_agent_brief,
 )
 

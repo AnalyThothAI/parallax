@@ -34,13 +34,13 @@ Known-failing baseline tests:
 
 ## File-level Edits
 
-### `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_search_service.py`
+### `src/parallax/domains/token_intel/read_models/asset_search_service.py`
 
 - Delete this file after the new service is wired and tests are migrated.
 - Runtime must no longer import `AssetSearchService`.
 - The delete is intentional hard cut; do not keep an adapter class named `AssetSearchService`.
 
-### `src/gmgn_twitter_intel/domains/token_intel/read_models/search_service.py`
+### `src/parallax/domains/token_intel/read_models/search_service.py`
 
 - Create this file. It owns parse/orchestration/fusion/page shaping only. It must not contain raw SQL.
 - Public dataclasses and signatures:
@@ -110,7 +110,7 @@ Known-failing baseline tests:
   else: match_type = "trigram"
   ```
 
-### `src/gmgn_twitter_intel/domains/token_intel/services/query_parser.py`
+### `src/parallax/domains/token_intel/services/query_parser.py`
 
 - Replace `ParsedQuery` with `SearchIntent` or keep the file name and hard-rewrite the model. No old parser compatibility helpers.
 - New dataclass:
@@ -140,7 +140,7 @@ Known-failing baseline tests:
     ```
   - Do not treat one-character symbols as target probes.
 
-### `src/gmgn_twitter_intel/domains/token_intel/queries/search_events_query.py`
+### `src/parallax/domains/token_intel/queries/search_events_query.py`
 
 - Create this file. It owns all SQL for search target resolution and route retrieval.
 - Constructor:
@@ -339,7 +339,7 @@ Known-failing baseline tests:
   - Trigram route runs only when lexical query normalized length is at least 4 and target+lexical hits are fewer than `limit + 1`.
 - Decode event rows using a small local function or reuse `decode_event_row` from `EvidenceRepository`; do not call removed FTS methods.
 
-### `src/gmgn_twitter_intel/domains/token_intel/services/search_aliases.py`
+### `src/parallax/domains/token_intel/services/search_aliases.py`
 
 - Create this file for high-confidence query expansion. Keep it deterministic and small.
 - Initial constants:
@@ -359,22 +359,22 @@ Known-failing baseline tests:
   - For simple symbol intent with aliases, return `"btc OR bitcoin OR bitcoins OR 比特币 OR xbt"` style websearch string.
   - For text intent, do not inject aliases unless the entire query is one known alias.
 
-### `src/gmgn_twitter_intel/domains/evidence/repositories/evidence_repository.py`
+### `src/parallax/domains/evidence/repositories/evidence_repository.py`
 
 - Remove methods named `search_fts`, `count_fts`, and `_fts_query`.
 - Keep `recent_events`, `events_by_ids`, `event_to_row`, and `decode_event_row`.
 - Update imports to remove unused `re`.
 - Run `rg "search_fts|count_fts|_fts_query" src tests` and delete or migrate every usage.
 
-### `src/gmgn_twitter_intel/app/surfaces/api/http.py`
+### `src/parallax/app/surfaces/api/http.py`
 
 - Replace import:
   ```python
-  from gmgn_twitter_intel.domains.token_intel.read_models.search_service import (
+  from parallax.domains.token_intel.read_models.search_service import (
       SearchCursorError,
       SearchService,
   )
-  from gmgn_twitter_intel.domains.token_intel.queries.search_events_query import SearchEventsQuery
+  from parallax.domains.token_intel.queries.search_events_query import SearchEventsQuery
   ```
 - Replace `/api/search` signature:
   ```python
@@ -436,7 +436,7 @@ Known-failing baseline tests:
   }
   ```
 
-### `src/gmgn_twitter_intel/app/surfaces/cli/main.py`
+### `src/parallax/app/surfaces/cli/main.py`
 
 - Replace `AssetSearchService` import with `SearchService` and `SearchEventsQuery`.
 - Search parser edits:
@@ -478,7 +478,7 @@ Known-failing baseline tests:
   ```
 - Delete CLI `_search_query(args)` helper at `main.py:943` after removing old flags.
 
-### `src/gmgn_twitter_intel/platform/db/alembic/versions/20260512_0032_search_v2_hard_cut.py`
+### `src/parallax/platform/db/alembic/versions/20260512_0032_search_v2_hard_cut.py`
 
 - Create migration with revision id `20260512_0032` and `down_revision = "20260512_0031"`.
 - Upgrade SQL:
@@ -514,7 +514,7 @@ Known-failing baseline tests:
   ```
 - Do not create duplicate generated columns or dual-read compatibility indexes.
 
-### `src/gmgn_twitter_intel/app/surfaces/api/http.py` generated docs dependencies
+### `src/parallax/app/surfaces/api/http.py` generated docs dependencies
 
 - After API change, regenerate:
   ```bash
@@ -769,7 +769,7 @@ Known-failing baseline tests:
   - Cursor pages, no exact total count.
   - Search uses current token targets before lexical/trigram retrieval.
 
-### `docs/ARCHITECTURE.md` and `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
+### `docs/ARCHITECTURE.md` and `src/parallax/domains/token_intel/ARCHITECTURE.md`
 
 - Update Token Intel local architecture with a short “Search read model” row or paragraph:
   - Search reads current `token_intent_resolutions`, `cex_tokens`, `registry_assets`, `asset_identity_current`.

@@ -16,7 +16,7 @@
 
 - [x] Spec is approved: `docs/superpowers/specs/active/2026-05-28-news-intel-dedup-root-fix-cn.md`.
 - [x] Implementation runs in worktree `.worktrees/news-intel-dedup-root-fix/` on branch `codex/news-intel-dedup-root-fix`.
-- [x] Verify active runtime config before real-data diagnostics: `uv run gmgn-twitter-intel config`; report only paths and booleans.
+- [x] Verify active runtime config before real-data diagnostics: `uv run parallax config`; report only paths and booleans.
 - [x] Baseline `uv run ruff check .` passes.
 - [x] Baseline `uv run pytest tests/unit/domains/news_intel tests/unit/integrations/news_feeds tests/integration/domains/news_intel tests/unit/test_api_news_contract.py tests/architecture/test_news_intel_boundaries.py` passes.
 - [x] Hard-cut gate: no legacy item-id resolver, no dual API read path, no old page-row fallback, no frontend-only dedup, no scheduled full-table scanner.
@@ -28,7 +28,7 @@ Known-failing baseline tests: none expected. If baseline fails, record exact fai
 
 ### Storage / migrations
 
-- Create `src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0117_news_intel_canonical_dedup_hard_cut.py`.
+- Create `src/parallax/platform/db/alembic/versions/20260528_0117_news_intel_canonical_dedup_hard_cut.py`.
 
   Alembic header:
 
@@ -220,7 +220,7 @@ Known-failing baseline tests: none expected. If baseline fails, record exact fai
 
   Downgrade drops new indexes, table, constraints, and columns. Downgrade is destructive for hard-cut canonical fields and is only safe before canonical rebuild.
 
-### `src/gmgn_twitter_intel/domains/news_intel/services/news_url_identity.py`
+### `src/parallax/domains/news_intel/services/news_url_identity.py`
 
 - Create focused URL identity classifier.
 
@@ -247,7 +247,7 @@ Known-failing baseline tests: none expected. If baseline fails, record exact fai
   - Add `tests/unit/domains/news_intel/test_news_url_identity.py`.
   - Test TASS root, AFP root, NYT live URL, OpenNews fallback URL, Binance announcement article URL.
 
-### `src/gmgn_twitter_intel/domains/news_intel/services/news_canonical_identity.py`
+### `src/parallax/domains/news_intel/services/news_canonical_identity.py`
 
 - Create deterministic canonical identity service.
 
@@ -298,12 +298,12 @@ Known-failing baseline tests: none expected. If baseline fails, record exact fai
   - `test_article_url_wins_when_provider_id_missing`.
   - `test_stable_news_item_id_order_independent`.
 
-### `src/gmgn_twitter_intel/domains/news_intel/types/source_provider.py`
+### `src/parallax/domains/news_intel/types/source_provider.py`
 
 - Lines 41-57: keep `NewsProviderObservation` as normalized content plus raw payload; provider article identity is carried in `raw_payload` from provider wiring and materialized by `NewsRepository.upsert_provider_item`.
 - Lines 72-81: keep `NewsProviderFetchResult.next_cursor` and make OpenNews fetch worker persistence use it; no compatibility wrapper.
 
-### `src/gmgn_twitter_intel/integrations/news_feeds/feed_client.py`
+### `src/parallax/integrations/news_feeds/feed_client.py`
 
 - Lines 10-18: add cursor to `FeedFetchResult`.
 
@@ -321,7 +321,7 @@ Known-failing baseline tests: none expected. If baseline fails, record exact fai
       next_cursor: dict[str, Any] = field(default_factory=dict)
   ```
 
-### `src/gmgn_twitter_intel/integrations/news_feeds/provider_registry.py`
+### `src/parallax/integrations/news_feeds/provider_registry.py`
 
 - Lines 13-49, 58-127, 150-168: pass `cursor` through the registry contract.
 
@@ -344,7 +344,7 @@ Known-failing baseline tests: none expected. If baseline fails, record exact fai
 - RSS/CryptoPanic providers ignore cursor by contract and do not create fallback behavior.
 - `OpenNewsNewsFeedProvider.fetch` forwards `cursor` to `OpenNewsFeedClient.fetch`.
 
-### `src/gmgn_twitter_intel/integrations/news_feeds/opennews_client.py`
+### `src/parallax/integrations/news_feeds/opennews_client.py`
 
 - Lines 28-64: update `fetch` to accept cursor.
 
@@ -410,7 +410,7 @@ Known-failing baseline tests: none expected. If baseline fails, record exact fai
   - `test_opennews_ready_payload_not_overwritten_by_later_partial`.
   - Update existing REST test expected body to include page 1 and cursor diagnostics.
 
-### `src/gmgn_twitter_intel/app/runtime/provider_wiring/news.py`
+### `src/parallax/app/runtime/provider_wiring/news.py`
 
 - Lines 53-79: pass OpenNews cursor into registry; map normalized entries to `NewsProviderObservation` without inventing provider article identity. OpenNews identity fields stay in `raw_payload` and are materialized from official id fields by the repository.
 
@@ -419,7 +419,7 @@ Known-failing baseline tests: none expected. If baseline fails, record exact fai
   - `tests/unit/integrations/news_feeds/test_provider_registry.py::test_registry_passes_opennews_cursor`.
   - `tests/unit/domains/news_intel/test_feed_item_normalizer.py` updated for provider article fields.
 
-### `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
+### `src/parallax/domains/news_intel/repositories/news_repository.py`
 
 - Lines 73-177: include sync columns in `upsert_source` payload only when source config explicitly sets them; default DB values remain canonical.
 - Lines 179-224: after disabling unconfigured sources, call new helper `delete_page_rows_for_disabled_sources(commit=False)` and return disabled ids in a compact result payload or expose a separate repository method used by `NewsFetchWorker`.
@@ -555,7 +555,7 @@ Known-failing baseline tests: none expected. If baseline fails, record exact fai
 - Lines 1642 onward: `get_news_story_detail` lists canonical item members and nests duplicate observations under each member.
 - Lines 1966-2034: `list_source_status` includes `sync_high_watermark_ms`, `sync_diagnostics_json`, raw observation count, canonical item count, duplicate edge count and disabled serving row count.
 
-### `src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py`
+### `src/parallax/domains/news_intel/runtime/news_fetch_worker.py`
 
 - Lines 57-118: capture disabled source ids from reconcile and delete disabled-source page rows inside the same transaction that disables sources; enqueue source-quality targets for changed sources.
 - Lines 120-142: pass source sync cursor to OpenNews provider only; RSS/CryptoPanic receive an empty cursor:
@@ -622,7 +622,7 @@ Known-failing baseline tests: none expected. If baseline fails, record exact fai
   - `tests/integration/domains/news_intel/test_news_ingest_flow.py::test_same_content_hash_multiple_provider_ids_projects_one_news_row`.
   - Update existing ingest test to keep RSS cursor empty and assert canonical item semantics.
 
-### `src/gmgn_twitter_intel/domains/news_intel/services/news_story_grouping.py`
+### `src/parallax/domains/news_intel/services/news_story_grouping.py`
 
 - Lines 23-64: story matching consumes canonical item fields and URL identity.
 - Exact URL story match only when `url_identity_kind == "article"`.
@@ -640,7 +640,7 @@ Known-failing baseline tests: none expected. If baseline fails, record exact fai
   - `tests/unit/domains/news_intel/test_news_story_grouping.py::test_same_content_hash_candidate_matches_when_loaded`.
   - `tests/unit/domains/news_intel/test_news_story_grouping.py::test_new_story_id_is_order_independent_for_canonical_key`.
 
-### `src/gmgn_twitter_intel/domains/news_intel/runtime/news_story_projection_worker.py`
+### `src/parallax/domains/news_intel/runtime/news_story_projection_worker.py`
 
 - Lines 150-182: call updated `new_story_id(canonical_item_key=str(item_payload["canonical_item_key"]), representative_title=str(item_payload["title"]))`.
 - Lines 185-195: downstream targets remain canonical `news_item` ids; no provider-observation targets.
@@ -648,7 +648,7 @@ Known-failing baseline tests: none expected. If baseline fails, record exact fai
   - `tests/unit/domains/news_intel/test_news_story_projection_dirty_targets.py` updated for canonical target ids.
   - `tests/architecture/test_news_intel_boundaries.py` asserts fetch worker does not write `news_story_groups/news_story_members`.
 
-### `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_process_worker.py`
+### `src/parallax/domains/news_intel/runtime/news_item_process_worker.py`
 
 - Keep worker shape, but item ids are canonical ids.
 - Ensure `list_unprocessed_items` joins only canonical `news_items`.
@@ -656,7 +656,7 @@ Known-failing baseline tests: none expected. If baseline fails, record exact fai
 - Tests:
   - `tests/unit/domains/news_intel/test_news_workers.py::test_item_process_runs_once_for_duplicate_canonical_item`.
 
-### `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py`
+### `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py`
 
 - Treat `news_item_id` as canonical item id.
 - `load_items_for_brief_targets` must aggregate duplicate/source evidence and avoid duplicate brief runs for duplicate observations.
@@ -664,7 +664,7 @@ Known-failing baseline tests: none expected. If baseline fails, record exact fai
   - `tests/unit/domains/news_intel/test_news_item_brief_worker.py::test_duplicate_observations_do_not_create_second_brief_run`.
   - `tests/integration/domains/news_intel/test_news_item_agent_brief_repository.py` updated for canonical item ids.
 
-### `src/gmgn_twitter_intel/domains/news_intel/services/news_page_projection.py`
+### `src/parallax/domains/news_intel/services/news_page_projection.py`
 
 - Lines 13-66: build row id from canonical item id and include duplicate/source summaries.
 
@@ -683,7 +683,7 @@ Known-failing baseline tests: none expected. If baseline fails, record exact fai
   - `tests/unit/domains/news_intel/test_news_page_projection.py::test_page_row_uses_canonical_item_identity`.
   - `tests/unit/domains/news_intel/test_news_page_projection.py::test_page_row_includes_duplicate_source_summary`.
 
-### `src/gmgn_twitter_intel/domains/news_intel/runtime/news_page_projection_worker.py`
+### `src/parallax/domains/news_intel/runtime/news_page_projection_worker.py`
 
 - Lines 49-84: unchanged worker lifecycle, but claimed ids are canonical item ids.
 - If `load_items_for_page_projection` returns no payload for a claimed canonical item because all sources are disabled, `replace_page_rows_for_items` deletes its row and marks dirty target done.
@@ -691,7 +691,7 @@ Known-failing baseline tests: none expected. If baseline fails, record exact fai
   - `tests/integration/domains/news_intel/test_news_page_rows_read_path.py::test_disabled_source_canonical_item_deletes_page_row`.
   - `tests/integration/domains/news_intel/test_news_page_rows_read_path.py::test_exact_duplicate_content_visible_once`.
 
-### `src/gmgn_twitter_intel/domains/news_intel/queries/news_page_query.py`
+### `src/parallax/domains/news_intel/queries/news_page_query.py`
 
 - Lines 35-36: parameter remains named `news_item_id` because the public path already uses that segment, but its value is a canonical item id. No legacy lookup is attempted.
 - Add method docstring:
@@ -701,7 +701,7 @@ Known-failing baseline tests: none expected. If baseline fails, record exact fai
       """Load canonical news item detail by canonical news_item_id only."""
   ```
 
-### `src/gmgn_twitter_intel/app/surfaces/api/routes_news.py`
+### `src/parallax/app/surfaces/api/routes_news.py`
 
 - Lines 42-49: error remains `news_item_not_found`; detail payload now includes canonical item and observation evidence.
 - Lines 72-83: source status response includes dedup and sync diagnostics.
@@ -710,7 +710,7 @@ Known-failing baseline tests: none expected. If baseline fails, record exact fai
   - `tests/unit/test_api_news_contract.py::test_news_api_item_detail_uses_canonical_item_id_only`.
   - `tests/unit/test_api_news_contract.py::test_news_source_status_includes_dedup_sync_diagnostics`.
 
-### `src/gmgn_twitter_intel/app/surfaces/cli/parser.py`
+### `src/parallax/app/surfaces/cli/parser.py`
 
 - Lines 113-290: add two ops commands.
 
@@ -733,7 +733,7 @@ Known-failing baseline tests: none expected. If baseline fails, record exact fai
   )
   ```
 
-### `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`
+### `src/parallax/app/surfaces/cli/commands/ops.py`
 
 - Lines 79-359: route the two new ops commands.
 
@@ -749,7 +749,7 @@ Known-failing baseline tests: none expected. If baseline fails, record exact fai
 
 - Create helper functions in same file or focused runtime module. Prefer focused module if helper exceeds 80 lines.
 
-### `src/gmgn_twitter_intel/app/runtime/news_dedup_rebuild.py`
+### `src/parallax/app/runtime/news_dedup_rebuild.py`
 
 - Create hard-cut rebuild service used by CLI.
 
@@ -782,7 +782,7 @@ Known-failing baseline tests: none expected. If baseline fails, record exact fai
   - Enqueues `story`, `page`, `brief_input`, and `source_quality` dirty targets.
   - Running the same command twice returns zero additional canonical item growth.
 
-### `src/gmgn_twitter_intel/app/runtime/ops_diagnostics.py`
+### `src/parallax/app/runtime/ops_diagnostics.py`
 
 - Lines around news diagnostics aggregation: include `news_dedup_diagnostics` output under `domains.news.dedup`.
 - Do not include tokens, API keys, Authorization headers, cookie values, or raw payload bodies.
@@ -833,14 +833,14 @@ Known-failing baseline tests: none expected. If baseline fails, record exact fai
 4. Run dry diagnostics:
 
    ```bash
-   uv run gmgn-twitter-intel ops news-dedup-diagnostics
-   uv run gmgn-twitter-intel ops rebuild-news-canonical-items --batch-size 1000 --max-batches 1
+   uv run parallax ops news-dedup-diagnostics
+   uv run parallax ops rebuild-news-canonical-items --batch-size 1000 --max-batches 1
    ```
 
 5. Execute hard-cut canonical rebuild:
 
    ```bash
-   uv run gmgn-twitter-intel ops rebuild-news-canonical-items --batch-size 1000 --max-batches 100 --execute
+   uv run parallax ops rebuild-news-canonical-items --batch-size 1000 --max-batches 100 --execute
    ```
 
 6. Drain workers in this order until each reports processed 0 or only expected skips: `news_item_process`, `news_story_projection`, `news_item_brief`, `news_page_projection`, `news_source_quality_projection`.
@@ -850,7 +850,7 @@ Known-failing baseline tests: none expected. If baseline fails, record exact fai
    ```bash
    curl -s http://127.0.0.1:8765/api/news?limit=200 | jq '.data.items | length'
    curl -s http://127.0.0.1:8765/api/news/sources/status | jq '.data.source_hygiene, .data.sources[0].sync_diagnostics_json'
-   uv run gmgn-twitter-intel ops news-dedup-diagnostics
+   uv run parallax ops news-dedup-diagnostics
    ```
 
 8. Run full completion gate:
@@ -872,10 +872,10 @@ Known-failing baseline tests: none expected. If baseline fails, record exact fai
 - AC1:
 
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
 
-  Expected: reports `config_path=/Users/qinghuan/.gmgn-twitter-intel/config.yaml`, `workers_config_path=/Users/qinghuan/.gmgn-twitter-intel/workers.yaml`, no secret values.
+  Expected: reports `config_path=/Users/qinghuan/.parallax/config.yaml`, `workers_config_path=/Users/qinghuan/.parallax/workers.yaml`, no secret values.
 
 - AC2 and AC3:
 
@@ -937,8 +937,8 @@ Known-failing baseline tests: none expected. If baseline fails, record exact fai
 - AC14:
 
   ```bash
-  uv run gmgn-twitter-intel ops rebuild-news-canonical-items --batch-size 1000 --max-batches 100 --execute
-  uv run gmgn-twitter-intel ops news-dedup-diagnostics
+  uv run parallax ops rebuild-news-canonical-items --batch-size 1000 --max-batches 100 --execute
+  uv run parallax ops news-dedup-diagnostics
   ```
 
   Expected JSON fields: `disabled_page_rows=0`, `visible_duplicate_content_hash_excess=0`, `same_canonical_rows_visible=0`.

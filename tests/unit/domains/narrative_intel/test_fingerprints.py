@@ -1,4 +1,4 @@
-from gmgn_twitter_intel.domains.narrative_intel.services.fingerprints import (
+from parallax.domains.narrative_intel.services.fingerprints import (
     label_fingerprint,
     source_fingerprint,
     text_fingerprint,

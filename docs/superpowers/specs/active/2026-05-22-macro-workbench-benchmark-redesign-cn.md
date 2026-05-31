@@ -17,11 +17,11 @@
 
 ## Background
 
-`gmgn-twitter-intel` already has a Macro Intel domain, but it is a first-generation macro state view rather than a benchmark-quality macro terminal. The current durable flow is:
+`parallax` already has a Macro Intel domain, but it is a first-generation macro state view rather than a benchmark-quality macro terminal. The current durable flow is:
 
 ```text
 macrodata bundle macro-core
-  -> gmgn-twitter-intel macro import-bundle
+  -> parallax macro import-bundle
   -> macro_observations / macro_import_runs
   -> MacroViewProjectionWorker
   -> macro_view_snapshots
@@ -31,11 +31,11 @@ macrodata bundle macro-core
 
 Grounding in current code and docs:
 
-- Macro facts and projections are documented in `src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md:11`: `macro_observations` is the fact table, `macro_import_runs` is import audit, and `macro_view_snapshots` is the rebuildable read model written only by `MacroViewProjectionWorker`.
+- Macro facts and projections are documented in `src/parallax/domains/macro_intel/ARCHITECTURE.md:11`: `macro_observations` is the fact table, `macro_import_runs` is import audit, and `macro_view_snapshots` is the rebuildable read model written only by `MacroViewProjectionWorker`.
 - System architecture documents the macro import and projection path in `docs/ARCHITECTURE.md:24`.
-- `src/gmgn_twitter_intel/domains/macro_intel/_constants.py:7` maps provider series into canonical concepts such as liquidity, rates, Fed corridor, credit, volatility, assets, commodities, FX, crypto, and positioning.
-- `src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py:24` exposes `/api/macro` as a read-only latest-snapshot endpoint.
-- `src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py:32` exposes `/api/macro/assets/correlation`, currently computed at request time from `macro_observations`.
+- `src/parallax/domains/macro_intel/_constants.py:7` maps provider series into canonical concepts such as liquidity, rates, Fed corridor, credit, volatility, assets, commodities, FX, crypto, and positioning.
+- `src/parallax/app/surfaces/api/routes_macro.py:24` exposes `/api/macro` as a read-only latest-snapshot endpoint.
+- `src/parallax/app/surfaces/api/routes_macro.py:32` exposes `/api/macro/assets/correlation`, currently computed at request time from `macro_observations`.
 - `docs/FRONTEND.md:65` states that `/macro` renders deterministic Macro Intel state from `/api/macro` and must not recompute macro scoring in the frontend.
 - `web/src/routes/AppRoutes.tsx:271` mounts `/macro/*` inside the cockpit shell.
 - `web/src/routes/macro.route.tsx:4` routes `/macro`, `/macro/:moduleId`, `/macro/:moduleId/:sectionId`, and `/macro/assets/correlation`.
@@ -61,7 +61,7 @@ The current Macro page is hard to understand because it compresses too many macr
 
 ## First Principles
 
-1. **Facts stay in PostgreSQL; read models are rebuildable.** Macro observations are product facts; page state must come from facts or read models, not from provider raw frames or API-time side effects. This follows the Kappa/CQRS invariant in `docs/ARCHITECTURE.md:51` and the macro ownership table in `src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md:11`.
+1. **Facts stay in PostgreSQL; read models are rebuildable.** Macro observations are product facts; page state must come from facts or read models, not from provider raw frames or API-time side effects. This follows the Kappa/CQRS invariant in `docs/ARCHITECTURE.md:51` and the macro ownership table in `src/parallax/domains/macro_intel/ARCHITECTURE.md:11`.
 2. **The frontend presents macro conclusions, it does not invent them.** Regime, score, confirmations, contradictions, triggers, and gaps must come from `/api/macro` or future macro module endpoints. Frontend view models may group and format; they must not re-score macro state. This follows `docs/FRONTEND.md:65`.
 3. **Each meaningful macro page needs a first-class contract.** A benchmark-quality equities, rates, Fed, or liquidity page should not be only a slice of one generic JSON object. Page-specific series, tables, tiles, explanations, provenance, and data gaps need stable contracts that are testable, documented, and generated into frontend types per `docs/CONTRACTS.md`.
 4. **Crypto relevance is the differentiator.** We should not clone a generic US macro site. The product must explain how assets, rates, Fed, and liquidity affect BTC/ETH, crypto derivatives, GMGN token radar, CEX leverage, and Twitter narrative propagation.

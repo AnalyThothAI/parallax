@@ -4,7 +4,7 @@ from datetime import date
 
 
 def test_scheduler_bootstrap_partitions_missing_history_into_bounded_windows() -> None:
-    from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_scheduler import (
+    from parallax.domains.macro_intel.services.macro_sync_scheduler import (
         ensure_due_macro_sync_windows,
     )
 
@@ -34,7 +34,7 @@ def test_scheduler_bootstrap_partitions_missing_history_into_bounded_windows() -
 
 
 def test_scheduler_gap_and_steady_state_enqueues_due_windows() -> None:
-    from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_scheduler import (
+    from parallax.domains.macro_intel.services.macro_sync_scheduler import (
         ensure_due_macro_sync_windows,
     )
 
@@ -68,7 +68,7 @@ def test_scheduler_gap_and_steady_state_enqueues_due_windows() -> None:
 
 
 def test_scheduler_steady_overlap_identity_changes_by_interval_bucket() -> None:
-    from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_scheduler import (
+    from parallax.domains.macro_intel.services.macro_sync_scheduler import (
         ensure_due_macro_sync_windows,
     )
 

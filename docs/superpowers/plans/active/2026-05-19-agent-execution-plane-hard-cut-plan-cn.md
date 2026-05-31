@@ -51,13 +51,13 @@
 
 - [ ] Confirm runtime config paths before any live-data verification:
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
-  Expected: `config_path` and `workers_config_path` point at `~/.gmgn-twitter-intel/`. Do not print secrets.
+  Expected: `config_path` and `workers_config_path` point at `~/.parallax/`. Do not print secrets.
 
 - [ ] Capture current direct SDK call sites:
   ```bash
-  rg -n "Runner\\.run|Agent\\(|RunConfig\\(" src/gmgn_twitter_intel/integrations/openai_agents
+  rg -n "Runner\\.run|Agent\\(|RunConfig\\(" src/parallax/integrations/openai_agents
   ```
   Expected before cut: call sites in Pulse, Narrative, Social, Watchlist clients and safety-net. Expected after cut: only gateway and safety-net internals.
 
@@ -98,22 +98,22 @@ No group may introduce a compatibility path. If a migrated client needs a fallba
 
 ### Create
 
-- `src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_types.py`
+- `src/parallax/integrations/openai_agents/agent_execution_types.py`
   - Owns `AgentLaneKey`, `AgentCircuitBreakerPolicy`, `AgentLanePolicy`, `AgentRuntimePolicy`, `AgentStageSpec`, `AgentExecutionRequestAudit`, `AgentExecutionResultAudit`, `AgentExecutionResult`, `AgentExecutionError`, `AgentExecutionErrorClass`, and `AgentCapacityReservation`.
 
-- `src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_gateway.py`
+- `src/parallax/integrations/openai_agents/agent_execution_gateway.py`
   - Owns lane reservation, global/per-lane semaphores, circuit state, `Agent`/`RunConfig` construction, `Runner.run`, safety-net execution, usage extraction, audit envelope, and status snapshot.
 
-- `src/gmgn_twitter_intel/integrations/openai_agents/agent_hashing.py`
+- `src/parallax/integrations/openai_agents/agent_hashing.py`
   - Owns `json_sha256`, `text_sha256`, `trace_id_for`, and `artifact_hash_for`.
 
-- `src/gmgn_twitter_intel/domains/watchlist_intel/types/handle_summary_agent.py`
+- `src/parallax/domains/watchlist_intel/types/handle_summary_agent.py`
   - Owns Watchlist summary Pydantic payloads and constants currently embedded in the OpenAI client.
 
-- `src/gmgn_twitter_intel/domains/watchlist_intel/prompts/handle_summary.md`
+- `src/parallax/domains/watchlist_intel/prompts/handle_summary.md`
   - Owns Watchlist summary prompt text.
 
-- `src/gmgn_twitter_intel/domains/watchlist_intel/services/handle_summary_runtime.py`
+- `src/parallax/domains/watchlist_intel/services/handle_summary_runtime.py`
   - Owns Watchlist `AgentStageSpec` construction and input payload.
 
 - `tests/unit/integrations/openai_agents/test_agent_execution_gateway.py`
@@ -125,27 +125,27 @@ No group may introduce a compatibility path. If a migrated client needs a fallba
 
 ### Modify
 
-- `src/gmgn_twitter_intel/app/runtime/llm_gateway.py`
-- `src/gmgn_twitter_intel/app/runtime/bootstrap.py`
-- `src/gmgn_twitter_intel/app/runtime/provider_wiring/openai.py`
-- `src/gmgn_twitter_intel/app/runtime/provider_wiring/types.py`
-- `src/gmgn_twitter_intel/platform/config/settings.py`
-- `src/gmgn_twitter_intel/integrations/openai_agents/__init__.py`
-- `src/gmgn_twitter_intel/integrations/openai_agents/instructor_safety_net.py`
-- `src/gmgn_twitter_intel/integrations/openai_agents/social_event_agent_client.py`
-- `src/gmgn_twitter_intel/integrations/openai_agents/watchlist_summary_agent_client.py`
-- `src/gmgn_twitter_intel/integrations/openai_agents/narrative_intel_agent_client.py`
-- `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`
-- `src/gmgn_twitter_intel/domains/social_enrichment/types/social_event_extraction.py`
-- `src/gmgn_twitter_intel/domains/watchlist_intel/interfaces.py`
-- `src/gmgn_twitter_intel/domains/watchlist_intel/runtime/handle_summary_worker.py`
-- `src/gmgn_twitter_intel/domains/watchlist_intel/services/handle_summary_service.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/providers.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/types/agent_decision.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_decision_runtime.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
-- `src/gmgn_twitter_intel/domains/social_enrichment/runtime/enrichment_worker.py`
+- `src/parallax/app/runtime/llm_gateway.py`
+- `src/parallax/app/runtime/bootstrap.py`
+- `src/parallax/app/runtime/provider_wiring/openai.py`
+- `src/parallax/app/runtime/provider_wiring/types.py`
+- `src/parallax/platform/config/settings.py`
+- `src/parallax/integrations/openai_agents/__init__.py`
+- `src/parallax/integrations/openai_agents/instructor_safety_net.py`
+- `src/parallax/integrations/openai_agents/social_event_agent_client.py`
+- `src/parallax/integrations/openai_agents/watchlist_summary_agent_client.py`
+- `src/parallax/integrations/openai_agents/narrative_intel_agent_client.py`
+- `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py`
+- `src/parallax/domains/social_enrichment/types/social_event_extraction.py`
+- `src/parallax/domains/watchlist_intel/interfaces.py`
+- `src/parallax/domains/watchlist_intel/runtime/handle_summary_worker.py`
+- `src/parallax/domains/watchlist_intel/services/handle_summary_service.py`
+- `src/parallax/domains/narrative_intel/providers.py`
+- `src/parallax/domains/pulse_lab/types/agent_decision.py`
+- `src/parallax/domains/pulse_lab/services/pulse_decision_runtime.py`
+- `src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py`
+- `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- `src/parallax/domains/social_enrichment/runtime/enrichment_worker.py`
 - `tests/unit/test_llm_gateway.py`
 - `tests/unit/test_worker_settings.py`
 - `tests/unit/test_bootstrap_worker_runtime_wiring.py`
@@ -183,7 +183,7 @@ import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src" / "gmgn_twitter_intel"
+SRC = ROOT / "src" / "parallax"
 OPENAI_AGENTS = SRC / "integrations" / "openai_agents"
 GATEWAY_FILES = {
     OPENAI_AGENTS / "agent_execution_gateway.py",
@@ -322,7 +322,7 @@ git commit -m "test: guard agent execution plane boundaries"
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
+- Modify: `src/parallax/platform/config/settings.py`
 - Modify: `tests/unit/test_worker_settings.py`
 - Modify: `tests/architecture/test_worker_runtime_contracts.py`
 
@@ -332,7 +332,7 @@ In `tests/unit/test_worker_settings.py`, add:
 
 ```python
 def test_agent_runtime_settings_default_lanes() -> None:
-    from gmgn_twitter_intel.platform.config.settings import WorkersSettings
+    from parallax.platform.config.settings import WorkersSettings
 
     settings = WorkersSettings()
 
@@ -344,7 +344,7 @@ def test_agent_runtime_settings_default_lanes() -> None:
 
 
 def test_agent_runtime_settings_parse_workers_yaml_shape() -> None:
-    from gmgn_twitter_intel.platform.config.settings import WorkersSettings
+    from parallax.platform.config.settings import WorkersSettings
 
     settings = WorkersSettings(
         agent_runtime={
@@ -442,7 +442,7 @@ Expected: pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/platform/config/settings.py tests/unit/test_worker_settings.py tests/architecture/test_worker_runtime_contracts.py
+git add src/parallax/platform/config/settings.py tests/unit/test_worker_settings.py tests/architecture/test_worker_runtime_contracts.py
 git commit -m "feat: add agent runtime lane settings"
 ```
 
@@ -452,7 +452,7 @@ git commit -m "feat: add agent runtime lane settings"
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/app/runtime/llm_gateway.py`
+- Modify: `src/parallax/app/runtime/llm_gateway.py`
 - Modify: `tests/unit/test_llm_gateway.py`
 
 - [ ] **Step 1: Rewrite tests away from `run_with_limits`**
@@ -518,7 +518,7 @@ Expected: pass.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/app/runtime/llm_gateway.py tests/unit/test_llm_gateway.py
+git add src/parallax/app/runtime/llm_gateway.py tests/unit/test_llm_gateway.py
 git commit -m "refactor: make llm gateway transport only"
 ```
 
@@ -528,8 +528,8 @@ git commit -m "refactor: make llm gateway transport only"
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/integrations/openai_agents/agent_hashing.py`
-- Create: `src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_types.py`
+- Create: `src/parallax/integrations/openai_agents/agent_hashing.py`
+- Create: `src/parallax/integrations/openai_agents/agent_execution_types.py`
 - Create: `tests/unit/integrations/openai_agents/test_agent_execution_audit.py`
 
 - [ ] **Step 1: Add tests for stable hashes and audit models**
@@ -539,14 +539,14 @@ Create `tests/unit/integrations/openai_agents/test_agent_execution_audit.py`:
 ```python
 from __future__ import annotations
 
-from gmgn_twitter_intel.platform.agent_execution import (
+from parallax.platform.agent_execution import (
     AgentExecutionErrorClass,
     AgentExecutionRequestAudit,
     AgentLanePolicy,
     AgentRuntimePolicy,
     AgentStageSpec,
 )
-from gmgn_twitter_intel.platform.agent_hashing import artifact_hash_for, json_sha256, trace_id_for
+from parallax.platform.agent_hashing import artifact_hash_for, json_sha256, trace_id_for
 
 
 def test_hash_helpers_are_stable() -> None:
@@ -663,7 +663,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from gmgn_twitter_intel.platform.agent_hashing import json_sha256
+from parallax.platform.agent_hashing import json_sha256
 
 
 RUNTIME_VERSION = "agent-execution-plane-v1"
@@ -863,7 +863,7 @@ Expected: pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/integrations/openai_agents/agent_hashing.py src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_types.py tests/unit/integrations/openai_agents/test_agent_execution_audit.py
+git add src/parallax/integrations/openai_agents/agent_hashing.py src/parallax/integrations/openai_agents/agent_execution_types.py tests/unit/integrations/openai_agents/test_agent_execution_audit.py
 git commit -m "feat: add agent execution types"
 ```
 
@@ -873,8 +873,8 @@ git commit -m "feat: add agent execution types"
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_gateway.py`
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/instructor_safety_net.py`
+- Create: `src/parallax/integrations/openai_agents/agent_execution_gateway.py`
+- Modify: `src/parallax/integrations/openai_agents/instructor_safety_net.py`
 - Create: `tests/unit/integrations/openai_agents/test_agent_execution_gateway.py`
 - Create: `tests/unit/integrations/openai_agents/test_agent_runtime_policy.py`
 
@@ -890,8 +890,8 @@ import asyncio
 import pytest
 from pydantic import BaseModel
 
-from gmgn_twitter_intel.integrations.openai_agents.agent_execution_gateway import AgentExecutionGateway
-from gmgn_twitter_intel.platform.agent_execution import (
+from parallax.integrations.openai_agents.agent_execution_gateway import AgentExecutionGateway
+from parallax.platform.agent_execution import (
     AgentExecutionError,
     AgentExecutionErrorClass,
     AgentLanePolicy,
@@ -1102,7 +1102,7 @@ Expected: pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_gateway.py src/gmgn_twitter_intel/integrations/openai_agents/instructor_safety_net.py tests/unit/integrations/openai_agents/test_agent_execution_gateway.py
+git add src/parallax/integrations/openai_agents/agent_execution_gateway.py src/parallax/integrations/openai_agents/instructor_safety_net.py tests/unit/integrations/openai_agents/test_agent_execution_gateway.py
 git commit -m "feat: add agent execution gateway"
 ```
 
@@ -1112,9 +1112,9 @@ git commit -m "feat: add agent execution gateway"
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/app/runtime/bootstrap.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/provider_wiring/openai.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/provider_wiring/types.py`
+- Modify: `src/parallax/app/runtime/bootstrap.py`
+- Modify: `src/parallax/app/runtime/provider_wiring/openai.py`
+- Modify: `src/parallax/app/runtime/provider_wiring/types.py`
 - Create: `tests/unit/test_provider_wiring_agent_execution_gateway.py`
 
 - [ ] **Step 1: Add provider wiring test**
@@ -1124,8 +1124,8 @@ Create `tests/unit/test_provider_wiring_agent_execution_gateway.py`:
 ```python
 from __future__ import annotations
 
-from gmgn_twitter_intel.app.runtime.provider_wiring.openai import build_agent_execution_gateway
-from gmgn_twitter_intel.platform.config.settings import Settings
+from parallax.app.runtime.provider_wiring.openai import build_agent_execution_gateway
+from parallax.platform.config.settings import Settings
 
 
 class FakeLLMGateway:
@@ -1217,7 +1217,7 @@ Expected: pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/app/runtime/bootstrap.py src/gmgn_twitter_intel/app/runtime/provider_wiring/openai.py src/gmgn_twitter_intel/app/runtime/provider_wiring/types.py tests/unit/test_provider_wiring_agent_execution_gateway.py
+git add src/parallax/app/runtime/bootstrap.py src/parallax/app/runtime/provider_wiring/openai.py src/parallax/app/runtime/provider_wiring/types.py tests/unit/test_provider_wiring_agent_execution_gateway.py
 git commit -m "feat: wire shared agent execution gateway"
 ```
 
@@ -1227,9 +1227,9 @@ git commit -m "feat: wire shared agent execution gateway"
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/social_event_agent_client.py`
-- Modify: `src/gmgn_twitter_intel/domains/social_enrichment/types/social_event_extraction.py`
-- Modify: `src/gmgn_twitter_intel/domains/social_enrichment/runtime/enrichment_worker.py`
+- Modify: `src/parallax/integrations/openai_agents/social_event_agent_client.py`
+- Modify: `src/parallax/domains/social_enrichment/types/social_event_extraction.py`
+- Modify: `src/parallax/domains/social_enrichment/runtime/enrichment_worker.py`
 - Add/modify: `tests/unit/integrations/openai_agents/test_social_event_agent_client.py`
 
 - [ ] **Step 1: Add client test**
@@ -1239,7 +1239,7 @@ Create or update `tests/unit/integrations/openai_agents/test_social_event_agent_
 ```python
 from __future__ import annotations
 
-from gmgn_twitter_intel.integrations.openai_agents.social_event_agent_client import OpenAIAgentsSocialEventClient
+from parallax.integrations.openai_agents.social_event_agent_client import OpenAIAgentsSocialEventClient
 
 
 class FakeGateway:
@@ -1372,7 +1372,7 @@ Expected: pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/integrations/openai_agents/social_event_agent_client.py src/gmgn_twitter_intel/domains/social_enrichment/types/social_event_extraction.py src/gmgn_twitter_intel/domains/social_enrichment/runtime/enrichment_worker.py tests/unit/integrations/openai_agents/test_social_event_agent_client.py src/gmgn_twitter_intel/app/runtime/provider_wiring/openai.py
+git add src/parallax/integrations/openai_agents/social_event_agent_client.py src/parallax/domains/social_enrichment/types/social_event_extraction.py src/parallax/domains/social_enrichment/runtime/enrichment_worker.py tests/unit/integrations/openai_agents/test_social_event_agent_client.py src/parallax/app/runtime/provider_wiring/openai.py
 git commit -m "refactor: route social agent execution through gateway"
 ```
 
@@ -1382,12 +1382,12 @@ git commit -m "refactor: route social agent execution through gateway"
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/domains/watchlist_intel/types/handle_summary_agent.py`
-- Create: `src/gmgn_twitter_intel/domains/watchlist_intel/prompts/handle_summary.md`
-- Create: `src/gmgn_twitter_intel/domains/watchlist_intel/services/handle_summary_runtime.py`
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/watchlist_summary_agent_client.py`
-- Modify: `src/gmgn_twitter_intel/domains/watchlist_intel/runtime/handle_summary_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/watchlist_intel/services/handle_summary_service.py`
+- Create: `src/parallax/domains/watchlist_intel/types/handle_summary_agent.py`
+- Create: `src/parallax/domains/watchlist_intel/prompts/handle_summary.md`
+- Create: `src/parallax/domains/watchlist_intel/services/handle_summary_runtime.py`
+- Modify: `src/parallax/integrations/openai_agents/watchlist_summary_agent_client.py`
+- Modify: `src/parallax/domains/watchlist_intel/runtime/handle_summary_worker.py`
+- Modify: `src/parallax/domains/watchlist_intel/services/handle_summary_service.py`
 - Create: `tests/unit/domains/watchlist_intel/test_handle_summary_runtime.py`
 
 - [ ] **Step 1: Add Watchlist runtime tests**
@@ -1397,8 +1397,8 @@ Create `tests/unit/domains/watchlist_intel/test_handle_summary_runtime.py`:
 ```python
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.watchlist_intel.services.handle_summary_runtime import build_handle_summary_stage
-from gmgn_twitter_intel.domains.watchlist_intel.types.handle_summary_agent import (
+from parallax.domains.watchlist_intel.services.handle_summary_runtime import build_handle_summary_stage
+from parallax.domains.watchlist_intel.types.handle_summary_agent import (
     AGENT_NAME,
     SCHEMA_VERSION,
     WatchlistHandleSummaryPayload,
@@ -1433,7 +1433,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 BACKEND = "openai_agents_sdk"
-WORKFLOW_NAME = "gmgn-twitter-intel.watchlist_handle_summary"
+WORKFLOW_NAME = "parallax.watchlist_handle_summary"
 AGENT_NAME = "WatchlistHandleSummaryAgent"
 PROMPT_VERSION = "watchlist-handle-summary-v1"
 SCHEMA_VERSION = "watchlist_handle_summary_v1"
@@ -1481,14 +1481,14 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from gmgn_twitter_intel.domains.watchlist_intel.types.handle_summary_agent import (
+from parallax.domains.watchlist_intel.types.handle_summary_agent import (
     AGENT_NAME,
     PROMPT_VERSION,
     SCHEMA_VERSION,
     WORKFLOW_NAME,
     WatchlistHandleSummaryPayload,
 )
-from gmgn_twitter_intel.platform.agent_execution import AgentStageSpec
+from parallax.platform.agent_execution import AgentStageSpec
 
 
 @lru_cache(maxsize=1)
@@ -1578,7 +1578,7 @@ Expected: architecture test no longer sees Watchlist prompt/schema in integratio
 - [ ] **Step 8: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/domains/watchlist_intel src/gmgn_twitter_intel/integrations/openai_agents/watchlist_summary_agent_client.py tests/unit/domains/watchlist_intel/test_handle_summary_runtime.py tests/unit/integrations/openai_agents/test_watchlist_summary_agent_client.py
+git add src/parallax/domains/watchlist_intel src/parallax/integrations/openai_agents/watchlist_summary_agent_client.py tests/unit/domains/watchlist_intel/test_handle_summary_runtime.py tests/unit/integrations/openai_agents/test_watchlist_summary_agent_client.py
 git commit -m "refactor: move watchlist agent spec into domain"
 ```
 
@@ -1588,10 +1588,10 @@ git commit -m "refactor: move watchlist agent spec into domain"
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/narrative_intel_agent_client.py`
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/providers.py`
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
+- Modify: `src/parallax/integrations/openai_agents/narrative_intel_agent_client.py`
+- Modify: `src/parallax/domains/narrative_intel/providers.py`
+- Modify: `src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py`
+- Modify: `src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
 - Add/modify: `tests/unit/integrations/openai_agents/test_narrative_intel_agent_client.py`
 
 - [ ] **Step 1: Add tests for request audit parity**
@@ -1663,7 +1663,7 @@ Expected: pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/integrations/openai_agents/narrative_intel_agent_client.py src/gmgn_twitter_intel/domains/narrative_intel tests/unit/integrations/openai_agents/test_narrative_intel_agent_client.py
+git add src/parallax/integrations/openai_agents/narrative_intel_agent_client.py src/parallax/domains/narrative_intel tests/unit/integrations/openai_agents/test_narrative_intel_agent_client.py
 git commit -m "refactor: route narrative agents through execution gateway"
 ```
 
@@ -1673,10 +1673,10 @@ git commit -m "refactor: route narrative agents through execution gateway"
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/types/agent_decision.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_decision_runtime.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py`
+- Modify: `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py`
+- Modify: `src/parallax/domains/pulse_lab/types/agent_decision.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_decision_runtime.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py`
 - Add/modify: `tests/unit/integrations/openai_agents/test_pulse_decision_agent_client.py`
 - Add/modify: `tests/unit/pulse_lab/test_pulse_candidate_job_service.py`
 
@@ -1737,7 +1737,7 @@ Expected: pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py src/gmgn_twitter_intel/domains/pulse_lab tests/unit/integrations/openai_agents/test_pulse_decision_agent_client.py tests/unit/pulse_lab/test_pulse_candidate_job_service.py
+git add src/parallax/integrations/openai_agents/pulse_decision_agent_client.py src/parallax/domains/pulse_lab tests/unit/integrations/openai_agents/test_pulse_decision_agent_client.py tests/unit/pulse_lab/test_pulse_candidate_job_service.py
 git commit -m "refactor: route pulse stages through execution gateway"
 ```
 
@@ -1747,9 +1747,9 @@ git commit -m "refactor: route pulse stages through execution gateway"
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/social_enrichment/runtime/enrichment_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/watchlist_intel/runtime/handle_summary_worker.py`
+- Modify: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- Modify: `src/parallax/domains/social_enrichment/runtime/enrichment_worker.py`
+- Modify: `src/parallax/domains/watchlist_intel/runtime/handle_summary_worker.py`
 - Add/modify: worker unit tests for these files.
 
 - [ ] **Step 1: Add tests for no attempt burn on capacity denied**
@@ -1816,7 +1816,7 @@ Expected: pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py src/gmgn_twitter_intel/domains/social_enrichment/runtime/enrichment_worker.py src/gmgn_twitter_intel/domains/watchlist_intel/runtime/handle_summary_worker.py tests/unit/domains
+git add src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py src/parallax/domains/social_enrichment/runtime/enrichment_worker.py src/parallax/domains/watchlist_intel/runtime/handle_summary_worker.py tests/unit/domains
 git commit -m "feat: reserve agent capacity before attempt-burning claims"
 ```
 
@@ -1835,14 +1835,14 @@ git commit -m "feat: reserve agent capacity before attempt-burning claims"
 Run:
 
 ```bash
-rg -n "from agents import Agent|from agents import .*Runner|RunConfig|OpenAIChatCompletionsModel|Runner\\.run|Agent\\(" src/gmgn_twitter_intel/integrations/openai_agents
+rg -n "from agents import Agent|from agents import .*Runner|RunConfig|OpenAIChatCompletionsModel|Runner\\.run|Agent\\(" src/parallax/integrations/openai_agents
 ```
 
 Expected allowed files only:
 
-- `src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_gateway.py`
-- `src/gmgn_twitter_intel/integrations/openai_agents/instructor_safety_net.py`
-- `src/gmgn_twitter_intel/integrations/openai_agents/agent_output_schema.py` for schema SDK primitives.
+- `src/parallax/integrations/openai_agents/agent_execution_gateway.py`
+- `src/parallax/integrations/openai_agents/instructor_safety_net.py`
+- `src/parallax/integrations/openai_agents/agent_output_schema.py` for schema SDK primitives.
 
 Delete every old import/call outside those files.
 
@@ -1851,7 +1851,7 @@ Delete every old import/call outside those files.
 Run:
 
 ```bash
-rg -n "def _api_base|def _trace_id|def _sha256|def _extract_usage|artifact:\\{self\\.model\\}|run_with_limits|last_worker_name|last_stage" src/gmgn_twitter_intel
+rg -n "def _api_base|def _trace_id|def _sha256|def _extract_usage|artifact:\\{self\\.model\\}|run_with_limits|last_worker_name|last_stage" src/parallax
 ```
 
 Expected:
@@ -1875,7 +1875,7 @@ Expected: pass.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel tests/architecture
+git add src/parallax tests/architecture
 git commit -m "chore: remove legacy agent execution paths"
 ```
 
@@ -1885,8 +1885,8 @@ git commit -m "chore: remove legacy agent execution paths"
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/app/runtime/telemetry.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_status.py`
+- Modify: `src/parallax/app/runtime/telemetry.py`
+- Modify: `src/parallax/app/runtime/worker_status.py`
 - Modify: API status route files if they expose runtime health.
 - Add/modify: unit tests for status payload.
 
@@ -1948,7 +1948,7 @@ Expected: pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/app/runtime src/gmgn_twitter_intel/app/surfaces/api tests/unit
+git add src/parallax/app/runtime src/parallax/app/surfaces/api tests/unit
 git commit -m "feat: expose agent execution ops status"
 ```
 
@@ -2054,17 +2054,17 @@ Expected: pass in Postgres-backed environment.
 - [ ] **Step 5: Runtime config validation**
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 ```
 
-Expected: live config paths still point to `~/.gmgn-twitter-intel/`; `workers.agent_runtime` parses if present; secrets are not printed.
+Expected: live config paths still point to `~/.parallax/`; `workers.agent_runtime` parses if present; secrets are not printed.
 
 - [ ] **Step 6: Boundary grep**
 
 ```bash
 rg -n "run_with_limits|last_worker_name|last_stage|legacy_runner|fallback_to_old_client|agent_runtime_enabled|use_new_gateway" src tests
-rg -n "Runner\\.run|Agent\\(|RunConfig\\(" src/gmgn_twitter_intel/integrations/openai_agents
-rg -n "artifact:\\{self\\.model\\}|def _api_base|def _trace_id|def _sha256|def _extract_usage" src/gmgn_twitter_intel/integrations/openai_agents
+rg -n "Runner\\.run|Agent\\(|RunConfig\\(" src/parallax/integrations/openai_agents
+rg -n "artifact:\\{self\\.model\\}|def _api_base|def _trace_id|def _sha256|def _extract_usage" src/parallax/integrations/openai_agents
 ```
 
 Expected:

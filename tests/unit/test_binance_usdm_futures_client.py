@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx
 
-from gmgn_twitter_intel.integrations.binance.usdm_futures_client import BinanceUsdmFuturesClient
+from parallax.integrations.binance.usdm_futures_client import BinanceUsdmFuturesClient
 
 
 def test_usdt_perpetual_routes_filter_exchange_info_without_symbol_slicing() -> None:

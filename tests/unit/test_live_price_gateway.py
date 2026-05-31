@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from gmgn_twitter_intel.domains.asset_market.runtime.live_price_gateway import LivePriceGateway
+from parallax.domains.asset_market.runtime.live_price_gateway import LivePriceGateway
 
 
 def test_live_price_gateway_uses_market_ticks_without_upstream_price_providers() -> None:

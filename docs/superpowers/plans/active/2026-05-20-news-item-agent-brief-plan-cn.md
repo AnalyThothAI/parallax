@@ -20,12 +20,12 @@
 
 ## Gateway Decision
 
-- [x] Reuse the global agent execution plane. The News adapter is `src/gmgn_twitter_intel/integrations/openai_agents/news_item_brief_agent_client.py`; it delegates request audit, reservation, execution, trace metadata, usage, and safety-net behavior to `AgentExecutionGateway`.
+- [x] Reuse the global agent execution plane. The News adapter is `src/parallax/integrations/openai_agents/news_item_brief_agent_client.py`; it delegates request audit, reservation, execution, trace metadata, usage, and safety-net behavior to `AgentExecutionGateway`.
 - [x] Do not add a News-specific runner, SDK client, durable `agent_tasks` queue, retry scheduler, or gateway duplicate.
 - [x] Keep domain ownership in the worker: candidate selection, no-start accounting, validation, run ledger writes, current brief upsert, wake emission, and page projection invalidation.
 - [ ] Final verification must include a forbidden SDK scan:
   ```bash
-  rg -n "from openai|import openai|agents\\.run|Runner\\.run|OpenAI\\(" src/gmgn_twitter_intel/domains/news_intel src/gmgn_twitter_intel/integrations/openai_agents/news_item_brief_agent_client.py
+  rg -n "from openai|import openai|agents\\.run|Runner\\.run|OpenAI\\(" src/parallax/domains/news_intel src/parallax/integrations/openai_agents/news_item_brief_agent_client.py
   ```
   Expected: no News-domain direct SDK usage; the integration adapter may import only the existing gateway types it needs.
 
@@ -33,14 +33,14 @@
 
 ### Create
 
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260520_0068_news_item_agent_brief.py`
-- `src/gmgn_twitter_intel/domains/news_intel/types/news_item_brief.py`
-- `src/gmgn_twitter_intel/domains/news_intel/prompts/news_item_brief.md`
-- `src/gmgn_twitter_intel/domains/news_intel/services/news_item_brief_input.py`
-- `src/gmgn_twitter_intel/domains/news_intel/services/news_item_brief_runtime.py`
-- `src/gmgn_twitter_intel/domains/news_intel/services/news_item_brief_validation.py`
-- `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py`
-- `src/gmgn_twitter_intel/integrations/openai_agents/news_item_brief_agent_client.py`
+- `src/parallax/platform/db/alembic/versions/20260520_0068_news_item_agent_brief.py`
+- `src/parallax/domains/news_intel/types/news_item_brief.py`
+- `src/parallax/domains/news_intel/prompts/news_item_brief.md`
+- `src/parallax/domains/news_intel/services/news_item_brief_input.py`
+- `src/parallax/domains/news_intel/services/news_item_brief_runtime.py`
+- `src/parallax/domains/news_intel/services/news_item_brief_validation.py`
+- `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py`
+- `src/parallax/integrations/openai_agents/news_item_brief_agent_client.py`
 - `tests/unit/domains/news_intel/test_news_item_brief_input.py`
 - `tests/unit/domains/news_intel/test_news_item_brief_runtime.py`
 - `tests/unit/domains/news_intel/test_news_item_brief_types.py`
@@ -56,20 +56,20 @@
 - `docs/CONTRACTS.md`
 - `docs/FRONTEND.md`
 - `docs/WORKERS.md`
-- `src/gmgn_twitter_intel/app/runtime/bootstrap.py`
-- `src/gmgn_twitter_intel/app/runtime/provider_wiring/__init__.py`
-- `src/gmgn_twitter_intel/app/runtime/provider_wiring/openai.py`
-- `src/gmgn_twitter_intel/app/runtime/provider_wiring/types.py`
-- `src/gmgn_twitter_intel/app/runtime/wake_bus.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_factories/news_intel.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_registry.py`
-- `src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md`
-- `src/gmgn_twitter_intel/domains/news_intel/_constants.py`
-- `src/gmgn_twitter_intel/domains/news_intel/providers.py`
-- `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
-- `src/gmgn_twitter_intel/domains/news_intel/runtime/news_page_projection_worker.py`
-- `src/gmgn_twitter_intel/domains/news_intel/services/news_page_projection.py`
-- `src/gmgn_twitter_intel/platform/config/settings.py`
+- `src/parallax/app/runtime/bootstrap.py`
+- `src/parallax/app/runtime/provider_wiring/__init__.py`
+- `src/parallax/app/runtime/provider_wiring/openai.py`
+- `src/parallax/app/runtime/provider_wiring/types.py`
+- `src/parallax/app/runtime/wake_bus.py`
+- `src/parallax/app/runtime/worker_factories/news_intel.py`
+- `src/parallax/app/runtime/worker_registry.py`
+- `src/parallax/domains/news_intel/ARCHITECTURE.md`
+- `src/parallax/domains/news_intel/_constants.py`
+- `src/parallax/domains/news_intel/providers.py`
+- `src/parallax/domains/news_intel/repositories/news_repository.py`
+- `src/parallax/domains/news_intel/runtime/news_page_projection_worker.py`
+- `src/parallax/domains/news_intel/services/news_page_projection.py`
+- `src/parallax/platform/config/settings.py`
 - `tests/architecture/test_worker_runtime_contracts.py`
 - `tests/unit/test_worker_settings.py`
 - `tests/unit/test_settings.py`
@@ -178,7 +178,7 @@
 ## Task 8: Docs And Contracts
 
 - [ ] Update `docs/ARCHITECTURE.md`: single writer, agent execution plane, and News domain ownership.
-- [ ] Update `src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md`: stage map and read-model ownership.
+- [ ] Update `src/parallax/domains/news_intel/ARCHITECTURE.md`: stage map and read-model ownership.
 - [ ] Update `docs/WORKERS.md`: worker inventory, wake channels, `news.item_brief` lane, and no-start semantics.
 - [ ] Update `docs/CONTRACTS.md`: config keys and `/api/news` agent brief response contract.
 - [ ] Update `docs/FRONTEND.md`: `/news` consumes persisted agent brief and must not recreate narrative locally.

@@ -15,7 +15,7 @@ The repository's coding-agent harness today consists of three layers that are mu
 
 There is no router for external reference materials (the walkinglabs document itself, the academic citations the design-discipline section names — Kleinberg 2002, Goel et al. 2016, Cheng et al. 2014, Bakshy et al. 2011, Centola 2010, Crane & Sornette 2008 — the GMGN protocol notes that live only in collector code comments, the OKX/GMGN OpenAPI surfaces). There is no place for derived artefacts that should track code (database schema, CLI surface, score-version registry, WebSocket protocol). There is no shared technical-debt log; follow-ups land at the bottom of individual `verification.md` files and are forgotten.
 
-The five-layer source structure under `src/gmgn_twitter_intel/` (`collector/`, `pipeline/`, `storage/`, `retrieval/`, `api/`, plus cross-cutting `market/`, `settings.py`, `runtime_paths.py`, `models.py`, `logging_setup.py`) is already aligned with the "mechanical layer constraints" pattern the reference document advocates. Source code is **out of scope** for this spec.
+The five-layer source structure under `src/parallax/` (`collector/`, `pipeline/`, `storage/`, `retrieval/`, `api/`, plus cross-cutting `market/`, `settings.py`, `runtime_paths.py`, `models.py`, `logging_setup.py`) is already aligned with the "mechanical layer constraints" pattern the reference document advocates. Source code is **out of scope** for this spec.
 
 ## Problem
 
@@ -32,7 +32,7 @@ The cost compounds: every new spec re-derives context that should be one link aw
 
 These invariants the redesign must respect; each is already evidenced in the current repo.
 
-1. **The repository is the only source of truth.** No agent should rely on chat history or operator memory. Today already enforced for application config (`AGENTS.md:96-98`: only `~/.gmgn-twitter-intel/config.yaml`) and CLI surface (`AGENTS.md:26`: `gmgn-twitter-intel --help`).
+1. **The repository is the only source of truth.** No agent should rely on chat history or operator memory. Today already enforced for application config (`AGENTS.md:96-98`: only `~/.parallax/config.yaml`) and CLI surface (`AGENTS.md:26`: `parallax --help`).
 2. **Mechanical structure outranks prose convention.** Today already enforced by the `*_service.py` / `*_repository.py` naming (`AGENTS.md:79`) and by the worktree gate (`CLAUDE.md:23-29`).
 3. **Public contracts are immutable until versioned.** Today already enforced by `score_version` strings (`AGENTS.md:162-165`) and by the WebSocket / HTTP / CLI public-contract section (`AGENTS.md:57-72`).
 4. **Plans, quality, and tech-debt are versioned alongside code.** Today already enforced by the spec → plan → verification lane (`AGENTS.md:101-114`).
@@ -48,9 +48,9 @@ These invariants the redesign must respect; each is already evidenced in the cur
 
 ## Non-goals
 
-- **N1.** No changes to `src/gmgn_twitter_intel/` directory layout, module boundaries, or naming. The five-layer pipeline plus cross-cutting modules is already aligned with the reference document's principles.
+- **N1.** No changes to `src/parallax/` directory layout, module boundaries, or naming. The five-layer pipeline plus cross-cutting modules is already aligned with the reference document's principles.
 - **N2.** No rewriting of legacy spec/plan/audit/research **content**. Files move with `git mv`; their Markdown bodies are preserved verbatim. Templates apply only to new work.
-- **N3.** No change to the `~/.gmgn-twitter-intel/config.yaml` schema, the WebSocket protocol on `/ws`, the HTTP routes on `/api/*`, or the CLI verbs. This is documentation restructuring only.
+- **N3.** No change to the `~/.parallax/config.yaml` schema, the WebSocket protocol on `/ws`, the HTTP routes on `/api/*`, or the CLI verbs. This is documentation restructuring only.
 - **N4.** No new automation beyond the `make docs-generated` regeneration pipeline. No commit hooks, no auto-classification of legacy specs into active/completed, no link-checker enforcement (these may follow in a separate iteration if pain materialises).
 - **N5.** No introduction of `research/`, `design-docs/`, or `product-specs/` lanes from the reference document beyond what is enumerated below. Audit / code-review / product-research legacy files are absorbed into `docs/superpowers/specs/completed/` because they are upstream artefacts no longer evolving on their own.
 
@@ -74,8 +74,8 @@ Nine rule-owning governance files plus `TECH_DEBT.md` as a project-wide log. Eac
 | File | Owns |
 |------|------|
 | `docs/ARCHITECTURE.md` | Five-layer Python pipeline boundaries, cross-cutting modules, conceptual data flow from collector to API. Frontend specifics live in `FRONTEND.md`. |
-| `docs/CONTRACTS.md` | Config schema (`~/.gmgn-twitter-intel/config.yaml`), WebSocket auth/subscribe/push, HTTP route surface, CLI subcommand groups, `score_version` discipline. |
-| `docs/SETUP.md` | `uv sync`, `uv run pytest`, `uv run ruff check`, `gmgn-twitter-intel init/serve/db migrate`, Docker Compose bring-up, `web/` install / dev / build commands. |
+| `docs/CONTRACTS.md` | Config schema (`~/.parallax/config.yaml`), WebSocket auth/subscribe/push, HTTP route surface, CLI subcommand groups, `score_version` discipline. |
+| `docs/SETUP.md` | `uv sync`, `uv run pytest`, `uv run ruff check`, `parallax init/serve/db migrate`, Docker Compose bring-up, `web/` install / dev / build commands. |
 | `docs/WORKFLOW.md` | Spec → plan → tasks → verification lane mechanics, worktree policy, completion gates, what each lane document must and must not contain at the structural level. |
 | `docs/DESIGN_DISCIPLINE.md` | Spec vs plan boundary, audit-before-design, reuse-before-create, avoid-premature-complexity list, writing-for-delivery, scoring/ranking design rules with literature citations, push-back handling. |
 | `docs/TESTING.md` | Backend testing rules, regression-test requirement for bug fixes, real-PostgreSQL integration policy, frontend testing rules for `web/src/test/`, the completion-verification commands for both stacks. |

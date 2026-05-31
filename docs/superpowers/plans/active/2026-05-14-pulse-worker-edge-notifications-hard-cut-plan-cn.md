@@ -41,7 +41,7 @@ Known-failing baseline tests: none in the targeted baseline.
 
 ### Storage / migrations
 
-Add `src/gmgn_twitter_intel/platform/db/alembic/versions/20260514_0041_pulse_worker_edge_notifications_hard_cut.py`.
+Add `src/parallax/platform/db/alembic/versions/20260514_0041_pulse_worker_edge_notifications_hard_cut.py`.
 
 The hard-cut migration runs after `20260514_0040_repair_pulse_agent_job_cooldown.py`; `0040` repairs old deployments that still miss `cooldown_until_ms`, and `0041` immediately removes that field from the final runtime schema.
 
@@ -149,13 +149,13 @@ CREATE INDEX IF NOT EXISTS idx_notification_deliveries_claim
 
 Downgrade may recreate dropped columns and looser constraints, but does not restore deleted `source_seed` / `theme_watch` rows.
 
-### `src/gmgn_twitter_intel/domains/pulse_lab/interfaces.py`
+### `src/parallax/domains/pulse_lab/interfaces.py`
 
 - Remove `source_seed` from `CANDIDATE_TYPES` and `CandidateType`.
 - Remove `theme_watch` from `PULSE_STATUSES`, `DISPLAY_PULSE_STATUSES`, `PulseStatus`, and `DisplayPulseStatus`.
 - Bump `PULSE_GATE_VERSION` to a new edge-state version so existing rows generate `pulse_version_bumped` once.
 
-### `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_edge_events.py`
+### `src/parallax/domains/pulse_lab/services/pulse_edge_events.py`
 
 Create this file.
 
@@ -175,7 +175,7 @@ Expected behavior:
 - watched false -> true returns `watched_emerged`; true -> false does not.
 - Exact count changes are not represented.
 
-### `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py`
+### `src/parallax/domains/pulse_lab/repositories/pulse_repository.py`
 
 Modify:
 
@@ -192,7 +192,7 @@ Modify:
   - `mark_edge_run_finished(candidate_id, run_id, now_ms, commit=True)`
 - `pulse_summary` no longer counts `theme_watch`.
 
-### `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+### `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
 
 Modify:
 
@@ -218,39 +218,39 @@ Modify:
   - After success/failure, updates edge run finished if run was inserted.
 - `_narrative_type_from_context` always returns `direct_token` unless existing token target facts imply a better current enum.
 
-### `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_routing.py`
+### `src/parallax/domains/pulse_lab/services/agent_routing.py`
 
 - Delete special `candidate_type == "source_seed"` research-only route.
 - Research-only route remains allowed only for deterministic completeness hard block, not source seed compatibility.
 - Update tests so no source_seed route is accepted.
 
-### `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_runtime.py`
+### `src/parallax/domains/pulse_lab/services/agent_runtime.py`
 
 - Keep `research_only` route in manifest for deterministic gate short-circuit.
 - Remove contract text/tests that say source_seed stays research_only.
 
-### `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_eval.py`
+### `src/parallax/domains/pulse_lab/services/agent_eval.py`
 
 - Remove source_seed-specific violation rules.
 - Keep route/completeness audit checks.
 
-### `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`
+### `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py`
 
 - Remove `theme_watch` from summary/display status constants.
 - Add `last_edge_events` to `pulse_item_from_row`.
 - Ensure `_is_displayable` accepts only `trade_candidate`, `token_watch`, `risk_rejected_high_info` and non-abstain decisions.
 
-### `src/gmgn_twitter_intel/app/surfaces/api/http.py`
+### `src/parallax/app/surfaces/api/http.py`
 
 - Remove `theme_watch` from `SIGNAL_PULSE_STATUSES`.
 - API `status=theme_watch` must return `invalid_status`.
 
-### `src/gmgn_twitter_intel/platform/config/settings.py`
+### `src/parallax/platform/config/settings.py`
 
 - Remove `theme_watch` from sample config and `_default_notification_rule_payloads()`.
 - Keep user-provided `statuses` parsing generic, but notification rules will ignore unsupported statuses under hard-cut validation.
 
-### `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py`
+### `src/parallax/domains/notifications/services/notification_rules.py`
 
 - Remove `theme_watch` from defaults, severity map, and cooldown map.
 - `_signal_pulse_candidates` should skip unsupported statuses.
@@ -266,7 +266,7 @@ Modify:
 - `_pulse_body` prints an edge line when available.
 - `_has_resolved_pulse_target` only rejects missing target; no source_seed compatibility set.
 
-### `src/gmgn_twitter_intel/domains/notifications/repositories/notification_repository.py`
+### `src/parallax/domains/notifications/repositories/notification_repository.py`
 
 - Change `_pulse_source_status_duplicate` to `_pulse_signature_duplicate`.
 - Duplicate lookup requires `payload_json->>'notification_signature' = incoming_signature`.

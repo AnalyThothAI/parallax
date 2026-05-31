@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.macro_intel.observation_identity import (
+from parallax.domains.macro_intel.observation_identity import (
     macro_series_current_row_payload_hash,
 )
-from gmgn_twitter_intel.domains.macro_intel.repositories.macro_intel_repository import (
+from parallax.domains.macro_intel.repositories.macro_intel_repository import (
     MacroIntelRepository,
     _series_source_signature,
 )
-from gmgn_twitter_intel.domains.macro_intel.services.macro_regime_engine import build_macro_view_snapshot
+from parallax.domains.macro_intel.services.macro_regime_engine import build_macro_view_snapshot
 
 
 def test_build_macro_view_snapshot_uses_stable_current_identity() -> None:

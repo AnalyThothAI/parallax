@@ -73,9 +73,9 @@ The only workers allowed to keep `hard_timeout_seconds == 0` are continuous stre
   Expected branch: `codex/worker-timeout-supervision-hardening`; expected status: clean.
 - [ ] Confirm live config paths before any real-data check:
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
-  Expected: `config_path` and `workers_config_path` point at `~/.gmgn-twitter-intel/`. Report paths and redacted booleans only.
+  Expected: `config_path` and `workers_config_path` point at `~/.parallax/`. Report paths and redacted booleans only.
 - [ ] Capture current worker timeout baseline:
   ```bash
   uv run pytest tests/unit/test_worker_base_runtime.py tests/unit/test_worker_settings.py -q
@@ -90,7 +90,7 @@ The only workers allowed to keep `hard_timeout_seconds == 0` are continuous stre
 
 ### Runtime Core
 
-- Modify `src/gmgn_twitter_intel/app/runtime/worker_base.py`
+- Modify `src/parallax/app/runtime/worker_base.py`
   - Add explicit active-task fields:
     ```python
     self.active_run_once_started_at_ms: int | None = None
@@ -112,16 +112,16 @@ The only workers allowed to keep `hard_timeout_seconds == 0` are continuous stre
   - Ensure soft timeout is recorded once per task, not once per wait loop.
   - Ensure hard timeout cancels and gathers the current task before a new task can be created.
 
-- Modify `src/gmgn_twitter_intel/app/runtime/worker_scheduler.py`
+- Modify `src/parallax/app/runtime/worker_scheduler.py`
   - Treat hard-timeout status as a liveness failure in `unhealthy_reasons()`.
   - Keep readiness-style soft timeout as degraded health without stopping the scheduler task.
 
-- Modify `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
+- Modify `src/parallax/app/surfaces/api/schemas.py`
   - Add the new worker status fields to `WorkerStatusData` if the schema is explicit.
 
 ### Settings
 
-- Modify `src/gmgn_twitter_intel/platform/config/settings.py`
+- Modify `src/parallax/platform/config/settings.py`
   - Replace `PerWorkerSettings.timeout_seconds` with `soft_timeout_seconds` and `hard_timeout_seconds`.
   - Update default `workers.yaml` output.
   - Set finite defaults:
@@ -144,7 +144,7 @@ The only workers allowed to keep `hard_timeout_seconds == 0` are continuous stre
 
 ### Agent Execution
 
-- Modify `src/gmgn_twitter_intel/platform/agent_execution.py`
+- Modify `src/parallax/platform/agent_execution.py`
   - Add a cancellation-specific error class:
     ```python
     CANCELLED = "cancelled"
@@ -158,7 +158,7 @@ The only workers allowed to keep `hard_timeout_seconds == 0` are continuous stre
             self.execution_started = bool(execution_started)
     ```
 
-- Modify `src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_gateway.py`
+- Modify `src/parallax/integrations/openai_agents/agent_execution_gateway.py`
   - Add `except asyncio.CancelledError` in `execute()` before `except Exception`.
   - Build failed audit with `error_class=AgentExecutionErrorClass.CANCELLED`.
   - Record execution telemetry.
@@ -167,7 +167,7 @@ The only workers allowed to keep `hard_timeout_seconds == 0` are continuous stre
 
 ### Pulse Domain Cleanup
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_jobs_repository.py`
+- Modify `src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py`
   - Add:
     ```python
     def mark_job_cancelled_by_worker_timeout(
@@ -183,7 +183,7 @@ The only workers allowed to keep `hard_timeout_seconds == 0` are continuous stre
   - If `execution_started` is false, set job back to `pending`, decrement the claim attempt with `GREATEST(0, attempt_count - 1)`, set a short retry delay, and store `last_error='worker_timeout_before_execution'`.
   - If `execution_started` is true, set job to `failed` or `dead` using the existing attempt/max-attempt rule and store `last_error='worker_timeout_after_execution'`.
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py`
+- Modify `src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py`
   - Catch `asyncio.CancelledError` separately.
   - If `run_started` is true and a `pulse_agent_runs` row exists, finish it as `status='failed'`, `outcome='worker_timeout'`, and trace metadata `{"failure_reason": "worker_timeout_cancelled"}`.
   - Call `mark_job_cancelled_by_worker_timeout(...)`.
@@ -196,7 +196,7 @@ The only workers allowed to keep `hard_timeout_seconds == 0` are continuous stre
     )
     ```
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- Modify `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
   - Reduce the blast radius of hard cancellation by adding a process-job budget:
     ```python
     max_agent_jobs_per_cycle: int = max(1, int(getattr(self.settings, "max_agent_jobs_per_cycle", 2) or 2))
@@ -206,19 +206,19 @@ The only workers allowed to keep `hard_timeout_seconds == 0` are continuous stre
 
 ### Narrative Domain Cleanup
 
-- Modify `src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py`
+- Modify `src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py`
   - Catch `asyncio.CancelledError` around `self.provider.label_mentions(...)`.
   - Record a failed `narrative_model_runs` row with `status='failed'`, `error='worker_timeout_cancelled'`, and trace metadata including `error_type='CancelledError'`.
   - Complete the claimed semantic rows as retryable failures with `next_retry_at_ms = now + provider_failure_backoff_seconds`.
   - Re-raise the cancellation.
 
-- Modify `src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
+- Modify `src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
   - Catch `asyncio.CancelledError` around `self.provider.summarize_discussion(...)`.
   - Record a failed `narrative_model_runs` row with `error='worker_timeout_cancelled'`.
   - Mark the target admission `next_digest_due_at_ms` using provider failure backoff so it does not hot-loop immediately.
   - Re-raise the cancellation.
 
-- Modify `src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py`
+- Modify `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`
   - Reuse existing completion methods when possible.
   - Add only narrow helper methods if an existing method cannot express cancellation without pretending it was a provider schema failure.
 
@@ -298,7 +298,7 @@ The only workers allowed to keep `hard_timeout_seconds == 0` are continuous stre
 **Files:**
 
 - Modify: `tests/unit/test_worker_base_runtime.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_base.py`
+- Modify: `src/parallax/app/runtime/worker_base.py`
 
 - [ ] **Step 1: Write failing soft-timeout status test**
 
@@ -378,7 +378,7 @@ The only workers allowed to keep `hard_timeout_seconds == 0` are continuous stre
 **Files:**
 
 - Modify: `tests/unit/test_worker_base_runtime.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_base.py`
+- Modify: `src/parallax/app/runtime/worker_base.py`
 
 - [ ] **Step 1: Write failing hard-timeout cancellation test**
 
@@ -457,9 +457,9 @@ The only workers allowed to keep `hard_timeout_seconds == 0` are continuous stre
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_base.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_scheduler.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
+- Modify: `src/parallax/app/runtime/worker_base.py`
+- Modify: `src/parallax/app/runtime/worker_scheduler.py`
+- Modify: `src/parallax/app/surfaces/api/schemas.py`
 - Modify: `tests/unit/test_worker_base_runtime.py`
 - Modify: `tests/unit/test_worker_scheduler.py`
 - Modify: `tests/unit/test_cli_worker_status_contract.py`
@@ -502,7 +502,7 @@ The only workers allowed to keep `hard_timeout_seconds == 0` are continuous stre
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
+- Modify: `src/parallax/platform/config/settings.py`
 - Modify: `tests/unit/test_worker_settings.py`
 - Modify: `tests/unit/test_settings.py`
 - Modify: `tests/architecture/test_worker_runtime_contracts.py`
@@ -551,8 +551,8 @@ The only workers allowed to keep `hard_timeout_seconds == 0` are continuous stre
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/platform/agent_execution.py`
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_gateway.py`
+- Modify: `src/parallax/platform/agent_execution.py`
+- Modify: `src/parallax/integrations/openai_agents/agent_execution_gateway.py`
 - Modify: `tests/unit/integrations/openai_agents/test_agent_execution_gateway.py`
 
 - [ ] **Step 1: Write failing gateway cancellation test**
@@ -598,10 +598,10 @@ The only workers allowed to keep `hard_timeout_seconds == 0` are continuous stre
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_jobs_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
+- Modify: `src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py`
+- Modify: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- Modify: `src/parallax/platform/config/settings.py`
 - Modify: `tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py`
 - Modify: `tests/unit/test_pulse_candidate_worker.py`
 
@@ -642,9 +642,9 @@ The only workers allowed to keep `hard_timeout_seconds == 0` are continuous stre
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py`
+- Modify: `src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py`
+- Modify: `src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
+- Modify: `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`
 - Modify: `tests/unit/domains/narrative_intel/test_narrative_workers.py`
 
 - [ ] **Step 1: Add mention semantics cancellation test**
@@ -714,7 +714,7 @@ The only workers allowed to keep `hard_timeout_seconds == 0` are continuous stre
 ## Rollout Order
 
 1. Merge WorkerBase/status semantics.
-2. Merge settings hard cut and update operator `~/.gmgn-twitter-intel/workers.yaml`.
+2. Merge settings hard cut and update operator `~/.parallax/workers.yaml`.
 3. Merge gateway cancellation audit.
 4. Merge Pulse cleanup.
 5. Merge Narrative cleanup.
@@ -766,7 +766,7 @@ The verification artifact must include:
 
 - full `make check-all` output;
 - old versus new WorkerBase timeout test summary;
-- sanitized `uv run gmgn-twitter-intel config` output showing active config paths;
+- sanitized `uv run parallax config` output showing active config paths;
 - `/api/status` sample showing new active age fields;
 - any observed stuck-thread or statement-timeout limitations;
 - follow-ups appended to `docs/TECH_DEBT.md` if hard process restart supervision remains outside this plan.

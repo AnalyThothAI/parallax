@@ -3,18 +3,18 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.domains.narrative_intel.types.discussion_digest import (
+from parallax.domains.narrative_intel.types.discussion_digest import (
     DiscussionDigestRequest,
     DiscussionDigestResult,
 )
-from gmgn_twitter_intel.domains.narrative_intel.types.mention_semantics import (
+from parallax.domains.narrative_intel.types.mention_semantics import (
     MentionSemanticsBatchRequest,
     MentionSemanticsBatchResult,
 )
-from gmgn_twitter_intel.integrations.model_execution.narrative_intel_agent_client import (
+from parallax.integrations.model_execution.narrative_intel_agent_client import (
     LiteLLMNarrativeIntelClient,
 )
-from gmgn_twitter_intel.platform.agent_execution import (
+from parallax.platform.agent_execution import (
     AgentExecutionRequestAudit,
     AgentExecutionResult,
     AgentExecutionResultAudit,
@@ -87,7 +87,7 @@ def test_narrative_label_mentions_request_audit_builds_gateway_stage():
     assert audit["lane"] == "narrative.mention_semantics"
     assert audit["stage"] == "mention_semantics"
     assert audit["agent_name"] == "NarrativeMentionSemanticsAgent"
-    assert audit["workflow_name"] == "gmgn-twitter-intel.narrative_intel"
+    assert audit["workflow_name"] == "parallax.narrative_intel"
     assert audit["trace_metadata"]["run_id"] == "run-mention-1"
     assert audit["trace_metadata"]["mention_count"] == 1
     stage = gateway.audit_calls[0]

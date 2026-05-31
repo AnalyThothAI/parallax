@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from gmgn_twitter_intel.domains.news_intel.types.news_item_brief import NewsItemBriefPayload
+from parallax.domains.news_intel.types.news_item_brief import NewsItemBriefPayload
 
 
 def test_news_item_brief_key_points_are_bounded_text() -> None:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import httpx
 
-from gmgn_twitter_intel.integrations.okx.dex_client import OkxDexClient
+from parallax.integrations.okx.dex_client import OkxDexClient
 
 
 def test_okx_dex_client_normalizes_token_search_candidates():

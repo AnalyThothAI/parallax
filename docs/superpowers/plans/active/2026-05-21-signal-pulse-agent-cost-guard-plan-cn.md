@@ -26,7 +26,7 @@
   - Frontend redesign.
   - Token Radar scoring changes.
   - Central durable agent queue.
-  - Automatic mutation of `~/.gmgn-twitter-intel/workers.yaml`.
+  - Automatic mutation of `~/.parallax/workers.yaml`.
   - Relaxing deterministic eval, claim verifier, source quality, or public write gate.
 
 ## Pre-flight
@@ -51,9 +51,9 @@
 
 - [ ] Confirm real runtime config paths before any live-data diagnostics:
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
-  Expected: `config_path` and `workers_config_path` point to `/Users/qinghuan/.gmgn-twitter-intel/`. Do not print secrets.
+  Expected: `config_path` and `workers_config_path` point to `/Users/qinghuan/.parallax/`. Do not print secrets.
 
 - [ ] Run focused baseline tests:
   ```bash
@@ -69,7 +69,7 @@ Known-failing baseline tests:
 
 ### New Pulse Services
 
-- Create `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_agent_cost_guard.py`
+- Create `src/parallax/domains/pulse_lab/services/pulse_agent_cost_guard.py`
   - Owns `PulseCostGuardDecision`, `PulseStagePlan`, fingerprint construction, and deterministic action classification.
   - Pure logic only; no DB access.
   - Public API:
@@ -112,7 +112,7 @@ Known-failing baseline tests:
         audit_json: Mapping[str, Any] = field(default_factory=dict)
     ```
 
-- Create `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_agent_cost_report.py`
+- Create `src/parallax/domains/pulse_lab/services/pulse_agent_cost_report.py`
   - Owns read-only aggregation for recent Pulse runs, stage calls, token use, duplicate fingerprints, and public candidate deltas.
   - Public API:
     ```python
@@ -128,7 +128,7 @@ Known-failing baseline tests:
 
 ### Pulse Repositories
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_runs_repository.py`
+- Modify `src/parallax/domains/pulse_lab/repositories/pulse_runs_repository.py`
   - Add a terminal fingerprint lookup using existing run fields and request JSON.
   - Suggested signature:
     ```python
@@ -142,7 +142,7 @@ Known-failing baseline tests:
         raise NotImplementedError("Task 3 implements the PostgreSQL lookup.")
     ```
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_jobs_repository.py`
+- Modify `src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py`
   - Add a cooldown-aware no-start release method that does not create 30s retry churn.
   - Suggested signature:
     ```python
@@ -162,7 +162,7 @@ Known-failing baseline tests:
 
 ### Pulse Runtime And Agent Client
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py`
+- Modify `src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py`
   - Evaluate source quality before LLM stages.
   - Build cost guard input after evidence packet and evidence gate.
   - Reuse terminal fingerprints before model calls.
@@ -170,16 +170,16 @@ Known-failing baseline tests:
   - Pass a stage plan into the decision client.
   - Convert provider cooldown/no-start failures into delayed job release with bounded audit noise.
 
-- Modify `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`
+- Modify `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py`
   - Accept `stage_plan` in `run_decision_pipeline`.
   - Skip `risk_portfolio_judge` when `stage_plan.run_risk_portfolio_judge` is false.
   - Never fallback from Qwen to DeepSeek for non-public paths.
   - Preserve model names in stage audit from the gateway lane that executed the stage.
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/providers.py`
+- Modify `src/parallax/domains/pulse_lab/providers.py`
   - Extend `PulseDecisionProvider.run_decision_pipeline` protocol with optional `stage_plan`.
 
-- Modify `src/gmgn_twitter_intel/platform/config/settings.py`
+- Modify `src/parallax/platform/config/settings.py`
   - Update default workers YAML so:
     - `pulse.pipeline` uses `qwen3.6` or the default model label.
     - `pulse.signal_analyst` uses `qwen3.6`.
@@ -189,11 +189,11 @@ Known-failing baseline tests:
 
 ### Admission And Backpressure
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_admission_policy.py`
+- Modify `src/parallax/domains/pulse_lab/services/pulse_admission_policy.py`
   - Treat plain `timeline_evidence_changed` as debounce/coalesce unless paired with escalation/hard-risk/score-band change.
   - Preserve immediate admission for `pulse_status_changed`, `recommended_decision_changed`, and `hard_risk_added`.
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- Modify `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
   - Track result counters for `agent_cost_guard_suppressed`, `agent_fingerprint_reused`, and `agent_provider_cooldown`.
 
 ### Ops / Report / Docs
@@ -206,7 +206,7 @@ Known-failing baseline tests:
     uv run python scripts/evaluate_signal_pulse_agent_cost_guard.py --lookback-hours 24 --dry-run
     ```
 
-- Optionally modify `src/gmgn_twitter_intel/app/runtime/ops_diagnostics.py`
+- Optionally modify `src/parallax/app/runtime/ops_diagnostics.py`
   - Add aggregate Pulse agent cost/cooldown counters if available without heavy queries.
 
 - Modify docs:
@@ -260,7 +260,7 @@ Known-failing baseline tests:
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_agent_cost_report.py`
+- Create: `src/parallax/domains/pulse_lab/services/pulse_agent_cost_report.py`
 - Create: `scripts/evaluate_signal_pulse_agent_cost_guard.py`
 - Test: `tests/unit/domains/pulse_lab/test_pulse_agent_cost_report.py`
 
@@ -331,7 +331,7 @@ Known-failing baseline tests:
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_agent_cost_guard.py`
+- Create: `src/parallax/domains/pulse_lab/services/pulse_agent_cost_guard.py`
 - Test: `tests/unit/domains/pulse_lab/test_pulse_agent_cost_guard.py`
 
 - [ ] **Step 1: Add tests for public eligibility**
@@ -393,7 +393,7 @@ Known-failing baseline tests:
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_runs_repository.py`
+- Modify: `src/parallax/domains/pulse_lab/repositories/pulse_runs_repository.py`
 - Test: `tests/integration/test_pulse_repositories.py`
 
 - [ ] **Step 1: Add repository test**
@@ -432,8 +432,8 @@ Known-failing baseline tests:
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/types/agent_decision.py` only if a helper constructor is cleaner
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py`
+- Modify: `src/parallax/domains/pulse_lab/types/agent_decision.py` only if a helper constructor is cleaner
 - Test: `tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py`
 
 - [ ] **Step 1: Add no-LLM finalization test**
@@ -501,9 +501,9 @@ Known-failing baseline tests:
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/providers.py`
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
+- Modify: `src/parallax/domains/pulse_lab/providers.py`
+- Modify: `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py`
+- Modify: `src/parallax/platform/config/settings.py`
 - Test: `tests/unit/test_pulse_decision_agent_client.py`
 - Test: `tests/unit/test_settings.py`
 
@@ -584,8 +584,8 @@ Known-failing baseline tests:
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_jobs_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py`
+- Modify: `src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py`
 - Test: `tests/integration/test_pulse_repositories.py`
 - Test: `tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py`
 
@@ -642,8 +642,8 @@ Known-failing baseline tests:
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_admission_policy.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_admission_policy.py`
+- Modify: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
 - Test: `tests/unit/test_pulse_candidate_worker.py`
 
 - [ ] **Step 1: Add policy tests**
@@ -692,19 +692,19 @@ Known-failing baseline tests:
 
   ```bash
   uv run pytest tests/unit/domains/pulse_lab/test_pulse_agent_cost_guard.py tests/unit/domains/pulse_lab/test_pulse_agent_cost_report.py tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py tests/unit/test_pulse_decision_agent_client.py tests/unit/test_pulse_candidate_worker.py tests/integration/test_pulse_repositories.py -q
-  uv run ruff check src/gmgn_twitter_intel/domains/pulse_lab src/gmgn_twitter_intel/integrations/openai_agents tests/unit/domains/pulse_lab tests/unit/test_pulse_decision_agent_client.py tests/unit/test_pulse_candidate_worker.py tests/integration/test_pulse_repositories.py
+  uv run ruff check src/parallax/domains/pulse_lab src/parallax/integrations/openai_agents tests/unit/domains/pulse_lab tests/unit/test_pulse_decision_agent_client.py tests/unit/test_pulse_candidate_worker.py tests/integration/test_pulse_repositories.py
   ```
 
 - [ ] **Step 2: Run read-only live report**
 
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   uv run python scripts/evaluate_signal_pulse_agent_cost_guard.py --lookback-hours 24 --dry-run
   ```
 
   Expected:
 
-  - config paths point to `/Users/qinghuan/.gmgn-twitter-intel/`;
+  - config paths point to `/Users/qinghuan/.parallax/`;
   - no secrets printed;
   - predicted DeepSeek token reduction >= 70%;
   - predicted public trade/watch delta >= 0;
@@ -718,7 +718,7 @@ Known-failing baseline tests:
   - cost guard actions;
   - provider cooldown behavior;
   - how to run the dry-run report;
-  - operator config snippet for `~/.gmgn-twitter-intel/workers.yaml`.
+  - operator config snippet for `~/.parallax/workers.yaml`.
 
 - [ ] **Step 4: Capture final verification artifact**
 

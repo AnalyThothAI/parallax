@@ -1,13 +1,13 @@
 from pathlib import Path
 
-from gmgn_twitter_intel.domains.macro_intel import _constants
-from gmgn_twitter_intel.domains.macro_intel.repositories.macro_intel_repository import MacroIntelRepository
+from parallax.domains.macro_intel import _constants
+from parallax.domains.macro_intel.repositories.macro_intel_repository import MacroIntelRepository
 
 ROOT = Path(__file__).resolve().parents[4]
 MIGRATION = (
     ROOT
     / "src"
-    / "gmgn_twitter_intel"
+    / "parallax"
     / "platform"
     / "db"
     / "alembic"
@@ -17,7 +17,7 @@ MIGRATION = (
 RUNTIME_DB_PERFORMANCE_HARD_CUT_MIGRATION = (
     ROOT
     / "src"
-    / "gmgn_twitter_intel"
+    / "parallax"
     / "platform"
     / "db"
     / "alembic"
@@ -27,7 +27,7 @@ RUNTIME_DB_PERFORMANCE_HARD_CUT_MIGRATION = (
 NEXT_RUNTIME_LIFECYCLE_HARD_CUT_MIGRATION = (
     ROOT
     / "src"
-    / "gmgn_twitter_intel"
+    / "parallax"
     / "platform"
     / "db"
     / "alembic"
@@ -170,7 +170,7 @@ def test_macro_observation_series_contract_is_current_only_after_hard_cut() -> N
     repository_sql = (
         ROOT
         / "src"
-        / "gmgn_twitter_intel"
+        / "parallax"
         / "domains"
         / "macro_intel"
         / "repositories"
@@ -248,7 +248,7 @@ def test_macro_workerspace_root_fix_backfills_hashes_with_runtime_hash_functions
     migration_sql = _migration_text(
         ROOT
         / "src"
-        / "gmgn_twitter_intel"
+        / "parallax"
         / "platform"
         / "db"
         / "alembic"

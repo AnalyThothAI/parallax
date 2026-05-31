@@ -41,7 +41,7 @@ codex/event-anchor-capture-redesign
 ```bash
 uv run ruff check .
 uv run pytest
-uv run gmgn-twitter-intel --help > docs/generated/cli-help.md
+uv run parallax --help > docs/generated/cli-help.md
 ```
 
 Expected: baseline either passes, or failures are copied into the verification notes before implementation starts.
@@ -65,32 +65,32 @@ Expected: baseline either passes, or failures are copied into the verification n
 ### Current main branch conflicts
 
 - Worker registry still registers old workers:
-  - `src/gmgn_twitter_intel/app/runtime/worker_registry.py:3-24` includes `anchor_price` and `live_price_gateway`.
-  - `src/gmgn_twitter_intel/app/runtime/worker_registry.py:28-41` assigns old priorities.
+  - `src/parallax/app/runtime/worker_registry.py:3-24` includes `anchor_price` and `live_price_gateway`.
+  - `src/parallax/app/runtime/worker_registry.py:28-41` assigns old priorities.
 - Runtime bootstrap wires old provider paths:
-  - `src/gmgn_twitter_intel/app/runtime/bootstrap.py:25-27` imports `AnchorPriceWorker` and `LivePriceGateway`.
-  - `src/gmgn_twitter_intel/app/runtime/bootstrap.py:321-330` constructs `anchor_price`.
-  - `src/gmgn_twitter_intel/app/runtime/bootstrap.py:350-361` constructs `live_price_gateway` with persistence knobs.
-  - `src/gmgn_twitter_intel/app/runtime/bootstrap.py:405-424` runs the entire ingest flow inside one `worker_session("collector")`.
+  - `src/parallax/app/runtime/bootstrap.py:25-27` imports `AnchorPriceWorker` and `LivePriceGateway`.
+  - `src/parallax/app/runtime/bootstrap.py:321-330` constructs `anchor_price`.
+  - `src/parallax/app/runtime/bootstrap.py:350-361` constructs `live_price_gateway` with persistence knobs.
+  - `src/parallax/app/runtime/bootstrap.py:405-424` runs the entire ingest flow inside one `worker_session("collector")`.
 - Settings still expose old runtime config:
-  - `src/gmgn_twitter_intel/platform/config/settings.py:369-372` defines `AnchorPriceWorkerSettings`.
-  - `src/gmgn_twitter_intel/platform/config/settings.py:375-385` defines persistence-oriented `LivePriceGatewayWorkerSettings`.
-  - `src/gmgn_twitter_intel/platform/config/settings.py:498-517` adds `anchor_price` and old `live_price_gateway` under `WorkersSettings`.
-  - `src/gmgn_twitter_intel/platform/config/settings.py:929-970` emits old YAML keys.
+  - `src/parallax/platform/config/settings.py:369-372` defines `AnchorPriceWorkerSettings`.
+  - `src/parallax/platform/config/settings.py:375-385` defines persistence-oriented `LivePriceGatewayWorkerSettings`.
+  - `src/parallax/platform/config/settings.py:498-517` adds `anchor_price` and old `live_price_gateway` under `WorkersSettings`.
+  - `src/parallax/platform/config/settings.py:929-970` emits old YAML keys.
 - Old anchor code is present:
-  - `src/gmgn_twitter_intel/domains/asset_market/runtime/anchor_price_worker.py`.
-  - `src/gmgn_twitter_intel/domains/asset_market/services/anchor_price_observation.py`.
-  - `src/gmgn_twitter_intel/domains/asset_market/queries/pending_anchor_price_query.py`.
+  - `src/parallax/domains/asset_market/runtime/anchor_price_worker.py`.
+  - `src/parallax/domains/asset_market/services/anchor_price_observation.py`.
+  - `src/parallax/domains/asset_market/queries/pending_anchor_price_query.py`.
 - Old repository is mutable and table-centered:
-  - `src/gmgn_twitter_intel/domains/asset_market/repositories/price_observation_repository.py:76-133` accepts old enum values.
-  - `src/gmgn_twitter_intel/domains/asset_market/repositories/price_observation_repository.py:398-450` updates an old row, which violates the append-only requirement.
+  - `src/parallax/domains/asset_market/repositories/price_observation_repository.py:76-133` accepts old enum values.
+  - `src/parallax/domains/asset_market/repositories/price_observation_repository.py:398-450` updates an old row, which violates the append-only requirement.
 - `LivePriceGateway` persists material observations:
-  - `src/gmgn_twitter_intel/domains/asset_market/runtime/live_price_gateway.py:362-422` writes `price_observations` and notifies `market_observation_written`.
+  - `src/parallax/domains/asset_market/runtime/live_price_gateway.py:362-422` writes `price_observations` and notifies `market_observation_written`.
 - Radar and secondary read models still read `price_observations`:
-  - `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py:80-153`.
-  - `src/gmgn_twitter_intel/domains/token_intel/repositories/token_target_repository.py:217-226`.
-  - `src/gmgn_twitter_intel/domains/token_intel/services/token_factor_evaluation.py:124-132`.
-  - `src/gmgn_twitter_intel/domains/account_quality/repositories/account_quality_repository.py:289-310`.
+  - `src/parallax/domains/token_intel/queries/token_radar_source_query.py:80-153`.
+  - `src/parallax/domains/token_intel/repositories/token_target_repository.py:217-226`.
+  - `src/parallax/domains/token_intel/services/token_factor_evaluation.py:124-132`.
+  - `src/parallax/domains/account_quality/repositories/account_quality_repository.py:289-310`.
 - There is literal drift already:
   - `pending_anchor_price_query.py` and `token_target_repository.py` still mention `message_anchor` while the table now uses `event_anchor`.
 
@@ -122,16 +122,16 @@ Allowed public adapter:
 
 ### Create
 
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260515_0046_event_anchor_capture_redesign.py` — hard-cut DB migration.
-- `src/gmgn_twitter_intel/domains/asset_market/types/market_tick.py` — typed tick/capture records and validators.
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/market_tick_repository.py` — append-only tick writes and tick lookups.
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/enriched_event_repository.py` — append-only enriched event writes and reads.
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/token_capture_tier_repository.py` — capture tier projection.
-- `src/gmgn_twitter_intel/domains/asset_market/services/event_market_capture.py` — pure orchestration for Tier 1/2 lookup and Tier 3 inline pull.
-- `src/gmgn_twitter_intel/domains/asset_market/providers/okx_dex_quote_provider.py` — OKX DEX REST adapter around `OkxDexClient.token_prices`.
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_stream_worker.py` — Tier 1 stream writer.
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_poll_worker.py` — Tier 2 batch poll writer.
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/token_capture_tier_worker.py` — capture tier projection writer.
+- `src/parallax/platform/db/alembic/versions/20260515_0046_event_anchor_capture_redesign.py` — hard-cut DB migration.
+- `src/parallax/domains/asset_market/types/market_tick.py` — typed tick/capture records and validators.
+- `src/parallax/domains/asset_market/repositories/market_tick_repository.py` — append-only tick writes and tick lookups.
+- `src/parallax/domains/asset_market/repositories/enriched_event_repository.py` — append-only enriched event writes and reads.
+- `src/parallax/domains/asset_market/repositories/token_capture_tier_repository.py` — capture tier projection.
+- `src/parallax/domains/asset_market/services/event_market_capture.py` — pure orchestration for Tier 1/2 lookup and Tier 3 inline pull.
+- `src/parallax/domains/asset_market/providers/okx_dex_quote_provider.py` — OKX DEX REST adapter around `OkxDexClient.token_prices`.
+- `src/parallax/domains/asset_market/runtime/market_tick_stream_worker.py` — Tier 1 stream writer.
+- `src/parallax/domains/asset_market/runtime/market_tick_poll_worker.py` — Tier 2 batch poll writer.
+- `src/parallax/domains/asset_market/runtime/token_capture_tier_worker.py` — capture tier projection writer.
 - `tests/unit/test_market_tick_repository.py`.
 - `tests/unit/test_enriched_event_repository.py`.
 - `tests/unit/test_event_market_capture.py`.
@@ -142,29 +142,29 @@ Allowed public adapter:
 
 ### Modify
 
-- `src/gmgn_twitter_intel/domains/asset_market/interfaces.py` — replace `price_observations` repo with new repositories.
-- `src/gmgn_twitter_intel/app/runtime/bootstrap.py` — split ingest session boundaries, wire new services/workers/providers.
-- `src/gmgn_twitter_intel/app/runtime/worker_registry.py` — replace old worker list.
-- `src/gmgn_twitter_intel/platform/config/settings.py` — remove old settings and add `market_tick_stream`, `market_tick_poll`, `token_capture_tier`.
-- `src/gmgn_twitter_intel/app/providers_wiring.py` — wire OKX DEX quote provider and move stream settings.
-- `src/gmgn_twitter_intel/domains/evidence/services/ingest_service.py` — split prepare/commit stages so provider IO is outside DB sessions.
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/live_price_gateway.py` — remove persistence and make it cache/publish only.
-- `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py` — read `enriched_events` and `market_ticks`.
-- `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py` — build market context from new rows.
-- `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py` — keep API shape but source fields from new market context.
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_target_repository.py` — remove old observation joins.
-- `src/gmgn_twitter_intel/domains/token_intel/services/token_factor_evaluation.py` — use tick repository for before/between reads.
-- `src/gmgn_twitter_intel/domains/account_quality/repositories/account_quality_repository.py` — use ticks.
-- `src/gmgn_twitter_intel/app/surfaces/cli/main.py` — rename audit source max field to tick-based source.
+- `src/parallax/domains/asset_market/interfaces.py` — replace `price_observations` repo with new repositories.
+- `src/parallax/app/runtime/bootstrap.py` — split ingest session boundaries, wire new services/workers/providers.
+- `src/parallax/app/runtime/worker_registry.py` — replace old worker list.
+- `src/parallax/platform/config/settings.py` — remove old settings and add `market_tick_stream`, `market_tick_poll`, `token_capture_tier`.
+- `src/parallax/app/providers_wiring.py` — wire OKX DEX quote provider and move stream settings.
+- `src/parallax/domains/evidence/services/ingest_service.py` — split prepare/commit stages so provider IO is outside DB sessions.
+- `src/parallax/domains/asset_market/runtime/live_price_gateway.py` — remove persistence and make it cache/publish only.
+- `src/parallax/domains/token_intel/queries/token_radar_source_query.py` — read `enriched_events` and `market_ticks`.
+- `src/parallax/domains/token_intel/services/token_radar_projection.py` — build market context from new rows.
+- `src/parallax/domains/token_intel/scoring/factor_snapshot.py` — keep API shape but source fields from new market context.
+- `src/parallax/domains/token_intel/repositories/token_target_repository.py` — remove old observation joins.
+- `src/parallax/domains/token_intel/services/token_factor_evaluation.py` — use tick repository for before/between reads.
+- `src/parallax/domains/account_quality/repositories/account_quality_repository.py` — use ticks.
+- `src/parallax/app/surfaces/cli/main.py` — rename audit source max field to tick-based source.
 - `docs/ARCHITECTURE.md`, `docs/RELIABILITY.md`, `docs/WORKERS.md`, `docs/CONTRACTS.md`, `docs/generated/cli-help.md`, and domain architecture docs.
 
 ### Delete
 
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/anchor_price_worker.py`.
-- `src/gmgn_twitter_intel/domains/asset_market/services/anchor_price_observation.py`.
-- `src/gmgn_twitter_intel/domains/asset_market/queries/pending_anchor_price_query.py`.
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/price_observation_repository.py`.
-- `src/gmgn_twitter_intel/domains/asset_market/services/live_observation_policy.py`.
+- `src/parallax/domains/asset_market/runtime/anchor_price_worker.py`.
+- `src/parallax/domains/asset_market/services/anchor_price_observation.py`.
+- `src/parallax/domains/asset_market/queries/pending_anchor_price_query.py`.
+- `src/parallax/domains/asset_market/repositories/price_observation_repository.py`.
+- `src/parallax/domains/asset_market/services/live_observation_policy.py`.
 - `tests/unit/test_anchor_price_observation.py`.
 - `tests/unit/test_price_observation_repository.py`.
 - `tests/unit/test_price_observation_repository_policy.py`.
@@ -364,7 +364,7 @@ def test_old_price_observation_runtime_is_removed() -> None:
 
 ```python
 def test_market_tick_tables_are_append_only_in_latest_migration() -> None:
-    migration = ROOT / "src/gmgn_twitter_intel/platform/db/alembic/versions/20260515_0046_event_anchor_capture_redesign.py"
+    migration = ROOT / "src/parallax/platform/db/alembic/versions/20260515_0046_event_anchor_capture_redesign.py"
     text = migration.read_text(encoding="utf-8")
 
     assert "CREATE TABLE IF NOT EXISTS market_ticks" in text
@@ -417,8 +417,8 @@ git commit -m "test: lock event anchor capture hard cut contracts"
 ### Task 2: Create migration and new market fact types
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260515_0046_event_anchor_capture_redesign.py`
-- Create: `src/gmgn_twitter_intel/domains/asset_market/types/market_tick.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260515_0046_event_anchor_capture_redesign.py`
+- Create: `src/parallax/domains/asset_market/types/market_tick.py`
 - Modify: `tests/unit/test_postgres_schema.py`
 - Modify: `tests/integration/test_postgres_schema_runtime.py`
 
@@ -555,18 +555,18 @@ Expected: pass after migration code exists.
 - [ ] Commit.
 
 ```bash
-git add src/gmgn_twitter_intel/platform/db/alembic/versions/20260515_0046_event_anchor_capture_redesign.py src/gmgn_twitter_intel/domains/asset_market/types/market_tick.py tests/unit/test_postgres_schema.py tests/integration/test_postgres_schema_runtime.py
+git add src/parallax/platform/db/alembic/versions/20260515_0046_event_anchor_capture_redesign.py src/parallax/domains/asset_market/types/market_tick.py tests/unit/test_postgres_schema.py tests/integration/test_postgres_schema_runtime.py
 git commit -m "feat: add market tick capture schema"
 ```
 
 ### Task 3: Replace price observation repository with append-only repositories
 
 **Files:**
-- Delete: `src/gmgn_twitter_intel/domains/asset_market/repositories/price_observation_repository.py`
-- Create: `src/gmgn_twitter_intel/domains/asset_market/repositories/market_tick_repository.py`
-- Create: `src/gmgn_twitter_intel/domains/asset_market/repositories/enriched_event_repository.py`
-- Create: `src/gmgn_twitter_intel/domains/asset_market/repositories/token_capture_tier_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/interfaces.py`
+- Delete: `src/parallax/domains/asset_market/repositories/price_observation_repository.py`
+- Create: `src/parallax/domains/asset_market/repositories/market_tick_repository.py`
+- Create: `src/parallax/domains/asset_market/repositories/enriched_event_repository.py`
+- Create: `src/parallax/domains/asset_market/repositories/token_capture_tier_repository.py`
+- Modify: `src/parallax/domains/asset_market/interfaces.py`
 - Test: `tests/unit/test_market_tick_repository.py`
 - Test: `tests/unit/test_enriched_event_repository.py`
 
@@ -775,17 +775,17 @@ uv run pytest tests/unit/test_market_tick_repository.py tests/unit/test_enriched
 - [ ] Commit.
 
 ```bash
-git add src/gmgn_twitter_intel/domains/asset_market/repositories src/gmgn_twitter_intel/domains/asset_market/interfaces.py tests/unit/test_market_tick_repository.py tests/unit/test_enriched_event_repository.py
-git rm src/gmgn_twitter_intel/domains/asset_market/repositories/price_observation_repository.py
+git add src/parallax/domains/asset_market/repositories src/parallax/domains/asset_market/interfaces.py tests/unit/test_market_tick_repository.py tests/unit/test_enriched_event_repository.py
+git rm src/parallax/domains/asset_market/repositories/price_observation_repository.py
 git commit -m "feat: replace price observation repository with market tick facts"
 ```
 
 ### Task 4: Add OKX DEX REST quote provider and provider wiring
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/asset_market/providers/okx_dex_quote_provider.py`
-- Modify: `src/gmgn_twitter_intel/app/providers_wiring.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/providers.py`
+- Create: `src/parallax/domains/asset_market/providers/okx_dex_quote_provider.py`
+- Modify: `src/parallax/app/providers_wiring.py`
+- Modify: `src/parallax/domains/asset_market/providers.py`
 - Test: `tests/unit/test_okx_dex_quote_provider.py`
 
 - [ ] Write provider adapter tests.
@@ -872,14 +872,14 @@ uv run pytest tests/unit/test_okx_dex_quote_provider.py -q
 - [ ] Commit.
 
 ```bash
-git add src/gmgn_twitter_intel/domains/asset_market/providers.py src/gmgn_twitter_intel/domains/asset_market/providers/okx_dex_quote_provider.py src/gmgn_twitter_intel/app/providers_wiring.py tests/unit/test_okx_dex_quote_provider.py
+git add src/parallax/domains/asset_market/providers.py src/parallax/domains/asset_market/providers/okx_dex_quote_provider.py src/parallax/app/providers_wiring.py tests/unit/test_okx_dex_quote_provider.py
 git commit -m "feat: add okx dex quote provider for tick capture"
 ```
 
 ### Task 5: Implement event market capture service with DB-free provider IO
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/asset_market/services/event_market_capture.py`
+- Create: `src/parallax/domains/asset_market/services/event_market_capture.py`
 - Test: `tests/unit/test_event_market_capture.py`
 
 - [ ] Write tests for lookup hit, inline pull success, and unavailable capture.
@@ -1013,15 +1013,15 @@ uv run pytest tests/unit/test_event_market_capture.py -q
 - [ ] Commit.
 
 ```bash
-git add src/gmgn_twitter_intel/domains/asset_market/services/event_market_capture.py tests/unit/test_event_market_capture.py
+git add src/parallax/domains/asset_market/services/event_market_capture.py tests/unit/test_event_market_capture.py
 git commit -m "feat: add DB-free event market capture service"
 ```
 
 ### Task 6: Split ingest into prepare, outside-DB capture, and same-transaction commit
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/evidence/services/ingest_service.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/bootstrap.py`
+- Modify: `src/parallax/domains/evidence/services/ingest_service.py`
+- Modify: `src/parallax/app/runtime/bootstrap.py`
 - Test: `tests/unit/test_ingest_event_market_capture.py`
 - Test: `tests/integration/test_ingest_enriched_events.py`
 
@@ -1162,15 +1162,15 @@ uv run pytest tests/unit/test_ingest_event_market_capture.py tests/integration/t
 - [ ] Commit.
 
 ```bash
-git add src/gmgn_twitter_intel/domains/evidence/services/ingest_service.py src/gmgn_twitter_intel/app/runtime/bootstrap.py tests/unit/test_ingest_event_market_capture.py tests/integration/test_ingest_enriched_events.py
+git add src/parallax/domains/evidence/services/ingest_service.py src/parallax/app/runtime/bootstrap.py tests/unit/test_ingest_event_market_capture.py tests/integration/test_ingest_enriched_events.py
 git commit -m "feat: capture event market ticks during ingest commit"
 ```
 
 ### Task 7: Add token capture tier projection worker
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/asset_market/runtime/token_capture_tier_worker.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_registry.py`
+- Create: `src/parallax/domains/asset_market/runtime/token_capture_tier_worker.py`
+- Modify: `src/parallax/app/runtime/worker_registry.py`
 - Test: `tests/unit/test_token_capture_tier_worker.py`
 
 - [ ] Write worker test for deterministic tiers.
@@ -1231,15 +1231,15 @@ uv run pytest tests/unit/test_token_capture_tier_worker.py -q
 - [ ] Commit.
 
 ```bash
-git add src/gmgn_twitter_intel/domains/asset_market/runtime/token_capture_tier_worker.py src/gmgn_twitter_intel/app/runtime/worker_registry.py tests/unit/test_token_capture_tier_worker.py
+git add src/parallax/domains/asset_market/runtime/token_capture_tier_worker.py src/parallax/app/runtime/worker_registry.py tests/unit/test_token_capture_tier_worker.py
 git commit -m "feat: project token market capture tiers"
 ```
 
 ### Task 8: Add Tier 1 MarketTickStreamWorker
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_stream_worker.py`
-- Modify: `src/gmgn_twitter_intel/app/providers_wiring.py`
+- Create: `src/parallax/domains/asset_market/runtime/market_tick_stream_worker.py`
+- Modify: `src/parallax/app/providers_wiring.py`
 - Test: `tests/unit/test_market_tick_stream_worker.py`
 
 - [ ] Write stream worker test.
@@ -1303,14 +1303,14 @@ uv run pytest tests/unit/test_market_tick_stream_worker.py -q
 - [ ] Commit.
 
 ```bash
-git add src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_stream_worker.py tests/unit/test_market_tick_stream_worker.py src/gmgn_twitter_intel/app/providers_wiring.py
+git add src/parallax/domains/asset_market/runtime/market_tick_stream_worker.py tests/unit/test_market_tick_stream_worker.py src/parallax/app/providers_wiring.py
 git commit -m "feat: persist tier one market ticks from okx dex stream"
 ```
 
 ### Task 9: Add Tier 2 MarketTickPollWorker
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_poll_worker.py`
+- Create: `src/parallax/domains/asset_market/runtime/market_tick_poll_worker.py`
 - Test: `tests/unit/test_market_tick_poll_worker.py`
 
 - [ ] Write poll worker tests for CEX and DEX targets.
@@ -1374,15 +1374,15 @@ uv run pytest tests/unit/test_market_tick_poll_worker.py -q
 - [ ] Commit.
 
 ```bash
-git add src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_poll_worker.py tests/unit/test_market_tick_poll_worker.py
+git add src/parallax/domains/asset_market/runtime/market_tick_poll_worker.py tests/unit/test_market_tick_poll_worker.py
 git commit -m "feat: poll tier two market ticks"
 ```
 
 ### Task 10: Convert LivePriceGateway to cache/publish only
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/live_price_gateway.py`
-- Delete: `src/gmgn_twitter_intel/domains/asset_market/services/live_observation_policy.py`
+- Modify: `src/parallax/domains/asset_market/runtime/live_price_gateway.py`
+- Delete: `src/parallax/domains/asset_market/services/live_observation_policy.py`
 - Modify: `tests/test_live_price_gateway.py`
 - Modify: `tests/unit/test_live_price_gateway.py`
 - Delete: `tests/unit/test_live_observation_policy.py`
@@ -1434,17 +1434,17 @@ uv run pytest tests/test_live_price_gateway.py tests/unit/test_live_price_gatewa
 - [ ] Commit.
 
 ```bash
-git add src/gmgn_twitter_intel/domains/asset_market/runtime/live_price_gateway.py tests/test_live_price_gateway.py tests/unit/test_live_price_gateway.py
-git rm src/gmgn_twitter_intel/domains/asset_market/services/live_observation_policy.py tests/unit/test_live_observation_policy.py tests/benchmark/test_live_observation_write_budget.py
+git add src/parallax/domains/asset_market/runtime/live_price_gateway.py tests/test_live_price_gateway.py tests/unit/test_live_price_gateway.py
+git rm src/parallax/domains/asset_market/services/live_observation_policy.py tests/unit/test_live_observation_policy.py tests/benchmark/test_live_observation_write_budget.py
 git commit -m "refactor: make live price gateway cache only"
 ```
 
 ### Task 11: Hard-cut worker settings, registry, bootstrap, and wake channel
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_registry.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/bootstrap.py`
+- Modify: `src/parallax/platform/config/settings.py`
+- Modify: `src/parallax/app/runtime/worker_registry.py`
+- Modify: `src/parallax/app/runtime/bootstrap.py`
 - Modify: `docs/generated/cli-help.md`
 - Test: `tests/architecture/test_worker_runtime_contracts.py`
 - Test: `tests/unit/test_settings_workers.py`
@@ -1569,7 +1569,7 @@ market_observation_written
 - [ ] Regenerate CLI help after settings change.
 
 ```bash
-uv run gmgn-twitter-intel --help > docs/generated/cli-help.md
+uv run parallax --help > docs/generated/cli-help.md
 ```
 
 - [ ] Run tests.
@@ -1581,24 +1581,24 @@ uv run pytest tests/architecture/test_worker_runtime_contracts.py tests/unit/tes
 - [ ] Commit.
 
 ```bash
-git add src/gmgn_twitter_intel/platform/config/settings.py src/gmgn_twitter_intel/app/runtime/worker_registry.py src/gmgn_twitter_intel/app/runtime/bootstrap.py docs/generated/cli-help.md tests/architecture/test_worker_runtime_contracts.py tests/unit/test_settings_workers.py
+git add src/parallax/platform/config/settings.py src/parallax/app/runtime/worker_registry.py src/parallax/app/runtime/bootstrap.py docs/generated/cli-help.md tests/architecture/test_worker_runtime_contracts.py tests/unit/test_settings_workers.py
 git commit -m "feat: wire market tick worker runtime"
 ```
 
 ### Task 12: Delete AnchorPrice runtime and old observation services
 
 **Files:**
-- Delete: `src/gmgn_twitter_intel/domains/asset_market/runtime/anchor_price_worker.py`
-- Delete: `src/gmgn_twitter_intel/domains/asset_market/services/anchor_price_observation.py`
-- Delete: `src/gmgn_twitter_intel/domains/asset_market/queries/pending_anchor_price_query.py`
+- Delete: `src/parallax/domains/asset_market/runtime/anchor_price_worker.py`
+- Delete: `src/parallax/domains/asset_market/services/anchor_price_observation.py`
+- Delete: `src/parallax/domains/asset_market/queries/pending_anchor_price_query.py`
 - Delete: `tests/unit/test_anchor_price_observation.py`
 
 - [ ] Delete the old files.
 
 ```bash
-git rm src/gmgn_twitter_intel/domains/asset_market/runtime/anchor_price_worker.py
-git rm src/gmgn_twitter_intel/domains/asset_market/services/anchor_price_observation.py
-git rm src/gmgn_twitter_intel/domains/asset_market/queries/pending_anchor_price_query.py
+git rm src/parallax/domains/asset_market/runtime/anchor_price_worker.py
+git rm src/parallax/domains/asset_market/services/anchor_price_observation.py
+git rm src/parallax/domains/asset_market/queries/pending_anchor_price_query.py
 git rm tests/unit/test_anchor_price_observation.py
 ```
 
@@ -1620,9 +1620,9 @@ git commit -m "refactor: delete anchor price observation runtime"
 ### Task 13: Move Token Radar source query to enriched events and market ticks
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py`
+- Modify: `src/parallax/domains/token_intel/queries/token_radar_source_query.py`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py`
+- Modify: `src/parallax/domains/token_intel/scoring/factor_snapshot.py`
 - Modify: `tests/unit/test_token_radar_source_query.py`
 - Modify: `tests/unit/test_token_radar_projection.py`
 - Modify: `tests/unit/test_factor_snapshot.py`
@@ -1710,17 +1710,17 @@ uv run pytest tests/unit/test_token_radar_source_query.py tests/unit/test_token_
 - [ ] Commit.
 
 ```bash
-git add src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py tests/unit/test_token_radar_source_query.py tests/unit/test_token_radar_projection.py tests/unit/test_factor_snapshot.py tests/golden/test_token_radar_corpus.py
+git add src/parallax/domains/token_intel/queries/token_radar_source_query.py src/parallax/domains/token_intel/services/token_radar_projection.py src/parallax/domains/token_intel/scoring/factor_snapshot.py tests/unit/test_token_radar_source_query.py tests/unit/test_token_radar_projection.py tests/unit/test_factor_snapshot.py tests/golden/test_token_radar_corpus.py
 git commit -m "refactor: source token radar market context from market ticks"
 ```
 
 ### Task 14: Update secondary consumers of historical market data
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_target_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_factor_evaluation.py`
-- Modify: `src/gmgn_twitter_intel/domains/account_quality/repositories/account_quality_repository.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/main.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_target_repository.py`
+- Modify: `src/parallax/domains/token_intel/services/token_factor_evaluation.py`
+- Modify: `src/parallax/domains/account_quality/repositories/account_quality_repository.py`
+- Modify: `src/parallax/app/surfaces/cli/main.py`
 - Modify: related tests under `tests/unit/`, `tests/integration/`, and `tests/e2e/`
 
 - [ ] Update `token_target_repository.py` tests.
@@ -1821,7 +1821,7 @@ uv run pytest tests/unit/test_token_target_posts_service.py tests/unit/test_toke
 - [ ] Commit.
 
 ```bash
-git add src/gmgn_twitter_intel/domains/token_intel/repositories/token_target_repository.py src/gmgn_twitter_intel/domains/token_intel/services/token_factor_evaluation.py src/gmgn_twitter_intel/domains/account_quality/repositories/account_quality_repository.py src/gmgn_twitter_intel/app/surfaces/cli/main.py tests
+git add src/parallax/domains/token_intel/repositories/token_target_repository.py src/parallax/domains/token_intel/services/token_factor_evaluation.py src/parallax/domains/account_quality/repositories/account_quality_repository.py src/parallax/app/surfaces/cli/main.py tests
 git commit -m "refactor: move market history consumers to ticks"
 ```
 
@@ -1833,8 +1833,8 @@ git commit -m "refactor: move market history consumers to ticks"
 - Modify: `docs/WORKERS.md`
 - Modify: `docs/CONTRACTS.md`
 - Modify: `docs/FRONTEND.md`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/asset_market/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/token_intel/ARCHITECTURE.md`
 
 - [ ] Replace old architecture language.
 
@@ -1863,7 +1863,7 @@ live observation write budget
 - [ ] Run doc grep.
 
 ```bash
-rg -n "price_observations|event_anchor|decision_latest|AnchorPriceWorker|market_observation_written|live observation" docs src/gmgn_twitter_intel/domains/*/ARCHITECTURE.md --glob '!docs/superpowers/specs/active/2026-05-15-event-anchor-capture-redesign-cn.md' --glob '!docs/superpowers/plans/active/2026-05-15-event-anchor-capture-redesign-plan-cn.md'
+rg -n "price_observations|event_anchor|decision_latest|AnchorPriceWorker|market_observation_written|live observation" docs src/parallax/domains/*/ARCHITECTURE.md --glob '!docs/superpowers/specs/active/2026-05-15-event-anchor-capture-redesign-cn.md' --glob '!docs/superpowers/plans/active/2026-05-15-event-anchor-capture-redesign-plan-cn.md'
 ```
 
 Expected: no runtime docs still teach old semantics. If `event_anchor` appears only as public API JSON adapter wording, the paragraph must explicitly say it is a compatibility-shaped response generated from `enriched_events` and `market_ticks`, not an internal market concept.
@@ -1871,7 +1871,7 @@ Expected: no runtime docs still teach old semantics. If `event_anchor` appears o
 - [ ] Commit.
 
 ```bash
-git add docs/ARCHITECTURE.md docs/RELIABILITY.md docs/WORKERS.md docs/CONTRACTS.md docs/FRONTEND.md src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md
+git add docs/ARCHITECTURE.md docs/RELIABILITY.md docs/WORKERS.md docs/CONTRACTS.md docs/FRONTEND.md src/parallax/domains/asset_market/ARCHITECTURE.md src/parallax/domains/token_intel/ARCHITECTURE.md
 git commit -m "docs: describe market tick capture architecture"
 ```
 
@@ -1894,7 +1894,7 @@ git rm tests/benchmark/test_live_observation_write_budget.py || true
 
 ```bash
 rg -n "price_observations|message_anchor|market_observation_written|AnchorPriceWorker|anchor_price:|AnchorPriceWorkerSettings|should_persist_live_observation" src tests docs \
-  --glob '!src/gmgn_twitter_intel/platform/db/alembic/versions/20260513_0036_token_radar_kappa_cqrs_hard_cut.py' \
+  --glob '!src/parallax/platform/db/alembic/versions/20260513_0036_token_radar_kappa_cqrs_hard_cut.py' \
   --glob '!docs/superpowers/specs/active/2026-05-15-event-anchor-capture-redesign-cn.md' \
   --glob '!docs/superpowers/plans/active/2026-05-15-event-anchor-capture-redesign-plan-cn.md'
 ```
@@ -1906,7 +1906,7 @@ Expected: no matches.
 ```bash
 rg -n "\"event_anchor\"|'event_anchor'|\"decision_latest\"|'decision_latest'|\"message_anchor\"|'message_anchor'" src tests \
   --glob '!tests/unit/test_factor_snapshot.py' \
-  --glob '!src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py'
+  --glob '!src/parallax/domains/token_intel/scoring/factor_snapshot.py'
 ```
 
 Expected: no matches in internal DB/runtime code. Any remaining frontend-facing response key test must assert it is sourced from `capture_method`, not DB observation kind.
@@ -1917,8 +1917,8 @@ Expected: no matches in internal DB/runtime code. Any remaining frontend-facing 
 uv run ruff check .
 uv run pytest
 uv run alembic upgrade head
-uv run gmgn-twitter-intel workers list
-uv run gmgn-twitter-intel --help > docs/generated/cli-help.md
+uv run parallax workers list
+uv run parallax --help > docs/generated/cli-help.md
 ```
 
 Expected:
@@ -1960,7 +1960,7 @@ uv run alembic upgrade head
 5. Confirm workers:
 
 ```bash
-uv run gmgn-twitter-intel workers list
+uv run parallax workers list
 ```
 
 Expected live workers:
@@ -1983,7 +1983,7 @@ notification_delivery
 6. Rebuild projections that depend on market context:
 
 ```bash
-uv run gmgn-twitter-intel ops rebuild-token-radar
+uv run parallax ops rebuild-token-radar
 ```
 
 7. Watch logs for:
@@ -2027,7 +2027,7 @@ Unsafe actions:
 
 ```bash
 rg -n "price_observations|message_anchor|market_observation_written|AnchorPriceWorker|anchor_price:|should_persist_live_observation" src tests docs \
-  --glob '!src/gmgn_twitter_intel/platform/db/alembic/versions/20260513_0036_token_radar_kappa_cqrs_hard_cut.py' \
+  --glob '!src/parallax/platform/db/alembic/versions/20260513_0036_token_radar_kappa_cqrs_hard_cut.py' \
   --glob '!docs/superpowers/specs/active/2026-05-15-event-anchor-capture-redesign-cn.md' \
   --glob '!docs/superpowers/plans/active/2026-05-15-event-anchor-capture-redesign-plan-cn.md'
 ```

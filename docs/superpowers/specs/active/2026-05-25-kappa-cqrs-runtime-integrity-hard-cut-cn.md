@@ -49,10 +49,10 @@ Four read-only explorer agents independently confirmed these points on
 ### Transaction Boundary Drift
 
 `create_pool()` sets `"autocommit": True` in
-`src/gmgn_twitter_intel/platform/db/postgres_client.py:59`, while
+`src/parallax/platform/db/postgres_client.py:59`, while
 `DBPoolBundle.worker_session()` yields repositories without entering
 `conn.transaction()` in
-`src/gmgn_twitter_intel/app/runtime/db_pool_bundle.py:121`.
+`src/parallax/app/runtime/db_pool_bundle.py:121`.
 
 That means repository calls such as `commit=False` skip explicit `commit()`, but
 the SQL statement has already committed unless the caller is inside
@@ -260,8 +260,8 @@ MarketTickCurrentProjectionWorker
 `market_tick_current` has an ops rebuild command:
 
 ```bash
-uv run gmgn-twitter-intel ops rebuild-market-tick-current --dry-run
-uv run gmgn-twitter-intel ops rebuild-market-tick-current --execute
+uv run parallax ops rebuild-market-tick-current --dry-run
+uv run parallax ops rebuild-market-tick-current --execute
 ```
 
 The rebuild truncates and derives the table from `market_ticks` using stable
@@ -277,8 +277,8 @@ Token Radar workers claim `token_radar_dirty_targets` and do not scan facts in
 normal runtime when the queue is empty. Coverage repair becomes explicit ops:
 
 ```bash
-uv run gmgn-twitter-intel ops enqueue-token-radar-dirty-targets --source events --since-ms ...
-uv run gmgn-twitter-intel ops enqueue-token-radar-dirty-targets --source market-current --since-ms ...
+uv run parallax ops enqueue-token-radar-dirty-targets --source events --since-ms ...
+uv run parallax ops enqueue-token-radar-dirty-targets --source market-current --since-ms ...
 ```
 
 Projection publication runs inside explicit transactions. Queue mark-done and
@@ -424,7 +424,7 @@ This is a hard cut. Rollout order:
 4. Enqueue Token Radar dirty targets from market current and recent events.
 5. Remove runtime scans/fallbacks.
 6. Remove request-time providers.
-7. Verify live config with `uv run gmgn-twitter-intel config`; report paths only,
+7. Verify live config with `uv run parallax config`; report paths only,
    no secrets.
 
 Rollback is previous app revision plus database restore or a forward repair

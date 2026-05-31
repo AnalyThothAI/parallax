@@ -22,22 +22,22 @@
 - `web/src/features/watchlist/model/watchlistCase.ts:43-85` 只从 `LivePayload[]` 聚合，每个 handle `slice(0, 8)`，没有 cursor、没有后端历史查询。
 - `web/src/features/watchlist/ui/WatchlistPage.tsx:33-65` 页面结构是 Hero、SignalStrip、左侧 Recent evidence、右侧 extracted clusters。
 - `web/src/features/watchlist/ui/WatchlistPage.tsx:155-183` EvidenceStream 只渲染 `item.body` 原文，没有读 `payload.harness.summary_zh`。
-- `/api/recent` 在 `src/gmgn_twitter_intel/app/surfaces/api/http.py:90-120` 支持 `handles` CSV 和 `limit`，但没有 per-handle cursor，也没有 `scope=signal|all`。
+- `/api/recent` 在 `src/parallax/app/surfaces/api/http.py:90-120` 支持 `handles` CSV 和 `limit`，但没有 per-handle cursor，也没有 `scope=signal|all`。
 
 ### Watched event enrichment 现状
 
-- `IngestService.ingest_event` 在 `src/gmgn_twitter_intel/domains/evidence/services/ingest_service.py:128-140` 对 watched event 调 `watched_social_event_priority(...)`，命中后插入 `enrichment_jobs`。
-- `watched_social_event_priority` 不是纯英文词表 gate：`src/gmgn_twitter_intel/domains/social_enrichment/services/watched_event_gate.py:70-96` 对 CA、resolved target、有高信号词、symbol+topic term、双 topic term 分级给 priority。
+- `IngestService.ingest_event` 在 `src/parallax/domains/evidence/services/ingest_service.py:128-140` 对 watched event 调 `watched_social_event_priority(...)`，命中后插入 `enrichment_jobs`。
+- `watched_social_event_priority` 不是纯英文词表 gate：`src/parallax/domains/social_enrichment/services/watched_event_gate.py:70-96` 对 CA、resolved target、有高信号词、symbol+topic term、双 topic term 分级给 priority。
 - 但纯中文文本如果没有 CA 或 resolved target，仍会被 `watched_event_gate` 跳过，因为高信号词和 topic term 仍是英文词表。这一点和 spec 的 R1 方向一致，但 spec 对 gate 的描述应从“只有英文词表 + len”修正为“优先级 gate 有实体/解析分支，但中文非实体文本仍漏”。
-- `EnrichmentWorker.process_one` 在 `src/gmgn_twitter_intel/domains/social_enrichment/runtime/enrichment_worker.py:58-139` claim job、调用 LLM、完成 `complete_social_event_job`、materialize harness、发布 `harness_update`。
-- `_complete_job_sync` 在 `src/gmgn_twitter_intel/domains/social_enrichment/runtime/enrichment_worker.py:185-214` 已经用 `repos.unit_of_work()` 包住 enrichment completion 和 harness materialization。Watchlist summary 入队应挂在这里同一事务，不能挂成 process 末尾的 best-effort side effect。
+- `EnrichmentWorker.process_one` 在 `src/parallax/domains/social_enrichment/runtime/enrichment_worker.py:58-139` claim job、调用 LLM、完成 `complete_social_event_job`、materialize harness、发布 `harness_update`。
+- `_complete_job_sync` 在 `src/parallax/domains/social_enrichment/runtime/enrichment_worker.py:185-214` 已经用 `repos.unit_of_work()` 包住 enrichment completion 和 harness materialization。Watchlist summary 入队应挂在这里同一事务，不能挂成 process 末尾的 best-effort side effect。
 
 ### Signal Pulse worker 对本方案的启发
 
-- `PulseCandidateWorker.run` 在 `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py:147-170` 使用 poll + wake queue，可以作为新的 `HandleSummaryWorker` 生命周期模板。
-- `run_once_async` 在 `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py:216-226` 明确拆成 scan 和 process，并维护 `last_result/last_error`，适合复用到 readiness/doctor 输出。
-- `process_due_jobs_once_async` 在 `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py:262-293` 使用批量 claim、失败计数、missing context 处理，适合复用到 summary job worker。
-- `PulseCandidateWorker._enqueue_if_due` 在 `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py:364-433` 的关键价值不是可复制的业务逻辑，而是闭环模式：独立 state table、dedup、budget、edge events、enqueue 后写 processed state。Watchlist summary 不需要 `pulse_candidate_edge_state`，但需要同等级别的独立 job table、lease、attempt、runs audit 和 summary watermark。
+- `PulseCandidateWorker.run` 在 `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:147-170` 使用 poll + wake queue，可以作为新的 `HandleSummaryWorker` 生命周期模板。
+- `run_once_async` 在 `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:216-226` 明确拆成 scan 和 process，并维护 `last_result/last_error`，适合复用到 readiness/doctor 输出。
+- `process_due_jobs_once_async` 在 `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:262-293` 使用批量 claim、失败计数、missing context 处理，适合复用到 summary job worker。
+- `PulseCandidateWorker._enqueue_if_due` 在 `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:364-433` 的关键价值不是可复制的业务逻辑，而是闭环模式：独立 state table、dedup、budget、edge events、enqueue 后写 processed state。Watchlist summary 不需要 `pulse_candidate_edge_state`，但需要同等级别的独立 job table、lease、attempt、runs audit 和 summary watermark。
 
 ### 闭环判断
 
@@ -87,22 +87,22 @@ with self.repository_session() as repos, repos.unit_of_work():
 
 ### Backend
 
-- Create: `src/gmgn_twitter_intel/domains/watchlist_intel/__init__.py`
-- Create: `src/gmgn_twitter_intel/domains/watchlist_intel/interfaces.py`
-- Create: `src/gmgn_twitter_intel/domains/watchlist_intel/providers.py`
-- Create: `src/gmgn_twitter_intel/domains/watchlist_intel/types.py`
-- Create: `src/gmgn_twitter_intel/domains/watchlist_intel/repositories/watchlist_intel_repository.py`
-- Create: `src/gmgn_twitter_intel/domains/watchlist_intel/services/handle_summary_service.py`
-- Create: `src/gmgn_twitter_intel/domains/watchlist_intel/read_models/watchlist_intel_service.py`
-- Create: `src/gmgn_twitter_intel/domains/watchlist_intel/runtime/handle_summary_worker.py`
-- Create: `src/gmgn_twitter_intel/integrations/openai_agents/watchlist_handle_summary_client.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/repository_session.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/providers_wiring.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/app.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/http.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260514_0043_watchlist_handle_intel.py`
+- Create: `src/parallax/domains/watchlist_intel/__init__.py`
+- Create: `src/parallax/domains/watchlist_intel/interfaces.py`
+- Create: `src/parallax/domains/watchlist_intel/providers.py`
+- Create: `src/parallax/domains/watchlist_intel/types.py`
+- Create: `src/parallax/domains/watchlist_intel/repositories/watchlist_intel_repository.py`
+- Create: `src/parallax/domains/watchlist_intel/services/handle_summary_service.py`
+- Create: `src/parallax/domains/watchlist_intel/read_models/watchlist_intel_service.py`
+- Create: `src/parallax/domains/watchlist_intel/runtime/handle_summary_worker.py`
+- Create: `src/parallax/integrations/openai_agents/watchlist_handle_summary_client.py`
+- Modify: `src/parallax/app/runtime/repository_session.py`
+- Modify: `src/parallax/app/runtime/providers_wiring.py`
+- Modify: `src/parallax/app/runtime/app.py`
+- Modify: `src/parallax/app/surfaces/api/http.py`
+- Modify: `src/parallax/app/surfaces/api/schemas.py`
+- Modify: `src/parallax/platform/config/settings.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260514_0043_watchlist_handle_intel.py`
 - Modify: `docs/ARCHITECTURE.md`
 - Modify: `docs/CONTRACTS.md`
 - Modify: `docs/TECH_DEBT.md`
@@ -147,9 +147,9 @@ with self.repository_session() as repos, repos.unit_of_work():
 ## Task 1: Schema, Cursor, Repository
 
 **Files:**
-- Create migration: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260514_0043_watchlist_handle_intel.py`
-- Create repository: `src/gmgn_twitter_intel/domains/watchlist_intel/repositories/watchlist_intel_repository.py`
-- Create types: `src/gmgn_twitter_intel/domains/watchlist_intel/types.py`
+- Create migration: `src/parallax/platform/db/alembic/versions/20260514_0043_watchlist_handle_intel.py`
+- Create repository: `src/parallax/domains/watchlist_intel/repositories/watchlist_intel_repository.py`
+- Create types: `src/parallax/domains/watchlist_intel/types.py`
 - Tests: `tests/domains/watchlist_intel/test_cursor.py`, `tests/integration/watchlist/test_watchlist_intel_repository.py`
 
 - [ ] Add tables `watchlist_handle_summary_jobs`, `watchlist_handle_summaries`, `watchlist_handle_summary_runs`.
@@ -179,9 +179,9 @@ with self.repository_session() as repos, repos.unit_of_work():
 ## Task 2: Domain Service And Summary Provider Contract
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/watchlist_intel/providers.py`
-- Create: `src/gmgn_twitter_intel/domains/watchlist_intel/services/handle_summary_service.py`
-- Create: `src/gmgn_twitter_intel/domains/watchlist_intel/read_models/watchlist_intel_service.py`
+- Create: `src/parallax/domains/watchlist_intel/providers.py`
+- Create: `src/parallax/domains/watchlist_intel/services/handle_summary_service.py`
+- Create: `src/parallax/domains/watchlist_intel/read_models/watchlist_intel_service.py`
 - Tests: `tests/domains/watchlist_intel/test_enqueue.py`, `tests/domains/watchlist_intel/test_handle_summary_prompt.py`
 
 - [ ] Define `HandleTopicSummaryProvider` protocol with `provider`, `model`, `timeout_seconds`, `request_audit(...)`, and `summarize_handle(...)`.
@@ -199,12 +199,12 @@ with self.repository_session() as repos, repos.unit_of_work():
 ## Task 3: Worker, Runtime Wiring, And Enrichment Hook
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/watchlist_intel/runtime/handle_summary_worker.py`
-- Create: `src/gmgn_twitter_intel/integrations/openai_agents/watchlist_handle_summary_client.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/repository_session.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/providers_wiring.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/app.py`
-- Modify: `src/gmgn_twitter_intel/domains/social_enrichment/runtime/enrichment_worker.py`
+- Create: `src/parallax/domains/watchlist_intel/runtime/handle_summary_worker.py`
+- Create: `src/parallax/integrations/openai_agents/watchlist_handle_summary_client.py`
+- Modify: `src/parallax/app/runtime/repository_session.py`
+- Modify: `src/parallax/app/runtime/providers_wiring.py`
+- Modify: `src/parallax/app/runtime/app.py`
+- Modify: `src/parallax/domains/social_enrichment/runtime/enrichment_worker.py`
 - Tests: `tests/unit/test_enrichment_worker_runtime.py`, `tests/integration/test_enrichment_worker.py`, `tests/integration/watchlist/test_watchlist_intel_worker.py`
 
 - [ ] Add `WatchlistIntelRepository` to `RepositorySession` so all writes use the existing UOW.
@@ -222,8 +222,8 @@ with self.repository_session() as repos, repos.unit_of_work():
 ## Task 4: HTTP API
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/http.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
+- Modify: `src/parallax/app/surfaces/api/http.py`
+- Modify: `src/parallax/app/surfaces/api/schemas.py`
 - Modify: `docs/CONTRACTS.md`
 - Tests: `tests/integration/watchlist/test_watchlist_intel_api.py`
 

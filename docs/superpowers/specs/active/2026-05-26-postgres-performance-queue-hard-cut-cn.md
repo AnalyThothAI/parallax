@@ -24,11 +24,11 @@ Queue health is now exposed by runtime code rather than hand-written SQL.
 `app.runtime.queue_health` declares status queue semantics for
 `enrichment_jobs`, `pulse_agent_jobs`, `event_anchor_backfill_jobs`, and
 `token_mention_semantics` in
-`src/gmgn_twitter_intel/app/runtime/queue_health.py:24`, aggregates per-worker
+`src/parallax/app/runtime/queue_health.py:24`, aggregates per-worker
 and per-lane queue state in
-`src/gmgn_twitter_intel/app/runtime/queue_health.py:56`, and reads dirty target
+`src/parallax/app/runtime/queue_health.py:56`, and reads dirty target
 tables through a read-only summary query in
-`src/gmgn_twitter_intel/app/runtime/queue_health.py:148`.
+`src/parallax/app/runtime/queue_health.py:148`.
 
 The current production performance analysis found that PostgreSQL is under real
 pressure from a small number of query shapes, not from a general database
@@ -44,26 +44,26 @@ than retained as a fallback.
 
 `token_intent_lookup_keys` has a direct missing-index problem. The write path
 deletes by `intent_id` in
-`src/gmgn_twitter_intel/domains/token_intel/repositories/token_intent_lookup_repository.py:20`,
+`src/parallax/domains/token_intel/repositories/token_intent_lookup_repository.py:20`,
 while the existing schema only provides the primary key `(lookup_key,
 intent_id)` and a lookup-key index. Production `EXPLAIN` showed a sequential
 scan for this delete.
 
 Event-anchor cleanup still scans both the job table and fact table when marking
 already-ready jobs done. The current query lives in
-`src/gmgn_twitter_intel/domains/asset_market/repositories/event_anchor_backfill_job_repository.py:102`.
+`src/parallax/domains/asset_market/repositories/event_anchor_backfill_job_repository.py:102`.
 Projection stale-run cleanup is similarly high-frequency and filters
 `status='running'` without a matching partial index in
-`src/gmgn_twitter_intel/domains/token_intel/repositories/projection_repository.py:136`.
+`src/parallax/domains/token_intel/repositories/projection_repository.py:136`.
 
 Macro read paths still do request-time dedupe and windowing over
 `macro_observations` in
-`src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py:139`.
+`src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:139`.
 This is currently visible as a high mean-time query with temporary block writes.
 
 `resolution_refresh` consumes `token_discovery_dirty_lookup_keys` through a
 bounded `FOR UPDATE SKIP LOCKED` claim in
-`src/gmgn_twitter_intel/domains/asset_market/repositories/discovery_repository.py:196`.
+`src/parallax/domains/asset_market/repositories/discovery_repository.py:196`.
 Queue health now shows this table with long due age and very high attempt
 counts, which means retry policy and poison-key handling are incomplete even
 though the claim mechanism itself is bounded.
@@ -213,7 +213,7 @@ Changed arrows:
   failure is a readiness contract failure.
 - Response includes per-worker and per-lane `queue_health`.
 
-`gmgn-twitter-intel ops queue ...`
+`parallax ops queue ...`
 
 - New production operator surface for queue terminal handling.
 - Inspect is read-only by default.

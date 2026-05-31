@@ -3,15 +3,15 @@
 **Status**: Draft
 **Date**: 2026-05-14
 **Owner**: Claude / aaurix
-**Related**: `web/src/features/watchlist/ui/WatchlistPage.tsx`, `src/gmgn_twitter_intel/domains/social_enrichment/runtime/enrichment_worker.py`, `src/gmgn_twitter_intel/domains/evidence/services/ingest_service.py`, `src/gmgn_twitter_intel/domains/social_enrichment/services/watched_event_gate.py`, `docs/ARCHITECTURE.md`, `docs/CONTRACTS.md`, `docs/TESTING.md`, `docs/TECH_DEBT.md`
+**Related**: `web/src/features/watchlist/ui/WatchlistPage.tsx`, `src/parallax/domains/social_enrichment/runtime/enrichment_worker.py`, `src/parallax/domains/evidence/services/ingest_service.py`, `src/parallax/domains/social_enrichment/services/watched_event_gate.py`, `docs/ARCHITECTURE.md`, `docs/CONTRACTS.md`, `docs/TESTING.md`, `docs/TECH_DEBT.md`
 
 ## Background
 
 `/watchlist?handle=...` 当前是一个轻量视图：`WatchlistPage` 只接收上层 `accountCases` prop，硬上限 8 条 evidence、无分页、无滚动加载，主区域三栏（Hero / SignalStrip / Evidence + Extraction aside）信息密度尚可但承载力有限（`web/src/features/watchlist/ui/WatchlistPage.tsx:33-66`, `web/src/features/watchlist/ui/WatchlistPage.tsx:155-184`）。数据全部从 `AppRoutes.tsx` 上层的内存事件 buffer 派生：`buildWatchlistAccountCases` 在前端聚合 `liveItems`（`web/src/routes/AppRoutes.tsx:86-103`）。后端没有 per-handle 的 paginated 端点，`/api/recent` 是通用 endpoint，只能按 `handles` CSV 过滤、不带 cursor。
 
-每条进入 ingest 的 watchlist event 会走 `IngestService.ingest_event`，若 `is_watched=True` 且过 `watched_event_gate` 则插一行 `enrichment_jobs`（`src/gmgn_twitter_intel/domains/evidence/services/ingest_service.py:129-140`），由 `EnrichmentWorker`（轮询 `enrichment_jobs`，2s + `FOR UPDATE SKIP LOCKED`）调用 `SocialEventExtractionAgent`，写入 `social_event_extractions`，其中 `summary_zh`（一句中文摘要）+ `is_signal_event`（信号事件标记）+ `subject` + `anchor_terms` + `token_candidates` 已经持久化。`summary_zh` 通过 `/api/recent` 的 harness 字段也可被前端取到，**但目前 `/watchlist` 完全没有渲染**——用户在该页面只能看见英文原文，看不见已经算出来的中文摘要。
+每条进入 ingest 的 watchlist event 会走 `IngestService.ingest_event`，若 `is_watched=True` 且过 `watched_event_gate` 则插一行 `enrichment_jobs`（`src/parallax/domains/evidence/services/ingest_service.py:129-140`），由 `EnrichmentWorker`（轮询 `enrichment_jobs`，2s + `FOR UPDATE SKIP LOCKED`）调用 `SocialEventExtractionAgent`，写入 `social_event_extractions`，其中 `summary_zh`（一句中文摘要）+ `is_signal_event`（信号事件标记）+ `subject` + `anchor_terms` + `token_candidates` 已经持久化。`summary_zh` 通过 `/api/recent` 的 harness 字段也可被前端取到，**但目前 `/watchlist` 完全没有渲染**——用户在该页面只能看见英文原文，看不见已经算出来的中文摘要。
 
-`watched_event_gate.should_enqueue_watched_social_event_text` 用 `HIGH_SIGNAL_TERMS | TOPIC_TERMS` 两组**硬编码英文词表** + `len >= 24` 字符做门槛（`src/gmgn_twitter_intel/domains/social_enrichment/services/watched_event_gate.py:6-36`, `src/gmgn_twitter_intel/domains/social_enrichment/services/watched_event_gate.py:99-105`）。后果：**纯中文推文如果不含英文金融词，会被静默跳过 LLM**，既没有 `summary_zh` 也没有 `is_signal_event`。这是已知缺口，本 spec 不修，但在 `Risks & Known Gaps · R1` 明确，并挂到 `docs/TECH_DEBT.md`。
+`watched_event_gate.should_enqueue_watched_social_event_text` 用 `HIGH_SIGNAL_TERMS | TOPIC_TERMS` 两组**硬编码英文词表** + `len >= 24` 字符做门槛（`src/parallax/domains/social_enrichment/services/watched_event_gate.py:6-36`, `src/parallax/domains/social_enrichment/services/watched_event_gate.py:99-105`）。后果：**纯中文推文如果不含英文金融词，会被静默跳过 LLM**，既没有 `summary_zh` 也没有 `is_signal_event`。这是已知缺口，本 spec 不修，但在 `Risks & Known Gaps · R1` 明确，并挂到 `docs/TECH_DEBT.md`。
 
 主分支后台 worker 共 10 个，与 LLM 相关的只有两个：`EnrichmentWorker`（单条 tweet 维度）、`PulseCandidateWorker`（token/source 维度）。Handle 维度的"近期主题汇总"在现有任何 worker 都不存在。
 
@@ -38,7 +38,7 @@
 - **G2 Handle 主题汇总持久化** — 新增 `watchlist_handle_summaries`（结果表）+ `watchlist_handle_summary_jobs`（防抖队列），事件触发异步入队，独立 worker 跑 LLM 产 `topics_json`。
 - **G3 Handle 主题汇总 API 落地** — 新增 `GET /api/watchlist/handle/{handle}/summary`，handle 未生成时返回 `status="not_ready"`，handle 不在 watchlist 时返回 404。
 - **G4 前端渲染** — `WatchlistPage` 顶部新增 `HandleTopicSummary` 卡片，中间用 `HandleTimeline`（React Query `useInfiniteQuery`）替换原 `EvidenceStream`，每条显示 `summary_zh` + 标签 + 折叠原文，scope tab 在 `signal` / `all` 之间切换。
-- **G5 新 domain** — `src/gmgn_twitter_intel/domains/watchlist_intel/` 作为新的子域，独立 worker、repo、agent、service，不复用 `enrichment_jobs` / `EnrichmentWorker`。
+- **G5 新 domain** — `src/parallax/domains/watchlist_intel/` 作为新的子域，独立 worker、repo、agent、service，不复用 `enrichment_jobs` / `EnrichmentWorker`。
 - **G6 索引就位** — `events` 表新增 `(author_handle, received_at_ms DESC, event_id DESC)` 复合索引，通过独立 alembic step 用 `CREATE INDEX CONCURRENTLY` 部署。
 - **G7 验证可复核** — 单元 + 集成测试覆盖入队 / claim / lease / cursor / scope / 冷启动 / 阈值，LLM 部分用 stub provider；前端 Vitest 覆盖渲染、scope 切换、分页追加。
 - **G8 不动现有链路核心** — `enrichment_jobs` schema 零修改，`EnrichmentWorker` 的 LLM 抽取主流程零修改（仅增加一个 outbound 钩子在 `process_one` 末尾通知 `watchlist_intel`），pulse / harness / notification / token_radar 链路零修改。
@@ -100,7 +100,7 @@
 └────────────────────────────────────────────────────────────────┘
 ```
 
-新 domain 在 `src/gmgn_twitter_intel/domains/watchlist_intel/`：
+新 domain 在 `src/parallax/domains/watchlist_intel/`：
 
 ```
 watchlist_intel/
@@ -279,7 +279,7 @@ while running:
 
 ### 配置项
 
-写入 `src/gmgn_twitter_intel/platform/config/settings.py`，全部 `WATCHLIST_HANDLE_SUMMARY_*` 前缀：
+写入 `src/parallax/platform/config/settings.py`，全部 `WATCHLIST_HANDLE_SUMMARY_*` 前缀：
 
 | 配置 | 默认 | 含义 |
 |---|---|---|
@@ -555,14 +555,14 @@ class StubHandleTopicSummaryAgent:
 - `uv run pytest tests/domains/watchlist_intel/ -v`
 - `uv run pytest tests/integration/watchlist/ -v`
 - `cd web && pnpm test features/watchlist`
-- `uv run gmgn-twitter-intel watchlist-intel doctor` (新增 CLI 子命令做端到端 smoke，可选)
+- `uv run parallax watchlist-intel doctor` (新增 CLI 子命令做端到端 smoke，可选)
 - 手动：本地起 server，watchlist 切 3 个 handle，验证主题汇总 / scope tab / 分页加载
 
 ## Risks & Known Gaps
 
 ### R1 · 纯中文推文被 gate 拦在 LLM 外（已知缺口，本期不修）
 
-`watched_event_gate.should_enqueue_watched_social_event_text` 用 `HIGH_SIGNAL_TERMS | TOPIC_TERMS` 英文词表筛选（`src/gmgn_twitter_intel/domains/social_enrichment/services/watched_event_gate.py:99-105`）。后果：纯中文推文如果不含英文金融词，**没 `summary_zh` 也没 `is_signal_event`**，watchlist `scope=signal` 看不到，主题汇总也漏掉。
+`watched_event_gate.should_enqueue_watched_social_event_text` 用 `HIGH_SIGNAL_TERMS | TOPIC_TERMS` 英文词表筛选（`src/parallax/domains/social_enrichment/services/watched_event_gate.py:99-105`）。后果：纯中文推文如果不含英文金融词，**没 `summary_zh` 也没 `is_signal_event`**，watchlist `scope=signal` 看不到，主题汇总也漏掉。
 
 **处置**：
 - 本期不修，spec 明确写入。

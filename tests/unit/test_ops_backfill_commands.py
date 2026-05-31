@@ -6,11 +6,11 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any
 
-from gmgn_twitter_intel.cli import main
+from parallax.cli import main
 
 
 def test_backfill_watchlist_signal_stats_dispatches_to_repository(monkeypatch) -> None:
-    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+    from parallax.app.surfaces.cli.commands import ops as ops_module
 
     watchlist_intel = _FakeWatchlistIntel()
 
@@ -56,7 +56,7 @@ def test_backfill_watchlist_signal_stats_dispatches_to_repository(monkeypatch) -
 
 
 def test_backfill_watchlist_signal_stats_dry_run_uses_non_mutating_call(monkeypatch) -> None:
-    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+    from parallax.app.surfaces.cli.commands import ops as ops_module
 
     watchlist_intel = _FakeWatchlistIntel()
 
@@ -87,7 +87,7 @@ def test_removed_token_radar_partition_ops_commands_are_not_registered() -> None
 
 
 def test_reconcile_event_anchor_jobs_dispatches_to_operator_repository(monkeypatch) -> None:
-    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+    from parallax.app.surfaces.cli.commands import ops as ops_module
 
     event_anchor_jobs = _FakeEventAnchorJobs()
 
@@ -117,7 +117,7 @@ def test_reconcile_event_anchor_jobs_dispatches_to_operator_repository(monkeypat
 
 
 def test_rebuild_market_tick_current_dry_run_reports_estimate_without_mutation(monkeypatch) -> None:
-    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+    from parallax.app.surfaces.cli.commands import ops as ops_module
 
     db = _FakeMarketTickCurrentDB()
     monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: _market_settings())
@@ -144,7 +144,7 @@ def test_rebuild_market_tick_current_dry_run_reports_estimate_without_mutation(m
 
 
 def test_rebuild_market_tick_current_execute_acquires_lock_and_dispatches_rebuild(monkeypatch) -> None:
-    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+    from parallax.app.surfaces.cli.commands import ops as ops_module
 
     db = _FakeMarketTickCurrentDB()
     monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: _market_settings())
@@ -171,7 +171,7 @@ def test_rebuild_market_tick_current_execute_acquires_lock_and_dispatches_rebuil
 
 
 def test_rebuild_market_tick_current_execute_skips_when_projection_lock_is_held(monkeypatch) -> None:
-    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+    from parallax.app.surfaces.cli.commands import ops as ops_module
 
     db = _FakeMarketTickCurrentDB(lock_available=False)
     monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: _market_settings())
@@ -193,7 +193,7 @@ def test_rebuild_market_tick_current_execute_skips_when_projection_lock_is_held(
 
 
 def test_enqueue_token_radar_dirty_targets_dry_run_counts_without_writing(monkeypatch) -> None:
-    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+    from parallax.app.surfaces.cli.commands import ops as ops_module
 
     dirty_targets = _FakeDirtyTargetsRepository()
     source_dirty_events = _FakeSourceDirtyEventsRepository()
@@ -240,7 +240,7 @@ def test_enqueue_token_radar_dirty_targets_dry_run_counts_without_writing(monkey
 
 
 def test_enqueue_token_radar_dirty_targets_execute_dispatches_to_market_current_repo(monkeypatch) -> None:
-    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+    from parallax.app.surfaces.cli.commands import ops as ops_module
 
     dirty_targets = _FakeDirtyTargetsRepository()
 

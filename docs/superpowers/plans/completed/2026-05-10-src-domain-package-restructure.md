@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Move `src/gmgn_twitter_intel` from flat technical-layer packages into enforceable domain packages without changing public HTTP, WebSocket, CLI, config, scoring, or database behaviour.
+**Goal:** Move `src/parallax` from flat technical-layer packages into enforceable domain packages without changing public HTTP, WebSocket, CLI, config, scoring, or database behaviour.
 
-**Architecture:** Introduce `domains/`, `app/`, `integrations/`, and `platform/` as the only long-term source packages. Move business logic domain-by-domain, keep `gmgn_twitter_intel.cli` and `gmgn_twitter_intel.__main__` as entry shims, and add structural tests that enforce package ownership, import direction, and SQL ownership. Use compatibility shims only while a slice is in flight; final verification requires old flat packages to contain no business logic.
+**Architecture:** Introduce `domains/`, `app/`, `integrations/`, and `platform/` as the only long-term source packages. Move business logic domain-by-domain, keep `parallax.cli` and `parallax.__main__` as entry shims, and add structural tests that enforce package ownership, import direction, and SQL ownership. Use compatibility shims only while a slice is in flight; final verification requires old flat packages to contain no business logic.
 
 **Tech Stack:** Python 3.13, pytest, ruff, compileall, PostgreSQL repositories, FastAPI, argparse, existing Makefile/docs-generated scripts, AST-based structural tests.
 
@@ -42,26 +42,26 @@ git status --short
 
 ### New Package Roots
 
-- Create `src/gmgn_twitter_intel/app/__init__.py`.
-- Create `src/gmgn_twitter_intel/app/runtime/__init__.py`.
-- Create `src/gmgn_twitter_intel/app/surfaces/__init__.py`.
-- Create `src/gmgn_twitter_intel/app/surfaces/api/__init__.py`.
-- Create `src/gmgn_twitter_intel/app/surfaces/cli/__init__.py`.
-- Create `src/gmgn_twitter_intel/domains/__init__.py`.
+- Create `src/parallax/app/__init__.py`.
+- Create `src/parallax/app/runtime/__init__.py`.
+- Create `src/parallax/app/surfaces/__init__.py`.
+- Create `src/parallax/app/surfaces/api/__init__.py`.
+- Create `src/parallax/app/surfaces/cli/__init__.py`.
+- Create `src/parallax/domains/__init__.py`.
 - Create one `__init__.py` for each domain:
   `ingestion`, `evidence`, `asset_market`, `token_intel`, `social_enrichment`,
   `closed_loop_harness`, `notifications`, `pulse_lab`, `account_quality`.
 - Inside every domain, create subpackages only when used:
   `types`, `interfaces`, `repositories`, `queries`, `services`, `scoring`, `read_models`, `runtime`.
-- Create `src/gmgn_twitter_intel/integrations/__init__.py`.
-- Create `src/gmgn_twitter_intel/integrations/gmgn/__init__.py`.
-- Create `src/gmgn_twitter_intel/integrations/okx/__init__.py`.
-- Create `src/gmgn_twitter_intel/integrations/openai_agents/__init__.py`.
-- Create `src/gmgn_twitter_intel/platform/__init__.py`.
-- Create `src/gmgn_twitter_intel/platform/config/__init__.py`.
-- Create `src/gmgn_twitter_intel/platform/db/__init__.py`.
-- Create `src/gmgn_twitter_intel/platform/logging/__init__.py`.
-- Create `src/gmgn_twitter_intel/platform/paths/__init__.py`.
+- Create `src/parallax/integrations/__init__.py`.
+- Create `src/parallax/integrations/gmgn/__init__.py`.
+- Create `src/parallax/integrations/okx/__init__.py`.
+- Create `src/parallax/integrations/openai_agents/__init__.py`.
+- Create `src/parallax/platform/__init__.py`.
+- Create `src/parallax/platform/config/__init__.py`.
+- Create `src/parallax/platform/db/__init__.py`.
+- Create `src/parallax/platform/logging/__init__.py`.
+- Create `src/parallax/platform/paths/__init__.py`.
 
 ### Move Map
 
@@ -71,152 +71,152 @@ Use `git mv` for these files so history is preserved.
 
 | Current | Target |
 |---------|--------|
-| `src/gmgn_twitter_intel/api/app.py` | `src/gmgn_twitter_intel/app/runtime/app.py` |
-| `src/gmgn_twitter_intel/api/http.py` | `src/gmgn_twitter_intel/app/surfaces/api/http.py` |
-| `src/gmgn_twitter_intel/api/ws.py` | `src/gmgn_twitter_intel/app/surfaces/api/ws.py` |
-| `src/gmgn_twitter_intel/cli.py` | `src/gmgn_twitter_intel/app/surfaces/cli/main.py` |
-| `src/gmgn_twitter_intel/storage/repository_session.py` | `src/gmgn_twitter_intel/app/runtime/repository_session.py` |
-| `src/gmgn_twitter_intel/settings.py` | `src/gmgn_twitter_intel/platform/config/settings.py` |
-| `src/gmgn_twitter_intel/runtime_paths.py` | `src/gmgn_twitter_intel/platform/paths/runtime_paths.py` |
-| `src/gmgn_twitter_intel/logging_setup.py` | `src/gmgn_twitter_intel/platform/logging/setup.py` |
-| `src/gmgn_twitter_intel/storage/postgres_client.py` | `src/gmgn_twitter_intel/platform/db/postgres_client.py` |
-| `src/gmgn_twitter_intel/storage/postgres_migrations.py` | `src/gmgn_twitter_intel/platform/db/postgres_migrations.py` |
-| `src/gmgn_twitter_intel/storage/postgres_audit.py` | `src/gmgn_twitter_intel/platform/db/postgres_audit.py` |
+| `src/parallax/api/app.py` | `src/parallax/app/runtime/app.py` |
+| `src/parallax/api/http.py` | `src/parallax/app/surfaces/api/http.py` |
+| `src/parallax/api/ws.py` | `src/parallax/app/surfaces/api/ws.py` |
+| `src/parallax/cli.py` | `src/parallax/app/surfaces/cli/main.py` |
+| `src/parallax/storage/repository_session.py` | `src/parallax/app/runtime/repository_session.py` |
+| `src/parallax/settings.py` | `src/parallax/platform/config/settings.py` |
+| `src/parallax/runtime_paths.py` | `src/parallax/platform/paths/runtime_paths.py` |
+| `src/parallax/logging_setup.py` | `src/parallax/platform/logging/setup.py` |
+| `src/parallax/storage/postgres_client.py` | `src/parallax/platform/db/postgres_client.py` |
+| `src/parallax/storage/postgres_migrations.py` | `src/parallax/platform/db/postgres_migrations.py` |
+| `src/parallax/storage/postgres_audit.py` | `src/parallax/platform/db/postgres_audit.py` |
 
 Create final shims:
 
-- `src/gmgn_twitter_intel/cli.py` imports and calls `gmgn_twitter_intel.app.surfaces.cli.main`.
-- `src/gmgn_twitter_intel/__main__.py` imports `main` from `gmgn_twitter_intel.cli`.
-- `src/gmgn_twitter_intel/api/app.py` re-exports `create_app`, `_build_runtime`, and `_readiness_payload` from `gmgn_twitter_intel.app.runtime.app` for existing tests and app factory imports.
-- `src/gmgn_twitter_intel/api/http.py` and `src/gmgn_twitter_intel/api/ws.py` re-export from the new app surface modules while tests are migrated. If no internal imports remain at the end, delete these two shims.
+- `src/parallax/cli.py` imports and calls `parallax.app.surfaces.cli.main`.
+- `src/parallax/__main__.py` imports `main` from `parallax.cli`.
+- `src/parallax/api/app.py` re-exports `create_app`, `_build_runtime`, and `_readiness_payload` from `parallax.app.runtime.app` for existing tests and app factory imports.
+- `src/parallax/api/http.py` and `src/parallax/api/ws.py` re-export from the new app surface modules while tests are migrated. If no internal imports remain at the end, delete these two shims.
 
 #### Integrations
 
 | Current | Target |
 |---------|--------|
-| `src/gmgn_twitter_intel/collector/direct_ws.py` | `src/gmgn_twitter_intel/integrations/gmgn/direct_ws.py` |
-| `src/gmgn_twitter_intel/market/gmgn_directory_client.py` | `src/gmgn_twitter_intel/integrations/gmgn/directory_client.py` |
-| `src/gmgn_twitter_intel/market/gmgn_openapi_client.py` | `src/gmgn_twitter_intel/integrations/gmgn/openapi_client.py` |
-| `src/gmgn_twitter_intel/market/okx_cex_client.py` | `src/gmgn_twitter_intel/integrations/okx/cex_client.py` |
-| `src/gmgn_twitter_intel/market/okx_chains.py` | `src/gmgn_twitter_intel/integrations/okx/chains.py` |
-| `src/gmgn_twitter_intel/market/okx_dex_client.py` | `src/gmgn_twitter_intel/integrations/okx/dex_client.py` |
-| `src/gmgn_twitter_intel/market/okx_models.py` | `src/gmgn_twitter_intel/integrations/okx/models.py` |
-| `src/gmgn_twitter_intel/pipeline/social_event_agent_client.py` | `src/gmgn_twitter_intel/integrations/openai_agents/social_event_agent_client.py` |
-| `src/gmgn_twitter_intel/pipeline/pulse_thesis_agent_client.py` | `src/gmgn_twitter_intel/integrations/openai_agents/pulse_thesis_agent_client.py` |
+| `src/parallax/collector/direct_ws.py` | `src/parallax/integrations/gmgn/direct_ws.py` |
+| `src/parallax/market/gmgn_directory_client.py` | `src/parallax/integrations/gmgn/directory_client.py` |
+| `src/parallax/market/gmgn_openapi_client.py` | `src/parallax/integrations/gmgn/openapi_client.py` |
+| `src/parallax/market/okx_cex_client.py` | `src/parallax/integrations/okx/cex_client.py` |
+| `src/parallax/market/okx_chains.py` | `src/parallax/integrations/okx/chains.py` |
+| `src/parallax/market/okx_dex_client.py` | `src/parallax/integrations/okx/dex_client.py` |
+| `src/parallax/market/okx_models.py` | `src/parallax/integrations/okx/models.py` |
+| `src/parallax/pipeline/social_event_agent_client.py` | `src/parallax/integrations/openai_agents/social_event_agent_client.py` |
+| `src/parallax/pipeline/pulse_thesis_agent_client.py` | `src/parallax/integrations/openai_agents/pulse_thesis_agent_client.py` |
 
 #### `domains/ingestion`
 
 | Current | Target |
 |---------|--------|
-| `src/gmgn_twitter_intel/collector/service.py` | `src/gmgn_twitter_intel/domains/ingestion/runtime/collector_service.py` |
-| `src/gmgn_twitter_intel/collector/normalizer.py` | `src/gmgn_twitter_intel/domains/ingestion/services/normalizer.py` |
-| `src/gmgn_twitter_intel/collector/subscriptions.py` | `src/gmgn_twitter_intel/domains/ingestion/services/subscriptions.py` |
-| `src/gmgn_twitter_intel/collector/gmgn_token_payload.py` | `src/gmgn_twitter_intel/domains/ingestion/types/gmgn_token_payload.py` |
+| `src/parallax/collector/service.py` | `src/parallax/domains/ingestion/runtime/collector_service.py` |
+| `src/parallax/collector/normalizer.py` | `src/parallax/domains/ingestion/services/normalizer.py` |
+| `src/parallax/collector/subscriptions.py` | `src/parallax/domains/ingestion/services/subscriptions.py` |
+| `src/parallax/collector/gmgn_token_payload.py` | `src/parallax/domains/ingestion/types/gmgn_token_payload.py` |
 
-Create `src/gmgn_twitter_intel/domains/ingestion/interfaces.py` with the `IngestedEvent` dataclass currently in `pipeline/ingest_service.py` so collector runtime depends on an interface, not on token/evidence service internals.
+Create `src/parallax/domains/ingestion/interfaces.py` with the `IngestedEvent` dataclass currently in `pipeline/ingest_service.py` so collector runtime depends on an interface, not on token/evidence service internals.
 
 #### `domains/evidence`
 
 | Current | Target |
 |---------|--------|
-| `src/gmgn_twitter_intel/models.py` | `src/gmgn_twitter_intel/domains/evidence/types/twitter_event.py` |
-| `src/gmgn_twitter_intel/pipeline/entity_extractor.py` | `src/gmgn_twitter_intel/domains/evidence/services/entity_extractor.py` |
-| `src/gmgn_twitter_intel/pipeline/tweet_identity.py` | `src/gmgn_twitter_intel/domains/evidence/services/tweet_identity.py` |
-| `src/gmgn_twitter_intel/pipeline/tweet_text.py` | `src/gmgn_twitter_intel/domains/evidence/services/tweet_text.py` |
-| `src/gmgn_twitter_intel/storage/evidence_repository.py` | `src/gmgn_twitter_intel/domains/evidence/repositories/evidence_repository.py` |
-| `src/gmgn_twitter_intel/storage/entity_repository.py` | `src/gmgn_twitter_intel/domains/evidence/repositories/entity_repository.py` |
+| `src/parallax/models.py` | `src/parallax/domains/evidence/types/twitter_event.py` |
+| `src/parallax/pipeline/entity_extractor.py` | `src/parallax/domains/evidence/services/entity_extractor.py` |
+| `src/parallax/pipeline/tweet_identity.py` | `src/parallax/domains/evidence/services/tweet_identity.py` |
+| `src/parallax/pipeline/tweet_text.py` | `src/parallax/domains/evidence/services/tweet_text.py` |
+| `src/parallax/storage/evidence_repository.py` | `src/parallax/domains/evidence/repositories/evidence_repository.py` |
+| `src/parallax/storage/entity_repository.py` | `src/parallax/domains/evidence/repositories/entity_repository.py` |
 
-Create `src/gmgn_twitter_intel/domains/evidence/interfaces.py` that re-exports `TwitterAuthor`, `TwitterEvent`, `TokenSnapshot`, `event_to_row`, and `decode_event_row` for cross-domain consumers.
+Create `src/parallax/domains/evidence/interfaces.py` that re-exports `TwitterAuthor`, `TwitterEvent`, `TokenSnapshot`, `event_to_row`, and `decode_event_row` for cross-domain consumers.
 
 #### `domains/asset_market`
 
 | Current | Target |
 |---------|--------|
-| `src/gmgn_twitter_intel/pipeline/asset_market_sync.py` | `src/gmgn_twitter_intel/domains/asset_market/services/asset_market_sync.py` |
-| `src/gmgn_twitter_intel/pipeline/asset_market_sync_worker.py` | `src/gmgn_twitter_intel/domains/asset_market/runtime/asset_market_sync_worker.py` |
-| `src/gmgn_twitter_intel/pipeline/message_market_observation.py` | `src/gmgn_twitter_intel/domains/asset_market/services/message_market_observation.py` |
-| `src/gmgn_twitter_intel/pipeline/message_market_observation_worker.py` | `src/gmgn_twitter_intel/domains/asset_market/runtime/message_market_observation_worker.py` |
-| `src/gmgn_twitter_intel/pipeline/token_discovery_worker.py` | `src/gmgn_twitter_intel/domains/asset_market/runtime/token_discovery_worker.py` |
-| `src/gmgn_twitter_intel/storage/asset_repository.py` | `src/gmgn_twitter_intel/domains/asset_market/repositories/asset_repository.py` |
-| `src/gmgn_twitter_intel/storage/discovery_repository.py` | `src/gmgn_twitter_intel/domains/asset_market/repositories/discovery_repository.py` |
-| `src/gmgn_twitter_intel/storage/market_repository.py` | `src/gmgn_twitter_intel/domains/asset_market/repositories/market_repository.py` |
-| `src/gmgn_twitter_intel/storage/price_observation_repository.py` | `src/gmgn_twitter_intel/domains/asset_market/repositories/price_observation_repository.py` |
-| `src/gmgn_twitter_intel/storage/registry_repository.py` | `src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py` |
+| `src/parallax/pipeline/asset_market_sync.py` | `src/parallax/domains/asset_market/services/asset_market_sync.py` |
+| `src/parallax/pipeline/asset_market_sync_worker.py` | `src/parallax/domains/asset_market/runtime/asset_market_sync_worker.py` |
+| `src/parallax/pipeline/message_market_observation.py` | `src/parallax/domains/asset_market/services/message_market_observation.py` |
+| `src/parallax/pipeline/message_market_observation_worker.py` | `src/parallax/domains/asset_market/runtime/message_market_observation_worker.py` |
+| `src/parallax/pipeline/token_discovery_worker.py` | `src/parallax/domains/asset_market/runtime/token_discovery_worker.py` |
+| `src/parallax/storage/asset_repository.py` | `src/parallax/domains/asset_market/repositories/asset_repository.py` |
+| `src/parallax/storage/discovery_repository.py` | `src/parallax/domains/asset_market/repositories/discovery_repository.py` |
+| `src/parallax/storage/market_repository.py` | `src/parallax/domains/asset_market/repositories/market_repository.py` |
+| `src/parallax/storage/price_observation_repository.py` | `src/parallax/domains/asset_market/repositories/price_observation_repository.py` |
+| `src/parallax/storage/registry_repository.py` | `src/parallax/domains/asset_market/repositories/registry_repository.py` |
 
-Create `src/gmgn_twitter_intel/domains/asset_market/interfaces.py` with public aliases for `AssetRepository`, `RegistryRepository`, `PriceObservationRepository`, and provider result types used by token/harness domains.
+Create `src/parallax/domains/asset_market/interfaces.py` with public aliases for `AssetRepository`, `RegistryRepository`, `PriceObservationRepository`, and provider result types used by token/harness domains.
 
 #### `domains/token_intel`
 
 | Current | Target |
 |---------|--------|
-| `src/gmgn_twitter_intel/pipeline/atomic_mention.py` | `src/gmgn_twitter_intel/domains/token_intel/services/atomic_mention.py` |
-| `src/gmgn_twitter_intel/pipeline/cross_section_normalizer.py` | `src/gmgn_twitter_intel/domains/token_intel/scoring/cross_section_normalizer.py` |
-| `src/gmgn_twitter_intel/pipeline/deterministic_token_resolver.py` | `src/gmgn_twitter_intel/domains/token_intel/services/deterministic_token_resolver.py` |
-| `src/gmgn_twitter_intel/pipeline/factor_cohort.py` | `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_cohort.py` |
-| `src/gmgn_twitter_intel/pipeline/token_evidence_builder.py` | `src/gmgn_twitter_intel/domains/token_intel/services/token_evidence_builder.py` |
-| `src/gmgn_twitter_intel/pipeline/token_intent_builder.py` | `src/gmgn_twitter_intel/domains/token_intel/services/token_intent_builder.py` |
-| `src/gmgn_twitter_intel/pipeline/token_intent_rebuild.py` | `src/gmgn_twitter_intel/domains/token_intel/runtime/token_intent_rebuild.py` |
-| `src/gmgn_twitter_intel/pipeline/token_intent_resolver.py` | `src/gmgn_twitter_intel/domains/token_intel/services/token_intent_resolver.py` |
-| `src/gmgn_twitter_intel/pipeline/token_radar_contract.py` | `src/gmgn_twitter_intel/domains/token_intel/interfaces.py` |
-| `src/gmgn_twitter_intel/pipeline/token_radar_feature_builder.py` | `src/gmgn_twitter_intel/domains/token_intel/scoring/token_radar_feature_builder.py` |
-| `src/gmgn_twitter_intel/pipeline/token_radar_projection.py` | `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py` |
-| `src/gmgn_twitter_intel/pipeline/token_radar_projection_worker.py` | `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py` |
-| `src/gmgn_twitter_intel/pipeline/token_resolution_refresh.py` | `src/gmgn_twitter_intel/domains/token_intel/runtime/token_resolution_refresh.py` |
-| `src/gmgn_twitter_intel/retrieval/asset_flow_service.py` | `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py` |
-| `src/gmgn_twitter_intel/retrieval/asset_search_service.py` | `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_search_service.py` |
-| `src/gmgn_twitter_intel/retrieval/baseline_scoring.py` | `src/gmgn_twitter_intel/domains/token_intel/scoring/baseline_scoring.py` |
-| `src/gmgn_twitter_intel/retrieval/catalyst_ranking_service.py` | `src/gmgn_twitter_intel/domains/token_intel/read_models/catalyst_ranking_service.py` |
-| `src/gmgn_twitter_intel/retrieval/diffusion_health.py` | `src/gmgn_twitter_intel/domains/token_intel/scoring/diffusion_health.py` |
-| `src/gmgn_twitter_intel/retrieval/discussion_quality_scoring.py` | `src/gmgn_twitter_intel/domains/token_intel/scoring/discussion_quality_scoring.py` |
-| `src/gmgn_twitter_intel/retrieval/opportunity_scoring.py` | `src/gmgn_twitter_intel/domains/token_intel/scoring/opportunity_scoring.py` |
-| `src/gmgn_twitter_intel/retrieval/post_text_quality.py` | `src/gmgn_twitter_intel/domains/token_intel/scoring/post_text_quality.py` |
-| `src/gmgn_twitter_intel/retrieval/propagation_scoring.py` | `src/gmgn_twitter_intel/domains/token_intel/scoring/propagation_scoring.py` |
-| `src/gmgn_twitter_intel/retrieval/query_parser.py` | `src/gmgn_twitter_intel/domains/token_intel/services/query_parser.py` |
-| `src/gmgn_twitter_intel/retrieval/scoring_common.py` | `src/gmgn_twitter_intel/domains/token_intel/scoring/scoring_common.py` |
-| `src/gmgn_twitter_intel/retrieval/social_heat_scoring.py` | `src/gmgn_twitter_intel/domains/token_intel/scoring/social_heat_scoring.py` |
-| `src/gmgn_twitter_intel/retrieval/timeline_features.py` | `src/gmgn_twitter_intel/domains/token_intel/scoring/timeline_features.py` |
-| `src/gmgn_twitter_intel/retrieval/timing_scoring.py` | `src/gmgn_twitter_intel/domains/token_intel/scoring/timing_scoring.py` |
-| `src/gmgn_twitter_intel/retrieval/token_message_price_payload.py` | `src/gmgn_twitter_intel/domains/token_intel/read_models/token_message_price_payload.py` |
-| `src/gmgn_twitter_intel/retrieval/token_target_cursor.py` | `src/gmgn_twitter_intel/domains/token_intel/read_models/token_target_cursor.py` |
-| `src/gmgn_twitter_intel/retrieval/token_target_post_serializer.py` | `src/gmgn_twitter_intel/domains/token_intel/read_models/token_target_post_serializer.py` |
-| `src/gmgn_twitter_intel/retrieval/token_target_posts_service.py` | `src/gmgn_twitter_intel/domains/token_intel/read_models/token_target_posts_service.py` |
-| `src/gmgn_twitter_intel/retrieval/token_target_social_timeline_service.py` | `src/gmgn_twitter_intel/domains/token_intel/read_models/token_target_social_timeline_service.py` |
-| `src/gmgn_twitter_intel/retrieval/token_target_stage_builder.py` | `src/gmgn_twitter_intel/domains/token_intel/read_models/token_target_stage_builder.py` |
-| `src/gmgn_twitter_intel/retrieval/tradeability_scoring.py` | `src/gmgn_twitter_intel/domains/token_intel/scoring/tradeability_scoring.py` |
-| `src/gmgn_twitter_intel/storage/asset_signal_repository.py` | `src/gmgn_twitter_intel/domains/token_intel/repositories/asset_signal_repository.py` |
-| `src/gmgn_twitter_intel/storage/intent_resolution_repository.py` | `src/gmgn_twitter_intel/domains/token_intel/repositories/intent_resolution_repository.py` |
-| `src/gmgn_twitter_intel/storage/projection_repository.py` | `src/gmgn_twitter_intel/domains/token_intel/repositories/projection_repository.py` |
-| `src/gmgn_twitter_intel/storage/token_evidence_repository.py` | `src/gmgn_twitter_intel/domains/token_intel/repositories/token_evidence_repository.py` |
-| `src/gmgn_twitter_intel/storage/token_intent_lookup_repository.py` | `src/gmgn_twitter_intel/domains/token_intel/repositories/token_intent_lookup_repository.py` |
-| `src/gmgn_twitter_intel/storage/token_intent_repository.py` | `src/gmgn_twitter_intel/domains/token_intel/repositories/token_intent_repository.py` |
-| `src/gmgn_twitter_intel/storage/token_radar_repository.py` | `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py` |
-| `src/gmgn_twitter_intel/storage/token_target_repository.py` | `src/gmgn_twitter_intel/domains/token_intel/repositories/token_target_repository.py` |
+| `src/parallax/pipeline/atomic_mention.py` | `src/parallax/domains/token_intel/services/atomic_mention.py` |
+| `src/parallax/pipeline/cross_section_normalizer.py` | `src/parallax/domains/token_intel/scoring/cross_section_normalizer.py` |
+| `src/parallax/pipeline/deterministic_token_resolver.py` | `src/parallax/domains/token_intel/services/deterministic_token_resolver.py` |
+| `src/parallax/pipeline/factor_cohort.py` | `src/parallax/domains/token_intel/scoring/factor_cohort.py` |
+| `src/parallax/pipeline/token_evidence_builder.py` | `src/parallax/domains/token_intel/services/token_evidence_builder.py` |
+| `src/parallax/pipeline/token_intent_builder.py` | `src/parallax/domains/token_intel/services/token_intent_builder.py` |
+| `src/parallax/pipeline/token_intent_rebuild.py` | `src/parallax/domains/token_intel/runtime/token_intent_rebuild.py` |
+| `src/parallax/pipeline/token_intent_resolver.py` | `src/parallax/domains/token_intel/services/token_intent_resolver.py` |
+| `src/parallax/pipeline/token_radar_contract.py` | `src/parallax/domains/token_intel/interfaces.py` |
+| `src/parallax/pipeline/token_radar_feature_builder.py` | `src/parallax/domains/token_intel/scoring/token_radar_feature_builder.py` |
+| `src/parallax/pipeline/token_radar_projection.py` | `src/parallax/domains/token_intel/services/token_radar_projection.py` |
+| `src/parallax/pipeline/token_radar_projection_worker.py` | `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py` |
+| `src/parallax/pipeline/token_resolution_refresh.py` | `src/parallax/domains/token_intel/runtime/token_resolution_refresh.py` |
+| `src/parallax/retrieval/asset_flow_service.py` | `src/parallax/domains/token_intel/read_models/asset_flow_service.py` |
+| `src/parallax/retrieval/asset_search_service.py` | `src/parallax/domains/token_intel/read_models/asset_search_service.py` |
+| `src/parallax/retrieval/baseline_scoring.py` | `src/parallax/domains/token_intel/scoring/baseline_scoring.py` |
+| `src/parallax/retrieval/catalyst_ranking_service.py` | `src/parallax/domains/token_intel/read_models/catalyst_ranking_service.py` |
+| `src/parallax/retrieval/diffusion_health.py` | `src/parallax/domains/token_intel/scoring/diffusion_health.py` |
+| `src/parallax/retrieval/discussion_quality_scoring.py` | `src/parallax/domains/token_intel/scoring/discussion_quality_scoring.py` |
+| `src/parallax/retrieval/opportunity_scoring.py` | `src/parallax/domains/token_intel/scoring/opportunity_scoring.py` |
+| `src/parallax/retrieval/post_text_quality.py` | `src/parallax/domains/token_intel/scoring/post_text_quality.py` |
+| `src/parallax/retrieval/propagation_scoring.py` | `src/parallax/domains/token_intel/scoring/propagation_scoring.py` |
+| `src/parallax/retrieval/query_parser.py` | `src/parallax/domains/token_intel/services/query_parser.py` |
+| `src/parallax/retrieval/scoring_common.py` | `src/parallax/domains/token_intel/scoring/scoring_common.py` |
+| `src/parallax/retrieval/social_heat_scoring.py` | `src/parallax/domains/token_intel/scoring/social_heat_scoring.py` |
+| `src/parallax/retrieval/timeline_features.py` | `src/parallax/domains/token_intel/scoring/timeline_features.py` |
+| `src/parallax/retrieval/timing_scoring.py` | `src/parallax/domains/token_intel/scoring/timing_scoring.py` |
+| `src/parallax/retrieval/token_message_price_payload.py` | `src/parallax/domains/token_intel/read_models/token_message_price_payload.py` |
+| `src/parallax/retrieval/token_target_cursor.py` | `src/parallax/domains/token_intel/read_models/token_target_cursor.py` |
+| `src/parallax/retrieval/token_target_post_serializer.py` | `src/parallax/domains/token_intel/read_models/token_target_post_serializer.py` |
+| `src/parallax/retrieval/token_target_posts_service.py` | `src/parallax/domains/token_intel/read_models/token_target_posts_service.py` |
+| `src/parallax/retrieval/token_target_social_timeline_service.py` | `src/parallax/domains/token_intel/read_models/token_target_social_timeline_service.py` |
+| `src/parallax/retrieval/token_target_stage_builder.py` | `src/parallax/domains/token_intel/read_models/token_target_stage_builder.py` |
+| `src/parallax/retrieval/tradeability_scoring.py` | `src/parallax/domains/token_intel/scoring/tradeability_scoring.py` |
+| `src/parallax/storage/asset_signal_repository.py` | `src/parallax/domains/token_intel/repositories/asset_signal_repository.py` |
+| `src/parallax/storage/intent_resolution_repository.py` | `src/parallax/domains/token_intel/repositories/intent_resolution_repository.py` |
+| `src/parallax/storage/projection_repository.py` | `src/parallax/domains/token_intel/repositories/projection_repository.py` |
+| `src/parallax/storage/token_evidence_repository.py` | `src/parallax/domains/token_intel/repositories/token_evidence_repository.py` |
+| `src/parallax/storage/token_intent_lookup_repository.py` | `src/parallax/domains/token_intel/repositories/token_intent_lookup_repository.py` |
+| `src/parallax/storage/token_intent_repository.py` | `src/parallax/domains/token_intel/repositories/token_intent_repository.py` |
+| `src/parallax/storage/token_radar_repository.py` | `src/parallax/domains/token_intel/repositories/token_radar_repository.py` |
+| `src/parallax/storage/token_target_repository.py` | `src/parallax/domains/token_intel/repositories/token_target_repository.py` |
 
-Create `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py` and move `TokenRadarProjection._source_rows` SQL there.
+Create `src/parallax/domains/token_intel/queries/token_radar_source_query.py` and move `TokenRadarProjection._source_rows` SQL there.
 
 #### `domains/social_enrichment`
 
 | Current | Target |
 |---------|--------|
-| `src/gmgn_twitter_intel/pipeline/enrichment_worker.py` | `src/gmgn_twitter_intel/domains/social_enrichment/runtime/enrichment_worker.py` |
-| `src/gmgn_twitter_intel/pipeline/social_event_extraction.py` | `src/gmgn_twitter_intel/domains/social_enrichment/types/social_event_extraction.py` |
-| `src/gmgn_twitter_intel/pipeline/watched_event_gate.py` | `src/gmgn_twitter_intel/domains/social_enrichment/services/watched_event_gate.py` |
-| `src/gmgn_twitter_intel/storage/enrichment_repository.py` | `src/gmgn_twitter_intel/domains/social_enrichment/repositories/enrichment_repository.py` |
+| `src/parallax/pipeline/enrichment_worker.py` | `src/parallax/domains/social_enrichment/runtime/enrichment_worker.py` |
+| `src/parallax/pipeline/social_event_extraction.py` | `src/parallax/domains/social_enrichment/types/social_event_extraction.py` |
+| `src/parallax/pipeline/watched_event_gate.py` | `src/parallax/domains/social_enrichment/services/watched_event_gate.py` |
+| `src/parallax/storage/enrichment_repository.py` | `src/parallax/domains/social_enrichment/repositories/enrichment_repository.py` |
 
-Create `src/gmgn_twitter_intel/domains/social_enrichment/interfaces.py` that exposes `SocialEventExtraction`, `SocialTokenCandidate`, `AnchorTerm`, and the watched-event priority function.
+Create `src/parallax/domains/social_enrichment/interfaces.py` that exposes `SocialEventExtraction`, `SocialTokenCandidate`, `AnchorTerm`, and the watched-event priority function.
 
 #### `domains/closed_loop_harness`
 
 | Current | Target |
 |---------|--------|
-| `src/gmgn_twitter_intel/pipeline/harness_credit.py` | `src/gmgn_twitter_intel/domains/closed_loop_harness/scoring/harness_credit.py` |
-| `src/gmgn_twitter_intel/pipeline/harness_ops.py` | `src/gmgn_twitter_intel/domains/closed_loop_harness/services/harness_ops.py` |
-| `src/gmgn_twitter_intel/pipeline/harness_ops_worker.py` | `src/gmgn_twitter_intel/domains/closed_loop_harness/runtime/harness_ops_worker.py` |
-| `src/gmgn_twitter_intel/pipeline/harness_scoring.py` | `src/gmgn_twitter_intel/domains/closed_loop_harness/scoring/harness_scoring.py` |
-| `src/gmgn_twitter_intel/pipeline/harness_settlement.py` | `src/gmgn_twitter_intel/domains/closed_loop_harness/scoring/harness_settlement.py` |
-| `src/gmgn_twitter_intel/pipeline/harness_snapshot_builder.py` | `src/gmgn_twitter_intel/domains/closed_loop_harness/services/harness_snapshot_builder.py` |
-| `src/gmgn_twitter_intel/retrieval/harness_service.py` | `src/gmgn_twitter_intel/domains/closed_loop_harness/read_models/harness_service.py` |
-| `src/gmgn_twitter_intel/storage/harness_repository.py` | `src/gmgn_twitter_intel/domains/closed_loop_harness/repositories/harness_repository.py` |
+| `src/parallax/pipeline/harness_credit.py` | `src/parallax/domains/closed_loop_harness/scoring/harness_credit.py` |
+| `src/parallax/pipeline/harness_ops.py` | `src/parallax/domains/closed_loop_harness/services/harness_ops.py` |
+| `src/parallax/pipeline/harness_ops_worker.py` | `src/parallax/domains/closed_loop_harness/runtime/harness_ops_worker.py` |
+| `src/parallax/pipeline/harness_scoring.py` | `src/parallax/domains/closed_loop_harness/scoring/harness_scoring.py` |
+| `src/parallax/pipeline/harness_settlement.py` | `src/parallax/domains/closed_loop_harness/scoring/harness_settlement.py` |
+| `src/parallax/pipeline/harness_snapshot_builder.py` | `src/parallax/domains/closed_loop_harness/services/harness_snapshot_builder.py` |
+| `src/parallax/retrieval/harness_service.py` | `src/parallax/domains/closed_loop_harness/read_models/harness_service.py` |
+| `src/parallax/storage/harness_repository.py` | `src/parallax/domains/closed_loop_harness/repositories/harness_repository.py` |
 
 Add repository methods to remove direct `.conn.execute` from harness services:
 
@@ -238,25 +238,25 @@ def pending_score_bucket_rows(self, *, horizon: str | None) -> list[dict[str, An
 
 | Current | Target |
 |---------|--------|
-| `src/gmgn_twitter_intel/pipeline/notification_delivery.py` | `src/gmgn_twitter_intel/domains/notifications/runtime/notification_delivery.py` |
-| `src/gmgn_twitter_intel/pipeline/notification_models.py` | `src/gmgn_twitter_intel/domains/notifications/types.py` |
-| `src/gmgn_twitter_intel/pipeline/notification_rules.py` | `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py` |
-| `src/gmgn_twitter_intel/pipeline/notification_worker.py` | `src/gmgn_twitter_intel/domains/notifications/runtime/notification_worker.py` |
-| `src/gmgn_twitter_intel/storage/notification_repository.py` | `src/gmgn_twitter_intel/domains/notifications/repositories/notification_repository.py` |
+| `src/parallax/pipeline/notification_delivery.py` | `src/parallax/domains/notifications/runtime/notification_delivery.py` |
+| `src/parallax/pipeline/notification_models.py` | `src/parallax/domains/notifications/types.py` |
+| `src/parallax/pipeline/notification_rules.py` | `src/parallax/domains/notifications/services/notification_rules.py` |
+| `src/parallax/pipeline/notification_worker.py` | `src/parallax/domains/notifications/runtime/notification_worker.py` |
+| `src/parallax/storage/notification_repository.py` | `src/parallax/domains/notifications/repositories/notification_repository.py` |
 
-Create `src/gmgn_twitter_intel/domains/notifications/interfaces.py` to expose `NotificationRuleEngine`, notification candidates, and repository public types.
+Create `src/parallax/domains/notifications/interfaces.py` to expose `NotificationRuleEngine`, notification candidates, and repository public types.
 
 #### `domains/pulse_lab`
 
 | Current | Target |
 |---------|--------|
-| `src/gmgn_twitter_intel/pipeline/pulse_candidate_gate.py` | `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py` |
-| `src/gmgn_twitter_intel/pipeline/pulse_candidate_worker.py` | `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py` |
-| `src/gmgn_twitter_intel/pipeline/pulse_contract.py` | `src/gmgn_twitter_intel/domains/pulse_lab/interfaces.py` |
-| `src/gmgn_twitter_intel/pipeline/pulse_thesis.py` | `src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_thesis.py` |
-| `src/gmgn_twitter_intel/pipeline/pulse_timeline_context.py` | `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_timeline_context.py` |
-| `src/gmgn_twitter_intel/retrieval/signal_pulse_service.py` | `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py` |
-| `src/gmgn_twitter_intel/storage/pulse_repository.py` | `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py` |
+| `src/parallax/pipeline/pulse_candidate_gate.py` | `src/parallax/domains/pulse_lab/services/pulse_candidate_gate.py` |
+| `src/parallax/pipeline/pulse_candidate_worker.py` | `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py` |
+| `src/parallax/pipeline/pulse_contract.py` | `src/parallax/domains/pulse_lab/interfaces.py` |
+| `src/parallax/pipeline/pulse_thesis.py` | `src/parallax/domains/pulse_lab/types/pulse_thesis.py` |
+| `src/parallax/pipeline/pulse_timeline_context.py` | `src/parallax/domains/pulse_lab/services/pulse_timeline_context.py` |
+| `src/parallax/retrieval/signal_pulse_service.py` | `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py` |
+| `src/parallax/storage/pulse_repository.py` | `src/parallax/domains/pulse_lab/repositories/pulse_repository.py` |
 
 Update pulse thesis agent imports to use `integrations/openai_agents/pulse_thesis_agent_client.py`.
 
@@ -264,11 +264,11 @@ Update pulse thesis agent imports to use `integrations/openai_agents/pulse_thesi
 
 | Current | Target |
 |---------|--------|
-| `src/gmgn_twitter_intel/retrieval/account_alert_service.py` | `src/gmgn_twitter_intel/domains/account_quality/read_models/account_alert_service.py` |
-| `src/gmgn_twitter_intel/retrieval/account_quality_service.py` | `src/gmgn_twitter_intel/domains/account_quality/read_models/account_quality_service.py` |
-| `src/gmgn_twitter_intel/storage/account_quality_repository.py` | `src/gmgn_twitter_intel/domains/account_quality/repositories/account_quality_repository.py` |
+| `src/parallax/retrieval/account_alert_service.py` | `src/parallax/domains/account_quality/read_models/account_alert_service.py` |
+| `src/parallax/retrieval/account_quality_service.py` | `src/parallax/domains/account_quality/read_models/account_quality_service.py` |
+| `src/parallax/storage/account_quality_repository.py` | `src/parallax/domains/account_quality/repositories/account_quality_repository.py` |
 
-Create `src/gmgn_twitter_intel/domains/account_quality/interfaces.py` that exposes `AccountQualityRepository`, `AccountQualityService`, and `AccountAlertService`.
+Create `src/parallax/domains/account_quality/interfaces.py` that exposes `AccountQualityRepository`, `AccountQualityService`, and `AccountAlertService`.
 
 ### Tests to Modify
 
@@ -280,9 +280,9 @@ Create `src/gmgn_twitter_intel/domains/account_quality/interfaces.py` that expos
 - `tests/test_docs_generated.py`
   - Keep generated-doc checks; update expected score-version file paths after scoring modules move.
 - Every test importing from old paths must import from new domain path unless it intentionally tests the entry shim:
-  - `tests/test_api_*.py` should prefer `gmgn_twitter_intel.app.runtime.app` or `gmgn_twitter_intel.app.surfaces.api.*`.
-  - Scoring tests should import from `gmgn_twitter_intel.domains.token_intel.scoring.*`.
-  - Harness tests should import from `gmgn_twitter_intel.domains.closed_loop_harness.*`.
+  - `tests/test_api_*.py` should prefer `parallax.app.runtime.app` or `parallax.app.surfaces.api.*`.
+  - Scoring tests should import from `parallax.domains.token_intel.scoring.*`.
+  - Harness tests should import from `parallax.domains.closed_loop_harness.*`.
   - Repository tests should import from the matching domain repository.
 
 ## Tasks
@@ -305,7 +305,7 @@ import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SRC_ROOT = ROOT / "src" / "gmgn_twitter_intel"
+SRC_ROOT = ROOT / "src" / "parallax"
 
 DOMAINS = {
     "ingestion",
@@ -367,7 +367,7 @@ def _imports(path: Path) -> list[str]:
                 imports.append(".".join([*base, node.module]))
             else:
                 imports.append(node.module)
-    return [item for item in imports if item.startswith("gmgn_twitter_intel.")]
+    return [item for item in imports if item.startswith("parallax.")]
 
 
 def _top_package(path: Path) -> str:
@@ -428,7 +428,7 @@ def test_platform_does_not_import_domains_or_integrations_or_app() -> None:
     offenders: list[tuple[str, str]] = []
     for path in (SRC_ROOT / "platform").rglob("*.py"):
         for imported in _imports(path):
-            if imported.startswith(("gmgn_twitter_intel.domains.", "gmgn_twitter_intel.integrations.", "gmgn_twitter_intel.app.")):
+            if imported.startswith(("parallax.domains.", "parallax.integrations.", "parallax.app.")):
                 offenders.append((path.relative_to(ROOT).as_posix(), imported))
     assert offenders == []
 
@@ -438,7 +438,7 @@ def test_cross_domain_imports_use_interfaces() -> None:
     for path in (SRC_ROOT / "domains").rglob("*.py"):
         current_domain = _domain_name(path)
         for imported in _imports(path):
-            prefix = "gmgn_twitter_intel.domains."
+            prefix = "parallax.domains."
             if not imported.startswith(prefix):
                 continue
             parts = imported.removeprefix(prefix).split(".")
@@ -473,7 +473,7 @@ def test_raw_sql_is_owned_by_repositories_queries_or_app_runtime() -> None:
 
 
 def test_no_business_modules_import_old_flat_packages() -> None:
-    prefixes = tuple(f"gmgn_twitter_intel.{name}." for name in LEGACY_PACKAGES)
+    prefixes = tuple(f"parallax.{name}." for name in LEGACY_PACKAGES)
     offenders: list[tuple[str, str]] = []
     for path in _python_files():
         if _top_package(path) in LEGACY_PACKAGES:
@@ -490,7 +490,7 @@ Change `test_project_uses_standard_uv_src_layout` to assert these roots:
 
 ```python
 def test_project_uses_domain_package_src_layout():
-    base = ROOT / "src" / "gmgn_twitter_intel"
+    base = ROOT / "src" / "parallax"
     assert (ROOT / "pyproject.toml").is_file()
     assert (base / "__init__.py").is_file()
     assert (base / "__main__.py").is_file()
@@ -539,10 +539,10 @@ git commit -m "test: add source domain architecture guardrails"
 
 **Files:**
 - Move app/platform/integration files listed in "App and Platform" and "Integrations".
-- Modify imports in `src/gmgn_twitter_intel/app/runtime/app.py`.
-- Modify imports in `src/gmgn_twitter_intel/app/surfaces/api/http.py`.
-- Modify imports in `src/gmgn_twitter_intel/app/surfaces/api/ws.py`.
-- Create/modify shims: `src/gmgn_twitter_intel/cli.py`, `src/gmgn_twitter_intel/__main__.py`, `src/gmgn_twitter_intel/api/app.py`, `src/gmgn_twitter_intel/api/http.py`, `src/gmgn_twitter_intel/api/ws.py`.
+- Modify imports in `src/parallax/app/runtime/app.py`.
+- Modify imports in `src/parallax/app/surfaces/api/http.py`.
+- Modify imports in `src/parallax/app/surfaces/api/ws.py`.
+- Create/modify shims: `src/parallax/cli.py`, `src/parallax/__main__.py`, `src/parallax/api/app.py`, `src/parallax/api/http.py`, `src/parallax/api/ws.py`.
 - Tests: `tests/test_api_health.py`, `tests/test_api_http.py`, `tests/test_api_static.py`, `tests/test_api_websocket.py`, `tests/test_cli.py`, `tests/test_settings.py`, `tests/test_okx_clients.py`, `tests/test_gmgn_directory_client.py`, `tests/test_gmgn_openapi_client.py`.
 
 - [ ] **Step 1: Move files.**
@@ -585,7 +585,7 @@ Keep domain imports temporarily pointing to old flat packages until later tasks.
 
 - [ ] **Step 4: Add entry shims.**
 
-`src/gmgn_twitter_intel/cli.py`:
+`src/parallax/cli.py`:
 
 ```python
 from __future__ import annotations
@@ -595,7 +595,7 @@ from .app.surfaces.cli.main import main
 __all__ = ["main"]
 ```
 
-`src/gmgn_twitter_intel/__main__.py`:
+`src/parallax/__main__.py`:
 
 ```python
 from __future__ import annotations
@@ -606,7 +606,7 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-`src/gmgn_twitter_intel/api/app.py`:
+`src/parallax/api/app.py`:
 
 ```python
 from __future__ import annotations
@@ -614,7 +614,7 @@ from __future__ import annotations
 from ..app.runtime.app import *  # noqa: F403
 ```
 
-`src/gmgn_twitter_intel/api/http.py`:
+`src/parallax/api/http.py`:
 
 ```python
 from __future__ import annotations
@@ -622,7 +622,7 @@ from __future__ import annotations
 from ..app.surfaces.api.http import *  # noqa: F403
 ```
 
-`src/gmgn_twitter_intel/api/ws.py`:
+`src/parallax/api/ws.py`:
 
 ```python
 from __future__ import annotations
@@ -635,19 +635,19 @@ from ..app.surfaces.api.ws import *  # noqa: F403
 Use new imports for focused tests. Examples:
 
 ```python
-from gmgn_twitter_intel.app.runtime.app import create_app
-from gmgn_twitter_intel.platform.config.settings import Settings
-from gmgn_twitter_intel.integrations.okx.dex_client import OkxDexClient
-from gmgn_twitter_intel.integrations.gmgn.directory_client import GmgnDirectoryClient
+from parallax.app.runtime.app import create_app
+from parallax.platform.config.settings import Settings
+from parallax.integrations.okx.dex_client import OkxDexClient
+from parallax.integrations.gmgn.directory_client import GmgnDirectoryClient
 ```
 
-Tests for the installed CLI may keep exercising `gmgn_twitter_intel.cli:main`.
+Tests for the installed CLI may keep exercising `parallax.cli:main`.
 
 - [ ] **Step 6: Run focused tests.**
 
 ```bash
 uv run pytest tests/test_api_health.py tests/test_api_http.py tests/test_api_static.py tests/test_api_websocket.py tests/test_cli.py tests/test_settings.py tests/test_okx_clients.py tests/test_gmgn_directory_client.py tests/test_gmgn_openapi_client.py -q
-uv run ruff check src/gmgn_twitter_intel/app src/gmgn_twitter_intel/integrations src/gmgn_twitter_intel/platform tests/test_api_health.py tests/test_api_http.py tests/test_api_websocket.py tests/test_cli.py tests/test_settings.py tests/test_okx_clients.py
+uv run ruff check src/parallax/app src/parallax/integrations src/parallax/platform tests/test_api_health.py tests/test_api_http.py tests/test_api_websocket.py tests/test_cli.py tests/test_settings.py tests/test_okx_clients.py
 ```
 
 Expected: focused tests and ruff pass; `tests/test_src_domain_architecture.py` still fails because domain moves are not complete.
@@ -655,7 +655,7 @@ Expected: focused tests and ruff pass; `tests/test_src_domain_architecture.py` s
 - [ ] **Step 7: Commit.**
 
 ```bash
-git add src/gmgn_twitter_intel tests
+git add src/parallax tests
 git commit -m "refactor: introduce app platform and integration packages"
 ```
 
@@ -663,10 +663,10 @@ git commit -m "refactor: introduce app platform and integration packages"
 
 **Files:**
 - Move files listed in `domains/ingestion` and `domains/evidence`.
-- Modify `src/gmgn_twitter_intel/domains/ingestion/runtime/collector_service.py`.
-- Modify `src/gmgn_twitter_intel/domains/evidence/interfaces.py`.
-- Modify `src/gmgn_twitter_intel/app/runtime/repository_session.py`.
-- Modify `src/gmgn_twitter_intel/app/runtime/app.py`.
+- Modify `src/parallax/domains/ingestion/runtime/collector_service.py`.
+- Modify `src/parallax/domains/evidence/interfaces.py`.
+- Modify `src/parallax/app/runtime/repository_session.py`.
+- Modify `src/parallax/app/runtime/app.py`.
 - Tests: `tests/test_collector_service.py`, `tests/test_direct_ws.py`, `tests/test_event_normalizer.py`, `tests/test_gmgn_token_payload.py`, `tests/test_entity_extractor.py`, `tests/test_evidence_repository.py`, `tests/test_postgres_repositories.py`.
 
 - [ ] **Step 1: Move ingestion and evidence files.**
@@ -675,7 +675,7 @@ Run the `git mv` commands from the `domains/ingestion` and `domains/evidence` ta
 
 - [ ] **Step 2: Create ingestion interface.**
 
-`src/gmgn_twitter_intel/domains/ingestion/interfaces.py`:
+`src/parallax/domains/ingestion/interfaces.py`:
 
 ```python
 from __future__ import annotations
@@ -683,7 +683,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from gmgn_twitter_intel.domains.evidence.interfaces import TwitterEvent
+from parallax.domains.evidence.interfaces import TwitterEvent
 
 
 @dataclass(frozen=True, slots=True)
@@ -701,7 +701,7 @@ Remove the duplicate `IngestedEvent` definition from the moved ingest service in
 
 - [ ] **Step 3: Create evidence interface.**
 
-`src/gmgn_twitter_intel/domains/evidence/interfaces.py`:
+`src/parallax/domains/evidence/interfaces.py`:
 
 ```python
 from __future__ import annotations
@@ -723,17 +723,17 @@ __all__ = [
 Required replacements:
 
 ```python
-from gmgn_twitter_intel.domains.evidence.interfaces import TwitterEvent
-from gmgn_twitter_intel.domains.ingestion.interfaces import IngestedEvent
-from gmgn_twitter_intel.domains.evidence.services.entity_extractor import EVM_QUERY_CHAINS, normalize_ca
-from gmgn_twitter_intel.domains.evidence.services.tweet_identity import canonical_tweet_url, logical_dedup_key
-from gmgn_twitter_intel.domains.evidence.services.tweet_text import build_text_projection
+from parallax.domains.evidence.interfaces import TwitterEvent
+from parallax.domains.ingestion.interfaces import IngestedEvent
+from parallax.domains.evidence.services.entity_extractor import EVM_QUERY_CHAINS, normalize_ca
+from parallax.domains.evidence.services.tweet_identity import canonical_tweet_url, logical_dedup_key
+from parallax.domains.evidence.services.tweet_text import build_text_projection
 ```
 
 Collector runtime should import `IngestedEvent` only from the interface:
 
 ```python
-from gmgn_twitter_intel.domains.ingestion.interfaces import IngestedEvent
+from parallax.domains.ingestion.interfaces import IngestedEvent
 ```
 
 - [ ] **Step 5: Update repository session.**
@@ -741,8 +741,8 @@ from gmgn_twitter_intel.domains.ingestion.interfaces import IngestedEvent
 In `app/runtime/repository_session.py`, replace evidence/entity repository imports:
 
 ```python
-from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
-from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
+from parallax.domains.evidence.repositories.entity_repository import EntityRepository
+from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
 ```
 
 - [ ] **Step 6: Update tests.**
@@ -750,20 +750,20 @@ from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import
 Use new imports:
 
 ```python
-from gmgn_twitter_intel.domains.evidence.interfaces import TwitterAuthor, TwitterEvent
-from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
-from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
-from gmgn_twitter_intel.domains.evidence.services.entity_extractor import extract_entities_from_surfaces
-from gmgn_twitter_intel.domains.ingestion.runtime.collector_service import CollectorService
-from gmgn_twitter_intel.domains.ingestion.services.normalizer import normalize_gmgn_payload
-from gmgn_twitter_intel.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
+from parallax.domains.evidence.interfaces import TwitterAuthor, TwitterEvent
+from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
+from parallax.domains.evidence.repositories.entity_repository import EntityRepository
+from parallax.domains.evidence.services.entity_extractor import extract_entities_from_surfaces
+from parallax.domains.ingestion.runtime.collector_service import CollectorService
+from parallax.domains.ingestion.services.normalizer import normalize_gmgn_payload
+from parallax.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
 ```
 
 - [ ] **Step 7: Run focused tests.**
 
 ```bash
 uv run pytest tests/test_collector_service.py tests/test_direct_ws.py tests/test_event_normalizer.py tests/test_gmgn_token_payload.py tests/test_entity_extractor.py tests/test_evidence_repository.py tests/test_postgres_repositories.py -q
-uv run ruff check src/gmgn_twitter_intel/domains/ingestion src/gmgn_twitter_intel/domains/evidence tests/test_collector_service.py tests/test_event_normalizer.py tests/test_entity_extractor.py tests/test_evidence_repository.py
+uv run ruff check src/parallax/domains/ingestion src/parallax/domains/evidence tests/test_collector_service.py tests/test_event_normalizer.py tests/test_entity_extractor.py tests/test_evidence_repository.py
 ```
 
 Expected: focused tests pass.
@@ -771,7 +771,7 @@ Expected: focused tests pass.
 - [ ] **Step 8: Commit.**
 
 ```bash
-git add src/gmgn_twitter_intel tests
+git add src/parallax tests
 git commit -m "refactor: move ingestion and evidence domains"
 ```
 
@@ -791,7 +791,7 @@ Run the `git mv` commands from the `domains/asset_market` table.
 
 - [ ] **Step 2: Create asset-market interface.**
 
-`src/gmgn_twitter_intel/domains/asset_market/interfaces.py`:
+`src/parallax/domains/asset_market/interfaces.py`:
 
 ```python
 from __future__ import annotations
@@ -814,15 +814,15 @@ __all__ = [
 Required replacements:
 
 ```python
-from gmgn_twitter_intel.domains.asset_market.repositories.asset_repository import AssetRepository
-from gmgn_twitter_intel.domains.asset_market.repositories.registry_repository import RegistryRepository
-from gmgn_twitter_intel.domains.asset_market.repositories.price_observation_repository import PriceObservationRepository
-from gmgn_twitter_intel.integrations.okx.chains import chain_id_to_okx
-from gmgn_twitter_intel.integrations.okx.dex_client import OkxDexClient
-from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient
-from gmgn_twitter_intel.integrations.gmgn.openapi_client import GmgnOpenApiClient
-from gmgn_twitter_intel.integrations.gmgn.directory_client import GmgnDirectoryClient
-from gmgn_twitter_intel.platform.db.postgres_client import transaction
+from parallax.domains.asset_market.repositories.asset_repository import AssetRepository
+from parallax.domains.asset_market.repositories.registry_repository import RegistryRepository
+from parallax.domains.asset_market.repositories.price_observation_repository import PriceObservationRepository
+from parallax.integrations.okx.chains import chain_id_to_okx
+from parallax.integrations.okx.dex_client import OkxDexClient
+from parallax.integrations.okx.cex_client import OkxCexClient
+from parallax.integrations.gmgn.openapi_client import GmgnOpenApiClient
+from parallax.integrations.gmgn.directory_client import GmgnDirectoryClient
+from parallax.platform.db.postgres_client import transaction
 ```
 
 - [ ] **Step 4: Update repository session and app runtime.**
@@ -830,26 +830,26 @@ from gmgn_twitter_intel.platform.db.postgres_client import transaction
 Repository session imports:
 
 ```python
-from gmgn_twitter_intel.domains.asset_market.repositories.asset_repository import AssetRepository
-from gmgn_twitter_intel.domains.asset_market.repositories.discovery_repository import DiscoveryRepository
-from gmgn_twitter_intel.domains.asset_market.repositories.market_repository import MarketRepository
-from gmgn_twitter_intel.domains.asset_market.repositories.price_observation_repository import PriceObservationRepository
-from gmgn_twitter_intel.domains.asset_market.repositories.registry_repository import RegistryRepository
+from parallax.domains.asset_market.repositories.asset_repository import AssetRepository
+from parallax.domains.asset_market.repositories.discovery_repository import DiscoveryRepository
+from parallax.domains.asset_market.repositories.market_repository import MarketRepository
+from parallax.domains.asset_market.repositories.price_observation_repository import PriceObservationRepository
+from parallax.domains.asset_market.repositories.registry_repository import RegistryRepository
 ```
 
 App runtime imports:
 
 ```python
-from gmgn_twitter_intel.domains.asset_market.runtime.asset_market_sync_worker import AssetMarketSyncWorker
-from gmgn_twitter_intel.domains.asset_market.runtime.message_market_observation_worker import MessageMarketObservationWorker
-from gmgn_twitter_intel.domains.asset_market.runtime.token_discovery_worker import TokenDiscoveryWorker
+from parallax.domains.asset_market.runtime.asset_market_sync_worker import AssetMarketSyncWorker
+from parallax.domains.asset_market.runtime.message_market_observation_worker import MessageMarketObservationWorker
+from parallax.domains.asset_market.runtime.token_discovery_worker import TokenDiscoveryWorker
 ```
 
 - [ ] **Step 5: Run focused tests.**
 
 ```bash
 uv run pytest tests/test_asset_market_sync.py tests/test_message_market_observation.py tests/test_token_discovery_worker.py tests/test_asset_repository.py tests/test_registry_repository.py tests/test_price_observation_repository.py tests/test_discovery_and_lookup_repositories.py -q
-uv run ruff check src/gmgn_twitter_intel/domains/asset_market src/gmgn_twitter_intel/integrations tests/test_asset_market_sync.py tests/test_message_market_observation.py tests/test_asset_repository.py tests/test_registry_repository.py
+uv run ruff check src/parallax/domains/asset_market src/parallax/integrations tests/test_asset_market_sync.py tests/test_message_market_observation.py tests/test_asset_repository.py tests/test_registry_repository.py
 ```
 
 Expected: focused tests pass.
@@ -857,7 +857,7 @@ Expected: focused tests pass.
 - [ ] **Step 6: Commit.**
 
 ```bash
-git add src/gmgn_twitter_intel tests
+git add src/parallax tests
 git commit -m "refactor: move asset market domain"
 ```
 
@@ -882,7 +882,7 @@ Run the `git mv` commands from the `domains/token_intel` table.
 Move the SQL currently inside `TokenRadarProjection._source_rows` into:
 
 ```python
-# src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py
+# src/parallax/domains/token_intel/queries/token_radar_source_query.py
 from __future__ import annotations
 
 from typing import Any
@@ -965,7 +965,7 @@ If the current `_source_rows` query has additional selected fields beyond this b
 In `domains/token_intel/services/token_radar_projection.py`:
 
 ```python
-from gmgn_twitter_intel.domains.token_intel.queries.token_radar_source_query import TokenRadarSourceQuery
+from parallax.domains.token_intel.queries.token_radar_source_query import TokenRadarSourceQuery
 ```
 
 Replace `_source_rows` body with:
@@ -982,14 +982,14 @@ Keep this one `.conn` access temporarily in token-intel service until Task 11 mo
 Representative replacements:
 
 ```python
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
-from gmgn_twitter_intel.domains.token_intel.scoring.social_heat_scoring import social_heat_score
-from gmgn_twitter_intel.domains.token_intel.scoring.discussion_quality_scoring import discussion_quality_score
-from gmgn_twitter_intel.domains.token_intel.scoring.tradeability_scoring import tradeability_score
-from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
-from gmgn_twitter_intel.domains.token_intel.read_models.asset_search_service import AssetSearchService
-from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import TokenRadarRepository
-from gmgn_twitter_intel.domains.token_intel.services.token_intent_resolver import TokenIntentResolver
+from parallax.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
+from parallax.domains.token_intel.scoring.social_heat_scoring import social_heat_score
+from parallax.domains.token_intel.scoring.discussion_quality_scoring import discussion_quality_score
+from parallax.domains.token_intel.scoring.tradeability_scoring import tradeability_score
+from parallax.domains.token_intel.read_models.asset_flow_service import AssetFlowService
+from parallax.domains.token_intel.read_models.asset_search_service import AssetSearchService
+from parallax.domains.token_intel.repositories.token_radar_repository import TokenRadarRepository
+from parallax.domains.token_intel.services.token_intent_resolver import TokenIntentResolver
 ```
 
 - [ ] **Step 5: Update repository session.**
@@ -997,21 +997,21 @@ from gmgn_twitter_intel.domains.token_intel.services.token_intent_resolver impor
 Replace token repository imports with domain paths:
 
 ```python
-from gmgn_twitter_intel.domains.token_intel.repositories.asset_signal_repository import AssetSignalRepository
-from gmgn_twitter_intel.domains.token_intel.repositories.intent_resolution_repository import IntentResolutionRepository
-from gmgn_twitter_intel.domains.token_intel.repositories.projection_repository import ProjectionRepository
-from gmgn_twitter_intel.domains.token_intel.repositories.token_evidence_repository import TokenEvidenceRepository
-from gmgn_twitter_intel.domains.token_intel.repositories.token_intent_lookup_repository import TokenIntentLookupRepository
-from gmgn_twitter_intel.domains.token_intel.repositories.token_intent_repository import TokenIntentRepository
-from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import TokenRadarRepository
-from gmgn_twitter_intel.domains.token_intel.repositories.token_target_repository import TokenTargetRepository
+from parallax.domains.token_intel.repositories.asset_signal_repository import AssetSignalRepository
+from parallax.domains.token_intel.repositories.intent_resolution_repository import IntentResolutionRepository
+from parallax.domains.token_intel.repositories.projection_repository import ProjectionRepository
+from parallax.domains.token_intel.repositories.token_evidence_repository import TokenEvidenceRepository
+from parallax.domains.token_intel.repositories.token_intent_lookup_repository import TokenIntentLookupRepository
+from parallax.domains.token_intel.repositories.token_intent_repository import TokenIntentRepository
+from parallax.domains.token_intel.repositories.token_radar_repository import TokenRadarRepository
+from parallax.domains.token_intel.repositories.token_target_repository import TokenTargetRepository
 ```
 
 - [ ] **Step 6: Run focused tests.**
 
 ```bash
 uv run pytest tests/test_token_evidence_builder.py tests/test_token_intent_builder.py tests/test_token_intent_resolver.py tests/test_token_intent_rebuild.py tests/test_token_resolution_refresh.py tests/test_token_radar_projection.py tests/test_token_radar_feature_builder.py tests/test_token_radar_projection_worker.py tests/test_token_radar_repository.py tests/test_asset_flow_service.py tests/test_asset_search_service.py tests/test_query_parser.py tests/test_baseline_scoring.py tests/test_social_heat_scoring.py tests/test_discussion_quality_scoring.py tests/test_propagation_scoring.py tests/test_opportunity_scoring.py tests/test_timing_scoring.py tests/test_tradeability_scoring.py tests/test_token_target_posts_service.py tests/test_token_target_social_timeline_service.py tests/test_token_target_stage_builder.py -q
-uv run ruff check src/gmgn_twitter_intel/domains/token_intel tests/test_token_radar_projection.py tests/test_asset_flow_service.py tests/test_social_heat_scoring.py
+uv run ruff check src/parallax/domains/token_intel tests/test_token_radar_projection.py tests/test_asset_flow_service.py tests/test_social_heat_scoring.py
 ```
 
 Expected: focused tests pass.
@@ -1019,14 +1019,14 @@ Expected: focused tests pass.
 - [ ] **Step 7: Commit.**
 
 ```bash
-git add src/gmgn_twitter_intel tests
+git add src/parallax tests
 git commit -m "refactor: move token intel domain"
 ```
 
 ### Task 6: Move Ingest Orchestration Into Evidence Domain
 
 **Files:**
-- Move: `src/gmgn_twitter_intel/pipeline/ingest_service.py` to `src/gmgn_twitter_intel/domains/evidence/services/ingest_service.py`.
+- Move: `src/parallax/pipeline/ingest_service.py` to `src/parallax/domains/evidence/services/ingest_service.py`.
 - Modify: `domains/evidence/services/ingest_service.py`.
 - Modify: `domains/ingestion/runtime/collector_service.py`.
 - Modify: `app/runtime/app.py`.
@@ -1035,7 +1035,7 @@ git commit -m "refactor: move token intel domain"
 - [ ] **Step 1: Move ingest service.**
 
 ```bash
-git mv src/gmgn_twitter_intel/pipeline/ingest_service.py src/gmgn_twitter_intel/domains/evidence/services/ingest_service.py
+git mv src/parallax/pipeline/ingest_service.py src/parallax/domains/evidence/services/ingest_service.py
 ```
 
 - [ ] **Step 2: Update `IngestedEvent` import and remove duplicate dataclass.**
@@ -1043,40 +1043,40 @@ git mv src/gmgn_twitter_intel/pipeline/ingest_service.py src/gmgn_twitter_intel/
 In moved `ingest_service.py`, remove the local `IngestedEvent` dataclass and add:
 
 ```python
-from gmgn_twitter_intel.domains.ingestion.interfaces import IngestedEvent
+from parallax.domains.ingestion.interfaces import IngestedEvent
 ```
 
 Required repository/service imports:
 
 ```python
-from gmgn_twitter_intel.domains.asset_market.repositories.price_observation_repository import PriceObservationRepository
-from gmgn_twitter_intel.domains.asset_market.repositories.registry_repository import RegistryRepository
-from gmgn_twitter_intel.domains.evidence.interfaces import TwitterEvent, event_to_row
-from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
-from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
-from gmgn_twitter_intel.domains.evidence.services.entity_extractor import TextSurface, extract_entities_from_surfaces
-from gmgn_twitter_intel.domains.social_enrichment.interfaces import watched_social_event_priority
-from gmgn_twitter_intel.domains.token_intel.repositories.intent_resolution_repository import IntentResolutionRepository
-from gmgn_twitter_intel.domains.token_intel.repositories.token_evidence_repository import TokenEvidenceRepository
-from gmgn_twitter_intel.domains.token_intel.repositories.token_intent_lookup_repository import TokenIntentLookupRepository
-from gmgn_twitter_intel.domains.token_intel.repositories.token_intent_repository import TokenIntentRepository
-from gmgn_twitter_intel.domains.token_intel.services.token_evidence_builder import build_token_evidence
-from gmgn_twitter_intel.domains.token_intel.services.token_intent_builder import build_token_intents
-from gmgn_twitter_intel.domains.token_intel.services.token_intent_resolver import TokenIntentResolutionDecision, TokenIntentResolver
-from gmgn_twitter_intel.platform.db.postgres_client import transaction
+from parallax.domains.asset_market.repositories.price_observation_repository import PriceObservationRepository
+from parallax.domains.asset_market.repositories.registry_repository import RegistryRepository
+from parallax.domains.evidence.interfaces import TwitterEvent, event_to_row
+from parallax.domains.evidence.repositories.entity_repository import EntityRepository
+from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
+from parallax.domains.evidence.services.entity_extractor import TextSurface, extract_entities_from_surfaces
+from parallax.domains.social_enrichment.interfaces import watched_social_event_priority
+from parallax.domains.token_intel.repositories.intent_resolution_repository import IntentResolutionRepository
+from parallax.domains.token_intel.repositories.token_evidence_repository import TokenEvidenceRepository
+from parallax.domains.token_intel.repositories.token_intent_lookup_repository import TokenIntentLookupRepository
+from parallax.domains.token_intel.repositories.token_intent_repository import TokenIntentRepository
+from parallax.domains.token_intel.services.token_evidence_builder import build_token_evidence
+from parallax.domains.token_intel.services.token_intent_builder import build_token_intents
+from parallax.domains.token_intel.services.token_intent_resolver import TokenIntentResolutionDecision, TokenIntentResolver
+from parallax.platform.db.postgres_client import transaction
 ```
 
 - [ ] **Step 3: Update app runtime.**
 
 ```python
-from gmgn_twitter_intel.domains.evidence.services.ingest_service import IngestService
+from parallax.domains.evidence.services.ingest_service import IngestService
 ```
 
 - [ ] **Step 4: Run focused tests.**
 
 ```bash
 uv run pytest tests/test_asset_ingest_flow.py tests/test_collector_service.py tests/test_enrichment_worker.py tests/test_postgres_repositories.py -q
-uv run ruff check src/gmgn_twitter_intel/domains/evidence/services/ingest_service.py tests/test_asset_ingest_flow.py
+uv run ruff check src/parallax/domains/evidence/services/ingest_service.py tests/test_asset_ingest_flow.py
 ```
 
 Expected: focused tests pass.
@@ -1084,7 +1084,7 @@ Expected: focused tests pass.
 - [ ] **Step 5: Commit.**
 
 ```bash
-git add src/gmgn_twitter_intel tests
+git add src/parallax tests
 git commit -m "refactor: move ingest orchestration into evidence domain"
 ```
 
@@ -1108,7 +1108,7 @@ Run the `git mv` commands from `domains/social_enrichment` and `domains/closed_l
 
 - [ ] **Step 2: Create social enrichment interface.**
 
-`src/gmgn_twitter_intel/domains/social_enrichment/interfaces.py`:
+`src/parallax/domains/social_enrichment/interfaces.py`:
 
 ```python
 from __future__ import annotations
@@ -1155,20 +1155,20 @@ pending_rows = self.harness.pending_score_bucket_rows(horizon=horizon)
 Representative replacements:
 
 ```python
-from gmgn_twitter_intel.domains.closed_loop_harness.services.harness_snapshot_builder import HarnessSnapshotBuilder
-from gmgn_twitter_intel.domains.closed_loop_harness.runtime.harness_ops_worker import HarnessOpsWorker
-from gmgn_twitter_intel.domains.closed_loop_harness.read_models.harness_service import HarnessService
-from gmgn_twitter_intel.domains.closed_loop_harness.repositories.harness_repository import HarnessRepository
-from gmgn_twitter_intel.domains.social_enrichment.runtime.enrichment_worker import EnrichmentWorker
-from gmgn_twitter_intel.domains.social_enrichment.repositories.enrichment_repository import EnrichmentRepository
-from gmgn_twitter_intel.integrations.openai_agents.social_event_agent_client import OpenAIAgentsSocialEventClient
+from parallax.domains.closed_loop_harness.services.harness_snapshot_builder import HarnessSnapshotBuilder
+from parallax.domains.closed_loop_harness.runtime.harness_ops_worker import HarnessOpsWorker
+from parallax.domains.closed_loop_harness.read_models.harness_service import HarnessService
+from parallax.domains.closed_loop_harness.repositories.harness_repository import HarnessRepository
+from parallax.domains.social_enrichment.runtime.enrichment_worker import EnrichmentWorker
+from parallax.domains.social_enrichment.repositories.enrichment_repository import EnrichmentRepository
+from parallax.integrations.openai_agents.social_event_agent_client import OpenAIAgentsSocialEventClient
 ```
 
 - [ ] **Step 5: Run focused tests.**
 
 ```bash
 uv run pytest tests/test_enrichment_worker.py tests/test_social_event_extraction.py tests/test_social_event_agent_client.py tests/test_harness_ops.py tests/test_harness_repository.py tests/test_harness_scoring.py tests/test_harness_settlement_credit.py tests/test_harness_snapshot_builder.py -q
-uv run ruff check src/gmgn_twitter_intel/domains/social_enrichment src/gmgn_twitter_intel/domains/closed_loop_harness tests/test_enrichment_worker.py tests/test_harness_ops.py tests/test_harness_repository.py
+uv run ruff check src/parallax/domains/social_enrichment src/parallax/domains/closed_loop_harness tests/test_enrichment_worker.py tests/test_harness_ops.py tests/test_harness_repository.py
 ```
 
 Expected: focused tests pass and `test_raw_sql_is_owned_by_repositories_queries_or_app_runtime` no longer reports harness services.
@@ -1176,7 +1176,7 @@ Expected: focused tests pass and `test_raw_sql_is_owned_by_repositories_queries_
 - [ ] **Step 6: Commit.**
 
 ```bash
-git add src/gmgn_twitter_intel tests
+git add src/parallax tests
 git commit -m "refactor: move enrichment and harness domains"
 ```
 
@@ -1191,7 +1191,7 @@ git commit -m "refactor: move enrichment and harness domains"
 
 Run the `git mv` commands from `domains/notifications`.
 
-`src/gmgn_twitter_intel/domains/notifications/interfaces.py`:
+`src/parallax/domains/notifications/interfaces.py`:
 
 ```python
 from __future__ import annotations
@@ -1210,14 +1210,14 @@ Run the `git mv` commands from `domains/pulse_lab`.
 Required import replacement:
 
 ```python
-from gmgn_twitter_intel.integrations.openai_agents.pulse_thesis_agent_client import OpenAIAgentsPulseThesisClient
+from parallax.integrations.openai_agents.pulse_thesis_agent_client import OpenAIAgentsPulseThesisClient
 ```
 
 - [ ] **Step 3: Move account-quality files and create interface.**
 
 Run the `git mv` commands from `domains/account_quality`.
 
-`src/gmgn_twitter_intel/domains/account_quality/interfaces.py`:
+`src/parallax/domains/account_quality/interfaces.py`:
 
 ```python
 from __future__ import annotations
@@ -1234,21 +1234,21 @@ __all__ = ["AccountAlertService", "AccountQualityRepository", "AccountQualitySer
 Representative replacements:
 
 ```python
-from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_service import AccountAlertService
-from gmgn_twitter_intel.domains.notifications.runtime.notification_delivery import NotificationDeliveryWorker
-from gmgn_twitter_intel.domains.notifications.runtime.notification_worker import NotificationWorker
-from gmgn_twitter_intel.domains.notifications.services.notification_rules import NotificationRuleEngine
-from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import PulseCandidateWorker, PulseTriggerThresholds
-from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import PulseGateThresholds
-from gmgn_twitter_intel.domains.pulse_lab.read_models.signal_pulse_service import SignalPulseService
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_repository import PulseRepository
+from parallax.domains.account_quality.read_models.account_alert_service import AccountAlertService
+from parallax.domains.notifications.runtime.notification_delivery import NotificationDeliveryWorker
+from parallax.domains.notifications.runtime.notification_worker import NotificationWorker
+from parallax.domains.notifications.services.notification_rules import NotificationRuleEngine
+from parallax.domains.pulse_lab.runtime.pulse_candidate_worker import PulseCandidateWorker, PulseTriggerThresholds
+from parallax.domains.pulse_lab.services.pulse_candidate_gate import PulseGateThresholds
+from parallax.domains.pulse_lab.read_models.signal_pulse_service import SignalPulseService
+from parallax.domains.pulse_lab.repositories.pulse_repository import PulseRepository
 ```
 
 - [ ] **Step 5: Run focused tests.**
 
 ```bash
 uv run pytest tests/test_notification_delivery.py tests/test_notification_repository.py tests/test_notification_rules.py tests/test_notification_worker.py tests/test_pulse_candidate_gate.py tests/test_pulse_candidate_worker.py tests/test_pulse_repository.py tests/test_pulse_thesis.py tests/test_pulse_thesis_agent_client.py tests/test_pulse_timeline_context.py tests/test_signal_pulse_service.py tests/test_account_quality_repository.py tests/test_account_quality_service.py -q
-uv run ruff check src/gmgn_twitter_intel/domains/notifications src/gmgn_twitter_intel/domains/pulse_lab src/gmgn_twitter_intel/domains/account_quality tests/test_notification_rules.py tests/test_pulse_candidate_gate.py tests/test_account_quality_service.py
+uv run ruff check src/parallax/domains/notifications src/parallax/domains/pulse_lab src/parallax/domains/account_quality tests/test_notification_rules.py tests/test_pulse_candidate_gate.py tests/test_account_quality_service.py
 ```
 
 Expected: focused tests pass.
@@ -1256,14 +1256,14 @@ Expected: focused tests pass.
 - [ ] **Step 6: Commit.**
 
 ```bash
-git add src/gmgn_twitter_intel tests
+git add src/parallax tests
 git commit -m "refactor: move notifications pulse and account domains"
 ```
 
 ### Task 9: Remove Old Flat Package Business Logic and Update All Imports
 
 **Files:**
-- Modify every remaining import under `src/` and `tests/` that references `gmgn_twitter_intel.collector`, `gmgn_twitter_intel.pipeline`, `gmgn_twitter_intel.retrieval`, `gmgn_twitter_intel.storage`, or `gmgn_twitter_intel.market`.
+- Modify every remaining import under `src/` and `tests/` that references `parallax.collector`, `parallax.pipeline`, `parallax.retrieval`, `parallax.storage`, or `parallax.market`.
 - Delete old flat package modules that are not approved shims.
 - Modify: `tests/test_src_domain_architecture.py` if the shim allowlist needs to shrink.
 - Modify: `scripts/regen_score_versions.py` only if it assumes old paths.
@@ -1271,7 +1271,7 @@ git commit -m "refactor: move notifications pulse and account domains"
 - [ ] **Step 1: Find remaining old imports.**
 
 ```bash
-rg -n "gmgn_twitter_intel\\.(collector|pipeline|retrieval|storage|market)\\." src tests scripts
+rg -n "parallax\\.(collector|pipeline|retrieval|storage|market)\\." src tests scripts
 ```
 
 Expected before edits: a finite list of old imports. Expected after edits: no matches except approved shims if they exist.
@@ -1281,11 +1281,11 @@ Expected before edits: a finite list of old imports. Expected after edits: no ma
 Use direct replacements, not broad regex blindly. Examples:
 
 ```python
-from gmgn_twitter_intel.domains.token_intel.scoring.baseline_scoring import token_baseline_v2
-from gmgn_twitter_intel.domains.closed_loop_harness.scoring.harness_credit import assign_cluster_credits
-from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
-from gmgn_twitter_intel.domains.asset_market.repositories.asset_repository import AssetRepository
-from gmgn_twitter_intel.platform.db.postgres_client import create_pool
+from parallax.domains.token_intel.scoring.baseline_scoring import token_baseline_v2
+from parallax.domains.closed_loop_harness.scoring.harness_credit import assign_cluster_credits
+from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
+from parallax.domains.asset_market.repositories.asset_repository import AssetRepository
+from parallax.platform.db.postgres_client import create_pool
 ```
 
 - [ ] **Step 3: Delete or reduce legacy packages.**
@@ -1293,17 +1293,17 @@ from gmgn_twitter_intel.platform.db.postgres_client import create_pool
 Keep only these shims if still needed:
 
 ```text
-src/gmgn_twitter_intel/api/app.py
-src/gmgn_twitter_intel/api/http.py
-src/gmgn_twitter_intel/api/ws.py
-src/gmgn_twitter_intel/cli.py
-src/gmgn_twitter_intel/__main__.py
+src/parallax/api/app.py
+src/parallax/api/http.py
+src/parallax/api/ws.py
+src/parallax/cli.py
+src/parallax/__main__.py
 ```
 
 Delete old business modules:
 
 ```bash
-for path in src/gmgn_twitter_intel/collector src/gmgn_twitter_intel/pipeline src/gmgn_twitter_intel/retrieval src/gmgn_twitter_intel/storage src/gmgn_twitter_intel/market; do
+for path in src/parallax/collector src/parallax/pipeline src/parallax/retrieval src/parallax/storage src/parallax/market; do
   test ! -d "$path" || find "$path" -type f -name '*.py' ! -name '__init__.py' -print
 done
 ```
@@ -1351,7 +1351,7 @@ Replace the current technical-layer table with:
 ````markdown
 # Architecture
 
-> **Scope.** Owns Python-service package boundaries, dependency direction, and conceptual data flow for `gmgn-twitter-intel`. Frontend (`web/`) architecture lives in `FRONTEND.md`. Public interface contracts live in `CONTRACTS.md`.
+> **Scope.** Owns Python-service package boundaries, dependency direction, and conceptual data flow for `parallax`. Frontend (`web/`) architecture lives in `FRONTEND.md`. Public interface contracts live in `CONTRACTS.md`.
 
 The service is organised around domain packages, explicit integration adapters, platform infrastructure, and app surfaces.
 
@@ -1444,9 +1444,9 @@ Expected: all commands exit 0.
 - [ ] **Step 2: Exercise CLI surface.**
 
 ```bash
-uv run gmgn-twitter-intel --help
-uv run gmgn-twitter-intel db --help
-uv run gmgn-twitter-intel ops --help
+uv run parallax --help
+uv run parallax db --help
+uv run parallax ops --help
 ```
 
 Expected: all commands exit 0 and show the existing command groups.
@@ -1472,9 +1472,9 @@ Create `docs/superpowers/plans/active/2026-05-10-src-domain-package-restructure-
 | `uv run python -m compileall src tests` | PASS |
 | `make docs-generated` | PASS |
 | `git diff --exit-code docs/generated` | PASS |
-| `uv run gmgn-twitter-intel --help` | PASS |
-| `uv run gmgn-twitter-intel db --help` | PASS |
-| `uv run gmgn-twitter-intel ops --help` | PASS |
+| `uv run parallax --help` | PASS |
+| `uv run parallax db --help` | PASS |
+| `uv run parallax ops --help` | PASS |
 
 ## Acceptance Criteria
 
@@ -1561,7 +1561,7 @@ No database migration, backfill, feature flag, or deploy sequencing is required 
 
 - AC3:
   ```bash
-  for path in src/gmgn_twitter_intel/collector src/gmgn_twitter_intel/pipeline src/gmgn_twitter_intel/retrieval src/gmgn_twitter_intel/storage src/gmgn_twitter_intel/market; do
+  for path in src/parallax/collector src/parallax/pipeline src/parallax/retrieval src/parallax/storage src/parallax/market; do
     test ! -d "$path" || find "$path" -type f -name '*.py' ! -name '__init__.py' -print
   done
   ```

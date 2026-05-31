@@ -55,57 +55,57 @@ Known-failing baseline tests: none expected. If baseline is not clean, stop and 
 
 ### Unit of Work boundary
 
-- `src/gmgn_twitter_intel/app/runtime/repository_session.py`
+- `src/parallax/app/runtime/repository_session.py`
   - Add a minimal `unit_of_work()` method on `RepositorySession` returning the existing Postgres transaction context for `conn`.
   - Keep transaction implementation here, not in domain runtime files.
 
-- `src/gmgn_twitter_intel/domains/evidence/repositories/evidence_repository.py`
+- `src/parallax/domains/evidence/repositories/evidence_repository.py`
   - Add `unit_of_work()` as the repository-owned transaction context for ingest's existing pinned connection.
 
-- `src/gmgn_twitter_intel/domains/evidence/services/ingest_service.py`
+- `src/parallax/domains/evidence/services/ingest_service.py`
   - Remove direct import of `platform.db.postgres_client.transaction`.
   - Replace `with transaction(self.evidence.conn):` with the repository-owned Unit of Work.
   - Preserve the current atomic span covering event insert, entity insert, token evidence, intents, resolutions, lookup keys, price observations, alerts, and enrichment enqueue.
 
-- `src/gmgn_twitter_intel/domains/social_enrichment/runtime/enrichment_worker.py`
+- `src/parallax/domains/social_enrichment/runtime/enrichment_worker.py`
   - Remove direct import of `platform.db.postgres_client.transaction`.
   - Replace the completion/materialization transaction with `repos.unit_of_work()`.
   - Preserve the atomic span covering model-run completion and harness snapshot materialization.
 
 ### Domain Provider files
 
-- `src/gmgn_twitter_intel/domains/ingestion/providers.py`
+- `src/parallax/domains/ingestion/providers.py`
   - Move `IngestStoreProtocol`, `EventPublisherProtocol`, and `UpstreamClientProtocol` out of `runtime/collector_service.py`.
   - Keep only domain-facing method signatures; no GMGN class names.
 
-- `src/gmgn_twitter_intel/domains/ingestion/runtime/collector_service.py`
+- `src/parallax/domains/ingestion/runtime/collector_service.py`
   - Import provider protocols from same-domain `providers.py`.
   - Remove local Protocol definitions.
 
-- `src/gmgn_twitter_intel/domains/asset_market/providers.py`
+- `src/parallax/domains/asset_market/providers.py`
   - Add provider-facing value objects: `CexTicker`, `DexTokenCandidate`, `DexTokenPrice`, `DexTokenPriceRequest`.
   - Add `CexMarketProvider` and `DexMarketProvider` Protocols.
   - Methods use business terms (`chain_id`, `address`, `symbol`) and never OKX chain indexes.
 
-- `src/gmgn_twitter_intel/domains/social_enrichment/providers.py`
+- `src/parallax/domains/social_enrichment/providers.py`
   - Move `EnrichmentClientProtocol` from `integrations/openai_agents/social_event_agent_client.py`.
   - Include `provider`, `model`, `timeout_seconds`, `request_audit(...)`, and `enrich_event(...)`.
 
-- `src/gmgn_twitter_intel/domains/pulse_lab/providers.py`
+- `src/parallax/domains/pulse_lab/providers.py`
   - Move `PulseThesisClientProtocol` semantics from `integrations/openai_agents/pulse_thesis_agent_client.py`.
   - Add a domain-owned `PulseThesisResult` value object if needed so runtime code does not depend on integration result classes.
 
-- `src/gmgn_twitter_intel/integrations/openai_agents/social_event_agent_client.py`
+- `src/parallax/integrations/openai_agents/social_event_agent_client.py`
   - Delete the integration-owned Protocol class.
   - Keep the concrete OpenAI client structurally compatible with `SocialEnrichmentProvider`.
 
-- `src/gmgn_twitter_intel/integrations/openai_agents/pulse_thesis_agent_client.py`
+- `src/parallax/integrations/openai_agents/pulse_thesis_agent_client.py`
   - Delete the integration-owned Protocol class.
   - Keep the concrete OpenAI client and its private result shape; adapt it in wiring if the domain Provider returns `PulseThesisResult`.
 
 ### Provider wiring
 
-- `src/gmgn_twitter_intel/app/runtime/providers_wiring.py` (new)
+- `src/parallax/app/runtime/providers_wiring.py` (new)
   - Import concrete clients from `integrations.*`.
   - Import domain Provider protocols / value objects from `domains/*/providers`.
   - Add frozen dataclasses for wired provider groups:
@@ -120,7 +120,7 @@ Known-failing baseline tests: none expected. If baseline is not clean, stop and 
   - Build OpenAI social enrichment and pulse thesis providers here.
   - Do not import domain services, scoring modules, runtime workers, or repositories.
 
-- `src/gmgn_twitter_intel/app/runtime/app.py`
+- `src/parallax/app/runtime/app.py`
   - Remove direct imports of `DirectGmgnWebSocketClient`, `OkxCexClient`, `OkxDexClient`, `OpenAIAgentsPulseThesisClient`, and `OpenAIAgentsSocialEventClient`.
   - Import only `wire_providers` / `WiredProviders` from `providers_wiring.py`.
   - Add a `providers: WiredProviders` field to `CliRuntime`.
@@ -131,7 +131,7 @@ Known-failing baseline tests: none expected. If baseline is not clean, stop and 
 
 ### Asset market provider refactor
 
-- `src/gmgn_twitter_intel/domains/asset_market/services/asset_market_sync.py`
+- `src/parallax/domains/asset_market/services/asset_market_sync.py`
   - Remove direct import of `integrations.okx.chains`.
   - Rename internal sync functions to supplier-neutral names:
     - `sync_okx_cex_universe` -> `sync_cex_universe`
@@ -140,46 +140,46 @@ Known-failing baseline tests: none expected. If baseline is not clean, stop and 
   - Use `DexTokenPriceRequest(chain_id=..., address=...)`; no `chainIndex` request dictionaries inside the domain.
   - Remove `_okx_chain_index`; any OKX mapping belongs in `providers_wiring.py`.
 
-- `src/gmgn_twitter_intel/domains/asset_market/interfaces.py`
+- `src/parallax/domains/asset_market/interfaces.py`
   - Export the renamed supplier-neutral sync functions if still needed by other domains.
   - Do not export OKX-named functions or OKX constants.
 
-- `src/gmgn_twitter_intel/domains/asset_market/services/message_market_observation.py`
+- `src/parallax/domains/asset_market/services/message_market_observation.py`
   - Replace `cex_client` / `dex_client` parameters with `cex_market` / `dex_market`.
   - Use domain provider value objects for quotes and prices.
 
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/asset_market_sync_worker.py`
+- `src/parallax/domains/asset_market/runtime/asset_market_sync_worker.py`
   - Rename constructor parameters and fields from `client` / `dex_client` to `cex_market` / `dex_market`.
   - Call `sync_cex_universe` and `sync_dex_prices`.
   - Keep provider state keys `cex` and `dex` unchanged for readiness compatibility.
 
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/message_market_observation_worker.py`
+- `src/parallax/domains/asset_market/runtime/message_market_observation_worker.py`
   - Rename constructor parameters and fields to `cex_market` / `dex_market`.
   - Preserve `close()` behavior by calling `close` on provider objects when present.
 
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/token_discovery_worker.py`
+- `src/parallax/domains/asset_market/runtime/token_discovery_worker.py`
   - Rename `dex_client` to `dex_market`.
   - Rename `chain_indexes` to `chain_ids`.
   - Remove `_chain_id_from_okx_index`; candidates already carry domain `chain_id`.
   - Keep lookup behavior, retention limit, demotion, reprocess, and projection triggers unchanged.
 
-- `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py`
+- `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py`
   - Rename `dex_client` to `dex_market`.
   - Call supplier-neutral `sync_dex_prices`.
   - Preserve preflight hydration behavior and readiness fields.
 
-- `src/gmgn_twitter_intel/app/surfaces/cli/main.py`
+- `src/parallax/app/surfaces/cli/main.py`
   - Update imports and calls for renamed supplier-neutral asset-market sync functions.
   - Keep command names and CLI public contract unchanged.
   - CLI may keep direct integration imports under this spec's explicit exception.
 
 ### Pulse and social workers
 
-- `src/gmgn_twitter_intel/domains/social_enrichment/runtime/enrichment_worker.py`
+- `src/parallax/domains/social_enrichment/runtime/enrichment_worker.py`
   - Type `client` as the same-domain enrichment Provider.
   - Keep behavior unchanged for audit, timeout, failure recording, job completion, and publishing.
 
-- `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
   - Import `PulseThesisClientProtocol` / `PulseThesisResult` from same-domain `providers.py`.
   - Remove import from `integrations.openai_agents.*`.
   - Keep job scan, gate, model run, persistence, failure handling, and close behavior unchanged.
@@ -247,7 +247,7 @@ Known-failing baseline tests: none expected. If baseline is not clean, stop and 
 - [ ] Run:
   ```bash
   uv run pytest tests -q -k "asset_market or token_discovery or token_radar_projection or message_market"
-  uv run gmgn-twitter-intel --help >/tmp/gmgn-help.txt
+  uv run parallax --help >/tmp/gmgn-help.txt
   ```
 
 ### Task 6: Refactor social enrichment and pulse workers
@@ -266,7 +266,7 @@ Known-failing baseline tests: none expected. If baseline is not clean, stop and 
 - [ ] Update `docs/ARCHITECTURE.md` with Provider and Unit of Work rules.
 - [ ] Search for prohibited internal names:
   ```bash
-  rg -n "sync_okx_|dex_client|cex_client|OKX_CHAIN|PulseThesisClientProtocol|EnrichmentClientProtocol|platform\\.db\\.postgres_client import transaction" src/gmgn_twitter_intel/domains src/gmgn_twitter_intel/app/runtime
+  rg -n "sync_okx_|dex_client|cex_client|OKX_CHAIN|PulseThesisClientProtocol|EnrichmentClientProtocol|platform\\.db\\.postgres_client import transaction" src/parallax/domains src/parallax/app/runtime
   ```
 - [ ] Fix any remaining hits unless they are in `app/runtime/providers_wiring.py` and intentionally part of adapter wiring.
 
@@ -281,8 +281,8 @@ Known-failing baseline tests: none expected. If baseline is not clean, stop and 
 - [ ] Run explicit architecture proof:
   ```bash
   uv run pytest tests/test_src_domain_architecture.py -q
-  rg -n "from gmgn_twitter_intel\\.(integrations|platform\\.db|platform\\.paths)" src/gmgn_twitter_intel/domains -g '*.py'
-  rg -n "from gmgn_twitter_intel\\.integrations|from gmgn_twitter_intel\\.domains\\..*\\.providers" src/gmgn_twitter_intel/app/runtime/app.py
+  rg -n "from parallax\\.(integrations|platform\\.db|platform\\.paths)" src/parallax/domains -g '*.py'
+  rg -n "from parallax\\.integrations|from parallax\\.domains\\..*\\.providers" src/parallax/app/runtime/app.py
   ```
 - [ ] Record verification output in the final implementation notes or a sibling verification artifact before moving plan/spec to completed.
 
@@ -296,7 +296,7 @@ Known-failing baseline tests: none expected. If baseline is not clean, stop and 
 2. Deploy normally; no database migration or config change is required.
 3. Watch startup / readiness paths because integration client construction moved from `app/runtime/app.py` to `app/runtime/providers_wiring.py`.
 4. Smoke-check:
-   - `gmgn-twitter-intel --help`
+   - `parallax --help`
    - `/healthz`
    - `/readyz`
    - `/ws` connection if a local config is available
@@ -315,7 +315,7 @@ Known-failing baseline tests: none expected. If baseline is not clean, stop and 
 - Runtime and CLI integrity:
   ```bash
   uv run pytest
-  uv run gmgn-twitter-intel --help >/tmp/gmgn-help.txt
+  uv run parallax --help >/tmp/gmgn-help.txt
   ```
 - Static quality:
   ```bash

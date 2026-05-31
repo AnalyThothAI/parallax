@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any
 
-from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import PulseCandidateWorker
+from parallax.domains.pulse_lab.runtime.pulse_candidate_worker import PulseCandidateWorker
 from tests.unit.test_pulse_candidate_worker import _factor_snapshot, _radar_row, _timeline_row
 
 NOW_MS = 1_800_000

@@ -29,8 +29,8 @@
 - [ ] Confirm worktree:
 
   ```bash
-  git -C /Users/qinghuan/Documents/code/gmgn-twitter-intel/.worktrees/macro-sync-worker-hard-cut branch --show-current
-  git -C /Users/qinghuan/Documents/code/gmgn-twitter-intel/.worktrees/macro-sync-worker-hard-cut status --short
+  git -C /Users/qinghuan/Documents/code/parallax/.worktrees/macro-sync-worker-hard-cut branch --show-current
+  git -C /Users/qinghuan/Documents/code/parallax/.worktrees/macro-sync-worker-hard-cut status --short
   ```
 
   Expected: branch is `main`; only the spec/plan docs are uncommitted before implementation.
@@ -38,10 +38,10 @@
 - [ ] Confirm live runtime config paths without printing secrets:
 
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
 
-  Expected: `config_path` and `workers_config_path` point at `~/.gmgn-twitter-intel/`.
+  Expected: `config_path` and `workers_config_path` point at `~/.parallax/`.
 
 - [ ] Record baseline targeted tests:
 
@@ -102,29 +102,29 @@
 
 ### Token Radar P0/P1
 
-- Modify `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
+- Modify `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
   - Change `list_rank_inputs_for_rank_set` so `min_latest_event_received_at_ms: int` is required.
   - Add `AND latest_event_received_at_ms >= %s` to the rank-input SQL.
   - Add `prune_target_features` scoped by `projection_version`, `window`, `scope`, and cutoff.
   - Do not add defaults that allow old no-cutoff call sites.
 
-- Modify `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
+- Modify `src/parallax/domains/token_intel/services/token_radar_projection.py`
   - Pass `now_ms` into `_rank_current_rows`.
   - Compute P0 cutoff as `computed_at_ms - WINDOW_MS[window]`.
   - Compute P1 retention cutoff as `computed_at_ms - 3 * WINDOW_MS[window]`.
   - Prune private cache before rank inputs are loaded.
   - Keep current-row replacement inside `publish_current_generation()`.
 
-- Modify `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_rank_source_repository.py`
+- Modify `src/parallax/domains/token_intel/repositories/token_radar_rank_source_repository.py`
   - Add `prune_edges` delegating to `TokenRadarRankSourceQuery`.
 
-- Modify `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_rank_source_query.py`
+- Modify `src/parallax/domains/token_intel/queries/token_radar_rank_source_query.py`
   - Add scoped delete SQL for expired `token_radar_rank_source_events`.
   - Delete only rows matching projection/window/scope and `event_received_at_ms < cutoff`.
   - Do not touch material facts.
 
 - Create Alembic migration:
-  - `src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0114_runtime_db_performance_hard_cut.py`
+  - `src/parallax/platform/db/alembic/versions/20260527_0114_runtime_db_performance_hard_cut.py`
   - Add `idx_token_radar_target_features_window_freshness` on `(projection_version, "window", scope, latest_event_received_at_ms DESC)`.
   - Use PostgreSQL `CREATE INDEX CONCURRENTLY IF NOT EXISTS` in an autocommit block.
 
@@ -138,18 +138,18 @@
 ### Macro P2
 
 - Create Alembic migration:
-  - `src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0114_runtime_db_performance_hard_cut.py`
+  - `src/parallax/platform/db/alembic/versions/20260527_0114_runtime_db_performance_hard_cut.py`
   - `revision = "20260527_0114"`
   - `down_revision = "20260527_0113"`
 
-- Modify `src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py`
+- Modify `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`
   - Replace timestamp/UUID physical generation writes with current-only refresh.
   - Add deterministic source signature calculation that does not include `now_ms` or UUIDs.
   - Add compact publication state upsert.
   - Update `latest_observations`, `observations_for_concepts`, and `concept_history_counts` to read current rows directly without active-generation joins.
   - Remove `_generation_id` use from runtime refresh.
 
-- Modify `src/gmgn_twitter_intel/domains/macro_intel/runtime/macro_view_projection_worker.py`
+- Modify `src/parallax/domains/macro_intel/runtime/macro_view_projection_worker.py`
   - Accept a structured refresh result instead of an integer.
   - Report `series_status`, `projected_rows_written`, `source_signature`, and `source_rows_scanned` in worker notes.
   - Preserve snapshot build from current projected rows.
@@ -163,8 +163,8 @@
 - Modify docs if implementation changes public ops semantics:
   - `docs/WORKERS.md`
   - `docs/references/POSTGRES_PERFORMANCE.md`
-  - `src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md`
-  - `src/gmgn_twitter_intel/app/runtime/worker_manifest.py`
+  - `src/parallax/domains/macro_intel/ARCHITECTURE.md`
+  - `src/parallax/app/runtime/worker_manifest.py`
   - `tests/architecture/test_runtime_performance_architecture_hard_cut.py`
   - `tests/architecture/test_worker_runtime_contracts.py`
   - `tests/unit/domains/macro_intel/test_macro_feature_engine.py`
@@ -174,8 +174,8 @@
 ## Task 1: P0 Token Radar Window Cutoff at Rank Input
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py:565`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py:296`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_repository.py:565`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py:296`
 - Test: `tests/unit/test_token_radar_repository.py`
 - Test: `tests/unit/test_token_radar_projection.py`
 
@@ -352,11 +352,11 @@
 ## Task 3: P1 Token Radar Private Cache Retention
 
 **Files:**
-- Create/Modify: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0114_runtime_db_performance_hard_cut.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_rank_source_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_rank_source_query.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
+- Create/Modify: `src/parallax/platform/db/alembic/versions/20260527_0114_runtime_db_performance_hard_cut.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_rank_source_repository.py`
+- Modify: `src/parallax/domains/token_intel/queries/token_radar_rank_source_query.py`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py`
 - Test: `tests/unit/test_token_radar_repository.py`
 - Test: `tests/unit/domains/token_intel/test_token_radar_rank_source_query.py`
 - Test: `tests/unit/test_token_radar_projection.py`
@@ -526,7 +526,7 @@
 ## Task 4: P2 Macro Current-only Migration
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0114_runtime_db_performance_hard_cut.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260527_0114_runtime_db_performance_hard_cut.py`
 - Modify: `tests/unit/domains/macro_intel/test_macro_migration_contract.py`
 - Modify: `tests/unit/domains/macro_intel/test_macro_generation_swap.py`
 - Modify: `tests/architecture/test_runtime_performance_architecture_hard_cut.py`
@@ -647,7 +647,7 @@
 ## Task 5: P2 Macro Repository Source Signature and Unchanged Skip
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py`
+- Modify: `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`
 - Test: `tests/unit/domains/macro_intel/test_macro_generation_swap.py`
 - Test: `tests/unit/domains/macro_intel/test_macro_migration_contract.py`
 
@@ -808,10 +808,10 @@
 ## Task 6: P2 Macro Current Read Paths and Worker Notes
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/runtime/macro_view_projection_worker.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_manifest.py`
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`
+- Modify: `src/parallax/domains/macro_intel/runtime/macro_view_projection_worker.py`
+- Modify: `src/parallax/app/runtime/worker_manifest.py`
+- Modify: `src/parallax/domains/macro_intel/ARCHITECTURE.md`
 - Test: `tests/unit/domains/macro_intel/test_macro_view_projection_worker.py`
 - Test: `tests/unit/domains/macro_intel/test_macro_migration_contract.py`
 - Test: `tests/unit/domains/macro_intel/test_macro_feature_engine.py`
@@ -925,7 +925,7 @@
 **Files:**
 - Modify: `docs/WORKERS.md`
 - Modify: `docs/references/POSTGRES_PERFORMANCE.md`
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/macro_intel/ARCHITECTURE.md`
 - Modify: `tests/architecture/test_token_radar_publication_state_hard_cut.py`
 
 - [ ] **Step 1: Update docs**
@@ -954,7 +954,7 @@
 
   ```bash
   rg -n "macro_observation_series_active_generation|macro_observation_series_generations|generation_id = rows.generation_id|_generation_id\\(|list_rank_inputs_for_rank_set\\([^)]*scope=scope\\s*\\)" \
-    src/gmgn_twitter_intel/domains src/gmgn_twitter_intel/app tests
+    src/parallax/domains src/parallax/app tests
   ```
 
   Expected after implementation: no runtime matches for old Macro generation tables or no-cutoff rank input calls. Migration files may mention old Macro table names only for hard-cut table swap/drop.
@@ -978,7 +978,7 @@ Macro 严重卡顿的根因是本地 read-model 设计和实现偏离规范，�
 - API 只通过 active pointer 读取最新 generation，因此 serving 面看起来很小，但物理表、索引、vacuum、temp IO 随 worker run count 膨胀。
 - cleanup 只删有限批次 superseded generation rows，无法追上持续全量复制。
 - 这违反了项目规范里的 compact/current/rebuildable read-model 生命周期：derived read model 可以重建，但不能无界保存每次投影副本。
-- 规范没有被遵循的原因不是缺少单 writer，而是把“generation swap”当成了长期 runtime storage contract；`src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md` 和 worker manifest 还把旧 active-generation contract 固化进文档/测试，导致实现回归没有被 guard 住。
+- 规范没有被遵循的原因不是缺少单 writer，而是把“generation swap”当成了长期 runtime storage contract；`src/parallax/domains/macro_intel/ARCHITECTURE.md` 和 worker manifest 还把旧 active-generation contract 固化进文档/测试，导致实现回归没有被 guard 住。
 
 本方案的 P2 因此必须删除 runtime physical generation 模型，而不是只加 retention 或调大 cleanup batch。
 
@@ -1156,7 +1156,7 @@ Macro 严重卡顿的根因是本地 read-model 设计和实现偏离规范，�
   ```bash
   uv run ruff check .
   rg -n "macro_observation_series_active_generation|macro_observation_series_generations|_generation_id\\(|legacy fallback|compat" \
-    src/gmgn_twitter_intel/app src/gmgn_twitter_intel/domains tests
+    src/parallax/app src/parallax/domains tests
   ```
 
   Expected: no runtime compatibility matches. Migration files may mention dropped old tables only for hard-cut migration.

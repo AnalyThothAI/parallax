@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from gmgn_twitter_intel.domains.pulse_lab.queries.pulse_agent_cost_report import (
+from parallax.domains.pulse_lab.queries.pulse_agent_cost_report import (
     build_signal_pulse_agent_cost_report,
     summarize_signal_pulse_agent_cost_rows,
 )

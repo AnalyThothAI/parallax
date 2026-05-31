@@ -46,7 +46,7 @@
 
 ## File-Level Edits
 
-### `src/gmgn_twitter_intel/domains/asset_market/providers.py`
+### `src/parallax/domains/asset_market/providers.py`
 
 - Replace the monolithic `DexMarketProvider` with role-specific protocols:
   - `DexTokenDiscoveryProvider.search_tokens(...)`
@@ -58,13 +58,13 @@
   - `DexTokenQuote(chain_id, address, observed_at_ms, price_usd, market_cap_usd, liquidity_usd, volume_24h_usd, holders, raw)`
 - Add `DexTokenProfile` for website/Twitter/Telegram/logo/banner/pool/security-adjacent raw fields.
 
-### `src/gmgn_twitter_intel/integrations/gmgn/openapi_client.py`
+### `src/parallax/integrations/gmgn/openapi_client.py`
 
 - Extend `GmgnTokenInfo` with richer market/profile fields and add `GmgnTokenKlineCandle`.
 - Add `token_kline(chain, address, resolution, limit, now_ms=None)`.
 - Map internal domain chains to GMGN chains: `eip155:1 -> eth`, `eip155:56 -> bsc`, `eip155:8453 -> base`, `solana -> sol`.
 
-### `src/gmgn_twitter_intel/app/runtime/providers_wiring.py`
+### `src/parallax/app/runtime/providers_wiring.py`
 
 - Rename `OkxDexMarketProvider` to `OkxDexDiscoveryProvider`; it exposes only `search_tokens`.
 - Add `GmgnDexMarketProvider`; it exposes `token_quotes`, `token_candles`, and `token_profile`.

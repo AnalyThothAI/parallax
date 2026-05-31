@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from gmgn_twitter_intel.domains.asset_market.repositories.token_profile_current_repository import (
+from parallax.domains.asset_market.repositories.token_profile_current_repository import (
     TokenProfileCurrentRepository,
 )
 

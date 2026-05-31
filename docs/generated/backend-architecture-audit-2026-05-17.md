@@ -1,6 +1,6 @@
 # Backend Architecture Audit, 2026-05-17
 
-Scope: backend source under `src/gmgn_twitter_intel/**/*.py`. Generated caches and local `__pycache__` files are excluded. I read and indexed all 329 tracked Python source files, 54472 LOC, including 59 Alembic migration files. The per-file ledger at the end includes a SHA-256 prefix as the read marker.
+Scope: backend source under `src/parallax/**/*.py`. Generated caches and local `__pycache__` files are excluded. I read and indexed all 329 tracked Python source files, 54472 LOC, including 59 Alembic migration files. The per-file ledger at the end includes a SHA-256 prefix as the read marker.
 
 ## Executive Summary
 

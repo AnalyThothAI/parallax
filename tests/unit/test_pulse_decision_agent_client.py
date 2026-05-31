@@ -12,20 +12,20 @@ import asyncio
 import json
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.domains.pulse_lab.providers import BearCaseMemo, PulseStagePlan, SignalAnalystMemo
-from gmgn_twitter_intel.domains.pulse_lab.services.agent_runtime import build_pulse_runtime_manifest
-from gmgn_twitter_intel.domains.pulse_lab.services.pulse_decision_runtime import (
+from parallax.domains.pulse_lab.providers import BearCaseMemo, PulseStagePlan, SignalAnalystMemo
+from parallax.domains.pulse_lab.services.agent_runtime import build_pulse_runtime_manifest
+from parallax.domains.pulse_lab.services.pulse_decision_runtime import (
     PulseDecisionRuntimeService,
 )
-from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
+from parallax.domains.pulse_lab.types.agent_decision import (
     FinalDecision,
     PulseStageFailure,
 )
-from gmgn_twitter_intel.integrations.model_execution.output_schema import StrictJsonOutputSchema
-from gmgn_twitter_intel.integrations.model_execution.pulse_decision_agent_client import (
+from parallax.integrations.model_execution.output_schema import StrictJsonOutputSchema
+from parallax.integrations.model_execution.pulse_decision_agent_client import (
     LiteLLMPulseDecisionClient,
 )
-from gmgn_twitter_intel.platform.agent_execution import (
+from parallax.platform.agent_execution import (
     AgentExecutionError,
     AgentExecutionErrorClass,
     AgentExecutionRequestAudit,

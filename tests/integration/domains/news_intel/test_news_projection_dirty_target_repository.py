@@ -5,11 +5,11 @@ from typing import Any
 
 import pytest
 
-from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
-from gmgn_twitter_intel.domains.news_intel.repositories import (
+from parallax.app.runtime.repository_session import repositories_for_connection
+from parallax.domains.news_intel.repositories import (
     news_projection_dirty_target_repository as dirty_target_repository_module,
 )
-from gmgn_twitter_intel.domains.news_intel.repositories.news_projection_dirty_target_repository import (
+from parallax.domains.news_intel.repositories.news_projection_dirty_target_repository import (
     NewsProjectionDirtyTargetRepository,
 )
 from tests.postgres_test_utils import connect_postgres_test

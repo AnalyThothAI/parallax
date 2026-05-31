@@ -60,7 +60,7 @@ real  ~36 minutes  (P5 testcontainers re-init + redundant test runs across the 4
 exit code: 0
 ```
 
-The raw log includes pre-existing soft-skip noise from `test_make_docs_generated_clean_diff` (the user's `~/.gmgn-twitter-intel/config.yaml` contains legacy pulse_agent_* keys that LlmConfig rejects); this surfaces as `make[2]: *** [docs-db-schema] Error 1` BUT the test handles it via `pytest.skip(...)` so it does NOT contribute to the make check-all exit code. See `docs/TECH_DEBT.md` § 'CLI ops sync directory tests pinned to legacy config.yaml schema' for the upstream root cause.
+The raw log includes pre-existing soft-skip noise from `test_make_docs_generated_clean_diff` (the user's `~/.parallax/config.yaml` contains legacy pulse_agent_* keys that LlmConfig rejects); this surfaces as `make[2]: *** [docs-db-schema] Error 1` BUT the test handles it via `pytest.skip(...)` so it does NOT contribute to the make check-all exit code. See `docs/TECH_DEBT.md` § 'CLI ops sync directory tests pinned to legacy config.yaml schema' for the upstream root cause.
 
 If `make check-all` exit code is non-zero, the work is not complete — do not
 file this artefact until it is. **Exit code: 0 confirmed.**
@@ -86,7 +86,7 @@ Number of skipped tests in the full `pytest --cov` run captured above: 28
 | count | reason | acceptable? |
 |-------|--------|-------------|
 | 21    | Pre-existing integration tests (token-identity-evidence hard-cut family) skipped per plan §Pre-flight Tier C; tracked in `docs/TECH_DEBT.md` → 'Integration tests against pre-hard-cut asset registry' | yes — each entry has follow-up rewrite path |
-| 2     | `tests/integration/test_cli.py::test_cli_ops_sync_gmgn_directory_*` Tier D — load user `~/.gmgn-twitter-intel/config.yaml` without HOME isolation; tracked in `docs/TECH_DEBT.md` → 'CLI ops sync directory tests pinned to legacy config.yaml schema' | yes — fix is HOME-isolated test fixture |
+| 2     | `tests/integration/test_cli.py::test_cli_ops_sync_gmgn_directory_*` Tier D — load user `~/.parallax/config.yaml` without HOME isolation; tracked in `docs/TECH_DEBT.md` → 'CLI ops sync directory tests pinned to legacy config.yaml schema' | yes — fix is HOME-isolated test fixture |
 | 1     | `tests/unit/test_token_radar_idempotency.py` Tier B — auto-runs against testcontainers DB which is empty; now skips when no source rows. Tracked in `docs/TECH_DEBT.md` → 'Idempotency test should be opt-in against live data only' | yes — should move out of `tests/unit/` |
 | 1     | `tests/integration/test_docs_generated.py::test_make_docs_generated_clean_diff` soft-skips when `make docs-generated` fails (user config legacy keys). Pre-existing soft-skip from before P6. | yes — same root cause as Tier D |
 | 3     | Postgres-DSN-required tests that skip when `GMGN_TEST_POSTGRES_DSN` is unreachable: 1 from `tests/postgres_test_utils.py:28` + 2 from auto-testcontainers fallbacks. P5 wired auto-fixture so these don't actually fire when docker is up. | yes — defensive guard |
@@ -149,6 +149,6 @@ Work that emerged during this change but was correctly out of scope:
 - **Rewrite the 21 Tier-C skipped integration tests against the new `asset_identity_evidence`/`asset_identity_current` model and the `events(source_provider, source_transport, …)` schema.** Tracked in `docs/TECH_DEBT.md` § 'Integration tests against pre-hard-cut asset registry' (table of 17 entries).
 - **HOME-isolate the 2 `test_cli_ops_sync_gmgn_directory_*` tests so they don't read the developer's user config.** Tracked in `docs/TECH_DEBT.md` § 'CLI ops sync directory tests pinned to legacy config.yaml schema'.
 - **Move `tests/unit/test_token_radar_idempotency.py` out of `tests/unit/` (it is not a unit test) and gate behind explicit env flag.** Tracked in `docs/TECH_DEBT.md` § 'Idempotency test should be opt-in against live data only'.
-- **mypy override consolidation: shrink `gmgn_twitter_intel.app.*` and `gmgn_twitter_intel.integrations.*` overrides one sub-package per sprint.** Tracked in `docs/TECH_DEBT.md` § 'mypy strict overrides'. Existed before this spec; this spec added the formal table.
+- **mypy override consolidation: shrink `parallax.app.*` and `parallax.integrations.*` overrides one sub-package per sprint.** Tracked in `docs/TECH_DEBT.md` § 'mypy strict overrides'. Existed before this spec; this spec added the formal table.
 - **Coverage threshold not relaxed; no follow-up entry needed.** Baseline 82.0% line / 79.1% branch; `fail_under = 80` kept.
 - **OQ1/OQ2/OQ3 status (spec §16):** all closed in spec body before P0 began.

@@ -51,7 +51,7 @@
 - `token_radar_target_first_seen` must use `target_type_key` and `identity_id`, exactly matching `TokenRadarRepository._identity_key()`, not `target_type,target_id`.
 - `watchlist_handle_signal_stats.total_signal_count` must be derived through `watchlist_handle_signal_events(event_id)` idempotency; never increment the aggregate directly from a retryable upsert.
 - Keep retention deletion batch-limited, ordered by `(computed_at_ms, row_id)`, and committed per batch.
-- Keep `handle_summary.enabled=false` in `~/.gmgn-twitter-intel/workers.yaml` until the stats read model is backfilled and verified.
+- Keep `handle_summary.enabled=false` in `~/.parallax/workers.yaml` until the stats read model is backfilled and verified.
 - Keep all operational commands safe by default: dry-run unless `--execute` is explicitly provided.
 - API verification must cover `/readyz`, `/api/token-radar`, `/api/signal-lab/pulse`, `/api/recent`, `/api/news`, and watchlist overview/summary endpoints.
 
@@ -59,7 +59,7 @@
 
 ### Schema and Persistence
 
-- Create `src/gmgn_twitter_intel/platform/db/alembic/versions/20260520_0069_token_radar_retention_watchlist_stats.py`
+- Create `src/parallax/platform/db/alembic/versions/20260520_0069_token_radar_retention_watchlist_stats.py`
   - Adds `token_radar_target_first_seen`.
   - Adds `token_radar_retention_runs`.
   - Adds `watchlist_handle_signal_stats`.
@@ -71,18 +71,18 @@
 
 ### Token Radar Retention
 
-- Modify `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
+- Modify `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
   - Read and write first-seen rows.
   - Preserve current `listed_at_ms` behavior through the new read model.
   - Add prune planning and batch deletion helpers.
-- Create `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_retention.py`
+- Create `src/parallax/domains/token_intel/services/token_radar_retention.py`
   - Owns dry-run, batch execution, latest-batch protection, grace-window calculation, and run audit.
-- Modify `src/gmgn_twitter_intel/platform/config/settings.py`
+- Modify `src/parallax/platform/config/settings.py`
   - Add worker/ops defaults for retention days and prune batch size.
-- Modify `src/gmgn_twitter_intel/app/surfaces/cli/parser.py`
+- Modify `src/parallax/app/surfaces/cli/parser.py`
   - Add `ops backfill-token-radar-first-seen`.
   - Add `ops prune-token-radar`.
-- Modify `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`
+- Modify `src/parallax/app/surfaces/cli/commands/ops.py`
   - Wire the new commands.
 - Add tests:
   - `tests/unit/domains/token_intel/test_token_radar_first_seen.py`
@@ -91,24 +91,24 @@
 
 ### Watchlist Summary
 
-- Modify `src/gmgn_twitter_intel/domains/social_enrichment/repositories/social_event_extraction_repository.py`
+- Modify `src/parallax/domains/social_enrichment/repositories/social_event_extraction_repository.py`
   - Store `normalized_handle`.
   - Decode `normalized_handle`.
-- Modify `src/gmgn_twitter_intel/domains/social_enrichment/runtime/enrichment_worker.py`
+- Modify `src/parallax/domains/social_enrichment/runtime/enrichment_worker.py`
   - Update watchlist signal stats after a signal extraction is persisted.
   - Enqueue summary jobs from stats-backed trigger logic only.
-- Modify `src/gmgn_twitter_intel/domains/watchlist_intel/repositories/watchlist_intel_repository.py`
+- Modify `src/parallax/domains/watchlist_intel/repositories/watchlist_intel_repository.py`
   - Add stats read/write/backfill methods.
   - Replace `handles_missing_summary_jobs()` with stats-only SQL.
   - Replace `count_signal_events_total()` with stats-first lookup.
   - Rewrite `signal_events_for_summary()` to filter by `normalized_handle` and only then join event payloads.
-- Modify `src/gmgn_twitter_intel/domains/watchlist_intel/services/handle_summary_service.py`
+- Modify `src/parallax/domains/watchlist_intel/services/handle_summary_service.py`
   - Use stats-backed counts and keep due-reason behavior unchanged.
-- Modify `src/gmgn_twitter_intel/domains/watchlist_intel/runtime/handle_summary_worker.py`
+- Modify `src/parallax/domains/watchlist_intel/runtime/handle_summary_worker.py`
   - Reconcile from stats rows only.
-- Modify `src/gmgn_twitter_intel/app/surfaces/cli/parser.py`
+- Modify `src/parallax/app/surfaces/cli/parser.py`
   - Add `ops backfill-watchlist-signal-stats`.
-- Modify `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`
+- Modify `src/parallax/app/surfaces/cli/commands/ops.py`
   - Wire the stats backfill command.
 - Add tests:
   - `tests/unit/domains/watchlist_intel/test_watchlist_signal_stats.py`
@@ -131,8 +131,8 @@
 **Files:**
 - Read: `docs/ARCHITECTURE.md`
 - Read: `docs/CONTRACTS.md`
-- Read: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
-- Read: `src/gmgn_twitter_intel/domains/watchlist_intel/repositories/watchlist_intel_repository.py`
+- Read: `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
+- Read: `src/parallax/domains/watchlist_intel/repositories/watchlist_intel_repository.py`
 
 - [ ] **Step 1: Create isolated worktree**
 
@@ -152,19 +152,19 @@
 
   Run:
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
 
   Expected:
-  - `config_path` points at `~/.gmgn-twitter-intel/config.yaml`.
-  - `workers_config_path` points at `~/.gmgn-twitter-intel/workers.yaml`.
+  - `config_path` points at `~/.parallax/config.yaml`.
+  - `workers_config_path` points at `~/.parallax/workers.yaml`.
   - Do not print secret values.
 
 - [ ] **Step 3: Capture read API and worker baselines**
 
   Run with a token read from local config but do not print the token:
   ```bash
-  TOKEN=$(uv run python -c 'from gmgn_twitter_intel.platform.config.settings import load_settings; print(load_settings().ws_token or "")')
+  TOKEN=$(uv run python -c 'from parallax.platform.config.settings import load_settings; print(load_settings().ws_token or "")')
   curl -fsS http://127.0.0.1:8765/readyz | jq '{ok,reasons,providers:.provider_states,workers:.workers.handle_summary}'
   curl -fsS -H "Authorization: Bearer ${TOKEN}" 'http://127.0.0.1:8765/api/token-radar?window=1h&scope=all&limit=5' | jq '{ok,items:(.data.targets|length)}'
   curl -fsS -H "Authorization: Bearer ${TOKEN}" 'http://127.0.0.1:8765/api/signal-lab/pulse?window=1h&scope=all&limit=5' | jq '{ok,items:(.data.items|length)}'
@@ -179,7 +179,7 @@
 
   Run:
   ```bash
-  docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -Atc "
+  docker compose exec -T postgres psql -U parallax_app -d parallax -Atc "
   SELECT relname || '|' || reltuples::bigint
   FROM pg_class
   WHERE relname IN ('token_radar_rows','social_event_extractions','events','watchlist_handle_summaries','watchlist_handle_summary_jobs')
@@ -208,7 +208,7 @@
 ## Task 2: Add Schema for First-Seen, Retention Audit, and Watchlist Stats
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260520_0069_token_radar_retention_watchlist_stats.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260520_0069_token_radar_retention_watchlist_stats.py`
 - Modify: `tests/unit/test_postgres_schema.py`
 - Modify: `tests/integration/test_postgres_schema_runtime.py`
 
@@ -326,14 +326,14 @@
 
   Run:
   ```bash
-  git add src/gmgn_twitter_intel/platform/db/alembic/versions/20260520_0069_token_radar_retention_watchlist_stats.py tests/unit/test_postgres_schema.py tests/integration/test_postgres_schema_runtime.py
+  git add src/parallax/platform/db/alembic/versions/20260520_0069_token_radar_retention_watchlist_stats.py tests/unit/test_postgres_schema.py tests/integration/test_postgres_schema_runtime.py
   git commit -m "feat: add retention and watchlist stats schema"
   ```
 
 ## Task 3: Make Token Radar Listed-At Independent of Unlimited History
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
 - Add: `tests/unit/domains/token_intel/test_token_radar_first_seen.py`
 - Modify: `tests/golden/test_token_radar_corpus.py`
 - Modify: `tests/unit/test_token_radar_projection.py` if local tests reference listed-at behavior.
@@ -443,18 +443,18 @@
 
   Run:
   ```bash
-  git add src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py tests/unit/domains/token_intel/test_token_radar_first_seen.py tests/golden/test_token_radar_corpus.py
+  git add src/parallax/domains/token_intel/repositories/token_radar_repository.py tests/unit/domains/token_intel/test_token_radar_first_seen.py tests/golden/test_token_radar_corpus.py
   git commit -m "feat: persist token radar first seen metadata"
   ```
 
 ## Task 4: Add Safe Token Radar Retention Service and CLI
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_retention.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/parser.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
+- Create: `src/parallax/domains/token_intel/services/token_radar_retention.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
+- Modify: `src/parallax/app/surfaces/cli/parser.py`
+- Modify: `src/parallax/app/surfaces/cli/commands/ops.py`
+- Modify: `src/parallax/platform/config/settings.py`
 - Add: `tests/unit/domains/token_intel/test_token_radar_retention.py`
 - Add: `tests/integration/test_token_radar_retention_postgres.py`
 - Modify: `tests/unit/test_cli.py`
@@ -563,9 +563,9 @@
 
   Parser:
   ```bash
-  uv run gmgn-twitter-intel ops backfill-token-radar-first-seen --batch-size 5000 --max-batches 10
-  uv run gmgn-twitter-intel ops prune-token-radar --retention-days 7 --batch-size 10000 --max-batches 1 --dry-run
-  uv run gmgn-twitter-intel ops prune-token-radar --retention-days 7 --batch-size 10000 --max-batches 1 --execute
+  uv run parallax ops backfill-token-radar-first-seen --batch-size 5000 --max-batches 10
+  uv run parallax ops prune-token-radar --retention-days 7 --batch-size 10000 --max-batches 1 --dry-run
+  uv run parallax ops prune-token-radar --retention-days 7 --batch-size 10000 --max-batches 1 --execute
   ```
 
   Requirements:
@@ -589,18 +589,18 @@
 
   Run:
   ```bash
-  git add src/gmgn_twitter_intel/domains/token_intel/services/token_radar_retention.py src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py src/gmgn_twitter_intel/app/surfaces/cli/parser.py src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py src/gmgn_twitter_intel/platform/config/settings.py tests/unit/domains/token_intel/test_token_radar_retention.py tests/integration/test_token_radar_retention_postgres.py tests/unit/test_cli.py tests/unit/test_settings.py
+  git add src/parallax/domains/token_intel/services/token_radar_retention.py src/parallax/domains/token_intel/repositories/token_radar_repository.py src/parallax/app/surfaces/cli/parser.py src/parallax/app/surfaces/cli/commands/ops.py src/parallax/platform/config/settings.py tests/unit/domains/token_intel/test_token_radar_retention.py tests/integration/test_token_radar_retention_postgres.py tests/unit/test_cli.py tests/unit/test_settings.py
   git commit -m "feat: add safe token radar retention"
   ```
 
 ## Task 5: Make Watchlist Summary Stats-Driven
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/social_enrichment/repositories/social_event_extraction_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/social_enrichment/runtime/enrichment_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/watchlist_intel/repositories/watchlist_intel_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/watchlist_intel/services/handle_summary_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/watchlist_intel/runtime/handle_summary_worker.py`
+- Modify: `src/parallax/domains/social_enrichment/repositories/social_event_extraction_repository.py`
+- Modify: `src/parallax/domains/social_enrichment/runtime/enrichment_worker.py`
+- Modify: `src/parallax/domains/watchlist_intel/repositories/watchlist_intel_repository.py`
+- Modify: `src/parallax/domains/watchlist_intel/services/handle_summary_service.py`
+- Modify: `src/parallax/domains/watchlist_intel/runtime/handle_summary_worker.py`
 - Add: `tests/unit/domains/watchlist_intel/test_watchlist_signal_stats.py`
 - Add: `tests/unit/domains/watchlist_intel/test_handle_summary_reconcile.py`
 - Modify: `tests/unit/test_handle_summary_worker.py`
@@ -729,25 +729,25 @@
 
   Run:
   ```bash
-  git add src/gmgn_twitter_intel/domains/social_enrichment/repositories/social_event_extraction_repository.py src/gmgn_twitter_intel/domains/social_enrichment/runtime/enrichment_worker.py src/gmgn_twitter_intel/domains/watchlist_intel/repositories/watchlist_intel_repository.py src/gmgn_twitter_intel/domains/watchlist_intel/services/handle_summary_service.py src/gmgn_twitter_intel/domains/watchlist_intel/runtime/handle_summary_worker.py tests/unit/domains/watchlist_intel/test_watchlist_signal_stats.py tests/unit/domains/watchlist_intel/test_handle_summary_reconcile.py tests/unit/test_handle_summary_worker.py
+  git add src/parallax/domains/social_enrichment/repositories/social_event_extraction_repository.py src/parallax/domains/social_enrichment/runtime/enrichment_worker.py src/parallax/domains/watchlist_intel/repositories/watchlist_intel_repository.py src/parallax/domains/watchlist_intel/services/handle_summary_service.py src/parallax/domains/watchlist_intel/runtime/handle_summary_worker.py tests/unit/domains/watchlist_intel/test_watchlist_signal_stats.py tests/unit/domains/watchlist_intel/test_handle_summary_reconcile.py tests/unit/test_handle_summary_worker.py
   git commit -m "fix: make watchlist summaries stats driven"
   ```
 
 ## Task 6: Add Backfill Commands for Safe Production Cutover
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/parser.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`
-- Modify: `src/gmgn_twitter_intel/domains/watchlist_intel/repositories/watchlist_intel_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
+- Modify: `src/parallax/app/surfaces/cli/parser.py`
+- Modify: `src/parallax/app/surfaces/cli/commands/ops.py`
+- Modify: `src/parallax/domains/watchlist_intel/repositories/watchlist_intel_repository.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
 - Add: `tests/unit/test_ops_backfill_commands.py`
 
 - [ ] **Step 1: Add CLI contract tests**
 
   Required commands:
   ```bash
-  uv run gmgn-twitter-intel ops backfill-token-radar-first-seen --batch-size 5000 --max-batches 1
-  uv run gmgn-twitter-intel ops backfill-watchlist-signal-stats --batch-size 5000 --max-batches 1
+  uv run parallax ops backfill-token-radar-first-seen --batch-size 5000 --max-batches 1
+  uv run parallax ops backfill-watchlist-signal-stats --batch-size 5000 --max-batches 1
   ```
 
   Required JSON fields:
@@ -790,14 +790,14 @@
 
   Run:
   ```bash
-  git add src/gmgn_twitter_intel/app/surfaces/cli/parser.py src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py src/gmgn_twitter_intel/domains/watchlist_intel/repositories/watchlist_intel_repository.py src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py tests/unit/test_ops_backfill_commands.py tests/unit/test_cli.py
+  git add src/parallax/app/surfaces/cli/parser.py src/parallax/app/surfaces/cli/commands/ops.py src/parallax/domains/watchlist_intel/repositories/watchlist_intel_repository.py src/parallax/domains/token_intel/repositories/token_radar_repository.py tests/unit/test_ops_backfill_commands.py tests/unit/test_cli.py
   git commit -m "feat: add bounded retention backfill commands"
   ```
 
 ## Task 7: Update Runtime Config Defaults and Docs
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
+- Modify: `src/parallax/platform/config/settings.py`
 - Modify: `docs/CONTRACTS.md`
 - Modify: `docs/WORKERS.md`
 - Modify: `docs/RELIABILITY.md`
@@ -821,7 +821,7 @@
     window_days: 3
   ```
 
-  Keep operator-owned `~/.gmgn-twitter-intel/workers.yaml` unchanged during code implementation; change it only during rollout after verification.
+  Keep operator-owned `~/.parallax/workers.yaml` unchanged during code implementation; change it only during rollout after verification.
 
 - [ ] **Step 2: Update docs**
 
@@ -836,10 +836,10 @@
 
   `docs/RELIABILITY.md` must include operator commands:
   ```bash
-  uv run gmgn-twitter-intel ops backfill-token-radar-first-seen --batch-size 5000 --max-batches 20
-  uv run gmgn-twitter-intel ops backfill-watchlist-signal-stats --batch-size 5000 --max-batches 20
-  uv run gmgn-twitter-intel ops prune-token-radar --retention-days 7 --batch-size 10000 --max-batches 1 --dry-run
-  uv run gmgn-twitter-intel ops prune-token-radar --retention-days 7 --batch-size 10000 --max-batches 1 --execute
+  uv run parallax ops backfill-token-radar-first-seen --batch-size 5000 --max-batches 20
+  uv run parallax ops backfill-watchlist-signal-stats --batch-size 5000 --max-batches 20
+  uv run parallax ops prune-token-radar --retention-days 7 --batch-size 10000 --max-batches 1 --dry-run
+  uv run parallax ops prune-token-radar --retention-days 7 --batch-size 10000 --max-batches 1 --execute
   ```
 
 - [ ] **Step 3: Run docs/settings tests**
@@ -853,7 +853,7 @@
 
   Run:
   ```bash
-  git add src/gmgn_twitter_intel/platform/config/settings.py docs/CONTRACTS.md docs/WORKERS.md docs/RELIABILITY.md docs/TECH_DEBT.md tests/unit/test_worker_settings.py tests/unit/test_settings.py
+  git add src/parallax/platform/config/settings.py docs/CONTRACTS.md docs/WORKERS.md docs/RELIABILITY.md docs/TECH_DEBT.md tests/unit/test_worker_settings.py tests/unit/test_settings.py
   git commit -m "docs: document bounded radar and watchlist summary ops"
   ```
 
@@ -894,7 +894,7 @@
 
   Run:
   ```bash
-  uv run ruff check src/gmgn_twitter_intel tests
+  uv run ruff check src/parallax tests
   git diff --check
   ```
 
@@ -911,7 +911,7 @@
 ## Task 9: Production Rollout Without Business Interruption
 
 **Files:**
-- Operator-owned: `~/.gmgn-twitter-intel/workers.yaml`
+- Operator-owned: `~/.parallax/workers.yaml`
 - No repository code edits in this task after merge.
 
 - [ ] **Step 1: Merge to main only after tests pass**
@@ -940,8 +940,8 @@
 
   Run repeatedly until `has_more=false`:
   ```bash
-  uv run gmgn-twitter-intel ops backfill-token-radar-first-seen --batch-size 5000 --max-batches 20
-  uv run gmgn-twitter-intel ops backfill-watchlist-signal-stats --batch-size 5000 --max-batches 20
+  uv run parallax ops backfill-token-radar-first-seen --batch-size 5000 --max-batches 20
+  uv run parallax ops backfill-watchlist-signal-stats --batch-size 5000 --max-batches 20
   ```
 
   Expected:
@@ -952,7 +952,7 @@
 
   Run:
   ```bash
-  uv run gmgn-twitter-intel ops prune-token-radar --retention-days 7 --batch-size 10000 --max-batches 1 --dry-run
+  uv run parallax ops prune-token-radar --retention-days 7 --batch-size 10000 --max-batches 1 --dry-run
   ```
 
   Expected:
@@ -964,7 +964,7 @@
 
   Run:
   ```bash
-  uv run gmgn-twitter-intel ops prune-token-radar --retention-days 7 --batch-size 10000 --max-batches 1 --execute
+  uv run parallax ops prune-token-radar --retention-days 7 --batch-size 10000 --max-batches 1 --execute
   ```
 
   Expected:
@@ -976,7 +976,7 @@
 
   Run repeated one-batch commands during low-traffic windows:
   ```bash
-  uv run gmgn-twitter-intel ops prune-token-radar --retention-days 7 --batch-size 10000 --max-batches 5 --execute
+  uv run parallax ops prune-token-radar --retention-days 7 --batch-size 10000 --max-batches 5 --execute
   ```
 
   Stop if:
@@ -987,7 +987,7 @@
 
 - [ ] **Step 7: Re-enable `handle_summary` after stats verification**
 
-  Edit `~/.gmgn-twitter-intel/workers.yaml`:
+  Edit `~/.parallax/workers.yaml`:
   ```yaml
   handle_summary:
     enabled: true
@@ -1014,7 +1014,7 @@
 
   Run:
   ```bash
-  TOKEN=$(uv run python -c 'from gmgn_twitter_intel.platform.config.settings import load_settings; print(load_settings().ws_token or "")')
+  TOKEN=$(uv run python -c 'from parallax.platform.config.settings import load_settings; print(load_settings().ws_token or "")')
   curl -fsS -H "Authorization: Bearer ${TOKEN}" 'http://127.0.0.1:8765/api/token-radar?window=1h&scope=all&limit=5' | jq '{ok,items:(.data.targets|length)}'
   curl -fsS -H "Authorization: Bearer ${TOKEN}" 'http://127.0.0.1:8765/api/signal-lab/pulse?window=1h&scope=all&limit=5' | jq '{ok,items:(.data.items|length)}'
   curl -fsS -H "Authorization: Bearer ${TOKEN}" 'http://127.0.0.1:8765/api/recent?limit=5&scope=matched' | jq '{ok,items:(.data.items|length)}'
@@ -1029,7 +1029,7 @@
 ## Task 10: Backout and Recovery
 
 **Files:**
-- Operator-owned: `~/.gmgn-twitter-intel/workers.yaml`
+- Operator-owned: `~/.parallax/workers.yaml`
 - Runtime commands only.
 
 - [ ] **Step 1: Back out handle summary if needed**
@@ -1056,10 +1056,10 @@
 
   Run for each public window/scope needed:
   ```bash
-  uv run gmgn-twitter-intel ops rebuild-token-radar --window 1h --scope all --limit 200
-  uv run gmgn-twitter-intel ops rebuild-token-radar --window 1h --scope matched --limit 200
-  uv run gmgn-twitter-intel ops rebuild-token-radar --window 4h --scope all --limit 200
-  uv run gmgn-twitter-intel ops rebuild-token-radar --window 4h --scope matched --limit 200
+  uv run parallax ops rebuild-token-radar --window 1h --scope all --limit 200
+  uv run parallax ops rebuild-token-radar --window 1h --scope matched --limit 200
+  uv run parallax ops rebuild-token-radar --window 4h --scope all --limit 200
+  uv run parallax ops rebuild-token-radar --window 4h --scope matched --limit 200
   ```
 
   Expected:
@@ -1070,8 +1070,8 @@
 
   Run:
   ```bash
-  uv run gmgn-twitter-intel ops backfill-token-radar-first-seen --batch-size 5000 --max-batches 20
-  uv run gmgn-twitter-intel ops backfill-watchlist-signal-stats --batch-size 5000 --max-batches 20
+  uv run parallax ops backfill-token-radar-first-seen --batch-size 5000 --max-batches 20
+  uv run parallax ops backfill-watchlist-signal-stats --batch-size 5000 --max-batches 20
   ```
 
 ## Acceptance Criteria

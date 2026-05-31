@@ -5,7 +5,7 @@ Three session-scope fixtures:
 - e2e_uvicorn: subprocess running tests/e2e/_uvicorn_entry.py against e2e_postgres
 - e2e_writer: callable that runs tests/e2e/_writer_entry.py to inject a synthetic event
 
-A single ws_token (`GMGN_E2E_WS_TOKEN`, default "e2e-token") is shared by both
+A single ws_token (`PARALLAX_E2E_WS_TOKEN`, default "e2e-token") is shared by both
 the uvicorn process and the writer process so HTTP/WS auth lines up.
 
 Setting SKIP_E2E=1 in the environment skips e2e tests with an explicit reason.
@@ -63,7 +63,7 @@ def _docker_available() -> bool:
 
 @pytest.fixture(scope="session")
 def e2e_ws_token() -> str:
-    return os.environ.get("GMGN_E2E_WS_TOKEN", E2E_WS_TOKEN)
+    return os.environ.get("PARALLAX_E2E_WS_TOKEN", E2E_WS_TOKEN)
 
 
 @pytest.fixture(scope="session")
@@ -83,7 +83,7 @@ def e2e_postgres() -> Iterator[str]:
 
     from testcontainers.postgres import PostgresContainer
 
-    from gmgn_twitter_intel.platform.db.postgres_migrations import upgrade_head
+    from parallax.platform.db.postgres_migrations import upgrade_head
 
     with PostgresContainer("postgres:16-alpine") as pg:
         dsn = pg.get_connection_url().replace("postgresql+psycopg2://", "postgresql://")
@@ -153,8 +153,8 @@ def e2e_uvicorn(e2e_postgres: str, e2e_ws_token: str, tmp_path_factory: pytest.T
     """
     env = {
         **os.environ,
-        "GMGN_POSTGRES_DSN": e2e_postgres,
-        "GMGN_E2E_WS_TOKEN": e2e_ws_token,
+        "PARALLAX_POSTGRES_DSN": e2e_postgres,
+        "PARALLAX_E2E_WS_TOKEN": e2e_ws_token,
         "PYTHONPATH": str(ROOT / "src"),
     }
     log_dir = tmp_path_factory.mktemp("e2e-uvicorn")
@@ -193,8 +193,8 @@ def e2e_writer(e2e_postgres: str, e2e_ws_token: str) -> Callable[[str, str], Non
     def _write(event_id: str, text: str) -> None:
         env = {
             **os.environ,
-            "GMGN_POSTGRES_DSN": e2e_postgres,
-            "GMGN_E2E_WS_TOKEN": e2e_ws_token,
+            "PARALLAX_POSTGRES_DSN": e2e_postgres,
+            "PARALLAX_E2E_WS_TOKEN": e2e_ws_token,
             "PYTHONPATH": str(ROOT / "src"),
         }
         result = subprocess.run(

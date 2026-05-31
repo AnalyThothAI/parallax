@@ -1,12 +1,12 @@
-from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
-from gmgn_twitter_intel.domains.token_intel.repositories.intent_resolution_repository import (
+from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
+from parallax.domains.token_intel.repositories.intent_resolution_repository import (
     IntentResolutionRepository,
 )
-from gmgn_twitter_intel.domains.token_intel.repositories.token_intent_repository import TokenIntentRepository
-from gmgn_twitter_intel.domains.watchlist_intel.repositories.watchlist_intel_repository import (
+from parallax.domains.token_intel.repositories.token_intent_repository import TokenIntentRepository
+from parallax.domains.watchlist_intel.repositories.watchlist_intel_repository import (
     WatchlistIntelRepository,
 )
-from gmgn_twitter_intel.domains.watchlist_intel.types import encode_watchlist_timeline_cursor
+from parallax.domains.watchlist_intel.types import encode_watchlist_timeline_cursor
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate

@@ -47,57 +47,57 @@ Known baseline expectation: no known failing tests are accepted for this plan. I
 
 ### New Python files
 
-- `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py`
+- `src/parallax/domains/token_intel/scoring/factor_snapshot.py`
   - Owns `TOKEN_FACTOR_SNAPSHOT_VERSION`, factor point helpers, social factor assembly, market/on-chain-lite factor assembly, hard gates, and composite score derivation.
   - Pure functions only; no DB, no HTTP, no agent calls.
-- `src/gmgn_twitter_intel/domains/asset_market/services/market_freshness_demand.py`
+- `src/parallax/domains/asset_market/services/market_freshness_demand.py`
   - Owns Token Radar product freshness classes and refresh priority scoring for market observation.
   - Pure domain selection helpers; provider calls remain in `asset_market_sync.py`.
-- `src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_recommendation.py`
+- `src/parallax/domains/pulse_lab/types/pulse_recommendation.py`
   - Replaces thesis-first agent output for current Pulse runs.
   - Validates factor-key-backed reasons and forbids unsupported execution language.
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260510_0022_token_radar_factor_snapshot_hard_cut.py`
+- `src/parallax/platform/db/alembic/versions/20260510_0022_token_radar_factor_snapshot_hard_cut.py`
   - Adds current factor snapshot storage columns and current Pulse recommendation storage columns.
 
 ### Modified Python files
 
-- `src/gmgn_twitter_intel/domains/token_intel/_constants.py`
+- `src/parallax/domains/token_intel/_constants.py`
   - Bump `TOKEN_RADAR_PROJECTION_VERSION` to `token-radar-v9-factor-snapshot`.
   - Replace score component constant with factor family constant.
-- `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
+- `src/parallax/domains/token_intel/services/token_radar_projection.py`
   - Build `factor_snapshot_json`.
   - Rank from factor snapshot composite score.
   - Stop using old score JSON as runtime source.
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
+- `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
   - Insert/read `factor_snapshot_json` and `factor_version`.
   - Stop requiring current callers to pass `attention_json`, `market_json`, `price_json`, `score_json` as the runtime contract.
-- `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`
+- `src/parallax/domains/token_intel/read_models/asset_flow_service.py`
   - Read current Token Radar facts from `factor_snapshot_json`.
-- `src/gmgn_twitter_intel/domains/asset_market/services/asset_market_sync.py`
+- `src/parallax/domains/asset_market/services/asset_market_sync.py`
   - Use explicit market freshness demand when selecting DEX radar refresh candidates.
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/asset_market_sync_worker.py`
+- `src/parallax/domains/asset_market/runtime/asset_market_sync_worker.py`
   - Accept configurable DEX refresh interval, stale thresholds, and limits instead of sharing only the CEX sync interval.
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py`
+- `src/parallax/domains/asset_market/repositories/registry_repository.py`
   - Return enough active target metadata for deterministic freshness priority ordering.
-- `src/gmgn_twitter_intel/platform/config/settings.py`
+- `src/parallax/platform/config/settings.py`
   - Add OKX/market freshness knobs for DEX refresh cadence and hot/warm SLOs.
-- `src/gmgn_twitter_intel/domains/pulse_lab/interfaces.py`
+- `src/parallax/domains/pulse_lab/interfaces.py`
   - Bump Pulse version constants from thesis v1 to factor recommendation v1.
-- `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
   - Pass factor snapshot through candidate context.
   - Gate before agent.
   - Persist factor snapshot and agent recommendation.
   - Stop passing `radar_score_json` and `market_context_json`.
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py`
+- `src/parallax/domains/pulse_lab/services/pulse_candidate_gate.py`
   - Consume factor snapshot rather than thesis + radar/market/timeline context.
-- `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py`
+- `src/parallax/domains/pulse_lab/repositories/pulse_repository.py`
   - Replace candidate upsert contract with `factor_snapshot_json`, `agent_recommendation_json`, and `gate_json`.
   - Update summary `market_fresh_count` to read factor snapshot.
-- `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`
+- `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py`
   - Expose factor facts and recommendation; remove current read-model dependency on `radar_score_json` and `market_context_json`.
-- `src/gmgn_twitter_intel/integrations/openai_agents/pulse_thesis_agent_client.py`
+- `src/parallax/integrations/openai_agents/pulse_thesis_agent_client.py`
   - Rename or replace thesis client behavior with recommendation output schema. The file may keep its name only if imports make renaming too noisy; runtime semantics must be recommendation-first.
-- `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py`
+- `src/parallax/domains/notifications/services/notification_rules.py`
   - Gate severity from factor snapshot.
   - Render fact-first Signal Pulse body.
 
@@ -137,9 +137,9 @@ Known baseline expectation: no known failing tests are accepted for this plan. I
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260510_0022_token_radar_factor_snapshot_hard_cut.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260510_0022_token_radar_factor_snapshot_hard_cut.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
+- Modify: `src/parallax/domains/pulse_lab/repositories/pulse_repository.py`
 - Test: `tests/test_token_radar_repository.py`
 - Test: `tests/test_pulse_repository.py`
 
@@ -286,9 +286,9 @@ Known baseline expectation: no known failing tests are accepted for this plan. I
 - [ ] **Step 6: Commit**
 
   ```bash
-  git add src/gmgn_twitter_intel/platform/db/alembic/versions/20260510_0022_token_radar_factor_snapshot_hard_cut.py \
-          src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py \
-          src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py \
+  git add src/parallax/platform/db/alembic/versions/20260510_0022_token_radar_factor_snapshot_hard_cut.py \
+          src/parallax/domains/token_intel/repositories/token_radar_repository.py \
+          src/parallax/domains/pulse_lab/repositories/pulse_repository.py \
           tests/test_token_radar_repository.py tests/test_pulse_repository.py
   git commit -m "feat: add factor snapshot hard cut storage"
   ```
@@ -297,8 +297,8 @@ Known baseline expectation: no known failing tests are accepted for this plan. I
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/__init__.py`
+- Create: `src/parallax/domains/token_intel/scoring/factor_snapshot.py`
+- Modify: `src/parallax/domains/token_intel/scoring/__init__.py`
 - Test: `tests/unit/test_factor_snapshot.py`
 
 - [ ] **Step 1: Write tests for DEX floors, CEX separation, and social quality**
@@ -470,8 +470,8 @@ Known baseline expectation: no known failing tests are accepted for this plan. I
 - [ ] **Step 4: Commit**
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py \
-          src/gmgn_twitter_intel/domains/token_intel/scoring/__init__.py \
+  git add src/parallax/domains/token_intel/scoring/factor_snapshot.py \
+          src/parallax/domains/token_intel/scoring/__init__.py \
           tests/unit/test_factor_snapshot.py
   git commit -m "feat: build token factor snapshots"
   ```
@@ -480,9 +480,9 @@ Known baseline expectation: no known failing tests are accepted for this plan. I
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/_constants.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`
+- Modify: `src/parallax/domains/token_intel/_constants.py`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py`
+- Modify: `src/parallax/domains/token_intel/read_models/asset_flow_service.py`
 - Test: `tests/test_token_radar_projection.py`
 - Test: `tests/test_token_radar_apply_cross_section.py`
 - Test: `tests/test_token_radar_idempotency.py`
@@ -618,9 +618,9 @@ Known baseline expectation: no known failing tests are accepted for this plan. I
 - [ ] **Step 8: Commit**
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/token_intel/_constants.py \
-          src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py \
-          src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py \
+  git add src/parallax/domains/token_intel/_constants.py \
+          src/parallax/domains/token_intel/services/token_radar_projection.py \
+          src/parallax/domains/token_intel/read_models/asset_flow_service.py \
           tests/test_token_radar_projection.py tests/test_token_radar_apply_cross_section.py \
           tests/test_token_radar_idempotency.py tests/test_token_radar_audit_cli.py
   git commit -m "feat: hard cut token radar to factor snapshots"
@@ -630,11 +630,11 @@ Known baseline expectation: no known failing tests are accepted for this plan. I
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/domains/asset_market/services/market_freshness_demand.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/services/asset_market_sync.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/asset_market_sync_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py`
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
+- Create: `src/parallax/domains/asset_market/services/market_freshness_demand.py`
+- Modify: `src/parallax/domains/asset_market/services/asset_market_sync.py`
+- Modify: `src/parallax/domains/asset_market/runtime/asset_market_sync_worker.py`
+- Modify: `src/parallax/domains/asset_market/repositories/registry_repository.py`
+- Modify: `src/parallax/platform/config/settings.py`
 - Test: `tests/test_market_freshness_demand.py`
 - Test: `tests/test_asset_market_sync.py`
 - Test: `tests/test_settings.py`
@@ -644,7 +644,7 @@ Known baseline expectation: no known failing tests are accepted for this plan. I
   Create `tests/test_market_freshness_demand.py`:
 
   ```python
-  from gmgn_twitter_intel.domains.asset_market.services.market_freshness_demand import (
+  from parallax.domains.asset_market.services.market_freshness_demand import (
       classify_market_refresh_candidate,
       prioritize_market_refresh_candidates,
   )
@@ -969,11 +969,11 @@ Known baseline expectation: no known failing tests are accepted for this plan. I
 - [ ] **Step 8: Commit**
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/asset_market/services/market_freshness_demand.py \
-          src/gmgn_twitter_intel/domains/asset_market/services/asset_market_sync.py \
-          src/gmgn_twitter_intel/domains/asset_market/runtime/asset_market_sync_worker.py \
-          src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py \
-          src/gmgn_twitter_intel/platform/config/settings.py \
+  git add src/parallax/domains/asset_market/services/market_freshness_demand.py \
+          src/parallax/domains/asset_market/services/asset_market_sync.py \
+          src/parallax/domains/asset_market/runtime/asset_market_sync_worker.py \
+          src/parallax/domains/asset_market/repositories/registry_repository.py \
+          src/parallax/platform/config/settings.py \
           tests/test_market_freshness_demand.py tests/test_asset_market_sync.py tests/test_settings.py
   git commit -m "feat: prioritize hot token market freshness"
   ```
@@ -982,9 +982,9 @@ Known baseline expectation: no known failing tests are accepted for this plan. I
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/interfaces.py`
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_recommendation.py`
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/pulse_thesis_agent_client.py`
+- Modify: `src/parallax/domains/pulse_lab/interfaces.py`
+- Create: `src/parallax/domains/pulse_lab/types/pulse_recommendation.py`
+- Modify: `src/parallax/integrations/openai_agents/pulse_thesis_agent_client.py`
 - Test: `tests/test_pulse_recommendation.py`
 - Test: `tests/test_pulse_thesis_agent_client.py`
 
@@ -1102,9 +1102,9 @@ Known baseline expectation: no known failing tests are accepted for this plan. I
 - [ ] **Step 6: Commit**
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/pulse_lab/interfaces.py \
-          src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_recommendation.py \
-          src/gmgn_twitter_intel/integrations/openai_agents/pulse_thesis_agent_client.py \
+  git add src/parallax/domains/pulse_lab/interfaces.py \
+          src/parallax/domains/pulse_lab/types/pulse_recommendation.py \
+          src/parallax/integrations/openai_agents/pulse_thesis_agent_client.py \
           tests/test_pulse_recommendation.py tests/test_pulse_thesis_agent_client.py
   git commit -m "feat: replace pulse thesis with factor recommendations"
   ```
@@ -1113,9 +1113,9 @@ Known baseline expectation: no known failing tests are accepted for this plan. I
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_timeline_context.py`
+- Modify: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_candidate_gate.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_timeline_context.py`
 - Test: `tests/test_pulse_candidate_gate.py`
 - Test: `tests/test_pulse_candidate_worker.py`
 - Test: `tests/test_pulse_timeline_context.py`
@@ -1247,9 +1247,9 @@ Known baseline expectation: no known failing tests are accepted for this plan. I
 - [ ] **Step 7: Commit**
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py \
-          src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py \
-          src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_timeline_context.py \
+  git add src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py \
+          src/parallax/domains/pulse_lab/services/pulse_candidate_gate.py \
+          src/parallax/domains/pulse_lab/services/pulse_timeline_context.py \
           tests/test_pulse_candidate_gate.py tests/test_pulse_candidate_worker.py tests/test_pulse_timeline_context.py
   git commit -m "feat: gate pulse candidates from factor snapshots"
   ```
@@ -1258,8 +1258,8 @@ Known baseline expectation: no known failing tests are accepted for this plan. I
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py`
+- Modify: `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py`
+- Modify: `src/parallax/domains/notifications/services/notification_rules.py`
 - Test: `tests/test_signal_pulse_service.py`
 - Test: `tests/test_notification_rules.py`
 
@@ -1367,8 +1367,8 @@ Known baseline expectation: no known failing tests are accepted for this plan. I
 - [ ] **Step 6: Commit**
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py \
-          src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py \
+  git add src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py \
+          src/parallax/domains/notifications/services/notification_rules.py \
           tests/test_signal_pulse_service.py tests/test_notification_rules.py
   git commit -m "feat: render signal pulse from factor snapshots"
   ```
@@ -1518,10 +1518,10 @@ Known baseline expectation: no known failing tests are accepted for this plan. I
   ROOT = Path(__file__).resolve().parents[1]
 
   RUNTIME_FILES = [
-      ROOT / "src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py",
-      ROOT / "src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py",
-      ROOT / "src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py",
-      ROOT / "src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py",
+      ROOT / "src/parallax/domains/token_intel/services/token_radar_projection.py",
+      ROOT / "src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py",
+      ROOT / "src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py",
+      ROOT / "src/parallax/domains/notifications/services/notification_rules.py",
   ]
 
   FORBIDDEN_PATTERNS = [
@@ -1552,7 +1552,7 @@ Known baseline expectation: no known failing tests are accepted for this plan. I
 
   Update:
 
-  - `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
+  - `src/parallax/domains/token_intel/ARCHITECTURE.md`
   - `docs/ARCHITECTURE.md`
   - `docs/CONTRACTS.md`
 
@@ -1582,7 +1582,7 @@ Known baseline expectation: no known failing tests are accepted for this plan. I
 - [ ] **Step 6: Commit**
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md docs/ARCHITECTURE.md docs/CONTRACTS.md \
+  git add src/parallax/domains/token_intel/ARCHITECTURE.md docs/ARCHITECTURE.md docs/CONTRACTS.md \
           tests/architecture/test_no_factor_snapshot_fallback.py
   git commit -m "chore: remove factor snapshot fallback paths"
   ```
@@ -1603,7 +1603,7 @@ Known baseline expectation: no known failing tests are accepted for this plan. I
 
 - [ ] **Step 2: Rebuild Token Radar projection**
 
-  Use the project CLI command already used for Token Radar rebuilds. If command spelling differs, inspect `uv run gmgn-twitter-intel --help` and record the exact command in verification.
+  Use the project CLI command already used for Token Radar rebuilds. If command spelling differs, inspect `uv run parallax --help` and record the exact command in verification.
 
   Expected DB check:
 

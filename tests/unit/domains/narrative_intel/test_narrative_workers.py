@@ -5,35 +5,35 @@ from types import SimpleNamespace
 
 import pytest
 
-from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
-from gmgn_twitter_intel.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
-from gmgn_twitter_intel.domains.narrative_intel.repositories.narrative_repository import NarrativeRepository
-from gmgn_twitter_intel.domains.narrative_intel.runtime.mention_semantics_worker import (
+from parallax.app.runtime.worker_base import WorkerBase
+from parallax.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
+from parallax.domains.narrative_intel.repositories.narrative_repository import NarrativeRepository
+from parallax.domains.narrative_intel.runtime.mention_semantics_worker import (
     MentionSemanticsWorker,
 )
-from gmgn_twitter_intel.domains.narrative_intel.runtime.narrative_admission_worker import (
+from parallax.domains.narrative_intel.runtime.narrative_admission_worker import (
     NarrativeAdmissionWorker,
 )
-from gmgn_twitter_intel.domains.narrative_intel.runtime.token_discussion_digest_worker import (
+from parallax.domains.narrative_intel.runtime.token_discussion_digest_worker import (
     TokenDiscussionDigestWorker,
 )
-from gmgn_twitter_intel.domains.narrative_intel.types.discussion_digest import (
+from parallax.domains.narrative_intel.types.discussion_digest import (
     DigestArgument,
     DiscussionDigestResult,
     NarrativeCluster,
     TokenDiscussionDigest,
 )
-from gmgn_twitter_intel.domains.narrative_intel.types.mention_semantics import (
+from parallax.domains.narrative_intel.types.mention_semantics import (
     MentionSemanticLabel,
     MentionSemanticsBatchResult,
 )
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
-from gmgn_twitter_intel.platform.agent_execution import (
+from parallax.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
+from parallax.platform.agent_execution import (
     AgentCapacityReservation,
     AgentExecutionError,
     AgentExecutionErrorClass,
 )
-from gmgn_twitter_intel.platform.cancellation import WORKER_HARD_TIMEOUT_CANCEL_REASON
+from parallax.platform.cancellation import WORKER_HARD_TIMEOUT_CANCEL_REASON
 
 
 def test_workers_are_workerbase_subclasses():

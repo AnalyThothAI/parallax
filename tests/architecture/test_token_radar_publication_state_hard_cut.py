@@ -4,7 +4,7 @@ import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src" / "gmgn_twitter_intel"
+SRC = ROOT / "src" / "parallax"
 TOKEN_RADAR_PROJECTION = SRC / "domains/token_intel/services/token_radar_projection.py"
 
 BANNED_RUNTIME_TOKENS = (

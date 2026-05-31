@@ -11,8 +11,8 @@ from typing import Any
 import pytest
 import yaml
 
-from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
-from gmgn_twitter_intel.app.runtime.worker_manifest import (
+from parallax.app.runtime.worker_base import WorkerBase
+from parallax.app.runtime.worker_manifest import (
     WorkerKind,
     all_worker_manifests,
     worker_class_by_name,
@@ -21,7 +21,7 @@ from gmgn_twitter_intel.app.runtime.worker_manifest import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src" / "gmgn_twitter_intel"
+SRC = ROOT / "src" / "parallax"
 DOCS_WORKERS = ROOT / "docs" / "WORKERS.md"
 DOCS_CONTRACTS = ROOT / "docs" / "CONTRACTS.md"
 NARRATIVE_ARCHITECTURE = SRC / "domains" / "narrative_intel" / "ARCHITECTURE.md"
@@ -230,7 +230,7 @@ EXPECTED_WORKER_FACTORY_FILES = {
     "token_intel.py",
 }
 BOOTSTRAP_RUNTIME_WORKER_IMPORT_ALLOWLIST = {
-    "gmgn_twitter_intel.domains.ingestion.runtime.collector_service",
+    "parallax.domains.ingestion.runtime.collector_service",
 }
 STUBBED_TASK_WORKER_QUALIFIED_NAME_FRAGMENTS: tuple[str, ...] = ()
 
@@ -302,7 +302,7 @@ def test_worker_queue_depth_overrides_are_status_payload_compatible() -> None:
 
 @pytest.mark.architecture
 def test_worker_manifest_matches_workers_yaml_schema() -> None:
-    from gmgn_twitter_intel.platform.config.settings import WorkersSettings
+    from parallax.platform.config.settings import WorkersSettings
 
     expected_keys = set(MANIFEST_WORKER_CLASSES)
     settings_keys = set(WorkersSettings.model_fields) - {"defaults", "agent_runtime"}
@@ -442,7 +442,7 @@ def test_token_image_mirror_starts_between_profile_refresh_and_current_projectio
 
 @pytest.mark.architecture
 def test_non_continuous_worker_defaults_have_finite_hard_timeout() -> None:
-    from gmgn_twitter_intel.platform.config.settings import WorkersSettings, default_workers_yaml
+    from parallax.platform.config.settings import WorkersSettings, default_workers_yaml
 
     settings = WorkersSettings(**yaml.safe_load(default_workers_yaml()))
 
@@ -457,7 +457,7 @@ def test_non_continuous_worker_defaults_have_finite_hard_timeout() -> None:
 
 @pytest.mark.architecture
 def test_worker_construction_is_split_into_domain_factories() -> None:
-    from gmgn_twitter_intel.app.runtime.worker_factories import worker_factory_specs
+    from parallax.app.runtime.worker_factories import worker_factory_specs
 
     bootstrap_path = SRC / "app/runtime/bootstrap.py"
     bootstrap_tree = _parse(bootstrap_path)
@@ -540,10 +540,10 @@ def test_process_global_setters_only_in_bootstrap() -> None:
 
 @pytest.mark.architecture
 def test_no_old_readyz_worker_sections(monkeypatch: pytest.MonkeyPatch) -> None:
-    from gmgn_twitter_intel.app.runtime import app as app_module
-    from gmgn_twitter_intel.app.runtime.queue_health import empty_queue_health
-    from gmgn_twitter_intel.app.runtime.worker_manifest import worker_queue_health_tables
-    from gmgn_twitter_intel.app.surfaces.api.schemas import StatusData
+    from parallax.app.runtime import app as app_module
+    from parallax.app.runtime.queue_health import empty_queue_health
+    from parallax.app.runtime.worker_manifest import worker_queue_health_tables
+    from parallax.app.surfaces.api.schemas import StatusData
 
     now_ms = 1_700_000_000_000
     queue_tables = worker_queue_health_tables()
@@ -618,7 +618,7 @@ def test_no_old_readyz_worker_sections(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.architecture
 def test_no_old_worker_runtime_settings() -> None:
-    from gmgn_twitter_intel.platform.config.settings import (
+    from parallax.platform.config.settings import (
         CollectorConfig,
         LlmConfig,
         NotificationsConfig,
@@ -703,7 +703,7 @@ def test_narrative_hard_cut_contracts_are_documented() -> None:
 
 @pytest.mark.architecture
 def test_wake_bus_is_emit_only() -> None:
-    from gmgn_twitter_intel.app.runtime import wake_bus
+    from parallax.app.runtime import wake_bus
 
     text = (SRC / "app/runtime/wake_bus.py").read_text(encoding="utf-8")
     legacy_channel = "_".join(("market", "observation", "written"))
@@ -796,7 +796,7 @@ def test_dirty_target_control_plane_sql_is_repository_owned(table_name: str) -> 
 @pytest.mark.architecture
 def test_token_radar_runtime_has_no_full_window_source_query() -> None:
     old_query_path = SRC / "domains/token_intel/queries/token_radar_source_query.py"
-    old_module = "gmgn_twitter_intel.domains.token_intel.queries.token_radar_source_query"
+    old_module = "parallax.domains.token_intel.queries.token_radar_source_query"
     violations = [_rel(path) for path in SRC.rglob("*.py") if path != old_query_path and old_module in path.read_text()]
 
     assert not old_query_path.exists()

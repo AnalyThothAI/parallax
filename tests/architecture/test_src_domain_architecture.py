@@ -5,10 +5,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import contains_trading_execution_instruction
+from parallax.domains.pulse_lab.types.agent_decision import contains_trading_execution_instruction
 
 ROOT = Path(__file__).resolve().parents[2]
-SRC_ROOT = ROOT / "src" / "gmgn_twitter_intel"
+SRC_ROOT = ROOT / "src" / "parallax"
 
 DOMAINS = {
     "ingestion",
@@ -42,35 +42,35 @@ SQL_ALLOWED_PARTS = {
     "app/runtime",
 }
 DOMAIN_CROSS_CUTTING_PREFIXES = (
-    "gmgn_twitter_intel.integrations.",
-    "gmgn_twitter_intel.platform.db.",
-    "gmgn_twitter_intel.platform.paths.",
+    "parallax.integrations.",
+    "parallax.platform.db.",
+    "parallax.platform.paths.",
 )
 SERVICE_RUNTIME_PARTS = {"services", "scoring", "runtime"}
 REPOSITORY_UPWARD_IMPORT_ALLOWLIST = {
     (
         SRC_ROOT / "domains/narrative_intel/repositories/narrative_repository.py",
-        "gmgn_twitter_intel.domains.narrative_intel.services.fingerprints",
+        "parallax.domains.narrative_intel.services.fingerprints",
     ),
     (
         SRC_ROOT / "domains/news_intel/repositories/news_repository.py",
-        "gmgn_twitter_intel.domains.news_intel.services.news_canonical_identity",
+        "parallax.domains.news_intel.services.news_canonical_identity",
     ),
     (
         SRC_ROOT / "domains/news_intel/repositories/news_repository.py",
-        "gmgn_twitter_intel.domains.news_intel.services.news_url_identity",
+        "parallax.domains.news_intel.services.news_url_identity",
     ),
     (
         SRC_ROOT / "domains/token_intel/repositories/token_radar_repository.py",
-        "gmgn_twitter_intel.domains.token_intel.services.token_radar_payload_hash",
+        "parallax.domains.token_intel.services.token_radar_payload_hash",
     ),
 }
 PROVIDER_WIRING_DIR = SRC_ROOT / "app" / "runtime" / "provider_wiring"
 PROVIDER_WIRING_FACADE = SRC_ROOT / "app" / "runtime" / "providers_wiring.py"
 MODEL_EXECUTION_DIR = SRC_ROOT / "integrations" / "model_execution"
 PROVIDER_WIRING_FACADE_ALLOWED_IMPORTS = {
-    "gmgn_twitter_intel.app.runtime.provider_wiring",
-    "gmgn_twitter_intel.app.runtime.provider_wiring.types",
+    "parallax.app.runtime.provider_wiring",
+    "parallax.app.runtime.provider_wiring.types",
 }
 PROVIDER_WIRING_FACADE_PUBLIC_EXPORTS = {
     "AssetMarketProviders",
@@ -84,11 +84,11 @@ PROVIDER_WIRING_FACADE_PUBLIC_EXPORTS = {
     "wire_asset_market_providers",
     "wire_providers",
 }
-PROVIDER_WIRING_FAMILY_PREFIX = "gmgn_twitter_intel.app.runtime.provider_wiring."
+PROVIDER_WIRING_FAMILY_PREFIX = "parallax.app.runtime.provider_wiring."
 OPERATOR_CLI_PROVIDER_FAMILY_IMPORTS = {
     (
         SRC_ROOT / "app" / "surfaces" / "cli" / "commands" / "ops.py",
-        "gmgn_twitter_intel.app.runtime.provider_wiring.model_execution",
+        "parallax.app.runtime.provider_wiring.model_execution",
     ),
 }
 FACADE_CONCRETE_EXPORTS = {
@@ -144,7 +144,7 @@ def _imports(path: Path) -> list[str]:
                 imports.append(".".join([*base, node.module]))
             else:
                 imports.append(node.module)
-    return [item for item in imports if item.startswith("gmgn_twitter_intel.")]
+    return [item for item in imports if item.startswith("parallax.")]
 
 
 def _imported_names(path: Path) -> list[tuple[str, str, int]]:
@@ -152,7 +152,7 @@ def _imported_names(path: Path) -> list[tuple[str, str, int]]:
     for node in ast.walk(_parse(path)):
         if not isinstance(node, ast.ImportFrom) or node.module is None:
             continue
-        if not node.module.startswith("gmgn_twitter_intel."):
+        if not node.module.startswith("parallax."):
             continue
         names.extend((node.module, alias.name, node.lineno) for alias in node.names)
     return names
@@ -174,7 +174,7 @@ def _import_records(path: Path) -> list[tuple[str, int]]:
             else:
                 imported = node.module
             records.append((imported, node.lineno))
-    return [(imported, lineno) for imported, lineno in records if imported.startswith("gmgn_twitter_intel.")]
+    return [(imported, lineno) for imported, lineno in records if imported.startswith("parallax.")]
 
 
 def _all_import_records(path: Path) -> list[tuple[str, int]]:
@@ -306,7 +306,7 @@ def test_platform_does_not_import_domains_or_integrations_or_app() -> None:
     for path in (SRC_ROOT / "platform").rglob("*.py"):
         for imported in _imports(path):
             if imported.startswith(
-                ("gmgn_twitter_intel.domains.", "gmgn_twitter_intel.integrations.", "gmgn_twitter_intel.app.")
+                ("parallax.domains.", "parallax.integrations.", "parallax.app.")
             ):
                 offenders.append((path.relative_to(ROOT).as_posix(), imported))  # noqa: PERF401 -- nested-loop append keeps failure construction readable
     _assert_no_offenders(
@@ -322,7 +322,7 @@ def test_cross_domain_imports_use_interfaces() -> None:
     for path in (SRC_ROOT / "domains").rglob("*.py"):
         current_domain = _domain_name(path)
         for imported in _imports(path):
-            prefix = "gmgn_twitter_intel.domains."
+            prefix = "parallax.domains."
             if not imported.startswith(prefix):
                 continue
             parts = imported.removeprefix(prefix).split(".")
@@ -361,7 +361,7 @@ def test_repositories_and_queries_do_not_import_services_or_runtime() -> None:
 
 def test_pulse_lab_services_do_not_import_runtime_worker_modules() -> None:
     service_root = SRC_ROOT / "domains" / "pulse_lab" / "services"
-    runtime_prefix = "gmgn_twitter_intel.domains.pulse_lab.runtime."
+    runtime_prefix = "parallax.domains.pulse_lab.runtime."
     offenders = [
         (path.relative_to(ROOT).as_posix(), imported)
         for path in service_root.rglob("*.py")
@@ -391,7 +391,7 @@ def test_raw_sql_is_owned_by_repositories_queries_or_app_runtime() -> None:
 
 
 def test_no_business_modules_import_old_flat_packages() -> None:
-    prefixes = tuple(f"gmgn_twitter_intel.{name}." for name in LEGACY_PACKAGES)
+    prefixes = tuple(f"parallax.{name}." for name in LEGACY_PACKAGES)
     offenders: list[tuple[str, str]] = []
     for path in _python_files():
         if _top_package(path) in LEGACY_PACKAGES:
@@ -479,8 +479,8 @@ def test_app_runtime_app_does_not_import_integrations_or_domain_providers() -> N
     offenders = [
         f"{path.relative_to(ROOT).as_posix()}:{lineno} imports {imported}"
         for imported, lineno in _import_records(path)
-        if imported.startswith("gmgn_twitter_intel.integrations.")
-        or (imported.startswith("gmgn_twitter_intel.domains.") and ".providers" in imported)
+        if imported.startswith("parallax.integrations.")
+        or (imported.startswith("parallax.domains.") and ".providers" in imported)
     ]
     _assert_no_offenders(
         offenders,
@@ -505,17 +505,17 @@ def test_service_provider_wiring_is_the_only_integration_provider_join_point() -
     facade_integration_imports = [
         f"{PROVIDER_WIRING_FACADE.relative_to(ROOT).as_posix()}:{lineno} imports {imported}"
         for imported, lineno in _import_records(PROVIDER_WIRING_FACADE)
-        if imported.startswith("gmgn_twitter_intel.integrations.")
+        if imported.startswith("parallax.integrations.")
     ]
     offenders.extend(facade_integration_imports)
     for path in _python_files():
         imports = [imported for imported, _lineno in _import_records(path)]
-        imports_integrations = any(imported.startswith("gmgn_twitter_intel.integrations.") for imported in imports)
+        imports_integrations = any(imported.startswith("parallax.integrations.") for imported in imports)
         imports_domain_providers = any(
-            imported.startswith("gmgn_twitter_intel.domains.") and ".providers" in imported for imported in imports
+            imported.startswith("parallax.domains.") and ".providers" in imported for imported in imports
         )
         allowed_adapter_protocol_import = (
-            MODEL_EXECUTION_DIR in path.parents and "gmgn_twitter_intel.domains.pulse_lab.providers" in imports
+            MODEL_EXECUTION_DIR in path.parents and "parallax.domains.pulse_lab.providers" in imports
         )
         if (
             imports_integrations
@@ -573,7 +573,7 @@ def test_domains_and_surfaces_do_not_import_provider_family_modules_or_facade_co
                         continue
                     offenders.append(f"{path.relative_to(ROOT).as_posix()}:{lineno} imports {imported}")
             for module, name, lineno in _imported_names(path):
-                if module == "gmgn_twitter_intel.app.runtime.providers_wiring" and name in FACADE_CONCRETE_EXPORTS:
+                if module == "parallax.app.runtime.providers_wiring" and name in FACADE_CONCRETE_EXPORTS:
                     offenders.append(f"{path.relative_to(ROOT).as_posix()}:{lineno} imports facade concrete {name}")
     _assert_no_offenders(
         offenders,
@@ -595,10 +595,10 @@ import importlib
 import sys
 
 before = set(sys.modules)
-importlib.import_module("gmgn_twitter_intel.app.runtime.providers_wiring")
+importlib.import_module("parallax.app.runtime.providers_wiring")
 loaded = sorted(
     name for name in set(sys.modules) - before
-    if name.startswith("gmgn_twitter_intel.integrations.")
+    if name.startswith("parallax.integrations.")
 )
 if loaded:
     raise SystemExit("\\n".join(loaded))
@@ -624,7 +624,7 @@ def test_pulse_agent_route_policy_stays_in_domain() -> None:
     offenders = [
         f"{path.relative_to(ROOT).as_posix()}:{lineno} imports {imported}"
         for imported, lineno in _all_import_records(path)
-        if imported.startswith("agents") or imported.startswith("gmgn_twitter_intel.integrations.")
+        if imported.startswith("agents") or imported.startswith("parallax.integrations.")
     ]
     _assert_no_offenders(
         offenders,
@@ -673,8 +673,8 @@ def test_model_execution_integrations_do_not_import_repositories() -> None:
 def test_model_execution_integrations_do_not_import_pulse_queries_or_services() -> None:
     offenders: list[str] = []
     forbidden = (
-        "gmgn_twitter_intel.domains.pulse_lab.queries",
-        "gmgn_twitter_intel.domains.pulse_lab.services",
+        "parallax.domains.pulse_lab.queries",
+        "parallax.domains.pulse_lab.services",
     )
     for path in MODEL_EXECUTION_DIR.rglob("*.py"):
         for imported, lineno in _import_records(path):

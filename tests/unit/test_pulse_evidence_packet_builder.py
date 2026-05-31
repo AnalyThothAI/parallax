@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.domains.pulse_lab.services.evidence_completeness_gate import EvidenceCompletenessGate
-from gmgn_twitter_intel.domains.pulse_lab.services.evidence_packet_builder import PulseEvidenceBuilder
+from parallax.domains.pulse_lab.services.evidence_completeness_gate import EvidenceCompletenessGate
+from parallax.domains.pulse_lab.services.evidence_packet_builder import PulseEvidenceBuilder
 
 NOW_MS = 1_800_000_000_000
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.asset_market.identity_evidence_policy import (
+from parallax.domains.asset_market.identity_evidence_policy import (
     CONFIDENCE_MENTION_ONLY,
     CONFIDENCE_PROVIDER_CANDIDATE,
     CONFIDENCE_PROVIDER_EXACT,
@@ -8,8 +8,8 @@ from gmgn_twitter_intel.domains.asset_market.identity_evidence_policy import (
     EVIDENCE_OKX_DEX_SYMBOL_CANDIDATE,
     EVIDENCE_TWEET_CONTRACT_MENTION,
 )
-from gmgn_twitter_intel.domains.asset_market.repositories.identity_evidence_repository import IdentityEvidenceRepository
-from gmgn_twitter_intel.domains.asset_market.repositories.registry_repository import RegistryRepository
+from parallax.domains.asset_market.repositories.identity_evidence_repository import IdentityEvidenceRepository
+from parallax.domains.asset_market.repositories.registry_repository import RegistryRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 

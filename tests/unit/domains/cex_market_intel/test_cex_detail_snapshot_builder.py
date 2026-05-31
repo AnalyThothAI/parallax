@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.cex_market_intel.services.cex_detail_snapshot_builder import (
+from parallax.domains.cex_market_intel.services.cex_detail_snapshot_builder import (
     build_cex_detail_snapshot,
 )
 

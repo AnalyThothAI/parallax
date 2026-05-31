@@ -49,7 +49,7 @@ The root cause is mixed:
 - Provider raw frames remain inputs, not business facts.
 - Derived read models must have one runtime writer and be rebuildable from facts.
 - Any migration touching large existing tables must include validity checks for indexes created concurrently.
-- Real-data checks must use `uv run gmgn-twitter-intel config` and report only paths / booleans / counts, never secrets.
+- Real-data checks must use `uv run parallax config` and report only paths / booleans / counts, never secrets.
 
 ---
 
@@ -68,13 +68,13 @@ Sanity checks:
 
 ```bash
 git status --short
-uv run gmgn-twitter-intel config
+uv run parallax config
 ```
 
 Expected config output:
 
-- `config_path` points at `/Users/qinghuan/.gmgn-twitter-intel/config.yaml`
-- `workers_config_path` points at `/Users/qinghuan/.gmgn-twitter-intel/workers.yaml`
+- `config_path` points at `/Users/qinghuan/.parallax/config.yaml`
+- `workers_config_path` points at `/Users/qinghuan/.parallax/workers.yaml`
 - secrets are not printed
 
 ---
@@ -102,8 +102,8 @@ Suggested architecture assertions:
 ```python
 def test_token_radar_runtime_has_no_single_target_source_query() -> None:
     runtime_files = [
-        ROOT / "src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py",
-        ROOT / "src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py",
+        ROOT / "src/parallax/domains/token_intel/services/token_radar_projection.py",
+        ROOT / "src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py",
     ]
     text = "\n".join(path.read_text() for path in runtime_files)
     assert "TokenRadarTargetFeatureQuery" not in text
@@ -113,8 +113,8 @@ def test_token_radar_runtime_has_no_single_target_source_query() -> None:
 
 def test_macro_request_path_has_no_observation_dedupe_window() -> None:
     request_files = [
-        ROOT / "src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py",
-        ROOT / "src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py",
+        ROOT / "src/parallax/app/surfaces/api/routes_macro.py",
+        ROOT / "src/parallax/domains/macro_intel/repositories/macro_intel_repository.py",
     ]
     text = "\n".join(path.read_text() for path in request_files)
     forbidden = [
@@ -150,8 +150,8 @@ Current issue:
 
 Files:
 
-- `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
+- `src/parallax/domains/token_intel/services/token_radar_projection.py`
+- `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
 - `tests/unit/test_token_radar_projection.py`
 
 Add a repository readiness method:
@@ -235,9 +235,9 @@ Current issue:
 
 Files:
 
-- `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_target_feature_query.py`
-- `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
+- `src/parallax/domains/token_intel/queries/token_radar_target_feature_query.py`
+- `src/parallax/domains/token_intel/services/token_radar_projection.py`
+- `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
 - `tests/unit/test_token_radar_projection.py`
 - `tests/unit/test_cex_binance_read_path_filters.py`
 
@@ -373,10 +373,10 @@ Current issue:
 
 Files:
 
-- `src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py`
-- `src/gmgn_twitter_intel/domains/macro_intel/runtime/macro_view_projection_worker.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py`
-- `src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md`
+- `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`
+- `src/parallax/domains/macro_intel/runtime/macro_view_projection_worker.py`
+- `src/parallax/app/surfaces/api/routes_macro.py`
+- `src/parallax/domains/macro_intel/ARCHITECTURE.md`
 - `tests/unit/domains/macro_intel/test_macro_feature_engine.py`
 - `tests/unit/domains/macro_intel/test_macro_migration_contract.py`
 - `tests/unit/domains/macro_intel/test_macro_view_projection_worker.py`
@@ -535,10 +535,10 @@ Current issue:
 
 Files:
 
-- `src/gmgn_twitter_intel/app/runtime/queue_terminal.py`
-- `src/gmgn_twitter_intel/app/runtime/queue_health.py`
-- `src/gmgn_twitter_intel/app/surfaces/cli/parser.py`
-- `src/gmgn_twitter_intel/app/surfaces/cli/commands/queue_ops.py`
+- `src/parallax/app/runtime/queue_terminal.py`
+- `src/parallax/app/runtime/queue_health.py`
+- `src/parallax/app/surfaces/cli/parser.py`
+- `src/parallax/app/surfaces/cli/commands/queue_ops.py`
 - `tests/unit/test_queue_terminal.py`
 - `tests/unit/test_queue_health.py`
 - `tests/unit/test_cli_queue_ops.py`
@@ -611,7 +611,7 @@ Queue health changes:
 CLI:
 
 ```bash
-uv run gmgn-twitter-intel queue inspect --reason-bucket llm_provider_522
+uv run parallax queue inspect --reason-bucket llm_provider_522
 ```
 
 Tests:
@@ -645,8 +645,8 @@ Current issue:
 
 Files:
 
-- `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_jobs_repository.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- `src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py`
+- `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
 - `tests/integration/test_pulse_lab_repository.py`
 - `tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py`
 
@@ -727,8 +727,8 @@ Add one hard-cut migration after current head `20260526_0100`.
 
 Files:
 
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0101_postgres_runtime_root_cause_hard_cut.py`
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0102_macro_observation_series_source_ts_text.py`
+- `src/parallax/platform/db/alembic/versions/20260526_0101_postgres_runtime_root_cause_hard_cut.py`
+- `src/parallax/platform/db/alembic/versions/20260526_0102_macro_observation_series_source_ts_text.py`
 
 Migration contents:
 
@@ -796,7 +796,7 @@ Files:
 - `docs/references/POSTGRES_PERFORMANCE.md`
 - `docs/WORKER_FLOW.md`
 - `docs/ARCHITECTURE.md`
-- `src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md`
+- `src/parallax/domains/macro_intel/ARCHITECTURE.md`
 
 Required doc updates:
 
@@ -809,7 +809,7 @@ Required doc updates:
 Doc verification:
 
 ```bash
-rg -n "macro_observation_series_rows|final_reason_bucket|TokenRadarTargetFeatureBatchQuery|rank_input_readiness" docs src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md
+rg -n "macro_observation_series_rows|final_reason_bucket|TokenRadarTargetFeatureBatchQuery|rank_input_readiness" docs src/parallax/domains/macro_intel/ARCHITECTURE.md
 ```
 
 ---
@@ -820,7 +820,7 @@ rg -n "macro_observation_series_rows|final_reason_bucket|TokenRadarTargetFeature
 
 ```bash
 rg -n "WITH source_intents AS MATERIALIZED|TokenRadarTargetFeatureQuery|source_rows\\(" \
-  src/gmgn_twitter_intel/domains/token_intel
+  src/parallax/domains/token_intel
 ```
 
 Expected:
@@ -830,8 +830,8 @@ Expected:
 
 ```bash
 rg -n "row_number\\(\\) OVER|WITH deduped AS|PARTITION BY concept_key, observed_at" \
-  src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py \
-  src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py
+  src/parallax/app/surfaces/api/routes_macro.py \
+  src/parallax/domains/macro_intel/repositories/macro_intel_repository.py
 ```
 
 Expected:
@@ -841,7 +841,7 @@ Expected:
 
 ```bash
 rg -n "compat|fallback|legacy_source_rows|dual_reader|shadow_reader" \
-  src/gmgn_twitter_intel tests docs/superpowers/specs/active/2026-05-26-postgres-runtime-root-cause-hard-cut-cn.md
+  src/parallax tests docs/superpowers/specs/active/2026-05-26-postgres-runtime-root-cause-hard-cut-cn.md
 ```
 
 Expected:

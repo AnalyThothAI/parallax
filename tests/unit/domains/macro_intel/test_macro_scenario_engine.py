@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.macro_intel.services.macro_scenario_engine import (
+from parallax.domains.macro_intel.services.macro_scenario_engine import (
     build_macro_scenario,
 )
 

@@ -12,14 +12,14 @@
 
 ## File Structure
 
-- Modify `src/gmgn_twitter_intel/domains/watchlist_intel/types/__init__.py`: strict cursor validation.
-- Modify `src/gmgn_twitter_intel/domains/watchlist_intel/repositories/watchlist_intel_repository.py`: expression-index-friendly timeline SQL, token resolutions, lease-token completion/failure, failed run audit helpers.
-- Modify `src/gmgn_twitter_intel/domains/watchlist_intel/services/handle_summary_service.py`: spec summary fields and lease-aware summarize/complete.
-- Modify `src/gmgn_twitter_intel/domains/watchlist_intel/runtime/handle_summary_worker.py`: true concurrent worker loops, provider timeout, failed run recording.
-- Modify `src/gmgn_twitter_intel/platform/db/alembic/versions/20260514_0045_watchlist_handle_intel.py`: add `lease_token` and expression index on `lower(author_handle)`.
-- Modify `src/gmgn_twitter_intel/app/surfaces/api/http.py`: `asyncio.to_thread` boundary and `Query(default=30, ge=1, le=100)` timeline contract.
-- Modify `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`, `web/src/lib/types/frontend-contracts.ts`, and regenerated `web/src/lib/types/openapi.ts`: summary status/stale/pending and timeline `token_resolutions`.
-- Modify `src/gmgn_twitter_intel/app/runtime/app.py`: readiness/watchdog naming and worker concurrency wiring.
+- Modify `src/parallax/domains/watchlist_intel/types/__init__.py`: strict cursor validation.
+- Modify `src/parallax/domains/watchlist_intel/repositories/watchlist_intel_repository.py`: expression-index-friendly timeline SQL, token resolutions, lease-token completion/failure, failed run audit helpers.
+- Modify `src/parallax/domains/watchlist_intel/services/handle_summary_service.py`: spec summary fields and lease-aware summarize/complete.
+- Modify `src/parallax/domains/watchlist_intel/runtime/handle_summary_worker.py`: true concurrent worker loops, provider timeout, failed run recording.
+- Modify `src/parallax/platform/db/alembic/versions/20260514_0045_watchlist_handle_intel.py`: add `lease_token` and expression index on `lower(author_handle)`.
+- Modify `src/parallax/app/surfaces/api/http.py`: `asyncio.to_thread` boundary and `Query(default=30, ge=1, le=100)` timeline contract.
+- Modify `src/parallax/app/surfaces/api/schemas.py`, `web/src/lib/types/frontend-contracts.ts`, and regenerated `web/src/lib/types/openapi.ts`: summary status/stale/pending and timeline `token_resolutions`.
+- Modify `src/parallax/app/runtime/app.py`: readiness/watchdog naming and worker concurrency wiring.
 - Restore/modify `docs/WORKERS.md`, `docs/ARCHITECTURE.md`, `docs/CONTRACTS.md`, `docs/generated/db-schema.md`, `docs/generated/openapi.json`, and `config.example.yaml`.
 - Modify `web/src/features/watchlist/api/useHandleTimelineQuery.ts`: `useInfiniteQuery` with cursor `pageParam`.
 - Modify `web/src/features/watchlist/ui/WatchlistPage.tsx` and `watchlist.css`: append pages, load-more button, not-ready/stale states.
@@ -207,8 +207,8 @@ uv run pytest tests/unit/test_settings.py tests/unit/domains/watchlist_intel/tes
 - [ ] **Step 2: Run static checks**
 
 ```bash
-uv run ruff check src/gmgn_twitter_intel/domains/watchlist_intel src/gmgn_twitter_intel/domains/social_enrichment/runtime/enrichment_worker.py src/gmgn_twitter_intel/app/runtime src/gmgn_twitter_intel/app/surfaces/api src/gmgn_twitter_intel/integrations/openai_agents/watchlist_summary_agent_client.py tests/unit/domains/watchlist_intel tests/integration/watchlist tests/integration/test_enrichment_worker.py tests/integration/test_api_health.py tests/unit/test_settings.py tests/architecture/test_src_domain_architecture.py
-uv run mypy src/gmgn_twitter_intel/domains/watchlist_intel src/gmgn_twitter_intel/domains/social_enrichment/runtime/enrichment_worker.py src/gmgn_twitter_intel/integrations/openai_agents/watchlist_summary_agent_client.py
+uv run ruff check src/parallax/domains/watchlist_intel src/parallax/domains/social_enrichment/runtime/enrichment_worker.py src/parallax/app/runtime src/parallax/app/surfaces/api src/parallax/integrations/openai_agents/watchlist_summary_agent_client.py tests/unit/domains/watchlist_intel tests/integration/watchlist tests/integration/test_enrichment_worker.py tests/integration/test_api_health.py tests/unit/test_settings.py tests/architecture/test_src_domain_architecture.py
+uv run mypy src/parallax/domains/watchlist_intel src/parallax/domains/social_enrichment/runtime/enrichment_worker.py src/parallax/integrations/openai_agents/watchlist_summary_agent_client.py
 ```
 
 - [ ] **Step 3: Run frontend verification**

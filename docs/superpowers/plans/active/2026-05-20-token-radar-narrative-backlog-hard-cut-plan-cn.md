@@ -29,9 +29,9 @@
   Expected branch: `codex/token-radar-narrative-backlog-hard-cut`.
 - [ ] Confirm live config paths before any real-data command:
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
-  Expected: `config_path` and `workers_config_path` are under `~/.gmgn-twitter-intel/`. Do not print secrets.
+  Expected: `config_path` and `workers_config_path` are under `~/.parallax/`. Do not print secrets.
 - [ ] Capture baseline health without mutation:
   ```bash
   curl -fsS "http://127.0.0.1:8765/api/status/narrative-health?token=$GMGN_WS_TOKEN&since_hours=4" | python -m json.tool
@@ -50,7 +50,7 @@ Known-failing baseline tests: none expected. If Postgres integration tests canno
 
 ## File-Level Edits
 
-### `src/gmgn_twitter_intel/platform/config/settings.py`
+### `src/parallax/platform/config/settings.py`
 
 - Remove `MentionSemanticsWorkerSettings.max_pending_source_age_seconds`.
 - Remove `max_pending_source_age_seconds: 43200` from `default_workers_yaml()`.
@@ -68,7 +68,7 @@ Known-failing baseline tests: none expected. If Postgres integration tests canno
   provider_failure_backoff_seconds: int = Field(default=600, ge=1)
   ```
 
-### `src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py`
+### `src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py`
 
 - Delete `_prune_pending_backlog_sync` and every call to it.
 - Keep run loop order as claim-first, then enqueue-if-needed:
@@ -86,7 +86,7 @@ Known-failing baseline tests: none expected. If Postgres integration tests canno
 - Add per-admission cap using `max_semantic_rows_enqueued_per_admission`.
 - Use `partial_enqueue_retry_seconds` for partially materialized admissions.
 
-### `src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py`
+### `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`
 
 - Add full source-set aggregate query used by digest and health:
   ```python
@@ -135,7 +135,7 @@ Known-failing baseline tests: none expected. If Postgres integration tests canno
   ```
   It marks stale/fingerprint-mismatched current digests through the ops-maintenance path, and deletes queued/retryable/stale semantics outside current admitted source sets. This path is allowed only while `ops rebuild-narrative-intel` holds the narrative worker advisory locks; it is not a runtime writer and is not callable from HTTP routes.
 
-### `src/gmgn_twitter_intel/domains/narrative_intel/services/discussion_digest_service.py`
+### `src/parallax/domains/narrative_intel/services/discussion_digest_service.py`
 
 - Replace prompt-sample-derived unseen logic with explicit aggregate fields:
   ```python
@@ -152,7 +152,7 @@ Known-failing baseline tests: none expected. If Postgres integration tests canno
   into the returned `TokenDiscussionDigest`. New status/ready digest rows must pass the public
   fingerprint join immediately.
 
-### `src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
+### `src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
 
 - Add counters:
   ```python
@@ -179,7 +179,7 @@ Known-failing baseline tests: none expected. If Postgres integration tests canno
   with target identity/window/scope and `max_mentions` only. `_window_ms` can be deleted unless
   another path still uses it.
 
-### `src/gmgn_twitter_intel/domains/narrative_intel/queries/narrative_backlog_health_query.py`
+### `src/parallax/domains/narrative_intel/queries/narrative_backlog_health_query.py`
 
 - Add missing source-set metrics:
   - `current_source_rows`
@@ -196,13 +196,13 @@ Known-failing baseline tests: none expected. If Postgres integration tests canno
   - count a source row as having semantics with `EXISTS` over `(event_id,target_type,target_id,schema_version)`;
   - do not count duplicate text fingerprints multiple times for one admission-source row.
 
-### `src/gmgn_twitter_intel/app/runtime/worker_factories/narrative_intel.py`
+### `src/parallax/app/runtime/worker_factories/narrative_intel.py`
 
 - Wire `wake_waiter=ctx.db.wake_listener(worker_name, workers.<worker>.wakes_on)` for
   `mention_semantics` and `token_discussion_digest`, matching token/news/pulse worker factory
   patterns.
 
-### `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`
+### `src/parallax/app/surfaces/cli/commands/ops.py`
 
 - Extend `rebuild-narrative-intel` with hard-cut cleanup output.
 - Add `--dry-run` if the existing parser can support it without delaying the fix; otherwise expose cleanup counts in normal command output.
@@ -213,7 +213,7 @@ Known-failing baseline tests: none expected. If Postgres integration tests canno
   4. digest drain cycles;
   5. final health summary.
 - Before starting the rebuilt image, the operator-owned
-  `~/.gmgn-twitter-intel/workers.yaml` must be edited to remove `max_pending_source_age_seconds`.
+  `~/.parallax/workers.yaml` must be edited to remove `max_pending_source_age_seconds`.
   This is a hard-cut deployment gate, not a runtime compatibility alias.
 
 ### Tests
@@ -232,7 +232,7 @@ Known-failing baseline tests: none expected. If Postgres integration tests canno
 ### Docs
 
 - Update `docs/WORKERS.md`.
-- Create `src/gmgn_twitter_intel/domains/narrative_intel/ARCHITECTURE.md` because global `docs/ARCHITECTURE.md` links it but the file is currently missing.
+- Create `src/parallax/domains/narrative_intel/ARCHITECTURE.md` because global `docs/ARCHITECTURE.md` links it but the file is currently missing.
 - Update `docs/CONTRACTS.md` for narrative health fields and public digest currentness.
 
 ## Task 1 — Tests For Config Hard Cut
@@ -273,7 +273,7 @@ Known-failing baseline tests: none expected. If Postgres integration tests canno
   Expected: PASS.
 - [ ] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/platform/config/settings.py tests/unit/test_worker_settings.py
+  git add src/parallax/platform/config/settings.py tests/unit/test_worker_settings.py
   git commit -m "fix: hard cut narrative backlog worker settings"
   ```
 
@@ -400,7 +400,7 @@ Known-failing baseline tests: none expected. If Postgres integration tests canno
   Expected: PASS.
 - [ ] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/domains/narrative_intel/services/discussion_digest_service.py tests/unit/domains/narrative_intel/test_discussion_digest_service.py
+  git add src/parallax/domains/narrative_intel/services/discussion_digest_service.py tests/unit/domains/narrative_intel/test_discussion_digest_service.py
   git commit -m "fix: judge narrative digest coverage from full source set"
   ```
 
@@ -536,7 +536,7 @@ Known-failing baseline tests: none expected. If Postgres integration tests canno
   Expected: PASS.
 - [ ] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py tests/integration/test_narrative_repository.py tests/unit/domains/narrative_intel/test_narrative_read_model.py
+  git add src/parallax/domains/narrative_intel/repositories/narrative_repository.py tests/integration/test_narrative_repository.py tests/unit/domains/narrative_intel/test_narrative_read_model.py
   git commit -m "fix: filter narrative digests by current source sets"
   ```
 
@@ -604,7 +604,7 @@ Known-failing baseline tests: none expected. If Postgres integration tests canno
   Expected: PASS.
 - [ ] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py tests/unit/domains/narrative_intel/test_narrative_workers.py
+  git add src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py tests/unit/domains/narrative_intel/test_narrative_workers.py
   git commit -m "fix: keep missing narrative semantics visible"
   ```
 
@@ -649,7 +649,7 @@ Known-failing baseline tests: none expected. If Postgres integration tests canno
   Expected: PASS.
 - [ ] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py tests/unit/domains/narrative_intel/test_narrative_workers.py
+  git add src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py tests/unit/domains/narrative_intel/test_narrative_workers.py
   git commit -m "fix: bound narrative digest llm amplification"
   ```
 
@@ -669,7 +669,7 @@ Known-failing baseline tests: none expected. If Postgres integration tests canno
   - document this explicitly in `docs/CONTRACTS.md`.
 - [ ] Add suppressed current digest count test.
 - [ ] Implement health fields in `narrative_backlog_health_query.py`.
-- [ ] Update API schema in `src/gmgn_twitter_intel/app/surfaces/api/schemas.py` if typed fields are explicit.
+- [ ] Update API schema in `src/parallax/app/surfaces/api/schemas.py` if typed fields are explicit.
 - [ ] Run:
   ```bash
   uv run pytest tests/unit/domains/narrative_intel/test_narrative_backlog_health.py tests/unit/test_api_narrative_contract.py -q
@@ -677,7 +677,7 @@ Known-failing baseline tests: none expected. If Postgres integration tests canno
   Expected: PASS.
 - [ ] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/domains/narrative_intel/queries/narrative_backlog_health_query.py src/gmgn_twitter_intel/app/surfaces/api/schemas.py tests/unit/domains/narrative_intel/test_narrative_backlog_health.py tests/unit/test_api_narrative_contract.py
+  git add src/parallax/domains/narrative_intel/queries/narrative_backlog_health_query.py src/parallax/app/surfaces/api/schemas.py tests/unit/domains/narrative_intel/test_narrative_backlog_health.py tests/unit/test_api_narrative_contract.py
   git commit -m "fix: expose real narrative semantic backlog"
   ```
 
@@ -712,7 +712,7 @@ Known-failing baseline tests: none expected. If Postgres integration tests canno
   Expected: PASS.
 - [ ] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py tests/integration/test_narrative_repository.py tests/unit/test_cli_ops_contract.py
+  git add src/parallax/domains/narrative_intel/repositories/narrative_repository.py src/parallax/app/surfaces/cli/commands/ops.py tests/integration/test_narrative_repository.py tests/unit/test_cli_ops_contract.py
   git commit -m "fix: add narrative hard-cut rebuild cleanup"
   ```
 
@@ -752,7 +752,7 @@ Known-failing baseline tests: none expected. If Postgres integration tests canno
       )
   ```
   Use the existing `FakeDB.wake_listener` helper in that test file; do not create a new runtime harness.
-- [ ] Update `src/gmgn_twitter_intel/app/runtime/worker_factories/narrative_intel.py`:
+- [ ] Update `src/parallax/app/runtime/worker_factories/narrative_intel.py`:
   ```python
   worker_name = "mention_semantics"
   constructed[worker_name] = MentionSemanticsWorker(
@@ -775,13 +775,13 @@ Known-failing baseline tests: none expected. If Postgres integration tests canno
   Expected: PASS.
 - [ ] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/app/runtime/worker_factories/narrative_intel.py src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py tests/unit/test_bootstrap_worker_runtime_wiring.py
+  git add src/parallax/app/runtime/worker_factories/narrative_intel.py src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py tests/unit/test_bootstrap_worker_runtime_wiring.py
   git commit -m "fix: wire narrative workers to wake hints"
   ```
 
 ## Task 14 — Architecture Docs And Contract Docs
 
-- [ ] Create `src/gmgn_twitter_intel/domains/narrative_intel/ARCHITECTURE.md` with:
+- [ ] Create `src/parallax/domains/narrative_intel/ARCHITECTURE.md` with:
   - source-set truth;
   - writer ownership table;
   - digest status contract;
@@ -799,7 +799,7 @@ Known-failing baseline tests: none expected. If Postgres integration tests canno
 - [ ] Add architecture test if one does not exist:
   ```python
   def test_narrative_architecture_doc_exists() -> None:
-      assert Path("src/gmgn_twitter_intel/domains/narrative_intel/ARCHITECTURE.md").exists()
+      assert Path("src/parallax/domains/narrative_intel/ARCHITECTURE.md").exists()
   ```
 - [ ] Run:
   ```bash
@@ -809,7 +809,7 @@ Known-failing baseline tests: none expected. If Postgres integration tests canno
   Expected: PASS.
 - [ ] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/domains/narrative_intel/ARCHITECTURE.md docs/WORKERS.md docs/CONTRACTS.md web/src/shared/model/narrativeDataGaps.ts tests/architecture
+  git add src/parallax/domains/narrative_intel/ARCHITECTURE.md docs/WORKERS.md docs/CONTRACTS.md web/src/shared/model/narrativeDataGaps.ts tests/architecture
   git commit -m "docs: document narrative source-set contract"
   ```
 
@@ -833,19 +833,19 @@ Known-failing baseline tests: none expected. If Postgres integration tests canno
   ```
 - [ ] Rebuild Docker:
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   docker compose build app
   docker compose up -d app
   docker compose ps app
   curl -fsS http://127.0.0.1:8765/readyz | python -m json.tool
   ```
-  Expected before build/start: `workers_config_path` points under `~/.gmgn-twitter-intel/`
+  Expected before build/start: `workers_config_path` points under `~/.parallax/`
   and live `workers.yaml` has no `max_pending_source_age_seconds`.
 - [ ] Live drain command after deploy:
   ```bash
-  uv run gmgn-twitter-intel ops rebuild-narrative-intel --window 1h --scope all --drain --cycles 10
-  uv run gmgn-twitter-intel ops rebuild-narrative-intel --window 4h --scope all --drain --cycles 10
-  uv run gmgn-twitter-intel ops rebuild-narrative-intel --window 24h --scope all --drain --cycles 10
+  uv run parallax ops rebuild-narrative-intel --window 1h --scope all --drain --cycles 10
+  uv run parallax ops rebuild-narrative-intel --window 4h --scope all --drain --cycles 10
+  uv run parallax ops rebuild-narrative-intel --window 24h --scope all --drain --cycles 10
   ```
 - [ ] Verify live health:
   ```bash
@@ -865,8 +865,8 @@ For this repo/session, these can land as one branch if the user wants a single h
 ## Rollout Order
 
 1. Merge code and docs to `main`.
-2. Edit operator-owned `~/.gmgn-twitter-intel/workers.yaml` to remove `max_pending_source_age_seconds`.
-3. Run `uv run gmgn-twitter-intel config`; treat any config validation failure as a deployment blocker.
+2. Edit operator-owned `~/.parallax/workers.yaml` to remove `max_pending_source_age_seconds`.
+3. Run `uv run parallax config`; treat any config validation failure as a deployment blocker.
 4. Build and start Docker image.
 5. Confirm `/readyz` is OK.
 6. Run narrative rebuild/drain command for hot windows first: `5m`, `1h`, then `4h`, then `24h`.
@@ -911,7 +911,7 @@ This is a hard cut, not a dual runtime.
   ```
 - AC7:
   ```bash
-  uv run gmgn-twitter-intel ops rebuild-narrative-intel --window 1h --scope all --drain --cycles 10
+  uv run parallax ops rebuild-narrative-intel --window 1h --scope all --drain --cycles 10
   curl -fsS "http://127.0.0.1:8765/api/status/narrative-health?token=$GMGN_WS_TOKEN&since_hours=4" | python -m json.tool
   ```
 - AC9:

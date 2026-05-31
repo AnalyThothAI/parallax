@@ -1,6 +1,6 @@
 import inspect
 
-from gmgn_twitter_intel.domains.token_intel.read_models.stocks_radar_service import StocksRadarService
+from parallax.domains.token_intel.read_models.stocks_radar_service import StocksRadarService
 
 
 class FakeResult:

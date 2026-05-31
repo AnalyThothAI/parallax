@@ -5,8 +5,8 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
-from gmgn_twitter_intel.domains.macro_intel.repositories.macro_intel_repository import MacroIntelRepository
-from gmgn_twitter_intel.domains.macro_intel.services.macro_feature_engine import build_macro_features
+from parallax.domains.macro_intel.repositories.macro_intel_repository import MacroIntelRepository
+from parallax.domains.macro_intel.services.macro_feature_engine import build_macro_features
 
 COMPUTED_AT_MS = int(datetime(2026, 5, 21, 12, tzinfo=UTC).timestamp() * 1000)
 

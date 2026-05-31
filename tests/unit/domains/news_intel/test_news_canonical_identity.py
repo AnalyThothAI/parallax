@@ -9,7 +9,7 @@ import pytest
 
 def _service() -> Any:
     try:
-        return import_module("gmgn_twitter_intel.domains.news_intel.services.news_canonical_identity")
+        return import_module("parallax.domains.news_intel.services.news_canonical_identity")
     except ModuleNotFoundError as exc:
         pytest.fail(f"news_canonical_identity service is required: {exc}")
 

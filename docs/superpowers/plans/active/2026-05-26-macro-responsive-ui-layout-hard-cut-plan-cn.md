@@ -1919,7 +1919,7 @@ Expected: pass.
 - [ ] **Step 4: Run full project gate before merge**
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel
+cd /Users/qinghuan/Documents/code/parallax
 make check-all
 ```
 

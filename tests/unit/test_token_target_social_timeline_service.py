@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from gmgn_twitter_intel.domains.token_intel.read_models.token_target_social_timeline_service import (
+from parallax.domains.token_intel.read_models.token_target_social_timeline_service import (
     TokenTargetSocialTimelineService,
 )
 

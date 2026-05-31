@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-23 08:46:54 UTC
 **Branch:** `codex/news-intel-root-fix`
-**Worktree:** `/Users/qinghuan/Documents/code/gmgn-twitter-intel/.worktrees/news-intel-root-fix`
+**Worktree:** `/Users/qinghuan/Documents/code/parallax/.worktrees/news-intel-root-fix`
 
 ## Result
 
@@ -20,10 +20,10 @@ Fix applied:
 
 ## Runtime Configuration
 
-`uv run gmgn-twitter-intel config` confirmed:
+`uv run parallax config` confirmed:
 
-- `config_path`: `/Users/qinghuan/.gmgn-twitter-intel/config.yaml`
-- `workers_config_path`: `/Users/qinghuan/.gmgn-twitter-intel/workers.yaml`
+- `config_path`: `/Users/qinghuan/.parallax/config.yaml`
+- `workers_config_path`: `/Users/qinghuan/.parallax/workers.yaml`
 - `api.ws_token_configured`: `true`
 
 No secret values were printed or copied.
@@ -107,8 +107,8 @@ Latest fetch runs show live RSS polling is active. Examples:
 
 Docker status:
 
-- `gmgn-twitter-intel-app-1`: running, healthy
-- `gmgn-twitter-intel-postgres-1`: running, healthy
+- `parallax-app-1`: running, healthy
+- `parallax-postgres-1`: running, healthy
 
 Final `/healthz` sample after startup:
 
@@ -123,7 +123,7 @@ Unauthenticated `/api/news/sources/status`:
 Playwright smoke test:
 
 - Opened `http://127.0.0.1:8765/news`.
-- Page title: `GMGN Twitter Intel`.
+- Page title: `Parallax`.
 - News page rendered live feed summary and `100/100` loaded rows.
 - Rows showed projected agent states such as `ready`, `failed`, `insufficient`; directions such as `bullish`, `bearish`, `neutral`; and decisions such as `driver`, `watch`, `context`, `discard`.
 

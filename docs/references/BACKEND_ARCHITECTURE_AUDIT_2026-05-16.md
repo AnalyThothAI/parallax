@@ -49,17 +49,17 @@ Recommended fix:
 Evidence:
 
 - `docs/ARCHITECTURE.md:32-68`
-- `src/gmgn_twitter_intel/app/runtime/repository_session.py:42-105`
-- `src/gmgn_twitter_intel/app/runtime/bootstrap.py:161-168`
-- `src/gmgn_twitter_intel/domains/social_enrichment/runtime/enrichment_worker.py:180-207`
-- `src/gmgn_twitter_intel/domains/closed_loop_harness/services/harness_snapshot_builder.py:88-100`
-- `src/gmgn_twitter_intel/domains/closed_loop_harness/services/harness_snapshot_builder.py:215-225`
-- `src/gmgn_twitter_intel/domains/closed_loop_harness/services/harness_snapshot_builder.py:321-346`
-- `src/gmgn_twitter_intel/domains/closed_loop_harness/services/harness_snapshot_builder.py:368-373`
-- `src/gmgn_twitter_intel/domains/closed_loop_harness/services/harness_ops.py:57-128`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/asset_repository.py:340-380`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/asset_repository.py:382-451`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/asset_repository.py:466-497`
+- `src/parallax/app/runtime/repository_session.py:42-105`
+- `src/parallax/app/runtime/bootstrap.py:161-168`
+- `src/parallax/domains/social_enrichment/runtime/enrichment_worker.py:180-207`
+- `src/parallax/domains/closed_loop_harness/services/harness_snapshot_builder.py:88-100`
+- `src/parallax/domains/closed_loop_harness/services/harness_snapshot_builder.py:215-225`
+- `src/parallax/domains/closed_loop_harness/services/harness_snapshot_builder.py:321-346`
+- `src/parallax/domains/closed_loop_harness/services/harness_snapshot_builder.py:368-373`
+- `src/parallax/domains/closed_loop_harness/services/harness_ops.py:57-128`
+- `src/parallax/domains/asset_market/repositories/asset_repository.py:340-380`
+- `src/parallax/domains/asset_market/repositories/asset_repository.py:382-451`
+- `src/parallax/domains/asset_market/repositories/asset_repository.py:466-497`
 
 ### P1 - Price Pipeline Throughput Is Architecturally Correct But Execution Is Backlog-Prone
 
@@ -96,12 +96,12 @@ Recommended fix:
 
 Evidence:
 
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/market_tick_repository.py:28-103`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_stream_worker.py:142-156`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_poll_worker.py:213-222`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/token_capture_tier_worker.py:68-96`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/token_capture_tier_repository.py:55-96`
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260515_0046_event_anchor_capture_redesign.py:61-90`
+- `src/parallax/domains/asset_market/repositories/market_tick_repository.py:28-103`
+- `src/parallax/domains/asset_market/runtime/market_tick_stream_worker.py:142-156`
+- `src/parallax/domains/asset_market/runtime/market_tick_poll_worker.py:213-222`
+- `src/parallax/domains/asset_market/runtime/token_capture_tier_worker.py:68-96`
+- `src/parallax/domains/asset_market/repositories/token_capture_tier_repository.py:55-96`
+- `src/parallax/platform/db/alembic/versions/20260515_0046_event_anchor_capture_redesign.py:61-90`
 
 ### P1 - Token Radar Projection Is Full-Window Rebuild, Not Incremental
 
@@ -138,11 +138,11 @@ Recommended fix:
 
 Evidence:
 
-- `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py:56-191`
-- `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py:22-36`
-- `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py:123-231`
-- `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py:261-270`
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py:19-93`
+- `src/parallax/domains/token_intel/services/token_radar_projection.py:56-191`
+- `src/parallax/domains/token_intel/queries/token_radar_source_query.py:22-36`
+- `src/parallax/domains/token_intel/queries/token_radar_source_query.py:123-231`
+- `src/parallax/domains/token_intel/queries/token_radar_source_query.py:261-270`
+- `src/parallax/domains/token_intel/repositories/token_radar_repository.py:19-93`
 
 ### P1 - Watchlist Overview APIs Have Unbounded History Scans
 
@@ -167,10 +167,10 @@ Recommended fix:
 
 Evidence:
 
-- `src/gmgn_twitter_intel/domains/watchlist_intel/repositories/watchlist_intel_repository.py:383-445`
-- `src/gmgn_twitter_intel/domains/watchlist_intel/repositories/watchlist_intel_repository.py:447-481`
-- `src/gmgn_twitter_intel/domains/watchlist_intel/repositories/watchlist_intel_repository.py:483-556`
-- `src/gmgn_twitter_intel/domains/watchlist_intel/repositories/watchlist_intel_repository.py:558-599`
+- `src/parallax/domains/watchlist_intel/repositories/watchlist_intel_repository.py:383-445`
+- `src/parallax/domains/watchlist_intel/repositories/watchlist_intel_repository.py:447-481`
+- `src/parallax/domains/watchlist_intel/repositories/watchlist_intel_repository.py:483-556`
+- `src/parallax/domains/watchlist_intel/repositories/watchlist_intel_repository.py:558-599`
 
 ### P2 - Worker Timeout Handling Does Not Cancel Timed-Out Work
 
@@ -190,8 +190,8 @@ Recommended fix:
 
 Evidence:
 
-- `src/gmgn_twitter_intel/app/runtime/worker_base.py:90-131`
-- `src/gmgn_twitter_intel/app/runtime/worker_base.py:177-205`
+- `src/parallax/app/runtime/worker_base.py:90-131`
+- `src/parallax/app/runtime/worker_base.py:177-205`
 
 ### P2 - Advisory Locks Consume Worker Pool Connections For Worker Lifetime
 
@@ -211,12 +211,12 @@ Recommended fix:
 
 Evidence:
 
-- `src/gmgn_twitter_intel/app/runtime/db_pool_bundle.py:31-64`
-- `src/gmgn_twitter_intel/app/runtime/db_pool_bundle.py:124-136`
-- `src/gmgn_twitter_intel/app/runtime/db_pool_bundle.py:160-188`
-- `src/gmgn_twitter_intel/app/runtime/worker_base.py:236-259`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/token_capture_tier_worker.py:19-24`
-- `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py:56-62`
+- `src/parallax/app/runtime/db_pool_bundle.py:31-64`
+- `src/parallax/app/runtime/db_pool_bundle.py:124-136`
+- `src/parallax/app/runtime/db_pool_bundle.py:160-188`
+- `src/parallax/app/runtime/worker_base.py:236-259`
+- `src/parallax/domains/asset_market/runtime/token_capture_tier_worker.py:19-24`
+- `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:56-62`
 
 ### P2 - Single-Writer Contract Is Documented More Broadly Than It Is Tested
 
@@ -242,9 +242,9 @@ Evidence:
 
 - `docs/ARCHITECTURE.md:53-59`
 - `tests/architecture/test_worker_runtime_contracts.py:273-284`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/token_capture_tier_repository.py:21-53`
-- `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py:48-135`
-- `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py:153-195`
+- `src/parallax/domains/asset_market/repositories/token_capture_tier_repository.py:21-53`
+- `src/parallax/domains/pulse_lab/repositories/pulse_repository.py:48-135`
+- `src/parallax/domains/pulse_lab/repositories/pulse_repository.py:153-195`
 
 ### P2 - Public Event Token Projection Uses OR In A Lateral Tick Lookup
 
@@ -262,8 +262,8 @@ Recommended fix:
 
 Evidence:
 
-- `src/gmgn_twitter_intel/domains/token_intel/queries/event_token_projection_query.py:21-126`
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260515_0046_event_anchor_capture_redesign.py:61-78`
+- `src/parallax/domains/token_intel/queries/event_token_projection_query.py:21-126`
+- `src/parallax/platform/db/alembic/versions/20260515_0046_event_anchor_capture_redesign.py:61-78`
 
 ### P2 - Notification Signature Dedupe Uses JSON Extraction Without A Matching Index
 
@@ -291,8 +291,8 @@ Recommended fix:
 
 Evidence:
 
-- `src/gmgn_twitter_intel/domains/notifications/repositories/notification_repository.py:139-162`
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260506_0001_initial_postgresql.py:538-547`
+- `src/parallax/domains/notifications/repositories/notification_repository.py:139-162`
+- `src/parallax/platform/db/alembic/versions/20260506_0001_initial_postgresql.py:538-547`
 
 ### P3 - Architecture Docs Reference Old Test Paths
 
@@ -330,7 +330,7 @@ This is a good improvement over doing provider IO inside a DB transaction. It al
 
 Evidence:
 
-- `src/gmgn_twitter_intel/app/runtime/bootstrap.py:448-492`
+- `src/parallax/app/runtime/bootstrap.py:448-492`
 
 ### Market Capture
 
@@ -350,8 +350,8 @@ Weaknesses:
 
 Evidence:
 
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260515_0046_event_anchor_capture_redesign.py:20-170`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/market_tick_repository.py:16-103`
+- `src/parallax/platform/db/alembic/versions/20260515_0046_event_anchor_capture_redesign.py:20-170`
+- `src/parallax/domains/asset_market/repositories/market_tick_repository.py:16-103`
 
 ### Token Radar
 
@@ -380,11 +380,11 @@ Risks:
 
 Evidence:
 
-- `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py:115-199`
-- `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py:204-235`
-- `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py:22-195`
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260508_0015_signal_pulse_agent_hard_cut.py:13-203`
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260514_0041_pulse_worker_edge_notifications_hard_cut.py:13-168`
+- `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:115-199`
+- `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:204-235`
+- `src/parallax/domains/pulse_lab/repositories/pulse_repository.py:22-195`
+- `src/parallax/platform/db/alembic/versions/20260508_0015_signal_pulse_agent_hard_cut.py:13-203`
+- `src/parallax/platform/db/alembic/versions/20260514_0041_pulse_worker_edge_notifications_hard_cut.py:13-168`
 
 ### Closed-Loop Harness
 

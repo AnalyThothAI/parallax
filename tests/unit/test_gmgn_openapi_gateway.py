@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from gmgn_twitter_intel.integrations.gmgn.openapi_client import (
+from parallax.integrations.gmgn.openapi_client import (
     GmgnOpenApiProviderUnavailableError,
     GmgnOpenApiTransientError,
     GmgnTokenInfo,
     GmgnTokenInfoLookup,
 )
-from gmgn_twitter_intel.integrations.gmgn.openapi_gateway import GmgnOpenApiGateway
+from parallax.integrations.gmgn.openapi_gateway import GmgnOpenApiGateway
 
 
 def test_gmgn_openapi_gateway_caches_token_info_before_consuming_route_weight():

@@ -19,19 +19,19 @@
 
 ## File Structure
 
-- Modify: `src/gmgn_twitter_intel/storage/notification_repository.py`
+- Modify: `src/parallax/storage/notification_repository.py`
   Aggregates existing `dedup_key` conflicts instead of dropping them silently. Preserve the public return contract: return a row only for newly-created notifications so `NotificationWorker` does not enqueue external delivery on aggregates.
 
-- Modify: `src/gmgn_twitter_intel/pipeline/notification_rules.py`
+- Modify: `src/parallax/pipeline/notification_rules.py`
   Add stable semantic dedup helpers for watched activity, watched token alerts, and Signal Pulse. Keep volatile Pulse notification signatures in payload only.
 
-- Modify: `src/gmgn_twitter_intel/settings.py`
+- Modify: `src/parallax/settings.py`
   Set explicit default cooldowns for high-volume watched-account notification rules and keep Signal Pulse on status-specific cooldowns.
 
-- Modify: `src/gmgn_twitter_intel/pipeline/pulse_candidate_worker.py`
+- Modify: `src/parallax/pipeline/pulse_candidate_worker.py`
   Add active-job and material-rerun guards. Remove latest source event churn from asset trigger signatures and make cooldown bypass require material escalation.
 
-- Modify: `src/gmgn_twitter_intel/storage/pulse_repository.py`
+- Modify: `src/parallax/storage/pulse_repository.py`
   Defend against direct callers resetting active jobs on `ON CONFLICT(candidate_id)` when the job is still pending, running, or retryable failed.
 
 - Modify tests:
@@ -49,7 +49,7 @@ No migration is required. Existing columns `occurrence_count`, `first_seen_at_ms
 
 **Files:**
 - Modify: `tests/test_notification_repository.py:12-47`
-- Modify: `src/gmgn_twitter_intel/storage/notification_repository.py:22-86`
+- Modify: `src/parallax/storage/notification_repository.py:22-86`
 
 - [x] **Step 1: Replace the idempotency test with an aggregation regression test**
 
@@ -188,10 +188,10 @@ Expected: PASS.
 - Modify: `tests/test_notification_rules.py:340-370`
 - Modify: `tests/test_notification_rules.py:400-470`
 - Modify: `tests/test_settings.py:320-335`
-- Modify: `src/gmgn_twitter_intel/pipeline/notification_rules.py:80-140`
-- Modify: `src/gmgn_twitter_intel/pipeline/notification_rules.py:385-397`
-- Modify: `src/gmgn_twitter_intel/pipeline/notification_rules.py:430-445`
-- Modify: `src/gmgn_twitter_intel/settings.py:830-870`
+- Modify: `src/parallax/pipeline/notification_rules.py:80-140`
+- Modify: `src/parallax/pipeline/notification_rules.py:385-397`
+- Modify: `src/parallax/pipeline/notification_rules.py:430-445`
+- Modify: `src/parallax/settings.py:830-870`
 
 - [x] **Step 1: Add watched-account activity cooldown test**
 
@@ -291,7 +291,7 @@ def test_signal_pulse_dedup_key_uses_candidate_status_bucket_not_signature():
 
 - [x] **Step 4: Implement notification key helpers**
 
-In `src/gmgn_twitter_intel/pipeline/notification_rules.py`, add helpers near the existing private helpers:
+In `src/parallax/pipeline/notification_rules.py`, add helpers near the existing private helpers:
 
 ```python
 def _cooldown_bucket(occurrence_at_ms: int, cooldown_seconds: int) -> int:
@@ -332,7 +332,7 @@ Keep `_pulse_notification_signature()` unchanged for payload/UI auditability.
 
 - [x] **Step 6: Set default high-volume rule cooldowns**
 
-In `src/gmgn_twitter_intel/settings.py`, update `_default_notification_rule_payloads()`:
+In `src/parallax/settings.py`, update `_default_notification_rule_payloads()`:
 
 ```python
 "watched_account_activity": {
@@ -367,9 +367,9 @@ Expected: PASS after updating old assertions that expected event-id-only and sig
 - Modify: `tests/test_pulse_candidate_worker.py:28-110`
 - Modify: `tests/test_pulse_candidate_worker.py:151-210`
 - Modify: `tests/test_pulse_candidate_worker.py:263-280`
-- Modify: `src/gmgn_twitter_intel/pipeline/pulse_candidate_worker.py:365-388`
-- Modify: `src/gmgn_twitter_intel/pipeline/pulse_candidate_worker.py:591-623`
-- Modify: `src/gmgn_twitter_intel/pipeline/pulse_candidate_worker.py:695-741`
+- Modify: `src/parallax/pipeline/pulse_candidate_worker.py:365-388`
+- Modify: `src/parallax/pipeline/pulse_candidate_worker.py:591-623`
+- Modify: `src/parallax/pipeline/pulse_candidate_worker.py:695-741`
 
 - [x] **Step 1: Add active-job guard test**
 
@@ -433,7 +433,7 @@ assert skipped["asset_skipped"] == 1
 
 - [x] **Step 4: Add `_active_job_blocks_reenqueue`**
 
-In `src/gmgn_twitter_intel/pipeline/pulse_candidate_worker.py`, add:
+In `src/parallax/pipeline/pulse_candidate_worker.py`, add:
 
 ```python
 def _active_job_blocks_reenqueue(existing_job: dict[str, Any] | None, *, now_ms: int) -> bool:
@@ -509,7 +509,7 @@ Expected: PASS.
 
 **Files:**
 - Modify: `tests/test_pulse_repository.py`
-- Modify: `src/gmgn_twitter_intel/storage/pulse_repository.py:46-75`
+- Modify: `src/parallax/storage/pulse_repository.py:46-75`
 
 - [x] **Step 1: Add repository conflict regression test**
 
@@ -571,7 +571,7 @@ Expected: FAIL because `ON CONFLICT(candidate_id)` currently resets `status`, `a
 
 - [x] **Step 3: Add active-state preservation to `enqueue_job` SQL**
 
-In `src/gmgn_twitter_intel/storage/pulse_repository.py`, update `ON CONFLICT(candidate_id) DO UPDATE SET` fields with a terminal-state condition:
+In `src/parallax/storage/pulse_repository.py`, update `ON CONFLICT(candidate_id) DO UPDATE SET` fields with a terminal-state condition:
 
 ```sql
 trigger_signature = CASE

@@ -4,12 +4,12 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from decimal import Decimal
 
-from gmgn_twitter_intel.app.runtime.bootstrap import _PooledIngestStore
-from gmgn_twitter_intel.app.runtime.providers_wiring import AssetMarketProviders
-from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
-from gmgn_twitter_intel.domains.asset_market.providers import DexTokenQuote
-from gmgn_twitter_intel.domains.asset_market.repositories.market_tick_repository import MarketTickRepository
-from gmgn_twitter_intel.domains.asset_market.types import MarketTick, market_tick_id
+from parallax.app.runtime.bootstrap import _PooledIngestStore
+from parallax.app.runtime.providers_wiring import AssetMarketProviders
+from parallax.app.runtime.repository_session import repositories_for_connection
+from parallax.domains.asset_market.providers import DexTokenQuote
+from parallax.domains.asset_market.repositories.market_tick_repository import MarketTickRepository
+from parallax.domains.asset_market.types import MarketTick, market_tick_id
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate

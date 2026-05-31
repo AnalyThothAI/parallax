@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.asset_market.queries.token_profile_source_query import TokenProfileSourceQuery
+from parallax.domains.asset_market.queries.token_profile_source_query import TokenProfileSourceQuery
 
 
 def test_token_profile_source_query_has_no_broad_target_discovery_entrypoint():

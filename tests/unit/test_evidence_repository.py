@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import _sanitize_postgres_value
+from parallax.domains.evidence.repositories.evidence_repository import _sanitize_postgres_value
 
 
 def test_sanitize_postgres_value_removes_null_bytes_recursively():

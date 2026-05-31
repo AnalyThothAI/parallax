@@ -4,10 +4,10 @@ import ast
 import re
 from pathlib import Path
 
-from gmgn_twitter_intel.app.runtime.worker_manifest import all_worker_manifests
+from parallax.app.runtime.worker_manifest import all_worker_manifests
 
 ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src" / "gmgn_twitter_intel"
+SRC = ROOT / "src" / "parallax"
 
 
 def _read(path: str) -> str:
@@ -20,12 +20,12 @@ def test_token_radar_old_batch_query_is_deleted() -> None:
 
 
 def test_token_radar_projection_does_not_call_old_hot_sql() -> None:
-    text = _read("src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py")
+    text = _read("src/parallax/domains/token_intel/services/token_radar_projection.py")
     module = ast.parse(text)
 
     old_imports: list[str] = []
     old_calls: list[str] = []
-    old_module = "gmgn_twitter_intel.domains.token_intel.queries." + "token_radar_target" + "_feature_query"
+    old_module = "parallax.domains.token_intel.queries." + "token_radar_target" + "_feature_query"
     old_method = "source_rows" + "_for_requests"
     for node in ast.walk(module):
         if isinstance(node, ast.ImportFrom) and node.module == old_module:
@@ -47,7 +47,7 @@ def test_token_radar_rank_source_has_single_owner_manifest_entry() -> None:
 
 
 def test_macro_projection_refresh_is_current_only_with_source_signature() -> None:
-    repo = _read("src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py")
+    repo = _read("src/parallax/domains/macro_intel/repositories/macro_intel_repository.py")
     replace_current_pattern = re.compile(
         r"DELETE\s+FROM\s+macro_observation_series_rows\s+WHERE\s+projection_version\s*=\s*%s\s*(?=\"\"\")",
         re.IGNORECASE,
@@ -62,14 +62,14 @@ def test_macro_projection_refresh_is_current_only_with_source_signature() -> Non
 
 
 def test_news_fetch_validates_provider_contract_before_reconcile() -> None:
-    worker = _read("src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py")
+    worker = _read("src/parallax/domains/news_intel/runtime/news_fetch_worker.py")
     validate_at = worker.index("validate_news_provider_contract")
     reconcile_at = worker.index("reconcile_configured_sources")
     assert validate_at < reconcile_at
 
 
 def test_opennews_client_runtime_reports_rest_transport_without_fetch_mode_surface() -> None:
-    client = _read("src/gmgn_twitter_intel/integrations/news_feeds/opennews_client.py")
+    client = _read("src/parallax/integrations/news_feeds/opennews_client.py")
 
     assert '"transport": "rest"' in client
     assert '"fetch_mode": "rest"' not in client
@@ -79,9 +79,9 @@ def test_opennews_client_runtime_reports_rest_transport_without_fetch_mode_surfa
 def test_opennews_provider_signal_never_reenters_news_brief_input_hot_path() -> None:
     policy = "needs_news_item_agent_brief"
     hot_path_files = (
-        "src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py",
-        "src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_process_worker.py",
-        "src/gmgn_twitter_intel/app/runtime/projection_dirty_targets.py",
+        "src/parallax/domains/news_intel/runtime/news_fetch_worker.py",
+        "src/parallax/domains/news_intel/runtime/news_item_process_worker.py",
+        "src/parallax/app/runtime/projection_dirty_targets.py",
     )
 
     for path in hot_path_files:

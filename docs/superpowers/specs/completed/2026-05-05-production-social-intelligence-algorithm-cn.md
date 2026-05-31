@@ -50,7 +50,7 @@ watched event
 
 ### Baseline v2
 
-文件：`src/gmgn_twitter_intel/retrieval/baseline_scoring.py`
+文件：`src/parallax/retrieval/baseline_scoring.py`
 
 - 输入：rolling token window、token历史窗口、当前窗口统计。
 - 输出：`score_version=token_baseline_v2`、`baseline_avg_mentions`、`robust_z_mentions`、`ewma_mentions`、`new_burst_score`、`data_health`。
@@ -62,7 +62,7 @@ watched event
 
 ### Timeline Features
 
-文件：`src/gmgn_twitter_intel/retrieval/timeline_features.py`
+文件：`src/parallax/retrieval/timeline_features.py`
 
 - 5m 使用 30s bucket；1h 使用 5m bucket；4h 使用 15m bucket；24h 使用 1h bucket。
 - 计算：
@@ -77,13 +77,13 @@ watched event
 
 文件：
 
-- `src/gmgn_twitter_intel/retrieval/social_heat_scoring.py`
-- `src/gmgn_twitter_intel/retrieval/discussion_quality_scoring.py`
-- `src/gmgn_twitter_intel/retrieval/propagation_scoring.py`
-- `src/gmgn_twitter_intel/retrieval/tradeability_scoring.py`
-- `src/gmgn_twitter_intel/retrieval/timing_scoring.py`
-- `src/gmgn_twitter_intel/retrieval/opportunity_scoring.py`
-- `src/gmgn_twitter_intel/retrieval/scoring_common.py`
+- `src/parallax/retrieval/social_heat_scoring.py`
+- `src/parallax/retrieval/discussion_quality_scoring.py`
+- `src/parallax/retrieval/propagation_scoring.py`
+- `src/parallax/retrieval/tradeability_scoring.py`
+- `src/parallax/retrieval/timing_scoring.py`
+- `src/parallax/retrieval/opportunity_scoring.py`
+- `src/parallax/retrieval/scoring_common.py`
 
 版本：
 
@@ -112,11 +112,11 @@ watched event
 
 文件：
 
-- `src/gmgn_twitter_intel/storage/token_signal_repository.py`
-- `src/gmgn_twitter_intel/retrieval/token_signal_snapshot_service.py`
-- `src/gmgn_twitter_intel/pipeline/token_signal_settlement.py`
-- `src/gmgn_twitter_intel/retrieval/token_signal_evaluation_service.py`
-- `src/gmgn_twitter_intel/storage/sqlite_schema.py`
+- `src/parallax/storage/token_signal_repository.py`
+- `src/parallax/retrieval/token_signal_snapshot_service.py`
+- `src/parallax/pipeline/token_signal_settlement.py`
+- `src/parallax/retrieval/token_signal_evaluation_service.py`
+- `src/parallax/storage/sqlite_schema.py`
 
 表：
 
@@ -142,11 +142,11 @@ watched event
 
 文件：
 
-- `src/gmgn_twitter_intel/pipeline/social_event_extraction.py`
-- `src/gmgn_twitter_intel/pipeline/harness_snapshot_builder.py`
-- `src/gmgn_twitter_intel/pipeline/harness_settlement.py`
-- `src/gmgn_twitter_intel/pipeline/harness_ops.py`
-- `src/gmgn_twitter_intel/pipeline/enrichment_worker.py`
+- `src/parallax/pipeline/social_event_extraction.py`
+- `src/parallax/pipeline/harness_snapshot_builder.py`
+- `src/parallax/pipeline/harness_settlement.py`
+- `src/parallax/pipeline/harness_ops.py`
+- `src/parallax/pipeline/enrichment_worker.py`
 
 变更：
 

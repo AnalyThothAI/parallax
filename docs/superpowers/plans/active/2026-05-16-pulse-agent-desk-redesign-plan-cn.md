@@ -27,8 +27,8 @@
 
 - [ ] 确认 prerequisite 已合入 main:
   ```bash
-  cd /Users/qinghuan/Documents/code/gmgn-twitter-intel
-  grep -n "is_strict_json_schema" src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py
+  cd /Users/qinghuan/Documents/code/parallax
+  grep -n "is_strict_json_schema" src/parallax/integrations/openai_agents/pulse_decision_agent_client.py
   # 应看到 return True，且 import 含 jsonref。若未合入，停手做 M1。
   ```
 - [ ] Create worktree:
@@ -45,9 +45,9 @@
   ```
 - [ ] DB snapshot:
   ```bash
-  mkdir -p ~/.gmgn-twitter-intel/backups
-  docker exec gmgn-twitter-intel-postgres-1 pg_dump -U gmgn_app -d gmgn_twitter_intel -Fc -f /tmp/pre-desk-redesign.dump
-  docker cp gmgn-twitter-intel-postgres-1:/tmp/pre-desk-redesign.dump ~/.gmgn-twitter-intel/backups/
+  mkdir -p ~/.parallax/backups
+  docker exec parallax-postgres-1 pg_dump -U parallax_app -d parallax -Fc -f /tmp/pre-desk-redesign.dump
+  docker cp parallax-postgres-1:/tmp/pre-desk-redesign.dump ~/.parallax/backups/
   ```
 
 ---
@@ -62,7 +62,7 @@
 - [ ] **OQ-4 `_FORBIDDEN_EXECUTION_RE` 反测**：对 `watch_signals / exit_triggers` 文本样本 + `monitoring_horizon` enum 跑一次 regex 反测，记录无误伤：
   ```bash
   uv run python -c "
-  from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import contains_trading_execution_instruction
+  from parallax.domains.pulse_lab.types.agent_decision import contains_trading_execution_instruction
   cases = ['1h', '4h', '24h', 'has_playbook',
            'watch_signals', 'exit_triggers', 'monitoring_horizon',
            '关注 watched_author 接力', '流动性回撤 >20% 触发退出',
@@ -127,19 +127,19 @@
 
 | Area | Current anchor | Plan stance |
 |---|---|---|
-| Agent types | `src/gmgn_twitter_intel/domains/pulse_lab/types/agent_decision.py` | DELETE `AnalystOpinion / CritiqueReport`；NEW `InvestigationReport / BullBearView / TradePlaybook / ToolResult Protocol`；EXTEND `FinalDecision` |
-| Stage prompts | `src/gmgn_twitter_intel/integrations/openai_agents/pulse_stage_prompts.py` | DELETE 整文件；NEW `src/gmgn_twitter_intel/domains/pulse_lab/prompts/{investigator,decision_maker}.md` + loader |
-| Agent client | `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py` | DELETE `_run_stage` 三 stage 编排；NEW `run_investigation_then_decision`；wire tools + tool counter + hallucination guard |
-| Worker | `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py` | 保留 queue/edge/budget；改 `_run_job` 调新 client + 删 narrative_type 写入 + build evidence_event_urls |
-| Repository | `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py` | 删 narrative_type 列引用；扩 stage 枚举 |
-| Read model | `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py` | `_stages_for` keys 改新枚举（**P0-4**）；`_decision()` 暴露新字段（**P0-5**）；删 narrative_type 读 |
-| Eval grader | `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_eval.py` | Hard cut grader 改为 v2（5 项）；v1 case 走 `status='legacy_skipped'` 不 panic |
-| Notification | `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py` | DELETE `_pulse_body` 现有；NEW SurfaceCard 渲染器；signature 改为只 hash 稳定维度；删 narrative_type 写入 payload |
-| GMGN provider | `src/gmgn_twitter_intel/integrations/gmgn/` (T1 grep 定位) | 加 `description` 字段映射 |
-| Tools 目录 | （新建）`src/gmgn_twitter_intel/integrations/openai_agents/tools/` | NEW 3 个 `@function_tool` 包装的只读 SQL 函数 + `ToolResult` Protocol |
+| Agent types | `src/parallax/domains/pulse_lab/types/agent_decision.py` | DELETE `AnalystOpinion / CritiqueReport`；NEW `InvestigationReport / BullBearView / TradePlaybook / ToolResult Protocol`；EXTEND `FinalDecision` |
+| Stage prompts | `src/parallax/integrations/openai_agents/pulse_stage_prompts.py` | DELETE 整文件；NEW `src/parallax/domains/pulse_lab/prompts/{investigator,decision_maker}.md` + loader |
+| Agent client | `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py` | DELETE `_run_stage` 三 stage 编排；NEW `run_investigation_then_decision`；wire tools + tool counter + hallucination guard |
+| Worker | `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py` | 保留 queue/edge/budget；改 `_run_job` 调新 client + 删 narrative_type 写入 + build evidence_event_urls |
+| Repository | `src/parallax/domains/pulse_lab/repositories/pulse_repository.py` | 删 narrative_type 列引用；扩 stage 枚举 |
+| Read model | `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py` | `_stages_for` keys 改新枚举（**P0-4**）；`_decision()` 暴露新字段（**P0-5**）；删 narrative_type 读 |
+| Eval grader | `src/parallax/domains/pulse_lab/services/agent_eval.py` | Hard cut grader 改为 v2（5 项）；v1 case 走 `status='legacy_skipped'` 不 panic |
+| Notification | `src/parallax/domains/notifications/services/notification_rules.py` | DELETE `_pulse_body` 现有；NEW SurfaceCard 渲染器；signature 改为只 hash 稳定维度；删 narrative_type 写入 payload |
+| GMGN provider | `src/parallax/integrations/gmgn/` (T1 grep 定位) | 加 `description` 字段映射 |
+| Tools 目录 | （新建）`src/parallax/integrations/openai_agents/tools/` | NEW 3 个 `@function_tool` 包装的只读 SQL 函数 + `ToolResult` Protocol |
 | Frontend | `web/src/lib/types/frontend-contracts.ts`, `web/src/features/signal-lab/model/pulseDetail.ts`, `web/src/features/signal-lab/ui/PulseDetail/PulseAgentRail.tsx` | 删 narrative_type；改 stage enum；扩 decision 字段；加 legacy 占位卡 |
 | Frontend fixture/test | `web/src/features/signal-lab/test/fixtures/titty-pulse.ts`, `web/tests/component/...`, `web/tests/e2e/support/mockApi.ts` | 更新 fixture 无 narrative_type；新 stage 测试 |
-| Migration | `src/gmgn_twitter_intel/platform/db/alembic/versions/` | 新 revision `20260516_NNNN_pulse_agent_desk_redesign.py`（NOT VALID CHECK）|
+| Migration | `src/parallax/platform/db/alembic/versions/` | 新 revision `20260516_NNNN_pulse_agent_desk_redesign.py`（NOT VALID CHECK）|
 | Superseded spec | `docs/superpowers/specs/active/2026-05-14-pulse-detail-redesign-cn.md` | 同 PR 移到 `completed/` |
 
 ---
@@ -149,13 +149,13 @@
 ### Task 1 — GMGN provider description 拉取修复
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/integrations/gmgn/` 下 GMGN profile 拉取文件（T1 内 grep 定位）
+- Modify: `src/parallax/integrations/gmgn/` 下 GMGN profile 拉取文件（T1 内 grep 定位）
 - Modify tests: 相关 unit test
 
 - [ ] grep 定位:
   ```bash
-  grep -rn "asset_profiles" src/gmgn_twitter_intel/integrations/gmgn/ | head -10
-  grep -rn "description\|raw_payload" src/gmgn_twitter_intel/integrations/gmgn/ | head -10
+  grep -rn "asset_profiles" src/parallax/integrations/gmgn/ | head -10
+  grep -rn "description\|raw_payload" src/parallax/integrations/gmgn/ | head -10
   ```
 - [ ] 找到 GMGN profile API response JSON 实际 key（curl + jq 确认是 `description / desc / about / token_info.description` 哪个）
 - [ ] 在 mapper 加 description 提取（限长 ≤ 2000 字符）
@@ -170,7 +170,7 @@
 ```bash
 uv run pytest tests/unit/integrations/gmgn/ -v
 # 启 worker 跑 5 分钟看新 row 的 description 填充
-docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel -c "
+docker exec parallax-postgres-1 psql -U parallax_app -d parallax -c "
   SELECT count(*) FILTER (WHERE description IS NOT NULL AND description != ''),
          count(*) AS total
   FROM asset_profiles
@@ -184,11 +184,11 @@ docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel
 **[P0-1, P0-2, P0-4 内联修复] 这是单 task 内强制原子的最大改动；必须 6 个文件同 commit 一起改，否则任一文件单独 merge 都会让 worker INSERT 报 column does not exist。**
 
 **Files:**
-- Add: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260516_NNNN_pulse_agent_desk_redesign.py`（NNNN 取下一个连号）
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`（删 `narrative_type=_narrative_type_from_context(...)` 调用与导入）
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py`（删 narrative_type 列 INSERT/SELECT，4 处）
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`（删 narrative_type 读，1 处；改 `_stages_for` empty dict keys 为 `investigator/decision_maker/research_only_gate`）
-- Modify: `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py`（删 `_pulse_payload` 中 narrative_type 写入，1 处）
+- Add: `src/parallax/platform/db/alembic/versions/20260516_NNNN_pulse_agent_desk_redesign.py`（NNNN 取下一个连号）
+- Modify: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`（删 `narrative_type=_narrative_type_from_context(...)` 调用与导入）
+- Modify: `src/parallax/domains/pulse_lab/repositories/pulse_repository.py`（删 narrative_type 列 INSERT/SELECT，4 处）
+- Modify: `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py`（删 narrative_type 读，1 处；改 `_stages_for` empty dict keys 为 `investigator/decision_maker/research_only_gate`）
+- Modify: `src/parallax/domains/notifications/services/notification_rules.py`（删 `_pulse_payload` 中 narrative_type 写入，1 处）
 - Modify tests: `tests/unit/test_notification_rules.py`, `tests/unit/test_signal_pulse_service.py`, `tests/integration/test_pulse_repository.py`, `tests/integration/test_api_http.py`（11+ 处 narrative_type fixture 全删）
 
 **alembic 操作清单**：
@@ -259,9 +259,9 @@ grep -rn "narrative_type" src/ tests/ | grep -v "completed/" | grep -v "\.bak"
 **[H2/H3/H8/P1-2/P1-9 内联]**
 
 **Files:**
-- Modify (重写): `src/gmgn_twitter_intel/domains/pulse_lab/types/agent_decision.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/interfaces.py`（schema_version bump 到 `pulse-decision-v2`）
-- Add: `src/gmgn_twitter_intel/integrations/openai_agents/tools/__init__.py`（含 `ToolResult` Protocol）
+- Modify (重写): `src/parallax/domains/pulse_lab/types/agent_decision.py`
+- Modify: `src/parallax/domains/pulse_lab/interfaces.py`（schema_version bump 到 `pulse-decision-v2`）
+- Add: `src/parallax/integrations/openai_agents/tools/__init__.py`（含 `ToolResult` Protocol）
 - Add tests: `tests/unit/domains/pulse_lab/test_agent_decision_v2_schema.py`
 
 - [ ] DELETE 类 `AnalystOpinion`, `CritiqueReport`（spec H2，不留 alias）
@@ -334,9 +334,9 @@ grep -rn "AnalystOpinion\|CritiqueReport" src/ tests/ | grep -v "test_agent_deci
 ### Task 4 — Investigator tools（3 个 + ToolResult 实现）
 
 **Files:**
-- Add: `src/gmgn_twitter_intel/integrations/openai_agents/tools/recent_tweets.py`
-- Add: `src/gmgn_twitter_intel/integrations/openai_agents/tools/price_action.py`
-- Add: `src/gmgn_twitter_intel/integrations/openai_agents/tools/official_profile.py`
+- Add: `src/parallax/integrations/openai_agents/tools/recent_tweets.py`
+- Add: `src/parallax/integrations/openai_agents/tools/price_action.py`
+- Add: `src/parallax/integrations/openai_agents/tools/official_profile.py`
 - Add tests: `tests/unit/integrations/openai_agents/tools/test_*.py`
 
 每个工具 = `@function_tool` 装饰的 async 函数 + 返回符合 `ToolResult` Protocol 的 dataclass。**禁止 user-input SQL 拼接**；所有参数 typed。
@@ -390,7 +390,7 @@ grep -rn "AnalystOpinion\|CritiqueReport" src/ tests/ | grep -v "test_agent_deci
 **Verification:**
 ```bash
 uv run pytest tests/unit/integrations/openai_agents/tools/ -v
-grep -rn "@function_tool" src/gmgn_twitter_intel/integrations/openai_agents/tools/ | wc -l
+grep -rn "@function_tool" src/parallax/integrations/openai_agents/tools/ | wc -l
 # 应为 3
 ```
 
@@ -399,10 +399,10 @@ grep -rn "@function_tool" src/gmgn_twitter_intel/integrations/openai_agents/tool
 ### Task 5 — Prompts 文件化
 
 **Files:**
-- DELETE: `src/gmgn_twitter_intel/integrations/openai_agents/pulse_stage_prompts.py`
-- Add: `src/gmgn_twitter_intel/domains/pulse_lab/prompts/investigator.md`
-- Add: `src/gmgn_twitter_intel/domains/pulse_lab/prompts/decision_maker.md`
-- Add: `src/gmgn_twitter_intel/domains/pulse_lab/services/prompt_loader.py`
+- DELETE: `src/parallax/integrations/openai_agents/pulse_stage_prompts.py`
+- Add: `src/parallax/domains/pulse_lab/prompts/investigator.md`
+- Add: `src/parallax/domains/pulse_lab/prompts/decision_maker.md`
+- Add: `src/parallax/domains/pulse_lab/services/prompt_loader.py`
 - Add tests: `tests/unit/domains/pulse_lab/test_prompt_loader.py`
 
 - [ ] DELETE 整文件 `pulse_stage_prompts.py`（spec H5）
@@ -456,10 +456,10 @@ grep -rn "pulse_stage_prompts\|_ROUTE_FOCUS\|_STAGE_FOCUS" src/ tests/
 **[H6/P1-2/P1-6/B.4 内联]**
 
 **Files:**
-- Modify (重写): `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/providers.py`（provider protocol 接口签名）
-- Modify: `src/gmgn_twitter_intel/app/runtime/providers_wiring.py`（注入 tools list）
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_runtime.py`（manifest stages 改 `["investigator","decision_maker"]`）
+- Modify (重写): `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py`
+- Modify: `src/parallax/domains/pulse_lab/providers.py`（provider protocol 接口签名）
+- Modify: `src/parallax/app/runtime/providers_wiring.py`（注入 tools list）
+- Modify: `src/parallax/domains/pulse_lab/services/agent_runtime.py`（manifest stages 改 `["investigator","decision_maker"]`）
 - Add tests: `tests/unit/integrations/openai_agents/test_pulse_decision_two_stage.py`
 
 - [ ] DELETE `_run_stage`, `run_decision_pipeline`, critic veto 分支（spec H6/H8）
@@ -531,7 +531,7 @@ grep -rn "pulse_stage_prompts\|_ROUTE_FOCUS\|_STAGE_FOCUS" src/ tests/
 **Verification:**
 ```bash
 uv run pytest tests/unit/integrations/openai_agents/test_pulse_decision_two_stage.py -v
-grep -rn "_run_stage\|critic\|judge\|veto" src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py
+grep -rn "_run_stage\|critic\|judge\|veto" src/parallax/integrations/openai_agents/pulse_decision_agent_client.py
 # 期望 0 行
 ```
 
@@ -542,9 +542,9 @@ grep -rn "_run_stage\|critic\|judge\|veto" src/gmgn_twitter_intel/integrations/o
 **[P0-5 内联]**
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/decision_mapping.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`（P0-5 `_decision()` 扩字段）
+- Modify: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- Modify: `src/parallax/domains/pulse_lab/services/decision_mapping.py`
+- Modify: `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py`（P0-5 `_decision()` 扩字段）
 - Add tests: `tests/integration/test_pulse_candidate_worker_v2.py`
 
 - [ ] `_run_job` 调 `provider.run_investigation_then_decision`，不传 past_context（phase 1 不引入）
@@ -583,7 +583,7 @@ grep -rn "_run_stage\|critic\|judge\|veto" src/gmgn_twitter_intel/integrations/o
 **Verification:**
 ```bash
 uv run pytest tests/integration/test_pulse_candidate_worker_v2.py -v
-docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel -c "
+docker exec parallax-postgres-1 psql -U parallax_app -d parallax -c "
   SELECT array_agg(DISTINCT stage) FROM pulse_agent_run_steps
   WHERE started_at_ms > (extract(epoch from now() - interval '5 minutes') * 1000)::bigint;"
 # 应只含 investigator / decision_maker
@@ -596,8 +596,8 @@ docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel
 **[H7/P1-6/P1-7/P1-8 内联]**
 
 **Files:**
-- Modify (重写): `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py`
-- Add: `src/gmgn_twitter_intel/domains/notifications/services/pulse_surface_card.py`
+- Modify (重写): `src/parallax/domains/notifications/services/notification_rules.py`
+- Add: `src/parallax/domains/notifications/services/pulse_surface_card.py`
 - Modify tests: `tests/unit/test_notification_rules.py`
 - Add tests: `tests/unit/test_pulse_surface_card.py`
 
@@ -646,7 +646,7 @@ docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel
 **Verification:**
 ```bash
 uv run pytest tests/unit/test_notification_rules.py tests/unit/test_pulse_surface_card.py -v
-docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel -c "
+docker exec parallax-postgres-1 psql -U parallax_app -d parallax -c "
   SELECT length(body) FROM notifications
   WHERE rule_id='signal_pulse_candidate' ORDER BY last_seen_at_ms DESC LIMIT 3;"
 # body length 应 >800
@@ -701,12 +701,12 @@ grep -rn "'analyst'\|'critic'\|'judge'\"analyst\"\|\"critic\"\|\"judge\"" web/sr
 **[H9/G.1 内联]**
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_eval.py`
+- Modify: `src/parallax/domains/pulse_lab/services/agent_eval.py`
 - Modify tests: `tests/unit/domains/pulse_lab/test_agent_eval.py`
 - Modify (归档): mv `docs/superpowers/specs/active/2026-05-14-pulse-detail-redesign-cn.md` → `docs/superpowers/specs/completed/`
 - Modify: `docs/CONTRACTS.md`（Signal Pulse decision block 加 narrative/bull/bear/playbook）
 - Modify: `docs/RELIABILITY.md`（Pulse Audit Ledger stage 枚举改）
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`（Stage Map 三 stage → 两 stage）
+- Modify: `src/parallax/domains/pulse_lab/ARCHITECTURE.md`（Stage Map 三 stage → 两 stage）
 
 - [ ] DELETE v1 grader rules
 - [ ] NEW v2 grader rules（5 项，KISS 收敛）:

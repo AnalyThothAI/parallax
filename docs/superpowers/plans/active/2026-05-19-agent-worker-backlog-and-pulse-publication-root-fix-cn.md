@@ -67,22 +67,22 @@ Known-failing baseline tests:
 - `docs/generated/openapi.json`
 - `docs/superpowers/specs/active/2026-05-19-agent-worker-backlog-and-pulse-publication-root-fix-cn.md`
 - `docs/superpowers/plans/active/2026-05-19-agent-worker-backlog-and-pulse-publication-root-fix-cn.md`
-- `src/gmgn_twitter_intel/app/surfaces/api/routes_status.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/queries/narrative_backlog_health_query.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/read_models/narrative_read_model.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/services/discussion_digest_service.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/queries/pulse_freshness_health_queries.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_jobs_repository.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_read_repository.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_output_normalization.py`
-- `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`
-- `src/gmgn_twitter_intel/platform/config/settings.py`
+- `src/parallax/app/surfaces/api/routes_status.py`
+- `src/parallax/app/surfaces/api/schemas.py`
+- `src/parallax/domains/narrative_intel/queries/narrative_backlog_health_query.py`
+- `src/parallax/domains/narrative_intel/read_models/narrative_read_model.py`
+- `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`
+- `src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py`
+- `src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
+- `src/parallax/domains/narrative_intel/services/discussion_digest_service.py`
+- `src/parallax/domains/pulse_lab/queries/pulse_freshness_health_queries.py`
+- `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py`
+- `src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py`
+- `src/parallax/domains/pulse_lab/repositories/pulse_read_repository.py`
+- `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- `src/parallax/domains/pulse_lab/services/agent_output_normalization.py`
+- `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py`
+- `src/parallax/platform/config/settings.py`
 - affected backend tests under `tests/unit` and `tests/integration`
 - affected frontend tests and generated types under `web/`
 
@@ -97,7 +97,7 @@ Known-failing baseline tests:
 
 ## Rollback
 
-- Revert code deploy or tune worker budgets in `~/.gmgn-twitter-intel/workers.yaml`.
+- Revert code deploy or tune worker budgets in `~/.parallax/workers.yaml`.
 - No schema migration rollback is needed.
 - If Narrative suppresses too aggressively, raise `max_semantic_rows_enqueued_per_cycle` or `max_pending_semantics_per_target`.
 - If Pulse falls behind, raise `max_enqueues_per_cycle`, `max_pending_jobs_global`, or `max_pending_jobs_per_window_scope`; if short-window jobs are terminalized too early, raise the relevant TTL.
@@ -144,7 +144,7 @@ Final polish verification after this plan update:
 uv run pytest tests/unit/test_worker_settings.py tests/unit/test_pulse_candidate_worker.py -q
 35 passed
 
-uv run ruff check src/gmgn_twitter_intel/platform/config/settings.py src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py tests/unit/test_worker_settings.py docs/superpowers/specs/active/2026-05-19-agent-worker-backlog-and-pulse-publication-root-fix-cn.md docs/superpowers/plans/active/2026-05-19-agent-worker-backlog-and-pulse-publication-root-fix-cn.md
+uv run ruff check src/parallax/platform/config/settings.py src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py tests/unit/test_worker_settings.py docs/superpowers/specs/active/2026-05-19-agent-worker-backlog-and-pulse-publication-root-fix-cn.md docs/superpowers/plans/active/2026-05-19-agent-worker-backlog-and-pulse-publication-root-fix-cn.md
 All checks passed
 
 git diff --check

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import PulseGateResult
-from gmgn_twitter_intel.domains.pulse_lab.services.pulse_edge_events import (
+from parallax.domains.pulse_lab.services.pulse_candidate_gate import PulseGateResult
+from parallax.domains.pulse_lab.services.pulse_edge_events import (
     build_pulse_edge_state,
     diff_pulse_edge_events,
     pulse_edge_signature,

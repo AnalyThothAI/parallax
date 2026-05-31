@@ -14,7 +14,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
+from parallax.domains.pulse_lab.types.agent_decision import (
     BearCaseMemo,
     BullBearView,
     EvidenceClaim,

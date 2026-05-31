@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from gmgn_twitter_intel.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
-from gmgn_twitter_intel.domains.token_intel.interfaces import (
+from parallax.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
+from parallax.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_PROJECTION_VERSION,
 )
-from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
+from parallax.domains.token_intel.read_models.asset_flow_service import AssetFlowService
 
 
 def test_profile_read_model_returns_ready_block_from_current_profile_row():

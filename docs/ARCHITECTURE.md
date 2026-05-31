@@ -1,6 +1,6 @@
 # Architecture
 
-> **Scope.** Owns Python-service package boundaries, dependency direction, and conceptual data flow for Parallax Market Research System. The legacy runtime package and CLI are still `gmgn-twitter-intel`. Frontend (`web/`) architecture lives in `FRONTEND.md`. Public interface contracts live in `CONTRACTS.md`.
+> **Scope.** Owns Python-service package boundaries, dependency direction, and conceptual data flow for Parallax Market Research System. The runtime package, import path, and CLI are `parallax`. Frontend (`web/`) architecture lives in `FRONTEND.md`. Public interface contracts live in `CONTRACTS.md`.
 
 Parallax is organised around domain packages, explicit integration adapters, platform infrastructure, and app surfaces. Boundaries are mechanically enforced by `tests/architecture/test_src_domain_architecture.py` and `tests/architecture/test_project_structure.py::test_project_uses_domain_package_src_layout`.
 
@@ -11,7 +11,6 @@ GMGN public stream
   → domains/asset_market        (market tick capture, capture-tier projection, profile refresh/current projection, discovery)
   → domains/token_intel         (Token Radar current-row publication, scoring, search read model)
   → domains/narrative_intel     (per-mention semantics and token discussion digests)
-  → domains/social_enrichment   (watched-event extraction)
   → domains/pulse_lab           (candidate gate, agent route, decision, audit ledger)
   → domains/watchlist_intel     (handle timeline read model and account topic summaries)
   → domains/news_intel          (configured news ingestion, news facts, item briefs, page read model)
@@ -250,7 +249,7 @@ Cross-cutting primitives that implement these invariants:
 | `integrations/` | External adapters for GMGN, OKX, LiteLLM, and other provider APIs. They translate third-party API shapes but do not own product decisions. |
 | `platform/` | Config, PostgreSQL infrastructure (client, migrations, audit, Alembic), logging, and runtime paths. Platform never imports product domains. |
 
-Top-level entry shims `cli.py` and `__main__.py` exist only because `pyproject.toml` points the installed command at `gmgn_twitter_intel.cli:main`. They contain no logic.
+Top-level entry shims `cli.py` and `__main__.py` exist only because `pyproject.toml` points the installed command at `parallax.cli:main`. They contain no logic.
 
 ## Role Markers
 
@@ -281,7 +280,6 @@ direction is still enforced by the package rules below.
 | `domains/asset_market/` | Asset registry, chain/address identity, asset identity evidence/current identity selection, exact-token profile source cache and current profile projection, append-only `market_ticks`, rebuildable `token_capture_tier`, cache/publish-only live price gateway, discovery, and CEX route sync. |
 | `domains/token_intel/` | Token evidence, token intents, deterministic resolution, target-first search read model, token-target views, Token Radar feature aggregation, current-row publication state, `token_factor_snapshot_v3_social_attention` construction, factor-snapshot projection, evaluation diagnostics, signal alerts. |
 | `domains/narrative_intel/` | Per-mention trade stance / attention valence labels, token-window discussion digests, semantic coverage, narrative evidence refs, and the narrative read model consumed by API composition and Pulse evidence packets. |
-| `domains/social_enrichment/` | Watched-event gate, social-event extraction schema and facts, LLM enrichment lifecycle, enrichment worker. |
 | `domains/notifications/` | Notification rules, repository, delivery, workers, candidate types. |
 | `domains/pulse_lab/` | Signal Pulse read model, factor-snapshot candidate gate / worker, unified decision runtime policy, stage replay ledger, and pulse persistence. |
 | `domains/watchlist_intel/` | Watchlist handle-level topic summaries, signal/all handle timeline read model, summary job queue, and handle summary worker. |
@@ -297,16 +295,16 @@ own maps next to the code they describe, and this file links to them.
 
 | Module | File | Covers |
 |--------|------|--------|
-| Token Radar and token identity | [`src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md) | GMGN frame to token evidence, intents, deterministic resolution, discovery / reprocess, market ticks, radar projection, and hard identity boundaries. |
-| Narrative intelligence | `src/gmgn_twitter_intel/domains/narrative_intel/ARCHITECTURE.md` | Mention semantics, token discussion digest generation, evidence refs, semantic coverage, and narrative worker state machines. |
-| Asset market and market tick capture | [`src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md) | Asset identity evidence ledger, `MarketTick` schema, capture-tier / stream / poll workers, cache-only live fan-out, profile / discovery workers, provider capability model. |
-| CEX market intelligence | [`src/gmgn_twitter_intel/domains/cex_market_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/cex_market_intel/ARCHITECTURE.md) | Binance USDT perpetual universe consumption, OI radar board read model, CEX detail snapshots, and snapshot-only Token Case / Agent read paths. |
-| Signal Pulse pipeline | [`src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md) | Candidate gate, agent route policy, stage runtime, decision persistence, audit ledger, abstain contract. |
-| News intelligence | [`src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md) | Configured source ingestion, raw news item facts, token mention observations, fact candidates, item briefs, and the News page read model. |
-| Macro intelligence | [`src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md) | `macro_sync` fact ingest, macro observation facts, deterministic `macro_regime_v4` feature/regime/scenario scoring, module v3 views, and Macro projection ownership. |
+| Token Radar and token identity | [`src/parallax/domains/token_intel/ARCHITECTURE.md`](../src/parallax/domains/token_intel/ARCHITECTURE.md) | GMGN frame to token evidence, intents, deterministic resolution, discovery / reprocess, market ticks, radar projection, and hard identity boundaries. |
+| Narrative intelligence | `src/parallax/domains/narrative_intel/ARCHITECTURE.md` | Mention semantics, token discussion digest generation, evidence refs, semantic coverage, and narrative worker state machines. |
+| Asset market and market tick capture | [`src/parallax/domains/asset_market/ARCHITECTURE.md`](../src/parallax/domains/asset_market/ARCHITECTURE.md) | Asset identity evidence ledger, `MarketTick` schema, capture-tier / stream / poll workers, cache-only live fan-out, profile / discovery workers, provider capability model. |
+| CEX market intelligence | [`src/parallax/domains/cex_market_intel/ARCHITECTURE.md`](../src/parallax/domains/cex_market_intel/ARCHITECTURE.md) | Binance USDT perpetual universe consumption, OI radar board read model, CEX detail snapshots, and snapshot-only Token Case / Agent read paths. |
+| Signal Pulse pipeline | [`src/parallax/domains/pulse_lab/ARCHITECTURE.md`](../src/parallax/domains/pulse_lab/ARCHITECTURE.md) | Candidate gate, agent route policy, stage runtime, decision persistence, audit ledger, abstain contract. |
+| News intelligence | [`src/parallax/domains/news_intel/ARCHITECTURE.md`](../src/parallax/domains/news_intel/ARCHITECTURE.md) | Configured source ingestion, raw news item facts, token mention observations, fact candidates, item briefs, and the News page read model. |
+| Macro intelligence | [`src/parallax/domains/macro_intel/ARCHITECTURE.md`](../src/parallax/domains/macro_intel/ARCHITECTURE.md) | `macro_sync` fact ingest, macro observation facts, deterministic `macro_regime_v4` feature/regime/scenario scoring, module v3 views, and Macro projection ownership. |
 
 When a subsystem needs more than a short row here, add
-`src/gmgn_twitter_intel/domains/<domain>/ARCHITECTURE.md` and link it from this
+`src/parallax/domains/<domain>/ARCHITECTURE.md` and link it from this
 table. Keep local docs minimal, current, and tied to code changes.
 
 ## Dependency Direction
@@ -348,7 +346,7 @@ and control-plane tables are leased with bounded work and terminal evidence.
 Runtime workers must not use cold history/audit tables as freshness, fallback,
 or queue-maintenance state; cold projections need their own spec and writer.
 
-Provider modules are intentionally sparse. Only domains with real inbound cross-cutting dependencies have `providers.py` today: `ingestion`, `asset_market`, `social_enrichment`, `pulse_lab`, and `watchlist_intel`. Do not add empty provider files.
+Provider modules are intentionally sparse. Only domains with real inbound cross-cutting dependencies have `providers.py` today: `ingestion`, `asset_market`, `pulse_lab`, and `watchlist_intel`. Do not add empty provider files.
 
 CLI ops remain a separate operational surface exception: they may construct external clients for explicit operator commands, while service runtime construction stays centralized in `app/runtime/providers_wiring.py`.
 
@@ -464,4 +462,4 @@ Consequences for code review:
 - `docs/CONTRACTS.md` — public HTTP / WebSocket / CLI surface contracts.
 - `docs/references/` — papers and external API references underpinning algorithm choices.
 
-To find code, prefer `ls src/gmgn_twitter_intel/domains/<domain>/` over a memorised file list. This file pins the package map; per-file responsibilities live in the code and its tests.
+To find code, prefer `ls src/parallax/domains/<domain>/` over a memorised file list. This file pins the package map; per-file responsibilities live in the code and its tests.

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from hashlib import sha256
 
-from gmgn_twitter_intel.domains.asset_market.services.token_image_mirror import (
+from parallax.domains.asset_market.services.token_image_mirror import (
     TOKEN_IMAGE_MIRROR_MAX_BYTES,
     TOKEN_IMAGE_MIRROR_RETRY_MS,
     TokenImageMirrorService,

@@ -1,4 +1,4 @@
-from gmgn_twitter_intel.domains.news_intel.services.news_entity_extraction import extract_news_entities
+from parallax.domains.news_intel.services.news_entity_extraction import extract_news_entities
 
 
 def test_extract_news_entities_reuses_span_aware_address_and_symbol_extraction() -> None:

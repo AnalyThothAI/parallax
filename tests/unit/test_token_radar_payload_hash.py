@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.token_intel.services.token_radar_payload_hash import stable_token_radar_payload_hash
+from parallax.domains.token_intel.services.token_radar_payload_hash import stable_token_radar_payload_hash
 
 
 def test_hash_ignores_exact_factor_snapshot_json_computed_at_path() -> None:

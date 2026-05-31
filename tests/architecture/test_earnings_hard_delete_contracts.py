@@ -5,20 +5,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 DELETED_PATHS = (
-    ROOT / "src/gmgn_twitter_intel/domains/equity_event_intel",
-    ROOT / "src/gmgn_twitter_intel/app/surfaces/api/routes_equity_events.py",
-    ROOT / "src/gmgn_twitter_intel/app/runtime/worker_factories/equity_event_intel.py",
-    ROOT / "src/gmgn_twitter_intel/app/runtime/provider_wiring/equity_events.py",
-    ROOT / "src/gmgn_twitter_intel/integrations/equity_events",
-    ROOT / "src/gmgn_twitter_intel/integrations/model_execution/equity_event_brief_agent_client.py",
+    ROOT / "src/parallax/domains/equity_event_intel",
+    ROOT / "src/parallax/app/surfaces/api/routes_equity_events.py",
+    ROOT / "src/parallax/app/runtime/worker_factories/equity_event_intel.py",
+    ROOT / "src/parallax/app/runtime/provider_wiring/equity_events.py",
+    ROOT / "src/parallax/integrations/equity_events",
+    ROOT / "src/parallax/integrations/model_execution/equity_event_brief_agent_client.py",
     ROOT / "web/src/features/equity-events",
     ROOT / "web/src/routes/equity-events.route.tsx",
 )
 
 SOURCE_ROOTS = (
-    ROOT / "src/gmgn_twitter_intel/app",
-    ROOT / "src/gmgn_twitter_intel/platform",
-    ROOT / "src/gmgn_twitter_intel/integrations",
+    ROOT / "src/parallax/app",
+    ROOT / "src/parallax/platform",
+    ROOT / "src/parallax/integrations",
     ROOT / "web/src",
 )
 
@@ -30,7 +30,7 @@ DOC_CONFIG_FILES = (
     ROOT / "docs/WORKERS.md",
 )
 
-ALEMBIC_VERSIONS = ROOT / "src/gmgn_twitter_intel/platform/db/alembic/versions"
+ALEMBIC_VERSIONS = ROOT / "src/parallax/platform/db/alembic/versions"
 TEXT_SUFFIXES = {".py", ".ts", ".tsx", ".css", ".yaml", ".yml"}
 
 FORBIDDEN_RUNTIME_TOKENS = (

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src" / "gmgn_twitter_intel"
+SRC = ROOT / "src" / "parallax"
 ALEMBIC_VERSIONS = SRC / "platform" / "db" / "alembic" / "versions"
 
 FORBIDDEN_MACRO_COMPATIBILITY_TOKENS = (

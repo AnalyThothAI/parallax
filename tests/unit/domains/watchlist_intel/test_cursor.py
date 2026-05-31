@@ -1,6 +1,6 @@
 import pytest
 
-from gmgn_twitter_intel.domains.watchlist_intel.types import (
+from parallax.domains.watchlist_intel.types import (
     WatchlistTimelineCursorError,
     decode_watchlist_timeline_cursor,
     encode_watchlist_timeline_cursor,

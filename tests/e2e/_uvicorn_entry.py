@@ -3,7 +3,7 @@
 Run as:
   python -m tests.e2e._uvicorn_entry --port 0
 
-Reads GMGN_POSTGRES_DSN and GMGN_E2E_WS_TOKEN from env. Starts the FastAPI app
+Reads PARALLAX_POSTGRES_DSN and PARALLAX_E2E_WS_TOKEN from env. Starts the FastAPI app
 with start_collector=False so no upstream WebSocket is attempted, using a
 hand-built Settings object that points at the test Postgres (no YAML config
 file is required). Prints the bound port to stdout once ready in the form
@@ -25,15 +25,15 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=0)
     args = parser.parse_args()
 
-    dsn = os.environ.get("GMGN_POSTGRES_DSN")
+    dsn = os.environ.get("PARALLAX_POSTGRES_DSN")
     if not dsn:
-        print("FATAL: GMGN_POSTGRES_DSN not set", file=sys.stderr)
+        print("FATAL: PARALLAX_POSTGRES_DSN not set", file=sys.stderr)
         return 1
-    ws_token = os.environ.get("GMGN_E2E_WS_TOKEN", "e2e-token")
+    ws_token = os.environ.get("PARALLAX_E2E_WS_TOKEN", "e2e-token")
 
     # Import after env validation to keep error pretty.
-    from gmgn_twitter_intel.app.runtime.app import create_app
-    from gmgn_twitter_intel.platform.config.settings import Settings
+    from parallax.app.runtime.app import create_app
+    from parallax.platform.config.settings import Settings
 
     settings = Settings(
         ws_token=ws_token,

@@ -12,26 +12,26 @@
 
 ## File Structure
 
-- Modify `src/gmgn_twitter_intel/pipeline/token_radar_contract.py`
+- Modify `src/parallax/pipeline/token_radar_contract.py`
   - Bump `TOKEN_RADAR_PROJECTION_VERSION` to the candidate-hydration hard-cut version.
   - Update `TOKEN_RADAR_SOURCE_TABLE` to include candidate-scoped hydration semantics.
 
-- Modify `src/gmgn_twitter_intel/pipeline/token_radar_projection.py`
+- Modify `src/parallax/pipeline/token_radar_projection.py`
   - Keep resolver consumption unchanged.
   - Add explicit market readiness / event price readiness fields into `market_json`, `price_json`, and `data_health_json`.
   - Preserve no-driver behavior for stale/missing provider state.
 
-- Modify `src/gmgn_twitter_intel/storage/registry_repository.py`
+- Modify `src/parallax/storage/registry_repository.py`
   - Add a repository selector for radar candidate assets needing price refresh.
   - Join current token intent resolutions and events so current social candidates outrank registry history.
   - Keep `chain_assets_needing_price_refresh` available for non-radar cold stewardship, but do not use it from the radar-critical DEX sync path.
 
-- Modify `src/gmgn_twitter_intel/pipeline/asset_market_sync.py`
+- Modify `src/parallax/pipeline/asset_market_sync.py`
   - Replace the DEX price sync input universe with the new candidate-scoped selector.
   - Keep current address-search and token_prices write behavior.
   - Report candidate-scoped counters in the sync result.
 
-- Modify `src/gmgn_twitter_intel/pipeline/message_market_observation.py`
+- Modify `src/parallax/pipeline/message_market_observation.py`
   - Prioritize pending message/start quote rows by recent candidate windows before old backlog.
   - Keep source event/intent/resolution linkage unchanged.
 
@@ -50,8 +50,8 @@
 ### Task 1: Hard-Cut Projection Contract and Readiness Fields
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/pipeline/token_radar_contract.py`
-- Modify: `src/gmgn_twitter_intel/pipeline/token_radar_projection.py`
+- Modify: `src/parallax/pipeline/token_radar_contract.py`
+- Modify: `src/parallax/pipeline/token_radar_projection.py`
 - Test: `tests/test_token_radar_projection.py`
 
 - [x] **Step 1: Write failing tests for the hard-cut version and readiness fields**
@@ -147,8 +147,8 @@ Expected: all tests in the file pass.
 ### Task 2: Candidate-Scoped DEX Refresh Universe
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/storage/registry_repository.py`
-- Modify: `src/gmgn_twitter_intel/pipeline/asset_market_sync.py`
+- Modify: `src/parallax/storage/registry_repository.py`
+- Modify: `src/parallax/pipeline/asset_market_sync.py`
 - Test: `tests/test_registry_repository.py`
 - Test: `tests/test_asset_market_sync.py`
 
@@ -247,7 +247,7 @@ Expected: both files pass.
 ### Task 3: Recent-First Message/Start Price Hydration
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/pipeline/message_market_observation.py`
+- Modify: `src/parallax/pipeline/message_market_observation.py`
 - Test: `tests/test_message_market_observation.py`
 
 - [x] **Step 1: Write failing test for recent pending rows before old backlog**
@@ -346,7 +346,7 @@ Run:
 
 ```bash
 git diff --stat
-git diff -- docs/superpowers/specs/2026-05-09-radar-candidate-market-hydration.md docs/superpowers/plans/2026-05-09-radar-candidate-market-hydration.md src/gmgn_twitter_intel tests
+git diff -- docs/superpowers/specs/2026-05-09-radar-candidate-market-hydration.md docs/superpowers/plans/2026-05-09-radar-candidate-market-hydration.md src/parallax tests
 ```
 
 Expected: implementation matches spec boundaries, with no extraction/resolver state machine rewrite and no legacy projection compatibility path.

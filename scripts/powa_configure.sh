@@ -8,7 +8,7 @@ if ! [[ "${SNAPSHOT_COUNT}" =~ ^[0-9]+$ ]] || [ "${SNAPSHOT_COUNT}" -lt 1 ]; the
   exit 2
 fi
 
-docker compose exec -T postgres psql -U gmgn_app -d powa -v ON_ERROR_STOP=1 \
+docker compose exec -T postgres psql -U parallax_app -d powa -v ON_ERROR_STOP=1 \
   -v snapshot_count="${SNAPSHOT_COUNT}" <<'SQL'
 ALTER SYSTEM SET powa.coalesce = '5';
 ALTER SYSTEM SET powa.frequency = '5min';

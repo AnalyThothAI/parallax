@@ -23,7 +23,7 @@
 In scope:
 
 - Frontend code under `web/src/`, `web/vite.config.ts`, `web/tsconfig.json`, `web/eslint.config.js`, `web/package.json`, `web/package-lock.json`.
-- Contract-generation plumbing for frontend-consumed API response schemas: `src/gmgn_twitter_intel/app/surfaces/api/http.py`, a new API schema module, `scripts/regen_openapi.py`, `Makefile`, and `tests/contract/test_openapi_drift.py`.
+- Contract-generation plumbing for frontend-consumed API response schemas: `src/parallax/app/surfaces/api/http.py`, a new API schema module, `scripts/regen_openapi.py`, `Makefile`, and `tests/contract/test_openapi_drift.py`.
 - Generated contract artefacts: `docs/generated/openapi.json`, `web/src/lib/types/openapi.ts`.
 - Frontend tests, MSW fixtures, Playwright smoke tests, and verification artefact.
 
@@ -57,8 +57,8 @@ Out of scope:
 
 | Path | Role | Target state |
 |---|---|---|
-| `src/gmgn_twitter_intel/app/surfaces/api/schemas.py` | FastAPI OpenAPI models | New Pydantic models for frontend-consumed envelope/data payloads; no runtime business decisions. |
-| `src/gmgn_twitter_intel/app/surfaces/api/http.py` | HTTP route declarations | Add `response_model=ApiEnvelope[ConcreteDataModel]` for consumed endpoints; keep response payload values unchanged. |
+| `src/parallax/app/surfaces/api/schemas.py` | FastAPI OpenAPI models | New Pydantic models for frontend-consumed envelope/data payloads; no runtime business decisions. |
+| `src/parallax/app/surfaces/api/http.py` | HTTP route declarations | Add `response_model=ApiEnvelope[ConcreteDataModel]` for consumed endpoints; keep response payload values unchanged. |
 | `scripts/regen_openapi.py` | Contract generator | Still writes `docs/generated/openapi.json`; no local config dependency. |
 | `Makefile` | Contract command | `regen-contract` generates `docs/generated/openapi.json` and `web/src/lib/types/openapi.ts`. |
 | `tests/contract/test_openapi_drift.py` | Contract drift guard | Compare committed OpenAPI JSON and generated TS at new path. |
@@ -138,8 +138,8 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 ### Task 1 — OpenAPI Response Models and Generated Type Path
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/http.py`
+- Create: `src/parallax/app/surfaces/api/schemas.py`
+- Modify: `src/parallax/app/surfaces/api/http.py`
 - Modify: `Makefile`
 - Modify: `web/package.json`
 - Modify: `tests/contract/test_openapi_drift.py`
@@ -161,7 +161,7 @@ The plan is a single implementation plan and should ship as one final PR, but ta
   Expected: no `unknown` 200 responses for frontend-consumed `/api/*` endpoints; contract tests pass.
 - [x] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/app/surfaces/api/schemas.py src/gmgn_twitter_intel/app/surfaces/api/http.py Makefile web/package.json web/package-lock.json tests/contract/test_openapi_drift.py docs/generated/openapi.json web/src/lib/types/openapi.ts
+  git add src/parallax/app/surfaces/api/schemas.py src/parallax/app/surfaces/api/http.py Makefile web/package.json web/package-lock.json tests/contract/test_openapi_drift.py docs/generated/openapi.json web/src/lib/types/openapi.ts
   git commit -m "build: generate typed frontend api contracts"
   ```
 
@@ -406,7 +406,7 @@ The plan is a single implementation plan and should ship as one final PR, but ta
   Expected: backend test passes; frontend `rg` only matches provider/context internals or approved tests; frontend tests/typecheck pass.
 - [x] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/app/surfaces/api/ws.py tests/integration/test_api_websocket.py web
+  git add src/parallax/app/surfaces/api/ws.py tests/integration/test_api_websocket.py web
   git commit -m "refactor: make websocket subscriptions route-aware"
   ```
 

@@ -4,8 +4,8 @@ import asyncio
 from contextlib import contextmanager, nullcontext
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.domains.asset_market.runtime import token_image_mirror_worker as worker_module
-from gmgn_twitter_intel.domains.asset_market.runtime.token_image_mirror_worker import TokenImageMirrorWorker
+from parallax.domains.asset_market.runtime import token_image_mirror_worker as worker_module
+from parallax.domains.asset_market.runtime.token_image_mirror_worker import TokenImageMirrorWorker
 
 
 def test_token_image_mirror_worker_mirrors_claimed_rows_outside_db_sessions(monkeypatch, tmp_path) -> None:

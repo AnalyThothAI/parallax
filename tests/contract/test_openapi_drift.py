@@ -29,8 +29,8 @@ FRONTEND_CONTRACTS_PATH = ROOT / "web" / "src" / "lib" / "types" / "frontend-con
 @pytest.mark.contract
 def test_openapi_json_matches_committed_artefact(tmp_path: Path) -> None:
     """Regenerate openapi.json into a tmp dir and compare bytes with the committed one."""
-    from gmgn_twitter_intel.app.runtime.app import create_app
-    from gmgn_twitter_intel.platform.config.settings import Settings
+    from parallax.app.runtime.app import create_app
+    from parallax.platform.config.settings import Settings
 
     settings = Settings(ws_token="schema-gen-placeholder")
     app = create_app(settings=settings, start_collector=False)
@@ -147,8 +147,8 @@ def test_signal_pulse_item_schema_matches_runtime_payload_keys() -> None:
 @pytest.mark.contract
 def test_signal_pulse_stages_schema_exposes_only_evidence_first_stage_fields() -> None:
     """Signal Pulse public stages expose only research-committee stage fields."""
-    from gmgn_twitter_intel.app.runtime.app import create_app
-    from gmgn_twitter_intel.platform.config.settings import Settings
+    from parallax.app.runtime.app import create_app
+    from parallax.platform.config.settings import Settings
 
     settings = Settings(ws_token="schema-gen-placeholder")
     app = create_app(settings=settings, start_collector=False)

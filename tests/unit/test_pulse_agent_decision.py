@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from gmgn_twitter_intel.domains.pulse_lab.services.decision_mapping import candidate_fields_from_decision
-from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import BullBearView, FinalDecision, TradePlaybook
+from parallax.domains.pulse_lab.services.decision_mapping import candidate_fields_from_decision
+from parallax.domains.pulse_lab.types.agent_decision import BullBearView, FinalDecision, TradePlaybook
 
 
 def _narrative() -> str:

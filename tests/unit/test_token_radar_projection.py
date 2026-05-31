@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 
-import gmgn_twitter_intel.domains.token_intel.services.token_radar_projection as token_radar_projection_module
-from gmgn_twitter_intel.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
-from gmgn_twitter_intel.domains.token_intel.interfaces import (
+import parallax.domains.token_intel.services.token_radar_projection as token_radar_projection_module
+from parallax.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
+from parallax.domains.token_intel.interfaces import (
     TOKEN_RADAR_FACTOR_FAMILIES,
     TOKEN_RADAR_PROJECTION_NAME,
     TOKEN_RADAR_PROJECTION_VERSION,
     TOKEN_RADAR_SOURCE_TABLE,
 )
-from gmgn_twitter_intel.domains.token_intel.queries.token_radar_rank_source_query import TokenRadarFeatureSourceRequest
-from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import (
+from parallax.domains.token_intel.queries.token_radar_rank_source_query import TokenRadarFeatureSourceRequest
+from parallax.domains.token_intel.services.token_radar_projection import (
     PROJECTION_VERSION,
     WINDOW_MS,
     TokenRadarProjection,

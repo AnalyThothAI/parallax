@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.news_intel.services.news_item_agent_policy import (
+from parallax.domains.news_intel.services.news_item_agent_policy import (
     NEWS_ITEM_AGENT_BRIEF_MIN_PROVIDER_SCORE,
     needs_news_item_agent_brief,
     news_item_agent_brief_priority,

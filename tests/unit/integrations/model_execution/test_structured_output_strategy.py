@@ -6,16 +6,16 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from gmgn_twitter_intel.integrations.model_execution.structured_json_strategy import (
+from parallax.integrations.model_execution.structured_json_strategy import (
     ChatJsonObjectStrategy,
     StructuredOutputContext,
 )
-from gmgn_twitter_intel.platform.agent_capabilities import (
+from parallax.platform.agent_capabilities import (
     AgentCapabilityProfile,
     AgentProviderFamily,
     resolve_agent_capability_profile,
 )
-from gmgn_twitter_intel.platform.agent_execution import AgentStageSpec
+from parallax.platform.agent_execution import AgentStageSpec
 
 
 class Payload(BaseModel):
@@ -53,7 +53,7 @@ class FakeCompletions:
 def fake_litellm(monkeypatch: pytest.MonkeyPatch):
     completions = FakeCompletions()
     monkeypatch.setattr(
-        "gmgn_twitter_intel.integrations.model_execution.structured_json_strategy.litellm.acompletion",
+        "parallax.integrations.model_execution.structured_json_strategy.litellm.acompletion",
         completions.create,
     )
     return completions
@@ -92,7 +92,7 @@ def test_json_object_strategy_reasks_within_same_strategy_after_validation_failu
     async def scenario() -> None:
         completions = FakeCompletions(responses=["{}", '{"value":"fixed"}'])
         monkeypatch.setattr(
-            "gmgn_twitter_intel.integrations.model_execution.structured_json_strategy.litellm.acompletion",
+            "parallax.integrations.model_execution.structured_json_strategy.litellm.acompletion",
             completions.create,
         )
         strategy = ChatJsonObjectStrategy(api_key="sk-test", base_url="https://example.com/v1")

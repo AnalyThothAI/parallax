@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.news_intel.services.opennews_provider_signal import (
+from parallax.domains.news_intel.services.opennews_provider_signal import (
     provider_signal_from_opennews_payload,
     provider_token_impacts_from_opennews_payload,
 )

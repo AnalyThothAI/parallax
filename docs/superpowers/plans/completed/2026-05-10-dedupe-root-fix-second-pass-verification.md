@@ -7,15 +7,15 @@
 ## Commands
 
 - Red tests before implementation:
-  - `GMGN_TEST_POSTGRES_DSN='postgresql://postgres:postgres@127.0.0.1:55433/gmgn_twitter_intel_test' uv run pytest tests/test_notification_repository.py::test_insert_notification_does_not_recount_same_source_conflicts tests/test_notification_repository.py::test_insert_notification_aggregates_each_source_once_per_dedup_key tests/test_notification_repository.py::test_insert_notification_suppresses_same_pulse_source_status_with_different_key -q`
+  - `GMGN_TEST_POSTGRES_DSN='postgresql://postgres:postgres@127.0.0.1:55433/parallax_test' uv run pytest tests/test_notification_repository.py::test_insert_notification_does_not_recount_same_source_conflicts tests/test_notification_repository.py::test_insert_notification_aggregates_each_source_once_per_dedup_key tests/test_notification_repository.py::test_insert_notification_suppresses_same_pulse_source_status_with_different_key -q`
     - Result: 3 failed, proving poll-cycle recount and same Pulse source/status re-delivery.
   - `uv run pytest tests/test_pulse_candidate_worker.py::test_cooldown_does_not_bypass_for_inferred_token_watch_status_rank tests/test_pulse_candidate_worker.py::test_recent_dead_job_blocks_reenqueue_without_candidate -q`
     - Result: 2 failed, proving inferred-status cooldown bypass and dead-job requeue.
-- `GMGN_TEST_POSTGRES_DSN='postgresql://postgres:postgres@127.0.0.1:55433/gmgn_twitter_intel_test' uv run pytest tests/test_notification_repository.py -q`
+- `GMGN_TEST_POSTGRES_DSN='postgresql://postgres:postgres@127.0.0.1:55433/parallax_test' uv run pytest tests/test_notification_repository.py -q`
   - Result: 7 passed.
-- `GMGN_TEST_POSTGRES_DSN='postgresql://postgres:postgres@127.0.0.1:55433/gmgn_twitter_intel_test' uv run pytest tests/test_pulse_repository.py -q`
+- `GMGN_TEST_POSTGRES_DSN='postgresql://postgres:postgres@127.0.0.1:55433/parallax_test' uv run pytest tests/test_pulse_repository.py -q`
   - Result: 15 passed.
-- `GMGN_TEST_POSTGRES_DSN='postgresql://postgres:postgres@127.0.0.1:55433/gmgn_twitter_intel_test' uv run pytest tests/test_notification_worker.py -q`
+- `GMGN_TEST_POSTGRES_DSN='postgresql://postgres:postgres@127.0.0.1:55433/parallax_test' uv run pytest tests/test_notification_worker.py -q`
   - Result: 5 passed.
 - `uv run pytest tests/test_notification_rules.py tests/test_settings.py tests/test_pulse_candidate_worker.py -q`
   - Result: 44 passed.

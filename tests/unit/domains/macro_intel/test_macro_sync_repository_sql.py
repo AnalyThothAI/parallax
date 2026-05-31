@@ -3,7 +3,7 @@ from __future__ import annotations
 import inspect
 from datetime import date
 
-from gmgn_twitter_intel.domains.macro_intel.repositories.macro_intel_repository import (
+from parallax.domains.macro_intel.repositories.macro_intel_repository import (
     MacroIntelRepository,
 )
 

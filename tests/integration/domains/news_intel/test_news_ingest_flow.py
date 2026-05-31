@@ -5,19 +5,19 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any
 
-from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
-from gmgn_twitter_intel.domains.news_intel.queries.news_page_query import NewsPageQuery
-from gmgn_twitter_intel.domains.news_intel.repositories.news_repository import NewsRepository
-from gmgn_twitter_intel.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
-from gmgn_twitter_intel.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
-from gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
-from gmgn_twitter_intel.domains.news_intel.types.source_provider import (
+from parallax.app.runtime.repository_session import repositories_for_connection
+from parallax.domains.news_intel.queries.news_page_query import NewsPageQuery
+from parallax.domains.news_intel.repositories.news_repository import NewsRepository
+from parallax.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
+from parallax.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
+from parallax.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
+from parallax.domains.news_intel.types.source_provider import (
     NewsProviderFetchResult,
     NewsProviderObservation,
     NewsSourceHttpCache,
     NewsSourceSnapshot,
 )
-from gmgn_twitter_intel.domains.token_intel.interfaces import TokenIdentityLookupResult
+from parallax.domains.token_intel.interfaces import TokenIdentityLookupResult
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 

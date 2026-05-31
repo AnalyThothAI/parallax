@@ -3,7 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
-from gmgn_twitter_intel.domains.token_intel.queries.event_token_projection_query import (
+from parallax.domains.token_intel.queries.event_token_projection_query import (
     EventTokenProjectionQuery,
 )
 

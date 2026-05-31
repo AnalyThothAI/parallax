@@ -17,7 +17,7 @@
 | `uv run ruff check .` | Passed: `All checks passed!` |
 | `uv run pytest` | Passed for executable tests: `336 passed, 133 skipped` |
 | `uv run python -m compileall src tests` | Passed |
-| Read-only SQL check against `gmgn-twitter-intel-postgres-1` for the candidate-scoped selector | Passed; returned recent current candidate assets without SQL/schema errors |
+| Read-only SQL check against `parallax-postgres-1` for the candidate-scoped selector | Passed; returned recent current candidate assets without SQL/schema errors |
 
 Skipped tests are the repo's existing environment-gated integration tests. The full suite completed successfully with those skips.
 
@@ -95,7 +95,7 @@ Additional hotfix verification:
 | Command | Result |
 |---------|--------|
 | `uv run pytest tests/test_token_radar_projection.py -q` | Passed: `14 passed` |
-| `uv run ruff check src/gmgn_twitter_intel/pipeline/token_radar_projection.py tests/test_token_radar_projection.py` | Passed: `All checks passed!` |
+| `uv run ruff check src/parallax/pipeline/token_radar_projection.py tests/test_token_radar_projection.py` | Passed: `All checks passed!` |
 | `uv run ruff check .` | Passed: `All checks passed!` |
 | `uv run pytest` | Passed for executable tests: `338 passed, 133 skipped` |
 | `uv run python -m compileall src tests` | Passed |

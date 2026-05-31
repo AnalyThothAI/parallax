@@ -15,25 +15,25 @@
 ## File Structure
 
 **Create:**
-- `src/gmgn_twitter_intel/storage/alembic/versions/20260509_0016_account_profile_gmgn_directory_columns.py` — Alembic migration
-- `src/gmgn_twitter_intel/market/gmgn_directory_client.py` — paged HTTP client
+- `src/parallax/storage/alembic/versions/20260509_0016_account_profile_gmgn_directory_columns.py` — Alembic migration
+- `src/parallax/market/gmgn_directory_client.py` — paged HTTP client
 - `tests/test_gmgn_directory_client.py` — offline client tests
 - `tests/fixtures/gmgn_directory_page1.json` — captured response fixture
 - `tests/fixtures/gmgn_directory_page2.json` — captured response fixture (last page, no token)
 
 **Modify:**
-- `src/gmgn_twitter_intel/storage/account_quality_repository.py` — add `upsert_directory_entry()` method
+- `src/parallax/storage/account_quality_repository.py` — add `upsert_directory_entry()` method
 - `tests/test_account_quality_repository.py` — add test for new method
-- `src/gmgn_twitter_intel/cli.py` — add `ops sync-gmgn-directory` subcommand at parser (around line 188 next to `sync-okx-cex-universe`) and dispatcher (around line 649)
+- `src/parallax/cli.py` — add `ops sync-gmgn-directory` subcommand at parser (around line 188 next to `sync-okx-cex-universe`) and dispatcher (around line 649)
 - `tests/test_cli.py` — add CLI dispatch test using mocked client
-- `src/gmgn_twitter_intel/settings.py` — add optional `gmgn_directory_base_url` setting (default `https://gmgn.ai`)
+- `src/parallax/settings.py` — add optional `gmgn_directory_base_url` setting (default `https://gmgn.ai`)
 
 ---
 
 ## Task 1: Alembic migration adding GMGN directory columns
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/storage/alembic/versions/20260509_0016_account_profile_gmgn_directory_columns.py`
+- Create: `src/parallax/storage/alembic/versions/20260509_0016_account_profile_gmgn_directory_columns.py`
 
 **Goal:** Add four nullable columns and one supporting index to `account_profiles`. Reversible.
 
@@ -87,7 +87,7 @@ Expected: FAIL because the columns/index do not exist yet.
 
 - [ ] **Step 3: Write the migration**
 
-Create `src/gmgn_twitter_intel/storage/alembic/versions/20260509_0016_account_profile_gmgn_directory_columns.py`:
+Create `src/parallax/storage/alembic/versions/20260509_0016_account_profile_gmgn_directory_columns.py`:
 
 ```python
 """Add GMGN account directory columns to account_profiles."""
@@ -140,19 +140,19 @@ Expected: PASS.
 
 - [ ] **Step 5: Apply migration to local Docker postgres so subsequent dev work sees the columns**
 
-Run: `uv run gmgn-twitter-intel db migrate`
+Run: `uv run parallax db migrate`
 Expected output: JSON `{"ok": true, ...}` mentioning `20260509_0016`.
 
 Verify with:
 ```bash
-docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel -c "\d account_profiles"
+docker exec parallax-postgres-1 psql -U parallax_app -d parallax -c "\d account_profiles"
 ```
 Expected: lists the four new columns and the new index.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/storage/alembic/versions/20260509_0016_account_profile_gmgn_directory_columns.py tests/test_account_quality_repository.py
+git add src/parallax/storage/alembic/versions/20260509_0016_account_profile_gmgn_directory_columns.py tests/test_account_quality_repository.py
 git commit -m "feat(storage): add GMGN directory columns to account_profiles"
 ```
 
@@ -161,7 +161,7 @@ git commit -m "feat(storage): add GMGN directory columns to account_profiles"
 ## Task 2: GMGN directory HTTP client
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/market/gmgn_directory_client.py`
+- Create: `src/parallax/market/gmgn_directory_client.py`
 - Create: `tests/fixtures/gmgn_directory_page1.json`
 - Create: `tests/fixtures/gmgn_directory_page2.json`
 - Create: `tests/test_gmgn_directory_client.py`
@@ -215,7 +215,7 @@ from pathlib import Path
 
 import httpx
 
-from gmgn_twitter_intel.market.gmgn_directory_client import (
+from parallax.market.gmgn_directory_client import (
     GmgnDirectoryClient,
     GmgnDirectoryEntry,
 )
@@ -324,7 +324,7 @@ def test_client_raises_on_non_zero_envelope_code():
     )
     try:
         import pytest
-        from gmgn_twitter_intel.market.gmgn_directory_client import GmgnDirectoryError
+        from parallax.market.gmgn_directory_client import GmgnDirectoryError
         with pytest.raises(GmgnDirectoryError, match="auth required"):
             client.fetch_page(page_token=None)
     finally:
@@ -334,11 +334,11 @@ def test_client_raises_on_non_zero_envelope_code():
 - [ ] **Step 3: Run tests, confirm they fail**
 
 Run: `uv run pytest tests/test_gmgn_directory_client.py -v`
-Expected: FAIL with `ModuleNotFoundError: gmgn_twitter_intel.market.gmgn_directory_client`.
+Expected: FAIL with `ModuleNotFoundError: parallax.market.gmgn_directory_client`.
 
 - [ ] **Step 4: Implement the client**
 
-Create `src/gmgn_twitter_intel/market/gmgn_directory_client.py`:
+Create `src/parallax/market/gmgn_directory_client.py`:
 
 ```python
 from __future__ import annotations
@@ -501,13 +501,13 @@ Expected: 4 PASS.
 
 - [ ] **Step 6: Run lint**
 
-Run: `uv run ruff check src/gmgn_twitter_intel/market/gmgn_directory_client.py tests/test_gmgn_directory_client.py`
+Run: `uv run ruff check src/parallax/market/gmgn_directory_client.py tests/test_gmgn_directory_client.py`
 Expected: no issues.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/market/gmgn_directory_client.py tests/test_gmgn_directory_client.py tests/fixtures/gmgn_directory_page1.json tests/fixtures/gmgn_directory_page2.json
+git add src/parallax/market/gmgn_directory_client.py tests/test_gmgn_directory_client.py tests/fixtures/gmgn_directory_page1.json tests/fixtures/gmgn_directory_page2.json
 git commit -m "feat(market): add GMGN twitter directory paged client"
 ```
 
@@ -516,7 +516,7 @@ git commit -m "feat(market): add GMGN twitter directory paged client"
 ## Task 3: Repository write method for directory entries
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/storage/account_quality_repository.py:12-48`
+- Modify: `src/parallax/storage/account_quality_repository.py:12-48`
 - Modify: `tests/test_account_quality_repository.py`
 
 **Goal:** Add `upsert_directory_entry()` that owns the four `gmgn_*` columns and creates the `account_profiles` row if it does not exist. Existing handle-derived columns (`first_seen_ms`, `latest_seen_ms`, `follower_max`, `watched_status`) get sentinel defaults on insert and remain untouched on conflict — directory sync owns the directory fields and only the directory fields.
@@ -589,7 +589,7 @@ Expected: FAIL with `AttributeError: 'AccountQualityRepository' object has no at
 
 - [ ] **Step 3: Implement the method**
 
-In `src/gmgn_twitter_intel/storage/account_quality_repository.py`, add this method to `AccountQualityRepository` (place it after `upsert_profile`, before `upsert_token_call_stat`):
+In `src/parallax/storage/account_quality_repository.py`, add this method to `AccountQualityRepository` (place it after `upsert_profile`, before `upsert_token_call_stat`):
 
 ```python
     def upsert_directory_entry(
@@ -650,13 +650,13 @@ Expected: all tests PASS.
 
 - [ ] **Step 6: Lint**
 
-Run: `uv run ruff check src/gmgn_twitter_intel/storage/account_quality_repository.py tests/test_account_quality_repository.py`
+Run: `uv run ruff check src/parallax/storage/account_quality_repository.py tests/test_account_quality_repository.py`
 Expected: no issues.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/storage/account_quality_repository.py tests/test_account_quality_repository.py
+git add src/parallax/storage/account_quality_repository.py tests/test_account_quality_repository.py
 git commit -m "feat(storage): upsert GMGN directory fields on account_profiles"
 ```
 
@@ -665,14 +665,14 @@ git commit -m "feat(storage): upsert GMGN directory fields on account_profiles"
 ## Task 4: CLI `ops sync-gmgn-directory` subcommand
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/cli.py` (parser around line 188, dispatcher around line 649)
+- Modify: `src/parallax/cli.py` (parser around line 188, dispatcher around line 649)
 - Modify: `tests/test_cli.py`
 
 **Goal:** Add a one-shot CLI command that constructs a `GmgnDirectoryClient`, walks all pages, upserts every entry into `account_profiles` via `AccountQualityRepository.upsert_directory_entry()`, and prints a JSON summary on stdout. No background task. No hidden retry. Tested with a stub client passed via dependency injection.
 
 - [ ] **Step 1: Refactor for testability — extract pure sync function**
 
-This step adds a small helper that is easy to unit-test, then the CLI dispatcher calls it. Add to the bottom of `src/gmgn_twitter_intel/cli.py` (just above `def _postgres_connection`):
+This step adds a small helper that is easy to unit-test, then the CLI dispatcher calls it. Add to the bottom of `src/parallax/cli.py` (just above `def _postgres_connection`):
 
 ```python
 def _run_sync_gmgn_directory(
@@ -715,8 +715,8 @@ Append to `tests/test_cli.py`:
 
 ```python
 def test_run_sync_gmgn_directory_walks_all_pages_and_upserts():
-    from gmgn_twitter_intel.cli import _run_sync_gmgn_directory
-    from gmgn_twitter_intel.market.gmgn_directory_client import GmgnDirectoryEntry
+    from parallax.cli import _run_sync_gmgn_directory
+    from parallax.market.gmgn_directory_client import GmgnDirectoryEntry
 
     class FakeClient:
         def __init__(self, entries):
@@ -775,7 +775,7 @@ def test_run_sync_gmgn_directory_walks_all_pages_and_upserts():
 def test_cli_ops_sync_gmgn_directory_dispatches_to_runner(monkeypatch, tmp_path):
     import io
     import json
-    from gmgn_twitter_intel import cli as cli_module
+    from parallax import cli as cli_module
 
     captured = {}
 
@@ -827,7 +827,7 @@ Expected: first test FAIL with `ImportError`/`AttributeError` for `_run_sync_gmg
 
 - [ ] **Step 4: Add the parser option**
 
-In `src/gmgn_twitter_intel/cli.py`, just before `return parser` at line 232 (next to other ops subcommands), add:
+In `src/parallax/cli.py`, just before `return parser` at line 232 (next to other ops subcommands), add:
 
 ```python
     sync_gmgn_directory = ops_subcommands.add_parser(
@@ -839,7 +839,7 @@ In `src/gmgn_twitter_intel/cli.py`, just before `return parser` at line 232 (nex
 
 - [ ] **Step 5: Add the dispatcher branch and import**
 
-At the top of `src/gmgn_twitter_intel/cli.py`, ensure the import for the new client exists. Find the existing imports of `GmgnOpenApiClient`, and add adjacent:
+At the top of `src/parallax/cli.py`, ensure the import for the new client exists. Find the existing imports of `GmgnOpenApiClient`, and add adjacent:
 
 ```python
 from .market.gmgn_directory_client import GmgnDirectoryClient
@@ -887,7 +887,7 @@ Expected: no issues.
 - [ ] **Step 9: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/cli.py tests/test_cli.py
+git add src/parallax/cli.py tests/test_cli.py
 git commit -m "feat(cli): add ops sync-gmgn-directory one-shot command"
 ```
 
@@ -901,7 +901,7 @@ git commit -m "feat(cli): add ops sync-gmgn-directory one-shot command"
 
 - [ ] **Step 1: Run the live sync**
 
-Run: `uv run gmgn-twitter-intel ops sync-gmgn-directory --max-pages 60`
+Run: `uv run parallax ops sync-gmgn-directory --max-pages 60`
 
 Expected stdout: a single JSON line `{"ok": true, "data": {"upserted": <N>, ...}}` where `N` is in the range 1500–3000. Total wall time should be roughly `pages × 1s` (sleep between pages).
 
@@ -911,7 +911,7 @@ If the command errors with HTTP 403 or a Cloudflare challenge HTML, this is expe
 
 Run:
 ```bash
-docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel -c "
+docker exec parallax-postgres-1 psql -U parallax_app -d parallax -c "
   SELECT
     COUNT(*) AS total,
     COUNT(*) FILTER (WHERE gmgn_user_id IS NOT NULL) AS with_user_id,
@@ -928,7 +928,7 @@ Expected: `total ≥ 1500`, `with_user_id ≈ total`, `with_followers ≈ total`
 
 Run:
 ```bash
-docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel -c "
+docker exec parallax-postgres-1 psql -U parallax_app -d parallax -c "
   SELECT handle, gmgn_user_id, gmgn_user_tags, gmgn_platform_followers
   FROM account_profiles
   WHERE handle IN ('cz', 'elonmusk', 'realdonaldtrump', 'cz_binance')

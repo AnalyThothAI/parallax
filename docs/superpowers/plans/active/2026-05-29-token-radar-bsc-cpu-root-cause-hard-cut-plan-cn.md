@@ -76,32 +76,32 @@ artefact.
 - `tests/unit/domains/token_intel/test_token_radar_source_dirty_events.py`
 - `tests/unit/test_asset_flow_service_venue.py`
 - `web/src/features/live/api/useTokenRadarQuery.test.ts`
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py`
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260529_0125_token_radar_venue_source_width_hard_cut.py`
+- `src/parallax/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py`
+- `src/parallax/platform/db/alembic/versions/20260529_0125_token_radar_venue_source_width_hard_cut.py`
 - `docs/superpowers/plans/active/2026-05-29-token-radar-bsc-cpu-root-cause-verification-cn.md`
 
 ### Modify
 
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0111_token_radar_publication_state.py` tests only; do not rewrite historical migration unless test fixture requires string updates.
-- `src/gmgn_twitter_intel/app/surfaces/api/routes_radar.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/validators.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
-- `src/gmgn_twitter_intel/domains/token_intel/_constants.py`
-- `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_dirty_target_repository.py`
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_rank_source_repository.py`
-- `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_rank_source_query.py`
-- `src/gmgn_twitter_intel/domains/token_intel/queries/event_token_projection_query.py` if reused for selected source hydrate
-- `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
-- `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/event_anchor_backfill_worker.py`
-- `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_manifest.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_factories/__init__.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_factories/equity_event_intel.py`
-- `src/gmgn_twitter_intel/app/runtime/queue_health.py`
-- `src/gmgn_twitter_intel/platform/config/settings.py`
+- `src/parallax/platform/db/alembic/versions/20260527_0111_token_radar_publication_state.py` tests only; do not rewrite historical migration unless test fixture requires string updates.
+- `src/parallax/app/surfaces/api/routes_radar.py`
+- `src/parallax/app/surfaces/api/validators.py`
+- `src/parallax/app/surfaces/api/schemas.py`
+- `src/parallax/domains/token_intel/_constants.py`
+- `src/parallax/domains/token_intel/read_models/asset_flow_service.py`
+- `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
+- `src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py`
+- `src/parallax/domains/token_intel/repositories/token_radar_rank_source_repository.py`
+- `src/parallax/domains/token_intel/queries/token_radar_rank_source_query.py`
+- `src/parallax/domains/token_intel/queries/event_token_projection_query.py` if reused for selected source hydrate
+- `src/parallax/domains/token_intel/services/token_radar_projection.py`
+- `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py`
+- `src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py`
+- `src/parallax/app/surfaces/cli/commands/ops.py`
+- `src/parallax/app/runtime/worker_manifest.py`
+- `src/parallax/app/runtime/worker_factories/__init__.py`
+- `src/parallax/app/runtime/worker_factories/equity_event_intel.py`
+- `src/parallax/app/runtime/queue_health.py`
+- `src/parallax/platform/config/settings.py`
 - `web/src/features/live/api/useLiveRadarRouteData.ts`
 - `web/src/features/live/api/useTokenRadarQuery.ts`
 - `web/src/features/live/ui/TokenRadarTable.tsx`
@@ -113,7 +113,7 @@ artefact.
 - `docs/RELIABILITY.md`
 - `docs/CONTRACTS.md`
 - `docs/references/POSTGRES_PERFORMANCE.md`
-- `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
+- `src/parallax/domains/token_intel/ARCHITECTURE.md`
 
 ### Delete When Equity/Earnings Is Fully Hard-Deleted
 
@@ -134,14 +134,14 @@ Follow and merge the existing scope in `docs/superpowers/plans/active/2026-05-29
 Run:
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 ```
 
 Expected:
 
 ```text
-config_path=/Users/qinghuan/.gmgn-twitter-intel/config.yaml
-workers_config_path=/Users/qinghuan/.gmgn-twitter-intel/workers.yaml
+config_path=/Users/qinghuan/.parallax/config.yaml
+workers_config_path=/Users/qinghuan/.parallax/workers.yaml
 ```
 
 Do not copy tokens, proxy URLs, cookies, or DSNs.
@@ -152,7 +152,7 @@ Run:
 
 ```bash
 curl -sS http://127.0.0.1:8765/readyz | jq '{ok,reasons,projection:.worker_lanes.projection}'
-docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -X -q -P pager=off -c "
+docker compose exec -T postgres psql -U parallax_app -d parallax -X -q -P pager=off -c "
 SELECT to_regclass('public.equity_event_projection_dirty_targets') AS equity_queue_table;
 SELECT \"window\", scope, venue, count(*) AS rows
 FROM token_radar_current_rows
@@ -168,7 +168,7 @@ Expected: command exits `0`. Save output into the verification file created in T
 Run a 60 second delta without resetting stats:
 
 ```bash
-docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -X -q -P pager=off -c "
+docker compose exec -T postgres psql -U parallax_app -d parallax -X -q -P pager=off -c "
 SELECT now() AS captured_at,
        calls,
        round(total_exec_time::numeric, 2) AS total_ms,
@@ -180,7 +180,7 @@ ORDER BY total_exec_time DESC
 LIMIT 10;
 "
 sleep 60
-docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -X -q -P pager=off -c "
+docker compose exec -T postgres psql -U parallax_app -d parallax -X -q -P pager=off -c "
 SELECT now() AS captured_at,
        calls,
        round(total_exec_time::numeric, 2) AS total_ms,
@@ -221,9 +221,9 @@ def _text(path: str) -> str:
 
 
 def test_token_radar_api_accepts_server_side_venue() -> None:
-    route = _text("src/gmgn_twitter_intel/app/surfaces/api/routes_radar.py")
-    service = _text("src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py")
-    repo = _text("src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py")
+    route = _text("src/parallax/app/surfaces/api/routes_radar.py")
+    service = _text("src/parallax/domains/token_intel/read_models/asset_flow_service.py")
+    repo = _text("src/parallax/domains/token_intel/repositories/token_radar_repository.py")
 
     assert "venue:" in route
     assert "_venue(" in route
@@ -234,9 +234,9 @@ def test_token_radar_api_accepts_server_side_venue() -> None:
 
 
 def test_token_radar_current_identity_includes_venue() -> None:
-    manifest = _text("src/gmgn_twitter_intel/app/runtime/worker_manifest.py")
+    manifest = _text("src/parallax/app/runtime/worker_manifest.py")
     migration = _text(
-        "src/gmgn_twitter_intel/platform/db/alembic/versions/"
+        "src/parallax/platform/db/alembic/versions/"
         "20260529_0125_token_radar_venue_source_width_hard_cut.py"
     )
 
@@ -278,7 +278,7 @@ def _text(path: str) -> str:
 
 def test_source_edge_populate_is_windowless_narrow_event_edge() -> None:
     query = _text(
-        "src/gmgn_twitter_intel/domains/token_intel/queries/"
+        "src/parallax/domains/token_intel/queries/"
         "token_radar_rank_source_query.py"
     )
     populate = query.split("_POPULATE_RANK_SOURCE_EDGES_FOR_EVENT_IDS_SQL", 1)[1].split(
@@ -309,7 +309,7 @@ def test_source_edge_populate_is_windowless_narrow_event_edge() -> None:
 
 def test_rank_source_table_is_not_window_or_payload_coupled() -> None:
     migration = _text(
-        "src/gmgn_twitter_intel/platform/db/alembic/versions/"
+        "src/parallax/platform/db/alembic/versions/"
         "20260529_0125_token_radar_venue_source_width_hard_cut.py"
     )
     create_table = migration.split("CREATE TABLE token_radar_rank_source_events", 1)[1].split(
@@ -327,14 +327,14 @@ def test_rank_source_table_is_not_window_or_payload_coupled() -> None:
 
 def test_source_dirty_is_event_edge_queue_not_target_union() -> None:
     projection = _text(
-        "src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py"
+        "src/parallax/domains/token_intel/services/token_radar_projection.py"
     )
     source_dirty_repo = _text(
-        "src/gmgn_twitter_intel/domains/token_intel/repositories/"
+        "src/parallax/domains/token_intel/repositories/"
         "token_radar_source_dirty_event_repository.py"
     )
     target_dirty_repo = _text(
-        "src/gmgn_twitter_intel/domains/token_intel/repositories/"
+        "src/parallax/domains/token_intel/repositories/"
         "token_radar_dirty_target_repository.py"
     )
 
@@ -358,14 +358,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 TOKEN_RADAR_SQL_SURFACES = (
-    "src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_rank_source_query.py",
-    "src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py",
-    "src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_dirty_target_repository.py",
-    "src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py",
-    "src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py",
-    "src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py",
-    "src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py",
-    "src/gmgn_twitter_intel/app/surfaces/api/routes_radar.py",
+    "src/parallax/domains/token_intel/queries/token_radar_rank_source_query.py",
+    "src/parallax/domains/token_intel/repositories/token_radar_repository.py",
+    "src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py",
+    "src/parallax/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py",
+    "src/parallax/domains/token_intel/services/token_radar_projection.py",
+    "src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py",
+    "src/parallax/domains/token_intel/read_models/asset_flow_service.py",
+    "src/parallax/app/surfaces/api/routes_radar.py",
 )
 
 
@@ -404,7 +404,7 @@ def test_token_radar_product_sql_has_no_venue_compatibility_fallback() -> None:
 
 
 def test_all_current_publication_and_first_seen_sql_is_venue_scoped() -> None:
-    repo = _text("src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py")
+    repo = _text("src/parallax/domains/token_intel/repositories/token_radar_repository.py")
 
     assert 'AND current_rows.venue = %s' in repo
     assert 'AND state.venue = current_rows.venue' in repo
@@ -428,10 +428,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 RUNTIME_FILES = (
-    "src/gmgn_twitter_intel/app/runtime/worker_manifest.py",
-    "src/gmgn_twitter_intel/app/runtime/queue_health.py",
-    "src/gmgn_twitter_intel/app/runtime/worker_factories/__init__.py",
-    "src/gmgn_twitter_intel/platform/config/settings.py",
+    "src/parallax/app/runtime/worker_manifest.py",
+    "src/parallax/app/runtime/queue_health.py",
+    "src/parallax/app/runtime/worker_factories/__init__.py",
+    "src/parallax/platform/config/settings.py",
     "docs/WORKERS.md",
 )
 
@@ -473,11 +473,11 @@ Expected before implementation: FAIL. If any guard passes before code changes, t
 ## Task 2: P0-A Add Server-Side Venue As Token Radar Product Key
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260529_0125_token_radar_venue_source_width_hard_cut.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/_constants.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260529_0125_token_radar_venue_source_width_hard_cut.py`
+- Modify: `src/parallax/domains/token_intel/_constants.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py`
+- Modify: `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py`
 - Test: `tests/unit/domains/token_intel/test_token_radar_venue.py`
 
 - [ ] **Step 1: Define canonical venue keys**
@@ -635,9 +635,9 @@ Expected: no generation/run/timestamp identity is introduced.
 ## Task 3: P0-A Add API And Frontend Server-Side Venue Contract
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/validators.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/routes_radar.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`
+- Modify: `src/parallax/app/surfaces/api/validators.py`
+- Modify: `src/parallax/app/surfaces/api/routes_radar.py`
+- Modify: `src/parallax/domains/token_intel/read_models/asset_flow_service.py`
 - Modify: `web/src/features/live/api/useTokenRadarQuery.ts`
 - Modify: `web/src/features/live/api/useLiveRadarRouteData.ts`
 - Modify: `web/src/features/live/ui/TokenRadarTable.tsx`
@@ -718,11 +718,11 @@ Expected: switching BSC/SOL/ALL does not reuse stale global cache.
 
 **Files:**
 - Modify/Delete per `docs/superpowers/plans/active/2026-05-29-earnings-hard-delete-plan-cn.md`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_manifest.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/queue_health.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_factories/__init__.py`
-- Modify/Delete: `src/gmgn_twitter_intel/app/runtime/worker_factories/equity_event_intel.py`
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
+- Modify: `src/parallax/app/runtime/worker_manifest.py`
+- Modify: `src/parallax/app/runtime/queue_health.py`
+- Modify: `src/parallax/app/runtime/worker_factories/__init__.py`
+- Modify/Delete: `src/parallax/app/runtime/worker_factories/equity_event_intel.py`
+- Modify: `src/parallax/platform/config/settings.py`
 - Modify: `docs/WORKERS.md`
 - Test: `tests/architecture/test_equity_runtime_hard_delete_contract.py`
 
@@ -770,9 +770,9 @@ Expected: architecture guard passes; no disabled placeholder remains to preserve
 ## Task 5: P0-C Rebuild Windowless Narrow Source Edge
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_rank_source_query.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_rank_source_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
+- Modify: `src/parallax/domains/token_intel/queries/token_radar_rank_source_query.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_rank_source_repository.py`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py`
 - Test: `tests/unit/domains/token_intel/test_token_radar_source_event_edges.py`
 
 - [ ] **Step 1: Recreate source-edge table as a narrow event-target read model**
@@ -994,12 +994,12 @@ Expected: `temp read/write` is zero for normal batches. If temp appears, do not 
 ## Task 6: P0-D Split Source Dirty Event Queue From Target Feature Queue
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_dirty_target_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_rank_source_query.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/event_anchor_backfill_worker.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`
+- Create: `src/parallax/domains/token_intel/repositories/token_radar_source_dirty_event_repository.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py`
+- Modify: `src/parallax/domains/token_intel/queries/token_radar_rank_source_query.py`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py`
+- Modify: `src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py`
+- Modify: `src/parallax/app/surfaces/cli/commands/ops.py`
 - Test: `tests/unit/domains/token_intel/test_token_radar_source_dirty_events.py`
 
 - [ ] **Step 1: Create source dirty event-edge queue**
@@ -1177,7 +1177,7 @@ Expected: this appears only around bounded rank-set publication, not as a global
 - Modify: `docs/WORKER_FLOW.md`
 - Modify: `docs/CONTRACTS.md`
 - Modify: `docs/references/POSTGRES_PERFORMANCE.md`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/token_intel/ARCHITECTURE.md`
 
 - [ ] **Step 1: Run backend and frontend tests**
 
@@ -1205,8 +1205,8 @@ Expected: all pass.
 With app workers stopped or paused:
 
 ```bash
-uv run gmgn-twitter-intel db upgrade
-uv run gmgn-twitter-intel ops rebuild-token-radar
+uv run parallax db upgrade
+uv run parallax ops rebuild-token-radar
 ```
 
 Expected: rebuild writes current rows for `(window, scope, venue)` including `venue=bsc`.

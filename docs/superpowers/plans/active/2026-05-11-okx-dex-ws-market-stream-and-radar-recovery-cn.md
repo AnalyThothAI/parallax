@@ -47,7 +47,7 @@ Live implementation amendment after 2026-05-11 verification:
 
 ### Storage / Migrations
 
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260511_0024_price_observation_field_indexes.py`.
+- Create: `src/parallax/platform/db/alembic/versions/20260511_0024_price_observation_field_indexes.py`.
 
 ```python
 from __future__ import annotations
@@ -164,7 +164,7 @@ def downgrade() -> None:
   - Add assertion that `token_radar_projection_coverage` exists.
   - Add assertion that indexes are created/dropped concurrently.
 
-### `src/gmgn_twitter_intel/domains/asset_market/market_field_facts.py`
+### `src/parallax/domains/asset_market/market_field_facts.py`
 
 - Add constants:
 
@@ -188,7 +188,7 @@ DEX_METADATA_CAPABLE_PROVIDERS = frozenset({
 CEX_MARKET_CAPABLE_PROVIDERS = frozenset({"okx_cex"})
 ```
 
-### `src/gmgn_twitter_intel/domains/asset_market/repositories/current_market_repository.py`
+### `src/parallax/domains/asset_market/repositories/current_market_repository.py`
 
 - Replace literal provider lists with imported provider-set constants when building SQL.
 - Keep one query shape and field-aware lateral reads, but ensure SQL includes `okx_dex_ws_price_info` only for price/DEX metadata/volume fields, not open interest.
@@ -248,7 +248,7 @@ def test_current_market_reads_okx_dex_ws_price_info_as_metadata_provider(tmp_pat
     assert snapshot["fields"]["market_cap_usd"]["provider"] == "okx_dex_ws_price_info"
 ```
 
-### `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
+### `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
 
 - Add coverage method:
 
@@ -280,7 +280,7 @@ def latest_coverage(self, *, projection_version: str, windows: tuple[str, ...], 
 - Add `mark_coverage(...)` with an upsert into `token_radar_projection_coverage`.
 - `TokenRadarProjection.rebuild(...)` must mark `running` before the source query and `ready` only after `token_radar_rows` replacement commits. On failure, the worker marks `failed` in a separate session.
 
-### `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py`
+### `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py`
 
 - Change `rebuild_once(...)` so each window/scope is isolated:
   - Determine missing current-version windows from `repos.token_radar.latest_coverage(...)`.
@@ -333,7 +333,7 @@ assert calls[:3] == [
 ]
 ```
 
-### `src/gmgn_twitter_intel/domains/asset_market/providers.py`
+### `src/parallax/domains/asset_market/providers.py`
 
 - Add streaming value types:
 - Add `from collections.abc import AsyncIterator`; keep the existing `typing` imports for `Any` and `Protocol`.
@@ -366,7 +366,7 @@ class DexMarketStreamProvider(Protocol):
         raise NotImplementedError
 ```
 
-### `src/gmgn_twitter_intel/integrations/okx/dex_ws_client.py`
+### `src/parallax/integrations/okx/dex_ws_client.py`
 
 - Create async client with:
   - `connect -> login -> subscribe -> ping loop -> yield price-info updates`.
@@ -381,7 +381,7 @@ class DexMarketStreamProvider(Protocol):
   - `test_okx_dex_ws_price_info_normalizes_market_fields`
   - `test_okx_dex_ws_unauthenticated_error_is_surfaceable`
 
-### `src/gmgn_twitter_intel/domains/asset_market/runtime/dex_market_stream_worker.py`
+### `src/parallax/domains/asset_market/runtime/dex_market_stream_worker.py`
 
 - Create worker:
   - Reads hot resolved DEX targets from a new registry method.
@@ -391,14 +391,14 @@ class DexMarketStreamProvider(Protocol):
   - Inserts `price_observations` with field-capable values.
   - Calls optional `on_market_update` after commit.
 
-### `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`
+### `src/parallax/domains/token_intel/read_models/asset_flow_service.py`
 
 - Read `token_radar.latest_coverage(...)` before `latest_rows(...)`.
 - If coverage is absent/running/failed, return `targets=[]`, `attention=[]`, `projection.status="pending"`, and a specific `projection.reason`.
 - If coverage is `ready`, return rows normally. `ready + zero rows` is a valid fresh empty projection.
 - Keep the hard cut: do not read older projection versions and do not derive public market fields from factor snapshots.
 
-### `src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py`
+### `src/parallax/domains/asset_market/repositories/registry_repository.py`
 
 - Add query method:
 
@@ -456,13 +456,13 @@ Use current `TOKEN_RADAR_PROJECTION_VERSION` rows, resolved `Asset` targets, and
 
 - Update existing registry/search market lateral provider filters to include `okx_dex_ws_price_info` for DEX metadata fields and price, while keeping `okx_dex_price` price-only.
 
-### `src/gmgn_twitter_intel/app/runtime/providers_wiring.py`
+### `src/parallax/app/runtime/providers_wiring.py`
 
 - Wire `OkxDexWebSocketMarketProvider` separately from REST `OkxDexMarketProvider`.
 - Do not put WS methods on the REST provider.
 - Reuse OKX DEX credentials from settings.
 
-### `src/gmgn_twitter_intel/platform/config/settings.py`
+### `src/parallax/platform/config/settings.py`
 
 - Add fields to `OkxProviderConfig`:
 
@@ -487,7 +487,7 @@ def okx_dex_ws_configured(self) -> bool:
     )
 ```
 
-### `src/gmgn_twitter_intel/app/surfaces/api/ws.py`
+### `src/parallax/app/surfaces/api/ws.py`
 
 - Extend `ClientSubscription`:
 
@@ -545,7 +545,7 @@ if (payload.type === "market_update") {
 
 1. Apply PR 1 migration.
 2. Run `ANALYZE price_observations; ANALYZE token_intent_resolutions; ANALYZE token_intents; ANALYZE events;` once after migration.
-3. Rebuild current projection windows: `uv run gmgn-twitter-intel ops rebuild-token-radar --window 5m --scope all`, repeat for all public windows/scopes if the CLI supports one pair at a time.
+3. Rebuild current projection windows: `uv run parallax ops rebuild-token-radar --window 5m --scope all`, repeat for all public windows/scopes if the CLI supports one pair at a time.
 4. Deploy PR 1 and verify `/api/token-radar` for all windows.
 5. Deploy PR 2 with `providers.okx.dex_ws_enabled: false`.
 6. Enable DEX WS on one environment with `dex_ws_subscription_limit: 20`.
@@ -578,7 +578,7 @@ if (payload.type === "market_update") {
 
 - AC4:
   ```bash
-  uv run gmgn-twitter-intel ops audit-token-radar --window 1h --scope all
+  uv run parallax ops audit-token-radar --window 1h --scope all
   curl -s 'http://127.0.0.1:8765/api/token-radar?window=1h&scope=all&limit=48' -H "Authorization: Bearer $TOKEN" | jq '.data.projection.status,.data.targets|length'
   ```
   Expected: status is `fresh` or `pending`; request completes below the configured timeout; after backfill target length is non-zero when source rows exist.

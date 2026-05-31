@@ -8,7 +8,7 @@
 - `docs/superpowers/specs/active/2026-05-09-standardized-social-factor-pipeline.md`
 - `docs/superpowers/specs/active/2026-05-10-token-radar-factor-snapshot-architecture-cn.md`
 - `docs/superpowers/specs/active/2026-05-11-token-radar-market-boundary-hard-cut-cn.md`
-- `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
+- `src/parallax/domains/token_intel/ARCHITECTURE.md`
 
 ## Background
 
@@ -18,15 +18,15 @@ token identity feed `domains/token_intel`, projection writes
 rather than old score/thesis JSON. The module architecture says the production
 chain ends in `TokenRadarProjectionWorker`, `token_radar_rows.factor_snapshot_json`,
 read models, Pulse, notifications, HTTP, WebSocket, CLI, and frontend
-(`src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md:7-17`,
-`src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md:39-43`).
+(`src/parallax/domains/token_intel/ARCHITECTURE.md:7-17`,
+`src/parallax/domains/token_intel/ARCHITECTURE.md:39-43`).
 
 The source query already joins the data this fix needs. It brings token intents,
 current deterministic resolutions, events, account profile features from GMGN
 directory, LLM social hints, asset identity, CEX feed metadata, first price,
 event price, event-history price, and before-event price into one ordered stream
-(`src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py:16-85`,
-`src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py:87-204`).
+(`src/parallax/domains/token_intel/queries/token_radar_source_query.py:16-85`,
+`src/parallax/domains/token_intel/queries/token_radar_source_query.py:87-204`).
 This is enough to build a first solid factor layer without new providers,
 new LLM calls, or a new research platform.
 
@@ -34,48 +34,48 @@ The current feature builder already computes useful primitives: rolling mention
 counts, unique authors, watched mentions, weighted mentions from GMGN platform
 followers and tags, duplicate text share, informative post count, LLM utility,
 propagation, market-derived tradeability, and timing fields
-(`src/gmgn_twitter_intel/domains/token_intel/scoring/token_radar_feature_builder.py:29-85`,
-`src/gmgn_twitter_intel/domains/token_intel/scoring/token_radar_feature_builder.py:88-130`).
+(`src/parallax/domains/token_intel/scoring/token_radar_feature_builder.py:29-85`,
+`src/parallax/domains/token_intel/scoring/token_radar_feature_builder.py:88-130`).
 There is also a pure atomic mention helper that weights authors by GMGN platform
 followers, tag tier, and first-seen age
-(`src/gmgn_twitter_intel/domains/token_intel/services/atomic_mention.py:32-43`).
+(`src/parallax/domains/token_intel/services/atomic_mention.py:32-43`).
 
 The current snapshot builder is structurally clean but semantically too blunt.
 Identity factors are presence checks that score 100 when `target_id`,
 `target_type`, or `symbol` exists
-(`src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py:68-84`).
+(`src/parallax/domains/token_intel/scoring/factor_snapshot.py:68-84`).
 Timing includes a `social_signal_start_ms` presence score that is always 100
 when a row exists
-(`src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py:206-219`).
+(`src/parallax/domains/token_intel/scoring/factor_snapshot.py:206-219`).
 DEX market quality uses fixed floor multiples for holders, liquidity, and
 market cap, so healthy DEX candidates saturate at 100 quickly
-(`src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py:165-203`,
-`src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py:370-385`).
+(`src/parallax/domains/token_intel/scoring/factor_snapshot.py:165-203`,
+`src/parallax/domains/token_intel/scoring/factor_snapshot.py:370-385`).
 The composite rank is a simple average of six family scores, then hard-gate
 blocked snapshots are capped to 20
-(`src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py:272-291`).
+(`src/parallax/domains/token_intel/scoring/factor_snapshot.py:272-291`).
 
 Projection applies a cross-sectional rank, but only after the composite has
 already been computed, and the rank is attached as metadata rather than used as
 the score contract
-(`src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py:231-286`).
+(`src/parallax/domains/token_intel/services/token_radar_projection.py:231-286`).
 The normalizer itself ranks raw scores within an active cohort
-(`src/gmgn_twitter_intel/domains/token_intel/scoring/cross_section_normalizer.py:8-33`).
+(`src/parallax/domains/token_intel/scoring/cross_section_normalizer.py:8-33`).
 
 Pulse correctly gates before agent execution and persists the same factor
-snapshot, gate, and recommendation (`src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py:391-464`).
+snapshot, gate, and recommendation (`src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:391-464`).
 The Pulse gate reads `composite.rank_score`, hard-gate reasons, and factor risk
-flags (`src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py:46-77`).
+flags (`src/parallax/domains/pulse_lab/services/pulse_candidate_gate.py:46-77`).
 Therefore, fixing snapshot semantics fixes Pulse without adding agent authority.
 
 The database already has an evaluation table for score-version bucket outcomes
-(`src/gmgn_twitter_intel/platform/db/alembic/versions/20260506_0001_initial_postgresql.py:680-703`).
+(`src/parallax/platform/db/alembic/versions/20260506_0001_initial_postgresql.py:680-703`).
 Older token signal snapshot/outcome tables were intentionally dropped during
 the v3 intent migration
-(`src/gmgn_twitter_intel/platform/db/alembic/versions/20260507_0007_token_radar_v3_intents.py:255-270`).
+(`src/parallax/platform/db/alembic/versions/20260507_0007_token_radar_v3_intents.py:255-270`).
 The current product snapshot store is `token_radar_rows`; reads already select
 latest rows by max `computed_at_ms`
-(`src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py:91-134`).
+(`src/parallax/domains/token_intel/repositories/token_radar_repository.py:91-134`).
 For evaluation, the current factor version needs enough retained point-in-time
 rows to settle forward returns. This spec keeps `token_radar_rows` as the single
 product snapshot store rather than recreating the dropped token signal snapshot

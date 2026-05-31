@@ -28,7 +28,7 @@
 硬切后的目标结构是“composition root + public surface + domain-owned use cases + integration adapters”：
 
 ```text
-src/gmgn_twitter_intel/
+src/parallax/
   app/
     runtime/
       bootstrap.py                  # process facade: DB, providers, repositories, workers, scheduler
@@ -128,11 +128,11 @@ src/gmgn_twitter_intel/
 ### Task 1: Hard-cut Pulse harness manifest contract
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_harness.py`
+- Modify: `src/parallax/domains/pulse_lab/services/agent_harness.py`
 - Modify: `tests/unit/integrations/openai_agents/test_pulse_decision_two_stage.py`
 - Modify: `tests/unit/domains/pulse_lab/test_agent_harness_eval_v2.py`
 - Modify: `docs/ARCHITECTURE.md`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/pulse_lab/ARCHITECTURE.md`
 - Modify: `docs/superpowers/plans/active/2026-05-16-pulse-agent-desk-redesign-plan-cn.md` or move it to completed/historical if superseded.
 
 - [ ] Keep the new contract: `runtime.tool_names_by_stage` is the source of truth; `runtime.tools_enabled` is deleted.
@@ -147,16 +147,16 @@ src/gmgn_twitter_intel/
 ### Task 2: Clear backend quality gate red items
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_harness_eval.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/read_models/token_profile_read_model.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_stream_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_poll_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/live_price_gateway.py`
-- Modify: `src/gmgn_twitter_intel/domains/watchlist_intel/repositories/watchlist_intel_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/event_anchor_backfill_worker.py`
+- Modify: `src/parallax/domains/notifications/services/notification_rules.py`
+- Modify: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- Modify: `src/parallax/domains/pulse_lab/services/agent_harness_eval.py`
+- Modify: `src/parallax/domains/asset_market/read_models/token_profile_read_model.py`
+- Modify: `src/parallax/domains/asset_market/runtime/market_tick_stream_worker.py`
+- Modify: `src/parallax/domains/asset_market/runtime/market_tick_poll_worker.py`
+- Modify: `src/parallax/domains/asset_market/runtime/live_price_gateway.py`
+- Modify: `src/parallax/domains/watchlist_intel/repositories/watchlist_intel_repository.py`
+- Modify: `src/parallax/domains/pulse_lab/repositories/pulse_repository.py`
+- Modify: `src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py`
 - Modify: `pyproject.toml` only if adding a precise `jsonref` typing ignore is cleaner than local ignores.
 
 - [ ] Run `uv run ruff check src --fix` and inspect the diff; manually fix the B009 private `getattr` and long line.
@@ -171,21 +171,21 @@ src/gmgn_twitter_intel/
 ### Task 3: Split FastAPI surface by route group
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/app/surfaces/api/exceptions.py`
-- Create: `src/gmgn_twitter_intel/app/surfaces/api/responses.py`
-- Create: `src/gmgn_twitter_intel/app/surfaces/api/dependencies.py`
-- Create: `src/gmgn_twitter_intel/app/surfaces/api/validators.py`
-- Create: `src/gmgn_twitter_intel/app/surfaces/api/routes_status.py`
-- Create: `src/gmgn_twitter_intel/app/surfaces/api/routes_events.py`
-- Create: `src/gmgn_twitter_intel/app/surfaces/api/routes_token_image.py`
-- Create: `src/gmgn_twitter_intel/app/surfaces/api/routes_radar.py`
-- Create: `src/gmgn_twitter_intel/app/surfaces/api/routes_search.py`
-- Create: `src/gmgn_twitter_intel/app/surfaces/api/routes_watchlist.py`
-- Create: `src/gmgn_twitter_intel/app/surfaces/api/routes_pulse.py`
-- Create: `src/gmgn_twitter_intel/app/surfaces/api/routes_harness.py`
-- Create: `src/gmgn_twitter_intel/app/surfaces/api/routes_notifications.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/http.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/app.py`
+- Create: `src/parallax/app/surfaces/api/exceptions.py`
+- Create: `src/parallax/app/surfaces/api/responses.py`
+- Create: `src/parallax/app/surfaces/api/dependencies.py`
+- Create: `src/parallax/app/surfaces/api/validators.py`
+- Create: `src/parallax/app/surfaces/api/routes_status.py`
+- Create: `src/parallax/app/surfaces/api/routes_events.py`
+- Create: `src/parallax/app/surfaces/api/routes_token_image.py`
+- Create: `src/parallax/app/surfaces/api/routes_radar.py`
+- Create: `src/parallax/app/surfaces/api/routes_search.py`
+- Create: `src/parallax/app/surfaces/api/routes_watchlist.py`
+- Create: `src/parallax/app/surfaces/api/routes_pulse.py`
+- Create: `src/parallax/app/surfaces/api/routes_harness.py`
+- Create: `src/parallax/app/surfaces/api/routes_notifications.py`
+- Modify: `src/parallax/app/surfaces/api/http.py`
+- Modify: `src/parallax/app/runtime/app.py`
 - Modify: `tests/integration/test_api_http.py`
 - Modify: `tests/integration/test_api_health.py`
 - Modify: `tests/integration/watchlist/test_watchlist_intel_api.py`
@@ -207,15 +207,15 @@ src/gmgn_twitter_intel/
 ### Task 4: Split CLI command surface
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/app/surfaces/cli/parser.py`
-- Create: `src/gmgn_twitter_intel/app/surfaces/cli/commands/__init__.py`
-- Create: `src/gmgn_twitter_intel/app/surfaces/cli/commands/config.py`
-- Create: `src/gmgn_twitter_intel/app/surfaces/cli/commands/db.py`
-- Create: `src/gmgn_twitter_intel/app/surfaces/cli/commands/serve.py`
-- Create: `src/gmgn_twitter_intel/app/surfaces/cli/commands/read_models.py`
-- Create: `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/main.py`
-- Modify: `src/gmgn_twitter_intel/cli.py`
+- Create: `src/parallax/app/surfaces/cli/parser.py`
+- Create: `src/parallax/app/surfaces/cli/commands/__init__.py`
+- Create: `src/parallax/app/surfaces/cli/commands/config.py`
+- Create: `src/parallax/app/surfaces/cli/commands/db.py`
+- Create: `src/parallax/app/surfaces/cli/commands/serve.py`
+- Create: `src/parallax/app/surfaces/cli/commands/read_models.py`
+- Create: `src/parallax/app/surfaces/cli/commands/ops.py`
+- Modify: `src/parallax/app/surfaces/cli/main.py`
+- Modify: `src/parallax/cli.py`
 - Modify: `tests/integration/test_cli.py`
 - Modify: `tests/unit/test_cli_search_query.py`
 - Modify: `tests/unit/test_token_radar_audit_cli.py`
@@ -223,9 +223,9 @@ src/gmgn_twitter_intel/
 
 - [ ] Move parser construction to `parser.py`.
 - [ ] Move command implementations by domain into `commands/*`.
-- [ ] Hard-cut root shim: `gmgn_twitter_intel.cli` exports `main` only unless a test documents a current public API that must move to a named command module.
+- [ ] Hard-cut root shim: `parallax.cli` exports `main` only unless a test documents a current public API that must move to a named command module.
 - [ ] Move `_audit_token_radar_rows` to `commands/ops.py` or a domain read-model command module; update tests to import the new owner.
-- [ ] Keep `gmgn_twitter_intel.cli:main` as the installed command entrypoint, but remove behavior from the root shim.
+- [ ] Keep `parallax.cli:main` as the installed command entrypoint, but remove behavior from the root shim.
 - [ ] Preserve token-radar one-shot advisory lock behavior during CLI ops split.
 - [ ] Regenerate CLI help: `uv run python scripts/regen_cli_help.py`.
 - [ ] Verify: `uv run pytest tests/integration/test_cli.py tests/unit/test_cli_search_query.py tests/unit/test_token_radar_audit_cli.py -q`.
@@ -233,10 +233,10 @@ src/gmgn_twitter_intel/
 ### Task 5: Rename `market_overlay` hard-cut to `market_candles`
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/token_target_social_timeline_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/search_agent_brief.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/read_models/market_candles_service.py`
+- Modify: `src/parallax/app/surfaces/api/schemas.py`
+- Modify: `src/parallax/domains/token_intel/read_models/token_target_social_timeline_service.py`
+- Modify: `src/parallax/domains/token_intel/read_models/search_agent_brief.py`
+- Modify: `src/parallax/domains/asset_market/read_models/market_candles_service.py`
 - Modify: `tests/unit/test_market_candles_service.py`
 - Modify: `tests/unit/test_search_agent_brief.py`
 - Modify: `tests/unit/test_search_inspect_service.py`
@@ -269,17 +269,17 @@ src/gmgn_twitter_intel/
 ### Task 6: Split provider wiring by provider family
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/app/runtime/provider_wiring/__init__.py`
-- Create: `src/gmgn_twitter_intel/app/runtime/provider_wiring/types.py`
-- Create: `src/gmgn_twitter_intel/app/runtime/provider_wiring/okx.py`
-- Create: `src/gmgn_twitter_intel/app/runtime/provider_wiring/gmgn.py`
-- Create: `src/gmgn_twitter_intel/app/runtime/provider_wiring/binance.py`
-- Create: `src/gmgn_twitter_intel/app/runtime/provider_wiring/openai.py`
-- Create: `src/gmgn_twitter_intel/app/runtime/provider_wiring/marketlane.py`
-- Create: `src/gmgn_twitter_intel/app/runtime/provider_wiring/asset_market.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/providers_wiring.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/main.py` or the new CLI command modules after Task 4.
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/services/event_market_capture.py`
+- Create: `src/parallax/app/runtime/provider_wiring/__init__.py`
+- Create: `src/parallax/app/runtime/provider_wiring/types.py`
+- Create: `src/parallax/app/runtime/provider_wiring/okx.py`
+- Create: `src/parallax/app/runtime/provider_wiring/gmgn.py`
+- Create: `src/parallax/app/runtime/provider_wiring/binance.py`
+- Create: `src/parallax/app/runtime/provider_wiring/openai.py`
+- Create: `src/parallax/app/runtime/provider_wiring/marketlane.py`
+- Create: `src/parallax/app/runtime/provider_wiring/asset_market.py`
+- Modify: `src/parallax/app/runtime/providers_wiring.py`
+- Modify: `src/parallax/app/surfaces/cli/main.py` or the new CLI command modules after Task 4.
+- Modify: `src/parallax/domains/asset_market/services/event_market_capture.py`
 - Modify: `tests/unit/test_providers_wiring.py`
 - Modify: `tests/unit/test_provider_capabilities.py`
 - Modify: `tests/unit/test_event_market_capture.py`
@@ -303,16 +303,16 @@ src/gmgn_twitter_intel/
 ### Task 7: Split worker construction by domain factory
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/app/runtime/worker_factories/__init__.py`
-- Create: `src/gmgn_twitter_intel/app/runtime/worker_factories/ingestion.py`
-- Create: `src/gmgn_twitter_intel/app/runtime/worker_factories/asset_market.py`
-- Create: `src/gmgn_twitter_intel/app/runtime/worker_factories/token_intel.py`
-- Create: `src/gmgn_twitter_intel/app/runtime/worker_factories/pulse.py`
-- Create: `src/gmgn_twitter_intel/app/runtime/worker_factories/watchlist.py`
-- Create: `src/gmgn_twitter_intel/app/runtime/worker_factories/notifications.py`
-- Create: `src/gmgn_twitter_intel/app/runtime/worker_factories/enrichment.py`
-- Create: `src/gmgn_twitter_intel/app/runtime/worker_factories/harness.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/bootstrap.py`
+- Create: `src/parallax/app/runtime/worker_factories/__init__.py`
+- Create: `src/parallax/app/runtime/worker_factories/ingestion.py`
+- Create: `src/parallax/app/runtime/worker_factories/asset_market.py`
+- Create: `src/parallax/app/runtime/worker_factories/token_intel.py`
+- Create: `src/parallax/app/runtime/worker_factories/pulse.py`
+- Create: `src/parallax/app/runtime/worker_factories/watchlist.py`
+- Create: `src/parallax/app/runtime/worker_factories/notifications.py`
+- Create: `src/parallax/app/runtime/worker_factories/enrichment.py`
+- Create: `src/parallax/app/runtime/worker_factories/harness.py`
+- Modify: `src/parallax/app/runtime/bootstrap.py`
 - Modify: `tests/unit/test_bootstrap_worker_runtime_wiring.py`
 - Modify: `tests/architecture/test_worker_runtime_contracts.py`
 
@@ -327,20 +327,20 @@ src/gmgn_twitter_intel/
 ### Task 8: Move OpenAI Pulse orchestration out of `integrations`
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_tool_runtime.py`
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_decision_runtime.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/providers.py`
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/tools/__init__.py`
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/tools/_context.py`
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/tools/recent_tweets.py`
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/tools/price_action.py`
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/tools/official_profile.py`
+- Create: `src/parallax/domains/pulse_lab/services/agent_tool_runtime.py`
+- Create: `src/parallax/domains/pulse_lab/services/pulse_decision_runtime.py`
+- Modify: `src/parallax/domains/pulse_lab/providers.py`
+- Modify: `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py`
+- Modify: `src/parallax/integrations/openai_agents/tools/__init__.py`
+- Modify: `src/parallax/integrations/openai_agents/tools/_context.py`
+- Modify: `src/parallax/integrations/openai_agents/tools/recent_tweets.py`
+- Modify: `src/parallax/integrations/openai_agents/tools/price_action.py`
+- Modify: `src/parallax/integrations/openai_agents/tools/official_profile.py`
 - Modify: `tests/unit/integrations/openai_agents/tools/test_tools.py`
 - Modify: `tests/unit/test_pulse_decision_agent_client.py`
 - Modify: `tests/unit/integrations/openai_agents/test_pulse_decision_two_stage.py`
 - Modify: `tests/architecture/test_src_domain_architecture.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/pulse_lab/ARCHITECTURE.md`
 
 - [ ] Move Pulse-specific tool query assembly, prompt contract assembly, supporting evidence validation, URL enrichment, and harness hash input assembly into `domains/pulse_lab/services`.
 - [ ] Domain `agent_tool_runtime.py` must be pure Python and must not import `agents`, OpenAI SDK classes, or integration modules.
@@ -355,19 +355,19 @@ src/gmgn_twitter_intel/
 ### Task 9: Split PulseRepository by table cluster and session contract
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_admission_repository.py`
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_jobs_repository.py`
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_candidates_repository.py`
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_runs_repository.py`
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_harness_repository.py`
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_read_repository.py`
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_playbooks_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/repository_session.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/routes_pulse.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/bootstrap.py`
+- Create: `src/parallax/domains/pulse_lab/repositories/pulse_admission_repository.py`
+- Create: `src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py`
+- Create: `src/parallax/domains/pulse_lab/repositories/pulse_candidates_repository.py`
+- Create: `src/parallax/domains/pulse_lab/repositories/pulse_runs_repository.py`
+- Create: `src/parallax/domains/pulse_lab/repositories/pulse_harness_repository.py`
+- Create: `src/parallax/domains/pulse_lab/repositories/pulse_read_repository.py`
+- Create: `src/parallax/domains/pulse_lab/repositories/pulse_playbooks_repository.py`
+- Modify: `src/parallax/domains/pulse_lab/repositories/pulse_repository.py`
+- Modify: `src/parallax/app/runtime/repository_session.py`
+- Modify: `src/parallax/app/surfaces/api/routes_pulse.py`
+- Modify: `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py`
+- Modify: `src/parallax/domains/notifications/services/notification_rules.py`
+- Modify: `src/parallax/app/runtime/bootstrap.py`
 - Modify: `tests/integration/test_pulse_repository.py`
 - Modify: `tests/integration/test_signal_pulse_service_decision_v2.py`
 - Modify: `tests/integration/test_pulse_desk_e2e.py`
@@ -395,13 +395,13 @@ src/gmgn_twitter_intel/
 ### Task 10: Split PulseCandidateWorker into use-case services
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_trigger_scanner.py`
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_admission_service.py`
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_job_runner.py`
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_audit_ledger_writer.py`
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_failure_recorder.py`
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_eval_recorder.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- Create: `src/parallax/domains/pulse_lab/services/pulse_trigger_scanner.py`
+- Create: `src/parallax/domains/pulse_lab/services/pulse_admission_service.py`
+- Create: `src/parallax/domains/pulse_lab/services/pulse_job_runner.py`
+- Create: `src/parallax/domains/pulse_lab/services/pulse_audit_ledger_writer.py`
+- Create: `src/parallax/domains/pulse_lab/services/pulse_failure_recorder.py`
+- Create: `src/parallax/domains/pulse_lab/services/pulse_eval_recorder.py`
+- Modify: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
 - Modify: `tests/unit/test_pulse_candidate_worker.py`
 - Modify: `tests/integration/test_pulse_desk_e2e.py`
 - Modify: `tests/integration/test_pulse_agent_desk_migration.py`
@@ -427,8 +427,8 @@ src/gmgn_twitter_intel/
 ### Task 11: Delete compatibility leftovers and obsolete abstractions
 
 **Files:**
-- Delete or document/remove from runtime: `src/gmgn_twitter_intel/app/runtime/job_queue.py`
-- Delete or wire/document: `src/gmgn_twitter_intel/integrations/coingecko/search_client.py`
+- Delete or document/remove from runtime: `src/parallax/app/runtime/job_queue.py`
+- Delete or wire/document: `src/parallax/integrations/coingecko/search_client.py`
 - Modify: `tests/unit/test_job_queue.py`
 - Modify: `tests/integrations/test_coingecko_search.py`
 - Modify: `docs/ARCHITECTURE.md`
@@ -456,7 +456,7 @@ src/gmgn_twitter_intel/
 - [ ] Add guard that `integrations/openai_agents` does not import `domains.pulse_lab.queries` or `domains.pulse_lab.services`.
 - [ ] Add guard that `market_overlay` and `tools_enabled` do not appear in runtime/public contract paths, generated OpenAPI, generated TS, hand-authored frontend contracts, or active specs/plans.
 - [ ] Add guard that runtime/tests do not depend on `repos.pulse` or `class PulseRepository`.
-- [ ] Add guard that `gmgn_twitter_intel.cli` exports only the hard-cut public CLI entrypoint.
+- [ ] Add guard that `parallax.cli` exports only the hard-cut public CLI entrypoint.
 - [ ] Verify: `uv run pytest tests/architecture -q`.
 
 ## Final Verification

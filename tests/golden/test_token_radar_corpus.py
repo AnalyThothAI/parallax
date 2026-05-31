@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.token_intel.interfaces import (
+from parallax.domains.token_intel.interfaces import (
     TOKEN_RADAR_DEFAULT_VENUE,
     TOKEN_RADAR_PROJECTION_VERSION,
 )
-from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import TokenRadarProjection
+from parallax.domains.token_intel.services.token_radar_projection import TokenRadarProjection
 from tests.factories_token_radar import (
     VERSA_BASE_CA,
     insert_base_versa_asset,

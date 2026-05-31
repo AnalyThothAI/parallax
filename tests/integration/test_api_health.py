@@ -6,13 +6,13 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-import gmgn_twitter_intel.app.runtime.app as app_module
-import gmgn_twitter_intel.app.runtime.bootstrap as bootstrap_module
-from gmgn_twitter_intel.app.runtime.app import _readiness_payload, create_app
-from gmgn_twitter_intel.app.runtime.bootstrap import Runtime, bootstrap
-from gmgn_twitter_intel.platform.config.settings import Settings
-from gmgn_twitter_intel.platform.db.postgres_client import postgres_health_check
-from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_version
+import parallax.app.runtime.app as app_module
+import parallax.app.runtime.bootstrap as bootstrap_module
+from parallax.app.runtime.app import _readiness_payload, create_app
+from parallax.app.runtime.bootstrap import Runtime, bootstrap
+from parallax.platform.config.settings import Settings
+from parallax.platform.db.postgres_client import postgres_health_check
+from parallax.platform.db.postgres_migrations import latest_migration_version
 from tests.postgres_test_utils import postgres_settings_storage, prepare_postgres_database
 
 
@@ -233,7 +233,7 @@ def test_healthz_readyz_and_metrics_return_status(monkeypatch, tmp_path):
         lambda: None,
     )
     monkeypatch.setattr(
-        "gmgn_twitter_intel.app.runtime.worker_scheduler.WorkerScheduler.start",
+        "parallax.app.runtime.worker_scheduler.WorkerScheduler.start",
         noop_scheduler_start,
     )
     patch_runtime_dependencies(monkeypatch)

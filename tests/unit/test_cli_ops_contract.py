@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any
 
-from gmgn_twitter_intel.app.surfaces.cli.commands import ops
+from parallax.app.surfaces.cli.commands import ops
 
 
 def test_rebuild_narrative_intel_reports_cleanup_and_final_health(monkeypatch) -> None:

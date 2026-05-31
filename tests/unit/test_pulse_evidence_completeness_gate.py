@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.domains.pulse_lab.services.evidence_completeness_gate import EvidenceCompletenessGate
-from gmgn_twitter_intel.domains.pulse_lab.types.evidence_packet import PulseEvidenceDataGap
+from parallax.domains.pulse_lab.services.evidence_completeness_gate import EvidenceCompletenessGate
+from parallax.domains.pulse_lab.types.evidence_packet import PulseEvidenceDataGap
 
 
 def test_cex_with_baseline_only_is_partial_token_watch() -> None:

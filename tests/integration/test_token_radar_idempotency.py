@@ -5,11 +5,11 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
-from gmgn_twitter_intel.domains.asset_market.repositories.registry_repository import RegistryRepository
-from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
-from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import (
+from parallax.app.runtime.repository_session import repositories_for_connection
+from parallax.domains.asset_market.repositories.registry_repository import RegistryRepository
+from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
+from parallax.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
+from parallax.domains.token_intel.services.token_radar_projection import (
     PROJECTION_VERSION,
     TokenRadarProjection,
 )

@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
-from gmgn_twitter_intel.domains.asset_market.repositories.market_tick_current_dirty_target_repository import (
+from parallax.app.runtime.repository_session import repositories_for_connection
+from parallax.domains.asset_market.repositories.market_tick_current_dirty_target_repository import (
     MarketTickCurrentDirtyTargetRepository,
 )
-from gmgn_twitter_intel.domains.asset_market.repositories.market_tick_current_repository import (
+from parallax.domains.asset_market.repositories.market_tick_current_repository import (
     MarketTickCurrentRepository,
 )
-from gmgn_twitter_intel.domains.asset_market.services.market_tick_current_rebuild import (
+from parallax.domains.asset_market.services.market_tick_current_rebuild import (
     MarketTickCurrentRebuildService,
 )
 

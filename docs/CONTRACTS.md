@@ -7,7 +7,7 @@ These surfaces change only with a versioned spec — refactors must preserve the
 ## Config Files
 
 The service has two operator-owned YAML files in
-`~/.gmgn-twitter-intel/`.
+`~/.parallax/`.
 
 Runtime config is not loaded from repository fixtures, generated docs, or
 repo-local `.env` files. The `config` CLI command is the supported way to
@@ -156,7 +156,7 @@ Token image contract:
   `image_id` is the lowercase 64-hex source URL hash stored in
   `token_image_assets`.
 - The route serves only `status='ready'` rows whose storage path resolves under
-  `~/.gmgn-twitter-intel/cache/token-images`. Missing rows, failed mirror rows,
+  `~/.parallax/cache/token-images`. Missing rows, failed mirror rows,
   missing files, invalid IDs, absolute paths, and traversal attempts return
   `404`.
 - The removed `/api/token-image?url=...` proxy is not a compatibility surface.
@@ -500,7 +500,7 @@ Search V2 contract:
 
 ## CLI
 
-`gmgn-twitter-intel <verb>` plus the `db` and `ops` subcommand groups. The
+`parallax <verb>` plus the `db` and `ops` subcommand groups. The
 `--help` output is the source of truth — do not enumerate verbs in this
 document. `config` prints both `config_path` and `workers_config_path`
 and includes the effective `workers` settings loaded from `workers.yaml`.
@@ -544,15 +544,15 @@ deployment secret manager; config and payloads contain only env var names and
 booleans. For an explicit repair sync, operators run:
 
 ```bash
-uv run gmgn-twitter-intel macro sync --bundle macro-core --start <YYYY-MM-DD> --end <YYYY-MM-DD>
+uv run parallax macro sync --bundle macro-core --start <YYYY-MM-DD> --end <YYYY-MM-DD>
 ```
 
 These commands may report partial coverage and data gaps; they must not print
 provider secrets, raw WebSocket tokens, or API keys.
 Before running them against real data, operators must first run
-`uv run gmgn-twitter-intel config` and confirm the active
+`uv run parallax config` and confirm the active
 `config_path` / `workers_config_path` are the operator-owned files under
-`~/.gmgn-twitter-intel/`.
+`~/.parallax/`.
 
 ## Token Radar Factor Snapshot Discipline
 
@@ -686,11 +686,11 @@ not a current-row fallback.
 
 Operational commands:
 
-- `gmgn-twitter-intel ops factor-diagnostics` reports current factor score dispersion,
+- `parallax ops factor-diagnostics` reports current factor score dispersion,
   bucket counts, and rank-score diagnostics.
-- `gmgn-twitter-intel ops settle-token-factors` writes point-in-time forward
+- `parallax ops settle-token-factors` writes point-in-time forward
   return evaluations when sufficient later market observations exist.
-- `gmgn-twitter-intel ops audit-token-radar` is v3-only and flags legacy
+- `parallax ops audit-token-radar` is v3-only and flags legacy
   snapshots instead of accepting compatibility fallback.
 - Token Radar has no runtime hard-reset command. Schema retirement belongs to
   migrations; online repair uses `ops enqueue-token-radar-dirty-targets` or the

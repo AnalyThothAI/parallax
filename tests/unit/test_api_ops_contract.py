@@ -6,13 +6,13 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from gmgn_twitter_intel.app.surfaces.api.exceptions import (
+from parallax.app.surfaces.api.exceptions import (
     ApiBadRequest,
     ApiUnauthorized,
     api_bad_request_response,
     api_unauthorized_response,
 )
-from gmgn_twitter_intel.app.surfaces.api.http import create_api_router
+from parallax.app.surfaces.api.http import create_api_router
 
 
 def test_ops_diagnostics_requires_authentication() -> None:
@@ -116,7 +116,7 @@ class FakeRepos:
 class FakeRuntime:
     def __init__(self) -> None:
         self.settings = SimpleNamespace(
-            app_home="/var/lib/gmgn-twitter-intel-test",
+            app_home="/var/lib/parallax-test",
             ws_token="secret",
             handles=("alpha",),
             upstream_channels=("twitter_monitor_basic",),

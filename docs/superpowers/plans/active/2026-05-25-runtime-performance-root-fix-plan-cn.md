@@ -11,7 +11,7 @@
 
 ## Phase 0 — Evidence
 
-- [x] Confirm active runtime config paths with `uv run gmgn-twitter-intel config`.
+- [x] Confirm active runtime config paths with `uv run parallax config`.
 - [x] Check Docker CPU split with `docker stats`.
 - [x] Check `/readyz` worker p99 and active state.
 - [x] Inspect `pg_stat_activity` for active hot SQL.
@@ -46,7 +46,7 @@
 - [x] Integration tests for equity brief worker stale-source handling.
 - [x] Architecture tests for projection idle-cost contract.
 - [ ] Full changed-area pytest pass after old broad methods are deleted.
-- [ ] `uv run ruff check src/gmgn_twitter_intel tests`.
+- [ ] `uv run ruff check src/parallax tests`.
 - [x] Docker rebuild and migration.
 - [x] Run explicit repair enqueue; observed that unbounded `--domain all`
   creates excessive historical `brief_input` backlog, then added bounded repair

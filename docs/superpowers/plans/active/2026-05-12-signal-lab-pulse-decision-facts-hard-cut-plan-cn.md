@@ -50,7 +50,7 @@ GMGN public stream
 
 ### Storage / migrations
 
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260512_0035_decision_market_snapshots.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260512_0035_decision_market_snapshots.py`
   - Add `decision_market_snapshots`.
   - Hard truncate Pulse runtime tables that cannot be read under the new factor contract.
   - Do not recreate `current_market_field_facts`.
@@ -94,12 +94,12 @@ TRUNCATE TABLE
   pulse_agent_jobs;
 ```
 
-- Modify: `src/gmgn_twitter_intel/platform/db/postgres_migrations.py`
+- Modify: `src/parallax/platform/db/postgres_migrations.py`
   - Ensure latest migration revision resolves to `20260512_0035`.
 
 ### Asset market persistence
 
-- Create: `src/gmgn_twitter_intel/domains/asset_market/repositories/decision_market_snapshot_repository.py`
+- Create: `src/parallax/domains/asset_market/repositories/decision_market_snapshot_repository.py`
   - Owns insert/read SQL for point-in-time market facts.
   - Public methods:
     - `upsert_snapshot(snapshot_id, target_type, target_id, provider, source_kind, observed_at_ms, received_at_ms, expires_at_ms, price_usd, price_quote, quote_symbol, price_basis, market_cap_usd, liquidity_usd, holders, volume_24h_usd, open_interest_usd, field_statuses_json, raw_payload_json, commit=True)`.
@@ -112,14 +112,14 @@ def snapshot_id(*, target_type: str, target_id: str, provider: str, observed_at_
     return "decision-market:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
 ```
 
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/interfaces.py`
+- Modify: `src/parallax/domains/asset_market/interfaces.py`
   - Export `DecisionMarketSnapshotRepository`.
 
-- Modify: `src/gmgn_twitter_intel/app/runtime/repository_session.py`
+- Modify: `src/parallax/app/runtime/repository_session.py`
   - Add `decision_market_snapshots: DecisionMarketSnapshotRepository` to `RepositorySession`.
   - Instantiate it in `repositories_for_connection`.
 
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/live_price_gateway.py`
+- Modify: `src/parallax/domains/asset_market/runtime/live_price_gateway.py`
   - Keep `snapshot()` and `live_market_update` behavior for API/WebSocket.
   - Add optional `decision_snapshot_sink` callback, called from `_store_payload()` after cache update.
   - Sink receives the full `LiveMarketSnapshot` plus `source_kind`.
@@ -139,19 +139,19 @@ def _store_payload(self, snapshot: LiveMarketSnapshot, *, observed_now_ms: int, 
     }
 ```
 
-- Modify: `src/gmgn_twitter_intel/app/runtime/app.py`
+- Modify: `src/parallax/app/runtime/app.py`
   - Wire the gateway sink inside asset-market runtime composition.
   - Persist snapshots through `repos.decision_market_snapshots`.
   - `/readyz.live_price_gateway.last_result` keeps current live metrics and adds `decision_snapshots_written`.
 
 ### Token Radar source and snapshot contract
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/_constants.py`
+- Modify: `src/parallax/domains/token_intel/_constants.py`
   - `TOKEN_RADAR_PROJECTION_VERSION = "token-radar-v14-decision-facts-hard-cut"`.
   - `TOKEN_FACTOR_SNAPSHOT_VERSION = "token_factor_snapshot_v4_decision_facts"`.
   - `TOKEN_RADAR_SOURCE_TABLE = "token_intent_resolutions+asset_identity_current+anchor_price+decision_market_snapshots"`.
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py`
+- Modify: `src/parallax/domains/token_intel/queries/token_radar_source_query.py`
   - Join latest non-expired decision snapshot by `(target_type, target_id)` as of `now_ms`.
   - Select prefixed fields:
     - `decision_market_provider`
@@ -183,7 +183,7 @@ LEFT JOIN LATERAL (
 ) decision_market ON true
 ```
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py`
   - `_market()` consumes anchor fields plus `decision_market_*` fields.
   - It sets `market_data_source` to `decision_snapshot` or `anchor_only`.
   - It sets `decision_snapshot_observed_at_ms`, `decision_snapshot_age_ms`, and `field_statuses`.
@@ -210,7 +210,7 @@ factor_snapshot["composite"]["family_percentiles"] = {
 factor_snapshot["composite"]["rank_score"] = _raw_composite_score(factor_snapshot)
 ```
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py`
+- Modify: `src/parallax/domains/token_intel/scoring/factor_snapshot.py`
   - DEX missing `holders`, `liquidity_usd`, or `market_cap_usd` appends `market_data_unverified`.
   - Below-floor values keep specific floor reasons.
   - `eligible_for_high_alert` is false when any DEX market floor input is missing.
@@ -232,25 +232,25 @@ if subject["target_market_type"] == "dex":
         risk_reasons.append("market_metadata_missing")
 ```
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot_contract.py`
+- Modify: `src/parallax/domains/token_intel/scoring/factor_snapshot_contract.py`
   - Require v4 schema.
   - Require `composite.family_percentiles`.
   - Reject `hard_gates`, legacy family names, and v3 schema.
 
 ### Pulse gate, trigger, and audit
 
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/interfaces.py`
+- Modify: `src/parallax/domains/pulse_lab/interfaces.py`
   - `PULSE_VERSION = "signal-pulse-v4-decision-facts"`.
   - `PULSE_RECOMMENDATION_PROMPT_VERSION = "pulse-recommendation-agents-sdk-v2-decision-facts"`.
   - `PULSE_GATE_VERSION = "pulse-factor-gate-v2-decision-facts"`.
   - `PULSE_PLAYBOOK_VERSION = "shadow-playbook-v2-decision-facts"`.
 
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_candidate_gate.py`
   - Continue using `factor_snapshot.gates.blocked_reasons`.
   - Missing DEX market data now returns `risk_rejected_high_info` when score is high, never `trade_candidate`.
   - `max_recommendation` remains `research` for `risk_rejected_high_info`.
 
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- Modify: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
   - `_is_asset_trigger()` uses raw absolute score and gate max decision, not cohort percentile.
   - It does not enqueue `trade_candidate` work when `gates.max_decision` is below `high_alert`.
   - `insert_agent_run(request_json=...)` stores full sanitized agent input.
@@ -264,7 +264,7 @@ request_json={
 }
 ```
 
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_recommendation.py`
+- Modify: `src/parallax/domains/pulse_lab/types/pulse_recommendation.py`
   - Prompt explains:
     - `composite.family_scores` are absolute deterministic family scores.
     - `composite.family_percentiles` are cohort-relative context.
@@ -275,12 +275,12 @@ request_json={
 
 ### API and frontend contract
 
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`
+- Modify: `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py`
   - `fact_card.alpha_family_scores` remains absolute.
   - Add `fact_card.alpha_family_percentiles` from `composite.family_percentiles`.
   - `market_ready_rate` should count decision-fact readiness, not UI live status.
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`
+- Modify: `src/parallax/domains/token_intel/read_models/asset_flow_service.py`
   - Keep `live_market` overlay as UI-only.
   - Public row `factor_snapshot.market` now contains decision snapshot metadata.
   - Do not use `live_market` to mutate `factor_snapshot`.
@@ -290,7 +290,7 @@ request_json={
   - `/api/token-radar.live_market` remains live UI transport.
   - Signal Pulse contract: `family_scores` absolute, `family_percentiles` relative.
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/token_intel/ARCHITECTURE.md`
   - Add `decision_market_snapshots` between live/anchor market and projection.
   - State that Pulse decisions never read process-local live cache.
 
@@ -323,10 +323,10 @@ request_json={
 ### Task 1: Add decision market snapshot storage
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260512_0035_decision_market_snapshots.py`
-- Create: `src/gmgn_twitter_intel/domains/asset_market/repositories/decision_market_snapshot_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/interfaces.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/repository_session.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260512_0035_decision_market_snapshots.py`
+- Create: `src/parallax/domains/asset_market/repositories/decision_market_snapshot_repository.py`
+- Modify: `src/parallax/domains/asset_market/interfaces.py`
+- Modify: `src/parallax/app/runtime/repository_session.py`
 - Test: `tests/integration/test_decision_market_snapshot_repository.py`
 - Test: `tests/unit/test_postgres_schema.py`
 
@@ -350,8 +350,8 @@ request_json={
 ### Task 2: Persist live provider facts as decision snapshots
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/live_price_gateway.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/app.py`
+- Modify: `src/parallax/domains/asset_market/runtime/live_price_gateway.py`
+- Modify: `src/parallax/app/runtime/app.py`
 - Modify: `tests/test_live_price_gateway.py`
 - Modify: `tests/unit/test_postgres_api_health.py`
 - Modify: `tests/integration/test_api_health.py`
@@ -377,9 +377,9 @@ request_json={
 ### Task 3: Hard-cut Token Factor Snapshot v4
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/_constants.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot_contract.py`
+- Modify: `src/parallax/domains/token_intel/_constants.py`
+- Modify: `src/parallax/domains/token_intel/scoring/factor_snapshot.py`
+- Modify: `src/parallax/domains/token_intel/scoring/factor_snapshot_contract.py`
 - Modify: `tests/unit/test_factor_snapshot.py`
 - Modify: `tests/architecture/test_no_factor_snapshot_fallback.py`
 
@@ -408,8 +408,8 @@ request_json={
 ### Task 4: Feed decision snapshots into Token Radar projection
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
+- Modify: `src/parallax/domains/token_intel/queries/token_radar_source_query.py`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py`
 - Modify: `tests/unit/test_token_radar_source_query.py`
 - Modify: `tests/unit/test_token_radar_projection.py`
 
@@ -439,7 +439,7 @@ request_json={
 ### Task 5: Make cohort normalization explanatory only
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py`
 - Modify: `tests/unit/test_token_radar_apply_cross_section.py`
 - Modify: `tests/unit/test_cross_section_normalizer.py` only if helper signatures change.
 
@@ -462,11 +462,11 @@ request_json={
 ### Task 6: Recut Pulse trigger, gate, audit, and prompt
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/interfaces.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_recommendation.py`
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/pulse_recommendation_agent_client.py` only if audit payload shape needs centralization.
+- Modify: `src/parallax/domains/pulse_lab/interfaces.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_candidate_gate.py`
+- Modify: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- Modify: `src/parallax/domains/pulse_lab/types/pulse_recommendation.py`
+- Modify: `src/parallax/integrations/openai_agents/pulse_recommendation_agent_client.py` only if audit payload shape needs centralization.
 - Modify: `tests/unit/test_pulse_candidate_gate.py`
 - Modify: `tests/unit/test_pulse_candidate_worker.py`
 - Modify: `tests/test_pulse_recommendation.py`
@@ -503,10 +503,10 @@ request_json={
 ### Task 7: Update API, frontend, and docs contracts
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py` if fact-card/read payload needs field labels.
+- Modify: `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py`
+- Modify: `src/parallax/domains/token_intel/read_models/asset_flow_service.py` if fact-card/read payload needs field labels.
 - Modify: `docs/CONTRACTS.md`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/token_intel/ARCHITECTURE.md`
 - Modify: `docs/generated/score-versions.md` through the existing docs generation command.
 - Modify: `web/src/lib/tokenFactorSnapshot.ts`
 - Modify: `web/src/api/types.ts`

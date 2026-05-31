@@ -5,21 +5,21 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any
 
-from gmgn_twitter_intel.app.runtime.projection_dirty_targets import enqueue_projection_dirty_targets
-from gmgn_twitter_intel.domains.news_intel.repositories.news_repository import NewsRepository
-from gmgn_twitter_intel.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
-from gmgn_twitter_intel.domains.news_intel.runtime.news_item_brief_worker import NewsItemBriefWorker
-from gmgn_twitter_intel.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
-from gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
-from gmgn_twitter_intel.domains.news_intel.runtime.news_source_quality_projection_worker import (
+from parallax.app.runtime.projection_dirty_targets import enqueue_projection_dirty_targets
+from parallax.domains.news_intel.repositories.news_repository import NewsRepository
+from parallax.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
+from parallax.domains.news_intel.runtime.news_item_brief_worker import NewsItemBriefWorker
+from parallax.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
+from parallax.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
+from parallax.domains.news_intel.runtime.news_source_quality_projection_worker import (
     NewsSourceQualityProjectionWorker,
 )
-from gmgn_twitter_intel.domains.news_intel.types.source_provider import (
+from parallax.domains.news_intel.types.source_provider import (
     NewsProviderFetchResult,
     NewsProviderObservation,
     NewsSourceSnapshot,
 )
-from gmgn_twitter_intel.domains.token_intel.interfaces import TokenIdentityLookupResult
+from parallax.domains.token_intel.interfaces import TokenIdentityLookupResult
 
 NOW_MS = 1_779_000_000_000
 

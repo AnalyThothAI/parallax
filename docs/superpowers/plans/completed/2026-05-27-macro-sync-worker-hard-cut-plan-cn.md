@@ -51,18 +51,18 @@ git status --short --branch
 - [ ] Confirm real runtime config paths before any live-data debugging, redacting secrets:
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 ```
 
 Expected:
 
-- `config_path` and `workers_config_path` point at `~/.gmgn-twitter-intel/`.
+- `config_path` and `workers_config_path` point at `~/.parallax/`.
 - Only env var names and booleans are reported for macrodata/FRED.
 
 - [ ] Baseline tests in the worktree:
 
 ```bash
-uv run ruff check src/gmgn_twitter_intel tests
+uv run ruff check src/parallax tests
 uv run pytest tests/unit/domains/macro_intel tests/unit/test_cli_macro_commands.py tests/architecture/test_worker_runtime_contracts.py tests/architecture/test_runtime_worker_constraint_hard_cut.py -q
 ```
 
@@ -123,11 +123,11 @@ Execution-prep subagents reviewed this plan against the `main` worktree on
 
 The plan fixes these observed facts from the 2026-05-27 investigation:
 
-- Runtime manifest has only `macro_view_projection` for Macro Intel at `src/gmgn_twitter_intel/app/runtime/worker_manifest.py:633`.
-- Macro factory constructs only `MacroViewProjectionWorker` at `src/gmgn_twitter_intel/app/runtime/worker_factories/macro_intel.py:13`.
-- Projection recomputes snapshots from existing facts at `src/gmgn_twitter_intel/domains/macro_intel/runtime/macro_view_projection_worker.py:33`; it does not fetch providers.
-- CLI sync directly invokes `MacrodataBundleRunner` at `src/gmgn_twitter_intel/app/surfaces/cli/commands/macro.py:63`.
-- Runner currently shells `uv run macrodata` at `src/gmgn_twitter_intel/integrations/macrodata/runner.py:25`.
+- Runtime manifest has only `macro_view_projection` for Macro Intel at `src/parallax/app/runtime/worker_manifest.py:633`.
+- Macro factory constructs only `MacroViewProjectionWorker` at `src/parallax/app/runtime/worker_factories/macro_intel.py:13`.
+- Projection recomputes snapshots from existing facts at `src/parallax/domains/macro_intel/runtime/macro_view_projection_worker.py:33`; it does not fetch providers.
+- CLI sync directly invokes `MacrodataBundleRunner` at `src/parallax/app/surfaces/cli/commands/macro.py:63`.
+- Runner currently shells `uv run macrodata` at `src/parallax/integrations/macrodata/runner.py:25`.
 - Current Docker app has packaged `/app/.venv/bin/macrodata`, but no `uv` on runtime `PATH`; runtime sync must use the installed executable with no host-local checkout/cwd override.
 
 ## Phase 0: Red Tests First
@@ -218,7 +218,7 @@ Required assertions:
 
 - [ ] **Step 1.1: Add migration**
 
-New file: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0112_macro_sync_worker.py`
+New file: `src/parallax/platform/db/alembic/versions/20260527_0112_macro_sync_worker.py`
 
 Revision:
 
@@ -319,7 +319,7 @@ Downgrade drops the new indexes and tables only. It must not drop `macro_observa
 
 - [ ] **Step 1.2: Add sync data types**
 
-New file: `src/gmgn_twitter_intel/domains/macro_intel/services/macro_sync_types.py`
+New file: `src/parallax/domains/macro_intel/services/macro_sync_types.py`
 
 Required dataclasses:
 
@@ -351,7 +351,7 @@ class MacroSyncRunSummary:
 
 - [ ] **Step 1.3: Extend macro repository**
 
-Modify `src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py:14`.
+Modify `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:14`.
 
 Add methods:
 
@@ -451,7 +451,7 @@ Stale completion protection must match `sync_window_id`, `lease_owner`, and `att
 
 - [ ] **Step 1.4: Split macrodata bundle importer into parse/write primitives**
 
-Modify `src/gmgn_twitter_intel/domains/macro_intel/services/macrodata_bundle_importer.py:19`.
+Modify `src/parallax/domains/macro_intel/services/macrodata_bundle_importer.py:19`.
 
 Keep public `import_macrodata_bundle(...)` for `import-bundle`, but add a lower-level function so worker/service can write facts, import audit, sync audit, and window completion inside one unit of work:
 
@@ -478,7 +478,7 @@ Preserve validation-before-write behavior from existing tests.
 
 - [ ] **Step 2.1: Add bounded window scheduler**
 
-New file: `src/gmgn_twitter_intel/domains/macro_intel/services/macro_sync_scheduler.py`
+New file: `src/parallax/domains/macro_intel/services/macro_sync_scheduler.py`
 
 Required public function:
 
@@ -510,7 +510,7 @@ Rules:
 
 - [ ] **Step 2.2: Add sync service shared by worker and CLI**
 
-New file: `src/gmgn_twitter_intel/domains/macro_intel/services/macro_sync_service.py`
+New file: `src/parallax/domains/macro_intel/services/macro_sync_service.py`
 
 Required class:
 
@@ -564,7 +564,7 @@ Failure rules:
 
 - [ ] **Step 3.1: Replace `uv run macrodata` with executable resolution**
 
-Modify `src/gmgn_twitter_intel/integrations/macrodata/runner.py:20`.
+Modify `src/parallax/integrations/macrodata/runner.py:20`.
 
 Add:
 
@@ -622,7 +622,7 @@ Add one test where the secret appears in fake stderr and assert it is not copied
 
 - [ ] **Step 4.1: Add worker settings**
 
-Modify `src/gmgn_twitter_intel/platform/config/settings.py:1081` and `src/gmgn_twitter_intel/platform/config/settings.py:1434`.
+Modify `src/parallax/platform/config/settings.py:1081` and `src/parallax/platform/config/settings.py:1434`.
 
 New settings:
 
@@ -646,7 +646,7 @@ class MacroSyncWorkerSettings(PerWorkerSettings):
 
 Add `macro_sync: MacroSyncWorkerSettings = Field(default_factory=MacroSyncWorkerSettings)` to `WorkersSettings`.
 
-Modify default workers YAML at `src/gmgn_twitter_intel/platform/config/settings.py:2146`:
+Modify default workers YAML at `src/parallax/platform/config/settings.py:2146`:
 
 ```yaml
 macro_sync:
@@ -678,7 +678,7 @@ Also add `wakes_on` parsing to `MacroViewProjectionWorkerSettings`.
 
 - [ ] **Step 4.2: Add wake bus method**
 
-Modify `src/gmgn_twitter_intel/app/runtime/wake_bus.py:79`.
+Modify `src/parallax/app/runtime/wake_bus.py:79`.
 
 Add:
 
@@ -702,7 +702,7 @@ def notify_macro_observations_imported(
 
 - [ ] **Step 4.3: Add runtime worker**
 
-New file: `src/gmgn_twitter_intel/domains/macro_intel/runtime/macro_sync_worker.py`
+New file: `src/parallax/domains/macro_intel/runtime/macro_sync_worker.py`
 
 Required shape:
 
@@ -746,7 +746,7 @@ Notes must stay compact for worker status.
 
 - [ ] **Step 4.4: Register manifest**
 
-Modify `src/gmgn_twitter_intel/app/runtime/worker_manifest.py:633`.
+Modify `src/parallax/app/runtime/worker_manifest.py:633`.
 
 Add before `macro_view_projection`:
 
@@ -757,7 +757,7 @@ WorkerManifest(
     factory="macro_intel.py",
     lane=WorkerLane.INGEST,
     kind=WorkerKind.FACT_INGEST,
-    worker_class="gmgn_twitter_intel.domains.macro_intel.runtime.macro_sync_worker.MacroSyncWorker",
+    worker_class="parallax.domains.macro_intel.runtime.macro_sync_worker.MacroSyncWorker",
     start_priority=80,
     input_contract=("macro_sync_windows", "macrodata macro-core history bundle"),
     ordering_keys=("source_name", "bundle_name", "window_start", "window_end"),
@@ -778,7 +778,7 @@ Update `macro_view_projection`:
 
 - [ ] **Step 4.5: Construct both workers**
 
-Modify `src/gmgn_twitter_intel/app/runtime/worker_factories/macro_intel.py:13`.
+Modify `src/parallax/app/runtime/worker_factories/macro_intel.py:13`.
 
 Required construction:
 
@@ -811,7 +811,7 @@ If `macrodata_enabled` is false, skip `macro_sync` and expose a clear worker fac
 
 - [ ] **Step 5.1: Replace CLI sync direct runner branch**
 
-Modify `src/gmgn_twitter_intel/app/surfaces/cli/commands/macro.py:63`.
+Modify `src/parallax/app/surfaces/cli/commands/macro.py:63`.
 
 Required behavior:
 
@@ -845,7 +845,7 @@ Expected payload:
 
 - [ ] **Step 5.2: Expand macro status**
 
-Modify `src/gmgn_twitter_intel/app/surfaces/cli/commands/macro.py:117`.
+Modify `src/parallax/app/surfaces/cli/commands/macro.py:117`.
 
 Add repository fields:
 
@@ -874,7 +874,7 @@ Keep `macro import-bundle` but document and test that it is not the normal fresh
 
 - [ ] **Step 6.1: Add repository-backed currentness payloads only where already needed**
 
-Modify `src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py:105` only if module provenance needs richer status.
+Modify `src/parallax/app/surfaces/api/routes_macro.py:105` only if module provenance needs richer status.
 
 Allowed reads:
 
@@ -898,7 +898,7 @@ Modify or add `tests/architecture/test_api_read_paths_provider_free.py`.
 Required assertion:
 
 ```python
-route_text = Path("src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py").read_text()
+route_text = Path("src/parallax/app/surfaces/api/routes_macro.py").read_text()
 assert "MacrodataBundleRunner" not in route_text
 assert "history_bundle" not in route_text
 assert "providers.macrodata" not in route_text
@@ -932,7 +932,7 @@ docker compose exec app /app/.venv/bin/macrodata --help
 
 - [ ] **Step 8.1: Update Macro Intel domain architecture**
 
-Modify `src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md:3`.
+Modify `src/parallax/domains/macro_intel/ARCHITECTURE.md:3`.
 
 Replace batch-first language with:
 
@@ -969,7 +969,7 @@ Modify:
 
 Required notes:
 
-- `~/.gmgn-twitter-intel/config.yaml` stores macrodata env var names, not secrets.
+- `~/.parallax/config.yaml` stores macrodata env var names, not secrets.
 - Docker operators must provide `FINANCE_FRED_API_KEY` through environment or deployment secret manager.
 - Macro status distinguishes sync freshness, fact freshness, and projection freshness.
 - API read paths are provider-free.
@@ -1012,7 +1012,7 @@ Expected: `provider_calls=0`, `claimed=0`, claim query touches `macro_sync_windo
 
 ```bash
 uv run pytest tests/unit/test_cli_macro_commands.py::test_macrodata_runner_injects_fred_env_without_exposing_secret tests/unit/test_cli_macro_commands.py::test_macrodata_runner_ignores_legacy_cli_project_dir -q
-rg -n '"uv"|uv run macrodata|macrodata-cli' src/gmgn_twitter_intel/integrations/macrodata src/gmgn_twitter_intel/domains/macro_intel/runtime
+rg -n '"uv"|uv run macrodata|macrodata-cli' src/parallax/integrations/macrodata src/parallax/domains/macro_intel/runtime
 ```
 
 Expected: tests pass; `rg` finds no runtime `uv run macrodata` branch.
@@ -1060,7 +1060,7 @@ Expected: `macro_sync` is fact ingest; `macro_view_projection` is read-model pro
 - [ ] **Full targeted regression**
 
 ```bash
-uv run ruff check src/gmgn_twitter_intel tests
+uv run ruff check src/parallax tests
 uv run pytest tests/unit/domains/macro_intel tests/unit/test_cli_macro_commands.py tests/unit/test_settings.py tests/unit/test_bootstrap_worker_runtime_wiring.py tests/architecture/test_worker_runtime_contracts.py tests/architecture/test_runtime_worker_constraint_hard_cut.py tests/architecture/test_api_read_paths_provider_free.py -q
 ```
 
@@ -1070,14 +1070,14 @@ uv run pytest tests/unit/domains/macro_intel tests/unit/test_cli_macro_commands.
 docker compose build app
 docker compose up -d postgres migrate app
 docker compose exec app /app/.venv/bin/macrodata --help
-docker compose exec app /app/.venv/bin/gmgn-twitter-intel config
-docker compose exec app /app/.venv/bin/gmgn-twitter-intel macro status
+docker compose exec app /app/.venv/bin/parallax config
+docker compose exec app /app/.venv/bin/parallax macro status
 curl -s http://localhost:8765/api/macro | jq '.ok, .data.snapshot.asof_date, .data.source_coverage'
 ```
 
 Expected:
 
-- Config reports `/root/.gmgn-twitter-intel/...` paths inside container.
+- Config reports `/root/.parallax/...` paths inside container.
 - `macro status` includes `latest_sync_run`, `facts_max_observed_at`, and `projection_behind_facts`.
 - No secret value appears in stdout.
 - `/api/macro` responds from read models.

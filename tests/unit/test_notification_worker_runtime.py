@@ -4,11 +4,11 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any
 
-from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
-from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
-from gmgn_twitter_intel.domains.notifications.repositories.notification_repository import NotificationRepository
-from gmgn_twitter_intel.domains.notifications.runtime.notification_worker import NotificationWorker
-from gmgn_twitter_intel.domains.notifications.types import NotificationCandidate
+from parallax.app.runtime.worker_base import WorkerBase
+from parallax.app.runtime.worker_result import WorkerResult
+from parallax.domains.notifications.repositories.notification_repository import NotificationRepository
+from parallax.domains.notifications.runtime.notification_worker import NotificationWorker
+from parallax.domains.notifications.types import NotificationCandidate
 from tests.unit.test_notification_rules import (
     NOW_MS,
     FakePulse,

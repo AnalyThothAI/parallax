@@ -9,7 +9,7 @@
 - `docs/superpowers/specs/active/2026-05-12-market-data-pipeline-gap-cn.md`
 - `docs/superpowers/specs/active/2026-05-11-token-radar-market-boundary-hard-cut-cn.md`
 - `docs/superpowers/specs/active/2026-05-11-okx-dex-ws-market-stream-and-radar-recovery-cn.md`
-- `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
+- `src/parallax/domains/token_intel/ARCHITECTURE.md`
 - `docs/CONTRACTS.md`
 - GMGN Agent API: `https://docs.gmgn.ai/index/gmgn-agent-api`
 - OKX Token Search: `https://web3.okx.com/onchainos/dev-docs-v5/dex-api/dex-market-token-search`
@@ -20,19 +20,19 @@ GMGN becomes the exact-address DEX market/profile source for resolved assets. OK
 
 ## Background
 
-The current runtime wires one OKX DEX market object into multiple responsibilities: sync DEX market, message DEX market, discovery DEX market, and separately OKX DEX WebSocket for stream market. This happens in `_wire_asset_market`, where the same serialized OKX DEX provider is passed to `sync_dex_market`, `message_dex_market`, and `discovery_dex_market`, while `stream_dex_market` is an OKX WS provider (`src/gmgn_twitter_intel/app/runtime/providers_wiring.py:277`).
+The current runtime wires one OKX DEX market object into multiple responsibilities: sync DEX market, message DEX market, discovery DEX market, and separately OKX DEX WebSocket for stream market. This happens in `_wire_asset_market`, where the same serialized OKX DEX provider is passed to `sync_dex_market`, `message_dex_market`, and `discovery_dex_market`, while `stream_dex_market` is an OKX WS provider (`src/parallax/app/runtime/providers_wiring.py:277`).
 
-The current `DexMarketProvider` protocol combines three different capabilities in one interface: `search_tokens`, `token_prices`, and `token_candles` (`src/gmgn_twitter_intel/domains/asset_market/providers.py:92`). These are not the same product capability. Search resolves unknown symbols or addresses. Quote refresh observes a known token. Candles hydrate a chart for a known token.
+The current `DexMarketProvider` protocol combines three different capabilities in one interface: `search_tokens`, `token_prices`, and `token_candles` (`src/parallax/domains/asset_market/providers.py:92`). These are not the same product capability. Search resolves unknown symbols or addresses. Quote refresh observes a known token. Candles hydrate a chart for a known token.
 
-Anchor DEX pricing currently batches `DexTokenPriceRequest` values and calls `dex_market.token_prices` (`src/gmgn_twitter_intel/domains/asset_market/services/anchor_price_observation.py:97`). The write path then records provider `okx`, writes only `price_usd`, and explicitly leaves `market_cap_usd`, `liquidity_usd`, `volume_24h_usd`, and `holders` as `None` (`src/gmgn_twitter_intel/domains/asset_market/services/anchor_price_observation.py:164`).
+Anchor DEX pricing currently batches `DexTokenPriceRequest` values and calls `dex_market.token_prices` (`src/parallax/domains/asset_market/services/anchor_price_observation.py:97`). The write path then records provider `okx`, writes only `price_usd`, and explicitly leaves `market_cap_usd`, `liquidity_usd`, `volume_24h_usd`, and `holders` as `None` (`src/parallax/domains/asset_market/services/anchor_price_observation.py:164`).
 
-Search Intel chart hydration calls `dex_market.token_candles` for `Asset` overlays and labels the source as `okx_dex_candles` (`src/gmgn_twitter_intel/domains/asset_market/read_models/market_candles_service.py:42`). This is already an exact-address use case, not a discovery use case.
+Search Intel chart hydration calls `dex_market.token_candles` for `Asset` overlays and labels the source as `okx_dex_candles` (`src/parallax/domains/asset_market/read_models/market_candles_service.py:42`). This is already an exact-address use case, not a discovery use case.
 
-Live DEX market is stream-shaped. `LivePriceGateway` consumes `DexMarketStreamProvider.stream_price_info` and publishes in-process `live_market_update` payloads (`src/gmgn_twitter_intel/domains/asset_market/runtime/live_price_gateway.py:211`). GMGN's observed OpenAPI/CLI capabilities are polling-shaped for token info and Kline; they are not a replacement for this stream contract.
+Live DEX market is stream-shaped. `LivePriceGateway` consumes `DexMarketStreamProvider.stream_price_info` and publishes in-process `live_market_update` payloads (`src/parallax/domains/asset_market/runtime/live_price_gateway.py:211`). GMGN's observed OpenAPI/CLI capabilities are polling-shaped for token info and Kline; they are not a replacement for this stream contract.
 
-The existing GMGN OpenAPI integration only calls `/v1/token/info` and normalizes a small subset of the response: symbol, name, logo, price, previous price, market cap, and raw payload (`src/gmgn_twitter_intel/integrations/gmgn/openapi_client.py:13`). Live research confirmed the raw response also contains richer exact-token fields such as liquidity, holder count, pool, website, Twitter/X, Telegram, dev/stat/security-style metadata, and GMGN/GeckoTerminal links.
+The existing GMGN OpenAPI integration only calls `/v1/token/info` and normalizes a small subset of the response: symbol, name, logo, price, previous price, market cap, and raw payload (`src/parallax/integrations/gmgn/openapi_client.py:13`). Live research confirmed the raw response also contains richer exact-token fields such as liquidity, holder count, pool, website, Twitter/X, Telegram, dev/stat/security-style metadata, and GMGN/GeckoTerminal links.
 
-Token Intel architecture already preserves the right direction of dependency. Discovery/reprocess uses OKX DEX for recent NIL/AMBIGUOUS lookup keys, anchor/live market is owned by `asset_market`, Radar projection consumes market facts, and Search read model never performs provider calls (`src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md:38`). The public contract also states that GMGN social payload token snapshots are identity evidence only, and embedded GMGN price/market-cap values are not written during ingest (`docs/CONTRACTS.md:55`).
+Token Intel architecture already preserves the right direction of dependency. Discovery/reprocess uses OKX DEX for recent NIL/AMBIGUOUS lookup keys, anchor/live market is owned by `asset_market`, Radar projection consumes market facts, and Search read model never performs provider calls (`src/parallax/domains/token_intel/ARCHITECTURE.md:38`). The public contract also states that GMGN social payload token snapshots are identity evidence only, and embedded GMGN price/market-cap values are not written during ingest (`docs/CONTRACTS.md:55`).
 
 ## Problem
 

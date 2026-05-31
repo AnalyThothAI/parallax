@@ -161,10 +161,10 @@ All subsequent task commands assume CWD is the worktree root.
   ```markdown
   | Module | File | Covers |
   |--------|------|--------|
-  | Token Radar and token identity | [`src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md) | GMGN frame to token evidence, intents, deterministic resolution, discovery / reprocess, market observations, radar projection, and hard identity boundaries. |
+  | Token Radar and token identity | [`src/parallax/domains/token_intel/ARCHITECTURE.md`](../src/parallax/domains/token_intel/ARCHITECTURE.md) | GMGN frame to token evidence, intents, deterministic resolution, discovery / reprocess, market observations, radar projection, and hard identity boundaries. |
 
   When a subsystem needs more than a short row here, add
-  `src/gmgn_twitter_intel/domains/<domain>/ARCHITECTURE.md` and link it from this
+  `src/parallax/domains/<domain>/ARCHITECTURE.md` and link it from this
   table. Keep local docs minimal, current, and tied to code changes.
   ```
 
@@ -173,12 +173,12 @@ All subsequent task commands assume CWD is the worktree root.
   ```markdown
   | Module | File | Covers |
   |--------|------|--------|
-  | Token Radar and token identity | [`src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md) | GMGN frame to token evidence, intents, deterministic resolution, discovery / reprocess, market observations, radar projection, and hard identity boundaries. |
-  | Asset market and material observations | [`src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md) | Asset identity evidence ledger, `MarketObservation` schema, anchor / live / profile / discovery workers, material observation write budget, provider capability model. |
-  | Signal Pulse pipeline | [`src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md) | Candidate gate, agent route policy, stage runtime, decision persistence, audit ledger, abstain contract. |
+  | Token Radar and token identity | [`src/parallax/domains/token_intel/ARCHITECTURE.md`](../src/parallax/domains/token_intel/ARCHITECTURE.md) | GMGN frame to token evidence, intents, deterministic resolution, discovery / reprocess, market observations, radar projection, and hard identity boundaries. |
+  | Asset market and material observations | [`src/parallax/domains/asset_market/ARCHITECTURE.md`](../src/parallax/domains/asset_market/ARCHITECTURE.md) | Asset identity evidence ledger, `MarketObservation` schema, anchor / live / profile / discovery workers, material observation write budget, provider capability model. |
+  | Signal Pulse pipeline | [`src/parallax/domains/pulse_lab/ARCHITECTURE.md`](../src/parallax/domains/pulse_lab/ARCHITECTURE.md) | Candidate gate, agent route policy, stage runtime, decision persistence, audit ledger, abstain contract. |
 
   When a subsystem needs more than a short row here, add
-  `src/gmgn_twitter_intel/domains/<domain>/ARCHITECTURE.md` and link it from this
+  `src/parallax/domains/<domain>/ARCHITECTURE.md` and link it from this
   table. Keep local docs minimal, current, and tied to code changes.
   ```
 
@@ -385,7 +385,7 @@ All subsequent task commands assume CWD is the worktree root.
 ## Task 4 — domains/asset_market/ARCHITECTURE.md (new)
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md`
+- Create: `src/parallax/domains/asset_market/ARCHITECTURE.md`
 
 - [ ] **Step 1:** Create the file with the exact content below:
 
@@ -524,10 +524,10 @@ All subsequent task commands assume CWD is the worktree root.
 - [ ] **Step 2:** Verify:
 
   ```bash
-  test -f src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md
-  rg -n "^# Asset Market Architecture$" src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md
-  rg -n "should_persist_live_observation" src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md
-  rg -n "MarketCapability" src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md
+  test -f src/parallax/domains/asset_market/ARCHITECTURE.md
+  rg -n "^# Asset Market Architecture$" src/parallax/domains/asset_market/ARCHITECTURE.md
+  rg -n "should_persist_live_observation" src/parallax/domains/asset_market/ARCHITECTURE.md
+  rg -n "MarketCapability" src/parallax/domains/asset_market/ARCHITECTURE.md
   ```
 
   Expected: file exists; each `rg` emits at least one match.
@@ -535,7 +535,7 @@ All subsequent task commands assume CWD is the worktree root.
 - [ ] **Step 3:** Commit:
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md
+  git add src/parallax/domains/asset_market/ARCHITECTURE.md
   git commit -m "docs(asset_market): add module ARCHITECTURE.md"
   ```
 
@@ -544,7 +544,7 @@ All subsequent task commands assume CWD is the worktree root.
 ## Task 5 — domains/pulse_lab/ARCHITECTURE.md (new)
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`
+- Create: `src/parallax/domains/pulse_lab/ARCHITECTURE.md`
 
 - [ ] **Step 1:** Create the file with the exact content below:
 
@@ -646,10 +646,10 @@ All subsequent task commands assume CWD is the worktree root.
 - [ ] **Step 2:** Verify:
 
   ```bash
-  test -f src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md
-  rg -n "^# Pulse Lab Architecture$" src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md
-  rg -n "token_radar_updated" src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md
-  rg -n "abstain" src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md
+  test -f src/parallax/domains/pulse_lab/ARCHITECTURE.md
+  rg -n "^# Pulse Lab Architecture$" src/parallax/domains/pulse_lab/ARCHITECTURE.md
+  rg -n "token_radar_updated" src/parallax/domains/pulse_lab/ARCHITECTURE.md
+  rg -n "abstain" src/parallax/domains/pulse_lab/ARCHITECTURE.md
   ```
 
   Expected: file exists; each `rg` emits at least one match.
@@ -657,7 +657,7 @@ All subsequent task commands assume CWD is the worktree root.
 - [ ] **Step 3:** Commit:
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md
+  git add src/parallax/domains/pulse_lab/ARCHITECTURE.md
   git commit -m "docs(pulse_lab): add module ARCHITECTURE.md"
   ```
 
@@ -778,7 +778,7 @@ All subsequent task commands assume CWD is the worktree root.
 - [ ] **Step 3:** Cross-check the worker list against the source:
 
   ```bash
-  rg -n "_task: asyncio\\.Task \\| None" src/gmgn_twitter_intel/app/runtime/app.py
+  rg -n "_task: asyncio\\.Task \\| None" src/parallax/app/runtime/app.py
   ```
 
   Expected: the `*_task` fields listed match the workers in the inventory (collector, supervisor, enrichment, harness_ops, notification, notification_delivery, anchor_price, asset_profile_refresh, resolution_refresh, live_price_gateway, token_radar_projection, pulse_candidate). `supervisor_task` is the runtime supervisor and is not a worker.
@@ -803,7 +803,7 @@ All subsequent task commands assume CWD is the worktree root.
   ```markdown
   ## What this is
 
-  `gmgn-twitter-intel`: a single Python service that ingests GMGN's anonymous public WebSocket, extracts Twitter-mentioned crypto entities, scores them, and serves results over HTTP / WebSocket / CLI to a small React frontend. One PostgreSQL store. See `docs/ARCHITECTURE.md`.
+  `parallax`: a single Python service that ingests GMGN's anonymous public WebSocket, extracts Twitter-mentioned crypto entities, scores them, and serves results over HTTP / WebSocket / CLI to a small React frontend. One PostgreSQL store. See `docs/ARCHITECTURE.md`.
   ```
 
   Replace with:
@@ -811,7 +811,7 @@ All subsequent task commands assume CWD is the worktree root.
   ```markdown
   ## What this is
 
-  `gmgn-twitter-intel`: a single Python service that ingests GMGN's anonymous public WebSocket, extracts Twitter-mentioned crypto entities, scores them, and serves results over HTTP / WebSocket / CLI to a small React frontend. One PostgreSQL store. See `docs/ARCHITECTURE.md`.
+  `parallax`: a single Python service that ingests GMGN's anonymous public WebSocket, extracts Twitter-mentioned crypto entities, scores them, and serves results over HTTP / WebSocket / CLI to a small React frontend. One PostgreSQL store. See `docs/ARCHITECTURE.md`.
 
   The pipeline is Kappa/CQRS: PostgreSQL material facts (`events`,
   `token_intents`, `token_intent_resolutions`, `asset_identity_*`,
@@ -836,7 +836,7 @@ All subsequent task commands assume CWD is the worktree root.
   ```markdown
   | Operational invariants | `docs/RELIABILITY.md` |
   | Cross-domain worker inventory | `docs/WORKERS.md` |
-  | Module architecture maps | `src/gmgn_twitter_intel/domains/<domain>/ARCHITECTURE.md` (currently `token_intel`, `asset_market`, `pulse_lab`) |
+  | Module architecture maps | `src/parallax/domains/<domain>/ARCHITECTURE.md` (currently `token_intel`, `asset_market`, `pulse_lab`) |
   | Active / done specs & plans | `docs/superpowers/{specs,plans}/{active,completed}/` |
   ```
 
@@ -880,9 +880,9 @@ All subsequent task commands assume CWD is the worktree root.
   test -f docs/DESIGN_DISCIPLINE.md
   test -f AGENTS.md
   test -f CLAUDE.md
-  test -f src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md
-  test -f src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md
-  test -f src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md
+  test -f src/parallax/domains/token_intel/ARCHITECTURE.md
+  test -f src/parallax/domains/asset_market/ARCHITECTURE.md
+  test -f src/parallax/domains/pulse_lab/ARCHITECTURE.md
   ```
 
   Expected: every command exits 0.
@@ -891,8 +891,8 @@ All subsequent task commands assume CWD is the worktree root.
 
   ```bash
   rg -n "web/src/test/" docs/TESTING.md
-  rg -n "live_market comes from process-local gateway" docs/ARCHITECTURE.md src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md || true
-  rg -n "anchor_price_usd|live_market_usd" docs/ARCHITECTURE.md docs/CONTRACTS.md docs/WORKERS.md src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md || true
+  rg -n "live_market comes from process-local gateway" docs/ARCHITECTURE.md src/parallax/domains/token_intel/ARCHITECTURE.md || true
+  rg -n "anchor_price_usd|live_market_usd" docs/ARCHITECTURE.md docs/CONTRACTS.md docs/WORKERS.md src/parallax/domains/asset_market/ARCHITECTURE.md src/parallax/domains/pulse_lab/ARCHITECTURE.md || true
   ```
 
   Expected: first command emits zero matches; second and third commands emit zero matches (or only inside fenced removed-name lists, which is allowed).
@@ -927,7 +927,7 @@ All subsequent task commands assume CWD is the worktree root.
 - [ ] **Step 6:** Final cross-link audit:
 
   ```bash
-  for f in docs/ARCHITECTURE.md docs/RELIABILITY.md docs/TESTING.md docs/WORKERS.md AGENTS.md CLAUDE.md src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md; do
+  for f in docs/ARCHITECTURE.md docs/RELIABILITY.md docs/TESTING.md docs/WORKERS.md AGENTS.md CLAUDE.md src/parallax/domains/asset_market/ARCHITECTURE.md src/parallax/domains/pulse_lab/ARCHITECTURE.md; do
     echo "=== $f ==="
     rg -n "ARCHITECTURE\.md|WORKERS\.md|RELIABILITY\.md|CONTRACTS\.md|FRONTEND\.md|TESTING\.md|WORKFLOW\.md|DESIGN_DISCIPLINE\.md" "$f" | head -20
   done
@@ -995,8 +995,8 @@ Revert the merge commit. No state to restore.
 - AC2 module docs exist:
 
   ```bash
-  test -f src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md
-  test -f src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md
+  test -f src/parallax/domains/asset_market/ARCHITECTURE.md
+  test -f src/parallax/domains/pulse_lab/ARCHITECTURE.md
   ```
 
   Expected: both pass.

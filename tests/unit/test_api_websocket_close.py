@@ -2,7 +2,7 @@ import asyncio
 
 from starlette.websockets import WebSocketState
 
-from gmgn_twitter_intel.app.surfaces.api.ws import _close_if_connected
+from parallax.app.surfaces.api.ws import _close_if_connected
 
 
 def test_close_if_connected_suppresses_uvicorn_protocol_close_race() -> None:

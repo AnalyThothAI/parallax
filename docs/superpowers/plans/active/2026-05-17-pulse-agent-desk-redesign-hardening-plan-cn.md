@@ -37,25 +37,25 @@
 
 ## File Map
 
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/instructor_safety_net.py`
+- Modify: `src/parallax/integrations/openai_agents/instructor_safety_net.py`
   - Preserve `RunResult` for the safety-net strict-success path without breaking existing social/watchlist callers.
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`
+- Modify: `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py`
   - Persist tool calls on the safety-net path.
   - Validate final evidence IDs against the same allowlist as Investigator evidence.
   - Add tool-call count audit metadata for observability only.
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/queries/agent_tool_queries.py`
+- Modify: `src/parallax/domains/pulse_lab/queries/agent_tool_queries.py`
   - Prefer canonical event URLs from `events.canonical_url` when enriching evidence links.
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- Modify: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
   - Stop producing new `abstain_critic_veto` outcomes.
-- Modify: `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py`
+- Modify: `src/parallax/domains/notifications/services/notification_rules.py`
   - Push Signal Pulse status filtering into pagination.
   - Pass `factor_snapshot` through to SurfaceCard link rendering.
   - Include stable playbook structure in notification signature.
-- Modify: `src/gmgn_twitter_intel/domains/notifications/services/pulse_surface_card.py`
+- Modify: `src/parallax/domains/notifications/services/pulse_surface_card.py`
   - Apply final notification-boundary safety filtering.
   - Derive GMGN links from `factor_snapshot.subject` when row fields are absent.
   - Enforce final hard length cap.
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
+- Modify: `src/parallax/app/surfaces/api/schemas.py`
   - Make Signal Pulse OpenAPI schema match runtime shape.
 - Modify: `web/src/lib/types/frontend-contracts.ts`
   - Keep hand-written frontend contract aligned until OpenAPI becomes the only source.
@@ -88,8 +88,8 @@
 **Intent:** Fix the default production path where `InstructorSafetyNet` hides the SDK `RunResult`, causing `input_json.tool_calls` and `investigation_tool_calls_count` to be empty even when tools ran. Keep fallback tool budget behavior unchanged; only make usage visible.
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/instructor_safety_net.py`
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`
+- Modify: `src/parallax/integrations/openai_agents/instructor_safety_net.py`
+- Modify: `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py`
 - Test: `tests/unit/integrations/openai_agents/test_pulse_decision_two_stage.py`
 
 - [x] Step 1: Add a failing unit test for the safety-net strict-success path.
@@ -153,8 +153,8 @@
 **Intent:** Prevent DecisionMaker from persisting hallucinated or unrelated evidence IDs. Keep final evidence enrichment simple and deterministic.
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/queries/agent_tool_queries.py`
+- Modify: `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py`
+- Modify: `src/parallax/domains/pulse_lab/queries/agent_tool_queries.py`
 - Test: `tests/unit/integrations/openai_agents/test_pulse_decision_two_stage.py`
 - Test: `tests/unit/integrations/openai_agents/tools/test_tools.py` or a new query-focused unit test if that is the local pattern.
 
@@ -203,8 +203,8 @@
 **Intent:** Stop status-specific notifications from being starved by unrelated statuses, and make the notification renderer safe even if old/manual data bypassed upstream validators.
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py`
-- Modify: `src/gmgn_twitter_intel/domains/notifications/services/pulse_surface_card.py`
+- Modify: `src/parallax/domains/notifications/services/notification_rules.py`
+- Modify: `src/parallax/domains/notifications/services/pulse_surface_card.py`
 - Test: `tests/unit/test_notification_rules.py`
 - Test: `tests/unit/domains/notifications/test_pulse_surface_card.py`
 
@@ -241,7 +241,7 @@
 - [x] Step 4: Harden `render_pulse_surface_card`.
 
   Implementation rule:
-  - Import and use `contains_trading_execution_instruction` from `gmgn_twitter_intel.domains.pulse_lab.types.agent_decision`.
+  - Import and use `contains_trading_execution_instruction` from `parallax.domains.pulse_lab.types.agent_decision`.
   - Add `_safe_text(value: Any) -> str` that returns `""` for forbidden text.
   - Add `_safe_list(values: Any) -> list[str]` that filters forbidden entries and empty strings.
   - Use safe text/list in narrative, bull, bear, and playbook rendering.
@@ -279,7 +279,7 @@
 **Intent:** Make generated OpenAPI types describe the actual `/signal-lab/pulse` payload so future frontend/API callers do not rely on stale `recommendation` or generic `JsonObject[]`.
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
+- Modify: `src/parallax/app/surfaces/api/schemas.py`
 - Modify after generation: `docs/generated/openapi.json`
 - Modify after generation: `web/src/lib/types/openapi.ts`
 - Test: `tests/contract/test_openapi_drift.py`

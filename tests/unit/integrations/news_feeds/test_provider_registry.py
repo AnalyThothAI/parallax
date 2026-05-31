@@ -4,8 +4,8 @@ from typing import Any
 
 import pytest
 
-from gmgn_twitter_intel.integrations.news_feeds.feed_client import FeedFetchResult
-from gmgn_twitter_intel.integrations.news_feeds.provider_registry import (
+from parallax.integrations.news_feeds.feed_client import FeedFetchResult
+from parallax.integrations.news_feeds.provider_registry import (
     SUPPORTED_NEWS_PROVIDER_TYPES,
     NewsFeedProviderRegistry,
     OpenNewsNewsFeedProvider,
@@ -15,7 +15,7 @@ from gmgn_twitter_intel.integrations.news_feeds.provider_registry import (
 
 
 def test_provider_wiring_exposes_only_source_provider_surface() -> None:
-    import gmgn_twitter_intel.app.runtime.provider_wiring.news as provider_wiring
+    import parallax.app.runtime.provider_wiring.news as provider_wiring
 
     assert "CompositeNewsFeedClient" not in provider_wiring.__all__
     assert not hasattr(provider_wiring, "CompositeNewsFeedClient")

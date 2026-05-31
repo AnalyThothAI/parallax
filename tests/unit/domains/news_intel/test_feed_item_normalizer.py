@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from datetime import datetime
 
-from gmgn_twitter_intel.domains.news_intel.services.feed_item_normalizer import normalize_feed_entry
+from parallax.domains.news_intel.services.feed_item_normalizer import normalize_feed_entry
 
 
 def test_normalize_feed_entry_uses_feed_identity_and_cleans_text() -> None:

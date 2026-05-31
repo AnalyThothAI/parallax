@@ -7,15 +7,15 @@
 
 ## Background
 
-当前仓库已经把 earnings 产品做成完整 `equity_event_intel` 域，而不是一个可忽略的前端入口。域文档定义它负责美国股票公司事件、earnings/calendar read models 和 cited agent briefs，且不写 News Intel、Token Radar、Pulse 或 market tick facts（`src/gmgn_twitter_intel/domains/equity_event_intel/ARCHITECTURE.md:3`）。它拥有 PostgreSQL facts/control/read-model 表，包括 `equity_event_sources`、`equity_expected_events`、`equity_event_documents`、`equity_event_evidence_jobs`、`equity_company_events`、`equity_event_agent_briefs` 和页面 read models（`src/gmgn_twitter_intel/domains/equity_event_intel/ARCHITECTURE.md:13`）。
+当前仓库已经把 earnings 产品做成完整 `equity_event_intel` 域，而不是一个可忽略的前端入口。域文档定义它负责美国股票公司事件、earnings/calendar read models 和 cited agent briefs，且不写 News Intel、Token Radar、Pulse 或 market tick facts（`src/parallax/domains/equity_event_intel/ARCHITECTURE.md:3`）。它拥有 PostgreSQL facts/control/read-model 表，包括 `equity_event_sources`、`equity_expected_events`、`equity_event_documents`、`equity_event_evidence_jobs`、`equity_company_events`、`equity_event_agent_briefs` 和页面 read models（`src/parallax/domains/equity_event_intel/ARCHITECTURE.md:13`）。
 
-后端 API 已注册 `/api/equity-events*` route，`routes_equity_events` 被导入并 include 到主 API router（`src/gmgn_twitter_intel/app/surfaces/api/http.py:8`, `src/gmgn_twitter_intel/app/surfaces/api/http.py:34`）。SPA fallback 也显式注册 `/earnings` 和 `/earnings/{path:path}`（`src/gmgn_twitter_intel/app/runtime/app.py:134`）。前端 router 把 `earnings/*` lazy-load 到 `equity-events.route`（`web/src/routes/router.tsx:44`），左侧导航显示 `Earnings` 并指向 `/earnings`（`web/src/features/cockpit/ui/appNavigation.ts:77`）。
+后端 API 已注册 `/api/equity-events*` route，`routes_equity_events` 被导入并 include 到主 API router（`src/parallax/app/surfaces/api/http.py:8`, `src/parallax/app/surfaces/api/http.py:34`）。SPA fallback 也显式注册 `/earnings` 和 `/earnings/{path:path}`（`src/parallax/app/runtime/app.py:134`）。前端 router 把 `earnings/*` lazy-load 到 `equity-events.route`（`web/src/routes/router.tsx:44`），左侧导航显示 `Earnings` 并指向 `/earnings`（`web/src/features/cockpit/ui/appNavigation.ts:77`）。
 
-运行时已经有 7 个 equity-event worker manifest：source reconcile、fetch、evidence hydration、process、story projection、brief、page projection（`src/gmgn_twitter_intel/app/runtime/worker_manifest.py:515`）。这些 worker 写入 facts、control plane、read models，并通过 `equity_event_*` wake channels 串联（`src/gmgn_twitter_intel/app/runtime/worker_manifest.py:528`, `src/gmgn_twitter_intel/app/runtime/worker_manifest.py:545`, `src/gmgn_twitter_intel/app/runtime/worker_manifest.py:666`）。worker factory registry 也显式注册 `equity_event_intel.py`（`src/gmgn_twitter_intel/app/runtime/worker_factories/__init__.py:197`）。
+运行时已经有 7 个 equity-event worker manifest：source reconcile、fetch、evidence hydration、process、story projection、brief、page projection（`src/parallax/app/runtime/worker_manifest.py:515`）。这些 worker 写入 facts、control plane、read models，并通过 `equity_event_*` wake channels 串联（`src/parallax/app/runtime/worker_manifest.py:528`, `src/parallax/app/runtime/worker_manifest.py:545`, `src/parallax/app/runtime/worker_manifest.py:666`）。worker factory registry 也显式注册 `equity_event_intel.py`（`src/parallax/app/runtime/worker_factories/__init__.py:197`）。
 
-配置 schema 已包含 `equity_event_intel`、expected events、agent lane，以及独立 worker settings（`src/gmgn_twitter_intel/platform/config/settings.py:748`, `src/gmgn_twitter_intel/platform/config/settings.py:821`, `src/gmgn_twitter_intel/platform/config/settings.py:1452`）。默认配置生成器会把 `equity_event_intel` 写入 `config.yaml`，并把所有 `equity_event_*` worker 写入 `workers.yaml`（`src/gmgn_twitter_intel/platform/config/settings.py:1992`, `src/gmgn_twitter_intel/platform/config/settings.py:2331`）。`load_settings` 对 config 和 workers 都用 pydantic `extra="forbid"` schema 加载，删除 schema 后运行配置中的残留字段会导致启动失败（`src/gmgn_twitter_intel/platform/config/settings.py:1888`）。
+配置 schema 已包含 `equity_event_intel`、expected events、agent lane，以及独立 worker settings（`src/parallax/platform/config/settings.py:748`, `src/parallax/platform/config/settings.py:821`, `src/parallax/platform/config/settings.py:1452`）。默认配置生成器会把 `equity_event_intel` 写入 `config.yaml`，并把所有 `equity_event_*` worker 写入 `workers.yaml`（`src/parallax/platform/config/settings.py:1992`, `src/parallax/platform/config/settings.py:2331`）。`load_settings` 对 config 和 workers 都用 pydantic `extra="forbid"` schema 加载，删除 schema 后运行配置中的残留字段会导致启动失败（`src/parallax/platform/config/settings.py:1888`）。
 
-数据库迁移 `20260523_0083` 创建了第一批 equity-event 表，例如 `equity_event_sources` 和 `equity_event_fetch_runs`（`src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0083_equity_event_intel.py:1`, `src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0083_equity_event_intel.py:16`）。后续迁移继续添加 runtime indexes、fact shape、evidence hard-cut、payload hashes、fetch reaper 和 process jobs。架构测试当前还把 `equity_event_intel` 当成必须存在的 domain 和 provider domain（`tests/architecture/test_src_domain_architecture.py:13`, `tests/architecture/test_src_domain_architecture.py:32`），并有专门测试要求该 domain 存在（`tests/architecture/test_equity_event_intel_boundaries.py:48`）。
+数据库迁移 `20260523_0083` 创建了第一批 equity-event 表，例如 `equity_event_sources` 和 `equity_event_fetch_runs`（`src/parallax/platform/db/alembic/versions/20260523_0083_equity_event_intel.py:1`, `src/parallax/platform/db/alembic/versions/20260523_0083_equity_event_intel.py:16`）。后续迁移继续添加 runtime indexes、fact shape、evidence hard-cut、payload hashes、fetch reaper 和 process jobs。架构测试当前还把 `equity_event_intel` 当成必须存在的 domain 和 provider domain（`tests/architecture/test_src_domain_architecture.py:13`, `tests/architecture/test_src_domain_architecture.py:32`），并有专门测试要求该 domain 存在（`tests/architecture/test_equity_event_intel_boundaries.py:48`）。
 
 ## Problem
 
@@ -25,7 +25,7 @@
 
 1. **不保留半产品。** 如果用户不可用且产品语义未定，代码、runtime、API、前端、测试和配置都应从主线移除，避免它继续参与架构约束和运行时启动路径。
 2. **PostgreSQL business truth 必须清晰。** 既然 `equity_event_*` 和 `equity_expected_events` 不再代表当前产品事实，它们应该通过显式 destructive migration 从运行库 drop 掉，而不是留下可被误读的旧事实表。
-3. **配置必须可启动。** 因为配置 schema 禁止额外字段，代码删除必须配套清理 repo 默认 config、example config 和 operator-owned `~/.gmgn-twitter-intel/config.yaml` / `workers.yaml` 中的 earnings 段。
+3. **配置必须可启动。** 因为配置 schema 禁止额外字段，代码删除必须配套清理 repo 默认 config、example config 和 operator-owned `~/.parallax/config.yaml` / `workers.yaml` 中的 earnings 段。
 
 ## Goals
 
@@ -45,7 +45,7 @@
 
 ## Target Architecture
 
-删除后，`gmgn-twitter-intel` 不再有独立 earnings/equity-event 产品域。当前核心产品仍由 ingestion、asset_market、token_intel、cex_market_intel、macro_intel、narrative_intel、news_intel、pulse_lab、watchlist_intel、notifications 等域组成。股票相关能力只保留已被其他产品使用的共享基础设施和 `/stocks` 相关 surface；`/earnings` 不再作为导航项、路由、API 或 worker chain 存在。
+删除后，`parallax` 不再有独立 earnings/equity-event 产品域。当前核心产品仍由 ingestion、asset_market、token_intel、cex_market_intel、macro_intel、narrative_intel、news_intel、pulse_lab、watchlist_intel、notifications 等域组成。股票相关能力只保留已被其他产品使用的共享基础设施和 `/stocks` 相关 surface；`/earnings` 不再作为导航项、路由、API 或 worker chain 存在。
 
 运行时 worker registry 中没有 `equity_event_*` worker，也没有 `equity_event_intel.py` factory。provider wiring 不再构造 equity-event SEC/IR/calendar provider，也不再构造 `equity_event.brief` OpenAI provider。agent runtime lane defaults 不再包含 `equity_event.brief`。
 
@@ -98,8 +98,8 @@ Preserved models:
 
 - HTTP: `/api/equity-events`, `/api/equity-events/calendar`, `/api/equity-events/summary`, `/api/equity-events/sources/status`, `/api/equity-events/{event_id}`, `/api/equity-events/stories/{story_id}`, and `/api/equity-events/companies/{ticker}/timeline` are removed from the API router and generated OpenAPI contract.
 - Frontend routes: `/earnings`, `/earnings/calendar`, `/earnings/events/:eventId`, `/earnings/stories/:storyId`, and `/earnings/companies/:ticker` are removed from the React router and backend SPA fallback list.
-- CLI/config: `gmgn-twitter-intel config` should still report the active config paths, but generated config content should not include earnings/equity-event sections.
-- Runtime config cleanup: implementation may edit `~/.gmgn-twitter-intel/config.yaml` and `~/.gmgn-twitter-intel/workers.yaml` to remove only the deleted keys. It must create timestamped backups and must report only paths and redacted booleans, never secret values.
+- CLI/config: `parallax config` should still report the active config paths, but generated config content should not include earnings/equity-event sections.
+- Runtime config cleanup: implementation may edit `~/.parallax/config.yaml` and `~/.parallax/workers.yaml` to remove only the deleted keys. It must create timestamped backups and must report only paths and redacted booleans, never secret values.
 - DB migration: applying current Alembic head deletes existing equity-event tables/data. Downgrade may be empty or explicitly non-restorative, because this work intentionally drops data and no business restore path is promised.
 
 ## Acceptance Criteria
@@ -108,7 +108,7 @@ Preserved models:
 - AC2. WHEN `/api/equity-events` or any former equity-event API route is requested THEN the route is not served by an equity-event handler and is absent from generated OpenAPI.
 - AC3. WHEN the frontend is built THEN navigation contains no `Earnings` item and the React router contains no `earnings/*` route.
 - AC4. WHEN Alembic migrations are applied to a database that contains the existing equity-event schema THEN all owned equity-event tables and their data are removed.
-- AC5. WHEN `uv run gmgn-twitter-intel config` is run after operator config cleanup THEN it succeeds and reports `~/.gmgn-twitter-intel/config.yaml` plus `~/.gmgn-twitter-intel/workers.yaml` paths without rejected `equity_event_intel` or `equity_event_*` keys.
+- AC5. WHEN `uv run parallax config` is run after operator config cleanup THEN it succeeds and reports `~/.parallax/config.yaml` plus `~/.parallax/workers.yaml` paths without rejected `equity_event_intel` or `equity_event_*` keys.
 - AC6. WHEN `rg -n "equity_event_intel|equity-events|/earnings|equity_event\\.brief|equity_event_" src web tests docs config.example.yaml` is reviewed THEN remaining hits are either historical Alembic migration identifiers, this hard-delete spec/plan artefact, or deliberate non-product text documented in the implementation summary.
 - AC7. WHEN backend and frontend test suites run at the selected verification level THEN no tests fail because they still expect `equity_event_intel`, `/earnings`, or `/api/equity-events*` to exist.
 
@@ -117,7 +117,7 @@ Preserved models:
 | Risk | Severity | Mitigation |
 |------|----------|------------|
 | Dropping a shared table used by stocks/token-equity code. | High | Treat only `equity_event_*`, `equity_expected_events`, and directly owned dependent tables as drop candidates; verify `rg` references before writing migration. |
-| Operator config fails to load after schema deletion because old keys remain. | High | Clean `~/.gmgn-twitter-intel/config.yaml` and `workers.yaml` with backups before final runtime verification. |
+| Operator config fails to load after schema deletion because old keys remain. | High | Clean `~/.parallax/config.yaml` and `workers.yaml` with backups before final runtime verification. |
 | OpenAPI/client generated artefacts keep stale routes. | Medium | Regenerate or update generated API/types as part of implementation and include route absence in acceptance checks. |
 | Architecture tests encode old domain requirements. | Medium | Replace existence tests with absence/guard tests that prevent accidental reintroduction of the deleted runtime. |
 | False-positive `earnings` text cleanup deletes valid news/macro semantics. | Medium | Delete by ownership boundary, not by raw keyword. Preserve non-product "earnings" references. |

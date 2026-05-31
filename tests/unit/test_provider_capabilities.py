@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.app.runtime import providers_wiring
-from gmgn_twitter_intel.app.runtime.provider_wiring import asset_market as asset_market_wiring
-from gmgn_twitter_intel.app.runtime.provider_wiring import binance as binance_wiring
-from gmgn_twitter_intel.app.runtime.provider_wiring import gmgn as gmgn_wiring
-from gmgn_twitter_intel.app.runtime.provider_wiring import okx as okx_wiring
-from gmgn_twitter_intel.domains.asset_market.providers import MarketCapability, ProviderHealth
-from gmgn_twitter_intel.platform.config.settings import Settings
+from parallax.app.runtime import providers_wiring
+from parallax.app.runtime.provider_wiring import asset_market as asset_market_wiring
+from parallax.app.runtime.provider_wiring import binance as binance_wiring
+from parallax.app.runtime.provider_wiring import gmgn as gmgn_wiring
+from parallax.app.runtime.provider_wiring import okx as okx_wiring
+from parallax.domains.asset_market.providers import MarketCapability, ProviderHealth
+from parallax.platform.config.settings import Settings
 
 
 def test_provider_health_describes_configured_capabilities(monkeypatch) -> None:

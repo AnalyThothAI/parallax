@@ -12,52 +12,52 @@
 
 ## File Structure
 
-- Delete: `src/gmgn_twitter_intel/retrieval/trading_attention_service.py`
+- Delete: `src/parallax/retrieval/trading_attention_service.py`
   Removes the old on-demand Signal Lab Pulse read model.
 
 - Delete: `tests/test_trading_attention_service.py`
   Removes old kind-based service tests.
 
-- Create: `src/gmgn_twitter_intel/pipeline/pulse_contract.py`
+- Create: `src/parallax/pipeline/pulse_contract.py`
   Owns Pulse version constants, status enums, score band constants, and shared validation helpers.
 
-- Create: `src/gmgn_twitter_intel/pipeline/pulse_thesis.py`
+- Create: `src/parallax/pipeline/pulse_thesis.py`
   Owns `PulseThesisPayload`, agent instructions, input builder, output parser, and text guardrail helpers.
 
-- Create: `src/gmgn_twitter_intel/pipeline/pulse_timeline_context.py`
+- Create: `src/parallax/pipeline/pulse_timeline_context.py`
   Builds bounded 5m/1h/4h/24h token timeline summaries, post clusters, selected representative posts, and timeline signatures for agent input and dedupe.
 
-- Create: `src/gmgn_twitter_intel/pipeline/pulse_thesis_agent_client.py`
+- Create: `src/parallax/pipeline/pulse_thesis_agent_client.py`
   Runs `PulseThesisAgent` via OpenAI Agents SDK with typed output and trace metadata.
 
-- Create: `src/gmgn_twitter_intel/pipeline/pulse_candidate_gate.py`
+- Create: `src/parallax/pipeline/pulse_candidate_gate.py`
   Deterministically maps thesis + radar + market + timeline context to `pulse_status`, `candidate_score`, `score_band`, gate reasons, and risk reasons.
 
-- Create: `src/gmgn_twitter_intel/pipeline/pulse_candidate_worker.py`
+- Create: `src/parallax/pipeline/pulse_candidate_worker.py`
   Scans radar/social-event triggers, enqueues jobs, runs agent, writes candidates, and records worker health.
 
-- Create: `src/gmgn_twitter_intel/storage/pulse_repository.py`
+- Create: `src/parallax/storage/pulse_repository.py`
   Persists jobs, runs, candidates, playbook snapshots, outcomes, list queries, and health counts.
 
-- Create: `src/gmgn_twitter_intel/retrieval/signal_pulse_service.py`
+- Create: `src/parallax/retrieval/signal_pulse_service.py`
   Reads `pulse_candidates` only and returns the new `/api/signal-lab/pulse` contract.
 
-- Create: `src/gmgn_twitter_intel/storage/alembic/versions/20260508_0015_signal_pulse_agent_hard_cut.py`
+- Create: `src/parallax/storage/alembic/versions/20260508_0015_signal_pulse_agent_hard_cut.py`
   Creates Pulse v2 tables and indexes.
 
-- Modify: `src/gmgn_twitter_intel/storage/repository_session.py`
+- Modify: `src/parallax/storage/repository_session.py`
   Adds `pulse: PulseRepository`.
 
-- Modify: `src/gmgn_twitter_intel/api/http.py`
+- Modify: `src/parallax/api/http.py`
   Replaces old `TradingAttentionService` import and route body with `SignalPulseService`.
 
-- Modify: `src/gmgn_twitter_intel/api/app.py`
+- Modify: `src/parallax/api/app.py`
   Starts/stops `PulseCandidateWorker` when LLM is configured and exposes pulse health in `/api/status`.
 
-- Modify: `src/gmgn_twitter_intel/settings.py`
+- Modify: `src/parallax/settings.py`
   Adds Pulse worker config under `llm`.
 
-- Modify: `src/gmgn_twitter_intel/pipeline/notification_rules.py`
+- Modify: `src/parallax/pipeline/notification_rules.py`
   Adds `signal_pulse_candidate` notification rule sourced from materialized `pulse_candidates`.
 
 - Modify: `web/src/api/types.ts`
@@ -97,9 +97,9 @@
 ## Task 1: Remove TradingAttention Backend Contract
 
 **Files:**
-- Delete: `src/gmgn_twitter_intel/retrieval/trading_attention_service.py`
+- Delete: `src/parallax/retrieval/trading_attention_service.py`
 - Delete: `tests/test_trading_attention_service.py`
-- Modify: `src/gmgn_twitter_intel/api/http.py`
+- Modify: `src/parallax/api/http.py`
 - Modify: `tests/test_project_structure.py`
 
 - [ ] **Step 1: Write the failing import absence test**
@@ -109,7 +109,7 @@ In `tests/test_project_structure.py`, add:
 ```python
 def test_trading_attention_service_has_been_hard_deleted() -> None:
     root = Path(__file__).resolve().parents[1]
-    assert not (root / "src" / "gmgn_twitter_intel" / "retrieval" / "trading_attention_service.py").exists()
+    assert not (root / "src" / "parallax" / "retrieval" / "trading_attention_service.py").exists()
     assert not (root / "tests" / "test_trading_attention_service.py").exists()
 ```
 
@@ -128,13 +128,13 @@ Expected: FAIL because the service and test still exist.
 Run:
 
 ```bash
-rm src/gmgn_twitter_intel/retrieval/trading_attention_service.py
+rm src/parallax/retrieval/trading_attention_service.py
 rm tests/test_trading_attention_service.py
 ```
 
 - [ ] **Step 4: Remove old API import and route body**
 
-In `src/gmgn_twitter_intel/api/http.py`, delete:
+In `src/parallax/api/http.py`, delete:
 
 ```python
 from ..retrieval.trading_attention_service import TradingAttentionService
@@ -155,8 +155,8 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add tests/test_project_structure.py src/gmgn_twitter_intel/api/http.py
-git rm src/gmgn_twitter_intel/retrieval/trading_attention_service.py tests/test_trading_attention_service.py
+git add tests/test_project_structure.py src/parallax/api/http.py
+git rm src/parallax/retrieval/trading_attention_service.py tests/test_trading_attention_service.py
 git commit -m "refactor: remove trading attention pulse service"
 ```
 
@@ -165,7 +165,7 @@ git commit -m "refactor: remove trading attention pulse service"
 ## Task 2: Add Pulse Storage Migration
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/storage/alembic/versions/20260508_0015_signal_pulse_agent_hard_cut.py`
+- Create: `src/parallax/storage/alembic/versions/20260508_0015_signal_pulse_agent_hard_cut.py`
 - Modify: `tests/test_postgres_schema.py`
 - Modify: `tests/test_postgres_schema_runtime.py`
 
@@ -178,7 +178,7 @@ def test_signal_pulse_agent_hard_cut_migration_defines_pulse_tables() -> None:
     text = (
         ROOT
         / "src"
-        / "gmgn_twitter_intel"
+        / "parallax"
         / "storage"
         / "alembic"
         / "versions"
@@ -230,7 +230,7 @@ Expected: FAIL because the migration does not exist.
 
 - [ ] **Step 3: Create migration**
 
-Create `src/gmgn_twitter_intel/storage/alembic/versions/20260508_0015_signal_pulse_agent_hard_cut.py`:
+Create `src/parallax/storage/alembic/versions/20260508_0015_signal_pulse_agent_hard_cut.py`:
 
 ```python
 """Add Signal Pulse agent hard-cut tables."""
@@ -400,7 +400,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/storage/alembic/versions/20260508_0015_signal_pulse_agent_hard_cut.py tests/test_postgres_schema.py tests/test_postgres_schema_runtime.py
+git add src/parallax/storage/alembic/versions/20260508_0015_signal_pulse_agent_hard_cut.py tests/test_postgres_schema.py tests/test_postgres_schema_runtime.py
 git commit -m "feat: add signal pulse agent schema"
 ```
 
@@ -409,8 +409,8 @@ git commit -m "feat: add signal pulse agent schema"
 ## Task 3: Add Pulse Contract And Thesis Schema
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/pipeline/pulse_contract.py`
-- Create: `src/gmgn_twitter_intel/pipeline/pulse_thesis.py`
+- Create: `src/parallax/pipeline/pulse_contract.py`
+- Create: `src/parallax/pipeline/pulse_thesis.py`
 - Test: `tests/test_pulse_thesis.py`
 
 - [ ] **Step 1: Write thesis tests**
@@ -420,7 +420,7 @@ Create `tests/test_pulse_thesis.py`:
 ```python
 import pytest
 
-from gmgn_twitter_intel.pipeline.pulse_thesis import (
+from parallax.pipeline.pulse_thesis import (
     PulseThesisPayload,
     pulse_thesis_from_payload,
     pulse_thesis_instructions,
@@ -505,7 +505,7 @@ Expected: FAIL because modules are missing.
 
 - [ ] **Step 3: Create pulse contract**
 
-Create `src/gmgn_twitter_intel/pipeline/pulse_contract.py`:
+Create `src/parallax/pipeline/pulse_contract.py`:
 
 ```python
 from __future__ import annotations
@@ -534,7 +534,7 @@ SCORE_BANDS = {"high_conviction", "watch", "speculative", "blocked"}
 
 - [ ] **Step 4: Create thesis module**
 
-Create `src/gmgn_twitter_intel/pipeline/pulse_thesis.py` with the Pydantic payload, dataclass result, prompt builder, and parser:
+Create `src/parallax/pipeline/pulse_thesis.py` with the Pydantic payload, dataclass result, prompt builder, and parser:
 
 ```python
 from __future__ import annotations
@@ -645,7 +645,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/pipeline/pulse_contract.py src/gmgn_twitter_intel/pipeline/pulse_thesis.py tests/test_pulse_thesis.py
+git add src/parallax/pipeline/pulse_contract.py src/parallax/pipeline/pulse_thesis.py tests/test_pulse_thesis.py
 git commit -m "feat: add signal pulse thesis schema"
 ```
 
@@ -654,7 +654,7 @@ git commit -m "feat: add signal pulse thesis schema"
 ## Task 4: Add Pulse Candidate Gate
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/pipeline/pulse_candidate_gate.py`
+- Create: `src/parallax/pipeline/pulse_candidate_gate.py`
 - Test: `tests/test_pulse_candidate_gate.py`
 
 - [ ] **Step 1: Write gate tests**
@@ -662,7 +662,7 @@ git commit -m "feat: add signal pulse thesis schema"
 Create `tests/test_pulse_candidate_gate.py`:
 
 ```python
-from gmgn_twitter_intel.pipeline.pulse_candidate_gate import pulse_candidate_gate
+from parallax.pipeline.pulse_candidate_gate import pulse_candidate_gate
 
 
 def thesis(verdict="trade_candidate", confidence=0.8):
@@ -757,7 +757,7 @@ Expected: FAIL because `pulse_candidate_gate.py` is missing.
 
 - [ ] **Step 3: Implement gate**
 
-Create `src/gmgn_twitter_intel/pipeline/pulse_candidate_gate.py`:
+Create `src/parallax/pipeline/pulse_candidate_gate.py`:
 
 ```python
 from __future__ import annotations
@@ -878,7 +878,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/pipeline/pulse_candidate_gate.py tests/test_pulse_candidate_gate.py
+git add src/parallax/pipeline/pulse_candidate_gate.py tests/test_pulse_candidate_gate.py
 git commit -m "feat: add deterministic signal pulse gate"
 ```
 
@@ -887,7 +887,7 @@ git commit -m "feat: add deterministic signal pulse gate"
 ## Task 4A: Add Pulse Timeline Context Builder
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/pipeline/pulse_timeline_context.py`
+- Create: `src/parallax/pipeline/pulse_timeline_context.py`
 - Test: `tests/test_pulse_timeline_context.py`
 
 - [ ] **Step 1: Write timeline context tests**
@@ -895,7 +895,7 @@ git commit -m "feat: add deterministic signal pulse gate"
 Create `tests/test_pulse_timeline_context.py`:
 
 ```python
-from gmgn_twitter_intel.pipeline.pulse_timeline_context import build_pulse_timeline_context
+from parallax.pipeline.pulse_timeline_context import build_pulse_timeline_context
 
 
 def row(event_id, text, author, received_at_ms, *, watched=False, price_change=None):
@@ -967,7 +967,7 @@ Expected: FAIL because module is missing.
 
 - [ ] **Step 3: Implement timeline context builder**
 
-Create `src/gmgn_twitter_intel/pipeline/pulse_timeline_context.py`:
+Create `src/parallax/pipeline/pulse_timeline_context.py`:
 
 ```python
 from __future__ import annotations
@@ -1137,7 +1137,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/pipeline/pulse_timeline_context.py tests/test_pulse_timeline_context.py
+git add src/parallax/pipeline/pulse_timeline_context.py tests/test_pulse_timeline_context.py
 git commit -m "feat: add signal pulse timeline context"
 ```
 
@@ -1146,8 +1146,8 @@ git commit -m "feat: add signal pulse timeline context"
 ## Task 5: Add Pulse Repository
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/storage/pulse_repository.py`
-- Modify: `src/gmgn_twitter_intel/storage/repository_session.py`
+- Create: `src/parallax/storage/pulse_repository.py`
+- Modify: `src/parallax/storage/repository_session.py`
 - Test: `tests/test_pulse_repository.py`
 
 - [ ] **Step 1: Write repository tests**
@@ -1155,8 +1155,8 @@ git commit -m "feat: add signal pulse timeline context"
 Create `tests/test_pulse_repository.py`:
 
 ```python
-from gmgn_twitter_intel.pipeline.pulse_contract import PULSE_VERSION
-from gmgn_twitter_intel.storage.pulse_repository import PulseRepository
+from parallax.pipeline.pulse_contract import PULSE_VERSION
+from parallax.storage.pulse_repository import PulseRepository
 from tests.postgres_test_utils import connect_postgres_test
 
 
@@ -1263,7 +1263,7 @@ Expected: FAIL because `PulseRepository` is missing.
 
 - [ ] **Step 3: Implement repository**
 
-Create `src/gmgn_twitter_intel/storage/pulse_repository.py` with:
+Create `src/parallax/storage/pulse_repository.py` with:
 
 ```python
 from __future__ import annotations
@@ -1401,7 +1401,7 @@ def _json_payload(data: dict[str, Any]) -> dict[str, Any]:
 
 - [ ] **Step 4: Wire repository session**
 
-In `src/gmgn_twitter_intel/storage/repository_session.py`, add:
+In `src/parallax/storage/repository_session.py`, add:
 
 ```python
 from .pulse_repository import PulseRepository
@@ -1432,7 +1432,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/storage/pulse_repository.py src/gmgn_twitter_intel/storage/repository_session.py tests/test_pulse_repository.py
+git add src/parallax/storage/pulse_repository.py src/parallax/storage/repository_session.py tests/test_pulse_repository.py
 git commit -m "feat: add signal pulse repository"
 ```
 
@@ -1441,7 +1441,7 @@ git commit -m "feat: add signal pulse repository"
 ## Task 6: Add Signal Pulse Read Service
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/retrieval/signal_pulse_service.py`
+- Create: `src/parallax/retrieval/signal_pulse_service.py`
 - Test: `tests/test_signal_pulse_service.py`
 
 - [ ] **Step 1: Write read service tests**
@@ -1449,7 +1449,7 @@ git commit -m "feat: add signal pulse repository"
 Create `tests/test_signal_pulse_service.py`:
 
 ```python
-from gmgn_twitter_intel.retrieval.signal_pulse_service import SignalPulseService
+from parallax.retrieval.signal_pulse_service import SignalPulseService
 
 
 class FakePulseRepo:
@@ -1518,7 +1518,7 @@ Expected: FAIL because service is missing.
 
 - [ ] **Step 3: Implement read service**
 
-Create `src/gmgn_twitter_intel/retrieval/signal_pulse_service.py`:
+Create `src/parallax/retrieval/signal_pulse_service.py`:
 
 ```python
 from __future__ import annotations
@@ -1629,7 +1629,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/retrieval/signal_pulse_service.py tests/test_signal_pulse_service.py
+git add src/parallax/retrieval/signal_pulse_service.py tests/test_signal_pulse_service.py
 git commit -m "feat: add signal pulse read service"
 ```
 
@@ -1638,7 +1638,7 @@ git commit -m "feat: add signal pulse read service"
 ## Task 7: Replace Pulse API Endpoint
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/api/http.py`
+- Modify: `src/parallax/api/http.py`
 - Modify: `tests/test_api_http.py`
 
 - [ ] **Step 1: Rewrite API test**
@@ -1710,7 +1710,7 @@ Expected: FAIL until route uses `SignalPulseService` and runtime exposes `pulse`
 
 - [ ] **Step 3: Wire API route**
 
-In `src/gmgn_twitter_intel/api/http.py`, import:
+In `src/parallax/api/http.py`, import:
 
 ```python
 from ..retrieval.signal_pulse_service import SignalPulseService
@@ -1757,7 +1757,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/api/http.py tests/test_api_http.py
+git add src/parallax/api/http.py tests/test_api_http.py
 git commit -m "feat: expose materialized signal pulse api"
 ```
 
@@ -1766,7 +1766,7 @@ git commit -m "feat: expose materialized signal pulse api"
 ## Task 8: Add PulseThesisAgent Client
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/pipeline/pulse_thesis_agent_client.py`
+- Create: `src/parallax/pipeline/pulse_thesis_agent_client.py`
 - Test: `tests/test_pulse_thesis_agent_client.py`
 
 - [ ] **Step 1: Write client tests**
@@ -1774,8 +1774,8 @@ git commit -m "feat: expose materialized signal pulse api"
 Create `tests/test_pulse_thesis_agent_client.py` with a fake runner:
 
 ```python
-from gmgn_twitter_intel.pipeline.pulse_thesis import PulseThesisPayload
-from gmgn_twitter_intel.pipeline.pulse_thesis_agent_client import OpenAIAgentsPulseThesisClient
+from parallax.pipeline.pulse_thesis import PulseThesisPayload
+from parallax.pipeline.pulse_thesis_agent_client import OpenAIAgentsPulseThesisClient
 
 
 class FakeResult:
@@ -1857,11 +1857,11 @@ Expected: FAIL because client is missing.
 
 - [ ] **Step 3: Implement client**
 
-Create `src/gmgn_twitter_intel/pipeline/pulse_thesis_agent_client.py` modelled after `social_event_agent_client.py`, with:
+Create `src/parallax/pipeline/pulse_thesis_agent_client.py` modelled after `social_event_agent_client.py`, with:
 
 ```python
 AGENT_NAME = "PulseThesisAgent"
-WORKFLOW_NAME = "gmgn-twitter-intel.pulse_thesis"
+WORKFLOW_NAME = "parallax.pulse_thesis"
 BACKEND = "openai_agents_sdk"
 ```
 
@@ -1910,7 +1910,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/pipeline/pulse_thesis_agent_client.py tests/test_pulse_thesis_agent_client.py
+git add src/parallax/pipeline/pulse_thesis_agent_client.py tests/test_pulse_thesis_agent_client.py
 git commit -m "feat: add pulse thesis agents sdk client"
 ```
 
@@ -1919,9 +1919,9 @@ git commit -m "feat: add pulse thesis agents sdk client"
 ## Task 9: Add Pulse Candidate Worker
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/pipeline/pulse_candidate_worker.py`
-- Modify: `src/gmgn_twitter_intel/api/app.py`
-- Modify: `src/gmgn_twitter_intel/settings.py`
+- Create: `src/parallax/pipeline/pulse_candidate_worker.py`
+- Modify: `src/parallax/api/app.py`
+- Modify: `src/parallax/settings.py`
 - Modify: `tests/test_settings.py`
 - Test: `tests/test_pulse_candidate_worker.py`
 
@@ -1930,7 +1930,7 @@ git commit -m "feat: add pulse thesis agents sdk client"
 Create `tests/test_pulse_candidate_worker.py`:
 
 ```python
-from gmgn_twitter_intel.pipeline.pulse_candidate_worker import PulseCandidateWorker
+from parallax.pipeline.pulse_candidate_worker import PulseCandidateWorker
 
 
 class FakeClient:
@@ -1973,7 +1973,7 @@ Expected: FAIL because worker is missing.
 
 - [ ] **Step 3: Implement worker scaffold**
 
-Create `src/gmgn_twitter_intel/pipeline/pulse_candidate_worker.py`:
+Create `src/parallax/pipeline/pulse_candidate_worker.py`:
 
 ```python
 from __future__ import annotations
@@ -2019,7 +2019,7 @@ The first iteration intentionally scaffolds lifecycle. Follow-up tasks add scan/
 
 - [ ] **Step 4: Add settings**
 
-In `src/gmgn_twitter_intel/settings.py`, add to `LlmConfig`:
+In `src/parallax/settings.py`, add to `LlmConfig`:
 
 ```python
 pulse_enabled: bool = True
@@ -2052,7 +2052,7 @@ Update `tests/test_settings.py` to assert explicit config parses these values.
 
 - [ ] **Step 5: Wire app lifecycle**
 
-In `src/gmgn_twitter_intel/api/app.py`, import:
+In `src/parallax/api/app.py`, import:
 
 ```python
 from ..pipeline.pulse_candidate_worker import PulseCandidateWorker
@@ -2087,7 +2087,7 @@ Expected: PASS.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/pipeline/pulse_candidate_worker.py src/gmgn_twitter_intel/api/app.py src/gmgn_twitter_intel/settings.py tests/test_pulse_candidate_worker.py tests/test_settings.py
+git add src/parallax/pipeline/pulse_candidate_worker.py src/parallax/api/app.py src/parallax/settings.py tests/test_pulse_candidate_worker.py tests/test_settings.py
 git commit -m "feat: add signal pulse worker lifecycle"
 ```
 
@@ -2471,8 +2471,8 @@ git commit -m "feat: wire app to signal pulse v2"
 ## Task 13: Add Worker Trigger Logic
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/pipeline/pulse_candidate_worker.py`
-- Modify: `src/gmgn_twitter_intel/storage/pulse_repository.py`
+- Modify: `src/parallax/pipeline/pulse_candidate_worker.py`
+- Modify: `src/parallax/storage/pulse_repository.py`
 - Test: `tests/test_pulse_candidate_worker.py`
 
 - [ ] **Step 1: Add trigger tests**
@@ -2611,7 +2611,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/pipeline/pulse_candidate_worker.py src/gmgn_twitter_intel/storage/pulse_repository.py tests/test_pulse_candidate_worker.py tests/test_pulse_repository.py
+git add src/parallax/pipeline/pulse_candidate_worker.py src/parallax/storage/pulse_repository.py tests/test_pulse_candidate_worker.py tests/test_pulse_repository.py
 git commit -m "feat: materialize signal pulse candidates"
 ```
 
@@ -2620,13 +2620,13 @@ git commit -m "feat: materialize signal pulse candidates"
 ## Task 14: Add Signal Pulse Notification Rule
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/settings.py`
-- Modify: `src/gmgn_twitter_intel/pipeline/notification_rules.py`
+- Modify: `src/parallax/settings.py`
+- Modify: `src/parallax/pipeline/notification_rules.py`
 - Modify: `tests/test_notification_rules.py`
 
 - [ ] **Step 1: Add notification rule config**
 
-In `src/gmgn_twitter_intel/settings.py`, add `signal_pulse_candidate` to `NOTIFICATION_RULE_IDS` and the default notification rules:
+In `src/parallax/settings.py`, add `signal_pulse_candidate` to `NOTIFICATION_RULE_IDS` and the default notification rules:
 
 ```python
 "signal_pulse_candidate": NotificationRuleConfig(
@@ -2734,7 +2734,7 @@ def __init__(
     self.pulse = pulse
 ```
 
-Update `_notification_rule_engine` in `src/gmgn_twitter_intel/api/app.py` to pass:
+Update `_notification_rule_engine` in `src/parallax/api/app.py` to pass:
 
 ```python
 pulse=SignalPulseService(pulse=repos.pulse)
@@ -2822,7 +2822,7 @@ Expected: PASS.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/settings.py src/gmgn_twitter_intel/api/app.py src/gmgn_twitter_intel/pipeline/notification_rules.py tests/test_notification_rules.py
+git add src/parallax/settings.py src/parallax/api/app.py src/parallax/pipeline/notification_rules.py tests/test_notification_rules.py
 git commit -m "feat: notify materialized signal pulse candidates"
 ```
 
@@ -2897,7 +2897,7 @@ Expected: all pass.
 Start server:
 
 ```bash
-uv run gmgn-twitter-intel serve
+uv run parallax serve
 ```
 
 In another shell:

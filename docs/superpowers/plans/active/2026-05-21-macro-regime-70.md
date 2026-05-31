@@ -4,7 +4,7 @@
 
 **Goal:** Turn the existing macro scaffold into a 70+ macro regime system with public data bundles, importable observations, historical features, deterministic state-machine output, and an operator/agent surface.
 
-**Architecture:** Keep public provider access in `macrodata-cli`; import normalized envelopes into `gmgn-twitter-intel` as facts; compute feature and regime snapshots in `macro_intel`; expose only deterministic JSON through `/api/macro` and `/macro`. This plan intentionally avoids paid institutional feeds and treats optional proxy gaps as explicit state.
+**Architecture:** Keep public provider access in `macrodata-cli`; import normalized envelopes into `parallax` as facts; compute feature and regime snapshots in `macro_intel`; expose only deterministic JSON through `/api/macro` and `/macro`. This plan intentionally avoids paid institutional feeds and treats optional proxy gaps as explicit state.
 
 **Tech Stack:** Python 3.13, Typer, FastAPI, psycopg/JSONB, Alembic, WorkerBase, Pydantic, React + React Query + TypeScript, Playwright/Vitest.
 
@@ -15,14 +15,14 @@
 **Owning spec**: `docs/superpowers/specs/active/2026-05-21-macro-regime-70.md`
 **Repos**:
 - `/Users/qinghuan/Documents/code/macrodata-cli`
-- `/Users/qinghuan/Documents/code/gmgn-twitter-intel`
+- `/Users/qinghuan/Documents/code/parallax`
 
 ## Pre-flight
 
-- [ ] Create or select an isolated worktree for `gmgn-twitter-intel`:
+- [ ] Create or select an isolated worktree for `parallax`:
 
   ```bash
-  cd /Users/qinghuan/Documents/code/gmgn-twitter-intel
+  cd /Users/qinghuan/Documents/code/parallax
   git worktree add .worktrees/macro-regime-70 -b codex/macro-regime-70 main
   cd .worktrees/macro-regime-70
   git status --short --branch
@@ -44,12 +44,12 @@
 - [ ] Confirm runtime config paths before any real-data operation:
 
   ```bash
-  cd /Users/qinghuan/Documents/code/gmgn-twitter-intel/.worktrees/macro-regime-70
-  uv run gmgn-twitter-intel config
+  cd /Users/qinghuan/Documents/code/parallax/.worktrees/macro-regime-70
+  uv run parallax config
   ```
 
   Expected: `config_path` and `workers_config_path` point at
-  `~/.gmgn-twitter-intel/`. Do not print credential values.
+  `~/.parallax/`. Do not print credential values.
 
 ## File-level Design
 
@@ -100,49 +100,49 @@
   - `tests/cli/test_bundle_commands.py`
   - `tests/mcp/test_mcp_server.py`
 
-### `gmgn-twitter-intel`
+### `parallax`
 
-- Create migration `src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0077_macro_regime_70.py`.
+- Create migration `src/parallax/platform/db/alembic/versions/20260521_0077_macro_regime_70.py`.
   - Add `macro_import_runs`.
   - Add optional JSONB columns to `macro_view_snapshots`:
     `features_json`, `chain_json`, `scenario_json`, `scorecard_json`.
 
-- Modify `src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py`.
+- Modify `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`.
   - Add `insert_import_run`.
   - Add `latest_import_run`.
   - Add `observations_for_series`.
   - Update `insert_snapshot` and `latest_snapshot` for new JSONB columns.
 
-- Create `src/gmgn_twitter_intel/domains/macro_intel/services/macrodata_bundle_importer.py`.
+- Create `src/parallax/domains/macro_intel/services/macrodata_bundle_importer.py`.
   - Parse `macrodata-cli` result envelopes.
   - Convert each observation into repository shape.
   - Upsert observations idempotently.
   - Record import diagnostics.
 
-- Create `src/gmgn_twitter_intel/domains/macro_intel/services/macro_feature_engine.py`.
+- Create `src/parallax/domains/macro_intel/services/macro_feature_engine.py`.
   - Build latest, freshness, delta, z-score, percentile, and spread features
     from observation history.
 
-- Modify `src/gmgn_twitter_intel/domains/macro_intel/services/macro_regime_engine.py`.
+- Modify `src/parallax/domains/macro_intel/services/macro_regime_engine.py`.
   - Keep `build_macro_view_snapshot` as public entrypoint.
   - Internally call feature engine and emit:
     `features_json`, `chain_json`, `scenario_json`, `scorecard_json`.
   - Add version bump in `_constants.py`, for example
     `MACRO_VIEW_PROJECTION_VERSION = "macro_regime_v2"`.
 
-- Create `src/gmgn_twitter_intel/domains/macro_intel/services/macro_scenario_engine.py`.
+- Create `src/parallax/domains/macro_intel/services/macro_scenario_engine.py`.
   - Convert panel and chain state into deterministic scenario/trade-map JSON.
 
-- Modify `src/gmgn_twitter_intel/domains/macro_intel/runtime/macro_view_projection_worker.py`.
+- Modify `src/parallax/domains/macro_intel/runtime/macro_view_projection_worker.py`.
   - Read bounded history instead of latest-only rows.
 
 - Add CLI:
-  - Modify `src/gmgn_twitter_intel/app/surfaces/cli/parser.py`.
-  - Create `src/gmgn_twitter_intel/app/surfaces/cli/commands/macro.py`.
-  - Wire in `src/gmgn_twitter_intel/app/surfaces/cli/main.py`.
+  - Modify `src/parallax/app/surfaces/cli/parser.py`.
+  - Create `src/parallax/app/surfaces/cli/commands/macro.py`.
+  - Wire in `src/parallax/app/surfaces/cli/main.py`.
 
 - Modify API and frontend:
-  - `src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py`
+  - `src/parallax/app/surfaces/api/routes_macro.py`
   - `web/src/lib/types/frontend-contracts.ts`
   - `web/src/features/macro/MacroPage.tsx`
   - `web/src/features/macro/macro.css`
@@ -152,7 +152,7 @@
   - `docs/CONTRACTS.md`
   - `docs/WORKERS.md`
   - `docs/ARCHITECTURE.md`
-  - `src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md`
+  - `src/parallax/domains/macro_intel/ARCHITECTURE.md`
   - `docs/superpowers/plans/active/2026-05-21-macro-regime-70-verification.md`
 
 ## Task 1: Expand `macrodata-cli` Catalog and Bundle Contracts
@@ -482,12 +482,12 @@
 ## Task 4: Add GMGN Macro Import Storage and CLI
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0077_macro_regime_70.py`
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py`
-- Create: `src/gmgn_twitter_intel/domains/macro_intel/services/macrodata_bundle_importer.py`
-- Create: `src/gmgn_twitter_intel/app/surfaces/cli/commands/macro.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/parser.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/main.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260521_0077_macro_regime_70.py`
+- Modify: `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`
+- Create: `src/parallax/domains/macro_intel/services/macrodata_bundle_importer.py`
+- Create: `src/parallax/app/surfaces/cli/commands/macro.py`
+- Modify: `src/parallax/app/surfaces/cli/parser.py`
+- Modify: `src/parallax/app/surfaces/cli/main.py`
 - Test: `tests/unit/domains/macro_intel/test_macrodata_bundle_importer.py`
 - Test: `tests/unit/test_cli_macro_commands.py`
 
@@ -579,10 +579,10 @@
   Add parser commands:
 
   ```text
-  gmgn-twitter-intel macro import-bundle --file PATH
-  gmgn-twitter-intel macro import-bundle --stdin
-  gmgn-twitter-intel macro project-once
-  gmgn-twitter-intel macro status
+  parallax macro import-bundle --file PATH
+  parallax macro import-bundle --stdin
+  parallax macro project-once
+  parallax macro status
   ```
 
   `status` returns:
@@ -601,21 +601,21 @@
 
   ```bash
   uv run python -m pytest tests/unit/domains/macro_intel/test_macrodata_bundle_importer.py tests/unit/test_cli_macro_commands.py -q
-  uv run ruff check src/gmgn_twitter_intel/domains/macro_intel src/gmgn_twitter_intel/app/surfaces/cli
+  uv run ruff check src/parallax/domains/macro_intel src/parallax/app/surfaces/cli
   ```
 
 - [ ] **Step 6: Commit Task 4**
 
   ```bash
-  git add src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0077_macro_regime_70.py src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py src/gmgn_twitter_intel/domains/macro_intel/services/macrodata_bundle_importer.py src/gmgn_twitter_intel/app/surfaces/cli/commands/macro.py src/gmgn_twitter_intel/app/surfaces/cli/parser.py src/gmgn_twitter_intel/app/surfaces/cli/main.py tests/unit/domains/macro_intel/test_macrodata_bundle_importer.py tests/unit/test_cli_macro_commands.py
+  git add src/parallax/platform/db/alembic/versions/20260521_0077_macro_regime_70.py src/parallax/domains/macro_intel/repositories/macro_intel_repository.py src/parallax/domains/macro_intel/services/macrodata_bundle_importer.py src/parallax/app/surfaces/cli/commands/macro.py src/parallax/app/surfaces/cli/parser.py src/parallax/app/surfaces/cli/main.py tests/unit/domains/macro_intel/test_macrodata_bundle_importer.py tests/unit/test_cli_macro_commands.py
   git commit -m "feat: import macrodata bundles"
   ```
 
 ## Task 5: Build Historical Feature Layer
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/macro_intel/services/macro_feature_engine.py`
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py`
+- Create: `src/parallax/domains/macro_intel/services/macro_feature_engine.py`
+- Modify: `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`
 - Test: `tests/unit/domains/macro_intel/test_macro_feature_engine.py`
 
 - [ ] **Step 1: Write feature engine tests**
@@ -664,23 +664,23 @@
 
   ```bash
   uv run python -m pytest tests/unit/domains/macro_intel/test_macro_feature_engine.py -q
-  uv run mypy src/gmgn_twitter_intel/domains/macro_intel
+  uv run mypy src/parallax/domains/macro_intel
   ```
 
 - [ ] **Step 5: Commit Task 5**
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/macro_intel/services/macro_feature_engine.py src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py tests/unit/domains/macro_intel/test_macro_feature_engine.py
+  git add src/parallax/domains/macro_intel/services/macro_feature_engine.py src/parallax/domains/macro_intel/repositories/macro_intel_repository.py tests/unit/domains/macro_intel/test_macro_feature_engine.py
   git commit -m "feat: compute macro historical features"
   ```
 
 ## Task 6: Upgrade Regime and Scenario Engine
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/_constants.py`
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/services/macro_regime_engine.py`
-- Create: `src/gmgn_twitter_intel/domains/macro_intel/services/macro_scenario_engine.py`
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/runtime/macro_view_projection_worker.py`
+- Modify: `src/parallax/domains/macro_intel/_constants.py`
+- Modify: `src/parallax/domains/macro_intel/services/macro_regime_engine.py`
+- Create: `src/parallax/domains/macro_intel/services/macro_scenario_engine.py`
+- Modify: `src/parallax/domains/macro_intel/runtime/macro_view_projection_worker.py`
 - Test: `tests/unit/domains/macro_intel/test_macro_regime_engine.py`
 - Test: `tests/unit/domains/macro_intel/test_macro_scenario_engine.py`
 
@@ -770,20 +770,20 @@
 
   ```bash
   uv run python -m pytest tests/unit/domains/macro_intel/test_macro_regime_engine.py tests/unit/domains/macro_intel/test_macro_scenario_engine.py tests/unit/domains/macro_intel/test_macro_view_projection_worker.py -q
-  uv run mypy src/gmgn_twitter_intel/domains/macro_intel
+  uv run mypy src/parallax/domains/macro_intel
   ```
 
 - [ ] **Step 7: Commit Task 6**
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/macro_intel/_constants.py src/gmgn_twitter_intel/domains/macro_intel/services/macro_regime_engine.py src/gmgn_twitter_intel/domains/macro_intel/services/macro_scenario_engine.py src/gmgn_twitter_intel/domains/macro_intel/runtime/macro_view_projection_worker.py tests/unit/domains/macro_intel/test_macro_regime_engine.py tests/unit/domains/macro_intel/test_macro_scenario_engine.py tests/unit/domains/macro_intel/test_macro_view_projection_worker.py
+  git add src/parallax/domains/macro_intel/_constants.py src/parallax/domains/macro_intel/services/macro_regime_engine.py src/parallax/domains/macro_intel/services/macro_scenario_engine.py src/parallax/domains/macro_intel/runtime/macro_view_projection_worker.py tests/unit/domains/macro_intel/test_macro_regime_engine.py tests/unit/domains/macro_intel/test_macro_scenario_engine.py tests/unit/domains/macro_intel/test_macro_view_projection_worker.py
   git commit -m "feat: add macro regime state machine"
   ```
 
 ## Task 7: Extend API and `/macro` Product Surface
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py`
+- Modify: `src/parallax/app/surfaces/api/routes_macro.py`
 - Modify: `tests/unit/test_api_macro_contract.py`
 - Modify: `web/src/lib/types/frontend-contracts.ts`
 - Modify: `web/src/features/macro/MacroPage.tsx`
@@ -844,7 +844,7 @@
 - [ ] **Step 6: Commit Task 7**
 
   ```bash
-  git add src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py tests/unit/test_api_macro_contract.py web/src/lib/types/frontend-contracts.ts web/src/features/macro/MacroPage.tsx web/src/features/macro/macro.css web/tests/component/features/macro/MacroPage.test.tsx
+  git add src/parallax/app/surfaces/api/routes_macro.py tests/unit/test_api_macro_contract.py web/src/lib/types/frontend-contracts.ts web/src/features/macro/MacroPage.tsx web/src/features/macro/macro.css web/tests/component/features/macro/MacroPage.test.tsx
   git commit -m "feat: surface macro scenario state"
   ```
 
@@ -855,14 +855,14 @@
 - Modify: `docs/CONTRACTS.md`
 - Modify: `docs/WORKERS.md`
 - Modify: `docs/ARCHITECTURE.md`
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/macro_intel/ARCHITECTURE.md`
 
 - [ ] **Step 1: Apply DB migration in real runtime**
 
   ```bash
-  cd /Users/qinghuan/Documents/code/gmgn-twitter-intel/.worktrees/macro-regime-70
-  uv run gmgn-twitter-intel db migrate
-  uv run gmgn-twitter-intel db health
+  cd /Users/qinghuan/Documents/code/parallax/.worktrees/macro-regime-70
+  uv run parallax db migrate
+  uv run parallax db health
   ```
 
   Expected: `migration_status` is `ready`. If the operator does not want to
@@ -882,9 +882,9 @@
 - [ ] **Step 3: Import bundle**
 
   ```bash
-  cd /Users/qinghuan/Documents/code/gmgn-twitter-intel/.worktrees/macro-regime-70
-  uv run gmgn-twitter-intel macro import-bundle --file /tmp/macro-core.json
-  uv run gmgn-twitter-intel macro status
+  cd /Users/qinghuan/Documents/code/parallax/.worktrees/macro-regime-70
+  uv run parallax macro import-bundle --file /tmp/macro-core.json
+  uv run parallax macro status
   ```
 
   Expected: observation counts increase and import diagnostics are visible.
@@ -892,8 +892,8 @@
 - [ ] **Step 4: Run projection once**
 
   ```bash
-  uv run gmgn-twitter-intel macro project-once
-  uv run gmgn-twitter-intel macro status
+  uv run parallax macro project-once
+  uv run parallax macro status
   ```
 
   Expected: latest snapshot has `projection_version=macro_regime_v2`,
@@ -937,12 +937,12 @@
   - macro importer and worker ownership in `docs/WORKERS.md`;
   - data-layer flow in `docs/ARCHITECTURE.md`;
   - domain-specific import/feature/regime flow in
-    `src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md`.
+    `src/parallax/domains/macro_intel/ARCHITECTURE.md`.
 
 - [ ] **Step 8: Commit Task 8**
 
   ```bash
-  git add docs/CONTRACTS.md docs/WORKERS.md docs/ARCHITECTURE.md src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md docs/superpowers/plans/active/2026-05-21-macro-regime-70-verification.md
+  git add docs/CONTRACTS.md docs/WORKERS.md docs/ARCHITECTURE.md src/parallax/domains/macro_intel/ARCHITECTURE.md docs/superpowers/plans/active/2026-05-21-macro-regime-70-verification.md
   git commit -m "docs: verify macro regime 70"
   ```
 
@@ -958,16 +958,16 @@ uv run macrodata doctor
 uv run macrodata bundle macro-core --asof 2026-05-21
 ```
 
-Run in `gmgn-twitter-intel`:
+Run in `parallax`:
 
 ```bash
 uv run ruff check .
-uv run mypy src/gmgn_twitter_intel/domains/macro_intel src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py src/gmgn_twitter_intel/app/surfaces/cli/commands/macro.py
+uv run mypy src/parallax/domains/macro_intel src/parallax/app/surfaces/api/routes_macro.py src/parallax/app/surfaces/cli/commands/macro.py
 uv run python -m pytest tests/unit/domains/macro_intel tests/unit/test_api_macro_contract.py tests/unit/test_cli_macro_commands.py -q
 cd web && npm test -- --run tests/component/features/macro/MacroPage.test.tsx tests/routes/macro.route.test.tsx
 cd web && npm run typecheck && npm run lint && npm run build
-uv run gmgn-twitter-intel db health
-uv run gmgn-twitter-intel macro status
+uv run parallax db health
+uv run parallax macro status
 ```
 
 If `make check-all` still fails because of unrelated baseline architecture
@@ -979,16 +979,16 @@ macro-related failure was introduced.
 1. `macrodata-cli`: `feat: define macro core data bundle`
 2. `macrodata-cli`: `feat: add macro proxy data providers`
 3. `macrodata-cli`: `feat: expose macro core bundles`
-4. `gmgn-twitter-intel`: `feat: import macrodata bundles`
-5. `gmgn-twitter-intel`: `feat: compute macro historical features`
-6. `gmgn-twitter-intel`: `feat: add macro regime state machine`
-7. `gmgn-twitter-intel`: `feat: surface macro scenario state`
-8. `gmgn-twitter-intel`: `docs: verify macro regime 70`
+4. `parallax`: `feat: import macrodata bundles`
+5. `parallax`: `feat: compute macro historical features`
+6. `parallax`: `feat: add macro regime state machine`
+7. `parallax`: `feat: surface macro scenario state`
+8. `parallax`: `docs: verify macro regime 70`
 
 ## Rollback
 
 - Disable `workers.macro_view_projection.enabled` if projection misbehaves.
-- Stop importing bundles by not running `gmgn-twitter-intel macro import-bundle`.
+- Stop importing bundles by not running `parallax macro import-bundle`.
 - Revert code commits if needed.
 - DB rollback of `20260521_0077` drops `macro_import_runs` and removes the
   added JSONB snapshot columns. Export `macro_observations` and

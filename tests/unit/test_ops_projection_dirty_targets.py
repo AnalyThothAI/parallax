@@ -4,8 +4,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
-from gmgn_twitter_intel.app.runtime.projection_dirty_targets import enqueue_projection_dirty_targets
-from gmgn_twitter_intel.app.surfaces.cli.parser import build_parser
+from parallax.app.runtime.projection_dirty_targets import enqueue_projection_dirty_targets
+from parallax.app.surfaces.cli.parser import build_parser
 
 NOW_MS = 1_779_000_000_000
 

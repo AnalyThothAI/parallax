@@ -3,7 +3,7 @@ from pydantic import ValidationError
 
 
 def test_qwen_profile_uses_json_object_with_client_validation() -> None:
-    from gmgn_twitter_intel.platform.agent_capabilities import resolve_agent_capability_profile
+    from parallax.platform.agent_capabilities import resolve_agent_capability_profile
 
     profile = resolve_agent_capability_profile(model="qwen3.6")
 
@@ -12,7 +12,7 @@ def test_qwen_profile_uses_json_object_with_client_validation() -> None:
 
 
 def test_deepseek_profile_uses_json_object_with_client_validation() -> None:
-    from gmgn_twitter_intel.platform.agent_capabilities import resolve_agent_capability_profile
+    from parallax.platform.agent_capabilities import resolve_agent_capability_profile
 
     profile = resolve_agent_capability_profile(model="deepseek-v4-flash")
 
@@ -21,7 +21,7 @@ def test_deepseek_profile_uses_json_object_with_client_validation() -> None:
 
 
 def test_explicit_profile_override_wins_for_arbitrary_model() -> None:
-    from gmgn_twitter_intel.platform.agent_capabilities import (
+    from parallax.platform.agent_capabilities import (
         AgentCapabilityProfile,
         resolve_agent_capability_profile,
     )
@@ -37,7 +37,7 @@ def test_explicit_profile_override_wins_for_arbitrary_model() -> None:
 
 
 def test_registered_model_profile_preserves_request_options_when_overriding_capability_labels() -> None:
-    from gmgn_twitter_intel.platform.agent_capabilities import (
+    from parallax.platform.agent_capabilities import (
         AgentCapabilityProfile,
         resolve_agent_capability_profile,
     )
@@ -54,7 +54,7 @@ def test_registered_model_profile_preserves_request_options_when_overriding_capa
 
 
 def test_profile_rejects_legacy_output_strategy_fields() -> None:
-    from gmgn_twitter_intel.platform.agent_capabilities import AgentCapabilityProfile
+    from parallax.platform.agent_capabilities import AgentCapabilityProfile
 
     with pytest.raises(ValidationError, match="output_strategy"):
         AgentCapabilityProfile(

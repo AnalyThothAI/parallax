@@ -141,7 +141,7 @@ GET /api/token-radar?window=1h&scope=all&limit=3
 
 ### 缺口 G2 — `_market()` 不消费 live gateway（even when populated）
 
-**位置**: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py:624-664`
+**位置**: `src/parallax/domains/token_intel/services/token_radar_projection.py:624-664`
 
 ```python
 market: dict[str, Any] = {
@@ -160,7 +160,7 @@ market: dict[str, Any] = {
 
 ### 缺口 G3 — `_gates` NULL `continue` 不 block（仍未修复）
 
-**位置**: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py:328-336`
+**位置**: `src/parallax/domains/token_intel/scoring/factor_snapshot.py:328-336`
 
 ```python
 for key, reason in _DEX_FLOOR_REASONS.items():
@@ -180,7 +180,7 @@ if metadata_missing:
 
 ### 缺口 G4 — Cohort percentile 把"全员都坏"洗成 50
 
-**位置**: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py:271-286`
+**位置**: `src/parallax/domains/token_intel/services/token_radar_projection.py:271-286`
 
 ```python
 factor_ranks_by_id = rank_factors_within_cohort(factor_scores=factor_scores, cohort=cohort)
@@ -201,7 +201,7 @@ for family in TOKEN_RADAR_FACTOR_FAMILIES:
 
 ### 缺口 G5 — `pulse_agent_runs.request_json` 仍只存 hash
 
-**位置**: `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py:426`
+**位置**: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:426`
 
 ```python
 request_json={"context_hash": _stable_hash(agent_context)},
@@ -213,7 +213,7 @@ request_json={"context_hash": _stable_hash(agent_context)},
 
 ### 缺口 G6 — Agent 仍不知道 family_scores 是 percentile
 
-**位置**: `src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_recommendation.py:133-149 pulse_recommendation_agent_instructions()`
+**位置**: `src/parallax/domains/pulse_lab/types/pulse_recommendation.py:133-149 pulse_recommendation_agent_instructions()`
 
 **事实**: prompt 写 "You receive deterministic TokenFactorSnapshot and gate_result. Do not invent facts. Every primary reason... must cite a factor_key present in available_factor_keys"。
 

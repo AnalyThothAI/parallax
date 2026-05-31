@@ -1,6 +1,6 @@
 import json
 
-from gmgn_twitter_intel.domains.narrative_intel.services.discussion_digest_service import (
+from parallax.domains.narrative_intel.services.discussion_digest_service import (
     DiscussionDigestService,
 )
 

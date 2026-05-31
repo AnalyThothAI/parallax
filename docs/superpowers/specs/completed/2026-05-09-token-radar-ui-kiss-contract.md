@@ -7,7 +7,7 @@
 
 ## Background
 
-The backend already owns the current token radar projection version. `src/gmgn_twitter_intel/pipeline/token_radar_contract.py:3` defines the projection name and `src/gmgn_twitter_intel/pipeline/token_radar_contract.py:4` defines the current projection version. `src/gmgn_twitter_intel/retrieval/asset_flow_service.py:28` queries only that current version through `TokenRadarRepository.latest_rows`, and `src/gmgn_twitter_intel/retrieval/asset_flow_service.py:40` returns projection metadata in the public response. The repository uses projection version for storage selection and current-window reads in `src/gmgn_twitter_intel/storage/token_radar_repository.py:86`.
+The backend already owns the current token radar projection version. `src/parallax/pipeline/token_radar_contract.py:3` defines the projection name and `src/parallax/pipeline/token_radar_contract.py:4` defines the current projection version. `src/parallax/retrieval/asset_flow_service.py:28` queries only that current version through `TokenRadarRepository.latest_rows`, and `src/parallax/retrieval/asset_flow_service.py:40` returns projection metadata in the public response. The repository uses projection version for storage selection and current-window reads in `src/parallax/storage/token_radar_repository.py:86`.
 
 The web client currently duplicates an internal backend version string in `web/src/App.tsx:63`, then drops all token radar rows when `data.projection.version` differs in `web/src/App.tsx:1109`. This means an internal projection bump can make the UI display zero rows even when `/api/token-radar` returns fresh `targets` and `attention`.
 

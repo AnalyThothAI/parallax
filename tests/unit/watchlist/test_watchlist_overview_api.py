@@ -1,14 +1,14 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from gmgn_twitter_intel.app.surfaces.api.exceptions import (
+from parallax.app.surfaces.api.exceptions import (
     ApiBadRequest,
     ApiUnauthorized,
     api_bad_request_response,
     api_unauthorized_response,
 )
-from gmgn_twitter_intel.app.surfaces.api.http import create_api_router
-from gmgn_twitter_intel.platform.config.settings import Settings
+from parallax.app.surfaces.api.http import create_api_router
+from parallax.platform.config.settings import Settings
 
 
 def test_watchlist_handle_overview_endpoint_validates_configured_handle_and_scope():

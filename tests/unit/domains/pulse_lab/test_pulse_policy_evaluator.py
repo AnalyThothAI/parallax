@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from gmgn_twitter_intel.domains.pulse_lab.queries.pulse_policy_evaluator import (
+from parallax.domains.pulse_lab.queries.pulse_policy_evaluator import (
     build_pulse_policy_evaluation,
     fetch_radar_rows,
     render_pulse_policy_evaluation_report,
@@ -300,11 +300,11 @@ def test_report_rendering_redacts_secrets_and_includes_recommendation() -> None:
         generated_date="2026-05-20",
         lookback_hours=24,
         config_context={
-            "config_path": "/Users/qinghuan/.gmgn-twitter-intel/config.yaml",
-            "workers_config_path": "/Users/qinghuan/.gmgn-twitter-intel/workers.yaml",
+            "config_path": "/Users/qinghuan/.parallax/config.yaml",
+            "workers_config_path": "/Users/qinghuan/.parallax/workers.yaml",
             "config_path_under_operator_home": True,
             "workers_config_path_under_operator_home": True,
-            "postgres_dsn": "postgresql://gmgn_app:super-secret-password@localhost/db",
+            "postgres_dsn": "postgresql://parallax_app:super-secret-password@localhost/db",
         },
     )
 
@@ -313,7 +313,7 @@ def test_report_rendering_redacts_secrets_and_includes_recommendation() -> None:
     assert any(
         f"Recommendation: {recommendation}" in report for recommendation in ("ship", "revise thresholds", "stop")
     )
-    assert "/Users/qinghuan/.gmgn-twitter-intel/config.yaml" in report
+    assert "/Users/qinghuan/.parallax/config.yaml" in report
     assert "config_path_under_operator_home: true" in report
     assert "top_author_share_buckets=" in report
     assert "watched_to_matched_ratio=" in report

@@ -1013,9 +1013,9 @@ repos:
         entry: uv run mypy
         language: system
         types: [python]
-        files: ^src/gmgn_twitter_intel/(domains|platform)/.*\.py$|^src/gmgn_twitter_intel/cli\.py$
+        files: ^src/parallax/(domains|platform)/.*\.py$|^src/parallax/cli\.py$
         pass_filenames: false
-        args: ["src/gmgn_twitter_intel"]
+        args: ["src/parallax"]
 
       - id: eslint-web
         name: eslint (web/src)
@@ -1204,13 +1204,13 @@ plugins = ["pydantic.mypy"]
 # Everything else is allowed `disallow_untyped_defs = false` until subsequent specs消化.
 
 [[tool.mypy.overrides]]
-module = "gmgn_twitter_intel.app.*"
+module = "parallax.app.*"
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
 disallow_untyped_decorators = false
 
 [[tool.mypy.overrides]]
-module = "gmgn_twitter_intel.integrations.*"
+module = "parallax.integrations.*"
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
 disallow_untyped_decorators = false
@@ -1235,7 +1235,7 @@ uv run mypy src 2>&1 | grep -c "^src/" || echo 0
 - [ ] **Step 3.2.1: 仅跑 domains 的错误**
 
 ```bash
-uv run mypy src/gmgn_twitter_intel/domains 2>&1 | tee /tmp/mypy-domains.txt | tail -30
+uv run mypy src/parallax/domains 2>&1 | tee /tmp/mypy-domains.txt | tail -30
 ```
 
 - [ ] **Step 3.2.2: 逐文件修复**
@@ -1243,7 +1243,7 @@ uv run mypy src/gmgn_twitter_intel/domains 2>&1 | tee /tmp/mypy-domains.txt | ta
 按模块分组处理。每修一组，跑：
 
 ```bash
-uv run mypy src/gmgn_twitter_intel/domains 2>&1 | tail -5
+uv run mypy src/parallax/domains 2>&1 | tail -5
 ```
 
 直到错误数为 0。
@@ -1262,7 +1262,7 @@ uv run mypy src/gmgn_twitter_intel/domains 2>&1 | tail -5
 - [ ] **Step 3.2.3: 验证 domains 全绿**
 
 ```bash
-uv run mypy src/gmgn_twitter_intel/domains
+uv run mypy src/parallax/domains
 # Success: no issues found
 ```
 
@@ -1271,7 +1271,7 @@ uv run mypy src/gmgn_twitter_intel/domains
 - [ ] **Step 3.3.1: 跑 platform**
 
 ```bash
-uv run mypy src/gmgn_twitter_intel/platform 2>&1 | tail -20
+uv run mypy src/parallax/platform 2>&1 | tail -20
 ```
 
 - [ ] **Step 3.3.2: 修复同 Task 3.2.2，到 0 error**
@@ -1279,7 +1279,7 @@ uv run mypy src/gmgn_twitter_intel/platform 2>&1 | tail -20
 - [ ] **Step 3.3.3: 跑 cli.py**
 
 ```bash
-uv run mypy src/gmgn_twitter_intel/cli.py 2>&1 | tail -10
+uv run mypy src/parallax/cli.py 2>&1 | tail -10
 ```
 
 - [ ] **Step 3.3.4: 修复，到 0 error**
@@ -1307,8 +1307,8 @@ uv run mypy src 2>&1 | tail -15
 
 | 模块 glob | 放宽项 | follow-up |
 |---|---|---|
-| `gmgn_twitter_intel.app.*` | `disallow_untyped_defs/incomplete_defs/untyped_decorators = false` | TODO: 由独立 spec 处理 wiring & runtime 类型注解 |
-| `gmgn_twitter_intel.integrations.*` | 同上 | TODO: external connector 类型注解 |
+| `parallax.app.*` | `disallow_untyped_defs/incomplete_defs/untyped_decorators = false` | TODO: 由独立 spec 处理 wiring & runtime 类型注解 |
+| `parallax.integrations.*` | 同上 | TODO: external connector 类型注解 |
 ```
 
 ### Task 3.5 — 启用 pre-commit mypy hook
@@ -1431,7 +1431,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 
 def main() -> int:
-    from gmgn_twitter_intel.app.runtime.app import create_app  # type: ignore[import-not-found]
+    from parallax.app.runtime.app import create_app  # type: ignore[import-not-found]
 
     # Build app without starting collector or DB-touching lifecycle
     app = create_app(start_collector=False)
@@ -1519,7 +1519,7 @@ TYPES_PATH = ROOT / "web" / "src" / "api" / "types.ts"
 @pytest.mark.contract
 def test_openapi_json_matches_committed_artefact(tmp_path: Path) -> None:
     """Regenerate openapi.json into a tmp dir and compare bytes with the committed one."""
-    from gmgn_twitter_intel.app.runtime.app import create_app
+    from parallax.app.runtime.app import create_app
 
     app = create_app(start_collector=False)
     fresh = json.dumps(app.openapi(), indent=2, sort_keys=True) + "\n"
@@ -1698,7 +1698,7 @@ uv sync
 Run as:
   python -m tests.e2e._uvicorn_entry --port 0
 
-Reads GMGN_POSTGRES_DSN from env. Starts the FastAPI app with start_collector=False
+Reads PARALLAX_POSTGRES_DSN from env. Starts the FastAPI app with start_collector=False
 so no upstream WebSocket is attempted. Prints the bound port to stdout once ready
 in the form `READY port=12345` so the parent test process can parse it.
 """
@@ -1717,12 +1717,12 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=0)
     args = parser.parse_args()
 
-    if "GMGN_POSTGRES_DSN" not in os.environ:
-        print("FATAL: GMGN_POSTGRES_DSN not set", file=sys.stderr)
+    if "PARALLAX_POSTGRES_DSN" not in os.environ:
+        print("FATAL: PARALLAX_POSTGRES_DSN not set", file=sys.stderr)
         return 1
 
     # Import after env validation
-    from gmgn_twitter_intel.app.runtime.app import create_app  # type: ignore[import-not-found]
+    from parallax.app.runtime.app import create_app  # type: ignore[import-not-found]
 
     app = create_app(start_collector=False)
 
@@ -1763,7 +1763,7 @@ if __name__ == "__main__":
 Run as:
   python -m tests.e2e._writer_entry --event-id <id> --text <text>
 
-Reads GMGN_POSTGRES_DSN from env. Calls IngestService.ingest_event() with a
+Reads PARALLAX_POSTGRES_DSN from env. Calls IngestService.ingest_event() with a
 synthetic TwitterEvent and exits. Stdout: 'INGESTED <event_id>'.
 """
 
@@ -1782,15 +1782,15 @@ def main() -> int:
     parser.add_argument("--author", default="e2e_test")
     args = parser.parse_args()
 
-    if "GMGN_POSTGRES_DSN" not in os.environ:
-        print("FATAL: GMGN_POSTGRES_DSN not set", file=sys.stderr)
+    if "PARALLAX_POSTGRES_DSN" not in os.environ:
+        print("FATAL: PARALLAX_POSTGRES_DSN not set", file=sys.stderr)
         return 1
 
     # Use the same app wiring path as production to ensure the writer goes through
     # the real IngestService -> repository chain.
-    from gmgn_twitter_intel.app.runtime.app import _build_runtime  # type: ignore[import-not-found]
-    from gmgn_twitter_intel.platform.config.settings import load_settings  # type: ignore[import-not-found]
-    from gmgn_twitter_intel.domains.evidence.interfaces import (  # type: ignore[import-not-found]
+    from parallax.app.runtime.app import _build_runtime  # type: ignore[import-not-found]
+    from parallax.platform.config.settings import load_settings  # type: ignore[import-not-found]
+    from parallax.domains.evidence.interfaces import (  # type: ignore[import-not-found]
         Author,
         Content,
         Source,
@@ -1813,12 +1813,12 @@ def main() -> int:
     return 0
 ```
 
-注意：本脚本依赖 `_build_runtime` 与 `runtime.evidence.ingest_service` 这条路径。具体属性名可能与代码不一致；P5 实施时需要 `grep -n "ingest_service\|evidence" src/gmgn_twitter_intel/app/runtime/app.py` 验证并按实际名称调整。**写代码前必须先 grep 确认**。
+注意：本脚本依赖 `_build_runtime` 与 `runtime.evidence.ingest_service` 这条路径。具体属性名可能与代码不一致；P5 实施时需要 `grep -n "ingest_service\|evidence" src/parallax/app/runtime/app.py` 验证并按实际名称调整。**写代码前必须先 grep 确认**。
 
 - [ ] **Step 5.3.2: 验证 `_build_runtime` 路径**
 
 ```bash
-grep -n "_build_runtime\|ingest_service\|class CliRuntime" src/gmgn_twitter_intel/app/runtime/app.py | head -20
+grep -n "_build_runtime\|ingest_service\|class CliRuntime" src/parallax/app/runtime/app.py | head -20
 ```
 
 如果 `runtime.evidence.ingest_service` 不存在，按实际属性名修改 `_writer_entry.py`。可能的形态：`runtime.ingest_service`、`runtime.services.ingest_service` 等。
@@ -1893,7 +1893,7 @@ def e2e_postgres() -> Iterator[str]:
     with PostgresContainer("postgres:16-alpine") as pg:
         dsn = pg.get_connection_url().replace("postgresql+psycopg2://", "postgresql://")
         # alembic upgrade
-        env = {**os.environ, "GMGN_POSTGRES_DSN": dsn, "PYTHONPATH": str(ROOT / "src")}
+        env = {**os.environ, "PARALLAX_POSTGRES_DSN": dsn, "PYTHONPATH": str(ROOT / "src")}
         result = subprocess.run(
             ["uv", "run", "alembic", "-c", str(ALEMBIC_INI), "upgrade", "head"],
             cwd=str(ROOT),
@@ -1946,7 +1946,7 @@ def e2e_uvicorn(e2e_postgres: str) -> Iterator[str]:
     """Spawn uvicorn in a subprocess; yield base URL like http://127.0.0.1:PORT."""
     env = {
         **os.environ,
-        "GMGN_POSTGRES_DSN": e2e_postgres,
+        "PARALLAX_POSTGRES_DSN": e2e_postgres,
         "PYTHONPATH": str(ROOT / "src"),
     }
     proc = subprocess.Popen(
@@ -1979,7 +1979,7 @@ def e2e_writer(e2e_postgres: str) -> Callable[[str, str], None]:
     def _write(event_id: str, text: str) -> None:
         env = {
             **os.environ,
-            "GMGN_POSTGRES_DSN": e2e_postgres,
+            "PARALLAX_POSTGRES_DSN": e2e_postgres,
             "PYTHONPATH": str(ROOT / "src"),
         }
         result = subprocess.run(
@@ -2104,7 +2104,7 @@ def test_golden_path_websocket_pushes_after_writer(
 ```
 
 注意：
-- `evidence` 表名与字段名 (`event_id`)、`/api/recent` 路径、WS 路径都已在 P5 准备阶段从代码确认（`src/gmgn_twitter_intel/app/surfaces/api/http.py:83` 与 `app/surfaces/api/ws.py`）。如实际 WS 路径不是 `/ws/live`，按代码实际路径替换。
+- `evidence` 表名与字段名 (`event_id`)、`/api/recent` 路径、WS 路径都已在 P5 准备阶段从代码确认（`src/parallax/app/surfaces/api/http.py:83` 与 `app/surfaces/api/ws.py`）。如实际 WS 路径不是 `/ws/live`，按代码实际路径替换。
 - `payload.get("items") or payload.get("events") or payload` 这种 fallback 是因为本 plan 撰写时未抓 `/api/recent` 的精确返回 shape；P5 实施时跑一次 `httpx.get(...).json()` 印出来再固化字段名。
 
 - [ ] **Step 5.5.2: 跑 e2e**
@@ -2163,7 +2163,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 ALEMBIC_INI = ROOT / "alembic.ini"
 
-DEFAULT_DSN = "postgresql://postgres:postgres@127.0.0.1:55432/gmgn_twitter_intel_test"
+DEFAULT_DSN = "postgresql://postgres:postgres@127.0.0.1:55432/parallax_test"
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
@@ -2221,7 +2221,7 @@ def _ensure_postgres_dsn() -> Iterator[None]:
 
     with PostgresContainer("postgres:16-alpine") as pg:
         dsn = pg.get_connection_url().replace("postgresql+psycopg2://", "postgresql://")
-        env = {**os.environ, "GMGN_POSTGRES_DSN": dsn, "PYTHONPATH": str(ROOT / "src")}
+        env = {**os.environ, "PARALLAX_POSTGRES_DSN": dsn, "PYTHONPATH": str(ROOT / "src")}
         result = subprocess.run(
             ["uv", "run", "alembic", "-c", str(ALEMBIC_INI), "upgrade", "head"],
             cwd=str(ROOT),
@@ -2375,10 +2375,10 @@ dev = [
 ```toml
 [tool.coverage.run]
 branch = true
-source = ["src/gmgn_twitter_intel"]
+source = ["src/parallax"]
 omit = [
-  "src/gmgn_twitter_intel/platform/db/alembic/versions/*",
-  "src/gmgn_twitter_intel/cli.py",  # CLI exercised by integration smoke; not unit-coverable
+  "src/parallax/platform/db/alembic/versions/*",
+  "src/parallax/cli.py",  # CLI exercised by integration smoke; not unit-coverable
 ]
 
 [tool.coverage.report]

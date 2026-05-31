@@ -26,15 +26,15 @@
 - Do not put provider IO inside open DB sessions or DB transactions.
 - Do not treat `commit=False` as a transaction on autocommit worker connections; use `repos.unit_of_work()`.
 - Do not let `dirty_at_ms`, run ids, generation ids, attempt ids, lease owners, publication timestamps, or freshness-only nested fields drive payload hashes.
-- Real-data diagnostics must first confirm `uv run gmgn-twitter-intel config` reports operator-owned paths under `~/.gmgn-twitter-intel/`, and must not print secrets.
+- Real-data diagnostics must first confirm `uv run parallax config` reports operator-owned paths under `~/.parallax/`, and must not print secrets.
 
 ## Target File Map
 
 Create:
 
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0121_token_equity_workerspace_root_fix.py`
-- `src/gmgn_twitter_intel/app/runtime/runtime_worker_context.py`
-- `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_payload_hash.py`
+- `src/parallax/platform/db/alembic/versions/20260528_0121_token_equity_workerspace_root_fix.py`
+- `src/parallax/app/runtime/runtime_worker_context.py`
+- `src/parallax/domains/token_intel/services/token_radar_payload_hash.py`
 - `tests/unit/domains/token_intel/test_token_radar_payload_hash.py`
 - `tests/unit/domains/token_intel/test_token_radar_dirty_target_kinds.py`
 - `tests/unit/domains/token_intel/test_token_radar_market_only_projection.py`
@@ -46,28 +46,28 @@ Create:
 
 Modify:
 
-- `src/gmgn_twitter_intel/app/runtime/worker_base.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_manifest.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_space.py`
-- `src/gmgn_twitter_intel/app/runtime/current_read_model_publisher.py`
-- `src/gmgn_twitter_intel/app/runtime/db_pool_bundle.py`
-- `src/gmgn_twitter_intel/app/runtime/queue_health.py`
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_dirty_target_repository.py`
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_rank_source_repository.py`
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
-- `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_rank_source_query.py`
-- `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
-- `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py`
-- `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py`
-- `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_fetch_worker.py`
-- `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_evidence_hydration_worker.py`
-- `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_process_worker.py`
-- `src/gmgn_twitter_intel/domains/equity_event_intel/services/event_classifier.py`
-- `src/gmgn_twitter_intel/domains/equity_event_intel/services/sec_submission_normalizer.py`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/event_anchor_backfill_job_repository.py`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/event_anchor_backfill_worker.py`
-- `src/gmgn_twitter_intel/domains/equity_event_intel/ARCHITECTURE.md`
-- `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
+- `src/parallax/app/runtime/worker_base.py`
+- `src/parallax/app/runtime/worker_manifest.py`
+- `src/parallax/app/runtime/worker_space.py`
+- `src/parallax/app/runtime/current_read_model_publisher.py`
+- `src/parallax/app/runtime/db_pool_bundle.py`
+- `src/parallax/app/runtime/queue_health.py`
+- `src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py`
+- `src/parallax/domains/token_intel/repositories/token_radar_rank_source_repository.py`
+- `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
+- `src/parallax/domains/token_intel/queries/token_radar_rank_source_query.py`
+- `src/parallax/domains/token_intel/services/token_radar_projection.py`
+- `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py`
+- `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py`
+- `src/parallax/domains/equity_event_intel/runtime/equity_event_fetch_worker.py`
+- `src/parallax/domains/equity_event_intel/runtime/equity_event_evidence_hydration_worker.py`
+- `src/parallax/domains/equity_event_intel/runtime/equity_event_process_worker.py`
+- `src/parallax/domains/equity_event_intel/services/event_classifier.py`
+- `src/parallax/domains/equity_event_intel/services/sec_submission_normalizer.py`
+- `src/parallax/domains/asset_market/repositories/event_anchor_backfill_job_repository.py`
+- `src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py`
+- `src/parallax/domains/equity_event_intel/ARCHITECTURE.md`
+- `src/parallax/domains/token_intel/ARCHITECTURE.md`
 - `docs/WORKERS.md`
 - `docs/WORKER_FLOW.md`
 - `docs/references/POSTGRES_PERFORMANCE.md`
@@ -113,13 +113,13 @@ codex/token-radar-equity-workerspace-root-fix
 Run:
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 ```
 
 Expected:
 
-- `config_path` points at `/Users/qinghuan/.gmgn-twitter-intel/config.yaml`
-- `workers_config_path` points at `/Users/qinghuan/.gmgn-twitter-intel/workers.yaml`
+- `config_path` points at `/Users/qinghuan/.parallax/config.yaml`
+- `workers_config_path` points at `/Users/qinghuan/.parallax/workers.yaml`
 - Do not copy secret values into plan, logs, commits, or PR text.
 
 - [ ] **Step 4: Capture pre-change PostgreSQL baseline**
@@ -127,7 +127,7 @@ Expected:
 Run:
 
 ```bash
-docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -X -q -P pager=off -c "
+docker compose exec -T postgres psql -U parallax_app -d parallax -X -q -P pager=off -c "
 SELECT now() - pg_postmaster_start_time() AS uptime;
 
 SELECT relname, n_live_tup, n_dead_tup
@@ -177,7 +177,7 @@ from __future__ import annotations
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src" / "gmgn_twitter_intel"
+SRC = ROOT / "src" / "parallax"
 
 
 def _text(path: str) -> str:
@@ -185,7 +185,7 @@ def _text(path: str) -> str:
 
 
 def test_token_rank_source_manifest_identity_matches_runtime_key() -> None:
-    manifest = _text("src/gmgn_twitter_intel/app/runtime/worker_manifest.py")
+    manifest = _text("src/parallax/app/runtime/worker_manifest.py")
     rank_identity = manifest.split('"token_radar_rank_source_events"', 1)[1].split(")", 1)[0]
 
     assert '"intent_id"' not in rank_identity
@@ -204,7 +204,7 @@ def test_token_rank_source_manifest_identity_matches_runtime_key() -> None:
 
 def test_token_dirty_targets_preserve_source_and_market_dirty_kinds() -> None:
     repo = _text(
-        "src/gmgn_twitter_intel/domains/token_intel/repositories/"
+        "src/parallax/domains/token_intel/repositories/"
         "token_radar_dirty_target_repository.py"
     )
 
@@ -214,8 +214,8 @@ def test_token_dirty_targets_preserve_source_and_market_dirty_kinds() -> None:
 
 
 def test_token_hashes_use_shared_canonicalizer() -> None:
-    repo = _text("src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py")
-    helper = _text("src/gmgn_twitter_intel/domains/token_intel/services/token_radar_payload_hash.py")
+    repo = _text("src/parallax/domains/token_intel/repositories/token_radar_repository.py")
+    helper = _text("src/parallax/domains/token_intel/services/token_radar_payload_hash.py")
 
     assert "canonical_token_radar_payload" in helper
     assert "provenance.computed_at_ms" in helper
@@ -229,7 +229,7 @@ Append:
 ```python
 def test_equity_process_worker_uses_process_jobs_not_document_scan() -> None:
     worker = _text(
-        "src/gmgn_twitter_intel/domains/equity_event_intel/runtime/"
+        "src/parallax/domains/equity_event_intel/runtime/"
         "equity_event_process_worker.py"
     )
 
@@ -241,7 +241,7 @@ def test_equity_process_worker_uses_process_jobs_not_document_scan() -> None:
 
 def test_equity_process_and_page_hot_paths_do_not_select_raw_payload() -> None:
     repo = _text(
-        "src/gmgn_twitter_intel/domains/equity_event_intel/repositories/"
+        "src/parallax/domains/equity_event_intel/repositories/"
         "equity_event_repository.py"
     )
     process_loader = repo.split("def load_process_packets_for_claims", 1)[1].split("\n    def ", 1)[0]
@@ -258,11 +258,11 @@ Append:
 ```python
 def test_enforcement_workers_use_runtime_context_not_raw_worker_session() -> None:
     enforcement_files = [
-        "src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py",
-        "src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_process_worker.py",
-        "src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_evidence_hydration_worker.py",
-        "src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_fetch_worker.py",
-        "src/gmgn_twitter_intel/domains/asset_market/runtime/event_anchor_backfill_worker.py",
+        "src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py",
+        "src/parallax/domains/equity_event_intel/runtime/equity_event_process_worker.py",
+        "src/parallax/domains/equity_event_intel/runtime/equity_event_evidence_hydration_worker.py",
+        "src/parallax/domains/equity_event_intel/runtime/equity_event_fetch_worker.py",
+        "src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py",
     ]
 
     for path in enforcement_files:
@@ -272,7 +272,7 @@ def test_enforcement_workers_use_runtime_context_not_raw_worker_session() -> Non
 
 
 def test_event_anchor_and_equity_process_manifests_declare_leased_queues() -> None:
-    manifest = _text("src/gmgn_twitter_intel/app/runtime/worker_manifest.py")
+    manifest = _text("src/parallax/app/runtime/worker_manifest.py")
     event_anchor = manifest.split('name="event_anchor_backfill"', 1)[1].split("WorkerManifest(", 1)[0]
     equity_process = manifest.split('name="equity_event_process"', 1)[1].split("WorkerManifest(", 1)[0]
 
@@ -328,13 +328,13 @@ Expected: commit succeeds with only tests changed.
 ## Task 2: Schema Hard Cut Migration
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0121_token_equity_workerspace_root_fix.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260528_0121_token_equity_workerspace_root_fix.py`
 - Modify: `tests/unit/test_postgres_schema.py`
 - Test: `tests/unit/test_postgres_schema.py`
 
 - [ ] **Step 1: Create Alembic migration with hard-cut schema**
 
-Create `src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0121_token_equity_workerspace_root_fix.py` with these operations:
+Create `src/parallax/platform/db/alembic/versions/20260528_0121_token_equity_workerspace_root_fix.py` with these operations:
 
 ```python
 """Hard cut Token Radar, Equity Event, and WorkerSpace runtime schema."""
@@ -443,7 +443,7 @@ Expected: pass.
 Run:
 
 ```bash
-uv run python -m py_compile src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0121_token_equity_workerspace_root_fix.py
+uv run python -m py_compile src/parallax/platform/db/alembic/versions/20260528_0121_token_equity_workerspace_root_fix.py
 ```
 
 Expected: exit `0`.
@@ -453,7 +453,7 @@ Expected: exit `0`.
 Run:
 
 ```bash
-git add src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0121_token_equity_workerspace_root_fix.py tests/unit/test_postgres_schema.py
+git add src/parallax/platform/db/alembic/versions/20260528_0121_token_equity_workerspace_root_fix.py tests/unit/test_postgres_schema.py
 git commit -m "feat: add token equity workerspace hard cut schema"
 ```
 
@@ -462,8 +462,8 @@ Expected: commit succeeds.
 ## Task 3: Token Radar Stable Hash Helpers
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_payload_hash.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
+- Create: `src/parallax/domains/token_intel/services/token_radar_payload_hash.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
 - Test: `tests/unit/domains/token_intel/test_token_radar_payload_hash.py`
 
 - [ ] **Step 1: Write payload canonicalizer tests**
@@ -473,7 +473,7 @@ Create `tests/unit/domains/token_intel/test_token_radar_payload_hash.py`:
 ```python
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.token_intel.services.token_radar_payload_hash import (
+from parallax.domains.token_intel.services.token_radar_payload_hash import (
     canonical_token_radar_payload,
     token_radar_payload_hash,
 )
@@ -541,7 +541,7 @@ Expected: fails because `token_radar_payload_hash.py` does not exist.
 
 - [ ] **Step 3: Implement canonicalizer**
 
-Create `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_payload_hash.py`:
+Create `src/parallax/domains/token_intel/services/token_radar_payload_hash.py`:
 
 ```python
 from __future__ import annotations
@@ -609,10 +609,10 @@ def _strip_nested_freshness(value: Any) -> Any:
 
 - [ ] **Step 4: Wire helper into Token Radar repository hashes**
 
-Modify `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`:
+Modify `src/parallax/domains/token_intel/repositories/token_radar_repository.py`:
 
 ```python
-from gmgn_twitter_intel.domains.token_intel.services.token_radar_payload_hash import token_radar_payload_hash
+from parallax.domains.token_intel.services.token_radar_payload_hash import token_radar_payload_hash
 ```
 
 Change `_payload_hash(...)` and `_target_feature_hash(...)` so both call `token_radar_payload_hash(...)` after preserving their existing top-level exclusions through the shared helper:
@@ -647,8 +647,8 @@ Run:
 
 ```bash
 git add \
-  src/gmgn_twitter_intel/domains/token_intel/services/token_radar_payload_hash.py \
-  src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py \
+  src/parallax/domains/token_intel/services/token_radar_payload_hash.py \
+  src/parallax/domains/token_intel/repositories/token_radar_repository.py \
   tests/unit/domains/token_intel/test_token_radar_payload_hash.py
 git commit -m "feat: stabilize token radar payload hashes"
 ```
@@ -658,10 +658,10 @@ Expected: commit succeeds.
 ## Task 4: Token Radar Dirty Kinds And Source-Edge No-Op Gate
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_dirty_target_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_rank_source_query.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_rank_source_repository.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_manifest.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py`
+- Modify: `src/parallax/domains/token_intel/queries/token_radar_rank_source_query.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_rank_source_repository.py`
+- Modify: `src/parallax/app/runtime/worker_manifest.py`
 - Test: `tests/unit/domains/token_intel/test_token_radar_dirty_target_kinds.py`
 
 - [ ] **Step 1: Write dirty-kind coalescing tests**
@@ -671,7 +671,7 @@ Create `tests/unit/domains/token_intel/test_token_radar_dirty_target_kinds.py`:
 ```python
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_dirty_target_repository import (
+from parallax.domains.token_intel.repositories.token_radar_dirty_target_repository import (
     dirty_kind_flags,
     dirty_payload_hash,
 )
@@ -859,10 +859,10 @@ Run:
 
 ```bash
 git add \
-  src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_dirty_target_repository.py \
-  src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_rank_source_query.py \
-  src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_rank_source_repository.py \
-  src/gmgn_twitter_intel/app/runtime/worker_manifest.py \
+  src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py \
+  src/parallax/domains/token_intel/queries/token_radar_rank_source_query.py \
+  src/parallax/domains/token_intel/repositories/token_radar_rank_source_repository.py \
+  src/parallax/app/runtime/worker_manifest.py \
   tests/unit/domains/token_intel/test_token_radar_dirty_target_kinds.py
 git commit -m "feat: add token radar dirty kinds and source no-op gate"
 ```
@@ -872,8 +872,8 @@ Expected: commit succeeds.
 ## Task 5: Token Radar Market-Only Projection Path
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_rank_source_repository.py`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_rank_source_repository.py`
 - Test: `tests/unit/domains/token_intel/test_token_radar_market_only_projection.py`
 
 - [ ] **Step 1: Write market-only projection tests**
@@ -883,7 +883,7 @@ Create `tests/unit/domains/token_intel/test_token_radar_market_only_projection.p
 ```python
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import _claim_requires_source_rebuild
+from parallax.domains.token_intel.services.token_radar_projection import _claim_requires_source_rebuild
 
 
 def test_market_only_claim_does_not_require_source_rebuild() -> None:
@@ -985,8 +985,8 @@ Run:
 
 ```bash
 git add \
-  src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py \
-  src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_rank_source_repository.py \
+  src/parallax/domains/token_intel/services/token_radar_projection.py \
+  src/parallax/domains/token_intel/repositories/token_radar_rank_source_repository.py \
   tests/unit/domains/token_intel/test_token_radar_market_only_projection.py
 git commit -m "feat: skip source-edge rebuild for token market-only claims"
 ```
@@ -996,7 +996,7 @@ Expected: commit succeeds.
 ## Task 6: Equity Event Process Job Repository
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py`
+- Modify: `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py`
 - Test: `tests/unit/domains/equity_event_intel/test_equity_event_process_jobs.py`
 
 - [ ] **Step 1: Write process-job repository tests**
@@ -1095,7 +1095,7 @@ Run:
 
 ```bash
 git add \
-  src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py \
+  src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py \
   tests/unit/domains/equity_event_intel/test_equity_event_process_jobs.py
 git commit -m "feat: add equity event process job repository"
 ```
@@ -1105,11 +1105,11 @@ Expected: commit succeeds.
 ## Task 7: Equity Process Worker Queue And Atomic Persist
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_process_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_evidence_hydration_worker.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_manifest.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/queue_health.py`
+- Modify: `src/parallax/domains/equity_event_intel/runtime/equity_event_process_worker.py`
+- Modify: `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py`
+- Modify: `src/parallax/domains/equity_event_intel/runtime/equity_event_evidence_hydration_worker.py`
+- Modify: `src/parallax/app/runtime/worker_manifest.py`
+- Modify: `src/parallax/app/runtime/queue_health.py`
 - Test: `tests/unit/domains/equity_event_intel/test_equity_event_process_worker_queue.py`
 
 - [ ] **Step 1: Write process worker queue tests**
@@ -1212,11 +1212,11 @@ Run:
 
 ```bash
 git add \
-  src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_process_worker.py \
-  src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py \
-  src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_evidence_hydration_worker.py \
-  src/gmgn_twitter_intel/app/runtime/worker_manifest.py \
-  src/gmgn_twitter_intel/app/runtime/queue_health.py \
+  src/parallax/domains/equity_event_intel/runtime/equity_event_process_worker.py \
+  src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py \
+  src/parallax/domains/equity_event_intel/runtime/equity_event_evidence_hydration_worker.py \
+  src/parallax/app/runtime/worker_manifest.py \
+  src/parallax/app/runtime/queue_health.py \
   tests/unit/domains/equity_event_intel/test_equity_event_process_worker_queue.py
 git commit -m "feat: drive equity event processing from leased jobs"
 ```
@@ -1226,10 +1226,10 @@ Expected: commit succeeds.
 ## Task 8: Equity Raw Payload Removal And Idempotent Artifact/Provider Writes
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_fetch_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/services/sec_submission_normalizer.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/services/event_classifier.py`
+- Modify: `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py`
+- Modify: `src/parallax/domains/equity_event_intel/runtime/equity_event_fetch_worker.py`
+- Modify: `src/parallax/domains/equity_event_intel/services/sec_submission_normalizer.py`
+- Modify: `src/parallax/domains/equity_event_intel/services/event_classifier.py`
 - Test: `tests/unit/domains/equity_event_intel/test_equity_event_artifact_upsert.py`
 
 - [ ] **Step 1: Write artifact/provider idempotency tests**
@@ -1310,11 +1310,11 @@ Run:
 
 ```bash
 git add \
-  src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py \
-  src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_fetch_worker.py \
-  src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_evidence_hydration_worker.py \
-  src/gmgn_twitter_intel/domains/equity_event_intel/services/sec_submission_normalizer.py \
-  src/gmgn_twitter_intel/domains/equity_event_intel/services/event_classifier.py \
+  src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py \
+  src/parallax/domains/equity_event_intel/runtime/equity_event_fetch_worker.py \
+  src/parallax/domains/equity_event_intel/runtime/equity_event_evidence_hydration_worker.py \
+  src/parallax/domains/equity_event_intel/services/sec_submission_normalizer.py \
+  src/parallax/domains/equity_event_intel/services/event_classifier.py \
   tests/unit/domains/equity_event_intel/test_equity_event_artifact_upsert.py
 git commit -m "feat: make equity event document and artifact writes idempotent"
 ```
@@ -1324,10 +1324,10 @@ Expected: commit succeeds.
 ## Task 9: WorkerSpace Runtime Context And Enforcement Set
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/app/runtime/runtime_worker_context.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_space.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_base.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/db_pool_bundle.py`
+- Create: `src/parallax/app/runtime/runtime_worker_context.py`
+- Modify: `src/parallax/app/runtime/worker_space.py`
+- Modify: `src/parallax/app/runtime/worker_base.py`
+- Modify: `src/parallax/app/runtime/db_pool_bundle.py`
 - Modify: enforcement-set worker files
 - Test: `tests/unit/test_runtime_worker_context.py`
 
@@ -1340,7 +1340,7 @@ from __future__ import annotations
 
 import pytest
 
-from gmgn_twitter_intel.app.runtime.worker_space import WorkerSpaceViolation
+from parallax.app.runtime.worker_space import WorkerSpaceViolation
 
 
 def test_provider_io_fails_inside_db_session(runtime_context_factory) -> None:
@@ -1406,7 +1406,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
-from gmgn_twitter_intel.app.runtime.worker_space import WorkerSpace, WorkerSpaceContract
+from parallax.app.runtime.worker_space import WorkerSpace, WorkerSpaceContract
 
 
 class RuntimeWorkerContext:
@@ -1527,15 +1527,15 @@ Run:
 
 ```bash
 git add \
-  src/gmgn_twitter_intel/app/runtime/runtime_worker_context.py \
-  src/gmgn_twitter_intel/app/runtime/worker_space.py \
-  src/gmgn_twitter_intel/app/runtime/worker_base.py \
-  src/gmgn_twitter_intel/app/runtime/db_pool_bundle.py \
-  src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py \
-  src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_fetch_worker.py \
-  src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_evidence_hydration_worker.py \
-  src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_process_worker.py \
-  src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py \
+  src/parallax/app/runtime/runtime_worker_context.py \
+  src/parallax/app/runtime/worker_space.py \
+  src/parallax/app/runtime/worker_base.py \
+  src/parallax/app/runtime/db_pool_bundle.py \
+  src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py \
+  src/parallax/domains/equity_event_intel/runtime/equity_event_fetch_worker.py \
+  src/parallax/domains/equity_event_intel/runtime/equity_event_evidence_hydration_worker.py \
+  src/parallax/domains/equity_event_intel/runtime/equity_event_process_worker.py \
+  src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py \
   tests/unit/test_runtime_worker_context.py
 git commit -m "feat: enforce workerspace on token and equity workers"
 ```
@@ -1545,9 +1545,9 @@ Expected: commit succeeds.
 ## Task 10: Event Anchor Backfill Durable Lease Claim
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/event_anchor_backfill_job_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/event_anchor_backfill_worker.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_manifest.py`
+- Modify: `src/parallax/domains/asset_market/repositories/event_anchor_backfill_job_repository.py`
+- Modify: `src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py`
+- Modify: `src/parallax/app/runtime/worker_manifest.py`
 - Test: existing event anchor tests plus new focused tests if absent
 
 - [ ] **Step 1: Add event-anchor lease tests**
@@ -1629,9 +1629,9 @@ Run:
 
 ```bash
 git add \
-  src/gmgn_twitter_intel/domains/asset_market/repositories/event_anchor_backfill_job_repository.py \
-  src/gmgn_twitter_intel/domains/asset_market/runtime/event_anchor_backfill_worker.py \
-  src/gmgn_twitter_intel/app/runtime/worker_manifest.py
+  src/parallax/domains/asset_market/repositories/event_anchor_backfill_job_repository.py \
+  src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py \
+  src/parallax/app/runtime/worker_manifest.py
 git commit -m "feat: lease event anchor backfill before provider io"
 ```
 
@@ -1642,8 +1642,8 @@ Expected: commit succeeds.
 **Files:**
 - Modify: `docs/WORKERS.md`
 - Modify: `docs/WORKER_FLOW.md`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/token_intel/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/equity_event_intel/ARCHITECTURE.md`
 - Modify: `docs/references/POSTGRES_PERFORMANCE.md`
 - Create: `docs/superpowers/plans/active/2026-05-28-token-radar-equity-workerspace-root-fix-verification-cn.md`
 
@@ -1713,8 +1713,8 @@ Run:
 git add \
   docs/WORKERS.md \
   docs/WORKER_FLOW.md \
-  src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md \
-  src/gmgn_twitter_intel/domains/equity_event_intel/ARCHITECTURE.md \
+  src/parallax/domains/token_intel/ARCHITECTURE.md \
+  src/parallax/domains/equity_event_intel/ARCHITECTURE.md \
   docs/references/POSTGRES_PERFORMANCE.md \
   docs/superpowers/plans/active/2026-05-28-token-radar-equity-workerspace-root-fix-verification-cn.md
 git commit -m "docs: document token equity workerspace hard cut"
@@ -1773,9 +1773,9 @@ Run:
 
 ```bash
 rg -n "list_event_documents_for_processing|list_unprocessed_event_documents|replace_evidence_artifacts|self\\.db\\.worker_session" \
-  src/gmgn_twitter_intel/domains/token_intel \
-  src/gmgn_twitter_intel/domains/equity_event_intel \
-  src/gmgn_twitter_intel/domains/asset_market/runtime/event_anchor_backfill_worker.py
+  src/parallax/domains/token_intel \
+  src/parallax/domains/equity_event_intel \
+  src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py
 ```
 
 Expected:
@@ -1790,7 +1790,7 @@ Expected:
 After Docker rebuild and service start, run:
 
 ```bash
-docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -X -q -P pager=off -c "
+docker compose exec -T postgres psql -U parallax_app -d parallax -X -q -P pager=off -c "
 SELECT query, calls, total_exec_time, mean_exec_time
 FROM pg_stat_statements
 WHERE query ILIKE '%token_radar_rank_source_events%'

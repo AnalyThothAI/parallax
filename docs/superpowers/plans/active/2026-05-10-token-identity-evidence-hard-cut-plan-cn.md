@@ -14,9 +14,9 @@ Replace token identity selection based on `registry_assets.symbol/name/primary_s
 
 Implemented against the current domain layout, not the older `storage/` / `pipeline/` paths used in early planning text.
 
-- Policy: `src/gmgn_twitter_intel/domains/asset_market/identity_evidence_policy.py`
-- Repository: `src/gmgn_twitter_intel/domains/asset_market/repositories/identity_evidence_repository.py`
-- Migration: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260510_0021_asset_identity_evidence_hard_cut.py`
+- Policy: `src/parallax/domains/asset_market/identity_evidence_policy.py`
+- Repository: `src/parallax/domains/asset_market/repositories/identity_evidence_repository.py`
+- Migration: `src/parallax/platform/db/alembic/versions/20260510_0021_asset_identity_evidence_hard_cut.py`
 - Verification artifact: `docs/superpowers/plans/active/2026-05-10-token-identity-evidence-hard-cut-verification.md`
 
 Final verification:
@@ -77,27 +77,27 @@ Task status summary:
 
 ### New files
 
-- `src/gmgn_twitter_intel/pipeline/asset_identity_policy.py`
+- `src/parallax/pipeline/asset_identity_policy.py`
   - owns evidence enums, confidence enums, selection order, reason-code generation.
-- `src/gmgn_twitter_intel/storage/asset_identity_repository.py`
+- `src/parallax/storage/asset_identity_repository.py`
   - writes evidence, recomputes current identity, reads current identity by asset id/list.
-- `src/gmgn_twitter_intel/storage/alembic/versions/20260510_0021_asset_identity_evidence_hard_cut.py`
+- `src/parallax/storage/alembic/versions/20260510_0021_asset_identity_evidence_hard_cut.py`
   - creates evidence/current tables, performs one-time old-source conversion, backfills current identity.
 - `docs/generated/token_identity_golden.json`
   - golden corpus for SHIT/SLOP/SATO and Solana SHIT.
 
 ### Files to modify
 
-- `src/gmgn_twitter_intel/storage/registry_repository.py`
-- `src/gmgn_twitter_intel/pipeline/ingest_service.py`
-- `src/gmgn_twitter_intel/pipeline/token_intent_rebuild.py`
-- `src/gmgn_twitter_intel/pipeline/token_discovery_worker.py`
-- `src/gmgn_twitter_intel/pipeline/asset_market_sync.py`
-- `src/gmgn_twitter_intel/pipeline/token_radar_projection.py`
-- `src/gmgn_twitter_intel/storage/token_target_repository.py`
-- `src/gmgn_twitter_intel/pipeline/message_market_observation.py`
-- `src/gmgn_twitter_intel/api/http.py` or the current token-radar route owner
-- `src/gmgn_twitter_intel/cli.py`
+- `src/parallax/storage/registry_repository.py`
+- `src/parallax/pipeline/ingest_service.py`
+- `src/parallax/pipeline/token_intent_rebuild.py`
+- `src/parallax/pipeline/token_discovery_worker.py`
+- `src/parallax/pipeline/asset_market_sync.py`
+- `src/parallax/pipeline/token_radar_projection.py`
+- `src/parallax/storage/token_target_repository.py`
+- `src/parallax/pipeline/message_market_observation.py`
+- `src/parallax/api/http.py` or the current token-radar route owner
+- `src/parallax/cli.py`
 - `web/src/api/types.ts`
 - `web/src/lib/tokenRadar.ts`
 - `web/src/components/TokenTargetPage.tsx`
@@ -152,7 +152,7 @@ Task status summary:
 
 **Files**
 
-- Add `src/gmgn_twitter_intel/pipeline/asset_identity_policy.py`
+- Add `src/parallax/pipeline/asset_identity_policy.py`
 - Update tests from Task 1.
 
 **Steps**
@@ -209,8 +209,8 @@ Task status summary:
 
 **Files**
 
-- Add `src/gmgn_twitter_intel/storage/alembic/versions/20260510_0021_asset_identity_evidence_hard_cut.py`
-- Add `src/gmgn_twitter_intel/storage/asset_identity_repository.py`
+- Add `src/parallax/storage/alembic/versions/20260510_0021_asset_identity_evidence_hard_cut.py`
+- Add `src/parallax/storage/asset_identity_repository.py`
 - Modify `tests/test_postgres_schema.py`
 - Add `tests/test_asset_identity_repository.py`
 
@@ -261,7 +261,7 @@ Task status summary:
 
 **Files**
 
-- Modify `src/gmgn_twitter_intel/storage/registry_repository.py`
+- Modify `src/parallax/storage/registry_repository.py`
 - Modify `tests/test_registry_repository.py`
 
 **Steps**
@@ -292,15 +292,15 @@ Task status summary:
 
 **Acceptance**
 
-- `rg -n "_SOURCE_PRECEDENCE|primary_source|registry_assets\\.symbol|registry_assets\\.name" src/gmgn_twitter_intel/storage/registry_repository.py` returns no runtime hits.
+- `rg -n "_SOURCE_PRECEDENCE|primary_source|registry_assets\\.symbol|registry_assets\\.name" src/parallax/storage/registry_repository.py` returns no runtime hits.
 - Registry repository no longer decides canonical identity.
 
 ## Task 5: Rewrite Ingest And Token Intent Rebuild Writers
 
 **Files**
 
-- Modify `src/gmgn_twitter_intel/pipeline/ingest_service.py`
-- Modify `src/gmgn_twitter_intel/pipeline/token_intent_rebuild.py`
+- Modify `src/parallax/pipeline/ingest_service.py`
+- Modify `src/parallax/pipeline/token_intent_rebuild.py`
 - Modify `tests/test_asset_ingest_flow.py`
 - Modify token intent rebuild tests if present.
 
@@ -331,7 +331,7 @@ Task status summary:
 
 **Files**
 
-- Modify `src/gmgn_twitter_intel/pipeline/token_discovery_worker.py`
+- Modify `src/parallax/pipeline/token_discovery_worker.py`
 - Modify `tests/test_token_discovery_worker.py`
 
 **Steps**
@@ -367,7 +367,7 @@ Task status summary:
 
 **Files**
 
-- Modify `src/gmgn_twitter_intel/pipeline/asset_market_sync.py`
+- Modify `src/parallax/pipeline/asset_market_sync.py`
 - Modify `tests/test_asset_market_sync.py`
 
 **Steps**
@@ -405,8 +405,8 @@ Task status summary:
 
 **Files**
 
-- Modify `src/gmgn_twitter_intel/pipeline/token_radar_projection.py`
-- Modify `src/gmgn_twitter_intel/pipeline/token_radar_contract.py`
+- Modify `src/parallax/pipeline/token_radar_projection.py`
+- Modify `src/parallax/pipeline/token_radar_contract.py`
 - Modify `tests/test_token_radar_projection.py`
 - Modify `tests/golden/test_token_radar_corpus.py`
 
@@ -435,15 +435,15 @@ Task status summary:
 
 **Acceptance**
 
-- `rg -n "registry_assets\\.symbol AS asset_symbol|row\\.get\\(\"display_symbol\"\\).*target|target.*display_symbol" src/gmgn_twitter_intel/pipeline/token_radar_projection.py` shows no resolved-target fallback.
+- `rg -n "registry_assets\\.symbol AS asset_symbol|row\\.get\\(\"display_symbol\"\\).*target|target.*display_symbol" src/parallax/pipeline/token_radar_projection.py` shows no resolved-target fallback.
 - Radar rows carry identity explainability metadata.
 
 ## Task 9: Rewrite Token Target / Message Observation Reads
 
 **Files**
 
-- Modify `src/gmgn_twitter_intel/storage/token_target_repository.py`
-- Modify `src/gmgn_twitter_intel/pipeline/message_market_observation.py`
+- Modify `src/parallax/storage/token_target_repository.py`
+- Modify `src/parallax/pipeline/message_market_observation.py`
 - Modify related tests.
 
 **Steps**
@@ -505,7 +505,7 @@ Task status summary:
 
 **Files**
 
-- Modify `src/gmgn_twitter_intel/cli.py`
+- Modify `src/parallax/cli.py`
 - Add ops implementation module if needed.
 - Add CLI tests.
 
@@ -523,7 +523,7 @@ Task status summary:
   - verify returns non-zero on mismatch.
   - repair writes evidence and policy selects manual with reason.
 - [ ] Run:
-  - `uv run gmgn-twitter-intel ops --help`
+  - `uv run parallax ops --help`
   - `uv run pytest tests/test_cli*.py -q` if CLI tests exist.
 
 **Acceptance**
@@ -564,12 +564,12 @@ Task status summary:
 
 **Commands**
 
-- `uv run gmgn-twitter-intel ops rebuild-asset-identity-current`
-- `uv run gmgn-twitter-intel ops verify-token-identity --golden docs/generated/token_identity_golden.json`
-- `uv run gmgn-twitter-intel ops rebuild-token-radar --window 5m --scope all --limit 1000`
-- `uv run gmgn-twitter-intel ops rebuild-token-radar --window 1h --scope all --limit 1000`
-- `uv run gmgn-twitter-intel ops rebuild-token-radar --window 4h --scope all --limit 1000`
-- `uv run gmgn-twitter-intel ops rebuild-token-radar --window 24h --scope all --limit 2000`
+- `uv run parallax ops rebuild-asset-identity-current`
+- `uv run parallax ops verify-token-identity --golden docs/generated/token_identity_golden.json`
+- `uv run parallax ops rebuild-token-radar --window 5m --scope all --limit 1000`
+- `uv run parallax ops rebuild-token-radar --window 1h --scope all --limit 1000`
+- `uv run parallax ops rebuild-token-radar --window 4h --scope all --limit 1000`
+- `uv run parallax ops rebuild-token-radar --window 24h --scope all --limit 2000`
 - repeat for `scope matched`.
 
 **Steps**
@@ -726,12 +726,12 @@ npm run build
 Local Postgres:
 
 ```bash
-uv run gmgn-twitter-intel ops rebuild-asset-identity-current
-uv run gmgn-twitter-intel ops verify-token-identity --golden docs/generated/token_identity_golden.json
-uv run gmgn-twitter-intel ops rebuild-token-radar --window 5m --scope all --limit 1000
-uv run gmgn-twitter-intel ops rebuild-token-radar --window 1h --scope all --limit 1000
-uv run gmgn-twitter-intel ops rebuild-token-radar --window 4h --scope all --limit 1000
-uv run gmgn-twitter-intel ops rebuild-token-radar --window 24h --scope all --limit 2000
+uv run parallax ops rebuild-asset-identity-current
+uv run parallax ops verify-token-identity --golden docs/generated/token_identity_golden.json
+uv run parallax ops rebuild-token-radar --window 5m --scope all --limit 1000
+uv run parallax ops rebuild-token-radar --window 1h --scope all --limit 1000
+uv run parallax ops rebuild-token-radar --window 4h --scope all --limit 1000
+uv run parallax ops rebuild-token-radar --window 24h --scope all --limit 2000
 ```
 
 Deletion grep:
@@ -739,7 +739,7 @@ Deletion grep:
 ```bash
 rg -n "_SOURCE_PRECEDENCE|DEX_SEARCH_SOURCE|DEX_ADDRESS_SEARCH_SOURCE" src tests
 rg -n "primary_source|registry_assets\\.symbol|registry_assets\\.name" src tests
-rg -n "intent\\.display_symbol.*target|target.*display_symbol" web/src src/gmgn_twitter_intel/pipeline/token_radar_projection.py
+rg -n "intent\\.display_symbol.*target|target.*display_symbol" web/src src/parallax/pipeline/token_radar_projection.py
 ```
 
 Expected:

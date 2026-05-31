@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.pulse_lab.services.evidence_completeness_gate import (
+from parallax.domains.pulse_lab.services.evidence_completeness_gate import (
     EvidenceCompletenessGateResult,
 )
-from gmgn_twitter_intel.domains.pulse_lab.services.pulse_agent_cost_guard import (
+from parallax.domains.pulse_lab.services.pulse_agent_cost_guard import (
     decide_pulse_agent_cost,
 )
-from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import PulseGateResult
-from gmgn_twitter_intel.domains.pulse_lab.services.pulse_source_quality import PulseSourceQualityDecision
-from gmgn_twitter_intel.domains.pulse_lab.types.pulse_candidate_context import PulseCandidateContext
+from parallax.domains.pulse_lab.services.pulse_candidate_gate import PulseGateResult
+from parallax.domains.pulse_lab.services.pulse_source_quality import PulseSourceQualityDecision
+from parallax.domains.pulse_lab.types.pulse_candidate_context import PulseCandidateContext
 
 LANE_MODELS = {
     "pulse.signal_analyst": "qwen3.6",

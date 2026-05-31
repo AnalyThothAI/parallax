@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from gmgn_twitter_intel.domains.pulse_lab.types import (
+from parallax.domains.pulse_lab.types import (
     BearCaseMemo,
     EvidenceClaim,
     FinalDecision,

@@ -732,18 +732,18 @@ refresh=
 新增：
 
 ```bash
-uv run gmgn-twitter-intel token-signal-evaluations --horizon 6h --window 5m --scope all --component heat
-uv run gmgn-twitter-intel token-signal-evaluations --horizon 6h --window 5m --scope all --component tradeability
-uv run gmgn-twitter-intel token-signal-interactions --horizon 6h --window 5m --kind high_heat_low_quality
+uv run parallax token-signal-evaluations --horizon 6h --window 5m --scope all --component heat
+uv run parallax token-signal-evaluations --horizon 6h --window 5m --scope all --component tradeability
+uv run parallax token-signal-interactions --horizon 6h --window 5m --kind high_heat_low_quality
 ```
 
 Ops workflow:
 
 ```bash
-uv run gmgn-twitter-intel ops freeze-token-signals --window 5m --limit 200
-uv run gmgn-twitter-intel ops settle-token-signals --horizon 6h --limit 500
-uv run gmgn-twitter-intel token-signal-evaluations --horizon 6h --window 5m --scope all --component opportunity
-uv run gmgn-twitter-intel token-signal-evaluations --horizon 6h --window 5m --scope all --component tradeability
+uv run parallax ops freeze-token-signals --window 5m --limit 200
+uv run parallax ops settle-token-signals --horizon 6h --limit 500
+uv run parallax token-signal-evaluations --horizon 6h --window 5m --scope all --component opportunity
+uv run parallax token-signal-evaluations --horizon 6h --window 5m --scope all --component tradeability
 ```
 
 ## Rollout Plan

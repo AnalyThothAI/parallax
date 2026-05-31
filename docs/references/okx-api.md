@@ -1,6 +1,6 @@
 # OKX & GMGN OpenAPI — Endpoint Notes
 
-**Source of truth:** `src/gmgn_twitter_intel/market/`
+**Source of truth:** `src/parallax/market/`
 **Cited by:** `docs/ARCHITECTURE.md` (cross-cutting `market/` module), `docs/CONTRACTS.md` (optional config groups).
 
 ## Scope
@@ -11,9 +11,9 @@ This file is a router into the market clients. Detailed endpoint paths, query pa
 
 | Client | File |
 |--------|------|
-| OKX CEX REST client | `src/gmgn_twitter_intel/market/okx_cex_client.py` |
-| OKX DEX REST client | `src/gmgn_twitter_intel/market/okx_dex_client.py` |
-| GMGN OpenAPI REST client | `src/gmgn_twitter_intel/market/gmgn_openapi_client.py` |
+| OKX CEX REST client | `src/parallax/market/okx_cex_client.py` |
+| OKX DEX REST client | `src/parallax/market/okx_dex_client.py` |
+| GMGN OpenAPI REST client | `src/parallax/market/gmgn_openapi_client.py` |
 
 ## Operational notes
 

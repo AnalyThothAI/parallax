@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.asset_market.services.us_equity_symbol_sync import (
+from parallax.domains.asset_market.services.us_equity_symbol_sync import (
     NasdaqTraderSymbol,
     parse_nasdaq_trader_symbols,
     sync_us_equity_symbols,

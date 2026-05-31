@@ -32,14 +32,14 @@ Phase 0c 只做闭环地基，不把真实外部工具接进 agent。
 
 | File | Responsibility |
 |---|---|
-| `src/gmgn_twitter_intel/platform/db/alembic/versions/20260514_0038_agent_runtime_closed_loop.py` | Add harness/eval tables and run harness columns. |
-| `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_runtime.py` | Build stable Pulse harness manifest and hash. |
-| `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_eval.py` | Build deterministic eval cases and grade them. |
-| `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py` | Persist harness versions, eval cases, eval results, and run harness fields. |
-| `src/gmgn_twitter_intel/domains/pulse_lab/providers.py` | Hard-cut provider protocol to require harness metadata. |
-| `src/gmgn_twitter_intel/app/runtime/providers_wiring.py` | Pass harness metadata through the OpenAI provider adapter. |
-| `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py` | Include harness metadata in request audit and trace metadata. |
-| `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py` | Build/upsert harness before run; write eval case/result after run. |
+| `src/parallax/platform/db/alembic/versions/20260514_0038_agent_runtime_closed_loop.py` | Add harness/eval tables and run harness columns. |
+| `src/parallax/domains/pulse_lab/services/agent_runtime.py` | Build stable Pulse harness manifest and hash. |
+| `src/parallax/domains/pulse_lab/services/agent_eval.py` | Build deterministic eval cases and grade them. |
+| `src/parallax/domains/pulse_lab/repositories/pulse_repository.py` | Persist harness versions, eval cases, eval results, and run harness fields. |
+| `src/parallax/domains/pulse_lab/providers.py` | Hard-cut provider protocol to require harness metadata. |
+| `src/parallax/app/runtime/providers_wiring.py` | Pass harness metadata through the OpenAI provider adapter. |
+| `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py` | Include harness metadata in request audit and trace metadata. |
+| `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py` | Build/upsert harness before run; write eval case/result after run. |
 | `tests/unit/test_pulse_agent_runtime.py` | Unit coverage for manifest stability and deterministic grader. |
 | `tests/integration/test_pulse_repository.py` | Repository round-trip coverage for harness/eval ledger. |
 | `tests/e2e/test_pulse_agent_runtime_flow.py` | E2E assertion that real worker path writes harness/eval data. |
@@ -47,9 +47,9 @@ Phase 0c 只做闭环地基，不把真实外部工具接进 agent。
 ## Task 1: Harness Manifest And Storage Ledger
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260514_0038_agent_runtime_closed_loop.py`
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_runtime.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260514_0038_agent_runtime_closed_loop.py`
+- Create: `src/parallax/domains/pulse_lab/services/agent_runtime.py`
+- Modify: `src/parallax/domains/pulse_lab/repositories/pulse_repository.py`
 - Test: `tests/unit/test_pulse_agent_runtime.py`
 - Test: `tests/integration/test_pulse_repository.py`
 
@@ -79,9 +79,9 @@ Phase 0c 只做闭环地基，不把真实外部工具接进 agent。
 ## Task 2: Deterministic Eval Case And Result Ledger
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260514_0038_agent_runtime_closed_loop.py`
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_eval.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py`
+- Modify: `src/parallax/platform/db/alembic/versions/20260514_0038_agent_runtime_closed_loop.py`
+- Create: `src/parallax/domains/pulse_lab/services/agent_eval.py`
+- Modify: `src/parallax/domains/pulse_lab/repositories/pulse_repository.py`
 - Test: `tests/unit/test_pulse_agent_runtime.py`
 - Test: `tests/integration/test_pulse_repository.py`
 
@@ -116,10 +116,10 @@ Phase 0c 只做闭环地基，不把真实外部工具接进 agent。
 ## Task 3: Worker Runtime Closed Loop
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/providers.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/providers_wiring.py`
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- Modify: `src/parallax/domains/pulse_lab/providers.py`
+- Modify: `src/parallax/app/runtime/providers_wiring.py`
+- Modify: `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py`
+- Modify: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
 - Modify tests: `tests/unit/test_pulse_candidate_worker.py`
 - Modify tests: `tests/e2e/test_pulse_agent_runtime_flow.py`
 

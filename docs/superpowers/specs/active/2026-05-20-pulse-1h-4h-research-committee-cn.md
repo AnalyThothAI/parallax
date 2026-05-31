@@ -8,7 +8,7 @@
 - `docs/CONTRACTS.md`
 - `docs/WORKERS.md`
 - `docs/WORKFLOW.md`
-- `src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`
+- `src/parallax/domains/pulse_lab/ARCHITECTURE.md`
 - `docs/superpowers/specs/completed/2026-05-14-pulse-detail-redesign-cn.md`
 - `/Users/qinghuan/Documents/code/TradingAgents`
 
@@ -18,15 +18,15 @@ Pulse Agent 当前是一个从 Token Radar read model 取最新 rows、生成 se
 再让 agent 做有限判断的单服务链路。`PulseCandidateWorker.run_once_async` 每轮先 scan
 再 process，scan 时按配置的 `windows` 和 `scopes` 遍历，并对每个
 `(window, scope)` 调 `repos.token_radar.latest_rows(..., limit=self.batch_size)`：
-`src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py:128-173`。
+`src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:128-173`。
 默认配置仍包含 `5m, 1h, 4h, 24h`，且每轮 `batch_size=10`、
 `max_enqueues_per_cycle=25`：
-`src/gmgn_twitter_intel/platform/config/settings.py:720-731` 和
-`src/gmgn_twitter_intel/platform/config/settings.py:1508-1522`。
+`src/parallax/platform/config/settings.py:720-731` 和
+`src/parallax/platform/config/settings.py:1508-1522`。
 
 HTTP 和前端也默认把 Signal Lab Pulse 放在 5m。后端
 `/api/signal-lab/pulse` 默认 `window="5m"`、`scope="all"`：
-`src/gmgn_twitter_intel/app/surfaces/api/routes_pulse.py:21-35`。前端 compact query
+`src/parallax/app/surfaces/api/routes_pulse.py:21-35`。前端 compact query
 写死 `SIGNAL_LAB_COMPACT_WINDOW = "5m"`：
 `web/src/features/signal-lab/api/useSignalLabCompactQuery.ts:7-23`。Signal Lab route
 state 也默认 `window: "5m"`：
@@ -34,37 +34,37 @@ state 也默认 `window: "5m"`：
 
 当前触发门槛会让单个 watched author 进入 Pulse。`_is_asset_trigger` 只要
 `watched_mentions > 0` 就返回 true：
-`src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py:427-437`。
+`src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:427-437`。
 Token Radar factor gate 对独立来源不足的阻断也有 watched author 例外：
 `independent_sources < 2 and watched_mentions <= 0` 才 block，
 `credible_sources < 1.5 and watched_mentions <= 0` 才 block：
-`src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py:348-361`。
+`src/parallax/domains/token_intel/scoring/factor_snapshot.py:348-361`。
 这意味着 1 个 watched author 可以绕过“独立作者不足”的公共信号限制。
 
 Pulse 的 public surface 还把 `risk_rejected_high_info` 作为默认公共状态之一。
 `SignalPulseService` 的 summary/status 集合包含 `risk_rejected_high_info`，displayable
 状态包含 `display_risk_rejected_high_info`：
-`src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py:9-18`。
+`src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py:9-18`。
 读库查询也把 `display_risk_rejected_high_info` 纳入 public display SQL：
-`src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_read_repository.py:13-18`。
+`src/parallax/domains/pulse_lab/repositories/pulse_read_repository.py:13-18`。
 因此单作者 watched row 即使被 agent 判为 ignore，也可能以“高信息但被拒绝”的形式
 占据默认候选列表。
 
 另一处结构性 stale 问题在 Pulse edge diff。`build_pulse_edge_state` 已经把
 `trigger_signature` 和 `timeline_signature` 放入 observed state：
-`src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_edge_events.py:35-60`。
+`src/parallax/domains/pulse_lab/services/pulse_edge_events.py:35-60`。
 但 `diff_pulse_edge_events` 只比较版本、状态、score band、hard risks、
 recommended decision 和 watched confirmation，并不比较 timeline/trigger signature：
-`src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_edge_events.py:63-84`。
+`src/parallax/domains/pulse_lab/services/pulse_edge_events.py:63-84`。
 如果新帖子、新作者或新 selected evidence 进入，但 score/status bucket 没变，
 admission policy 会收到空 edge events 并 suppress 为 `unchanged`：
-`src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_admission_policy.py:28-48`。
+`src/parallax/domains/pulse_lab/services/pulse_admission_policy.py:28-48`。
 
 Agent runtime 目前是两段 tool-free pipeline：`evidence_debate` 和 `decision_maker`。
 `runtime_contract` 明确 stage names 为这两段，并且每段 `tool_names_by_stage=()`：
-`src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py:99-113`。
+`src/parallax/integrations/openai_agents/pulse_decision_agent_client.py:99-113`。
 run pipeline 先跑 evidence debate，再校验 refs，然后跑 decision maker：
-`src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py:147-219`。
+`src/parallax/integrations/openai_agents/pulse_decision_agent_client.py:147-219`。
 这个设计是安全的，但它更接近 sealed-packet summarizer，而不是 TradingAgents 那种
 多源、多角色、带反方和风险管理的研究流程。
 
@@ -87,8 +87,8 @@ TradingAgents 还在每次 run 前解析历史 pending outcome、生成 reflecti
 `/Users/qinghuan/Documents/code/TradingAgents/tradingagents/graph/trading_graph.py:332-339`。
 
 2026-05-20 真实运行配置已确认来自 operator-owned path：
-`/Users/qinghuan/.gmgn-twitter-intel/config.yaml` 和
-`/Users/qinghuan/.gmgn-twitter-intel/workers.yaml`。以下诊断基于真实 DB，不使用 repo
+`/Users/qinghuan/.parallax/config.yaml` 和
+`/Users/qinghuan/.parallax/workers.yaml`。以下诊断基于真实 DB，不使用 repo
 fixture。当前 Token Radar projection version 为 `token-radar-v13-social-attention`。
 
 最新 projection 中 `rank <= 50` row 集合显示，5m 明显比 1h/4h 更单作者、更高集中度：

@@ -20,8 +20,8 @@ This plan was refreshed against local `main` on 2026-05-11 after the tests-and-l
 - Frontend commands must run from `web/`: `cd web && npm run test`, `cd web && npm run typecheck`, `cd web && npm run build`, `cd web && npm run lint`.
 - Completion evidence is `make check-all`; it wraps lint, typecheck, unit/architecture/contract, integration/e2e, and coverage.
 - `web/src/lib/tokenRadar.ts` is the frontend Token Radar adapter and is more important than `ScoreLedger.tsx` for the v2 hard cut.
-- `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py` currently fabricates `current_market` from factor snapshot `market_quality`; v2 must instead use the existing current-market read model data.
-- `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py` has SQL JSON paths into `families.market_quality`; it must be updated too.
+- `src/parallax/domains/token_intel/read_models/asset_flow_service.py` currently fabricates `current_market` from factor snapshot `market_quality`; v2 must instead use the existing current-market read model data.
+- `src/parallax/domains/pulse_lab/repositories/pulse_repository.py` has SQL JSON paths into `families.market_quality`; it must be updated too.
 - During merge to current `main`, Alembic `20260511_0025` is owned by token-radar production read models, so the factor diagnostics migration is `20260511_0026` with `down_revision = "20260511_0025"`.
 
 ## Source Spec
@@ -158,35 +158,35 @@ Runtime rows must persist this shape under `token_radar_rows.factor_snapshot_jso
 ## Exact Files
 
 Producer and scoring:
-- Modify `src/gmgn_twitter_intel/domains/token_intel/_constants.py`.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py`.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/token_radar_feature_builder.py`.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/diffusion_health.py` only for narrow input normalization if needed.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/cross_section_normalizer.py`.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_cohort.py`.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`.
+- Modify `src/parallax/domains/token_intel/_constants.py`.
+- Modify `src/parallax/domains/token_intel/scoring/factor_snapshot.py`.
+- Modify `src/parallax/domains/token_intel/scoring/token_radar_feature_builder.py`.
+- Modify `src/parallax/domains/token_intel/scoring/diffusion_health.py` only for narrow input normalization if needed.
+- Modify `src/parallax/domains/token_intel/scoring/cross_section_normalizer.py`.
+- Modify `src/parallax/domains/token_intel/scoring/factor_cohort.py`.
+- Modify `src/parallax/domains/token_intel/services/token_radar_projection.py`.
 
 Read models and repositories:
-- Modify `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`.
-- Modify `src/gmgn_twitter_intel/app/runtime/app.py`.
-- Modify `src/gmgn_twitter_intel/app/surfaces/api/http.py`.
-- Modify `src/gmgn_twitter_intel/app/surfaces/cli/main.py`.
-- Modify `src/gmgn_twitter_intel/app/runtime/repository_session.py`.
-- Modify `src/gmgn_twitter_intel/domains/asset_market/repositories/price_observation_repository.py`.
-- Create `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_diagnostics.py`.
-- Create `src/gmgn_twitter_intel/domains/token_intel/repositories/token_factor_evaluation_repository.py`.
-- Create `src/gmgn_twitter_intel/domains/token_intel/services/token_factor_evaluation.py`.
-- Create `src/gmgn_twitter_intel/platform/db/alembic/versions/20260511_0026_token_factor_eval_diagnostics.py`.
+- Modify `src/parallax/domains/token_intel/repositories/token_radar_repository.py`.
+- Modify `src/parallax/domains/token_intel/read_models/asset_flow_service.py`.
+- Modify `src/parallax/app/runtime/app.py`.
+- Modify `src/parallax/app/surfaces/api/http.py`.
+- Modify `src/parallax/app/surfaces/cli/main.py`.
+- Modify `src/parallax/app/runtime/repository_session.py`.
+- Modify `src/parallax/domains/asset_market/repositories/price_observation_repository.py`.
+- Create `src/parallax/domains/token_intel/scoring/factor_diagnostics.py`.
+- Create `src/parallax/domains/token_intel/repositories/token_factor_evaluation_repository.py`.
+- Create `src/parallax/domains/token_intel/services/token_factor_evaluation.py`.
+- Create `src/parallax/platform/db/alembic/versions/20260511_0026_token_factor_eval_diagnostics.py`.
 
 Pulse and notifications:
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py`.
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`.
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`.
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py`.
-- Modify `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py`.
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_recommendation.py` only if factor-key collection assumes v1 names.
-- Modify `src/gmgn_twitter_intel/integrations/openai_agents/pulse_recommendation_agent_client.py` only if prompt/audit labels assume v1 names.
+- Modify `src/parallax/domains/pulse_lab/services/pulse_candidate_gate.py`.
+- Modify `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`.
+- Modify `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py`.
+- Modify `src/parallax/domains/pulse_lab/repositories/pulse_repository.py`.
+- Modify `src/parallax/domains/notifications/services/notification_rules.py`.
+- Modify `src/parallax/domains/pulse_lab/types/pulse_recommendation.py` only if factor-key collection assumes v1 names.
+- Modify `src/parallax/integrations/openai_agents/pulse_recommendation_agent_client.py` only if prompt/audit labels assume v1 names.
 
 Frontend:
 - Modify `web/src/api/types.ts`.
@@ -275,8 +275,8 @@ Expected: record pass/fail state before changing code. If baseline fails for unr
 ## Task 1: Contract Tests And V2 Snapshot Builder
 
 **Files:**
-- Modify `src/gmgn_twitter_intel/domains/token_intel/_constants.py`.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py`.
+- Modify `src/parallax/domains/token_intel/_constants.py`.
+- Modify `src/parallax/domains/token_intel/scoring/factor_snapshot.py`.
 - Modify `tests/unit/test_factor_snapshot.py`.
 - Modify `tests/architecture/test_no_factor_snapshot_fallback.py`.
 
@@ -339,10 +339,10 @@ In `tests/architecture/test_no_factor_snapshot_fallback.py`, add a focused produ
 
 ```python
 source_files = [
-    "src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py",
-    "src/gmgn_twitter_intel/domains/token_intel/scoring/cross_section_normalizer.py",
-    "src/gmgn_twitter_intel/domains/token_intel/scoring/factor_cohort.py",
-    "src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py",
+    "src/parallax/domains/token_intel/scoring/factor_snapshot.py",
+    "src/parallax/domains/token_intel/scoring/cross_section_normalizer.py",
+    "src/parallax/domains/token_intel/scoring/factor_cohort.py",
+    "src/parallax/domains/token_intel/services/token_radar_projection.py",
 ]
 ```
 
@@ -420,11 +420,11 @@ Expected: v2 snapshot tests pass; no producer-owned v1 fallback remains in files
 ## Task 2: Diffusion, Cohort, Normalization, And Projection
 
 **Files:**
-- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/token_radar_feature_builder.py`.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/diffusion_health.py` only if needed.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/cross_section_normalizer.py`.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_cohort.py`.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`.
+- Modify `src/parallax/domains/token_intel/scoring/token_radar_feature_builder.py`.
+- Modify `src/parallax/domains/token_intel/scoring/diffusion_health.py` only if needed.
+- Modify `src/parallax/domains/token_intel/scoring/cross_section_normalizer.py`.
+- Modify `src/parallax/domains/token_intel/scoring/factor_cohort.py`.
+- Modify `src/parallax/domains/token_intel/services/token_radar_projection.py`.
 - Modify `tests/unit/test_token_radar_feature_builder.py`.
 - Modify `tests/unit/test_diffusion_health.py`.
 - Modify `tests/unit/test_cross_section_normalizer.py`.
@@ -522,15 +522,15 @@ Expected: projection persists v2 snapshots, writes final normalized decisions, a
 ## Task 3: Radar Repository Retention, Current Market Read Model, And Evaluation
 
 **Files:**
-- Modify `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`.
-- Modify `src/gmgn_twitter_intel/app/runtime/app.py`.
-- Modify `src/gmgn_twitter_intel/app/surfaces/api/http.py`.
-- Modify `src/gmgn_twitter_intel/app/surfaces/cli/main.py`.
-- Modify `src/gmgn_twitter_intel/app/runtime/repository_session.py`.
-- Modify `src/gmgn_twitter_intel/domains/asset_market/repositories/price_observation_repository.py`.
-- Create `src/gmgn_twitter_intel/domains/token_intel/repositories/token_factor_evaluation_repository.py`.
-- Create `src/gmgn_twitter_intel/domains/token_intel/services/token_factor_evaluation.py`.
+- Modify `src/parallax/domains/token_intel/repositories/token_radar_repository.py`.
+- Modify `src/parallax/domains/token_intel/read_models/asset_flow_service.py`.
+- Modify `src/parallax/app/runtime/app.py`.
+- Modify `src/parallax/app/surfaces/api/http.py`.
+- Modify `src/parallax/app/surfaces/cli/main.py`.
+- Modify `src/parallax/app/runtime/repository_session.py`.
+- Modify `src/parallax/domains/asset_market/repositories/price_observation_repository.py`.
+- Create `src/parallax/domains/token_intel/repositories/token_factor_evaluation_repository.py`.
+- Create `src/parallax/domains/token_intel/services/token_factor_evaluation.py`.
 - Modify `tests/unit/test_token_radar_repository.py`.
 - Modify `tests/unit/test_asset_flow_service.py`.
 - Modify `tests/unit/test_token_factor_evaluation.py` or create it.
@@ -682,10 +682,10 @@ Expected: historical rows are retained, latest rows remain latest-only, current-
 ## Task 4: Migration, Diagnostics, And CLI
 
 **Files:**
-- Create `src/gmgn_twitter_intel/platform/db/alembic/versions/20260511_0026_token_factor_eval_diagnostics.py`.
-- Create `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_diagnostics.py`.
-- Modify `src/gmgn_twitter_intel/app/surfaces/cli/main.py`.
-- Modify `src/gmgn_twitter_intel/platform/db/postgres_audit.py`.
+- Create `src/parallax/platform/db/alembic/versions/20260511_0026_token_factor_eval_diagnostics.py`.
+- Create `src/parallax/domains/token_intel/scoring/factor_diagnostics.py`.
+- Modify `src/parallax/app/surfaces/cli/main.py`.
+- Modify `src/parallax/platform/db/postgres_audit.py`.
 - Modify `tests/unit/test_factor_diagnostics.py`.
 - Modify `tests/unit/test_token_radar_audit_cli.py`.
 - Modify `tests/unit/test_postgres_schema.py`.
@@ -750,8 +750,8 @@ Violation rules:
 Under `ops` add:
 
 ```bash
-gmgn-twitter-intel ops factor-diagnostics --window 1h --scope all --limit 200
-gmgn-twitter-intel ops settle-token-factors --window 1h --scope all --horizon 1h --limit 1000
+parallax ops factor-diagnostics --window 1h --scope all --limit 200
+parallax ops settle-token-factors --window 1h --scope all --horizon 1h --limit 1000
 ```
 
 Arguments:
@@ -782,13 +782,13 @@ Expected: CLI help includes new commands, audit rejects v1 shape, migration sche
 ## Task 5: Pulse, Notifications, And Agent Context Hard Cut
 
 **Files:**
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py`.
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`.
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`.
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py`.
-- Modify `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py`.
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_recommendation.py` if needed.
-- Modify `src/gmgn_twitter_intel/integrations/openai_agents/pulse_recommendation_agent_client.py` if prompt/audit names are v1-specific.
+- Modify `src/parallax/domains/pulse_lab/services/pulse_candidate_gate.py`.
+- Modify `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`.
+- Modify `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py`.
+- Modify `src/parallax/domains/pulse_lab/repositories/pulse_repository.py`.
+- Modify `src/parallax/domains/notifications/services/notification_rules.py`.
+- Modify `src/parallax/domains/pulse_lab/types/pulse_recommendation.py` if needed.
+- Modify `src/parallax/integrations/openai_agents/pulse_recommendation_agent_client.py` if prompt/audit names are v1-specific.
 - Modify `tests/unit/test_pulse_candidate_gate.py`.
 - Modify `tests/unit/test_pulse_candidate_worker.py`.
 - Modify `tests/unit/test_signal_pulse_service.py`.
@@ -960,7 +960,7 @@ Expected: frontend accepts v2 snapshots only and current market remains independ
 **Files:**
 - Modify `docs/CONTRACTS.md`.
 - Modify `docs/ARCHITECTURE.md`.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`.
+- Modify `src/parallax/domains/token_intel/ARCHITECTURE.md`.
 - Modify `docs/TECH_DEBT.md`.
 - Regenerate `docs/generated/cli-help.md`.
 - Regenerate `docs/generated/openapi.json` and `web/src/api/openapi.ts` if API schema changes.
@@ -1024,12 +1024,12 @@ change.
 Run when a local DB/config is available:
 
 ```bash
-uv run gmgn-twitter-intel db health
-uv run gmgn-twitter-intel ops rebuild-token-radar --window 1h --scope all --limit 100
-uv run gmgn-twitter-intel ops audit-token-radar --window 1h --scope all --limit 100
-uv run gmgn-twitter-intel ops factor-diagnostics --window 1h --scope all --limit 200
-uv run gmgn-twitter-intel ops settle-token-factors --window 1h --scope all --horizon 1h --limit 1000
-uv run gmgn-twitter-intel asset-flow --window 1h --scope all --limit 20
+uv run parallax db health
+uv run parallax ops rebuild-token-radar --window 1h --scope all --limit 100
+uv run parallax ops audit-token-radar --window 1h --scope all --limit 100
+uv run parallax ops factor-diagnostics --window 1h --scope all --limit 200
+uv run parallax ops settle-token-factors --window 1h --scope all --horizon 1h --limit 1000
+uv run parallax asset-flow --window 1h --scope all --limit 20
 ```
 
 Expected:

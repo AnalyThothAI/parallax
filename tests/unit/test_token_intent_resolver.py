@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.evidence.services.entity_extractor import TextSurface, extract_entities_from_surfaces
-from gmgn_twitter_intel.domains.token_intel.services.token_evidence_builder import build_token_evidence
-from gmgn_twitter_intel.domains.token_intel.services.token_intent_builder import build_token_intents
-from gmgn_twitter_intel.domains.token_intel.services.token_intent_resolver import TokenIntentResolver
+from parallax.domains.evidence.services.entity_extractor import TextSurface, extract_entities_from_surfaces
+from parallax.domains.token_intel.services.token_evidence_builder import build_token_evidence
+from parallax.domains.token_intel.services.token_intent_builder import build_token_intents
+from parallax.domains.token_intel.services.token_intent_resolver import TokenIntentResolver
 
 
 def test_token_intent_resolver_uses_cex_token_before_chain_candidates():

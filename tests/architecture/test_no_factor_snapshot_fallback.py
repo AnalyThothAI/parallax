@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot_contract import require_token_factor_snapshot
+from parallax.domains.token_intel.scoring.factor_snapshot_contract import require_token_factor_snapshot
 
 ROOT = Path(__file__).resolve().parents[2]
-SRC_ROOT = ROOT / "src" / "gmgn_twitter_intel"
+SRC_ROOT = ROOT / "src" / "parallax"
 WEB_SRC_ROOT = ROOT / "web" / "src"
 
 LEGACY_BACKEND_PATTERNS = (

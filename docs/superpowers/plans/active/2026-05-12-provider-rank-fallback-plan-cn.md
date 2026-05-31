@@ -58,9 +58,9 @@ Expected before implementation: FAIL.
 ### Task 2: Minimal Implementation
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/token_discovery_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/deterministic_token_resolver.py`
+- Modify: `src/parallax/domains/asset_market/runtime/token_discovery_worker.py`
+- Modify: `src/parallax/domains/asset_market/repositories/registry_repository.py`
+- Modify: `src/parallax/domains/token_intel/services/deterministic_token_resolver.py`
 
 - [ ] **Step 1: Save true provider rank**
 
@@ -109,7 +109,7 @@ Move provider-rank fallback from deferred to selected refactor. Keep the warning
 ```bash
 uv run pytest tests/unit/test_token_discovery_worker.py tests/unit/test_deterministic_token_resolver.py tests/integration/test_registry_repository.py::test_symbol_lookup_reads_market_metadata_from_okx_identity_evidence -q
 uv run pytest tests/integration/test_discovery_and_lookup_repositories.py::test_due_lookup_keys_includes_error_count_for_backoff -q
-uv run ruff check src/gmgn_twitter_intel/domains/asset_market/runtime/token_discovery_worker.py src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py src/gmgn_twitter_intel/domains/token_intel/services/deterministic_token_resolver.py tests/unit/test_token_discovery_worker.py tests/unit/test_deterministic_token_resolver.py tests/integration/test_registry_repository.py tests/integration/test_discovery_and_lookup_repositories.py
+uv run ruff check src/parallax/domains/asset_market/runtime/token_discovery_worker.py src/parallax/domains/asset_market/repositories/registry_repository.py src/parallax/domains/token_intel/services/deterministic_token_resolver.py tests/unit/test_token_discovery_worker.py tests/unit/test_deterministic_token_resolver.py tests/integration/test_registry_repository.py tests/integration/test_discovery_and_lookup_repositories.py
 make check
 ```
 

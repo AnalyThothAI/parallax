@@ -4,14 +4,14 @@ from typing import Any
 
 import pytest
 
-from gmgn_twitter_intel.domains.news_intel.services.news_item_brief_input import (
+from parallax.domains.news_intel.services.news_item_brief_input import (
     build_news_item_brief_input_packet,
 )
-from gmgn_twitter_intel.domains.news_intel.services.news_item_brief_validation import (
+from parallax.domains.news_intel.services.news_item_brief_validation import (
     validate_news_item_brief_output,
 )
-from gmgn_twitter_intel.domains.news_intel.types.news_item_brief import NewsItemBriefAgentConfig
-from gmgn_twitter_intel.platform.agent_hashing import json_sha256
+from parallax.domains.news_intel.types.news_item_brief import NewsItemBriefAgentConfig
+from parallax.platform.agent_hashing import json_sha256
 
 
 def _packet():

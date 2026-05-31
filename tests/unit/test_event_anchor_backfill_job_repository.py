@@ -3,10 +3,10 @@ from __future__ import annotations
 import inspect
 from typing import Any
 
-from gmgn_twitter_intel.domains.asset_market.repositories.event_anchor_backfill_job_repository import (
+from parallax.domains.asset_market.repositories.event_anchor_backfill_job_repository import (
     EventAnchorBackfillJobRepository,
 )
-from gmgn_twitter_intel.domains.asset_market.types import EnrichedEventCapture
+from parallax.domains.asset_market.types import EnrichedEventCapture
 
 
 def test_enqueue_for_pending_capture_writes_control_plane_job() -> None:

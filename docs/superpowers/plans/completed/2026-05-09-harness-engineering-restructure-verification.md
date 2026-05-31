@@ -17,7 +17,7 @@ $ uv run pytest -v --tb=line tests/test_harness_structure.py tests/test_docs_gen
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.11, pytest-9.0.3, pluggy-1.6.0
 cachedir: .pytest_cache
-rootdir: /Users/qinghuan/Documents/code/gmgn-twitter-intel/.claude/worktrees/harness-restructure
+rootdir: /Users/qinghuan/Documents/code/parallax/.claude/worktrees/harness-restructure
 configfile: pyproject.toml
 plugins: anyio-4.13.0
 collecting ... collected 11 items
@@ -81,10 +81,10 @@ Three concerns from the AGENTS.md routing table were spot-checked:
 
 - `test_current_projection_docs_are_postgres_only` was failing transiently because Chunk 2 moved two files referenced by hardcoded paths in `tests/test_project_structure.py`. Fixed in commit `994cbd3` (Chunk 4 cleanup) by adding the `completed/` segment to those paths.
 - `regen_db_schema.py` requires Postgres connectivity; the test gates this via skip-on-failure logic. CI must provision Postgres or the AC5 evidence will be SKIP rather than PASS. In this run Postgres was reachable and the test passed.
-- The plan called for `from gmgn_twitter_intel.storage.session import build_engine`; that import did not exist. The script was adapted to use `local_docker_host_dsn` + `with_password_from_file` from `gmgn_twitter_intel.storage.postgres_client`, following the same pattern as `storage/alembic/env.py`. Adaptation is documented in the script's import comments.
+- The plan called for `from parallax.storage.session import build_engine`; that import did not exist. The script was adapted to use `local_docker_host_dsn` + `with_password_from_file` from `parallax.storage.postgres_client`, following the same pattern as `storage/alembic/env.py`. Adaptation is documented in the script's import comments.
 
 ## Follow-ups (appended to docs/TECH_DEBT.md)
 
 - Chunk 1 code review noted that `test_rule_uniqueness` could be split into two functions (one for ownership, one for router non-leakage) and that the `path.exists()` guard deserves an inline comment. Both are non-blocking readability improvements.
-- Chunk 5 noted `regen_ws_protocol.py` produces a sparse table because `src/gmgn_twitter_intel/api/ws.py` uses JSON dicts on the wire rather than typed message classes. If the WS surface gets typed message classes in the future, the script will pick them up automatically; until then the table only lists `ClientSubscription` and `PublicWebSocketHub`.
+- Chunk 5 noted `regen_ws_protocol.py` produces a sparse table because `src/parallax/api/ws.py` uses JSON dicts on the wire rather than typed message classes. If the WS surface gets typed message classes in the future, the script will pick them up automatically; until then the table only lists `ClientSubscription` and `PublicWebSocketHub`.
 - The pre-Chunk-3 `RULE_PHRASES` test scaffold guessed phrases that did not match verbatim governance content; commit `816ecc4` (Chunk 3 cleanup) corrected them. If governance files are reworded in future, RULE_PHRASES likely needs another sweep.

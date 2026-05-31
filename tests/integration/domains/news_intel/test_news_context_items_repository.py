@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.news_intel.repositories.news_repository import NewsRepository
+from parallax.domains.news_intel.repositories.news_repository import NewsRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 

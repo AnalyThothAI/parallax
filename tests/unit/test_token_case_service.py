@@ -4,12 +4,12 @@ from decimal import Decimal
 
 import pytest
 
-from gmgn_twitter_intel.domains.token_intel.read_models.token_case_service import (
+from parallax.domains.token_intel.read_models.token_case_service import (
     TokenCaseInvalidScope,
     TokenCaseService,
     TokenCaseTargetNotFound,
 )
-from gmgn_twitter_intel.domains.token_intel.repositories.token_target_repository import TokenTargetRepository
+from parallax.domains.token_intel.repositories.token_target_repository import TokenTargetRepository
 
 TARGET_ID = "asset:solana:token:hansa"
 NOW_MS = 1_700_000_060_000

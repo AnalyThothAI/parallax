@@ -59,23 +59,23 @@ KISS decision:
 
 ## File Map
 
-- Modify `src/gmgn_twitter_intel/domains/asset_market/runtime/token_capture_tier_worker.py`: enforce Tier 1 DEX-only and compute bounded Tier 2.
-- Modify `src/gmgn_twitter_intel/domains/asset_market/repositories/token_capture_tier_repository.py`: add offset support and stale tier demotion.
-- Modify `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_stream_worker.py`: reuse one OKX DEX WS connection and apply subscription diffs.
-- Modify `src/gmgn_twitter_intel/domains/asset_market/providers.py`: replace the stream provider protocol with one stateful stream session API.
-- Modify `src/gmgn_twitter_intel/integrations/okx/dex_ws_client.py`: add stateful connect/subscribe/unsubscribe/iterate/close methods and remove the old reconnect-per-call stream API.
-- Modify `src/gmgn_twitter_intel/app/runtime/providers_wiring.py`: map domain stream targets to OKX WS arguments through the stateful adapter only.
-- Modify `src/gmgn_twitter_intel/domains/asset_market/runtime/live_price_gateway.py`: remove upstream provider calls and fan out latest `market_ticks`.
-- Modify `src/gmgn_twitter_intel/domains/asset_market/repositories/market_tick_repository.py`: add a bulk latest-by-target read for LivePriceGateway.
-- Modify `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_poll_worker.py`: rotate Tier 2 batches and parallelize bounded REST calls.
-- Modify `src/gmgn_twitter_intel/domains/asset_market/services/event_market_capture.py`: make ingestion capture lookup-only; expose provider quote capture for the async worker.
-- Create `src/gmgn_twitter_intel/domains/asset_market/runtime/event_anchor_backfill_worker.py`: asynchronously backfill pending event anchors.
-- Modify `src/gmgn_twitter_intel/domains/asset_market/repositories/enriched_event_repository.py`: list pending anchors and attach async backfill results.
-- Create `src/gmgn_twitter_intel/platform/db/alembic/versions/20260516_0049_enriched_event_async_backfill.py`: partial index and narrow trigger exception.
-- Modify `src/gmgn_twitter_intel/platform/config/settings.py`: add worker settings and projection cadence settings.
-- Modify `src/gmgn_twitter_intel/app/runtime/bootstrap.py`: wire the new worker.
-- Modify `src/gmgn_twitter_intel/app/runtime/worker_registry.py`: register the new canonical worker and start priority.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py`: skip cold background windows until stale.
+- Modify `src/parallax/domains/asset_market/runtime/token_capture_tier_worker.py`: enforce Tier 1 DEX-only and compute bounded Tier 2.
+- Modify `src/parallax/domains/asset_market/repositories/token_capture_tier_repository.py`: add offset support and stale tier demotion.
+- Modify `src/parallax/domains/asset_market/runtime/market_tick_stream_worker.py`: reuse one OKX DEX WS connection and apply subscription diffs.
+- Modify `src/parallax/domains/asset_market/providers.py`: replace the stream provider protocol with one stateful stream session API.
+- Modify `src/parallax/integrations/okx/dex_ws_client.py`: add stateful connect/subscribe/unsubscribe/iterate/close methods and remove the old reconnect-per-call stream API.
+- Modify `src/parallax/app/runtime/providers_wiring.py`: map domain stream targets to OKX WS arguments through the stateful adapter only.
+- Modify `src/parallax/domains/asset_market/runtime/live_price_gateway.py`: remove upstream provider calls and fan out latest `market_ticks`.
+- Modify `src/parallax/domains/asset_market/repositories/market_tick_repository.py`: add a bulk latest-by-target read for LivePriceGateway.
+- Modify `src/parallax/domains/asset_market/runtime/market_tick_poll_worker.py`: rotate Tier 2 batches and parallelize bounded REST calls.
+- Modify `src/parallax/domains/asset_market/services/event_market_capture.py`: make ingestion capture lookup-only; expose provider quote capture for the async worker.
+- Create `src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py`: asynchronously backfill pending event anchors.
+- Modify `src/parallax/domains/asset_market/repositories/enriched_event_repository.py`: list pending anchors and attach async backfill results.
+- Create `src/parallax/platform/db/alembic/versions/20260516_0049_enriched_event_async_backfill.py`: partial index and narrow trigger exception.
+- Modify `src/parallax/platform/config/settings.py`: add worker settings and projection cadence settings.
+- Modify `src/parallax/app/runtime/bootstrap.py`: wire the new worker.
+- Modify `src/parallax/app/runtime/worker_registry.py`: register the new canonical worker and start priority.
+- Modify `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py`: skip cold background windows until stale.
 - Modify tests listed per task below.
 - Modify docs: `docs/ARCHITECTURE.md`, `docs/WORKERS.md`, and `docs/superpowers/specs/active/2026-05-16-price-pipeline-throughput-recovery-cn.md` if implementation details drift.
 
@@ -84,8 +84,8 @@ KISS decision:
 ### Task 1: Tier Projection Boundaries And Demotion
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/token_capture_tier_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/token_capture_tier_repository.py`
+- Modify: `src/parallax/domains/asset_market/runtime/token_capture_tier_worker.py`
+- Modify: `src/parallax/domains/asset_market/repositories/token_capture_tier_repository.py`
 - Test: `tests/unit/test_token_capture_tier_worker.py`
 - Test: `tests/unit/test_token_capture_tier_repository.py`
 
@@ -243,12 +243,12 @@ Expected: PASS. Confirm existing assertions that expected CEX Tier 1 now expect 
 ### Task 2: Single-Owner OKX DEX WS And DB-Backed Live Gateway
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/providers.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/providers_wiring.py`
-- Modify: `src/gmgn_twitter_intel/integrations/okx/dex_ws_client.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_stream_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/live_price_gateway.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/market_tick_repository.py`
+- Modify: `src/parallax/domains/asset_market/providers.py`
+- Modify: `src/parallax/app/runtime/providers_wiring.py`
+- Modify: `src/parallax/integrations/okx/dex_ws_client.py`
+- Modify: `src/parallax/domains/asset_market/runtime/market_tick_stream_worker.py`
+- Modify: `src/parallax/domains/asset_market/runtime/live_price_gateway.py`
+- Modify: `src/parallax/domains/asset_market/repositories/market_tick_repository.py`
 - Test: `tests/unit/test_okx_dex_ws_client.py`
 - Test: `tests/unit/test_market_tick_stream_worker.py`
 - Test: `tests/unit/test_live_price_gateway.py`
@@ -547,7 +547,7 @@ uv run pytest \
 Expected: PASS. Existing test `test_market_tick_stream_worker_skips_cex_symbol_tier1_targets` should still pass and becomes a guard against accidental CEX WS use. Add a grep check after tests:
 
 ```bash
-rg -n "stream_price_info|hasattr\\(.*stream_price_info" src/gmgn_twitter_intel tests -g '*.py'
+rg -n "stream_price_info|hasattr\\(.*stream_price_info" src/parallax tests -g '*.py'
 ```
 
 Expected: no production references. Tests may mention the old name only in this grep command or in one explicit removal regression test.
@@ -557,9 +557,9 @@ Expected: no production references. Tests may mention the old name only in this 
 ### Task 3: Tier 2 Poll Rotation And Bounded REST Concurrency
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/token_capture_tier_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_poll_worker.py`
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
+- Modify: `src/parallax/domains/asset_market/repositories/token_capture_tier_repository.py`
+- Modify: `src/parallax/domains/asset_market/runtime/market_tick_poll_worker.py`
+- Modify: `src/parallax/platform/config/settings.py`
 - Test: `tests/unit/test_market_tick_poll_worker.py`
 - Test: `tests/unit/test_token_capture_tier_repository.py`
 - Test: `tests/unit/test_worker_settings.py`
@@ -711,13 +711,13 @@ Expected: PASS. Notes payload should include `targets_selected`, `chain_targets`
 ### Task 4: Async Event Anchor Backfill
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/services/event_market_capture.py`
-- Create: `src/gmgn_twitter_intel/domains/asset_market/runtime/event_anchor_backfill_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/enriched_event_repository.py`
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/bootstrap.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_registry.py`
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260516_0049_enriched_event_async_backfill.py`
+- Modify: `src/parallax/domains/asset_market/services/event_market_capture.py`
+- Create: `src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py`
+- Modify: `src/parallax/domains/asset_market/repositories/enriched_event_repository.py`
+- Modify: `src/parallax/platform/config/settings.py`
+- Modify: `src/parallax/app/runtime/bootstrap.py`
+- Modify: `src/parallax/app/runtime/worker_registry.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260516_0049_enriched_event_async_backfill.py`
 - Test: `tests/unit/test_event_market_capture.py`
 - Test: `tests/unit/test_event_anchor_backfill_worker.py`
 - Test: `tests/unit/test_bootstrap_worker_runtime_wiring.py`
@@ -923,7 +923,7 @@ In `worker_registry.py`, add:
 
 ```python
 "event_anchor_backfill": (
-    "gmgn_twitter_intel.domains.asset_market.runtime.event_anchor_backfill_worker.EventAnchorBackfillWorker"
+    "parallax.domains.asset_market.runtime.event_anchor_backfill_worker.EventAnchorBackfillWorker"
 ),
 ```
 
@@ -956,8 +956,8 @@ Expected: PASS. Integration test must prove `market_ticks` updates still fail wh
 ### Task 5: Token Radar Projection Cold-Window Cadence
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py`
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
+- Modify: `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py`
+- Modify: `src/parallax/platform/config/settings.py`
 - Test: `tests/unit/test_token_radar_projection_worker.py`
 - Test: `tests/unit/test_worker_settings.py`
 

@@ -16,8 +16,8 @@
 
 | 路径 | 责任 |
 |---|---|
-| `src/gmgn_twitter_intel/integrations/coingecko/__init__.py` | 模块出口 |
-| `src/gmgn_twitter_intel/integrations/coingecko/search_client.py` | CoinGecko `/api/v3/search` sync client，返回 `(symbol, chain, address)` 命中 |
+| `src/parallax/integrations/coingecko/__init__.py` | 模块出口 |
+| `src/parallax/integrations/coingecko/search_client.py` | CoinGecko `/api/v3/search` sync client，返回 `(symbol, chain, address)` 命中 |
 | `scripts/audit_duplicate_tokens.py` | 主脚本入口 + argparse |
 | `scripts/audit_dedup/__init__.py` | 子模块包 |
 | `scripts/audit_dedup/candidates.py` | 候选读取（SQL）|
@@ -42,8 +42,8 @@
 ## Task 1: CoinGecko search client
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/integrations/coingecko/__init__.py`
-- Create: `src/gmgn_twitter_intel/integrations/coingecko/search_client.py`
+- Create: `src/parallax/integrations/coingecko/__init__.py`
+- Create: `src/parallax/integrations/coingecko/search_client.py`
 - Create: `tests/integrations/test_coingecko_search.py`
 
 - [ ] **Step 1: Write failing test**
@@ -55,7 +55,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from gmgn_twitter_intel.integrations.coingecko.search_client import (
+from parallax.integrations.coingecko.search_client import (
     CoingeckoSearchClient,
     CoingeckoSearchHit,
 )
@@ -133,8 +133,8 @@ Expected: import errors / module not found.
 - [ ] **Step 3: Implement module**
 
 ```python
-# src/gmgn_twitter_intel/integrations/coingecko/__init__.py
-from gmgn_twitter_intel.integrations.coingecko.search_client import (
+# src/parallax/integrations/coingecko/__init__.py
+from parallax.integrations.coingecko.search_client import (
     CoingeckoSearchClient,
     CoingeckoSearchHit,
 )
@@ -143,7 +143,7 @@ __all__ = ["CoingeckoSearchClient", "CoingeckoSearchHit"]
 ```
 
 ```python
-# src/gmgn_twitter_intel/integrations/coingecko/search_client.py
+# src/parallax/integrations/coingecko/search_client.py
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -214,7 +214,7 @@ Expected: 4 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/integrations/coingecko/ tests/integrations/test_coingecko_search.py
+git add src/parallax/integrations/coingecko/ tests/integrations/test_coingecko_search.py
 git commit -m "feat: add CoinGecko search client for token audit arbitration"
 ```
 
@@ -759,8 +759,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from gmgn_twitter_intel.integrations.coingecko.search_client import CoingeckoSearchHit
-from gmgn_twitter_intel.integrations.okx.models import OkxDexTokenCandidate
+from parallax.integrations.coingecko.search_client import CoingeckoSearchHit
+from parallax.integrations.okx.models import OkxDexTokenCandidate
 from scripts.audit_dedup.candidates import AssetCandidate
 from scripts.audit_dedup.external_arbiter import (
     ExternalArbiter,
@@ -873,9 +873,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from gmgn_twitter_intel.integrations.coingecko.search_client import CoingeckoSearchHit
-from gmgn_twitter_intel.integrations.okx.chains import OKX_CHAIN_TO_CHAIN_INDEX
-from gmgn_twitter_intel.integrations.okx.models import OkxDexTokenCandidate
+from parallax.integrations.coingecko.search_client import CoingeckoSearchHit
+from parallax.integrations.okx.chains import OKX_CHAIN_TO_CHAIN_INDEX
+from parallax.integrations.okx.models import OkxDexTokenCandidate
 from scripts.audit_dedup.candidates import AssetCandidate
 
 
@@ -2001,10 +2001,10 @@ import argparse
 import sys
 from pathlib import Path
 
-from gmgn_twitter_intel.integrations.coingecko.search_client import CoingeckoSearchClient
-from gmgn_twitter_intel.integrations.okx.dex_client import OkxDexClient
-from gmgn_twitter_intel.platform.config.settings import load_settings
-from gmgn_twitter_intel.platform.db.postgres_client import (
+from parallax.integrations.coingecko.search_client import CoingeckoSearchClient
+from parallax.integrations.okx.dex_client import OkxDexClient
+from parallax.platform.config.settings import load_settings
+from parallax.platform.db.postgres_client import (
     connect_postgres,
     local_docker_host_dsn,
     with_password_from_file,
@@ -2142,7 +2142,7 @@ Open `docs/generated/duplicate-token-audit.md`. Verify:
 - [ ] **Step 4: Confirm DB unchanged**
 
 ```bash
-docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel -c "SELECT COUNT(*) FROM assets;"
+docker exec parallax-postgres-1 psql -U parallax_app -d parallax -c "SELECT COUNT(*) FROM assets;"
 ```
 Expected: still ≈15,004 (no drift from baseline).
 
@@ -2175,7 +2175,7 @@ Expected stdout: `Audit report → docs/generated/duplicate-token-audit-applied.
 - [ ] **Step 3: Post-apply invariants**
 
 ```bash
-docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel -c "
+docker exec parallax-postgres-1 psql -U parallax_app -d parallax -c "
   SELECT COUNT(*) AS assets_after FROM assets;
   SELECT chain, COUNT(*) FROM asset_venues GROUP BY chain ORDER BY chain;
   WITH dup AS (

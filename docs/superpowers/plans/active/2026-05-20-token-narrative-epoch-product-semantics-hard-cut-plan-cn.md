@@ -50,9 +50,9 @@ Forbidden:
   Expected branch: `codex/token-narrative-epoch-product-semantics-hard-cut`.
 - [ ] Confirm live config paths before any real-data check:
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
-  Expected: `config_path` and `workers_config_path` point at `/Users/qinghuan/.gmgn-twitter-intel/`. Do not print secret values.
+  Expected: `config_path` and `workers_config_path` point at `/Users/qinghuan/.parallax/`. Do not print secret values.
 - [ ] Run focused backend baseline:
   ```bash
   uv run pytest tests/unit/domains/narrative_intel/test_discussion_digest_service.py tests/unit/domains/narrative_intel/test_narrative_workers.py tests/unit/domains/narrative_intel/test_narrative_read_model.py tests/unit/domains/narrative_intel/test_narrative_backlog_health.py tests/integration/test_narrative_repository.py tests/unit/test_api_narrative_contract.py -q
@@ -72,11 +72,11 @@ Known baseline risks:
 
 ### Create
 
-- `src/gmgn_twitter_intel/domains/narrative_intel/services/narrative_epoch_policy.py`
+- `src/parallax/domains/narrative_intel/services/narrative_epoch_policy.py`
   - Pure deterministic policy for `unsupported_window`, `no_ready_digest`, `no_material_delta`, `material_delta_due`, `ttl_refresh_due`, `semantic_pending`, and `insufficient`.
-- `src/gmgn_twitter_intel/domains/narrative_intel/services/narrative_currentness.py`
+- `src/parallax/domains/narrative_intel/services/narrative_currentness.py`
   - Pure composer for public `discussion_digest.currentness`, delta counts, unsupported sentinels, and stale/updating labels.
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260520_0070_token_narrative_epochs.py`
+- `src/parallax/platform/db/alembic/versions/20260520_0070_token_narrative_epochs.py`
   - Adds epoch metadata to `token_discussion_digests`.
 - `tests/unit/domains/narrative_intel/test_narrative_epoch_policy.py`
   - Policy unit tests.
@@ -85,33 +85,33 @@ Known baseline risks:
 
 ### Modify
 
-- `src/gmgn_twitter_intel/domains/narrative_intel/types/discussion_digest.py`
+- `src/parallax/domains/narrative_intel/types/discussion_digest.py`
   - Add epoch metadata fields to `TokenDiscussionDigest`.
-- `src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py`
+- `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`
   - Persist/read epoch metadata.
   - Add last-ready lookup and public snapshot lookup.
   - Stop demoting current ready digests on source-fingerprint mismatch.
-- `src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
+- `src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
   - Replace direct `refresh_decision` flow with `NarrativeEpochPolicy`.
   - Skip 5m without writes.
   - Keep last-ready display when semantics/source thresholds fail.
-- `src/gmgn_twitter_intel/domains/narrative_intel/services/discussion_digest_service.py`
+- `src/parallax/domains/narrative_intel/services/discussion_digest_service.py`
   - Preserve threshold/status helpers, but publish ready/status digests with epoch metadata.
-- `src/gmgn_twitter_intel/domains/narrative_intel/read_models/narrative_read_model.py`
+- `src/parallax/domains/narrative_intel/read_models/narrative_read_model.py`
   - Hydrate Token Radar and Token Case with public currentness and `narrative_delta`.
-- `src/gmgn_twitter_intel/domains/narrative_intel/interfaces.py`
+- `src/parallax/domains/narrative_intel/interfaces.py`
   - Rename/add `current_narrative_snapshots_for_targets`.
-- `src/gmgn_twitter_intel/domains/narrative_intel/queries/narrative_backlog_health_query.py`
+- `src/parallax/domains/narrative_intel/queries/narrative_backlog_health_query.py`
   - Add epoch/currentness health.
-- `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
+- `src/parallax/app/surfaces/api/schemas.py`
   - Add structured public digest/currentness schemas so OpenAPI requires `currentness`.
-- `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_evidence_source_repository.py`
+- `src/parallax/domains/pulse_lab/repositories/pulse_evidence_source_repository.py`
   - Include digest currentness metadata in Pulse context; do not allow stale/updating prose as sole evidence.
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/evidence_packet_builder.py`
+- `src/parallax/domains/pulse_lab/services/evidence_packet_builder.py`
   - Compact digest context with currentness and data-gap boundaries.
-- `src/gmgn_twitter_intel/platform/config/settings.py`
+- `src/parallax/platform/config/settings.py`
   - Hard-cut digest TTL defaults and remove 5m digest TTL from worker YAML.
-- `docs/CONTRACTS.md`, `docs/WORKERS.md`, `docs/ARCHITECTURE.md`, `src/gmgn_twitter_intel/domains/narrative_intel/ARCHITECTURE.md`
+- `docs/CONTRACTS.md`, `docs/WORKERS.md`, `docs/ARCHITECTURE.md`, `src/parallax/domains/narrative_intel/ARCHITECTURE.md`
   - Document epoch/currentness semantics.
 - `web/src/lib/types/openapi.ts`, `web/src/lib/types/frontend-contracts.ts`, `web/src/lib/types/index.ts`
   - Regenerate/sync public types.
@@ -150,7 +150,7 @@ Known baseline risks:
   ```bash
   uv run pytest tests/unit/test_postgres_schema.py::test_token_narrative_epochs_migration_adds_digest_epoch_metadata -q
   ```
-- [ ] Create `src/gmgn_twitter_intel/platform/db/alembic/versions/20260520_0070_token_narrative_epochs.py` with:
+- [ ] Create `src/parallax/platform/db/alembic/versions/20260520_0070_token_narrative_epochs.py` with:
   ```python
   """Add token narrative epoch metadata."""
 
@@ -191,7 +191,7 @@ Known baseline risks:
           "restore a pre-migration backup instead"
       )
   ```
-- [ ] Modify `src/gmgn_twitter_intel/domains/narrative_intel/types/discussion_digest.py`:
+- [ ] Modify `src/parallax/domains/narrative_intel/types/discussion_digest.py`:
   ```python
   epoch_id: str | None = None
   epoch_policy_version: str | None = None
@@ -210,7 +210,7 @@ Known baseline risks:
   ```
 - [ ] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/platform/db/alembic/versions/20260520_0070_token_narrative_epochs.py src/gmgn_twitter_intel/domains/narrative_intel/types/discussion_digest.py src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py tests/unit/test_postgres_schema.py tests/unit/domains/narrative_intel/test_types_and_validation.py
+  git add src/parallax/platform/db/alembic/versions/20260520_0070_token_narrative_epochs.py src/parallax/domains/narrative_intel/types/discussion_digest.py src/parallax/domains/narrative_intel/repositories/narrative_repository.py tests/unit/test_postgres_schema.py tests/unit/domains/narrative_intel/test_types_and_validation.py
   git commit -m "feat: add token narrative epoch metadata"
   ```
 
@@ -225,7 +225,7 @@ Known baseline risks:
   - Missing/pending semantics returns `semantic_pending` when no ready digest exists.
   - Missing/pending semantics returns `no_material_delta` or `material_delta_due` without writing status when ready digest exists, depending on source delta materiality.
   - Price move over threshold returns `material_delta_due`.
-- [ ] Create `src/gmgn_twitter_intel/domains/narrative_intel/services/narrative_epoch_policy.py`:
+- [ ] Create `src/parallax/domains/narrative_intel/services/narrative_epoch_policy.py`:
   ```python
   from __future__ import annotations
 
@@ -332,7 +332,7 @@ Known baseline risks:
   ```
 - [ ] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/domains/narrative_intel/services/narrative_epoch_policy.py src/gmgn_twitter_intel/platform/config/settings.py tests/unit/domains/narrative_intel/test_narrative_epoch_policy.py tests/unit/test_worker_settings.py
+  git add src/parallax/domains/narrative_intel/services/narrative_epoch_policy.py src/parallax/platform/config/settings.py tests/unit/domains/narrative_intel/test_narrative_epoch_policy.py tests/unit/test_worker_settings.py
   git commit -m "feat: add deterministic narrative epoch policy"
   ```
 
@@ -394,7 +394,7 @@ Known baseline risks:
   ```
 - [ ] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py tests/integration/test_narrative_repository.py
+  git add src/parallax/domains/narrative_intel/repositories/narrative_repository.py tests/integration/test_narrative_repository.py
   git commit -m "feat: expose last-ready narrative snapshots"
   ```
 
@@ -455,7 +455,7 @@ Known baseline risks:
   ```
 - [ ] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py src/gmgn_twitter_intel/domains/narrative_intel/services/discussion_digest_service.py tests/unit/domains/narrative_intel/test_narrative_workers.py tests/unit/domains/narrative_intel/test_discussion_digest_service.py
+  git add src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py src/parallax/domains/narrative_intel/services/discussion_digest_service.py tests/unit/domains/narrative_intel/test_narrative_workers.py tests/unit/domains/narrative_intel/test_discussion_digest_service.py
   git commit -m "feat: gate narrative digest refresh by epoch policy"
   ```
 
@@ -512,7 +512,7 @@ Known baseline risks:
   ```
 - [ ] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/domains/narrative_intel/services/narrative_currentness.py src/gmgn_twitter_intel/domains/narrative_intel/read_models/narrative_read_model.py tests/unit/domains/narrative_intel/test_narrative_currentness.py tests/unit/domains/narrative_intel/test_narrative_read_model.py tests/integration/test_api_http.py
+  git add src/parallax/domains/narrative_intel/services/narrative_currentness.py src/parallax/domains/narrative_intel/read_models/narrative_read_model.py tests/unit/domains/narrative_intel/test_narrative_currentness.py tests/unit/domains/narrative_intel/test_narrative_read_model.py tests/integration/test_api_http.py
   git commit -m "feat: publish narrative currentness snapshots"
   ```
 
@@ -523,7 +523,7 @@ Known baseline risks:
   - Token Case response includes `narrative_delta`.
   - Token Radar row examples include `discussion_digest.currentness`.
   - 5m Token Radar row returns `unsupported_window`, not `digest_stale`.
-- [ ] Modify `src/gmgn_twitter_intel/app/surfaces/api/schemas.py` with structured schemas:
+- [ ] Modify `src/parallax/app/surfaces/api/schemas.py` with structured schemas:
   ```python
   class NarrativeCurrentnessData(ApiSchema):
       display_status: Literal["current", "updating", "stale", "not_ready", "out_of_frontier", "unsupported_window"]
@@ -556,7 +556,7 @@ Known baseline risks:
 - [ ] Introduce a permissive `TokenRadarRowData(ApiSchema)` with `discussion_digest: TokenDiscussionDigestData | None = None`, then use it for `TokenRadarData.targets` and `TokenRadarData.attention`. Keep `extra="allow"` so existing row fields survive.
 - [ ] Regenerate OpenAPI and frontend types using the project’s existing command. If the repo command is not obvious, use:
   ```bash
-  uv run gmgn-twitter-intel openapi > docs/generated/openapi.json
+  uv run parallax openapi > docs/generated/openapi.json
   cd web
   npm run generate:types
   ```
@@ -569,7 +569,7 @@ Known baseline risks:
   ```
 - [ ] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/app/surfaces/api/schemas.py docs/CONTRACTS.md docs/generated/openapi.json web/src/lib/types/openapi.ts web/src/lib/types/frontend-contracts.ts web/src/lib/types/index.ts tests/unit/test_api_narrative_contract.py tests/integration/test_api_http.py
+  git add src/parallax/app/surfaces/api/schemas.py docs/CONTRACTS.md docs/generated/openapi.json web/src/lib/types/openapi.ts web/src/lib/types/frontend-contracts.ts web/src/lib/types/index.ts tests/unit/test_api_narrative_contract.py tests/integration/test_api_http.py
   git commit -m "feat: require narrative currentness in public contracts"
   ```
 
@@ -606,7 +606,7 @@ Known baseline risks:
   }
   ```
 - [ ] Keep existing missing semantics fields unchanged. Epoch policy must not hide `missing_semantic_rows`.
-- [ ] Update `src/gmgn_twitter_intel/app/surfaces/api/schemas.py` health models to expose the epoch object.
+- [ ] Update `src/parallax/app/surfaces/api/schemas.py` health models to expose the epoch object.
 - [ ] Update ops diagnostics frontend only if it already renders narrative health fields; otherwise leave UI unchanged and rely on API contract.
 - [ ] Run:
   ```bash
@@ -614,7 +614,7 @@ Known baseline risks:
   ```
 - [ ] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/domains/narrative_intel/queries/narrative_backlog_health_query.py src/gmgn_twitter_intel/app/surfaces/api/schemas.py tests/unit/domains/narrative_intel/test_narrative_backlog_health.py
+  git add src/parallax/domains/narrative_intel/queries/narrative_backlog_health_query.py src/parallax/app/surfaces/api/schemas.py tests/unit/domains/narrative_intel/test_narrative_backlog_health.py
   git commit -m "feat: add narrative epoch health diagnostics"
   ```
 
@@ -640,7 +640,7 @@ Known baseline risks:
   ```
 - [ ] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_evidence_source_repository.py src/gmgn_twitter_intel/domains/pulse_lab/services/evidence_packet_builder.py tests/unit/domains/pulse_lab/test_evidence_packet_builder.py tests/integration/test_pulse_evidence_repository.py
+  git add src/parallax/domains/pulse_lab/repositories/pulse_evidence_source_repository.py src/parallax/domains/pulse_lab/services/evidence_packet_builder.py tests/unit/domains/pulse_lab/test_evidence_packet_builder.py tests/integration/test_pulse_evidence_repository.py
   git commit -m "feat: pass narrative currentness into pulse evidence"
   ```
 
@@ -702,7 +702,7 @@ Known baseline risks:
 - [ ] Add grep-style tests in a new or existing architecture test:
   ```python
   def test_no_exact_fingerprint_only_public_hydration() -> None:
-      text = Path("src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py").read_text()
+      text = Path("src/parallax/domains/narrative_intel/repositories/narrative_repository.py").read_text()
       method = text.split("def current_narrative_snapshots_for_targets", 1)[1]
       assert "COALESCE(admissions.source_fingerprint, '') = COALESCE(digest.source_fingerprint, '')" not in method
   ```
@@ -710,7 +710,7 @@ Known baseline risks:
   - `docs/ARCHITECTURE.md`: narrative epochs are sealed read-model facts, not minute-moving projections.
   - `docs/WORKERS.md`: digest worker uses epoch policy and does not process 5m.
   - `docs/WORKER_FLOW.md`: last-ready + delta public path.
-  - `src/gmgn_twitter_intel/domains/narrative_intel/ARCHITECTURE.md`: writer ownership and currentness read-model composition.
+  - `src/parallax/domains/narrative_intel/ARCHITECTURE.md`: writer ownership and currentness read-model composition.
   - `docs/CONTRACTS.md`: public API examples.
 - [ ] Run:
   ```bash
@@ -719,7 +719,7 @@ Known baseline risks:
   ```
 - [ ] Commit:
   ```bash
-  git add tests/architecture/test_worker_runtime_contracts.py docs/ARCHITECTURE.md docs/WORKERS.md docs/WORKER_FLOW.md docs/CONTRACTS.md src/gmgn_twitter_intel/domains/narrative_intel/ARCHITECTURE.md
+  git add tests/architecture/test_worker_runtime_contracts.py docs/ARCHITECTURE.md docs/WORKERS.md docs/WORKER_FLOW.md docs/CONTRACTS.md src/parallax/domains/narrative_intel/ARCHITECTURE.md
   git commit -m "docs: document narrative epoch hard cut"
   ```
 
@@ -743,12 +743,12 @@ Known baseline risks:
   ```
 - [ ] Run migration smoke test against a disposable database:
   ```bash
-  uv run gmgn-twitter-intel db upgrade
+  uv run parallax db upgrade
   ```
   Expected: revision reaches `20260520_0070`.
 - [ ] If using live data for smoke verification, first confirm config paths:
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
   Then check narrative health without printing secrets:
   ```bash
@@ -798,7 +798,7 @@ Known baseline risks:
   Expected: no runtime compatibility path; `digest_stale` only appears in removed-history docs or migrated old tests that are being deleted in the same PR.
 - [ ] Search for 5m digest writes:
   ```bash
-  rg -n "\"5m\"|window.*5m|5m:" src/gmgn_twitter_intel/domains/narrative_intel src/gmgn_twitter_intel/platform/config/settings.py tests/unit/domains/narrative_intel
+  rg -n "\"5m\"|window.*5m|5m:" src/parallax/domains/narrative_intel src/parallax/platform/config/settings.py tests/unit/domains/narrative_intel
   ```
   Expected: 5m appears in Radar/admission/currentness unsupported tests, not in digest TTL defaults or provider-call paths.
 - [ ] Confirm `TokenDiscussionDigestWorker` has one runtime write path for `token_discussion_digests`.
@@ -808,7 +808,7 @@ Known baseline risks:
 ## Rollout Notes
 
 - Deploy schema and code together. This hard cut changes API shape and frontend expectations in one branch.
-- Before restarting live workers, remove 5m digest TTL from operator-owned `/Users/qinghuan/.gmgn-twitter-intel/workers.yaml`; do not add runtime compatibility parsing for the old key.
+- Before restarting live workers, remove 5m digest TTL from operator-owned `/Users/qinghuan/.parallax/workers.yaml`; do not add runtime compatibility parsing for the old key.
 - Run the narrative rebuild/drain after deploy so current admissions and semantics are aligned under the new epoch policy.
 - Existing ready digest rows without epoch metadata remain historical rows. Runtime code must compute public currentness from source ids/fingerprints/counts and must not branch on a migration label.
 - Threshold tuning after live observation is allowed through worker config, but adding minute-chasing refresh behavior requires a new spec.

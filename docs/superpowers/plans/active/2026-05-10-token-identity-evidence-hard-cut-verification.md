@@ -19,9 +19,9 @@ The hard cut is implemented in runtime code. Canonical asset identity now flows 
 | `npm test -- --run` | Pass: 15 files, 86 tests |
 | `npm run build` | Pass |
 | `uv run pytest tests/test_asset_identity_policy.py tests/test_asset_identity_repository.py tests/test_token_radar_projection.py tests/test_asset_market_sync.py -q` | Pass: 30 passed |
-| `uv run gmgn-twitter-intel db health` | Expected stale: real local DB is still on `20260509_0020`; code head is `20260510_0021` |
-| `rg -n "_SOURCE_PRECEDENCE|DEX_SEARCH_SOURCE|DEX_ADDRESS_SEARCH_SOURCE|ADDRESS_VERIFIED_SOURCES|market_hydrator|preflight_hydration|radar_projection_preflight|demote_unretained|demote_symbol" src/gmgn_twitter_intel web/src --glob '!**/platform/db/alembic/versions/*.py'` | Pass: no runtime hits |
-| `rg -n "registry_assets\\.symbol|registry_assets\\.name|registry_assets\\.decimals|registry_assets\\.primary_source" src/gmgn_twitter_intel web/src --glob '!**/platform/db/alembic/versions/*.py'` | Pass: no runtime hits |
+| `uv run parallax db health` | Expected stale: real local DB is still on `20260509_0020`; code head is `20260510_0021` |
+| `rg -n "_SOURCE_PRECEDENCE|DEX_SEARCH_SOURCE|DEX_ADDRESS_SEARCH_SOURCE|ADDRESS_VERIFIED_SOURCES|market_hydrator|preflight_hydration|radar_projection_preflight|demote_unretained|demote_symbol" src/parallax web/src --glob '!**/platform/db/alembic/versions/*.py'` | Pass: no runtime hits |
+| `rg -n "registry_assets\\.symbol|registry_assets\\.name|registry_assets\\.decimals|registry_assets\\.primary_source" src/parallax web/src --glob '!**/platform/db/alembic/versions/*.py'` | Pass: no runtime hits |
 
 ## Real Local DB Dry-Run
 

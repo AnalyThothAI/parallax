@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_evidence_source_repository import (
+from parallax.domains.pulse_lab.repositories.pulse_evidence_source_repository import (
     PulseEvidenceSourceRepository,
 )
 

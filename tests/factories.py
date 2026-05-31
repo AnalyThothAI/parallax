@@ -3,13 +3,13 @@ from __future__ import annotations
 import time
 from dataclasses import replace
 
-from gmgn_twitter_intel.domains.asset_market.repositories.registry_repository import RegistryRepository
-from gmgn_twitter_intel.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
-from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
-from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
-from gmgn_twitter_intel.domains.evidence.services.ingest_service import IngestService
-from gmgn_twitter_intel.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
-from gmgn_twitter_intel.domains.token_intel.interfaces import SignalRepository
+from parallax.domains.asset_market.repositories.registry_repository import RegistryRepository
+from parallax.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
+from parallax.domains.evidence.repositories.entity_repository import EntityRepository
+from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
+from parallax.domains.evidence.services.ingest_service import IngestService
+from parallax.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
+from parallax.domains.token_intel.interfaces import SignalRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 

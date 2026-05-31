@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 from typing import Any
 
-from gmgn_twitter_intel.platform.db.queue_terminal import (
+from parallax.platform.db.queue_terminal import (
     inspect_terminal_events,
     resolve_terminal_event,
     terminal_reason_bucket,

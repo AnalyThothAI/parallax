@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.domains.pulse_lab.services.recommendation_clipper import clip_recommendation
-from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
+from parallax.domains.pulse_lab.services.recommendation_clipper import clip_recommendation
+from parallax.domains.pulse_lab.types.agent_decision import (
     BullBearView,
     FinalDecision,
     TradePlaybook,

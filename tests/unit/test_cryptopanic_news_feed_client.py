@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from gmgn_twitter_intel.integrations.news_feeds.cryptopanic_client import CryptopanicFeedClient
+from parallax.integrations.news_feeds.cryptopanic_client import CryptopanicFeedClient
 
 
 def test_cryptopanic_feed_client_maps_normalized_posts_to_news_feed_entries(tmp_path) -> None:

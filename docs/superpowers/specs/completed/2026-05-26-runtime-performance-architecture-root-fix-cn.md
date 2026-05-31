@@ -9,7 +9,7 @@
 - `docs/superpowers/specs/active/2026-05-26-postgres-runtime-root-cause-hard-cut-cn.md`
 - `docs/superpowers/plans/active/2026-05-26-postgres-performance-queue-hard-cut-plan-cn.md`
 - `docs/ARCHITECTURE.md`
-- `src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md`
+- `src/parallax/domains/macro_intel/ARCHITECTURE.md`
 
 ## Background
 
@@ -24,20 +24,20 @@ scans.
 
 The current local `main` is `871e8ac4 feat: hard cut OpenNews signal news
 view`, ahead of `origin/main`. News has already been refactored on `main`:
-`src/gmgn_twitter_intel/integrations/news_feeds/provider_registry.py:10`
+`src/parallax/integrations/news_feeds/provider_registry.py:10`
 declares `opennews` as a supported provider type, and
-`src/gmgn_twitter_intel/integrations/news_feeds/provider_registry.py:203`
+`src/parallax/integrations/news_feeds/provider_registry.py:203`
 registers the OpenNews provider. The fetch worker reconciles configured
 sources into `news_sources` before claiming due work in
-`src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py:56`,
+`src/parallax/domains/news_intel/runtime/news_fetch_worker.py:56`,
 then calls `feed_client.fetch(...)` at
-`src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py:123`.
+`src/parallax/domains/news_intel/runtime/news_fetch_worker.py:123`.
 The repository writes configured source metadata through
-`src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py:106`.
+`src/parallax/domains/news_intel/repositories/news_repository.py:106`.
 Revision `20260526_0105` adds `opennews` to the
 `news_sources_provider_type_check` constraint and adds provider-signal columns
 in
-`src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0105_opennews_provider_signal.py:32`.
+`src/parallax/platform/db/alembic/versions/20260526_0105_opennews_provider_signal.py:32`.
 
 The currently running Docker app was built before that source/schema head was
 applied: `/readyz` reported migration `20260526_0104` and failed with
@@ -49,21 +49,21 @@ runtime config contains a provider type the deployed schema rejects.
 Token Radar no longer uses the old single-target source query, but the current
 batch hydrate is still the largest live PostgreSQL hotspot. The runtime calls
 `TokenRadarTargetFeatureBatchQuery.source_rows_for_requests(...)` from
-`src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py:125`
+`src/parallax/domains/token_intel/services/token_radar_projection.py:125`
 and again from
-`src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py:235`.
+`src/parallax/domains/token_intel/services/token_radar_projection.py:235`.
 That batch query is defined in
-`src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_target_feature_query.py:31`
+`src/parallax/domains/token_intel/queries/token_radar_target_feature_query.py:31`
 with `TOKEN_RADAR_SOURCE_REQUEST_CHUNK_SIZE = 200` at
-`src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_target_feature_query.py:11`.
+`src/parallax/domains/token_intel/queries/token_radar_target_feature_query.py:11`.
 The SQL joins request targets to `token_intent_resolutions`, `token_intents`,
 and `events` at
-`src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_target_feature_query.py:117`,
+`src/parallax/domains/token_intel/queries/token_radar_target_feature_query.py:117`,
 filters event time only after reaching `events` at
-`src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_target_feature_query.py:122`,
+`src/parallax/domains/token_intel/queries/token_radar_target_feature_query.py:122`,
 and then performs account, semantic, asset, price-feed, enriched-event, and
 market-current hydration through joins and lateral subqueries ending at
-`src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_target_feature_query.py:328`.
+`src/parallax/domains/token_intel/queries/token_radar_target_feature_query.py:328`.
 
 Live `pg_stat_statements` evidence from 2026-05-26:
 
@@ -99,33 +99,33 @@ invalid indexes, so the current dominant problem is not lock contention.
 
 Macro already declares the right architecture. `macro_observation_series_rows`
 is a read model written only by `MacroViewProjectionWorker` in
-`src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md:15`, and request
+`src/parallax/domains/macro_intel/ARCHITECTURE.md:15`, and request
 paths must read that projection instead of running window functions over
 `macro_observations` according to
-`src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md:40`. The remaining
+`src/parallax/domains/macro_intel/ARCHITECTURE.md:40`. The remaining
 runtime issue is the writer implementation:
-`src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py:138`
+`src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:138`
 deletes all `macro_observation_series_rows` for a projection version before
 inserting rebuilt rows at
-`src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py:174`.
+`src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:174`.
 This creates WAL churn and a transient empty-read risk if the rebuild is
 interrupted.
 
 Equity event ingestion has a different root. `EquityEventFetchWorker.run_once`
 uses `asyncio.to_thread(...)` at
-`src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_fetch_worker.py:49`,
+`src/parallax/domains/equity_event_intel/runtime/equity_event_fetch_worker.py:49`,
 claims multiple due sources at
-`src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_fetch_worker.py:55`,
+`src/parallax/domains/equity_event_intel/runtime/equity_event_fetch_worker.py:55`,
 fetches each source synchronously at
-`src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_fetch_worker.py:79`,
+`src/parallax/domains/equity_event_intel/runtime/equity_event_fetch_worker.py:79`,
 hydrates every inserted/updated document inline at
-`src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_fetch_worker.py:139`,
+`src/parallax/domains/equity_event_intel/runtime/equity_event_fetch_worker.py:139`,
 and loops provider evidence hydration per document at
-`src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_fetch_worker.py:272`.
+`src/parallax/domains/equity_event_intel/runtime/equity_event_fetch_worker.py:272`.
 The default batch size is 20 at
-`src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_fetch_worker.py:386`.
+`src/parallax/domains/equity_event_intel/runtime/equity_event_fetch_worker.py:386`.
 `WorkerBase` soft and hard timeouts apply to the whole `run_once` task in
-`src/gmgn_twitter_intel/app/runtime/worker_base.py:215`, while the underlying
+`src/parallax/app/runtime/worker_base.py:215`, while the underlying
 blocking provider work inside `to_thread` is not a cleanly cancellable unit.
 Live data showed 41 `equity_event_fetch_runs.status='running'`, with the oldest
 older than 4300 minutes.
@@ -261,7 +261,7 @@ Token Radar runtime becomes a two-level projection:
 The edge/read-model is not a second truth. It is a rebuildable projection over
 `events`, `token_intents`, `token_intent_resolutions`, `asset_identity_*`,
 `enriched_events`, and market-current state. Its single writer is declared in
-`src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`.
+`src/parallax/domains/token_intel/ARCHITECTURE.md`.
 
 Table storage is split by temperature:
 
@@ -383,13 +383,13 @@ Changed arrows:
   drift and `equity_event_fetch` timeout/stale-running state without reading
   secrets.
 
-`gmgn-twitter-intel config`
+`parallax config`
 
 - Continues to report redacted config paths and enabled provider booleans.
-- Must let operators confirm `~/.gmgn-twitter-intel/config.yaml` and
+- Must let operators confirm `~/.parallax/config.yaml` and
   `workers.yaml` are the active runtime inputs before diagnosing live data.
 
-`gmgn-twitter-intel ops ...`
+`parallax ops ...`
 
 - Adds or extends dry-run-first commands for rebuilding Token Radar rank-source
   edges, refreshing macro projection generations, reaping equity stale-running

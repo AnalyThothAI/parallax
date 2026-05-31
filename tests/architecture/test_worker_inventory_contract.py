@@ -8,11 +8,11 @@ from pathlib import Path
 
 import pytest
 
-from gmgn_twitter_intel.app.runtime.wake_bus import WakeBus
+from parallax.app.runtime.wake_bus import WakeBus
 from tests.architecture.test_worker_runtime_contracts import MANIFEST_WORKER_CLASSES, SINGLE_WRITER_READ_MODELS
 
 ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src" / "gmgn_twitter_intel"
+SRC = ROOT / "src" / "parallax"
 DOCS_WORKERS = ROOT / "docs" / "WORKERS.md"
 REPOSITORY_SESSION = SRC / "app" / "runtime" / "repository_session.py"
 WRITE_METHOD_PREFIXES = (
@@ -33,7 +33,7 @@ WRITE_METHOD_PREFIXES = (
 
 @pytest.mark.architecture
 def test_worker_inventory_keys_match_runtime_registry_and_settings() -> None:
-    from gmgn_twitter_intel.platform.config.settings import WorkersSettings
+    from parallax.platform.config.settings import WorkersSettings
 
     inventory = _worker_inventory()
     marker_keys = _worker_inventory_marker_keys()
@@ -48,7 +48,7 @@ def test_worker_inventory_keys_match_runtime_registry_and_settings() -> None:
 
 @pytest.mark.architecture
 def test_documented_wake_inputs_match_default_worker_settings() -> None:
-    from gmgn_twitter_intel.platform.config.settings import WorkersSettings
+    from parallax.platform.config.settings import WorkersSettings
 
     inventory = _worker_inventory()
     settings = WorkersSettings()
@@ -143,7 +143,7 @@ def _derived_read_model_writer_rows() -> tuple[dict[str, list[str]], list[str]]:
 
 def _qualified_worker_module_path(qualified_name: str) -> Path:
     module_name = qualified_name.rpartition(".")[0]
-    relative = Path(*module_name.split(".")).relative_to("gmgn_twitter_intel").with_suffix(".py")
+    relative = Path(*module_name.split(".")).relative_to("parallax").with_suffix(".py")
     return SRC / relative
 
 
@@ -212,7 +212,7 @@ def _local_import_paths(path: Path) -> set[Path]:
 
 
 def _module_path(module_name: str) -> Path | None:
-    prefix = "gmgn_twitter_intel."
+    prefix = "parallax."
     if not module_name.startswith(prefix):
         return None
     relative = Path(*module_name[len(prefix) :].split("."))

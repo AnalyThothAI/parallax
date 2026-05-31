@@ -4,12 +4,12 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
+from parallax.domains.pulse_lab.types.agent_decision import (
     BearCaseMemo,
     FinalDecision,
     SignalAnalystMemo,
 )
-from gmgn_twitter_intel.integrations.model_execution.output_schema import (
+from parallax.integrations.model_execution.output_schema import (
     StrictJsonOutputSchema,
 )
 

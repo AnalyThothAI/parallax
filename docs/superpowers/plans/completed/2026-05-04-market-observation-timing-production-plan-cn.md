@@ -21,40 +21,40 @@
 
 ## 文件责任图
 
-- `src/gmgn_twitter_intel/storage/sqlite_schema.py`
+- `src/parallax/storage/sqlite_schema.py`
   - 新增 `token_market_observations` 表和索引。
   - 升级 schema version。
   - 添加迁移测试需要的表存在断言。
-- `src/gmgn_twitter_intel/storage/market_observation_repository.py`
+- `src/parallax/storage/market_observation_repository.py`
   - 负责 enqueue、claim、complete、fail、counts、backfill 查询。
   - 只操作 observation 表和 snapshot join 所需字段。
-- `src/gmgn_twitter_intel/market/gmgn_openapi_client.py`
+- `src/parallax/market/gmgn_openapi_client.py`
   - 返回 token info 时携带 `cache_status`，让 worker 区分 ready/cached。
-- `src/gmgn_twitter_intel/pipeline/ingest_service.py`
+- `src/parallax/pipeline/ingest_service.py`
   - 删除同步 `token_market_enricher` 调用。
   - 仍然按 event -> mention -> attribution 顺序写本地事实。
-- `src/gmgn_twitter_intel/pipeline/signal_builder.py`
+- `src/parallax/pipeline/signal_builder.py`
   - 在 `replace_token_attributions()` 后 enqueue observation。
-- `src/gmgn_twitter_intel/pipeline/market_observation_worker.py`
+- `src/parallax/pipeline/market_observation_worker.py`
   - 新增异步 worker，claim observation，调用 provider，写 snapshot，更新状态。
-- `src/gmgn_twitter_intel/storage/token_repository.py`
+- `src/parallax/storage/token_repository.py`
   - 复用 `upsert_openapi_token_info()` 写 snapshot。
   - 如需要，增加按 snapshot_id 查询方法。
-- `src/gmgn_twitter_intel/api/app.py`
+- `src/parallax/api/app.py`
   - 构建 MarketObservationRepository/Worker。
   - 启停 worker。
   - `/api/status` 输出 market observation backlog。
-- `src/gmgn_twitter_intel/api/http.py`
+- `src/parallax/api/http.py`
   - 如需要，新增 `/api/market-observations` 只读检查端点。
-- `src/gmgn_twitter_intel/cli.py`
+- `src/parallax/cli.py`
   - 新增 `ops backfill-market-observations`。
   - 新增 `market-observations` 只读命令。
-- `src/gmgn_twitter_intel/retrieval/token_flow_service.py`
+- `src/parallax/retrieval/token_flow_service.py`
   - social-start 锚点 market block。
   - 输出 V2 market fields。
-- `src/gmgn_twitter_intel/retrieval/timing_scoring.py`
+- `src/parallax/retrieval/timing_scoring.py`
   - Timing V2 状态机。
-- `src/gmgn_twitter_intel/retrieval/token_social_timeline_service.py`
+- `src/parallax/retrieval/token_social_timeline_service.py`
   - bucket price overlay。
 - `web/src/api/types.ts`
   - 更新 TokenMarketBlock/TimingBlock。
@@ -92,8 +92,8 @@ Expected: 失败，提示表或 repository 不存在。
 ## Task 2: 实现 Observation Schema 与 Repository
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/storage/sqlite_schema.py`
-- Create: `src/gmgn_twitter_intel/storage/market_observation_repository.py`
+- Modify: `src/parallax/storage/sqlite_schema.py`
+- Create: `src/parallax/storage/market_observation_repository.py`
 - Modify: `tests/test_sqlite_schema.py`
 - Modify: `tests/test_market_observation_repository.py`
 
@@ -164,9 +164,9 @@ Expected: 通过。
 ## Task 3: 移除同步 Market Enricher，并在 Attribution 后 Enqueue
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/pipeline/ingest_service.py`
-- Modify: `src/gmgn_twitter_intel/pipeline/signal_builder.py`
-- Modify: `src/gmgn_twitter_intel/api/app.py`
+- Modify: `src/parallax/pipeline/ingest_service.py`
+- Modify: `src/parallax/pipeline/signal_builder.py`
+- Modify: `src/parallax/api/app.py`
 - Modify: `tests/test_collector_service.py`
 - Create: `tests/test_market_observation_enqueue_flow.py`
 
@@ -191,8 +191,8 @@ Expected: 通过，且测试断言 ingest 不调用外部 HTTP。
 ## Task 4: 实现 MarketObservationWorker
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/pipeline/market_observation_worker.py`
-- Modify: `src/gmgn_twitter_intel/market/gmgn_openapi_client.py`
+- Create: `src/parallax/pipeline/market_observation_worker.py`
+- Modify: `src/parallax/market/gmgn_openapi_client.py`
 - Modify: `tests/test_gmgn_openapi_client.py`
 - Create: `tests/test_market_observation_worker.py`
 
@@ -231,9 +231,9 @@ Expected: 通过。
 ## Task 5: 接入 Runtime、Status 和 CLI Ops
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/api/app.py`
-- Modify: `src/gmgn_twitter_intel/api/http.py`
-- Modify: `src/gmgn_twitter_intel/cli.py`
+- Modify: `src/parallax/api/app.py`
+- Modify: `src/parallax/api/http.py`
+- Modify: `src/parallax/cli.py`
 - Modify: `tests/test_api_http.py`
 - Modify: `tests/test_cli.py`
 
@@ -259,8 +259,8 @@ Expected: 通过。
 ```
 
 - [ ] 新增 CLI：
-  - `gmgn-twitter-intel market-observations --status pending --limit 50`
-  - `gmgn-twitter-intel ops backfill-market-observations --limit 1000`
+  - `parallax market-observations --status pending --limit 50`
+  - `parallax ops backfill-market-observations --limit 1000`
 - [ ] `backfill-market-observations` 从已有 `event_token_attributions` direct/selected rows 中 enqueue 缺失 observation。
 - [ ] 测试 CLI 输出 JSON 包含 counts 和 rows。
 - [ ] 运行：
@@ -274,8 +274,8 @@ Expected: 通过。
 ## Task 6: 重写 Market Block 为 Since-Social 语义
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/retrieval/token_flow_service.py`
-- Modify: `src/gmgn_twitter_intel/retrieval/rolling_token_flow.py`
+- Modify: `src/parallax/retrieval/token_flow_service.py`
+- Modify: `src/parallax/retrieval/rolling_token_flow.py`
 - Modify: `tests/test_token_flow_social_heat_contract.py`
 - Modify: `tests/test_token_conviction_flow.py`
 - Modify: `tests/test_token_rolling_flow.py`
@@ -325,7 +325,7 @@ Expected: 通过。
 ## Task 7: Timing V2
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/retrieval/timing_scoring.py`
+- Modify: `src/parallax/retrieval/timing_scoring.py`
 - Modify: `tests/test_timing_scoring.py`
 - Modify: `tests/test_token_flow_social_heat_contract.py`
 
@@ -352,7 +352,7 @@ Expected: 通过。
 ## Task 8: Token Social Timeline Price Overlay
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/retrieval/token_social_timeline_service.py`
+- Modify: `src/parallax/retrieval/token_social_timeline_service.py`
 - Modify: `tests/test_token_social_timeline_service.py`
 - Modify: `tests/test_api_http.py`
 
@@ -422,8 +422,8 @@ Expected: 全部通过。
 ## Task 10: 删除旧同步 Market Enricher 路径和兼容引用
 
 **Files:**
-- Delete or deprecate by removal from runtime imports: `src/gmgn_twitter_intel/pipeline/token_market_enricher.py`
-- Modify: `src/gmgn_twitter_intel/api/app.py`
+- Delete or deprecate by removal from runtime imports: `src/parallax/pipeline/token_market_enricher.py`
+- Modify: `src/parallax/api/app.py`
 - Modify: `tests/test_token_market_enricher.py`
 - Modify: docs if needed
 
@@ -480,7 +480,7 @@ docker compose up --build
 或本地：
 
 ```bash
-uv run gmgn-twitter-intel serve
+uv run parallax serve
 ```
 
 - [ ] API 验证：

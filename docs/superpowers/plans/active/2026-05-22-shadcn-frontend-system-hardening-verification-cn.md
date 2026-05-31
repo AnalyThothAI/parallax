@@ -49,41 +49,41 @@ Full final-worktree output:
 ```text
 All checks passed!
 Would reformat: scripts/regen_pulse_agent_desk_decisions.py
-Would reformat: src/gmgn_twitter_intel/app/runtime/ops_diagnostics.py
-Would reformat: src/gmgn_twitter_intel/app/runtime/provider_wiring/__init__.py
-Would reformat: src/gmgn_twitter_intel/domains/asset_market/repositories/cex_binance_hard_cut_cleanup_repository.py
-Would reformat: src/gmgn_twitter_intel/domains/asset_market/repositories/identity_evidence_repository.py
-Would reformat: src/gmgn_twitter_intel/domains/macro_intel/services/macro_asset_correlation.py
-Would reformat: src/gmgn_twitter_intel/domains/macro_intel/services/macro_module_views.py
-Would reformat: src/gmgn_twitter_intel/domains/narrative_intel/__init__.py
-Would reformat: src/gmgn_twitter_intel/domains/narrative_intel/_constants.py
-Would reformat: src/gmgn_twitter_intel/domains/narrative_intel/prompts/__init__.py
-Would reformat: src/gmgn_twitter_intel/domains/narrative_intel/read_models/__init__.py
-Would reformat: src/gmgn_twitter_intel/domains/narrative_intel/repositories/__init__.py
-Would reformat: src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py
-Would reformat: src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py
-Would reformat: src/gmgn_twitter_intel/domains/narrative_intel/services/__init__.py
-Would reformat: src/gmgn_twitter_intel/domains/narrative_intel/services/discussion_digest_service.py
-Would reformat: src/gmgn_twitter_intel/domains/narrative_intel/services/evidence_ref_validator.py
-Would reformat: src/gmgn_twitter_intel/domains/narrative_intel/services/fingerprints.py
-Would reformat: src/gmgn_twitter_intel/domains/narrative_intel/types/__init__.py
-Would reformat: src/gmgn_twitter_intel/domains/narrative_intel/types/evidence_refs.py
-Would reformat: src/gmgn_twitter_intel/domains/narrative_intel/types/mention_semantics.py
-Would reformat: src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py
-Would reformat: src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py
-Would reformat: src/gmgn_twitter_intel/domains/news_intel/services/news_fact_candidates.py
-Would reformat: src/gmgn_twitter_intel/domains/news_intel/services/text_normalization.py
-Would reformat: src/gmgn_twitter_intel/domains/pulse_lab/services/evidence_packet_builder.py
-Would reformat: src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_agent_cost_report.py
-Would reformat: src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py
-Would reformat: src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_policy_evaluator.py
-Would reformat: src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py
-Would reformat: src/gmgn_twitter_intel/integrations/binance/usdm_futures_client.py
-Would reformat: src/gmgn_twitter_intel/integrations/openai_agents/narrative_intel_agent_client.py
-Would reformat: src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py
-Would reformat: src/gmgn_twitter_intel/platform/db/alembic/versions/20260519_0064_narrative_admission_source_sets.py
-Would reformat: src/gmgn_twitter_intel/platform/db/alembic/versions/20260520_0067_pulse_research_committee_checks.py
-Would reformat: src/gmgn_twitter_intel/platform/db/alembic/versions/20260520_0070_token_narrative_epochs.py
+Would reformat: src/parallax/app/runtime/ops_diagnostics.py
+Would reformat: src/parallax/app/runtime/provider_wiring/__init__.py
+Would reformat: src/parallax/domains/asset_market/repositories/cex_binance_hard_cut_cleanup_repository.py
+Would reformat: src/parallax/domains/asset_market/repositories/identity_evidence_repository.py
+Would reformat: src/parallax/domains/macro_intel/services/macro_asset_correlation.py
+Would reformat: src/parallax/domains/macro_intel/services/macro_module_views.py
+Would reformat: src/parallax/domains/narrative_intel/__init__.py
+Would reformat: src/parallax/domains/narrative_intel/_constants.py
+Would reformat: src/parallax/domains/narrative_intel/prompts/__init__.py
+Would reformat: src/parallax/domains/narrative_intel/read_models/__init__.py
+Would reformat: src/parallax/domains/narrative_intel/repositories/__init__.py
+Would reformat: src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py
+Would reformat: src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py
+Would reformat: src/parallax/domains/narrative_intel/services/__init__.py
+Would reformat: src/parallax/domains/narrative_intel/services/discussion_digest_service.py
+Would reformat: src/parallax/domains/narrative_intel/services/evidence_ref_validator.py
+Would reformat: src/parallax/domains/narrative_intel/services/fingerprints.py
+Would reformat: src/parallax/domains/narrative_intel/types/__init__.py
+Would reformat: src/parallax/domains/narrative_intel/types/evidence_refs.py
+Would reformat: src/parallax/domains/narrative_intel/types/mention_semantics.py
+Would reformat: src/parallax/domains/news_intel/repositories/news_repository.py
+Would reformat: src/parallax/domains/news_intel/runtime/news_item_brief_worker.py
+Would reformat: src/parallax/domains/news_intel/services/news_fact_candidates.py
+Would reformat: src/parallax/domains/news_intel/services/text_normalization.py
+Would reformat: src/parallax/domains/pulse_lab/services/evidence_packet_builder.py
+Would reformat: src/parallax/domains/pulse_lab/services/pulse_agent_cost_report.py
+Would reformat: src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py
+Would reformat: src/parallax/domains/pulse_lab/services/pulse_policy_evaluator.py
+Would reformat: src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py
+Would reformat: src/parallax/integrations/binance/usdm_futures_client.py
+Would reformat: src/parallax/integrations/openai_agents/narrative_intel_agent_client.py
+Would reformat: src/parallax/integrations/openai_agents/pulse_decision_agent_client.py
+Would reformat: src/parallax/platform/db/alembic/versions/20260519_0064_narrative_admission_source_sets.py
+Would reformat: src/parallax/platform/db/alembic/versions/20260520_0067_pulse_research_committee_checks.py
+Would reformat: src/parallax/platform/db/alembic/versions/20260520_0070_token_narrative_epochs.py
 Would reformat: tests/integration/test_api_http.py
 Would reformat: tests/integration/test_narrative_repository.py
 Would reformat: tests/integration/test_registry_repository.py
@@ -114,7 +114,7 @@ Additional isolation note: applying `uv run ruff format` temporarily reformatted
 
 ## Docker Smoke
 
-- `make docker-up`: PASS. Images `gmgn-twitter-intel-app:latest` and `gmgn-twitter-intel-migrate:latest` rebuilt; app container started.
+- `make docker-up`: PASS. Images `parallax-app:latest` and `parallax-migrate:latest` rebuilt; app container started.
 - `docker compose ps`: app `Up ... (healthy)`; postgres `Up ... (healthy)`.
 - `curl -sS http://127.0.0.1:8765/healthz`: `ok`.
 - `curl -sS http://127.0.0.1:8765/readyz`: HTTP command succeeded, payload `ok: false`.

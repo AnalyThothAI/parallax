@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.pulse_lab.services.agent_routing import compute_completeness, route_decision_context
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_FACTOR_SNAPSHOT_VERSION
+from parallax.domains.pulse_lab.services.agent_routing import compute_completeness, route_decision_context
+from parallax.domains.token_intel.interfaces import TOKEN_FACTOR_SNAPSHOT_VERSION
 
 
 def test_unresolved_token_target_routes_research_only_without_llm() -> None:

@@ -10,13 +10,13 @@
 - `docs/CONTRACTS.md`
 - `docs/WORKERS.md`
 - `docs/TESTING.md`
-- `src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md`
+- `src/parallax/domains/news_intel/ARCHITECTURE.md`
 - `docs/superpowers/specs/active/2026-05-19-news-intel-kappa-cqrs-cn.md`
 - Reference-only old repo: `/Users/qinghuan/Documents/code/filing-event-research`
 
 ## 一句话
 
-在当前 `gmgn-twitter-intel` 仓库内新增独立 `equity_event_intel` 域和 `/earnings` 前端入口，把 Nasdaq/US 科技股的财报、SEC filing、业绩电话会、指引变更和重大公司更新做成事件新闻流：事件先出现，证据随后补全，分析可审计地增量更新；旧 `filing-event-research` 只作为经验参考，不迁移它的前端和 ticker-first 产品形态。
+在当前 `parallax` 仓库内新增独立 `equity_event_intel` 域和 `/earnings` 前端入口，把 Nasdaq/US 科技股的财报、SEC filing、业绩电话会、指引变更和重大公司更新做成事件新闻流：事件先出现，证据随后补全，分析可审计地增量更新；旧 `filing-event-research` 只作为经验参考，不迁移它的前端和 ticker-first 产品形态。
 
 ## 结论
 
@@ -111,7 +111,7 @@
 建议结构：
 
 ```text
-src/gmgn_twitter_intel/domains/equity_event_intel/
+src/parallax/domains/equity_event_intel/
   ARCHITECTURE.md
   models/
   services/
@@ -514,7 +514,7 @@ Frontend rules:
 
 ## Config
 
-Runtime config follows current project rule: real data runs use operator-owned files in `~/.gmgn-twitter-intel/`, not repository fixtures.
+Runtime config follows current project rule: real data runs use operator-owned files in `~/.parallax/`, not repository fixtures.
 
 Proposed config surface:
 
@@ -568,16 +568,16 @@ Implementation must redact secrets and report only paths/booleans/diagnostics, m
 
 Implementation planning must account for these extension points:
 
-- API router registration in `src/gmgn_twitter_intel/app/surfaces/api/http.py`.
-- Worker registry in `src/gmgn_twitter_intel/app/runtime/worker_registry.py`.
-- Worker factories under `src/gmgn_twitter_intel/app/runtime/worker_factories/`.
-- Provider wiring under `src/gmgn_twitter_intel/app/runtime/provider_wiring/`.
-- Settings in `src/gmgn_twitter_intel/platform/config/settings.py`.
-- Repository session/runtime lifecycle in `src/gmgn_twitter_intel/app/runtime/repository_session.py`.
-- Alembic migrations under `src/gmgn_twitter_intel/platform/db/alembic/versions/`.
+- API router registration in `src/parallax/app/surfaces/api/http.py`.
+- Worker registry in `src/parallax/app/runtime/worker_registry.py`.
+- Worker factories under `src/parallax/app/runtime/worker_factories/`.
+- Provider wiring under `src/parallax/app/runtime/provider_wiring/`.
+- Settings in `src/parallax/platform/config/settings.py`.
+- Repository session/runtime lifecycle in `src/parallax/app/runtime/repository_session.py`.
+- Alembic migrations under `src/parallax/platform/db/alembic/versions/`.
 - Frontend route registration in `web/src/routes/AppRoutes.tsx`.
 - Navigation model in `web/src/features/cockpit/ui/appNavigation.ts`.
-- SPA static mount routing in `src/gmgn_twitter_intel/app/runtime/app.py`.
+- SPA static mount routing in `src/parallax/app/runtime/app.py`.
 - Frontend architecture harness in `web/tests/architecture/cssArchitectureHarness.test.ts`.
 
 Architecture tests currently hard-code known domains, workers, provider domains, read model writers and CSS namespaces. Adding this module must update those tests and docs intentionally; failing tests are expected until the allowlists and docs are aligned.
@@ -597,7 +597,7 @@ Architecture tests currently hard-code known domains, workers, provider domains,
 - **AC11.** Frontend lint/architecture tests pass after adding the `equity-event-` CSS namespace and route-owned CSS.
 - **AC12.** API contract tests verify list/detail/calendar/source-status responses and stable cursor pagination.
 - **AC13.** Worker runtime contract tests list all new workers, factory files and single-writer read models.
-- **AC14.** Docs are updated: `docs/ARCHITECTURE.md`, `docs/WORKERS.md`, `docs/CONTRACTS.md`, `docs/FRONTEND.md`, and new `src/gmgn_twitter_intel/domains/equity_event_intel/ARCHITECTURE.md`.
+- **AC14.** Docs are updated: `docs/ARCHITECTURE.md`, `docs/WORKERS.md`, `docs/CONTRACTS.md`, `docs/FRONTEND.md`, and new `src/parallax/domains/equity_event_intel/ARCHITECTURE.md`.
 
 ## Phase Shape
 
@@ -637,7 +637,7 @@ Add transcript provider, document revisions/diffs, post-event reaction facts, pe
 
 ## Locked Decisions
 
-- Build in current `gmgn-twitter-intel` repo.
+- Build in current `parallax` repo.
 - New backend bounded context name: `equity_event_intel`.
 - New user-facing route family: `/earnings`.
 - New API route family: `/api/equity-events`.

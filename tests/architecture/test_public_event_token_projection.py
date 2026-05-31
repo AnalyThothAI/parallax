@@ -4,9 +4,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PUBLIC_EVENT_PAYLOAD_PATHS = (
-    ROOT / "src/gmgn_twitter_intel/app/surfaces/api/http.py",
-    ROOT / "src/gmgn_twitter_intel/app/surfaces/api/ws.py",
-    ROOT / "src/gmgn_twitter_intel/domains/ingestion/runtime/collector_service.py",
+    ROOT / "src/parallax/app/surfaces/api/http.py",
+    ROOT / "src/parallax/app/surfaces/api/ws.py",
+    ROOT / "src/parallax/domains/ingestion/runtime/collector_service.py",
 )
 
 

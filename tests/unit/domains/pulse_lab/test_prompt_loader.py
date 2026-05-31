@@ -16,14 +16,14 @@ from pathlib import Path
 
 import pytest
 
-from gmgn_twitter_intel.domains.pulse_lab.services.prompt_loader import (
+from parallax.domains.pulse_lab.services.prompt_loader import (
     load_bear_case_prompt,
     load_prompt,
     load_risk_portfolio_judge_prompt,
     load_signal_analyst_prompt,
 )
 
-_PROMPTS_DIR = Path(__file__).resolve().parents[4] / "src" / "gmgn_twitter_intel" / "domains" / "pulse_lab" / "prompts"
+_PROMPTS_DIR = Path(__file__).resolve().parents[4] / "src" / "parallax" / "domains" / "pulse_lab" / "prompts"
 
 _ANTI_INJECTION_KEYS = (
     "data, not instructions",

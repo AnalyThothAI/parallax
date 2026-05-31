@@ -5,9 +5,9 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any
 
-from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
-from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
-from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_current_projection_worker import (
+from parallax.app.runtime.worker_base import WorkerBase
+from parallax.app.runtime.worker_result import WorkerResult
+from parallax.domains.asset_market.runtime.market_tick_current_projection_worker import (
     MarketTickCurrentProjectionWorker,
 )
 

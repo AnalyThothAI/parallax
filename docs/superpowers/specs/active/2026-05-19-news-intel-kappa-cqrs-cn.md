@@ -8,23 +8,23 @@
 - `docs/WORKERS.md`
 - `docs/WORKFLOW.md`
 - `docs/DESIGN_DISCIPLINE.md`
-- `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
-- `src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md`
+- `src/parallax/domains/token_intel/ARCHITECTURE.md`
+- `src/parallax/domains/asset_market/ARCHITECTURE.md`
 - `docs/superpowers/specs/active/2026-05-11-search-v2-hard-cut-cn.md`
 - `/Users/qinghuan/Documents/code/news-intel/docs/research/2026-04-15-continuity-aware-news-clustering-redesign.md`
 - `/Users/qinghuan/Documents/code/news-intel/docs/research/2026-05-02-production-event-quality-layering.md`
 
 ## 一句话
 
-在 `gmgn-twitter-intel` 内新增独立 `news_intel` 域，用 PostgreSQL facts + rebuildable read models 重做新闻接入后的生产闭环：先稳定看到原始新闻，再可审计地展示实体抽取、token 身份解析、story 去重、事实候选、拒绝原因和 attention lane；不接入 Token Radar，不做交易闭环，不把 embedding 或 LLM 输出当成事实。
+在 `parallax` 内新增独立 `news_intel` 域，用 PostgreSQL facts + rebuildable read models 重做新闻接入后的生产闭环：先稳定看到原始新闻，再可审计地展示实体抽取、token 身份解析、story 去重、事实候选、拒绝原因和 attention lane；不接入 Token Radar，不做交易闭环，不把 embedding 或 LLM 输出当成事实。
 
 ## 背景
 
-当前 `gmgn-twitter-intel` 的全局架构已经是 facts-first Kappa/CQRS。架构文档明确把 `events`、`token_intents`、`token_intent_resolutions`、`asset_identity_current`、`market_ticks`、`enriched_events` 等 PostgreSQL 表定义为业务事实，derived read models 可重建（`docs/ARCHITECTURE.md:31-38`）。同一文档还规定每个 read model 只有一个 runtime writer（`docs/ARCHITECTURE.md:55-70`），`NOTIFY` 只是 wake hint，listener 必须重读数据库并保留 bounded interval catch-up（`docs/ARCHITECTURE.md:71-75`）。这些约束正是新闻系统应复用的基础，不应再引入 LanceDB 作为第二事实源。
+当前 `parallax` 的全局架构已经是 facts-first Kappa/CQRS。架构文档明确把 `events`、`token_intents`、`token_intent_resolutions`、`asset_identity_current`、`market_ticks`、`enriched_events` 等 PostgreSQL 表定义为业务事实，derived read models 可重建（`docs/ARCHITECTURE.md:31-38`）。同一文档还规定每个 read model 只有一个 runtime writer（`docs/ARCHITECTURE.md:55-70`），`NOTIFY` 只是 wake hint，listener 必须重读数据库并保留 bounded interval catch-up（`docs/ARCHITECTURE.md:71-75`）。这些约束正是新闻系统应复用的基础，不应再引入 LanceDB 作为第二事实源。
 
-现有 token identity 已经比 `news-intel` 更成熟。Token Intel 架构说明从 GMGN frame 到 `token_evidence`、`token_intents`、`token_intent_resolutions`、`registry_assets`、`asset_identity_evidence/current` 的生产链路，且明确 token evidence、intent、resolver、asset identity ledger 各有边界（`src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md:7-45`）。同一文档强调：symbol 是 recall key，不是 identity；chain+address 或 CEX registry fact 才是 identity（`src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md:118-129`）。
+现有 token identity 已经比 `news-intel` 更成熟。Token Intel 架构说明从 GMGN frame 到 `token_evidence`、`token_intents`、`token_intent_resolutions`、`registry_assets`、`asset_identity_evidence/current` 的生产链路，且明确 token evidence、intent、resolver、asset identity ledger 各有边界（`src/parallax/domains/token_intel/ARCHITECTURE.md:7-45`）。同一文档强调：symbol 是 recall key，不是 identity；chain+address 或 CEX registry fact 才是 identity（`src/parallax/domains/token_intel/ARCHITECTURE.md:118-129`）。
 
-实体抽取已有可复用的 deterministic 基础。`entity_extractor.py` 已经能从文本中抽取 EVM、Solana、TON 地址、cashtag、hashtag、mention、URL、domain，并记录 span、surface、sentence/local group（`src/gmgn_twitter_intel/domains/evidence/services/entity_extractor.py:79-196`）。地址归一化使用链 hint 和地址校验，而不是裸 regex 猜测（`src/gmgn_twitter_intel/domains/evidence/services/entity_extractor.py:198-238`）。
+实体抽取已有可复用的 deterministic 基础。`entity_extractor.py` 已经能从文本中抽取 EVM、Solana、TON 地址、cashtag、hashtag、mention、URL、domain，并记录 span、surface、sentence/local group（`src/parallax/domains/evidence/services/entity_extractor.py:79-196`）。地址归一化使用链 hint 和地址校验，而不是裸 regex 猜测（`src/parallax/domains/evidence/services/entity_extractor.py:198-238`）。
 
 现有 search v2 也已经沉淀了一个对新闻同样关键的经验：先 deterministic target lookup，再 lexical / trigram fallback；embedding 不能掩盖 deterministic retrieval 缺口（`docs/superpowers/specs/active/2026-05-11-search-v2-hard-cut-cn.md:53-68`）。新闻不应重走 `news-intel` 的 embedding-first dedup 路径。
 

@@ -47,9 +47,9 @@ Macro hard-cut UI/API changes need an additional targeted smoke before final
 review when `make check-all` cannot exercise operator data:
 
 ```bash
-uv run gmgn-twitter-intel config
-uv run gmgn-twitter-intel db health
-uv run gmgn-twitter-intel macro status
+uv run parallax config
+uv run parallax db health
+uv run parallax macro status
 ```
 
 Record only redacted paths, booleans, migration status, history readiness,

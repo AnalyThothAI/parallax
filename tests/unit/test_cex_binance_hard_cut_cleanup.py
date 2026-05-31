@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from gmgn_twitter_intel.domains.asset_market.services.cex_binance_hard_cut_cleanup import (
+from parallax.domains.asset_market.services.cex_binance_hard_cut_cleanup import (
     CexBinanceHardCutAbort,
     cleanup_cex_binance_hard_cut,
 )

@@ -5,17 +5,17 @@ from pathlib import Path
 
 import pytest
 
-from gmgn_twitter_intel.app.surfaces.api.exceptions import ApiBadRequest
-from gmgn_twitter_intel.app.surfaces.api.validators import _signal_pulse_window
-from gmgn_twitter_intel.app.surfaces.cli.parser import build_parser
-from gmgn_twitter_intel.platform.config.settings import (
+from parallax.app.surfaces.api.exceptions import ApiBadRequest
+from parallax.app.surfaces.api.validators import _signal_pulse_window
+from parallax.app.surfaces.cli.parser import build_parser
+from parallax.platform.config.settings import (
     PULSE_CANDIDATE_STALE_JOB_TTL_SECONDS,
     PULSE_CANDIDATE_WINDOWS,
     PulseCandidateWorkerSettings,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src" / "gmgn_twitter_intel"
+SRC = ROOT / "src" / "parallax"
 PULSE_PROMPTS = SRC / "domains" / "pulse_lab" / "prompts"
 SETTINGS = SRC / "platform" / "config" / "settings.py"
 PULSE_DESK_DECISIONS = ROOT / "docs" / "generated" / "pulse-agent-desk-decisions.md"

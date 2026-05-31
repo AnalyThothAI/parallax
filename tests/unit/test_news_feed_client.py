@@ -1,6 +1,6 @@
 import httpx
 
-from gmgn_twitter_intel.integrations.news_feeds.feed_client import FeedClient
+from parallax.integrations.news_feeds.feed_client import FeedClient
 
 
 def test_feed_client_retries_transient_transport_error_once() -> None:

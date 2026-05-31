@@ -3,7 +3,7 @@
 **Status**: Implementing
 **Date**: 2026-05-17
 **Owner**: Codex / Qinghuan
-**Related**: `docs/ARCHITECTURE.md`, `docs/WORKERS.md`, `src/gmgn_twitter_intel/integrations/gmgn/openapi_client.py`, `src/gmgn_twitter_intel/app/runtime/providers_wiring.py`, `src/gmgn_twitter_intel/domains/asset_market/runtime/asset_profile_refresh_worker.py`
+**Related**: `docs/ARCHITECTURE.md`, `docs/WORKERS.md`, `src/parallax/integrations/gmgn/openapi_client.py`, `src/parallax/app/runtime/providers_wiring.py`, `src/parallax/domains/asset_market/runtime/asset_profile_refresh_worker.py`
 
 ## Background
 

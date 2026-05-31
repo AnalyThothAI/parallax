@@ -12,8 +12,8 @@ thread owns News.
 - `docs/references/POSTGRES_PERFORMANCE.md`
 - `docs/superpowers/specs/active/2026-05-25-runtime-performance-root-fix-cn.md`
 - `docs/superpowers/specs/active/2026-05-25-runtime-worker-constraint-hard-cut-cn.md`
-- `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
-- `src/gmgn_twitter_intel/domains/equity_event_intel/ARCHITECTURE.md`
+- `src/parallax/domains/token_intel/ARCHITECTURE.md`
+- `src/parallax/domains/equity_event_intel/ARCHITECTURE.md`
 
 ## Executive Summary
 
@@ -43,8 +43,8 @@ payload load 必须发生在 durable claim 之后。
 
 实时 Docker PostgreSQL 诊断确认当前运行配置来自 operator-owned runtime config：
 
-- `config_path=/Users/qinghuan/.gmgn-twitter-intel/config.yaml`
-- `workers_config_path=/Users/qinghuan/.gmgn-twitter-intel/workers.yaml`
+- `config_path=/Users/qinghuan/.parallax/config.yaml`
+- `workers_config_path=/Users/qinghuan/.parallax/workers.yaml`
 
 本 spec 不复制 secret 值，只记录路径和诊断事实。
 
@@ -64,7 +64,7 @@ Live PostgreSQL 证据：
 源码证据：
 
 - Token Radar source-edge SQL 在
-  `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_rank_source_query.py`
+  `src/parallax/domains/token_intel/queries/token_radar_rank_source_query.py`
   中通过 `jsonb_to_recordset(...)` 构造 request set，并把
   `market_tick_current latest_price_tick`、`projected_at_ms`、latest price fields
   写入 `token_radar_rank_source_events`。
@@ -729,7 +729,7 @@ Operational verification:
 - Capture `pg_stat_statements` before/after for Token rank-source and Equity process SQL.
 - Capture table size before/after for `equity_event_evidence_artifacts`.
 - Confirm no active blockers, no long transactions, and no temp-file bursts from these paths.
-- Confirm live config paths are operator-owned `~/.gmgn-twitter-intel/*`.
+- Confirm live config paths are operator-owned `~/.parallax/*`.
 
 ## Rollout Plan
 

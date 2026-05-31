@@ -20,7 +20,7 @@ Signal Lab Pulse 必须从“watched-account attention feed”升级为“可验
 
 必须删除：
 
-- `src/gmgn_twitter_intel/retrieval/trading_attention_service.py`
+- `src/parallax/retrieval/trading_attention_service.py`
 - `tests/test_trading_attention_service.py`
 - 所有 `TradingAttention*` TypeScript 类型
 - `SignalLabPulse` / `SignalLabWorkbench` / `SignalLabInspector` 对 `TradingAttentionData` 的依赖
@@ -340,7 +340,7 @@ Trace metadata：
 
 ```json
 {
-  "workflow_name": "gmgn-twitter-intel.pulse_thesis",
+  "workflow_name": "parallax.pulse_thesis",
   "agent_name": "PulseThesisAgent",
   "prompt_version": "pulse-thesis-agents-sdk-v1",
   "schema_version": "pulse_thesis_v1",

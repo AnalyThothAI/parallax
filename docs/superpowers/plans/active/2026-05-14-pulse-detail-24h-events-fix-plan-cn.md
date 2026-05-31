@@ -7,7 +7,7 @@
 **Architecture:** `/api/target-posts?window=24h` is a pre-existing endpoint that returns the full 24h corpus for a resolved target (it routes through `TokenTargetPostsService.target_posts` → `TokenTargetRepository.timeline_rows` which already filters by `received_at_ms >= now - 24h`). Today it omits `author_followers` and `action`, which the Pulse view-model needs for author classification. We extend the SELECT + serializer to add those two fields, then change `PulseDetailRoutePage` and the inline branch of `SignalLabPage` to fetch 24h target posts as the primary event corpus and pass the agent's `source_event_ids` / `decision.evidence_event_ids` as a `citedSet`. The view-model `buildPulseDetailView` is widened to accept `(corpus, citedSet)` and the burst histogram + Evidence list re-derive from the full corpus. `research_only` pulses (no resolved target) fall back to the existing `/api/social-events/by-ids` path. Hard cut: the prior usage of `useSourceEvents` in `PulseDetailRoutePage` and `SignalLabPage` is replaced, not preserved behind a flag.
 
 **Tech Stack:**
-- Backend: Python 3, FastAPI, psycopg, pytest. Touches `src/gmgn_twitter_intel/domains/token_intel/repositories/token_target_repository.py`, `.../read_models/token_target_post_serializer.py`, `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`.
+- Backend: Python 3, FastAPI, psycopg, pytest. Touches `src/parallax/domains/token_intel/repositories/token_target_repository.py`, `.../read_models/token_target_post_serializer.py`, `src/parallax/app/surfaces/api/schemas.py`.
 - Frontend: React 18, TypeScript, Vite, vitest. Touches `web/src/features/signal-lab/{api,model,ui}` and `web/src/lib/types/frontend-contracts.ts`.
 - E2E: Playwright (`web/tests/e2e/golden-paths/`).
 
@@ -24,7 +24,7 @@
 - Frontend typecheck: `cd web && pnpm typecheck`
 - Frontend lint: `cd web && pnpm lint`
 - Frontend e2e: `cd web && pnpm test:e2e -- pulse-detail.spec.ts`
-- DB shell: `docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel`
+- DB shell: `docker exec parallax-postgres-1 psql -U parallax_app -d parallax`
 - Docker rebuild + restart: `GITHUB_TOKEN=$(gh auth token) docker compose build app && GITHUB_TOKEN=$(gh auth token) docker compose up -d --force-recreate app`
 - Audit fixture: TROLL pulse `pulse-958846897ef70564fa1ba0de83bd05d237f7d5af` (resolved `target_id` = `asset:solana:token:5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2`, 50+ 24h events).
 
@@ -32,9 +32,9 @@
 
 ```
 Backend
-  src/gmgn_twitter_intel/domains/token_intel/repositories/token_target_repository.py  [MODIFY SELECT]
-  src/gmgn_twitter_intel/domains/token_intel/read_models/token_target_post_serializer.py [MODIFY surface fields]
-  src/gmgn_twitter_intel/app/surfaces/api/schemas.py                                  [MODIFY TargetPostsItem]
+  src/parallax/domains/token_intel/repositories/token_target_repository.py  [MODIFY SELECT]
+  src/parallax/domains/token_intel/read_models/token_target_post_serializer.py [MODIFY surface fields]
+  src/parallax/app/surfaces/api/schemas.py                                  [MODIFY TargetPostsItem]
   tests/integration/test_api_http.py                                                  [MODIFY add assertion]
 
 Frontend
@@ -57,7 +57,7 @@ Frontend
 ## Task 1: Backend — add `author_followers`, `action`, `channel`, `author_name` to `timeline_rows`
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_target_repository.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_target_repository.py`
 - Test: `tests/integration/test_api_http.py`
 
 **Background:** `timeline_rows` SELECT does not project these four columns from `events`. They're needed downstream by the Pulse view-model (`author_followers` for KOL/spam classification, `action` to display "回复/转推", `channel` for source identification, `author_name` for the displayName fallback we already declare in `EvidenceRow`).
@@ -113,7 +113,7 @@ Expected: FAIL — `KeyError: 'author_followers'` (or `assert None == 12345`).
 
 - [ ] **Step 3: Extend the SELECT in `timeline_rows`**
 
-In `src/gmgn_twitter_intel/domains/token_intel/repositories/token_target_repository.py`, update the `WITH matched AS (SELECT ...)` columns (lines 41-49). Replace the events-prefixed columns with this exact block (keep everything else identical):
+In `src/parallax/domains/token_intel/repositories/token_target_repository.py`, update the `WITH matched AS (SELECT ...)` columns (lines 41-49). Replace the events-prefixed columns with this exact block (keep everything else identical):
 
 ```python
               events.event_id,
@@ -144,7 +144,7 @@ Expected: PASS (assuming Task 2 also runs — wait, no, Task 2 is the serializer
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/domains/token_intel/repositories/token_target_repository.py
+git add src/parallax/domains/token_intel/repositories/token_target_repository.py
 git commit -m "Include author_followers / action / channel / author_name in target timeline rows"
 ```
 
@@ -153,13 +153,13 @@ git commit -m "Include author_followers / action / channel / author_name in targ
 ## Task 2: Backend — surface new fields in `token_target_post_payload`
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/token_target_post_serializer.py`
+- Modify: `src/parallax/domains/token_intel/read_models/token_target_post_serializer.py`
 
 **Background:** The serializer ignores the four newly-projected columns. We add them to the payload `dict` so `/api/target-posts` returns them.
 
 - [ ] **Step 1: Patch the serializer**
 
-In `src/gmgn_twitter_intel/domains/token_intel/read_models/token_target_post_serializer.py`, locate the `payload = { ... }` dict (lines 30-58) and insert the four fields directly after the existing `"author_handle"` key:
+In `src/parallax/domains/token_intel/read_models/token_target_post_serializer.py`, locate the `payload = { ... }` dict (lines 30-58) and insert the four fields directly after the existing `"author_handle"` key:
 
 ```python
         "handle": row.get("author_handle"),
@@ -192,7 +192,7 @@ Expected: all pass.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/domains/token_intel/read_models/token_target_post_serializer.py
+git add src/parallax/domains/token_intel/read_models/token_target_post_serializer.py
 git commit -m "Expose author_followers / action / channel / author_name on target-posts"
 ```
 
@@ -201,14 +201,14 @@ git commit -m "Expose author_followers / action / channel / author_name on targe
 ## Task 3: Backend — extend `TargetPostsItem` schema
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
+- Modify: `src/parallax/app/surfaces/api/schemas.py`
 
 **Background:** The response model needs to declare the new fields so OpenAPI typing reflects them. If the schema is `dict[str, Any]` / `LooseData`, no change is required and you can skip this task. Verify first.
 
 - [ ] **Step 1: Inspect the current schema**
 
 ```bash
-grep -n "TargetPostsItem\|TargetPostsData\|class TargetPosts" src/gmgn_twitter_intel/app/surfaces/api/schemas.py | head -10
+grep -n "TargetPostsItem\|TargetPostsData\|class TargetPosts" src/parallax/app/surfaces/api/schemas.py | head -10
 ```
 
 If the response is typed as a structured Pydantic model with explicit fields, continue to Step 2. If it is `LooseData` or `dict[str, Any]`, mark this task complete and move on.
@@ -235,7 +235,7 @@ Expected: all pass.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/app/surfaces/api/schemas.py
+git add src/parallax/app/surfaces/api/schemas.py
 git commit -m "Type new author_followers / action / channel fields on TargetPostsItem"
 ```
 
@@ -1033,7 +1033,7 @@ echo "ready"
 
 - [ ] **Step 4: Live Playwright audit on $TROLL pulse**
 
-Save the following as `/tmp/audit-troll.mjs` (run via `node /Users/qinghuan/Documents/code/gmgn-twitter-intel/web/audit-troll.mjs` after copying it inside `web/` because that's where Playwright is installed):
+Save the following as `/tmp/audit-troll.mjs` (run via `node /Users/qinghuan/Documents/code/parallax/web/audit-troll.mjs` after copying it inside `web/` because that's where Playwright is installed):
 
 ```javascript
 import { chromium } from "playwright";
@@ -1063,9 +1063,9 @@ await browser.close();
 Run it:
 
 ```bash
-cp /tmp/audit-troll.mjs /Users/qinghuan/Documents/code/gmgn-twitter-intel/web/audit-troll.mjs
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel/web && node audit-troll.mjs
-rm /Users/qinghuan/Documents/code/gmgn-twitter-intel/web/audit-troll.mjs
+cp /tmp/audit-troll.mjs /Users/qinghuan/Documents/code/parallax/web/audit-troll.mjs
+cd /Users/qinghuan/Documents/code/parallax/web && node audit-troll.mjs
+rm /Users/qinghuan/Documents/code/parallax/web/audit-troll.mjs
 ```
 
 Expected dump (the numbers may differ as the DB grows but the shape must match):

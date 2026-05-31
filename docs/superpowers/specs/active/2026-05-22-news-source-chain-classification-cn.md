@@ -7,7 +7,7 @@
 - `docs/ARCHITECTURE.md`
 - `docs/WORKERS.md`
 - `docs/CONTRACTS.md`
-- `src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md`
+- `src/parallax/domains/news_intel/ARCHITECTURE.md`
 - `docs/superpowers/specs/active/2026-05-19-news-intel-kappa-cqrs-cn.md`
 - `docs/superpowers/specs/active/2026-05-20-news-item-agent-brief-cn.md`
 - `/Users/qinghuan/Documents/code/Horizon/README_zh.md`
@@ -23,7 +23,7 @@
 
 当前项目已经有独立 `news_intel` 域。架构明确规定 News Intel 拥有配置源抓取、原始新闻事实、实体/Token mention、fact candidate、story read model、item brief 和 News 页面读模；它不拥有 Token Radar、Pulse 或 market tick，API 也不能执行 provider calls、实体抽取、Token 解析或 agent。当前 worker 链路为 `news_fetch -> news_item_process -> news_story_projection -> news_item_brief -> news_page_projection`。
 
-当前代码默认支持 11 个新闻源配置，其中 provider type 主要是 `rss` 和 `cryptopanic`；真实运行配置位于 `~/.gmgn-twitter-intel/config.yaml` 和 `~/.gmgn-twitter-intel/workers.yaml`，当前真实 News 源为 10 个 RSS 媒体/金融源。调试真实数据时必须先使用 `uv run gmgn-twitter-intel config` 确认路径，且只报告路径、布尔、数量和诊断结果，不打印 secret 或私有 URL。
+当前代码默认支持 11 个新闻源配置，其中 provider type 主要是 `rss` 和 `cryptopanic`；真实运行配置位于 `~/.parallax/config.yaml` 和 `~/.parallax/workers.yaml`，当前真实 News 源为 10 个 RSS 媒体/金融源。调试真实数据时必须先使用 `uv run parallax config` 确认路径，且只报告路径、布尔、数量和诊断结果，不打印 secret 或私有 URL。
 
 Horizon 的启发在信息源层，而不是执行拓扑。Horizon 把 GitHub、Hacker News、RSS、Reddit、Telegram、Twitter/X、OpenBB、OSSInsight 等来源统一到 `ContentItem`，通过 `fetch(since)` 并发抓取、URL 去重、AI scoring、topic dedup、评论/背景 enrichment、双语日报和 webhook/email/MCP 分发。它证明了一个好用信息雷达需要的不只是新闻 API，还需要 source 配置、源类型、用户兴趣、社区上下文、源质量和分发。但 Horizon 的单次批处理、AI-score-first 过滤和日报生成不适合本项目的生产链路：我们的新闻必须先可见、可追溯、可重建，不能在 AI 过滤前丢失低分但关键的监管、上所、黑客或项目官方事件。
 
@@ -57,7 +57,7 @@ Horizon 的启发在信息源层，而不是执行拓扑。Horizon 把 GitHub、
 
 **API/UI 永远只读。** HTTP route 和 frontend 只能读 facts/read models，不能抓源、解析 token、分组 story、运行 agent、算 source quality 或临时调用外部 provider。
 
-**配置源是 operator intent，DB source 是控制面。** `~/.gmgn-twitter-intel/config.yaml` 里的 sources 需要由 `news_fetch` reconcile 到 `news_sources`。移除/禁用配置源必须让 DB 行进入 disabled，而不是静默继续抓取。
+**配置源是 operator intent，DB source 是控制面。** `~/.parallax/config.yaml` 里的 sources 需要由 `news_fetch` reconcile 到 `news_sources`。移除/禁用配置源必须让 DB 行进入 disabled，而不是静默继续抓取。
 
 **网络 IO 不持有 DB session。** Worker snapshot due sources 后释放 DB session，再调用 provider，最后打开新 session 写入 fetch run、provider item、news item 和 cache state。
 
@@ -190,7 +190,7 @@ Product lane 是 UI 和 operator 看到的处理结果：
 保留当前五段主链路，新增 source/provider registry、context facts 和 source quality projection。
 
 ```text
-operator config (~/.gmgn-twitter-intel/config.yaml)
+operator config (~/.parallax/config.yaml)
   -> news_fetch source reconciliation
   -> news_sources control state
   -> provider registry selects adapter
@@ -459,7 +459,7 @@ Rules:
 
 ## Source Configuration Shape
 
-Operator config stays in `~/.gmgn-twitter-intel/config.yaml`:
+Operator config stays in `~/.parallax/config.yaml`:
 
 ```yaml
 news_intel:

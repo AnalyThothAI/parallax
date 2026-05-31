@@ -30,45 +30,45 @@ Hard-cut rules:
 
 OKX WS:
 
-- `src/gmgn_twitter_intel/integrations/okx/dex_ws_client.py:81` uses websocket protocol `ping_interval=20`; OKX requires application text `"ping"` and `"pong"`.
-- `src/gmgn_twitter_intel/integrations/okx/dex_ws_client.py:145` exposes a raw `recv()` generator and sends every message to `json.loads()`, so plain text `pong` and service `notice` are not first-class protocol states.
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_stream_worker.py:121` bounds worker calls, but provider lifecycle is still not self-healing.
+- `src/parallax/integrations/okx/dex_ws_client.py:81` uses websocket protocol `ping_interval=20`; OKX requires application text `"ping"` and `"pong"`.
+- `src/parallax/integrations/okx/dex_ws_client.py:145` exposes a raw `recv()` generator and sends every message to `json.loads()`, so plain text `pong` and service `notice` are not first-class protocol states.
+- `src/parallax/domains/asset_market/runtime/market_tick_stream_worker.py:121` bounds worker calls, but provider lifecycle is still not self-healing.
 
 Token Radar churn:
 
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_stream_worker.py:171` and `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_poll_worker.py:262` enqueue Radar dirty targets for every inserted market tick.
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_dirty_target_repository.py:138` builds market dirty payload hashes with `now_ms`, so repeated ticks for the same target are always treated as new dirtiness.
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py:479` updates `token_radar_target_features` when only `last_scored_at_ms` advances.
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py:151` updates `token_radar_current_rows` even when payload is unchanged, solely to advance `computed_at_ms`.
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py:627` updates `token_radar_target_first_seen.last_seen_ms` for every publish.
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_policy_evaluator.py:28` treats `token_radar_current_rows.computed_at_ms` as projection freshness, which currently forces timestamp-only current-row rewrites.
+- `src/parallax/domains/asset_market/runtime/market_tick_stream_worker.py:171` and `src/parallax/domains/asset_market/runtime/market_tick_poll_worker.py:262` enqueue Radar dirty targets for every inserted market tick.
+- `src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py:138` builds market dirty payload hashes with `now_ms`, so repeated ticks for the same target are always treated as new dirtiness.
+- `src/parallax/domains/token_intel/repositories/token_radar_repository.py:479` updates `token_radar_target_features` when only `last_scored_at_ms` advances.
+- `src/parallax/domains/token_intel/repositories/token_radar_repository.py:151` updates `token_radar_current_rows` even when payload is unchanged, solely to advance `computed_at_ms`.
+- `src/parallax/domains/token_intel/repositories/token_radar_repository.py:627` updates `token_radar_target_first_seen.last_seen_ms` for every publish.
+- `src/parallax/domains/pulse_lab/services/pulse_policy_evaluator.py:28` treats `token_radar_current_rows.computed_at_ms` as projection freshness, which currently forces timestamp-only current-row rewrites.
 
 Equity read-model churn:
 
-- `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py:572` mutates `equity_event_documents.updated_at_ms` for duplicate provider documents even when `content_hash` is unchanged.
-- `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py:681` mutates `equity_company_events.updated_at_ms` for stable duplicates.
-- `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py:1102` deletes and reinserts `equity_event_page_rows`.
-- `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py:2146` deletes and reinserts `equity_company_timeline_rows`.
-- `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py:1418` uses source `updated_at_ms` to decide projection staleness, so duplicate document/event timestamp churn cascades into repeated page/timeline rebuilds.
+- `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py:572` mutates `equity_event_documents.updated_at_ms` for duplicate provider documents even when `content_hash` is unchanged.
+- `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py:681` mutates `equity_company_events.updated_at_ms` for stable duplicates.
+- `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py:1102` deletes and reinserts `equity_event_page_rows`.
+- `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py:2146` deletes and reinserts `equity_company_timeline_rows`.
+- `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py:1418` uses source `updated_at_ms` to decide projection staleness, so duplicate document/event timestamp churn cascades into repeated page/timeline rebuilds.
 
 ## Files To Modify
 
 OKX WS:
 
-- Modify: `src/gmgn_twitter_intel/integrations/okx/dex_ws_client.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/provider_wiring/okx.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_stream_worker.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/app.py`
+- Modify: `src/parallax/integrations/okx/dex_ws_client.py`
+- Modify: `src/parallax/app/runtime/provider_wiring/okx.py`
+- Modify: `src/parallax/domains/asset_market/runtime/market_tick_stream_worker.py`
+- Modify: `src/parallax/app/runtime/app.py`
 - Modify: `tests/unit/test_okx_dex_ws_client.py`
 - Modify: `tests/unit/test_market_tick_stream_worker.py`
 - Modify: `tests/unit/test_runtime_readiness.py` or the existing readiness test file found by `rg "_readiness_payload|provider_states"`
 
 Market/Token Radar churn:
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_dirty_target_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_policy_evaluator.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_policy_evaluator.py`
 - Modify: `tests/unit/test_token_radar_dirty_target_repository.py`
 - Modify: `tests/unit/test_token_radar_repository.py`
 - Modify: `tests/integration/test_token_radar_repository.py`
@@ -77,9 +77,9 @@ Market/Token Radar churn:
 
 Equity churn:
 
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260524_0091_projection_churn_payload_hashes.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/services/page_projection.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260524_0091_projection_churn_payload_hashes.py`
+- Modify: `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py`
+- Modify: `src/parallax/domains/equity_event_intel/services/page_projection.py`
 - Modify: `tests/integration/test_equity_event_repository.py`
 - Modify: `tests/integration/test_equity_event_workers.py`
 - Modify: `tests/unit/domains/equity_event_intel/test_page_projection.py`
@@ -309,8 +309,8 @@ Expected:
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/integrations/okx/dex_ws_client.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/provider_wiring/okx.py`
+- Modify: `src/parallax/integrations/okx/dex_ws_client.py`
+- Modify: `src/parallax/app/runtime/provider_wiring/okx.py`
 
 - [ ] **Step 1: Replace state constants and health payload**
 
@@ -526,7 +526,7 @@ Add `_record_failure(category, code=None, terminal=False)` that:
 
 - [ ] **Step 6: Keep adapter hard-cut simple**
 
-In `src/gmgn_twitter_intel/app/runtime/provider_wiring/okx.py`, keep `OkxDexWebSocketMarketProviderAdapter` as the domain adapter but do not add a second legacy provider path. `iter_price_info()` should still delegate to the rewritten provider only.
+In `src/parallax/app/runtime/provider_wiring/okx.py`, keep `OkxDexWebSocketMarketProviderAdapter` as the domain adapter but do not add a second legacy provider path. `iter_price_info()` should still delegate to the rewritten provider only.
 
 - [ ] **Step 7: Run OKX tests**
 
@@ -545,7 +545,7 @@ Expected:
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_stream_worker.py`
+- Modify: `src/parallax/domains/asset_market/runtime/market_tick_stream_worker.py`
 - Modify: `tests/unit/test_market_tick_stream_worker.py`
 
 - [ ] **Step 1: Add failing degraded provider tests**
@@ -662,7 +662,7 @@ Expected:
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/app/runtime/app.py`
+- Modify: `src/parallax/app/runtime/app.py`
 - Modify: readiness tests found by `rg "_readiness_payload|provider_states" tests`
 
 - [ ] **Step 1: Add readiness test**
@@ -709,7 +709,7 @@ Expected:
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_dirty_target_repository.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py`
 - Modify: `tests/unit/test_token_radar_dirty_target_repository.py`
 
 - [ ] **Step 1: Add failing SQL contract tests**
@@ -826,7 +826,7 @@ Expected:
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
 - Modify: `tests/unit/test_token_radar_repository.py`
 - Modify: `tests/integration/test_token_radar_repository.py`
 
@@ -934,7 +934,7 @@ Expected:
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
 - Modify: `tests/unit/test_token_radar_repository.py`
 - Modify: `tests/integration/test_token_radar_repository.py`
 
@@ -1019,7 +1019,7 @@ Expected:
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_policy_evaluator.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_policy_evaluator.py`
 - Modify: `tests/unit/domains/pulse_lab/test_pulse_policy_evaluator.py`
 
 - [ ] **Step 1: Add failing test**
@@ -1097,7 +1097,7 @@ Expected:
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260524_0091_projection_churn_payload_hashes.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260524_0091_projection_churn_payload_hashes.py`
 - Modify: `tests/unit/test_postgres_schema.py`
 - Modify: `tests/integration/test_postgres_schema_runtime.py`
 
@@ -1159,7 +1159,7 @@ Expected:
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py`
+- Modify: `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py`
 - Modify: `tests/integration/test_equity_event_repository.py`
 
 - [ ] **Step 1: Add document duplicate no-op test**
@@ -1285,8 +1285,8 @@ Expected:
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/services/page_projection.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py`
+- Modify: `src/parallax/domains/equity_event_intel/services/page_projection.py`
+- Modify: `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py`
 - Modify: `tests/unit/domains/equity_event_intel/test_page_projection.py`
 - Modify: `tests/integration/test_equity_event_repository.py`
 - Modify: `tests/integration/test_equity_event_workers.py`
@@ -1533,7 +1533,7 @@ Forbidden expectation updates:
 
 Create a script that:
 
-- loads active settings with the same config path resolution as `uv run gmgn-twitter-intel config`
+- loads active settings with the same config path resolution as `uv run parallax config`
 - never prints secrets
 - selects top N stream targets from DB
 - connects/login/subscribes to OKX WS
@@ -1549,8 +1549,8 @@ uv run python scripts/smoke_okx_ws.py --limit 10 --timeout-seconds 30
 Expected output shape:
 
 ```text
-config_path=/Users/qinghuan/.gmgn-twitter-intel/config.yaml
-workers_config_path=/Users/qinghuan/.gmgn-twitter-intel/workers.yaml
+config_path=/Users/qinghuan/.parallax/config.yaml
+workers_config_path=/Users/qinghuan/.parallax/workers.yaml
 credentials_present=true
 targets=10
 login_ok=true
@@ -1561,7 +1561,7 @@ application_pong=true
 
 - [ ] **Step 2: Run smoke only when credentials are present**
 
-If `uv run gmgn-twitter-intel config` reports missing OKX WS credentials, skip live smoke and record skip reason in verification.
+If `uv run parallax config` reports missing OKX WS credentials, skip live smoke and record skip reason in verification.
 
 ## Task 15: Full Verification
 

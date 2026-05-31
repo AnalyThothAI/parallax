@@ -5,28 +5,28 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-from gmgn_twitter_intel.app.runtime import providers_wiring
-from gmgn_twitter_intel.app.runtime.provider_wiring import asset_market as asset_market_wiring
-from gmgn_twitter_intel.app.runtime.provider_wiring import binance as binance_wiring
-from gmgn_twitter_intel.app.runtime.provider_wiring import gmgn as gmgn_wiring
-from gmgn_twitter_intel.app.runtime.provider_wiring import model_execution as model_execution_wiring
-from gmgn_twitter_intel.app.runtime.provider_wiring import news as news_wiring
-from gmgn_twitter_intel.app.runtime.provider_wiring import okx as okx_wiring
-from gmgn_twitter_intel.app.runtime.provider_wiring.gmgn import GmgnDexMarketProvider
-from gmgn_twitter_intel.app.runtime.provider_wiring.okx import (
+from parallax.app.runtime import providers_wiring
+from parallax.app.runtime.provider_wiring import asset_market as asset_market_wiring
+from parallax.app.runtime.provider_wiring import binance as binance_wiring
+from parallax.app.runtime.provider_wiring import gmgn as gmgn_wiring
+from parallax.app.runtime.provider_wiring import model_execution as model_execution_wiring
+from parallax.app.runtime.provider_wiring import news as news_wiring
+from parallax.app.runtime.provider_wiring import okx as okx_wiring
+from parallax.app.runtime.provider_wiring.gmgn import GmgnDexMarketProvider
+from parallax.app.runtime.provider_wiring.okx import (
     OkxDexDiscoveryProvider,
     OkxDexQuoteProvider,
     okx_chain_indexes_to_chain_ids,
 )
-from gmgn_twitter_intel.domains.asset_market.providers import (
+from parallax.domains.asset_market.providers import (
     DexProviderTemporarilyUnavailable,
     DexTokenQuote,
     DexTokenQuoteRequest,
 )
-from gmgn_twitter_intel.integrations.gmgn.openapi_client import GmgnOpenApiClient
-from gmgn_twitter_intel.integrations.gmgn.openapi_gateway import GmgnOpenApiGateway
-from gmgn_twitter_intel.integrations.okx.models import OkxDexTokenCandidate, OkxDexTokenPrice
-from gmgn_twitter_intel.platform.config.settings import Settings
+from parallax.integrations.gmgn.openapi_client import GmgnOpenApiClient
+from parallax.integrations.gmgn.openapi_gateway import GmgnOpenApiGateway
+from parallax.integrations.okx.models import OkxDexTokenCandidate, OkxDexTokenPrice
+from parallax.platform.config.settings import Settings
 
 
 def test_asset_market_wires_okx_quote_separately_from_discovery_and_gmgn_exact_roles(monkeypatch) -> None:

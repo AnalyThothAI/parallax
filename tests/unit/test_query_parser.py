@@ -1,4 +1,4 @@
-from gmgn_twitter_intel.domains.token_intel.services.query_parser import parse_search_query
+from parallax.domains.token_intel.services.query_parser import parse_search_query
 
 
 def test_parse_search_query_treats_bare_symbol_as_symbol_probe():

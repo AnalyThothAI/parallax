@@ -11,8 +11,8 @@
   - `docs/ARCHITECTURE.md`（10 条 Kappa/CQRS 不变量）
   - `docs/RELIABILITY.md`（wake-hint 非 truth、capture lane 划分、one writer per read model）
   - `docs/WORKERS.md`（cross-domain worker 清单）
-  - `src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md`
-  - 直接落地代码区：`src/gmgn_twitter_intel/domains/asset_market/{runtime,services,repositories}/`、`src/gmgn_twitter_intel/integrations/okx/dex_ws_client.py`、`src/gmgn_twitter_intel/app/runtime/bootstrap.py`、`src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py`、`src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
+  - `src/parallax/domains/asset_market/ARCHITECTURE.md`
+  - 直接落地代码区：`src/parallax/domains/asset_market/{runtime,services,repositories}/`、`src/parallax/integrations/okx/dex_ws_client.py`、`src/parallax/app/runtime/bootstrap.py`、`src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py`、`src/parallax/domains/token_intel/services/token_radar_projection.py`
 
 ## 一句话结论
 
@@ -64,27 +64,27 @@ LivePriceGateway(WorkerBase) ──── /ws fan-out:
 
 | 关注点 | file:line |
 |---|---|
-| Provider 拼装总入口（`AssetMarketProviders`） | `src/gmgn_twitter_intel/app/runtime/providers_wiring.py:466-492` |
-| `FallbackDexQuoteProvider`（GMGN primary + OKX fallback） | `src/gmgn_twitter_intel/app/runtime/providers_wiring.py:252-272` |
-| `GmgnDexMarketProvider`（GMGN OpenAPI REST quote） | `src/gmgn_twitter_intel/app/runtime/providers_wiring.py:176-209` |
-| OKX DEX WS 客户端（tier1 唯一实现） | `src/gmgn_twitter_intel/integrations/okx/dex_ws_client.py:48-106` |
-| OKX DEX REST 客户端（tier2 fallback、tier3 fallback） | `src/gmgn_twitter_intel/integrations/okx/dex_client.py` |
-| OKX CEX REST 客户端（CEX quote；无 CEX WS 接入） | `src/gmgn_twitter_intel/integrations/okx/cex_client.py:14-72` |
-| GMGN public WS（推特帧 ingestion，**与价格无关**） | `src/gmgn_twitter_intel/integrations/gmgn/direct_ws.py` |
-| StreamWorker run loop（注入 OKX WS） | `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_stream_worker.py:71-149` |
-| PollWorker run loop（注入 fallback chain） | `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_poll_worker.py:64-211` |
-| TokenCaptureTierWorker | `src/gmgn_twitter_intel/domains/asset_market/runtime/token_capture_tier_worker.py:77-163` |
-| capture tier upsert SQL | `src/gmgn_twitter_intel/domains/asset_market/repositories/token_capture_tier_repository.py:21-53` |
-| 内联 capture 入口 | `src/gmgn_twitter_intel/app/runtime/bootstrap.py:448-492`（事务外 capture，事务内写 enriched_events） |
-| 内联 capture 服务 | `src/gmgn_twitter_intel/domains/asset_market/services/event_market_capture.py:51-242` |
-| collector → ingest 串行 await | `src/gmgn_twitter_intel/domains/ingestion/runtime/collector_service.py:195` |
+| Provider 拼装总入口（`AssetMarketProviders`） | `src/parallax/app/runtime/providers_wiring.py:466-492` |
+| `FallbackDexQuoteProvider`（GMGN primary + OKX fallback） | `src/parallax/app/runtime/providers_wiring.py:252-272` |
+| `GmgnDexMarketProvider`（GMGN OpenAPI REST quote） | `src/parallax/app/runtime/providers_wiring.py:176-209` |
+| OKX DEX WS 客户端（tier1 唯一实现） | `src/parallax/integrations/okx/dex_ws_client.py:48-106` |
+| OKX DEX REST 客户端（tier2 fallback、tier3 fallback） | `src/parallax/integrations/okx/dex_client.py` |
+| OKX CEX REST 客户端（CEX quote；无 CEX WS 接入） | `src/parallax/integrations/okx/cex_client.py:14-72` |
+| GMGN public WS（推特帧 ingestion，**与价格无关**） | `src/parallax/integrations/gmgn/direct_ws.py` |
+| StreamWorker run loop（注入 OKX WS） | `src/parallax/domains/asset_market/runtime/market_tick_stream_worker.py:71-149` |
+| PollWorker run loop（注入 fallback chain） | `src/parallax/domains/asset_market/runtime/market_tick_poll_worker.py:64-211` |
+| TokenCaptureTierWorker | `src/parallax/domains/asset_market/runtime/token_capture_tier_worker.py:77-163` |
+| capture tier upsert SQL | `src/parallax/domains/asset_market/repositories/token_capture_tier_repository.py:21-53` |
+| 内联 capture 入口 | `src/parallax/app/runtime/bootstrap.py:448-492`（事务外 capture，事务内写 enriched_events） |
+| 内联 capture 服务 | `src/parallax/domains/asset_market/services/event_market_capture.py:51-242` |
+| collector → ingest 串行 await | `src/parallax/domains/ingestion/runtime/collector_service.py:195` |
 | enriched_events PK + trigger | `platform/db/alembic/versions/20260515_0046_event_anchor_capture_redesign.py:94-168` |
-| enriched_events INSERT ON CONFLICT DO NOTHING | `src/gmgn_twitter_intel/domains/asset_market/repositories/enriched_event_repository.py:41` |
-| RadarProjection 串行循环 | `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py:106-140` |
-| RadarProjection source 全量扫 | `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py:199-231` |
-| RadarProjection truncate+insert | `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py:52-90` |
-| factor_snapshot.market.readiness.latest_status 计算 | `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py:745-763` |
-| `market_json` 硬写空 | `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py:453` |
+| enriched_events INSERT ON CONFLICT DO NOTHING | `src/parallax/domains/asset_market/repositories/enriched_event_repository.py:41` |
+| RadarProjection 串行循环 | `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py:106-140` |
+| RadarProjection source 全量扫 | `src/parallax/domains/token_intel/queries/token_radar_source_query.py:199-231` |
+| RadarProjection truncate+insert | `src/parallax/domains/token_intel/repositories/token_radar_repository.py:52-90` |
+| factor_snapshot.market.readiness.latest_status 计算 | `src/parallax/domains/token_intel/services/token_radar_projection.py:745-763` |
+| `market_json` 硬写空 | `src/parallax/domains/token_intel/services/token_radar_projection.py:453` |
 
 ### Provider 边界说明：为什么不用 GMGN WS 查价格
 
@@ -611,7 +611,7 @@ $$ LANGUAGE plpgsql;
 docker compose logs --since=1h app | grep -c "okx_dex_ws.subscribe"
 
 # G2: tier1 1h ws 覆盖
-docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -c "
+docker compose exec -T postgres psql -U parallax_app -d parallax -c "
 WITH t1 AS (SELECT target_type, target_id FROM token_capture_tier WHERE tier=1),
 ticks AS (SELECT DISTINCT target_type, target_id FROM market_ticks
           WHERE source_tier='tier1_ws'
@@ -622,7 +622,7 @@ SELECT ROUND(100.0 * (SELECT COUNT(*) FROM t1 JOIN ticks USING (target_type,targ
 # G3: tier2 1h poll 覆盖 (同模式，source_tier='tier2_poll')
 
 # G4: tick_lag_ms p95/p99
-docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -c "
+docker compose exec -T postgres psql -U parallax_app -d parallax -c "
 SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY tick_lag_ms) AS p95,
        PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY tick_lag_ms) AS p99
 FROM enriched_events
@@ -632,29 +632,29 @@ WHERE t_event_ms > (EXTRACT(EPOCH FROM NOW())*1000)::bigint - 3600000
 # G5: collector 解阻塞 (chaos: 用 iptables / 暂停 OKX 连接，观察 events.created_at_ms - timestamp_ms p95)
 
 # G6: market.readiness.latest_status 充填 + data_health.market 保持标量
-docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -c "
+docker compose exec -T postgres psql -U parallax_app -d parallax -c "
 SELECT factor_snapshot_json->'market'->'readiness'->>'latest_status' AS status, COUNT(*)
 FROM token_radar_rows
 WHERE computed_at_ms > (EXTRACT(EPOCH FROM NOW())*1000)::bigint - 3600000
 GROUP BY 1;"
 
-docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -c "
+docker compose exec -T postgres psql -U parallax_app -d parallax -c "
 SELECT jsonb_typeof(factor_snapshot_json->'data_health'->'market') AS data_health_market_type, COUNT(*)
 FROM token_radar_rows
 WHERE computed_at_ms > (EXTRACT(EPOCH FROM NOW())*1000)::bigint - 3600000
 GROUP BY 1;"
 
 # G7: 5m:matched 滞后
-docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -c "
+docker compose exec -T postgres psql -U parallax_app -d parallax -c "
 SELECT (EXTRACT(EPOCH FROM NOW())*1000)::bigint - MAX(computed_at_ms) AS lag_ms
 FROM token_radar_rows WHERE \"window\"='5m' AND scope='matched';"
 
 # G8: tier 容量
-docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -c "
+docker compose exec -T postgres psql -U parallax_app -d parallax -c "
 SELECT tier, COUNT(*) FROM token_capture_tier GROUP BY tier;"
 
 # G9: unavailable 占比
-docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -c "
+docker compose exec -T postgres psql -U parallax_app -d parallax -c "
 SELECT ROUND(100.0 * COUNT(*) FILTER (WHERE capture_method='unavailable')
        / NULLIF(COUNT(*),0), 2) AS pct_unavailable
 FROM enriched_events

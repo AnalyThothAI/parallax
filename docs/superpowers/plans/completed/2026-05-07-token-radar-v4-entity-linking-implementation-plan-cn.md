@@ -34,18 +34,18 @@
 
 Create:
 
-- `src/gmgn_twitter_intel/pipeline/mention_key_extractor.py`: extracts address, pricefeed, chain, venue, and intent keys from span-aware text facts.
-- `src/gmgn_twitter_intel/pipeline/deterministic_token_resolver.py`: fixed priority resolver table.
-- `src/gmgn_twitter_intel/pipeline/discovery_worker.py`: claims discovery tasks and writes registry facts.
-- `src/gmgn_twitter_intel/pipeline/reprocess_worker.py`: reruns resolver for intents touched by registry updates.
-- `src/gmgn_twitter_intel/storage/registry_repository.py`: Project/Asset/CexToken/PriceFeed/Alias reads and writes.
-- `src/gmgn_twitter_intel/storage/discovery_repository.py`: discovery task queue.
-- `src/gmgn_twitter_intel/storage/price_observation_repository.py`: token/CexToken/pricefeed-level provider price observations.
-- `src/gmgn_twitter_intel/storage/token_intent_lookup_repository.py`: indexed resolver lookup keys for deterministic reprocess.
-- `src/gmgn_twitter_intel/retrieval/token_radar_service.py`: V4 `/api/token-radar` read service.
-- `src/gmgn_twitter_intel/retrieval/token_target_posts_service.py`: target-aware Radar posts drilldown.
-- `src/gmgn_twitter_intel/retrieval/token_target_timeline_service.py`: target-aware Radar timeline drilldown.
-- `src/gmgn_twitter_intel/storage/alembic/versions/20260507_0008_token_radar_v4_deterministic_registry.py`
+- `src/parallax/pipeline/mention_key_extractor.py`: extracts address, pricefeed, chain, venue, and intent keys from span-aware text facts.
+- `src/parallax/pipeline/deterministic_token_resolver.py`: fixed priority resolver table.
+- `src/parallax/pipeline/discovery_worker.py`: claims discovery tasks and writes registry facts.
+- `src/parallax/pipeline/reprocess_worker.py`: reruns resolver for intents touched by registry updates.
+- `src/parallax/storage/registry_repository.py`: Project/Asset/CexToken/PriceFeed/Alias reads and writes.
+- `src/parallax/storage/discovery_repository.py`: discovery task queue.
+- `src/parallax/storage/price_observation_repository.py`: token/CexToken/pricefeed-level provider price observations.
+- `src/parallax/storage/token_intent_lookup_repository.py`: indexed resolver lookup keys for deterministic reprocess.
+- `src/parallax/retrieval/token_radar_service.py`: V4 `/api/token-radar` read service.
+- `src/parallax/retrieval/token_target_posts_service.py`: target-aware Radar posts drilldown.
+- `src/parallax/retrieval/token_target_timeline_service.py`: target-aware Radar timeline drilldown.
+- `src/parallax/storage/alembic/versions/20260507_0008_token_radar_v4_deterministic_registry.py`
 - `tests/factories_token_radar_v4.py`
 - `tests/golden/test_token_radar_v4_deterministic_resolver.py`
 - `tests/test_mention_key_extractor.py`
@@ -60,25 +60,25 @@ Create:
 
 Modify:
 
-- `src/gmgn_twitter_intel/pipeline/entity_extractor.py`
-- `src/gmgn_twitter_intel/pipeline/token_evidence_builder.py`
-- `src/gmgn_twitter_intel/pipeline/token_intent_builder.py`
-- `src/gmgn_twitter_intel/pipeline/token_intent_resolver.py`
-- `src/gmgn_twitter_intel/pipeline/token_radar_projection.py`
-- `src/gmgn_twitter_intel/pipeline/asset_market_sync.py`
-- `src/gmgn_twitter_intel/pipeline/asset_market_sync_worker.py`
-- `src/gmgn_twitter_intel/retrieval/tradeability_scoring.py`
-- `src/gmgn_twitter_intel/retrieval/trading_attention_service.py`
-- `src/gmgn_twitter_intel/storage/repository_session.py`
-- `src/gmgn_twitter_intel/storage/postgres_audit.py`
-- `src/gmgn_twitter_intel/models.py`
-- `src/gmgn_twitter_intel/collector/gmgn_token_payload.py`
-- `src/gmgn_twitter_intel/market/okx_models.py`
-- `src/gmgn_twitter_intel/market/gmgn_openapi_client.py`
-- `src/gmgn_twitter_intel/api/app.py`
-- `src/gmgn_twitter_intel/api/http.py`
-- `src/gmgn_twitter_intel/api/ws.py`
-- `src/gmgn_twitter_intel/cli.py`
+- `src/parallax/pipeline/entity_extractor.py`
+- `src/parallax/pipeline/token_evidence_builder.py`
+- `src/parallax/pipeline/token_intent_builder.py`
+- `src/parallax/pipeline/token_intent_resolver.py`
+- `src/parallax/pipeline/token_radar_projection.py`
+- `src/parallax/pipeline/asset_market_sync.py`
+- `src/parallax/pipeline/asset_market_sync_worker.py`
+- `src/parallax/retrieval/tradeability_scoring.py`
+- `src/parallax/retrieval/trading_attention_service.py`
+- `src/parallax/storage/repository_session.py`
+- `src/parallax/storage/postgres_audit.py`
+- `src/parallax/models.py`
+- `src/parallax/collector/gmgn_token_payload.py`
+- `src/parallax/market/okx_models.py`
+- `src/parallax/market/gmgn_openapi_client.py`
+- `src/parallax/api/app.py`
+- `src/parallax/api/http.py`
+- `src/parallax/api/ws.py`
+- `src/parallax/cli.py`
 - `web/src/App.tsx`
 - `web/src/api/types.ts`
 - `web/src/components/ScoreLedger.tsx`
@@ -100,10 +100,10 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from gmgn_twitter_intel.collector.gmgn_token_payload import parse_gmgn_token_payload
-from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
-from gmgn_twitter_intel.pipeline.ingest_service import IngestService
-from gmgn_twitter_intel.storage.repository_session import repositories_for_connection
+from parallax.collector.gmgn_token_payload import parse_gmgn_token_payload
+from parallax.models import Author, Content, Source, TwitterEvent
+from parallax.pipeline.ingest_service import IngestService
+from parallax.storage.repository_session import repositories_for_connection
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
@@ -218,7 +218,7 @@ git commit -m "test: add token radar v4 deterministic corpus"
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/storage/alembic/versions/20260507_0008_token_radar_v4_deterministic_registry.py`
+- Create: `src/parallax/storage/alembic/versions/20260507_0008_token_radar_v4_deterministic_registry.py`
 - Modify: `tests/test_postgres_schema.py`
 - Modify: `tests/test_postgres_schema_runtime.py`
 
@@ -447,7 +447,7 @@ Expected: passed.
 - [ ] **Step 4: Commit schema**
 
 ```bash
-git add src/gmgn_twitter_intel/storage/alembic/versions/20260507_0008_token_radar_v4_deterministic_registry.py tests/test_postgres_schema.py tests/test_postgres_schema_runtime.py
+git add src/parallax/storage/alembic/versions/20260507_0008_token_radar_v4_deterministic_registry.py tests/test_postgres_schema.py tests/test_postgres_schema_runtime.py
 git commit -m "feat: add deterministic token registry schema"
 ```
 
@@ -455,11 +455,11 @@ git commit -m "feat: add deterministic token registry schema"
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/storage/registry_repository.py`
-- Create: `src/gmgn_twitter_intel/storage/discovery_repository.py`
-- Create: `src/gmgn_twitter_intel/storage/price_observation_repository.py`
-- Create: `src/gmgn_twitter_intel/storage/token_intent_lookup_repository.py`
-- Modify: `src/gmgn_twitter_intel/storage/repository_session.py`
+- Create: `src/parallax/storage/registry_repository.py`
+- Create: `src/parallax/storage/discovery_repository.py`
+- Create: `src/parallax/storage/price_observation_repository.py`
+- Create: `src/parallax/storage/token_intent_lookup_repository.py`
+- Modify: `src/parallax/storage/repository_session.py`
 - Test: `tests/test_registry_repository.py`
 - Test: `tests/test_discovery_repository.py`
 - Test: `tests/test_price_observation_repository.py`
@@ -563,7 +563,7 @@ Expected: passed.
 - [ ] **Step 7: Commit repositories**
 
 ```bash
-git add src/gmgn_twitter_intel/storage/registry_repository.py src/gmgn_twitter_intel/storage/discovery_repository.py src/gmgn_twitter_intel/storage/price_observation_repository.py src/gmgn_twitter_intel/storage/token_intent_lookup_repository.py src/gmgn_twitter_intel/storage/repository_session.py tests/test_registry_repository.py tests/test_discovery_repository.py tests/test_price_observation_repository.py tests/test_token_intent_lookup_repository.py
+git add src/parallax/storage/registry_repository.py src/parallax/storage/discovery_repository.py src/parallax/storage/price_observation_repository.py src/parallax/storage/token_intent_lookup_repository.py src/parallax/storage/repository_session.py tests/test_registry_repository.py tests/test_discovery_repository.py tests/test_price_observation_repository.py tests/test_token_intent_lookup_repository.py
 git commit -m "feat: add deterministic registry repositories"
 ```
 
@@ -571,9 +571,9 @@ git commit -m "feat: add deterministic registry repositories"
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/pipeline/mention_key_extractor.py`
-- Modify: `src/gmgn_twitter_intel/pipeline/entity_extractor.py`
-- Modify: `src/gmgn_twitter_intel/pipeline/token_evidence_builder.py`
+- Create: `src/parallax/pipeline/mention_key_extractor.py`
+- Modify: `src/parallax/pipeline/entity_extractor.py`
+- Modify: `src/parallax/pipeline/token_evidence_builder.py`
 - Test: `tests/test_mention_key_extractor.py`
 - Test: `tests/test_entity_extractor.py`
 - Test: `tests/test_token_evidence_builder.py`
@@ -713,7 +713,7 @@ Expected: passed.
 - [ ] **Step 6: Commit extraction**
 
 ```bash
-git add pyproject.toml uv.lock src/gmgn_twitter_intel/pipeline/mention_key_extractor.py src/gmgn_twitter_intel/pipeline/entity_extractor.py src/gmgn_twitter_intel/pipeline/token_evidence_builder.py src/gmgn_twitter_intel/pipeline/token_intent_builder.py src/gmgn_twitter_intel/storage/token_intent_lookup_repository.py tests/test_mention_key_extractor.py tests/test_entity_extractor.py tests/test_token_evidence_builder.py tests/test_token_intent_builder.py tests/test_token_intent_lookup_repository.py
+git add pyproject.toml uv.lock src/parallax/pipeline/mention_key_extractor.py src/parallax/pipeline/entity_extractor.py src/parallax/pipeline/token_evidence_builder.py src/parallax/pipeline/token_intent_builder.py src/parallax/storage/token_intent_lookup_repository.py tests/test_mention_key_extractor.py tests/test_entity_extractor.py tests/test_token_evidence_builder.py tests/test_token_intent_builder.py tests/test_token_intent_lookup_repository.py
 git commit -m "feat: extract deterministic token mention keys"
 ```
 
@@ -721,9 +721,9 @@ git commit -m "feat: extract deterministic token mention keys"
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/pipeline/deterministic_token_resolver.py`
-- Modify: `src/gmgn_twitter_intel/pipeline/token_intent_resolver.py`
-- Modify: `src/gmgn_twitter_intel/storage/intent_resolution_repository.py`
+- Create: `src/parallax/pipeline/deterministic_token_resolver.py`
+- Modify: `src/parallax/pipeline/token_intent_resolver.py`
+- Modify: `src/parallax/storage/intent_resolution_repository.py`
 - Test: `tests/test_deterministic_token_resolver.py`
 - Test: `tests/test_token_intent_resolver.py`
 
@@ -868,7 +868,7 @@ Expected: passed.
 - [ ] **Step 7: Commit resolver**
 
 ```bash
-git add src/gmgn_twitter_intel/pipeline/deterministic_token_resolver.py src/gmgn_twitter_intel/pipeline/token_intent_resolver.py src/gmgn_twitter_intel/storage/intent_resolution_repository.py tests/test_deterministic_token_resolver.py tests/test_token_intent_resolver.py tests/golden/test_token_radar_v4_deterministic_resolver.py
+git add src/parallax/pipeline/deterministic_token_resolver.py src/parallax/pipeline/token_intent_resolver.py src/parallax/storage/intent_resolution_repository.py tests/test_deterministic_token_resolver.py tests/test_token_intent_resolver.py tests/golden/test_token_radar_v4_deterministic_resolver.py
 git commit -m "feat: resolve token intents deterministically"
 ```
 
@@ -876,13 +876,13 @@ git commit -m "feat: resolve token intents deterministically"
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/pipeline/ingest_service.py`
-- Modify: `src/gmgn_twitter_intel/models.py`
-- Modify: `src/gmgn_twitter_intel/collector/gmgn_token_payload.py`
-- Modify: `src/gmgn_twitter_intel/market/okx_models.py`
-- Modify: `src/gmgn_twitter_intel/market/okx_cex_client.py`
-- Modify: `src/gmgn_twitter_intel/market/okx_dex_client.py`
-- Modify: `src/gmgn_twitter_intel/market/gmgn_openapi_client.py`
+- Modify: `src/parallax/pipeline/ingest_service.py`
+- Modify: `src/parallax/models.py`
+- Modify: `src/parallax/collector/gmgn_token_payload.py`
+- Modify: `src/parallax/market/okx_models.py`
+- Modify: `src/parallax/market/okx_cex_client.py`
+- Modify: `src/parallax/market/okx_dex_client.py`
+- Modify: `src/parallax/market/gmgn_openapi_client.py`
 - Test: `tests/test_ingest_service.py`
 - Test: `tests/test_token_radar_v4_ingest_flow.py`
 - Test: `tests/test_okx_clients.py`
@@ -954,7 +954,7 @@ Expected: passed.
 - [ ] **Step 6: Commit ingest hard cut**
 
 ```bash
-git add src/gmgn_twitter_intel/pipeline/ingest_service.py src/gmgn_twitter_intel/models.py src/gmgn_twitter_intel/collector/gmgn_token_payload.py src/gmgn_twitter_intel/market/okx_models.py src/gmgn_twitter_intel/market/okx_cex_client.py src/gmgn_twitter_intel/market/okx_dex_client.py src/gmgn_twitter_intel/market/gmgn_openapi_client.py tests/test_ingest_service.py tests/test_token_radar_v4_ingest_flow.py tests/test_okx_clients.py tests/golden/test_token_radar_v4_deterministic_resolver.py
+git add src/parallax/pipeline/ingest_service.py src/parallax/models.py src/parallax/collector/gmgn_token_payload.py src/parallax/market/okx_models.py src/parallax/market/okx_cex_client.py src/parallax/market/okx_dex_client.py src/parallax/market/gmgn_openapi_client.py tests/test_ingest_service.py tests/test_token_radar_v4_ingest_flow.py tests/test_okx_clients.py tests/golden/test_token_radar_v4_deterministic_resolver.py
 git commit -m "feat: hard cut token radar ingest to v4 registry"
 ```
 
@@ -962,9 +962,9 @@ git commit -m "feat: hard cut token radar ingest to v4 registry"
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/pipeline/discovery_worker.py`
-- Create: `src/gmgn_twitter_intel/pipeline/reprocess_worker.py`
-- Modify: `src/gmgn_twitter_intel/cli.py`
+- Create: `src/parallax/pipeline/discovery_worker.py`
+- Create: `src/parallax/pipeline/reprocess_worker.py`
+- Modify: `src/parallax/cli.py`
 - Test: `tests/test_discovery_repository.py`
 - Test: `tests/test_reprocess_worker.py`
 
@@ -1024,8 +1024,8 @@ use old asset_id or primary_venue_id to find affected rows
 Add:
 
 ```bash
-gmgn-twitter-intel ops discovery-run --limit 100
-gmgn-twitter-intel ops reprocess-registry-updates --limit 1000
+parallax ops discovery-run --limit 100
+parallax ops reprocess-registry-updates --limit 1000
 ```
 
 - [ ] **Step 4: Run worker tests**
@@ -1039,7 +1039,7 @@ Expected: passed.
 - [ ] **Step 5: Commit discovery loop**
 
 ```bash
-git add src/gmgn_twitter_intel/pipeline/discovery_worker.py src/gmgn_twitter_intel/pipeline/reprocess_worker.py src/gmgn_twitter_intel/cli.py tests/test_discovery_repository.py tests/test_reprocess_worker.py tests/golden/test_token_radar_v4_deterministic_resolver.py
+git add src/parallax/pipeline/discovery_worker.py src/parallax/pipeline/reprocess_worker.py src/parallax/cli.py tests/test_discovery_repository.py tests/test_reprocess_worker.py tests/golden/test_token_radar_v4_deterministic_resolver.py
 git commit -m "feat: add token discovery and reprocess loop"
 ```
 
@@ -1047,11 +1047,11 @@ git commit -m "feat: add token discovery and reprocess loop"
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/pipeline/asset_market_sync.py`
-- Modify: `src/gmgn_twitter_intel/pipeline/asset_market_sync_worker.py`
-- Modify: `src/gmgn_twitter_intel/market/okx_cex_client.py`
-- Modify: `src/gmgn_twitter_intel/market/okx_dex_client.py`
-- Modify: `src/gmgn_twitter_intel/market/gmgn_openapi_client.py`
+- Modify: `src/parallax/pipeline/asset_market_sync.py`
+- Modify: `src/parallax/pipeline/asset_market_sync_worker.py`
+- Modify: `src/parallax/market/okx_cex_client.py`
+- Modify: `src/parallax/market/okx_dex_client.py`
+- Modify: `src/parallax/market/gmgn_openapi_client.py`
 - Test: `tests/test_asset_market_sync.py`
 - Test: `tests/test_price_observation_repository.py`
 
@@ -1146,7 +1146,7 @@ Expected: passed.
 - [ ] **Step 5: Commit price sync**
 
 ```bash
-git add src/gmgn_twitter_intel/pipeline/asset_market_sync.py src/gmgn_twitter_intel/pipeline/asset_market_sync_worker.py src/gmgn_twitter_intel/market/okx_cex_client.py src/gmgn_twitter_intel/market/okx_dex_client.py src/gmgn_twitter_intel/market/gmgn_openapi_client.py tests/test_asset_market_sync.py tests/test_price_observation_repository.py
+git add src/parallax/pipeline/asset_market_sync.py src/parallax/pipeline/asset_market_sync_worker.py src/parallax/market/okx_cex_client.py src/parallax/market/okx_dex_client.py src/parallax/market/gmgn_openapi_client.py tests/test_asset_market_sync.py tests/test_price_observation_repository.py
 git commit -m "feat: sync token radar prices by pricefeed"
 ```
 
@@ -1154,12 +1154,12 @@ git commit -m "feat: sync token radar prices by pricefeed"
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/pipeline/token_radar_projection.py`
-- Modify: `src/gmgn_twitter_intel/retrieval/opportunity_scoring.py`
-- Modify/Delete: `src/gmgn_twitter_intel/retrieval/tradeability_scoring.py`
-- Modify: `src/gmgn_twitter_intel/storage/token_radar_repository.py`
-- Create: `src/gmgn_twitter_intel/retrieval/token_radar_service.py`
-- Modify: `src/gmgn_twitter_intel/api/http.py`
+- Modify: `src/parallax/pipeline/token_radar_projection.py`
+- Modify: `src/parallax/retrieval/opportunity_scoring.py`
+- Modify/Delete: `src/parallax/retrieval/tradeability_scoring.py`
+- Modify: `src/parallax/storage/token_radar_repository.py`
+- Create: `src/parallax/retrieval/token_radar_service.py`
+- Modify: `src/parallax/api/http.py`
 - Test: `tests/test_token_radar_projection.py`
 - Test: `tests/test_token_radar_service.py`
 - Test: `tests/test_api_http.py`
@@ -1324,7 +1324,7 @@ Expected: passed.
 - [ ] **Step 8: Commit projection**
 
 ```bash
-git add src/gmgn_twitter_intel/pipeline/token_radar_projection.py src/gmgn_twitter_intel/storage/token_radar_repository.py src/gmgn_twitter_intel/retrieval/token_radar_service.py src/gmgn_twitter_intel/retrieval/opportunity_scoring.py src/gmgn_twitter_intel/retrieval/tradeability_scoring.py src/gmgn_twitter_intel/api/http.py tests/test_token_radar_projection.py tests/test_token_radar_service.py tests/test_api_http.py tests/test_opportunity_scoring.py tests/test_tradeability_scoring.py tests/golden/test_token_radar_v4_deterministic_resolver.py
+git add src/parallax/pipeline/token_radar_projection.py src/parallax/storage/token_radar_repository.py src/parallax/retrieval/token_radar_service.py src/parallax/retrieval/opportunity_scoring.py src/parallax/retrieval/tradeability_scoring.py src/parallax/api/http.py tests/test_token_radar_projection.py tests/test_token_radar_service.py tests/test_api_http.py tests/test_opportunity_scoring.py tests/test_tradeability_scoring.py tests/golden/test_token_radar_v4_deterministic_resolver.py
 git commit -m "feat: project token radar from deterministic resolutions"
 ```
 
@@ -1332,9 +1332,9 @@ git commit -m "feat: project token radar from deterministic resolutions"
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/retrieval/token_target_posts_service.py`
-- Create: `src/gmgn_twitter_intel/retrieval/token_target_timeline_service.py`
-- Modify: `src/gmgn_twitter_intel/api/http.py`
+- Create: `src/parallax/retrieval/token_target_posts_service.py`
+- Create: `src/parallax/retrieval/token_target_timeline_service.py`
+- Modify: `src/parallax/api/http.py`
 - Modify: `web/src/App.tsx`
 - Modify: `web/src/api/types.ts`
 - Modify: `web/src/components/ScoreLedger.tsx`
@@ -1429,7 +1429,7 @@ Expected: passed and built.
 - [ ] **Step 6: Commit target-aware UI**
 
 ```bash
-git add src/gmgn_twitter_intel/retrieval/token_target_posts_service.py src/gmgn_twitter_intel/retrieval/token_target_timeline_service.py src/gmgn_twitter_intel/api/http.py web/src/App.tsx web/src/api/types.ts web/src/App.test.tsx tests/test_token_target_posts_service.py tests/test_token_target_timeline_service.py tests/test_api_http.py
+git add src/parallax/retrieval/token_target_posts_service.py src/parallax/retrieval/token_target_timeline_service.py src/parallax/api/http.py web/src/App.tsx web/src/api/types.ts web/src/App.test.tsx tests/test_token_target_posts_service.py tests/test_token_target_timeline_service.py tests/test_api_http.py
 git commit -m "feat: render deterministic token radar states"
 ```
 
@@ -1437,16 +1437,16 @@ git commit -m "feat: render deterministic token radar states"
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/api/app.py`
-- Modify: `src/gmgn_twitter_intel/api/ws.py`
-- Modify: `src/gmgn_twitter_intel/api/http.py`
-- Modify: `src/gmgn_twitter_intel/pipeline/ingest_service.py`
-- Modify: `src/gmgn_twitter_intel/pipeline/token_intent_resolver.py`
-- Modify: `src/gmgn_twitter_intel/pipeline/token_radar_projection.py`
-- Modify: `src/gmgn_twitter_intel/pipeline/asset_market_sync.py`
-- Modify: `src/gmgn_twitter_intel/retrieval/token_radar_service.py`
-- Modify: `src/gmgn_twitter_intel/pipeline/notification_rules.py`
-- Modify: `src/gmgn_twitter_intel/storage/postgres_audit.py`
+- Modify: `src/parallax/api/app.py`
+- Modify: `src/parallax/api/ws.py`
+- Modify: `src/parallax/api/http.py`
+- Modify: `src/parallax/pipeline/ingest_service.py`
+- Modify: `src/parallax/pipeline/token_intent_resolver.py`
+- Modify: `src/parallax/pipeline/token_radar_projection.py`
+- Modify: `src/parallax/pipeline/asset_market_sync.py`
+- Modify: `src/parallax/retrieval/token_radar_service.py`
+- Modify: `src/parallax/pipeline/notification_rules.py`
+- Modify: `src/parallax/storage/postgres_audit.py`
 - Test: `tests/test_postgres_audit.py`
 - Test: `tests/test_notification_rules.py`
 
@@ -1490,7 +1490,7 @@ They use `target_type + target_id` as the notification identity key. `PROJECT_ON
 Add:
 
 ```bash
-gmgn-twitter-intel ops token-radar-v4-health --window 5m
+parallax ops token-radar-v4-health --window 5m
 ```
 
 Output includes:
@@ -1518,7 +1518,7 @@ Expected: passed.
 - [ ] **Step 5: Commit runtime hard cut**
 
 ```bash
-git add src/gmgn_twitter_intel/api/app.py src/gmgn_twitter_intel/api/ws.py src/gmgn_twitter_intel/pipeline/notification_rules.py src/gmgn_twitter_intel/storage/postgres_audit.py tests/test_postgres_audit.py tests/test_notification_rules.py
+git add src/parallax/api/app.py src/parallax/api/ws.py src/parallax/pipeline/notification_rules.py src/parallax/storage/postgres_audit.py tests/test_postgres_audit.py tests/test_notification_rules.py
 git commit -m "feat: remove old token radar runtime paths"
 ```
 
@@ -1569,7 +1569,7 @@ Expected:
 - [ ] **Step 4: Rebuild V4 projection**
 
 ```bash
-docker compose exec app gmgn-twitter-intel ops rebuild-token-radar --window 5m --scope all --limit 120
+docker compose exec app parallax ops rebuild-token-radar --window 5m --scope all --limit 120
 ```
 
 Expected output includes:
@@ -1597,7 +1597,7 @@ Expected:
 - [ ] **Step 6: Run health audit**
 
 ```bash
-docker compose exec app gmgn-twitter-intel ops token-radar-v4-health --window 5m
+docker compose exec app parallax ops token-radar-v4-health --window 5m
 ```
 
 Expected:

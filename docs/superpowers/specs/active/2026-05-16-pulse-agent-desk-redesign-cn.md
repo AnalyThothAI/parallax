@@ -10,7 +10,7 @@
   - `docs/CONTRACTS.md` Signal Pulse decision block
   - `docs/DESIGN_DISCIPLINE.md` reuse-before-create / hard-cut 原则
   - `docs/RELIABILITY.md` audit ledger 规则
-  - `src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`
+  - `src/parallax/domains/pulse_lab/ARCHITECTURE.md`
   - External reference: [TauricResearch/TradingAgents](https://github.com/TauricResearch/TradingAgents)
 - **不在范围**: SQL 语句、Pydantic 字段名细节、prompt 全文、PR 拆分、文件级 diff、迁移命令。这些是 plan 与 implementation 的产物。
 

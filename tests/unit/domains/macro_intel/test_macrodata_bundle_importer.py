@@ -6,11 +6,11 @@ from decimal import Decimal
 
 import pytest
 
-from gmgn_twitter_intel.domains.macro_intel.observation_identity import (
+from parallax.domains.macro_intel.observation_identity import (
     macro_observation_fact_payload_hash,
     macro_observation_id,
 )
-from gmgn_twitter_intel.domains.macro_intel.services.macrodata_bundle_importer import (
+from parallax.domains.macro_intel.services.macrodata_bundle_importer import (
     import_macrodata_bundle,
     parse_macrodata_bundle,
     write_macrodata_bundle_import,

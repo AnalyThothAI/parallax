@@ -1,4 +1,4 @@
-from gmgn_twitter_intel.domains.token_intel.read_models.search_inspect_service import SearchInspectService
+from parallax.domains.token_intel.read_models.search_inspect_service import SearchInspectService
 
 LEGACY_MARKET_FIELD = "market_overlay"
 

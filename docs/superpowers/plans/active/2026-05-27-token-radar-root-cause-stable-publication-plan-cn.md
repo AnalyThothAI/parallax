@@ -74,26 +74,26 @@ Conclusion: Postgres query latency is not the root cause. The root cause is wake
 
 ### Runtime Wake And Scheduling
 
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_current_projection_worker.py`
+- Modify: `src/parallax/domains/asset_market/runtime/market_tick_current_projection_worker.py`
   - Wake Token Radar only when Token Radar dirty targets were actually enqueued.
   - Emit at most one `market_tick_current_updated` wake per worker run.
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py`
+- Modify: `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py`
   - Gate hot and cold work items by publication state timestamps.
   - Return idle without calling projection when no work item is due.
 
-- Keep unchanged: `src/gmgn_twitter_intel/app/runtime/worker_base.py`
+- Keep unchanged: `src/parallax/app/runtime/worker_base.py`
   - Do not add generic worker throttling. The bug is domain scheduling, not the base loop.
 
 ### Projection And Repository
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py`
   - Remove runtime `enqueue_recent_resolved_targets()` catch-up scan.
   - Publish due rank sets only from due work items or actual changed target features.
   - Return `ready`, `idle`, `unchanged`, `failed`, or `stale_skipped` explicitly per window.
   - Set `rank_score`, `quality_status`, and `degraded_reasons_json` on current rows.
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
   - Generate/accept content-stable generation ids.
   - Compare stable current row set before writing.
   - Return a structured publication result instead of `bool`.
@@ -101,7 +101,7 @@ Conclusion: Postgres query latency is not the root cause. The root cause is wake
 
 ### Schema
 
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0113_token_radar_stable_publication.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260527_0113_token_radar_stable_publication.py`
   - Hard reset rebuildable `token_radar_current_rows`.
   - Add `quality_status TEXT NOT NULL`.
   - Add `degraded_reasons_json JSONB NOT NULL DEFAULT '[]'::jsonb`.
@@ -111,16 +111,16 @@ Conclusion: Postgres query latency is not the root cause. The root cause is wake
 
 ### API And Scoring
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`
+- Modify: `src/parallax/domains/token_intel/read_models/asset_flow_service.py`
   - Keep `projection.status` for publication freshness.
   - Add `projection.quality_status`, `projection.degraded_reasons`, and row-level `quality`.
   - Read row `rank_score` as the SQL score scalar and cross-check snapshot score in tests.
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py`
+- Modify: `src/parallax/domains/token_intel/scoring/factor_snapshot.py`
   - Cap `high_alert` when market anchor/latest/floors are not ready.
   - Preserve `watch` for useful but degraded radar rows.
 
-- Review and modify if tests require: `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- Review and modify if tests require: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
   - Pulse trigger should not promote degraded Token Radar rows into trade-candidate paths.
 
 ### Tests And Docs
@@ -141,7 +141,7 @@ Conclusion: Postgres query latency is not the root cause. The root cause is wake
 - Modify docs:
   - `docs/ARCHITECTURE.md`
   - `docs/RELIABILITY.md`
-  - `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
+  - `src/parallax/domains/token_intel/ARCHITECTURE.md`
   - `docs/references/POSTGRES_PERFORMANCE.md`
 
 ---
@@ -316,7 +316,7 @@ Expected: the new tests fail for the reasons listed above. Existing unrelated te
 ## Task 1: Coalesce Upstream Token Radar Wakes
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_current_projection_worker.py`
+- Modify: `src/parallax/domains/asset_market/runtime/market_tick_current_projection_worker.py`
 - Modify: `tests/unit/test_market_tick_current_projection_worker.py`
 
 - [ ] **Step 1.1: Make `_process_claim()` return Token Radar enqueue count**
@@ -362,7 +362,7 @@ Expected: PASS. Tests must prove duplicate or coalesced dirty target enqueues do
 ## Task 2: Make Token Radar Worker Wake-Bounded, Not Wake-Driven
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py`
+- Modify: `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py`
 - Modify: `tests/unit/test_token_radar_projection_worker.py`
 
 - [ ] **Step 2.1: Add interval-derived due gates**
@@ -435,7 +435,7 @@ Expected: PASS. Existing tests that asserted hot items always run must be update
 ## Task 3: Remove Runtime Catch-Up Scan And Publish Only From Due Or Changed Inputs
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py`
 - Modify: `tests/unit/test_token_radar_projection.py`
 - Modify: `tests/integration/test_token_radar_idempotency.py`
 
@@ -495,8 +495,8 @@ Expected: PASS. Repeated unchanged runs must not enqueue catch-up, must not publ
 ## Task 4: Content-Stable Generation And Unchanged Publish Skip
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py`
 - Modify: `tests/unit/test_token_radar_repository.py`
 - Modify: `tests/integration/test_token_radar_repository.py`
 
@@ -605,9 +605,9 @@ Expected: PASS. Tests must prove unchanged publish emits no current-row DML and 
 ## Task 5: Make Current Row Score And Schema Honest
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0113_token_radar_stable_publication.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260527_0113_token_radar_stable_publication.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py`
 - Modify: `tests/unit/test_postgres_schema.py`
 - Modify: `tests/integration/test_postgres_schema_runtime.py`
 - Modify: `tests/unit/test_token_radar_repository.py`
@@ -697,8 +697,8 @@ Expected: PASS. Schema tests must fail if `score_json` or other dropped legacy J
 ## Task 6: Add Explicit Row And Projection Quality Semantics
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py`
+- Modify: `src/parallax/domains/token_intel/read_models/asset_flow_service.py`
 - Modify: `tests/unit/test_asset_flow_service.py`
 - Modify: `tests/unit/test_token_radar_projection.py`
 
@@ -793,9 +793,9 @@ Expected: PASS. `fresh` and `quality_status=degraded` must be able to appear tog
 ## Task 7: Make High Alert Quality-Gated
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py`
+- Modify: `src/parallax/domains/token_intel/scoring/factor_snapshot.py`
 - Modify: `tests/unit/test_factor_snapshot.py`
-- Review: `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- Review: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
 - Modify Pulse tests only if the review shows degraded rows can still enter trade-candidate paths.
 
 - [ ] **Step 7.1: Add market high-alert block reasons**
@@ -846,7 +846,7 @@ Expected: PASS. Tests must prove market-degraded rows cannot be `high_alert`.
 - Modify: `tests/integration/test_postgres_schema_runtime.py`
 - Modify: `docs/ARCHITECTURE.md`
 - Modify: `docs/RELIABILITY.md`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/token_intel/ARCHITECTURE.md`
 - Modify: `docs/references/POSTGRES_PERFORMANCE.md`
 
 - [ ] **Step 8.1: Ban runtime catch-up scan from Token Radar projection**
@@ -935,7 +935,7 @@ Expected: PASS.
 Run:
 
 ```bash
-uv run ruff check src/gmgn_twitter_intel tests
+uv run ruff check src/parallax tests
 ```
 
 Expected: PASS.
@@ -945,7 +945,7 @@ Expected: PASS.
 Run:
 
 ```bash
-rg -n "payload_hash changed during selected-row hydration|_rank_and_hydrate_selected_rows|_hydrate_ranked_rows|_patch_hydrated_rank_row|load_target_feature_payloads_for_ranked_keys|rebuild_rank_inputs_full|list_rank_input_rebuild_keys|stale_rank_input_count|rank_input_readiness_for_work_items|latest_snapshot_audit_rows|token_radar_projection_coverage|token_radar_rank_history|token_radar_snapshot_audit|side_effect_status|:claimed:|score_json" src/gmgn_twitter_intel/app src/gmgn_twitter_intel/domains
+rg -n "payload_hash changed during selected-row hydration|_rank_and_hydrate_selected_rows|_hydrate_ranked_rows|_patch_hydrated_rank_row|load_target_feature_payloads_for_ranked_keys|rebuild_rank_inputs_full|list_rank_input_rebuild_keys|stale_rank_input_count|rank_input_readiness_for_work_items|latest_snapshot_audit_rows|token_radar_projection_coverage|token_radar_rank_history|token_radar_snapshot_audit|side_effect_status|:claimed:|score_json" src/parallax/app src/parallax/domains
 ```
 
 Expected: no output, except `score_json` may appear in non-Token-Radar domains only if an existing unrelated table still owns that exact contract. Token Radar runtime must have zero `score_json` references.
@@ -972,14 +972,14 @@ Expected: app and postgres healthy.
 Run:
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 ```
 
 Expected:
 
 ```text
-config_path = /Users/qinghuan/.gmgn-twitter-intel/config.yaml
-workers_config_path = /Users/qinghuan/.gmgn-twitter-intel/workers.yaml
+config_path = /Users/qinghuan/.parallax/config.yaml
+workers_config_path = /Users/qinghuan/.parallax/workers.yaml
 token_radar_projection.interval_seconds = 10
 ```
 
@@ -990,7 +990,7 @@ Do not print secrets.
 Run after 10 minutes of live runtime:
 
 ```bash
-docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -v ON_ERROR_STOP=1 -c "
+docker compose exec -T postgres psql -U parallax_app -d parallax -v ON_ERROR_STOP=1 -c "
 SELECT
   count(*) AS runs_10m,
   sum(rows_written) AS rows_written_10m,
@@ -1017,7 +1017,7 @@ Rationale: 5m all/matched can run about once per 10 seconds, and cold windows ab
 Run:
 
 ```bash
-docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -v ON_ERROR_STOP=1 -c "
+docker compose exec -T postgres psql -U parallax_app -d parallax -v ON_ERROR_STOP=1 -c "
 SELECT
   n_live_tup,
   n_dead_tup,
@@ -1041,7 +1041,7 @@ total size does not grow every sample while live row count stays near 100-200
 Run:
 
 ```bash
-docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -v ON_ERROR_STOP=1 -c "
+docker compose exec -T postgres psql -U parallax_app -d parallax -v ON_ERROR_STOP=1 -c "
 SELECT
   count(*) AS rows,
   count(*) FILTER (WHERE rank_score IS NULL) AS null_rank_score,
@@ -1067,8 +1067,8 @@ degraded_high_alert = 0
 Run:
 
 ```bash
-uv run gmgn-twitter-intel asset-flow --window 5m --scope all --limit 20
-uv run gmgn-twitter-intel asset-flow --window 1h --scope all --limit 20
+uv run parallax asset-flow --window 5m --scope all --limit 20
+uv run parallax asset-flow --window 1h --scope all --limit 20
 ```
 
 Expected:

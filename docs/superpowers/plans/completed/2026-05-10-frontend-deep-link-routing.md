@@ -28,13 +28,13 @@ Known-failing baseline tests (none expected): —
 
 ### 后端（PR1）
 
-#### `src/gmgn_twitter_intel/retrieval/signal_pulse_service.py`
+#### `src/parallax/retrieval/signal_pulse_service.py`
 - 行 100–139：把私有 `_item(row)` 整体重命名为 module-level `pulse_item_from_row`，**不保留旧名作别名**。模块内唯一 caller 在行 64 `[_item(row) for row in page_rows]` 改为 `[pulse_item_from_row(row) for row in page_rows]`。
 - 在 `SignalPulseService` 上新增方法：
   - 新签名：`def candidate(self, *, candidate_id: str) -> dict[str, Any] | None: ...`
   - 行为：从 `self.pulse_repository.candidate_by_id(candidate_id)` 取 row；不存在返回 `None`；存在则同时校验 `_is_displayable(row)` 并返回 `pulse_item_from_row(row)`；若 row 存在但不可显示，返回 `None`（视同 404，避免泄露被屏蔽 candidate 的元数据）。
 
-#### `src/gmgn_twitter_intel/api/http.py`
+#### `src/parallax/api/http.py`
 - 在行 466 之后（`signal_lab_pulse` 列表端之后、`harness_weights` 之前）新增 route：
   - 新签名：`@router.get("/signal-lab/pulse/{candidate_id}")` → `async def signal_lab_pulse_by_id(request: Request, candidate_id: str) -> JSONResponse`
   - 行为：
@@ -240,8 +240,8 @@ Known-failing baseline tests (none expected): —
 依赖：无。完全后端 PR；前端零改动；可独立合并并部署。
 
 **Files**:
-- Modify: `src/gmgn_twitter_intel/retrieval/signal_pulse_service.py:15-152`
-- Modify: `src/gmgn_twitter_intel/api/http.py:466`（在该位置之后插入新 route）
+- Modify: `src/parallax/retrieval/signal_pulse_service.py:15-152`
+- Modify: `src/parallax/api/http.py:466`（在该位置之后插入新 route）
 - Test: `tests/test_signal_pulse_service.py`
 - Test: `tests/test_api_http.py`
 
@@ -285,7 +285,7 @@ Known-failing baseline tests (none expected): —
 
   并把 `__init__` 加 `self.candidate_rows: dict[str, dict[str, Any]] = {}`。
 
-- [ ] **Step 4**：在 `src/gmgn_twitter_intel/retrieval/signal_pulse_service.py`：
+- [ ] **Step 4**：在 `src/parallax/retrieval/signal_pulse_service.py`：
 
   1. 把 `def _item(row: ...)` 整体改名为 `def pulse_item_from_row(row: ...)`（行 100）。
   2. 把同模块行 64 的 `[_item(row) for row in page_rows]` 改为 `[pulse_item_from_row(row) for row in page_rows]`。
@@ -340,7 +340,7 @@ Known-failing baseline tests (none expected): —
 - [ ] **Step 8**：commit。
 
   ```bash
-  git add src/gmgn_twitter_intel/retrieval/signal_pulse_service.py tests/test_signal_pulse_service.py
+  git add src/parallax/retrieval/signal_pulse_service.py tests/test_signal_pulse_service.py
   git commit -m "feat(retrieval): add SignalPulseService.candidate single-item lookup"
   ```
 
@@ -384,7 +384,7 @@ Known-failing baseline tests (none expected): —
   uv run pytest tests/test_api_http.py -k signal_pulse_by_id -v
   ```
 
-- [ ] **Step 3**：在 `src/gmgn_twitter_intel/api/http.py` 行 466 之后插入：
+- [ ] **Step 3**：在 `src/parallax/api/http.py` 行 466 之后插入：
 
   ```python
       @router.get("/signal-lab/pulse/{candidate_id}")
@@ -435,12 +435,12 @@ Known-failing baseline tests (none expected): —
       assert data["pulse_status"] in {"trade_candidate", "token_watch", "theme_watch", "risk_rejected_high_info"}
   ```
 
-  `_seed_displayable_candidate(settings, candidate_id)` 在 `tests/test_api_http.py` 内新增（不导出）。实现：用 `make_settings` 已建好的 DB 连接，`PulseRepository.upsert_candidate(...)`（见 `src/gmgn_twitter_intel/storage/pulse_repository.py:354`）插入一条 `pulse_status="token_watch"`、`verdict="token_watch"`、必填 `window="1h"`、`scope="all"`、`thesis_json={...}` 的 row，与 `tests/test_signal_pulse_service.py::_candidate_row` 同形。
+  `_seed_displayable_candidate(settings, candidate_id)` 在 `tests/test_api_http.py` 内新增（不导出）。实现：用 `make_settings` 已建好的 DB 连接，`PulseRepository.upsert_candidate(...)`（见 `src/parallax/storage/pulse_repository.py:354`）插入一条 `pulse_status="token_watch"`、`verdict="token_watch"`、必填 `window="1h"`、`scope="all"`、`thesis_json={...}` 的 row，与 `tests/test_signal_pulse_service.py::_candidate_row` 同形。
 
 - [ ] **Step 6**：跑全 http 测试套件 + ruff。
 
   ```bash
-  uv run ruff check src/gmgn_twitter_intel/api/http.py
+  uv run ruff check src/parallax/api/http.py
   uv run pytest tests/test_api_http.py -v
   ```
   Expected: 全 PASS。
@@ -448,7 +448,7 @@ Known-failing baseline tests (none expected): —
 - [ ] **Step 7**：commit。
 
   ```bash
-  git add src/gmgn_twitter_intel/api/http.py tests/test_api_http.py
+  git add src/parallax/api/http.py tests/test_api_http.py
   git commit -m "feat(api): GET /api/signal-lab/pulse/{candidate_id} for deep-link"
   ```
 
@@ -460,7 +460,7 @@ Known-failing baseline tests (none expected): —
 - [ ] curl smoke：
 
   ```bash
-  uv run gmgn-twitter-intel ops serve &
+  uv run parallax ops serve &
   sleep 2
   curl -s -H "Authorization: Bearer dev" http://127.0.0.1:8765/api/signal-lab/pulse/non-existent | jq
   # 期望: {"ok": false, "error": "not_found", "field": "candidate_id"}

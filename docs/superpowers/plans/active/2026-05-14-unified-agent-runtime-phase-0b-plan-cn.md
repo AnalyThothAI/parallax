@@ -22,14 +22,14 @@
 
 | Area | Current anchor | Plan stance |
 |---|---|---|
-| Provider protocol | `src/gmgn_twitter_intel/domains/pulse_lab/providers.py` | Add decision-oriented provider result/protocol; retire direct single recommendation semantics from worker |
-| Existing recommendation schema | `src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_recommendation.py` | Delete/retire old schema and replace callers with decision schema |
-| Single OpenAI agent | `src/gmgn_twitter_intel/integrations/openai_agents/pulse_recommendation_agent_client.py` | Delete old client and replace with stage runner client |
-| Worker orchestration | `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py` | Preserve job queue/poll/wake/retry shape; replace `_run_job` recommendation call with route/gate/stages |
-| Persistence | `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py` | Add run step ledger, decision columns, read query fields |
-| Read model | `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py` | Emit public `decision` block and remove `agent_recommendation` |
-| Runtime wiring | `src/gmgn_twitter_intel/app/runtime/providers_wiring.py` and `src/gmgn_twitter_intel/app/runtime/app.py` | Wire new provider without changing app ownership boundaries |
-| Migration path | `src/gmgn_twitter_intel/platform/db/alembic/versions/` | Next revision after `20260513_0036_token_radar_kappa_cqrs_hard_cut.py` is `20260514_0037_unified_agent_runtime_phase0b.py` |
+| Provider protocol | `src/parallax/domains/pulse_lab/providers.py` | Add decision-oriented provider result/protocol; retire direct single recommendation semantics from worker |
+| Existing recommendation schema | `src/parallax/domains/pulse_lab/types/pulse_recommendation.py` | Delete/retire old schema and replace callers with decision schema |
+| Single OpenAI agent | `src/parallax/integrations/openai_agents/pulse_recommendation_agent_client.py` | Delete old client and replace with stage runner client |
+| Worker orchestration | `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py` | Preserve job queue/poll/wake/retry shape; replace `_run_job` recommendation call with route/gate/stages |
+| Persistence | `src/parallax/domains/pulse_lab/repositories/pulse_repository.py` | Add run step ledger, decision columns, read query fields |
+| Read model | `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py` | Emit public `decision` block and remove `agent_recommendation` |
+| Runtime wiring | `src/parallax/app/runtime/providers_wiring.py` and `src/parallax/app/runtime/app.py` | Wire new provider without changing app ownership boundaries |
+| Migration path | `src/parallax/platform/db/alembic/versions/` | Next revision after `20260513_0036_token_radar_kappa_cqrs_hard_cut.py` is `20260514_0037_unified_agent_runtime_phase0b.py` |
 
 ## Pre-flight
 
@@ -69,8 +69,8 @@ Known-failing baseline tests: none expected. If any fail before edits, record ex
 ### Task 1 — Storage Ledger And Candidate Decision Columns
 
 **Files:**
-- Add: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260514_0037_unified_agent_runtime_phase0b.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py`
+- Add: `src/parallax/platform/db/alembic/versions/20260514_0037_unified_agent_runtime_phase0b.py`
+- Modify: `src/parallax/domains/pulse_lab/repositories/pulse_repository.py`
 - Modify tests: `tests/integration/test_pulse_repository.py`
 
 - [ ] Add run outcome metadata to `pulse_agent_runs` without breaking existing rows:
@@ -158,9 +158,9 @@ Known-failing baseline tests: none expected. If any fail before edits, record ex
 ### Task 2 — Decision Schemas And Hard-Cut Mapping
 
 **Files:**
-- Add: `src/gmgn_twitter_intel/domains/pulse_lab/types/agent_decision.py`
-- Delete: `src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_recommendation.py`
-- Add: `src/gmgn_twitter_intel/domains/pulse_lab/services/decision_mapping.py`
+- Add: `src/parallax/domains/pulse_lab/types/agent_decision.py`
+- Delete: `src/parallax/domains/pulse_lab/types/pulse_recommendation.py`
+- Add: `src/parallax/domains/pulse_lab/services/decision_mapping.py`
 - Add tests: `tests/unit/test_pulse_agent_decision.py`
 
 - [ ] Define strict Pydantic schemas with `extra="forbid"`:
@@ -233,8 +233,8 @@ Known-failing baseline tests: none expected. If any fail before edits, record ex
 ### Task 3 — Domain Route Policy And Completeness Gate
 
 **Files:**
-- Add: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_routing.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py` only if existing gate result needs an extra reason exposed to routing
+- Add: `src/parallax/domains/pulse_lab/services/agent_routing.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_candidate_gate.py` only if existing gate result needs an extra reason exposed to routing
 - Add tests: `tests/unit/test_pulse_agent_routing.py`
 
 - [ ] Implement route policy as pure functions that accept the existing `PulseCandidateContext` / factor snapshot dict:
@@ -275,12 +275,12 @@ Known-failing baseline tests: none expected. If any fail before edits, record ex
 ### Task 4 — Provider Protocol And OpenAI Stage Runner
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/providers.py`
-- Add or replace: `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`
-- Delete: `src/gmgn_twitter_intel/integrations/openai_agents/pulse_recommendation_agent_client.py`
-- Add: `src/gmgn_twitter_intel/integrations/openai_agents/pulse_stage_prompts.py`
-- Add prompt files under `src/gmgn_twitter_intel/integrations/openai_agents/prompts/pulse_decision/`
-- Modify: `src/gmgn_twitter_intel/app/runtime/providers_wiring.py`
+- Modify: `src/parallax/domains/pulse_lab/providers.py`
+- Add or replace: `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py`
+- Delete: `src/parallax/integrations/openai_agents/pulse_recommendation_agent_client.py`
+- Add: `src/parallax/integrations/openai_agents/pulse_stage_prompts.py`
+- Add prompt files under `src/parallax/integrations/openai_agents/prompts/pulse_decision/`
+- Modify: `src/parallax/app/runtime/providers_wiring.py`
 - Delete old tests: `tests/test_pulse_recommendation_agent_client.py`
 - Add tests: `tests/unit/test_pulse_decision_agent_client.py`
 
@@ -343,9 +343,9 @@ Known-failing baseline tests: none expected. If any fail before edits, record ex
 ### Task 5 — Worker Orchestration Hard Cut
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/app.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/providers_wiring.py`
+- Modify: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- Modify: `src/parallax/app/runtime/app.py`
+- Modify: `src/parallax/app/runtime/providers_wiring.py`
 - Modify tests: `tests/unit/test_pulse_candidate_worker.py`
 
 - [ ] In `_run_job`, change the order to:
@@ -391,8 +391,8 @@ Known-failing baseline tests: none expected. If any fail before edits, record ex
 ### Task 6 — Signal Pulse Read Model And Public Contract
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/http.py` only if response schema helpers require explicit docs
+- Modify: `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py`
+- Modify: `src/parallax/app/surfaces/api/http.py` only if response schema helpers require explicit docs
 - Modify: `docs/CONTRACTS.md`
 - Modify generated docs if contract tests require it
 - Modify tests: `tests/unit/test_signal_pulse_service.py`, `tests/integration/test_cli.py` if CLI prints pulse fields

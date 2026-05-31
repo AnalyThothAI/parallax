@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import AsyncMock
 from urllib.parse import parse_qs, urlparse
 
-from gmgn_twitter_intel.integrations.gmgn.direct_ws import (
+from parallax.integrations.gmgn.direct_ws import (
     DirectGmgnWebSocketClient,
     UpstreamIdleTimeoutError,
     build_gmgn_ws_url,

@@ -8,8 +8,8 @@
 
 ## Runtime Config Confirmation
 
-- config_path: /Users/qinghuan/.gmgn-twitter-intel/config.yaml
-- workers_config_path: /Users/qinghuan/.gmgn-twitter-intel/workers.yaml
+- config_path: /Users/qinghuan/.parallax/config.yaml
+- workers_config_path: /Users/qinghuan/.parallax/workers.yaml
 - config_path_under_operator_home: true
 - workers_config_path_under_operator_home: true
 

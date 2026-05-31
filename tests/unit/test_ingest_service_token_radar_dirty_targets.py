@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.domains.evidence.services.ingest_service import _source_dirty_events_for_resolutions
+from parallax.domains.evidence.services.ingest_service import _source_dirty_events_for_resolutions
 
 
 def test_source_dirty_events_for_resolutions_uses_event_target_edge() -> None:

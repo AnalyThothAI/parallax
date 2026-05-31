@@ -33,18 +33,18 @@ consume `worker_pool` connections needed for actual worker sessions.
 ## Foreground-only run model
 
 The foreground service reads two config files:
-`~/.gmgn-twitter-intel/config.yaml` for application/provider settings
-and `~/.gmgn-twitter-intel/workers.yaml` for worker runtime knobs.
+`~/.parallax/config.yaml` for application/provider settings
+and `~/.parallax/workers.yaml` for worker runtime knobs.
 There is no macOS LaunchAgent, systemd unit, or `service` subcommand —
 run via foreground CLI or Docker Compose.
 
 ## Docker Compose state
 
 Docker Compose bind-mounts the host config directory into the container
-and pins PostgreSQL data to the `gmgn-twitter-intel-postgres` named
+and pins PostgreSQL data to the `parallax-postgres` named
 volume. Local foreground and Docker share the same config directory,
 including both YAML files; query Docker data via `/api/*`, `/ws`, or
-`docker compose exec app gmgn-twitter-intel ...`.
+`docker compose exec app parallax ...`.
 
 ## Worker lifecycle
 
@@ -254,7 +254,7 @@ canceling the worker thread does not kill a running child process.
 The compose PostgreSQL service loads `pg_stat_statements`, PoWA,
 `pg_stat_kcache`, `pg_qualstats`, and `pg_wait_sampling`, and writes slow
 statement, lock-wait, checkpoint, temp-file, and autovacuum logs under
-`~/.gmgn-twitter-intel/postgres-logs`. These signals are production
+`~/.parallax/postgres-logs`. These signals are production
 observability, not business truth, and they must never be used to hide backlog
 or mutate queue rows.
 
@@ -294,9 +294,9 @@ Token Radar has no runtime hard-reset command. Legacy table retirement belongs
 to migrations, and current-row repair is fact-driven:
 
 ```bash
-uv run gmgn-twitter-intel ops enqueue-token-radar-dirty-targets --source events --since-ms 0 --dry-run
-uv run gmgn-twitter-intel ops enqueue-token-radar-dirty-targets --source events --since-ms 0 --execute
-uv run gmgn-twitter-intel ops rebuild-token-intents --window 24h --limit 5000 --projection-limit 5000
+uv run parallax ops enqueue-token-radar-dirty-targets --source events --since-ms 0 --dry-run
+uv run parallax ops enqueue-token-radar-dirty-targets --source events --since-ms 0 --execute
+uv run parallax ops rebuild-token-intents --window 24h --limit 5000 --projection-limit 5000
 ```
 
 Cross-domain hard-cut cleanup commands, such as CEX Binance cleanup, may report
@@ -308,11 +308,11 @@ Before re-enabling Watchlist handle summaries against existing data, backfill
 compact watchlist read models in bounded batches:
 
 ```bash
-uv run gmgn-twitter-intel ops backfill-watchlist-signal-stats --batch-size 5000 --max-batches 20
+uv run parallax ops backfill-watchlist-signal-stats --batch-size 5000 --max-batches 20
 ```
 
 `handle_summary` should stay disabled in operator-owned
-`~/.gmgn-twitter-intel/workers.yaml` until
+`~/.parallax/workers.yaml` until
 `backfill-watchlist-signal-stats` reports `has_more=false` and the stats row
 counts are plausible for the configured handles.
 

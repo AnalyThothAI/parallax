@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.token_intel.interfaces import (
+from parallax.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_FACTOR_FAMILIES,
 )
-from gmgn_twitter_intel.domains.token_intel.scoring.factor_diagnostics import factor_distribution_report
+from parallax.domains.token_intel.scoring.factor_diagnostics import factor_distribution_report
 
 
 def test_factor_distribution_report_flags_low_rank_score_diversity() -> None:

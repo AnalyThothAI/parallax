@@ -83,7 +83,7 @@ $ <command>
 
 Files changed (grouped by package):
 
-- `src/gmgn_twitter_intel/<area>/...`
+- `src/parallax/<area>/...`
 - `tests/<area>/...`
 - `docs/superpowers/...`
 

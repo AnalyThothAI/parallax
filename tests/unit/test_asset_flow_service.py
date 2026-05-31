@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.token_intel.interfaces import (
+from parallax.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_PROJECTION_VERSION,
 )
-from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
+from parallax.domains.token_intel.read_models.asset_flow_service import AssetFlowService
 
 
 def _legacy_market_key(*parts: str) -> str:

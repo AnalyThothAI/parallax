@@ -54,7 +54,7 @@ Known process note:
 
 ### Storage / migrations
 
-- Create `src/gmgn_twitter_intel/platform/db/alembic/versions/20260513_0035_asset_profiles.py`.
+- Create `src/parallax/platform/db/alembic/versions/20260513_0035_asset_profiles.py`.
 - Down revision: `20260512_0034`.
 - Add table and indexes:
 
@@ -90,7 +90,7 @@ CREATE INDEX IF NOT EXISTS idx_asset_profiles_status
   ON asset_profiles(status, updated_at_ms DESC);
 ```
 
-### `src/gmgn_twitter_intel/domains/asset_market/repositories/asset_profile_repository.py`
+### `src/parallax/domains/asset_market/repositories/asset_profile_repository.py`
 
 - Create repository with one clear responsibility: persist and read current asset profile facts.
 - Constants:
@@ -158,7 +158,7 @@ class AssetProfileRepository:
 - Use `psycopg.types.json.Jsonb` for raw payload.
 - Normalize empty strings to `None` before writing.
 
-### `src/gmgn_twitter_intel/domains/asset_market/queries/pending_asset_profile_query.py`
+### `src/parallax/domains/asset_market/queries/pending_asset_profile_query.py`
 
 - Create query class selecting recent resolved DEX assets that have no profile row or are due for refresh.
 - Mirror `PendingAnchorPriceQuery` style and resolver policy constant.
@@ -216,7 +216,7 @@ ORDER BY tir.target_id, events.received_at_ms DESC
 LIMIT %s;
 ```
 
-### `src/gmgn_twitter_intel/domains/asset_market/services/asset_profile_refresh.py`
+### `src/parallax/domains/asset_market/services/asset_profile_refresh.py`
 
 - Create pure service function so worker and CLI share one path.
 
@@ -256,7 +256,7 @@ def refresh_asset_profiles_once(
 }
 ```
 
-### `src/gmgn_twitter_intel/domains/asset_market/runtime/asset_profile_refresh_worker.py`
+### `src/parallax/domains/asset_market/runtime/asset_profile_refresh_worker.py`
 
 - Create async worker following `AnchorPriceWorker` style.
 
@@ -288,17 +288,17 @@ class AssetProfileRefreshWorker:
 - Store `last_started_at_ms`, `last_run_at_ms`, `last_result`, `last_error`.
 - Close only the provider object it owns if it exposes `close`.
 
-### `src/gmgn_twitter_intel/app/runtime/repository_session.py`
+### `src/parallax/app/runtime/repository_session.py`
 
 - Import and add `AssetProfileRepository`.
 - Add `asset_profiles: AssetProfileRepository` to `RepositorySession`.
 - Instantiate `asset_profiles=AssetProfileRepository(conn)` in `repositories_for_connection`.
 
-### `src/gmgn_twitter_intel/domains/asset_market/interfaces.py`
+### `src/parallax/domains/asset_market/interfaces.py`
 
 - Export `AssetProfileRepository`.
 
-### `src/gmgn_twitter_intel/domains/asset_market/read_models/token_profile_read_model.py`
+### `src/parallax/domains/asset_market/read_models/token_profile_read_model.py`
 
 - Create provider-free read model.
 
@@ -334,7 +334,7 @@ def _twitter_url(username_or_url: str | None) -> str | None:
     return f"https://x.com/{handle}" if handle else None
 ```
 
-### `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`
+### `src/parallax/domains/token_intel/read_models/asset_flow_service.py`
 
 - Hard-cut constructor:
 
@@ -363,7 +363,7 @@ for row in public_rows:
 
 - Do not read/write `factor_snapshot_json` for profile.
 
-### `src/gmgn_twitter_intel/domains/token_intel/read_models/search_inspect_service.py`
+### `src/parallax/domains/token_intel/read_models/search_inspect_service.py`
 
 - Hard-cut constructor:
 
@@ -388,7 +388,7 @@ profile = self.profiles.profile_for_target(
 - Pass `profiles=self.profiles` into nested `AssetFlowService`.
 - Add `"profile": profile` to `token_result`.
 
-### `src/gmgn_twitter_intel/app/surfaces/api/http.py`
+### `src/parallax/app/surfaces/api/http.py`
 
 - Import `TokenProfileReadModel`.
 - Construct one read model per repository session:
@@ -399,14 +399,14 @@ profiles = TokenProfileReadModel(asset_profiles=repos.asset_profiles)
 
 - Pass `profiles=profiles` into `AssetFlowService` and `SearchInspectService`.
 
-### `src/gmgn_twitter_intel/app/surfaces/cli/main.py`
+### `src/parallax/app/surfaces/cli/main.py`
 
 - Import `TokenProfileReadModel`, `refresh_asset_profiles_once`, and worker/service constants.
 - Update `asset-flow` command to pass `profiles`.
 - Add ops command:
 
 ```text
-gmgn-twitter-intel ops refresh-asset-profiles --limit 50
+parallax ops refresh-asset-profiles --limit 50
 ```
 
 - Handler behavior:
@@ -421,7 +421,7 @@ result = refresh_asset_profiles_once(
 _emit({"ok": True, "data": result}, stdout)
 ```
 
-### `src/gmgn_twitter_intel/app/runtime/app.py`
+### `src/parallax/app/runtime/app.py`
 
 - Import `AssetProfileRefreshWorker` and `TokenProfileReadModel`.
 - Add fields to `CliRuntime`:
@@ -587,10 +587,10 @@ type TokenProfileCardProps = {
 ### Task 1: Storage and Repository
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260513_0035_asset_profiles.py`
-- Create: `src/gmgn_twitter_intel/domains/asset_market/repositories/asset_profile_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/interfaces.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/repository_session.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260513_0035_asset_profiles.py`
+- Create: `src/parallax/domains/asset_market/repositories/asset_profile_repository.py`
+- Modify: `src/parallax/domains/asset_market/interfaces.py`
+- Modify: `src/parallax/app/runtime/repository_session.py`
 - Test: `tests/unit/test_asset_profile_repository.py`
 
 - [ ] **Step 1: Write failing repository tests**
@@ -643,10 +643,10 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/platform/db/alembic/versions/20260513_0035_asset_profiles.py \
-  src/gmgn_twitter_intel/domains/asset_market/repositories/asset_profile_repository.py \
-  src/gmgn_twitter_intel/domains/asset_market/interfaces.py \
-  src/gmgn_twitter_intel/app/runtime/repository_session.py \
+git add src/parallax/platform/db/alembic/versions/20260513_0035_asset_profiles.py \
+  src/parallax/domains/asset_market/repositories/asset_profile_repository.py \
+  src/parallax/domains/asset_market/interfaces.py \
+  src/parallax/app/runtime/repository_session.py \
   tests/unit/test_asset_profile_repository.py
 git commit -m "feat: add asset profile fact storage"
 ```
@@ -654,8 +654,8 @@ git commit -m "feat: add asset profile fact storage"
 ### Task 2: Pending Query and Profile Refresh Service
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/asset_market/queries/pending_asset_profile_query.py`
-- Create: `src/gmgn_twitter_intel/domains/asset_market/services/asset_profile_refresh.py`
+- Create: `src/parallax/domains/asset_market/queries/pending_asset_profile_query.py`
+- Create: `src/parallax/domains/asset_market/services/asset_profile_refresh.py`
 - Test: `tests/unit/test_pending_asset_profile_query.py`
 - Test: `tests/unit/test_asset_profile_refresh.py`
 
@@ -719,8 +719,8 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/domains/asset_market/queries/pending_asset_profile_query.py \
-  src/gmgn_twitter_intel/domains/asset_market/services/asset_profile_refresh.py \
+git add src/parallax/domains/asset_market/queries/pending_asset_profile_query.py \
+  src/parallax/domains/asset_market/services/asset_profile_refresh.py \
   tests/unit/test_pending_asset_profile_query.py \
   tests/unit/test_asset_profile_refresh.py
 git commit -m "feat: refresh resolved asset profiles"
@@ -729,9 +729,9 @@ git commit -m "feat: refresh resolved asset profiles"
 ### Task 3: Runtime Worker and CLI
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/asset_market/runtime/asset_profile_refresh_worker.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/app.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/main.py`
+- Create: `src/parallax/domains/asset_market/runtime/asset_profile_refresh_worker.py`
+- Modify: `src/parallax/app/runtime/app.py`
+- Modify: `src/parallax/app/surfaces/cli/main.py`
 - Test: `tests/unit/test_asset_profile_refresh_worker.py`
 - Test: `tests/integration/test_api_health.py`
 - Test: CLI test if existing harness supports ops commands
@@ -773,9 +773,9 @@ Expected: PASS or skip unavailable CLI integration if the repo has no matching t
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/domains/asset_market/runtime/asset_profile_refresh_worker.py \
-  src/gmgn_twitter_intel/app/runtime/app.py \
-  src/gmgn_twitter_intel/app/surfaces/cli/main.py \
+git add src/parallax/domains/asset_market/runtime/asset_profile_refresh_worker.py \
+  src/parallax/app/runtime/app.py \
+  src/parallax/app/surfaces/cli/main.py \
   tests/unit/test_asset_profile_refresh_worker.py \
   tests/integration/test_api_health.py \
   tests/integration/test_cli.py
@@ -785,12 +785,12 @@ git commit -m "feat: wire asset profile refresh worker"
 ### Task 4: Provider-Free Read Model and API Surfaces
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/asset_market/read_models/token_profile_read_model.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/search_inspect_service.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/http.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/main.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/app.py`
+- Create: `src/parallax/domains/asset_market/read_models/token_profile_read_model.py`
+- Modify: `src/parallax/domains/token_intel/read_models/asset_flow_service.py`
+- Modify: `src/parallax/domains/token_intel/read_models/search_inspect_service.py`
+- Modify: `src/parallax/app/surfaces/api/http.py`
+- Modify: `src/parallax/app/surfaces/cli/main.py`
+- Modify: `src/parallax/app/runtime/app.py`
 - Test: `tests/unit/test_token_profile_read_model.py`
 - Test: `tests/unit/test_search_inspect_service.py`
 - Test: `tests/integration/test_api_http.py`
@@ -845,12 +845,12 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/domains/asset_market/read_models/token_profile_read_model.py \
-  src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py \
-  src/gmgn_twitter_intel/domains/token_intel/read_models/search_inspect_service.py \
-  src/gmgn_twitter_intel/app/surfaces/api/http.py \
-  src/gmgn_twitter_intel/app/surfaces/cli/main.py \
-  src/gmgn_twitter_intel/app/runtime/app.py \
+git add src/parallax/domains/asset_market/read_models/token_profile_read_model.py \
+  src/parallax/domains/token_intel/read_models/asset_flow_service.py \
+  src/parallax/domains/token_intel/read_models/search_inspect_service.py \
+  src/parallax/app/surfaces/api/http.py \
+  src/parallax/app/surfaces/cli/main.py \
+  src/parallax/app/runtime/app.py \
   tests/unit/test_token_profile_read_model.py \
   tests/unit/test_search_inspect_service.py \
   tests/integration/test_api_http.py
@@ -941,7 +941,7 @@ git commit -m "feat: render shared token profile card"
 **Files:**
 - Modify: `docs/CONTRACTS.md`
 - Modify: `docs/ARCHITECTURE.md`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/token_intel/ARCHITECTURE.md`
 - Modify: `docs/generated/db-schema.md` if schema generation is part of `make check-all` or repo workflow
 - Create verification note after implementation if needed
 
@@ -959,8 +959,8 @@ Document:
 Run:
 
 ```bash
-uv run gmgn-twitter-intel ops refresh-asset-profiles --limit 10
-uv run gmgn-twitter-intel asset-flow --window 24h --scope all --limit 10
+uv run parallax ops refresh-asset-profiles --limit 10
+uv run parallax asset-flow --window 24h --scope all --limit 10
 ```
 
 Expected:
@@ -1007,7 +1007,7 @@ Expected:
 
 ```bash
 git add docs/CONTRACTS.md docs/ARCHITECTURE.md \
-  src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md \
+  src/parallax/domains/token_intel/ARCHITECTURE.md \
   docs/generated/db-schema.md
 git commit -m "docs: document token profile fact chain"
 ```
@@ -1046,11 +1046,11 @@ Logical commits inside the PR:
 1. Merge migration and code.
 2. Apply migration:
    ```bash
-   uv run gmgn-twitter-intel db migrate
+   uv run parallax db migrate
    ```
 3. Run one-shot refresh:
    ```bash
-   uv run gmgn-twitter-intel ops refresh-asset-profiles --limit 50
+   uv run parallax ops refresh-asset-profiles --limit 50
    ```
 4. Rebuild/restart service so `AssetProfileRefreshWorker` runs.
 5. Verify `/api/token-radar` and `/api/search/inspect` include profile blocks.

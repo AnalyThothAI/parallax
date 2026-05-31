@@ -6,7 +6,7 @@
 
 **Architecture:** Keep `events` and `event_entities` as immutable source facts, introduce asset-domain tables for mentions, identities, venues, candidate audit, attributions, snapshots, jobs, and projections, then cut ingest/search/radar/timeline APIs over to the new model. Provider code stays behind explicit adapters: GMGN remains chain/address enrichment, OKX CEX syncs bounded instruments, and OKX DEX resolves symbol/address candidates on demand.
 
-**Tech Stack:** Python 3.13, uv, psycopg, Alembic, FastAPI, pytest, ruff, PostgreSQL, existing repository/service patterns in `src/gmgn_twitter_intel`.
+**Tech Stack:** Python 3.13, uv, psycopg, Alembic, FastAPI, pytest, ruff, PostgreSQL, existing repository/service patterns in `src/parallax`.
 
 ---
 
@@ -15,7 +15,7 @@
 The implementation runs in:
 
 ```text
-/Users/qinghuan/Documents/code/gmgn-twitter-intel/.worktrees/token-identity-resolution-production
+/Users/qinghuan/Documents/code/parallax/.worktrees/token-identity-resolution-production
 ```
 
 Branch:
@@ -45,37 +45,37 @@ compileall: pass
 
 Create:
 
-- `src/gmgn_twitter_intel/storage/asset_repository.py`
+- `src/parallax/storage/asset_repository.py`
   Owns asset schema writes/reads: mentions, assets, aliases, venues, candidates, attributions, snapshots, jobs, projection rows.
 
-- `src/gmgn_twitter_intel/pipeline/asset_mention_builder.py`
+- `src/parallax/pipeline/asset_mention_builder.py`
   Converts `event_entities` and GMGN payload facts into `AssetMentionInput` rows. No provider calls.
 
-- `src/gmgn_twitter_intel/pipeline/asset_resolver.py`
+- `src/parallax/pipeline/asset_resolver.py`
   Deterministic local resolver policy for CA, GMGN payload, local aliases, CEX instruments, DEX candidates, unresolved and ambiguous buckets.
 
-- `src/gmgn_twitter_intel/pipeline/asset_attribution.py`
+- `src/parallax/pipeline/asset_attribution.py`
   Converts resolver decisions into `asset_attributions` rows and projection-ready payloads.
 
-- `src/gmgn_twitter_intel/market/okx_cex_client.py`
+- `src/parallax/market/okx_cex_client.py`
   Small HTTP adapter for OKX public instruments/tickers. No trading/private endpoints.
 
-- `src/gmgn_twitter_intel/market/okx_dex_client.py`
+- `src/parallax/market/okx_dex_client.py`
   Small HTTP adapter for OKX DEX token search and price info.
 
-- `src/gmgn_twitter_intel/market/okx_models.py`
+- `src/parallax/market/okx_models.py`
   Normalized provider records for CEX instruments, DEX token candidates, and market snapshots.
 
-- `src/gmgn_twitter_intel/retrieval/asset_search_service.py`
+- `src/parallax/retrieval/asset_search_service.py`
   New `$SYMBOL`/CA/handle/text search semantics. Symbol search returns evidence even when unresolved.
 
-- `src/gmgn_twitter_intel/retrieval/asset_flow_service.py`
+- `src/parallax/retrieval/asset_flow_service.py`
   Serves `resolved_assets` and `attention_candidates`.
 
-- `src/gmgn_twitter_intel/retrieval/asset_social_timeline_service.py`
+- `src/parallax/retrieval/asset_social_timeline_service.py`
   Timeline by `asset_id`, works for unresolved and resolved assets.
 
-- `src/gmgn_twitter_intel/storage/alembic/versions/20260506_0005_asset_identity_resolution.py`
+- `src/parallax/storage/alembic/versions/20260506_0005_asset_identity_resolution.py`
   Adds asset-domain schema and indexes.
 
 - `tests/test_asset_repository.py`
@@ -89,19 +89,19 @@ Create:
 
 Modify:
 
-- `src/gmgn_twitter_intel/pipeline/ingest_service.py`
+- `src/parallax/pipeline/ingest_service.py`
   Cut event ingest over to asset mentions/resolution/attributions.
 
-- `src/gmgn_twitter_intel/storage/repository_session.py`
+- `src/parallax/storage/repository_session.py`
   Expose `AssetRepository`.
 
-- `src/gmgn_twitter_intel/api/http.py`
+- `src/parallax/api/http.py`
   Replace token-flow/search/timeline routes with asset-domain services.
 
-- `src/gmgn_twitter_intel/cli.py`
+- `src/parallax/cli.py`
   Add ops commands for OKX universe sync, symbol resolution, attribution audit, backfill, and asset-flow rebuild.
 
-- `src/gmgn_twitter_intel/settings.py` and `config.example.yaml`
+- `src/parallax/settings.py` and `config.example.yaml`
   Add OKX public/provider settings and remove unused `gmgn_evm_candidate_chains`.
 
 - `tests/test_query_parser.py`
@@ -112,10 +112,10 @@ Modify:
 
 Retire from runtime:
 
-- `src/gmgn_twitter_intel/pipeline/token_identity_resolver.py`
-- token-only symbol search behavior in `src/gmgn_twitter_intel/retrieval/search_service.py`
-- token-only flow API route semantics in `src/gmgn_twitter_intel/retrieval/token_flow_service.py`
-- token-only timeline route semantics in `src/gmgn_twitter_intel/retrieval/token_social_timeline_service.py`
+- `src/parallax/pipeline/token_identity_resolver.py`
+- token-only symbol search behavior in `src/parallax/retrieval/search_service.py`
+- token-only flow API route semantics in `src/parallax/retrieval/token_flow_service.py`
+- token-only timeline route semantics in `src/parallax/retrieval/token_social_timeline_service.py`
 - token-only market observation enqueue assumptions where all rows have `chain/address`
 
 The files may remain briefly during implementation to keep intermediate tests running, but final runtime imports and routes must not depend on them.
@@ -125,7 +125,7 @@ The files may remain briefly during implementation to keep intermediate tests ru
 ## Task 1: Asset Schema Migration
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/storage/alembic/versions/20260506_0005_asset_identity_resolution.py`
+- Create: `src/parallax/storage/alembic/versions/20260506_0005_asset_identity_resolution.py`
 - Modify: `tests/test_postgres_schema.py`
 - Modify: `tests/test_postgres_schema_runtime.py`
 
@@ -228,7 +228,7 @@ Expected: pass or skip consistently with existing PostgreSQL fixture behavior.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/storage/alembic/versions/20260506_0005_asset_identity_resolution.py tests/test_postgres_schema.py tests/test_postgres_schema_runtime.py
+git add src/parallax/storage/alembic/versions/20260506_0005_asset_identity_resolution.py tests/test_postgres_schema.py tests/test_postgres_schema_runtime.py
 git commit -m "feat: add asset identity schema"
 ```
 
@@ -237,8 +237,8 @@ git commit -m "feat: add asset identity schema"
 ## Task 2: Asset Repository
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/storage/asset_repository.py`
-- Modify: `src/gmgn_twitter_intel/storage/repository_session.py`
+- Create: `src/parallax/storage/asset_repository.py`
+- Modify: `src/parallax/storage/repository_session.py`
 - Create: `tests/test_asset_repository.py`
 
 - [ ] **Step 1: Write repository tests first**
@@ -347,7 +347,7 @@ Expected: pass/skip according to DB fixture.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/storage/asset_repository.py src/gmgn_twitter_intel/storage/repository_session.py tests/test_asset_repository.py
+git add src/parallax/storage/asset_repository.py src/parallax/storage/repository_session.py tests/test_asset_repository.py
 git commit -m "feat: add asset repository"
 ```
 
@@ -356,10 +356,10 @@ git commit -m "feat: add asset repository"
 ## Task 3: Provider Adapters For OKX
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/market/okx_models.py`
-- Create: `src/gmgn_twitter_intel/market/okx_cex_client.py`
-- Create: `src/gmgn_twitter_intel/market/okx_dex_client.py`
-- Modify: `src/gmgn_twitter_intel/settings.py`
+- Create: `src/parallax/market/okx_models.py`
+- Create: `src/parallax/market/okx_cex_client.py`
+- Create: `src/parallax/market/okx_dex_client.py`
+- Modify: `src/parallax/settings.py`
 - Modify: `config.example.yaml`
 - Create: `tests/test_okx_clients.py`
 
@@ -448,13 +448,13 @@ Remove unused `gmgn_evm_candidate_chains`.
 
 ```bash
 uv run pytest tests/test_okx_clients.py tests/test_settings.py -q
-uv run ruff check src/gmgn_twitter_intel/market src/gmgn_twitter_intel/settings.py tests/test_okx_clients.py
+uv run ruff check src/parallax/market src/parallax/settings.py tests/test_okx_clients.py
 ```
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/market/okx_models.py src/gmgn_twitter_intel/market/okx_cex_client.py src/gmgn_twitter_intel/market/okx_dex_client.py src/gmgn_twitter_intel/settings.py config.example.yaml tests/test_okx_clients.py tests/test_settings.py
+git add src/parallax/market/okx_models.py src/parallax/market/okx_cex_client.py src/parallax/market/okx_dex_client.py src/parallax/settings.py config.example.yaml tests/test_okx_clients.py tests/test_settings.py
 git commit -m "feat: add OKX asset provider adapters"
 ```
 
@@ -463,7 +463,7 @@ git commit -m "feat: add OKX asset provider adapters"
 ## Task 4: Asset Mention Builder
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/pipeline/asset_mention_builder.py`
+- Create: `src/parallax/pipeline/asset_mention_builder.py`
 - Create: `tests/test_asset_mention_builder.py`
 
 - [ ] **Step 1: Write tests**
@@ -523,7 +523,7 @@ uv run pytest tests/test_asset_mention_builder.py tests/test_entity_extractor.py
 - [ ] **Step 4: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/pipeline/asset_mention_builder.py tests/test_asset_mention_builder.py
+git add src/parallax/pipeline/asset_mention_builder.py tests/test_asset_mention_builder.py
 git commit -m "feat: build asset mentions from tweet facts"
 ```
 
@@ -532,8 +532,8 @@ git commit -m "feat: build asset mentions from tweet facts"
 ## Task 5: Deterministic Asset Resolver
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/pipeline/asset_resolver.py`
-- Create: `src/gmgn_twitter_intel/pipeline/asset_attribution.py`
+- Create: `src/parallax/pipeline/asset_resolver.py`
+- Create: `src/parallax/pipeline/asset_attribution.py`
 - Create: `tests/test_asset_resolver.py`
 
 - [ ] **Step 1: Write resolver policy tests**
@@ -608,7 +608,7 @@ uv run pytest tests/test_asset_resolver.py -q
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/pipeline/asset_resolver.py src/gmgn_twitter_intel/pipeline/asset_attribution.py tests/test_asset_resolver.py
+git add src/parallax/pipeline/asset_resolver.py src/parallax/pipeline/asset_attribution.py tests/test_asset_resolver.py
 git commit -m "feat: resolve asset mentions deterministically"
 ```
 
@@ -617,7 +617,7 @@ git commit -m "feat: resolve asset mentions deterministically"
 ## Task 6: Ingest V2 Cutover
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/pipeline/ingest_service.py`
+- Modify: `src/parallax/pipeline/ingest_service.py`
 - Modify: `tests/test_asset_ingest_flow.py`
 - Modify: existing ingest/token attribution tests that assert old behavior
 
@@ -690,7 +690,7 @@ uv run pytest tests/test_asset_ingest_flow.py tests/test_collector_service.py te
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/pipeline/ingest_service.py tests/test_asset_ingest_flow.py tests/test_collector_service.py tests/test_api_websocket.py
+git add src/parallax/pipeline/ingest_service.py tests/test_asset_ingest_flow.py tests/test_collector_service.py tests/test_api_websocket.py
 git commit -m "feat: cut ingest over to asset attributions"
 ```
 
@@ -699,8 +699,8 @@ git commit -m "feat: cut ingest over to asset attributions"
 ## Task 7: Asset Search Service
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/retrieval/asset_search_service.py`
-- Modify: `src/gmgn_twitter_intel/api/http.py`
+- Create: `src/parallax/retrieval/asset_search_service.py`
+- Modify: `src/parallax/api/http.py`
 - Create: `tests/test_asset_search_service.py`
 - Modify: `tests/test_api_http.py`
 
@@ -782,7 +782,7 @@ uv run pytest tests/test_asset_search_service.py tests/test_api_http.py tests/te
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/retrieval/asset_search_service.py src/gmgn_twitter_intel/api/http.py tests/test_asset_search_service.py tests/test_api_http.py tests/test_query_parser.py
+git add src/parallax/retrieval/asset_search_service.py src/parallax/api/http.py tests/test_asset_search_service.py tests/test_api_http.py tests/test_query_parser.py
 git commit -m "feat: return symbol evidence for unresolved asset search"
 ```
 
@@ -791,8 +791,8 @@ git commit -m "feat: return symbol evidence for unresolved asset search"
 ## Task 8: Asset Flow Radar
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/retrieval/asset_flow_service.py`
-- Modify: `src/gmgn_twitter_intel/api/http.py`
+- Create: `src/parallax/retrieval/asset_flow_service.py`
+- Modify: `src/parallax/api/http.py`
 - Create: `tests/test_asset_flow_service.py`
 - Modify or delete: token-flow tests that assume all rows have `chain/address`
 
@@ -864,7 +864,7 @@ uv run pytest tests/test_asset_flow_service.py tests/test_api_http.py -q
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/retrieval/asset_flow_service.py src/gmgn_twitter_intel/api/http.py tests/test_asset_flow_service.py tests/test_api_http.py
+git add src/parallax/retrieval/asset_flow_service.py src/parallax/api/http.py tests/test_asset_flow_service.py tests/test_api_http.py
 git commit -m "feat: expose asset flow radar lanes"
 ```
 
@@ -873,8 +873,8 @@ git commit -m "feat: expose asset flow radar lanes"
 ## Task 9: Asset Social Timeline
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/retrieval/asset_social_timeline_service.py`
-- Modify: `src/gmgn_twitter_intel/api/http.py`
+- Create: `src/parallax/retrieval/asset_social_timeline_service.py`
+- Modify: `src/parallax/api/http.py`
 - Create: `tests/test_asset_social_timeline_service.py`
 
 - [ ] **Step 1: Write timeline tests**
@@ -935,7 +935,7 @@ uv run pytest tests/test_asset_social_timeline_service.py tests/test_api_http.py
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/retrieval/asset_social_timeline_service.py src/gmgn_twitter_intel/api/http.py tests/test_asset_social_timeline_service.py tests/test_api_http.py
+git add src/parallax/retrieval/asset_social_timeline_service.py src/parallax/api/http.py tests/test_asset_social_timeline_service.py tests/test_api_http.py
 git commit -m "feat: add asset social timeline"
 ```
 
@@ -944,7 +944,7 @@ git commit -m "feat: add asset social timeline"
 ## Task 10: Ops Commands And Backfill
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/cli.py`
+- Modify: `src/parallax/cli.py`
 - Create: tests in `tests/test_cli.py` or focused `tests/test_asset_ops_cli.py`
 
 - [ ] **Step 1: Write CLI tests**
@@ -952,12 +952,12 @@ git commit -m "feat: add asset social timeline"
 Commands:
 
 ```bash
-gmgn-twitter-intel ops sync-okx-cex-universe --inst-type SPOT --inst-type SWAP
-gmgn-twitter-intel ops resolve-asset-symbol --symbol MIRROR
-gmgn-twitter-intel ops asset-resolution-health --window 24h
-gmgn-twitter-intel ops audit-asset-attribution --event-id event-1
-gmgn-twitter-intel ops backfill-asset-mentions --since-ms 0
-gmgn-twitter-intel ops rebuild-asset-flow --window 1h
+parallax ops sync-okx-cex-universe --inst-type SPOT --inst-type SWAP
+parallax ops resolve-asset-symbol --symbol MIRROR
+parallax ops asset-resolution-health --window 24h
+parallax ops audit-asset-attribution --event-id event-1
+parallax ops backfill-asset-mentions --since-ms 0
+parallax ops rebuild-asset-flow --window 1h
 ```
 
 Tests assert command registration and JSON shape, with provider calls mocked.
@@ -998,7 +998,7 @@ uv run pytest tests/test_cli.py tests/test_asset_ops_cli.py -q
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/cli.py tests/test_cli.py tests/test_asset_ops_cli.py
+git add src/parallax/cli.py tests/test_cli.py tests/test_asset_ops_cli.py
 git commit -m "feat: add asset resolution ops commands"
 ```
 
@@ -1154,10 +1154,10 @@ git commit -m "refactor: remove legacy token identity runtime"
 Add:
 
 ```bash
-uv run gmgn-twitter-intel ops sync-okx-cex-universe --inst-type SPOT --inst-type SWAP
-uv run gmgn-twitter-intel ops resolve-asset-symbol --symbol MIRROR
-uv run gmgn-twitter-intel ops asset-resolution-health --window 24h
-uv run gmgn-twitter-intel asset-flow --window 1h --limit 50
+uv run parallax ops sync-okx-cex-universe --inst-type SPOT --inst-type SWAP
+uv run parallax ops resolve-asset-symbol --symbol MIRROR
+uv run parallax ops asset-resolution-health --window 24h
+uv run parallax asset-flow --window 1h --limit 50
 ```
 
 - [ ] **Step 2: Document runtime semantics**
@@ -1192,10 +1192,10 @@ npm run build
 With test or local config:
 
 ```bash
-uv run gmgn-twitter-intel search '$MIRROR' --limit 5
-uv run gmgn-twitter-intel search mirror --limit 5
-uv run gmgn-twitter-intel ops resolve-asset-symbol --symbol MIRROR
-uv run gmgn-twitter-intel asset-flow --window 1h --limit 10
+uv run parallax search '$MIRROR' --limit 5
+uv run parallax search mirror --limit 5
+uv run parallax ops resolve-asset-symbol --symbol MIRROR
+uv run parallax asset-flow --window 1h --limit 10
 ```
 
 Expected:

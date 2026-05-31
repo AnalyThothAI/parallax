@@ -101,6 +101,6 @@ def test_execute_is_idempotent_and_preserves_existing_binance_values(tmp_path) -
 def test_script_does_not_import_application_settings() -> None:
     source = SCRIPT_PATH.read_text(encoding="utf-8")
 
-    assert "gmgn_twitter_intel.platform.config.settings" not in source
-    assert "from gmgn_twitter_intel" not in source
-    assert "import gmgn_twitter_intel" not in source
+    assert "parallax.platform.config.settings" not in source
+    assert "from parallax" not in source
+    assert "import parallax" not in source

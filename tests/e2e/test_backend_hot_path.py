@@ -9,22 +9,22 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from gmgn_twitter_intel.app.runtime.app import create_app
-from gmgn_twitter_intel.app.runtime.worker_factories.notifications import _notification_rule_engine
-from gmgn_twitter_intel.app.runtime.worker_manifest import require_worker_manifest
-from gmgn_twitter_intel.app.runtime.worker_space import WorkerSpaceContract, contract_from_manifest
-from gmgn_twitter_intel.domains.asset_market.repositories.token_profile_current_repository import (
+from parallax.app.runtime.app import create_app
+from parallax.app.runtime.worker_factories.notifications import _notification_rule_engine
+from parallax.app.runtime.worker_manifest import require_worker_manifest
+from parallax.app.runtime.worker_space import WorkerSpaceContract, contract_from_manifest
+from parallax.domains.asset_market.repositories.token_profile_current_repository import (
     TokenProfileCurrentRepository,
 )
-from gmgn_twitter_intel.domains.asset_market.runtime.event_anchor_backfill_worker import EventAnchorBackfillWorker
-from gmgn_twitter_intel.domains.notifications.runtime.notification_delivery import NotificationDeliveryWorker
-from gmgn_twitter_intel.domains.notifications.runtime.notification_worker import NotificationWorker
-from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import (
+from parallax.domains.asset_market.runtime.event_anchor_backfill_worker import EventAnchorBackfillWorker
+from parallax.domains.notifications.runtime.notification_delivery import NotificationDeliveryWorker
+from parallax.domains.notifications.runtime.notification_worker import NotificationWorker
+from parallax.domains.pulse_lab.runtime.pulse_candidate_worker import (
     PulseCandidateWorker,
     PulseTriggerThresholds,
 )
-from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import PulseGateThresholds
-from gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
+from parallax.domains.pulse_lab.services.pulse_candidate_gate import PulseGateThresholds
+from parallax.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
 from tests.postgres_test_utils import connect_postgres_test, prepare_postgres_database
 from tests.support.db_seeds import (
     assert_count_at_least,

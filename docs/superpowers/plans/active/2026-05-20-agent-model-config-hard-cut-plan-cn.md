@@ -12,13 +12,13 @@
 
 ## File Structure
 
-- Modify `src/gmgn_twitter_intel/platform/config/settings.py`: remove legacy `llm.model` and domain-specific model overrides; add `AgentRuntimeDefaultsSettings` and lane-level `model`; update config helpers and default YAML.
-- Modify `src/gmgn_twitter_intel/platform/agent_execution.py`: make `AgentStageSpec` no longer caller-owned for model selection and let audit construction receive resolved model from gateway.
-- Modify `src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_gateway.py`: resolve model from lane policy, build model clients from the resolved model, and include resolved model in audit/status.
-- Modify `src/gmgn_twitter_intel/app/runtime/provider_wiring/openai.py`: stop reading model fields from `Settings.llm`; build provider clients without model arguments and let their stages rely on lane policy.
-- Modify OpenAI adapter clients under `src/gmgn_twitter_intel/integrations/openai_agents/`: remove constructor model requirements and artifact model precomputation that duplicates gateway policy.
-- Modify domain stage builders under `src/gmgn_twitter_intel/domains/{news_intel,watchlist_intel,pulse_lab}/services/`: remove `model=` from `AgentStageSpec` construction.
-- Modify CLI config output in `src/gmgn_twitter_intel/app/surfaces/cli/commands/config.py`: report model policy under `workers.agent_runtime`, not `enrichment.model`.
+- Modify `src/parallax/platform/config/settings.py`: remove legacy `llm.model` and domain-specific model overrides; add `AgentRuntimeDefaultsSettings` and lane-level `model`; update config helpers and default YAML.
+- Modify `src/parallax/platform/agent_execution.py`: make `AgentStageSpec` no longer caller-owned for model selection and let audit construction receive resolved model from gateway.
+- Modify `src/parallax/integrations/openai_agents/agent_execution_gateway.py`: resolve model from lane policy, build model clients from the resolved model, and include resolved model in audit/status.
+- Modify `src/parallax/app/runtime/provider_wiring/openai.py`: stop reading model fields from `Settings.llm`; build provider clients without model arguments and let their stages rely on lane policy.
+- Modify OpenAI adapter clients under `src/parallax/integrations/openai_agents/`: remove constructor model requirements and artifact model precomputation that duplicates gateway policy.
+- Modify domain stage builders under `src/parallax/domains/{news_intel,watchlist_intel,pulse_lab}/services/`: remove `model=` from `AgentStageSpec` construction.
+- Modify CLI config output in `src/parallax/app/surfaces/cli/commands/config.py`: report model policy under `workers.agent_runtime`, not `enrichment.model`.
 - Modify docs `docs/CONTRACTS.md`, `docs/WORKERS.md`, and `docs/ARCHITECTURE.md`: state that model selection belongs only to `workers.yaml -> agent_runtime`.
 - Modify tests in `tests/unit/test_settings.py`, `tests/unit/test_worker_settings.py`, `tests/unit/test_provider_wiring_agent_execution_gateway.py`, `tests/unit/integrations/openai_agents/`, and architecture tests to enforce the hard cut.
 
@@ -81,8 +81,8 @@ Expected: failures showing the old fields still exist and `agent_runtime.default
 ### Task 2: Move Model Policy Into WorkersSettings
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/commands/config.py`
+- Modify: `src/parallax/platform/config/settings.py`
+- Modify: `src/parallax/app/surfaces/cli/commands/config.py`
 
 - [ ] **Step 1: Add model policy schema**
 
@@ -140,8 +140,8 @@ Expected: pass after test updates and implementation.
 ### Task 3: Resolve Models Inside AgentExecutionGateway
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/platform/agent_execution.py`
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_gateway.py`
+- Modify: `src/parallax/platform/agent_execution.py`
+- Modify: `src/parallax/integrations/openai_agents/agent_execution_gateway.py`
 - Modify: `tests/unit/integrations/openai_agents/test_agent_execution_gateway.py`
 - Modify: `tests/unit/integrations/openai_agents/test_agent_execution_audit.py`
 
@@ -180,15 +180,15 @@ Expected: pass, with audit model matching resolved lane/default policy.
 ### Task 4: Remove Model Duplication From OpenAI Adapters
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/app/runtime/provider_wiring/openai.py`
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/narrative_intel_agent_client.py`
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/social_event_agent_client.py`
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/watchlist_summary_agent_client.py`
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/news_item_brief_agent_client.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/services/news_item_brief_runtime.py`
-- Modify: `src/gmgn_twitter_intel/domains/watchlist_intel/services/handle_summary_runtime.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_decision_runtime.py`
+- Modify: `src/parallax/app/runtime/provider_wiring/openai.py`
+- Modify: `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py`
+- Modify: `src/parallax/integrations/openai_agents/narrative_intel_agent_client.py`
+- Modify: `src/parallax/integrations/openai_agents/social_event_agent_client.py`
+- Modify: `src/parallax/integrations/openai_agents/watchlist_summary_agent_client.py`
+- Modify: `src/parallax/integrations/openai_agents/news_item_brief_agent_client.py`
+- Modify: `src/parallax/domains/news_intel/services/news_item_brief_runtime.py`
+- Modify: `src/parallax/domains/watchlist_intel/services/handle_summary_runtime.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_decision_runtime.py`
 
 - [ ] **Step 1: Remove constructor model parameters**
 
@@ -219,8 +219,8 @@ Expected: pass with stages no longer carrying caller-selected models.
 ### Task 5: Update Runtime Wiring And Config Defaults
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/app/runtime/providers_wiring.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/app.py` if readiness checks refer to old properties.
+- Modify: `src/parallax/app/runtime/providers_wiring.py`
+- Modify: `src/parallax/app/runtime/app.py` if readiness checks refer to old properties.
 - Modify: `tests/unit/test_bootstrap_worker_runtime_wiring.py`
 - Modify: `tests/unit/test_providers_wiring.py`
 - Modify: `tests/integration/test_api_health.py`
@@ -313,7 +313,7 @@ Expected: pass.
 Run:
 
 ```bash
-uv run python -m compileall src/gmgn_twitter_intel tests
+uv run python -m compileall src/parallax tests
 ```
 
 Expected: completes without syntax errors.
@@ -323,7 +323,7 @@ Expected: completes without syntax errors.
 Run:
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 ```
 
 Expected: output contains `workers.agent_runtime.defaults.model`, contains lane model overrides when configured, and does not contain `llm.model` or old domain-specific LLM model fields.

@@ -5,7 +5,7 @@ from datetime import date, timedelta
 
 import pytest
 
-from gmgn_twitter_intel.domains.macro_intel.services.macro_asset_correlation import (
+from parallax.domains.macro_intel.services.macro_asset_correlation import (
     build_macro_asset_correlation,
 )
 

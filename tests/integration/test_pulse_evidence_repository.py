@@ -4,7 +4,7 @@ import json
 from types import SimpleNamespace
 from typing import Any
 
-from gmgn_twitter_intel.domains.pulse_lab.types import PulseEvidencePacket
+from parallax.domains.pulse_lab.types import PulseEvidencePacket
 from tests.postgres_test_utils import (
     connect_postgres_test,
     repository_session_for_connection,

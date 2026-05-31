@@ -11,10 +11,10 @@
 - `docs/superpowers/plans/active/2026-05-17-token-profile-current-facts-hard-cut-plan-cn.md`
 - `docs/ARCHITECTURE.md`
 - `docs/WORKERS.md`
-- `src/gmgn_twitter_intel/domains/asset_market/read_models/token_profile_read_model.py`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/asset_profile_repository.py`
-- `src/gmgn_twitter_intel/domains/ingestion/types/gmgn_token_payload.py`
-- `src/gmgn_twitter_intel/integrations/okx/dex_client.py`
+- `src/parallax/domains/asset_market/read_models/token_profile_read_model.py`
+- `src/parallax/domains/asset_market/repositories/asset_profile_repository.py`
+- `src/parallax/domains/ingestion/types/gmgn_token_payload.py`
+- `src/parallax/integrations/okx/dex_client.py`
 
 ## One-line Decision
 
@@ -35,7 +35,7 @@ Hard-cut the public token profile chain from a GMGN-only `asset_profiles` lookup
 
 ## Live Data Findings
 
-The local configured environment is `~/.gmgn-twitter-intel`. On 2026-05-17:
+The local configured environment is `~/.parallax`. On 2026-05-17:
 
 - `providers.gmgn.configured = true`, `openapi_base_url = https://openapi.gmgn.ai`.
 - `ops refresh-asset-profiles --limit 20` returned `provider_blocked=1`, `ready=0`, `missing=0`, `error=0`, with Cloudflare challenge 403. This proves the new provider-block guard works, but GMGN OpenAPI cannot be the only icon path.

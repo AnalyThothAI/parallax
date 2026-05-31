@@ -1,7 +1,7 @@
 import pytest
 
-from gmgn_twitter_intel.domains.notifications.services.notification_rules import NotificationRuleEngine
-from gmgn_twitter_intel.platform.config.settings import NotificationRuleConfig, NotificationsConfig, Settings
+from parallax.domains.notifications.services.notification_rules import NotificationRuleEngine
+from parallax.platform.config.settings import NotificationRuleConfig, NotificationsConfig, Settings
 
 NOW_MS = 1_700_000_300_000
 

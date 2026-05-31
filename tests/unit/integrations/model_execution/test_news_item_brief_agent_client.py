@@ -4,7 +4,7 @@ import asyncio
 from types import SimpleNamespace
 from typing import Any
 
-from gmgn_twitter_intel.domains.news_intel.types.news_item_brief import (
+from parallax.domains.news_intel.types.news_item_brief import (
     NEWS_ITEM_BRIEF_AGENT_NAME,
     NEWS_ITEM_BRIEF_LANE,
     NEWS_ITEM_BRIEF_PROMPT_VERSION,
@@ -14,12 +14,12 @@ from gmgn_twitter_intel.domains.news_intel.types.news_item_brief import (
     NewsItemBriefNewsItem,
     NewsItemBriefPayload,
 )
-from gmgn_twitter_intel.integrations.model_execution.news_item_brief_agent_client import (
+from parallax.integrations.model_execution.news_item_brief_agent_client import (
     LiteLLMNewsItemBriefClient,
 )
-from gmgn_twitter_intel.integrations.model_execution.output_schema import StrictJsonOutputSchema
-from gmgn_twitter_intel.platform.agent_execution import RUNTIME_VERSION
-from gmgn_twitter_intel.platform.agent_hashing import artifact_hash_for, json_sha256
+from parallax.integrations.model_execution.output_schema import StrictJsonOutputSchema
+from parallax.platform.agent_execution import RUNTIME_VERSION
+from parallax.platform.agent_hashing import artifact_hash_for, json_sha256
 
 
 def test_news_item_brief_client_builds_stage_and_delegates_reservation() -> None:

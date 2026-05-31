@@ -16,7 +16,7 @@ This plan must not change backend behavior or business logic.
 
 Do not change:
 
-- `src/gmgn_twitter_intel/**`
+- `src/parallax/**`
 - API endpoint paths or request params
 - `useTraderStore` persisted field names, except adding a UI-only `mobileTask` state if chosen
 - token sorting math in `sortTokenItems`
@@ -101,7 +101,7 @@ describe("MobileTaskNav", () => {
 Run:
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel/web
+cd /Users/qinghuan/Documents/code/parallax/web
 npm test -- src/components/MobileTaskNav.test.tsx --run
 ```
 
@@ -162,7 +162,7 @@ export function MobileTaskNav({ activeTask, detailAvailable, onTaskChange }: Mob
 Run:
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel/web
+cd /Users/qinghuan/Documents/code/parallax/web
 npm test -- src/components/MobileTaskNav.test.tsx --run
 ```
 
@@ -173,7 +173,7 @@ Expected: PASS.
 Run:
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel
+cd /Users/qinghuan/Documents/code/parallax
 git add web/src/components/MobileTaskNav.tsx web/src/components/MobileTaskNav.test.tsx
 git commit -m "feat: add mobile cockpit task nav"
 ```
@@ -238,7 +238,7 @@ Append these tests inside the existing `describe("App Token Radar social heat co
 Run:
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel/web
+cd /Users/qinghuan/Documents/code/parallax/web
 npm test -- src/App.test.tsx --run
 ```
 
@@ -367,7 +367,7 @@ to:
 Run:
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel/web
+cd /Users/qinghuan/Documents/code/parallax/web
 npm test -- src/App.test.tsx --run
 ```
 
@@ -378,7 +378,7 @@ Expected: PASS.
 Run:
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel
+cd /Users/qinghuan/Documents/code/parallax
 git add web/src/App.tsx web/src/App.test.tsx
 git commit -m "feat: route mobile cockpit tasks"
 ```
@@ -423,7 +423,7 @@ Append these tests inside the existing App test `describe` block:
 Run:
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel/web
+cd /Users/qinghuan/Documents/code/parallax/web
 npm test -- src/App.test.tsx --run
 ```
 
@@ -589,7 +589,7 @@ For `activeView === "signal_lab"`, add `data-mobile-task-panel="lab"` to the wor
 Run:
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel/web
+cd /Users/qinghuan/Documents/code/parallax/web
 npm test -- src/App.test.tsx --run
 ```
 
@@ -600,7 +600,7 @@ Expected: PASS.
 Run:
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel
+cd /Users/qinghuan/Documents/code/parallax
 git add web/src/App.tsx web/src/App.test.tsx
 git commit -m "refactor: split cockpit responsive surfaces"
 ```
@@ -638,7 +638,7 @@ Append this test inside the existing App test `describe` block:
 Run:
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel/web
+cd /Users/qinghuan/Documents/code/parallax/web
 npm test -- src/App.test.tsx --run
 ```
 
@@ -691,7 +691,7 @@ Do not alter `SORT_LABELS`, `items.map`, `tokenDecisionKey`, or `onSortModeChang
 Run:
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel/web
+cd /Users/qinghuan/Documents/code/parallax/web
 npm test -- src/App.test.tsx --run
 ```
 
@@ -702,7 +702,7 @@ Expected: PASS.
 Run:
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel
+cd /Users/qinghuan/Documents/code/parallax
 git add web/src/components/TokenRadarTable.tsx web/src/components/TokenRadarRow.tsx web/src/App.test.tsx
 git commit -m "refactor: mark radar rows for responsive layout"
 ```
@@ -720,7 +720,7 @@ Expected: commit succeeds.
 Run:
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel
+cd /Users/qinghuan/Documents/code/parallax
 rg -n "@media \\(max-width: 1180px\\)|@media \\(max-width: 760px\\)|@media \\(max-width: 1279px\\)|@media \\(max-width: 767px\\)" web/src/styles.css
 ```
 
@@ -1147,7 +1147,7 @@ After the tablet breakpoint, add one mobile breakpoint:
 Run:
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel
+cd /Users/qinghuan/Documents/code/parallax
 rg -n "@media \\(max-width: 1180px\\)|@media \\(max-width: 760px\\)" web/src/styles.css
 ```
 
@@ -1156,7 +1156,7 @@ Expected: no output.
 Run:
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel
+cd /Users/qinghuan/Documents/code/parallax
 rg -n "@media \\(max-width: 1279px\\)|@media \\(max-width: 767px\\)" web/src/styles.css
 ```
 
@@ -1167,7 +1167,7 @@ Expected: exactly two lines, one for `1279px` and one for `767px`.
 Run:
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel/web
+cd /Users/qinghuan/Documents/code/parallax/web
 npm run build
 ```
 
@@ -1178,7 +1178,7 @@ Expected: TypeScript and Vite build pass.
 Run:
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel
+cd /Users/qinghuan/Documents/code/parallax
 git add web/src/styles.css
 git commit -m "style: rebuild cockpit responsive layout"
 ```
@@ -1196,7 +1196,7 @@ Expected: commit succeeds.
 Run:
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel/web
+cd /Users/qinghuan/Documents/code/parallax/web
 npm test -- --run
 ```
 
@@ -1207,7 +1207,7 @@ Expected: PASS.
 Run:
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel/web
+cd /Users/qinghuan/Documents/code/parallax/web
 npm run build
 ```
 
@@ -1218,7 +1218,7 @@ Expected: PASS.
 Run:
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel/web
+cd /Users/qinghuan/Documents/code/parallax/web
 npm run dev -- --host 127.0.0.1 --port 5173
 ```
 
@@ -1268,7 +1268,7 @@ Expected: `true`.
 If browser QA required CSS or shell fixes, run:
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel
+cd /Users/qinghuan/Documents/code/parallax
 git add web/src/App.tsx web/src/styles.css web/src/components/TokenRadarTable.tsx web/src/components/TokenRadarRow.tsx web/src/App.test.tsx
 git commit -m "fix: polish responsive cockpit viewports"
 ```
@@ -1290,7 +1290,7 @@ Expected: commit succeeds only if fixes were made. If no files changed, skip thi
 Run:
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel
+cd /Users/qinghuan/Documents/code/parallax
 rg -n "@media \\(max-width: 1180px\\)|@media \\(max-width: 760px\\)" web/src/styles.css
 ```
 
@@ -1301,7 +1301,7 @@ Expected: no output.
 Run:
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel
+cd /Users/qinghuan/Documents/code/parallax
 git diff --name-only HEAD~6..HEAD
 ```
 
@@ -1317,14 +1317,14 @@ web/src/components/TokenRadarRow.tsx
 web/src/styles.css
 ```
 
-If any `src/gmgn_twitter_intel/**` path appears, stop and inspect before proceeding.
+If any `src/parallax/**` path appears, stop and inspect before proceeding.
 
 - [ ] **Step 3: Run frontend tests and build**
 
 Run:
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel/web
+cd /Users/qinghuan/Documents/code/parallax/web
 npm test -- --run
 npm run build
 ```
@@ -1336,7 +1336,7 @@ Expected: both commands PASS.
 Run:
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel
+cd /Users/qinghuan/Documents/code/parallax
 uv run python -m compileall src tests
 uv run ruff check .
 ```
@@ -1348,7 +1348,7 @@ Expected: both commands PASS. These should pass because no backend Python code c
 Run:
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel
+cd /Users/qinghuan/Documents/code/parallax
 git diff HEAD~6..HEAD -- web/src/App.tsx web/src/components/TokenRadarRow.tsx web/src/components/TokenRadarTable.tsx
 ```
 
@@ -1367,7 +1367,7 @@ Expected review findings:
 If Step 5 required small cleanup changes, run:
 
 ```bash
-cd /Users/qinghuan/Documents/code/gmgn-twitter-intel
+cd /Users/qinghuan/Documents/code/parallax
 git add web/src/App.tsx web/src/styles.css web/src/components/TokenRadarTable.tsx web/src/components/TokenRadarRow.tsx web/src/components/MobileTaskNav.tsx web/src/App.test.tsx web/src/components/MobileTaskNav.test.tsx
 git commit -m "fix: polish responsive cockpit layout"
 ```

@@ -50,16 +50,16 @@ uv run pytest tests/integration/test_worker_missed_wake_recovery.py tests/golden
 ```
 
 ```bash
-uv run ruff check src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py tests/unit/domains/token_intel/test_token_radar_market_only_projection.py tests/integration/test_worker_missed_wake_recovery.py tests/golden/test_token_radar_corpus.py
+uv run ruff check src/parallax/domains/token_intel/services/token_radar_projection.py tests/unit/domains/token_intel/test_token_radar_market_only_projection.py tests/integration/test_worker_missed_wake_recovery.py tests/golden/test_token_radar_corpus.py
 # All checks passed
 ```
 
 ```bash
-uv run python -m compileall -q src/gmgn_twitter_intel/app/runtime src/gmgn_twitter_intel/integrations/model_execution src/gmgn_twitter_intel/platform src/gmgn_twitter_intel/domains/news_intel src/gmgn_twitter_intel/domains/pulse_lab src/gmgn_twitter_intel/domains/token_intel
+uv run python -m compileall -q src/parallax/app/runtime src/parallax/integrations/model_execution src/parallax/platform src/parallax/domains/news_intel src/parallax/domains/pulse_lab src/parallax/domains/token_intel
 # exit 0
 ```
 
 ```bash
-rg -n "from openai|import openai|from agents|import agents|integrations\.openai_agents|OpenAIAgents|openai_agents_sdk|openai_compatible|provider=\"openai\"|AsyncOpenAI|Runner\.run|RunConfig\(|Agent\(|ModelBehaviorError" src tests pyproject.toml --glob '!src/gmgn_twitter_intel/platform/db/alembic/versions/202605*_*.py'
+rg -n "from openai|import openai|from agents|import agents|integrations\.openai_agents|OpenAIAgents|openai_agents_sdk|openai_compatible|provider=\"openai\"|AsyncOpenAI|Runner\.run|RunConfig\(|Agent\(|ModelBehaviorError" src tests pyproject.toml --glob '!src/parallax/platform/db/alembic/versions/202605*_*.py'
 # no matches
 ```

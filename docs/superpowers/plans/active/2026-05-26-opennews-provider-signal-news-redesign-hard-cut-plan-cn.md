@@ -35,36 +35,36 @@
 
 ### Create
 
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0090_opennews_provider_signal.py`  
+- `src/parallax/platform/db/alembic/versions/20260526_0090_opennews_provider_signal.py`
   Adds provider signal material facts to `news_items` and indexes needed by token/sentiment filters.
-- `src/gmgn_twitter_intel/domains/news_intel/services/opennews_provider_signal.py`  
+- `src/parallax/domains/news_intel/services/opennews_provider_signal.py`
   Pure normalization from OpenNews raw payload to provider signal and token impact facts.
-- `tests/unit/domains/news_intel/test_opennews_provider_signal.py`  
+- `tests/unit/domains/news_intel/test_opennews_provider_signal.py`
   Unit coverage for `aiRating`, `coins[]`, partial WS pushes, timestamp-preserving raw payloads.
-- `web/src/features/news/model/newsSignalViewModel.ts`  
+- `web/src/features/news/model/newsSignalViewModel.ts`
   Frontend pure helpers for labels, tone classes, score formatting, token count, and tab counts.
-- `web/src/features/news/ui/NewsTape.tsx`  
+- `web/src/features/news/ui/NewsTape.tsx`
   Compact list/tape component.
-- `web/src/features/news/ui/NewsInspector.tsx`  
+- `web/src/features/news/ui/NewsInspector.tsx`
   Selected item inspector.
-- `web/src/features/news/ui/newsTape.css`  
+- `web/src/features/news/ui/newsTape.css`
   Owner CSS for compact tape and inspector, namespace `.news-tape-*`.
-- `web/tests/unit/features/news/newsSignalViewModel.test.ts`  
+- `web/tests/unit/features/news/newsSignalViewModel.test.ts`
   Pure frontend model tests.
-- `web/tests/component/features/news/NewsTape.test.tsx`  
+- `web/tests/component/features/news/NewsTape.test.tsx`
   Component tests for compact rows, token chips, and no duplicate score column.
 
 ### Modify
 
-- `src/gmgn_twitter_intel/domains/news_intel/types/source_provider.py`
-- `src/gmgn_twitter_intel/integrations/news_feeds/opennews_client.py`
-- `src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py`
-- `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_process_worker.py`
-- `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py`
-- `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
-- `src/gmgn_twitter_intel/domains/news_intel/services/news_page_projection.py`
-- `src/gmgn_twitter_intel/domains/news_intel/queries/news_page_query.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/routes_news.py`
+- `src/parallax/domains/news_intel/types/source_provider.py`
+- `src/parallax/integrations/news_feeds/opennews_client.py`
+- `src/parallax/domains/news_intel/runtime/news_fetch_worker.py`
+- `src/parallax/domains/news_intel/runtime/news_item_process_worker.py`
+- `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py`
+- `src/parallax/domains/news_intel/repositories/news_repository.py`
+- `src/parallax/domains/news_intel/services/news_page_projection.py`
+- `src/parallax/domains/news_intel/queries/news_page_query.py`
+- `src/parallax/app/surfaces/api/routes_news.py`
 - `web/src/shared/model/newsIntel.ts`
 - `web/src/lib/api/client.ts`
 - `web/src/shared/query/queryKeys.ts`
@@ -80,14 +80,14 @@
 
 - Do not touch Token Radar, Pulse Lab, or asset market projection behavior.
 - Do not store OpenNews API tokens in repo files.
-- Do not re-enable RSS/news sources in `~/.gmgn-twitter-intel/config.yaml` as part of this implementation.
+- Do not re-enable RSS/news sources in `~/.parallax/config.yaml` as part of this implementation.
 
 ## Task 1: Add Provider Signal Normalization
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/news_intel/services/opennews_provider_signal.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/types/source_provider.py`
-- Modify: `src/gmgn_twitter_intel/integrations/news_feeds/opennews_client.py`
+- Create: `src/parallax/domains/news_intel/services/opennews_provider_signal.py`
+- Modify: `src/parallax/domains/news_intel/types/source_provider.py`
+- Modify: `src/parallax/integrations/news_feeds/opennews_client.py`
 - Test: `tests/unit/domains/news_intel/test_opennews_provider_signal.py`
 - Test: `tests/unit/integrations/news_feeds/test_opennews_client.py`
 
@@ -96,7 +96,7 @@
   Add tests covering ready `aiRating`, per-token `coins[]`, and partial pushes:
 
   ```python
-  from gmgn_twitter_intel.domains.news_intel.services.opennews_provider_signal import (
+  from parallax.domains.news_intel.services.opennews_provider_signal import (
       provider_signal_from_opennews_payload,
       provider_token_impacts_from_opennews_payload,
   )
@@ -295,7 +295,7 @@
 
   ```bash
   uv run pytest tests/unit/domains/news_intel/test_opennews_provider_signal.py tests/unit/integrations/news_feeds/test_opennews_client.py -q
-  uv run ruff check src/gmgn_twitter_intel/domains/news_intel/services/opennews_provider_signal.py src/gmgn_twitter_intel/integrations/news_feeds/opennews_client.py tests/unit/domains/news_intel/test_opennews_provider_signal.py tests/unit/integrations/news_feeds/test_opennews_client.py
+  uv run ruff check src/parallax/domains/news_intel/services/opennews_provider_signal.py src/parallax/integrations/news_feeds/opennews_client.py tests/unit/domains/news_intel/test_opennews_provider_signal.py tests/unit/integrations/news_feeds/test_opennews_client.py
   ```
 
   Expected: tests pass and ruff is clean.
@@ -303,9 +303,9 @@
 ## Task 2: Persist Provider Signal Facts
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0090_opennews_provider_signal.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260526_0090_opennews_provider_signal.py`
+- Modify: `src/parallax/domains/news_intel/repositories/news_repository.py`
+- Modify: `src/parallax/domains/news_intel/runtime/news_fetch_worker.py`
 - Test: `tests/integration/domains/news_intel/test_news_repository.py`
 - Test: `tests/unit/domains/news_intel/test_news_workers.py`
 - Test: `tests/unit/test_postgres_schema.py`
@@ -425,10 +425,10 @@
 ## Task 3: Build Provider Token Lanes And Skip OpenNews Agent Briefs
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_process_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/services/news_page_projection.py`
+- Modify: `src/parallax/domains/news_intel/runtime/news_item_process_worker.py`
+- Modify: `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py`
+- Modify: `src/parallax/domains/news_intel/repositories/news_repository.py`
+- Modify: `src/parallax/domains/news_intel/services/news_page_projection.py`
 - Test: `tests/unit/domains/news_intel/test_news_workers.py`
 - Test: `tests/unit/domains/news_intel/test_news_page_projection.py`
 
@@ -579,10 +579,10 @@
 ## Task 4: Hard-Cut API Contract
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/queries/news_page_query.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/routes_news.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/services/news_page_projection.py`
+- Modify: `src/parallax/domains/news_intel/repositories/news_repository.py`
+- Modify: `src/parallax/domains/news_intel/queries/news_page_query.py`
+- Modify: `src/parallax/app/surfaces/api/routes_news.py`
+- Modify: `src/parallax/domains/news_intel/services/news_page_projection.py`
 - Test: `tests/unit/test_api_news_contract.py`
 - Test: `tests/unit/domains/news_intel/test_news_page_projection.py`
 
@@ -1013,16 +1013,16 @@
 ## Task 8: Config And Runtime Verification
 
 **Files:**
-- Operator config only: `/Users/qinghuan/.gmgn-twitter-intel/config.yaml`
+- Operator config only: `/Users/qinghuan/.parallax/config.yaml`
 - No source file changes unless tests expose a config schema bug.
 
 - [ ] **Step 1: Confirm runtime config path**
 
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
 
-  Expected: reports `config_path=/Users/qinghuan/.gmgn-twitter-intel/config.yaml` and `workers_config_path=/Users/qinghuan/.gmgn-twitter-intel/workers.yaml`. Do not print secret values.
+  Expected: reports `config_path=/Users/qinghuan/.parallax/config.yaml` and `workers_config_path=/Users/qinghuan/.parallax/workers.yaml`. Do not print secret values.
 
 - [ ] **Step 2: Confirm only OpenNews source is enabled**
 
@@ -1033,7 +1033,7 @@
   from pathlib import Path
   import yaml
 
-  path = Path.home() / ".gmgn-twitter-intel" / "config.yaml"
+  path = Path.home() / ".parallax" / "config.yaml"
   data = yaml.safe_load(path.read_text()) or {}
   news = data.get("news_intel") or {}
   opennews = news.get("opennews") or {}
@@ -1158,9 +1158,9 @@
 
   ```bash
   rg -n "include_unprojected|token_lanes_json|fact_lanes_json|agent_brief_json|agent_status|CONTENT_DOMAIN_OPTIONS|CONTENT_TAG_OPTIONS|SOURCE_OPTIONS|DECISION_OPTIONS|NewsDirectionTabs|NewsFilterGroup" \
-    src/gmgn_twitter_intel/app/surfaces/api/routes_news.py \
-    src/gmgn_twitter_intel/domains/news_intel/queries/news_page_query.py \
-    src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py \
+    src/parallax/app/surfaces/api/routes_news.py \
+    src/parallax/domains/news_intel/queries/news_page_query.py \
+    src/parallax/domains/news_intel/repositories/news_repository.py \
     web/src/features/news \
     web/src/lib/api/client.ts \
     web/src/shared/model/newsIntel.ts

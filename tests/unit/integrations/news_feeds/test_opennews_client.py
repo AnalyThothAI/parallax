@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from gmgn_twitter_intel.integrations.news_feeds.opennews_client import (
+from parallax.integrations.news_feeds.opennews_client import (
     OpenNewsFeedClient,
     _source_fetch_policy,
 )

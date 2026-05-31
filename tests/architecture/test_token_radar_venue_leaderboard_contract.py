@@ -10,9 +10,9 @@ def _text(path: str) -> str:
 
 
 def test_token_radar_api_accepts_server_side_venue() -> None:
-    route = _text("src/gmgn_twitter_intel/app/surfaces/api/routes_radar.py")
-    service = _text("src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py")
-    repo = _text("src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py")
+    route = _text("src/parallax/app/surfaces/api/routes_radar.py")
+    service = _text("src/parallax/domains/token_intel/read_models/asset_flow_service.py")
+    repo = _text("src/parallax/domains/token_intel/repositories/token_radar_repository.py")
 
     assert "venue:" in route
     assert "_venue(" in route
@@ -23,9 +23,9 @@ def test_token_radar_api_accepts_server_side_venue() -> None:
 
 
 def test_token_radar_current_identity_includes_venue() -> None:
-    manifest = _text("src/gmgn_twitter_intel/app/runtime/worker_manifest.py")
+    manifest = _text("src/parallax/app/runtime/worker_manifest.py")
     migration = _text(
-        "src/gmgn_twitter_intel/platform/db/alembic/versions/"
+        "src/parallax/platform/db/alembic/versions/"
         "20260529_0126_token_radar_venue_source_width_hard_cut.py"
     )
 
@@ -37,7 +37,7 @@ def test_token_radar_current_identity_includes_venue() -> None:
 
 def test_token_radar_prevenue_current_uniques_are_hard_dropped() -> None:
     migration = _text(
-        "src/gmgn_twitter_intel/platform/db/alembic/versions/"
+        "src/parallax/platform/db/alembic/versions/"
         "20260529_0127_token_radar_drop_prevenue_current_uniques.py"
     )
 

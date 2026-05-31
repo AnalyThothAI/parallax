@@ -6,13 +6,13 @@ from hashlib import sha256
 
 from fastapi.testclient import TestClient
 
-from gmgn_twitter_intel.app.runtime.app import create_app
-from gmgn_twitter_intel.app.runtime.worker_manifest import all_worker_manifests
-from gmgn_twitter_intel.app.surfaces.api.responses import _json
-from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
-from gmgn_twitter_intel.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
-from gmgn_twitter_intel.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
-from gmgn_twitter_intel.platform.config.settings import Settings
+from parallax.app.runtime.app import create_app
+from parallax.app.runtime.worker_manifest import all_worker_manifests
+from parallax.app.surfaces.api.responses import _json
+from parallax.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
+from parallax.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
+from parallax.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
+from parallax.platform.config.settings import Settings
 from tests.postgres_test_utils import postgres_settings_storage, prepare_postgres_database
 
 PEPE = "0x6982508145454ce325ddbe47a25d4ec3d2311933"
@@ -1480,7 +1480,7 @@ def test_api_token_case_rejects_invalid_window_and_scope(tmp_path):
 
 def test_api_token_case_matches_search_inspect_token_result_shape(tmp_path, monkeypatch):
     now_ms = 1_778_562_000_000
-    monkeypatch.setattr("gmgn_twitter_intel.app.surfaces.api.routes_search._now_ms", lambda: now_ms)
+    monkeypatch.setattr("parallax.app.surfaces.api.routes_search._now_ms", lambda: now_ms)
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:

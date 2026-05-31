@@ -3,7 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
-from gmgn_twitter_intel.domains.asset_market.repositories.token_capture_tier_repository import (
+from parallax.domains.asset_market.repositories.token_capture_tier_repository import (
     TokenCaptureTierRepository,
 )
 

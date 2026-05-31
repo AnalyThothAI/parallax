@@ -64,33 +64,33 @@ Expected:
 Run:
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 ```
 
 Expected:
 
-- `config_path` and `workers_config_path` point to `~/.gmgn-twitter-intel/`.
+- `config_path` and `workers_config_path` point to `~/.parallax/`.
 - No secret values are printed.
 
 ## File Structure
 
 ### Create
 
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py`  
+- `src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py`
   Own durable dirty targets for rebuilding/updating current market rows.
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/market_tick_current_repository.py`  
+- `src/parallax/domains/asset_market/repositories/market_tick_current_repository.py`
   Own `market_tick_current` writes, rebuild, and changed-row detection.
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_current_projection_worker.py`  
+- `src/parallax/domains/asset_market/runtime/market_tick_current_projection_worker.py`
   Single runtime writer for `market_tick_current`; enqueues Token Radar market dirty targets.
-- `src/gmgn_twitter_intel/domains/asset_market/services/market_tick_persistence.py`  
+- `src/parallax/domains/asset_market/services/market_tick_persistence.py`
   Atomic service for appending ticks and enqueueing current dirty targets.
-- `src/gmgn_twitter_intel/domains/asset_market/services/market_tick_current_rebuild.py`  
+- `src/parallax/domains/asset_market/services/market_tick_current_rebuild.py`
   Deterministic rebuild service from append-only `market_ticks`.
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/token_resolution_refresh_dirty_target_repository.py`  
+- `src/parallax/domains/asset_market/repositories/token_resolution_refresh_dirty_target_repository.py`
   Own durable lookup-key refresh targets for `resolution_refresh`.
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260525_0095_kappa_cqrs_runtime_integrity.py`  
+- `src/parallax/platform/db/alembic/versions/20260525_0095_kappa_cqrs_runtime_integrity.py`
   Add `market_tick_current_dirty_targets`, `token_resolution_refresh_dirty_targets`, and any quote/candle snapshot columns/tables chosen below.
-- `tests/integration/test_transaction_atomicity.py`  
+- `tests/integration/test_transaction_atomicity.py`
   Failure-injection rollback tests for the critical chains.
 - `tests/unit/test_market_tick_current_projection_worker.py`
 - `tests/unit/test_market_tick_current_repository.py`
@@ -100,30 +100,30 @@ Expected:
 
 ### Modify
 
-- `src/gmgn_twitter_intel/platform/db/postgres_client.py`
-- `src/gmgn_twitter_intel/app/runtime/db_pool_bundle.py`
-- `src/gmgn_twitter_intel/app/runtime/repository_session.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_registry.py`
-- `src/gmgn_twitter_intel/domains/evidence/services/ingest_service.py`
-- `src/gmgn_twitter_intel/app/runtime/bootstrap.py`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/market_tick_repository.py`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_stream_worker.py`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_poll_worker.py`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/event_anchor_backfill_worker.py`
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/discovery_repository.py`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/resolution_refresh_worker.py`
-- `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py`
-- `src/gmgn_twitter_intel/domains/token_intel/runtime/token_resolution_refresh.py`
-- `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_dirty_target_repository.py`
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
-- `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_target_feature_query.py`
-- `src/gmgn_twitter_intel/domains/token_intel/scoring/token_radar_feature_builder.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/routes_search.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/routes_radar.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/ws.py`
-- `src/gmgn_twitter_intel/domains/asset_market/read_models/market_candles_service.py`
-- `src/gmgn_twitter_intel/domains/token_intel/read_models/stocks_radar_service.py`
+- `src/parallax/platform/db/postgres_client.py`
+- `src/parallax/app/runtime/db_pool_bundle.py`
+- `src/parallax/app/runtime/repository_session.py`
+- `src/parallax/app/runtime/worker_registry.py`
+- `src/parallax/domains/evidence/services/ingest_service.py`
+- `src/parallax/app/runtime/bootstrap.py`
+- `src/parallax/domains/asset_market/repositories/market_tick_repository.py`
+- `src/parallax/domains/asset_market/runtime/market_tick_stream_worker.py`
+- `src/parallax/domains/asset_market/runtime/market_tick_poll_worker.py`
+- `src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py`
+- `src/parallax/domains/asset_market/repositories/discovery_repository.py`
+- `src/parallax/domains/asset_market/runtime/resolution_refresh_worker.py`
+- `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py`
+- `src/parallax/domains/token_intel/runtime/token_resolution_refresh.py`
+- `src/parallax/domains/token_intel/services/token_radar_projection.py`
+- `src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py`
+- `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
+- `src/parallax/domains/token_intel/queries/token_radar_target_feature_query.py`
+- `src/parallax/domains/token_intel/scoring/token_radar_feature_builder.py`
+- `src/parallax/app/surfaces/api/routes_search.py`
+- `src/parallax/app/surfaces/api/routes_radar.py`
+- `src/parallax/app/surfaces/api/ws.py`
+- `src/parallax/domains/asset_market/read_models/market_candles_service.py`
+- `src/parallax/domains/token_intel/read_models/stocks_radar_service.py`
 - `tests/architecture/test_worker_runtime_contracts.py`
 - `tests/architecture/test_event_anchor_capture_redesign_contracts.py`
 - `tests/unit/domains/macro_intel/test_macro_asset_correlation.py`
@@ -230,9 +230,9 @@ by then, use that instead and do not create this table.
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/app/runtime/db_pool_bundle.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/repository_session.py`
-- Modify: `src/gmgn_twitter_intel/platform/db/postgres_client.py`
+- Modify: `src/parallax/app/runtime/db_pool_bundle.py`
+- Modify: `src/parallax/app/runtime/repository_session.py`
+- Modify: `src/parallax/platform/db/postgres_client.py`
 - Add tests in: `tests/integration/test_transaction_atomicity.py`
 
 - [ ] **Step 1: Write failing tests for explicit worker transactions**
@@ -301,11 +301,11 @@ Expected: PASS.
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/domains/asset_market/services/market_tick_persistence.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/market_tick_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_stream_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_poll_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/event_anchor_backfill_worker.py`
+- Create: `src/parallax/domains/asset_market/services/market_tick_persistence.py`
+- Modify: `src/parallax/domains/asset_market/repositories/market_tick_repository.py`
+- Modify: `src/parallax/domains/asset_market/runtime/market_tick_stream_worker.py`
+- Modify: `src/parallax/domains/asset_market/runtime/market_tick_poll_worker.py`
+- Modify: `src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py`
 - Test: `tests/integration/test_transaction_atomicity.py`
 
 - [ ] **Step 1: Write failing rollback test for tick plus dirty target**
@@ -394,12 +394,12 @@ Expected: PASS.
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py`
-- Create: `src/gmgn_twitter_intel/domains/asset_market/repositories/market_tick_current_repository.py`
-- Create: `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_current_projection_worker.py`
-- Create: `src/gmgn_twitter_intel/domains/asset_market/services/market_tick_current_rebuild.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/repository_session.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_registry.py`
+- Create: `src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py`
+- Create: `src/parallax/domains/asset_market/repositories/market_tick_current_repository.py`
+- Create: `src/parallax/domains/asset_market/runtime/market_tick_current_projection_worker.py`
+- Create: `src/parallax/domains/asset_market/services/market_tick_current_rebuild.py`
+- Modify: `src/parallax/app/runtime/repository_session.py`
+- Modify: `src/parallax/app/runtime/worker_registry.py`
 - Modify: worker settings tests/config as needed
 - Test: `tests/unit/test_market_tick_current_projection_worker.py`
 - Test: `tests/unit/test_market_tick_current_repository.py`
@@ -461,7 +461,7 @@ Expected: PASS.
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`
+- Modify: `src/parallax/app/surfaces/cli/commands/ops.py`
 - Create or modify: tests for ops CLI closest to `tests/unit/test_token_radar_audit_cli.py`
 - Modify: `docs/generated/cli-help.md`
 
@@ -470,8 +470,8 @@ Expected: PASS.
 Command contract:
 
 ```bash
-uv run gmgn-twitter-intel ops rebuild-market-tick-current --dry-run
-uv run gmgn-twitter-intel ops rebuild-market-tick-current --execute
+uv run parallax ops rebuild-market-tick-current --dry-run
+uv run parallax ops rebuild-market-tick-current --execute
 ```
 
 Dry-run reports counts by target type and estimated rows. Execute truncates and
@@ -483,8 +483,8 @@ rows directly.
 Command contract:
 
 ```bash
-uv run gmgn-twitter-intel ops enqueue-token-radar-dirty-targets --source events --since-ms 0 --dry-run
-uv run gmgn-twitter-intel ops enqueue-token-radar-dirty-targets --source market-current --since-ms 0 --execute
+uv run parallax ops enqueue-token-radar-dirty-targets --source events --since-ms 0 --dry-run
+uv run parallax ops enqueue-token-radar-dirty-targets --source market-current --since-ms 0 --execute
 ```
 
 It only enqueues `token_radar_dirty_targets`; it never writes read-model rows.
@@ -494,7 +494,7 @@ It only enqueues `token_radar_dirty_targets`; it never writes read-model rows.
 Run:
 
 ```bash
-uv run gmgn-twitter-intel --help > /tmp/gmgn-cli-help.txt
+uv run parallax --help > /tmp/gmgn-cli-help.txt
 ```
 
 Then update `docs/generated/cli-help.md` with the established project command if
@@ -504,10 +504,10 @@ one exists. Do not paste secrets or runtime config values.
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_dirty_target_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
+- Modify: `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
 - Test: `tests/unit/test_token_radar_projection_worker.py`
 - Test: `tests/unit/test_token_radar_dirty_target_repository.py`
 - Test: `tests/integration/test_token_radar_repository.py`
@@ -562,11 +562,11 @@ Expected: PASS.
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/domains/asset_market/repositories/token_resolution_refresh_dirty_target_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/discovery_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/resolution_refresh_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/evidence/services/ingest_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/runtime/token_resolution_refresh.py`
+- Create: `src/parallax/domains/asset_market/repositories/token_resolution_refresh_dirty_target_repository.py`
+- Modify: `src/parallax/domains/asset_market/repositories/discovery_repository.py`
+- Modify: `src/parallax/domains/asset_market/runtime/resolution_refresh_worker.py`
+- Modify: `src/parallax/domains/evidence/services/ingest_service.py`
+- Modify: `src/parallax/domains/token_intel/runtime/token_resolution_refresh.py`
 - Test: `tests/unit/test_resolution_refresh_worker.py`
 - Test: `tests/unit/test_discovery_repository.py`
 - Test: `tests/integration/test_transaction_atomicity.py`
@@ -636,8 +636,8 @@ Do not call `DiscoveryRepository.due_lookup_keys()` in normal runtime.
 Add an ops command:
 
 ```bash
-uv run gmgn-twitter-intel ops enqueue-resolution-refresh-targets --since-ms 0 --dry-run
-uv run gmgn-twitter-intel ops enqueue-resolution-refresh-targets --since-ms 0 --execute
+uv run parallax ops enqueue-resolution-refresh-targets --since-ms 0 --dry-run
+uv run parallax ops enqueue-resolution-refresh-targets --since-ms 0 --execute
 ```
 
 The command may use the old broad query to enqueue dirty targets. It must not
@@ -663,7 +663,7 @@ Expected: PASS.
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/token_radar_feature_builder.py`
+- Modify: `src/parallax/domains/token_intel/scoring/token_radar_feature_builder.py`
 - Modify or add: `tests/unit/domains/token_intel/test_token_radar_feature_builder.py`
 - Modify: `tests/architecture/test_no_factor_snapshot_fallback.py`
 
@@ -702,10 +702,10 @@ inside Token Radar scoring paths, except migrations/tests explicitly allowlisted
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/routes_search.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/routes_radar.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/read_models/market_candles_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/stocks_radar_service.py`
+- Modify: `src/parallax/app/surfaces/api/routes_search.py`
+- Modify: `src/parallax/app/surfaces/api/routes_radar.py`
+- Modify: `src/parallax/domains/asset_market/read_models/market_candles_service.py`
+- Modify: `src/parallax/domains/token_intel/read_models/stocks_radar_service.py`
 - Create or reuse: persisted candle/quote read model files
 - Test: `tests/unit/test_api_provider_free_read_paths.py`
 - Test: `tests/integration/test_api_http.py`
@@ -757,7 +757,7 @@ Allow only worker/provider wiring modules and explicit tests.
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/ws.py`
+- Modify: `src/parallax/app/surfaces/api/ws.py`
 - Add tests: `tests/unit/test_websocket_backpressure.py`
 - Modify existing: `tests/integration/test_api_websocket.py`
 
@@ -805,8 +805,8 @@ Expected: PASS.
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/app/runtime/wake_waiter.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/db_pool_bundle.py`
+- Modify: `src/parallax/app/runtime/wake_waiter.py`
+- Modify: `src/parallax/app/runtime/db_pool_bundle.py`
 - Test: `tests/unit/test_wake_waiter.py`
 - Test: `tests/unit/test_db_pool_bundle.py`
 
@@ -881,7 +881,7 @@ Expected: PASS.
 - Modify: `docs/RELIABILITY.md`
 - Modify: `docs/WORKER_FLOW.md`
 - Modify: `docs/WORKERS.md`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/asset_market/ARCHITECTURE.md`
 
 - [ ] **Step 1: Document transaction rule**
 
@@ -946,14 +946,14 @@ Expected: PASS or documented unrelated baseline failures.
 Run:
 
 ```bash
-uv run gmgn-twitter-intel config
-uv run gmgn-twitter-intel ops rebuild-market-tick-current --dry-run
-uv run gmgn-twitter-intel ops enqueue-token-radar-dirty-targets --source market-current --since-ms 0 --dry-run
+uv run parallax config
+uv run parallax ops rebuild-market-tick-current --dry-run
+uv run parallax ops enqueue-token-radar-dirty-targets --source market-current --since-ms 0 --dry-run
 ```
 
 Expected:
 
-- Config paths point to `~/.gmgn-twitter-intel/`.
+- Config paths point to `~/.parallax/`.
 - Dry-runs report counts only.
 - No secrets are printed.
 
@@ -962,7 +962,7 @@ Expected:
 Run API poison-provider tests and manually inspect route construction:
 
 ```bash
-rg -n "runtime\\.providers|stock_quote_provider|\\.candles\\(|\\.token_candles\\(|\\.quote\\(" src/gmgn_twitter_intel/app/surfaces/api src/gmgn_twitter_intel/domains/*/read_models
+rg -n "runtime\\.providers|stock_quote_provider|\\.candles\\(|\\.token_candles\\(|\\.quote\\(" src/parallax/app/surfaces/api src/parallax/domains/*/read_models
 ```
 
 Expected: no runtime provider call sites in API/read-model code except allowlisted tests.
@@ -972,7 +972,7 @@ Expected: no runtime provider call sites in API/read-model code except allowlist
 Run:
 
 ```bash
-rg -n "market_tick_current" src/gmgn_twitter_intel/domains src/gmgn_twitter_intel/app tests/architecture
+rg -n "market_tick_current" src/parallax/domains src/parallax/app tests/architecture
 ```
 
 Expected:
@@ -1015,7 +1015,7 @@ Completed:
 
 Verification:
 
-- `uv run ruff check src/gmgn_twitter_intel tests` -> passed.
+- `uv run ruff check src/parallax tests` -> passed.
 - Market tick/current/transaction suite -> `80 passed`.
 - Resolution refresh, Token Radar, API/WebSocket, wake, and worker lifecycle
   suite -> `84 passed`.

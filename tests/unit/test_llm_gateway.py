@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from gmgn_twitter_intel.app.runtime.llm_gateway import LLMGateway
+from parallax.app.runtime.llm_gateway import LLMGateway
 
 
 def test_llm_gateway_is_litellm_config_holder() -> None:

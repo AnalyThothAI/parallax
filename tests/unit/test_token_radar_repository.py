@@ -5,11 +5,11 @@ from typing import Any
 
 import pytest
 
-from gmgn_twitter_intel.domains.token_intel.interfaces import (
+from parallax.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_DEFAULT_VENUE,
 )
-from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import (
+from parallax.domains.token_intel.repositories.token_radar_repository import (
     TokenRadarRepository,
     _json_payload,
     _payload_hash,

@@ -9,9 +9,9 @@
 - `docs/WORKER_FLOW.md`
 - `docs/CONTRACTS.md`
 - `docs/FRONTEND.md`
-- `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
-- `src/gmgn_twitter_intel/domains/narrative_intel/ARCHITECTURE.md`
-- `src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`
+- `src/parallax/domains/token_intel/ARCHITECTURE.md`
+- `src/parallax/domains/narrative_intel/ARCHITECTURE.md`
+- `src/parallax/domains/pulse_lab/ARCHITECTURE.md`
 - `docs/superpowers/specs/active/2026-05-19-narrative-intel-throughput-cqrs-hard-cut-cn.md`
 - `docs/superpowers/specs/active/2026-05-20-token-radar-narrative-backlog-hard-cut-cn.md`
 - `docs/superpowers/specs/active/2026-05-14-token-case-redesign-cn.md`

@@ -4,7 +4,7 @@ import json
 from datetime import date, datetime
 from types import TracebackType
 
-from gmgn_twitter_intel.integrations.macrodata.runner import MacrodataBundleRunResult, MacrodataRunnerError
+from parallax.integrations.macrodata.runner import MacrodataBundleRunResult, MacrodataRunnerError
 
 NOW_MS = 1_779_000_000_000
 
@@ -37,7 +37,7 @@ ENVELOPE = {
 
 
 def test_sync_service_date_contract_accepts_only_date_and_yyyy_mm_dd_text() -> None:
-    from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_service import _to_date
+    from parallax.domains.macro_intel.services.macro_sync_service import _to_date
 
     assert _to_date(date(2026, 5, 28)) == date(2026, 5, 28)
     assert _to_date("2026-05-28") == date(2026, 5, 28)
@@ -49,7 +49,7 @@ def test_sync_service_date_contract_accepts_only_date_and_yyyy_mm_dd_text() -> N
 
 
 def test_sync_service_idle_claims_no_window_and_does_not_call_runner() -> None:
-    from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_service import MacroSyncService
+    from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 
     repo = FakeMacroIntelRepository(claimed_window=None)
     runner = FakeRunner()
@@ -67,7 +67,7 @@ def test_sync_service_idle_claims_no_window_and_does_not_call_runner() -> None:
 
 
 def test_sync_service_claims_window_before_provider_io() -> None:
-    from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_service import MacroSyncService
+    from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 
     events: list[str] = []
     repo = FakeMacroIntelRepository(claimed_window=_window(), events=events)
@@ -88,7 +88,7 @@ def test_sync_service_claims_window_before_provider_io() -> None:
 
 
 def test_sync_service_import_success_writes_facts_completes_window_and_wakes_projection() -> None:
-    from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_service import MacroSyncService
+    from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 
     events: list[str] = []
     repo = FakeMacroIntelRepository(claimed_window=_window(), events=events)
@@ -144,7 +144,7 @@ def test_sync_service_import_success_writes_facts_completes_window_and_wakes_pro
 
 
 def test_sync_service_empty_import_does_not_enqueue_projection_dirty_target() -> None:
-    from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_service import MacroSyncService
+    from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 
     repo = FakeMacroIntelRepository(claimed_window=_window())
     service = MacroSyncService(
@@ -163,7 +163,7 @@ def test_sync_service_empty_import_does_not_enqueue_projection_dirty_target() ->
 
 
 def test_sync_service_noop_overlap_records_seen_and_does_not_wake_or_dirty() -> None:
-    from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_service import MacroSyncService
+    from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 
     repo = FakeMacroIntelRepository(claimed_window=_window(), upsert_statuses=["noop"])
     wake_bus = FakeWakeBus()
@@ -189,7 +189,7 @@ def test_sync_service_noop_overlap_records_seen_and_does_not_wake_or_dirty() -> 
 
 
 def test_sync_service_wake_failure_preserves_committed_success() -> None:
-    from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_service import MacroSyncService
+    from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 
     events: list[str] = []
     repo = FakeMacroIntelRepository(claimed_window=_window(), events=events)
@@ -215,7 +215,7 @@ def test_sync_service_wake_failure_preserves_committed_success() -> None:
 
 
 def test_sync_service_stale_completion_rolls_back_facts_and_does_not_wake() -> None:
-    from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_service import MacroSyncService
+    from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 
     events: list[str] = []
     repo = FakeMacroIntelRepository(claimed_window=_window(), events=events, complete_result=False)
@@ -240,7 +240,7 @@ def test_sync_service_stale_completion_rolls_back_facts_and_does_not_wake() -> N
 
 
 def test_sync_service_provider_failure_records_retry_without_fabricating_facts() -> None:
-    from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_service import MacroSyncService
+    from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 
     repo = FakeMacroIntelRepository(claimed_window=_window())
     runner = FakeRunner(error=MacrodataRunnerError("provider failed", diagnostics={"error_code": "provider_down"}))
@@ -263,7 +263,7 @@ def test_sync_service_provider_failure_records_retry_without_fabricating_facts()
 
 
 def test_sync_service_provider_failure_at_attempt_budget_records_failed_without_retry() -> None:
-    from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_service import MacroSyncService
+    from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 
     window = _window() | {"attempt_count": 8, "max_attempts": 8}
     repo = FakeMacroIntelRepository(claimed_window=window)
@@ -286,7 +286,7 @@ def test_sync_service_provider_failure_at_attempt_budget_records_failed_without_
 
 
 def test_sync_service_stale_retry_rolls_back_failure_audit() -> None:
-    from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_service import MacroSyncService
+    from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 
     repo = FakeMacroIntelRepository(claimed_window=_window(), retry_result=False)
     runner = FakeRunner(error=MacrodataRunnerError("provider failed", diagnostics={"error_code": "provider_down"}))
@@ -308,7 +308,7 @@ def test_sync_service_stale_retry_rolls_back_failure_audit() -> None:
 
 
 def test_sync_service_stale_fail_rolls_back_failure_audit() -> None:
-    from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_service import MacroSyncService
+    from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 
     repo = FakeMacroIntelRepository(claimed_window=_window(), fail_result=False)
     runner = FakeRunner(
@@ -335,7 +335,7 @@ def test_sync_service_stale_fail_rolls_back_failure_audit() -> None:
 
 
 def test_sync_service_missing_macrodata_executable_is_config_error_without_retry() -> None:
-    from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_service import MacroSyncService
+    from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 
     repo = FakeMacroIntelRepository(claimed_window=_window())
     runner = FakeRunner(
@@ -361,7 +361,7 @@ def test_sync_service_missing_macrodata_executable_is_config_error_without_retry
 
 
 def test_sync_service_explicit_window_enqueues_and_claims_target_in_one_transaction() -> None:
-    from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_service import MacroSyncService
+    from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 
     events: list[str] = []
     repo = FakeMacroIntelRepository(claimed_window=_window() | {"sync_window_id": "target-window"}, events=events)
@@ -398,7 +398,7 @@ def test_sync_service_explicit_window_enqueues_and_claims_target_in_one_transact
 
 
 def test_sync_service_explicit_window_trigger_identity_allows_repeated_repairs() -> None:
-    from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_service import MacroSyncService
+    from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 
     repo = FakeMacroIntelRepository(claimed_window=_window() | {"sync_window_id": "target-window"})
     service = MacroSyncService(
@@ -427,7 +427,7 @@ def test_sync_service_explicit_window_trigger_identity_allows_repeated_repairs()
 
 
 def test_sync_service_redacts_secret_from_run_payload_and_diagnostics() -> None:
-    from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_service import MacroSyncService
+    from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 
     secret = "dummy-fred-secret"
     repo = FakeMacroIntelRepository(claimed_window=_window())
@@ -457,7 +457,7 @@ def test_sync_service_redacts_secret_from_run_payload_and_diagnostics() -> None:
 
 
 def test_sync_service_redacts_secret_like_error_messages_before_persisting() -> None:
-    from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_service import MacroSyncService
+    from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 
     secret = "super-secret"
     repo = FakeMacroIntelRepository(claimed_window=_window())

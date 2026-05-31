@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import (
+from parallax.domains.token_intel.repositories.token_radar_repository import (
     TokenRadarRepository,
     stable_generation_id,
 )
-from gmgn_twitter_intel.domains.token_intel.services import token_radar_projection
+from parallax.domains.token_intel.services import token_radar_projection
 
 
 def test_token_radar_venue_for_rank_input_prefers_cex_target_type() -> None:

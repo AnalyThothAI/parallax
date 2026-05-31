@@ -101,29 +101,29 @@ Backend payload rules:
 
 ### Backend
 
-- Create `src/gmgn_twitter_intel/domains/token_intel/read_models/search_agent_brief.py`
+- Create `src/parallax/domains/token_intel/read_models/search_agent_brief.py`
   - Responsible for deterministic `SearchAgentBrief`.
   - New public functions:
     - `build_token_agent_brief(*, target, timeline, posts, radar_item) -> dict[str, Any]`
     - `build_topic_agent_brief(*, query, items) -> dict[str, Any]`
   - No LLM call in this file.
 
-- Create `src/gmgn_twitter_intel/domains/token_intel/read_models/search_inspect_service.py`
+- Create `src/parallax/domains/token_intel/read_models/search_inspect_service.py`
   - Responsible for composing Search V2 + timeline + posts + radar into `SearchInspectData`.
   - New class:
     - `SearchInspectService(search_query, token_radar, targets)`
     - `inspect(q: str, *, window: str, scope: str, limit: int, now_ms: int | None = None) -> dict[str, Any]`
 
-- Modify `src/gmgn_twitter_intel/domains/token_intel/read_models/search_service.py`
+- Modify `src/parallax/domains/token_intel/read_models/search_service.py`
   - Add optional `window: str = "24h"` and `now_ms: int | None = None`.
   - Pass `since_ms` into `SearchEventsQuery` so keyword results are actually 24h-scoped.
   - Hard-cut old unwindowed search behavior; default `/api/search` to `window=24h`.
 
-- Modify `src/gmgn_twitter_intel/domains/token_intel/queries/search_events_query.py`
+- Modify `src/parallax/domains/token_intel/queries/search_events_query.py`
   - Add optional `since_ms` to `route_hits`, `target_hits_page`, `_target_hits`, `_handle_hits`, `_lexical_hits`, `_substring_hits`, `_trigram_hits`.
   - Add `AND events.received_at_ms >= %s` to each route when `since_ms` is provided.
 
-- Modify `src/gmgn_twitter_intel/app/surfaces/api/http.py`
+- Modify `src/parallax/app/surfaces/api/http.py`
   - Add `GET /api/search/inspect`.
   - Add optional `window` to `/api/search` for consistency.
   - Return bad request for unsupported window/scope with existing helpers.
@@ -306,8 +306,8 @@ Expected: both new test files pass.
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/search_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/queries/search_events_query.py`
+- Modify: `src/parallax/domains/token_intel/read_models/search_service.py`
+- Modify: `src/parallax/domains/token_intel/queries/search_events_query.py`
 - Modify: `tests/unit/test_search_service.py`
 
 - [ ] **Step 1: Write failing unit test**
@@ -336,7 +336,7 @@ Expected: all search service tests pass.
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/domains/token_intel/read_models/search_agent_brief.py`
+- Create: `src/parallax/domains/token_intel/read_models/search_agent_brief.py`
 - Test: `tests/unit/test_search_agent_brief.py`
 
 - [ ] **Step 1: Write token brief test**
@@ -384,8 +384,8 @@ Expected: new brief test passes.
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/domains/token_intel/read_models/search_inspect_service.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/http.py`
+- Create: `src/parallax/domains/token_intel/read_models/search_inspect_service.py`
+- Modify: `src/parallax/app/surfaces/api/http.py`
 - Test: `tests/unit/test_search_inspect_service.py`
 - Test: `tests/integration/test_api_http.py`
 

@@ -94,7 +94,7 @@ Token facts come from stored events, deterministic extraction, token resolution,
 
 Answer to "do we record price?": **yes, but as sparse snapshots, not continuous OHLCV candles.** Current window price change is computed from stored snapshots at or before window start/end. If no distinct start snapshot exists, `price_change_status = insufficient_history`.
 
-Runtime note: during this review, the default host data directory `/Users/qinghuan/.gmgn-twitter-intel/data` did not contain a live SQLite database, so this audit is based on code, schema, tests, and product surfaces rather than a live sample distribution.
+Runtime note: during this review, the default host data directory `/Users/qinghuan/.parallax/data` did not contain a live SQLite database, so this audit is based on code, schema, tests, and product surfaces rather than a live sample distribution.
 
 `event_token_mentions`
 

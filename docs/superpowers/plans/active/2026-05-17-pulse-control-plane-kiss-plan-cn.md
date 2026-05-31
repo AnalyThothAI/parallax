@@ -12,27 +12,27 @@
 
 ## File Map
 
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_admission_policy.py`
+- Create: `src/parallax/domains/pulse_lab/services/pulse_admission_policy.py`
   - Pure policy for edge materiality, active-job suppression, score-band confirmation, and failure-circuit decisions.
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- Modify: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
   - Route `_enqueue_if_due` through policy and atomic repository admission. Move processed-state update to successful terminal run.
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py`
+- Modify: `src/parallax/domains/pulse_lab/repositories/pulse_repository.py`
   - Add `claim_pulse_admission`, target budget helpers, suppression fields, failure query, and processed-state update on success.
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260517_0059_pulse_control_plane_kiss.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260517_0059_pulse_control_plane_kiss.py`
   - Add `pulse_target_run_budget` and minimal edge-state suppression/pending-band columns.
-- Modify: `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py`
+- Modify: `src/parallax/domains/notifications/services/notification_rules.py`
   - Add Signal Pulse in-app/external signatures, cooldown bucket, external eligibility, and channel split.
-- Modify: `src/gmgn_twitter_intel/domains/notifications/repositories/notification_repository.py`
+- Modify: `src/parallax/domains/notifications/repositories/notification_repository.py`
   - Change Signal Pulse semantic duplicate lookup to use `in_app_signature` and `external_push_signature`.
-- Modify: `src/gmgn_twitter_intel/domains/notifications/runtime/notification_worker.py`
+- Modify: `src/parallax/domains/notifications/runtime/notification_worker.py`
   - Keep delivery enqueueing based on candidate channels; no frontend throttling.
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
+- Modify: `src/parallax/platform/config/settings.py`
   - Reject unsupported Signal Pulse statuses after operator config cleanup.
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_runtime.py`
+- Modify: `src/parallax/domains/pulse_lab/services/agent_runtime.py`
   - Include actual tool/validator/failure-taxonomy contract fields in the harness manifest.
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_eval.py`
+- Modify: `src/parallax/domains/pulse_lab/services/agent_eval.py`
   - Grade failed-run eval cases and align evidence subset checks with runtime validation.
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
+- Modify: `src/parallax/app/surfaces/api/schemas.py`
   - Remove public `analyst`, `critic`, `judge` stage fields.
 - Modify: `web/src/lib/types/frontend-contracts.ts`
   - Remove public legacy stage fields until generated types fully replace this file.
@@ -52,8 +52,8 @@
 **Intent:** Keep in-app Signal Pulse history, but make external push target/cooldown/escalation gated. This is the fastest way to reduce operator-visible spam.
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py`
-- Modify: `src/gmgn_twitter_intel/domains/notifications/repositories/notification_repository.py`
+- Modify: `src/parallax/domains/notifications/services/notification_rules.py`
+- Modify: `src/parallax/domains/notifications/repositories/notification_repository.py`
 - Test: `tests/unit/test_notification_rules.py`
 - Test: `tests/unit/test_notification_worker_runtime.py`
 
@@ -279,10 +279,10 @@
 **Intent:** Prevent cross-window/scope amplification and prevent budget consumption without a job.
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_admission_policy.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260517_0059_pulse_control_plane_kiss.py`
+- Create: `src/parallax/domains/pulse_lab/services/pulse_admission_policy.py`
+- Modify: `src/parallax/domains/pulse_lab/repositories/pulse_repository.py`
+- Modify: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260517_0059_pulse_control_plane_kiss.py`
 - Test: `tests/unit/test_pulse_admission_policy.py`
 - Test: `tests/unit/test_pulse_candidate_worker.py`
 - Test: `tests/integration/test_pulse_repository.py`
@@ -292,7 +292,7 @@
   Create `tests/unit/test_pulse_admission_policy.py`:
 
   ```python
-  from gmgn_twitter_intel.domains.pulse_lab.services.pulse_admission_policy import (
+  from parallax.domains.pulse_lab.services.pulse_admission_policy import (
       PulseAdmissionPolicy,
   )
 
@@ -486,10 +486,10 @@
 **Intent:** Stop repeated schema/evidence failures from creating noisy work while preserving audit and eval data.
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_runtime.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_eval.py`
+- Modify: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- Modify: `src/parallax/domains/pulse_lab/repositories/pulse_repository.py`
+- Modify: `src/parallax/domains/pulse_lab/services/agent_runtime.py`
+- Modify: `src/parallax/domains/pulse_lab/services/agent_eval.py`
 - Test: `tests/unit/test_pulse_candidate_worker.py`
 - Test: `tests/unit/domains/pulse_lab/test_agent_eval_v2.py`
 
@@ -599,8 +599,8 @@
 **Intent:** Historical DB rows may remain, but `analyst`, `critic`, and `judge` must not be first-class runtime/API/frontend fields.
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
+- Modify: `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py`
+- Modify: `src/parallax/app/surfaces/api/schemas.py`
 - Modify: `web/src/lib/types/frontend-contracts.ts`
 - Modify: `web/src/features/signal-lab/model/pulseDetail.ts`
 - Modify: `web/src/features/signal-lab/ui/PulseDetail/PulseAgentRail.tsx`
@@ -682,7 +682,7 @@
 **Intent:** Remove silent config drift and make docs match the real writer/stage model.
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
+- Modify: `src/parallax/platform/config/settings.py`
 - Modify: `tests/unit/test_settings.py`
 - Modify: `docs/ARCHITECTURE.md`
 - Modify: `docs/WORKERS.md`

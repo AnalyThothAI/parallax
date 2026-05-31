@@ -6,15 +6,15 @@ import os
 import pytest
 from pydantic import BaseModel
 
-from gmgn_twitter_intel.app.runtime.llm_gateway import LLMGateway
-from gmgn_twitter_intel.integrations.model_execution.execution_gateway import AgentExecutionGateway
-from gmgn_twitter_intel.platform.agent_execution import (
+from parallax.app.runtime.llm_gateway import LLMGateway
+from parallax.integrations.model_execution.execution_gateway import AgentExecutionGateway
+from parallax.platform.agent_execution import (
     AgentLanePolicy,
     AgentRuntimeDefaultsPolicy,
     AgentRuntimePolicy,
     AgentStageSpec,
 )
-from gmgn_twitter_intel.platform.config.settings import load_settings
+from parallax.platform.config.settings import load_settings
 
 pytestmark = pytest.mark.live
 
@@ -53,7 +53,7 @@ def test_live_deepseek_v4_flash_json_object_strategy() -> None:
                     output_type=ProbePayload,
                     prompt_version="probe-v1",
                     schema_version="probe-v1",
-                    workflow_name="gmgn-twitter-intel.probe",
+                    workflow_name="parallax.probe",
                     agent_name="ProbeAgent",
                 )
             )

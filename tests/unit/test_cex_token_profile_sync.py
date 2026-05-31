@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.asset_market.services.cex_token_profile_sync import sync_cex_token_profiles
+from parallax.domains.asset_market.services.cex_token_profile_sync import sync_cex_token_profiles
 
 
 def test_sync_cex_token_profiles_writes_source_cache_for_existing_cex_tokens_only():

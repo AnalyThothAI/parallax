@@ -12,11 +12,11 @@
 - `web/src/main.tsx:17` 以 `ReactDOM.createRoot` 直接挂载 `<App />`，未引入任何路由库（`web/package.json` 中无 `react-router*` / `@tanstack/router` 依赖）。
 - "页面切换"由两处状态驱动：Zustand store `web/src/store/useTraderStore.ts` 中的 `activeView ∈ { "live", "signal_lab" }`、`signalLabHandle`、`signalLabStatus`、`signalLabSearch`、`window`、`scope` 等；以及 `web/src/App.tsx` 中的本地 `useState` 字段 `pageTargetRef`（`App.tsx:110`）、`mobileTask`、`selectedPulseItem`。
 - Token Radar 二级页 `web/src/components/TokenTargetPage.tsx` 已经按 `target_type + target_id` 自取数据：`web/src/api/useTokenTargetQueries.ts:24`（`/api/target-social-timeline`）与 `:36`（`/api/target-posts`）。它在 `web/src/App.tsx` 的中列条件渲染中根据 `pageTargetRef` 替换雷达表格，返回按钮调用 `setPageTargetRef(null)`。
-- Signal Lab 列表页与详情：`web/src/components/SignalLabWorkbench.tsx`（列表）、`web/src/components/SignalLabPulse.tsx`（侧栏精简列表）、`web/src/components/SignalLabInspector.tsx`（详情）。Inspector 渲染在 `App.tsx` 的右栏 `detail-task-panel`，**完全依赖列表已加载的对象**——后端 `src/gmgn_twitter_intel/api/http.py:438` 只暴露 `/api/signal-lab/pulse` 列表端，没有单条 candidate 的读端。
+- Signal Lab 列表页与详情：`web/src/components/SignalLabWorkbench.tsx`（列表）、`web/src/components/SignalLabPulse.tsx`（侧栏精简列表）、`web/src/components/SignalLabInspector.tsx`（详情）。Inspector 渲染在 `App.tsx` 的右栏 `detail-task-panel`，**完全依赖列表已加载的对象**——后端 `src/parallax/api/http.py:438` 只暴露 `/api/signal-lab/pulse` 列表端，没有单条 candidate 的读端。
 - Watchlist 数据模型在 `web/src/lib/watchlist.ts`，仅存 `{ handle, unreadCount, lastSeenAtMs }`；`unreadCount` 来自 `accountUnreadCounts` API 字段（`web/src/lib/watchlist.ts:30`），点击不触发本地副作用。侧栏点击通过 `App.tsx:505 focusWatchHandle(handle)` 设置 `signalLabHandle = "@xxx"` 进入 Signal Lab 视图，本质是过滤参数而非独立资源。
 - 全 `web/src/` 中无 `useSearchParams` / `URLSearchParams` / `pushState` / `window.location` 赋值的使用；URL 永不变化、刷新即丢、链接不可分享。
 
-后端读端契约位于 `src/gmgn_twitter_intel/api/http.py`：
+后端读端契约位于 `src/parallax/api/http.py`：
 
 - Token 二级页所需端点 `/target-posts`（行 170）、`/target-social-timeline`（行 208）均接受稳定的 `target_type + target_id` 作为查询参数。
 - Signal Lab 列表 `/signal-lab/pulse`（行 438）接受 `window/scope/status/handle/q/limit/cursor`。
@@ -136,7 +136,7 @@ collector → ingest → enrichment → retrieval
 |------|--------|------|
 | `App.tsx` 拆解触发条件渲染漏切，破坏现状 UX | 高 | PR2 单独完成 layout 抽离 + Token 路由；Vitest + RTL 渲染快照覆盖 `/` 与 `/token/...`；UI verification gate 全跑 |
 | URL ↔ Zustand 双源同步漂移 | 中 | 物理删除导航字段而非保留双源；编译期防止开发者把状态加回 store |
-| `/signal-lab/pulse/{candidate_id}` 触发 N+1 或鉴权遗漏 | 中 | 复用 `PulseRepository.candidate_by_id` 的单行查询（`src/gmgn_twitter_intel/storage/pulse_repository.py:621`）与 `SignalPulseService` 的 `_item` mapper；auth 走 `_authenticated_runtime`，与列表端同一路径，pytest 覆盖 401/404 |
+| `/signal-lab/pulse/{candidate_id}` 触发 N+1 或鉴权遗漏 | 中 | 复用 `PulseRepository.candidate_by_id` 的单行查询（`src/parallax/storage/pulse_repository.py:621`）与 `SignalPulseService` 的 `_item` mapper；auth 走 `_authenticated_runtime`，与列表端同一路径，pytest 覆盖 401/404 |
 | 二级页 deep-link 在现有 retrieval 缺数据时表现退化（例如 scope 切换后该 candidate 不在该 scope） | 中 | 单点端不强制 scope 过滤，仅用于跨窗口诊断；前端在显示时给出明确的 scope 提示 |
 | react-router 增加 ~12KB gzip | 低 | 接受；后续可按需 `React.lazy` 切代码分割，不在本期 |
 | 移动端 `mobileTask` 与路由的关系混淆 | 中 | spec 显式声明 `mobileTask` 是布局态、不参与 URL；`Boundaries` 表格列入；评审时检查 |

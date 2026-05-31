@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.domains.cex_market_intel.runtime.cex_oi_radar_board_worker import (
+from parallax.domains.cex_market_intel.runtime.cex_oi_radar_board_worker import (
     CexOiRadarBoardWorker,
 )
 

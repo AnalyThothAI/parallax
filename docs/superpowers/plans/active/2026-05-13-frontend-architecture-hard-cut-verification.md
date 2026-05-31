@@ -62,7 +62,7 @@ Created `web/src/test/app-test-case-matrix.md`; every current `it(...)` entry in
 
 ### Contract Model Changes
 
-- Added `src/gmgn_twitter_intel/app/surfaces/api/schemas.py` with `ApiEnvelope[T]` and named response data models for frontend-consumed endpoints.
+- Added `src/parallax/app/surfaces/api/schemas.py` with `ApiEnvelope[T]` and named response data models for frontend-consumed endpoints.
 - Added `response_model=...` to existing `/api/*` route declarations without changing return payload construction or status codes.
 - Added a `response_model` for `/readyz` because the generated OpenAPI TS file includes that route and the Task 1 unknown-response scan covers the whole file.
 - Changed generated frontend OpenAPI output from `web/src/api/openapi.ts` to `web/src/lib/types/openapi.ts`.

@@ -37,7 +37,7 @@ The slow path is the data request behind the route:
 `/api/token-case` constructs `TokenCaseService` with a provider-backed `MarketCandlesService`:
 
 ```python
-# src/gmgn_twitter_intel/app/surfaces/api/routes_search.py
+# src/parallax/app/surfaces/api/routes_search.py
 data = TokenCaseService(
     targets=repos.token_targets,
     profiles=TokenProfileReadModel(token_profiles=repos.token_profiles),
@@ -50,7 +50,7 @@ data = TokenCaseService(
 The service then builds timeline data:
 
 ```python
-# src/gmgn_twitter_intel/domains/token_intel/read_models/token_case_service.py
+# src/parallax/domains/token_intel/read_models/token_case_service.py
 timeline = TokenTargetSocialTimelineService(
     targets=self.targets,
     market_candles=self.market_candles,
@@ -60,7 +60,7 @@ timeline = TokenTargetSocialTimelineService(
 Timeline generation then enriches candles synchronously:
 
 ```python
-# src/gmgn_twitter_intel/domains/token_intel/read_models/token_target_social_timeline_service.py
+# src/parallax/domains/token_intel/read_models/token_target_social_timeline_service.py
 market_candles = _market_candles(page_rows)
 if self.market_candles is not None:
     market_candles = self.market_candles.enrich_market_candles(market_candles, window=window)
@@ -69,7 +69,7 @@ if self.market_candles is not None:
 For `Asset` targets, `MarketCandlesService` calls the GMGN DEX candle provider in the HTTP request path:
 
 ```python
-# src/gmgn_twitter_intel/domains/asset_market/read_models/market_candles_service.py
+# src/parallax/domains/asset_market/read_models/market_candles_service.py
 rows = self.dex_candle_market.token_candles(
     chain_id=chain_id,
     address=address,
@@ -163,24 +163,24 @@ Do not introduce a frontend-only workaround that hides loading while the backend
 
 ### Backend read path
 
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/routes_search.py`
+- Modify: `src/parallax/app/surfaces/api/routes_search.py`
   - Stop injecting provider-backed `MarketCandlesService` into Token Case.
   - Use a DB-only local candle service if/when it is ready.
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/token_case_service.py`
+- Modify: `src/parallax/domains/token_intel/read_models/token_case_service.py`
   - Let `TokenCaseService` accept a local candle read model dependency, not a provider-backed market adapter.
   - Reuse one set of rows for timeline/posts when possible.
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/token_target_social_timeline_service.py`
+- Modify: `src/parallax/domains/token_intel/read_models/token_target_social_timeline_service.py`
   - Keep timeline construction pure over rows.
   - Avoid calling provider-backed enrichers from API reads.
 
-- Create: `src/gmgn_twitter_intel/domains/asset_market/read_models/local_market_candles.py`
+- Create: `src/parallax/domains/asset_market/read_models/local_market_candles.py`
   - Query persisted `market_ticks`.
   - Bucket rows into the same public candle shape used by existing frontend models.
   - Return explicit statuses: `ready`, `empty`, `missing_identity`, `missing_target`, `unsupported`.
 
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py`
+- Modify: `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`
   - Replace per-post semantic lookups with one batched query.
 
 ### Backend tests
@@ -201,19 +201,19 @@ Do not introduce a frontend-only workaround that hides loading while the backend
 
 ### DB load and operations
 
-- Inspect/modify: `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py`
+- Inspect/modify: `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py`
   - Ensure projection schedules are bounded and not wake-amplified.
 
-- Inspect/modify: `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py`
+- Inspect/modify: `src/parallax/domains/token_intel/queries/token_radar_source_query.py`
   - Reduce repeated lateral `market_ticks` latest/first lookups where possible.
 
-- Inspect/modify: `src/gmgn_twitter_intel/app/runtime/wake_waiter.py`
+- Inspect/modify: `src/parallax/app/runtime/wake_waiter.py`
   - Keep LISTEN connections from starving each other.
 
-- Inspect/modify: `src/gmgn_twitter_intel/app/runtime/db_pool_bundle.py`
+- Inspect/modify: `src/parallax/app/runtime/db_pool_bundle.py`
   - Size `wake_pool` based on enabled listeners or replace many listeners with shared fanout.
 
-- Inspect existing CLI: `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`
+- Inspect existing CLI: `src/parallax/app/surfaces/cli/commands/ops.py`
   - Confirm hard-cut PostgreSQL reset and partition helpers exist; legacy Token Radar prune/backfill commands must stay removed.
 
 ### Documentation
@@ -250,8 +250,8 @@ Expected current problem:
 
 ```text
 UU docs/WORKERS.md
-UU src/gmgn_twitter_intel/app/runtime/worker_registry.py
-UU src/gmgn_twitter_intel/platform/config/settings.py
+UU src/parallax/app/runtime/worker_registry.py
+UU src/parallax/platform/config/settings.py
 UU tests/architecture/test_worker_runtime_contracts.py
 ```
 
@@ -260,7 +260,7 @@ UU tests/architecture/test_worker_runtime_contracts.py
 Run:
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 ```
 
 Expected before resolving conflicts:
@@ -299,14 +299,14 @@ No conflict markers in Python files that must be imported by tests.
 Run after conflicts are gone:
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 ```
 
 Expected:
 
 ```text
-config_path: .../.gmgn-twitter-intel/config.yaml
-workers_config_path: .../.gmgn-twitter-intel/workers.yaml
+config_path: .../.parallax/config.yaml
+workers_config_path: .../.parallax/workers.yaml
 ```
 
 Do not print secret values. Only report paths and redacted booleans.
@@ -399,9 +399,9 @@ FAILED because the provider sentinel is called
 ## Task 2: Remove Provider Candles From `/api/token-case`
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/routes_search.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/token_case_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/token_target_social_timeline_service.py`
+- Modify: `src/parallax/app/surfaces/api/routes_search.py`
+- Modify: `src/parallax/domains/token_intel/read_models/token_case_service.py`
+- Modify: `src/parallax/domains/token_intel/read_models/token_target_social_timeline_service.py`
 
 - [ ] **Step 2.1: Make Token Case pass no provider candle dependency**
 
@@ -498,7 +498,7 @@ Most runs should be near local DB timings, not 400ms-1100ms provider timings.
 ## Task 3: Add Local DB-Only Candle Read Model
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/asset_market/read_models/local_market_candles.py`
+- Create: `src/parallax/domains/asset_market/read_models/local_market_candles.py`
 - Test: `tests/unit/domains/asset_market/test_local_market_candles.py`
 
 - [ ] **Step 3.1: Write unit tests for bucket policy**
@@ -506,7 +506,7 @@ Most runs should be near local DB timings, not 400ms-1100ms provider timings.
 Create `tests/unit/domains/asset_market/test_local_market_candles.py`:
 
 ```python
-from gmgn_twitter_intel.domains.asset_market.read_models.local_market_candles import (
+from parallax.domains.asset_market.read_models.local_market_candles import (
     candle_query_for_window,
 )
 
@@ -644,9 +644,9 @@ All tests pass.
 ## Task 4: Wire Local Candles Into Token Case
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/routes_search.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/token_case_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/token_target_social_timeline_service.py`
+- Modify: `src/parallax/app/surfaces/api/routes_search.py`
+- Modify: `src/parallax/domains/token_intel/read_models/token_case_service.py`
+- Modify: `src/parallax/domains/token_intel/read_models/token_target_social_timeline_service.py`
 - Test: `tests/integration/test_api_http.py`
 
 - [ ] **Step 4.1: Add a local candle dependency name**
@@ -664,7 +664,7 @@ But document in code by type/comment that for Token Case this must be DB-only. D
 In `routes_search.py`, import:
 
 ```python
-from gmgn_twitter_intel.domains.asset_market.read_models.local_market_candles import (
+from parallax.domains.asset_market.read_models.local_market_candles import (
     LocalMarketCandlesReadModel,
 )
 ```
@@ -724,9 +724,9 @@ All selected tests pass.
 ## Task 5: Reuse Token Case Rows Instead Of Querying Twice
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/token_case_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/token_target_social_timeline_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/token_target_posts_service.py`
+- Modify: `src/parallax/domains/token_intel/read_models/token_case_service.py`
+- Modify: `src/parallax/domains/token_intel/read_models/token_target_social_timeline_service.py`
+- Modify: `src/parallax/domains/token_intel/read_models/token_target_posts_service.py`
 - Test: `tests/unit/test_token_case_service.py`
 
 - [ ] **Step 5.1: Add test that rows are fetched once**
@@ -835,7 +835,7 @@ All selected tests pass.
 ## Task 6: Batch Narrative Semantics Hydration
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py`
+- Modify: `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`
 - Test: closest narrative repository unit/integration test
 
 - [ ] **Step 6.1: Add test for latest semantic selection**
@@ -912,8 +912,8 @@ All selected tests pass.
 ## Task 7: Bound Token Radar Read Model Growth
 
 **Files:**
-- Inspect/modify: `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`
-- Inspect/modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
+- Inspect/modify: `src/parallax/app/surfaces/cli/commands/ops.py`
+- Inspect/modify: `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
 - Modify: `docs/RELIABILITY.md`
 - Modify: `docs/TECH_DEBT.md`
 
@@ -922,7 +922,7 @@ All selected tests pass.
 Run:
 
 ```bash
-uv run gmgn-twitter-intel ops --help | rg "reset-token-radar-postgres-hard-cut|ensure-postgres-partitions|drop-expired-postgres-partitions"
+uv run parallax ops --help | rg "reset-token-radar-postgres-hard-cut|ensure-postgres-partitions|drop-expired-postgres-partitions"
 ```
 
 Expected:
@@ -935,10 +935,10 @@ drop-expired-postgres-partitions
 
 - [ ] **Step 7.2: Dry-run derived-storage reset impact**
 
-Run against real config only after `uv run gmgn-twitter-intel config` confirms paths:
+Run against real config only after `uv run parallax config` confirms paths:
 
 ```bash
-uv run gmgn-twitter-intel ops reset-token-radar-postgres-hard-cut --dry-run
+uv run parallax ops reset-token-radar-postgres-hard-cut --dry-run
 ```
 
 Expected:
@@ -952,7 +952,7 @@ Dry-run reports derived tables, attached partition scope, projection-control fil
 Run:
 
 ```bash
-uv run gmgn-twitter-intel ops reset-token-radar-postgres-hard-cut --execute
+uv run parallax ops reset-token-radar-postgres-hard-cut --execute
 ```
 
 Run only after confirming the service can rebuild from current material facts. Do not run legacy bounded prune commands.
@@ -962,7 +962,7 @@ Run only after confirming the service can rebuild from current material facts. D
 Run:
 
 ```bash
-uv run gmgn-twitter-intel ops ensure-postgres-partitions --execute
+uv run parallax ops ensure-postgres-partitions --execute
 ```
 
 Expected:
@@ -987,7 +987,7 @@ Legacy `prune-token-radar` and first-seen backfill commands are removed.
 ## Task 8: Fix Wake Pool Starvation
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/app/runtime/db_pool_bundle.py`
+- Modify: `src/parallax/app/runtime/db_pool_bundle.py`
 - Modify or create tests near worker runtime architecture tests
 - Modify: `docs/RELIABILITY.md`
 
@@ -1032,7 +1032,7 @@ Implement `_enabled_wake_listener_count(settings)` by counting enabled workers w
 After deploying locally, watch logs:
 
 ```bash
-docker logs --tail 300 gmgn-twitter-intel-app-1 | rg "wake waiter reconnecting|couldn't get a connection"
+docker logs --tail 300 parallax-app-1 | rg "wake waiter reconnecting|couldn't get a connection"
 ```
 
 Expected:
@@ -1046,8 +1046,8 @@ No repeated wake waiter connection starvation warnings under normal worker load.
 ## Task 9: Reduce Token Radar Projection Load
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py`
+- Modify: `src/parallax/domains/token_intel/queries/token_radar_source_query.py`
+- Modify: `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py`
 - Test: existing token radar projection tests
 
 - [ ] **Step 9.1: Capture the current query plan**

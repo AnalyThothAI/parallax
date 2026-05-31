@@ -67,59 +67,59 @@ Advisory lock keys are stable local constants:
 
 Create:
 
-- `src/gmgn_twitter_intel/app/runtime/bootstrap.py`
-- `src/gmgn_twitter_intel/app/runtime/db_pool_bundle.py`
-- `src/gmgn_twitter_intel/app/runtime/job_queue.py`
-- `src/gmgn_twitter_intel/app/runtime/llm_gateway.py`
-- `src/gmgn_twitter_intel/app/runtime/telemetry.py`
-- `src/gmgn_twitter_intel/app/runtime/wake_waiter.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_base.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_registry.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_result.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_scheduler.py`
+- `src/parallax/app/runtime/bootstrap.py`
+- `src/parallax/app/runtime/db_pool_bundle.py`
+- `src/parallax/app/runtime/job_queue.py`
+- `src/parallax/app/runtime/llm_gateway.py`
+- `src/parallax/app/runtime/telemetry.py`
+- `src/parallax/app/runtime/wake_waiter.py`
+- `src/parallax/app/runtime/worker_base.py`
+- `src/parallax/app/runtime/worker_registry.py`
+- `src/parallax/app/runtime/worker_result.py`
+- `src/parallax/app/runtime/worker_scheduler.py`
 
 Modify:
 
-- `src/gmgn_twitter_intel/app/runtime/app.py`
-- `src/gmgn_twitter_intel/app/runtime/providers_wiring.py`
-- `src/gmgn_twitter_intel/app/runtime/repository_session.py`
-- `src/gmgn_twitter_intel/app/runtime/wake_bus.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
-- `src/gmgn_twitter_intel/app/surfaces/cli/main.py`
-- `src/gmgn_twitter_intel/platform/config/settings.py`
-- `src/gmgn_twitter_intel/platform/db/postgres_client.py`
-- `src/gmgn_twitter_intel/platform/paths/runtime_paths.py`
+- `src/parallax/app/runtime/app.py`
+- `src/parallax/app/runtime/providers_wiring.py`
+- `src/parallax/app/runtime/repository_session.py`
+- `src/parallax/app/runtime/wake_bus.py`
+- `src/parallax/app/surfaces/api/schemas.py`
+- `src/parallax/app/surfaces/cli/main.py`
+- `src/parallax/platform/config/settings.py`
+- `src/parallax/platform/db/postgres_client.py`
+- `src/parallax/platform/paths/runtime_paths.py`
 - `pyproject.toml` and `uv.lock`
 
 ### Worker files
 
 Modify all current long-running worker classes:
 
-- `src/gmgn_twitter_intel/domains/ingestion/runtime/collector_service.py`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/anchor_price_worker.py`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/asset_profile_refresh_worker.py`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/live_price_gateway.py`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/resolution_refresh_worker.py`
-- `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
-- `src/gmgn_twitter_intel/domains/social_enrichment/runtime/enrichment_worker.py`
-- `src/gmgn_twitter_intel/domains/watchlist_intel/runtime/handle_summary_worker.py`
-- `src/gmgn_twitter_intel/domains/closed_loop_harness/runtime/harness_ops_worker.py`
-- `src/gmgn_twitter_intel/domains/notifications/runtime/notification_worker.py`
-- `src/gmgn_twitter_intel/domains/notifications/runtime/notification_delivery.py`
+- `src/parallax/domains/ingestion/runtime/collector_service.py`
+- `src/parallax/domains/asset_market/runtime/anchor_price_worker.py`
+- `src/parallax/domains/asset_market/runtime/asset_profile_refresh_worker.py`
+- `src/parallax/domains/asset_market/runtime/live_price_gateway.py`
+- `src/parallax/domains/asset_market/runtime/resolution_refresh_worker.py`
+- `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py`
+- `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- `src/parallax/domains/social_enrichment/runtime/enrichment_worker.py`
+- `src/parallax/domains/watchlist_intel/runtime/handle_summary_worker.py`
+- `src/parallax/domains/closed_loop_harness/runtime/harness_ops_worker.py`
+- `src/parallax/domains/notifications/runtime/notification_worker.py`
+- `src/parallax/domains/notifications/runtime/notification_delivery.py`
 
 Modify domain service helpers where current code performs provider IO inside a repository session:
 
-- `src/gmgn_twitter_intel/domains/asset_market/services/anchor_price_observation.py`
-- `src/gmgn_twitter_intel/domains/asset_market/services/asset_profile_refresh.py`
-- `src/gmgn_twitter_intel/domains/token_intel/runtime/token_resolution_refresh.py`
-- `src/gmgn_twitter_intel/domains/watchlist_intel/services/handle_summary_service.py`
+- `src/parallax/domains/asset_market/services/anchor_price_observation.py`
+- `src/parallax/domains/asset_market/services/asset_profile_refresh.py`
+- `src/parallax/domains/token_intel/runtime/token_resolution_refresh.py`
+- `src/parallax/domains/watchlist_intel/services/handle_summary_service.py`
 
 Modify OpenAI provider clients:
 
-- `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`
-- `src/gmgn_twitter_intel/integrations/openai_agents/social_event_agent_client.py`
-- `src/gmgn_twitter_intel/integrations/openai_agents/watchlist_summary_agent_client.py`
+- `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py`
+- `src/parallax/integrations/openai_agents/social_event_agent_client.py`
+- `src/parallax/integrations/openai_agents/watchlist_summary_agent_client.py`
 
 ### Tests
 
@@ -308,7 +308,7 @@ notification_delivery:
 - Remove worker runtime fields from `LlmConfig`, `CollectorConfig`, root live-observation fields, and `NotificationsConfig.poll_interval_seconds`.
 - Keep LLM credential/model/trace fields in `LlmConfig`: provider, api key, base model, base URL, timeout, trace config, `pulse_agent_model`, `watchlist_handle_summary_model`.
 - Keep notification rule/channel business config in `NotificationsConfig`; only polling/delivery runtime moves to `workers.yaml`.
-- Update `gmgn-twitter-intel config` output to include `workers_config_path` and a `workers` map generated from `settings.workers`.
+- Update `parallax config` output to include `workers_config_path` and a `workers` map generated from `settings.workers`.
 
 ## Implementation Steps
 
@@ -502,8 +502,8 @@ uv run pytest tests/architecture/test_worker_runtime_contracts.py tests/architec
 
 - [ ] Update `/readyz` integration tests to assert the new `workers` map and absence of old worker sections.
 - [ ] Update `/api/status` if it mirrors readiness data, keeping public fields documented in `CONTRACTS.md`.
-- [ ] Add `gmgn-twitter-intel ops worker-status` to print the same worker map as `/readyz` plus queue depths.
-- [ ] Update `gmgn-twitter-intel config` output to show both config files and effective worker settings.
+- [ ] Add `parallax ops worker-status` to print the same worker map as `/readyz` plus queue depths.
+- [ ] Update `parallax config` output to show both config files and effective worker settings.
 - [ ] Run `make regen-contract` to update `docs/generated/openapi.json` and `web/src/lib/types/openapi.ts`.
 - [ ] Update frontend fixtures/tests that use `StatusData` or `/readyz` payloads.
 - [ ] Update `docs/generated/cli-help.md` after CLI surface changes.
@@ -553,9 +553,9 @@ make check-all
 Manual smoke:
 
 ```bash
-uv run gmgn-twitter-intel init --force
-uv run gmgn-twitter-intel config
-uv run gmgn-twitter-intel serve
+uv run parallax init --force
+uv run parallax config
+uv run parallax serve
 curl -s http://127.0.0.1:8765/readyz | jq '.workers'
 curl -s http://127.0.0.1:8765/metrics | rg 'worker_processing_seconds|worker_jobs_total|worker_pool_wait'
 ```
@@ -578,6 +578,6 @@ Merge order: runtime core → config/API → provider gateway → worker groups 
 
 ## Cutover Notes
 
-- Existing local deployments must run `gmgn-twitter-intel init --force` or create `workers.yaml` explicitly after this hard cut; the process refuses to infer worker settings from old `config.yaml`.
+- Existing local deployments must run `parallax init --force` or create `workers.yaml` explicitly after this hard cut; the process refuses to infer worker settings from old `config.yaml`.
 - Old `/readyz` consumers must switch to `payload.workers.<worker_key>` in the same deployment.
 - The implementation should prefer small commits per step, but the final branch has no runtime compatibility layer and no dual config reader.

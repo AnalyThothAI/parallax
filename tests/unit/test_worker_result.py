@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
+from parallax.app.runtime.worker_result import WorkerResult
 
 
 def test_worker_result_defaults_to_zero_counts_and_empty_notes() -> None:

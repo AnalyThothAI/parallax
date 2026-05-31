@@ -7,11 +7,11 @@ import time
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from gmgn_twitter_intel.app.runtime.provider_wiring.okx import okx_chain_index
-from gmgn_twitter_intel.integrations.okx.dex_ws_client import OkxDexWebSocketMarketProvider
-from gmgn_twitter_intel.platform.config.settings import Settings, load_settings
-from gmgn_twitter_intel.platform.db.postgres_client import connect_postgres, with_password_from_file
-from gmgn_twitter_intel.platform.paths.runtime_paths import config_path, workers_config_path
+from parallax.app.runtime.provider_wiring.okx import okx_chain_index
+from parallax.integrations.okx.dex_ws_client import OkxDexWebSocketMarketProvider
+from parallax.platform.config.settings import Settings, load_settings
+from parallax.platform.db.postgres_client import connect_postgres, with_password_from_file
+from parallax.platform.paths.runtime_paths import config_path, workers_config_path
 
 
 def main(argv: Sequence[str] | None = None) -> int:

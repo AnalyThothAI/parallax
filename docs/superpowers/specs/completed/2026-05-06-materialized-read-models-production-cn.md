@@ -13,7 +13,7 @@ PostgreSQL 已经成为唯一运行时数据库后，下一阶段优化不应该
 3. `projection_dirty_ranges` 记录迟到事实、backfill、market snapshot 到达后需要局部重算的范围。
 4. `token_social_buckets` 和 `token_social_bucket_authors` 承载 token social timeline / unique author 的增量聚合。
 5. `token_flow_window_snapshots` 承载 dashboard/top-N 的冻结读模型。
-6. `gmgn-twitter-intel db audit`、`db query-audit`、`ops projection-status`、`ops validate-projections` 形成上线前和运行期闭环。
+6. `parallax db audit`、`db query-audit`、`ops projection-status`、`ops validate-projections` 形成上线前和运行期闭环。
 
 不保留旧数据库兼容路径，不保留双 runtime adapter，不在 API 请求路径里静默 fallback 到 raw aggregation。投影未就绪时，生产读路径必须显式暴露 missing/stale 状态。
 
@@ -282,10 +282,10 @@ Projection 表只保存派生读模型。任何 projection 都必须能通过 fa
 第一阶段：
 
 - `uv run pytest tests/test_postgres_schema.py tests/test_postgres_schema_runtime.py tests/test_projection_repository.py tests/test_postgres_audit.py tests/test_cli.py -q`
-- `gmgn-twitter-intel db audit` 返回 `ok=true`。
-- `gmgn-twitter-intel db query-audit` 返回所有 hot query 的 plan。
-- `gmgn-twitter-intel ops projection-status` 返回三类 known projections。
-- `gmgn-twitter-intel ops validate-projections --sample 100` 有结构化结果。
+- `parallax db audit` 返回 `ok=true`。
+- `parallax db query-audit` 返回所有 hot query 的 plan。
+- `parallax ops projection-status` 返回三类 known projections。
+- `parallax ops validate-projections --sample 100` 有结构化结果。
 
 后续 worker 阶段：
 

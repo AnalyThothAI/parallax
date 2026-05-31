@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.integrations.binance.web3_token_client import BinanceWeb3TokenClient
+from parallax.integrations.binance.web3_token_client import BinanceWeb3TokenClient
 
 
 def test_binance_web3_token_client_maps_domain_chains_and_normalizes_icon_urls():

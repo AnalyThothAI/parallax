@@ -13,7 +13,7 @@
 
 - Notification conflict aggregation:
   - Command:
-    `GMGN_TEST_POSTGRES_DSN=postgresql://postgres:postgres@127.0.0.1:55433/gmgn_twitter_intel_test uv run pytest tests/test_notification_repository.py tests/test_notification_rules.py tests/test_settings.py tests/test_pulse_candidate_worker.py tests/test_pulse_repository.py -q`
+    `GMGN_TEST_POSTGRES_DSN=postgresql://postgres:postgres@127.0.0.1:55433/parallax_test uv run pytest tests/test_notification_repository.py tests/test_notification_rules.py tests/test_settings.py tests/test_pulse_candidate_worker.py tests/test_pulse_repository.py -q`
   - Result before final cleanup: `61 passed in 9.34s`
 - Signal Pulse stable dedup:
   - `tests/test_notification_rules.py::test_signal_pulse_dedup_key_uses_candidate_status_bucket_not_signature` verifies changing `notification_signature` no longer changes the dedup key.
@@ -31,10 +31,10 @@
 
 - Docker rebuild/recreate:
   - Command: `docker compose up -d --build`
-  - Result: `gmgn-twitter-intel-migrate` and `gmgn-twitter-intel-app` images built; `migrate` exited; `app` recreated and started.
+  - Result: `parallax-migrate` and `parallax-app` images built; `migrate` exited; `app` recreated and started.
 - Container health:
   - Command: `docker compose ps`
-  - Result: `gmgn-twitter-intel-app-1` is `Up ... (healthy)` and PostgreSQL is `Up ... (healthy)`.
+  - Result: `parallax-app-1` is `Up ... (healthy)` and PostgreSQL is `Up ... (healthy)`.
 - `/healthz`:
   - Command: `curl -sS http://127.0.0.1:8765/healthz`
   - Result: `ok`
@@ -49,7 +49,7 @@
 ## Additional Notes
 
 - An exploratory full run with `GMGN_TEST_POSTGRES_DSN` pointed at an empty isolated test Postgres produced unrelated integration failures because some tests treat that variable as a live data DSN and others still use old fixture SQL. The default required command `uv run pytest` passed.
-- The temporary Docker test database `gmgn-twitter-intel-test-postgres-dedupe` was removed after verification.
+- The temporary Docker test database `parallax-test-postgres-dedupe` was removed after verification.
 
 ## Risks
 

@@ -4,8 +4,8 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_CORE_CONCEPTS, MACRO_MODULE_VIEW_VERSION
-from gmgn_twitter_intel.domains.macro_intel.services.macro_module_catalog import (
+from parallax.domains.macro_intel._constants import MACRO_CORE_CONCEPTS, MACRO_MODULE_VIEW_VERSION
+from parallax.domains.macro_intel.services.macro_module_catalog import (
     MACRO_MODULE_IDS,
     UnsupportedMacroModuleError,
     get_macro_module_config,

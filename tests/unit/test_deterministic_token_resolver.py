@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import pytest
 
-from gmgn_twitter_intel.domains.token_intel.services.deterministic_token_resolver import (
+from parallax.domains.token_intel.services.deterministic_token_resolver import (
     DeterministicTokenResolver,
     MentionKeys,
 )

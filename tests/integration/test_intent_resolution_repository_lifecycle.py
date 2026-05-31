@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
-from gmgn_twitter_intel.domains.token_intel.repositories.intent_resolution_repository import IntentResolutionRepository
-from gmgn_twitter_intel.domains.token_intel.services.deterministic_token_resolver import DeterministicResolution
+from parallax.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
+from parallax.domains.token_intel.repositories.intent_resolution_repository import IntentResolutionRepository
+from parallax.domains.token_intel.services.deterministic_token_resolver import DeterministicResolution
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
@@ -67,7 +67,7 @@ def test_resolution_supersedes_by_lifecycle_not_resolution_status(tmp_path):
 
 
 def _insert_event_and_intent(conn):
-    from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
+    from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
 
     EvidenceRepository(conn).insert_event(make_event(), is_watched=True)
     conn.execute(

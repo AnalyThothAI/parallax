@@ -31,7 +31,7 @@ PostgreSQL, pytest architecture tests, Docker Compose production runtime.
 
 ## Confirmed Scope Decisions
 
-- Production `~/.gmgn-twitter-intel/workers.yaml` may be changed in the same
+- Production `~/.parallax/workers.yaml` may be changed in the same
   deployment as this hard cut.
 - `/readyz` payload shape may change; no old readyz contract needs to be kept.
 - PostgreSQL SQL/index optimization is intentionally out of this plan.
@@ -97,11 +97,11 @@ runtime framework.
   Run:
 
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
 
   Expected: `config_path` and `workers_config_path` point at
-  `~/.gmgn-twitter-intel/`. Record paths only; do not print credentials.
+  `~/.parallax/`. Record paths only; do not print credentials.
 
 - [ ] Create and enter the implementation worktree.
 
@@ -130,7 +130,7 @@ runtime framework.
 
 ## File-level Edits
 
-### Create `src/gmgn_twitter_intel/app/runtime/worker_manifest.py`
+### Create `src/parallax/app/runtime/worker_manifest.py`
 
 Responsibility: own the worker contract model and static manifest data.
 
@@ -203,7 +203,7 @@ limits, and model choice do not belong in this file. Stable contract metadata
 such as factory owner, start priority, and queue-depth table does belong here
 because those are currently duplicate runtime sources.
 
-### Modify `src/gmgn_twitter_intel/app/runtime/worker_registry.py`
+### Modify `src/parallax/app/runtime/worker_registry.py`
 
 Responsibility: use manifest names as the source of truth for registered
 runtime workers.
@@ -221,20 +221,20 @@ Required changes:
   the same PR. Do not keep compatibility constants for old callers.
 - Delete any legacy allowlist or implicit registry fallback.
 
-### Modify `src/gmgn_twitter_intel/app/runtime/worker_scheduler.py`
+### Modify `src/parallax/app/runtime/worker_scheduler.py`
 
 Responsibility: order startup from manifest start priority.
 
 Required changes:
 
-- Replace `from gmgn_twitter_intel.app.runtime.worker_registry import
+- Replace `from parallax.app.runtime.worker_registry import
   WORKER_START_PRIORITY` with a manifest-derived helper.
 - Keep `_SCHEDULER_CONCURRENT_WORKERS = {"enrichment"}` unless a later plan
   adds concurrency budget to manifest; do not mix that change into this plan.
 - Add a test that `asset_profile_refresh < token_image_mirror <
   token_profile_current` still holds through manifest start priority.
 
-### Modify `src/gmgn_twitter_intel/app/runtime/worker_factories/*.py`
+### Modify `src/parallax/app/runtime/worker_factories/*.py`
 
 Responsibility: keep factory names aligned to manifest names.
 
@@ -249,20 +249,20 @@ Required changes:
 
 Files expected to change:
 
-- `src/gmgn_twitter_intel/app/runtime/worker_factories/ingestion.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_factories/asset_market.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_factories/token_intel.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_factories/narrative_intel.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_factories/news_intel.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_factories/equity_event_intel.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_factories/pulse.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_factories/enrichment.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_factories/watchlist.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_factories/notifications.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_factories/cex_market_intel.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_factories/macro_intel.py`
+- `src/parallax/app/runtime/worker_factories/ingestion.py`
+- `src/parallax/app/runtime/worker_factories/asset_market.py`
+- `src/parallax/app/runtime/worker_factories/token_intel.py`
+- `src/parallax/app/runtime/worker_factories/narrative_intel.py`
+- `src/parallax/app/runtime/worker_factories/news_intel.py`
+- `src/parallax/app/runtime/worker_factories/equity_event_intel.py`
+- `src/parallax/app/runtime/worker_factories/pulse.py`
+- `src/parallax/app/runtime/worker_factories/enrichment.py`
+- `src/parallax/app/runtime/worker_factories/watchlist.py`
+- `src/parallax/app/runtime/worker_factories/notifications.py`
+- `src/parallax/app/runtime/worker_factories/cex_market_intel.py`
+- `src/parallax/app/runtime/worker_factories/macro_intel.py`
 
-### Modify `src/gmgn_twitter_intel/platform/config/settings.py`
+### Modify `src/parallax/platform/config/settings.py`
 
 Responsibility: hard-cut worker settings.
 
@@ -279,7 +279,7 @@ Required changes:
 
 No SQL/index changes in this plan.
 
-### Modify `src/gmgn_twitter_intel/app/runtime/worker_status.py`
+### Modify `src/parallax/app/runtime/worker_status.py`
 
 Responsibility: emit lane-aware status without old payload compatibility.
 
@@ -311,7 +311,7 @@ Required behavior:
   create a fake collector status if the scheduler/runtime no longer contains
   the manifest collector.
 
-### Modify `src/gmgn_twitter_intel/app/runtime/job_queue.py`
+### Modify `src/parallax/app/runtime/job_queue.py`
 
 Responsibility: remove stale watchlist summary queue naming.
 
@@ -324,7 +324,7 @@ Required changes:
   queue diagnostics to use the handle-summary name.
 - Do not keep a descriptor alias for `watchlist_summary_jobs`.
 
-### Modify `src/gmgn_twitter_intel/app/runtime/ops_diagnostics.py`
+### Modify `src/parallax/app/runtime/ops_diagnostics.py`
 
 Responsibility: remove stale queue-to-worker mapping.
 
@@ -337,7 +337,7 @@ Required changes:
 - Add/adjust `tests/unit/test_ops_diagnostics.py` coverage so old
   `watchlist_summary_jobs` does not appear in diagnostics output.
 
-### Modify `src/gmgn_twitter_intel/app/surfaces/api/dependencies.py`
+### Modify `src/parallax/app/surfaces/api/dependencies.py`
 
 Responsibility: make API dependency helpers use manifest names.
 
@@ -352,8 +352,8 @@ Required changes:
 
 Likely files:
 
-- `src/gmgn_twitter_intel/app/surfaces/api/routes_health.py` if present.
-- `src/gmgn_twitter_intel/app/runtime/app.py` if readyz is assembled there.
+- `src/parallax/app/surfaces/api/routes_health.py` if present.
+- `src/parallax/app/runtime/app.py` if readyz is assembled there.
 - Any health serializer that currently reads `WorkerBase.status_payload()`.
 
 Required changes:
@@ -362,7 +362,7 @@ Required changes:
 - Remove old readyz worker compatibility payload.
 - Keep existing database/provider/agent health sections unless they directly
   depend on old worker key names.
-- Update `src/gmgn_twitter_intel/app/surfaces/api/schemas.py` so `StatusData`
+- Update `src/parallax/app/surfaces/api/schemas.py` so `StatusData`
   declares `worker_lanes`. The route currently returns `JSONResponse`, so tests
   must assert the actual JSON body, not only the Pydantic response model.
 
@@ -391,7 +391,7 @@ Expected new top-level shape:
 
 Likely files:
 
-- `src/gmgn_twitter_intel/app/surfaces/cli/commands/*.py`
+- `src/parallax/app/surfaces/cli/commands/*.py`
 - `tests/unit/test_cli_worker_status_contract.py`
 
 Required changes:
@@ -422,14 +422,14 @@ Required changes:
 
 File outside repo:
 
-- `~/.gmgn-twitter-intel/workers.yaml`
+- `~/.parallax/workers.yaml`
 
 Required changes:
 
 - Backup once before editing:
 
   ```bash
-  cp ~/.gmgn-twitter-intel/workers.yaml ~/.gmgn-twitter-intel/workers.yaml.pre-worker-contract-hard-cut
+  cp ~/.parallax/workers.yaml ~/.parallax/workers.yaml.pre-worker-contract-hard-cut
   ```
 
 - Replace old keys with exact manifest keys.
@@ -442,7 +442,7 @@ Required changes:
 
 Files:
 
-- Create `src/gmgn_twitter_intel/app/runtime/worker_manifest.py`
+- Create `src/parallax/app/runtime/worker_manifest.py`
 - Modify `tests/architecture/test_worker_runtime_contracts.py`
 - Modify `tests/architecture/test_worker_inventory_contract.py`
 - Modify `docs/WORKERS.md`
@@ -459,9 +459,9 @@ Acceptance:
 
 Files:
 
-- Modify `src/gmgn_twitter_intel/app/runtime/worker_registry.py`
-- Modify `src/gmgn_twitter_intel/app/runtime/worker_factories/*.py`
-- Modify `src/gmgn_twitter_intel/platform/config/settings.py`
+- Modify `src/parallax/app/runtime/worker_registry.py`
+- Modify `src/parallax/app/runtime/worker_factories/*.py`
+- Modify `src/parallax/platform/config/settings.py`
 - Modify `tests/unit/test_settings.py`
 - Modify `tests/unit/test_bootstrap_worker_runtime_wiring.py`
 - Modify `tests/unit/test_job_queue.py`
@@ -478,9 +478,9 @@ Acceptance:
 
 Files:
 
-- Modify `src/gmgn_twitter_intel/app/runtime/worker_status.py`
-- Modify readyz serializer files under `src/gmgn_twitter_intel/app/`
-- Modify CLI status command files under `src/gmgn_twitter_intel/app/surfaces/cli/`
+- Modify `src/parallax/app/runtime/worker_status.py`
+- Modify readyz serializer files under `src/parallax/app/`
+- Modify CLI status command files under `src/parallax/app/surfaces/cli/`
 - Modify `tests/unit/test_cli_worker_status_contract.py`
 - Modify `tests/integration/test_api_health.py`
 
@@ -510,7 +510,7 @@ Acceptance:
 
 Files:
 
-- Modify `~/.gmgn-twitter-intel/workers.yaml`
+- Modify `~/.parallax/workers.yaml`
 - Add verification artifact:
   `docs/superpowers/plans/active/2026-05-26-worker-contract-hard-cut-verification-cn.md`
 
@@ -537,7 +537,7 @@ Acceptance:
   ```python
   def test_worker_manifest_contains_every_runtime_worker() -> None:
       manifest_names = {manifest.name for manifest in all_worker_manifests()}
-      from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_CLASSES
+      from parallax.app.runtime.worker_registry import CANONICAL_WORKER_CLASSES
 
       assert manifest_names == set(CANONICAL_WORKER_CLASSES)
   ```
@@ -557,7 +557,7 @@ Acceptance:
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/app/runtime/worker_manifest.py`
+- Create: `src/parallax/app/runtime/worker_manifest.py`
 
 - [ ] Add `WorkerKind`, `WorkerLane`, `WorkerManifest`, and helper functions.
 
@@ -620,8 +620,8 @@ Acceptance:
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_registry.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_factories/*.py`
+- Modify: `src/parallax/app/runtime/worker_registry.py`
+- Modify: `src/parallax/app/runtime/worker_factories/*.py`
 - Modify: `tests/unit/test_bootstrap_worker_runtime_wiring.py`
 - Modify: `tests/unit/test_worker_scheduler.py`
 
@@ -659,7 +659,7 @@ Acceptance:
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
+- Modify: `src/parallax/platform/config/settings.py`
 - Modify: `tests/unit/test_settings.py`
 - Modify: `tests/unit/test_worker_settings.py`
 
@@ -696,7 +696,7 @@ Acceptance:
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_status.py`
+- Modify: `src/parallax/app/runtime/worker_status.py`
 - Modify: `tests/unit/test_worker_base_runtime.py`
 - Modify: `tests/unit/test_worker_scheduler.py`
 
@@ -728,7 +728,7 @@ Acceptance:
 
 **Files:**
 
-- Modify: readyz serializer under `src/gmgn_twitter_intel/app/`
+- Modify: readyz serializer under `src/parallax/app/`
 - Modify: `tests/integration/test_api_health.py`
 
 - [ ] Add `worker_lanes` to readyz.
@@ -755,7 +755,7 @@ Acceptance:
 **Files:**
 
 - Modify: CLI worker/status command files under
-  `src/gmgn_twitter_intel/app/surfaces/cli/`
+  `src/parallax/app/surfaces/cli/`
 - Modify: `tests/unit/test_cli_worker_status_contract.py`
 
 - [ ] Print lane groups and exact worker names.
@@ -829,8 +829,8 @@ Acceptance:
 
   ```bash
   rg -n "OLD_READYZ_WORKER_KEYS|OLD_RUNTIME_SETTINGS|_legacy_anchor_worker_key|watchlist_summary_jobs|watchlist_summary_dirty_targets|CANONICAL_WORKER_CLASSES = \\{|WORKER_START_PRIORITY = \\{|WORKER_QUEUE_TABLES = \\{" \
-    src/gmgn_twitter_intel/app/runtime \
-    src/gmgn_twitter_intel/platform/config/settings.py \
+    src/parallax/app/runtime \
+    src/parallax/platform/config/settings.py \
     tests/architecture/test_worker_runtime_contracts.py \
     tests/architecture/test_runtime_worker_constraint_hard_cut.py \
     tests/architecture/test_worker_inventory_contract.py \
@@ -846,12 +846,12 @@ Acceptance:
 
 **Files:**
 
-- Modify outside repo: `~/.gmgn-twitter-intel/workers.yaml`
+- Modify outside repo: `~/.parallax/workers.yaml`
 
 - [ ] Backup the file once:
 
   ```bash
-  cp ~/.gmgn-twitter-intel/workers.yaml ~/.gmgn-twitter-intel/workers.yaml.pre-worker-contract-hard-cut
+  cp ~/.parallax/workers.yaml ~/.parallax/workers.yaml.pre-worker-contract-hard-cut
   ```
 
 - [ ] Remove old worker keys and aliases.
@@ -861,7 +861,7 @@ Acceptance:
 - [ ] Validate without printing secrets:
 
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
 
   Expected: paths are correct and config parses.
@@ -923,7 +923,7 @@ Acceptance:
 - Lint:
 
   ```bash
-  uv run ruff check src/gmgn_twitter_intel tests
+  uv run ruff check src/parallax tests
   ```
 
 - Full gate:
@@ -943,7 +943,7 @@ Acceptance:
 1. Merge manifest and tests.
 2. Merge registry/config hard cut.
 3. Merge lane status and readyz hard cut.
-4. Backup and update production `~/.gmgn-twitter-intel/workers.yaml`.
+4. Backup and update production `~/.parallax/workers.yaml`.
 5. Rebuild/restart Docker app.
 6. Run `/readyz` smoke test.
 7. Run PoWA/pgBadger availability checks.
@@ -953,7 +953,7 @@ Acceptance:
 
 - Code rollback: revert the branch/commit that introduced manifest hard cut.
 - Config rollback: restore
-  `~/.gmgn-twitter-intel/workers.yaml.pre-worker-contract-hard-cut`.
+  `~/.parallax/workers.yaml.pre-worker-contract-hard-cut`.
 - Runtime rollback: restart Docker app after restoring code/config.
 - Data rollback: no database migration or SQL/index change is part of this
   plan, so no table rollback is expected.

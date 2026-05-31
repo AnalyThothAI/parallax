@@ -643,11 +643,11 @@ npm run build
 Required with local Postgres:
 
 ```bash
-uv run gmgn-twitter-intel ops verify-token-identity --golden docs/generated/token_identity_golden.json
-uv run gmgn-twitter-intel ops rebuild-token-radar --window 5m --scope all
-uv run gmgn-twitter-intel ops rebuild-token-radar --window 1h --scope all
-uv run gmgn-twitter-intel ops rebuild-token-radar --window 4h --scope all
-uv run gmgn-twitter-intel ops rebuild-token-radar --window 24h --scope all
+uv run parallax ops verify-token-identity --golden docs/generated/token_identity_golden.json
+uv run parallax ops rebuild-token-radar --window 5m --scope all
+uv run parallax ops rebuild-token-radar --window 1h --scope all
+uv run parallax ops rebuild-token-radar --window 4h --scope all
+uv run parallax ops rebuild-token-radar --window 24h --scope all
 ```
 
 If the verify command does not exist yet, it is part of this spec.
@@ -659,9 +659,9 @@ If the verify command does not exist yet, it is part of this spec.
 Add:
 
 ```bash
-uv run gmgn-twitter-intel ops verify-token-identity
-uv run gmgn-twitter-intel ops repair-token-identity --chain eip155:1 --address 0x...
-uv run gmgn-twitter-intel ops rebuild-asset-identity-current
+uv run parallax ops verify-token-identity
+uv run parallax ops repair-token-identity --chain eip155:1 --address 0x...
+uv run parallax ops rebuild-asset-identity-current
 ```
 
 KISS rule:

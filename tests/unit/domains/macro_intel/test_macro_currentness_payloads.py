@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 def test_api_macro_currentness_uses_publication_state_without_sync_run() -> None:
-    from gmgn_twitter_intel.app.surfaces.api.routes_macro import _macro_currentness
+    from parallax.app.surfaces.api.routes_macro import _macro_currentness
 
     payload = _macro_currentness(
         snapshot={
@@ -27,7 +27,7 @@ def test_api_macro_currentness_uses_publication_state_without_sync_run() -> None
 
 
 def test_api_macro_currentness_rejects_timestamp_latest_observed_at() -> None:
-    from gmgn_twitter_intel.app.surfaces.api.routes_macro import _macro_currentness
+    from parallax.app.surfaces.api.routes_macro import _macro_currentness
 
     payload = _macro_currentness(
         snapshot={
@@ -47,7 +47,7 @@ def test_api_macro_currentness_rejects_timestamp_latest_observed_at() -> None:
 
 
 def test_api_macro_currentness_rejects_non_yyyy_mm_dd_date_text() -> None:
-    from gmgn_twitter_intel.app.surfaces.api.routes_macro import _macro_currentness
+    from parallax.app.surfaces.api.routes_macro import _macro_currentness
 
     for latest_observed_at in ("20260528", "2026-W22-4"):
         payload = _macro_currentness(
@@ -66,6 +66,6 @@ def test_api_macro_currentness_rejects_non_yyyy_mm_dd_date_text() -> None:
 def test_api_macro_date_parser_has_no_timestamp_fallback() -> None:
     from pathlib import Path
 
-    routes_source = Path("src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py").read_text(encoding="utf-8")
+    routes_source = Path("src/parallax/app/surfaces/api/routes_macro.py").read_text(encoding="utf-8")
 
     assert "datetime.fromisoformat" not in routes_source

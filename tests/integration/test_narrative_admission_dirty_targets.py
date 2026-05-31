@@ -4,13 +4,13 @@ from dataclasses import replace
 
 import pytest
 
-from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
-from gmgn_twitter_intel.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
-from gmgn_twitter_intel.domains.narrative_intel.repositories.narrative_admission_dirty_target_repository import (
+from parallax.app.runtime.repository_session import repositories_for_connection
+from parallax.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
+from parallax.domains.narrative_intel.repositories.narrative_admission_dirty_target_repository import (
     NarrativeAdmissionDirtyTargetRepository,
 )
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
-from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import TokenRadarProjection
+from parallax.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
+from parallax.domains.token_intel.services.token_radar_projection import TokenRadarProjection
 from tests.integration.test_narrative_repository import (
     _insert_intent,
     _insert_radar_publication_state,

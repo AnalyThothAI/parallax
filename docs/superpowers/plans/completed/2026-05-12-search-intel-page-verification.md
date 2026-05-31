@@ -41,7 +41,7 @@
 ## Commands
 
 ```text
-$ uv run ruff check src/gmgn_twitter_intel/domains/token_intel/read_models/search_agent_brief.py src/gmgn_twitter_intel/domains/token_intel/read_models/search_inspect_service.py src/gmgn_twitter_intel/domains/token_intel/read_models/search_service.py src/gmgn_twitter_intel/domains/token_intel/queries/search_events_query.py src/gmgn_twitter_intel/app/surfaces/api/http.py tests/unit/test_search_service.py tests/unit/test_search_agent_brief.py tests/unit/test_search_inspect_service.py tests/integration/test_api_http.py
+$ uv run ruff check src/parallax/domains/token_intel/read_models/search_agent_brief.py src/parallax/domains/token_intel/read_models/search_inspect_service.py src/parallax/domains/token_intel/read_models/search_service.py src/parallax/domains/token_intel/queries/search_events_query.py src/parallax/app/surfaces/api/http.py tests/unit/test_search_service.py tests/unit/test_search_agent_brief.py tests/unit/test_search_inspect_service.py tests/integration/test_api_http.py
 All checks passed!
 ```
 

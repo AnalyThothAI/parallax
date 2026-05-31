@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.cex_market_intel.repositories.cex_oi_radar_repository import (
+from parallax.domains.cex_market_intel.repositories.cex_oi_radar_repository import (
     CexOiRadarRepository,
     _board_payload_hash,
 )

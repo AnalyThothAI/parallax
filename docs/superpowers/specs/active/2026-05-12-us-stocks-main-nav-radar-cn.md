@@ -9,15 +9,15 @@
 
 ## Background
 
-当前主页面的 crypto Token Radar 由 `/api/token-radar` 提供：HTTP 路由读取 window/scope/limit，调用 `AssetFlowService.asset_flow()`，并把结果包成 `targets` 与 `attention` 两条 lane 返回给前端。证据见 `src/gmgn_twitter_intel/app/surfaces/api/http.py:183` 和 `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py:20`。
+当前主页面的 crypto Token Radar 由 `/api/token-radar` 提供：HTTP 路由读取 window/scope/limit，调用 `AssetFlowService.asset_flow()`，并把结果包成 `targets` 与 `attention` 两条 lane 返回给前端。证据见 `src/parallax/app/surfaces/api/http.py:183` 和 `src/parallax/domains/token_intel/read_models/asset_flow_service.py:20`。
 
-`AssetFlowService` 只读取 token radar 投影，并在有 live market gateway 时把 `live_market` 覆盖到公开行上；公开 payload 的目标来自 factor snapshot subject，未包含股票 instrument 视图。证据见 `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py:36`、`src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py:44` 和 `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py:76`。
+`AssetFlowService` 只读取 token radar 投影，并在有 live market gateway 时把 `live_market` 覆盖到公开行上；公开 payload 的目标来自 factor snapshot subject，未包含股票 instrument 视图。证据见 `src/parallax/domains/token_intel/read_models/asset_flow_service.py:36`、`src/parallax/domains/token_intel/read_models/asset_flow_service.py:44` 和 `src/parallax/domains/token_intel/read_models/asset_flow_service.py:76`。
 
 前端主导航目前只有 `Live` 和 `Signal Lab` 两个 view；`/search` 是独立 focus route，不在左侧 views 中。证据见 `web/src/components/CockpitLayout.tsx:207` 和 `web/src/app/CockpitApp.tsx:235`。
 
-US equity universe 已经有本地事实表和同步服务：Nasdaq Trader 两个 symbol directory 被解析并写入 `us_equity_symbols`，repository 支持 active ticker upsert/find/deactivate。证据见 `src/gmgn_twitter_intel/domains/asset_market/services/us_equity_symbol_sync.py:10`、`src/gmgn_twitter_intel/domains/asset_market/services/us_equity_symbol_sync.py:48` 和 `src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py:164`。
+US equity universe 已经有本地事实表和同步服务：Nasdaq Trader 两个 symbol directory 被解析并写入 `us_equity_symbols`，repository 支持 active ticker upsert/find/deactivate。证据见 `src/parallax/domains/asset_market/services/us_equity_symbol_sync.py:10`、`src/parallax/domains/asset_market/services/us_equity_symbol_sync.py:48` 和 `src/parallax/domains/asset_market/repositories/registry_repository.py:164`。
 
-确定性 resolver 已经能把 active US equity ticker 解析成 `MarketInstrument` / `NON_CRYPTO` / `CONFIRMED_US_EQUITY`，而 token radar source query 明确只允许 `Asset` 与 `CexToken` 进入 crypto radar。证据见 `src/gmgn_twitter_intel/domains/token_intel/services/deterministic_token_resolver.py:259` 和 `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py:100`。
+确定性 resolver 已经能把 active US equity ticker 解析成 `MarketInstrument` / `NON_CRYPTO` / `CONFIRMED_US_EQUITY`，而 token radar source query 明确只允许 `Asset` 与 `CexToken` 进入 crypto radar。证据见 `src/parallax/domains/token_intel/services/deterministic_token_resolver.py:259` 和 `src/parallax/domains/token_intel/queries/token_radar_source_query.py:100`。
 
 `marketlane-cli` 已经提供 quote access plane：`AsyncMarketlaneClient.quote()` 通过 market data gateway 取 quote；instrument registry 会为公开 symbol 动态合成 Yahoo-backed instrument，因此 AAPL/RKLB 这类普通 ticker 不需要预先写入 marketlane registry。实现从 `https://github.com/AnalyThothAI/marketlane-cli` 打包安装，不依赖本地源码路径。
 

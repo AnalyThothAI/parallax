@@ -2,11 +2,11 @@ import time
 
 from psycopg.types.json import Jsonb
 
-from gmgn_twitter_intel.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
-from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
-from gmgn_twitter_intel.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
-from gmgn_twitter_intel.domains.narrative_intel.repositories.narrative_repository import NarrativeRepository
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
+from parallax.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
+from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
+from parallax.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
+from parallax.domains.narrative_intel.repositories.narrative_repository import NarrativeRepository
+from parallax.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 

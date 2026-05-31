@@ -7,17 +7,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from gmgn_twitter_intel.domains.pulse_lab.queries.pulse_policy_evaluator import (
+from parallax.domains.pulse_lab.queries.pulse_policy_evaluator import (
     build_pulse_policy_evaluation,
     write_pulse_policy_evaluation_report,
 )
-from gmgn_twitter_intel.platform.config.settings import load_settings
-from gmgn_twitter_intel.platform.db.postgres_client import connect_postgres, with_password_from_file
-from gmgn_twitter_intel.platform.paths.runtime_paths import config_path, workers_config_path
+from parallax.platform.config.settings import load_settings
+from parallax.platform.db.postgres_client import connect_postgres, with_password_from_file
+from parallax.platform.paths.runtime_paths import config_path, workers_config_path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = ROOT / "docs" / "generated"
-OPERATOR_HOME = Path.home() / ".gmgn-twitter-intel"
+OPERATOR_HOME = Path.home() / ".parallax"
 
 
 def main() -> None:

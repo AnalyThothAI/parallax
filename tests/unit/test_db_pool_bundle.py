@@ -6,14 +6,14 @@ from typing import Any
 
 import pytest
 
-from gmgn_twitter_intel.app.runtime import db_pool_bundle
-from gmgn_twitter_intel.app.runtime.db_pool_bundle import (
+from parallax.app.runtime import db_pool_bundle
+from parallax.app.runtime.db_pool_bundle import (
     DBPoolBundle,
     enabled_wake_listener_concurrency,
     wake_pool_max_size,
 )
-from gmgn_twitter_intel.app.runtime.wake_waiter import WakeWaiter
-from gmgn_twitter_intel.platform.config.settings import WorkersSettings
+from parallax.app.runtime.wake_waiter import WakeWaiter
+from parallax.platform.config.settings import WorkersSettings
 
 
 class FakeConn:
@@ -91,7 +91,7 @@ class FakeTelemetry:
 
 @dataclass
 class FakeSettings:
-    postgres_dsn: str = "postgresql://gmgn_app@postgres:5432/gmgn_twitter_intel"
+    postgres_dsn: str = "postgresql://parallax_app@postgres:5432/parallax"
     postgres_password_file: object | None = None
     postgres_pool_min_size: int = 1
     postgres_pool_max_size: int = 10

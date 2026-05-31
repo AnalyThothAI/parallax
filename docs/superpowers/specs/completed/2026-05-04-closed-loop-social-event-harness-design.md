@@ -1071,13 +1071,13 @@ Old `narrative-flow` should be removed or rebuilt as an alias only if it returns
 V1 should add read-only surfaces:
 
 ```text
-gmgn-twitter-intel social-events --window 24h --limit 50
-gmgn-twitter-intel harness-snapshots --window 24h --limit 50
-gmgn-twitter-intel harness-outcomes --window 7d --limit 100
-gmgn-twitter-intel harness-credits --window 7d --limit 100
-gmgn-twitter-intel harness-weights --limit 100
-gmgn-twitter-intel ops settle-harness --horizon 6h
-gmgn-twitter-intel ops update-harness-weights
+parallax social-events --window 24h --limit 50
+parallax harness-snapshots --window 24h --limit 50
+parallax harness-outcomes --window 7d --limit 100
+parallax harness-credits --window 7d --limit 100
+parallax harness-weights --limit 100
+parallax ops settle-harness --horizon 6h
+parallax ops update-harness-weights
 ```
 
 HTTP equivalents:

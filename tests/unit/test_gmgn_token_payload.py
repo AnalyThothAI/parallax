@@ -1,5 +1,5 @@
-from gmgn_twitter_intel.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
-from gmgn_twitter_intel.integrations.gmgn.direct_ws import DirectGmgnWebSocketClient
+from parallax.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
+from parallax.integrations.gmgn.direct_ws import DirectGmgnWebSocketClient
 
 
 def test_direct_gmgn_ws_exposes_connection_state_payload():

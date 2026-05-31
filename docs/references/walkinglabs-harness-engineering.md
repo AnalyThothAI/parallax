@@ -22,4 +22,4 @@ Recommended structure: short routers at the root, governance files under `docs/`
 - Governance: nine `docs/*.md` files plus `TECH_DEBT.md` (see the routing table in either router).
 - Lane lifecycle: `docs/superpowers/{specs,plans}/{active,completed}/`.
 - Support: `docs/references/`, `docs/generated/`.
-- Source layout (`src/gmgn_twitter_intel/`) is independently aligned with the "mechanical structure" principle and is unchanged by this restructure.
+- Source layout (`src/parallax/`) is independently aligned with the "mechanical structure" principle and is unchanged by this restructure.

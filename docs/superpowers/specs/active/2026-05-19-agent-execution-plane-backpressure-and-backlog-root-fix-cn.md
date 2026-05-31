@@ -24,17 +24,17 @@ execution mechanics. The owning spec states this split explicitly in
 
 Current service bootstrap builds one process-level `LLMGateway` and one
 `AgentExecutionGateway` when any LLM-backed lane is configured, then passes that
-gateway into provider wiring (`src/gmgn_twitter_intel/app/runtime/bootstrap.py:100-111`).
+gateway into provider wiring (`src/parallax/app/runtime/bootstrap.py:100-111`).
 Provider wiring injects the same gateway into Social, Narrative, Pulse, and
-Watchlist providers (`src/gmgn_twitter_intel/app/runtime/provider_wiring/__init__.py:33-76`).
+Watchlist providers (`src/parallax/app/runtime/provider_wiring/__init__.py:33-76`).
 The gateway itself owns request audit construction
-(`src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_gateway.py:90-117`),
-non-blocking reservation (`src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_gateway.py:119-163`),
-stage execution (`src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_gateway.py:165-205`),
-timeout audit (`src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_gateway.py:207-229`),
-lane status (`src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_gateway.py:335-352`),
+(`src/parallax/integrations/openai_agents/agent_execution_gateway.py:90-117`),
+non-blocking reservation (`src/parallax/integrations/openai_agents/agent_execution_gateway.py:119-163`),
+stage execution (`src/parallax/integrations/openai_agents/agent_execution_gateway.py:165-205`),
+timeout audit (`src/parallax/integrations/openai_agents/agent_execution_gateway.py:207-229`),
+lane status (`src/parallax/integrations/openai_agents/agent_execution_gateway.py:335-352`),
 and SDK `Agent` / `RunConfig` construction
-(`src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_gateway.py:358-388`).
+(`src/parallax/integrations/openai_agents/agent_execution_gateway.py:358-388`).
 
 The project already has hard architecture guards for the central execution
 boundary. `tests/architecture/test_agent_execution_plane_contracts.py:81-122`
@@ -45,20 +45,20 @@ files. This proves the hard cut removed the worst duplicate SDK-envelope shape.
 However, the cut did not finish the operational semantics that matter for LLM
 performance and backlog. Agent lane settings declare `priority`, per-lane
 `max_concurrency`, per-lane `timeout_seconds`, and per-lane `rpm_limit`
-(`src/gmgn_twitter_intel/platform/config/settings.py:548-567`), but the gateway
+(`src/parallax/platform/config/settings.py:548-567`), but the gateway
 currently applies only global RPM through `_global_limiter`
-(`src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_gateway.py:201`).
+(`src/parallax/integrations/openai_agents/agent_execution_gateway.py:201`).
 The configured `priority` and per-lane `rpm_limit` fields are not yet active
 scheduling controls.
 
 Pulse has a correctness/performance hazard. `PulseCandidateWorker` reserves
 `pulse.pipeline` before claiming `pulse_agent_jobs`, because claim increments
 `attempt_count` in `PulseJobsRepository.claim_due_job`
-(`src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_jobs_repository.py:172-175`).
+(`src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py:172-175`).
 That pre-claim reservation happens in
-`src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py:212-247`.
+`src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:212-247`.
 The actual provider stages then execute as `pulse.evidence_debate` and
-`pulse.decision_maker` (`src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py:358-377`).
+`pulse.decision_maker` (`src/parallax/integrations/openai_agents/pulse_decision_agent_client.py:358-377`).
 Because `try_reserve()` currently consumes both global and lane semaphore for
 every lane, a single Pulse job can hold a global slot for `pulse.pipeline` and
 then need a second global slot for the first stage. With
@@ -66,11 +66,11 @@ then need a second global slot for the first stage. With
 with higher global limits, it halves effective capacity under load.
 
 Pulse also has a timeout mismatch. The lane config gives `pulse.pipeline`
-`timeout_seconds=240` (`src/gmgn_twitter_intel/platform/config/settings.py:560`),
+`timeout_seconds=240` (`src/parallax/platform/config/settings.py:560`),
 but `OpenAIAgentsPulseDecisionClient.timeout_seconds` returns a hard-coded
-120 seconds (`src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py:80-82`).
+120 seconds (`src/parallax/integrations/openai_agents/pulse_decision_agent_client.py:80-82`).
 `PulseCandidateJobService` wraps the whole two-stage pipeline in that provider
-timeout (`src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py:243-255`),
+timeout (`src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py:243-255`),
 so a slow but valid two-stage LLM pipeline can be cut off before the configured
 pipeline lane budget.
 
@@ -79,21 +79,21 @@ requires independent admission, semantics, and digest workers
 (`docs/superpowers/specs/active/2026-05-19-narrative-intel-throughput-cqrs-hard-cut-cn.md:16-18`).
 Current code has `NarrativeAdmissionWorker` reading the latest Radar frontier
 and material source facts into `narrative_admissions`
-(`src/gmgn_twitter_intel/domains/narrative_intel/runtime/narrative_admission_worker.py:62-121`).
+(`src/parallax/domains/narrative_intel/runtime/narrative_admission_worker.py:62-121`).
 `MentionSemanticsWorker` claims due semantic rows before enqueueing missing
-rows (`src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py:44-59`)
+rows (`src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py:44-59`)
 and only enqueues missing rows from admissions
-(`src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py:246-272`).
+(`src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py:246-272`).
 `DiscussionDigestService.refresh_decision()` now treats source volume as a
 source-set property and returns `pending/semantic_labeling_pending` when source
 is sufficient but semantics are not ready
-(`src/gmgn_twitter_intel/domains/narrative_intel/services/discussion_digest_service.py:42-73`).
+(`src/parallax/domains/narrative_intel/services/discussion_digest_service.py:42-73`).
 
 The remaining Narrative gap is no-start backpressure. `MentionSemanticsWorker`
 turns any provider exception into per-row failures
-(`src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py:80-128`),
+(`src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py:80-128`),
 and `complete_mention_semantics_batch()` increments retry count for retryable
-failures (`src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py:714-734`).
+failures (`src/parallax/domains/narrative_intel/repositories/narrative_repository.py:714-734`).
 If `AgentExecutionGateway` rejects a call before provider execution starts
 (`capacity_denied` or `circuit_open`), that path can still look like a provider
 failure and burn semantic retry budget. This violates the hard-cut invariant
@@ -102,16 +102,16 @@ that backpressure is not failure
 
 Ops visibility exists but is incomplete. `/api/status` includes
 `agent_execution` from the gateway status snapshot
-(`src/gmgn_twitter_intel/app/runtime/app.py:150-184`), and telemetry records
+(`src/parallax/app/runtime/app.py:150-184`), and telemetry records
 agent execution calls, duration, in-flight gauges, and backpressure counters
-(`src/gmgn_twitter_intel/app/runtime/telemetry.py:59-78`). The richer ops
+(`src/parallax/app/runtime/telemetry.py:59-78`). The richer ops
 diagnostics aggregator currently composes providers, workers, queues, and
-domains (`src/gmgn_twitter_intel/app/runtime/ops_diagnostics.py:63-92`), but
+domains (`src/parallax/app/runtime/ops_diagnostics.py:63-92`), but
 does not yet surface agent lane state, per-lane pressure, or no-start rejection
 health as a first-class operator section.
 
-There is also a cleanup smell: `src/gmgn_twitter_intel/integrations/openai_agents/agent_execution_types.py`
-duplicates the live definitions in `src/gmgn_twitter_intel/platform/agent_execution.py`.
+There is also a cleanup smell: `src/parallax/integrations/openai_agents/agent_execution_types.py`
+duplicates the live definitions in `src/parallax/platform/agent_execution.py`.
 The live imports use `platform.agent_execution`; the integration-local duplicate
 is not a runtime compatibility path today, but it is a misleading stale surface.
 
@@ -398,7 +398,7 @@ from started provider failures.
 
 ### CLI / Ops
 
-`uv run gmgn-twitter-intel ops rebuild-narrative-intel --drain` remains the
+`uv run parallax ops rebuild-narrative-intel --drain` remains the
 formal Narrative drain/rebuild entry point for this rollout. The verification
 contract must record its sanitized JSON result, not manual SQL.
 

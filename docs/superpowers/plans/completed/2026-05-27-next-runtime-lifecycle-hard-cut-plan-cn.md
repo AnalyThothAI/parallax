@@ -13,7 +13,7 @@
 ## Owning Input
 
 - Audit summary: all-worker Kappa/CQRS audit on `main@2c5eee4f`.
-- Worktree: `/Users/qinghuan/Documents/code/gmgn-twitter-intel/.worktrees/macro-sync-worker-hard-cut`
+- Worktree: `/Users/qinghuan/Documents/code/parallax/.worktrees/macro-sync-worker-hard-cut`
 - Branch: `main`
 - New migration revision: `20260527_0115`
 - Previous head: `20260527_0114`
@@ -34,8 +34,8 @@
   Run:
 
   ```bash
-  git -C /Users/qinghuan/Documents/code/gmgn-twitter-intel/.worktrees/macro-sync-worker-hard-cut branch --show-current
-  git -C /Users/qinghuan/Documents/code/gmgn-twitter-intel/.worktrees/macro-sync-worker-hard-cut status --short
+  git -C /Users/qinghuan/Documents/code/parallax/.worktrees/macro-sync-worker-hard-cut branch --show-current
+  git -C /Users/qinghuan/Documents/code/parallax/.worktrees/macro-sync-worker-hard-cut status --short
   ```
 
   Expected:
@@ -51,17 +51,17 @@
   Run:
 
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
 
-  Expected: `config_path` and `workers_config_path` point at `~/.gmgn-twitter-intel/`.
+  Expected: `config_path` and `workers_config_path` point at `~/.parallax/`.
 
 - [ ] **Step 3: Record live baseline**
 
   Run:
 
   ```bash
-  docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -P pager=off -c "
+  docker compose exec -T postgres psql -U parallax_app -d parallax -P pager=off -c "
   SELECT relname,
          pg_size_pretty(pg_total_relation_size(relid)) AS total,
          n_live_tup,
@@ -92,7 +92,7 @@
 
 ### Migrations
 
-- Create `src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0115_next_runtime_lifecycle_hard_cut.py`
+- Create `src/parallax/platform/db/alembic/versions/20260527_0115_next_runtime_lifecycle_hard_cut.py`
   - Drop `macro_observation_series_rows_legacy_20260527_0114`.
   - Collapse `macro_view_snapshots` to one stable current row per `projection_version`.
   - Add `payload_hash` to `macro_view_snapshots`.
@@ -105,58 +105,58 @@
 
 ### Macro
 
-- Modify `src/gmgn_twitter_intel/domains/macro_intel/services/macro_regime_engine.py`
+- Modify `src/parallax/domains/macro_intel/services/macro_regime_engine.py`
   - Stable snapshot id: `macro-view:{projection_version}:current`.
   - Do not encode `computed_at_ms` into row identity.
 
-- Modify `src/gmgn_twitter_intel/domains/macro_intel/runtime/macro_view_projection_worker.py`
+- Modify `src/parallax/domains/macro_intel/runtime/macro_view_projection_worker.py`
   - Claim `macro_projection_dirty_targets` first.
   - If no claim, return `processed=0`, `rows_written=0`, and do not read `macro_observations`.
   - If series refresh is `unchanged`, mark dirty target done and skip `insert_snapshot`.
   - If changed, insert/update the single current snapshot row.
 
-- Modify `src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py`
+- Modify `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`
   - Add dirty-target claim/mark/enqueue methods or a focused repository class if existing style prefers queue repositories.
   - Change `insert_snapshot` to stable current upsert with payload hash and `WHERE payload_hash IS DISTINCT FROM EXCLUDED.payload_hash`.
   - Change `latest_snapshot` to read by `projection_version` without latest-order scan.
   - Keep `refresh_observation_series_rows` current-only; do not reintroduce generation tables.
 
-- Modify `src/gmgn_twitter_intel/domains/macro_intel/services/macro_sync_service.py`
+- Modify `src/parallax/domains/macro_intel/services/macro_sync_service.py`
   - Enqueue `macro_projection_dirty_targets` only when a sync/import writes or changes macro observations.
 
 ### CEX OI Radar
 
-- Modify `src/gmgn_twitter_intel/domains/cex_market_intel/repositories/cex_oi_radar_repository.py`
+- Modify `src/parallax/domains/cex_market_intel/repositories/cex_oi_radar_repository.py`
   - Remove `start_run`, `finish_run`, and `oi_radar_run_id`.
   - Replace with `publish_board(rows, computed_at_ms, status, notes)`.
   - `cex_oi_radar_rows.row_id` must be stable by provider/exchange/period/target_id, not by run id.
   - `latest_board` reads current rows and `cex_oi_radar_publication_state`.
 
-- Modify `src/gmgn_twitter_intel/domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py`
+- Modify `src/parallax/domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py`
   - Do not generate run ids.
   - Publish current board in one transaction.
   - Preserve `cex_detail_snapshots` because its snapshot id is market-stable.
 
 ### News/Current-Row Churn
 
-- Modify `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
+- Modify `src/parallax/domains/news_intel/repositories/news_repository.py`
   - `replace_page_rows_for_items` must delete only obsolete scoped rows.
   - Upsert page rows with payload hash and `WHERE payload_hash IS DISTINCT FROM EXCLUDED.payload_hash`.
   - `replace_source_quality_rows` must use payload hash and unchanged skip.
 
-- Modify `src/gmgn_twitter_intel/domains/asset_market/repositories/token_capture_tier_repository.py`
+- Modify `src/parallax/domains/asset_market/repositories/token_capture_tier_repository.py`
   - Add `WHERE` gate to `ON CONFLICT` so identical tier/reason/score does not update `updated_at_ms`.
 
-- Modify `src/gmgn_twitter_intel/domains/asset_market/repositories/token_profile_current_repository.py`
+- Modify `src/parallax/domains/asset_market/repositories/token_profile_current_repository.py`
   - Add payload hash or explicit `IS DISTINCT FROM` gate; return `bool changed`.
 
 ### Agent/LLM Backpressure and Ledger
 
 - Modify:
-  - `src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py`
-  - `src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
-  - `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py`
-  - `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_brief_worker.py`
+  - `src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py`
+  - `src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
+  - `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py`
+  - `src/parallax/domains/equity_event_intel/runtime/equity_event_brief_worker.py`
   - related repositories under `domains/narrative_intel`, `domains/news_intel`, `domains/equity_event_intel`
 
   Required behavior:
@@ -167,7 +167,7 @@
 
 ### Contracts and Docs
 
-- Modify `src/gmgn_twitter_intel/app/runtime/worker_manifest.py`
+- Modify `src/parallax/app/runtime/worker_manifest.py`
   - Fix collector writes and live_price_gateway contract.
   - Classify notification delivery as side-effect/control ledger, not product fact.
   - Add lifecycle class for read models: `current`, `private_cache`, `control_ledger`, `audit_fact`.
@@ -188,7 +188,7 @@
 ## Task 1: Migration Hard Cleanup and Lifecycle Schema
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0115_next_runtime_lifecycle_hard_cut.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260527_0115_next_runtime_lifecycle_hard_cut.py`
 - Modify: `tests/unit/test_postgres_schema.py`
 - Modify: `tests/unit/domains/macro_intel/test_macro_migration_contract.py`
 
@@ -198,7 +198,7 @@
 
   ```python
   def _migration_text(filename: str) -> str:
-      path = ROOT / "src/gmgn_twitter_intel/platform/db/alembic/versions" / filename
+      path = ROOT / "src/parallax/platform/db/alembic/versions" / filename
       return path.read_text()
 
 
@@ -370,7 +370,7 @@
 - [ ] **Step 5: Commit migration**
 
   ```bash
-  git add src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0115_next_runtime_lifecycle_hard_cut.py \
+  git add src/parallax/platform/db/alembic/versions/20260527_0115_next_runtime_lifecycle_hard_cut.py \
     tests/unit/test_postgres_schema.py \
     tests/unit/domains/macro_intel/test_macro_migration_contract.py
   git commit -m "fix: hard cut retired runtime lifecycle storage"
@@ -381,9 +381,9 @@
 ## Task 2: P0 Macro Current Snapshot Lifecycle
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/services/macro_regime_engine.py`
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/runtime/macro_view_projection_worker.py`
+- Modify: `src/parallax/domains/macro_intel/services/macro_regime_engine.py`
+- Modify: `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`
+- Modify: `src/parallax/domains/macro_intel/runtime/macro_view_projection_worker.py`
 - Test: `tests/unit/domains/macro_intel/test_macro_view_projection_worker.py`
 - Test: `tests/unit/domains/macro_intel/test_macro_generation_swap.py`
 
@@ -490,9 +490,9 @@
 - [ ] **Step 5: Commit Macro snapshot hard cut**
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/macro_intel/services/macro_regime_engine.py \
-    src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py \
-    src/gmgn_twitter_intel/domains/macro_intel/runtime/macro_view_projection_worker.py \
+  git add src/parallax/domains/macro_intel/services/macro_regime_engine.py \
+    src/parallax/domains/macro_intel/repositories/macro_intel_repository.py \
+    src/parallax/domains/macro_intel/runtime/macro_view_projection_worker.py \
     tests/unit/domains/macro_intel/test_macro_view_projection_worker.py \
     tests/unit/domains/macro_intel/test_macro_generation_swap.py
   git commit -m "fix: hard cut macro snapshot current lifecycle"
@@ -503,10 +503,10 @@
 ## Task 3: P1 Macro Dirty Target Driver
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/services/macro_sync_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/runtime/macro_view_projection_worker.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_manifest.py`
+- Modify: `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`
+- Modify: `src/parallax/domains/macro_intel/services/macro_sync_service.py`
+- Modify: `src/parallax/domains/macro_intel/runtime/macro_view_projection_worker.py`
+- Modify: `src/parallax/app/runtime/worker_manifest.py`
 - Test: `tests/unit/domains/macro_intel/test_macro_view_projection_worker.py`
 - Test: `tests/unit/domains/macro_intel/test_macro_sync_service.py`
 - Test: `tests/architecture/test_worker_runtime_contracts.py`
@@ -647,8 +647,8 @@
 - [ ] **Step 8: Commit Macro dirty target driver**
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/macro_intel \
-    src/gmgn_twitter_intel/app/runtime/worker_manifest.py \
+  git add src/parallax/domains/macro_intel \
+    src/parallax/app/runtime/worker_manifest.py \
     tests/unit/domains/macro_intel \
     tests/architecture/test_worker_runtime_contracts.py
   git commit -m "fix: drive macro projection from dirty targets"
@@ -659,8 +659,8 @@
 ## Task 4: P1 CEX OI Radar Current-Only Board
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/cex_market_intel/repositories/cex_oi_radar_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py`
+- Modify: `src/parallax/domains/cex_market_intel/repositories/cex_oi_radar_repository.py`
+- Modify: `src/parallax/domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py`
 - Modify: `tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py`
 - Modify: `tests/architecture/test_worker_runtime_contracts.py`
 
@@ -765,7 +765,7 @@
 - [ ] **Step 6: Commit CEX hard cut**
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/cex_market_intel \
+  git add src/parallax/domains/cex_market_intel \
     tests/unit/domains/cex_market_intel/test_cex_oi_radar_repository.py \
     tests/architecture/test_worker_runtime_contracts.py
   git commit -m "fix: hard cut cex oi board current lifecycle"
@@ -776,9 +776,9 @@
 ## Task 5: P1/P2 Current-Row Unchanged Write Gates
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/token_capture_tier_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/token_profile_current_repository.py`
+- Modify: `src/parallax/domains/news_intel/repositories/news_repository.py`
+- Modify: `src/parallax/domains/asset_market/repositories/token_capture_tier_repository.py`
+- Modify: `src/parallax/domains/asset_market/repositories/token_profile_current_repository.py`
 - Test: `tests/integration/domains/news_intel/test_news_repository.py`
 - Test: `tests/unit/domains/asset_market/test_token_capture_tier_repository.py`
 - Test: `tests/unit/domains/asset_market/test_token_profile_current_repository.py`
@@ -885,9 +885,9 @@
 - [ ] **Step 7: Commit unchanged gates**
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py \
-    src/gmgn_twitter_intel/domains/asset_market/repositories/token_capture_tier_repository.py \
-    src/gmgn_twitter_intel/domains/asset_market/repositories/token_profile_current_repository.py \
+  git add src/parallax/domains/news_intel/repositories/news_repository.py \
+    src/parallax/domains/asset_market/repositories/token_capture_tier_repository.py \
+    src/parallax/domains/asset_market/repositories/token_profile_current_repository.py \
     tests/integration/domains/news_intel/test_news_repository.py \
     tests/unit/domains/asset_market/test_token_capture_tier_repository.py \
     tests/unit/domains/asset_market/test_token_profile_current_repository.py
@@ -899,10 +899,10 @@
 ## Task 6: P1 Agent Queue Capacity and Run Ledger
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_brief_worker.py`
+- Modify: `src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py`
+- Modify: `src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
+- Modify: `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py`
+- Modify: `src/parallax/domains/equity_event_intel/runtime/equity_event_brief_worker.py`
 - Modify related repository tests under `tests/unit/domains/*`
 
 - [ ] **Step 1: Write claim-before-capacity guard tests**
@@ -999,9 +999,9 @@
 - [ ] **Step 7: Commit agent queue hard cut**
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/narrative_intel \
-    src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py \
-    src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_brief_worker.py \
+  git add src/parallax/domains/narrative_intel \
+    src/parallax/domains/news_intel/runtime/news_item_brief_worker.py \
+    src/parallax/domains/equity_event_intel/runtime/equity_event_brief_worker.py \
     tests/unit/domains/narrative_intel \
     tests/unit/domains/news_intel \
     tests/unit/domains/equity_event_intel
@@ -1013,10 +1013,10 @@
 ## Task 7: Remove Runtime Compatibility Fallbacks and Product/Control Drift
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_manifest.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/token_case_service.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py`
+- Modify: `src/parallax/app/surfaces/api/routes_macro.py`
+- Modify: `src/parallax/app/runtime/worker_manifest.py`
+- Modify: `src/parallax/domains/token_intel/read_models/token_case_service.py`
 - Test: `tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py`
 - Test: `tests/unit/app/surfaces/api/test_routes_macro.py`
 - Test: `tests/architecture/test_worker_runtime_contracts.py`
@@ -1128,10 +1128,10 @@
 - [ ] **Step 9: Commit fallback/control cleanup**
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py \
-    src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py \
-    src/gmgn_twitter_intel/app/runtime/worker_manifest.py \
-    src/gmgn_twitter_intel/domains/token_intel/read_models/token_case_service.py \
+  git add src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py \
+    src/parallax/app/surfaces/api/routes_macro.py \
+    src/parallax/app/runtime/worker_manifest.py \
+    src/parallax/domains/token_intel/read_models/token_case_service.py \
     tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py \
     tests/unit/app/surfaces/api/test_routes_macro.py \
     tests/architecture/test_worker_runtime_contracts.py \
@@ -1324,7 +1324,7 @@
   Run:
 
   ```bash
-  docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -P pager=off -c "
+  docker compose exec -T postgres psql -U parallax_app -d parallax -P pager=off -c "
   SELECT
     to_regclass('macro_observation_series_rows_legacy_20260527_0114') AS macro_legacy,
     to_regclass('macro_observation_series_active_generation') AS macro_active_generation,
@@ -1345,7 +1345,7 @@
   Run:
 
   ```bash
-  docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -P pager=off -c "
+  docker compose exec -T postgres psql -U parallax_app -d parallax -P pager=off -c "
   SELECT relname,
          pg_size_pretty(pg_total_relation_size(relid)) AS total,
          n_live_tup
@@ -1372,7 +1372,7 @@
 
   ```bash
   docker compose logs --since=10m app | rg "macro_view_projection|series_status|source_rows_scanned"
-  docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -P pager=off -c "
+  docker compose exec -T postgres psql -U parallax_app -d parallax -P pager=off -c "
   SELECT calls, round(total_exec_time::numeric,2) AS total_ms, round(mean_exec_time::numeric,2) AS mean_ms,
          temp_blks_written,
          left(regexp_replace(query, '\\s+', ' ', 'g'), 180) AS query

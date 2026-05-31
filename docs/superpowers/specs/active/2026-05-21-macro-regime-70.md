@@ -18,7 +18,7 @@ macro_observations
 ```
 
 That is the right boundary: provider fetching belongs in `macrodata-cli`, while
-`gmgn-twitter-intel` persists normalized facts, computes deterministic regime
+`parallax` persists normalized facts, computes deterministic regime
 state, and exposes the latest state to operators and agents.
 
 The current gap is that the real runtime is not yet an end-to-end macro regime
@@ -56,7 +56,7 @@ at least 70 points in a real local runtime, not only unit tests.
 | Area | Max | 70+ requirement |
 |------|-----|-----------------|
 | Data source coverage | 20 | `macrodata-cli` can fetch a `macro-core` bundle covering liquidity, rates, Fed corridor, volatility, credit, cross-asset prices, and at least one positioning proxy. Partial provider failures are represented as structured data gaps. |
-| Import chain | 15 | `gmgn-twitter-intel` can import a bundle into `macro_observations`, record import diagnostics, and run projection without manual SQL. |
+| Import chain | 15 | `parallax` can import a bundle into `macro_observations`, record import diagnostics, and run projection without manual SQL. |
 | Historical feature layer | 15 | Engine can compute latest value, freshness, delta windows, z-score or percentile where history is available, and explicit insufficient-history gaps. |
 | Regime state machine | 20 | Snapshot includes component scores, cross-panel confirmations, contradictions, hard triggers, regime label, and deterministic scenario/trade-map fields. |
 | Product surface | 10 | `/api/macro` and `/macro` show regime, score, validation indicators, triggers, data gaps, source coverage, and scenario path without recomputing facts in UI. |
@@ -69,7 +69,7 @@ Minimum passing target: **72/100**.
 - G1. Apply and verify the macro DB migrations in the real runtime path.
 - G2. Extend `macrodata-cli` so agents can request one `macro-core` bundle
   rather than stitching rates/liquidity/credit/price data by hand.
-- G3. Add a `gmgn-twitter-intel` importer that consumes `macrodata-cli` bundle
+- G3. Add a `parallax` importer that consumes `macrodata-cli` bundle
   envelopes and writes normalized `macro_observations`.
 - G4. Add a historical feature layer that turns observations into changes,
   spreads, z-scores, percentiles, freshness diagnostics, and data-quality flags.
@@ -98,7 +98,7 @@ Minimum passing target: **72/100**.
   basis.
 - N2. Do not make trading recommendations or position sizing decisions.
   `trade_map` means expression candidates and risk conditions, not advice.
-- N3. Do not duplicate provider implementation inside `gmgn-twitter-intel`.
+- N3. Do not duplicate provider implementation inside `parallax`.
   Public provider fetching remains in `macrodata-cli`.
 - N4. Do not block the 70+ milestone on perfect data coverage. Missing CFTC,
   Cboe, Stooq, or FRED series must degrade through `data_gaps`, not silent
@@ -129,7 +129,7 @@ is missing.
 
 ### Layer 2 — Observation Facts
 
-Owned by `gmgn-twitter-intel`.
+Owned by `parallax`.
 
 `macro_observations` remains the business fact table. Each imported observation
 is idempotent by `(source_name, series_key, observed_at)`. An import run table
@@ -204,13 +204,13 @@ supporting indicator keys and invalidation triggers.
 - `macrodata mcp serve` exposes matching `bundle_macro_core` and
   `bundle_macro_core_history` tools.
 
-### `gmgn-twitter-intel` CLI
+### `parallax` CLI
 
-- `gmgn-twitter-intel macro import-bundle --file PATH` imports a saved
+- `parallax macro import-bundle --file PATH` imports a saved
   `macrodata-cli` result envelope.
-- `gmgn-twitter-intel macro import-bundle --stdin` imports from stdin.
-- `gmgn-twitter-intel macro project-once` runs `MacroViewProjectionWorker` once.
-- `gmgn-twitter-intel macro status` reports migration readiness, observation
+- `parallax macro import-bundle --stdin` imports from stdin.
+- `parallax macro project-once` runs `MacroViewProjectionWorker` once.
+- `parallax macro status` reports migration readiness, observation
   counts, latest snapshot, source coverage, and current data gaps.
 
 ### Worker
@@ -229,14 +229,14 @@ the new `features`, `chain`, and `scenario` fields without breaking existing
 
 ## Acceptance Criteria
 
-- AC1. `uv run gmgn-twitter-intel db health` returns `migration_status=ready`
+- AC1. `uv run parallax db health` returns `migration_status=ready`
   in the operator runtime before macro smoke testing.
-- AC2. With no observations, `gmgn-twitter-intel macro project-once` writes or
+- AC2. With no observations, `parallax macro project-once` writes or
   returns a degraded deterministic snapshot rather than crashing.
 - AC3. `macrodata bundle macro-core --asof <today>` returns a structured bundle
   with `coverage.requested >= 20` and partial diagnostics when providers are
   missing credentials.
-- AC4. `gmgn-twitter-intel macro import-bundle --stdin` can import a
+- AC4. `parallax macro import-bundle --stdin` can import a
   `macrodata-cli` bundle and record import diagnostics without printing secret
   values.
 - AC5. With at least rates/liquidity/vol/credit observations imported,
@@ -251,8 +251,8 @@ the new `features`, `chain`, and `scenario` fields without breaking existing
 
   ```text
   macrodata bundle macro-core
-    -> gmgn-twitter-intel macro import-bundle
-    -> gmgn-twitter-intel macro project-once
+    -> parallax macro import-bundle
+    -> parallax macro project-once
     -> GET /api/macro
     -> open /macro
   ```

@@ -10,9 +10,9 @@ Date: 2026-05-24
   - Result: passed for touched Python files.
 - `git diff --check`
   - Result: passed.
-- `uv run mypy src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py src/gmgn_twitter_intel/domains/news_intel/repositories/news_projection_dirty_target_repository.py src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_projection_dirty_target_repository.py src/gmgn_twitter_intel/domains/news_intel/runtime/news_page_projection_worker.py src/gmgn_twitter_intel/domains/news_intel/runtime/news_story_projection_worker.py src/gmgn_twitter_intel/domains/news_intel/runtime/news_source_quality_projection_worker.py src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_process_worker.py src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_page_projection_worker.py src/gmgn_twitter_intel/app/ops/projection_dirty_targets.py`
+- `uv run mypy src/parallax/domains/news_intel/repositories/news_repository.py src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py src/parallax/domains/equity_event_intel/repositories/equity_projection_dirty_target_repository.py src/parallax/domains/news_intel/runtime/news_page_projection_worker.py src/parallax/domains/news_intel/runtime/news_story_projection_worker.py src/parallax/domains/news_intel/runtime/news_source_quality_projection_worker.py src/parallax/domains/news_intel/runtime/news_fetch_worker.py src/parallax/domains/news_intel/runtime/news_item_process_worker.py src/parallax/domains/news_intel/runtime/news_item_brief_worker.py src/parallax/domains/equity_event_intel/runtime/equity_event_page_projection_worker.py src/parallax/app/ops/projection_dirty_targets.py`
   - Result: passed.
-- `uv run mypy src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_story_projection_worker.py`
+- `uv run mypy src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py src/parallax/domains/equity_event_intel/runtime/equity_event_story_projection_worker.py`
   - Result: passed.
 - `uv run pytest tests/unit/domains/equity_event_intel tests/unit/domains/news_intel tests/unit/test_ops_projection_dirty_targets.py tests/architecture/test_projection_worker_idle_cost_contract.py tests/architecture/test_worker_runtime_contracts.py tests/architecture/test_worker_inventory_contract.py -q`
   - Result: `307 passed, 11 skipped`.
@@ -35,28 +35,28 @@ Date: 2026-05-24
 
 ## Real Config
 
-- `uv run gmgn-twitter-intel config`
-  - `config_path`: `/Users/qinghuan/.gmgn-twitter-intel/config.yaml`
-  - `workers_config_path`: `/Users/qinghuan/.gmgn-twitter-intel/workers.yaml`
+- `uv run parallax config`
+  - `config_path`: `/Users/qinghuan/.parallax/config.yaml`
+  - `workers_config_path`: `/Users/qinghuan/.parallax/workers.yaml`
 - Real `workers.yaml` was updated so `news_page_projection.wakes_on` includes `news_page_dirty`.
 - `news_source_quality_projection.windows`: `["24h", "7d"]`.
 
 ## Migration And Repair
 
-- `uv run gmgn-twitter-intel db migrate`
+- `uv run parallax db migrate`
   - Result: upgraded `20260524_0093 -> 20260524_0094`.
-- `uv run gmgn-twitter-intel db health`
+- `uv run parallax db health`
   - Result: migration status `ready`, expected/current `20260524_0094`.
-- `uv run gmgn-twitter-intel ops enqueue-projection-dirty-targets --domain all --dry-run`
+- `uv run parallax ops enqueue-projection-dirty-targets --domain all --dry-run`
   - Equity: 16,923 company events, 67,692 company-event projection targets.
   - News: 1,076 news items, 2,152 news item projection targets, 20 source-quality targets.
-- `uv run gmgn-twitter-intel ops enqueue-projection-dirty-targets --domain all --execute`
+- `uv run parallax ops enqueue-projection-dirty-targets --domain all --execute`
   - Enqueued all listed targets.
 
 ## Docker And Live Runtime
 
 - `docker compose up -d --build app`
-  - Result: built `gmgn-twitter-intel-app` and `gmgn-twitter-intel-migrate`; app started healthy.
+  - Result: built `parallax-app` and `parallax-migrate`; app started healthy.
   - The Docker build ran the frontend production build (`npm run build`) and emitted new `web/dist` asset hashes during the first rebuild.
 - `/healthz`
   - Result: `ok`.
@@ -98,4 +98,4 @@ Date: 2026-05-24
 
 ## Merge Note
 
-The main worktree at `/Users/qinghuan/Documents/code/gmgn-twitter-intel` has unrelated dirty changes and conflicting untracked spec/plan files, so this branch was not merged into `main` from the dirty main worktree.
+The main worktree at `/Users/qinghuan/Documents/code/parallax` has unrelated dirty changes and conflicting untracked spec/plan files, so this branch was not merged into `main` from the dirty main worktree.

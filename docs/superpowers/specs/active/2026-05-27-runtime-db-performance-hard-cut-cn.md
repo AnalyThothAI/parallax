@@ -25,19 +25,19 @@ Token Radar has one serving read model and two private caches. Architecture says
 serving surface, while `token_radar_target_features` is projection-private and
 `token_radar_rank_source_events` is lazy evidence/detail
 (`docs/ARCHITECTURE.md:106`). `token_radar_projection` is the single writer for
-those tables (`src/gmgn_twitter_intel/app/runtime/worker_manifest.py:241`).
+those tables (`src/parallax/app/runtime/worker_manifest.py:241`).
 
 The P0 bug is at the rank-publication boundary. `_project_group()` correctly
 uses only rows inside the scoring window and returns `None` when no window rows
-exist (`src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py:1068`).
+exist (`src/parallax/domains/token_intel/services/token_radar_projection.py:1068`).
 But current publication ranks every cached feature for a window/scope:
 `_rank_current_rows()` calls `list_rank_inputs_for_rank_set()` without `now_ms`
-or a cutoff (`src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py:440`),
+or a cutoff (`src/parallax/domains/token_intel/services/token_radar_projection.py:440`),
 and the repository query filters only by projection version, window, and scope
-(`src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py:565`).
+(`src/parallax/domains/token_intel/repositories/token_radar_repository.py:565`).
 Those old features become current rows because current-row payloads copy
 `latest_event_received_at_ms` into `source_max_received_at_ms`
-(`src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py:1716`).
+(`src/parallax/domains/token_intel/services/token_radar_projection.py:1716`).
 Live checks showed `5m/all` publishing many rows outside the five-minute window
 while the API still reported publication status `fresh`.
 
@@ -46,7 +46,7 @@ features ineligible, but expired rows can still accumulate in
 `token_radar_target_features` and `token_radar_rank_source_events`. The existing
 rank-source cleanup only deletes stale edges for requested targets inside the
 current analysis window
-(`src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_rank_source_query.py:775`).
+(`src/parallax/domains/token_intel/queries/token_radar_rank_source_query.py:775`).
 It does not bound old short-window cache. During subagent analysis, an attempted
 read-only prune plan accidentally executed a `DELETE` through
 `EXPLAIN ANALYZE`, removing `5m/all` projection-private cache older than
@@ -56,16 +56,16 @@ or `token_radar_publication_state`.
 
 The P2 database bottleneck is Macro, not Token Radar. `MacroViewProjectionWorker`
 runs `refresh_observation_series_rows()` every cycle
-(`src/gmgn_twitter_intel/domains/macro_intel/runtime/macro_view_projection_worker.py:33`).
+(`src/parallax/domains/macro_intel/runtime/macro_view_projection_worker.py:33`).
 That method creates a timestamp/UUID generation on every run
-(`src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py:590`,
-`src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py:1022`)
+(`src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:590`,
+`src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:1022`)
 and inserts the same selected series into `macro_observation_series_rows` with a
 primary key that includes `generation_id`
-(`src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py:642`,
-`src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py:679`).
+(`src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:642`,
+`src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:679`).
 Cleanup deletes only 10,000 rows per run from superseded generations
-(`src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py:772`).
+(`src/parallax/domains/macro_intel/repositories/macro_intel_repository.py:772`).
 Live DB evidence showed tens of millions of hidden generation rows and roughly
 100GB-class storage across heap and indexes, while the active pointer had only
 115 rows.

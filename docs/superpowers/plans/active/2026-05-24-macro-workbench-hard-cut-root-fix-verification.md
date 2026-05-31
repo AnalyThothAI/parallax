@@ -4,7 +4,7 @@
 **Owning spec**: `docs/superpowers/specs/active/2026-05-24-macro-workbench-hard-cut-root-fix-cn.md`
 **Owning plan**: `docs/superpowers/plans/active/2026-05-24-macro-workbench-hard-cut-root-fix-plan-cn.md`
 **Branch**: `codex/macro-workbench-hard-cut`
-**Worktree**: `/Users/qinghuan/Documents/code/gmgn-twitter-intel/.worktrees/macro-workbench-hard-cut`
+**Worktree**: `/Users/qinghuan/Documents/code/parallax/.worktrees/macro-workbench-hard-cut`
 
 ## Summary
 
@@ -21,9 +21,9 @@ descriptions instead of raw concept keys, raw provider ids, or JSON.
 | Area | Status | Evidence |
 |------|--------|----------|
 | Backend v4 readiness and module v2 contract | Pass | `uv run pytest tests/unit/test_api_macro_contract.py tests/unit/test_cli_macro_commands.py tests/unit/domains/macro_intel/test_macro_migration_contract.py tests/unit/domains/macro_intel/test_macro_view_projection_worker.py tests/unit/domains/macro_intel/test_macro_module_catalog.py tests/unit/domains/macro_intel/test_macro_series_view.py tests/unit/domains/macro_intel/test_macro_regime_engine.py tests/unit/domains/macro_intel/test_macro_feature_engine.py tests/unit/domains/macro_intel/test_macro_module_views.py -q` -> 62 passed |
-| Backend lint | Pass | `uv run ruff check src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py src/gmgn_twitter_intel/app/surfaces/cli/commands/macro.py src/gmgn_twitter_intel/domains/macro_intel tests/unit/domains/macro_intel tests/unit/test_api_macro_contract.py tests/unit/test_cli_macro_commands.py` -> all checks passed |
+| Backend lint | Pass | `uv run ruff check src/parallax/app/surfaces/api/routes_macro.py src/parallax/app/surfaces/cli/commands/macro.py src/parallax/domains/macro_intel tests/unit/domains/macro_intel tests/unit/test_api_macro_contract.py tests/unit/test_cli_macro_commands.py` -> all checks passed |
 | Touched Python formatting | Pass | `uv run ruff format --check <20 touched macro/API/CLI/test files>` -> 20 files already formatted |
-| Backend type check | Pass | `uv run mypy src/gmgn_twitter_intel/domains/macro_intel src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py src/gmgn_twitter_intel/app/surfaces/cli/commands/macro.py` -> success, 18 source files |
+| Backend type check | Pass | `uv run mypy src/parallax/domains/macro_intel src/parallax/app/surfaces/api/routes_macro.py src/parallax/app/surfaces/cli/commands/macro.py` -> success, 18 source files |
 | Frontend macro tests | Pass | `cd web && npm test -- --run ...macro tests...` -> 9 files, 45 tests passed |
 | Frontend lint and architecture | Pass | `cd web && npm run lint` -> ESLint passed, architecture 10 files / 59 tests passed |
 | Frontend type check | Pass | `cd web && npm run typecheck` -> passed |
@@ -42,9 +42,9 @@ It still exits 2 during the repository-wide format gate:
 $ make check-all
 All checks passed!
 Would reformat: scripts/regen_pulse_agent_desk_decisions.py
-Would reformat: src/gmgn_twitter_intel/app/runtime/ops_diagnostics.py
+Would reformat: src/parallax/app/runtime/ops_diagnostics.py
 ...
-Would reformat: src/gmgn_twitter_intel/domains/macro_intel/services/macro_asset_correlation.py
+Would reformat: src/parallax/domains/macro_intel/services/macro_asset_correlation.py
 ...
 Would reformat: tests/unit/test_token_image_mirror_worker.py
 66 files would be reformatted, 838 files already formatted
@@ -63,17 +63,17 @@ in this branch to avoid unrelated churn.
 Commands were run with redaction discipline. Secret values were not copied.
 
 ```text
-$ uv run gmgn-twitter-intel config
+$ uv run parallax config
 ok=true
-config_path=/Users/qinghuan/.gmgn-twitter-intel/config.yaml
-workers_config_path=/Users/qinghuan/.gmgn-twitter-intel/workers.yaml
+config_path=/Users/qinghuan/.parallax/config.yaml
+workers_config_path=/Users/qinghuan/.parallax/workers.yaml
 ws_token_configured=true
 providers: gmgn=true, okx=true, binance=true
 workers: macro_view_projection enabled=true, cex_oi_radar_board enabled=false
 ```
 
 ```text
-$ uv run gmgn-twitter-intel db health
+$ uv run parallax db health
 ok=true
 probe=postgres_liveness
 migration_version=20260524_0093
@@ -82,7 +82,7 @@ migration_status=ready
 ```
 
 ```text
-$ uv run gmgn-twitter-intel macro status
+$ uv run parallax macro status
 ok=true
 migration_ready=true
 observations_count=36
@@ -98,7 +98,7 @@ latest_snapshot=null before manual projection
 ```
 
 ```text
-$ uv run gmgn-twitter-intel macro project-once
+$ uv run parallax macro project-once
 ok=true
 projection_version=macro_regime_v4
 status=stale

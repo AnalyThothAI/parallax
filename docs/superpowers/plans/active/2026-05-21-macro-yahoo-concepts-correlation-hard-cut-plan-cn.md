@@ -12,7 +12,7 @@
 ## Execution Status
 
 - Task 1 completed in `/Users/qinghuan/Documents/code/macrodata-cli`: macro-core asset proxies hard-cut to Yahoo/yfinance and released as `macrodata-cli` `v0.1.5`.
-- Task 2 completed in `gmgn-twitter-intel`: macro facts are `concept_key` first, projection is `macro_regime_v3`, and runtime stock quotes use `macrodata-cli`; `marketlane-cli` and Marketlane wiring are removed.
+- Task 2 completed in `parallax`: macro facts are `concept_key` first, projection is `macro_regime_v3`, and runtime stock quotes use `macrodata-cli`; `marketlane-cli` and Marketlane wiring are removed.
 - Task 3 completed with a non-redundant backend route design: `/api/macro/assets/correlation` computes rolling correlations from canonical `concept_key` facts on the server and `/macro/assets/correlation` renders the response. React does not compute correlations. No legacy snapshot compatibility path was added.
 
 ## Task 1 - macrodata-cli Yahoo Provider
@@ -61,16 +61,16 @@
 
 ## Task 2 - gmgn Concept-Key Facts And v3 Projection
 
-**Repository:** `/Users/qinghuan/Documents/code/gmgn-twitter-intel`
+**Repository:** `/Users/qinghuan/Documents/code/parallax`
 
 **Files:**
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/<next>_macro_concept_key_hard_cut.py`
-- `src/gmgn_twitter_intel/domains/macro_intel/_constants.py`
-- `src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py`
-- `src/gmgn_twitter_intel/domains/macro_intel/services/macrodata_bundle_importer.py`
-- `src/gmgn_twitter_intel/domains/macro_intel/services/macro_feature_engine.py`
-- `src/gmgn_twitter_intel/domains/macro_intel/services/macro_regime_engine.py`
-- `src/gmgn_twitter_intel/domains/macro_intel/runtime/macro_view_projection_worker.py`
+- `src/parallax/platform/db/alembic/versions/<next>_macro_concept_key_hard_cut.py`
+- `src/parallax/domains/macro_intel/_constants.py`
+- `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`
+- `src/parallax/domains/macro_intel/services/macrodata_bundle_importer.py`
+- `src/parallax/domains/macro_intel/services/macro_feature_engine.py`
+- `src/parallax/domains/macro_intel/services/macro_regime_engine.py`
+- `src/parallax/domains/macro_intel/runtime/macro_view_projection_worker.py`
 - `tests/unit/domains/macro_intel/`
 - `tests/unit/test_api_macro_contract.py`
 - `tests/unit/test_cli_macro_commands.py`
@@ -127,19 +127,19 @@
 
 **Verification:**
 - `uv run pytest tests/unit/domains/macro_intel tests/unit/test_api_macro_contract.py tests/unit/test_cli_macro_commands.py`
-- `uv run ruff check src/gmgn_twitter_intel/domains/macro_intel tests/unit/domains/macro_intel tests/unit/test_api_macro_contract.py tests/unit/test_cli_macro_commands.py`
-- `uv run mypy src/gmgn_twitter_intel/domains/macro_intel`
+- `uv run ruff check src/parallax/domains/macro_intel tests/unit/domains/macro_intel tests/unit/test_api_macro_contract.py tests/unit/test_cli_macro_commands.py`
+- `uv run mypy src/parallax/domains/macro_intel`
 
 ## Task 3 - Asset Correlation Projection And Route
 
-**Repository:** `/Users/qinghuan/Documents/code/gmgn-twitter-intel`
+**Repository:** `/Users/qinghuan/Documents/code/parallax`
 
 **Files:**
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/<next>_macro_correlations_json.py`
-- `src/gmgn_twitter_intel/domains/macro_intel/services/macro_correlation_engine.py`
-- `src/gmgn_twitter_intel/domains/macro_intel/services/macro_regime_engine.py`
-- `src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py`
+- `src/parallax/platform/db/alembic/versions/<next>_macro_correlations_json.py`
+- `src/parallax/domains/macro_intel/services/macro_correlation_engine.py`
+- `src/parallax/domains/macro_intel/services/macro_regime_engine.py`
+- `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`
+- `src/parallax/app/surfaces/api/routes_macro.py`
 - `web/src/lib/types/frontend-contracts.ts`
 - `web/src/features/macro/MacroPage.tsx`
 - `web/src/features/macro/macro.css`
@@ -184,13 +184,13 @@
 
 1. Implement Task 1 in `macrodata-cli`.
 2. Review Task 1 for spec compliance and code quality.
-3. Implement Task 2 in `gmgn-twitter-intel`.
+3. Implement Task 2 in `parallax`.
 4. Review Task 2 for spec compliance and code quality.
-5. Implement Task 3 in `gmgn-twitter-intel`.
+5. Implement Task 3 in `parallax`.
 6. Review Task 3 for spec compliance and code quality.
 7. Run end-to-end macro refresh:
    - generate `macrodata bundle history macro-core`;
    - import into gmgn;
-   - run `gmgn-twitter-intel macro project-once`;
+   - run `parallax macro project-once`;
    - open `/macro/assets/correlation`.
 8. Record final verification output in a verification doc before declaring done.

@@ -4,12 +4,12 @@ import io
 import json
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.app.runtime.worker_manifest import all_worker_manifests
-from gmgn_twitter_intel.cli import main
+from parallax.app.runtime.worker_manifest import all_worker_manifests
+from parallax.cli import main
 
 
 def test_cli_ops_worker_status_emits_manifest_workers_lanes_and_queue_depths(monkeypatch):
-    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+    from parallax.app.surfaces.cli.commands import ops as ops_module
 
     closed = {"value": False}
     captured = {}

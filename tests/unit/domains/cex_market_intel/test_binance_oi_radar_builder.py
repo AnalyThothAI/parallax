@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.domains.cex_market_intel.services.binance_oi_radar_builder import (
+from parallax.domains.cex_market_intel.services.binance_oi_radar_builder import (
     build_binance_oi_radar_rows,
 )
 

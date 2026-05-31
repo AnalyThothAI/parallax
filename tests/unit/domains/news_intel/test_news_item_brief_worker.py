@@ -6,9 +6,9 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any
 
-from gmgn_twitter_intel.domains.news_intel.runtime.news_item_brief_worker import NewsItemBriefWorker
-from gmgn_twitter_intel.domains.news_intel.types.news_item_brief import NEWS_ITEM_BRIEF_LANE, NewsItemBriefPayload
-from gmgn_twitter_intel.platform.agent_execution import (
+from parallax.domains.news_intel.runtime.news_item_brief_worker import NewsItemBriefWorker
+from parallax.domains.news_intel.types.news_item_brief import NEWS_ITEM_BRIEF_LANE, NewsItemBriefPayload
+from parallax.platform.agent_execution import (
     AgentCapacityReservation,
     AgentExecutionError,
     AgentExecutionErrorClass,
@@ -529,7 +529,7 @@ class FakeBriefProvider:
         }
 
     def packet_for_candidate(self, candidate: dict[str, Any]) -> Any:
-        from gmgn_twitter_intel.domains.news_intel.runtime.news_item_brief_worker import _packet_from_candidate
+        from parallax.domains.news_intel.runtime.news_item_brief_worker import _packet_from_candidate
 
         return _packet_from_candidate(
             candidate,
@@ -537,7 +537,7 @@ class FakeBriefProvider:
         )
 
     def agent_config(self) -> Any:
-        from gmgn_twitter_intel.domains.news_intel.types.news_item_brief import (
+        from parallax.domains.news_intel.types.news_item_brief import (
             default_news_item_brief_agent_config,
         )
 
@@ -554,7 +554,7 @@ def _audit(*, run_id: str, packet: Any, execution_started: bool) -> dict[str, An
         "model": "gpt-5-mini",
         "lane": NEWS_ITEM_BRIEF_LANE,
         "stage": "news_item_brief",
-        "workflow_name": "gmgn-twitter-intel.news_item_brief",
+        "workflow_name": "parallax.news_item_brief",
         "agent_name": "NewsItemBriefAgent",
         "execution_trace_id": f"trace-{run_id}",
         "group_id": "news_item:news-item-1",

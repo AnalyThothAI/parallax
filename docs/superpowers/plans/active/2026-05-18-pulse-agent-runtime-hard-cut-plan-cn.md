@@ -32,9 +32,9 @@
   Expected branch: `codex/pulse-agent-runtime-hard-cut`; expected status: clean.
 - [ ] Confirm runtime config path before live-data verification:
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
-  Expected: `config_path` and `workers_config_path` point at `~/.gmgn-twitter-intel/`; do not print secrets.
+  Expected: `config_path` and `workers_config_path` point at `~/.parallax/`; do not print secrets.
 - [ ] Baseline checks:
   ```bash
   uv run ruff check .
@@ -66,33 +66,33 @@ Reason: deleting `harness_ops` while leaving API payloads, or adding EvidencePac
 
 ### Delete
 
-- `src/gmgn_twitter_intel/domains/closed_loop_harness/`
-- `src/gmgn_twitter_intel/app/runtime/worker_factories/harness.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/routes_harness.py`
+- `src/parallax/domains/closed_loop_harness/`
+- `src/parallax/app/runtime/worker_factories/harness.py`
+- `src/parallax/app/surfaces/api/routes_harness.py`
 
 ### Create
 
-- `src/gmgn_twitter_intel/domains/social_enrichment/repositories/social_event_extraction_repository.py`
-- `src/gmgn_twitter_intel/domains/social_enrichment/prompts/social_event_extraction.md`
-- `src/gmgn_twitter_intel/domains/social_enrichment/services/social_event_runtime.py`
-- `src/gmgn_twitter_intel/domains/watchlist_intel/prompts/handle_summary.md`
-- `src/gmgn_twitter_intel/domains/watchlist_intel/types/handle_summary.py`
-- `src/gmgn_twitter_intel/domains/watchlist_intel/services/handle_summary_runtime.py`
-- `src/gmgn_twitter_intel/integrations/openai_agents/agent_output_schema.py`
-- `src/gmgn_twitter_intel/integrations/openai_agents/agent_model_settings.py`
-- `src/gmgn_twitter_intel/integrations/openai_agents/agent_stage_runner.py`
-- `src/gmgn_twitter_intel/integrations/openai_agents/agent_run_audit.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/types/evidence_pack.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/types/claim_verification.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/evidence_pack_builder.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/evidence_completeness_gate.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/claim_evidence_verifier.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/recommendation_clipper.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/write_gate.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_decision_outcome_service.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_agent_eval_repository.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_outcome_repository.py`
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260518_0060_pulse_agent_runtime_hard_cut.py`
+- `src/parallax/domains/social_enrichment/repositories/social_event_extraction_repository.py`
+- `src/parallax/domains/social_enrichment/prompts/social_event_extraction.md`
+- `src/parallax/domains/social_enrichment/services/social_event_runtime.py`
+- `src/parallax/domains/watchlist_intel/prompts/handle_summary.md`
+- `src/parallax/domains/watchlist_intel/types/handle_summary.py`
+- `src/parallax/domains/watchlist_intel/services/handle_summary_runtime.py`
+- `src/parallax/integrations/openai_agents/agent_output_schema.py`
+- `src/parallax/integrations/openai_agents/agent_model_settings.py`
+- `src/parallax/integrations/openai_agents/agent_stage_runner.py`
+- `src/parallax/integrations/openai_agents/agent_run_audit.py`
+- `src/parallax/domains/pulse_lab/types/evidence_pack.py`
+- `src/parallax/domains/pulse_lab/types/claim_verification.py`
+- `src/parallax/domains/pulse_lab/services/evidence_pack_builder.py`
+- `src/parallax/domains/pulse_lab/services/evidence_completeness_gate.py`
+- `src/parallax/domains/pulse_lab/services/claim_evidence_verifier.py`
+- `src/parallax/domains/pulse_lab/services/recommendation_clipper.py`
+- `src/parallax/domains/pulse_lab/services/write_gate.py`
+- `src/parallax/domains/pulse_lab/services/pulse_decision_outcome_service.py`
+- `src/parallax/domains/pulse_lab/repositories/pulse_agent_eval_repository.py`
+- `src/parallax/domains/pulse_lab/repositories/pulse_outcome_repository.py`
+- `src/parallax/platform/db/alembic/versions/20260518_0060_pulse_agent_runtime_hard_cut.py`
 - `tests/architecture/test_agent_runtime_boundaries.py`
 - `tests/integration/test_social_event_extraction_repository.py`
 - `tests/unit/pulse_lab/test_evidence_pack_builder.py`
@@ -103,40 +103,40 @@ Reason: deleting `harness_ops` while leaving API payloads, or adding EvidencePac
 
 ### Modify
 
-- `src/gmgn_twitter_intel/app/runtime/repository_session.py`
-- `src/gmgn_twitter_intel/app/runtime/bootstrap.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_registry.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_factories/__init__.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_factories/notifications.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/http.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/routes_events.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/routes_pulse.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/ws.py`
-- `src/gmgn_twitter_intel/app/surfaces/cli/parser.py`
-- `src/gmgn_twitter_intel/app/surfaces/cli/commands/read_models.py`
-- `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`
-- `src/gmgn_twitter_intel/platform/config/settings.py`
-- `src/gmgn_twitter_intel/domains/social_enrichment/interfaces.py`
-- `src/gmgn_twitter_intel/domains/social_enrichment/runtime/enrichment_worker.py`
-- `src/gmgn_twitter_intel/domains/social_enrichment/types/social_event_extraction.py`
-- `src/gmgn_twitter_intel/domains/watchlist_intel/interfaces.py`
-- `src/gmgn_twitter_intel/domains/watchlist_intel/runtime/handle_summary_worker.py`
-- `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/interfaces.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/providers.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/types/agent_decision.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_harness.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_harness_eval.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_decision_runtime.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/repositories/__init__.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_harness_repository.py` (rename/delete)
-- `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`
-- `src/gmgn_twitter_intel/integrations/openai_agents/social_event_agent_client.py`
-- `src/gmgn_twitter_intel/integrations/openai_agents/watchlist_summary_agent_client.py`
-- `src/gmgn_twitter_intel/integrations/openai_agents/tools/*.py` (only if retained as optional helpers)
-- `src/gmgn_twitter_intel/app/runtime/provider_wiring/openai.py`
+- `src/parallax/app/runtime/repository_session.py`
+- `src/parallax/app/runtime/bootstrap.py`
+- `src/parallax/app/runtime/worker_registry.py`
+- `src/parallax/app/runtime/worker_factories/__init__.py`
+- `src/parallax/app/runtime/worker_factories/notifications.py`
+- `src/parallax/app/surfaces/api/http.py`
+- `src/parallax/app/surfaces/api/routes_events.py`
+- `src/parallax/app/surfaces/api/routes_pulse.py`
+- `src/parallax/app/surfaces/api/ws.py`
+- `src/parallax/app/surfaces/cli/parser.py`
+- `src/parallax/app/surfaces/cli/commands/read_models.py`
+- `src/parallax/app/surfaces/cli/commands/ops.py`
+- `src/parallax/platform/config/settings.py`
+- `src/parallax/domains/social_enrichment/interfaces.py`
+- `src/parallax/domains/social_enrichment/runtime/enrichment_worker.py`
+- `src/parallax/domains/social_enrichment/types/social_event_extraction.py`
+- `src/parallax/domains/watchlist_intel/interfaces.py`
+- `src/parallax/domains/watchlist_intel/runtime/handle_summary_worker.py`
+- `src/parallax/domains/notifications/services/notification_rules.py`
+- `src/parallax/domains/pulse_lab/interfaces.py`
+- `src/parallax/domains/pulse_lab/providers.py`
+- `src/parallax/domains/pulse_lab/types/agent_decision.py`
+- `src/parallax/domains/pulse_lab/services/agent_harness.py`
+- `src/parallax/domains/pulse_lab/services/agent_harness_eval.py`
+- `src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py`
+- `src/parallax/domains/pulse_lab/services/pulse_decision_runtime.py`
+- `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py`
+- `src/parallax/domains/pulse_lab/repositories/__init__.py`
+- `src/parallax/domains/pulse_lab/repositories/pulse_harness_repository.py` (rename/delete)
+- `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py`
+- `src/parallax/integrations/openai_agents/social_event_agent_client.py`
+- `src/parallax/integrations/openai_agents/watchlist_summary_agent_client.py`
+- `src/parallax/integrations/openai_agents/tools/*.py` (only if retained as optional helpers)
+- `src/parallax/app/runtime/provider_wiring/openai.py`
 - `docs/ARCHITECTURE.md`
 - `docs/WORKERS.md`
 - `docs/CONTRACTS.md`
@@ -155,7 +155,7 @@ Reason: deleting `harness_ops` while leaving API payloads, or adding EvidencePac
 Create tests that initially fail:
 
 - `test_closed_loop_harness_domain_removed`
-  - Assert `src/gmgn_twitter_intel/domains/closed_loop_harness` does not exist.
+  - Assert `src/parallax/domains/closed_loop_harness` does not exist.
 - `test_no_closed_loop_harness_imports`
   - Scan `src/` and `tests/` Python files for `closed_loop_harness`, `HarnessRepository`, `HarnessService`, `HarnessSnapshotBuilder`, and `HarnessOpsWorker`.
   - Allow only Alembic migration string literals in the destructive migration file if necessary.
@@ -178,7 +178,7 @@ Create tests that initially fail:
 
 ### SocialEvent extraction ownership
 
-#### `src/gmgn_twitter_intel/domains/social_enrichment/repositories/social_event_extraction_repository.py`
+#### `src/parallax/domains/social_enrichment/repositories/social_event_extraction_repository.py`
 
 Create a repository that owns the existing `social_event_extractions` table:
 
@@ -192,18 +192,18 @@ Create a repository that owns the existing `social_event_extractions` table:
 
 Do not move `social_event_extractions` into `EnrichmentRepository`; it already owns jobs and model runs. Extraction facts deserve a focused repository.
 
-#### `src/gmgn_twitter_intel/domains/social_enrichment/interfaces.py`
+#### `src/parallax/domains/social_enrichment/interfaces.py`
 
 - Export `SocialEventExtractionRepository`.
 - Keep existing provider and type exports.
 
-#### `src/gmgn_twitter_intel/domains/social_enrichment/runtime/enrichment_worker.py`
+#### `src/parallax/domains/social_enrichment/runtime/enrichment_worker.py`
 
 Replace current harness materialization:
 
 - Delete import at line 14:
   ```python
-  from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessSnapshotBuilder
+  from parallax.domains.closed_loop_harness.interfaces import HarnessSnapshotBuilder
   ```
 - In `_complete_job_sync`, keep the existing call to `repos.enrichment.complete_social_event_job`.
 - Add a call to `repos.social_event_extractions.upsert_extraction` after model run completion.
@@ -230,15 +230,15 @@ Replace current harness materialization:
 
 #### Delete domain
 
-- Delete every file under `src/gmgn_twitter_intel/domains/closed_loop_harness/`.
+- Delete every file under `src/parallax/domains/closed_loop_harness/`.
 - Do not leave a compatibility `interfaces.py`.
 
-#### `src/gmgn_twitter_intel/app/runtime/repository_session.py`
+#### `src/parallax/app/runtime/repository_session.py`
 
 - Remove `HarnessRepository` import and `harness: HarnessRepository` field.
 - Add:
   ```python
-  from gmgn_twitter_intel.domains.social_enrichment.repositories.social_event_extraction_repository import (
+  from parallax.domains.social_enrichment.repositories.social_event_extraction_repository import (
       SocialEventExtractionRepository,
   )
   ```
@@ -248,54 +248,54 @@ Replace current harness materialization:
   ```
 - Construct it in `repositories_for_connection`.
 
-#### `src/gmgn_twitter_intel/app/runtime/bootstrap.py`
+#### `src/parallax/app/runtime/bootstrap.py`
 
 - Remove `HarnessRepository` import.
 - Remove `harness` and `read_harness` fields from `Runtime`.
 - Remove pooled harness construction.
 - Remove `harness` and `read_harness` assignments from the `Runtime` constructor call.
 
-#### `src/gmgn_twitter_intel/app/runtime/worker_registry.py`
+#### `src/parallax/app/runtime/worker_registry.py`
 
 - Remove `"harness_ops"` from `CANONICAL_WORKER_CLASSES`.
 - Remove `"harness_ops"` from `WORKER_START_PRIORITY`.
 
-#### `src/gmgn_twitter_intel/app/runtime/worker_factories/__init__.py`
+#### `src/parallax/app/runtime/worker_factories/__init__.py`
 
 - Remove `harness.py` factory import and the `WorkerFactorySpec` entry for `harness.py`.
 - Ensure worker factory key coverage tests still pass.
 
-#### `src/gmgn_twitter_intel/platform/config/settings.py`
+#### `src/parallax/platform/config/settings.py`
 
 - Delete `HarnessOpsWorkerSettings`.
 - Delete `WorkersSettings.harness_ops`.
 - Delete default YAML block for `harness_ops` near the generated/example config section.
 - Because `WorkersSettings.model_config = ConfigDict(extra="forbid")`, stale operator `workers.yaml` with `harness_ops` will fail. This is intended; rollout notes must tell operator to remove it.
 
-#### `src/gmgn_twitter_intel/app/surfaces/api/http.py`
+#### `src/parallax/app/surfaces/api/http.py`
 
 - Remove `routes_harness` import and `router.include_router(routes_harness.router)`.
 
-#### `src/gmgn_twitter_intel/app/surfaces/api/routes_harness.py`
+#### `src/parallax/app/surfaces/api/routes_harness.py`
 
 - Delete the file.
 
-#### `src/gmgn_twitter_intel/app/surfaces/api/routes_events.py`
+#### `src/parallax/app/surfaces/api/routes_events.py`
 
 - Remove `"harness": repos.harness.harness_for_event(event_id)`.
 - Remove batch `harness_for_events` lookup.
 - Event payloads should remain otherwise unchanged.
 
-#### `src/gmgn_twitter_intel/app/surfaces/api/ws.py`
+#### `src/parallax/app/surfaces/api/ws.py`
 
 - Remove `"harness": repos.harness.harness_for_event(event_id)`.
 - Remove routing for `harness_update`.
 
-#### `src/gmgn_twitter_intel/app/surfaces/api/routes_pulse.py`
+#### `src/parallax/app/surfaces/api/routes_pulse.py`
 
 - Stop passing `harness=repos.harness` to `SignalPulseService`.
 
-#### `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`
+#### `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py`
 
 - Remove constructor `harness` parameter.
 - Remove `settlement_coverage` from health payload.
@@ -304,21 +304,21 @@ Replace current harness materialization:
 
 #### CLI files
 
-- `src/gmgn_twitter_intel/app/surfaces/cli/parser.py`
+- `src/parallax/app/surfaces/cli/parser.py`
   - Delete `harness-snapshots`, `harness-outcomes`, `harness-credits`, `harness-weights`, `attribute-harness-credits`, and `update-harness-weights`.
-- `src/gmgn_twitter_intel/app/surfaces/cli/commands/read_models.py`
+- `src/parallax/app/surfaces/cli/commands/read_models.py`
   - Remove harness command branches and `HarnessService` import.
-- `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`
+- `src/parallax/app/surfaces/cli/commands/ops.py`
   - Remove harness ops imports and branches.
 
 #### Notifications
 
-- `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py`
+- `src/parallax/domains/notifications/services/notification_rules.py`
   - Remove `harness` constructor parameter and `self.harness`.
   - Remove the call that extends candidates with `_harness_snapshots`.
   - Delete `_harness_snapshots`.
   - Remove rule id `harness_snapshot_high_score` from default rule config if present.
-- `src/gmgn_twitter_intel/app/runtime/worker_factories/notifications.py`
+- `src/parallax/app/runtime/worker_factories/notifications.py`
   - Remove `HarnessService` import.
   - Stop passing `harness=HarnessService(repos.harness)`.
 - Update `tests/unit/test_notification_rules.py`:
@@ -327,7 +327,7 @@ Replace current harness materialization:
 
 ### Storage / migrations
 
-#### `src/gmgn_twitter_intel/platform/db/alembic/versions/20260518_0060_pulse_agent_runtime_hard_cut.py`
+#### `src/parallax/platform/db/alembic/versions/20260518_0060_pulse_agent_runtime_hard_cut.py`
 
 Create one hard-cut migration. Use the actual current head as `down_revision`; at time of planning, the latest visible revision is `20260517_0059`.
 
@@ -435,14 +435,14 @@ Downgrade can recreate table names only if cheap, but does not need to preserve 
 
 #### Rename repository
 
-- Rename `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_harness_repository.py` to `pulse_agent_eval_repository.py`.
+- Rename `src/parallax/domains/pulse_lab/repositories/pulse_harness_repository.py` to `pulse_agent_eval_repository.py`.
 - Rename class `PulseHarnessRepository` to `PulseAgentEvalRepository`.
 - Rename methods:
   - `upsert_agent_harness_version` -> `upsert_agent_runtime_version`
   - `agent_harness_version` -> `agent_runtime_version`
 - Rename parameters and row keys from `harness_hash`/`harness_version` to `runtime_hash`/`runtime_version`.
 
-#### `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_harness.py`
+#### `src/parallax/domains/pulse_lab/services/agent_harness.py`
 
 - Rename file to `agent_runtime_manifest.py`.
 - Rename exported constants:
@@ -467,7 +467,7 @@ No compatibility aliases. If a test imports old names, update the test.
 
 ### Unified OpenAI runtime
 
-#### `src/gmgn_twitter_intel/integrations/openai_agents/agent_output_schema.py`
+#### `src/parallax/integrations/openai_agents/agent_output_schema.py`
 
 Move the strict schema wrapper from Pulse into this file:
 
@@ -478,7 +478,7 @@ Move the strict schema wrapper from Pulse into this file:
 
 All three clients use this wrapper.
 
-#### `src/gmgn_twitter_intel/integrations/openai_agents/agent_model_settings.py`
+#### `src/parallax/integrations/openai_agents/agent_model_settings.py`
 
 Create:
 
@@ -486,7 +486,7 @@ Create `default_model_settings` returning the current retry policy, qwen `enable
 
 Use current retry policy and `extra_body={"chat_template_kwargs": {"enable_thinking": False}}`.
 
-#### `src/gmgn_twitter_intel/integrations/openai_agents/agent_run_audit.py`
+#### `src/parallax/integrations/openai_agents/agent_run_audit.py`
 
 Create focused helpers:
 
@@ -497,7 +497,7 @@ Create focused helpers:
 
 Do not include domain-specific candidate, handle, or event logic here. Domain runtimes pass metadata fields in.
 
-#### `src/gmgn_twitter_intel/integrations/openai_agents/agent_stage_runner.py`
+#### `src/parallax/integrations/openai_agents/agent_stage_runner.py`
 
 Create `OpenAIAgentStageRunner` that owns:
 
@@ -745,10 +745,10 @@ Recommended: one hard-cut PR with the following commit groups. If review size fo
 
 ## Rollout Order
 
-1. Remove `harness_ops` from operator-owned `~/.gmgn-twitter-intel/workers.yaml`.
+1. Remove `harness_ops` from operator-owned `~/.parallax/workers.yaml`.
 2. Confirm runtime config paths:
    ```bash
-   uv run gmgn-twitter-intel config
+   uv run parallax config
    ```
 3. Take DB backup.
 4. Apply migration:
@@ -758,7 +758,7 @@ Recommended: one hard-cut PR with the following commit groups. If review size fo
 5. Start workers without `harness_ops`.
 6. Run smoke checks:
    ```bash
-   uv run gmgn-twitter-intel --help | rg "harness"
+   uv run parallax --help | rg "harness"
    curl -s http://127.0.0.1:<port>/api/harness-health
    curl -s http://127.0.0.1:<port>/api/signal-lab/pulse?window=1h\&scope=all\&limit=5
    ```
@@ -791,7 +791,7 @@ Map to spec acceptance criteria.
 
 - AC2:
   ```bash
-  uv run gmgn-twitter-intel --help | rg "harness"
+  uv run parallax --help | rg "harness"
   ```
   Expected: no output.
 

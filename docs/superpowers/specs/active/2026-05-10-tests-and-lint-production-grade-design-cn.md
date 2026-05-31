@@ -43,7 +43,7 @@
 
 ## 2. Problem
 
-`gmgn-twitter-intel` 的 SOP（spec → plan → verification）写得很认真，但**完成判定的执行权完全握在实现 agent 自己手里**。具体表现：lint 规则集偏窄、无类型检查、无 pre-commit、无覆盖率门槛、无真正的跨进程 e2e、PG 不可达时 25% 用例静默 skip、verification artefact 由实现者自写自评。这正是第九讲诊断的"提前交卷"高发结构，也是第十讲点名的"组件边界缺陷只能被真实边界抓到"的盲区结构。后果：跨层改动（schema 漂移、WS 协议变更、API 字段重命名）的回归无自动化防线，需依赖人工冒烟，回归窗口长。
+`parallax` 的 SOP（spec → plan → verification）写得很认真，但**完成判定的执行权完全握在实现 agent 自己手里**。具体表现：lint 规则集偏窄、无类型检查、无 pre-commit、无覆盖率门槛、无真正的跨进程 e2e、PG 不可达时 25% 用例静默 skip、verification artefact 由实现者自写自评。这正是第九讲诊断的"提前交卷"高发结构，也是第十讲点名的"组件边界缺陷只能被真实边界抓到"的盲区结构。后果：跨层改动（schema 漂移、WS 协议变更、API 字段重命名）的回归无自动化防线，需依赖人工冒烟，回归窗口长。
 
 ---
 
@@ -160,9 +160,9 @@ tests/
 
 **mypy 渐进白名单**（本 spec 必须 strict 通过的包）：
 
-- `src/gmgn_twitter_intel/domains/` 全部子包
-- `src/gmgn_twitter_intel/platform/`
-- `src/gmgn_twitter_intel/cli.py`
+- `src/parallax/domains/` 全部子包
+- `src/parallax/platform/`
+- `src/parallax/cli.py`
 
 其余包（`app/`、`integrations/`）通过 `[[tool.mypy.overrides]] disallow_untyped_defs = false` 临时放过，每条 override 在 `docs/TECH_DEBT.md` 立项跟踪。`no_implicit_optional = true`、`warn_unused_ignores = true` 等基础项保持全局严格。
 
@@ -171,7 +171,7 @@ tests/
 `tests/e2e/conftest.py` 提供三个 session-scope fixture：
 
 - `e2e_postgres` —— 启动 `testcontainers.postgres.PostgresContainer("postgres:16-alpine")`，alembic upgrade head，yield DSN，会话末自动清理（ryuk）。
-- `e2e_uvicorn(e2e_postgres)` —— `subprocess.Popen(["uv","run","python","-m","tests.e2e._uvicorn_entry","--port","0"], env={"GMGN_POSTGRES_DSN": dsn, ...})` 起一个**测试专用入口脚本** `tests/e2e/_uvicorn_entry.py`，该脚本调用项目内 `create_app(start_collector=False)`（`src/gmgn_twitter_intel/app/runtime/app.py:106`）后用 uvicorn 起服务。从子进程 stdout 解析端口，对 `/healthz` 与 `/readyz` 轮询 ≤ 30s，yield `f"http://127.0.0.1:{port}"`，会话末 SIGTERM。
+- `e2e_uvicorn(e2e_postgres)` —— `subprocess.Popen(["uv","run","python","-m","tests.e2e._uvicorn_entry","--port","0"], env={"PARALLAX_POSTGRES_DSN": dsn, ...})` 起一个**测试专用入口脚本** `tests/e2e/_uvicorn_entry.py`，该脚本调用项目内 `create_app(start_collector=False)`（`src/parallax/app/runtime/app.py:106`）后用 uvicorn 起服务。从子进程 stdout 解析端口，对 `/healthz` 与 `/readyz` 轮询 ≤ 30s，yield `f"http://127.0.0.1:{port}"`，会话末 SIGTERM。
 - `e2e_writer(e2e_postgres)` —— 提供独立的 sidecar 写入接口（`subprocess.run` 启一个短命 Python，连同一个 DSN，通过项目 IngestService 写一条合成 mention 事件）。**写入与读取在物理上是两个进程**，这是本 e2e 的"跨进程边界"含义。
 
 `test_golden_path.py` 必须断言以下 5 条（对齐第九讲 runtime checklist）：
@@ -282,7 +282,7 @@ agent edit
 
 - 引入 GitHub Actions：CI workflow 直接 `make check-all`，无须改 Makefile
 - 引入 Playwright：仅追加 `tests/e2e/test_browser_*.py` 与 `web/playwright.config.ts`，testcontainers + uvicorn fixture 可被复用
-- 引入 mutation testing：`mutmut` 或 `cosmic-ray`，作用于 `src/gmgn_twitter_intel/domains/*/services/`
+- 引入 mutation testing：`mutmut` 或 `cosmic-ray`，作用于 `src/parallax/domains/*/services/`
 - 引入差量覆盖率（diff-cover）：在 PR 模式下，新增代码覆盖率门槛收紧到 90%
 - mypy 渐进消化非白名单包：每 sprint 摘掉 1-2 条 override，TECH_DEBT 计数下降到 0
 

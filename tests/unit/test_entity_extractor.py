@@ -1,4 +1,4 @@
-from gmgn_twitter_intel.domains.evidence.services.entity_extractor import extract_entities, normalize_ca
+from parallax.domains.evidence.services.entity_extractor import extract_entities, normalize_ca
 
 
 def test_extract_entities_returns_deterministic_structured_entities():

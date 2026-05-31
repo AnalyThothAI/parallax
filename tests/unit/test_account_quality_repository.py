@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
+from parallax.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
 
 
 def test_market_ticks_for_token_reads_tick_history_with_named_params():

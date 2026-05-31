@@ -2,14 +2,14 @@
 
 **Date:** 2026-05-21
 
-**Scope:** `macrodata-cli` Yahoo hard cut, `gmgn-twitter-intel` concept-key projection, `marketlane-cli` removal, and `/macro/assets/correlation` route/page.
+**Scope:** `macrodata-cli` Yahoo hard cut, `parallax` concept-key projection, `marketlane-cli` removal, and `/macro/assets/correlation` route/page.
 
 ## Dependency And Source Cut
 
 - `macrodata-cli` main released and pushed:
   - `v0.1.3`: Yahoo provider and macro-core source-chain switch.
   - `v0.1.5`: dependency upgrade release used by this repo.
-- `gmgn-twitter-intel` now pins `macrodata-cli` tag `v0.1.5`.
+- `parallax` now pins `macrodata-cli` tag `v0.1.5`.
 - `marketlane-cli` is removed from `pyproject.toml` and `uv.lock`.
 - Runtime provider wiring uses `providers.macrodata.stock_quote_provider`.
 - `config.example.yaml` now uses `providers.macrodata` and is covered by `tests/unit/test_settings.py`.
@@ -32,7 +32,7 @@ All checks passed
 Success: no issues found
 ```
 
-`gmgn-twitter-intel` backend target suite:
+`parallax` backend target suite:
 
 ```bash
 uv run pytest tests/unit/test_settings.py tests/unit/domains/macro_intel tests/unit/test_api_macro_contract.py tests/unit/test_cli_macro_commands.py tests/unit/test_macrodata_quote_provider.py tests/unit/test_bootstrap_worker_runtime_wiring.py tests/unit/test_gmgn_openapi_client.py tests/unit/test_direct_ws.py tests/integration/test_api_health.py tests/architecture/test_project_structure.py
@@ -44,11 +44,11 @@ Result:
 134 passed in 40.80s
 ```
 
-`gmgn-twitter-intel` lint/type checks:
+`parallax` lint/type checks:
 
 ```bash
-uv run ruff check src/gmgn_twitter_intel/domains/macro_intel src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py src/gmgn_twitter_intel/app/runtime/provider_wiring src/gmgn_twitter_intel/app/runtime/providers_wiring.py src/gmgn_twitter_intel/integrations/macrodata src/gmgn_twitter_intel/platform/config/settings.py tests/unit/domains/macro_intel tests/unit/test_api_macro_contract.py tests/unit/test_cli_macro_commands.py tests/unit/test_macrodata_quote_provider.py tests/unit/test_bootstrap_worker_runtime_wiring.py tests/unit/test_settings.py tests/integration/test_api_health.py tests/architecture/test_project_structure.py
-uv run mypy src/gmgn_twitter_intel/domains/macro_intel src/gmgn_twitter_intel/integrations/macrodata
+uv run ruff check src/parallax/domains/macro_intel src/parallax/app/surfaces/api/routes_macro.py src/parallax/app/runtime/provider_wiring src/parallax/app/runtime/providers_wiring.py src/parallax/integrations/macrodata src/parallax/platform/config/settings.py tests/unit/domains/macro_intel tests/unit/test_api_macro_contract.py tests/unit/test_cli_macro_commands.py tests/unit/test_macrodata_quote_provider.py tests/unit/test_bootstrap_worker_runtime_wiring.py tests/unit/test_settings.py tests/integration/test_api_health.py tests/architecture/test_project_structure.py
+uv run mypy src/parallax/domains/macro_intel src/parallax/integrations/macrodata
 ```
 
 Result:
@@ -83,14 +83,14 @@ build passed
 Operator config was checked with:
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 ```
 
 Confirmed runtime paths point at:
 
 ```text
-/Users/qinghuan/.gmgn-twitter-intel/config.yaml
-/Users/qinghuan/.gmgn-twitter-intel/workers.yaml
+/Users/qinghuan/.parallax/config.yaml
+/Users/qinghuan/.parallax/workers.yaml
 ```
 
 Secrets were not printed.
@@ -115,10 +115,10 @@ source_chain=['fred', 'nyfed', 'treasury_fiscal', 'yahoo', 'cftc']
 Imported and projected into the local Postgres smoke target:
 
 ```bash
-HOME=/tmp/gmgn-macro-smoke uv run gmgn-twitter-intel db migrate
-HOME=/tmp/gmgn-macro-smoke uv run gmgn-twitter-intel macro import-bundle --file /tmp/macro-core-history.json
-HOME=/tmp/gmgn-macro-smoke uv run gmgn-twitter-intel macro project-once
-HOME=/tmp/gmgn-macro-smoke uv run gmgn-twitter-intel macro status
+HOME=/tmp/gmgn-macro-smoke uv run parallax db migrate
+HOME=/tmp/gmgn-macro-smoke uv run parallax macro import-bundle --file /tmp/macro-core-history.json
+HOME=/tmp/gmgn-macro-smoke uv run parallax macro project-once
+HOME=/tmp/gmgn-macro-smoke uv run parallax macro status
 ```
 
 Result summary:

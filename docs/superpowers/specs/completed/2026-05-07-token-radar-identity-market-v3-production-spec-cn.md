@@ -1122,7 +1122,7 @@ Deliver:
 
 Exit:
 
-- `rg "TokenRepository|TokenSignalRepository|token_market_snapshots|token_signal_snapshots" src/gmgn_twitter_intel` shows only migration/debug/archive references.
+- `rg "TokenRepository|TokenSignalRepository|token_market_snapshots|token_signal_snapshots" src/parallax` shows only migration/debug/archive references.
 
 ## Golden Corpus
 
@@ -1202,12 +1202,12 @@ Regression tests that must fail before V3 and pass after:
 New CLI:
 
 ```bash
-uv run gmgn-twitter-intel ops audit-token-intent --event-id ...
-uv run gmgn-twitter-intel ops audit-token-intent --intent-id ...
-uv run gmgn-twitter-intel ops token-intent-health --window 24h
-uv run gmgn-twitter-intel ops provider-health
-uv run gmgn-twitter-intel ops rebuild-token-radar --window 1h --scope all
-uv run gmgn-twitter-intel ops trace-token-radar-row --row-id ...
+uv run parallax ops audit-token-intent --event-id ...
+uv run parallax ops audit-token-intent --intent-id ...
+uv run parallax ops token-intent-health --window 24h
+uv run parallax ops provider-health
+uv run parallax ops rebuild-token-radar --window 1h --scope all
+uv run parallax ops trace-token-radar-row --row-id ...
 ```
 
 Health metrics:
@@ -1270,21 +1270,21 @@ V3 is complete only when all are true:
 
 Reviewed current modules:
 
-- `src/gmgn_twitter_intel/pipeline/entity_extractor.py`
-- `src/gmgn_twitter_intel/pipeline/ingest_service.py`
-- `src/gmgn_twitter_intel/pipeline/asset_mention_builder.py`
-- `src/gmgn_twitter_intel/pipeline/asset_resolver.py`
-- `src/gmgn_twitter_intel/pipeline/asset_resolution_worker.py`
-- `src/gmgn_twitter_intel/storage/asset_repository.py`
-- `src/gmgn_twitter_intel/retrieval/asset_flow_service.py`
-- `src/gmgn_twitter_intel/pipeline/asset_market_sync.py`
-- `src/gmgn_twitter_intel/pipeline/asset_market_sync_worker.py`
-- `src/gmgn_twitter_intel/api/http.py`
-- `src/gmgn_twitter_intel/api/ws.py`
-- `src/gmgn_twitter_intel/api/app.py`
-- `src/gmgn_twitter_intel/storage/repository_session.py`
-- `src/gmgn_twitter_intel/pipeline/market_observation_worker.py`
-- `src/gmgn_twitter_intel/pipeline/token_signal_settlement.py`
+- `src/parallax/pipeline/entity_extractor.py`
+- `src/parallax/pipeline/ingest_service.py`
+- `src/parallax/pipeline/asset_mention_builder.py`
+- `src/parallax/pipeline/asset_resolver.py`
+- `src/parallax/pipeline/asset_resolution_worker.py`
+- `src/parallax/storage/asset_repository.py`
+- `src/parallax/retrieval/asset_flow_service.py`
+- `src/parallax/pipeline/asset_market_sync.py`
+- `src/parallax/pipeline/asset_market_sync_worker.py`
+- `src/parallax/api/http.py`
+- `src/parallax/api/ws.py`
+- `src/parallax/api/app.py`
+- `src/parallax/storage/repository_session.py`
+- `src/parallax/pipeline/market_observation_worker.py`
+- `src/parallax/pipeline/token_signal_settlement.py`
 - `web/src/App.tsx`
 - `web/src/api/types.ts`
 - `web/src/components/TokenRadarRow.tsx`

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from gmgn_twitter_intel.domains.asset_market.repositories.enriched_event_repository import (
+from parallax.domains.asset_market.repositories.enriched_event_repository import (
     EnrichedEventRepository,
 )
-from gmgn_twitter_intel.domains.asset_market.types import EnrichedEventCapture
+from parallax.domains.asset_market.types import EnrichedEventCapture
 
 
 def test_insert_enriched_event_is_append_only() -> None:

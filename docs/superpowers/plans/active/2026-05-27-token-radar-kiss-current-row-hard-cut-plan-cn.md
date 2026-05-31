@@ -35,8 +35,8 @@ This plan removes those layers:
 
 The hard cut is not complete until these scans and tests pass:
 
-- No runtime source in `src/gmgn_twitter_intel/app` or
-  `src/gmgn_twitter_intel/domains` contains:
+- No runtime source in `src/parallax/app` or
+  `src/parallax/domains` contains:
   `token_radar_projection_coverage`, `token_radar_rank_history`,
   `token_radar_snapshot_audit`, `payload_hash changed during selected-row hydration`,
   `_rank_and_hydrate_selected_rows`, `_hydrate_ranked_rows`,
@@ -84,7 +84,7 @@ build/publish error
 
 ### Schema
 
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0111_token_radar_publication_state.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260527_0111_token_radar_publication_state.py`
   - Drop `token_radar_projection_coverage` and create `token_radar_publication_state`.
   - Add generation columns to `token_radar_current_rows`.
   - Drop `token_radar_rank_history` and `token_radar_snapshot_audit`.
@@ -92,54 +92,54 @@ build/publish error
 
 ### Repository / Projection
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
   - Add `publish_current_generation(...)`.
   - Add `mark_publication_failed(...)`.
   - Add `latest_publication_state(...)`.
   - Delete `publish_rows(...)`, `latest_snapshot_audit_rows(...)`, hydration-by-payload methods, stale rank input rebuild helpers.
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py`
   - Replace rank-then-hydrate with one generation builder.
   - Publish due work items even when no dirty target was claimed.
   - Do not write rank history or snapshot audit.
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py`
+- Modify: `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py`
   - Treat failed/missing/stale publication state as due work.
   - Wake after successful current publish only.
 
 ### Read Paths
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`
+- Modify: `src/parallax/domains/token_intel/read_models/asset_flow_service.py`
   - Read publication state, not coverage.
   - Return `fresh` only for matching ready generation.
   - Return `stale` or `failed` for latest failed attempts.
 
 - Modify consumers:
-  - `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
-  - `src/gmgn_twitter_intel/domains/pulse_lab/queries/pulse_policy_evaluator.py`
-  - `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py`
-  - `src/gmgn_twitter_intel/app/runtime/runtime_worker_dirty_targets.py`
-  - `src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py`
-  - `src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py`
-  - `src/gmgn_twitter_intel/domains/token_intel/repositories/token_factor_evaluation_repository.py`
+  - `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+  - `src/parallax/domains/pulse_lab/queries/pulse_policy_evaluator.py`
+  - `src/parallax/domains/notifications/services/notification_rules.py`
+  - `src/parallax/app/runtime/runtime_worker_dirty_targets.py`
+  - `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`
+  - `src/parallax/domains/asset_market/repositories/registry_repository.py`
+  - `src/parallax/domains/token_intel/repositories/token_factor_evaluation_repository.py`
 
 ### Dirty Queue / Evidence / Docs
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_dirty_target_repository.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py`
   - Remove `:claimed:` payload hash mutation.
 
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py`
+- Modify: `src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py`
   - Remove the same `:claimed:` payload hash mutation pattern so the repo-wide
     guard is honest.
 
 - Modify:
-  - `src/gmgn_twitter_intel/app/runtime/token_radar_postgres_hard_reset.py`
-  - `src/gmgn_twitter_intel/app/runtime/worker_manifest.py`
+  - `src/parallax/app/runtime/token_radar_postgres_hard_reset.py`
+  - `src/parallax/app/runtime/worker_manifest.py`
   - Remove old coverage/history/audit reset and ownership entries.
 
 - Modify:
-  - `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_rank_source_query.py`
-  - `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_rank_source_repository.py`
+  - `src/parallax/domains/token_intel/queries/token_radar_rank_source_query.py`
+  - `src/parallax/domains/token_intel/repositories/token_radar_rank_source_repository.py`
   - Add bounded lazy evidence query.
 
 - Modify docs:
@@ -147,7 +147,7 @@ build/publish error
   - `docs/WORKERS.md`
   - `docs/RELIABILITY.md`
   - `docs/references/POSTGRES_PERFORMANCE.md`
-  - `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
+  - `src/parallax/domains/token_intel/ARCHITECTURE.md`
 
 ---
 
@@ -162,7 +162,7 @@ build/publish error
 Run:
 
 ```bash
-rg -n "payload_hash changed during selected-row hydration|_rank_and_hydrate_selected_rows|_hydrate_ranked_rows|_patch_hydrated_rank_row|load_target_feature_payloads_for_ranked_keys|rebuild_rank_inputs_full|list_rank_input_rebuild_keys|stale_rank_input_count|rank_input_readiness_for_work_items|latest_snapshot_audit_rows|token_radar_projection_coverage|token_radar_rank_history|token_radar_snapshot_audit|:claimed:" src/gmgn_twitter_intel/app src/gmgn_twitter_intel/domains tests
+rg -n "payload_hash changed during selected-row hydration|_rank_and_hydrate_selected_rows|_hydrate_ranked_rows|_patch_hydrated_rank_row|load_target_feature_payloads_for_ranked_keys|rebuild_rank_inputs_full|list_rank_input_rebuild_keys|stale_rank_input_count|rank_input_readiness_for_work_items|latest_snapshot_audit_rows|token_radar_projection_coverage|token_radar_rank_history|token_radar_snapshot_audit|:claimed:" src/parallax/app src/parallax/domains tests
 ```
 
 Expected before implementation: matches exist in the current codebase. They are
@@ -174,30 +174,30 @@ Use this exact bucket list:
 
 ```text
 projection-hydration-retry:
-  src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py
-  src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py
+  src/parallax/domains/token_intel/services/token_radar_projection.py
+  src/parallax/domains/token_intel/repositories/token_radar_repository.py
   tests/unit/test_token_radar_projection.py
   tests/unit/test_token_radar_repository.py
 
 legacy-rank-input-rebuild:
-  src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py
-  src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py
-  src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py
-  src/gmgn_twitter_intel/app/surfaces/cli/parser.py
+  src/parallax/domains/token_intel/services/token_radar_projection.py
+  src/parallax/domains/token_intel/repositories/token_radar_repository.py
+  src/parallax/app/surfaces/cli/commands/ops.py
+  src/parallax/app/surfaces/cli/parser.py
   tests/unit/test_token_radar_projection.py
   tests/unit/test_token_radar_repository.py
   tests/integration/test_cli.py
 
 coverage-to-publication-state:
-  src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py
-  src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py
-  src/gmgn_twitter_intel/domains/pulse_lab/queries/pulse_policy_evaluator.py
-  src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py
-  src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py
-  src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py
-  src/gmgn_twitter_intel/app/runtime/runtime_worker_dirty_targets.py
-  src/gmgn_twitter_intel/app/runtime/token_radar_postgres_hard_reset.py
-  src/gmgn_twitter_intel/app/runtime/worker_manifest.py
+  src/parallax/domains/token_intel/repositories/token_radar_repository.py
+  src/parallax/domains/token_intel/read_models/asset_flow_service.py
+  src/parallax/domains/pulse_lab/queries/pulse_policy_evaluator.py
+  src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py
+  src/parallax/domains/narrative_intel/repositories/narrative_repository.py
+  src/parallax/domains/asset_market/repositories/registry_repository.py
+  src/parallax/app/runtime/runtime_worker_dirty_targets.py
+  src/parallax/app/runtime/token_radar_postgres_hard_reset.py
+  src/parallax/app/runtime/worker_manifest.py
   tests/unit/domains/pulse_lab/test_pulse_policy_evaluator.py
   tests/unit/test_asset_flow_service.py
   tests/unit/test_token_capture_tier_worker.py
@@ -207,11 +207,11 @@ coverage-to-publication-state:
   tests/integration/test_pulse_candidate_dirty_triggers.py
 
 audit-history-drop:
-  src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py
-  src/gmgn_twitter_intel/domains/token_intel/repositories/token_factor_evaluation_repository.py
-  src/gmgn_twitter_intel/app/runtime/token_radar_postgres_hard_reset.py
-  src/gmgn_twitter_intel/app/runtime/worker_manifest.py
-  src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md
+  src/parallax/domains/token_intel/repositories/token_radar_repository.py
+  src/parallax/domains/token_intel/repositories/token_factor_evaluation_repository.py
+  src/parallax/app/runtime/token_radar_postgres_hard_reset.py
+  src/parallax/app/runtime/worker_manifest.py
+  src/parallax/domains/token_intel/ARCHITECTURE.md
   tests/unit/test_token_factor_evaluation.py
   tests/unit/domains/token_intel/test_token_radar_postgres_hard_reset.py
   tests/integration/test_postgres_schema_runtime.py
@@ -220,8 +220,8 @@ audit-history-drop:
   tests/unit/test_token_radar_repository.py
 
 dirty-claim-hash:
-  src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_dirty_target_repository.py
-  src/gmgn_twitter_intel/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py
+  src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py
+  src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py
   tests/unit/test_token_radar_dirty_target_repository.py
   tests/unit/test_ingest_service_token_radar_dirty_targets.py
 ```
@@ -232,7 +232,7 @@ After each task, rerun the scan from Step 1. A task is complete only when every
 remaining match is either:
 
 ```text
-1. in a historical Alembic migration under src/gmgn_twitter_intel/platform/db/alembic/versions,
+1. in a historical Alembic migration under src/parallax/platform/db/alembic/versions,
 2. in the active spec or plan docs,
 3. in a test that is intentionally asserting the string is absent,
 4. in a later bucket that has not started yet.
@@ -245,7 +245,7 @@ Do not add allowlists for runtime fallback paths.
 By Task 8, this command must return no matches in runtime code:
 
 ```bash
-rg -n "payload_hash changed during selected-row hydration|_rank_and_hydrate_selected_rows|_hydrate_ranked_rows|_patch_hydrated_rank_row|load_target_feature_payloads_for_ranked_keys|rebuild_rank_inputs_full|list_rank_input_rebuild_keys|stale_rank_input_count|rank_input_readiness_for_work_items|latest_snapshot_audit_rows|token_radar_projection_coverage|token_radar_rank_history|token_radar_snapshot_audit|side_effect_status|:claimed:" src/gmgn_twitter_intel/app src/gmgn_twitter_intel/domains
+rg -n "payload_hash changed during selected-row hydration|_rank_and_hydrate_selected_rows|_hydrate_ranked_rows|_patch_hydrated_rank_row|load_target_feature_payloads_for_ranked_keys|rebuild_rank_inputs_full|list_rank_input_rebuild_keys|stale_rank_input_count|rank_input_readiness_for_work_items|latest_snapshot_audit_rows|token_radar_projection_coverage|token_radar_rank_history|token_radar_snapshot_audit|side_effect_status|:claimed:" src/parallax/app src/parallax/domains
 ```
 
 Expected after implementation: no output.
@@ -255,7 +255,7 @@ This inventory task has no commit; it is an execution gate for the hard cut.
 ## Task 1: Schema Hard Cut To Publication State
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0111_token_radar_publication_state.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260527_0111_token_radar_publication_state.py`
 - Modify: `tests/unit/test_postgres_schema.py`
 - Modify: `tests/integration/test_postgres_schema_runtime.py`
 
@@ -293,7 +293,7 @@ Expected: FAIL because the migration does not exist.
 
 - [ ] **Step 3: Create hard-cut migration**
 
-Create `src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0111_token_radar_publication_state.py`:
+Create `src/parallax/platform/db/alembic/versions/20260527_0111_token_radar_publication_state.py`:
 
 ```python
 """Token Radar publication state hard cut."""
@@ -409,14 +409,14 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0111_token_radar_publication_state.py tests/unit/test_postgres_schema.py tests/integration/test_postgres_schema_runtime.py
+git add src/parallax/platform/db/alembic/versions/20260527_0111_token_radar_publication_state.py tests/unit/test_postgres_schema.py tests/integration/test_postgres_schema_runtime.py
 git commit -m "schema: hard cut token radar publication state"
 ```
 
 ## Task 2: Repository Publish State API
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
 - Modify: `tests/unit/test_token_radar_repository.py`
 - Modify: `tests/integration/test_token_radar_repository.py`
 
@@ -772,16 +772,16 @@ Expected: PASS.
 - [ ] **Step 9: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py tests/unit/test_token_radar_repository.py tests/integration/test_token_radar_repository.py
+git add src/parallax/domains/token_intel/repositories/token_radar_repository.py tests/unit/test_token_radar_repository.py tests/integration/test_token_radar_repository.py
 git commit -m "feat: publish token radar current rows with publication state"
 ```
 
 ## Task 3: Projection Builds One Generation And Deletes Hydration Retry
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
+- Modify: `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py`
 - Modify: `tests/unit/test_token_radar_projection.py`
 - Modify: `tests/unit/test_token_radar_projection_worker.py`
 
@@ -964,8 +964,8 @@ def _build_publication_generation(
 ```
 
 Move `_row_from_target_feature(...)` from
-`src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
-to `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
+`src/parallax/domains/token_intel/repositories/token_radar_repository.py`
+to `src/parallax/domains/token_intel/services/token_radar_projection.py`
 unchanged, then rename `_patch_hydrated_rank_row(...)` to
 `_patch_ranked_current_row(...)` in the same service module. Do not introduce a
 second DB read by payload hash.
@@ -1063,7 +1063,7 @@ Run:
 
 ```bash
 uv run pytest tests/unit/test_token_radar_projection.py tests/unit/test_token_radar_projection_worker.py -q
-rg -n "payload_hash changed during selected-row hydration|load_target_feature_payloads_for_ranked_keys|_hydrate_ranked_rows|_rank_and_hydrate_selected_rows" src/gmgn_twitter_intel/app src/gmgn_twitter_intel/domains
+rg -n "payload_hash changed during selected-row hydration|load_target_feature_payloads_for_ranked_keys|_hydrate_ranked_rows|_rank_and_hydrate_selected_rows" src/parallax/app src/parallax/domains
 ```
 
 Expected: pytest PASS and `rg` returns no runtime matches.
@@ -1071,21 +1071,21 @@ Expected: pytest PASS and `rg` returns no runtime matches.
 - [ ] **Step 11: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py tests/unit/test_token_radar_projection.py tests/unit/test_token_radar_projection_worker.py
+git add src/parallax/domains/token_intel/services/token_radar_projection.py src/parallax/domains/token_intel/repositories/token_radar_repository.py src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py tests/unit/test_token_radar_projection.py tests/unit/test_token_radar_projection_worker.py
 git commit -m "refactor: build token radar publication generations directly"
 ```
 
 ## Task 4: API And Consumer Freshness Gates
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/queries/pulse_policy_evaluator.py`
-- Modify: `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/runtime_worker_dirty_targets.py`
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py`
+- Modify: `src/parallax/domains/token_intel/read_models/asset_flow_service.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
+- Modify: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- Modify: `src/parallax/domains/pulse_lab/queries/pulse_policy_evaluator.py`
+- Modify: `src/parallax/domains/notifications/services/notification_rules.py`
+- Modify: `src/parallax/app/runtime/runtime_worker_dirty_targets.py`
+- Modify: `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`
+- Modify: `src/parallax/domains/asset_market/repositories/registry_repository.py`
 - Modify tests under `tests/unit/test_asset_flow_service.py`, `tests/unit/test_token_radar_repository.py`, `tests/unit/test_pulse_candidate_worker.py`, `tests/unit/domains/pulse_lab/test_pulse_policy_evaluator.py`, `tests/unit/test_notification_rules.py`, `tests/unit/test_token_capture_tier_worker.py`, `tests/integration/test_narrative_repository.py`
 
 - [ ] **Step 1: Write failing AssetFlow stale test**
@@ -1254,15 +1254,15 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py src/gmgn_twitter_intel/domains/pulse_lab/queries/pulse_policy_evaluator.py src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py src/gmgn_twitter_intel/app/runtime/runtime_worker_dirty_targets.py src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py tests/unit/test_asset_flow_service.py tests/unit/test_token_radar_repository.py tests/unit/test_pulse_candidate_worker.py tests/unit/domains/pulse_lab/test_pulse_policy_evaluator.py tests/unit/test_notification_rules.py tests/unit/test_token_capture_tier_worker.py tests/integration/test_narrative_repository.py
+git add src/parallax/domains/token_intel/read_models/asset_flow_service.py src/parallax/domains/token_intel/repositories/token_radar_repository.py src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py src/parallax/domains/pulse_lab/queries/pulse_policy_evaluator.py src/parallax/domains/notifications/services/notification_rules.py src/parallax/app/runtime/runtime_worker_dirty_targets.py src/parallax/domains/narrative_intel/repositories/narrative_repository.py src/parallax/domains/asset_market/repositories/registry_repository.py tests/unit/test_asset_flow_service.py tests/unit/test_token_radar_repository.py tests/unit/test_pulse_candidate_worker.py tests/unit/domains/pulse_lab/test_pulse_policy_evaluator.py tests/unit/test_notification_rules.py tests/unit/test_token_capture_tier_worker.py tests/integration/test_narrative_repository.py
 git commit -m "fix: gate token radar consumers on publication state"
 ```
 
 ## Task 5: Dirty Target Hash Simplification
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_dirty_target_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py`
+- Modify: `src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py`
 - Modify: `tests/unit/test_token_radar_dirty_target_repository.py`
 - Modify: `tests/unit/test_ingest_service_token_radar_dirty_targets.py`
 - Modify: `tests/unit/test_market_tick_current_repository.py`
@@ -1387,20 +1387,20 @@ uv run pytest tests/unit/test_token_radar_dirty_target_repository.py tests/unit/
 ```
 
 Expected: PASS, and the source scan must not find `:claimed:` in
-`src/gmgn_twitter_intel/domains`.
+`src/parallax/domains`.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_dirty_target_repository.py src/gmgn_twitter_intel/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py tests/unit/test_token_radar_dirty_target_repository.py tests/unit/test_ingest_service_token_radar_dirty_targets.py tests/unit/test_market_tick_current_repository.py
+git add src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py src/parallax/domains/asset_market/repositories/market_tick_current_dirty_target_repository.py tests/unit/test_token_radar_dirty_target_repository.py tests/unit/test_ingest_service_token_radar_dirty_targets.py tests/unit/test_market_tick_current_repository.py
 git commit -m "fix: keep token radar dirty hashes as source fingerprints"
 ```
 
 ## Task 6: Lazy Evidence Only
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_rank_source_query.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_rank_source_repository.py`
+- Modify: `src/parallax/domains/token_intel/queries/token_radar_rank_source_query.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_rank_source_repository.py`
 - Modify: `tests/unit/domains/token_intel/test_token_radar_rank_source_query.py`
 
 - [ ] **Step 1: Write failing bounded evidence test**
@@ -1484,20 +1484,20 @@ Expected: PASS.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_rank_source_query.py src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_rank_source_repository.py tests/unit/domains/token_intel/test_token_radar_rank_source_query.py
+git add src/parallax/domains/token_intel/queries/token_radar_rank_source_query.py src/parallax/domains/token_intel/repositories/token_radar_rank_source_repository.py tests/unit/domains/token_intel/test_token_radar_rank_source_query.py
 git commit -m "feat: expose bounded token radar evidence edges"
 ```
 
 ## Task 7: Delete Legacy CLI, Coverage, Audit, And Runtime Paths
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_factor_evaluation_repository.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/parser.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/token_radar_postgres_hard_reset.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_manifest.py`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_factor_evaluation_repository.py`
+- Modify: `src/parallax/app/surfaces/cli/commands/ops.py`
+- Modify: `src/parallax/app/surfaces/cli/parser.py`
+- Modify: `src/parallax/app/runtime/token_radar_postgres_hard_reset.py`
+- Modify: `src/parallax/app/runtime/worker_manifest.py`
 - Modify tests under `tests/unit/test_token_radar_projection.py`, `tests/unit/test_token_radar_repository.py`, `tests/unit/test_token_factor_evaluation.py`, `tests/unit/domains/token_intel/test_token_radar_postgres_hard_reset.py`, `tests/integration/test_cli.py`, `tests/integration/test_postgres_schema_runtime.py`
 
 - [ ] **Step 1: Delete legacy methods and commands**
@@ -1590,7 +1590,7 @@ Expected: PASS.
 Run:
 
 ```bash
-rg -n "token_radar_projection_coverage|token_radar_rank_history|token_radar_snapshot_audit|rebuild_rank_inputs_full|list_rank_input_rebuild_keys|stale_rank_input_count|rank_input_readiness_for_work_items|latest_snapshot_audit_rows" src/gmgn_twitter_intel/app src/gmgn_twitter_intel/domains
+rg -n "token_radar_projection_coverage|token_radar_rank_history|token_radar_snapshot_audit|rebuild_rank_inputs_full|list_rank_input_rebuild_keys|stale_rank_input_count|rank_input_readiness_for_work_items|latest_snapshot_audit_rows" src/parallax/app src/parallax/domains
 ```
 
 Expected: no matches.
@@ -1598,7 +1598,7 @@ Expected: no matches.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py src/gmgn_twitter_intel/domains/token_intel/repositories/token_factor_evaluation_repository.py src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py src/gmgn_twitter_intel/app/surfaces/cli/parser.py src/gmgn_twitter_intel/app/runtime/token_radar_postgres_hard_reset.py src/gmgn_twitter_intel/app/runtime/worker_manifest.py tests/unit/test_token_radar_projection.py tests/unit/test_token_radar_repository.py tests/unit/test_token_factor_evaluation.py tests/unit/domains/token_intel/test_token_radar_postgres_hard_reset.py tests/integration/test_cli.py tests/integration/test_postgres_schema_runtime.py
+git add src/parallax/domains/token_intel/services/token_radar_projection.py src/parallax/domains/token_intel/repositories/token_radar_repository.py src/parallax/domains/token_intel/repositories/token_factor_evaluation_repository.py src/parallax/app/surfaces/cli/commands/ops.py src/parallax/app/surfaces/cli/parser.py src/parallax/app/runtime/token_radar_postgres_hard_reset.py src/parallax/app/runtime/worker_manifest.py tests/unit/test_token_radar_projection.py tests/unit/test_token_radar_repository.py tests/unit/test_token_factor_evaluation.py tests/unit/domains/token_intel/test_token_radar_postgres_hard_reset.py tests/integration/test_cli.py tests/integration/test_postgres_schema_runtime.py
 git commit -m "refactor: remove token radar legacy runtime paths"
 ```
 
@@ -1612,7 +1612,7 @@ git commit -m "refactor: remove token radar legacy runtime paths"
 - Modify: `docs/WORKERS.md`
 - Modify: `docs/RELIABILITY.md`
 - Modify: `docs/references/POSTGRES_PERFORMANCE.md`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/token_intel/ARCHITECTURE.md`
 
 - [ ] **Step 1: Add no-compat architecture guard**
 
@@ -1624,7 +1624,7 @@ from __future__ import annotations
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src" / "gmgn_twitter_intel"
+SRC = ROOT / "src" / "parallax"
 
 BANNED_RUNTIME_TOKENS = (
     "payload_hash changed during selected-row hydration",
@@ -1703,7 +1703,7 @@ is `ready` and served rows match `current_generation_id`. Failed latest attempts
 serve previous rows as `stale` or no rows as `failed`.
 ```
 
-Update `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md` to state that
+Update `src/parallax/domains/token_intel/ARCHITECTURE.md` to state that
 `rank_history` and `snapshot_audit` are not part of the runtime hot path.
 
 - [ ] **Step 4: Run architecture/docs tests**
@@ -1719,7 +1719,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tests/architecture/test_token_radar_publication_state_hard_cut.py tests/architecture/test_worker_runtime_contracts.py tests/architecture/test_runtime_worker_constraint_hard_cut.py docs/CONTRACTS.md docs/WORKERS.md docs/RELIABILITY.md docs/references/POSTGRES_PERFORMANCE.md src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md
+git add tests/architecture/test_token_radar_publication_state_hard_cut.py tests/architecture/test_worker_runtime_contracts.py tests/architecture/test_runtime_worker_constraint_hard_cut.py docs/CONTRACTS.md docs/WORKERS.md docs/RELIABILITY.md docs/references/POSTGRES_PERFORMANCE.md src/parallax/domains/token_intel/ARCHITECTURE.md
 git commit -m "docs: define token radar publication state contract"
 ```
 
@@ -1756,14 +1756,14 @@ Expected: PASS.
 Run:
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 ```
 
 Expected paths:
 
 ```text
-config_path: /Users/qinghuan/.gmgn-twitter-intel/config.yaml
-workers_config_path: /Users/qinghuan/.gmgn-twitter-intel/workers.yaml
+config_path: /Users/qinghuan/.parallax/config.yaml
+workers_config_path: /Users/qinghuan/.parallax/workers.yaml
 ```
 
 Report only paths and redacted booleans.
@@ -1774,10 +1774,10 @@ Run after local tests pass:
 
 ```bash
 uv run alembic upgrade head
-uv run gmgn-twitter-intel ops rebuild-token-radar --window 1h --scope all --limit 100
-uv run gmgn-twitter-intel ops rebuild-token-radar --window 1h --scope matched --limit 100
-uv run gmgn-twitter-intel ops rebuild-token-radar --window 24h --scope all --limit 100
-uv run gmgn-twitter-intel ops rebuild-token-radar --window 24h --scope matched --limit 100
+uv run parallax ops rebuild-token-radar --window 1h --scope all --limit 100
+uv run parallax ops rebuild-token-radar --window 1h --scope matched --limit 100
+uv run parallax ops rebuild-token-radar --window 24h --scope all --limit 100
+uv run parallax ops rebuild-token-radar --window 24h --scope matched --limit 100
 ```
 
 Expected: each command reports ready publication state and a generation id.
@@ -1830,7 +1830,7 @@ no dirty last_error contains selected-row hydration
 Run:
 
 ```bash
-rg -n "payload_hash changed during selected-row hydration|latest_snapshot_audit_rows|load_target_feature_payloads_for_ranked_keys|rebuild_rank_inputs_full|list_rank_input_rebuild_keys|stale_rank_input_count|rank_input_readiness_for_work_items|_patch_hydrated_rank_row|token_radar_projection_coverage|token_radar_rank_history|token_radar_snapshot_audit|side_effect_status|:claimed:" src/gmgn_twitter_intel/app src/gmgn_twitter_intel/domains
+rg -n "payload_hash changed during selected-row hydration|latest_snapshot_audit_rows|load_target_feature_payloads_for_ranked_keys|rebuild_rank_inputs_full|list_rank_input_rebuild_keys|stale_rank_input_count|rank_input_readiness_for_work_items|_patch_hydrated_rank_row|token_radar_projection_coverage|token_radar_rank_history|token_radar_snapshot_audit|side_effect_status|:claimed:" src/parallax/app src/parallax/domains
 ```
 
 Expected: no matches.

@@ -3,9 +3,9 @@ import json
 import unittest
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
-from gmgn_twitter_intel.domains.ingestion.interfaces import IngestedEvent
-from gmgn_twitter_intel.domains.ingestion.runtime.collector_service import CollectorService
+from parallax.app.runtime.worker_result import WorkerResult
+from parallax.domains.ingestion.interfaces import IngestedEvent
+from parallax.domains.ingestion.runtime.collector_service import CollectorService
 
 
 class MemoryStore:

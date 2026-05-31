@@ -31,7 +31,7 @@ Known-failing baseline tests:
 
 ### Storage / migrations
 
-- Create `src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0076_macro_views.py`.
+- Create `src/parallax/platform/db/alembic/versions/20260521_0076_macro_views.py`.
   ```sql
   CREATE TABLE IF NOT EXISTS macro_observations (
     observation_id TEXT PRIMARY KEY,
@@ -71,46 +71,46 @@ Known-failing baseline tests:
 
 ### Backend domain
 
-- Create `src/gmgn_twitter_intel/domains/macro_intel/__init__.py`.
-- Create `src/gmgn_twitter_intel/domains/macro_intel/_constants.py`.
+- Create `src/parallax/domains/macro_intel/__init__.py`.
+- Create `src/parallax/domains/macro_intel/_constants.py`.
   - Define `MACRO_VIEW_PROJECTION_VERSION = "macro_regime_v1"`.
-- Create `src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md`.
+- Create `src/parallax/domains/macro_intel/ARCHITECTURE.md`.
   - Declare `macro_observations` as facts and `macro_view_snapshots` as a read model written only by `MacroViewProjectionWorker`.
-- Create `src/gmgn_twitter_intel/domains/macro_intel/services/macro_regime_engine.py`.
+- Create `src/parallax/domains/macro_intel/services/macro_regime_engine.py`.
   - Function: `build_macro_view_snapshot(observations: Sequence[Mapping[str, Any]], *, computed_at_ms: int) -> dict[str, Any]`.
   - Compute liquidity, rates, volatility, credit, and cross-asset panels from latest observations.
   - Emit explicit `data_gaps` when required series are missing.
   - Keep component scores transparent under `panels_json`.
-- Create `src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py`.
+- Create `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`.
   - Methods: `upsert_observation(observation: Mapping[str, Any])`, `latest_observations(series_keys: Sequence[str] | None = None)`, `insert_snapshot(snapshot: Mapping[str, Any])`, `latest_snapshot()`.
-- Create `src/gmgn_twitter_intel/domains/macro_intel/runtime/macro_view_projection_worker.py`.
+- Create `src/parallax/domains/macro_intel/runtime/macro_view_projection_worker.py`.
   - Subclass `WorkerBase`; `run_once_sync()` reads latest observations, builds a snapshot, inserts it, and returns `WorkerResult(processed=1, notes={"projection_version": "macro_regime_v1", "status": snapshot["status"]})`.
 
 ### Runtime wiring
 
-- Modify `src/gmgn_twitter_intel/app/runtime/repository_session.py`.
+- Modify `src/parallax/app/runtime/repository_session.py`.
   - Import `MacroIntelRepository`.
   - Add `macro_intel: MacroIntelRepository` to `RepositorySession`.
   - Instantiate `macro_intel=MacroIntelRepository(conn)`.
-- Modify `src/gmgn_twitter_intel/platform/config/settings.py`.
+- Modify `src/parallax/platform/config/settings.py`.
   - Add `MacroViewProjectionWorkerSettings(PerWorkerSettings)` with `interval_seconds=300`, `batch_size=250`, `statement_timeout_seconds=30`, `advisory_lock_key=2026052109`.
   - Add `macro_view_projection` to `WorkersSettings`.
   - Add default workers YAML block for `macro_view_projection`.
-- Modify `src/gmgn_twitter_intel/app/runtime/worker_registry.py`.
+- Modify `src/parallax/app/runtime/worker_registry.py`.
   - Add canonical worker key/class `macro_view_projection`.
   - Set start priority after CEX board and before Pulse.
-- Create `src/gmgn_twitter_intel/app/runtime/worker_factories/macro_intel.py`.
+- Create `src/parallax/app/runtime/worker_factories/macro_intel.py`.
   - Own `WORKER_KEYS = frozenset({"macro_view_projection"})`.
   - Construct `MacroViewProjectionWorker` when enabled.
-- Modify `src/gmgn_twitter_intel/app/runtime/worker_factories/__init__.py`.
+- Modify `src/parallax/app/runtime/worker_factories/__init__.py`.
   - Register the macro factory in `worker_factory_specs()`.
 
 ### API
 
-- Create `src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py`.
+- Create `src/parallax/app/surfaces/api/routes_macro.py`.
   - `router = APIRouter()`.
   - `GET /macro` authenticates with `_authenticated_runtime`, reads `repos.macro_intel.latest_snapshot()`, and returns a stable data-gap payload when no snapshot exists.
-- Modify `src/gmgn_twitter_intel/app/surfaces/api/http.py`.
+- Modify `src/parallax/app/surfaces/api/http.py`.
   - Include `routes_macro.router`.
 
 ### Frontend

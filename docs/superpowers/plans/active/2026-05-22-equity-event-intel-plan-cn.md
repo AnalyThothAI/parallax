@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a production-shaped `equity_event_intel` domain plus `/earnings` UI so Nasdaq/US tech earnings, SEC filings, company releases, expected events, cited briefs, and event feed read models live inside the current `gmgn-twitter-intel` Kappa/CQRS runtime.
+**Goal:** Add a production-shaped `equity_event_intel` domain plus `/earnings` UI so Nasdaq/US tech earnings, SEC filings, company releases, expected events, cited briefs, and event feed read models live inside the current `parallax` Kappa/CQRS runtime.
 
 **Architecture:** Build a separate bounded context that mirrors News Intel's facts -> process -> story -> brief -> page projection chain without sharing News tables. V1 uses official SEC submissions, config-backed expected events, and optional company IR RSS as provider inputs; all user-facing rows come from PostgreSQL facts/read models, while API and frontend remain read-only.
 
@@ -52,10 +52,10 @@ The first slice must already be useful with raw official events. The product sho
 - [ ] Confirm real runtime config paths before any live-data command:
 
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
 
-  Expected: `config_path` and `workers_config_path` point under `~/.gmgn-twitter-intel/`. Do not print secrets.
+  Expected: `config_path` and `workers_config_path` point under `~/.parallax/`. Do not print secrets.
 
 - [ ] Run baseline architecture and contract checks:
 
@@ -71,50 +71,50 @@ The first slice must already be useful with raw official events. The product sho
 
 ### Backend Domain Files
 
-- Create `src/gmgn_twitter_intel/domains/equity_event_intel/__init__.py`: package marker.
-- Create `src/gmgn_twitter_intel/domains/equity_event_intel/ARCHITECTURE.md`: local domain truth/read-model/writer map.
-- Create `src/gmgn_twitter_intel/domains/equity_event_intel/_constants.py`: projection, policy, prompt, validator versions.
-- Create `src/gmgn_twitter_intel/domains/equity_event_intel/types.py`: typed source configs, normalized documents, expected events, event/fact/page payloads.
-- Create `src/gmgn_twitter_intel/domains/equity_event_intel/providers.py`: pure Protocol boundaries for document/calendar/IR feed providers and brief provider.
-- Create `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py`: all SQL reads/writes for the new domain.
-- Create `src/gmgn_twitter_intel/domains/equity_event_intel/queries/equity_event_query.py`: read-only API query facade.
-- Create `src/gmgn_twitter_intel/domains/equity_event_intel/services/source_reconcile.py`: config/universe/expected-event reconcile payload builders.
-- Create `src/gmgn_twitter_intel/domains/equity_event_intel/services/sec_submission_normalizer.py`: SEC submissions JSON -> normalized document rows.
-- Create `src/gmgn_twitter_intel/domains/equity_event_intel/services/ir_feed_normalizer.py`: RSS/Atom entry -> normalized company document rows.
-- Create `src/gmgn_twitter_intel/domains/equity_event_intel/services/company_identity.py`: canonical company identity lookup and validation.
-- Create `src/gmgn_twitter_intel/domains/equity_event_intel/services/event_classifier.py`: document -> canonical company event.
-- Create `src/gmgn_twitter_intel/domains/equity_event_intel/services/fact_candidates.py`: deterministic source-span and fact candidate extraction for V1.
-- Create `src/gmgn_twitter_intel/domains/equity_event_intel/services/story_grouping.py`: deterministic continuity grouping.
-- Create `src/gmgn_twitter_intel/domains/equity_event_intel/services/page_projection.py`: event/calendar/company timeline read-model builders.
-- Create `src/gmgn_twitter_intel/domains/equity_event_intel/services/brief_input.py`: bounded story/event packet builder.
-- Create `src/gmgn_twitter_intel/domains/equity_event_intel/services/brief_runtime.py`: AgentExecutionGateway stage builder.
-- Create `src/gmgn_twitter_intel/domains/equity_event_intel/services/brief_validation.py`: validate cited brief JSON and evidence references.
-- Create `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_source_reconcile_worker.py`.
-- Create `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_fetch_worker.py`.
-- Create `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_process_worker.py`.
-- Create `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_story_projection_worker.py`.
-- Create `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_brief_worker.py`.
-- Create `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_page_projection_worker.py`.
-- Create `src/gmgn_twitter_intel/domains/equity_event_intel/prompts/equity_event_brief.md`.
+- Create `src/parallax/domains/equity_event_intel/__init__.py`: package marker.
+- Create `src/parallax/domains/equity_event_intel/ARCHITECTURE.md`: local domain truth/read-model/writer map.
+- Create `src/parallax/domains/equity_event_intel/_constants.py`: projection, policy, prompt, validator versions.
+- Create `src/parallax/domains/equity_event_intel/types.py`: typed source configs, normalized documents, expected events, event/fact/page payloads.
+- Create `src/parallax/domains/equity_event_intel/providers.py`: pure Protocol boundaries for document/calendar/IR feed providers and brief provider.
+- Create `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py`: all SQL reads/writes for the new domain.
+- Create `src/parallax/domains/equity_event_intel/queries/equity_event_query.py`: read-only API query facade.
+- Create `src/parallax/domains/equity_event_intel/services/source_reconcile.py`: config/universe/expected-event reconcile payload builders.
+- Create `src/parallax/domains/equity_event_intel/services/sec_submission_normalizer.py`: SEC submissions JSON -> normalized document rows.
+- Create `src/parallax/domains/equity_event_intel/services/ir_feed_normalizer.py`: RSS/Atom entry -> normalized company document rows.
+- Create `src/parallax/domains/equity_event_intel/services/company_identity.py`: canonical company identity lookup and validation.
+- Create `src/parallax/domains/equity_event_intel/services/event_classifier.py`: document -> canonical company event.
+- Create `src/parallax/domains/equity_event_intel/services/fact_candidates.py`: deterministic source-span and fact candidate extraction for V1.
+- Create `src/parallax/domains/equity_event_intel/services/story_grouping.py`: deterministic continuity grouping.
+- Create `src/parallax/domains/equity_event_intel/services/page_projection.py`: event/calendar/company timeline read-model builders.
+- Create `src/parallax/domains/equity_event_intel/services/brief_input.py`: bounded story/event packet builder.
+- Create `src/parallax/domains/equity_event_intel/services/brief_runtime.py`: AgentExecutionGateway stage builder.
+- Create `src/parallax/domains/equity_event_intel/services/brief_validation.py`: validate cited brief JSON and evidence references.
+- Create `src/parallax/domains/equity_event_intel/runtime/equity_event_source_reconcile_worker.py`.
+- Create `src/parallax/domains/equity_event_intel/runtime/equity_event_fetch_worker.py`.
+- Create `src/parallax/domains/equity_event_intel/runtime/equity_event_process_worker.py`.
+- Create `src/parallax/domains/equity_event_intel/runtime/equity_event_story_projection_worker.py`.
+- Create `src/parallax/domains/equity_event_intel/runtime/equity_event_brief_worker.py`.
+- Create `src/parallax/domains/equity_event_intel/runtime/equity_event_page_projection_worker.py`.
+- Create `src/parallax/domains/equity_event_intel/prompts/equity_event_brief.md`.
 
 ### Backend Runtime Files
 
-- Create `src/gmgn_twitter_intel/platform/db/alembic/versions/20260522_0081_equity_event_intel.py`. If another migration lands first, use the next numeric suffix and set `down_revision` to the actual latest migration.
-- Modify `src/gmgn_twitter_intel/app/runtime/repository_session.py`: add `EquityEventRepository` as `repos.equity_events`.
-- Modify `src/gmgn_twitter_intel/app/runtime/worker_registry.py`: add six canonical worker keys and start priorities.
-- Create `src/gmgn_twitter_intel/app/runtime/worker_factories/equity_event_intel.py`.
-- Modify `src/gmgn_twitter_intel/app/runtime/worker_factories/__init__.py`: include the new factory spec.
-- Modify `src/gmgn_twitter_intel/app/runtime/wake_bus.py`: add equity event wake notification helpers.
-- Modify `src/gmgn_twitter_intel/app/runtime/provider_wiring/types.py`: add `EquityEventIntelProviders`.
-- Create `src/gmgn_twitter_intel/app/runtime/provider_wiring/equity_events.py`: wire SEC, IR feed, calendar, and brief providers.
-- Modify `src/gmgn_twitter_intel/app/runtime/provider_wiring/__init__.py`: include provider bundle and OpenAI brief provider.
-- Modify `src/gmgn_twitter_intel/app/runtime/provider_wiring/openai.py`: add `openai_equity_event_brief_provider`.
-- Create `src/gmgn_twitter_intel/integrations/equity_events/sec_edgar_client.py`: bounded official SEC client using `httpx`.
-- Modify `src/gmgn_twitter_intel/platform/config/settings.py`: add application config, worker settings, defaults, validation, agent lane.
-- Create `src/gmgn_twitter_intel/app/surfaces/api/routes_equity_events.py`.
-- Modify `src/gmgn_twitter_intel/app/surfaces/api/http.py`: include equity events router.
-- Modify `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`: add response envelope schemas.
-- Modify `src/gmgn_twitter_intel/app/runtime/app.py`: add SPA fallback routes for `/earnings`.
+- Create `src/parallax/platform/db/alembic/versions/20260522_0081_equity_event_intel.py`. If another migration lands first, use the next numeric suffix and set `down_revision` to the actual latest migration.
+- Modify `src/parallax/app/runtime/repository_session.py`: add `EquityEventRepository` as `repos.equity_events`.
+- Modify `src/parallax/app/runtime/worker_registry.py`: add six canonical worker keys and start priorities.
+- Create `src/parallax/app/runtime/worker_factories/equity_event_intel.py`.
+- Modify `src/parallax/app/runtime/worker_factories/__init__.py`: include the new factory spec.
+- Modify `src/parallax/app/runtime/wake_bus.py`: add equity event wake notification helpers.
+- Modify `src/parallax/app/runtime/provider_wiring/types.py`: add `EquityEventIntelProviders`.
+- Create `src/parallax/app/runtime/provider_wiring/equity_events.py`: wire SEC, IR feed, calendar, and brief providers.
+- Modify `src/parallax/app/runtime/provider_wiring/__init__.py`: include provider bundle and OpenAI brief provider.
+- Modify `src/parallax/app/runtime/provider_wiring/openai.py`: add `openai_equity_event_brief_provider`.
+- Create `src/parallax/integrations/equity_events/sec_edgar_client.py`: bounded official SEC client using `httpx`.
+- Modify `src/parallax/platform/config/settings.py`: add application config, worker settings, defaults, validation, agent lane.
+- Create `src/parallax/app/surfaces/api/routes_equity_events.py`.
+- Modify `src/parallax/app/surfaces/api/http.py`: include equity events router.
+- Modify `src/parallax/app/surfaces/api/schemas.py`: add response envelope schemas.
+- Modify `src/parallax/app/runtime/app.py`: add SPA fallback routes for `/earnings`.
 
 ### Frontend Files
 
@@ -183,12 +183,12 @@ If this collides with existing workers, keep relative order and use free numeric
 ## Task 1: Schema, Domain Skeleton, And Repository Session
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260522_0081_equity_event_intel.py`
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/__init__.py`
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/_constants.py`
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/types.py`
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/repository_session.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260522_0081_equity_event_intel.py`
+- Create: `src/parallax/domains/equity_event_intel/__init__.py`
+- Create: `src/parallax/domains/equity_event_intel/_constants.py`
+- Create: `src/parallax/domains/equity_event_intel/types.py`
+- Create: `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py`
+- Modify: `src/parallax/app/runtime/repository_session.py`
 - Test: `tests/integration/test_equity_event_repository.py`
 - Test: `tests/unit/test_postgres_schema.py`
 
@@ -199,7 +199,7 @@ If this collides with existing workers, keep relative order and use free numeric
   ```python
   from __future__ import annotations
 
-  from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
+  from parallax.app.runtime.repository_session import repositories_for_connection
 
 
   NOW_MS = 1_765_900_000_000
@@ -388,7 +388,7 @@ If this collides with existing workers, keep relative order and use free numeric
 
 - [ ] **Step 4: Add constants and typed payloads**
 
-  `src/gmgn_twitter_intel/domains/equity_event_intel/_constants.py`:
+  `src/parallax/domains/equity_event_intel/_constants.py`:
 
   ```python
   EQUITY_EVENT_STORY_POLICY_VERSION = "equity_event_story_grouping_v1"
@@ -434,13 +434,13 @@ If this collides with existing workers, keep relative order and use free numeric
 ## Task 2: Settings, Provider Protocols, And Provider Wiring
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/providers.py`
-- Create: `src/gmgn_twitter_intel/integrations/equity_events/sec_edgar_client.py`
-- Create: `src/gmgn_twitter_intel/app/runtime/provider_wiring/equity_events.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/provider_wiring/types.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/provider_wiring/__init__.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/provider_wiring/openai.py`
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
+- Create: `src/parallax/domains/equity_event_intel/providers.py`
+- Create: `src/parallax/integrations/equity_events/sec_edgar_client.py`
+- Create: `src/parallax/app/runtime/provider_wiring/equity_events.py`
+- Modify: `src/parallax/app/runtime/provider_wiring/types.py`
+- Modify: `src/parallax/app/runtime/provider_wiring/__init__.py`
+- Modify: `src/parallax/app/runtime/provider_wiring/openai.py`
+- Modify: `src/parallax/platform/config/settings.py`
 - Test: `tests/unit/test_worker_settings.py`
 - Test: `tests/unit/test_equity_event_provider_wiring.py`
 
@@ -480,8 +480,8 @@ If this collides with existing workers, keep relative order and use free numeric
 
   import pytest
 
-  from gmgn_twitter_intel.app.runtime import providers_wiring
-  from gmgn_twitter_intel.platform.config.settings import Settings
+  from parallax.app.runtime import providers_wiring
+  from parallax.platform.config.settings import Settings
 
 
   def test_equity_event_provider_wiring_is_disabled_by_default() -> None:
@@ -652,13 +652,13 @@ If this collides with existing workers, keep relative order and use free numeric
 ## Task 3: Source Reconcile And Fetch Workers
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/services/source_reconcile.py`
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/services/sec_submission_normalizer.py`
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/services/ir_feed_normalizer.py`
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_source_reconcile_worker.py`
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_fetch_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/wake_bus.py`
+- Create: `src/parallax/domains/equity_event_intel/services/source_reconcile.py`
+- Create: `src/parallax/domains/equity_event_intel/services/sec_submission_normalizer.py`
+- Create: `src/parallax/domains/equity_event_intel/services/ir_feed_normalizer.py`
+- Create: `src/parallax/domains/equity_event_intel/runtime/equity_event_source_reconcile_worker.py`
+- Create: `src/parallax/domains/equity_event_intel/runtime/equity_event_fetch_worker.py`
+- Modify: `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py`
+- Modify: `src/parallax/app/runtime/wake_bus.py`
 - Test: `tests/unit/domains/equity_event_intel/test_sec_submission_normalizer.py`
 - Test: `tests/integration/test_equity_event_workers.py`
 
@@ -667,7 +667,7 @@ If this collides with existing workers, keep relative order and use free numeric
   Add:
 
   ```python
-  from gmgn_twitter_intel.domains.equity_event_intel.services.sec_submission_normalizer import (
+  from parallax.domains.equity_event_intel.services.sec_submission_normalizer import (
       normalize_sec_submission_documents,
   )
 
@@ -790,13 +790,13 @@ If this collides with existing workers, keep relative order and use free numeric
 ## Task 4: Event Processing, Fact Candidates, And Story Projection
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/services/company_identity.py`
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/services/event_classifier.py`
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/services/fact_candidates.py`
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/services/story_grouping.py`
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_process_worker.py`
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_story_projection_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py`
+- Create: `src/parallax/domains/equity_event_intel/services/company_identity.py`
+- Create: `src/parallax/domains/equity_event_intel/services/event_classifier.py`
+- Create: `src/parallax/domains/equity_event_intel/services/fact_candidates.py`
+- Create: `src/parallax/domains/equity_event_intel/services/story_grouping.py`
+- Create: `src/parallax/domains/equity_event_intel/runtime/equity_event_process_worker.py`
+- Create: `src/parallax/domains/equity_event_intel/runtime/equity_event_story_projection_worker.py`
+- Modify: `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py`
 - Test: `tests/unit/domains/equity_event_intel/test_event_classifier.py`
 - Test: `tests/unit/domains/equity_event_intel/test_fact_candidates.py`
 - Test: `tests/unit/domains/equity_event_intel/test_story_grouping.py`
@@ -885,9 +885,9 @@ If this collides with existing workers, keep relative order and use free numeric
 ## Task 5: Page, Calendar, Alert, And Company Timeline Projections
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/services/page_projection.py`
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_page_projection_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py`
+- Create: `src/parallax/domains/equity_event_intel/services/page_projection.py`
+- Create: `src/parallax/domains/equity_event_intel/runtime/equity_event_page_projection_worker.py`
+- Modify: `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py`
 - Test: `tests/unit/domains/equity_event_intel/test_page_projection.py`
 - Test: `tests/integration/test_equity_event_workers.py`
 
@@ -970,9 +970,9 @@ If this collides with existing workers, keep relative order and use free numeric
 ## Task 6: Runtime Worker Registry And Architecture Guards
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_registry.py`
-- Create: `src/gmgn_twitter_intel/app/runtime/worker_factories/equity_event_intel.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_factories/__init__.py`
+- Modify: `src/parallax/app/runtime/worker_registry.py`
+- Create: `src/parallax/app/runtime/worker_factories/equity_event_intel.py`
+- Modify: `src/parallax/app/runtime/worker_factories/__init__.py`
 - Modify: `tests/architecture/test_src_domain_architecture.py`
 - Modify: `tests/architecture/test_worker_runtime_contracts.py`
 - Modify: `docs/WORKERS.md`
@@ -1051,10 +1051,10 @@ If this collides with existing workers, keep relative order and use free numeric
 ## Task 7: API Read Model Routes And Public Contracts
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/queries/equity_event_query.py`
-- Create: `src/gmgn_twitter_intel/app/surfaces/api/routes_equity_events.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/http.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
+- Create: `src/parallax/domains/equity_event_intel/queries/equity_event_query.py`
+- Create: `src/parallax/app/surfaces/api/routes_equity_events.py`
+- Modify: `src/parallax/app/surfaces/api/http.py`
+- Modify: `src/parallax/app/surfaces/api/schemas.py`
 - Modify: `docs/CONTRACTS.md`
 - Test: `tests/unit/test_api_equity_events_contract.py`
 - Test: `tests/contract/test_openapi_drift.py`
@@ -1157,13 +1157,13 @@ If this collides with existing workers, keep relative order and use free numeric
 ## Task 8: Cited Agent Brief Worker
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/prompts/equity_event_brief.md`
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/services/brief_input.py`
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/services/brief_runtime.py`
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/services/brief_validation.py`
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_brief_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/provider_wiring/openai.py`
+- Create: `src/parallax/domains/equity_event_intel/prompts/equity_event_brief.md`
+- Create: `src/parallax/domains/equity_event_intel/services/brief_input.py`
+- Create: `src/parallax/domains/equity_event_intel/services/brief_runtime.py`
+- Create: `src/parallax/domains/equity_event_intel/services/brief_validation.py`
+- Create: `src/parallax/domains/equity_event_intel/runtime/equity_event_brief_worker.py`
+- Modify: `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py`
+- Modify: `src/parallax/app/runtime/provider_wiring/openai.py`
 - Test: `tests/unit/domains/equity_event_intel/test_brief_input.py`
 - Test: `tests/unit/domains/equity_event_intel/test_brief_validation.py`
 - Test: `tests/integration/test_equity_event_workers.py`
@@ -1348,7 +1348,7 @@ If this collides with existing workers, keep relative order and use free numeric
 ## Task 10: Static SPA Mount And Frontend Build
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/app/runtime/app.py`
+- Modify: `src/parallax/app/runtime/app.py`
 - Test: `tests/integration/test_api_static.py`
 - Test: `web/tests/e2e/golden-paths/mobile-route-cold-load.spec.ts`
 
@@ -1391,7 +1391,7 @@ If this collides with existing workers, keep relative order and use free numeric
 - Modify: `docs/WORKERS.md`
 - Modify: `docs/CONTRACTS.md`
 - Modify: `docs/FRONTEND.md`
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/ARCHITECTURE.md`
+- Create: `src/parallax/domains/equity_event_intel/ARCHITECTURE.md`
 - Modify: `docs/generated/openapi.json`
 - Modify: `web/src/lib/types/openapi.ts`
 
@@ -1484,15 +1484,15 @@ If this collides with existing workers, keep relative order and use free numeric
 - [ ] **Step 5: Boundary grep checks**
 
   ```bash
-  rg -n "token_radar_rows|pulse_candidates|news_items|news_page_rows|market_ticks" src/gmgn_twitter_intel/domains/equity_event_intel
-  rg -n "httpx|feedparser|SecEdgarClient|EquityEventFetchWorker|classify_equity_event|build_fact_candidates" src/gmgn_twitter_intel/app/surfaces/api/routes_equity_events.py
+  rg -n "token_radar_rows|pulse_candidates|news_items|news_page_rows|market_ticks" src/parallax/domains/equity_event_intel
+  rg -n "httpx|feedparser|SecEdgarClient|EquityEventFetchWorker|classify_equity_event|build_fact_candidates" src/parallax/app/surfaces/api/routes_equity_events.py
   ```
 
   Expected: first command has no matches except documentation comments if the boundary test allowlist explicitly permits them; second command has no matches.
 
 ## Rollout Notes
 
-- Keep `equity_event_intel.enabled` default `false`. Operators opt in by adding company configs, CIKs, expected events, and `sec_user_agent` under `~/.gmgn-twitter-intel/config.yaml`.
+- Keep `equity_event_intel.enabled` default `false`. Operators opt in by adding company configs, CIKs, expected events, and `sec_user_agent` under `~/.parallax/config.yaml`.
 - The first operational universe should be small: `AAPL`, `MSFT`, `NVDA`, `AMZN`, `META`, `GOOGL`, `TSLA`, `AVGO`, `AMD`, `NFLX`, `CRM`, `ORCL`, `ADBE`, `INTC`, `MU`, `PANW`, `CRWD`, `SNOW`, `PLTR`.
 - Missing CIK should not crash reconcile. The source row can be absent or disabled with a source-status reason.
 - Missing `sec_user_agent` should prevent SEC network calls and surface a redacted source status.

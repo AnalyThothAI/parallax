@@ -4,13 +4,13 @@ Router for coding agents (Codex, Cursor, generic LLM tooling). Project-wide rule
 
 ## What this is
 
-`Parallax Market Research System` (legacy runtime package / CLI: `gmgn-twitter-intel`): a single Python service that ingests social, news, macro, DEX/CEX market, and provider evidence, extracts crypto entities, scores and audits research signals, and serves results over HTTP / WebSocket / CLI to a React operator console. GMGN's anonymous public WebSocket is one source adapter, not the product boundary. One PostgreSQL store. See `docs/ARCHITECTURE.md`.
+`Parallax Market Research System`: a single Python service and CLI named `parallax` that ingests social, news, macro, DEX/CEX market, and provider evidence, extracts crypto entities, scores and audits research signals, and serves results over HTTP / WebSocket / CLI to a React operator console. GMGN's anonymous public WebSocket is one source adapter, not the product boundary. One PostgreSQL store. See `docs/ARCHITECTURE.md`.
 
 The pipeline is Kappa/CQRS: PostgreSQL material facts (`events`, `token_intents`, `token_intent_resolutions`, `asset_identity_*`, `market_ticks`, `enriched_events`) are the only business truth. Derived read models (`token_radar_rows`, `pulse_candidates`, ...) each have exactly one runtime writer and are rebuildable. Current read models must use stable product/window keys, never run/generation/attempt/timestamp/UUID identity; unchanged projections must write zero serving rows. `NOTIFY` is a wake hint; every listener re-reads DB and runs a bounded `interval_seconds` catch-up. Provider raw frames are inputs, not facts.
 
 ## Runtime config for real data
 
-Live-data runs use the operator-owned files in `~/.gmgn-twitter-intel/`: `config.yaml` for application/provider/credential/storage settings and `workers.yaml` for worker runtime knobs. Do not assume repository fixtures, example YAML, or `.env` files are the active runtime config. Before debugging provider data, Token Radar rows, asset profiles, or missing icons against real data, run `uv run gmgn-twitter-intel config` and confirm the reported `config_path` / `workers_config_path` point at `~/.gmgn-twitter-intel/`. Never print or copy secret values; report only redacted booleans, paths, and diagnostic command results.
+Live-data runs use the operator-owned files in `~/.parallax/`: `config.yaml` for application/provider/credential/storage settings and `workers.yaml` for worker runtime knobs. Do not assume repository fixtures, example YAML, or `.env` files are the active runtime config. Before debugging provider data, Token Radar rows, asset profiles, or missing icons against real data, run `uv run parallax config` and confirm the reported `config_path` / `workers_config_path` point at `~/.parallax/`. Never print or copy secret values; report only redacted booleans, paths, and diagnostic command results.
 
 ## Frontend guardrails
 
@@ -32,10 +32,10 @@ Frontend CSS is harness-constrained, not convention-only. Before changing `web/s
 | PostgreSQL performance & queue diagnostics | `docs/references/POSTGRES_PERFORMANCE.md` |
 | Worker flow, lifecycle, state-machine debugging, and review checklist | `docs/WORKER_FLOW.md` |
 | Cross-domain worker inventory, runtime ownership, and worker best practices | `docs/WORKERS.md` |
-| Module architecture maps | `src/gmgn_twitter_intel/domains/<domain>/ARCHITECTURE.md`; discover current maps with `find src/gmgn_twitter_intel/domains -name ARCHITECTURE.md` |
+| Module architecture maps | `src/parallax/domains/<domain>/ARCHITECTURE.md`; discover current maps with `find src/parallax/domains -name ARCHITECTURE.md` |
 | Active / done specs & plans | `docs/superpowers/{specs,plans}/{active,completed}/` are planning artefacts; verify against code and canonical docs before treating an old active file as current truth |
 | External references & papers | `docs/references/` |
 | Auto-generated artefacts | `docs/generated/` |
 | Tech debt log | `docs/TECH_DEBT.md` |
 
-CLI surface: `uv run gmgn-twitter-intel --help` is the source of truth (snapshot at `docs/generated/cli-help.md`).
+CLI surface: `uv run parallax --help` is the source of truth (snapshot at `docs/generated/cli-help.md`).

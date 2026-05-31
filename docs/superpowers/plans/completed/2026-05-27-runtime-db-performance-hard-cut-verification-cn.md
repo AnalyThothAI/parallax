@@ -58,8 +58,8 @@ Runtime Macro no-compat scan:
 
 ```bash
 rg -n "macro_observation_series_active_generation|macro_observation_series_generations|generation_id = rows.generation_id|_generation_id\(" \
-  src/gmgn_twitter_intel/domains/macro_intel \
-  src/gmgn_twitter_intel/app/runtime \
+  src/parallax/domains/macro_intel \
+  src/parallax/app/runtime \
   docs/WORKERS.md \
   docs/ARCHITECTURE.md \
   docs/RELIABILITY.md \

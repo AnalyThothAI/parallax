@@ -7,15 +7,15 @@ from typing import Any
 
 import pytest
 
-from gmgn_twitter_intel.app.runtime.db_pool_bundle import DBPoolBundle
-from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
-from gmgn_twitter_intel.domains.asset_market.services.market_tick_current_rebuild import (
+from parallax.app.runtime.db_pool_bundle import DBPoolBundle
+from parallax.app.runtime.repository_session import repositories_for_connection
+from parallax.domains.asset_market.services.market_tick_current_rebuild import (
     MarketTickCurrentRebuildService,
 )
-from gmgn_twitter_intel.domains.asset_market.services.market_tick_persistence import MarketTickPersistenceService
-from gmgn_twitter_intel.domains.asset_market.types import MarketTick, market_tick_id
-from gmgn_twitter_intel.platform.db import postgres_client
-from gmgn_twitter_intel.platform.db.postgres_client import create_pool
+from parallax.domains.asset_market.services.market_tick_persistence import MarketTickPersistenceService
+from parallax.domains.asset_market.types import MarketTick, market_tick_id
+from parallax.platform.db import postgres_client
+from parallax.platform.db.postgres_client import create_pool
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import test_postgres_dsn as postgres_test_dsn
 

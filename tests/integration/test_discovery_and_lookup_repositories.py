@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.asset_market.repositories.discovery_repository import DiscoveryRepository
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
-from gmgn_twitter_intel.domains.token_intel.repositories.token_intent_lookup_repository import (
+from parallax.domains.asset_market.repositories.discovery_repository import DiscoveryRepository
+from parallax.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
+from parallax.domains.token_intel.repositories.token_intent_lookup_repository import (
     TokenIntentLookupRepository,
 )
 from tests.factories import make_event
@@ -408,7 +408,7 @@ def _insert_event_intent_and_evidence(
     symbol: str = "UPEG",
     received_at_ms: int | None = None,
 ):
-    from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
+    from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
 
     EvidenceRepository(conn).insert_event(
         make_event(event_id, text=f"${symbol}", received_at_ms=received_at_ms),

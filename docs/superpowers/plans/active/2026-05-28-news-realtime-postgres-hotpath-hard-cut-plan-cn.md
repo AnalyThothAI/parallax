@@ -19,7 +19,7 @@
 ## Completion Record
 
 - OpenNews runtime hard-cut completed: active `news_fetch` no longer has WebSocket connect/subscribe/receive/unsubscribe, hybrid mode, or WS fallback.
-- Operator config cutover completed in `~/.gmgn-twitter-intel/config.yaml`; backup: `~/.gmgn-twitter-intel/config.yaml.bak-20260528-news-hard-cut`.
+- Operator config cutover completed in `~/.parallax/config.yaml`; backup: `~/.parallax/config.yaml.bak-20260528-news-hard-cut`.
 - Historical cleanup completed in DB migration `20260528_0118`; live checks show no-start backpressure rows = 0 and OpenNews provider-signal `brief_input` dirty targets = 0.
 - Source-status API timeout found during live verification and fixed with KISS pre-aggregation plus migration `20260528_0119`.
 - Docker image rebuilt and app restarted; live DB health reports `migration_version=20260528_0119`, `expected_migration_version=20260528_0119`.
@@ -60,16 +60,16 @@
 - [ ] Confirm runtime config paths without printing secrets:
 
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
 
-  Expected: `config_path` and `workers_config_path` point at `~/.gmgn-twitter-intel/`; report only paths and redacted credential booleans.
+  Expected: `config_path` and `workers_config_path` point at `~/.parallax/`; report only paths and redacted credential booleans.
 
 - [ ] Record baseline runtime symptoms:
 
   ```bash
   docker compose ps
-  docker compose exec -T app gmgn-twitter-intel db health
+  docker compose exec -T app parallax db health
   python - <<'PY'
   import httpx, json
   data = httpx.get("http://127.0.0.1:8765/readyz", timeout=10, trust_env=False).json()
@@ -93,7 +93,7 @@
 - [ ] Record baseline PostgreSQL evidence:
 
   ```bash
-  docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -P pager=off -c "
+  docker compose exec -T postgres psql -U parallax_app -d parallax -P pager=off -c "
   SELECT queryid, calls, round(total_exec_time::numeric,1) AS total_ms,
          round(mean_exec_time::numeric,2) AS mean_ms,
          shared_blks_read, temp_blks_written,
@@ -107,7 +107,7 @@
 - [ ] Record cleanup target counts:
 
   ```bash
-  docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -P pager=off -c "
+  docker compose exec -T postgres psql -U parallax_app -d parallax -P pager=off -c "
   SELECT count(*) AS total,
          count(*) FILTER (WHERE execution_started=false) AS no_start,
          count(*) FILTER (
@@ -128,7 +128,7 @@
 
 ## File-Level Edits
 
-### `src/gmgn_twitter_intel/integrations/news_feeds/opennews_client.py`
+### `src/parallax/integrations/news_feeds/opennews_client.py`
 
 - Replace `OpenNewsFeedClient` with a REST-only client.
 - Delete imports and constructor args used only by WS:
@@ -227,7 +227,7 @@ Delete these functions entirely:
 
 Keep `_entry_from_params` and `_merge_entry` because REST and historical tests still use the same provider payload normalization semantics.
 
-### `src/gmgn_twitter_intel/platform/config/settings.py`
+### `src/parallax/platform/config/settings.py`
 
 - Remove OpenNews default policy keys `fetch_mode`, `stream_timeout_seconds`, and `max_messages` from the three built-in OpenNews source definitions.
 - Keep only:
@@ -272,7 +272,7 @@ def reject_removed_opennews_websocket_policy(cls, sources: tuple[NewsSourceConfi
 
 If the existing model structure cannot host this validator exactly, implement the same validation at the `NewsIntelConfig` level.
 
-### `src/gmgn_twitter_intel/app/runtime/provider_wiring/news.py`
+### `src/parallax/app/runtime/provider_wiring/news.py`
 
 - Remove the `wss_url` and `connect_timeout_seconds` arguments when constructing `OpenNewsFeedClient`.
 - Final call shape:
@@ -284,12 +284,12 @@ opennews_client=OpenNewsFeedClient(
 )
 ```
 
-### `src/gmgn_twitter_intel/integrations/news_feeds/provider_registry.py`
+### `src/parallax/integrations/news_feeds/provider_registry.py`
 
 - Rename test/doc wording from “websocket client shape” to “opennews client shape”; no runtime behavior should assume WS.
 - `OpenNewsNewsFeedProvider.fetch()` remains a thin wrapper over `OpenNewsFeedClient.fetch()` with `cursor` and `limit`.
 
-### `src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md`
+### `src/parallax/domains/news_intel/ARCHITECTURE.md`
 
 - Replace Wave 2 text:
 
@@ -312,7 +312,7 @@ OpenNews REST and any future OpenNews WS ingest are separate provider inputs.
 `news_fetch` must not open a short-lived websocket as part of a poll cycle.
 ```
 
-### Runtime Operator Config: `~/.gmgn-twitter-intel/config.yaml`
+### Runtime Operator Config: `~/.parallax/config.yaml`
 
 This is an operational edit, not a repository fixture. Before starting the new image, update enabled OpenNews sources:
 
@@ -357,7 +357,7 @@ news_intel:
 Do not print token values. Verify with:
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 ```
 
 Expected: OpenNews token configured boolean is true; removed WS keys are absent.
@@ -366,7 +366,7 @@ Expected: OpenNews token configured boolean is true; removed WS keys are absent.
 
 Create:
 
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0118_news_realtime_postgres_hotpath_hard_cut.py`
+- `src/parallax/platform/db/alembic/versions/20260528_0118_news_realtime_postgres_hotpath_hard_cut.py`
 
 Revision metadata:
 
@@ -493,7 +493,7 @@ Do not run `VACUUM FULL` in migration. Normal `VACUUM (ANALYZE)` for disk reuse 
 
 ## Repository SQL Changes
 
-### `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
+### `src/parallax/domains/news_intel/repositories/news_repository.py`
 
 #### `list_unprocessed_items`
 
@@ -569,7 +569,7 @@ No batch upsert rewrite in this cut; the current top issue is delete path and ta
 
 ## Worker Manifest / Runtime Contract
 
-### `src/gmgn_twitter_intel/app/runtime/worker_manifest.py`
+### `src/parallax/app/runtime/worker_manifest.py`
 
 - Fix `news_page_projection` read-model identity from non-existent `page_id` to actual stable key `row_id`:
 
@@ -791,7 +791,7 @@ Add hard-cut assertions:
 
 ```python
 def test_opennews_runtime_has_no_websocket_short_poll_path() -> None:
-    client = _read("src/gmgn_twitter_intel/integrations/news_feeds/opennews_client.py")
+    client = _read("src/parallax/integrations/news_feeds/opennews_client.py")
     assert "websockets.connect" not in client
     assert "news.subscribe" not in client
     assert "news.unsubscribe" not in client
@@ -800,7 +800,7 @@ def test_opennews_runtime_has_no_websocket_short_poll_path() -> None:
 
 ```python
 def test_news_fetch_docs_do_not_describe_hybrid_opennews() -> None:
-    docs = _read("docs/WORKERS.md") + _read("src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md")
+    docs = _read("docs/WORKERS.md") + _read("src/parallax/domains/news_intel/ARCHITECTURE.md")
     assert "hybrid" not in docs.lower()
     assert "short-lived websocket" not in docs.lower()
 ```
@@ -821,8 +821,8 @@ Verification:
 
 ```bash
 git status --short
-uv run gmgn-twitter-intel config
-docker compose exec -T app gmgn-twitter-intel db health
+uv run parallax config
+docker compose exec -T app parallax db health
 ```
 
 ### Task 2: OpenNews REST-Only Tests
@@ -847,8 +847,8 @@ docker compose exec -T app gmgn-twitter-intel db health
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/integrations/news_feeds/opennews_client.py`
-- Modify: `src/gmgn_twitter_intel/integrations/news_feeds/provider_registry.py`
+- Modify: `src/parallax/integrations/news_feeds/opennews_client.py`
+- Modify: `src/parallax/integrations/news_feeds/provider_registry.py`
 
 - [ ] Delete WS constants, constructor args, connect helpers, subscribe/unsubscribe handling.
 - [ ] Implement REST-only `fetch()`.
@@ -865,8 +865,8 @@ docker compose exec -T app gmgn-twitter-intel db health
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/provider_wiring/news.py`
+- Modify: `src/parallax/platform/config/settings.py`
+- Modify: `src/parallax/app/runtime/provider_wiring/news.py`
 - Modify: `tests/unit/test_settings.py`
 - Modify: `tests/unit/test_bootstrap_worker_runtime_wiring.py`
 
@@ -903,7 +903,7 @@ docker compose exec -T app gmgn-twitter-intel db health
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0118_news_realtime_postgres_hotpath_hard_cut.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260528_0118_news_realtime_postgres_hotpath_hard_cut.py`
 
 - [ ] Add migration metadata.
 - [ ] Add no-start run cleanup.
@@ -922,7 +922,7 @@ docker compose exec -T app gmgn-twitter-intel db health
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
+- Modify: `src/parallax/domains/news_intel/repositories/news_repository.py`
 - Modify: `tests/unit/domains/news_intel/test_news_repository_queries.py`
 - Verify existing integration: `tests/integration/domains/news_intel/test_news_source_quality_repository.py`
 
@@ -941,7 +941,7 @@ docker compose exec -T app gmgn-twitter-intel db health
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_manifest.py`
+- Modify: `src/parallax/app/runtime/worker_manifest.py`
 - Modify: `tests/architecture/test_worker_runtime_contracts.py`
 
 - [ ] Change `news_page_rows` current identity from `page_id` to `row_id`.
@@ -958,7 +958,7 @@ docker compose exec -T app gmgn-twitter-intel db health
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/news_intel/ARCHITECTURE.md`
 - Modify: `docs/WORKERS.md`
 - Modify: `docs/RELIABILITY.md`
 - Modify: `docs/CONTRACTS.md`
@@ -978,17 +978,17 @@ docker compose exec -T app gmgn-twitter-intel db health
 
 ### Task 10: Runtime Config Cutover
 
-**Files:** operator-owned `~/.gmgn-twitter-intel/config.yaml`; do not commit.
+**Files:** operator-owned `~/.parallax/config.yaml`; do not commit.
 
 - [ ] Remove old OpenNews WS keys from operator config.
 - [ ] Disable `opennews-onchain` unless operator confirms live data.
 - [ ] Validate config without printing secrets:
 
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
 
-  Expected: no validation error; paths point at `~/.gmgn-twitter-intel/`.
+  Expected: no validation error; paths point at `~/.parallax/`.
 
 ### Task 11: Full Test Gate
 
@@ -1033,7 +1033,7 @@ docker compose exec -T app gmgn-twitter-intel db health
 - [ ] Confirm migration:
 
   ```bash
-  docker compose exec -T app gmgn-twitter-intel db health
+  docker compose exec -T app parallax db health
   ```
 
   Expected: `migration_version=20260528_0119`, `migration_status=ready`.
@@ -1041,7 +1041,7 @@ docker compose exec -T app gmgn-twitter-intel db health
 - [ ] Confirm OpenNews fetch no longer fails on WS handshake:
 
   ```bash
-  docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -P pager=off -c "
+  docker compose exec -T postgres psql -U parallax_app -d parallax -P pager=off -c "
   SELECT source_id, status, http_status, fetched_count, inserted_count, updated_count,
          duplicate_count, left(coalesce(error,''),180) AS error
   FROM news_fetch_runs
@@ -1054,7 +1054,7 @@ docker compose exec -T app gmgn-twitter-intel db health
 - [ ] Confirm cleanup:
 
   ```bash
-  docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -P pager=off -c "
+  docker compose exec -T postgres psql -U parallax_app -d parallax -P pager=off -c "
   SELECT count(*) AS no_start_backpressure
   FROM news_item_agent_runs
   WHERE execution_started=false
@@ -1075,7 +1075,7 @@ docker compose exec -T app gmgn-twitter-intel db health
 - [ ] Confirm query plans:
 
   ```bash
-  docker compose exec -T postgres psql -U gmgn_app -d gmgn_twitter_intel -P pager=off -c "
+  docker compose exec -T postgres psql -U parallax_app -d parallax -P pager=off -c "
   BEGIN;
   EXPLAIN (ANALYZE, BUFFERS)
   WITH picked AS (
@@ -1113,7 +1113,7 @@ docker compose exec -T app gmgn-twitter-intel db health
 ## Rollout Order
 
 1. Implement and merge code/migration/docs in the feature branch.
-2. Before deploying the new image, update `~/.gmgn-twitter-intel/config.yaml` to remove removed WS keys.
+2. Before deploying the new image, update `~/.parallax/config.yaml` to remove removed WS keys.
 3. Build image.
 4. Run migrations.
 5. Start app.
@@ -1159,7 +1159,7 @@ uv run pytest \
 make check-all
 docker compose build app
 docker compose up -d
-docker compose exec -T app gmgn-twitter-intel db health
+docker compose exec -T app parallax db health
 ```
 
 Post-deploy SQL checks:

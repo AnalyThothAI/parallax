@@ -5,14 +5,14 @@ from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
 
-from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
-from gmgn_twitter_intel.domains.asset_market.repositories.market_tick_current_dirty_target_repository import (
+from parallax.app.runtime.repository_session import repositories_for_connection
+from parallax.domains.asset_market.repositories.market_tick_current_dirty_target_repository import (
     MarketTickCurrentDirtyTargetRepository,
 )
-from gmgn_twitter_intel.domains.asset_market.repositories.market_tick_repository import MarketTickRepository
-from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_poll_worker import MarketTickPollWorker
-from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_stream_worker import MarketTickStreamWorker
-from gmgn_twitter_intel.domains.asset_market.types import MarketTick, MarketTickSourceProvider, market_tick_id
+from parallax.domains.asset_market.repositories.market_tick_repository import MarketTickRepository
+from parallax.domains.asset_market.runtime.market_tick_poll_worker import MarketTickPollWorker
+from parallax.domains.asset_market.runtime.market_tick_stream_worker import MarketTickStreamWorker
+from parallax.domains.asset_market.types import MarketTick, MarketTickSourceProvider, market_tick_id
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 

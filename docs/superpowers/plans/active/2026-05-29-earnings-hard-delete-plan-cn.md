@@ -15,16 +15,16 @@
 ### Create
 
 - `tests/architecture/test_earnings_hard_delete_contracts.py`: absence guard for deleted product/runtime/config/docs references.
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260529_0124_drop_equity_event_intel.py`: destructive schema cleanup.
+- `src/parallax/platform/db/alembic/versions/20260529_0124_drop_equity_event_intel.py`: destructive schema cleanup.
 
 ### Delete
 
-- `src/gmgn_twitter_intel/domains/equity_event_intel/`
-- `src/gmgn_twitter_intel/app/surfaces/api/routes_equity_events.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_factories/equity_event_intel.py`
-- `src/gmgn_twitter_intel/app/runtime/provider_wiring/equity_events.py`
-- `src/gmgn_twitter_intel/integrations/equity_events/`
-- `src/gmgn_twitter_intel/integrations/openai_agents/equity_event_brief_agent_client.py`
+- `src/parallax/domains/equity_event_intel/`
+- `src/parallax/app/surfaces/api/routes_equity_events.py`
+- `src/parallax/app/runtime/worker_factories/equity_event_intel.py`
+- `src/parallax/app/runtime/provider_wiring/equity_events.py`
+- `src/parallax/integrations/equity_events/`
+- `src/parallax/integrations/openai_agents/equity_event_brief_agent_client.py`
 - `web/src/features/equity-events/`
 - `web/src/routes/equity-events.route.tsx`
 - `web/tests/routes/equity-events.route.test.tsx`
@@ -41,7 +41,7 @@
 
 ### Modify
 
-- Backend runtime/API/config: `src/gmgn_twitter_intel/app/runtime/app.py`, `src/gmgn_twitter_intel/app/surfaces/api/http.py`, `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`, `src/gmgn_twitter_intel/app/runtime/repository_session.py`, `src/gmgn_twitter_intel/app/runtime/provider_wiring/__init__.py`, `src/gmgn_twitter_intel/app/runtime/provider_wiring/types.py`, `src/gmgn_twitter_intel/app/runtime/providers_wiring.py`, `src/gmgn_twitter_intel/app/runtime/provider_wiring/openai.py`, `src/gmgn_twitter_intel/app/runtime/worker_factories/__init__.py`, `src/gmgn_twitter_intel/app/runtime/worker_manifest.py`, `src/gmgn_twitter_intel/app/runtime/queue_health.py`, `src/gmgn_twitter_intel/app/runtime/wake_bus.py`, `src/gmgn_twitter_intel/platform/config/settings.py`, `config.example.yaml`.
+- Backend runtime/API/config: `src/parallax/app/runtime/app.py`, `src/parallax/app/surfaces/api/http.py`, `src/parallax/app/surfaces/api/schemas.py`, `src/parallax/app/runtime/repository_session.py`, `src/parallax/app/runtime/provider_wiring/__init__.py`, `src/parallax/app/runtime/provider_wiring/types.py`, `src/parallax/app/runtime/providers_wiring.py`, `src/parallax/app/runtime/provider_wiring/openai.py`, `src/parallax/app/runtime/worker_factories/__init__.py`, `src/parallax/app/runtime/worker_manifest.py`, `src/parallax/app/runtime/queue_health.py`, `src/parallax/app/runtime/wake_bus.py`, `src/parallax/platform/config/settings.py`, `config.example.yaml`.
 - Frontend: `web/src/routes/router.tsx`, `web/src/features/cockpit/ui/appNavigation.ts`, `web/src/shared/routing/paths.ts`, `web/src/shared/query/queryKeys.ts`, `web/src/lib/api/client.ts`, `web/tests/e2e/support/mockApi.ts`, any equity-event fixtures imported by remaining tests.
 - Architecture/unit/integration tests that reference the removed runtime: `tests/architecture/test_src_domain_architecture.py`, `tests/architecture/test_worker_runtime_contracts.py`, `tests/architecture/test_runtime_worker_constraint_hard_cut.py`, `tests/architecture/test_workerspace_runtime_contracts.py`, `tests/architecture/test_projection_worker_idle_cost_contract.py`, `tests/architecture/test_runtime_lifecycle_hard_cut.py`, `tests/architecture/test_runtime_performance_architecture_hard_cut.py`, `tests/architecture/test_token_equity_workerspace_root_fix_contract.py`, `tests/architecture/test_project_structure.py`, `tests/unit/test_worker_settings.py`, `tests/unit/test_providers_wiring.py`, `tests/unit/test_provider_wiring_agent_execution_gateway.py`, `tests/unit/test_bootstrap_worker_runtime_wiring.py`, `tests/unit/test_worker_status.py`, `tests/unit/test_ops_projection_dirty_targets.py`, `tests/unit/test_pulse_agent_routing.py`, `tests/integration/test_api_static.py`, `tests/integration/test_postgres_schema_runtime.py`.
 - Docs/generated: `docs/ARCHITECTURE.md`, `docs/CONTRACTS.md`, `docs/FRONTEND.md`, `docs/WORKERS.md`, `docs/generated/openapi.json`, `web/src/lib/types/openapi.ts`, `docs/generated/db-schema.md` if Postgres schema regeneration is available.
@@ -65,20 +65,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 DELETED_PATHS = (
-    ROOT / "src/gmgn_twitter_intel/domains/equity_event_intel",
-    ROOT / "src/gmgn_twitter_intel/app/surfaces/api/routes_equity_events.py",
-    ROOT / "src/gmgn_twitter_intel/app/runtime/worker_factories/equity_event_intel.py",
-    ROOT / "src/gmgn_twitter_intel/app/runtime/provider_wiring/equity_events.py",
-    ROOT / "src/gmgn_twitter_intel/integrations/equity_events",
-    ROOT / "src/gmgn_twitter_intel/integrations/openai_agents/equity_event_brief_agent_client.py",
+    ROOT / "src/parallax/domains/equity_event_intel",
+    ROOT / "src/parallax/app/surfaces/api/routes_equity_events.py",
+    ROOT / "src/parallax/app/runtime/worker_factories/equity_event_intel.py",
+    ROOT / "src/parallax/app/runtime/provider_wiring/equity_events.py",
+    ROOT / "src/parallax/integrations/equity_events",
+    ROOT / "src/parallax/integrations/openai_agents/equity_event_brief_agent_client.py",
     ROOT / "web/src/features/equity-events",
     ROOT / "web/src/routes/equity-events.route.tsx",
 )
 
 SOURCE_SCAN_ROOTS = (
-    ROOT / "src/gmgn_twitter_intel/app",
-    ROOT / "src/gmgn_twitter_intel/platform",
-    ROOT / "src/gmgn_twitter_intel/integrations",
+    ROOT / "src/parallax/app",
+    ROOT / "src/parallax/platform",
+    ROOT / "src/parallax/integrations",
     ROOT / "web/src",
 )
 
@@ -183,18 +183,18 @@ Expected: commit succeeds. If the implementation branch prefers only passing com
 ### Task 2: Clean Operator Runtime Config Before Schema Removal
 
 **Files:**
-- Modify outside repo: `~/.gmgn-twitter-intel/config.yaml`
-- Modify outside repo: `~/.gmgn-twitter-intel/workers.yaml`
+- Modify outside repo: `~/.parallax/config.yaml`
+- Modify outside repo: `~/.parallax/workers.yaml`
 
 - [ ] **Step 1: Confirm active config paths while old schema still loads**
 
 Run:
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 ```
 
-Expected: command prints `config_path` and `workers_config_path` under `~/.gmgn-twitter-intel/`. Do not copy secret values into notes or commits.
+Expected: command prints `config_path` and `workers_config_path` under `~/.parallax/`. Do not copy secret values into notes or commits.
 
 - [ ] **Step 2: Remove only deleted earnings keys with backups**
 
@@ -209,7 +209,7 @@ from pathlib import Path
 import shutil
 import yaml
 
-home = Path.home() / ".gmgn-twitter-intel"
+home = Path.home() / ".parallax"
 stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 targets = {
     home / "config.yaml": ("equity_event_intel",),
@@ -248,7 +248,7 @@ Expected: prints only paths, removal counts, and backup paths. It must not print
 Run:
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 ```
 
 Expected: PASS with the same config paths. The output should not include `equity_event_intel` or `equity_event_*` worker sections.
@@ -259,18 +259,18 @@ Expected: PASS with the same config paths. The output should not include `equity
 
 **Files:**
 - Delete: backend files listed in File Structure
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/http.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/app.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/repository_session.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/provider_wiring/__init__.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/provider_wiring/types.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/providers_wiring.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/provider_wiring/openai.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_factories/__init__.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_manifest.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/queue_health.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/wake_bus.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
+- Modify: `src/parallax/app/surfaces/api/http.py`
+- Modify: `src/parallax/app/runtime/app.py`
+- Modify: `src/parallax/app/runtime/repository_session.py`
+- Modify: `src/parallax/app/runtime/provider_wiring/__init__.py`
+- Modify: `src/parallax/app/runtime/provider_wiring/types.py`
+- Modify: `src/parallax/app/runtime/providers_wiring.py`
+- Modify: `src/parallax/app/runtime/provider_wiring/openai.py`
+- Modify: `src/parallax/app/runtime/worker_factories/__init__.py`
+- Modify: `src/parallax/app/runtime/worker_manifest.py`
+- Modify: `src/parallax/app/runtime/queue_health.py`
+- Modify: `src/parallax/app/runtime/wake_bus.py`
+- Modify: `src/parallax/app/surfaces/api/schemas.py`
 
 - [ ] **Step 1: Delete backend product-owned files**
 
@@ -278,20 +278,20 @@ Run:
 
 ```bash
 rm -rf \
-  src/gmgn_twitter_intel/domains/equity_event_intel \
-  src/gmgn_twitter_intel/integrations/equity_events
+  src/parallax/domains/equity_event_intel \
+  src/parallax/integrations/equity_events
 rm -f \
-  src/gmgn_twitter_intel/app/surfaces/api/routes_equity_events.py \
-  src/gmgn_twitter_intel/app/runtime/worker_factories/equity_event_intel.py \
-  src/gmgn_twitter_intel/app/runtime/provider_wiring/equity_events.py \
-  src/gmgn_twitter_intel/integrations/openai_agents/equity_event_brief_agent_client.py
+  src/parallax/app/surfaces/api/routes_equity_events.py \
+  src/parallax/app/runtime/worker_factories/equity_event_intel.py \
+  src/parallax/app/runtime/provider_wiring/equity_events.py \
+  src/parallax/integrations/openai_agents/equity_event_brief_agent_client.py
 ```
 
 Expected: files/directories are removed.
 
 - [ ] **Step 2: Remove API route registration**
 
-Edit `src/gmgn_twitter_intel/app/surfaces/api/http.py` so the import block and router include list no longer mention `routes_equity_events`. The final include sequence should keep the remaining routes:
+Edit `src/parallax/app/surfaces/api/http.py` so the import block and router include list no longer mention `routes_equity_events`. The final include sequence should keep the remaining routes:
 
 ```python
 router.include_router(routes_status.create_router(readiness_payload))
@@ -311,7 +311,7 @@ router.include_router(routes_pulse.router)
 
 - [ ] **Step 3: Remove backend SPA fallback for `/earnings`**
 
-Edit `src/gmgn_twitter_intel/app/runtime/app.py` and remove only these two registrations:
+Edit `src/parallax/app/runtime/app.py` and remove only these two registrations:
 
 ```python
 app.add_api_route("/earnings", frontend_index, include_in_schema=False)
@@ -320,14 +320,14 @@ app.add_api_route("/earnings/{path:path}", frontend_index, include_in_schema=Fal
 
 - [ ] **Step 4: Remove repository session dependency**
 
-Edit `src/gmgn_twitter_intel/app/runtime/repository_session.py`:
+Edit `src/parallax/app/runtime/repository_session.py`:
 
 ```python
 # Remove these imports:
-from gmgn_twitter_intel.domains.equity_event_intel.repositories.equity_event_repository import (
+from parallax.domains.equity_event_intel.repositories.equity_event_repository import (
     EquityEventRepository,
 )
-from gmgn_twitter_intel.domains.equity_event_intel.repositories.equity_projection_dirty_target_repository import (
+from parallax.domains.equity_event_intel.repositories.equity_projection_dirty_target_repository import (
     EquityProjectionDirtyTargetRepository,
 )
 ```
@@ -336,19 +336,19 @@ Remove the `equity_events` field from the repository bundle dataclass and remove
 
 - [ ] **Step 5: Remove provider wiring types**
 
-Edit `src/gmgn_twitter_intel/app/runtime/provider_wiring/types.py` so there is no import from `gmgn_twitter_intel.domains.equity_event_intel.providers`, no `EquityEventIntelProviders` dataclass, no `equity_event_intel` field in `WiredProviders`, and no `EquityEventIntelProviders` entry in `__all__`.
+Edit `src/parallax/app/runtime/provider_wiring/types.py` so there is no import from `parallax.domains.equity_event_intel.providers`, no `EquityEventIntelProviders` dataclass, no `equity_event_intel` field in `WiredProviders`, and no `EquityEventIntelProviders` entry in `__all__`.
 
-Edit `src/gmgn_twitter_intel/app/runtime/provider_wiring/__init__.py` so `wire_providers` no longer imports `equity_events`, no longer passes `equity_event_intel=...`, and no longer calls `openai.openai_equity_event_brief_provider`.
+Edit `src/parallax/app/runtime/provider_wiring/__init__.py` so `wire_providers` no longer imports `equity_events`, no longer passes `equity_event_intel=...`, and no longer calls `openai.openai_equity_event_brief_provider`.
 
-Edit `src/gmgn_twitter_intel/app/runtime/providers_wiring.py` and remove `EquityEventIntelProviders` from imports and `__all__`.
+Edit `src/parallax/app/runtime/providers_wiring.py` and remove `EquityEventIntelProviders` from imports and `__all__`.
 
 - [ ] **Step 6: Remove OpenAI equity brief provider**
 
-Edit `src/gmgn_twitter_intel/app/runtime/provider_wiring/openai.py`:
+Edit `src/parallax/app/runtime/provider_wiring/openai.py`:
 
 ```python
 # Remove this import:
-from gmgn_twitter_intel.integrations.openai_agents.equity_event_brief_agent_client import (
+from parallax.integrations.openai_agents.equity_event_brief_agent_client import (
     OpenAIAgentsEquityEventBriefClient,
 )
 
@@ -363,13 +363,13 @@ def openai_equity_event_brief_provider(...):
 
 - [ ] **Step 7: Remove worker factory registration**
 
-Edit `src/gmgn_twitter_intel/app/runtime/worker_factories/__init__.py` and remove imports of `WORKER_KEYS as EQUITY_EVENT_INTEL_KEYS`, `construct_equity_event_intel_workers`, and the `WorkerFactorySpec("equity_event_intel.py", ...)` tuple entry.
+Edit `src/parallax/app/runtime/worker_factories/__init__.py` and remove imports of `WORKER_KEYS as EQUITY_EVENT_INTEL_KEYS`, `construct_equity_event_intel_workers`, and the `WorkerFactorySpec("equity_event_intel.py", ...)` tuple entry.
 
 - [ ] **Step 8: Remove worker manifests, queue health, and wake methods**
 
-Edit `src/gmgn_twitter_intel/app/runtime/worker_manifest.py` and delete all seven `WorkerManifest(...)` entries whose names start with `equity_event_`.
+Edit `src/parallax/app/runtime/worker_manifest.py` and delete all seven `WorkerManifest(...)` entries whose names start with `equity_event_`.
 
-Edit `src/gmgn_twitter_intel/app/runtime/queue_health.py` and remove:
+Edit `src/parallax/app/runtime/queue_health.py` and remove:
 
 ```python
 "equity_event_evidence_jobs"
@@ -380,11 +380,11 @@ Edit `src/gmgn_twitter_intel/app/runtime/queue_health.py` and remove:
 ("equity_event_projection_dirty_targets", "equity_event_page_projection")
 ```
 
-Edit `src/gmgn_twitter_intel/app/runtime/wake_bus.py` and remove the seven `notify_equity_event_*` methods. After the edit, `wake_bus.py` should not contain `equity_event`.
+Edit `src/parallax/app/runtime/wake_bus.py` and remove the seven `notify_equity_event_*` methods. After the edit, `wake_bus.py` should not contain `equity_event`.
 
 - [ ] **Step 9: Remove API schema classes**
 
-Edit `src/gmgn_twitter_intel/app/surfaces/api/schemas.py` and delete:
+Edit `src/parallax/app/surfaces/api/schemas.py` and delete:
 
 ```python
 class EquityEventsData(ApiSchema): ...
@@ -400,7 +400,7 @@ class EquityEventSummaryData(ApiSchema): ...
 Run:
 
 ```bash
-uv run python -m compileall src/gmgn_twitter_intel/app src/gmgn_twitter_intel/platform src/gmgn_twitter_intel/integrations
+uv run python -m compileall src/parallax/app src/parallax/platform src/parallax/integrations
 uv run python -m pytest tests/architecture/test_earnings_hard_delete_contracts.py -q
 ```
 
@@ -411,7 +411,7 @@ Expected: compileall may still fail later because settings/frontend/tests are no
 Run:
 
 ```bash
-git add src/gmgn_twitter_intel
+git add src/parallax
 git commit -m "refactor: remove earnings backend runtime"
 ```
 
@@ -422,13 +422,13 @@ Expected: commit succeeds if the branch uses incremental commits. If tests are s
 ### Task 4: Remove Config Schema, Defaults, and Example YAML
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
+- Modify: `src/parallax/platform/config/settings.py`
 - Modify: `config.example.yaml`
 - Modify tests that construct or assert worker settings.
 
 - [ ] **Step 1: Remove config model classes**
 
-Edit `src/gmgn_twitter_intel/platform/config/settings.py` and delete the following classes:
+Edit `src/parallax/platform/config/settings.py` and delete the following classes:
 
 ```python
 class EquityEventCompanySettings(BaseModel): ...
@@ -505,7 +505,7 @@ def test_default_config_excludes_deleted_earnings_settings() -> None:
     assert "equity_event_" not in workers_yaml
 ```
 
-Ensure the test imports `default_config_yaml` and `default_workers_yaml` from `gmgn_twitter_intel.platform.config.settings`.
+Ensure the test imports `default_config_yaml` and `default_workers_yaml` from `parallax.platform.config.settings`.
 
 - [ ] **Step 6: Run config tests**
 
@@ -513,7 +513,7 @@ Run:
 
 ```bash
 uv run python -m pytest tests/unit/test_worker_settings.py -q
-uv run gmgn-twitter-intel config
+uv run parallax config
 ```
 
 Expected: tests pass; config command succeeds after Task 2 cleaned operator YAML.
@@ -523,7 +523,7 @@ Expected: tests pass; config command succeeds after Task 2 cleaned operator YAML
 Run:
 
 ```bash
-git add src/gmgn_twitter_intel/platform/config/settings.py config.example.yaml tests/unit/test_worker_settings.py
+git add src/parallax/platform/config/settings.py config.example.yaml tests/unit/test_worker_settings.py
 git commit -m "refactor: remove earnings runtime config"
 ```
 
@@ -534,12 +534,12 @@ Expected: commit succeeds.
 ### Task 5: Add Destructive Database Migration
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260529_0124_drop_equity_event_intel.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260529_0124_drop_equity_event_intel.py`
 - Modify: schema tests only if they assert old equity-event tables exist.
 
 - [ ] **Step 1: Create drop migration**
 
-Create `src/gmgn_twitter_intel/platform/db/alembic/versions/20260529_0124_drop_equity_event_intel.py`:
+Create `src/parallax/platform/db/alembic/versions/20260529_0124_drop_equity_event_intel.py`:
 
 ```python
 """Drop retired equity event intel schema."""
@@ -605,7 +605,7 @@ Do not remove assertions for `us_equity_symbol_universe`.
 Run:
 
 ```bash
-uv run gmgn-twitter-intel db migrate
+uv run parallax db migrate
 ```
 
 Expected: migration reaches head `20260529_0124`.
@@ -618,8 +618,8 @@ Run:
 uv run python - <<'PY'
 from __future__ import annotations
 
-from gmgn_twitter_intel.platform.config.settings import load_settings
-from gmgn_twitter_intel.platform.db.postgres_client import connect_sync, with_password_from_file
+from parallax.platform.config.settings import load_settings
+from parallax.platform.db.postgres_client import connect_sync, with_password_from_file
 
 settings = load_settings(require_ws_token=False)
 dsn = with_password_from_file(settings.postgres_dsn, settings.postgres_password_file)
@@ -667,7 +667,7 @@ Expected: `docs/generated/db-schema.md` no longer lists dropped equity-event tab
 Run:
 
 ```bash
-git add src/gmgn_twitter_intel/platform/db/alembic/versions/20260529_0124_drop_equity_event_intel.py docs/generated/db-schema.md tests/architecture/test_worker_runtime_contracts.py tests/integration/test_postgres_schema_runtime.py tests/unit/test_ops_projection_dirty_targets.py
+git add src/parallax/platform/db/alembic/versions/20260529_0124_drop_equity_event_intel.py docs/generated/db-schema.md tests/architecture/test_worker_runtime_contracts.py tests/integration/test_postgres_schema_runtime.py tests/unit/test_ops_projection_dirty_targets.py
 git commit -m "db: drop earnings event schema"
 ```
 
@@ -1017,8 +1017,8 @@ Expected: PASS. `/earnings` should not be asserted as a served SPA route.
 Run:
 
 ```bash
-uv run gmgn-twitter-intel config
-uv run gmgn-twitter-intel db health
+uv run parallax config
+uv run parallax db health
 ```
 
 Expected: both PASS. Output should report paths and health only; do not paste secret values into the PR/summary.
@@ -1029,7 +1029,7 @@ Run:
 
 ```bash
 git diff --stat
-git diff -- src/gmgn_twitter_intel/platform/db/alembic/versions/20260529_0124_drop_equity_event_intel.py
+git diff -- src/parallax/platform/db/alembic/versions/20260529_0124_drop_equity_event_intel.py
 rg -n "us_equity_symbol_universe|stocks-radar|/stocks" src web tests docs
 ```
 
@@ -1052,14 +1052,14 @@ Expected: commit succeeds only if there are remaining uncommitted fixes from ver
 
 - Code rollback is normal git revert of the implementation commits.
 - Database rollback is non-restorative. The migration intentionally drops data. Restoring dropped tables/data requires restoring from a database backup taken before `20260529_0124`.
-- Operator config backups are created as `config.yaml.bak-<timestamp>` and `workers.yaml.bak-<timestamp>` in `~/.gmgn-twitter-intel/`.
+- Operator config backups are created as `config.yaml.bak-<timestamp>` and `workers.yaml.bak-<timestamp>` in `~/.parallax/`.
 
 ## Completion Criteria
 
 The work is complete when:
 
-- `uv run gmgn-twitter-intel config` succeeds with cleaned operator config.
-- `uv run gmgn-twitter-intel db migrate` applies the drop migration.
+- `uv run parallax config` succeeds with cleaned operator config.
+- `uv run parallax db migrate` applies the drop migration.
 - The final `rg` sweep has only historical migration/spec/plan/guard-test hits.
 - Backend unit/architecture/contract gates pass.
 - Frontend typecheck/lint/test gates pass.

@@ -66,9 +66,9 @@
 
 **Files:**
 
-- Delete: `src/gmgn_twitter_intel/retrieval/trading_attention_service.py`
+- Delete: `src/parallax/retrieval/trading_attention_service.py`
 - Delete: `tests/test_trading_attention_service.py`
-- Modify: `src/gmgn_twitter_intel/api/http.py`
+- Modify: `src/parallax/api/http.py`
 - Modify: `tests/test_project_structure.py`
 
 - [ ] Add a project-structure test proving both old files are absent.
@@ -79,7 +79,7 @@
   test_trading_attention_service_has_been_hard_deleted
   ```
 
-- [ ] Remove the `TradingAttentionService` import from `src/gmgn_twitter_intel/api/http.py`.
+- [ ] Remove the `TradingAttentionService` import from `src/parallax/api/http.py`.
 
 - [ ] Delete the old backend service and its tests.
 
@@ -99,9 +99,9 @@
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/storage/alembic/versions/20260508_0015_signal_pulse_agent_hard_cut.py`
-- Create: `src/gmgn_twitter_intel/storage/pulse_repository.py`
-- Modify: `src/gmgn_twitter_intel/storage/repository_session.py`
+- Create: `src/parallax/storage/alembic/versions/20260508_0015_signal_pulse_agent_hard_cut.py`
+- Create: `src/parallax/storage/pulse_repository.py`
+- Modify: `src/parallax/storage/repository_session.py`
 - Modify: `tests/test_postgres_schema.py`
 - Modify: `tests/test_postgres_schema_runtime.py`
 - Create: `tests/test_pulse_repository.py`
@@ -189,8 +189,8 @@
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/pipeline/pulse_contract.py`
-- Create: `src/gmgn_twitter_intel/pipeline/pulse_thesis.py`
+- Create: `src/parallax/pipeline/pulse_contract.py`
+- Create: `src/parallax/pipeline/pulse_thesis.py`
 - Create: `tests/test_pulse_thesis.py`
 
 - [ ] Define constants:
@@ -239,7 +239,7 @@
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/pipeline/pulse_timeline_context.py`
+- Create: `src/parallax/pipeline/pulse_timeline_context.py`
 - Create: `tests/test_pulse_timeline_context.py`
 
 - [ ] Implement fixed windows:
@@ -309,7 +309,7 @@
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/pipeline/pulse_candidate_gate.py`
+- Create: `src/parallax/pipeline/pulse_candidate_gate.py`
 - Create: `tests/test_pulse_candidate_gate.py`
 
 - [ ] Implement `trade_candidate` gate:
@@ -363,8 +363,8 @@
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/pipeline/pulse_thesis_agent_client.py`
-- Modify: `src/gmgn_twitter_intel/settings.py`
+- Create: `src/parallax/pipeline/pulse_thesis_agent_client.py`
+- Modify: `src/parallax/settings.py`
 - Modify: `tests/test_settings.py`
 - Create/extend: `tests/test_pulse_thesis.py`
 
@@ -384,7 +384,7 @@
   Agent(name="PulseThesisAgent")
   output_type=PulseThesisPayload
   max_turns=3
-  workflow_name="gmgn-twitter-intel.pulse_thesis"
+  workflow_name="parallax.pulse_thesis"
   prompt_version="pulse-thesis-agents-sdk-v1"
   schema_version="pulse_thesis_v1"
   ```
@@ -417,9 +417,9 @@
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/pipeline/pulse_candidate_worker.py`
+- Create: `src/parallax/pipeline/pulse_candidate_worker.py`
 - Create: `tests/test_pulse_candidate_worker.py`
-- Modify: `src/gmgn_twitter_intel/api/app.py`
+- Modify: `src/parallax/api/app.py`
 
 - [ ] Implement asset-led triggers:
 
@@ -518,8 +518,8 @@
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/retrieval/signal_pulse_service.py`
-- Modify: `src/gmgn_twitter_intel/api/http.py`
+- Create: `src/parallax/retrieval/signal_pulse_service.py`
+- Modify: `src/parallax/api/http.py`
 - Modify: `tests/test_signal_pulse_service.py`
 - Modify: `tests/test_api_http.py`
 
@@ -567,9 +567,9 @@
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/pipeline/notification_rules.py`
-- Modify: `src/gmgn_twitter_intel/settings.py`
-- Modify: `src/gmgn_twitter_intel/api/app.py`
+- Modify: `src/parallax/pipeline/notification_rules.py`
+- Modify: `src/parallax/settings.py`
+- Modify: `src/parallax/api/app.py`
 - Modify: `tests/test_notification_rules.py`
 
 - [ ] Add rule id:
@@ -758,7 +758,7 @@
 - [ ] Verify route behavior:
 
   ```bash
-  uv run gmgn-twitter-intel serve
+  uv run parallax serve
   ```
 
   Then call:

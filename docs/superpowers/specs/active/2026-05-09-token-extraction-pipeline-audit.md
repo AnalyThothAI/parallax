@@ -7,15 +7,15 @@
 
 ## Background
 
-当前 token 提取本身不是主要问题。文本实体抽取已经把 CA、Solana 地址、TON 地址、cashtag 分开识别，cashtag 被标为 `symbol` 且链为空，见 `src/gmgn_twitter_intel/pipeline/entity_extractor.py:79`、`src/gmgn_twitter_intel/pipeline/entity_extractor.py:93`、`src/gmgn_twitter_intel/pipeline/entity_extractor.py:105`、`src/gmgn_twitter_intel/pipeline/entity_extractor.py:115`。证据层也清楚地区分 CA 强证据和 cashtag 中等证据，见 `src/gmgn_twitter_intel/pipeline/token_evidence_builder.py:41`、`src/gmgn_twitter_intel/pipeline/token_evidence_builder.py:84`。intent 构造中，CA intent 用 `ca:<chain>:<address>`，symbol-only intent 用 `symbol:<SYMBOL>`，见 `src/gmgn_twitter_intel/pipeline/token_intent_builder.py:114`。
+当前 token 提取本身不是主要问题。文本实体抽取已经把 CA、Solana 地址、TON 地址、cashtag 分开识别，cashtag 被标为 `symbol` 且链为空，见 `src/parallax/pipeline/entity_extractor.py:79`、`src/parallax/pipeline/entity_extractor.py:93`、`src/parallax/pipeline/entity_extractor.py:105`、`src/parallax/pipeline/entity_extractor.py:115`。证据层也清楚地区分 CA 强证据和 cashtag 中等证据，见 `src/parallax/pipeline/token_evidence_builder.py:41`、`src/parallax/pipeline/token_evidence_builder.py:84`。intent 构造中，CA intent 用 `ca:<chain>:<address>`，symbol-only intent 用 `symbol:<SYMBOL>`，见 `src/parallax/pipeline/token_intent_builder.py:114`。
 
-解析层的优先级也基本正确：带 chain+address 的 intent 先走精确链上资产，symbol intent 先找 CEX token，再找链上 symbol 候选，见 `src/gmgn_twitter_intel/pipeline/deterministic_token_resolver.py:64`、`src/gmgn_twitter_intel/pipeline/deterministic_token_resolver.py:228`、`src/gmgn_twitter_intel/pipeline/deterministic_token_resolver.py:248`。因此这次不重写提取、不重写 intent 构造、不重写 CEX 优先原则。
+解析层的优先级也基本正确：带 chain+address 的 intent 先走精确链上资产，symbol intent 先找 CEX token，再找链上 symbol 候选，见 `src/parallax/pipeline/deterministic_token_resolver.py:64`、`src/parallax/pipeline/deterministic_token_resolver.py:228`、`src/parallax/pipeline/deterministic_token_resolver.py:248`。因此这次不重写提取、不重写 intent 构造、不重写 CEX 优先原则。
 
-真正失控的是 DEX symbol discovery 的候选入库边界。`TokenDiscoveryWorker` 对 `symbol:*` 调 OKX DEX search 后，会遍历所有 exact-symbol 候选并逐个写入 registry、pricefeed、price observation，见 `src/gmgn_twitter_intel/pipeline/token_discovery_worker.py:235`、`src/gmgn_twitter_intel/pipeline/token_discovery_worker.py:237`、`src/gmgn_twitter_intel/pipeline/token_discovery_worker.py:296`。registry 的 identity key 本身是正确的：`asset_id` 由 chain、token standard、address 组成，见 `src/gmgn_twitter_intel/storage/registry_repository.py:59`，迁移还建立了 `chain_id + lower(address)` 唯一索引，见 `src/gmgn_twitter_intel/storage/alembic/versions/20260507_0008_token_radar_deterministic_registry.py:197`。
+真正失控的是 DEX symbol discovery 的候选入库边界。`TokenDiscoveryWorker` 对 `symbol:*` 调 OKX DEX search 后，会遍历所有 exact-symbol 候选并逐个写入 registry、pricefeed、price observation，见 `src/parallax/pipeline/token_discovery_worker.py:235`、`src/parallax/pipeline/token_discovery_worker.py:237`、`src/parallax/pipeline/token_discovery_worker.py:296`。registry 的 identity key 本身是正确的：`asset_id` 由 chain、token standard、address 组成，见 `src/parallax/storage/registry_repository.py:59`，迁移还建立了 `chain_id + lower(address)` 唯一索引，见 `src/parallax/storage/alembic/versions/20260507_0008_token_radar_deterministic_registry.py:197`。
 
 本机 PostgreSQL 只读审计显示，`HANTA` 在 registry 里约 600 个不是同一 CA 重复污染，而是数百个不同 `chain_id + address` 的 OKX search 候选；其中大多数来自 `okx_dex_search`，且大量不是当前 resolution 的 target 或 current candidate。这个数据形状符合代码路径：symbol search 的历史候选会累积，registry 没有“每 symbol 每链最多保留几个高质量候选”的准入规则。
 
-价格同步随后放大这个问题。`sync_okx_dex_prices` 只调用 `chain_assets_needing_price_refresh(stale_before_ms, limit)`，见 `src/gmgn_twitter_intel/pipeline/asset_market_sync.py:88`；该查询对所有 `candidate/canonical` registry assets 按最旧价格排序，未区分 CA 直证据、当前 target、当前候选、search-only 长尾，见 `src/gmgn_twitter_intel/storage/registry_repository.py:268`。结果是价格刷新预算被历史 symbol search 长尾稀释。
+价格同步随后放大这个问题。`sync_okx_dex_prices` 只调用 `chain_assets_needing_price_refresh(stale_before_ms, limit)`，见 `src/parallax/pipeline/asset_market_sync.py:88`；该查询对所有 `candidate/canonical` registry assets 按最旧价格排序，未区分 CA 直证据、当前 target、当前候选、search-only 长尾，见 `src/parallax/storage/registry_repository.py:268`。结果是价格刷新预算被历史 symbol search 长尾稀释。
 
 ## Problem
 
@@ -23,8 +23,8 @@
 
 ## First Principles
 
-1. **CA/address 是身份，symbol 只是弱标签。** 带 chain+address 的证据可以直接落 registry；symbol-only search 只能产生有限候选，不能无限扩大身份空间。现有 intent key 已体现这个边界，见 `src/gmgn_twitter_intel/pipeline/token_intent_builder.py:114`。
-2. **CEX canonical 优先于 DEX 同名候选。** 如果 symbol 已在 CEX universe 里确认，解析优先 CEX token；DEX search 只服务未解决或模糊的链上候选，见 `src/gmgn_twitter_intel/pipeline/deterministic_token_resolver.py:228`。
+1. **CA/address 是身份，symbol 只是弱标签。** 带 chain+address 的证据可以直接落 registry；symbol-only search 只能产生有限候选，不能无限扩大身份空间。现有 intent key 已体现这个边界，见 `src/parallax/pipeline/token_intent_builder.py:114`。
+2. **CEX canonical 优先于 DEX 同名候选。** 如果 symbol 已在 CEX universe 里确认，解析优先 CEX token；DEX search 只服务未解决或模糊的链上候选，见 `src/parallax/pipeline/deterministic_token_resolver.py:228`。
 3. **价格同步服务“可被解析/展示的候选”，不服务历史搜索垃圾。** price refresh queue 应只围绕 CA 直证据、当前 target、当前保留候选运行；search-only 长尾不应常驻刷新循环。
 
 ## Goals

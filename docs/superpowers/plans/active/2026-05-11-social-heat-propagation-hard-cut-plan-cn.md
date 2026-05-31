@@ -181,38 +181,38 @@ High alert requires:
 
 Source query and feature construction:
 
-- Modify `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py`.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/token_radar_feature_builder.py`.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/diffusion_health.py`.
-- Create `src/gmgn_twitter_intel/domains/token_intel/scoring/social_signal_features.py`.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/services/atomic_mention.py` only for naming exports or narrowly tested helper reuse.
+- Modify `src/parallax/domains/token_intel/queries/token_radar_source_query.py`.
+- Modify `src/parallax/domains/token_intel/scoring/token_radar_feature_builder.py`.
+- Modify `src/parallax/domains/token_intel/scoring/diffusion_health.py`.
+- Create `src/parallax/domains/token_intel/scoring/social_signal_features.py`.
+- Modify `src/parallax/domains/token_intel/services/atomic_mention.py` only for naming exports or narrowly tested helper reuse.
 
 Factor contract and projection:
 
-- Modify `src/gmgn_twitter_intel/domains/token_intel/_constants.py`.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py`.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot_contract.py`.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/cross_section_normalizer.py`.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_cohort.py`.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_diagnostics.py`.
+- Modify `src/parallax/domains/token_intel/_constants.py`.
+- Modify `src/parallax/domains/token_intel/scoring/factor_snapshot.py`.
+- Modify `src/parallax/domains/token_intel/scoring/factor_snapshot_contract.py`.
+- Modify `src/parallax/domains/token_intel/scoring/cross_section_normalizer.py`.
+- Modify `src/parallax/domains/token_intel/scoring/factor_cohort.py`.
+- Modify `src/parallax/domains/token_intel/services/token_radar_projection.py`.
+- Modify `src/parallax/domains/token_intel/scoring/factor_diagnostics.py`.
 
 Evaluation:
 
-- Modify `src/gmgn_twitter_intel/domains/token_intel/services/token_factor_evaluation.py`.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/repositories/token_factor_evaluation_repository.py`.
+- Modify `src/parallax/domains/token_intel/services/token_factor_evaluation.py`.
+- Modify `src/parallax/domains/token_intel/repositories/token_factor_evaluation_repository.py`.
 
 Backend consumers:
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py`.
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`.
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`.
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py`.
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_recommendation.py`.
-- Modify `src/gmgn_twitter_intel/integrations/openai_agents/pulse_recommendation_agent_client.py`.
-- Modify `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py`.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`.
+- Modify `src/parallax/domains/pulse_lab/services/pulse_candidate_gate.py`.
+- Modify `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`.
+- Modify `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py`.
+- Modify `src/parallax/domains/pulse_lab/repositories/pulse_repository.py`.
+- Modify `src/parallax/domains/pulse_lab/types/pulse_recommendation.py`.
+- Modify `src/parallax/integrations/openai_agents/pulse_recommendation_agent_client.py`.
+- Modify `src/parallax/domains/notifications/services/notification_rules.py`.
+- Modify `src/parallax/domains/token_intel/repositories/token_radar_repository.py`.
+- Modify `src/parallax/domains/token_intel/read_models/asset_flow_service.py`.
 
 Frontend consumers:
 
@@ -246,7 +246,7 @@ Tests:
 
 Docs and generated artifacts:
 
-- Modify `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`.
+- Modify `src/parallax/domains/token_intel/ARCHITECTURE.md`.
 - Modify `docs/ARCHITECTURE.md`.
 - Modify `docs/CONTRACTS.md`.
 - Modify `docs/generated/score-versions.md`.
@@ -301,8 +301,8 @@ Expected: the current mainline focused tests pass before changes begin.
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/_constants.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot_contract.py`
+- Modify: `src/parallax/domains/token_intel/_constants.py`
+- Modify: `src/parallax/domains/token_intel/scoring/factor_snapshot_contract.py`
 - Modify: `web/src/lib/tokenFactorSnapshot.ts`
 - Modify: `tests/unit/test_factor_snapshot.py`
 - Modify: `tests/architecture/test_no_factor_snapshot_fallback.py`
@@ -314,7 +314,7 @@ In `tests/unit/test_factor_snapshot.py`, change the exported contract assertion 
 
 ```python
 def test_scoring_package_exports_factor_snapshot_contract() -> None:
-    from gmgn_twitter_intel.domains.token_intel import scoring
+    from parallax.domains.token_intel import scoring
 
     assert TOKEN_FACTOR_SNAPSHOT_VERSION == "token_factor_snapshot_v3_social_attention"
     assert FACTOR_FAMILIES == (
@@ -380,7 +380,7 @@ Expected: fails because constants and runtime readers still mention v2 family na
 
 - [ ] **Step 1.3: Update Python constants**
 
-In `src/gmgn_twitter_intel/domains/token_intel/_constants.py`, set:
+In `src/parallax/domains/token_intel/_constants.py`, set:
 
 ```python
 TOKEN_RADAR_PROJECTION_VERSION = "token-radar-v13-social-attention"
@@ -395,7 +395,7 @@ TOKEN_RADAR_FACTOR_FAMILIES = (
 
 - [ ] **Step 1.4: Rename and update backend snapshot validator with no old acceptance**
 
-In `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot_contract.py`, rename:
+In `src/parallax/domains/token_intel/scoring/factor_snapshot_contract.py`, rename:
 
 ```python
 def require_token_factor_snapshot_v2(...)
@@ -454,12 +454,12 @@ if old_families:
 
 Update imports in these files to the renamed validator in the same task so runtime does not carry stale v2 API names:
 
-- `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_recommendation.py`
+- `src/parallax/domains/token_intel/services/token_radar_projection.py`
+- `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
+- `src/parallax/domains/pulse_lab/services/pulse_candidate_gate.py`
+- `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py`
+- `src/parallax/domains/pulse_lab/types/pulse_recommendation.py`
 
 - [ ] **Step 1.5: Update frontend contract validator**
 
@@ -510,7 +510,7 @@ Expected: Python tests still fail until snapshot producer is updated; frontend v
 Run:
 
 ```bash
-git add src/gmgn_twitter_intel/domains/token_intel/_constants.py src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot_contract.py src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_recommendation.py web/src/lib/tokenFactorSnapshot.ts tests/unit/test_factor_snapshot.py tests/architecture/test_no_factor_snapshot_fallback.py web/src/lib/tokenRadar.test.ts
+git add src/parallax/domains/token_intel/_constants.py src/parallax/domains/token_intel/scoring/factor_snapshot_contract.py src/parallax/domains/token_intel/services/token_radar_projection.py src/parallax/domains/token_intel/repositories/token_radar_repository.py src/parallax/domains/pulse_lab/services/pulse_candidate_gate.py src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py src/parallax/domains/pulse_lab/types/pulse_recommendation.py web/src/lib/tokenFactorSnapshot.ts tests/unit/test_factor_snapshot.py tests/architecture/test_no_factor_snapshot_fallback.py web/src/lib/tokenRadar.test.ts
 git commit -m "feat: hard cut token factor snapshot contract"
 ```
 
@@ -520,7 +520,7 @@ Expected: commit succeeds after tests for this task are either passing or docume
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/domains/token_intel/scoring/social_signal_features.py`
+- Create: `src/parallax/domains/token_intel/scoring/social_signal_features.py`
 - Create: `tests/unit/test_social_signal_features.py`
 
 - [ ] **Step 2.1: Write failing tests for source-weighted attention and propagation timing**
@@ -532,7 +532,7 @@ from __future__ import annotations
 
 import pytest
 
-from gmgn_twitter_intel.domains.token_intel.scoring.social_signal_features import (
+from parallax.domains.token_intel.scoring.social_signal_features import (
     author_entropy,
     public_followup_author_count,
     source_weighted_effective_authors,
@@ -617,7 +617,7 @@ Expected: fails with `ModuleNotFoundError` for `social_signal_features`.
 
 - [ ] **Step 2.3: Implement pure helper module**
 
-Create `src/gmgn_twitter_intel/domains/token_intel/scoring/social_signal_features.py`:
+Create `src/parallax/domains/token_intel/scoring/social_signal_features.py`:
 
 ```python
 from __future__ import annotations
@@ -730,7 +730,7 @@ Expected: all tests pass.
 Run:
 
 ```bash
-git add src/gmgn_twitter_intel/domains/token_intel/scoring/social_signal_features.py tests/unit/test_social_signal_features.py
+git add src/parallax/domains/token_intel/scoring/social_signal_features.py tests/unit/test_social_signal_features.py
 git commit -m "feat: add social signal feature primitives"
 ```
 
@@ -740,8 +740,8 @@ Expected: commit succeeds.
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/token_radar_feature_builder.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/diffusion_health.py`
+- Modify: `src/parallax/domains/token_intel/scoring/token_radar_feature_builder.py`
+- Modify: `src/parallax/domains/token_intel/scoring/diffusion_health.py`
 - Modify: `tests/unit/test_token_radar_feature_builder.py`
 - Modify: `tests/unit/test_diffusion_health.py`
 
@@ -806,10 +806,10 @@ Expected: fails because fields are missing.
 
 - [ ] **Step 3.4: Annotate window rows with source weight**
 
-In `src/gmgn_twitter_intel/domains/token_intel/scoring/token_radar_feature_builder.py`, import:
+In `src/parallax/domains/token_intel/scoring/token_radar_feature_builder.py`, import:
 
 ```python
-from gmgn_twitter_intel.domains.token_intel.scoring.social_signal_features import (
+from parallax.domains.token_intel.scoring.social_signal_features import (
     author_entropy,
     public_followup_author_count,
     source_weighted_effective_authors,
@@ -873,10 +873,10 @@ In `_propagation_features`, add return keys:
 
 - [ ] **Step 3.7: Extend diffusion health**
 
-In `src/gmgn_twitter_intel/domains/token_intel/scoring/diffusion_health.py`, import the helper:
+In `src/parallax/domains/token_intel/scoring/diffusion_health.py`, import the helper:
 
 ```python
-from gmgn_twitter_intel.domains.token_intel.scoring.social_signal_features import author_entropy
+from parallax.domains.token_intel.scoring.social_signal_features import author_entropy
 ```
 
 Add to the returned dict:
@@ -900,7 +900,7 @@ Expected: tests pass.
 Run:
 
 ```bash
-git add src/gmgn_twitter_intel/domains/token_intel/scoring/token_radar_feature_builder.py src/gmgn_twitter_intel/domains/token_intel/scoring/diffusion_health.py tests/unit/test_token_radar_feature_builder.py tests/unit/test_diffusion_health.py
+git add src/parallax/domains/token_intel/scoring/token_radar_feature_builder.py src/parallax/domains/token_intel/scoring/diffusion_health.py tests/unit/test_token_radar_feature_builder.py tests/unit/test_diffusion_health.py
 git commit -m "feat: materialize social heat propagation inputs"
 ```
 
@@ -910,7 +910,7 @@ Expected: commit succeeds.
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py`
+- Modify: `src/parallax/domains/token_intel/scoring/factor_snapshot.py`
 - Modify: `tests/unit/test_factor_snapshot.py`
 
 - [ ] **Step 4.1: Write failing snapshot shape and formula tests**
@@ -1303,7 +1303,7 @@ Expected: all factor snapshot tests pass after fixture updates.
 Run:
 
 ```bash
-git add src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py tests/unit/test_factor_snapshot.py
+git add src/parallax/domains/token_intel/scoring/factor_snapshot.py tests/unit/test_factor_snapshot.py
 git commit -m "feat: rewrite token radar social factor families"
 ```
 
@@ -1313,9 +1313,9 @@ Expected: commit succeeds.
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/cross_section_normalizer.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_cohort.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
+- Modify: `src/parallax/domains/token_intel/scoring/cross_section_normalizer.py`
+- Modify: `src/parallax/domains/token_intel/scoring/factor_cohort.py`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py`
 - Modify: `tests/unit/test_token_radar_apply_cross_section.py`
 - Modify: `tests/unit/test_token_radar_projection.py`
 
@@ -1430,7 +1430,7 @@ Expected: all pass.
 Run:
 
 ```bash
-git add src/gmgn_twitter_intel/domains/token_intel/scoring/cross_section_normalizer.py src/gmgn_twitter_intel/domains/token_intel/scoring/factor_cohort.py src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py tests/unit/test_cross_section_normalizer.py tests/unit/test_token_radar_apply_cross_section.py tests/unit/test_token_radar_projection.py
+git add src/parallax/domains/token_intel/scoring/cross_section_normalizer.py src/parallax/domains/token_intel/scoring/factor_cohort.py src/parallax/domains/token_intel/services/token_radar_projection.py tests/unit/test_cross_section_normalizer.py tests/unit/test_token_radar_apply_cross_section.py tests/unit/test_token_radar_projection.py
 git commit -m "feat: rank social factor families in cohort"
 ```
 
@@ -1440,8 +1440,8 @@ Expected: commit succeeds.
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_factor_evaluation.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_factor_evaluation_repository.py`
+- Modify: `src/parallax/domains/token_intel/services/token_factor_evaluation.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_factor_evaluation_repository.py`
 - Modify: `tests/unit/test_token_factor_evaluation.py`
 
 - [ ] **Step 6.1: Write failing evaluation test for family IC diagnostics**
@@ -1567,7 +1567,7 @@ Expected: all evaluation tests pass.
 Run:
 
 ```bash
-git add src/gmgn_twitter_intel/domains/token_intel/services/token_factor_evaluation.py src/gmgn_twitter_intel/domains/token_intel/repositories/token_factor_evaluation_repository.py tests/unit/test_token_factor_evaluation.py
+git add src/parallax/domains/token_intel/services/token_factor_evaluation.py src/parallax/domains/token_intel/repositories/token_factor_evaluation_repository.py tests/unit/test_token_factor_evaluation.py
 git commit -m "feat: evaluate social factor family diagnostics"
 ```
 
@@ -1577,15 +1577,15 @@ Expected: commit succeeds.
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_recommendation.py`
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/pulse_recommendation_agent_client.py`
-- Modify: `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_candidate_gate.py`
+- Modify: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- Modify: `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py`
+- Modify: `src/parallax/domains/pulse_lab/repositories/pulse_repository.py`
+- Modify: `src/parallax/domains/pulse_lab/types/pulse_recommendation.py`
+- Modify: `src/parallax/integrations/openai_agents/pulse_recommendation_agent_client.py`
+- Modify: `src/parallax/domains/notifications/services/notification_rules.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
+- Modify: `src/parallax/domains/token_intel/read_models/asset_flow_service.py`
 - Modify: `tests/unit/test_pulse_candidate_gate.py`
 - Modify: `tests/unit/test_pulse_candidate_worker.py`
 - Modify: `tests/unit/test_signal_pulse_service.py`
@@ -1714,7 +1714,7 @@ Expected: all pass.
 Run:
 
 ```bash
-rg -n '"attention_heat"|"diffusion_quality"|"semantic_quality"|"timing_response"|token_factor_snapshot_v2_alpha_gated' src/gmgn_twitter_intel
+rg -n '"attention_heat"|"diffusion_quality"|"semantic_quality"|"timing_response"|token_factor_snapshot_v2_alpha_gated' src/parallax
 ```
 
 Expected: no output from runtime `src/`. Test fixtures may still contain old strings only inside explicit rejection tests.
@@ -1724,7 +1724,7 @@ Expected: no output from runtime `src/`. Test fixtures may still contain old str
 Run:
 
 ```bash
-git add src/gmgn_twitter_intel/domains/pulse_lab src/gmgn_twitter_intel/integrations/openai_agents/pulse_recommendation_agent_client.py src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py tests/unit/test_pulse_candidate_gate.py tests/unit/test_pulse_candidate_worker.py tests/unit/test_signal_pulse_service.py tests/unit/test_notification_rules.py tests/unit/test_token_radar_repository.py tests/test_pulse_recommendation.py tests/test_pulse_recommendation_agent_client.py
+git add src/parallax/domains/pulse_lab src/parallax/integrations/openai_agents/pulse_recommendation_agent_client.py src/parallax/domains/notifications/services/notification_rules.py src/parallax/domains/token_intel/repositories/token_radar_repository.py src/parallax/domains/token_intel/read_models/asset_flow_service.py tests/unit/test_pulse_candidate_gate.py tests/unit/test_pulse_candidate_worker.py tests/unit/test_signal_pulse_service.py tests/unit/test_notification_rules.py tests/unit/test_token_radar_repository.py tests/test_pulse_recommendation.py tests/test_pulse_recommendation_agent_client.py
 git commit -m "feat: update backend consumers for social factor contract"
 ```
 
@@ -1861,10 +1861,10 @@ Expected: commit succeeds.
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_diagnostics.py`
+- Modify: `src/parallax/domains/token_intel/scoring/factor_diagnostics.py`
 - Modify: `tests/unit/test_factor_diagnostics.py`
 - Modify: `docs/generated/score-versions.md`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/token_intel/ARCHITECTURE.md`
 - Modify: `docs/ARCHITECTURE.md`
 - Modify: `docs/CONTRACTS.md`
 
@@ -1932,7 +1932,7 @@ Expected: `docs/generated/score-versions.md` lists `token_factor_snapshot_v3_soc
 
 - [ ] **Step 9.5: Update architecture docs**
 
-In `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`, update Factor Snapshot Contract section:
+In `src/parallax/domains/token_intel/ARCHITECTURE.md`, update Factor Snapshot Contract section:
 
 ```markdown
 - `schema_version = "token_factor_snapshot_v3_social_attention"` — the only runtime snapshot version accepted by readers.
@@ -1961,7 +1961,7 @@ Expected: tests pass and whitespace check has no output.
 Run:
 
 ```bash
-git add src/gmgn_twitter_intel/domains/token_intel/scoring/factor_diagnostics.py tests/unit/test_factor_diagnostics.py docs/generated/score-versions.md src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md docs/ARCHITECTURE.md docs/CONTRACTS.md
+git add src/parallax/domains/token_intel/scoring/factor_diagnostics.py tests/unit/test_factor_diagnostics.py docs/generated/score-versions.md src/parallax/domains/token_intel/ARCHITECTURE.md docs/ARCHITECTURE.md docs/CONTRACTS.md
 git commit -m "docs: document social attention factor contract"
 ```
 
@@ -1979,7 +1979,7 @@ Expected: commit succeeds.
 Run:
 
 ```bash
-rg -n '"attention_heat"|"diffusion_quality"|"semantic_quality"|"timing_response"|token_factor_snapshot_v2_alpha_gated|token_factor_snapshot_v1|hard_gates|require_token_factor_snapshot_v2|requireTokenFactorSnapshotV2' src/gmgn_twitter_intel web/src docs/generated docs/ARCHITECTURE.md docs/CONTRACTS.md
+rg -n '"attention_heat"|"diffusion_quality"|"semantic_quality"|"timing_response"|token_factor_snapshot_v2_alpha_gated|token_factor_snapshot_v1|hard_gates|require_token_factor_snapshot_v2|requireTokenFactorSnapshotV2' src/parallax web/src docs/generated docs/ARCHITECTURE.md docs/CONTRACTS.md
 ```
 
 Expected: no output except explicit rejection tests are outside this command scope. If docs intentionally mention historical versions, remove that prose from runtime contract docs.
@@ -1999,7 +1999,7 @@ Expected: all selected tests pass.
 Run:
 
 ```bash
-uv run ruff check src/gmgn_twitter_intel/domains/token_intel src/gmgn_twitter_intel/domains/pulse_lab src/gmgn_twitter_intel/domains/notifications tests/unit/test_factor_snapshot.py tests/architecture/test_no_factor_snapshot_fallback.py tests/unit/test_social_signal_features.py
+uv run ruff check src/parallax/domains/token_intel src/parallax/domains/pulse_lab src/parallax/domains/notifications tests/unit/test_factor_snapshot.py tests/architecture/test_no_factor_snapshot_fallback.py tests/unit/test_social_signal_features.py
 ```
 
 Expected: exits 0.
@@ -2113,10 +2113,10 @@ Run:
 
 ```bash
 git diff main...HEAD --stat
-git diff main...HEAD -- src/gmgn_twitter_intel/domains/token_intel/_constants.py
-git diff main...HEAD -- src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py
-git diff main...HEAD -- src/gmgn_twitter_intel/domains/token_intel/scoring/token_radar_feature_builder.py
-git diff main...HEAD -- src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py
+git diff main...HEAD -- src/parallax/domains/token_intel/_constants.py
+git diff main...HEAD -- src/parallax/domains/token_intel/scoring/factor_snapshot.py
+git diff main...HEAD -- src/parallax/domains/token_intel/scoring/token_radar_feature_builder.py
+git diff main...HEAD -- src/parallax/domains/token_intel/services/token_radar_projection.py
 git diff main...HEAD -- web/src/lib/tokenFactorSnapshot.ts
 ```
 

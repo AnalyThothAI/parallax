@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.news_intel._constants import (
+from parallax.domains.news_intel._constants import (
     NEWS_ITEM_BRIEF_GUARDRAIL_VERSION,
     NEWS_ITEM_BRIEF_PROMPT_VERSION,
     NEWS_ITEM_BRIEF_SCHEMA_VERSION,
     NEWS_ITEM_BRIEF_VALIDATOR_VERSION,
 )
-from gmgn_twitter_intel.domains.news_intel.repositories.news_repository import NewsRepository
-from gmgn_twitter_intel.domains.news_intel.services.news_item_brief_input import (
+from parallax.domains.news_intel.repositories.news_repository import NewsRepository
+from parallax.domains.news_intel.services.news_item_brief_input import (
     build_news_item_brief_input_packet,
 )
-from gmgn_twitter_intel.domains.news_intel.types.news_item_brief import (
+from parallax.domains.news_intel.types.news_item_brief import (
     NEWS_ITEM_BRIEF_AGENT_NAME,
     NEWS_ITEM_BRIEF_LANE,
     NEWS_ITEM_BRIEF_WORKFLOW_NAME,

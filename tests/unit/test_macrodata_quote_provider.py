@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from gmgn_twitter_intel.integrations.macrodata import quote_provider as quote_module
-from gmgn_twitter_intel.integrations.macrodata.quote_provider import MacrodataQuoteProvider
+from parallax.integrations.macrodata import quote_provider as quote_module
+from parallax.integrations.macrodata.quote_provider import MacrodataQuoteProvider
 
 
 class FakeObservation:

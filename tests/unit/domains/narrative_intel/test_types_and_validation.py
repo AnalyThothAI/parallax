@@ -1,16 +1,16 @@
 import pytest
 from pydantic import ValidationError
 
-from gmgn_twitter_intel.domains.narrative_intel.services.evidence_ref_validator import (
+from parallax.domains.narrative_intel.services.evidence_ref_validator import (
     EvidenceRefValidator,
 )
-from gmgn_twitter_intel.domains.narrative_intel.types.discussion_digest import (
+from parallax.domains.narrative_intel.types.discussion_digest import (
     DigestArgument,
     NarrativeCluster,
     TokenDiscussionDigest,
 )
-from gmgn_twitter_intel.domains.narrative_intel.types.evidence_refs import EvidenceRef
-from gmgn_twitter_intel.domains.narrative_intel.types.mention_semantics import MentionSemanticLabel
+from parallax.domains.narrative_intel.types.evidence_refs import EvidenceRef
+from parallax.domains.narrative_intel.types.mention_semantics import MentionSemanticLabel
 
 
 def event_ref(event_id: str = "event-1") -> dict[str, object]:

@@ -5,13 +5,13 @@ import time
 from decimal import Decimal
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
-from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
-from gmgn_twitter_intel.domains.asset_market.providers import DexMarketFactUpdate
-from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_stream_worker import (
+from parallax.app.runtime.worker_base import WorkerBase
+from parallax.app.runtime.worker_result import WorkerResult
+from parallax.domains.asset_market.providers import DexMarketFactUpdate
+from parallax.domains.asset_market.runtime.market_tick_stream_worker import (
     MarketTickStreamWorker,
 )
-from gmgn_twitter_intel.domains.asset_market.types import market_tick_id
+from parallax.domains.asset_market.types import market_tick_id
 
 
 def test_market_tick_stream_worker_is_not_single_writer_locked() -> None:

@@ -3,16 +3,16 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
-from gmgn_twitter_intel.app.runtime.queue_health import (
+from parallax.app.runtime.queue_health import (
     fetch_queue_table_health,
     fill_worker_queue_healths,
     queue_health_adapter_specs,
 )
-from gmgn_twitter_intel.app.runtime.worker_manifest import (
+from parallax.app.runtime.worker_manifest import (
     all_worker_manifests,
     worker_queue_health_tables,
 )
-from gmgn_twitter_intel.app.runtime.worker_status import manifest_worker_statuses
+from parallax.app.runtime.worker_status import manifest_worker_statuses
 
 
 class _Rows:

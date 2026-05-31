@@ -9,11 +9,11 @@ import pytest
 from psycopg import OperationalError, pq
 from psycopg.rows import RowMaker
 
-from gmgn_twitter_intel.app.runtime.repository_session import RepositorySession, repositories_for_connection
-from gmgn_twitter_intel.platform.db.postgres_client import connect_postgres
-from gmgn_twitter_intel.platform.db.postgres_migrations import upgrade_head
+from parallax.app.runtime.repository_session import RepositorySession, repositories_for_connection
+from parallax.platform.db.postgres_client import connect_postgres
+from parallax.platform.db.postgres_migrations import upgrade_head
 
-DEFAULT_TEST_DSN = "postgresql://postgres:postgres@127.0.0.1:55432/gmgn_twitter_intel_test"
+DEFAULT_TEST_DSN = "postgresql://postgres:postgres@127.0.0.1:55432/parallax_test"
 
 
 def test_postgres_dsn() -> str:

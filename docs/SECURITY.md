@@ -6,16 +6,16 @@
 
 - Never print or log secrets, tokens, cookies, or `.env` values.
 - Never commit `.env`, credentials, private keys, or generated config files.
-- When validating live data, use `uv run gmgn-twitter-intel config` for
+- When validating live data, use `uv run parallax config` for
   redacted config-path and configured-status diagnostics. Do not paste or copy
-  provider keys from `~/.gmgn-twitter-intel/config.yaml` into chat, docs, tests,
+  provider keys from `~/.parallax/config.yaml` into chat, docs, tests,
   shell history, or source files.
 
 ## Single config source boundaries
 
 The supported operator-owned config files are
-`~/.gmgn-twitter-intel/config.yaml` and
-`~/.gmgn-twitter-intel/workers.yaml`. `config.yaml` owns application,
+`~/.parallax/config.yaml` and
+`~/.parallax/workers.yaml`. `config.yaml` owns application,
 provider, credential, storage, API, and public-surface settings.
 `workers.yaml` owns worker runtime knobs such as enabled state,
 intervals, batches, concurrency, leases, attempts, timeouts, advisory

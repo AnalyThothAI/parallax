@@ -1,6 +1,6 @@
 import pytest
 
-from gmgn_twitter_intel.domains.token_intel.read_models.search_service import SearchCursorError, SearchService
+from parallax.domains.token_intel.read_models.search_service import SearchCursorError, SearchService
 
 
 def test_search_merges_target_and_lexical_hits_by_event_id():

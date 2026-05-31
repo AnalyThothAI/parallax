@@ -262,7 +262,7 @@ Dirty target 是 wake/coalescing 优化，不是业务状态。
 - 最近一次 failed 不能被 API 表示成 fresh。
 - `rank_history` / `snapshot_audit` 不在 runtime 中读写，schema 中不存在。
 - architecture tests 阻止旧 hydration/rebuild/fallback 字符串回归。
-- source scan 对 `src/gmgn_twitter_intel/app` 和 `src/gmgn_twitter_intel/domains`
+- source scan 对 `src/parallax/app` 和 `src/parallax/domains`
   不再命中旧 coverage、snapshot audit、rank history、selected-row hydration、
   legacy rebuild、`:claimed:`。
 - tests 明确覆盖：build 失败写 failed state、publish 失败保留 current、API failed

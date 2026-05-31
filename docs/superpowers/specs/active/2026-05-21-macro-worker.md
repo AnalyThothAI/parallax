@@ -7,7 +7,7 @@
 
 ## Background
 
-`gmgn-twitter-intel` is PostgreSQL-first: facts and rebuildable read models are the durable truth, and workers re-read the database rather than trusting wake hints (`docs/ARCHITECTURE.md:33`, `docs/ARCHITECTURE.md:59`, `docs/WORKERS.md:10`, `docs/WORKERS.md:41`). The current worker inventory already contains read-model projection workers such as `news_page_projection` and `cex_oi_radar_board`, each with one runtime writer and API readers (`docs/WORKERS.md:111`, `docs/WORKERS.md:112`, `src/gmgn_twitter_intel/app/surfaces/api/http.py:24`). The frontend route shell is centralized in `web/src/routes/AppRoutes.tsx:242`, and the side rail exposes market-facing routes such as Radar, Stocks, News, and Macro.
+`parallax` is PostgreSQL-first: facts and rebuildable read models are the durable truth, and workers re-read the database rather than trusting wake hints (`docs/ARCHITECTURE.md:33`, `docs/ARCHITECTURE.md:59`, `docs/WORKERS.md:10`, `docs/WORKERS.md:41`). The current worker inventory already contains read-model projection workers such as `news_page_projection` and `cex_oi_radar_board`, each with one runtime writer and API readers (`docs/WORKERS.md:111`, `docs/WORKERS.md:112`, `src/parallax/app/surfaces/api/http.py:24`). The frontend route shell is centralized in `web/src/routes/AppRoutes.tsx:242`, and the side rail exposes market-facing routes such as Radar, Stocks, News, and Macro.
 
 The separate `macrodata-cli` package now owns public macro source access and normalization. This service should not duplicate provider fetching in the first integration; it should persist normalized macro observations and project them into a product-facing macro state view.
 
@@ -30,7 +30,7 @@ The application has crypto/social intelligence, news, stock radar, and CEX deriv
 
 ## Non-goals
 
-- N1. This does not add live FRED, NY Fed, Treasury, Cboe, CFTC, or crypto provider fetching inside `gmgn-twitter-intel`; those remain owned by `macrodata-cli` or future ingestion work.
+- N1. This does not add live FRED, NY Fed, Treasury, Cboe, CFTC, or crypto provider fetching inside `parallax`; those remain owned by `macrodata-cli` or future ingestion work.
 - N2. This does not implement institutional-only data such as real CDX/CDS, OPRA dealer gamma, MOVE, or cross-currency basis.
 - N3. This does not generate LLM macro commentary. The snapshot is deterministic JSON that future agents may summarize.
 - N4. This does not make macro scores trading recommendations.
@@ -89,7 +89,7 @@ Next work should add an importer that consumes `macrodata-cli bundle` envelopes 
 ## Alternatives Considered
 
 - API-only on-demand scoring — rejected because macro scoring should be reproducible and visible in worker status, not recomputed inside HTTP requests.
-- Provider calls inside `gmgn-twitter-intel` — rejected because `macrodata-cli` already owns provider normalization and agent-oriented data-source CLI behavior.
+- Provider calls inside `parallax` — rejected because `macrodata-cli` already owns provider normalization and agent-oriented data-source CLI behavior.
 - Frontend-only macro dashboard fed by static fixtures — rejected because the app needs a durable contract that agents and workers can inspect.
 
 ## Boundaries

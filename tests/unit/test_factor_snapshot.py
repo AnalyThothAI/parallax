@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import (
+from parallax.domains.token_intel.scoring.factor_snapshot import (
     DEX_HIGH_ALERT_FLOORS,
     FACTOR_FAMILIES,
     TOKEN_FACTOR_SNAPSHOT_VERSION,
@@ -11,7 +11,7 @@ from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import (
 
 
 def test_scoring_package_exports_factor_snapshot_contract() -> None:
-    from gmgn_twitter_intel.domains.token_intel import scoring
+    from parallax.domains.token_intel import scoring
 
     assert TOKEN_FACTOR_SNAPSHOT_VERSION == "token_factor_snapshot_v3_social_attention"
     assert FACTOR_FAMILIES == (

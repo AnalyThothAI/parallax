@@ -4,10 +4,10 @@ import asyncio
 from types import SimpleNamespace
 from typing import Any
 
-from gmgn_twitter_intel.app.runtime import provider_wiring
-from gmgn_twitter_intel.app.runtime.provider_wiring import model_execution
-from gmgn_twitter_intel.app.runtime.provider_wiring.model_execution import build_agent_execution_gateway
-from gmgn_twitter_intel.platform.config.settings import Settings
+from parallax.app.runtime import provider_wiring
+from parallax.app.runtime.provider_wiring import model_execution
+from parallax.app.runtime.provider_wiring.model_execution import build_agent_execution_gateway
+from parallax.platform.config.settings import Settings
 
 
 class FakeLLMGateway:

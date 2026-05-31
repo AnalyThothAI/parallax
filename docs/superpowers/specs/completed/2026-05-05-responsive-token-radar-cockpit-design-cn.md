@@ -596,9 +596,9 @@ web/src/components/MobileTaskNav.tsx
 Files that should not need backend changes:
 
 ```text
-src/gmgn_twitter_intel/api/*
-src/gmgn_twitter_intel/retrieval/*
-src/gmgn_twitter_intel/storage/*
+src/parallax/api/*
+src/parallax/retrieval/*
+src/parallax/storage/*
 ```
 
 This is a frontend layout and interaction refactor. API contracts stay unchanged.

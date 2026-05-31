@@ -63,13 +63,13 @@
 
 ### Create
 
-- `src/gmgn_twitter_intel/domains/news_intel/services/news_provider_contract.py`
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_rank_source_repository.py`
-- `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_rank_source_query.py`
-- `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_evidence_hydration_worker.py`
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0106_runtime_rank_source_edges.py`
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0107_macro_generation_equity_evidence_jobs.py`
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0108_runtime_perf_lifecycle_indexes.py`
+- `src/parallax/domains/news_intel/services/news_provider_contract.py`
+- `src/parallax/domains/token_intel/repositories/token_radar_rank_source_repository.py`
+- `src/parallax/domains/token_intel/queries/token_radar_rank_source_query.py`
+- `src/parallax/domains/equity_event_intel/runtime/equity_event_evidence_hydration_worker.py`
+- `src/parallax/platform/db/alembic/versions/20260526_0106_runtime_rank_source_edges.py`
+- `src/parallax/platform/db/alembic/versions/20260526_0107_macro_generation_equity_evidence_jobs.py`
+- `src/parallax/platform/db/alembic/versions/20260526_0108_runtime_perf_lifecycle_indexes.py`
 - `scripts/runtime_performance_root_fix_check.sh`
 - `tests/architecture/test_runtime_performance_architecture_hard_cut.py`
 - `tests/unit/domains/news_intel/test_news_provider_contract.py`
@@ -86,27 +86,27 @@
 - `CLAUDE.md`
 - `docs/ARCHITECTURE.md`
 - `docs/references/POSTGRES_PERFORMANCE.md`
-- `src/gmgn_twitter_intel/app/runtime/app.py`
-- `src/gmgn_twitter_intel/app/runtime/bootstrap.py`
-- `src/gmgn_twitter_intel/app/runtime/ops_diagnostics.py`
-- `src/gmgn_twitter_intel/app/runtime/queue_health.py`
-- `src/gmgn_twitter_intel/app/runtime/settings.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_factories/equity_event_intel.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_manifest.py`
-- `src/gmgn_twitter_intel/domains/equity_event_intel/ARCHITECTURE.md`
-- `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py`
-- `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_fetch_worker.py`
-- `src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md`
-- `src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py`
-- `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
-- `src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py`
-- `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
-- `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
+- `src/parallax/app/runtime/app.py`
+- `src/parallax/app/runtime/bootstrap.py`
+- `src/parallax/app/runtime/ops_diagnostics.py`
+- `src/parallax/app/runtime/queue_health.py`
+- `src/parallax/app/runtime/settings.py`
+- `src/parallax/app/runtime/worker_factories/equity_event_intel.py`
+- `src/parallax/app/runtime/worker_manifest.py`
+- `src/parallax/domains/equity_event_intel/ARCHITECTURE.md`
+- `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py`
+- `src/parallax/domains/equity_event_intel/runtime/equity_event_fetch_worker.py`
+- `src/parallax/domains/macro_intel/ARCHITECTURE.md`
+- `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`
+- `src/parallax/domains/news_intel/repositories/news_repository.py`
+- `src/parallax/domains/news_intel/runtime/news_fetch_worker.py`
+- `src/parallax/domains/token_intel/ARCHITECTURE.md`
+- `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
+- `src/parallax/domains/token_intel/services/token_radar_projection.py`
 
 ### Delete
 
-- `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_target_feature_query.py`
+- `src/parallax/domains/token_intel/queries/token_radar_target_feature_query.py`
 
 The deletion is intentional. If any import breaks, fix the caller to use the rank-source edge path; do not recreate the old query under a new name.
 
@@ -136,20 +136,20 @@ HEAD is now at 871e8ac4 feat: hard cut OpenNews signal news view
 - [ ] **Step 0.2: Confirm runtime config paths without printing secrets**
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 ```
 
 Expected evidence to record in verification notes:
 
 ```text
-config_path=/Users/qinghuan/.gmgn-twitter-intel/config.yaml
-workers_config_path=/Users/qinghuan/.gmgn-twitter-intel/workers.yaml
+config_path=/Users/qinghuan/.parallax/config.yaml
+workers_config_path=/Users/qinghuan/.parallax/workers.yaml
 ```
 
 - [ ] **Step 0.3: Capture pre-change runtime SQL baseline**
 
 ```bash
-docker compose exec -T postgres psql -U gmgn -d gmgn_twitter_intel -Atc "
+docker compose exec -T postgres psql -U gmgn -d parallax -Atc "
 SELECT
   queryid,
   calls,
@@ -195,7 +195,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src" / "gmgn_twitter_intel"
+SRC = ROOT / "src" / "parallax"
 
 
 def _read(path: str) -> str:
@@ -208,7 +208,7 @@ def test_token_radar_old_batch_query_is_deleted() -> None:
 
 
 def test_token_radar_projection_does_not_call_old_hot_sql() -> None:
-    text = _read("src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py")
+    text = _read("src/parallax/domains/token_intel/services/token_radar_projection.py")
     forbidden = [
         "TokenRadarTargetFeatureBatchQuery",
         "source_rows_for_requests",
@@ -222,20 +222,20 @@ def test_token_radar_projection_does_not_call_old_hot_sql() -> None:
 
 
 def test_token_radar_rank_source_has_single_owner_manifest_entry() -> None:
-    manifest = _read("src/gmgn_twitter_intel/app/runtime/worker_manifest.py")
+    manifest = _read("src/parallax/app/runtime/worker_manifest.py")
     assert "token_radar_rank_source_events" in manifest
     assert manifest.count("token_radar_rank_source_events") == 1
 
 
 def test_macro_projection_refresh_uses_generation_swap() -> None:
-    repo = _read("src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py")
+    repo = _read("src/parallax/domains/macro_intel/repositories/macro_intel_repository.py")
     assert "macro_observation_series_active_generation" in repo
     assert "DELETE FROM macro_observation_series_rows\n              WHERE projection_version" not in repo
 
 
 def test_equity_fetch_worker_does_not_hydrate_document_evidence() -> None:
     fetch_worker = _read(
-        "src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_fetch_worker.py"
+        "src/parallax/domains/equity_event_intel/runtime/equity_event_fetch_worker.py"
     )
     assert "hydrate_document_evidence" not in fetch_worker
     assert "replace_evidence_artifacts" not in fetch_worker
@@ -247,7 +247,7 @@ def test_equity_evidence_hydration_worker_exists() -> None:
 
 
 def test_news_fetch_validates_provider_contract_before_reconcile() -> None:
-    worker = _read("src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py")
+    worker = _read("src/parallax/domains/news_intel/runtime/news_fetch_worker.py")
     validate_at = worker.index("validate_news_provider_contract")
     reconcile_at = worker.index("reconcile_configured_sources")
     assert validate_at < reconcile_at
@@ -263,7 +263,7 @@ set -euo pipefail
 
 DB_SERVICE="${DB_SERVICE:-postgres}"
 DB_USER="${DB_USER:-gmgn}"
-DB_NAME="${DB_NAME:-gmgn_twitter_intel}"
+DB_NAME="${DB_NAME:-parallax}"
 APP_URL="${APP_URL:-http://127.0.0.1:8000}"
 
 psql_cmd() {
@@ -356,9 +356,9 @@ git commit -m "test: add runtime performance hard cut guards"
 ## Task 2: Schema Hard Cut
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0106_runtime_rank_source_edges.py`
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0107_macro_generation_equity_evidence_jobs.py`
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0108_runtime_perf_lifecycle_indexes.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260526_0106_runtime_rank_source_edges.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260526_0107_macro_generation_equity_evidence_jobs.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260526_0108_runtime_perf_lifecycle_indexes.py`
 - Test: `tests/unit/test_postgres_schema.py`
 
 - [ ] **Step 2.1: Add migration `20260526_0106_runtime_rank_source_edges.py`**
@@ -587,7 +587,7 @@ Extend `tests/unit/test_postgres_schema.py` with checks that migration files con
 
 ```python
 def test_runtime_performance_migrations_define_hard_cut_tables() -> None:
-    migrations = ROOT / "src/gmgn_twitter_intel/platform/db/alembic/versions"
+    migrations = ROOT / "src/parallax/platform/db/alembic/versions"
     text = "\n".join(path.read_text() for path in migrations.glob("20260526_010*_*.py"))
     required = [
         "token_radar_rank_source_events",
@@ -617,9 +617,9 @@ tests/architecture/test_runtime_performance_architecture_hard_cut.py ... still f
 - [ ] **Step 2.6: Commit schema**
 
 ```bash
-git add src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0106_runtime_rank_source_edges.py \
-        src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0107_macro_generation_equity_evidence_jobs.py \
-        src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0108_runtime_perf_lifecycle_indexes.py \
+git add src/parallax/platform/db/alembic/versions/20260526_0106_runtime_rank_source_edges.py \
+        src/parallax/platform/db/alembic/versions/20260526_0107_macro_generation_equity_evidence_jobs.py \
+        src/parallax/platform/db/alembic/versions/20260526_0108_runtime_perf_lifecycle_indexes.py \
         tests/unit/test_postgres_schema.py
 git commit -m "feat: add runtime performance hard cut schema"
 ```
@@ -629,11 +629,11 @@ git commit -m "feat: add runtime performance hard cut schema"
 ## Task 3: News Provider Contract Before DB Writes
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/news_intel/services/news_provider_contract.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/app.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/bootstrap.py`
+- Create: `src/parallax/domains/news_intel/services/news_provider_contract.py`
+- Modify: `src/parallax/domains/news_intel/repositories/news_repository.py`
+- Modify: `src/parallax/domains/news_intel/runtime/news_fetch_worker.py`
+- Modify: `src/parallax/app/runtime/app.py`
+- Modify: `src/parallax/app/runtime/bootstrap.py`
 - Test: `tests/unit/domains/news_intel/test_news_provider_contract.py`
 
 - [ ] **Step 3.1: Write failing provider contract tests**
@@ -645,7 +645,7 @@ from __future__ import annotations
 
 import pytest
 
-from gmgn_twitter_intel.domains.news_intel.services.news_provider_contract import (
+from parallax.domains.news_intel.services.news_provider_contract import (
     NewsProviderContractError,
     validate_news_provider_contract,
 )
@@ -805,11 +805,11 @@ Expected:
 - [ ] **Step 3.7: Commit news contract**
 
 ```bash
-git add src/gmgn_twitter_intel/domains/news_intel/services/news_provider_contract.py \
-        src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py \
-        src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py \
-        src/gmgn_twitter_intel/app/runtime/app.py \
-        src/gmgn_twitter_intel/app/runtime/bootstrap.py \
+git add src/parallax/domains/news_intel/services/news_provider_contract.py \
+        src/parallax/domains/news_intel/repositories/news_repository.py \
+        src/parallax/domains/news_intel/runtime/news_fetch_worker.py \
+        src/parallax/app/runtime/app.py \
+        src/parallax/app/runtime/bootstrap.py \
         tests/unit/domains/news_intel/test_news_provider_contract.py
 git commit -m "fix: validate news provider schema contract"
 ```
@@ -819,13 +819,13 @@ git commit -m "fix: validate news provider schema contract"
 ## Task 4: Token Radar Rank-Source Edge Hard Cut
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_rank_source_repository.py`
-- Create: `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_rank_source_query.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_manifest.py`
-- Delete: `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_target_feature_query.py`
+- Create: `src/parallax/domains/token_intel/repositories/token_radar_rank_source_repository.py`
+- Create: `src/parallax/domains/token_intel/queries/token_radar_rank_source_query.py`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
+- Modify: `src/parallax/domains/token_intel/ARCHITECTURE.md`
+- Modify: `src/parallax/app/runtime/worker_manifest.py`
+- Delete: `src/parallax/domains/token_intel/queries/token_radar_target_feature_query.py`
 - Test: `tests/unit/domains/token_intel/test_token_radar_rank_source_query.py`
 - Test: `tests/integration/domains/token_intel/test_token_radar_rank_source_repository.py`
 
@@ -836,7 +836,7 @@ Create `test_token_radar_rank_source_query.py`:
 ```python
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.token_intel.queries.token_radar_rank_source_query import (
+from parallax.domains.token_intel.queries.token_radar_rank_source_query import (
     TOKEN_RADAR_RANK_SOURCE_SQL,
 )
 
@@ -923,7 +923,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Sequence
 
-from gmgn_twitter_intel.domains.token_intel.queries.token_radar_rank_source_query import (
+from parallax.domains.token_intel.queries.token_radar_rank_source_query import (
     TOKEN_RADAR_RANK_SOURCE_SQL,
 )
 
@@ -1132,14 +1132,14 @@ No other worker manifest may list `token_radar_rank_source_events`.
 - [ ] **Step 4.8: Delete old query file**
 
 ```bash
-git rm src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_target_feature_query.py
+git rm src/parallax/domains/token_intel/queries/token_radar_target_feature_query.py
 ```
 
 Fix any imports by moving callers to `TokenRadarRankSourceRepository`.
 
 - [ ] **Step 4.9: Update Token Intel architecture**
 
-In `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`, replace the old statement that projection fetches target-scoped source rows with:
+In `src/parallax/domains/token_intel/ARCHITECTURE.md`, replace the old statement that projection fetches target-scoped source rows with:
 
 ```markdown
 `token_radar_rank_source_events` is the compact hot-path read model for ranking.
@@ -1167,8 +1167,8 @@ architecture Token Radar guards passed
 - [ ] **Step 4.11: Commit Token Radar hard cut**
 
 ```bash
-git add src/gmgn_twitter_intel/domains/token_intel \
-        src/gmgn_twitter_intel/app/runtime/worker_manifest.py \
+git add src/parallax/domains/token_intel \
+        src/parallax/app/runtime/worker_manifest.py \
         tests/unit/domains/token_intel/test_token_radar_rank_source_query.py \
         tests/integration/domains/token_intel/test_token_radar_rank_source_repository.py \
         tests/architecture/test_runtime_performance_architecture_hard_cut.py
@@ -1180,9 +1180,9 @@ git commit -m "feat: hard cut token radar rank source edge path"
 ## Task 5: Macro Observation Series Generation Swap
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/runtime/macro_view_projection_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`
+- Modify: `src/parallax/domains/macro_intel/runtime/macro_view_projection_worker.py`
+- Modify: `src/parallax/domains/macro_intel/ARCHITECTURE.md`
 - Test: `tests/unit/domains/macro_intel/test_macro_generation_swap.py`
 - Test: `tests/integration/domains/macro_intel/test_macro_observation_series_generation.py`
 
@@ -1272,7 +1272,7 @@ architecture macro guard passed
 - [ ] **Step 5.6: Commit Macro stage/swap**
 
 ```bash
-git add src/gmgn_twitter_intel/domains/macro_intel \
+git add src/parallax/domains/macro_intel \
         tests/unit/domains/macro_intel/test_macro_generation_swap.py \
         tests/integration/domains/macro_intel/test_macro_observation_series_generation.py \
         tests/architecture/test_runtime_performance_architecture_hard_cut.py
@@ -1284,13 +1284,13 @@ git commit -m "fix: stage macro observation series generations"
 ## Task 6: Equity Fetch And Evidence Hydration Split
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_evidence_hydration_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_fetch_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/ARCHITECTURE.md`
-- Modify: `src/gmgn_twitter_intel/app/runtime/settings.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_factories/equity_event_intel.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_manifest.py`
+- Create: `src/parallax/domains/equity_event_intel/runtime/equity_event_evidence_hydration_worker.py`
+- Modify: `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py`
+- Modify: `src/parallax/domains/equity_event_intel/runtime/equity_event_fetch_worker.py`
+- Modify: `src/parallax/domains/equity_event_intel/ARCHITECTURE.md`
+- Modify: `src/parallax/app/runtime/settings.py`
+- Modify: `src/parallax/app/runtime/worker_factories/equity_event_intel.py`
+- Modify: `src/parallax/app/runtime/worker_manifest.py`
 - Test: `tests/unit/domains/equity_event_intel/test_equity_event_evidence_hydration_worker.py`
 - Test: `tests/integration/domains/equity_event_intel/test_equity_event_evidence_jobs.py`
 
@@ -1415,7 +1415,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
+from parallax.app.runtime.worker_base import WorkerBase
 
 
 class EquityEventEvidenceHydrationWorker(WorkerBase):
@@ -1546,11 +1546,11 @@ architecture equity guards passed
 - [ ] **Step 6.9: Commit Equity split**
 
 ```bash
-git add src/gmgn_twitter_intel/domains/equity_event_intel \
-        src/gmgn_twitter_intel/app/runtime/settings.py \
-        src/gmgn_twitter_intel/app/runtime/worker_factories/equity_event_intel.py \
-        src/gmgn_twitter_intel/app/runtime/worker_manifest.py \
-        src/gmgn_twitter_intel/app/runtime/queue_health.py \
+git add src/parallax/domains/equity_event_intel \
+        src/parallax/app/runtime/settings.py \
+        src/parallax/app/runtime/worker_factories/equity_event_intel.py \
+        src/parallax/app/runtime/worker_manifest.py \
+        src/parallax/app/runtime/queue_health.py \
         tests/unit/domains/equity_event_intel/test_equity_event_evidence_hydration_worker.py \
         tests/integration/domains/equity_event_intel/test_equity_event_evidence_jobs.py \
         tests/architecture/test_runtime_performance_architecture_hard_cut.py
@@ -1707,7 +1707,7 @@ powa-web running
 - [ ] **Step 8.4: Confirm latest migration head**
 
 ```bash
-docker compose exec -T postgres psql -U gmgn -d gmgn_twitter_intel -Atc "SELECT version_num FROM alembic_version ORDER BY version_num DESC LIMIT 1;"
+docker compose exec -T postgres psql -U gmgn -d parallax -Atc "SELECT version_num FROM alembic_version ORDER BY version_num DESC LIMIT 1;"
 ```
 
 Expected:
@@ -1735,7 +1735,7 @@ Expected JSON facts:
 - [ ] **Step 8.6: Capture old Token Radar query calls before refresh**
 
 ```bash
-BEFORE_OLD_TOKEN_RADAR_CALLS="$(docker compose exec -T postgres psql -U gmgn -d gmgn_twitter_intel -Atc "
+BEFORE_OLD_TOKEN_RADAR_CALLS="$(docker compose exec -T postgres psql -U gmgn -d parallax -Atc "
 SELECT COALESCE(sum(calls), 0)
 FROM pg_stat_statements
 WHERE query ILIKE 'WITH request_targets AS (%';")"
@@ -1755,7 +1755,7 @@ If an ops endpoint exists for worker wake-up, call it once before the sleep. Do 
 - [ ] **Step 8.8: Confirm old Token Radar query calls did not increase**
 
 ```bash
-AFTER_OLD_TOKEN_RADAR_CALLS="$(docker compose exec -T postgres psql -U gmgn -d gmgn_twitter_intel -Atc "
+AFTER_OLD_TOKEN_RADAR_CALLS="$(docker compose exec -T postgres psql -U gmgn -d parallax -Atc "
 SELECT COALESCE(sum(calls), 0)
 FROM pg_stat_statements
 WHERE query ILIKE 'WITH request_targets AS (%';")"
@@ -1783,7 +1783,7 @@ top sql token radar share: < 10
 - [ ] **Step 8.10: Run rank-source EXPLAIN**
 
 ```bash
-docker compose exec -T postgres psql -U gmgn -d gmgn_twitter_intel -c "
+docker compose exec -T postgres psql -U gmgn -d parallax -c "
 EXPLAIN (ANALYZE, BUFFERS)
 SELECT *
 FROM token_radar_rank_source_events
@@ -1805,7 +1805,7 @@ Use existing project commands from `docs/references/POSTGRES_PERFORMANCE.md`. Re
 
 ```text
 powa_statements_history count > 0
-pgBadger latest report path exists under /Users/qinghuan/.gmgn-twitter-intel/reports/pgbadger/
+pgBadger latest report path exists under /Users/qinghuan/.parallax/reports/pgbadger/
 old Token Radar request_targets SQL absent from new top offenders
 ```
 
@@ -1878,8 +1878,8 @@ score >= 90
 ## Review Checklist Before Claiming Complete
 
 - [ ] `rg "TokenRadarTargetFeatureBatchQuery|source_rows_for_requests|WITH request_targets AS" src tests` returns no runtime reference; historical docs may mention it only as deleted evidence.
-- [ ] `rg "hydrate_document_evidence" src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_fetch_worker.py` returns nothing.
-- [ ] `rg "DELETE FROM macro_observation_series_rows" src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py` returns no projection-version delete-all pattern.
+- [ ] `rg "hydrate_document_evidence" src/parallax/domains/equity_event_intel/runtime/equity_event_fetch_worker.py` returns nothing.
+- [ ] `rg "DELETE FROM macro_observation_series_rows" src/parallax/domains/macro_intel/repositories/macro_intel_repository.py` returns no projection-version delete-all pattern.
 - [ ] `uv run pytest -q` passes or every failure is proven unrelated to this branch and documented.
 - [ ] `make docker-up` completes after merge to main.
 - [ ] `/readyz` is green on rebuilt Docker.

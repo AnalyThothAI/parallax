@@ -65,17 +65,17 @@ token_radar_rows
 
 ### Create
 
-- `src/gmgn_twitter_intel/domains/pulse_lab/types/evidence_packet.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_state.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_evidence_repository.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_evidence_source_repository.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/evidence_packet_builder.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/evidence_completeness_gate.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/claim_evidence_verifier.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_freshness_health.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_replay_eval.py`
-- `src/gmgn_twitter_intel/app/surfaces/cli/commands/pulse_replay.py`
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260518_0062_pulse_evidence_first_recovery.py`
+- `src/parallax/domains/pulse_lab/types/evidence_packet.py`
+- `src/parallax/domains/pulse_lab/types/pulse_state.py`
+- `src/parallax/domains/pulse_lab/repositories/pulse_evidence_repository.py`
+- `src/parallax/domains/pulse_lab/repositories/pulse_evidence_source_repository.py`
+- `src/parallax/domains/pulse_lab/services/evidence_packet_builder.py`
+- `src/parallax/domains/pulse_lab/services/evidence_completeness_gate.py`
+- `src/parallax/domains/pulse_lab/services/claim_evidence_verifier.py`
+- `src/parallax/domains/pulse_lab/services/pulse_freshness_health.py`
+- `src/parallax/domains/pulse_lab/services/pulse_replay_eval.py`
+- `src/parallax/app/surfaces/cli/commands/pulse_replay.py`
+- `src/parallax/platform/db/alembic/versions/20260518_0062_pulse_evidence_first_recovery.py`
 - `tests/architecture/test_pulse_signal_evidence_contracts.py`
 - `tests/unit/test_pulse_evidence_packet_builder.py`
 - `tests/unit/test_pulse_evidence_completeness_gate.py`
@@ -89,28 +89,28 @@ token_radar_rows
 
 ### Modify
 
-- `src/gmgn_twitter_intel/domains/pulse_lab/types/__init__.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/types/agent_decision.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_candidate_context.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/providers.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_runtime.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_eval.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_decision_runtime.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/recommendation_clipper.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/write_gate.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/prompts/evidence_debate.md`
-- `src/gmgn_twitter_intel/domains/pulse_lab/prompts/decision_maker.md`
-- `src/gmgn_twitter_intel/domains/pulse_lab/repositories/__init__.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_candidates_repository.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_read_repository.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_runs_repository.py`
-- `src/gmgn_twitter_intel/app/runtime/provider_wiring/openai.py`
-- `src/gmgn_twitter_intel/app/runtime/repository_session.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/routes_pulse.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
-- `src/gmgn_twitter_intel/app/surfaces/cli/main.py`
-- `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`
+- `src/parallax/domains/pulse_lab/types/__init__.py`
+- `src/parallax/domains/pulse_lab/types/agent_decision.py`
+- `src/parallax/domains/pulse_lab/types/pulse_candidate_context.py`
+- `src/parallax/domains/pulse_lab/providers.py`
+- `src/parallax/domains/pulse_lab/services/agent_runtime.py`
+- `src/parallax/domains/pulse_lab/services/agent_eval.py`
+- `src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py`
+- `src/parallax/domains/pulse_lab/services/pulse_decision_runtime.py`
+- `src/parallax/domains/pulse_lab/services/recommendation_clipper.py`
+- `src/parallax/domains/pulse_lab/services/write_gate.py`
+- `src/parallax/domains/pulse_lab/prompts/evidence_debate.md`
+- `src/parallax/domains/pulse_lab/prompts/decision_maker.md`
+- `src/parallax/domains/pulse_lab/repositories/__init__.py`
+- `src/parallax/domains/pulse_lab/repositories/pulse_candidates_repository.py`
+- `src/parallax/domains/pulse_lab/repositories/pulse_read_repository.py`
+- `src/parallax/domains/pulse_lab/repositories/pulse_runs_repository.py`
+- `src/parallax/app/runtime/provider_wiring/openai.py`
+- `src/parallax/app/runtime/repository_session.py`
+- `src/parallax/app/surfaces/api/routes_pulse.py`
+- `src/parallax/app/surfaces/api/schemas.py`
+- `src/parallax/app/surfaces/cli/main.py`
+- `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py`
 - `web/src/lib/types/frontend-contracts.ts`
 - `web/src/lib/api.ts`
 - `web/src/routes/pulse/+page.svelte` or current Signal Pulse page component
@@ -118,7 +118,7 @@ token_radar_rows
 - `docs/WORKER_FLOW.md`
 - `docs/WORKERS.md`
 - `docs/CONTRACTS.md`
-- `src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`
+- `src/parallax/domains/pulse_lab/ARCHITECTURE.md`
 
 ---
 
@@ -128,9 +128,9 @@ token_radar_rows
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260518_0062_pulse_evidence_first_recovery.py`
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_state.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/types/__init__.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260518_0062_pulse_evidence_first_recovery.py`
+- Create: `src/parallax/domains/pulse_lab/types/pulse_state.py`
+- Modify: `src/parallax/domains/pulse_lab/types/__init__.py`
 
 **Steps:**
 
@@ -249,10 +249,10 @@ ALTER TABLE pulse_candidates
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/types/evidence_packet.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/types/agent_decision.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_candidate_context.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/types/__init__.py`
+- Create: `src/parallax/domains/pulse_lab/types/evidence_packet.py`
+- Modify: `src/parallax/domains/pulse_lab/types/agent_decision.py`
+- Modify: `src/parallax/domains/pulse_lab/types/pulse_candidate_context.py`
+- Modify: `src/parallax/domains/pulse_lab/types/__init__.py`
 
 **Steps:**
 
@@ -332,7 +332,7 @@ ALTER TABLE pulse_candidates
 
 - [ ] `uv run pytest tests/unit/test_pulse_display_status.py tests/unit/test_pulse_claim_evidence_verifier.py -q` can import the new types.
 - [ ] Pydantic serialization round-trips `PulseEvidencePacket`, `EvidenceDebateMemo`, and `FinalDecision`.
-- [ ] `rg -n "analyst|critic|judge|legacy_skipped" src/gmgn_twitter_intel/domains/pulse_lab` returns no live runtime usage.
+- [ ] `rg -n "analyst|critic|judge|legacy_skipped" src/parallax/domains/pulse_lab` returns no live runtime usage.
 
 ---
 
@@ -342,10 +342,10 @@ ALTER TABLE pulse_candidates
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_evidence_repository.py`
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_evidence_source_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/__init__.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/repository_session.py`
+- Create: `src/parallax/domains/pulse_lab/repositories/pulse_evidence_repository.py`
+- Create: `src/parallax/domains/pulse_lab/repositories/pulse_evidence_source_repository.py`
+- Modify: `src/parallax/domains/pulse_lab/repositories/__init__.py`
+- Modify: `src/parallax/app/runtime/repository_session.py`
 - Create: `tests/integration/test_pulse_evidence_repository.py`
 
 **Steps:**
@@ -395,9 +395,9 @@ ALTER TABLE pulse_candidates
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/services/evidence_packet_builder.py`
+- Create: `src/parallax/domains/pulse_lab/services/evidence_packet_builder.py`
 - Create: `tests/unit/test_pulse_evidence_packet_builder.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_candidate_context.py`
+- Modify: `src/parallax/domains/pulse_lab/types/pulse_candidate_context.py`
 
 **Steps:**
 
@@ -447,9 +447,9 @@ ALTER TABLE pulse_candidates
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/services/evidence_completeness_gate.py`
+- Create: `src/parallax/domains/pulse_lab/services/evidence_completeness_gate.py`
 - Create: `tests/unit/test_pulse_evidence_completeness_gate.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/recommendation_clipper.py`
+- Modify: `src/parallax/domains/pulse_lab/services/recommendation_clipper.py`
 
 **Steps:**
 
@@ -496,13 +496,13 @@ ALTER TABLE pulse_candidates
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/providers.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_runtime.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_decision_runtime.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/provider_wiring/openai.py`
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/prompts/evidence_debate.md`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/prompts/decision_maker.md`
+- Modify: `src/parallax/domains/pulse_lab/providers.py`
+- Modify: `src/parallax/domains/pulse_lab/services/agent_runtime.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_decision_runtime.py`
+- Modify: `src/parallax/app/runtime/provider_wiring/openai.py`
+- Modify: `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py`
+- Modify: `src/parallax/domains/pulse_lab/prompts/evidence_debate.md`
+- Modify: `src/parallax/domains/pulse_lab/prompts/decision_maker.md`
 - Modify: `tests/unit/test_pulse_decision_agent_client.py`
 
 **Steps:**
@@ -551,7 +551,7 @@ ALTER TABLE pulse_candidates
 **Acceptance:**
 
 - [ ] `uv run pytest tests/unit/test_pulse_decision_agent_client.py -q` passes.
-- [ ] `rg -n "get_target_recent_tweets|get_target_price_action|get_official_token_profile|tool_runtime_factory|investigator_max_tool_calls|investigator.md" src/gmgn_twitter_intel/domains/pulse_lab src/gmgn_twitter_intel/integrations/openai_agents src/gmgn_twitter_intel/app/runtime/provider_wiring/openai.py` shows no Pulse decision runtime usage or legacy prompt path.
+- [ ] `rg -n "get_target_recent_tweets|get_target_price_action|get_official_token_profile|tool_runtime_factory|investigator_max_tool_calls|investigator.md" src/parallax/domains/pulse_lab src/parallax/integrations/openai_agents src/parallax/app/runtime/provider_wiring/openai.py` shows no Pulse decision runtime usage or legacy prompt path.
 
 ---
 
@@ -561,9 +561,9 @@ ALTER TABLE pulse_candidates
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/services/claim_evidence_verifier.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_eval.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/write_gate.py`
+- Create: `src/parallax/domains/pulse_lab/services/claim_evidence_verifier.py`
+- Modify: `src/parallax/domains/pulse_lab/services/agent_eval.py`
+- Modify: `src/parallax/domains/pulse_lab/services/write_gate.py`
 - Create: `tests/unit/test_pulse_claim_evidence_verifier.py`
 
 **Steps:**
@@ -614,10 +614,10 @@ ALTER TABLE pulse_candidates
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_runs_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_candidates_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_decision_runtime.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py`
+- Modify: `src/parallax/domains/pulse_lab/repositories/pulse_runs_repository.py`
+- Modify: `src/parallax/domains/pulse_lab/repositories/pulse_candidates_repository.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_decision_runtime.py`
 - Create: `tests/integration/test_pulse_signal_evidence_flow.py`
 - Modify: `tests/unit/test_pulse_candidate_worker.py`
 - Modify: `tests/integration/test_pulse_desk_e2e.py`
@@ -684,13 +684,13 @@ ALTER TABLE pulse_candidates
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_freshness_health.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_read_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/routes_pulse.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
-- Create: `src/gmgn_twitter_intel/app/surfaces/cli/commands/pulse_replay.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/main.py`
+- Create: `src/parallax/domains/pulse_lab/services/pulse_freshness_health.py`
+- Modify: `src/parallax/domains/pulse_lab/repositories/pulse_read_repository.py`
+- Modify: `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py`
+- Modify: `src/parallax/app/surfaces/api/routes_pulse.py`
+- Modify: `src/parallax/app/surfaces/api/schemas.py`
+- Create: `src/parallax/app/surfaces/cli/commands/pulse_replay.py`
+- Modify: `src/parallax/app/surfaces/cli/main.py`
 - Modify: `web/src/lib/types/frontend-contracts.ts`
 - Modify: `web/src/lib/api.ts`
 - Modify: `web/src/routes/pulse/+page.svelte` or current Signal Pulse page component
@@ -727,8 +727,8 @@ ALTER TABLE pulse_candidates
   - `pulse_health`
 - [ ] Update `/api/status` or the existing worker status route to include Pulse health, not only worker process state.
 - [ ] Add CLI command through existing `main.py` command dispatch pattern:
-  - `uv run gmgn-twitter-intel pulse replay-eval --since-hours 4`
-  - `uv run gmgn-twitter-intel pulse health --since-hours 4`
+  - `uv run parallax pulse replay-eval --since-hours 4`
+  - `uv run parallax pulse health --since-hours 4`
 - [ ] Frontend:
   - update generated/manual type contracts in `web/src/lib/types/frontend-contracts.ts`
   - show health banner when `publish_status != healthy`
@@ -749,10 +749,10 @@ ALTER TABLE pulse_candidates
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_replay_eval.py`
+- Create: `src/parallax/domains/pulse_lab/services/pulse_replay_eval.py`
 - Create: `tests/integration/test_pulse_replay_eval.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/commands/pulse_replay.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/main.py`
+- Modify: `src/parallax/app/surfaces/cli/commands/pulse_replay.py`
+- Modify: `src/parallax/app/surfaces/cli/main.py`
 
 **Steps:**
 
@@ -786,7 +786,7 @@ ALTER TABLE pulse_candidates
 **Acceptance:**
 
 - [ ] `uv run pytest tests/integration/test_pulse_replay_eval.py -q` passes.
-- [ ] `uv run gmgn-twitter-intel pulse replay-eval --fixture smoke` exits non-zero on a deliberately broken fixture and zero on valid fixtures.
+- [ ] `uv run parallax pulse replay-eval --fixture smoke` exits non-zero on a deliberately broken fixture and zero on valid fixtures.
 
 ---
 
@@ -826,7 +826,7 @@ ALTER TABLE pulse_candidates
 - Modify: `docs/WORKER_FLOW.md`
 - Modify: `docs/WORKERS.md`
 - Modify: `docs/CONTRACTS.md`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/pulse_lab/ARCHITECTURE.md`
 
 **Steps:**
 
@@ -842,7 +842,7 @@ ALTER TABLE pulse_candidates
 - [ ] Update `docs/CONTRACTS.md`:
   - API fields for `display_status`, `evidence_status`, `decision_status`, `pulse_health`.
   - CLI commands for pulse health and replay eval.
-- [ ] Update `src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`:
+- [ ] Update `src/parallax/domains/pulse_lab/ARCHITECTURE.md`:
   - include sequence diagram and module ownership.
   - explain TradingAgents-inspired debate shape.
 
@@ -888,9 +888,9 @@ uv run ruff check src tests
 - [ ] Run CLI smoke against local config without printing secrets:
 
 ```bash
-uv run gmgn-twitter-intel config
-uv run gmgn-twitter-intel pulse health --since-hours 4
-uv run gmgn-twitter-intel pulse replay-eval --fixture smoke
+uv run parallax config
+uv run parallax pulse health --since-hours 4
+uv run parallax pulse replay-eval --fixture smoke
 ```
 
 - [ ] Run a local worker smoke on disposable DB:

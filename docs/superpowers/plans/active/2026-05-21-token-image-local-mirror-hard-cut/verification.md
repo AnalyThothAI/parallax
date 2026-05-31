@@ -10,7 +10,7 @@ This verifies the hard cut from provider-hosted token image URLs and the old
 ```text
 asset_profiles / exact token evidence / cex_token_profiles provider logo URLs
   -> token_image_mirror
-  -> token_image_assets + ~/.gmgn-twitter-intel/cache/token-images/*
+  -> token_image_assets + ~/.parallax/cache/token-images/*
   -> token_profile_current.logo_url
   -> /api/token-images/{image_id}
   -> frontend img src
@@ -69,12 +69,12 @@ cd web && npm run test -- --run tests/architecture
 
 ## Live Smoke Checklist
 
-Run against the deployment after `uv run gmgn-twitter-intel config` confirms the
-operator-owned `~/.gmgn-twitter-intel/config.yaml` and `workers.yaml` paths:
+Run against the deployment after `uv run parallax config` confirms the
+operator-owned `~/.parallax/config.yaml` and `workers.yaml` paths:
 
 ```bash
-uv run gmgn-twitter-intel ops mirror-token-images --limit 50 --source-limit 500
-uv run gmgn-twitter-intel ops rebuild-token-profiles --limit 500
+uv run parallax ops mirror-token-images --limit 50 --source-limit 500
+uv run parallax ops rebuild-token-profiles --limit 500
 curl -s 'http://127.0.0.1:8765/api/token-radar?window=1h&scope=all&limit=20' | jq '.. | objects | select(has("logo_url")) | .logo_url'
 curl -i 'http://127.0.0.1:8765/api/token-image?url=https%3A%2F%2Fgmgn.ai%2Fexternal-res%2Ftoken.webp'
 ```

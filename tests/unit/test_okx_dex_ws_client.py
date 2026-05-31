@@ -9,8 +9,8 @@ from typing import Any
 
 import pytest
 
-from gmgn_twitter_intel.integrations.okx import dex_ws_client
-from gmgn_twitter_intel.integrations.okx.dex_ws_client import (
+from parallax.integrations.okx import dex_ws_client
+from parallax.integrations.okx.dex_ws_client import (
     OkxDexWebSocketMarketProvider,
     OkxDexWsClientError,
     _login_prehash,

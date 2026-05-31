@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.domains.asset_market.services.asset_market_sync import sync_binance_usdt_perp_routes
+from parallax.domains.asset_market.services.asset_market_sync import sync_binance_usdt_perp_routes
 
 
 def test_sync_binance_usdt_perp_routes_writes_instruments_and_feeds_without_market_ticks():

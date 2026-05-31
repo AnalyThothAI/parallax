@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from gmgn_twitter_intel.domains.pulse_lab.services.agent_output_normalization import normalize_pulse_stage_output
-from gmgn_twitter_intel.domains.pulse_lab.services.claim_evidence_verifier import ClaimEvidenceVerifier
-from gmgn_twitter_intel.domains.pulse_lab.services.pulse_decision_runtime import PulseDecisionRuntimeService
-from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import BearCaseMemo, FinalDecision, SignalAnalystMemo
+from parallax.domains.pulse_lab.services.agent_output_normalization import normalize_pulse_stage_output
+from parallax.domains.pulse_lab.services.claim_evidence_verifier import ClaimEvidenceVerifier
+from parallax.domains.pulse_lab.services.pulse_decision_runtime import PulseDecisionRuntimeService
+from parallax.domains.pulse_lab.types.agent_decision import BearCaseMemo, FinalDecision, SignalAnalystMemo
 
 
 def test_exact_allowed_refs_pass_without_repairs() -> None:

@@ -19,7 +19,7 @@ BINANCE_DEFAULTS = {
 
 
 def default_config_path() -> Path:
-    return Path.home() / ".gmgn-twitter-intel" / "config.yaml"
+    return Path.home() / ".parallax" / "config.yaml"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

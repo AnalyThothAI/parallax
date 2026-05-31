@@ -21,7 +21,7 @@ Known-failing baseline tests (none expected):
 
 Group by package. Each entry: file path, range, what changes. Function signatures and SQL go inline so a reviewer can audit without opening the editor.
 
-### `src/gmgn_twitter_intel/<area>/<file>.py`
+### `src/parallax/<area>/<file>.py`
 
 - Lines `<a>–<b>`: <change description>.
   - New signature: `def name(arg: Type) -> ReturnType: ...`
@@ -56,7 +56,7 @@ One PR per logical, independently-reviewable slice. Each PR lists which file edi
 ## Rollout order
 
 1. Migration applied (`uv run alembic upgrade head`).
-2. Backfill executed (`uv run gmgn-twitter-intel ops <command>`).
+2. Backfill executed (`uv run parallax ops <command>`).
 3. Code merged.
 4. Verification commands executed.
 5. Operational notes (alert thresholds, dashboards) updated.
@@ -70,7 +70,7 @@ For each step above, the reverse procedure. State which steps are not safely rev
 Map to the spec's acceptance criteria. Each command must produce evidence (stdout / log line / API response) that proves the criterion.
 
 - AC1: `uv run pytest tests/<path>::<test>`
-- AC2: `uv run gmgn-twitter-intel <subcommand> ...` (expected output: ...)
+- AC2: `uv run parallax <subcommand> ...` (expected output: ...)
 - AC3: `curl -s ... | jq ...` (expected JSON shape: ...)
 
 ## Verification

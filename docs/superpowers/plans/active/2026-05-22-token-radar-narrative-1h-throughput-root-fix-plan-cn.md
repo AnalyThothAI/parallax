@@ -40,9 +40,9 @@
   Expected branch: `codex/token-radar-narrative-1h-throughput-root-fix`.
 - [ ] Confirm real runtime config paths before any live-data command:
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
-  Expected: `config_path` and `workers_config_path` point under `~/.gmgn-twitter-intel/`. Do not print secrets.
+  Expected: `config_path` and `workers_config_path` point under `~/.parallax/`. Do not print secrets.
 - [ ] Run baseline focused tests:
   ```bash
   uv run pytest tests/unit/test_worker_settings.py -q
@@ -57,18 +57,18 @@
 
 ## File Map
 
-- Modify `src/gmgn_twitter_intel/platform/config/settings.py`: hard-cut default Narrative windows to `1h`, reject obsolete Narrative windows, add one digest partial-tail knob.
-- Modify `src/gmgn_twitter_intel/domains/narrative_intel/services/narrative_epoch_policy.py`: make `1h` the only digest epoch window and delegate semantic pending decisions to `DiscussionDigestService`.
-- Modify `src/gmgn_twitter_intel/domains/narrative_intel/runtime/narrative_admission_worker.py`: default to `1h` and rely on validated runtime windows.
-- Modify `src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py`: enqueue missing admitted `1h` source rows every cycle even when due rows already exist.
-- Modify `src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py`: request due digest targets only for validated realtime windows and pass partial-tail policy into the service.
-- Modify `src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py`: filter due semantics/digest queries to `1h`, hard-clean non-`1h` realtime state, keep exact snapshot lookup.
-- Modify `src/gmgn_twitter_intel/domains/narrative_intel/read_models/narrative_read_model.py`: add explicit Token Radar surface overlay hydration.
-- Modify `src/gmgn_twitter_intel/domains/narrative_intel/services/narrative_currentness.py`: keep exact currentness semantics; only add missing-overlay sentinel support if the read model needs a shared constructor.
-- Modify `src/gmgn_twitter_intel/domains/narrative_intel/services/discussion_digest_service.py`: allow ready digest when coverage passes and pending semantic tail is within one bounded knob.
-- Modify `src/gmgn_twitter_intel/domains/narrative_intel/queries/narrative_backlog_health_query.py`: make health `1h`-lane scoped and add drain estimates.
-- Modify `src/gmgn_twitter_intel/app/surfaces/api/routes_status.py` and `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`: pass worker settings to health and expose new fields.
-- Modify `src/gmgn_twitter_intel/app/surfaces/cli/parser.py` and `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`: make `rebuild-narrative-intel` default to hard-cut `1h` and report cleanup counts.
+- Modify `src/parallax/platform/config/settings.py`: hard-cut default Narrative windows to `1h`, reject obsolete Narrative windows, add one digest partial-tail knob.
+- Modify `src/parallax/domains/narrative_intel/services/narrative_epoch_policy.py`: make `1h` the only digest epoch window and delegate semantic pending decisions to `DiscussionDigestService`.
+- Modify `src/parallax/domains/narrative_intel/runtime/narrative_admission_worker.py`: default to `1h` and rely on validated runtime windows.
+- Modify `src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py`: enqueue missing admitted `1h` source rows every cycle even when due rows already exist.
+- Modify `src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py`: request due digest targets only for validated realtime windows and pass partial-tail policy into the service.
+- Modify `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`: filter due semantics/digest queries to `1h`, hard-clean non-`1h` realtime state, keep exact snapshot lookup.
+- Modify `src/parallax/domains/narrative_intel/read_models/narrative_read_model.py`: add explicit Token Radar surface overlay hydration.
+- Modify `src/parallax/domains/narrative_intel/services/narrative_currentness.py`: keep exact currentness semantics; only add missing-overlay sentinel support if the read model needs a shared constructor.
+- Modify `src/parallax/domains/narrative_intel/services/discussion_digest_service.py`: allow ready digest when coverage passes and pending semantic tail is within one bounded knob.
+- Modify `src/parallax/domains/narrative_intel/queries/narrative_backlog_health_query.py`: make health `1h`-lane scoped and add drain estimates.
+- Modify `src/parallax/app/surfaces/api/routes_status.py` and `src/parallax/app/surfaces/api/schemas.py`: pass worker settings to health and expose new fields.
+- Modify `src/parallax/app/surfaces/cli/parser.py` and `src/parallax/app/surfaces/cli/commands/ops.py`: make `rebuild-narrative-intel` default to hard-cut `1h` and report cleanup counts.
 - Modify `web/src/lib/types/frontend-contracts.ts`: add optional overlay metadata fields to `TokenDiscussionDigest`.
 - Modify `web/src/shared/model/narrativeDataGaps.ts` and `web/src/shared/model/tokenRadarCompactCase.ts`: render overlay and no-reusable states distinctly.
 - Add or modify tests listed in each task.
@@ -76,8 +76,8 @@
 ## Task 1: Hard-Cut Narrative Config and Epoch Windows
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/services/narrative_epoch_policy.py`
+- Modify: `src/parallax/platform/config/settings.py`
+- Modify: `src/parallax/domains/narrative_intel/services/narrative_epoch_policy.py`
 - Test: `tests/unit/test_worker_settings.py`
 - Test: `tests/unit/domains/narrative_intel/test_narrative_epoch_policy.py`
 
@@ -124,7 +124,7 @@
 
   ```python
   def test_epoch_policy_hard_cuts_digest_windows_to_1h() -> None:
-      from gmgn_twitter_intel.domains.narrative_intel.services.narrative_epoch_policy import (
+      from parallax.domains.narrative_intel.services.narrative_epoch_policy import (
           DEFAULT_THRESHOLDS,
           DIGEST_WINDOWS,
           NarrativeEpochPolicy,
@@ -155,7 +155,7 @@
 
 - [ ] **Step 4: Implement config hard cut**
 
-  In `src/gmgn_twitter_intel/platform/config/settings.py`, add constants near the other worker window constants:
+  In `src/parallax/platform/config/settings.py`, add constants near the other worker window constants:
 
   ```python
   NARRATIVE_REALTIME_WINDOWS = ("1h",)
@@ -266,7 +266,7 @@
 
 - [ ] **Step 5: Implement epoch hard cut**
 
-  In `src/gmgn_twitter_intel/domains/narrative_intel/services/narrative_epoch_policy.py`, replace the constants:
+  In `src/parallax/domains/narrative_intel/services/narrative_epoch_policy.py`, replace the constants:
 
   ```python
   DIGEST_WINDOWS = frozenset({"1h"})
@@ -306,17 +306,17 @@
 - [ ] **Step 7: Commit**
 
   ```bash
-  git add src/gmgn_twitter_intel/platform/config/settings.py src/gmgn_twitter_intel/domains/narrative_intel/services/narrative_epoch_policy.py tests/unit/test_worker_settings.py tests/unit/domains/narrative_intel/test_narrative_epoch_policy.py
+  git add src/parallax/platform/config/settings.py src/parallax/domains/narrative_intel/services/narrative_epoch_policy.py tests/unit/test_worker_settings.py tests/unit/domains/narrative_intel/test_narrative_epoch_policy.py
   git commit -m "fix: hard cut narrative runtime windows to 1h"
   ```
 
 ## Task 2: Filter Worker Work Queues to the `1h` Lane
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/runtime/narrative_admission_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py`
+- Modify: `src/parallax/domains/narrative_intel/runtime/narrative_admission_worker.py`
+- Modify: `src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py`
+- Modify: `src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
+- Modify: `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`
 - Test: `tests/unit/domains/narrative_intel/test_narrative_workers.py`
 - Test: `tests/integration/test_narrative_repository.py`
 
@@ -535,16 +535,16 @@
 - [ ] **Step 8: Commit**
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/narrative_intel/runtime/narrative_admission_worker.py src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py tests/unit/domains/narrative_intel/test_narrative_workers.py tests/integration/test_narrative_repository.py
+  git add src/parallax/domains/narrative_intel/runtime/narrative_admission_worker.py src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py src/parallax/domains/narrative_intel/repositories/narrative_repository.py tests/unit/domains/narrative_intel/test_narrative_workers.py tests/integration/test_narrative_repository.py
   git commit -m "fix: constrain narrative workers to the 1h lane"
   ```
 
 ## Task 3: Digest Partial-Complete Policy Without Hiding Backlog
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/services/discussion_digest_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
+- Modify: `src/parallax/domains/narrative_intel/services/discussion_digest_service.py`
+- Modify: `src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
+- Modify: `src/parallax/platform/config/settings.py`
 - Test: `tests/unit/domains/narrative_intel/test_discussion_digest_service.py`
 - Test: `tests/unit/domains/narrative_intel/test_narrative_workers.py`
 
@@ -746,15 +746,15 @@
 - [ ] **Step 7: Commit**
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/narrative_intel/services/discussion_digest_service.py src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py src/gmgn_twitter_intel/platform/config/settings.py tests/unit/domains/narrative_intel/test_discussion_digest_service.py tests/unit/domains/narrative_intel/test_narrative_workers.py
+  git add src/parallax/domains/narrative_intel/services/discussion_digest_service.py src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py src/parallax/platform/config/settings.py tests/unit/domains/narrative_intel/test_discussion_digest_service.py tests/unit/domains/narrative_intel/test_narrative_workers.py
   git commit -m "fix: allow bounded-tail 1h narrative digests"
   ```
 
 ## Task 4: Explicit `1h` Overlay for Non-`1h` Token Radar Surfaces
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/read_models/narrative_read_model.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
+- Modify: `src/parallax/domains/narrative_intel/read_models/narrative_read_model.py`
+- Modify: `src/parallax/app/surfaces/api/schemas.py`
 - Test: `tests/unit/domains/narrative_intel/test_narrative_read_model.py`
 - Test: `tests/unit/test_api_narrative_contract.py`
 
@@ -980,7 +980,7 @@
 
 - [ ] **Step 4: Add schema fields**
 
-  In `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`, add optional fields to `TokenDiscussionDigestData`:
+  In `src/parallax/app/surfaces/api/schemas.py`, add optional fields to `TokenDiscussionDigestData`:
 
   ```python
   analysis_window: str | None = None
@@ -999,19 +999,19 @@
 - [ ] **Step 6: Commit**
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/narrative_intel/read_models/narrative_read_model.py src/gmgn_twitter_intel/app/surfaces/api/schemas.py tests/unit/domains/narrative_intel/test_narrative_read_model.py tests/unit/test_api_narrative_contract.py
+  git add src/parallax/domains/narrative_intel/read_models/narrative_read_model.py src/parallax/app/surfaces/api/schemas.py tests/unit/domains/narrative_intel/test_narrative_read_model.py tests/unit/test_api_narrative_contract.py
   git commit -m "feat: expose 1h narrative overlays on radar surfaces"
   ```
 
 ## Task 5: Hard-Cut Ops Cleanup and `1h` Health Drain Math
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/narrative_intel/queries/narrative_backlog_health_query.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/routes_status.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/parser.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`
+- Modify: `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`
+- Modify: `src/parallax/domains/narrative_intel/queries/narrative_backlog_health_query.py`
+- Modify: `src/parallax/app/surfaces/api/routes_status.py`
+- Modify: `src/parallax/app/surfaces/api/schemas.py`
+- Modify: `src/parallax/app/surfaces/cli/parser.py`
+- Modify: `src/parallax/app/surfaces/cli/commands/ops.py`
 - Test: `tests/unit/domains/narrative_intel/test_narrative_backlog_health.py`
 - Test: `tests/integration/test_narrative_repository.py`
 
@@ -1286,7 +1286,7 @@
 - [ ] **Step 9: Commit**
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py src/gmgn_twitter_intel/domains/narrative_intel/queries/narrative_backlog_health_query.py src/gmgn_twitter_intel/app/surfaces/api/routes_status.py src/gmgn_twitter_intel/app/surfaces/api/schemas.py src/gmgn_twitter_intel/app/surfaces/cli/parser.py src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py tests/unit/domains/narrative_intel/test_narrative_backlog_health.py tests/integration/test_narrative_repository.py tests/unit/test_worker_settings.py
+  git add src/parallax/domains/narrative_intel/repositories/narrative_repository.py src/parallax/domains/narrative_intel/queries/narrative_backlog_health_query.py src/parallax/app/surfaces/api/routes_status.py src/parallax/app/surfaces/api/schemas.py src/parallax/app/surfaces/cli/parser.py src/parallax/app/surfaces/cli/commands/ops.py tests/unit/domains/narrative_intel/test_narrative_backlog_health.py tests/integration/test_narrative_repository.py tests/unit/test_worker_settings.py
   git commit -m "fix: hard cut narrative cleanup and health to 1h"
   ```
 
@@ -1468,7 +1468,7 @@
   uv run python - <<'PY'
   import yaml
   from pydantic import ValidationError
-  from gmgn_twitter_intel.platform.config.settings import WorkersSettings, default_workers_yaml
+  from parallax.platform.config.settings import WorkersSettings, default_workers_yaml
 
   payload = yaml.safe_load(default_workers_yaml())
   payload["token_discussion_digest"]["windows"] = ["4h"]
@@ -1485,16 +1485,16 @@
 - [ ] **Step 5: Run live-safe config/path check**
 
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
-  Expected: paths under `~/.gmgn-twitter-intel/`. Report only paths and redacted booleans.
+  Expected: paths under `~/.parallax/`. Report only paths and redacted booleans.
 
 - [ ] **Step 6: Operator rollout note**
 
   Add this exact note to the PR description or verification artifact:
 
   ```markdown
-  Rollout gate: update `~/.gmgn-twitter-intel/workers.yaml` so `narrative_admission.windows` and `token_discussion_digest.windows` are `["1h"]`, with `scopes: ["all"]`, before restarting workers. Old configs with `5m`, `4h`, or `24h` now fail validation by design. After restart, run `uv run gmgn-twitter-intel ops rebuild-narrative-intel --window 1h --scope all --drain --cycles 8` to suppress non-1h narrative admissions/digests and drain the 1h lane.
+  Rollout gate: update `~/.parallax/workers.yaml` so `narrative_admission.windows` and `token_discussion_digest.windows` are `["1h"]`, with `scopes: ["all"]`, before restarting workers. Old configs with `5m`, `4h`, or `24h` now fail validation by design. After restart, run `uv run parallax ops rebuild-narrative-intel --window 1h --scope all --drain --cycles 8` to suppress non-1h narrative admissions/digests and drain the 1h lane.
   ```
 
 - [ ] **Step 7: Commit docs updates**

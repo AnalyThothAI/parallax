@@ -1,8 +1,8 @@
 import pytest
 
-from gmgn_twitter_intel.domains.news_intel.services.news_entity_extraction import NewsEntity
-from gmgn_twitter_intel.domains.news_intel.services.news_token_mentions import build_news_token_mentions
-from gmgn_twitter_intel.domains.token_intel.interfaces import TokenIdentityLookupResult
+from parallax.domains.news_intel.services.news_entity_extraction import NewsEntity
+from parallax.domains.news_intel.services.news_token_mentions import build_news_token_mentions
+from parallax.domains.token_intel.interfaces import TokenIdentityLookupResult
 
 
 class FakeLookup:

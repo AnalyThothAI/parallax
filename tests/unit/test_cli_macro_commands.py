@@ -9,14 +9,14 @@ from types import TracebackType
 
 import pytest
 
-from gmgn_twitter_intel.app.surfaces.cli.parser import build_parser
-from gmgn_twitter_intel.cli import main
-from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_HISTORY_REQUIRED_CONCEPTS
-from gmgn_twitter_intel.domains.macro_intel.observation_identity import (
+from parallax.app.surfaces.cli.parser import build_parser
+from parallax.cli import main
+from parallax.domains.macro_intel._constants import MACRO_HISTORY_REQUIRED_CONCEPTS
+from parallax.domains.macro_intel.observation_identity import (
     macro_observation_fact_payload_hash,
     macro_observation_id,
 )
-from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_types import MacroSyncRunSummary
+from parallax.domains.macro_intel.services.macro_sync_types import MacroSyncRunSummary
 
 NOW_MS = 1_779_000_000_000
 
@@ -101,7 +101,7 @@ def test_macro_sync_parser_accepts_history_args() -> None:
 
 
 def test_macrodata_runner_injects_fred_env_without_exposing_secret(monkeypatch) -> None:
-    from gmgn_twitter_intel.integrations.macrodata.runner import MacrodataBundleRunner
+    from parallax.integrations.macrodata.runner import MacrodataBundleRunner
 
     secret = "dummy-fred-secret"
     resolved = "/app/.venv/bin/macrodata"
@@ -131,10 +131,10 @@ def test_macrodata_runner_injects_fred_env_without_exposing_secret(monkeypatch) 
 
     monkeypatch.setenv("APP_FRED_KEY", secret)
     monkeypatch.setattr(
-        "gmgn_twitter_intel.integrations.macrodata.runner.resolve_macrodata_executable",
+        "parallax.integrations.macrodata.runner.resolve_macrodata_executable",
         lambda *, environ=None: resolved,
     )
-    monkeypatch.setattr("gmgn_twitter_intel.integrations.macrodata.runner.subprocess.run", fake_run)
+    monkeypatch.setattr("parallax.integrations.macrodata.runner.subprocess.run", fake_run)
 
     result = MacrodataBundleRunner(settings=Settings()).history_bundle(
         bundle="macro-core",
@@ -187,7 +187,7 @@ def test_macrodata_runner_injects_fred_env_without_exposing_secret(monkeypatch) 
 
 
 def test_macrodata_runner_uses_default_fred_env_when_unset(monkeypatch) -> None:
-    from gmgn_twitter_intel.integrations.macrodata.runner import MacrodataBundleRunner
+    from parallax.integrations.macrodata.runner import MacrodataBundleRunner
 
     calls: list[dict[str, object]] = []
 
@@ -205,10 +205,10 @@ def test_macrodata_runner_uses_default_fred_env_when_unset(monkeypatch) -> None:
 
     monkeypatch.delenv("FINANCE_FRED_API_KEY", raising=False)
     monkeypatch.setattr(
-        "gmgn_twitter_intel.integrations.macrodata.runner.resolve_macrodata_executable",
+        "parallax.integrations.macrodata.runner.resolve_macrodata_executable",
         lambda *, environ=None: "/app/.venv/bin/macrodata",
     )
-    monkeypatch.setattr("gmgn_twitter_intel.integrations.macrodata.runner.subprocess.run", fake_run)
+    monkeypatch.setattr("parallax.integrations.macrodata.runner.subprocess.run", fake_run)
 
     result = MacrodataBundleRunner(settings=Settings()).history_bundle(
         bundle="macro-core",
@@ -222,7 +222,7 @@ def test_macrodata_runner_uses_default_fred_env_when_unset(monkeypatch) -> None:
 
 
 def test_macrodata_runner_passes_configured_timeout_to_child_process(monkeypatch) -> None:
-    from gmgn_twitter_intel.integrations.macrodata.runner import MacrodataBundleRunner
+    from parallax.integrations.macrodata.runner import MacrodataBundleRunner
 
     calls: list[dict[str, object]] = []
 
@@ -240,10 +240,10 @@ def test_macrodata_runner_passes_configured_timeout_to_child_process(monkeypatch
         return Completed()
 
     monkeypatch.setattr(
-        "gmgn_twitter_intel.integrations.macrodata.runner.resolve_macrodata_executable",
+        "parallax.integrations.macrodata.runner.resolve_macrodata_executable",
         lambda *, environ=None: "/app/.venv/bin/macrodata",
     )
-    monkeypatch.setattr("gmgn_twitter_intel.integrations.macrodata.runner.subprocess.run", fake_run)
+    monkeypatch.setattr("parallax.integrations.macrodata.runner.subprocess.run", fake_run)
 
     result = MacrodataBundleRunner(settings=Settings()).history_bundle(
         bundle="macro-core",
@@ -256,7 +256,7 @@ def test_macrodata_runner_passes_configured_timeout_to_child_process(monkeypatch
 
 
 def test_macrodata_runner_timeout_raises_redacted_runner_error(monkeypatch) -> None:
-    from gmgn_twitter_intel.integrations.macrodata.runner import MacrodataBundleRunner, MacrodataRunnerError
+    from parallax.integrations.macrodata.runner import MacrodataBundleRunner, MacrodataRunnerError
 
     class Settings:
         macrodata_fred_api_key_env = None
@@ -266,10 +266,10 @@ def test_macrodata_runner_timeout_raises_redacted_runner_error(monkeypatch) -> N
         raise subprocess.TimeoutExpired(command, timeout)
 
     monkeypatch.setattr(
-        "gmgn_twitter_intel.integrations.macrodata.runner.resolve_macrodata_executable",
+        "parallax.integrations.macrodata.runner.resolve_macrodata_executable",
         lambda *, environ=None: "/app/.venv/bin/macrodata",
     )
-    monkeypatch.setattr("gmgn_twitter_intel.integrations.macrodata.runner.subprocess.run", fake_run)
+    monkeypatch.setattr("parallax.integrations.macrodata.runner.subprocess.run", fake_run)
 
     with pytest.raises(MacrodataRunnerError) as excinfo:
         MacrodataBundleRunner(settings=Settings()).history_bundle(
@@ -284,7 +284,7 @@ def test_macrodata_runner_timeout_raises_redacted_runner_error(monkeypatch) -> N
 
 
 def test_macrodata_runner_ignores_legacy_cli_project_dir(monkeypatch, tmp_path) -> None:
-    from gmgn_twitter_intel.integrations.macrodata.runner import MacrodataBundleRunner
+    from parallax.integrations.macrodata.runner import MacrodataBundleRunner
 
     calls: list[dict[str, object]] = []
 
@@ -302,10 +302,10 @@ def test_macrodata_runner_ignores_legacy_cli_project_dir(monkeypatch, tmp_path) 
         return Completed()
 
     monkeypatch.setattr(
-        "gmgn_twitter_intel.integrations.macrodata.runner.resolve_macrodata_executable",
+        "parallax.integrations.macrodata.runner.resolve_macrodata_executable",
         lambda *, environ=None: "/app/.venv/bin/macrodata",
     )
-    monkeypatch.setattr("gmgn_twitter_intel.integrations.macrodata.runner.subprocess.run", fake_run)
+    monkeypatch.setattr("parallax.integrations.macrodata.runner.subprocess.run", fake_run)
 
     result = MacrodataBundleRunner(settings=Settings()).history_bundle(
         bundle="macro-core",
@@ -318,7 +318,7 @@ def test_macrodata_runner_ignores_legacy_cli_project_dir(monkeypatch, tmp_path) 
 
 
 def test_macrodata_runner_removes_stale_parent_fred_key_when_configured_env_missing(monkeypatch) -> None:
-    from gmgn_twitter_intel.integrations.macrodata.runner import MacrodataBundleRunner
+    from parallax.integrations.macrodata.runner import MacrodataBundleRunner
 
     stale_secret = "dummy-stale-fred-secret"
     calls: list[dict[str, object]] = []
@@ -338,10 +338,10 @@ def test_macrodata_runner_removes_stale_parent_fred_key_when_configured_env_miss
     monkeypatch.setenv("FRED_API_KEY", stale_secret)
     monkeypatch.delenv("APP_FRED_KEY", raising=False)
     monkeypatch.setattr(
-        "gmgn_twitter_intel.integrations.macrodata.runner.resolve_macrodata_executable",
+        "parallax.integrations.macrodata.runner.resolve_macrodata_executable",
         lambda *, environ=None: "/app/.venv/bin/macrodata",
     )
-    monkeypatch.setattr("gmgn_twitter_intel.integrations.macrodata.runner.subprocess.run", fake_run)
+    monkeypatch.setattr("parallax.integrations.macrodata.runner.subprocess.run", fake_run)
 
     result = MacrodataBundleRunner(settings=Settings()).history_bundle(
         bundle="macro-core",
@@ -356,7 +356,7 @@ def test_macrodata_runner_removes_stale_parent_fred_key_when_configured_env_miss
 
 
 def test_macro_import_bundle_from_file_dispatches_to_importer(tmp_path, monkeypatch) -> None:
-    from gmgn_twitter_intel.app.surfaces.cli.commands import macro as macro_module
+    from parallax.app.surfaces.cli.commands import macro as macro_module
 
     bundle_path = tmp_path / "macro-core.json"
     bundle_path.write_text(json.dumps(ENVELOPE), encoding="utf-8")
@@ -422,7 +422,7 @@ def test_macro_import_bundle_from_file_dispatches_to_importer(tmp_path, monkeypa
 
 
 def test_macro_import_bundle_wake_failure_preserves_import_success(tmp_path, monkeypatch) -> None:
-    from gmgn_twitter_intel.app.surfaces.cli.commands import macro as macro_module
+    from parallax.app.surfaces.cli.commands import macro as macro_module
 
     bundle_path = tmp_path / "bundle.json"
     bundle_path.write_text(json.dumps(ENVELOPE), encoding="utf-8")
@@ -449,7 +449,7 @@ def test_macro_import_bundle_wake_failure_preserves_import_success(tmp_path, mon
 
 
 def test_macro_sync_delegates_to_sync_service_without_projection_payload(monkeypatch) -> None:
-    from gmgn_twitter_intel.app.surfaces.cli.commands import macro as macro_module
+    from parallax.app.surfaces.cli.commands import macro as macro_module
 
     repo = FakeMacroIntelRepository()
     _patch_macro_dependencies(monkeypatch, macro_module, repo)
@@ -503,7 +503,7 @@ def test_macro_sync_delegates_to_sync_service_without_projection_payload(monkeyp
 
 
 def test_macro_sync_failure_returns_nonzero_and_does_not_project(monkeypatch) -> None:
-    from gmgn_twitter_intel.app.surfaces.cli.commands import macro as macro_module
+    from parallax.app.surfaces.cli.commands import macro as macro_module
 
     repo = FakeMacroIntelRepository()
     _patch_macro_dependencies(monkeypatch, macro_module, repo)
@@ -552,7 +552,7 @@ def test_macro_sync_validates_dates_before_service_call(
     end: str,
     expected: dict[str, str],
 ) -> None:
-    from gmgn_twitter_intel.app.surfaces.cli.commands import macro as macro_module
+    from parallax.app.surfaces.cli.commands import macro as macro_module
 
     repo = FakeMacroIntelRepository()
     _patch_macro_dependencies(monkeypatch, macro_module, repo)
@@ -568,7 +568,7 @@ def test_macro_sync_validates_dates_before_service_call(
 
 
 def test_macro_import_bundle_from_stdin_dispatches_to_importer(monkeypatch) -> None:
-    from gmgn_twitter_intel.app.surfaces.cli.commands import macro as macro_module
+    from parallax.app.surfaces.cli.commands import macro as macro_module
 
     repo = FakeMacroIntelRepository()
     _patch_macro_dependencies(monkeypatch, macro_module, repo)
@@ -586,7 +586,7 @@ def test_macro_import_bundle_from_stdin_dispatches_to_importer(monkeypatch) -> N
 
 
 def test_macro_import_bundle_requires_exactly_one_input(monkeypatch) -> None:
-    from gmgn_twitter_intel.app.surfaces.cli.commands import macro as macro_module
+    from parallax.app.surfaces.cli.commands import macro as macro_module
 
     repo = FakeMacroIntelRepository()
     _patch_macro_dependencies(monkeypatch, macro_module, repo)
@@ -600,7 +600,7 @@ def test_macro_import_bundle_requires_exactly_one_input(monkeypatch) -> None:
 
 
 def test_macro_import_bundle_reports_repository_failure_without_secret(tmp_path, monkeypatch) -> None:
-    from gmgn_twitter_intel.app.surfaces.cli.commands import macro as macro_module
+    from parallax.app.surfaces.cli.commands import macro as macro_module
 
     bundle_path = tmp_path / "macro-core.json"
     bundle_path.write_text(json.dumps(ENVELOPE), encoding="utf-8")
@@ -631,7 +631,7 @@ def test_macro_project_once_command_is_removed(monkeypatch) -> None:
 
 
 def test_macro_status_reports_repository_counts(monkeypatch) -> None:
-    from gmgn_twitter_intel.app.surfaces.cli.commands import macro as macro_module
+    from parallax.app.surfaces.cli.commands import macro as macro_module
 
     repo = FakeMacroIntelRepository()
     repo.sync_queue = {"open_count": 2, "due_count": 1, "running_count": 0}
@@ -716,7 +716,7 @@ def test_macro_status_reports_repository_counts(monkeypatch) -> None:
 
 
 def test_macro_status_reports_projection_behind_when_facts_exist_without_snapshot(monkeypatch) -> None:
-    from gmgn_twitter_intel.app.surfaces.cli.commands import macro as macro_module
+    from parallax.app.surfaces.cli.commands import macro as macro_module
 
     repo = FakeMacroIntelRepository()
     repo.latest = None
@@ -734,7 +734,7 @@ def test_macro_status_reports_projection_behind_when_facts_exist_without_snapsho
 
 
 def test_macro_status_repository_exception_returns_structured_error_without_secret(monkeypatch) -> None:
-    from gmgn_twitter_intel.app.surfaces.cli.commands import macro as macro_module
+    from parallax.app.surfaces.cli.commands import macro as macro_module
 
     repo = FakeMacroIntelRepository(fail_concept_history_counts=True)
     _patch_macro_dependencies(monkeypatch, macro_module, repo, settings=FakeSettings(fred_env="APP_FRED_KEY"))
@@ -760,7 +760,7 @@ def test_macro_status_repository_exception_returns_structured_error_without_secr
 
 
 def test_macro_status_reports_one_point_history_as_not_ready(monkeypatch) -> None:
-    from gmgn_twitter_intel.app.surfaces.cli.commands import macro as macro_module
+    from parallax.app.surfaces.cli.commands import macro as macro_module
 
     repo = FakeMacroIntelRepository(
         concept_history=[

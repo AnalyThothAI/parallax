@@ -21,36 +21,36 @@ as `token_radar_projection -> narrative_admission -> mention_semantics /
 token_discussion_digest` in `docs/WORKERS.md:67-74`, and the domain architecture
 states that public reads compose `token_discussion_digests` with the current
 `narrative_admissions` frontier in
-`src/gmgn_twitter_intel/domains/narrative_intel/ARCHITECTURE.md:5-22`.
+`src/parallax/domains/narrative_intel/ARCHITECTURE.md:5-22`.
 
 The current admission worker reads configured windows and scopes from settings,
 then admits up to `admission_limit` Radar rows per `(window, scope)` pair. The
 runtime loop is in
-`src/gmgn_twitter_intel/domains/narrative_intel/runtime/narrative_admission_worker.py:47-120`.
+`src/parallax/domains/narrative_intel/runtime/narrative_admission_worker.py:47-120`.
 Default settings currently include `windows=("5m", "1h", "4h", "24h")`,
 `scopes=("all", "matched")`, `admission_limit=200`, and `min_rank_score=30` in
-`src/gmgn_twitter_intel/platform/config/settings.py:915-920`.
+`src/parallax/platform/config/settings.py:915-920`.
 
 The semantics worker claims existing due rows before enqueueing missing rows.
 That ordering is explicit in
-`src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py:46-57`.
+`src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py:46-57`.
 Only when no rows are claimable does it call `_enqueue_missing_from_admissions_sync`.
 The enqueue path is bounded by per-cycle, per-admission, and per-target budgets
 in `mention_semantics_worker.py:280-358`; defaults are
 `provider_batch_size=10`, `max_semantic_rows_enqueued_per_cycle=120`,
 `max_semantic_rows_enqueued_per_admission=20`, and
 `max_semantics_claimed_per_target_per_cycle=3` in
-`src/gmgn_twitter_intel/platform/config/settings.py:928-943`.
+`src/parallax/platform/config/settings.py:928-943`.
 
 The digest worker reads all due admissions from `narrative_admissions`, not from
 a digest-window allowlist. `due_digest_targets` only filters
 `status='admitted'` and `next_digest_due_at_ms <= now` in
-`src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py:991-1002`.
+`src/parallax/domains/narrative_intel/repositories/narrative_repository.py:991-1002`.
 The worker then evaluates each target through `NarrativeEpochPolicy` and
 `DiscussionDigestService`, as shown in
-`src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py:69-170`.
+`src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py:69-170`.
 The epoch policy intentionally marks windows outside `1h/4h/24h` as unsupported
-in `src/gmgn_twitter_intel/domains/narrative_intel/services/narrative_epoch_policy.py:69-76`,
+in `src/parallax/domains/narrative_intel/services/narrative_epoch_policy.py:69-76`,
 but `5m` can still be admitted and scanned before that decision.
 
 `DiscussionDigestService.refresh_decision()` requires every current source row
@@ -58,11 +58,11 @@ to have a semantic row before a ready digest can be requested. If
 `missing_semantic_count + pending_semantic_count + retryable_semantic_count > 0`,
 it returns `semantic_labeling_pending` and writes a `pending` status digest. This
 gate is in
-`src/gmgn_twitter_intel/domains/narrative_intel/services/discussion_digest_service.py:45-90`.
+`src/parallax/domains/narrative_intel/services/discussion_digest_service.py:45-90`.
 The public read path returns either the latest ready digest or a missing digest
 sentinel with a reason from `_not_ready_reason_for_admission`; it also exposes
 missing semantics as backlog metadata in
-`src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py:1413-1493`.
+`src/parallax/domains/narrative_intel/repositories/narrative_repository.py:1413-1493`.
 
 The frontend maps `semantic_labeling_pending` to "叙事分析中" in
 `web/src/shared/model/narrativeDataGaps.ts:41-52`, and maps `pending` to the same

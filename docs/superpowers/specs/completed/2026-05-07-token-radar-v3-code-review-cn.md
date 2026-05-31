@@ -18,8 +18,8 @@ Date: 2026-05-07
 
 Files:
 
-- `src/gmgn_twitter_intel/pipeline/entity_extractor.py:28-36`
-- `src/gmgn_twitter_intel/pipeline/entity_extractor.py:45-73`
+- `src/parallax/pipeline/entity_extractor.py:28-36`
+- `src/parallax/pipeline/entity_extractor.py:45-73`
 
 `ExtractedEntity` 没有 `span_start/span_end/text_surface/sentence_id`。extractor 在 EVM CA 上拿到了 `match.start()/end()`，但只用于 chain hint；cashtag 直接用 `findall()`，完全没有位置。这样 V3 需要的“同一句 / 80 字符内 `$VERSA + CA` 聚合”无法在事实层重放，只能在后面靠同事件 merge，这正是现在耦合的源头。
 
@@ -38,8 +38,8 @@ Required cut:
 
 Files:
 
-- `src/gmgn_twitter_intel/pipeline/ingest_service.py:65-79`
-- `src/gmgn_twitter_intel/pipeline/asset_mention_builder.py:33-55`
+- `src/parallax/pipeline/ingest_service.py:65-79`
+- `src/parallax/pipeline/asset_mention_builder.py:33-55`
 
 `IngestService` 直接 `build_asset_mentions()`、`insert_mentions()`、`resolve_many()`、`persist_asset_decisions()`。`resolve_many()` 对每条 mention 独立解析，所以同一事实会自然拆成多个 Radar 桶。
 
@@ -59,8 +59,8 @@ Required cut:
 
 Files:
 
-- `src/gmgn_twitter_intel/pipeline/asset_resolver.py:65-83`
-- `src/gmgn_twitter_intel/storage/asset_repository.py:452-489`
+- `src/parallax/pipeline/asset_resolver.py:65-83`
+- `src/parallax/storage/asset_repository.py:452-489`
 - `tests/test_asset_resolver.py:250-268`
 
 `AssetResolver._resolve_ca()` 在 `_resolve_direct_dex()` 失败后直接 `upsert_unresolved_ca()` 并 queue job。仓库已有 `candidates_for_ca(chain=None,address=...)`，但 resolver 没用。测试还明确断言这个旧行为。
@@ -81,8 +81,8 @@ Required cut:
 
 Files:
 
-- `src/gmgn_twitter_intel/pipeline/asset_resolution_worker.py:93-128`
-- `src/gmgn_twitter_intel/storage/asset_repository.py:931-1056`
+- `src/parallax/pipeline/asset_resolution_worker.py:93-128`
+- `src/parallax/storage/asset_repository.py:931-1056`
 - `tests/test_asset_resolution_worker.py:107-144`
 
 symbol job 调 `reassign_symbol_attributions()`，CA job 调 `reassign_ca_attributions()`。这两个都是按 mention 类型批量 supersede，不知道同事件内其他 evidence。CA job 成功后不会把同事件 `$VERSA` 从 ambiguous bucket 合并到 resolved CA intent。
@@ -103,8 +103,8 @@ Required cut:
 
 Files:
 
-- `src/gmgn_twitter_intel/storage/asset_repository.py:1240-1492`
-- `src/gmgn_twitter_intel/retrieval/asset_flow_service.py:28-45`
+- `src/parallax/storage/asset_repository.py:1240-1492`
+- `src/parallax/retrieval/asset_flow_service.py:28-45`
 
 `asset_flow_rows()` 从 `asset_attributions` 过滤后按 `asset_id` group。只要一个 event 有两个非 superseded attribution，它就可以进入两个 Radar row。`AssetFlowService` 还声明 projection source 是 `asset_attributions`，不是 materialized read model。
 
@@ -124,9 +124,9 @@ Required cut:
 
 Files:
 
-- `src/gmgn_twitter_intel/retrieval/asset_flow_service.py:128-150`
-- `src/gmgn_twitter_intel/pipeline/asset_market_sync.py:65-123`
-- `src/gmgn_twitter_intel/pipeline/asset_market_sync_worker.py:33-88`
+- `src/parallax/retrieval/asset_flow_service.py:128-150`
+- `src/parallax/pipeline/asset_market_sync.py:65-123`
+- `src/parallax/pipeline/asset_market_sync_worker.py:33-88`
 
 当没有 snapshot 或 snapshot 空时，API 统一返回 `market_status=missing` 和 `market_observation_status=provider_not_found`。但市场缺失可能是 identity unresolved、no venue、provider not configured、pending refresh、provider error、rate limited、stale 等。
 
@@ -168,9 +168,9 @@ Required cut:
 
 Files:
 
-- `src/gmgn_twitter_intel/storage/alembic/versions/20260506_0005_asset_identity_resolution.py:282-365`
-- `src/gmgn_twitter_intel/storage/projection_repository.py:7-23`
-- `src/gmgn_twitter_intel/cli.py:841-847`
+- `src/parallax/storage/alembic/versions/20260506_0005_asset_identity_resolution.py:282-365`
+- `src/parallax/storage/projection_repository.py:7-23`
+- `src/parallax/cli.py:841-847`
 
 迁移创建了 `asset_attention_buckets` 和 `asset_flow_window_snapshots`，`ProjectionRepository` 也声明了 projection names，但 HTTP/CLI 的 `rebuild-asset-flow` 只是调用 `AssetFlowService.asset_flow()` 返回即时计算结果，没有写 read model。
 
@@ -190,12 +190,12 @@ Required cut:
 
 Files:
 
-- `src/gmgn_twitter_intel/api/app.py:42-43`
-- `src/gmgn_twitter_intel/api/app.py:218-223`
-- `src/gmgn_twitter_intel/storage/repository_session.py:16-47`
-- `src/gmgn_twitter_intel/pipeline/token_signal_settlement.py:79-175`
-- `src/gmgn_twitter_intel/pipeline/market_observation_worker.py:89-109`
-- `src/gmgn_twitter_intel/api/http.py:235-303`
+- `src/parallax/api/app.py:42-43`
+- `src/parallax/api/app.py:218-223`
+- `src/parallax/storage/repository_session.py:16-47`
+- `src/parallax/pipeline/token_signal_settlement.py:79-175`
+- `src/parallax/pipeline/market_observation_worker.py:89-109`
+- `src/parallax/api/http.py:235-303`
 
 旧 `TokenRepository`、`MarketObservationRepository`、`TokenSignalRepository` 仍在 runtime session 和 HTTP/CLI 中可用。虽然 `MarketObservationWorker` 没在 serve lifecycle 启动，但它仍是可执行旧路径，settlement 仍读 `token_market_snapshots`。
 
@@ -215,7 +215,7 @@ Required cut:
 
 Files:
 
-- `src/gmgn_twitter_intel/storage/asset_repository.py`
+- `src/parallax/storage/asset_repository.py`
 
 这个文件 1724 行，负责 mentions、assets、aliases、venues、resolution candidates、attributions、market snapshots、jobs、flow SQL、timeline SQL、search helpers。它把 evidence、identity、market、read model、timeline retrieval 混在一个 repository。
 

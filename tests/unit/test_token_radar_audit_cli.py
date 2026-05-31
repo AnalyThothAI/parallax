@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.app.surfaces.cli.commands import ops as cli_ops
-from gmgn_twitter_intel.app.surfaces.cli.commands.ops import _audit_token_radar_current_rows
-from gmgn_twitter_intel.domains.token_intel.interfaces import (
+from parallax.app.surfaces.cli.commands import ops as cli_ops
+from parallax.app.surfaces.cli.commands.ops import _audit_token_radar_current_rows
+from parallax.domains.token_intel.interfaces import (
     TOKEN_RADAR_FACTOR_FAMILIES,
     TOKEN_RADAR_PROJECTION_VERSION,
 )
-from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import TOKEN_FACTOR_SNAPSHOT_VERSION
+from parallax.domains.token_intel.scoring.factor_snapshot import TOKEN_FACTOR_SNAPSHOT_VERSION
 
 
 def test_audit_token_radar_current_rows_rejects_missing_factor_snapshot():

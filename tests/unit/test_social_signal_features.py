@@ -4,7 +4,7 @@ import math
 
 import pytest
 
-from gmgn_twitter_intel.domains.token_intel.scoring.social_signal_features import (
+from parallax.domains.token_intel.scoring.social_signal_features import (
     author_entropy,
     public_followup_author_count,
     source_weighted_effective_authors,

@@ -5,22 +5,22 @@ from typing import Any
 
 import pytest
 
-from gmgn_twitter_intel.domains.pulse_lab.providers import PulseDecisionResult
-from gmgn_twitter_intel.domains.pulse_lab.services import pulse_candidate_job_service as job_module
-from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import PulseGateResult
-from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_job_service import (
+from parallax.domains.pulse_lab.providers import PulseDecisionResult
+from parallax.domains.pulse_lab.services import pulse_candidate_job_service as job_module
+from parallax.domains.pulse_lab.services.pulse_candidate_gate import PulseGateResult
+from parallax.domains.pulse_lab.services.pulse_candidate_job_service import (
     PulseCandidateJobService,
     _normalized_failure_reason,
 )
-from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
+from parallax.domains.pulse_lab.types.agent_decision import (
     BullBearView,
     FinalDecision,
     PulseStageFailure,
     StageRunAudit,
     TradePlaybook,
 )
-from gmgn_twitter_intel.platform.agent_execution import AgentExecutionError, AgentExecutionErrorClass
-from gmgn_twitter_intel.platform.cancellation import WORKER_HARD_TIMEOUT_CANCEL_REASON
+from parallax.platform.agent_execution import AgentExecutionError, AgentExecutionErrorClass
+from parallax.platform.cancellation import WORKER_HARD_TIMEOUT_CANCEL_REASON
 from tests.unit.test_pulse_candidate_worker import (
     NOW_MS,
     FakeClient,

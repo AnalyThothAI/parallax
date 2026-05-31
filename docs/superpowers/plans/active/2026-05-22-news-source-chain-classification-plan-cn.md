@@ -19,22 +19,22 @@
 
 The spec is directionally sound and fits the existing News Intel boundary. The current chain already has the right spine:
 
-- `src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py:45` reconciles configured sources into `news_sources`, claims due rows, releases the DB session, then fetches provider IO outside the session.
-- `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_process_worker.py:49` performs deterministic entity extraction, token resolution, and fact candidate construction from persisted `news_items`.
-- `src/gmgn_twitter_intel/domains/news_intel/services/news_fact_candidates.py:23` already gates accepted facts by official source roles, but it lacks authority scope, event-class mapping, and non-official corroboration policy.
-- `src/gmgn_twitter_intel/domains/news_intel/services/news_page_projection.py:106` only emits compact `source_role` and `trust_tier`, so provider type, coverage tags, content class, authority reasons, and source quality are not yet product-visible.
+- `src/parallax/domains/news_intel/runtime/news_fetch_worker.py:45` reconciles configured sources into `news_sources`, claims due rows, releases the DB session, then fetches provider IO outside the session.
+- `src/parallax/domains/news_intel/runtime/news_item_process_worker.py:49` performs deterministic entity extraction, token resolution, and fact candidate construction from persisted `news_items`.
+- `src/parallax/domains/news_intel/services/news_fact_candidates.py:23` already gates accepted facts by official source roles, but it lacks authority scope, event-class mapping, and non-official corroboration policy.
+- `src/parallax/domains/news_intel/services/news_page_projection.py:106` only emits compact `source_role` and `trust_tier`, so provider type, coverage tags, content class, authority reasons, and source quality are not yet product-visible.
 - `tests/architecture/test_worker_runtime_contracts.py:170` enforces single-writer read models. Any new `news_source_quality_rows` table must be listed there with exactly one runtime writer.
 
 The main correction is scope. The spec spans six subsystems; shipping all providers in one branch would be brittle. The executable plan below ships a foundation first, then adds provider waves behind disabled-by-default config.
 
 ## Code-Review Findings
 
-1. `NewsSourceSettings` currently uses `extra="forbid"` and `provider_type: Literal["rss", "atom", "json_feed", "cryptopanic"]` in `src/gmgn_twitter_intel/platform/config/settings.py:488`. New fields such as `coverage_tags`, `authority_scope`, and provider types such as `openbb` or `telegram_public` will fail config parsing until Task 1 lands.
-2. The DB has matching check constraints in `src/gmgn_twitter_intel/platform/db/alembic/versions/20260519_0065_news_intel_kappa_cqrs.py:37` and the CryptoPanic expansion in `20260521_0075_news_source_cryptopanic_provider.py:19`. Migration work must precede any operator config using new provider or source-role values.
-3. `NewsRepository._source_payload` only forwards the original source fields at `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py:1542`. Source reconciliation will silently drop new classification fields until repository payloads are extended.
+1. `NewsSourceSettings` currently uses `extra="forbid"` and `provider_type: Literal["rss", "atom", "json_feed", "cryptopanic"]` in `src/parallax/platform/config/settings.py:488`. New fields such as `coverage_tags`, `authority_scope`, and provider types such as `openbb` or `telegram_public` will fail config parsing until Task 1 lands.
+2. The DB has matching check constraints in `src/parallax/platform/db/alembic/versions/20260519_0065_news_intel_kappa_cqrs.py:37` and the CryptoPanic expansion in `20260521_0075_news_source_cryptopanic_provider.py:19`. Migration work must precede any operator config using new provider or source-role values.
+3. `NewsRepository._source_payload` only forwards the original source fields at `src/parallax/domains/news_intel/repositories/news_repository.py:1542`. Source reconciliation will silently drop new classification fields until repository payloads are extended.
 4. Current fact acceptance is too coarse: `source_role in official_*` is necessary but not sufficient. Official protocol sources must only accept in-scope protocol/token/repo events; official exchange sources must only accept venue-scoped listing/delisting/maintenance events.
 5. Social/community/comment data should not be appended into `news_items.body_text`; otherwise item brief and fact extraction cannot distinguish primary evidence from market chatter. `news_context_items` must come before Reddit/HN/Twitter reply expansion.
-6. The real runtime config paths were confirmed with `uv run gmgn-twitter-intel config`: config and workers paths point at `~/.gmgn-twitter-intel/`. Current real news sources are RSS media/finance sources, and the real `workers.yaml` should add `news_item_brief_updated` to `news_page_projection.wakes_on` for timely UI refresh.
+6. The real runtime config paths were confirmed with `uv run parallax config`: config and workers paths point at `~/.parallax/`. Current real news sources are RSS media/finance sources, and the real `workers.yaml` should add `news_item_brief_updated` to `news_page_projection.wakes_on` for timely UI refresh.
 
 ## Release Shape
 
@@ -61,9 +61,9 @@ Do not merge provider adapters before the foundation branch can ingest existing 
 
 - [ ] Confirm real runtime config paths before using live provider data:
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
-  Expected: `config_path` and `workers_config_path` point at `~/.gmgn-twitter-intel/`. Report only paths, redacted booleans, counts, and diagnostics.
+  Expected: `config_path` and `workers_config_path` point at `~/.parallax/`. Report only paths, redacted booleans, counts, and diagnostics.
 
 - [ ] Baseline checks:
   ```bash
@@ -78,21 +78,21 @@ Do not merge provider adapters before the foundation branch can ingest existing 
 
 ### Create
 
-- `src/gmgn_twitter_intel/domains/news_intel/types/source_classification.py`
+- `src/parallax/domains/news_intel/types/source_classification.py`
   Shared literals and normalization helpers for provider types, source roles, coverage tags, cost classes, content classes, and context types.
-- `src/gmgn_twitter_intel/domains/news_intel/types/source_provider.py`
+- `src/parallax/domains/news_intel/types/source_provider.py`
   `NewsSourceSnapshot`, `NewsSourceHttpCache`, `NewsProviderObservation`, `NewsProviderContextObservation`, and `NewsProviderFetchResult`.
-- `src/gmgn_twitter_intel/domains/news_intel/services/source_authority.py`
+- `src/parallax/domains/news_intel/services/source_authority.py`
   Deterministic authority-scope validator used by fact candidate construction.
-- `src/gmgn_twitter_intel/domains/news_intel/services/source_quality_projection.py`
+- `src/parallax/domains/news_intel/services/source_quality_projection.py`
   Pure functions that compute rolling source-quality rows from repository aggregate payloads.
-- `src/gmgn_twitter_intel/domains/news_intel/runtime/news_source_quality_projection_worker.py`
+- `src/parallax/domains/news_intel/runtime/news_source_quality_projection_worker.py`
   Single runtime writer for `news_source_quality_rows`.
-- `src/gmgn_twitter_intel/integrations/news_feeds/provider_registry.py`
+- `src/parallax/integrations/news_feeds/provider_registry.py`
   Registry that routes provider types to source providers and wraps existing RSS/CryptoPanic clients.
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260522_0081_news_source_chain_classification.py`
+- `src/parallax/platform/db/alembic/versions/20260522_0081_news_source_chain_classification.py`
   Source classification and `news_context_items` migration.
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260522_0082_news_source_quality_rows.py`
+- `src/parallax/platform/db/alembic/versions/20260522_0082_news_source_quality_rows.py`
   Source quality read-model migration.
 - `tests/unit/domains/news_intel/test_source_classification.py`
 - `tests/unit/domains/news_intel/test_source_authority.py`
@@ -108,23 +108,23 @@ Do not merge provider adapters before the foundation branch can ingest existing 
 - `docs/ARCHITECTURE.md`
 - `docs/CONTRACTS.md`
 - `docs/WORKERS.md`
-- `src/gmgn_twitter_intel/app/runtime/provider_wiring/news.py`
-- `src/gmgn_twitter_intel/app/runtime/provider_wiring/types.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_factories/news_intel.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_registry.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/routes_news.py`
-- `src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md`
-- `src/gmgn_twitter_intel/domains/news_intel/providers.py`
-- `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
-- `src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py`
-- `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_process_worker.py`
-- `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py`
-- `src/gmgn_twitter_intel/domains/news_intel/runtime/news_page_projection_worker.py`
-- `src/gmgn_twitter_intel/domains/news_intel/services/news_fact_candidates.py`
-- `src/gmgn_twitter_intel/domains/news_intel/services/news_item_brief_input.py`
-- `src/gmgn_twitter_intel/domains/news_intel/services/news_page_projection.py`
-- `src/gmgn_twitter_intel/domains/news_intel/types/__init__.py`
-- `src/gmgn_twitter_intel/platform/config/settings.py`
+- `src/parallax/app/runtime/provider_wiring/news.py`
+- `src/parallax/app/runtime/provider_wiring/types.py`
+- `src/parallax/app/runtime/worker_factories/news_intel.py`
+- `src/parallax/app/runtime/worker_registry.py`
+- `src/parallax/app/surfaces/api/routes_news.py`
+- `src/parallax/domains/news_intel/ARCHITECTURE.md`
+- `src/parallax/domains/news_intel/providers.py`
+- `src/parallax/domains/news_intel/repositories/news_repository.py`
+- `src/parallax/domains/news_intel/runtime/news_fetch_worker.py`
+- `src/parallax/domains/news_intel/runtime/news_item_process_worker.py`
+- `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py`
+- `src/parallax/domains/news_intel/runtime/news_page_projection_worker.py`
+- `src/parallax/domains/news_intel/services/news_fact_candidates.py`
+- `src/parallax/domains/news_intel/services/news_item_brief_input.py`
+- `src/parallax/domains/news_intel/services/news_page_projection.py`
+- `src/parallax/domains/news_intel/types/__init__.py`
+- `src/parallax/platform/config/settings.py`
 - `tests/architecture/test_worker_runtime_contracts.py`
 - `tests/unit/test_worker_settings.py`
 - `tests/unit/test_bootstrap_worker_runtime_wiring.py`
@@ -139,18 +139,18 @@ Do not merge provider adapters before the foundation branch can ingest existing 
 ## Task 1: Source Taxonomy, Settings, And DB Classification
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/news_intel/types/source_classification.py`
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260522_0081_news_source_chain_classification.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/types/__init__.py`
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
+- Create: `src/parallax/domains/news_intel/types/source_classification.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260522_0081_news_source_chain_classification.py`
+- Modify: `src/parallax/domains/news_intel/types/__init__.py`
+- Modify: `src/parallax/platform/config/settings.py`
+- Modify: `src/parallax/domains/news_intel/repositories/news_repository.py`
 - Test: `tests/unit/domains/news_intel/test_source_classification.py`
 - Test: `tests/unit/test_settings.py`
 - Test: `tests/integration/domains/news_intel/test_news_source_classification_repository.py`
 
 - [ ] **Step 1: Add failing taxonomy tests**
   ```python
-  from gmgn_twitter_intel.platform.config.settings import NewsSourceSettings
+  from parallax.platform.config.settings import NewsSourceSettings
 
   def test_news_source_settings_accept_classification_fields() -> None:
       source = NewsSourceSettings(
@@ -269,17 +269,17 @@ Do not merge provider adapters before the foundation branch can ingest existing 
 
 - [ ] **Step 8: Commit**
   ```bash
-  git add src/gmgn_twitter_intel/domains/news_intel/types src/gmgn_twitter_intel/platform/config/settings.py src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py src/gmgn_twitter_intel/platform/db/alembic/versions tests/unit tests/integration
+  git add src/parallax/domains/news_intel/types src/parallax/platform/config/settings.py src/parallax/domains/news_intel/repositories/news_repository.py src/parallax/platform/db/alembic/versions tests/unit tests/integration
   git commit -m "feat(news): add source classification schema"
   ```
 
 ## Task 2: Context Items As Facts
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260522_0081_news_source_chain_classification.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/services/news_item_brief_input.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/types/news_item_brief.py`
+- Modify: `src/parallax/platform/db/alembic/versions/20260522_0081_news_source_chain_classification.py`
+- Modify: `src/parallax/domains/news_intel/repositories/news_repository.py`
+- Modify: `src/parallax/domains/news_intel/services/news_item_brief_input.py`
+- Modify: `src/parallax/domains/news_intel/types/news_item_brief.py`
 - Test: `tests/integration/domains/news_intel/test_news_context_items_repository.py`
 - Test: `tests/unit/domains/news_intel/test_news_item_brief_input.py`
 
@@ -377,18 +377,18 @@ Do not merge provider adapters before the foundation branch can ingest existing 
 
 - [ ] **Step 7: Commit**
   ```bash
-  git add src/gmgn_twitter_intel/platform/db/alembic/versions/20260522_0081_news_source_chain_classification.py src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py src/gmgn_twitter_intel/domains/news_intel/services/news_item_brief_input.py src/gmgn_twitter_intel/domains/news_intel/types/news_item_brief.py tests/integration/domains/news_intel/test_news_context_items_repository.py tests/unit/domains/news_intel/test_news_item_brief_input.py
+  git add src/parallax/platform/db/alembic/versions/20260522_0081_news_source_chain_classification.py src/parallax/domains/news_intel/repositories/news_repository.py src/parallax/domains/news_intel/services/news_item_brief_input.py src/parallax/domains/news_intel/types/news_item_brief.py tests/integration/domains/news_intel/test_news_context_items_repository.py tests/unit/domains/news_intel/test_news_item_brief_input.py
   git commit -m "feat(news): persist context items for source discussions"
   ```
 
 ## Task 3: Provider Registry With RSS/CryptoPanic Compatibility
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/news_intel/types/source_provider.py`
-- Create: `src/gmgn_twitter_intel/integrations/news_feeds/provider_registry.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/providers.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/provider_wiring/news.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py`
+- Create: `src/parallax/domains/news_intel/types/source_provider.py`
+- Create: `src/parallax/integrations/news_feeds/provider_registry.py`
+- Modify: `src/parallax/domains/news_intel/providers.py`
+- Modify: `src/parallax/app/runtime/provider_wiring/news.py`
+- Modify: `src/parallax/domains/news_intel/runtime/news_fetch_worker.py`
 - Test: `tests/unit/integrations/news_feeds/test_provider_registry.py`
 - Test: `tests/unit/domains/news_intel/test_news_workers.py`
 - Test: `tests/unit/test_providers_wiring.py`
@@ -488,15 +488,15 @@ Do not merge provider adapters before the foundation branch can ingest existing 
 
 - [ ] **Step 8: Commit**
   ```bash
-  git add src/gmgn_twitter_intel/domains/news_intel/types/source_provider.py src/gmgn_twitter_intel/domains/news_intel/providers.py src/gmgn_twitter_intel/integrations/news_feeds/provider_registry.py src/gmgn_twitter_intel/app/runtime/provider_wiring/news.py src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py tests/unit/integrations/news_feeds/test_provider_registry.py tests/unit/domains/news_intel/test_news_workers.py tests/unit/test_providers_wiring.py
+  git add src/parallax/domains/news_intel/types/source_provider.py src/parallax/domains/news_intel/providers.py src/parallax/integrations/news_feeds/provider_registry.py src/parallax/app/runtime/provider_wiring/news.py src/parallax/domains/news_intel/runtime/news_fetch_worker.py tests/unit/integrations/news_feeds/test_provider_registry.py tests/unit/domains/news_intel/test_news_workers.py tests/unit/test_providers_wiring.py
   git commit -m "feat(news): route source fetches through provider registry"
   ```
 
 ## Task 4: Fetch Persistence For Observations And Context
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
+- Modify: `src/parallax/domains/news_intel/runtime/news_fetch_worker.py`
+- Modify: `src/parallax/domains/news_intel/repositories/news_repository.py`
 - Test: `tests/unit/domains/news_intel/test_news_workers.py`
 - Test: `tests/integration/domains/news_intel/test_news_repository.py`
 
@@ -581,17 +581,17 @@ Do not merge provider adapters before the foundation branch can ingest existing 
 
 - [ ] **Step 6: Commit**
   ```bash
-  git add src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py tests/unit/domains/news_intel/test_news_workers.py tests/integration/domains/news_intel
+  git add src/parallax/domains/news_intel/runtime/news_fetch_worker.py src/parallax/domains/news_intel/repositories/news_repository.py tests/unit/domains/news_intel/test_news_workers.py tests/integration/domains/news_intel
   git commit -m "feat(news): persist provider observations and context"
   ```
 
 ## Task 5: Authority-Scope Validation And Content Classes
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/news_intel/services/source_authority.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/services/news_fact_candidates.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_process_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
+- Create: `src/parallax/domains/news_intel/services/source_authority.py`
+- Modify: `src/parallax/domains/news_intel/services/news_fact_candidates.py`
+- Modify: `src/parallax/domains/news_intel/runtime/news_item_process_worker.py`
+- Modify: `src/parallax/domains/news_intel/repositories/news_repository.py`
 - Test: `tests/unit/domains/news_intel/test_source_authority.py`
 - Test: `tests/unit/domains/news_intel/test_news_fact_candidates.py`
 
@@ -690,20 +690,20 @@ Do not merge provider adapters before the foundation branch can ingest existing 
 
 - [ ] **Step 7: Commit**
   ```bash
-  git add src/gmgn_twitter_intel/domains/news_intel/services/source_authority.py src/gmgn_twitter_intel/domains/news_intel/services/news_fact_candidates.py src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_process_worker.py src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py tests/unit/domains/news_intel/test_source_authority.py tests/unit/domains/news_intel/test_news_fact_candidates.py tests/unit/domains/news_intel/test_news_workers.py
+  git add src/parallax/domains/news_intel/services/source_authority.py src/parallax/domains/news_intel/services/news_fact_candidates.py src/parallax/domains/news_intel/runtime/news_item_process_worker.py src/parallax/domains/news_intel/repositories/news_repository.py tests/unit/domains/news_intel/test_source_authority.py tests/unit/domains/news_intel/test_news_fact_candidates.py tests/unit/domains/news_intel/test_news_workers.py
   git commit -m "feat(news): validate fact candidates by authority scope"
   ```
 
 ## Task 6: Source Quality Read Model And Worker
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260522_0082_news_source_quality_rows.py`
-- Create: `src/gmgn_twitter_intel/domains/news_intel/services/source_quality_projection.py`
-- Create: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_source_quality_projection_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_registry.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_factories/news_intel.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260522_0082_news_source_quality_rows.py`
+- Create: `src/parallax/domains/news_intel/services/source_quality_projection.py`
+- Create: `src/parallax/domains/news_intel/runtime/news_source_quality_projection_worker.py`
+- Modify: `src/parallax/domains/news_intel/repositories/news_repository.py`
+- Modify: `src/parallax/platform/config/settings.py`
+- Modify: `src/parallax/app/runtime/worker_registry.py`
+- Modify: `src/parallax/app/runtime/worker_factories/news_intel.py`
 - Modify: `tests/architecture/test_worker_runtime_contracts.py`
 - Test: `tests/unit/domains/news_intel/test_source_quality_projection.py`
 - Test: `tests/unit/test_worker_settings.py`
@@ -871,20 +871,20 @@ Do not merge provider adapters before the foundation branch can ingest existing 
 
 - [ ] **Step 8: Commit**
   ```bash
-  git add src/gmgn_twitter_intel/platform/db/alembic/versions/20260522_0082_news_source_quality_rows.py src/gmgn_twitter_intel/domains/news_intel/services/source_quality_projection.py src/gmgn_twitter_intel/domains/news_intel/runtime/news_source_quality_projection_worker.py src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py src/gmgn_twitter_intel/platform/config/settings.py src/gmgn_twitter_intel/app/runtime/worker_registry.py src/gmgn_twitter_intel/app/runtime/worker_factories/news_intel.py tests/architecture/test_worker_runtime_contracts.py tests/unit tests/integration
+  git add src/parallax/platform/db/alembic/versions/20260522_0082_news_source_quality_rows.py src/parallax/domains/news_intel/services/source_quality_projection.py src/parallax/domains/news_intel/runtime/news_source_quality_projection_worker.py src/parallax/domains/news_intel/repositories/news_repository.py src/parallax/platform/config/settings.py src/parallax/app/runtime/worker_registry.py src/parallax/app/runtime/worker_factories/news_intel.py tests/architecture/test_worker_runtime_contracts.py tests/unit tests/integration
   git commit -m "feat(news): add source quality projection"
   ```
 
 ## Task 7: API, Page Projection, Docs, And Operational Config
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/routes_news.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/services/news_page_projection.py`
+- Modify: `src/parallax/app/surfaces/api/routes_news.py`
+- Modify: `src/parallax/domains/news_intel/repositories/news_repository.py`
+- Modify: `src/parallax/domains/news_intel/services/news_page_projection.py`
 - Modify: `docs/ARCHITECTURE.md`
 - Modify: `docs/WORKERS.md`
 - Modify: `docs/CONTRACTS.md`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/news_intel/ARCHITECTURE.md`
 - Modify: `config.example.yaml`
 - Test: `tests/unit/test_api_news_contract.py`
 - Test: `tests/unit/domains/news_intel/test_news_page_projection.py`
@@ -982,18 +982,18 @@ Do not merge provider adapters before the foundation branch can ingest existing 
 
 - [ ] **Step 8: Commit**
   ```bash
-  git add src/gmgn_twitter_intel/app/surfaces/api/routes_news.py src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py src/gmgn_twitter_intel/domains/news_intel/services/news_page_projection.py docs config.example.yaml tests/unit tests/integration
+  git add src/parallax/app/surfaces/api/routes_news.py src/parallax/domains/news_intel/repositories/news_repository.py src/parallax/domains/news_intel/services/news_page_projection.py docs config.example.yaml tests/unit tests/integration
   git commit -m "feat(news): expose source classification and quality"
   ```
 
 ## Task 8: Provider Wave With Disabled Defaults
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/integrations/news_feeds/openbb_provider.py`
-- Create: `src/gmgn_twitter_intel/integrations/news_feeds/telegram_public_provider.py`
-- Create: `src/gmgn_twitter_intel/integrations/news_feeds/github_provider.py`
-- Create: `src/gmgn_twitter_intel/integrations/news_feeds/community_provider.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/provider_wiring/news.py`
+- Create: `src/parallax/integrations/news_feeds/openbb_provider.py`
+- Create: `src/parallax/integrations/news_feeds/telegram_public_provider.py`
+- Create: `src/parallax/integrations/news_feeds/github_provider.py`
+- Create: `src/parallax/integrations/news_feeds/community_provider.py`
+- Modify: `src/parallax/app/runtime/provider_wiring/news.py`
 - Test: `tests/unit/integrations/news_feeds/test_openbb_provider.py`
 - Test: `tests/unit/integrations/news_feeds/test_telegram_public_provider.py`
 - Test: `tests/unit/integrations/news_feeds/test_github_provider.py`
@@ -1060,7 +1060,7 @@ Do not merge provider adapters before the foundation branch can ingest existing 
   registry.register(RedditNewsProvider.from_settings(settings))
   registry.register(HackerNewsProvider.from_settings(settings))
   ```
-  Default config examples must be commented examples or disabled entries; active runtime config remains operator-owned in `~/.gmgn-twitter-intel/`.
+  Default config examples must be commented examples or disabled entries; active runtime config remains operator-owned in `~/.parallax/`.
 
 - [ ] **Step 7: Run provider wave checks**
   ```bash
@@ -1070,7 +1070,7 @@ Do not merge provider adapters before the foundation branch can ingest existing 
 
 - [ ] **Step 8: Commit**
   ```bash
-  git add src/gmgn_twitter_intel/integrations/news_feeds src/gmgn_twitter_intel/app/runtime/provider_wiring/news.py tests/unit/integrations/news_feeds
+  git add src/parallax/integrations/news_feeds src/parallax/app/runtime/provider_wiring/news.py tests/unit/integrations/news_feeds
   git commit -m "feat(news): add disabled multi-source provider adapters"
   ```
 
@@ -1089,25 +1089,25 @@ Do not merge provider adapters before the foundation branch can ingest existing 
 
 - [ ] **Step 2: Run forbidden-boundary scans**
   ```bash
-  rg -n "token_radar_rows|pulse_candidates|market_ticks" src/gmgn_twitter_intel/domains/news_intel src/gmgn_twitter_intel/app/surfaces/api/routes_news.py
+  rg -n "token_radar_rows|pulse_candidates|market_ticks" src/parallax/domains/news_intel src/parallax/app/surfaces/api/routes_news.py
   ```
   Expected: no News-domain writes to Token Radar, Pulse, or market tick tables.
 
 - [ ] **Step 3: Run provider IO boundary scan**
   ```bash
-  rg -n "FeedClient|Cryptopanic|OpenBB|Telegram|Reddit|HackerNews|GitHub" src/gmgn_twitter_intel/app/surfaces/api src/gmgn_twitter_intel/domains/news_intel/services
+  rg -n "FeedClient|Cryptopanic|OpenBB|Telegram|Reddit|HackerNews|GitHub" src/parallax/app/surfaces/api src/parallax/domains/news_intel/services
   ```
   Expected: no API route imports provider adapters; domain services may reference provider-neutral types only.
 
 - [ ] **Step 4: Verify real config paths without exposing secrets**
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
   Expected: report only the resolved config paths, enabled booleans, and source/worker counts.
 
 - [ ] **Step 5: Commit docs/verification updates**
   ```bash
-  git add docs/ARCHITECTURE.md docs/WORKERS.md docs/CONTRACTS.md src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md config.example.yaml
+  git add docs/ARCHITECTURE.md docs/WORKERS.md docs/CONTRACTS.md src/parallax/domains/news_intel/ARCHITECTURE.md config.example.yaml
   git commit -m "docs(news): document source-chain classification"
   ```
 

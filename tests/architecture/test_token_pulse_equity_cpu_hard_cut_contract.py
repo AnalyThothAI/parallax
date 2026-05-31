@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src" / "gmgn_twitter_intel"
+SRC = ROOT / "src" / "parallax"
 
 
 def _read(path: str) -> str:
@@ -20,7 +20,7 @@ def _calls(path: str) -> list[str]:
 
 
 def test_token_rank_source_population_is_event_id_bounded() -> None:
-    text = _read("src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_rank_source_query.py")
+    text = _read("src/parallax/domains/token_intel/queries/token_radar_rank_source_query.py")
 
     assert "populate_edges_for_event_ids" in text
     assert "populate_edges_for_requests" not in text
@@ -38,7 +38,7 @@ def test_token_rank_source_population_is_event_id_bounded() -> None:
 
 
 def test_token_projection_requires_source_event_ids_for_source_dirty_runtime() -> None:
-    text = _read("src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py")
+    text = _read("src/parallax/domains/token_intel/services/token_radar_projection.py")
 
     assert "source_event_ids_json" in text
     assert "populate_edges_for_event_ids" in text
@@ -46,7 +46,7 @@ def test_token_projection_requires_source_event_ids_for_source_dirty_runtime() -
 
 
 def test_pulse_worker_uses_bounded_evidence_loader() -> None:
-    worker_path = "src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py"
+    worker_path = "src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py"
     text = _read(worker_path)
     calls = _calls(worker_path)
 
@@ -57,7 +57,7 @@ def test_pulse_worker_uses_bounded_evidence_loader() -> None:
 
 
 def test_token_target_repository_exposes_event_id_timeline_loader() -> None:
-    text = _read("src/gmgn_twitter_intel/domains/token_intel/repositories/token_target_repository.py")
+    text = _read("src/parallax/domains/token_intel/repositories/token_target_repository.py")
 
     assert "def timeline_rows_for_event_ids" in text
     assert "WITH ORDINALITY" in text

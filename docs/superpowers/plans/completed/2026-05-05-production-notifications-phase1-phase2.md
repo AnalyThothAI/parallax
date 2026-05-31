@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a production-grade notification layer for GMGN Twitter Intel, starting with durable in-app web notifications and then adding audited external delivery through Apprise.
+**Goal:** Build a production-grade notification layer for Parallax, starting with durable in-app web notifications and then adding audited external delivery through Apprise.
 
 **Architecture:** Add a new `notifications` bounded context with SQLite-backed notification facts, rule evaluation, HTTP read APIs, WebSocket live push, and React inbox UI. Phase 2 adds external channel configuration and a retrying delivery worker without changing Phase 1 notification facts or frontend read state.
 
@@ -26,32 +26,32 @@ Phase gates:
 
 - Modify: `pyproject.toml`
   - Phase 2 only: add `apprise>=1.10.0`.
-- Modify: `src/gmgn_twitter_intel/settings.py`
+- Modify: `src/parallax/settings.py`
   - Add `NotificationsConfig`, `NotificationRuleConfig`, `NotificationChannelConfig`.
   - Add redacted config output fields through properties.
-- Modify: `src/gmgn_twitter_intel/storage/sqlite_schema.py`
+- Modify: `src/parallax/storage/sqlite_schema.py`
   - Bump `SCHEMA_VERSION` from `11` to `12`.
   - Add notification tables and indexes.
   - Add app table names.
-- Modify: `src/gmgn_twitter_intel/storage/sqlite_client.py`
+- Modify: `src/parallax/storage/sqlite_client.py`
   - Add notification operational probes.
-- Create: `src/gmgn_twitter_intel/storage/notification_repository.py`
+- Create: `src/parallax/storage/notification_repository.py`
   - Durable notification facts, read state, delivery state, summaries.
-- Create: `src/gmgn_twitter_intel/pipeline/notification_models.py`
+- Create: `src/parallax/pipeline/notification_models.py`
   - Small dataclasses for notification inputs/results. Keep this file framework-free.
-- Create: `src/gmgn_twitter_intel/pipeline/notification_rules.py`
+- Create: `src/parallax/pipeline/notification_rules.py`
   - Deterministic rule engine using existing repositories and `TokenFlowService`.
-- Create: `src/gmgn_twitter_intel/pipeline/notification_worker.py`
+- Create: `src/parallax/pipeline/notification_worker.py`
   - Phase 1 rule worker.
-- Create: `src/gmgn_twitter_intel/pipeline/notification_delivery.py`
+- Create: `src/parallax/pipeline/notification_delivery.py`
   - Phase 2 external delivery worker and Apprise adapter.
-- Modify: `src/gmgn_twitter_intel/api/app.py`
+- Modify: `src/parallax/api/app.py`
   - Wire repositories/workers into `CliRuntime`.
-- Modify: `src/gmgn_twitter_intel/api/http.py`
+- Modify: `src/parallax/api/http.py`
   - Add `/api/notifications`, `/api/notification-summary`, mark-read endpoints, and Phase 2 delivery audit.
-- Modify: `src/gmgn_twitter_intel/api/ws.py`
+- Modify: `src/parallax/api/ws.py`
   - Add `notifications` subscription option and route notification payloads.
-- Modify: `src/gmgn_twitter_intel/cli.py`
+- Modify: `src/parallax/cli.py`
   - Add config redaction and Phase 2 `notification-deliveries` query command.
 
 ### Backend tests
@@ -88,9 +88,9 @@ Phase gates:
 ### Task 1: Add Notification Settings
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/settings.py`
+- Modify: `src/parallax/settings.py`
 - Modify: `tests/test_settings.py`
-- Modify: `src/gmgn_twitter_intel/cli.py`
+- Modify: `src/parallax/cli.py`
 - Modify: `tests/test_cli.py`
 
 - [ ] **Step 1: Write settings tests**
@@ -99,7 +99,7 @@ Add tests covering defaults, rule overrides, and channel URL redaction:
 
 ```python
 def test_settings_loads_notification_defaults(tmp_path, monkeypatch):
-    config_dir = tmp_path / ".gmgn-twitter-intel"
+    config_dir = tmp_path / ".parallax"
     config_dir.mkdir()
     (config_dir / "config.yaml").write_text(
         """
@@ -141,7 +141,7 @@ Add CLI redaction assertion to `tests/test_cli.py`:
 
 ```python
 def test_cli_config_redacts_notification_channel_urls(tmp_path, monkeypatch, capsys):
-    config_dir = tmp_path / ".gmgn-twitter-intel"
+    config_dir = tmp_path / ".parallax"
     config_dir.mkdir()
     (config_dir / "config.yaml").write_text(
         """
@@ -397,15 +397,15 @@ Expected: PASS.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/settings.py src/gmgn_twitter_intel/cli.py tests/test_settings.py tests/test_cli.py
+git add src/parallax/settings.py src/parallax/cli.py tests/test_settings.py tests/test_cli.py
 git commit -m "feat: add notification settings"
 ```
 
 ### Task 2: Add Notification Schema
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/storage/sqlite_schema.py`
-- Modify: `src/gmgn_twitter_intel/storage/sqlite_client.py`
+- Modify: `src/parallax/storage/sqlite_schema.py`
+- Modify: `src/parallax/storage/sqlite_client.py`
 - Modify: `tests/test_sqlite_schema.py`
 
 - [ ] **Step 1: Write schema tests**
@@ -606,15 +606,15 @@ Expected: PASS.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/storage/sqlite_schema.py src/gmgn_twitter_intel/storage/sqlite_client.py tests/test_sqlite_schema.py
+git add src/parallax/storage/sqlite_schema.py src/parallax/storage/sqlite_client.py tests/test_sqlite_schema.py
 git commit -m "feat: add notification schema"
 ```
 
 ### Task 3: Implement Notification Repository
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/pipeline/notification_models.py`
-- Create: `src/gmgn_twitter_intel/storage/notification_repository.py`
+- Create: `src/parallax/pipeline/notification_models.py`
+- Create: `src/parallax/storage/notification_repository.py`
 - Create: `tests/test_notification_repository.py`
 
 - [ ] **Step 1: Write repository tests**
@@ -622,10 +622,10 @@ git commit -m "feat: add notification schema"
 Create `tests/test_notification_repository.py`:
 
 ```python
-from gmgn_twitter_intel.pipeline.notification_models import NotificationInput
-from gmgn_twitter_intel.storage.notification_repository import NotificationRepository
-from gmgn_twitter_intel.storage.sqlite_client import connect_sqlite
-from gmgn_twitter_intel.storage.sqlite_schema import migrate
+from parallax.pipeline.notification_models import NotificationInput
+from parallax.storage.notification_repository import NotificationRepository
+from parallax.storage.sqlite_client import connect_sqlite
+from parallax.storage.sqlite_schema import migrate
 
 
 def open_repo(tmp_path):
@@ -976,14 +976,14 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/pipeline/notification_models.py src/gmgn_twitter_intel/storage/notification_repository.py tests/test_notification_repository.py
+git add src/parallax/pipeline/notification_models.py src/parallax/storage/notification_repository.py tests/test_notification_repository.py
 git commit -m "feat: add notification repository"
 ```
 
 ### Task 4: Implement Rule Engine
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/pipeline/notification_rules.py`
+- Create: `src/parallax/pipeline/notification_rules.py`
 - Create: `tests/test_notification_rules.py`
 
 - [ ] **Step 1: Write rule tests**
@@ -1169,15 +1169,15 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/pipeline/notification_rules.py tests/test_notification_rules.py
+git add src/parallax/pipeline/notification_rules.py tests/test_notification_rules.py
 git commit -m "feat: add notification rule engine"
 ```
 
 ### Task 5: Add Notification Worker and Runtime Wiring
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/pipeline/notification_worker.py`
-- Modify: `src/gmgn_twitter_intel/api/app.py`
+- Create: `src/parallax/pipeline/notification_worker.py`
+- Modify: `src/parallax/api/app.py`
 - Create: `tests/test_notification_worker.py`
 
 - [ ] **Step 1: Write worker test**
@@ -1368,14 +1368,14 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/pipeline/notification_worker.py src/gmgn_twitter_intel/api/app.py tests/test_notification_worker.py
+git add src/parallax/pipeline/notification_worker.py src/parallax/api/app.py tests/test_notification_worker.py
 git commit -m "feat: run notification worker"
 ```
 
 ### Task 6: Add Notification HTTP APIs
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/api/http.py`
+- Modify: `src/parallax/api/http.py`
 - Modify: `tests/test_api_http.py`
 
 - [ ] **Step 1: Write API tests**
@@ -1512,14 +1512,14 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/api/http.py tests/test_api_http.py
+git add src/parallax/api/http.py tests/test_api_http.py
 git commit -m "feat: expose notification api"
 ```
 
 ### Task 7: Add WebSocket Notification Routing
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/api/ws.py`
+- Modify: `src/parallax/api/ws.py`
 - Modify: `tests/test_api_websocket.py`
 - Modify: `web/src/api/useIntelSocket.ts`
 
@@ -1636,7 +1636,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/api/ws.py tests/test_api_websocket.py web/src/api/useIntelSocket.ts
+git add src/parallax/api/ws.py tests/test_api_websocket.py web/src/api/useIntelSocket.ts
 git commit -m "feat: stream notifications over websocket"
 ```
 
@@ -2054,7 +2054,7 @@ Expected: all pass.
 Start service:
 
 ```bash
-uv run gmgn-twitter-intel serve
+uv run parallax serve
 ```
 
 Open:
@@ -2126,7 +2126,7 @@ git commit -m "feat: add apprise dependency"
 ### Task 12: Add Delivery Repository Methods
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/storage/notification_repository.py`
+- Modify: `src/parallax/storage/notification_repository.py`
 - Modify: `tests/test_notification_repository.py`
 
 - [ ] **Step 1: Write delivery repository tests**
@@ -2260,15 +2260,15 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/storage/notification_repository.py tests/test_notification_repository.py
+git add src/parallax/storage/notification_repository.py tests/test_notification_repository.py
 git commit -m "feat: add notification delivery persistence"
 ```
 
 ### Task 13: Implement Apprise Delivery Worker
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/pipeline/notification_delivery.py`
-- Modify: `src/gmgn_twitter_intel/api/app.py`
+- Create: `src/parallax/pipeline/notification_delivery.py`
+- Modify: `src/parallax/api/app.py`
 - Create: `tests/test_notification_delivery.py`
 
 - [ ] **Step 1: Write delivery tests with fake adapter**
@@ -2276,8 +2276,8 @@ git commit -m "feat: add notification delivery persistence"
 Create:
 
 ```python
-from gmgn_twitter_intel.pipeline.notification_delivery import NotificationDeliveryWorker
-from gmgn_twitter_intel.pipeline.notification_models import DeliveryResult
+from parallax.pipeline.notification_delivery import NotificationDeliveryWorker
+from parallax.pipeline.notification_models import DeliveryResult
 
 
 class FakeAdapter:
@@ -2451,14 +2451,14 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/pipeline/notification_delivery.py src/gmgn_twitter_intel/api/app.py tests/test_notification_delivery.py
+git add src/parallax/pipeline/notification_delivery.py src/parallax/api/app.py tests/test_notification_delivery.py
 git commit -m "feat: deliver notifications via apprise"
 ```
 
 ### Task 14: Enqueue External Deliveries from Notification Worker
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/pipeline/notification_worker.py`
+- Modify: `src/parallax/pipeline/notification_worker.py`
 - Modify: `tests/test_notification_worker.py`
 
 - [ ] **Step 1: Write enqueue test**
@@ -2524,15 +2524,15 @@ Expected: PASS.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/pipeline/notification_worker.py tests/test_notification_worker.py
+git add src/parallax/pipeline/notification_worker.py tests/test_notification_worker.py
 git commit -m "feat: enqueue external notification deliveries"
 ```
 
 ### Task 15: Add Delivery Audit API and CLI
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/api/http.py`
-- Modify: `src/gmgn_twitter_intel/cli.py`
+- Modify: `src/parallax/api/http.py`
+- Modify: `src/parallax/cli.py`
 - Modify: `tests/test_api_http.py`
 - Modify: `tests/test_cli.py`
 
@@ -2617,7 +2617,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/api/http.py src/gmgn_twitter_intel/cli.py tests/test_api_http.py tests/test_cli.py
+git add src/parallax/api/http.py src/parallax/cli.py tests/test_api_http.py tests/test_cli.py
 git commit -m "feat: expose notification delivery audit"
 ```
 
@@ -2662,13 +2662,13 @@ notifications:
 Start service:
 
 ```bash
-uv run gmgn-twitter-intel serve
+uv run parallax serve
 ```
 
 Create or wait for a warning/high notification. Then inspect:
 
 ```bash
-uv run gmgn-twitter-intel notification-deliveries --limit 20
+uv run parallax notification-deliveries --limit 20
 ```
 
 Expected: delivery rows move to `sent` for log provider.
@@ -2690,7 +2690,7 @@ notifications:
 Trigger or wait for `hot_quality_token_5m` or `harness_snapshot_high_score`. Inspect:
 
 ```bash
-uv run gmgn-twitter-intel notification-deliveries --status sent --limit 20
+uv run parallax notification-deliveries --status sent --limit 20
 ```
 
 Expected: one sent row and one PushDeer device notification.

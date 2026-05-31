@@ -3,11 +3,11 @@ from __future__ import annotations
 from datetime import date
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.domains.macro_intel.services.macro_sync_types import MacroSyncRunSummary
+from parallax.domains.macro_intel.services.macro_sync_types import MacroSyncRunSummary
 
 
 def test_worker_idle_claims_no_window_and_does_not_call_runner() -> None:
-    from gmgn_twitter_intel.domains.macro_intel.runtime.macro_sync_worker import MacroSyncWorker
+    from parallax.domains.macro_intel.runtime.macro_sync_worker import MacroSyncWorker
 
     service = FakeService(result=None, enqueue_summary={"due_count": 0, "open_count": 0})
     worker = MacroSyncWorker(
@@ -35,7 +35,7 @@ def test_worker_idle_claims_no_window_and_does_not_call_runner() -> None:
 
 
 def test_worker_success_and_failure_results_reflect_sync_summary() -> None:
-    from gmgn_twitter_intel.domains.macro_intel.runtime.macro_sync_worker import MacroSyncWorker
+    from parallax.domains.macro_intel.runtime.macro_sync_worker import MacroSyncWorker
 
     success = MacroSyncRunSummary(
         sync_run_id="sync-run-ok",
@@ -94,7 +94,7 @@ def test_worker_success_and_failure_results_reflect_sync_summary() -> None:
 
 
 def test_worker_counts_successful_empty_window_as_processed() -> None:
-    from gmgn_twitter_intel.domains.macro_intel.runtime.macro_sync_worker import MacroSyncWorker
+    from parallax.domains.macro_intel.runtime.macro_sync_worker import MacroSyncWorker
 
     success = MacroSyncRunSummary(
         sync_run_id="sync-run-empty",

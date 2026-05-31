@@ -98,14 +98,14 @@ Use each tool for its natural job:
 Start every production diagnosis with redacted config and readiness context:
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 curl -sS http://127.0.0.1:8765/readyz \
   | jq '{ok,reasons,worker_count:(.workers|length), worker_lanes:.worker_lanes}'
 docker compose ps --all
 ```
 
-For Docker, the container paths are under `/root/.gmgn-twitter-intel/`, mounted
-from the host `~/.gmgn-twitter-intel/`. Report only paths, booleans, redacted
+For Docker, the container paths are under `/root/.parallax/`, mounted
+from the host `~/.parallax/`. Report only paths, booleans, redacted
 DSNs, and diagnostic counts. Do not print config secrets.
 
 Then capture PostgreSQL:
@@ -247,7 +247,7 @@ domain run ledger with `execution_started=true`.
 Broad discovery belongs in dry-run-first ops commands that enqueue bounded work:
 
 ```bash
-uv run gmgn-twitter-intel ops enqueue-token-radar-dirty-targets --dry-run
+uv run parallax ops enqueue-token-radar-dirty-targets --dry-run
 ```
 
 ### Hard Reset Token Rows
@@ -288,8 +288,8 @@ Active queue tables should represent claimable, retryable, or running work.
 Terminal outcomes must be explicit evidence with an operator action path:
 
 ```bash
-uv run gmgn-twitter-intel ops queue-inspect --status terminal --limit 50
-uv run gmgn-twitter-intel ops queue-resolve \
+uv run parallax ops queue-inspect --status terminal --limit 50
+uv run parallax ops queue-resolve \
   --terminal-id <terminal-id> \
   --action retry \
   --reason "operator-reviewed provider recovery" \
@@ -377,7 +377,7 @@ Fresh local Docker evidence after the `main` merge:
 - PoWA: `powa_statements_history_current=1484`,
   `powa_statements_history=7104`.
 - pgBadger latest report:
-  `~/.gmgn-twitter-intel/reports/pgbadger/pgbadger-latest.html`, about 3.4 MB.
+  `~/.parallax/reports/pgbadger/pgbadger-latest.html`, about 3.4 MB.
 - New hot-path indexes have no invalid entries. `idx_token_intent_lookup_keys_intent_lookup`
   already has non-zero scans.
 
@@ -424,8 +424,8 @@ work, and a few query shapes and maintenance gaps amplify it.
 Runtime config is using operator-owned files:
 
 ```text
-config_path: /Users/qinghuan/.gmgn-twitter-intel/config.yaml
-workers_config_path: /Users/qinghuan/.gmgn-twitter-intel/workers.yaml
+config_path: /Users/qinghuan/.parallax/config.yaml
+workers_config_path: /Users/qinghuan/.parallax/workers.yaml
 ```
 
 Readiness is green, but queue health exposes pressure:
@@ -551,7 +551,7 @@ shared_blks_read: 268,585
 Code path:
 
 ```text
-src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_target_feature_query.py
+src/parallax/domains/token_intel/queries/token_radar_target_feature_query.py
 TokenRadarTargetFeatureQuery.source_rows()
 ```
 
@@ -577,7 +577,7 @@ Verification:
 
 ```bash
 rg -n "WITH source_intents AS MATERIALIZED|TokenRadarTargetFeatureQuery|source_rows\\(" \
-  src/gmgn_twitter_intel/domains/token_intel
+  src/parallax/domains/token_intel
 ```
 
 Expected runtime result: no hits.
@@ -679,8 +679,8 @@ partition drop cadence, and index review.
 Next move:
 
 ```bash
-uv run gmgn-twitter-intel ops ensure-postgres-partitions --dry-run
-uv run gmgn-twitter-intel ops drop-expired-postgres-partitions --dry-run
+uv run parallax ops ensure-postgres-partitions --dry-run
+uv run parallax ops drop-expired-postgres-partitions --dry-run
 ```
 
 Only execute after confirming retention policy and expected product lookback.
@@ -730,7 +730,7 @@ heavily rewritten.
 
 ## Completion Checklist For Future Performance PRs
 
-- `uv run gmgn-twitter-intel config` confirms operator-owned runtime paths.
+- `uv run parallax config` confirms operator-owned runtime paths.
 - `/readyz` is green or failures are contract failures, not hidden backlog.
 - `docker compose ps --all` has app/postgres healthy and migrations complete.
 - `pg_stat_activity` shows no unexpected blockers or idle-in-transaction leaks.

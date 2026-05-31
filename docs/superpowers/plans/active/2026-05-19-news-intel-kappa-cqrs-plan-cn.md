@@ -8,7 +8,7 @@
 **Worktree:** `.worktrees/news-intel-kappa-cqrs/`
 **Branch:** `codex/news-intel-kappa-cqrs`
 
-**Goal:** Build a production-grade, independent News Intel page and backend loop inside `gmgn-twitter-intel`: fetch configured news feeds, persist raw/normalized news facts, extract token mentions, resolve identity through existing production interfaces, group stories deterministically, emit auditable fact candidates, and serve a rebuildable News page read model without touching Token Radar.
+**Goal:** Build a production-grade, independent News Intel page and backend loop inside `parallax`: fetch configured news feeds, persist raw/normalized news facts, extract token mentions, resolve identity through existing production interfaces, group stories deterministically, emit auditable fact candidates, and serve a rebuildable News page read model without touching Token Radar.
 
 **Architecture:** Add a new `domains/news_intel` bounded context. PostgreSQL material facts are the only truth; `news_story_groups` and `news_page_rows` are rebuildable read models with single runtime writers. Workers use `LISTEN/NOTIFY` only as wake hints and always retain interval catch-up. The first cut avoids embedding/vector DB and avoids LLM truth: deterministic extraction and validation come first; future LLM fact extraction plugs into `news_fact_candidates` as candidate-only.
 
@@ -33,9 +33,9 @@
   Expected: branch is `codex/news-intel-kappa-cqrs`; status is clean except generated lockfile changes after dependency install.
 - [ ] Confirm real runtime config paths before any live-data debugging:
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
-  Expected: `config_path` and `workers_config_path` point at `~/.gmgn-twitter-intel/`. Do not print secrets.
+  Expected: `config_path` and `workers_config_path` point at `~/.parallax/`. Do not print secrets.
 - [ ] Baseline checks:
   ```bash
   uv run ruff check .
@@ -108,33 +108,33 @@ Do not merge a backend-only API shape that the frontend cannot render. Do not ex
 
 ### Create
 
-- `src/gmgn_twitter_intel/domains/news_intel/__init__.py`
-- `src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md`
-- `src/gmgn_twitter_intel/domains/news_intel/_constants.py`
-- `src/gmgn_twitter_intel/domains/news_intel/providers.py`
-- `src/gmgn_twitter_intel/domains/news_intel/interfaces.py`
-- `src/gmgn_twitter_intel/domains/news_intel/types.py`
-- `src/gmgn_twitter_intel/domains/news_intel/services/text_normalization.py`
-- `src/gmgn_twitter_intel/domains/news_intel/services/feed_item_normalizer.py`
-- `src/gmgn_twitter_intel/domains/news_intel/services/news_entity_extraction.py`
-- `src/gmgn_twitter_intel/domains/news_intel/services/news_token_mentions.py`
-- `src/gmgn_twitter_intel/domains/news_intel/services/news_story_grouping.py`
-- `src/gmgn_twitter_intel/domains/news_intel/services/news_fact_candidates.py`
-- `src/gmgn_twitter_intel/domains/news_intel/services/news_page_projection.py`
-- `src/gmgn_twitter_intel/domains/news_intel/repositories/__init__.py`
-- `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
-- `src/gmgn_twitter_intel/domains/news_intel/queries/__init__.py`
-- `src/gmgn_twitter_intel/domains/news_intel/queries/news_page_query.py`
-- `src/gmgn_twitter_intel/domains/news_intel/runtime/__init__.py`
-- `src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py`
-- `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_process_worker.py`
-- `src/gmgn_twitter_intel/domains/news_intel/runtime/news_story_projection_worker.py`
-- `src/gmgn_twitter_intel/domains/news_intel/runtime/news_page_projection_worker.py`
-- `src/gmgn_twitter_intel/integrations/news_feeds/__init__.py`
-- `src/gmgn_twitter_intel/integrations/news_feeds/feed_client.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_factories/news_intel.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/routes_news.py`
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260519_0064_news_intel_kappa_cqrs.py`
+- `src/parallax/domains/news_intel/__init__.py`
+- `src/parallax/domains/news_intel/ARCHITECTURE.md`
+- `src/parallax/domains/news_intel/_constants.py`
+- `src/parallax/domains/news_intel/providers.py`
+- `src/parallax/domains/news_intel/interfaces.py`
+- `src/parallax/domains/news_intel/types.py`
+- `src/parallax/domains/news_intel/services/text_normalization.py`
+- `src/parallax/domains/news_intel/services/feed_item_normalizer.py`
+- `src/parallax/domains/news_intel/services/news_entity_extraction.py`
+- `src/parallax/domains/news_intel/services/news_token_mentions.py`
+- `src/parallax/domains/news_intel/services/news_story_grouping.py`
+- `src/parallax/domains/news_intel/services/news_fact_candidates.py`
+- `src/parallax/domains/news_intel/services/news_page_projection.py`
+- `src/parallax/domains/news_intel/repositories/__init__.py`
+- `src/parallax/domains/news_intel/repositories/news_repository.py`
+- `src/parallax/domains/news_intel/queries/__init__.py`
+- `src/parallax/domains/news_intel/queries/news_page_query.py`
+- `src/parallax/domains/news_intel/runtime/__init__.py`
+- `src/parallax/domains/news_intel/runtime/news_fetch_worker.py`
+- `src/parallax/domains/news_intel/runtime/news_item_process_worker.py`
+- `src/parallax/domains/news_intel/runtime/news_story_projection_worker.py`
+- `src/parallax/domains/news_intel/runtime/news_page_projection_worker.py`
+- `src/parallax/integrations/news_feeds/__init__.py`
+- `src/parallax/integrations/news_feeds/feed_client.py`
+- `src/parallax/app/runtime/worker_factories/news_intel.py`
+- `src/parallax/app/surfaces/api/routes_news.py`
+- `src/parallax/platform/db/alembic/versions/20260519_0064_news_intel_kappa_cqrs.py`
 - `tests/architecture/test_news_intel_boundaries.py`
 - `tests/unit/domains/news_intel/test_text_normalization.py`
 - `tests/unit/domains/news_intel/test_feed_item_normalizer.py`
@@ -158,15 +158,15 @@ Do not merge a backend-only API shape that the frontend cannot render. Do not ex
 
 - `pyproject.toml`
 - `uv.lock`
-- `src/gmgn_twitter_intel/platform/config/settings.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_registry.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_factories/__init__.py`
-- `src/gmgn_twitter_intel/app/runtime/bootstrap.py`
-- `src/gmgn_twitter_intel/app/runtime/wake_bus.py`
-- `src/gmgn_twitter_intel/app/runtime/repository_session.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/http.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
-- `src/gmgn_twitter_intel/domains/token_intel/interfaces.py`
+- `src/parallax/platform/config/settings.py`
+- `src/parallax/app/runtime/worker_registry.py`
+- `src/parallax/app/runtime/worker_factories/__init__.py`
+- `src/parallax/app/runtime/bootstrap.py`
+- `src/parallax/app/runtime/wake_bus.py`
+- `src/parallax/app/runtime/repository_session.py`
+- `src/parallax/app/surfaces/api/http.py`
+- `src/parallax/app/surfaces/api/schemas.py`
+- `src/parallax/domains/token_intel/interfaces.py`
 - `docs/ARCHITECTURE.md`
 - `docs/WORKERS.md`
 - `docs/WORKER_FLOW.md`
@@ -183,10 +183,10 @@ Do not merge a backend-only API shape that the frontend cannot render. Do not ex
 
 ### Explicitly Do Not Modify
 
-- `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py`
-- `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/*`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_*`
+- `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py`
+- `src/parallax/domains/token_intel/services/token_radar_projection.py`
+- `src/parallax/domains/pulse_lab/*`
+- `src/parallax/domains/asset_market/runtime/market_tick_*`
 
 If implementation appears to require edits there, stop and revisit the spec.
 
@@ -431,7 +431,7 @@ Do not drop `pg_trgm`; it is already used by search v2.
 **Files:**
 - Modify: `pyproject.toml`
 - Modify: `uv.lock`
-- Create: `src/gmgn_twitter_intel/domains/news_intel/*`
+- Create: `src/parallax/domains/news_intel/*`
 - Create: `tests/architecture/test_news_intel_boundaries.py`
 - Modify: `docs/ARCHITECTURE.md`
 
@@ -456,13 +456,13 @@ Expected: `uv.lock` updates with `feedparser` and transitive dependencies.
 Create empty package files:
 
 ```text
-src/gmgn_twitter_intel/domains/news_intel/__init__.py
-src/gmgn_twitter_intel/domains/news_intel/repositories/__init__.py
-src/gmgn_twitter_intel/domains/news_intel/queries/__init__.py
-src/gmgn_twitter_intel/domains/news_intel/runtime/__init__.py
+src/parallax/domains/news_intel/__init__.py
+src/parallax/domains/news_intel/repositories/__init__.py
+src/parallax/domains/news_intel/queries/__init__.py
+src/parallax/domains/news_intel/runtime/__init__.py
 ```
 
-Create `src/gmgn_twitter_intel/domains/news_intel/_constants.py`:
+Create `src/parallax/domains/news_intel/_constants.py`:
 
 ```python
 NEWS_ENTITY_POLICY_VERSION = "news_entity_extraction_v1"
@@ -474,7 +474,7 @@ NEWS_PAGE_PROJECTION_VERSION = "news_page_rows_v1"
 
 - [ ] **Step 3: Create domain architecture doc**
 
-Create `src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md` with:
+Create `src/parallax/domains/news_intel/ARCHITECTURE.md` with:
 
 ```markdown
 # News Intel Architecture
@@ -510,7 +510,7 @@ from __future__ import annotations
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-NEWS_SRC = ROOT / "src/gmgn_twitter_intel/domains/news_intel"
+NEWS_SRC = ROOT / "src/parallax/domains/news_intel"
 
 
 def _py_files() -> list[Path]:
@@ -539,7 +539,7 @@ def test_news_intel_does_not_write_token_radar_or_pulse_tables() -> None:
 
 
 def test_news_api_route_is_read_only() -> None:
-    route = ROOT / "src/gmgn_twitter_intel/app/surfaces/api/routes_news.py"
+    route = ROOT / "src/parallax/app/surfaces/api/routes_news.py"
     if not route.exists():
         return
     text = route.read_text(encoding="utf-8")
@@ -575,7 +575,7 @@ Expected: pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add pyproject.toml uv.lock src/gmgn_twitter_intel/domains/news_intel docs/ARCHITECTURE.md tests/architecture/test_news_intel_boundaries.py
+git add pyproject.toml uv.lock src/parallax/domains/news_intel docs/ARCHITECTURE.md tests/architecture/test_news_intel_boundaries.py
 git commit -m "docs: add news intel domain skeleton"
 ```
 
@@ -584,10 +584,10 @@ git commit -m "docs: add news intel domain skeleton"
 ## Task 2: Storage Migration And Repository
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260519_0064_news_intel_kappa_cqrs.py`
-- Create: `src/gmgn_twitter_intel/domains/news_intel/types.py`
-- Create: `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/repository_session.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260519_0064_news_intel_kappa_cqrs.py`
+- Create: `src/parallax/domains/news_intel/types.py`
+- Create: `src/parallax/domains/news_intel/repositories/news_repository.py`
+- Modify: `src/parallax/app/runtime/repository_session.py`
 - Test: `tests/integration/domains/news_intel/test_news_repository.py`
 
 - [ ] **Step 1: Write failing repository integration tests**
@@ -597,7 +597,7 @@ Create `tests/integration/domains/news_intel/test_news_repository.py`:
 ```python
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.news_intel.repositories.news_repository import NewsRepository
+from parallax.domains.news_intel.repositories.news_repository import NewsRepository
 
 
 def test_news_repository_upserts_source_and_item(pg_conn) -> None:
@@ -737,7 +737,7 @@ Expected: fail because repository methods do not exist.
 
 - [ ] **Step 3: Add repository types**
 
-Create `src/gmgn_twitter_intel/domains/news_intel/types.py`:
+Create `src/parallax/domains/news_intel/types.py`:
 
 ```python
 from __future__ import annotations
@@ -774,7 +774,7 @@ class NormalizedNewsItem:
 
 - [ ] **Step 4: Implement `NewsRepository`**
 
-Create `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py` with methods used in tests:
+Create `src/parallax/domains/news_intel/repositories/news_repository.py` with methods used in tests:
 
 ```python
 from __future__ import annotations
@@ -1074,10 +1074,10 @@ def _stable_id(*parts: str) -> str:
 
 - [ ] **Step 5: Extend repository session**
 
-Modify `src/gmgn_twitter_intel/app/runtime/repository_session.py` to add `NewsRepository` as a normal `RepositorySession` dataclass field. Do not add a method property; the current session is a frozen dataclass and repositories are constructed in `repositories_for_connection`.
+Modify `src/parallax/app/runtime/repository_session.py` to add `NewsRepository` as a normal `RepositorySession` dataclass field. Do not add a method property; the current session is a frozen dataclass and repositories are constructed in `repositories_for_connection`.
 
 ```python
-from gmgn_twitter_intel.domains.news_intel.repositories.news_repository import NewsRepository
+from parallax.domains.news_intel.repositories.news_repository import NewsRepository
 
 
 @dataclass(frozen=True, slots=True)
@@ -1107,7 +1107,7 @@ Expected: pass.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/platform/db/alembic/versions/20260519_0064_news_intel_kappa_cqrs.py src/gmgn_twitter_intel/domains/news_intel/types.py src/gmgn_twitter_intel/domains/news_intel/repositories src/gmgn_twitter_intel/app/runtime/repository_session.py tests/integration/domains/news_intel/test_news_repository.py
+git add src/parallax/platform/db/alembic/versions/20260519_0064_news_intel_kappa_cqrs.py src/parallax/domains/news_intel/types.py src/parallax/domains/news_intel/repositories src/parallax/app/runtime/repository_session.py tests/integration/domains/news_intel/test_news_repository.py
 git commit -m "feat: add news intel storage foundation"
 ```
 
@@ -1116,9 +1116,9 @@ git commit -m "feat: add news intel storage foundation"
 ## Task 3: Feed Client And Normalization
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/integrations/news_feeds/feed_client.py`
-- Create: `src/gmgn_twitter_intel/domains/news_intel/services/text_normalization.py`
-- Create: `src/gmgn_twitter_intel/domains/news_intel/services/feed_item_normalizer.py`
+- Create: `src/parallax/integrations/news_feeds/feed_client.py`
+- Create: `src/parallax/domains/news_intel/services/text_normalization.py`
+- Create: `src/parallax/domains/news_intel/services/feed_item_normalizer.py`
 - Test: `tests/unit/domains/news_intel/test_text_normalization.py`
 - Test: `tests/unit/domains/news_intel/test_feed_item_normalizer.py`
 
@@ -1127,7 +1127,7 @@ git commit -m "feat: add news intel storage foundation"
 Create `tests/unit/domains/news_intel/test_text_normalization.py`:
 
 ```python
-from gmgn_twitter_intel.domains.news_intel.services.text_normalization import (
+from parallax.domains.news_intel.services.text_normalization import (
     canonicalize_url,
     clean_news_text,
     content_hash,
@@ -1167,7 +1167,7 @@ Expected: fail.
 
 - [ ] **Step 2: Implement text normalization**
 
-Create `src/gmgn_twitter_intel/domains/news_intel/services/text_normalization.py`:
+Create `src/parallax/domains/news_intel/services/text_normalization.py`:
 
 ```python
 from __future__ import annotations
@@ -1245,7 +1245,7 @@ def _normalize_space(value: str) -> str:
 Create `tests/unit/domains/news_intel/test_feed_item_normalizer.py`:
 
 ```python
-from gmgn_twitter_intel.domains.news_intel.services.feed_item_normalizer import normalize_feed_entry
+from parallax.domains.news_intel.services.feed_item_normalizer import normalize_feed_entry
 
 
 def test_normalize_feed_entry_uses_guid_or_link_as_source_key() -> None:
@@ -1272,7 +1272,7 @@ def test_normalize_feed_entry_rejects_missing_title_or_url() -> None:
 
 - [ ] **Step 4: Implement feed normalizer**
 
-Create `src/gmgn_twitter_intel/domains/news_intel/services/feed_item_normalizer.py`:
+Create `src/parallax/domains/news_intel/services/feed_item_normalizer.py`:
 
 ```python
 from __future__ import annotations
@@ -1280,7 +1280,7 @@ from __future__ import annotations
 import calendar
 from typing import Any
 
-from gmgn_twitter_intel.domains.news_intel.types import NormalizedNewsItem
+from parallax.domains.news_intel.types import NormalizedNewsItem
 
 from .text_normalization import canonicalize_url, clean_news_text
 
@@ -1331,7 +1331,7 @@ def _published_ms(entry: dict[str, Any], *, fallback_ms: int) -> int:
 
 - [ ] **Step 5: Add feed client**
 
-Create `src/gmgn_twitter_intel/integrations/news_feeds/feed_client.py`:
+Create `src/parallax/integrations/news_feeds/feed_client.py`:
 
 ```python
 from __future__ import annotations
@@ -1395,7 +1395,7 @@ Expected: pass.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/integrations/news_feeds src/gmgn_twitter_intel/domains/news_intel/services/text_normalization.py src/gmgn_twitter_intel/domains/news_intel/services/feed_item_normalizer.py tests/unit/domains/news_intel/test_text_normalization.py tests/unit/domains/news_intel/test_feed_item_normalizer.py
+git add src/parallax/integrations/news_feeds src/parallax/domains/news_intel/services/text_normalization.py src/parallax/domains/news_intel/services/feed_item_normalizer.py tests/unit/domains/news_intel/test_text_normalization.py tests/unit/domains/news_intel/test_feed_item_normalizer.py
 git commit -m "feat: add news feed parsing and normalization"
 ```
 
@@ -1404,15 +1404,15 @@ git commit -m "feat: add news feed parsing and normalization"
 ## Task 4: News Fetch Worker And Config
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
-- Create: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py`
-- Create: `src/gmgn_twitter_intel/app/runtime/worker_factories/news_intel.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_registry.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_factories/__init__.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/bootstrap.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/queries/news_page_query.py`
-- Create: `src/gmgn_twitter_intel/app/surfaces/api/routes_news.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/http.py`
+- Modify: `src/parallax/platform/config/settings.py`
+- Create: `src/parallax/domains/news_intel/runtime/news_fetch_worker.py`
+- Create: `src/parallax/app/runtime/worker_factories/news_intel.py`
+- Modify: `src/parallax/app/runtime/worker_registry.py`
+- Modify: `src/parallax/app/runtime/worker_factories/__init__.py`
+- Modify: `src/parallax/app/runtime/bootstrap.py`
+- Modify: `src/parallax/domains/news_intel/queries/news_page_query.py`
+- Create: `src/parallax/app/surfaces/api/routes_news.py`
+- Modify: `src/parallax/app/surfaces/api/http.py`
 - Test: `tests/unit/domains/news_intel/test_news_workers.py`
 - Test: `tests/unit/test_worker_settings.py`
 - Test: `tests/unit/test_api_news_contract.py`
@@ -1423,7 +1423,7 @@ Extend `tests/unit/test_worker_settings.py`:
 
 ```python
 def test_news_workers_have_defaults() -> None:
-    from gmgn_twitter_intel.platform.config.settings import WorkersSettings
+    from parallax.platform.config.settings import WorkersSettings
 
     settings = WorkersSettings()
     assert settings.news_fetch.interval_seconds > 0
@@ -1585,7 +1585,7 @@ def _source(source_id: str) -> NewsSourceConfig:
 
 - [ ] **Step 4: Extend `WakeBus`**
 
-Modify `src/gmgn_twitter_intel/app/runtime/wake_bus.py`:
+Modify `src/parallax/app/runtime/wake_bus.py`:
 
 ```python
 def notify_news_item_written(self, *, source_id: str, count: int) -> None:
@@ -1609,8 +1609,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from gmgn_twitter_intel.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
-from gmgn_twitter_intel.domains.news_intel.types import NewsSourceConfig
+from parallax.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
+from parallax.domains.news_intel.types import NewsSourceConfig
 
 
 @dataclass
@@ -1726,7 +1726,7 @@ class FakeSession:
 
 - [ ] **Step 6: Implement `NewsFetchWorker`**
 
-Create `src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py`:
+Create `src/parallax/domains/news_intel/runtime/news_fetch_worker.py`:
 
 ```python
 from __future__ import annotations
@@ -1735,10 +1735,10 @@ import hashlib
 import json
 from collections.abc import Callable
 
-from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
-from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
-from gmgn_twitter_intel.domains.news_intel.services.feed_item_normalizer import normalize_feed_entry
-from gmgn_twitter_intel.domains.news_intel.services.text_normalization import content_hash, title_fingerprint
+from parallax.app.runtime.worker_base import WorkerBase
+from parallax.app.runtime.worker_result import WorkerResult
+from parallax.domains.news_intel.services.feed_item_normalizer import normalize_feed_entry
+from parallax.domains.news_intel.services.text_normalization import content_hash, title_fingerprint
 
 
 class NewsFetchWorker(WorkerBase):
@@ -1874,10 +1874,10 @@ Add missing repository methods: `reconcile_configured_sources`, `disable_unconfi
 Modify `worker_registry.py`:
 
 ```python
-"news_fetch": "gmgn_twitter_intel.domains.news_intel.runtime.news_fetch_worker.NewsFetchWorker",
-"news_item_process": "gmgn_twitter_intel.domains.news_intel.runtime.news_item_process_worker.NewsItemProcessWorker",
-"news_story_projection": "gmgn_twitter_intel.domains.news_intel.runtime.news_story_projection_worker.NewsStoryProjectionWorker",
-"news_page_projection": "gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker.NewsPageProjectionWorker",
+"news_fetch": "parallax.domains.news_intel.runtime.news_fetch_worker.NewsFetchWorker",
+"news_item_process": "parallax.domains.news_intel.runtime.news_item_process_worker.NewsItemProcessWorker",
+"news_story_projection": "parallax.domains.news_intel.runtime.news_story_projection_worker.NewsStoryProjectionWorker",
+"news_page_projection": "parallax.domains.news_intel.runtime.news_page_projection_worker.NewsPageProjectionWorker",
 ```
 
 Assign priorities after `collector` and before token projections:
@@ -1942,7 +1942,7 @@ Expected: pass.
 - [ ] **Step 10: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/platform/config/settings.py src/gmgn_twitter_intel/app/runtime src/gmgn_twitter_intel/app/surfaces/api/routes_news.py src/gmgn_twitter_intel/app/surfaces/api/http.py src/gmgn_twitter_intel/domains/news_intel/runtime src/gmgn_twitter_intel/domains/news_intel/queries/news_page_query.py tests/unit/domains/news_intel/test_news_workers.py tests/unit/test_worker_settings.py tests/unit/test_api_news_contract.py
+git add src/parallax/platform/config/settings.py src/parallax/app/runtime src/parallax/app/surfaces/api/routes_news.py src/parallax/app/surfaces/api/http.py src/parallax/domains/news_intel/runtime src/parallax/domains/news_intel/queries/news_page_query.py tests/unit/domains/news_intel/test_news_workers.py tests/unit/test_worker_settings.py tests/unit/test_api_news_contract.py
 git commit -m "feat: add news fetch worker"
 ```
 
@@ -1951,10 +1951,10 @@ git commit -m "feat: add news fetch worker"
 ## Task 5: Entity Extraction And Token Mention Resolution
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/news_intel/services/news_entity_extraction.py`
-- Create: `src/gmgn_twitter_intel/domains/news_intel/services/news_token_mentions.py`
-- Create: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_process_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/interfaces.py`
+- Create: `src/parallax/domains/news_intel/services/news_entity_extraction.py`
+- Create: `src/parallax/domains/news_intel/services/news_token_mentions.py`
+- Create: `src/parallax/domains/news_intel/runtime/news_item_process_worker.py`
+- Modify: `src/parallax/domains/token_intel/interfaces.py`
 - Test: `tests/unit/domains/news_intel/test_news_entity_extraction.py`
 - Test: `tests/unit/domains/news_intel/test_news_token_mentions.py`
 
@@ -1963,7 +1963,7 @@ git commit -m "feat: add news fetch worker"
 Create `tests/unit/domains/news_intel/test_news_entity_extraction.py`:
 
 ```python
-from gmgn_twitter_intel.domains.news_intel.services.news_entity_extraction import extract_news_entities
+from parallax.domains.news_intel.services.news_entity_extraction import extract_news_entities
 
 
 def test_extract_news_entities_reuses_span_aware_address_and_symbol_extraction() -> None:
@@ -1991,8 +1991,8 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 
-from gmgn_twitter_intel.domains.evidence.interfaces import TextSurface, extract_entities_from_surfaces
-from gmgn_twitter_intel.domains.news_intel._constants import NEWS_ENTITY_POLICY_VERSION
+from parallax.domains.evidence.interfaces import TextSurface, extract_entities_from_surfaces
+from parallax.domains.news_intel._constants import NEWS_ENTITY_POLICY_VERSION
 
 
 @dataclass(frozen=True, slots=True)
@@ -2060,7 +2060,7 @@ def _stable_id(*parts: str) -> str:
 
 - [ ] **Step 3: Add token identity read interface**
 
-Modify `src/gmgn_twitter_intel/domains/token_intel/interfaces.py` to expose a narrow read-only protocol/value for News:
+Modify `src/parallax/domains/token_intel/interfaces.py` to expose a narrow read-only protocol/value for News:
 
 ```python
 from dataclasses import dataclass
@@ -2089,9 +2089,9 @@ If `interfaces.py` already has equivalent protocols after recent work, reuse tho
 Create `tests/unit/domains/news_intel/test_news_token_mentions.py`:
 
 ```python
-from gmgn_twitter_intel.domains.news_intel.services.news_entity_extraction import NewsEntity
-from gmgn_twitter_intel.domains.news_intel.services.news_token_mentions import build_news_token_mentions
-from gmgn_twitter_intel.domains.token_intel.interfaces import TokenIdentityLookupResult
+from parallax.domains.news_intel.services.news_entity_extraction import NewsEntity
+from parallax.domains.news_intel.services.news_token_mentions import build_news_token_mentions
+from parallax.domains.token_intel.interfaces import TokenIdentityLookupResult
 
 
 class FakeLookup:
@@ -2180,9 +2180,9 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 
-from gmgn_twitter_intel.domains.news_intel._constants import NEWS_TOKEN_MENTION_POLICY_VERSION
-from gmgn_twitter_intel.domains.news_intel.services.news_entity_extraction import NewsEntity
-from gmgn_twitter_intel.domains.token_intel.interfaces import TokenIdentityLookup
+from parallax.domains.news_intel._constants import NEWS_TOKEN_MENTION_POLICY_VERSION
+from parallax.domains.news_intel.services.news_entity_extraction import NewsEntity
+from parallax.domains.token_intel.interfaces import TokenIdentityLookup
 
 
 @dataclass(frozen=True, slots=True)
@@ -2345,7 +2345,7 @@ Expected: pass.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/domains/news_intel/services/news_entity_extraction.py src/gmgn_twitter_intel/domains/news_intel/services/news_token_mentions.py src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_process_worker.py src/gmgn_twitter_intel/domains/token_intel/interfaces.py tests/unit/domains/news_intel/test_news_entity_extraction.py tests/unit/domains/news_intel/test_news_token_mentions.py tests/unit/domains/news_intel/test_news_workers.py
+git add src/parallax/domains/news_intel/services/news_entity_extraction.py src/parallax/domains/news_intel/services/news_token_mentions.py src/parallax/domains/news_intel/runtime/news_item_process_worker.py src/parallax/domains/token_intel/interfaces.py tests/unit/domains/news_intel/test_news_entity_extraction.py tests/unit/domains/news_intel/test_news_token_mentions.py tests/unit/domains/news_intel/test_news_workers.py
 git commit -m "feat: add news entity and token mention processing"
 ```
 
@@ -2354,8 +2354,8 @@ git commit -m "feat: add news entity and token mention processing"
 ## Task 6: Deterministic Story Grouping
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/news_intel/services/news_story_grouping.py`
-- Create: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_story_projection_worker.py`
+- Create: `src/parallax/domains/news_intel/services/news_story_grouping.py`
+- Create: `src/parallax/domains/news_intel/runtime/news_story_projection_worker.py`
 - Test: `tests/unit/domains/news_intel/test_news_story_grouping.py`
 
 - [ ] **Step 1: Write failing grouping tests**
@@ -2363,7 +2363,7 @@ git commit -m "feat: add news entity and token mention processing"
 Create `tests/unit/domains/news_intel/test_news_story_grouping.py`:
 
 ```python
-from gmgn_twitter_intel.domains.news_intel.services.news_story_grouping import choose_story_assignment
+from parallax.domains.news_intel.services.news_story_grouping import choose_story_assignment
 
 
 def test_story_grouping_accepts_same_canonical_url() -> None:
@@ -2424,7 +2424,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 
-from gmgn_twitter_intel.domains.news_intel._constants import NEWS_STORY_POLICY_VERSION
+from parallax.domains.news_intel._constants import NEWS_STORY_POLICY_VERSION
 
 
 @dataclass(frozen=True, slots=True)
@@ -2479,10 +2479,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
-from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
-from gmgn_twitter_intel.domains.news_intel._constants import NEWS_STORY_POLICY_VERSION
-from gmgn_twitter_intel.domains.news_intel.services.news_story_grouping import choose_story_assignment, new_story_id
+from parallax.app.runtime.worker_base import WorkerBase
+from parallax.app.runtime.worker_result import WorkerResult
+from parallax.domains.news_intel._constants import NEWS_STORY_POLICY_VERSION
+from parallax.domains.news_intel.services.news_story_grouping import choose_story_assignment, new_story_id
 
 
 class NewsStoryProjectionWorker(WorkerBase):
@@ -2545,7 +2545,7 @@ Expected: pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/domains/news_intel/services/news_story_grouping.py src/gmgn_twitter_intel/domains/news_intel/runtime/news_story_projection_worker.py tests/unit/domains/news_intel/test_news_story_grouping.py tests/unit/domains/news_intel/test_news_workers.py
+git add src/parallax/domains/news_intel/services/news_story_grouping.py src/parallax/domains/news_intel/runtime/news_story_projection_worker.py tests/unit/domains/news_intel/test_news_story_grouping.py tests/unit/domains/news_intel/test_news_workers.py
 git commit -m "feat: add deterministic news story projection"
 ```
 
@@ -2554,8 +2554,8 @@ git commit -m "feat: add deterministic news story projection"
 ## Task 7: Deterministic Fact Candidates
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/news_intel/services/news_fact_candidates.py`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_process_worker.py`
+- Create: `src/parallax/domains/news_intel/services/news_fact_candidates.py`
+- Modify: `src/parallax/domains/news_intel/runtime/news_item_process_worker.py`
 - Test: `tests/unit/domains/news_intel/test_news_fact_candidates.py`
 
 - [ ] **Step 1: Write failing fact candidate tests**
@@ -2563,8 +2563,8 @@ git commit -m "feat: add deterministic news story projection"
 Create `tests/unit/domains/news_intel/test_news_fact_candidates.py`:
 
 ```python
-from gmgn_twitter_intel.domains.news_intel.services.news_fact_candidates import build_fact_candidates
-from gmgn_twitter_intel.domains.news_intel.services.news_token_mentions import NewsTokenMention
+from parallax.domains.news_intel.services.news_fact_candidates import build_fact_candidates
+from parallax.domains.news_intel.services.news_token_mentions import NewsTokenMention
 
 
 def _mention(status: str = "known_symbol") -> NewsTokenMention:
@@ -2641,8 +2641,8 @@ import hashlib
 import re
 from dataclasses import dataclass
 
-from gmgn_twitter_intel.domains.news_intel._constants import NEWS_FACT_POLICY_VERSION
-from gmgn_twitter_intel.domains.news_intel.services.news_token_mentions import NewsTokenMention
+from parallax.domains.news_intel._constants import NEWS_FACT_POLICY_VERSION
+from parallax.domains.news_intel.services.news_token_mentions import NewsTokenMention
 
 _EVENT_PATTERNS = (
     ("listing", re.compile(r"\b(?:lists?|listing|goes live|launches trading)\b", re.IGNORECASE)),
@@ -2802,7 +2802,7 @@ Expected: pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/domains/news_intel/services/news_fact_candidates.py src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_process_worker.py tests/unit/domains/news_intel/test_news_fact_candidates.py
+git add src/parallax/domains/news_intel/services/news_fact_candidates.py src/parallax/domains/news_intel/runtime/news_item_process_worker.py tests/unit/domains/news_intel/test_news_fact_candidates.py
 git commit -m "feat: add deterministic news fact candidates"
 ```
 
@@ -2811,10 +2811,10 @@ git commit -m "feat: add deterministic news fact candidates"
 ## Task 8: News Page Projection And Query Service
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/news_intel/services/news_page_projection.py`
-- Create: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_page_projection_worker.py`
-- Create: `src/gmgn_twitter_intel/domains/news_intel/queries/news_page_query.py`
-- Create: `src/gmgn_twitter_intel/domains/news_intel/interfaces.py`
+- Create: `src/parallax/domains/news_intel/services/news_page_projection.py`
+- Create: `src/parallax/domains/news_intel/runtime/news_page_projection_worker.py`
+- Create: `src/parallax/domains/news_intel/queries/news_page_query.py`
+- Create: `src/parallax/domains/news_intel/interfaces.py`
 - Test: `tests/unit/domains/news_intel/test_news_page_projection.py`
 
 - [ ] **Step 1: Write failing projection test**
@@ -2822,7 +2822,7 @@ git commit -m "feat: add deterministic news fact candidates"
 Create `tests/unit/domains/news_intel/test_news_page_projection.py`:
 
 ```python
-from gmgn_twitter_intel.domains.news_intel.services.news_page_projection import build_news_page_row
+from parallax.domains.news_intel.services.news_page_projection import build_news_page_row
 
 
 def test_build_news_page_row_includes_token_and_fact_lanes() -> None:
@@ -2870,7 +2870,7 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
-from gmgn_twitter_intel.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION
+from parallax.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION
 
 
 def build_news_page_row(
@@ -2991,7 +2991,7 @@ Expected: pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/domains/news_intel/services/news_page_projection.py src/gmgn_twitter_intel/domains/news_intel/runtime/news_page_projection_worker.py src/gmgn_twitter_intel/domains/news_intel/queries/news_page_query.py src/gmgn_twitter_intel/domains/news_intel/interfaces.py tests/unit/domains/news_intel/test_news_page_projection.py
+git add src/parallax/domains/news_intel/services/news_page_projection.py src/parallax/domains/news_intel/runtime/news_page_projection_worker.py src/parallax/domains/news_intel/queries/news_page_query.py src/parallax/domains/news_intel/interfaces.py tests/unit/domains/news_intel/test_news_page_projection.py
 git commit -m "feat: add news page projection read model"
 ```
 
@@ -3000,9 +3000,9 @@ git commit -m "feat: add news page projection read model"
 ## Task 9: API Routes And Contracts
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/routes_news.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/http.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
+- Modify: `src/parallax/app/surfaces/api/routes_news.py`
+- Modify: `src/parallax/app/surfaces/api/http.py`
+- Modify: `src/parallax/app/surfaces/api/schemas.py`
 - Test: `tests/unit/test_api_news_contract.py`
 - Test: `tests/integration/test_api_http.py`
 
@@ -3017,8 +3017,8 @@ from types import SimpleNamespace
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from gmgn_twitter_intel.app.surfaces.api import routes_news
-from gmgn_twitter_intel.app.surfaces.api.http import create_api_router
+from parallax.app.surfaces.api import routes_news
+from parallax.app.surfaces.api.http import create_api_router
 
 
 class FakeNewsReadModel:
@@ -3086,11 +3086,11 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 
-from gmgn_twitter_intel.app.surfaces.api import schemas as api_schemas
-from gmgn_twitter_intel.app.surfaces.api.dependencies import _authenticated_runtime
-from gmgn_twitter_intel.app.surfaces.api.responses import _json
-from gmgn_twitter_intel.app.surfaces.api.validators import _limit
-from gmgn_twitter_intel.domains.news_intel.queries.news_page_query import NewsPageQuery
+from parallax.app.surfaces.api import schemas as api_schemas
+from parallax.app.surfaces.api.dependencies import _authenticated_runtime
+from parallax.app.surfaces.api.responses import _json
+from parallax.app.surfaces.api.validators import _limit
+from parallax.domains.news_intel.queries.news_page_query import NewsPageQuery
 
 router = APIRouter()
 
@@ -3197,7 +3197,7 @@ web/src/lib/types/openapi.ts updated
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/gmgn_twitter_intel/app/surfaces/api/routes_news.py src/gmgn_twitter_intel/app/surfaces/api/http.py src/gmgn_twitter_intel/app/surfaces/api/schemas.py tests/unit/test_api_news_contract.py tests/integration/test_api_http.py docs/generated/openapi.json web/src/lib/types/openapi.ts
+git add src/parallax/app/surfaces/api/routes_news.py src/parallax/app/surfaces/api/http.py src/parallax/app/surfaces/api/schemas.py tests/unit/test_api_news_contract.py tests/integration/test_api_http.py docs/generated/openapi.json web/src/lib/types/openapi.ts
 git commit -m "feat: add news intel API routes"
 ```
 
@@ -3470,7 +3470,7 @@ git commit -m "feat: add independent news page"
 - Modify: `docs/WORKER_FLOW.md`
 - Modify: `docs/CONTRACTS.md`
 - Modify: `docs/FRONTEND.md`
-- Modify: `src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/news_intel/ARCHITECTURE.md`
 - Test: `tests/architecture/test_worker_runtime_contracts.py`
 - Test: `tests/contract/test_openapi_drift.py`
 
@@ -3521,7 +3521,7 @@ Expected: pass after generated OpenAPI/types are updated.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add docs/WORKERS.md docs/WORKER_FLOW.md docs/CONTRACTS.md docs/FRONTEND.md src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md docs/generated/openapi.json web/src/lib/types/openapi.ts
+git add docs/WORKERS.md docs/WORKER_FLOW.md docs/CONTRACTS.md docs/FRONTEND.md src/parallax/domains/news_intel/ARCHITECTURE.md docs/generated/openapi.json web/src/lib/types/openapi.ts
 git commit -m "docs: document news intel runtime and contracts"
 ```
 
@@ -3571,7 +3571,7 @@ Expected: exit code 0. Paste full output into verification artefact.
 Start server with real config:
 
 ```bash
-uv run gmgn-twitter-intel serve
+uv run parallax serve
 ```
 
 Open:
@@ -3640,7 +3640,7 @@ Do not merge PR B before PR A. Do not merge PR C before `/api/news` contract is 
 1. Deploy migration.
 2. Add `news_intel.enabled: false` default.
 3. Deploy code with workers registered but disabled by config.
-4. Configure a small allowlist of sources in `~/.gmgn-twitter-intel/config.yaml`.
+4. Configure a small allowlist of sources in `~/.parallax/config.yaml`.
 5. Enable `news_fetch`, `news_item_process`, `news_story_projection`, `news_page_projection` via existing worker defaults.
 6. Observe `/api/news/sources/status` and worker status for one refresh interval.
 7. Open `/news` and verify raw rows, attention lane, story grouping, and fact candidate display.

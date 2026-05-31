@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.asset_market.identity_evidence_policy import (
+from parallax.domains.asset_market.identity_evidence_policy import (
     CONFIDENCE_PROVIDER_CANDIDATE,
     CONFIDENCE_PROVIDER_EXACT,
     EVIDENCE_GMGN_PAYLOAD_EXACT,

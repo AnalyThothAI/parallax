@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from gmgn_twitter_intel.app.runtime.app import _mount_frontend, create_app
-from gmgn_twitter_intel.platform.config.settings import PerWorkerSettings, Settings
+from parallax.app.runtime.app import _mount_frontend, create_app
+from parallax.platform.config.settings import PerWorkerSettings, Settings
 from tests.postgres_test_utils import postgres_settings_storage, prepare_postgres_database
 
 

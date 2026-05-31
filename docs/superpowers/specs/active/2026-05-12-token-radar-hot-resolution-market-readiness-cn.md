@@ -7,10 +7,10 @@
 **Related**
 - `docs/superpowers/specs/active/2026-05-12-symbol-only-resolution-gap-cn.md`
 - `docs/superpowers/specs/active/2026-05-12-market-data-pipeline-gap-cn.md`
-- `src/gmgn_twitter_intel/domains/evidence/services/ingest_service.py`
-- `src/gmgn_twitter_intel/domains/token_intel/services/deterministic_token_resolver.py`
-- `src/gmgn_twitter_intel/domains/asset_market/runtime/resolution_refresh_worker.py`
-- `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`
+- `src/parallax/domains/evidence/services/ingest_service.py`
+- `src/parallax/domains/token_intel/services/deterministic_token_resolver.py`
+- `src/parallax/domains/asset_market/runtime/resolution_refresh_worker.py`
+- `src/parallax/domains/token_intel/read_models/asset_flow_service.py`
 
 ---
 
@@ -227,12 +227,12 @@ Price path 不负责把 `$SYMBOL` 变成 target。
 2026-05-12 在 Docker app 容器中重建后执行：
 
 ```bash
-gmgn-twitter-intel ops reprocess-token-intents --window 24h --limit 2000 \
+parallax ops reprocess-token-intents --window 24h --limit 2000 \
   --lookup-key symbol:DELL --lookup-key symbol:AAOI --lookup-key symbol:MRVL \
   --lookup-key symbol:EBAY --lookup-key symbol:BRKB --lookup-key symbol:BRK.B
-gmgn-twitter-intel ops run-resolution-refresh --limit 120 --reprocess-limit 500
-gmgn-twitter-intel ops rebuild-token-radar --window 5m --scope all --limit 300
-gmgn-twitter-intel ops rebuild-token-radar --window 1h --scope all --limit 300
+parallax ops run-resolution-refresh --limit 120 --reprocess-limit 500
+parallax ops rebuild-token-radar --window 5m --scope all --limit 300
+parallax ops rebuild-token-radar --window 1h --scope all --limit 300
 ```
 
 关键结果：

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_dirty_target_repository import (
+from parallax.domains.token_intel.repositories.token_radar_dirty_target_repository import (
     dirty_kind_flags,
     dirty_payload_hash,
 )

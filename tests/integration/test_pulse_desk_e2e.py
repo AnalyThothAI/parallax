@@ -7,23 +7,23 @@ import pytest
 from psycopg import errors as psycopg_errors
 from psycopg.types.json import Jsonb
 
-from gmgn_twitter_intel.domains.notifications.services.notification_rules import NotificationRuleEngine
-from gmgn_twitter_intel.domains.pulse_lab.providers import DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT, PulseDecisionResult
-from gmgn_twitter_intel.domains.pulse_lab.queries.agent_tool_queries import fetch_evidence_event_urls
-from gmgn_twitter_intel.domains.pulse_lab.read_models.signal_pulse_service import SignalPulseService
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_admission_repository import PulseAdmissionRepository
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_agent_eval_repository import PulseAgentEvalRepository
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_candidates_repository import PulseCandidatesRepository
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_evidence_repository import PulseEvidenceRepository
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_jobs_repository import PulseJobsRepository
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_playbooks_repository import PulsePlaybooksRepository
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_read_repository import PulseReadRepository
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_runs_repository import PulseRunsRepository
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_trigger_dirty_target_repository import (
+from parallax.domains.notifications.services.notification_rules import NotificationRuleEngine
+from parallax.domains.pulse_lab.providers import DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT, PulseDecisionResult
+from parallax.domains.pulse_lab.queries.agent_tool_queries import fetch_evidence_event_urls
+from parallax.domains.pulse_lab.read_models.signal_pulse_service import SignalPulseService
+from parallax.domains.pulse_lab.repositories.pulse_admission_repository import PulseAdmissionRepository
+from parallax.domains.pulse_lab.repositories.pulse_agent_eval_repository import PulseAgentEvalRepository
+from parallax.domains.pulse_lab.repositories.pulse_candidates_repository import PulseCandidatesRepository
+from parallax.domains.pulse_lab.repositories.pulse_evidence_repository import PulseEvidenceRepository
+from parallax.domains.pulse_lab.repositories.pulse_jobs_repository import PulseJobsRepository
+from parallax.domains.pulse_lab.repositories.pulse_playbooks_repository import PulsePlaybooksRepository
+from parallax.domains.pulse_lab.repositories.pulse_read_repository import PulseReadRepository
+from parallax.domains.pulse_lab.repositories.pulse_runs_repository import PulseRunsRepository
+from parallax.domains.pulse_lab.repositories.pulse_trigger_dirty_target_repository import (
     PulseTriggerDirtyTargetRepository,
 )
-from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import PulseCandidateWorker
-from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
+from parallax.domains.pulse_lab.runtime.pulse_candidate_worker import PulseCandidateWorker
+from parallax.domains.pulse_lab.types.agent_decision import (
     BearCaseMemo,
     BullBearView,
     EvidenceClaim,
@@ -32,8 +32,8 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     StageRunAudit,
     TradePlaybook,
 )
-from gmgn_twitter_intel.platform.agent_execution import AgentCapacityReservation
-from gmgn_twitter_intel.platform.config.settings import Settings
+from parallax.platform.agent_execution import AgentCapacityReservation
+from parallax.platform.config.settings import Settings
 from tests.postgres_test_utils import connect_postgres_test, reset_postgres_schema
 from tests.unit.test_pulse_candidate_worker import (
     NOW_MS,

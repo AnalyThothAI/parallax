@@ -4,39 +4,39 @@ from types import SimpleNamespace
 
 import pytest
 
-from gmgn_twitter_intel.app.runtime import worker_factories
-from gmgn_twitter_intel.app.runtime.bootstrap import _assemble_runtime
-from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
-from gmgn_twitter_intel.app.runtime.worker_factories import WorkerFactorySpec, construct_workers
-from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
-from gmgn_twitter_intel.domains.asset_market.runtime.event_anchor_backfill_worker import EventAnchorBackfillWorker
-from gmgn_twitter_intel.domains.asset_market.runtime.live_price_gateway import LivePriceGateway
-from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_current_projection_worker import (
+from parallax.app.runtime import worker_factories
+from parallax.app.runtime.bootstrap import _assemble_runtime
+from parallax.app.runtime.worker_base import WorkerBase
+from parallax.app.runtime.worker_factories import WorkerFactorySpec, construct_workers
+from parallax.app.runtime.worker_result import WorkerResult
+from parallax.domains.asset_market.runtime.event_anchor_backfill_worker import EventAnchorBackfillWorker
+from parallax.domains.asset_market.runtime.live_price_gateway import LivePriceGateway
+from parallax.domains.asset_market.runtime.market_tick_current_projection_worker import (
     MarketTickCurrentProjectionWorker,
 )
-from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_poll_worker import MarketTickPollWorker
-from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_stream_worker import MarketTickStreamWorker
-from gmgn_twitter_intel.domains.asset_market.runtime.token_capture_tier_worker import TokenCaptureTierWorker
-from gmgn_twitter_intel.domains.asset_market.runtime.token_image_mirror_worker import TokenImageMirrorWorker
-from gmgn_twitter_intel.domains.asset_market.runtime.token_profile_current_worker import TokenProfileCurrentWorker
-from gmgn_twitter_intel.domains.macro_intel.runtime.macro_sync_worker import MacroSyncWorker
-from gmgn_twitter_intel.domains.macro_intel.runtime.macro_view_projection_worker import MacroViewProjectionWorker
-from gmgn_twitter_intel.domains.narrative_intel.runtime.mention_semantics_worker import MentionSemanticsWorker
-from gmgn_twitter_intel.domains.narrative_intel.runtime.narrative_admission_worker import NarrativeAdmissionWorker
-from gmgn_twitter_intel.domains.narrative_intel.runtime.token_discussion_digest_worker import (
+from parallax.domains.asset_market.runtime.market_tick_poll_worker import MarketTickPollWorker
+from parallax.domains.asset_market.runtime.market_tick_stream_worker import MarketTickStreamWorker
+from parallax.domains.asset_market.runtime.token_capture_tier_worker import TokenCaptureTierWorker
+from parallax.domains.asset_market.runtime.token_image_mirror_worker import TokenImageMirrorWorker
+from parallax.domains.asset_market.runtime.token_profile_current_worker import TokenProfileCurrentWorker
+from parallax.domains.macro_intel.runtime.macro_sync_worker import MacroSyncWorker
+from parallax.domains.macro_intel.runtime.macro_view_projection_worker import MacroViewProjectionWorker
+from parallax.domains.narrative_intel.runtime.mention_semantics_worker import MentionSemanticsWorker
+from parallax.domains.narrative_intel.runtime.narrative_admission_worker import NarrativeAdmissionWorker
+from parallax.domains.narrative_intel.runtime.token_discussion_digest_worker import (
     TokenDiscussionDigestWorker,
 )
-from gmgn_twitter_intel.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
-from gmgn_twitter_intel.domains.news_intel.runtime.news_item_brief_worker import NewsItemBriefWorker
-from gmgn_twitter_intel.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
-from gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
-from gmgn_twitter_intel.domains.news_intel.runtime.news_source_quality_projection_worker import (
+from parallax.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
+from parallax.domains.news_intel.runtime.news_item_brief_worker import NewsItemBriefWorker
+from parallax.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
+from parallax.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
+from parallax.domains.news_intel.runtime.news_source_quality_projection_worker import (
     NewsSourceQualityProjectionWorker,
 )
-from gmgn_twitter_intel.domains.notifications.runtime.notification_delivery import NotificationDeliveryWorker
-from gmgn_twitter_intel.domains.notifications.runtime.notification_worker import NotificationWorker
-from gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
-from gmgn_twitter_intel.platform.config.settings import Settings
+from parallax.domains.notifications.runtime.notification_delivery import NotificationDeliveryWorker
+from parallax.domains.notifications.runtime.notification_worker import NotificationWorker
+from parallax.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
+from parallax.platform.config.settings import Settings
 
 _UNSET = object()
 
@@ -241,7 +241,7 @@ def test_worker_factory_wires_news_fetch_by_default() -> None:
 def test_news_provider_wiring_constructs_opennews_rest_client_without_websocket_kwargs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import gmgn_twitter_intel.app.runtime.provider_wiring.news as news_wiring
+    import parallax.app.runtime.provider_wiring.news as news_wiring
 
     constructor_calls: list[dict[str, object]] = []
 

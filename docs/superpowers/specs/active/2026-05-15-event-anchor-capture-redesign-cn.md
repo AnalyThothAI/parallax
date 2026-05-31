@@ -11,8 +11,8 @@
     - `docs/superpowers/specs/active/2026-05-12-market-data-pipeline-gap-cn.md`（DEX 市场字段缺失）
     - `docs/superpowers/specs/active/2026-05-11-token-radar-anchor-live-worker-simplification-cn.md`（anchor/live worker 简化）
     - `docs/superpowers/specs/completed/2026-05-04-market-observation-timing-production-spec-cn.md`（market observation timing）
-  - 全局架构：`docs/ARCHITECTURE.md`、`src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md`、`docs/RELIABILITY.md`、`docs/WORKERS.md`
-  - 直接落地代码区：`src/gmgn_twitter_intel/domains/asset_market/{services,runtime,repositories,queries}/`、`src/gmgn_twitter_intel/app/runtime/{worker_base,db_pool_bundle,worker_scheduler,bootstrap}.py`
+  - 全局架构：`docs/ARCHITECTURE.md`、`src/parallax/domains/asset_market/ARCHITECTURE.md`、`docs/RELIABILITY.md`、`docs/WORKERS.md`
+  - 直接落地代码区：`src/parallax/domains/asset_market/{services,runtime,repositories,queries}/`、`src/parallax/app/runtime/{worker_base,db_pool_bundle,worker_scheduler,bootstrap}.py`
 
 ## 一句话结论
 
@@ -36,14 +36,14 @@
 
 | 路径 | 入口 | 抓取 | 写入 |
 |---|---|---|---|
-| `AnchorPriceWorker(WorkerBase)` | `src/gmgn_twitter_intel/domains/asset_market/runtime/anchor_price_worker.py:35-73`（已 short-borrow：先开 session select pending → 关 session → fetch quotes → 重开 session 写 observation） | REST 批量轮询，由 `workers.yaml.anchor_price.interval_seconds + batch_size` 配置 | `price_observations(observation_kind='event_anchor')` |
-| `LivePriceGateway(WorkerBase)` | `src/gmgn_twitter_intel/domains/asset_market/runtime/live_price_gateway.py:74`（`_active_targets` 通过 `repos.registry.active_live_market_targets` 选订阅集） | WS 订阅，由 `workers.yaml.live_price_gateway` 配置 `subscription_limit`、`hot_target_ttl_seconds` | `price_observations(observation_kind='decision_latest')` |
+| `AnchorPriceWorker(WorkerBase)` | `src/parallax/domains/asset_market/runtime/anchor_price_worker.py:35-73`（已 short-borrow：先开 session select pending → 关 session → fetch quotes → 重开 session 写 observation） | REST 批量轮询，由 `workers.yaml.anchor_price.interval_seconds + batch_size` 配置 | `price_observations(observation_kind='event_anchor')` |
+| `LivePriceGateway(WorkerBase)` | `src/parallax/domains/asset_market/runtime/live_price_gateway.py:74`（`_active_targets` 通过 `repos.registry.active_live_market_targets` 选订阅集） | WS 订阅，由 `workers.yaml.live_price_gateway` 配置 `subscription_limit`、`hot_target_ttl_seconds` | `price_observations(observation_kind='decision_latest')` |
 
 ### 关键代码点
 
-- 写入端 enum：`src/gmgn_twitter_intel/domains/asset_market/services/anchor_price_observation.py:273,320` 写 `observation_kind="event_anchor"`
-- 读取端 enum：`src/gmgn_twitter_intel/domains/asset_market/queries/pending_anchor_price_query.py:84` 过滤 `observation_kind = 'message_anchor'`（**字面量漂移**，从 `20260513_0036` migration 后 worker 一直跟不上；**worker runtime hard-cut 后仍未修复** —— 该 bug 不在 worker 平台 spec 范围内）
-- 允许 enum：`src/gmgn_twitter_intel/domains/asset_market/repositories/price_observation_repository.py:15` `MARKET_OBSERVATION_KINDS = frozenset({"event_anchor", "decision_latest"})`
+- 写入端 enum：`src/parallax/domains/asset_market/services/anchor_price_observation.py:273,320` 写 `observation_kind="event_anchor"`
+- 读取端 enum：`src/parallax/domains/asset_market/queries/pending_anchor_price_query.py:84` 过滤 `observation_kind = 'message_anchor'`（**字面量漂移**，从 `20260513_0036` migration 后 worker 一直跟不上；**worker runtime hard-cut 后仍未修复** —— 该 bug 不在 worker 平台 spec 范围内）
+- 允许 enum：`src/parallax/domains/asset_market/repositories/price_observation_repository.py:15` `MARKET_OBSERVATION_KINDS = frozenset({"event_anchor", "decision_latest"})`
 - UPDATE 路径：`price_observation_repository.py:398-450` 对存量 `event_anchor` 行**覆盖** `observed_at_ms` / `price_usd` 等全字段（破坏 ARCH #3 "Anchor describes the event-time observation; it is never overwritten by live data"）
 - 排序：`pending_anchor_price_query.py:86-89` `ORDER BY hot-first DESC, received_at_ms DESC` + `LIMIT` —— hot-poll 而非 catch-up
 - 跨 cycle / 跨 worker 缓存：**无**。`anchor_price_observation.py` 中的 `_fetch_dex_quotes` 仅在单 batch 内 dedup `request_items.setdefault`；`AnchorPriceWorker` 不读 `LivePriceGateway` 的 in-process WS 缓存（两个 worker 独立持有 in-memory state）
@@ -438,7 +438,7 @@ Cost 异常告警：
 ### Eval — 上线前 + 持续验证
 
 - **上线前 backtest**：用 last 7d `events` 重放，对每条 resolved (event, token) 重新走 Tier 3 inline 路径，记录 `tick_lag_ms` 与 `capture_method` 分布；要求 ≥ 80% 的 mentions 在重放下能拿到 `inline_pull` 且 lag p95 ≤ 60s。否则 spec 上线被卡。
-- **上线后回归 eval**：每周自动跑 `gmgn-twitter-intel ops eval-anchor-capture --since=7d`，输出 G2/G3 的实际值与目标差异；落 7d 趋势到 `docs/generated/anchor-capture-slo.md`
+- **上线后回归 eval**：每周自动跑 `parallax ops eval-anchor-capture --since=7d`，输出 G2/G3 的实际值与目标差异；落 7d 趋势到 `docs/generated/anchor-capture-slo.md`
 
 ## Risks
 

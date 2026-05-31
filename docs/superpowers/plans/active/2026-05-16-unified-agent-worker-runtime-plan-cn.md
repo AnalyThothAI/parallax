@@ -22,7 +22,7 @@
 - [ ] Worktree exists at `.worktrees/unified-agent-runtime/` and `git branch --show-current` matches `unified-agent-runtime`.
 - [ ] Baseline `uv run ruff check .` passes.
 - [ ] Baseline `uv run pytest tests/` 全绿（已知 PG-dependent 测试在 docker postgres 起好后通过；不在 docker 环境的开发机允许 skip）.
-- [ ] DB 可达：`docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel -c "select count(*) from pulse_agent_runs;"` 返回 7,848+ 行。
+- [ ] DB 可达：`docker exec parallax-postgres-1 psql -U parallax_app -d parallax -c "select count(*) from pulse_agent_runs;"` 返回 7,848+ 行。
 - [ ] big9er.com 健康：执行 spec §4.1 中的 curl 测试，返回 `{"name":"test","supply":1000}` 且 system_fingerprint 以 `b8779-` 开头。
 - [ ] 安装新增依赖：`uv add jsonref instructor` 并提交 `uv.lock`。
 
@@ -37,7 +37,7 @@
 
 ### A. SDK 调用链证据
 
-- `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py:54-79` 定义 `_JsonOutputSchema`：
+- `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py:54-79` 定义 `_JsonOutputSchema`：
   - L60 `self._schema = AgentOutputSchema(output_type, strict_json_schema=False)` — 显式禁用 strict。
   - L71-72 `is_strict_json_schema(self) -> bool: return False` — SDK 据此把 `response_format.json_schema.strict` 发为 `false`。
   - L55-56 docstring 自承"relies on the model following the prompt, not on the provider honoring strict json_schema"，证明此设计是**故意为之**（基于"qwen 不支持 strict" 的错误假设）。
@@ -46,11 +46,11 @@
 
 ### B. Pydantic schema 证据
 
-- `src/gmgn_twitter_intel/domains/pulse_lab/types/agent_decision.py`:
+- `src/parallax/domains/pulse_lab/types/agent_decision.py`:
   - L22-39 `AnalystOpinion(BaseModel)`：5 字段，`model_config = ConfigDict(extra="forbid")`，`confidence: float = Field(ge=0, le=1)`。
   - L42-54 `CritiqueReport(BaseModel)`：5 字段，同 `extra="forbid"`，含 `confidence_ceiling: float = Field(ge=0, le=1)`、`should_abstain: bool`。
   - L57-93 `FinalDecision(BaseModel)`：8 字段，同 `extra="forbid"`，含 `abstain_reason: str | None`（nullable union）、conditional 校验 `if recommendation==abstain ⇒ abstain_reason 必填`、`if recommendation!=abstain ⇒ evidence_event_ids 或 residual_risks 至少一个`。
-- `python3 -c "from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import AnalystOpinion; import json; print(json.dumps(AnalystOpinion.model_json_schema(), indent=2))"` 输出含 `"$defs"`、`"$ref"`（DecisionRoute 等 Literal 被 Pydantic 抽出公共定义）。这是 llama.cpp #21228 silent fail 的触发条件。
+- `python3 -c "from parallax.domains.pulse_lab.types.agent_decision import AnalystOpinion; import json; print(json.dumps(AnalystOpinion.model_json_schema(), indent=2))"` 输出含 `"$defs"`、`"$ref"`（DecisionRoute 等 Literal 被 Pydantic 抽出公共定义）。这是 llama.cpp #21228 silent fail 的触发条件。
 
 ### C. 上游能力实证（big9er.com / llama.cpp b8779）
 
@@ -80,8 +80,8 @@
 ### E. Worker 层证据
 
 - `docs/WORKERS.md` 14 worker 全部 `WorkerBase` 子类。`pulse_candidate` / `enrichment` / `handle_summary` 是直接调 LLM 的 3 个。
-- `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py:493-505` agent timeout 路径：`await asyncio.wait_for(...)` → 异常先 raise → outer except mark_job_failed → 受 `statement_timeout_seconds=30` 约束，超时时 mark_failed 自身会失败 → 44 个 `stale_running_timeout` 实例由此而来。
-- `src/gmgn_twitter_intel/domains/watchlist_intel/runtime/handle_summary_worker.py` lease 机制（lease_expires_at_ms）只在下一次 `claim_next_summary_job()` 时回收过期项，缺主动 reclaim。
+- `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:493-505` agent timeout 路径：`await asyncio.wait_for(...)` → 异常先 raise → outer except mark_job_failed → 受 `statement_timeout_seconds=30` 约束，超时时 mark_failed 自身会失败 → 44 个 `stale_running_timeout` 实例由此而来。
+- `src/parallax/domains/watchlist_intel/runtime/handle_summary_worker.py` lease 机制（lease_expires_at_ms）只在下一次 `claim_next_summary_job()` 时回收过期项，缺主动 reclaim。
 
 ### F. 上游 GitHub issue 证据
 
@@ -151,7 +151,7 @@
   ```
 - 执行 `uv lock` 重新生成 `uv.lock`。
 
-#### `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`
+#### `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py`
 
 - L54-79：**整个 `_JsonOutputSchema` 类替换**。
 
@@ -205,7 +205,7 @@ class _JsonOutputSchema(AgentOutputSchemaBase):
 
 - **新增 import**：`from openai.types.chat.completion_create_params import CompletionCreateParams` (仅当用 extra_body 路径)。
 
-#### `src/gmgn_twitter_intel/integrations/openai_agents/social_event_agent_client.py`
+#### `src/parallax/integrations/openai_agents/social_event_agent_client.py`
 
 - L100-145 构造 `Agent`：
   - 把 `OpenAIResponsesModel(...)` 改成 `OpenAIChatCompletionsModel(...)`（Responses API 只 OpenAI 原生有，qwen3.6 不能用）
@@ -213,7 +213,7 @@ class _JsonOutputSchema(AgentOutputSchemaBase):
   - 给 `Agent(...)` 加 `model_settings=ModelSettings(...)` 含 enable_thinking 路径
 - L143 `model_settings=ModelSettings(max_retries=0, ...)` 改为复用 PR 3 的 `default_model_retry_settings()`（PR 3 落地之前先就地写 `max_retries=2` 占位）。
 
-#### `src/gmgn_twitter_intel/integrations/openai_agents/watchlist_summary_agent_client.py`
+#### `src/parallax/integrations/openai_agents/watchlist_summary_agent_client.py`
 
 - L103-108 构造 `Agent`：
   - 加 `output_type=_JsonOutputSchema(WatchlistHandleSummaryPayload)` （之前完全没传 output_type！）
@@ -221,7 +221,7 @@ class _JsonOutputSchema(AgentOutputSchemaBase):
   - 加 `model_settings` enable_thinking + retry
 - L226-248 `_coerce_summary_payload`：保留逻辑，**但** 在 markdown 路径触发时给 audit 加 `"parse_mode": "markdown_fallback"` 字段（PR 2 的列）；非 markdown 路径写 `"parse_mode": "strict"`。
 
-#### `src/gmgn_twitter_intel/domains/pulse_lab/types/agent_decision.py`
+#### `src/parallax/domains/pulse_lab/types/agent_decision.py`
 
 - L23 `AnalystOpinion.model_config`：`extra="forbid"` → `extra="ignore"`。
 - L43 `CritiqueReport.model_config`：同上。
@@ -243,20 +243,20 @@ class _JsonOutputSchema(AgentOutputSchemaBase):
   ```
   保留原来的 `.strip()` 行为，仅在前面加 `<think>...</think>` 剥离。文件顶部已 `import re`，不动 imports。
 
-#### `src/gmgn_twitter_intel/domains/pulse_lab/interfaces.py`
+#### `src/parallax/domains/pulse_lab/interfaces.py`
 
 - 找到 `PULSE_DECISION_SCHEMA_VERSION = "pulse_decision_v1"`，改为 `"pulse_decision_v2"`（Design Correction §6）。这一改动让 `pulse_runtime_hash()` 自动 bump，eval 表自动按新 harness 隔离 PR 1 前后的数据。
 - 同时**不**升 `PULSE_DECISION_PROMPT_VERSION`（PR 1 没改 prompt 文字）。
 - 同时**不**升 `PULSE_GATE_VERSION`（PR 1 没改 gate 逻辑）。
 
-#### `src/gmgn_twitter_intel/domains/social_enrichment/types/social_event_extraction.py`
+#### `src/parallax/domains/social_enrichment/types/social_event_extraction.py`
 
 - L83 `ExtractedEntity`（或类似类）`model_config`：`extra="forbid"` → `"ignore"`。
 - L91 同上（第二个 BaseModel 子类）。
 - L102 `SocialEventPayload.model_config`：`extra="forbid"` → `"ignore"`。
 - 业务约束保留（如有 `@model_validator` 不动）。Design Correction §8。
 
-#### `src/gmgn_twitter_intel/integrations/openai_agents/instructor_safety_net.py`（新文件，~90 行）
+#### `src/parallax/integrations/openai_agents/instructor_safety_net.py`（新文件，~90 行）
 
 ```python
 """Instructor-backed safety net for openai-agents-python SDK call failures.
@@ -354,12 +354,12 @@ class InstructorSafetyNet:
         ]
 ```
 
-#### `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`（调用点）
+#### `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py`（调用点）
 
 - L162-235 `_run_stage()`：把 `result = await self._runner.run(...)` 替换为 `final_output, audit_extra = await self._safety_net.run_with_safety_net(...)`，将 `audit_extra` 合并入 `StageRunAudit.trace_metadata_json` 与新增 `safety_net_used` / `safety_net_retries` 字段。
 - `OpenAIAgentsPulseDecisionClient.__init__` 加 `safety_net: InstructorSafetyNet | None = None` 参数，default None 时构造一个（用同 base_url/api_key/model）。
 
-#### `src/gmgn_twitter_intel/app/runtime/providers_wiring.py`
+#### `src/parallax/app/runtime/providers_wiring.py`
 
 - 找到 `OpenAIAgentsPulseDecisionClient(...)` 构造点（grep 已知是 `providers_wiring.py:34` import，~ `:296` 包装 client）。在构造前实例化：
   ```python
@@ -374,14 +374,14 @@ class InstructorSafetyNet:
   ```
 - 同样为 social_event / watchlist 构造各自的 SafetyNet 实例（用各自 model）。
 
-#### `src/gmgn_twitter_intel/app/settings.py`
+#### `src/parallax/app/settings.py`
 
 - `LlmConfig` 加字段：
   ```python
   instructor_safety_net_enabled: bool = True
   instructor_max_retries: int = 2
   ```
-- `~/.gmgn-twitter-intel/config.yaml` 文档样例（**不**写入用户 home，只在 README 里）：
+- `~/.parallax/config.yaml` 文档样例（**不**写入用户 home，只在 README 里）：
   ```yaml
   llm:
     instructor_safety_net_enabled: true
@@ -454,7 +454,7 @@ PR 1 不动 DB schema。新加的 `safety_net_used`/`retries` 是 PR 2 的事。
 
 ### 文件
 
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260516_NNNN_agent_safety_net_audit.py`（新 revision）
+- `src/parallax/platform/db/alembic/versions/20260516_NNNN_agent_safety_net_audit.py`（新 revision）
 
   ```python
   """agent safety_net audit fields
@@ -503,15 +503,15 @@ PR 1 不动 DB schema。新加的 `safety_net_used`/`retries` 是 PR 2 的事。
 
 ### 写入点（PR 2 紧随 PR 1 合入）
 
-- `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py`（grep `insert_agent_run_step` 找位置）：写入 `pulse_agent_run_steps` 时把 `audit_extra` 里的三字段直接 map 到独立列。
-- `src/gmgn_twitter_intel/domains/social_enrichment/repositories/enrichment_repository.py:221` `complete_social_event_job` 同上 map 到 `model_runs`。
-- `src/gmgn_twitter_intel/domains/watchlist_intel/repositories/watchlist_intel_repository.py` `insert_summary_run` 同上。
+- `src/parallax/domains/pulse_lab/repositories/pulse_repository.py`（grep `insert_agent_run_step` 找位置）：写入 `pulse_agent_run_steps` 时把 `audit_extra` 里的三字段直接 map 到独立列。
+- `src/parallax/domains/social_enrichment/repositories/enrichment_repository.py:221` `complete_social_event_job` 同上 map 到 `model_runs`。
+- `src/parallax/domains/watchlist_intel/repositories/watchlist_intel_repository.py` `insert_summary_run` 同上。
 
 ### Migration acceptance
 
 ```bash
 uv run alembic upgrade head
-docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel -c "\d pulse_agent_run_steps" | grep -E "safety_net|parse_mode"
+docker exec parallax-postgres-1 psql -U parallax_app -d parallax -c "\d pulse_agent_run_steps" | grep -E "safety_net|parse_mode"
 # 期望看到 3 行新列定义
 ```
 
@@ -529,7 +529,7 @@ uv run alembic downgrade -1
 
 ### 文件
 
-- `src/gmgn_twitter_intel/integrations/openai_agents/_shared.py`（新文件）：
+- `src/parallax/integrations/openai_agents/_shared.py`（新文件）：
   - 抽 `_api_base`、`_is_openai_base_url`、`_sha256`、`_trace_id`（统一截 32 hex）、`setup_tracing_once`
   - 抽 `default_model_retry_settings()` 返回 `ModelRetrySettings(max_retries=2, backoff={...}, policy=retry_policies.any(...))` 与 `pulse_decision_agent_client.py:378-383` 配置一致
   - 把 PR 1 写的 `_JsonOutputSchema` 也搬到这里（PR 1 写在 pulse 文件里只是过渡，PR 3 上移）
@@ -548,9 +548,9 @@ uv run alembic downgrade -1
 
 ### 文件
 
-- `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py:493-505`：超时路径调整为先 mark_failed（独立连接 + statement_timeout 短）再 raise（spec M4）
-- `src/gmgn_twitter_intel/domains/watchlist_intel/runtime/handle_summary_worker.py`：新增 `_reclaim_expired_leases_once()` 每 `run_once` 头部扫一次（spec M5）
-- `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py`：`mark_stale_agent_runs_failed` 改用独立事务 + 独立 statement_timeout
+- `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:493-505`：超时路径调整为先 mark_failed（独立连接 + statement_timeout 短）再 raise（spec M4）
+- `src/parallax/domains/watchlist_intel/runtime/handle_summary_worker.py`：新增 `_reclaim_expired_leases_once()` 每 `run_once` 头部扫一次（spec M5）
+- `src/parallax/domains/pulse_lab/repositories/pulse_repository.py`：`mark_stale_agent_runs_failed` 改用独立事务 + 独立 statement_timeout
 
 ### Tests
 
@@ -563,9 +563,9 @@ uv run alembic downgrade -1
 
 ### 文件
 
-- `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py:426`：`request_json` 从 `{context_hash}` 改为 `{context_hash, context, factor_snapshot}`，过 `_sanitize_for_audit()`（新增于 `_shared.py`）剥 secret 模式
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/<next>_correlation_id_columns.py`：在 `events`/`enrichment_jobs`/`pulse_agent_jobs`/`watchlist_handle_summary_jobs`/`*_runs` 加 `correlation_id text` nullable
-- `src/gmgn_twitter_intel/domains/evidence/services/ingest_service.py` 生成 `uuid7()` 写入 events.correlation_id
+- `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:426`：`request_json` 从 `{context_hash}` 改为 `{context_hash, context, factor_snapshot}`，过 `_sanitize_for_audit()`（新增于 `_shared.py`）剥 secret 模式
+- `src/parallax/platform/db/alembic/versions/<next>_correlation_id_columns.py`：在 `events`/`enrichment_jobs`/`pulse_agent_jobs`/`watchlist_handle_summary_jobs`/`*_runs` 加 `correlation_id text` nullable
+- `src/parallax/domains/evidence/services/ingest_service.py` 生成 `uuid7()` 写入 events.correlation_id
 - 所有下游 enqueue 路径透传
 
 ### Tests
@@ -579,15 +579,15 @@ uv run alembic downgrade -1
 
 ### 文件
 
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_runtime.py`：`build_pulse_deterministic_eval_case` 加 fail run 分支（spec S2）
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_eval.py:57`：`grade_pulse_deterministic_eval_case` 加 `reason_class` violation 类型
-- `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py:548-619`：失败路径也调 `build_pulse_deterministic_eval_case` 写入 eval 表
-- `src/gmgn_twitter_intel/app/cli.py` 新加 `pulse eval-diff` 命令
+- `src/parallax/domains/pulse_lab/services/agent_runtime.py`：`build_pulse_deterministic_eval_case` 加 fail run 分支（spec S2）
+- `src/parallax/domains/pulse_lab/services/agent_eval.py:57`：`grade_pulse_deterministic_eval_case` 加 `reason_class` violation 类型
+- `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:548-619`：失败路径也调 `build_pulse_deterministic_eval_case` 写入 eval 表
+- `src/parallax/app/cli.py` 新加 `pulse eval-diff` 命令
 
 ### Acceptance
 
 ```bash
-uv run gmgn-twitter-intel pulse eval-diff --since 7d --baseline runtime_hash=sha256:... --candidate runtime_hash=sha256:...
+uv run parallax pulse eval-diff --since 7d --baseline runtime_hash=sha256:... --candidate runtime_hash=sha256:...
 # 期望输出 markdown 表，per-rule pass rate diff
 ```
 
@@ -598,7 +598,7 @@ uv run gmgn-twitter-intel pulse eval-diff --since 7d --baseline runtime_hash=sha
 ### 文件
 
 - `docker-compose.yml`：加 langfuse-v4 service（postgres backend 复用现有 PG 实例新 db）
-- `src/gmgn_twitter_intel/platform/observability/otel_setup.py`：新文件，set OTLP exporter 到 langfuse
+- `src/parallax/platform/observability/otel_setup.py`：新文件，set OTLP exporter 到 langfuse
 - 三 agent client 在 `Runner.run` 前后包 OTel span，attach 业务属性 `run_id / candidate_id / route / runtime_hash / safety_net_used / parse_mode`
 
 ### Acceptance
@@ -615,8 +615,8 @@ open http://localhost:3001  # langfuse v4 UI
 
 ### 文件
 
-- `src/gmgn_twitter_intel/domains/pulse_lab/prompts/{analyst,critic,judge}_{cex,meme,research_only}.md` 9 个新文件
-- `src/gmgn_twitter_intel/integrations/openai_agents/pulse_stage_prompts.py:pulse_stage_prompt()`：改为 `load_prompt(path).render(**context)`
+- `src/parallax/domains/pulse_lab/prompts/{analyst,critic,judge}_{cex,meme,research_only}.md` 9 个新文件
+- `src/parallax/integrations/openai_agents/pulse_stage_prompts.py:pulse_stage_prompt()`：改为 `load_prompt(path).render(**context)`
 
 ### Tests
 
@@ -633,8 +633,8 @@ PR 1+2+3 上线 ≥7 天，`pulse_agent_eval_cases` 含 ≥1,000 个 post-fix sa
 
 ### 文件
 
-- `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`：critic 不再 binary veto，改为把 `confidence_ceiling` clamp 到 judge 输出（spec S6）
-- `src/gmgn_twitter_intel/domains/_shared/completeness_gate.py`（新文件，从 `pulse_candidate_worker._factor_completeness` 抽）
+- `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py`：critic 不再 binary veto，改为把 `confidence_ceiling` clamp 到 judge 输出（spec S6）
+- `src/parallax/domains/_shared/completeness_gate.py`（新文件，从 `pulse_candidate_worker._factor_completeness` 抽）
 - enrichment / watchlist worker 在调 agent 前先打分（spec S7）
 
 ---
@@ -666,7 +666,7 @@ Mapping spec §7 验收条件到具体命令：
 
 ```bash
 # M1.a strict + jsonref（spec §7.1）
-docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel -c "
+docker exec parallax-postgres-1 psql -U parallax_app -d parallax -c "
 SELECT
   COUNT(*) AS total,
   COUNT(*) FILTER (WHERE error LIKE 'Invalid JSON%') AS invalid_json,
@@ -680,7 +680,7 @@ WHERE started_at_ms > (EXTRACT(EPOCH FROM now() - interval '7 days')*1000)::bigi
 
 ```bash
 # M1.b extra=ignore - schema_version 不再触发错误
-docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel -c "
+docker exec parallax-postgres-1 psql -U parallax_app -d parallax -c "
 SELECT COUNT(*) FROM pulse_agent_runs
 WHERE error LIKE '%schema_version%' AND started_at_ms > <deploy_ts_ms>;
 "
@@ -689,7 +689,7 @@ WHERE error LIKE '%schema_version%' AND started_at_ms > <deploy_ts_ms>;
 
 ```bash
 # M1.c confidence clamp - 全部 in [0,1]
-docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel -c "
+docker exec parallax-postgres-1 psql -U parallax_app -d parallax -c "
 SELECT MIN((response_json->>'confidence')::float), MAX((response_json->>'confidence')::float)
 FROM pulse_agent_run_steps WHERE status='ok' AND started_at_ms > <deploy_ts_ms>;
 "
@@ -698,7 +698,7 @@ FROM pulse_agent_run_steps WHERE status='ok' AND started_at_ms > <deploy_ts_ms>;
 
 ```bash
 # M1.d enable_thinking=false - 输出无 <think> 残留
-docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel -c "
+docker exec parallax-postgres-1 psql -U parallax_app -d parallax -c "
 SELECT COUNT(*) FROM pulse_agent_run_steps
 WHERE response_json::text LIKE '%<think>%' AND started_at_ms > <deploy_ts_ms>;
 "
@@ -707,7 +707,7 @@ WHERE response_json::text LIKE '%<think>%' AND started_at_ms > <deploy_ts_ms>;
 
 ```bash
 # M1b Instructor safety net - 命中率 < 10%
-docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel -c "
+docker exec parallax-postgres-1 psql -U parallax_app -d parallax -c "
 SELECT
   COUNT(*) FILTER (WHERE safety_net_used) AS used,
   COUNT(*) AS total,

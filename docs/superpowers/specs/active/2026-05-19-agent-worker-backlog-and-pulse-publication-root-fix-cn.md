@@ -13,7 +13,7 @@
 
 ## Background
 
-Live runtime config is operator-owned under `~/.gmgn-twitter-intel/`; repo fixtures and `.env` are not active production truth. This spec therefore treats live backlog observations as runtime symptoms and fixes the worker contracts in source.
+Live runtime config is operator-owned under `~/.parallax/`; repo fixtures and `.env` are not active production truth. This spec therefore treats live backlog observations as runtime symptoms and fixes the worker contracts in source.
 
 Narrative semantics has three expensive steps in one worker pass: reconcile Token Radar admissions, enqueue missing `token_mention_semantics`, then claim due semantic rows for provider labeling. Provider calls were already capped by `provider_batch_size`, but admission enqueueing needed its own budget so source growth cannot outrun labeling capacity indefinitely.
 

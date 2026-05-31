@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from gmgn_twitter_intel.domains.pulse_lab.read_models.signal_pulse_service import SignalPulseService
+from parallax.domains.pulse_lab.read_models.signal_pulse_service import SignalPulseService
 
 
 class FakePulseReadRepository:

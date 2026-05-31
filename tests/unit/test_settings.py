@@ -5,8 +5,8 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from gmgn_twitter_intel.domains.news_intel.types.source_classification import PROVIDER_TYPES, SOURCE_ROLES
-from gmgn_twitter_intel.platform.config.settings import (
+from parallax.domains.news_intel.types.source_classification import PROVIDER_TYPES, SOURCE_ROLES
+from parallax.platform.config.settings import (
     NEWS_PROVIDER_TYPES,
     NEWS_SOURCE_ROLES,
     NewsSourceSettings,
@@ -19,11 +19,11 @@ from gmgn_twitter_intel.platform.config.settings import (
     load_settings,
     write_default_config,
 )
-from gmgn_twitter_intel.platform.paths.runtime_paths import app_home, config_path, workers_config_path
+from parallax.platform.paths.runtime_paths import app_home, config_path, workers_config_path
 
 
 def _manifest_worker_names() -> set[str]:
-    from gmgn_twitter_intel.app.runtime.worker_manifest import all_worker_manifests
+    from parallax.app.runtime.worker_manifest import all_worker_manifests
 
     return {manifest.name for manifest in all_worker_manifests()}
 
@@ -33,7 +33,7 @@ def _old_anchor_worker_key() -> str:
 
 
 def write_config(home, payload, *, write_workers=True):
-    app_dir = home / ".gmgn-twitter-intel"
+    app_dir = home / ".parallax"
     app_dir.mkdir(parents=True, exist_ok=True)
     path = app_dir / "config.yaml"
     path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
@@ -43,7 +43,7 @@ def write_config(home, payload, *, write_workers=True):
 
 
 def write_workers_config(home, payload):
-    app_dir = home / ".gmgn-twitter-intel"
+    app_dir = home / ".parallax"
     app_dir.mkdir(parents=True, exist_ok=True)
     path = app_dir / "workers.yaml"
     path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
@@ -66,10 +66,10 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.api_host == "0.0.0.0"  # noqa: S104 -- testing default bind-all-interfaces config value
     assert settings.api_port == 8765
     assert settings.ws_token == "secret"
-    assert settings.postgres_dsn == "postgresql://gmgn_app@postgres:5432/gmgn_twitter_intel"
-    assert settings.postgres_password_file == tmp_path / ".gmgn-twitter-intel" / "postgres_password"
+    assert settings.postgres_dsn == "postgresql://parallax_app@postgres:5432/parallax"
+    assert settings.postgres_password_file == tmp_path / ".parallax" / "postgres_password"
     assert settings.postgres_pool_max_size == 16
-    assert settings.log_file == tmp_path / ".gmgn-twitter-intel" / "logs" / "gmgn-twitter-intel.log"
+    assert settings.log_file == tmp_path / ".parallax" / "logs" / "parallax.log"
     assert settings.llm_configured is False
     assert settings.llm_timeout_seconds == 120
     assert settings.agent_runtime_default_model == "deepseek-v4-flash"
@@ -373,7 +373,7 @@ def test_postgres_storage_and_llm_can_be_explicitly_configured(tmp_path, monkeyp
             "handles": ["toly"],
             "storage": {
                 "postgres": {
-                    "dsn": "postgresql://gmgn_app:secret@postgres:5432/gmgn_twitter_intel",
+                    "dsn": "postgresql://parallax_app:secret@postgres:5432/parallax",
                     "password_file": "pg_password",
                     "pool_min_size": 2,
                     "pool_max_size": 12,
@@ -420,8 +420,8 @@ def test_postgres_storage_and_llm_can_be_explicitly_configured(tmp_path, monkeyp
 
     settings = load_settings()
 
-    assert settings.postgres_dsn == "postgresql://gmgn_app:secret@postgres:5432/gmgn_twitter_intel"
-    assert settings.postgres_password_file == tmp_path / ".gmgn-twitter-intel" / "pg_password"
+    assert settings.postgres_dsn == "postgresql://parallax_app:secret@postgres:5432/parallax"
+    assert settings.postgres_password_file == tmp_path / ".parallax" / "pg_password"
     assert settings.postgres_pool_min_size == 2
     assert settings.postgres_pool_max_size == 12
     assert settings.postgres_connect_timeout_seconds == 4
@@ -619,7 +619,7 @@ def test_macrodata_fred_configured_is_false_without_env_value(tmp_path, monkeypa
 
 
 def test_cli_config_reports_macrodata_without_secret(tmp_path, monkeypatch):
-    from gmgn_twitter_intel.app.surfaces.cli.commands.config import handle_config
+    from parallax.app.surfaces.cli.commands.config import handle_config
 
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("FINANCE_FRED_API_KEY", "secret-fred-key")
@@ -992,14 +992,14 @@ def test_init_creates_config_workers_file_and_runtime_directories(tmp_path, monk
 
     path = write_default_config()
 
-    assert path == tmp_path / ".gmgn-twitter-intel" / "config.yaml"
-    assert app_home() == tmp_path / ".gmgn-twitter-intel"
+    assert path == tmp_path / ".parallax" / "config.yaml"
+    assert app_home() == tmp_path / ".parallax"
     assert config_path() == path
-    assert workers_config_path() == tmp_path / ".gmgn-twitter-intel" / "workers.yaml"
+    assert workers_config_path() == tmp_path / ".parallax" / "workers.yaml"
     assert workers_config_path().exists()
-    assert (tmp_path / ".gmgn-twitter-intel" / "logs").is_dir()
+    assert (tmp_path / ".parallax" / "logs").is_dir()
     settings = load_settings()
     assert settings.ws_token
-    assert settings.postgres_dsn == "postgresql://gmgn_app@postgres:5432/gmgn_twitter_intel"
+    assert settings.postgres_dsn == "postgresql://parallax_app@postgres:5432/parallax"
     assert settings.workers.collector.mode == "continuous"
     assert settings.workers.notification_delivery.max_attempts == 5

@@ -2,7 +2,7 @@
 
 **Date**: 2026-05-26
 **Branch**: `codex/worker-contract-hard-cut`
-**Worktree**: `/Users/qinghuan/Documents/code/gmgn-twitter-intel/.worktrees/worker-contract-hard-cut`
+**Worktree**: `/Users/qinghuan/Documents/code/parallax/.worktrees/worker-contract-hard-cut`
 
 ## 已落地
 
@@ -21,8 +21,8 @@
 已检查生产 runtime config 路径：
 
 ```text
-config_path=/Users/qinghuan/.gmgn-twitter-intel/config.yaml
-workers_config_path=/Users/qinghuan/.gmgn-twitter-intel/workers.yaml
+config_path=/Users/qinghuan/.parallax/config.yaml
+workers_config_path=/Users/qinghuan/.parallax/workers.yaml
 ```
 
 `workers.yaml` 检查结果：
@@ -81,7 +81,7 @@ uv run pytest tests/integration/test_api_health.py \
 ```
 
 ```bash
-uv run ruff check src/gmgn_twitter_intel tests
+uv run ruff check src/parallax tests
 git diff --check
 ```
 

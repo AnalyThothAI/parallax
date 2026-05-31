@@ -7,7 +7,7 @@
 
 ## Background
 
-State what exists today. **Cite real files** — `src/gmgn_twitter_intel/<area>/<file>.py:<line>` — for every claim about current behaviour. A spec whose background is uncited is ungrounded; rewrite before continuing.
+State what exists today. **Cite real files** — `src/parallax/<area>/<file>.py:<line>` — for every claim about current behaviour. A spec whose background is uncited is ungrounded; rewrite before continuing.
 
 ## Problem
 

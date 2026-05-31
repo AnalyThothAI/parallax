@@ -39,14 +39,14 @@ correctly are scattered or missing.
 | Doc | Status | Gap |
 |---|---|---|
 | `docs/ARCHITECTURE.md` | partial | Has role markers, Pulse Agent Runtime, Asset Profile Facts; top data-flow omits `asset_market` lane; does not name `MarketObservation` / `MarketContext` / `WakeBus` / `WakeListener`; Kappa/CQRS invariants are not stated as invariants |
-| `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md` | current | Already states `event_anchor` / `decision_latest` / `readiness` / single-writer / wake-not-truth |
+| `src/parallax/domains/token_intel/ARCHITECTURE.md` | current | Already states `event_anchor` / `decision_latest` / `readiness` / single-writer / wake-not-truth |
 | `docs/CONTRACTS.md` | current | Token Radar `market` block, `live_market_update` payload, profile/search inspect contracts already aligned |
 | `docs/FRONTEND.md` | current | Layer map and conventions already reflect the post-hard-cut frontend |
 | `AGENTS.md` / `CLAUDE.md` | outdated | One-line system description does not name Kappa/CQRS; an agent reading only the router cannot infer facts → projection → read model → surfaces |
 | `docs/RELIABILITY.md` | outdated | Lacks write budget, wake-not-truth + catch-up cadence, one-writer-per-read-model, provider connection state observability, snapshot gate outcomes |
 | `docs/TESTING.md` | drift | Says frontend tests live in `web/src/test/`; `docs/FRONTEND.md` and the production source say `web/tests/` |
-| `src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md` | missing | Hosts four runtime workers, the `MarketObservation` types, the write budget policy, the identity-evidence ledger; no module map exists |
-| `src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md` | missing | Signal Pulse pipeline (factor snapshot → candidate gate → agent route → decision → audit ledger) is split across CONTRACTS, token_intel module doc, and RELIABILITY |
+| `src/parallax/domains/asset_market/ARCHITECTURE.md` | missing | Hosts four runtime workers, the `MarketObservation` types, the write budget policy, the identity-evidence ledger; no module map exists |
+| `src/parallax/domains/pulse_lab/ARCHITECTURE.md` | missing | Signal Pulse pipeline (factor snapshot → candidate gate → agent route → decision → audit ledger) is split across CONTRACTS, token_intel module doc, and RELIABILITY |
 | Cross-domain worker inventory | missing | No single doc lists each worker's fact writes, wake-in channels, wake-out channels, catch-up cadence; an agent has to read 11 worker classes to get the runtime picture |
 
 ## Goal

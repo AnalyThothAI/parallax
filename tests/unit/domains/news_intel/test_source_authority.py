@@ -1,4 +1,4 @@
-from gmgn_twitter_intel.domains.news_intel.services.source_authority import validate_source_authority
+from parallax.domains.news_intel.services.source_authority import validate_source_authority
 
 
 def test_official_exchange_accepts_in_scope_listing() -> None:

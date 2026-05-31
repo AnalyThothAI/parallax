@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.news_intel.services.news_content_classification import (
+from parallax.domains.news_intel.services.news_content_classification import (
     classify_news_item_content,
 )
 

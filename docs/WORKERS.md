@@ -14,7 +14,7 @@ database.
 
 ## Runtime Contract
 
-`src/gmgn_twitter_intel/app/runtime/worker_manifest.py` is the worker
+`src/parallax/app/runtime/worker_manifest.py` is the worker
 contract source of truth. A worker exists only if its manifest entry exists;
 the inventory below, `WorkersSettings`, worker factories, scheduler priority,
 queue-depth ownership, `/readyz`, `/api/status`, and `ops worker-status` are
@@ -205,12 +205,12 @@ rather than kept as compatibility paths.
 Safe operator checklist:
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 curl -sS -H "Authorization: Bearer $GMGN_API_TOKEN" \
   http://127.0.0.1:8765/api/news/sources/status | jq '.data.provider_capabilities'
 ```
 
-Only report config paths and booleans from `gmgn-twitter-intel config`; never
+Only report config paths and booleans from `parallax config`; never
 copy provider credentials, cookies, tokens, proxy URLs, or API keys into logs or
 docs. Staged provider waves are:
 
@@ -414,7 +414,7 @@ Adding a wake channel requires all of these in one change:
   emits per-worker and per-lane `queue_health` with status, due/running/failed
   and blocked counts, oldest due/running ages, and max attempts. It is not a
   supervisor and does not mutate queue rows.
-- Runtime knobs live in `~/.gmgn-twitter-intel/workers.yaml`. The
+- Runtime knobs live in `~/.parallax/workers.yaml`. The
   application/provider config in `config.yaml` must not contain worker
   interval, batch, concurrency, lease, max-attempt, soft/hard timeout,
   advisory lock, or wake-channel settings.

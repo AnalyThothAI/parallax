@@ -4,12 +4,12 @@ import asyncio
 from contextlib import nullcontext
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.domains.asset_market.providers import (
+from parallax.domains.asset_market.providers import (
     DexProfileSource,
     DexProviderTemporarilyUnavailable,
     DexTokenProfile,
 )
-from gmgn_twitter_intel.domains.asset_market.runtime import asset_profile_refresh_worker as module
+from parallax.domains.asset_market.runtime import asset_profile_refresh_worker as module
 
 
 def test_asset_profile_refresh_worker_run_once_records_result_and_uses_session_and_provider(monkeypatch):

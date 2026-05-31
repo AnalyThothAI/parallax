@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from gmgn_twitter_intel.app.runtime.current_read_model_publisher import CurrentReadModelPublisher
-from gmgn_twitter_intel.app.runtime.worker_manifest import all_worker_manifests
-from gmgn_twitter_intel.app.runtime.worker_space import (
+from parallax.app.runtime.current_read_model_publisher import CurrentReadModelPublisher
+from parallax.app.runtime.worker_manifest import all_worker_manifests
+from parallax.app.runtime.worker_space import (
     ClaimDiscipline,
     WorkerSpace,
     WorkerSpaceViolation,

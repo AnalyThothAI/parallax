@@ -24,7 +24,7 @@
 - [ ] Baseline `uv run ruff check .` passes.
 - [ ] Baseline `uv run pytest -x` passes.
 - [ ] Baseline `uv run python -m compileall src tests` passes.
-- [ ] Postgres is reachable for the `make docs-generated` step (PR 3 only). Verify: `uv run gmgn-twitter-intel db health`.
+- [ ] Postgres is reachable for the `make docs-generated` step (PR 3 only). Verify: `uv run parallax db health`.
 
 Known-failing baseline tests: none expected.
 
@@ -79,20 +79,20 @@ Known-failing baseline tests: none expected.
 - `docs/references/papers/centola-2010-complex-contagion.md` — same.
 - `docs/references/papers/crane-sornette-2008-endogenous-exogenous.md` — same.
 - `docs/references/gmgn-public-protocol.md` — extracted notes on the GMGN anonymous WebSocket schema (chains, channels, frame format).
-- `docs/references/okx-api.md` — extracted notes on OKX CEX/DEX endpoints used by `src/gmgn_twitter_intel/market/`.
+- `docs/references/okx-api.md` — extracted notes on OKX CEX/DEX endpoints used by `src/parallax/market/`.
 
 ### `docs/generated/` (created)
 
 - `docs/generated/README.md` — header explaining "do not hand-edit" + regeneration command.
 - `docs/generated/db-schema.md` — output of `scripts/regen_db_schema.py`.
-- `docs/generated/cli-help.md` — output of `gmgn-twitter-intel --help` recursively.
+- `docs/generated/cli-help.md` — output of `parallax --help` recursively.
 - `docs/generated/score-versions.md` — `grep -rn 'score_version' src/` aggregated.
-- `docs/generated/ws-protocol.md` — extracted message-type union from `src/gmgn_twitter_intel/api/ws.py`.
+- `docs/generated/ws-protocol.md` — extracted message-type union from `src/parallax/api/ws.py`.
 
 ### `scripts/` (created)
 
-- `scripts/regen_db_schema.py` — connects via `gmgn_twitter_intel.storage` to `pg_catalog`, writes Markdown table per `public.*` table.
-- `scripts/regen_cli_help.py` — invokes `gmgn-twitter-intel --help` and recurses into each subcommand group.
+- `scripts/regen_db_schema.py` — connects via `parallax.storage` to `pg_catalog`, writes Markdown table per `public.*` table.
+- `scripts/regen_cli_help.py` — invokes `parallax --help` and recurses into each subcommand group.
 - `scripts/regen_score_versions.py` — greps `src/` for `score_version=` literals and emits a Markdown table.
 - `scripts/regen_ws_protocol.py` — imports the WebSocket message dataclasses / pydantic models and emits a Markdown table.
 
@@ -558,7 +558,7 @@ Read `AGENTS.md:28-55` (the "Architecture" section, including the ASCII data-flo
 ```markdown
 # Architecture
 
-> **Scope.** Owns the Python-service layer boundaries and conceptual data flow for `gmgn-twitter-intel`. Frontend (`web/`) architecture lives in `FRONTEND.md`. Public interface contracts live in `CONTRACTS.md`.
+> **Scope.** Owns the Python-service layer boundaries and conceptual data flow for `parallax`. Frontend (`web/`) architecture lives in `FRONTEND.md`. Public interface contracts live in `CONTRACTS.md`.
 
 A single Python service organised as a five-stage pipeline writing to one PostgreSQL store.
 
@@ -570,21 +570,21 @@ GMGN public WS  →  collector/  →  pipeline/  →  storage/  ←  retrieval/ 
 
 | Layer | Directory | Responsibility |
 |------|-----------|---------------|
-| Collector | `src/gmgn_twitter_intel/collector/` | GMGN anonymous-WebSocket adapter, frame parsing, `cp=0/cp=1` snapshot gate, handle filter, store-first publish, subscription bookkeeping. |
-| Pipeline  | `src/gmgn_twitter_intel/pipeline/`  | Deterministic entity extraction, token-intent resolution, async LLM enrichment for watched accounts, closed-loop harness materialisation (snapshot → settlement → credit → scoring), token-radar feature build & projection, notification rules / delivery, pulse candidate evaluation & thesis agent, asset-market & message-market sync workers. |
-| Storage   | `src/gmgn_twitter_intel/storage/`   | Single PostgreSQL store. One repository per aggregate (evidence, entity, signal, asset, harness, notification, pulse, projection, registry, token-radar, token-target, intent-resolution, account-quality, market, price-observation, enrichment, discovery). Alembic migrations + `repository_session` helper. |
-| Retrieval | `src/gmgn_twitter_intel/retrieval/` | Read services for HTTP / WebSocket / CLI: search, asset-flow, asset-search, account-alert, account-quality, harness, signal-pulse, token-target (posts, social timeline, stage builder, message price payload), plus the scoring components (heat, propagation, opportunity, catalyst, baseline, tradeability, timing, post-text quality, discussion quality, diffusion health, timeline features). |
-| API       | `src/gmgn_twitter_intel/api/`       | FastAPI HTTP routes (`/healthz`, `/readyz`, `/api/...`) and the authenticated public WebSocket hub at `/ws`. |
-| CLI       | `src/gmgn_twitter_intel/cli.py`     | Argparse front-end exposing the same data as the API plus operator subcommands (`db`, `ops`). |
+| Collector | `src/parallax/collector/` | GMGN anonymous-WebSocket adapter, frame parsing, `cp=0/cp=1` snapshot gate, handle filter, store-first publish, subscription bookkeeping. |
+| Pipeline  | `src/parallax/pipeline/`  | Deterministic entity extraction, token-intent resolution, async LLM enrichment for watched accounts, closed-loop harness materialisation (snapshot → settlement → credit → scoring), token-radar feature build & projection, notification rules / delivery, pulse candidate evaluation & thesis agent, asset-market & message-market sync workers. |
+| Storage   | `src/parallax/storage/`   | Single PostgreSQL store. One repository per aggregate (evidence, entity, signal, asset, harness, notification, pulse, projection, registry, token-radar, token-target, intent-resolution, account-quality, market, price-observation, enrichment, discovery). Alembic migrations + `repository_session` helper. |
+| Retrieval | `src/parallax/retrieval/` | Read services for HTTP / WebSocket / CLI: search, asset-flow, asset-search, account-alert, account-quality, harness, signal-pulse, token-target (posts, social timeline, stage builder, message price payload), plus the scoring components (heat, propagation, opportunity, catalyst, baseline, tradeability, timing, post-text quality, discussion quality, diffusion health, timeline features). |
+| API       | `src/parallax/api/`       | FastAPI HTTP routes (`/healthz`, `/readyz`, `/api/...`) and the authenticated public WebSocket hub at `/ws`. |
+| CLI       | `src/parallax/cli.py`     | Argparse front-end exposing the same data as the API plus operator subcommands (`db`, `ops`). |
 
 ## Cross-cutting
 
-- `src/gmgn_twitter_intel/market/` — OKX CEX/DEX clients and the GMGN OpenAPI client used by the asset and price-observation pipelines.
-- `src/gmgn_twitter_intel/settings.py` — single config loader (`~/.gmgn-twitter-intel/config.yaml`).
-- `src/gmgn_twitter_intel/runtime_paths.py`, `models.py`, `logging_setup.py` — shared runtime utilities.
+- `src/parallax/market/` — OKX CEX/DEX clients and the GMGN OpenAPI client used by the asset and price-observation pipelines.
+- `src/parallax/settings.py` — single config loader (`~/.parallax/config.yaml`).
+- `src/parallax/runtime_paths.py`, `models.py`, `logging_setup.py` — shared runtime utilities.
 - `tests/` mirrors the package layout. Schema and Docker assets are pinned by `tests/test_postgres_schema*.py` and `tests/test_compose_*.py`.
 
-To find code, prefer `ls src/gmgn_twitter_intel/<layer>/` over a memorised file list. This file pins the layer boundaries; per-file responsibilities live in the code and its tests.
+To find code, prefer `ls src/parallax/<layer>/` over a memorised file list. This file pins the layer boundaries; per-file responsibilities live in the code and its tests.
 ```
 
 (Note the inner code-fence around the ASCII diagram is escaped in this plan via wrapping triple-backticks; copy the verbatim form into the file.)
@@ -614,7 +614,7 @@ git commit -m "docs: add ARCHITECTURE governance file"
 
 These surfaces change only with a versioned spec — refactors must preserve them.
 
-## Config (`~/.gmgn-twitter-intel/config.yaml`)
+## Config (`~/.parallax/config.yaml`)
 
 The only application config source.
 
@@ -637,7 +637,7 @@ The only application config source.
 
 ## CLI
 
-`gmgn-twitter-intel <verb>` plus the `db` and `ops` subcommand groups. The `--help` output is the source of truth — do not enumerate verbs in this document.
+`parallax <verb>` plus the `db` and `ops` subcommand groups. The `--help` output is the source of truth — do not enumerate verbs in this document.
 
 ## `score_version` discipline
 
@@ -681,12 +681,12 @@ uv run python -m compileall src tests
 Bring up the service:
 
 ```bash
-uv run gmgn-twitter-intel init      # create ~/.gmgn-twitter-intel/config.yaml
-uv run gmgn-twitter-intel serve     # run collector + API in one ASGI worker
-uv run gmgn-twitter-intel db migrate
+uv run parallax init      # create ~/.parallax/config.yaml
+uv run parallax serve     # run collector + API in one ASGI worker
+uv run parallax db migrate
 ```
 
-The full CLI surface is documented by `uv run gmgn-twitter-intel --help`. Treat that output as the source of truth — do not enumerate commands here. A snapshot lives at `generated/cli-help.md`.
+The full CLI surface is documented by `uv run parallax --help`. Treat that output as the source of truth — do not enumerate commands here. A snapshot lives at `generated/cli-help.md`.
 
 ## Docker Compose
 
@@ -697,7 +697,7 @@ docker compose logs -f --tail=100 app
 docker compose down
 ```
 
-Bind-mounts host `~/.gmgn-twitter-intel/` into the container; PostgreSQL data is pinned to the `gmgn-twitter-intel-postgres` named volume.
+Bind-mounts host `~/.parallax/` into the container; PostgreSQL data is pinned to the `parallax-postgres` named volume.
 
 ## Frontend (`web/`)
 
@@ -814,7 +814,7 @@ If the user asks for a spec, do not write a plan inside it. If the user asks for
 
 Before writing any new service or scoring scheme:
 
-1. List all files in the relevant `src/gmgn_twitter_intel/<area>/` and `tests/` directories.
+1. List all files in the relevant `src/parallax/<area>/` and `tests/` directories.
 2. Read existing `*_service.py` candidates end to end. Most "new" features here are 80 % covered by an existing service plus a few missing joins.
 3. Trace the data flow from `collector → ingest → enrichment → retrieval → api/http.py → web/`. Cite the actual files and line ranges as evidence in the spec, not as instructions.
 4. Identify fields already in the DB but unconsumed by retrieval services. These are usually the cheapest wins.
@@ -940,7 +940,7 @@ git commit -m "docs: add TESTING governance file"
 
 ## Single config source
 
-The only application config source is `~/.gmgn-twitter-intel/config.yaml`. Do not invent alternative config paths. The schema lives in `CONTRACTS.md`.
+The only application config source is `~/.parallax/config.yaml`. Do not invent alternative config paths. The schema lives in `CONTRACTS.md`.
 
 ## Sensitive change confirmation
 
@@ -980,11 +980,11 @@ One ASGI worker. Multiple workers duplicate the upstream collector. If collector
 
 ## Foreground-only run model
 
-`~/.gmgn-twitter-intel/config.yaml` is the only application config source. There is no macOS LaunchAgent, systemd unit, or `service` subcommand — run via foreground CLI or Docker Compose.
+`~/.parallax/config.yaml` is the only application config source. There is no macOS LaunchAgent, systemd unit, or `service` subcommand — run via foreground CLI or Docker Compose.
 
 ## Docker Compose state
 
-Docker Compose bind-mounts the host config directory into the container and pins PostgreSQL data to the `gmgn-twitter-intel-postgres` named volume. Local foreground and Docker share the same config; query Docker data via `/api/*`, `/ws`, or `docker compose exec app gmgn-twitter-intel ...`.
+Docker Compose bind-mounts the host config directory into the container and pins PostgreSQL data to the `parallax-postgres` named volume. Local foreground and Docker share the same config; query Docker data via `/api/*`, `/ws`, or `docker compose exec app parallax ...`.
 
 ## Coverage semantics
 
@@ -1124,7 +1124,7 @@ Router for coding agents (Codex, Cursor, generic LLM tooling). Project-wide rule
 
 ## What this is
 
-`gmgn-twitter-intel`: a single Python service that ingests GMGN's anonymous public WebSocket, extracts Twitter-mentioned crypto entities, scores them, and serves results over HTTP / WebSocket / CLI to a small React frontend. One PostgreSQL store. See `docs/ARCHITECTURE.md`.
+`parallax`: a single Python service that ingests GMGN's anonymous public WebSocket, extracts Twitter-mentioned crypto entities, scores them, and serves results over HTTP / WebSocket / CLI to a small React frontend. One PostgreSQL store. See `docs/ARCHITECTURE.md`.
 
 ## Where to read what
 
@@ -1144,7 +1144,7 @@ Router for coding agents (Codex, Cursor, generic LLM tooling). Project-wide rule
 | Auto-generated artefacts | `docs/generated/` |
 | Tech debt log | `docs/TECH_DEBT.md` |
 
-CLI surface: `uv run gmgn-twitter-intel --help` is the source of truth (snapshot at `docs/generated/cli-help.md`).
+CLI surface: `uv run parallax --help` is the source of truth (snapshot at `docs/generated/cli-help.md`).
 ```
 
 - [ ] **Step 2: Confirm line count is within budget.**
@@ -1186,7 +1186,7 @@ Claude-specific router. Mirrors `AGENTS.md` for the routing table and adds the C
 
 ## What this is
 
-`gmgn-twitter-intel`: a single Python service that ingests GMGN's anonymous public WebSocket, extracts Twitter-mentioned crypto entities, scores them, and serves results over HTTP / WebSocket / CLI to a small React frontend. One PostgreSQL store. See `docs/ARCHITECTURE.md`.
+`parallax`: a single Python service that ingests GMGN's anonymous public WebSocket, extracts Twitter-mentioned crypto entities, scores them, and serves results over HTTP / WebSocket / CLI to a small React frontend. One PostgreSQL store. See `docs/ARCHITECTURE.md`.
 
 ## Where to read what
 
@@ -1330,7 +1330,7 @@ Recommended structure: short routers at the root, governance files under `docs/`
 - Governance: nine `docs/*.md` files plus `TECH_DEBT.md` (see the routing table in either router).
 - Lane lifecycle: `docs/superpowers/{specs,plans}/{active,completed}/`.
 - Support: `docs/references/`, `docs/generated/`.
-- Source layout (`src/gmgn_twitter_intel/`) is independently aligned with the "mechanical structure" principle and is unchanged by this restructure.
+- Source layout (`src/parallax/`) is independently aligned with the "mechanical structure" principle and is unchanged by this restructure.
 ```
 
 - [ ] **Step 3: Commit.**
@@ -1512,8 +1512,8 @@ These two are stub references — they document scope and link to the source fil
 - [ ] **Step 1: Confirm the source paths.**
 
 ```bash
-ls src/gmgn_twitter_intel/collector/
-ls src/gmgn_twitter_intel/market/
+ls src/parallax/collector/
+ls src/parallax/market/
 ```
 
 Note the exact filenames; they go into the "Source files" tables below.
@@ -1523,7 +1523,7 @@ Note the exact filenames; they go into the "Source files" tables below.
 ```markdown
 # GMGN Anonymous Public WebSocket — Protocol Notes
 
-**Source of truth:** `src/gmgn_twitter_intel/collector/`
+**Source of truth:** `src/parallax/collector/`
 **Cited by:** `docs/RELIABILITY.md` (`coverage=public_stream` semantics), `docs/SECURITY.md` (privacy boundary).
 
 ## Scope
@@ -1534,11 +1534,11 @@ This file is a router into the collector code. It exists so specs can cite a sta
 
 | Concern | File |
 |---------|------|
-| Connection lifecycle, reconnect | `src/gmgn_twitter_intel/collector/<connection file from Step 1>` |
-| Frame parsing / envelope | `src/gmgn_twitter_intel/collector/<parser file from Step 1>` |
-| `cp=0` / `cp=1` snapshot gate | `src/gmgn_twitter_intel/collector/<gate file from Step 1>` |
-| Handle filter | `src/gmgn_twitter_intel/collector/<filter file from Step 1>` |
-| Subscription bookkeeping | `src/gmgn_twitter_intel/collector/<subscription file from Step 1>` |
+| Connection lifecycle, reconnect | `src/parallax/collector/<connection file from Step 1>` |
+| Frame parsing / envelope | `src/parallax/collector/<parser file from Step 1>` |
+| `cp=0` / `cp=1` snapshot gate | `src/parallax/collector/<gate file from Step 1>` |
+| Handle filter | `src/parallax/collector/<filter file from Step 1>` |
+| Subscription bookkeeping | `src/parallax/collector/<subscription file from Step 1>` |
 
 Replace each `<...>` with the actual filename observed in Step 1.
 
@@ -1552,7 +1552,7 @@ The chain identifiers, channel names, app-version handshake fields, and frame en
 ```markdown
 # OKX & GMGN OpenAPI — Endpoint Notes
 
-**Source of truth:** `src/gmgn_twitter_intel/market/`
+**Source of truth:** `src/parallax/market/`
 **Cited by:** `docs/ARCHITECTURE.md` (cross-cutting `market/` module), `docs/CONTRACTS.md` (optional config groups).
 
 ## Scope
@@ -1563,9 +1563,9 @@ This file is a router into the market clients. Detailed endpoint paths, query pa
 
 | Client | File |
 |--------|------|
-| OKX CEX REST client | `src/gmgn_twitter_intel/market/<okx cex file from Step 1>` |
-| OKX DEX REST client | `src/gmgn_twitter_intel/market/<okx dex file from Step 1>` |
-| GMGN OpenAPI REST client | `src/gmgn_twitter_intel/market/<gmgn openapi file from Step 1>` |
+| OKX CEX REST client | `src/parallax/market/<okx cex file from Step 1>` |
+| OKX DEX REST client | `src/parallax/market/<okx dex file from Step 1>` |
+| GMGN OpenAPI REST client | `src/parallax/market/<gmgn openapi file from Step 1>` |
 
 Replace each `<...>` with the actual filename observed in Step 1.
 
@@ -1612,9 +1612,9 @@ This runs four scripts in sequence:
 | File | Source | Script |
 |------|--------|--------|
 | `db-schema.md` | Alembic head + `pg_catalog` introspection | `scripts/regen_db_schema.py` |
-| `cli-help.md` | `gmgn-twitter-intel --help` recursively | `scripts/regen_cli_help.py` |
+| `cli-help.md` | `parallax --help` recursively | `scripts/regen_cli_help.py` |
 | `score-versions.md` | grep `score_version=` literals in `src/` | `scripts/regen_score_versions.py` |
-| `ws-protocol.md` | extract message-type union from `src/gmgn_twitter_intel/api/ws.py` | `scripts/regen_ws_protocol.py` |
+| `ws-protocol.md` | extract message-type union from `src/parallax/api/ws.py` | `scripts/regen_ws_protocol.py` |
 
 CI verifies that `make docs-generated` produces no diff against the committed tree.
 ```
@@ -1625,7 +1625,7 @@ Each script writes a single Markdown file with the standard header:
 
 ```python
 # scripts/regen_cli_help.py
-"""Regenerate docs/generated/cli-help.md from `gmgn-twitter-intel --help`."""
+"""Regenerate docs/generated/cli-help.md from `parallax --help`."""
 from __future__ import annotations
 
 import subprocess
@@ -1637,7 +1637,7 @@ HEADER = "<!-- AUTO-GENERATED by scripts/regen_cli_help.py — do not hand-edit 
 
 def _help(args: list[str]) -> str:
     return subprocess.check_output(
-        ["uv", "run", "gmgn-twitter-intel", *args, "--help"],
+        ["uv", "run", "parallax", *args, "--help"],
         text=True,
     )
 
@@ -1694,7 +1694,7 @@ import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-WS_FILE = ROOT / "src" / "gmgn_twitter_intel" / "api" / "ws.py"
+WS_FILE = ROOT / "src" / "parallax" / "api" / "ws.py"
 OUTPUT = ROOT / "docs" / "generated" / "ws-protocol.md"
 HEADER = "<!-- AUTO-GENERATED by scripts/regen_ws_protocol.py — do not hand-edit -->\n\n"
 
@@ -1734,8 +1734,8 @@ from pathlib import Path
 
 from sqlalchemy import inspect
 
-from gmgn_twitter_intel.settings import load_settings
-from gmgn_twitter_intel.storage.session import build_engine
+from parallax.settings import load_settings
+from parallax.storage.session import build_engine
 
 OUTPUT = Path(__file__).resolve().parent.parent / "docs" / "generated" / "db-schema.md"
 HEADER = "<!-- AUTO-GENERATED by scripts/regen_db_schema.py — do not hand-edit -->\n\n"
@@ -1764,7 +1764,7 @@ if __name__ == "__main__":
     main()
 ```
 
-If the `build_engine` import path differs from the actual storage module — adjust to match (the implementer should `grep -rn 'def build_engine\\|create_engine' src/gmgn_twitter_intel/storage/` to confirm).
+If the `build_engine` import path differs from the actual storage module — adjust to match (the implementer should `grep -rn 'def build_engine\\|create_engine' src/parallax/storage/` to confirm).
 
 - [ ] **Step 3: Write the failing tests file.**
 

@@ -99,7 +99,7 @@
 
 ### Schema And DB Contracts
 
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0090_token_radar_postgres_hard_cut.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260523_0090_token_radar_postgres_hard_cut.py`
   - Drops/recreates Token Radar derived tables.
   - Recreates `market_ticks` and `enriched_events` with partition-safe keys.
   - Creates `market_tick_current`.
@@ -117,21 +117,21 @@
 
 ### Market Tick Write/Read Path
 
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/market_tick_repository.py`
+- Modify: `src/parallax/domains/asset_market/repositories/market_tick_repository.py`
   - Insert into partitioned `market_ticks`.
   - Upsert `market_tick_current` in the same transaction.
   - Return `(observed_at_ms, tick_id)` for enriched-event references.
 
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/enriched_event_repository.py`
+- Modify: `src/parallax/domains/asset_market/repositories/enriched_event_repository.py`
   - Join market ticks by `(tick_observed_at_ms, tick_id)`.
 
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/event_anchor_backfill_worker.py`
+- Modify: `src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py`
   - Store `tick_observed_at_ms` when attaching anchor ticks.
 
-- Modify: `src/gmgn_twitter_intel/domains/evidence/services/ingest_service.py`
+- Modify: `src/parallax/domains/evidence/services/ingest_service.py`
   - Persist enriched event tick references using the composite key.
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_target_repository.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_target_repository.py`
   - Read latest market from `market_tick_current` for Token Case.
 
 - Modify tests:
@@ -142,20 +142,20 @@
 
 ### Token Radar Incremental Projection
 
-- Create: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_dirty_target_repository.py`
+- Create: `src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py`
   - `enqueue_targets(rows, reason, now_ms)`
   - `claim_due(limit, lease_ms, now_ms)`
   - `mark_done(keys, now_ms)`
   - `mark_error(keys, error, retry_ms, now_ms)`
 
-- Create: `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_target_feature_query.py`
+- Create: `src/parallax/domains/token_intel/queries/token_radar_target_feature_query.py`
   - Replaces full-window `TokenRadarSourceQuery` runtime use.
   - Reads rows for one target across one window/scope.
   - Uses indexed `token_intent_resolutions(target_type, target_id, is_current, resolver_policy_version)` and `events(received_at_ms)`.
   - Reads latest market from `market_tick_current`.
   - Reads event-time market from `enriched_events` composite tick reference.
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py`
   - Replace full rebuild API with target-window scoring:
     - `rebuild_dirty_targets(now_ms, limit)`
     - `score_target_window(target, window, scope, now_ms)`
@@ -163,7 +163,7 @@
   - Build factor snapshots only for dirty targets.
   - Recompute cross-section rank from `token_radar_target_features`, not from raw facts.
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
   - Replace `publish_rows()` with:
     - `upsert_target_features(...)`
     - `publish_rank_set(...)`
@@ -172,13 +172,13 @@
   - Remove per-cycle insert into snapshot audit.
   - Remove current table delete+insert.
 
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py`
+- Modify: `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py`
   - Claim dirty targets first.
   - If no dirty targets, run bounded stale-scan that only enqueues candidates, not full projection.
   - Hot wake events coalesce into dirty queue rows.
 
 - Remove runtime dependency:
-  - `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py`
+  - `src/parallax/domains/token_intel/queries/token_radar_source_query.py`
   - Delete the file or move any remaining historical SQL assertion into tests; runtime and service code must have no import path to it.
 
 - Modify tests:
@@ -191,29 +191,29 @@
 
 ### Dirty Target Producers
 
-- Modify: `src/gmgn_twitter_intel/domains/evidence/services/ingest_service.py`
+- Modify: `src/parallax/domains/evidence/services/ingest_service.py`
   - Enqueue dirty target after a token intent/resolution is written.
 
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/resolution_refresh_worker.py`
+- Modify: `src/parallax/domains/asset_market/runtime/resolution_refresh_worker.py`
   - Enqueue dirty targets for affected lookup keys after successful reprocess.
 
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/market_tick_repository.py`
+- Modify: `src/parallax/domains/asset_market/repositories/market_tick_repository.py`
   - When `market_tick_current` changes materially, enqueue the linked Token Radar identity.
 
-- Modify: `src/gmgn_twitter_intel/app/runtime/bootstrap.py`
+- Modify: `src/parallax/app/runtime/bootstrap.py`
   - Wire dirty target repository into runtime repository session.
 
-- Modify: `src/gmgn_twitter_intel/app/runtime/repository_session.py`
+- Modify: `src/parallax/app/runtime/repository_session.py`
   - Add `token_radar_dirty_targets`.
 
 ### Token Image Churn Fix
 
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/queries/token_image_source_query.py`
+- Modify: `src/parallax/domains/asset_market/queries/token_image_source_query.py`
   - Left join `token_image_assets` by source hash.
   - Exclude `ready` and `unsupported`.
   - Keep only missing/pending/error candidates.
 
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/token_image_asset_repository.py`
+- Modify: `src/parallax/domains/asset_market/repositories/token_image_asset_repository.py`
   - Keep `unsupported` terminal.
   - Ensure `upsert_pending_sources()` does not update terminal `ready` or `unsupported` rows.
 
@@ -224,7 +224,7 @@
 
 ### Wake Pool And Worker Budget Guardrails
 
-- Modify: `src/gmgn_twitter_intel/app/runtime/db_pool_bundle.py`
+- Modify: `src/parallax/app/runtime/db_pool_bundle.py`
   - Keep dynamic wake pool sizing.
   - Add telemetry field for computed wake pool slots.
 
@@ -237,13 +237,13 @@
 
 ### Ops Hard Reset And Maintenance
 
-- Create: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_postgres_hard_reset.py`
+- Create: `src/parallax/domains/token_intel/services/token_radar_postgres_hard_reset.py`
   - Drops all derived Token Radar tables.
   - Truncates dirty queue/current/history/audit/features.
   - Recreates current month and next month partitions.
   - Does not touch provider secrets or config files.
 
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`
+- Modify: `src/parallax/app/surfaces/cli/commands/ops.py`
   - Replace old `prune-token-radar` / old storage reset with:
     - `ops reset-token-radar-postgres-hard-cut --dry-run`
     - `ops reset-token-radar-postgres-hard-cut --execute`
@@ -275,7 +275,7 @@
 ### Task 1: Schema Hard Cut Migration
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0090_token_radar_postgres_hard_cut.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260523_0090_token_radar_postgres_hard_cut.py`
 - Modify: `tests/unit/test_postgres_schema.py`
 - Modify: `tests/integration/test_postgres_schema_runtime.py`
 
@@ -342,10 +342,10 @@ Expected: pass.
 ### Task 2: Market Tick Current And Composite Tick References
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/market_tick_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/enriched_event_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/evidence/services/ingest_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_target_repository.py`
+- Modify: `src/parallax/domains/asset_market/repositories/market_tick_repository.py`
+- Modify: `src/parallax/domains/asset_market/repositories/enriched_event_repository.py`
+- Modify: `src/parallax/domains/evidence/services/ingest_service.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_target_repository.py`
 - Modify: related unit/integration tests listed above.
 
 - [ ] **Step 1: Add failing repository tests**
@@ -380,11 +380,11 @@ Expected: pass.
 ### Task 3: Dirty Target Queue And Producers
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_dirty_target_repository.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/repository_session.py`
-- Modify: `src/gmgn_twitter_intel/domains/evidence/services/ingest_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/resolution_refresh_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/market_tick_repository.py`
+- Create: `src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py`
+- Modify: `src/parallax/app/runtime/repository_session.py`
+- Modify: `src/parallax/domains/evidence/services/ingest_service.py`
+- Modify: `src/parallax/domains/asset_market/runtime/resolution_refresh_worker.py`
+- Modify: `src/parallax/domains/asset_market/repositories/market_tick_repository.py`
 
 - [ ] **Step 1: Add failing dirty queue tests**
 
@@ -420,11 +420,11 @@ Expected: pass.
 ### Task 4: Replace Full-Window Token Radar Projection
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_target_feature_query.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
-- Remove runtime use of: `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py`
+- Create: `src/parallax/domains/token_intel/queries/token_radar_target_feature_query.py`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py`
+- Modify: `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_radar_repository.py`
+- Remove runtime use of: `src/parallax/domains/token_intel/queries/token_radar_source_query.py`
 
 - [ ] **Step 1: Add failing architecture test**
 
@@ -466,8 +466,8 @@ Expected: pass.
 ### Task 5: Token Image Source Churn Hard Cut
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/queries/token_image_source_query.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/token_image_asset_repository.py`
+- Modify: `src/parallax/domains/asset_market/queries/token_image_source_query.py`
+- Modify: `src/parallax/domains/asset_market/repositories/token_image_asset_repository.py`
 - Modify: token image tests.
 
 - [ ] **Step 1: Add failing tests**
@@ -496,8 +496,8 @@ Expected: pass.
 ### Task 6: Ops Commands And No-Compatibility Cleanup
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_postgres_hard_reset.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`
+- Create: `src/parallax/domains/token_intel/services/token_radar_postgres_hard_reset.py`
+- Modify: `src/parallax/app/surfaces/cli/commands/ops.py`
 - Modify: `tests/integration/test_cli.py`
 - Modify: `tests/unit/domains/token_intel/test_token_radar_storage_reset.py`
 
@@ -563,7 +563,7 @@ For this hard cut, use the approved empty-DB path before migration:
 
 ```bash
 docker compose stop app
-docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel -v ON_ERROR_STOP=1 -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO gmgn_app;"
+docker exec parallax-postgres-1 psql -U parallax_app -d parallax -v ON_ERROR_STOP=1 -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO parallax_app;"
 docker compose run --rm migrate
 docker compose up -d app
 ```
@@ -573,9 +573,9 @@ docker compose up -d app
 Run:
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 curl -sS http://localhost:8765/readyz
-docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel -At -c "SELECT relname, n_live_tup, n_dead_tup, pg_size_pretty(pg_total_relation_size(relid)) FROM pg_stat_user_tables WHERE relname IN ('market_ticks','market_tick_current','token_radar_current_rows','token_radar_target_features','token_radar_rank_history','token_radar_snapshot_audit','token_image_assets') ORDER BY relname"
+docker exec parallax-postgres-1 psql -U parallax_app -d parallax -At -c "SELECT relname, n_live_tup, n_dead_tup, pg_size_pretty(pg_total_relation_size(relid)) FROM pg_stat_user_tables WHERE relname IN ('market_ticks','market_tick_current','token_radar_current_rows','token_radar_target_features','token_radar_rank_history','token_radar_snapshot_audit','token_image_assets') ORDER BY relname"
 ```
 
 Expected:

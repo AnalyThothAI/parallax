@@ -2,9 +2,9 @@
 
 ## Config Paths
 
-- `uv run gmgn-twitter-intel config` returned `ok=true`.
-- `config_path`: `/Users/qinghuan/.gmgn-twitter-intel/config.yaml`.
-- `workers_config_path`: `/Users/qinghuan/.gmgn-twitter-intel/workers.yaml`.
+- `uv run parallax config` returned `ok=true`.
+- `config_path`: `/Users/qinghuan/.parallax/config.yaml`.
+- `workers_config_path`: `/Users/qinghuan/.parallax/workers.yaml`.
 - Secrets were not copied into this artifact.
 
 ## Migration
@@ -14,8 +14,8 @@
   `20260528_0120`, and Token/Equity/WorkerSpace `20260528_0121` follows
   `20260528_0120`; `20260528_0122` reasserts Token Radar runtime NOT NULL
   guardrails without rehashing payloads.
-- `uv run gmgn-twitter-intel db migrate`: passed.
-- `uv run gmgn-twitter-intel db health`: passed with
+- `uv run parallax db migrate`: passed.
+- `uv run parallax db health`: passed with
   `migration_version=20260528_0122`, `expected_migration_version=20260528_0122`,
   `migration_status=ready`.
 - Docker `migrate` service exited `0`.
@@ -40,7 +40,7 @@
 - `uv run ruff format --check $(git diff --name-only main...HEAD | rg '\.py$')`
   -> passed for branch-touched Python files.
 - Final `main` formatter check:
-  `uv run ruff format --check src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0122_token_radar_runtime_not_null_guardrails.py tests/unit/test_postgres_schema.py`
+  `uv run ruff format --check src/parallax/platform/db/alembic/versions/20260528_0122_token_radar_runtime_not_null_guardrails.py tests/unit/test_postgres_schema.py`
   -> `2 files already formatted`.
 - `git diff --check` -> passed.
 

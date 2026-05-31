@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.pulse_lab.services.pulse_admission_policy import (
+from parallax.domains.pulse_lab.services.pulse_admission_policy import (
     PulseAdmissionPolicy,
 )
 

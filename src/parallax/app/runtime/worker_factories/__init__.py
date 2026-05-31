@@ -1,0 +1,203 @@
+from __future__ import annotations
+
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from types import SimpleNamespace
+from typing import Any
+
+from parallax.app.runtime.db_pool_bundle import DBPoolBundle
+from parallax.app.runtime.providers_wiring import WiredProviders
+from parallax.app.runtime.telemetry import TelemetryRegistry
+from parallax.app.runtime.worker_base import WorkerBase
+from parallax.app.runtime.worker_manifest import worker_names
+from parallax.app.runtime.worker_result import WorkerResult
+from parallax.app.surfaces.api.ws import PublicWebSocketHub
+from parallax.platform.config.settings import Settings
+
+
+@dataclass(frozen=True, slots=True)
+class WorkerFactoryContext:
+    settings: Settings
+    db: DBPoolBundle
+    telemetry: TelemetryRegistry
+    providers: WiredProviders
+    hub: PublicWebSocketHub
+    collector: WorkerBase
+    collector_enabled: bool
+    wake_bus: Any
+
+
+WorkerFactory = Callable[[WorkerFactoryContext], Mapping[str, WorkerBase]]
+
+
+@dataclass(frozen=True, slots=True)
+class WorkerFactorySpec:
+    name: str
+    keys: frozenset[str]
+    factory: WorkerFactory
+
+
+def construct_workers(
+    *,
+    settings: Settings,
+    db: DBPoolBundle,
+    telemetry: TelemetryRegistry,
+    providers: WiredProviders,
+    hub: PublicWebSocketHub,
+    collector: WorkerBase,
+    collector_enabled: bool,
+    wake_bus: Any,
+) -> dict[str, WorkerBase]:
+    ctx = WorkerFactoryContext(
+        settings=settings,
+        db=db,
+        telemetry=telemetry,
+        providers=providers,
+        hub=hub,
+        collector=collector,
+        collector_enabled=collector_enabled,
+        wake_bus=wake_bus,
+    )
+    specs = worker_factory_specs()
+    _validate_factory_specs(specs)
+    manifest_worker_names = worker_names()
+    constructed: dict[str, WorkerBase] = {
+        name: _DisabledWorker(
+            name=name,
+            settings=_worker_settings(settings, name, enabled=False),
+            db=db,
+            telemetry=telemetry,
+        )
+        for name in manifest_worker_names
+    }
+    populated: set[str] = set()
+    for spec in specs:
+        workers = spec.factory(ctx)
+        unowned = set(workers) - spec.keys
+        if unowned:
+            raise KeyError(f"worker_factory:{spec.name}:returned unowned workers:{sorted(unowned)}")
+        for name, worker in workers.items():
+            if name in populated:
+                raise ValueError(f"worker:{name}:constructed by multiple factories")
+            if not isinstance(worker, WorkerBase):
+                raise TypeError(f"worker:{name}:expected WorkerBase, got {type(worker).__name__}")
+            constructed[name] = worker
+            populated.add(name)
+    return constructed
+
+
+class _DisabledWorker(WorkerBase):
+    async def run_once(self) -> WorkerResult:
+        return WorkerResult(skipped=1, notes={"reason": "disabled"})
+
+
+def _worker_settings(settings: Settings, name: str, *, enabled: bool) -> Any:
+    config = getattr(settings.workers, name, None)
+    if config is None:
+        return SimpleNamespace(enabled=enabled)
+    if getattr(config, "enabled", True) == enabled:
+        return config
+    values = _object_values(config)
+    values["enabled"] = enabled
+    return SimpleNamespace(**values)
+
+
+def _object_values(value: Any) -> dict[str, Any]:
+    dump = getattr(value, "model_dump", None)
+    if dump is not None:
+        return dict(dump())
+    if hasattr(value, "__dict__"):
+        return dict(vars(value))
+    return {"enabled": bool(getattr(value, "enabled", True))}
+
+
+def worker_factory_specs() -> tuple[WorkerFactorySpec, ...]:
+    from parallax.app.runtime.worker_factories.asset_market import (
+        WORKER_KEYS as ASSET_MARKET_KEYS,
+    )
+    from parallax.app.runtime.worker_factories.asset_market import (
+        construct_asset_market_workers,
+    )
+    from parallax.app.runtime.worker_factories.cex_market_intel import (
+        WORKER_KEYS as CEX_MARKET_INTEL_KEYS,
+    )
+    from parallax.app.runtime.worker_factories.cex_market_intel import (
+        construct_cex_market_intel_workers,
+    )
+    from parallax.app.runtime.worker_factories.ingestion import (
+        WORKER_KEYS as INGESTION_KEYS,
+    )
+    from parallax.app.runtime.worker_factories.ingestion import (
+        construct_ingestion_workers,
+    )
+    from parallax.app.runtime.worker_factories.macro_intel import (
+        WORKER_KEYS as MACRO_INTEL_KEYS,
+    )
+    from parallax.app.runtime.worker_factories.macro_intel import (
+        construct_macro_intel_workers,
+    )
+    from parallax.app.runtime.worker_factories.narrative_intel import (
+        WORKER_KEYS as NARRATIVE_INTEL_KEYS,
+    )
+    from parallax.app.runtime.worker_factories.narrative_intel import (
+        construct_narrative_intel_workers,
+    )
+    from parallax.app.runtime.worker_factories.news_intel import (
+        WORKER_KEYS as NEWS_INTEL_KEYS,
+    )
+    from parallax.app.runtime.worker_factories.news_intel import (
+        construct_news_intel_workers,
+    )
+    from parallax.app.runtime.worker_factories.notifications import (
+        WORKER_KEYS as NOTIFICATION_KEYS,
+    )
+    from parallax.app.runtime.worker_factories.notifications import (
+        construct_notification_workers,
+    )
+    from parallax.app.runtime.worker_factories.pulse import (
+        WORKER_KEYS as PULSE_KEYS,
+    )
+    from parallax.app.runtime.worker_factories.pulse import (
+        construct_pulse_workers,
+    )
+    from parallax.app.runtime.worker_factories.token_intel import (
+        WORKER_KEYS as TOKEN_INTEL_KEYS,
+    )
+    from parallax.app.runtime.worker_factories.token_intel import (
+        construct_token_intel_workers,
+    )
+
+    return (
+        WorkerFactorySpec("ingestion.py", INGESTION_KEYS, construct_ingestion_workers),
+        WorkerFactorySpec("token_intel.py", TOKEN_INTEL_KEYS, construct_token_intel_workers),
+        WorkerFactorySpec("asset_market.py", ASSET_MARKET_KEYS, construct_asset_market_workers),
+        WorkerFactorySpec("cex_market_intel.py", CEX_MARKET_INTEL_KEYS, construct_cex_market_intel_workers),
+        WorkerFactorySpec("macro_intel.py", MACRO_INTEL_KEYS, construct_macro_intel_workers),
+        WorkerFactorySpec("narrative_intel.py", NARRATIVE_INTEL_KEYS, construct_narrative_intel_workers),
+        WorkerFactorySpec("news_intel.py", NEWS_INTEL_KEYS, construct_news_intel_workers),
+        WorkerFactorySpec("pulse.py", PULSE_KEYS, construct_pulse_workers),
+        WorkerFactorySpec("notifications.py", NOTIFICATION_KEYS, construct_notification_workers),
+    )
+
+
+def _validate_factory_specs(specs: tuple[WorkerFactorySpec, ...]) -> None:
+    canonical = frozenset(worker_names())
+    owner_by_key: dict[str, str] = {}
+    for spec in specs:
+        unknown = spec.keys - canonical
+        if unknown:
+            raise KeyError(f"worker_factory:{spec.name}:unknown owned workers:{sorted(unknown)}")
+        for key in spec.keys:
+            previous_owner = owner_by_key.get(key)
+            if previous_owner is not None:
+                raise ValueError(f"worker:{key}:owned by both {previous_owner} and {spec.name}")
+            owner_by_key[key] = spec.name
+
+    owned = frozenset(owner_by_key)
+    if owned != canonical:
+        missing = sorted(canonical - owned)
+        extra = sorted(owned - canonical)
+        raise ValueError(f"worker_factory_ownership_mismatch:missing={missing}:extra={extra}")
+
+
+__all__ = ["WorkerFactoryContext", "WorkerFactorySpec", "construct_workers", "worker_factory_specs"]

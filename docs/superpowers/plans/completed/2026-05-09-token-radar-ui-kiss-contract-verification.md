@@ -60,10 +60,10 @@ Completed successfully.
 ```
 
 ```text
-$ docker compose -p gmgn-twitter-intel -f compose.yaml up -d --build app
-gmgn-twitter-intel-migrate  Built
-gmgn-twitter-intel-app      Built
-Container gmgn-twitter-intel-app-1  Started
+$ docker compose -p parallax -f compose.yaml up -d --build app
+parallax-migrate  Built
+parallax-app      Built
+Container parallax-app-1  Started
 ```
 
 ```text

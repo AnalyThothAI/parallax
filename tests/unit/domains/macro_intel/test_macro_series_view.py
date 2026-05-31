@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from gmgn_twitter_intel.domains.macro_intel.services.macro_series_view import (
+from parallax.domains.macro_intel.services.macro_series_view import (
     UnsupportedMacroConceptError,
     UnsupportedMacroSeriesWindowError,
     build_macro_series_view,

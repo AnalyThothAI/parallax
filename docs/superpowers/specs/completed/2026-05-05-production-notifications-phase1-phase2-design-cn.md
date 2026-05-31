@@ -4,7 +4,7 @@
 
 状态：设计草案，等待确认后实施
 
-范围：为 `gmgn-twitter-intel` 增加生产级通知系统的 Phase 1 和 Phase 2。Phase 1 交付网页端 in-app 通知、watchlist 红点、通知抽屉、通知 WebSocket 推送。Phase 2 在不重写核心规则的前提下接入外部通知渠道，优先通过 Apprise 统一适配 PushDeer、Telegram、WeCom Bot、WxPusher、ntfy、Gotify 等。
+范围：为 `parallax` 增加生产级通知系统的 Phase 1 和 Phase 2。Phase 1 交付网页端 in-app 通知、watchlist 红点、通知抽屉、通知 WebSocket 推送。Phase 2 在不重写核心规则的前提下接入外部通知渠道，优先通过 Apprise 统一适配 PushDeer、Telegram、WeCom Bot、WxPusher、ntfy、Gotify 等。
 
 不在范围：Novu 全平台接入、PWA/Web Push/service worker、复杂多用户权限系统、通知工作流可视化编辑器、邮件/SMS 营销体系、自动交易执行。
 
@@ -85,15 +85,15 @@ notifications -> notification_deliveries -> AppriseDeliveryAdapter -> external p
 
 当前后端结构很适合通知系统，因为已有清晰的 read/write repository、FastAPI runtime、worker、WebSocket hub：
 
-- `src/gmgn_twitter_intel/settings.py`：严格 Pydantic config，`extra="forbid"`。通知配置需要显式加入 `NotificationConfig`，否则用户配置会被拒绝。
-- `src/gmgn_twitter_intel/api/app.py`：`CliRuntime` 集中持有 settings、repositories、workers、hub。通知需要加入 write/read repository、rule worker、delivery worker。
-- `src/gmgn_twitter_intel/api/http.py`：现有 JSON API 都用 Bearer `ws_token` 鉴权。通知 API 应复用 `_authenticated_runtime()`。
-- `src/gmgn_twitter_intel/api/ws.py`：`PublicWebSocketHub` 当前支持 `event` 和 `harness_update`，并按 handles/CA/symbol 做过滤。通知需要新增 `notifications` 订阅布尔字段，避免没有 `event` 的 payload 被现有 matcher 丢弃。
-- `src/gmgn_twitter_intel/collector/service.py`：写库成功后发布 matched watched event。通知不应该直接塞进 collector 逻辑，避免 collector 变成业务规则中心。
-- `src/gmgn_twitter_intel/pipeline/ingest_service.py`：事件入库、实体抽取、token attribution、account alert、enrichment job enqueue 在一个事务中完成。Phase 1 不把通知生成塞进该事务，避免 token-flow score 依赖后续 market observation 时出现二义性。
-- `src/gmgn_twitter_intel/retrieval/token_flow_service.py`：`social_heat`、`discussion_quality`、`opportunity` 目前是查询时计算，不是表。高分 token 通知必须通过规则 worker 周期性读取 `TokenFlowService` 并物化。
-- `src/gmgn_twitter_intel/storage/sqlite_schema.py`：当前 `SCHEMA_VERSION = 11`。通知表需要升到 `12`。
-- `src/gmgn_twitter_intel/storage/sqlite_client.py`：`sqlite_health_check()` 有 operational probes。通知表加入后应增加 probe，确保生产启动时能发现 schema 损坏。
+- `src/parallax/settings.py`：严格 Pydantic config，`extra="forbid"`。通知配置需要显式加入 `NotificationConfig`，否则用户配置会被拒绝。
+- `src/parallax/api/app.py`：`CliRuntime` 集中持有 settings、repositories、workers、hub。通知需要加入 write/read repository、rule worker、delivery worker。
+- `src/parallax/api/http.py`：现有 JSON API 都用 Bearer `ws_token` 鉴权。通知 API 应复用 `_authenticated_runtime()`。
+- `src/parallax/api/ws.py`：`PublicWebSocketHub` 当前支持 `event` 和 `harness_update`，并按 handles/CA/symbol 做过滤。通知需要新增 `notifications` 订阅布尔字段，避免没有 `event` 的 payload 被现有 matcher 丢弃。
+- `src/parallax/collector/service.py`：写库成功后发布 matched watched event。通知不应该直接塞进 collector 逻辑，避免 collector 变成业务规则中心。
+- `src/parallax/pipeline/ingest_service.py`：事件入库、实体抽取、token attribution、account alert、enrichment job enqueue 在一个事务中完成。Phase 1 不把通知生成塞进该事务，避免 token-flow score 依赖后续 market observation 时出现二义性。
+- `src/parallax/retrieval/token_flow_service.py`：`social_heat`、`discussion_quality`、`opportunity` 目前是查询时计算，不是表。高分 token 通知必须通过规则 worker 周期性读取 `TokenFlowService` 并物化。
+- `src/parallax/storage/sqlite_schema.py`：当前 `SCHEMA_VERSION = 11`。通知表需要升到 `12`。
+- `src/parallax/storage/sqlite_client.py`：`sqlite_health_check()` 有 operational probes。通知表加入后应增加 probe，确保生产启动时能发现 schema 损坏。
 
 ### 前端
 

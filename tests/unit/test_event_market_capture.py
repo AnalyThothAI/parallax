@@ -7,13 +7,13 @@ from typing import Any
 
 import pytest
 
-from gmgn_twitter_intel.app.runtime.providers_wiring import AssetMarketProviders
-from gmgn_twitter_intel.domains.asset_market.providers import CexTicker, DexTokenQuote
-from gmgn_twitter_intel.domains.asset_market.services.event_market_capture import (
+from parallax.app.runtime.providers_wiring import AssetMarketProviders
+from parallax.domains.asset_market.providers import CexTicker, DexTokenQuote
+from parallax.domains.asset_market.services.event_market_capture import (
     EventMarketCaptureService,
     TickLookup,
 )
-from gmgn_twitter_intel.domains.asset_market.types import MarketTick, market_tick_id
+from parallax.domains.asset_market.types import MarketTick, market_tick_id
 
 NOW_MS = 1_700_000_100_000
 EVENT_MS = 1_700_000_090_000
@@ -660,7 +660,7 @@ def test_provider_exception_maps_to_unavailable_without_raising() -> None:
 
 
 def test_event_market_capture_service_does_not_import_repositories() -> None:
-    module = importlib.import_module("gmgn_twitter_intel.domains.asset_market.services.event_market_capture")
+    module = importlib.import_module("parallax.domains.asset_market.services.event_market_capture")
 
     assert "repositories" not in inspect.getsource(module)
 

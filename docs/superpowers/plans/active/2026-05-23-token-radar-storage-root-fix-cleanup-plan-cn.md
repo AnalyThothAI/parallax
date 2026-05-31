@@ -62,8 +62,8 @@
 新增：
 
 ```bash
-uv run gmgn-twitter-intel ops reset-token-radar-postgres-hard-cut --dry-run
-uv run gmgn-twitter-intel ops reset-token-radar-postgres-hard-cut --execute
+uv run parallax ops reset-token-radar-postgres-hard-cut --dry-run
+uv run parallax ops reset-token-radar-postgres-hard-cut --execute
 ```
 
 该命令可重复执行：
@@ -91,7 +91,7 @@ uv run pytest tests/unit/test_token_radar_repository.py tests/unit/domains/token
 uv run pytest tests/unit/test_token_radar_projection.py tests/unit/test_token_radar_projection_worker.py -q
 uv run pytest tests/unit/test_cli.py tests/unit/test_ops_backfill_commands.py tests/unit/domains/token_intel/test_token_radar_storage_reset.py -q
 uv run pytest tests/unit/test_postgres_schema.py::test_alembic_revision_ids_are_unique tests/unit/test_postgres_schema.py::test_alembic_revision_graph_has_single_head tests/unit/test_postgres_schema.py::test_token_radar_storage_root_fix_migration_hard_cuts_old_storage -q
-uv run ruff check src/gmgn_twitter_intel/domains/token_intel src/gmgn_twitter_intel/platform/db/postgres_audit.py tests/unit/test_token_radar_repository.py
+uv run ruff check src/parallax/domains/token_intel src/parallax/platform/db/postgres_audit.py tests/unit/test_token_radar_repository.py
 ```
 
 ## 运行备注
@@ -99,7 +99,7 @@ uv run ruff check src/gmgn_twitter_intel/domains/token_intel src/gmgn_twitter_in
 真实数据切换前先确认：
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 ```
 
 只报告 `config_path` / `workers_config_path`、布尔状态和表大小，不打印 secret。执行 `reset-token-radar-postgres-hard-cut --execute` 后，重启/触发 Token Radar worker 从 facts 重新构建。

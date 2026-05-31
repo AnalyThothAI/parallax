@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import pytest
 
-from gmgn_twitter_intel.domains.token_intel.interfaces import (
+from parallax.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_FACTOR_FAMILIES,
 )
-from gmgn_twitter_intel.domains.token_intel.repositories.token_factor_evaluation_repository import (
+from parallax.domains.token_intel.repositories.token_factor_evaluation_repository import (
     TokenFactorEvaluationRepository,
 )
-from gmgn_twitter_intel.domains.token_intel.services.token_factor_evaluation import settle_token_factor_scores
+from parallax.domains.token_intel.services.token_factor_evaluation import settle_token_factor_scores
 
 
 def test_settle_token_factor_scores_writes_deterministic_bucket_summaries():

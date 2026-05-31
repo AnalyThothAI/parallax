@@ -13,10 +13,10 @@
 ### Task 1: Source Cache Schema
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260517_0058_binance_profile_sources.py`
-- Create: `src/gmgn_twitter_intel/domains/asset_market/repositories/cex_token_profile_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/interfaces.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/repository_session.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260517_0058_binance_profile_sources.py`
+- Create: `src/parallax/domains/asset_market/repositories/cex_token_profile_repository.py`
+- Modify: `src/parallax/domains/asset_market/interfaces.py`
+- Modify: `src/parallax/app/runtime/repository_session.py`
 
 - [x] Add `cex_token_profiles` keyed by `(cex_token_id, provider)`.
 - [x] Migrate existing `cex_tokens.logo_*` into `cex_token_profiles(provider='binance_cex_profile')`.
@@ -26,9 +26,9 @@
 ### Task 2: Binance Clients and Sync
 
 **Files:**
-- Replace: `src/gmgn_twitter_intel/integrations/binance/cex_icon_client.py`
-- Create: `src/gmgn_twitter_intel/integrations/binance/web3_token_client.py`
-- Replace: `src/gmgn_twitter_intel/domains/asset_market/services/cex_token_icon_sync.py`
+- Replace: `src/parallax/integrations/binance/cex_icon_client.py`
+- Create: `src/parallax/integrations/binance/web3_token_client.py`
+- Replace: `src/parallax/domains/asset_market/services/cex_token_icon_sync.py`
 
 - [x] Rename CEX client/service language from icon fallback to Binance CEX profile source.
 - [x] Implement Binance Web3 token metadata client using `/bapi/defi/v1/public/wallet-direct/buw/wallet/dex/market/token/meta/info/ai`.
@@ -37,11 +37,11 @@
 ### Task 3: Provider and Worker Wiring
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/providers_wiring.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/services/asset_profile_refresh.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/asset_profile_refresh_worker.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/bootstrap.py`
+- Modify: `src/parallax/platform/config/settings.py`
+- Modify: `src/parallax/app/runtime/providers_wiring.py`
+- Modify: `src/parallax/domains/asset_market/services/asset_profile_refresh.py`
+- Modify: `src/parallax/domains/asset_market/runtime/asset_profile_refresh_worker.py`
+- Modify: `src/parallax/app/runtime/bootstrap.py`
 
 - [x] Add Binance config under `providers.binance`.
 - [x] Wire Binance Web3 as a `PROFILE_DEX_EXACT` provider source.
@@ -50,9 +50,9 @@
 ### Task 4: Projection Hard Cut
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/queries/token_profile_source_query.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/services/token_profile_current_projection.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/token_profile_current_worker.py`
+- Modify: `src/parallax/domains/asset_market/queries/token_profile_source_query.py`
+- Modify: `src/parallax/domains/asset_market/services/token_profile_current_projection.py`
+- Modify: `src/parallax/domains/asset_market/runtime/token_profile_current_worker.py`
 
 - [x] Read `binance_web3_profile` rows from `asset_profiles`.
 - [x] Read CEX profiles from `cex_token_profiles`, not `cex_tokens`.
@@ -62,7 +62,7 @@
 ### Task 5: CLI, Docs, Verification
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/main.py`
+- Modify: `src/parallax/app/surfaces/cli/main.py`
 - Modify: `docs/ARCHITECTURE.md`, `docs/WORKERS.md`, `docs/CONTRACTS.md`, domain architecture docs
 - Regenerate: `docs/generated/cli-help.md`, `docs/generated/db-schema.md`
 
@@ -72,10 +72,10 @@
 
 ### Verification Notes
 
-- [x] `uv run gmgn-twitter-intel db migrate`
+- [x] `uv run parallax db migrate`
 - [x] `make docs-generated`
-- [x] `uv run gmgn-twitter-intel ops sync-binance-cex-profiles`
-- [x] `uv run gmgn-twitter-intel ops refresh-asset-profiles --limit 20`
-- [x] `uv run gmgn-twitter-intel ops rebuild-token-profiles --limit 1000`
+- [x] `uv run parallax ops sync-binance-cex-profiles`
+- [x] `uv run parallax ops refresh-asset-profiles --limit 20`
+- [x] `uv run parallax ops rebuild-token-profiles --limit 1000`
 - [x] `uv run ruff check .`
 - [x] `uv run pytest -q --ignore=tests/integration/test_docs_generated.py`

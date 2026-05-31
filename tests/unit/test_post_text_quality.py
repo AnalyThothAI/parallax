@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.token_intel.scoring.post_text_quality import post_quality_score
+from parallax.domains.token_intel.scoring.post_text_quality import post_quality_score
 
 
 def test_post_quality_scores_informative_ca_posts() -> None:

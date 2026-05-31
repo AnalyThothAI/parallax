@@ -8,11 +8,11 @@ from typing import Any
 
 import pytest
 
-from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
-from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
-from gmgn_twitter_intel.domains.asset_market.providers import CexTicker, DexTokenQuote
-from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_poll_worker import MarketTickPollWorker
-from gmgn_twitter_intel.domains.asset_market.types import market_tick_id
+from parallax.app.runtime.worker_base import WorkerBase
+from parallax.app.runtime.worker_result import WorkerResult
+from parallax.domains.asset_market.providers import CexTicker, DexTokenQuote
+from parallax.domains.asset_market.runtime.market_tick_poll_worker import MarketTickPollWorker
+from parallax.domains.asset_market.types import market_tick_id
 
 
 def test_market_tick_poll_worker_is_append_only_without_single_writer_lock() -> None:

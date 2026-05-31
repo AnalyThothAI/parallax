@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from gmgn_twitter_intel.domains.pulse_lab.services.agent_eval import (
+from parallax.domains.pulse_lab.services.agent_eval import (
     build_pulse_deterministic_eval_case,
     build_pulse_failed_eval_case,
     grade_pulse_deterministic_eval_case,
 )
-from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
+from parallax.domains.pulse_lab.types.agent_decision import (
     BullBearView,
     FinalDecision,
     StageRunAudit,

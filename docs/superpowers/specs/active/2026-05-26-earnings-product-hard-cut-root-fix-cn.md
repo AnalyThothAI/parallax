@@ -12,7 +12,7 @@
 - `docs/WORKER_FLOW.md`
 - `docs/WORKERS.md`
 - `docs/TESTING.md`
-- `src/gmgn_twitter_intel/domains/equity_event_intel/ARCHITECTURE.md`
+- `src/parallax/domains/equity_event_intel/ARCHITECTURE.md`
 - `docs/superpowers/specs/active/2026-05-22-equity-event-intel-cn.md`
 
 ## 一句话
@@ -40,8 +40,8 @@
 
 实测 live runtime 使用 operator config：
 
-- `config_path=/Users/qinghuan/.gmgn-twitter-intel/config.yaml`
-- `workers_config_path=/Users/qinghuan/.gmgn-twitter-intel/workers.yaml`
+- `config_path=/Users/qinghuan/.parallax/config.yaml`
+- `workers_config_path=/Users/qinghuan/.parallax/workers.yaml`
 - `equity_event_intel_enabled=True`
 - `sec_user_agent_configured=True`
 - `company_count=100`
@@ -82,12 +82,12 @@ DB 侧观察：
 
 当前代码已经揭示了断点：
 
-- `src/gmgn_twitter_intel/domains/equity_event_intel/ARCHITECTURE.md` 定义了从 equity sources 到 `/api/equity-events*` 再到 `/earnings` 的链路。
-- `src/gmgn_twitter_intel/app/runtime/provider_wiring/equity_events.py` 只调用 `fetch_company_submissions`，保存 SEC submissions payload，没有继续拉取 filing document HTML、XBRL、exhibit 或 IR release 正文。
-- `src/gmgn_twitter_intel/domains/equity_event_intel/services/sec_submission_normalizer.py` 尝试从 submissions recent item 里取 `title`、`description`、`body_text`，但 SEC submissions 本身通常只是 filing 元数据。
-- `src/gmgn_twitter_intel/domains/equity_event_intel/services/fact_candidates.py` 在没有 document text 时不会产生 spans/facts。
-- `src/gmgn_twitter_intel/domains/equity_event_intel/services/source_reconcile.py` 只会从 config 的 `expected_events` 物化 calendar；当前 runtime `expected_event_count=0`。
-- `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py` 的 summary 统计把全表 `brief_json.status = pending` 都算进 pending，混淆了历史 backlog 和当前 due work。
+- `src/parallax/domains/equity_event_intel/ARCHITECTURE.md` 定义了从 equity sources 到 `/api/equity-events*` 再到 `/earnings` 的链路。
+- `src/parallax/app/runtime/provider_wiring/equity_events.py` 只调用 `fetch_company_submissions`，保存 SEC submissions payload，没有继续拉取 filing document HTML、XBRL、exhibit 或 IR release 正文。
+- `src/parallax/domains/equity_event_intel/services/sec_submission_normalizer.py` 尝试从 submissions recent item 里取 `title`、`description`、`body_text`，但 SEC submissions 本身通常只是 filing 元数据。
+- `src/parallax/domains/equity_event_intel/services/fact_candidates.py` 在没有 document text 时不会产生 spans/facts。
+- `src/parallax/domains/equity_event_intel/services/source_reconcile.py` 只会从 config 的 `expected_events` 物化 calendar；当前 runtime `expected_event_count=0`。
+- `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py` 的 summary 统计把全表 `brief_json.status = pending` 都算进 pending，混淆了历史 backlog 和当前 due work。
 - `web/src/features/equity-events/api/useEquityEvents.ts` 确实在 polling feed/calendar。
 - `web/src/features/equity-events/model/equityEventViewModel.ts` 会在客户端按 priority 重排 API rows，削弱了“最新更新”的感知。
 - `web/src/features/equity-events/ui/EquityEventFeed.tsx` 展示 `next page`，但没有实际 Load More 或 cursor 操作。
@@ -424,7 +424,7 @@ Operators need to answer “卡在哪里” without reading code:
 - Calendar not configured vs configured but empty.
 - Active due queue vs historical backlog.
 
-`uv run gmgn-twitter-intel config` remains the first diagnostic command for real-data debugging. Any report must show paths/booleans/counts only and never print secrets.
+`uv run parallax config` remains the first diagnostic command for real-data debugging. Any report must show paths/booleans/counts only and never print secrets.
 
 ## Risks
 

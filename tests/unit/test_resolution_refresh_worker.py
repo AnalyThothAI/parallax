@@ -3,9 +3,9 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.domains.asset_market.providers import DexTokenCandidate
-from gmgn_twitter_intel.domains.asset_market.runtime import resolution_refresh_worker as module
-from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import (
+from parallax.domains.asset_market.providers import DexTokenCandidate
+from parallax.domains.asset_market.runtime import resolution_refresh_worker as module
+from parallax.domains.asset_market.runtime.resolution_refresh_worker import (
     FOUND_ADDRESS_REFRESH_MS,
     FOUND_SYMBOL_REFRESH_MS,
     NOT_FOUND_ADDRESS_REFRESH_MS,

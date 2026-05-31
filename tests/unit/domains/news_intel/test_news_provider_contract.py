@@ -5,9 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from gmgn_twitter_intel.domains.news_intel.repositories.news_repository import NewsRepository
-from gmgn_twitter_intel.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
-from gmgn_twitter_intel.domains.news_intel.services.news_provider_contract import (
+from parallax.domains.news_intel.repositories.news_repository import NewsRepository
+from parallax.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
+from parallax.domains.news_intel.services.news_provider_contract import (
     NewsProviderContractError,
     validate_news_provider_contract,
 )

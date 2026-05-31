@@ -23,7 +23,7 @@ from collections.abc import Iterator
 import psycopg
 import pytest
 
-DEFAULT_DSN = "postgresql://postgres:postgres@127.0.0.1:55432/gmgn_twitter_intel_test"
+DEFAULT_DSN = "postgresql://postgres:postgres@127.0.0.1:55432/parallax_test"
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
@@ -82,7 +82,7 @@ def _ensure_postgres_dsn() -> Iterator[None]:
     # Spin testcontainers
     from testcontainers.postgres import PostgresContainer
 
-    from gmgn_twitter_intel.platform.db.postgres_migrations import upgrade_head
+    from parallax.platform.db.postgres_migrations import upgrade_head
 
     with PostgresContainer("postgres:16-alpine") as pg:
         dsn = pg.get_connection_url().replace("postgresql+psycopg2://", "postgresql://")

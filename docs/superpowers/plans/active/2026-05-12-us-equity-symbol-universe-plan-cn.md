@@ -24,27 +24,27 @@
   - 覆盖 `upsert/find/deactivate_us_equity_symbol` 和 `ops sync-us-equity-symbols` parser 注册。
 
 - [ ] Schema
-  - 新增 `src/gmgn_twitter_intel/platform/db/alembic/versions/20260512_0033_us_equity_symbol_universe.py`
+  - 新增 `src/parallax/platform/db/alembic/versions/20260512_0033_us_equity_symbol_universe.py`
   - 建 `us_equity_symbols` 表和 active lookup index。
 
 - [ ] Repository
-  - `src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py`
+  - `src/parallax/domains/asset_market/repositories/registry_repository.py`
   - 新增 `upsert_us_equity_symbol`、`find_us_equity_symbol`、`deactivate_missing_us_equity_symbols`。
 
 - [ ] Sync service/client
-  - 新增 `src/gmgn_twitter_intel/domains/asset_market/services/us_equity_symbol_sync.py`
+  - 新增 `src/parallax/domains/asset_market/services/us_equity_symbol_sync.py`
   - 新增 Nasdaq Trader parser、HTTP client、`sync_us_equity_symbols()`。
 
 - [ ] Resolver
-  - `src/gmgn_twitter_intel/domains/token_intel/services/deterministic_token_resolver.py`
+  - `src/parallax/domains/token_intel/services/deterministic_token_resolver.py`
   - 在 CEX 和现有 DEX asset 逻辑之后、NIL 之前加入 US equity 分支。
 
 - [ ] Token radar crypto 边界
-  - `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py`
+  - `src/parallax/domains/token_intel/queries/token_radar_source_query.py`
   - source rows/count 排除 `target_type = 'MarketInstrument'`。
 
 - [ ] CLI
-  - `src/gmgn_twitter_intel/app/surfaces/cli/main.py`
+  - `src/parallax/app/surfaces/cli/main.py`
   - 注册并实现 `ops sync-us-equity-symbols`。
 
 - [ ] 验证与落地

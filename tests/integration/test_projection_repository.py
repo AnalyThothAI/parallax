@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.token_intel.repositories.projection_repository import ProjectionRepository
+from parallax.domains.token_intel.repositories.projection_repository import ProjectionRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
@@ -121,7 +121,7 @@ def test_mark_stale_running_runs_marks_abandoned_without_commit():
 def test_start_run_generates_unique_ids_when_clock_is_same(monkeypatch):
     conn = FakeStartRunConn()
     monkeypatch.setattr(
-        "gmgn_twitter_intel.domains.token_intel.repositories.projection_repository._now_ms",
+        "parallax.domains.token_intel.repositories.projection_repository._now_ms",
         lambda: 2_000,
     )
     repo = ProjectionRepository(conn)

@@ -3,11 +3,11 @@ from __future__ import annotations
 from dataclasses import replace
 from decimal import Decimal
 
-from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
-from gmgn_twitter_intel.domains.asset_market.services.event_market_capture import CaptureResult
-from gmgn_twitter_intel.domains.asset_market.types import EnrichedEventCapture, MarketTick, market_tick_id
-from gmgn_twitter_intel.domains.evidence.services.ingest_service import IngestService
-from gmgn_twitter_intel.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
+from parallax.app.runtime.repository_session import repositories_for_connection
+from parallax.domains.asset_market.services.event_market_capture import CaptureResult
+from parallax.domains.asset_market.types import EnrichedEventCapture, MarketTick, market_tick_id
+from parallax.domains.evidence.services.ingest_service import IngestService
+from parallax.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate

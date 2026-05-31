@@ -4,15 +4,15 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from gmgn_twitter_intel.app.surfaces.api.exceptions import (
+from parallax.app.surfaces.api.exceptions import (
     ApiBadRequest,
     ApiUnauthorized,
     api_bad_request_response,
     api_unauthorized_response,
 )
-from gmgn_twitter_intel.app.surfaces.api.http import create_api_router
-from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_CORE_CONCEPTS
-from gmgn_twitter_intel.domains.macro_intel.services.macro_gap_payloads import build_macro_data_gaps
+from parallax.app.surfaces.api.http import create_api_router
+from parallax.domains.macro_intel._constants import MACRO_CORE_CONCEPTS
+from parallax.domains.macro_intel.services.macro_gap_payloads import build_macro_data_gaps
 
 
 def test_macro_api_returns_latest_snapshot_without_postgres() -> None:

@@ -80,9 +80,9 @@ Task numbering below is preserved to minimize churn in references. Task 2A is th
   Expected: current branch is `codex/pulse-1h-4h-research-committee`; status is clean except files intentionally edited by this plan.
 - [ ] Confirm real runtime config paths before live-data evaluation:
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
-  Expected: `config_path` and `workers_config_path` point to `/Users/qinghuan/.gmgn-twitter-intel/`. Do not print secrets.
+  Expected: `config_path` and `workers_config_path` point to `/Users/qinghuan/.parallax/`. Do not print secrets.
 - [ ] Run focused baseline tests before edits:
   ```bash
   uv run pytest tests/unit/test_pulse_candidate_worker.py tests/unit/test_pulse_edge_events.py tests/unit/test_pulse_decision_agent_client.py tests/unit/test_signal_pulse_service.py tests/unit/test_api_signal_pulse_contract.py -q
@@ -100,7 +100,7 @@ Known-failing baseline tests:
 
 ### New policy and evaluation modules
 
-- Create `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_horizon_policy.py`
+- Create `src/parallax/domains/pulse_lab/services/pulse_horizon_policy.py`
   - Owns Pulse-specific horizon constants and validation.
   - Public functions:
     ```python
@@ -127,7 +127,7 @@ Known-failing baseline tests:
     ```
   - `validate_pulse_agent_windows` raises `ValueError` for anything outside `("1h", "4h")`; no filtering.
 
-- Create `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_source_quality.py`
+- Create `src/parallax/domains/pulse_lab/services/pulse_source_quality.py`
   - Owns Pulse-only source quality gating; do not modify Token Radar scoring in `token_intel`.
   - Public model and functions:
     ```python
@@ -173,7 +173,7 @@ Known-failing baseline tests:
   - Rule: `public_trade_watch_allowed` requires `independent_author_count >= 2` or `watched_mentions > 0 and public_corroboration_seen is True`.
   - Rule: `default_public_risk_reject_allowed` is false when `matched_only`, `single_author_dependency`, or `top_author_share >= 0.7`.
 
-- Create `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_policy_evaluator.py`
+- Create `src/parallax/domains/pulse_lab/services/pulse_policy_evaluator.py`
   - Pure SQL/read-only evaluation helpers for current vs proposed policy.
   - Public function:
     ```python
@@ -200,46 +200,46 @@ Known-failing baseline tests:
 
 ### Existing backend files
 
-- Modify `src/gmgn_twitter_intel/platform/config/settings.py:720-731`
+- Modify `src/parallax/platform/config/settings.py:720-731`
   - Change `PulseCandidateWorkerSettings.windows` default to `("1h", "4h")`.
   - Change `stale_job_ttl_by_window_seconds` default to `{}`.
   - Add a validator that calls `validate_pulse_agent_windows`.
-  - Update generated default workers YAML at `src/gmgn_twitter_intel/platform/config/settings.py:1508-1522` to remove `5m`, `24h`, and the `5m` stale TTL.
+  - Update generated default workers YAML at `src/parallax/platform/config/settings.py:1508-1522` to remove `5m`, `24h`, and the `5m` stale TTL.
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py:137-199`
+- Modify `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py:137-199`
   - Import `validate_pulse_agent_windows` and enforce it during worker construction or scan setup.
   - Import `source_quality_from_factor_snapshot`.
   - `_is_asset_trigger` must remove the `watched_mentions > 0` shortcut.
   - Scan must not enqueue `scope="matched"` rows as discovery jobs unless a matching `all` row already passes public quality policy.
   - Result notes must include `asset_suppressed_source_quality` and `asset_suppressed_non_primary_window`.
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py:50-108`
+- Modify `src/parallax/domains/pulse_lab/services/pulse_candidate_gate.py:50-108`
   - Accept optional `source_quality`.
   - If source quality blocks public trade/watch, downgrade `trade_candidate` and `token_watch` to `blocked_low_information`.
   - If source quality blocks default risk-reject display, keep the audit status but force downstream display status to hidden via gate reasons.
   - Do not modify Token Radar factor snapshot gate.
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/services/write_gate.py:43-103`
+- Modify `src/parallax/domains/pulse_lab/services/write_gate.py:43-103`
   - Read source-quality gate reasons from `gate` or `factor_snapshot`.
   - Convert single-author/matched-only risk rejects to hidden display status.
   - Keep `decision_status` auditable, but do not publish default display rows for blocked source quality.
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_state.py:43-90`
+- Modify `src/parallax/domains/pulse_lab/types/pulse_state.py:43-90`
   - Add deterministic display mapping for source-quality hidden states.
   - Public statuses remain `display_trade_candidate`, `display_token_watch`, `display_risk_rejected_high_info`, but source-quality-blocked risk rejects map to `hidden_source_quality`.
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_edge_events.py:35-84`
+- Modify `src/parallax/domains/pulse_lab/services/pulse_edge_events.py:35-84`
   - Emit:
     - `timeline_evidence_changed` when `timeline_signature` changes.
     - `trigger_evidence_changed` when `trigger_signature` changes.
     - `independent_author_bucket_changed` when `independent_author_count_bucket` changes.
   - Keep score-band confirmation behavior in `PulseAdmissionPolicy`; do not turn every score-only twitch into an immediate agent run.
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_admission_policy.py:6-48`
+- Modify `src/parallax/domains/pulse_lab/services/pulse_admission_policy.py:6-48`
   - Add material evidence events to accepted non-escalation edge set.
   - Keep failure circuit behavior, but evidence-change events should record explicit reasons rather than generic `unchanged`.
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/types/agent_decision.py:12-285`
+- Modify `src/parallax/domains/pulse_lab/types/agent_decision.py:12-285`
   - Replace stage names with:
     ```python
     StageName = Literal[
@@ -271,16 +271,16 @@ Known-failing baseline tests:
   - Do not keep `EvidenceDebateMemo` in the runtime path. If the class is left for reusable claim primitives, no new code may instantiate it.
 
 - Delete old prompts:
-  - `src/gmgn_twitter_intel/domains/pulse_lab/prompts/evidence_debate.md`
-  - `src/gmgn_twitter_intel/domains/pulse_lab/prompts/decision_maker.md`
+  - `src/parallax/domains/pulse_lab/prompts/evidence_debate.md`
+  - `src/parallax/domains/pulse_lab/prompts/decision_maker.md`
 
 - Create new prompts:
-  - `src/gmgn_twitter_intel/domains/pulse_lab/prompts/signal_analyst.md`
-  - `src/gmgn_twitter_intel/domains/pulse_lab/prompts/bear_case.md`
-  - `src/gmgn_twitter_intel/domains/pulse_lab/prompts/risk_portfolio_judge.md`
+  - `src/parallax/domains/pulse_lab/prompts/signal_analyst.md`
+  - `src/parallax/domains/pulse_lab/prompts/bear_case.md`
+  - `src/parallax/domains/pulse_lab/prompts/risk_portfolio_judge.md`
   - All prompts must state: no tools, no outside facts, cite only `allowed_evidence_refs`, no execution language.
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/services/prompt_loader.py`
+- Modify `src/parallax/domains/pulse_lab/services/prompt_loader.py`
   - Remove loaders for old stage prompts.
   - Add:
     ```python
@@ -294,17 +294,17 @@ Known-failing baseline tests:
         return _load_route_prompt("risk_portfolio_judge", route)
     ```
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/providers.py:26-80`
+- Modify `src/parallax/domains/pulse_lab/providers.py:26-80`
   - Default runtime contract stage names become `("signal_analyst", "bear_case", "risk_portfolio_judge")`.
   - Tool names remain empty for all stages.
   - Protocol methods become `signal_analyst_stage_spec`, `bear_case_stage_spec`, `risk_portfolio_judge_stage_spec`, plus ref validators for each memo/final output.
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_runtime.py:13-113`
+- Modify `src/parallax/domains/pulse_lab/services/agent_runtime.py:13-113`
   - Bump runtime version to `pulse-research-committee-runtime-v1`.
   - Default stage names become the new three-stage committee.
   - Remove old stage names from manifest defaults.
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_decision_runtime.py:37-145`
+- Modify `src/parallax/domains/pulse_lab/services/pulse_decision_runtime.py:37-145`
   - Replace `evidence_debate_stage_spec` and `decision_maker_stage_spec` with `signal_analyst_stage_spec`, `bear_case_stage_spec`, and `risk_portfolio_judge_stage_spec`.
   - `signal_analyst` input gets packet and source quality summary.
   - `bear_case` input gets packet plus signal memo.
@@ -312,7 +312,7 @@ Known-failing baseline tests:
   - Replace `validate_debate_refs` with `validate_signal_refs` and `validate_bear_refs`.
   - Update `validate_final_evidence_refs` to accept signal and bear memos, not debate memo.
 
-- Modify `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py:52-220`
+- Modify `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py:52-220`
   - Rename class docstring to packet-only research committee.
   - Artifact hash schema includes `SignalAnalystMemo`, `BearCaseMemo`, and `FinalDecision`.
   - `runtime_contract` exposes new stage names and max-turn maps.
@@ -321,29 +321,29 @@ Known-failing baseline tests:
     `("pulse.signal_analyst", "pulse.bear_case", "pulse.risk_portfolio_judge")`.
   - Stage failures still persist collected audits and abstain/hide on unknown refs.
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py`
+- Modify `src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py`
   - Update expected child lanes and stage persistence to new stage names.
   - Hard-blocked evidence gate still avoids provider calls.
   - Deterministic eval and write gate continue after final decision.
 
-- Modify `src/gmgn_twitter_intel/app/surfaces/api/validators.py:5-40`
+- Modify `src/parallax/app/surfaces/api/validators.py:5-40`
   - Split general observation windows from Signal Pulse windows.
   - Keep `WINDOWS = {"5m", "1h", "4h", "24h"}` for other routes.
   - Add `SIGNAL_PULSE_WINDOWS = {"1h", "4h"}`.
   - Add `_signal_pulse_window(value: str) -> str` that raises `invalid_window` for `5m` and `24h`.
 
-- Modify `src/gmgn_twitter_intel/app/surfaces/api/routes_pulse.py:21-46`
+- Modify `src/parallax/app/surfaces/api/routes_pulse.py:21-46`
   - Default `window` becomes `"4h"`.
   - Use `_signal_pulse_window` instead of `_window`.
   - Add response metadata for lane semantics when `scope="matched"` through service query metadata.
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py:27-88`
+- Modify `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py:27-88`
   - Add `lane` to `query`: `"discovery"` for `all`, `"watchlist_alert"` for `matched`.
   - Default filtering excludes source-quality-hidden risk rejects.
   - Summary separates discovery counts from hidden source-quality counts.
   - Candidate payload includes source quality fields for UI badges.
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_read_repository.py:13-81`
+- Modify `src/parallax/domains/pulse_lab/repositories/pulse_read_repository.py:13-81`
   - Public list query excludes `hidden_source_quality`.
   - `risk_rejected_high_info` status filter may include visible risk rejects only, not single-author hidden risk rejects.
   - Add selected source-quality fields from `factor_snapshot_json` or `gate_json` to rows consumed by service.
@@ -388,7 +388,7 @@ Known-failing baseline tests:
   - Update `pulse_candidate` worker input windows and semantics.
   - State that `5m` Token Radar remains upstream observation, not Pulse Agent admission.
 
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`
+- Modify `src/parallax/domains/pulse_lab/ARCHITECTURE.md`
   - Replace two-stage EvidenceDebate/DecisionMaker description with research committee stages.
   - State no tools and no compatibility stage aliases.
 
@@ -404,7 +404,7 @@ Known-failing baseline tests:
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_policy_evaluator.py`
+- Create: `src/parallax/domains/pulse_lab/services/pulse_policy_evaluator.py`
 - Create: `scripts/evaluate_pulse_1h_4h_policy.py`
 - Test: `tests/unit/domains/pulse_lab/test_pulse_policy_evaluator.py`
 
@@ -438,7 +438,7 @@ Known-failing baseline tests:
 
 - [x] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_policy_evaluator.py scripts/evaluate_pulse_1h_4h_policy.py tests/unit/domains/pulse_lab/test_pulse_policy_evaluator.py docs/generated/
+  git add src/parallax/domains/pulse_lab/services/pulse_policy_evaluator.py scripts/evaluate_pulse_1h_4h_policy.py tests/unit/domains/pulse_lab/test_pulse_policy_evaluator.py docs/generated/
   git commit -m "test: evaluate pulse 1h 4h policy"
   ```
 
@@ -446,9 +446,9 @@ Known-failing baseline tests:
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/types/agent_decision.py`
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py`
+- Modify: `src/parallax/domains/pulse_lab/types/agent_decision.py`
+- Modify: `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py`
 - Test: `tests/unit/domains/pulse_lab/test_agent_decision_v2_schema.py`
 - Test: `tests/unit/test_pulse_decision_agent_client.py`
 - Test: `tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py`
@@ -507,7 +507,7 @@ Known-failing baseline tests:
 
 - [x] Commit:
   ```bash
-  git add docs/superpowers/plans/active/2026-05-20-pulse-1h-4h-research-committee-plan-cn.md src/gmgn_twitter_intel/domains/pulse_lab/types/agent_decision.py src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py tests/unit/domains/pulse_lab/test_agent_decision_v2_schema.py tests/unit/test_pulse_decision_agent_client.py tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py docs/generated/
+  git add docs/superpowers/plans/active/2026-05-20-pulse-1h-4h-research-committee-plan-cn.md src/parallax/domains/pulse_lab/types/agent_decision.py src/parallax/integrations/openai_agents/pulse_decision_agent_client.py src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py tests/unit/domains/pulse_lab/test_agent_decision_v2_schema.py tests/unit/test_pulse_decision_agent_client.py tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py docs/generated/
   git commit -m "fix: classify pulse agent output and provider failures"
   ```
 
@@ -515,10 +515,10 @@ Known-failing baseline tests:
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_horizon_policy.py`
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/validators.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/routes_pulse.py`
+- Create: `src/parallax/domains/pulse_lab/services/pulse_horizon_policy.py`
+- Modify: `src/parallax/platform/config/settings.py`
+- Modify: `src/parallax/app/surfaces/api/validators.py`
+- Modify: `src/parallax/app/surfaces/api/routes_pulse.py`
 - Test: `tests/unit/test_api_signal_pulse_contract.py`
 - Test: `tests/unit/test_pulse_candidate_worker.py`
 - Test: `tests/unit/test_worker_settings.py`
@@ -543,7 +543,7 @@ Known-failing baseline tests:
 
 - [x] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_horizon_policy.py src/gmgn_twitter_intel/platform/config/settings.py src/gmgn_twitter_intel/app/surfaces/api/validators.py src/gmgn_twitter_intel/app/surfaces/api/routes_pulse.py tests/unit/test_api_signal_pulse_contract.py tests/unit/test_pulse_candidate_worker.py tests/unit/test_worker_settings.py
+  git add src/parallax/domains/pulse_lab/services/pulse_horizon_policy.py src/parallax/platform/config/settings.py src/parallax/app/surfaces/api/validators.py src/parallax/app/surfaces/api/routes_pulse.py tests/unit/test_api_signal_pulse_contract.py tests/unit/test_pulse_candidate_worker.py tests/unit/test_worker_settings.py
   git commit -m "feat: hard cut pulse horizons to 1h 4h"
   ```
 
@@ -551,11 +551,11 @@ Known-failing baseline tests:
 
 **Files:**
 
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_source_quality.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/write_gate.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_state.py`
+- Create: `src/parallax/domains/pulse_lab/services/pulse_source_quality.py`
+- Modify: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_candidate_gate.py`
+- Modify: `src/parallax/domains/pulse_lab/services/write_gate.py`
+- Modify: `src/parallax/domains/pulse_lab/types/pulse_state.py`
 - Test: `tests/unit/domains/pulse_lab/test_pulse_source_quality.py`
 - Test: `tests/unit/test_pulse_candidate_worker.py`
 - Test: `tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py`
@@ -595,7 +595,7 @@ Known-failing baseline tests:
 
 - [x] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_source_quality.py src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py src/gmgn_twitter_intel/domains/pulse_lab/services/write_gate.py src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_state.py tests/unit/domains/pulse_lab/test_pulse_source_quality.py tests/unit/test_pulse_candidate_worker.py tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py tests/unit/test_pulse_display_status.py
+  git add src/parallax/domains/pulse_lab/services/pulse_source_quality.py src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py src/parallax/domains/pulse_lab/services/pulse_candidate_gate.py src/parallax/domains/pulse_lab/services/write_gate.py src/parallax/domains/pulse_lab/types/pulse_state.py tests/unit/domains/pulse_lab/test_pulse_source_quality.py tests/unit/test_pulse_candidate_worker.py tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py tests/unit/test_pulse_display_status.py
   git commit -m "feat: require pulse source quality for public display"
   ```
 
@@ -603,8 +603,8 @@ Known-failing baseline tests:
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_edge_events.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_admission_policy.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_edge_events.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_admission_policy.py`
 - Test: `tests/unit/test_pulse_edge_events.py`
 - Test: `tests/unit/test_pulse_admission_policy.py`
 - Test: `tests/unit/test_pulse_candidate_worker.py`
@@ -628,7 +628,7 @@ Known-failing baseline tests:
 
 - [x] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_edge_events.py src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_admission_policy.py tests/unit/test_pulse_edge_events.py tests/unit/test_pulse_admission_policy.py tests/unit/test_pulse_candidate_worker.py
+  git add src/parallax/domains/pulse_lab/services/pulse_edge_events.py src/parallax/domains/pulse_lab/services/pulse_admission_policy.py tests/unit/test_pulse_edge_events.py tests/unit/test_pulse_admission_policy.py tests/unit/test_pulse_candidate_worker.py
   git commit -m "feat: enqueue pulse on material evidence changes"
   ```
 
@@ -636,18 +636,18 @@ Known-failing baseline tests:
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/types/agent_decision.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/providers.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_runtime.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/prompt_loader.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_decision_runtime.py`
-- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py`
-- Delete: `src/gmgn_twitter_intel/domains/pulse_lab/prompts/evidence_debate.md`
-- Delete: `src/gmgn_twitter_intel/domains/pulse_lab/prompts/decision_maker.md`
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/prompts/signal_analyst.md`
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/prompts/bear_case.md`
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/prompts/risk_portfolio_judge.md`
+- Modify: `src/parallax/domains/pulse_lab/types/agent_decision.py`
+- Modify: `src/parallax/domains/pulse_lab/providers.py`
+- Modify: `src/parallax/domains/pulse_lab/services/agent_runtime.py`
+- Modify: `src/parallax/domains/pulse_lab/services/prompt_loader.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_decision_runtime.py`
+- Modify: `src/parallax/integrations/openai_agents/pulse_decision_agent_client.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py`
+- Delete: `src/parallax/domains/pulse_lab/prompts/evidence_debate.md`
+- Delete: `src/parallax/domains/pulse_lab/prompts/decision_maker.md`
+- Create: `src/parallax/domains/pulse_lab/prompts/signal_analyst.md`
+- Create: `src/parallax/domains/pulse_lab/prompts/bear_case.md`
+- Create: `src/parallax/domains/pulse_lab/prompts/risk_portfolio_judge.md`
 - Test: `tests/unit/test_pulse_decision_agent_client.py`
 - Test: `tests/unit/domains/pulse_lab/test_agent_decision_v2_schema.py`
 - Test: `tests/unit/domains/pulse_lab/test_prompt_loader.py`
@@ -681,7 +681,7 @@ Known-failing baseline tests:
 
 - [x] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/domains/pulse_lab/types/agent_decision.py src/gmgn_twitter_intel/domains/pulse_lab/providers.py src/gmgn_twitter_intel/domains/pulse_lab/services/agent_runtime.py src/gmgn_twitter_intel/domains/pulse_lab/services/prompt_loader.py src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_decision_runtime.py src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py src/gmgn_twitter_intel/domains/pulse_lab/prompts/ tests/unit/test_pulse_decision_agent_client.py tests/unit/domains/pulse_lab/test_agent_decision_v2_schema.py tests/unit/domains/pulse_lab/test_prompt_loader.py tests/unit/test_pulse_candidate_worker.py tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py
+  git add src/parallax/domains/pulse_lab/types/agent_decision.py src/parallax/domains/pulse_lab/providers.py src/parallax/domains/pulse_lab/services/agent_runtime.py src/parallax/domains/pulse_lab/services/prompt_loader.py src/parallax/domains/pulse_lab/services/pulse_decision_runtime.py src/parallax/integrations/openai_agents/pulse_decision_agent_client.py src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py src/parallax/domains/pulse_lab/prompts/ tests/unit/test_pulse_decision_agent_client.py tests/unit/domains/pulse_lab/test_agent_decision_v2_schema.py tests/unit/domains/pulse_lab/test_prompt_loader.py tests/unit/test_pulse_candidate_worker.py tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py
   git commit -m "feat: replace pulse agent with research committee"
   ```
 
@@ -689,9 +689,9 @@ Known-failing baseline tests:
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260520_0067_pulse_research_committee_checks.py`
+- Modify: `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py`
+- Modify: `src/parallax/app/surfaces/api/schemas.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260520_0067_pulse_research_committee_checks.py`
 - Test: `tests/unit/test_signal_pulse_service.py`
 - Test: `tests/unit/test_api_signal_pulse_contract.py`
 - Test: `tests/contract/test_openapi_drift.py`
@@ -714,14 +714,14 @@ Known-failing baseline tests:
 
 - [x] Run:
   ```bash
-  uv run ruff check src/gmgn_twitter_intel/app/surfaces/api/schemas.py src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py src/gmgn_twitter_intel/platform/db/alembic/versions/20260520_0067_pulse_research_committee_checks.py tests/unit/test_signal_pulse_service.py tests/contract/test_openapi_drift.py tests/integration/test_api_http.py tests/integration/test_pulse_desk_e2e.py tests/integration/test_pulse_repositories.py tests/integration/test_pulse_agent_desk_migration.py tests/unit/test_provider_wiring_agent_execution_gateway.py tests/unit/test_telemetry.py tests/unit/integrations/openai_agents/test_agent_execution_gateway.py
+  uv run ruff check src/parallax/app/surfaces/api/schemas.py src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py src/parallax/platform/db/alembic/versions/20260520_0067_pulse_research_committee_checks.py tests/unit/test_signal_pulse_service.py tests/contract/test_openapi_drift.py tests/integration/test_api_http.py tests/integration/test_pulse_desk_e2e.py tests/integration/test_pulse_repositories.py tests/integration/test_pulse_agent_desk_migration.py tests/unit/test_provider_wiring_agent_execution_gateway.py tests/unit/test_telemetry.py tests/unit/integrations/openai_agents/test_agent_execution_gateway.py
   uv run pytest tests/unit/test_signal_pulse_service.py tests/unit/test_api_signal_pulse_contract.py tests/contract/test_openapi_drift.py tests/unit/test_provider_wiring_agent_execution_gateway.py tests/unit/test_telemetry.py tests/unit/integrations/openai_agents/test_agent_execution_gateway.py tests/integration/test_api_http.py::test_api_signal_pulse_by_id_returns_stages tests/integration/test_pulse_repositories.py::test_agent_run_steps_round_trip tests/integration/test_pulse_agent_desk_migration.py tests/integration/test_pulse_desk_e2e.py -q
   git diff --check
   ```
 
 - [x] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py src/gmgn_twitter_intel/app/surfaces/api/schemas.py src/gmgn_twitter_intel/platform/db/alembic/versions/20260520_0067_pulse_research_committee_checks.py tests/unit/test_signal_pulse_service.py tests/unit/test_api_signal_pulse_contract.py tests/contract/test_openapi_drift.py tests/integration/test_api_http.py tests/integration/test_pulse_repositories.py tests/integration/test_pulse_agent_desk_migration.py tests/integration/test_pulse_desk_e2e.py tests/unit/test_provider_wiring_agent_execution_gateway.py tests/unit/test_telemetry.py tests/unit/integrations/openai_agents/test_agent_execution_gateway.py docs/generated/openapi.json web/src/lib/types/openapi.ts docs/superpowers/plans/active/2026-05-20-pulse-1h-4h-research-committee-plan-cn.md
+  git add src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py src/parallax/app/surfaces/api/schemas.py src/parallax/platform/db/alembic/versions/20260520_0067_pulse_research_committee_checks.py tests/unit/test_signal_pulse_service.py tests/unit/test_api_signal_pulse_contract.py tests/contract/test_openapi_drift.py tests/integration/test_api_http.py tests/integration/test_pulse_repositories.py tests/integration/test_pulse_agent_desk_migration.py tests/integration/test_pulse_desk_e2e.py tests/unit/test_provider_wiring_agent_execution_gateway.py tests/unit/test_telemetry.py tests/unit/integrations/openai_agents/test_agent_execution_gateway.py docs/generated/openapi.json web/src/lib/types/openapi.ts docs/superpowers/plans/active/2026-05-20-pulse-1h-4h-research-committee-plan-cn.md
   git commit -m "feat: expose pulse research committee stages"
   ```
 
@@ -781,7 +781,7 @@ Known-failing baseline tests:
 
 - Modify: `docs/CONTRACTS.md`
 - Modify: `docs/WORKERS.md`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/pulse_lab/ARCHITECTURE.md`
 - Modify: `scripts/regen_pulse_agent_desk_decisions.py`
 - Modify: `docs/generated/pulse-agent-desk-decisions.md`
 - Modify: `docs/generated/openapi.json`
@@ -816,7 +816,7 @@ Known-failing baseline tests:
 
 - [x] Commit:
   ```bash
-  git add docs/CONTRACTS.md docs/WORKERS.md src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md scripts/regen_pulse_agent_desk_decisions.py docs/generated/pulse-agent-desk-decisions.md docs/generated/openapi.json web/src/lib/types/openapi.ts tests/architecture/test_src_domain_architecture.py tests/architecture/test_pulse_no_compat.py docs/superpowers/plans/active/2026-05-20-pulse-1h-4h-research-committee-plan-cn.md
+  git add docs/CONTRACTS.md docs/WORKERS.md src/parallax/domains/pulse_lab/ARCHITECTURE.md scripts/regen_pulse_agent_desk_decisions.py docs/generated/pulse-agent-desk-decisions.md docs/generated/openapi.json web/src/lib/types/openapi.ts tests/architecture/test_src_domain_architecture.py tests/architecture/test_pulse_no_compat.py docs/superpowers/plans/active/2026-05-20-pulse-1h-4h-research-committee-plan-cn.md
   git commit -m "docs: document pulse 1h 4h hard cut"
   ```
 
@@ -834,7 +834,7 @@ Known-failing baseline tests:
 1. Run Task 1 evaluator on live DB and review report.
 2. If the report says `stop` because agent execution is unhealthy, execute Task 2A and Task 5 before any runtime horizon cut.
 3. Rerun evaluator and compare new runs after the remediation deployment timestamp.
-4. Update operator-owned `/Users/qinghuan/.gmgn-twitter-intel/workers.yaml` to set:
+4. Update operator-owned `/Users/qinghuan/.parallax/workers.yaml` to set:
    ```yaml
    pulse_candidate:
      windows: ["1h", "4h"]
@@ -844,7 +844,7 @@ Known-failing baseline tests:
 5. Deploy backend hard-cut policy.
 6. Verify config with:
    ```bash
-   uv run gmgn-twitter-intel config
+   uv run parallax config
    ```
 7. Start workers and verify no new 5m Pulse jobs are created after deployment timestamp.
 8. Deploy frontend default change.
@@ -907,8 +907,8 @@ Compensating actions:
 - AC10:
   ```bash
   uv run python - <<'PY'
-  from gmgn_twitter_intel.platform.config.settings import load_settings
-  from gmgn_twitter_intel.platform.db.postgres_client import connect_postgres, with_password_from_file
+  from parallax.platform.config.settings import load_settings
+  from parallax.platform.db.postgres_client import connect_postgres, with_password_from_file
 
   settings = load_settings(require_ws_token=False)
   dsn = with_password_from_file(settings.postgres_dsn, settings.postgres_password_file)

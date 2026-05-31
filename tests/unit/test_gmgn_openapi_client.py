@@ -4,7 +4,7 @@ import httpx
 import pytest
 from curl_cffi import CurlOpt
 
-from gmgn_twitter_intel.integrations.gmgn.openapi_client import (
+from parallax.integrations.gmgn.openapi_client import (
     CURL_IPRESOLVE_V4,
     GmgnOpenApiClient,
     GmgnOpenApiProviderUnavailableError,
@@ -136,7 +136,7 @@ def test_gmgn_openapi_client_force_ipv4_sets_curl_ipresolve(monkeypatch):
             pass
 
     monkeypatch.setattr(
-        "gmgn_twitter_intel.integrations.gmgn.openapi_client.curl_requests.Session",
+        "parallax.integrations.gmgn.openapi_client.curl_requests.Session",
         FakeCurlSession,
     )
 

@@ -2,7 +2,7 @@ from typing import get_args
 
 import pytest
 
-from gmgn_twitter_intel.domains.news_intel.types.source_classification import (
+from parallax.domains.news_intel.types.source_classification import (
     PROVIDER_TYPES,
     SOURCE_ROLES,
     ProviderType,

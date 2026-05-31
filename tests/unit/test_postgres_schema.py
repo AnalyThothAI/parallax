@@ -6,201 +6,201 @@ from pathlib import Path
 
 from alembic.script import ScriptDirectory
 
-from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import (
+from parallax.domains.token_intel.repositories.token_radar_repository import (
     RADAR_ROW_COLUMNS,
     RADAR_ROW_INSERT_COLUMNS_SQL,
 )
-from gmgn_twitter_intel.platform.db.postgres_migrations import alembic_config
+from parallax.platform.db.postgres_migrations import alembic_config
 
-MIGRATION = Path("src/gmgn_twitter_intel/platform/db/alembic/versions/20260506_0001_initial_postgresql.py")
-QUEUE_MIGRATION = Path("src/gmgn_twitter_intel/platform/db/alembic/versions/20260506_0002_postgres_queue_claims.py")
+MIGRATION = Path("src/parallax/platform/db/alembic/versions/20260506_0001_initial_postgresql.py")
+QUEUE_MIGRATION = Path("src/parallax/platform/db/alembic/versions/20260506_0002_postgres_queue_claims.py")
 STALE_RUNNING_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260506_0003_enrichment_stale_running_claims.py"
+    "src/parallax/platform/db/alembic/versions/20260506_0003_enrichment_stale_running_claims.py"
 )
 PROJECTION_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260506_0004_projection_operations.py"
+    "src/parallax/platform/db/alembic/versions/20260506_0004_projection_operations.py"
 )
-ASSET_MIGRATION = Path("src/gmgn_twitter_intel/platform/db/alembic/versions/20260506_0005_asset_identity_resolution.py")
+ASSET_MIGRATION = Path("src/parallax/platform/db/alembic/versions/20260506_0005_asset_identity_resolution.py")
 TOKEN_RADAR_INTENT_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260507_0007_token_radar_v3_intents.py"
+    "src/parallax/platform/db/alembic/versions/20260507_0007_token_radar_v3_intents.py"
 )
 TOKEN_RADAR_REGISTRY_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260507_0008_token_radar_deterministic_registry.py"
+    "src/parallax/platform/db/alembic/versions/20260507_0008_token_radar_deterministic_registry.py"
 )
 AGENTS_SDK_AUDIT_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260507_0010_agents_sdk_model_run_audit.py"
+    "src/parallax/platform/db/alembic/versions/20260507_0010_agents_sdk_model_run_audit.py"
 )
 LITELLM_AUDIT_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260529_0128_litellm_execution_audit_hard_cut.py"
+    "src/parallax/platform/db/alembic/versions/20260529_0128_litellm_execution_audit_hard_cut.py"
 )
 EVENT_PRICE_OBSERVATION_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260508_0011_event_price_" + "observations.py"
+    "src/parallax/platform/db/alembic/versions/20260508_0011_event_price_" + "observations.py"
 )
 TOKEN_RADAR_PRUNE_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260508_0012_prune_legacy_token_radar_projection.py"
+    "src/parallax/platform/db/alembic/versions/20260508_0012_prune_legacy_token_radar_projection.py"
 )
 TOKEN_RESOLUTION_RETIRE_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260508_0013_retire_legacy_token_resolutions.py"
+    "src/parallax/platform/db/alembic/versions/20260508_0013_retire_legacy_token_resolutions.py"
 )
 TOKEN_RADAR_V6_PRUNE_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260508_0014_prune_token_radar_v6_projection.py"
+    "src/parallax/platform/db/alembic/versions/20260508_0014_prune_token_radar_v6_projection.py"
 )
 SIGNAL_PULSE_AGENT_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260508_0015_signal_pulse_agent_hard_cut.py"
+    "src/parallax/platform/db/alembic/versions/20260508_0015_signal_pulse_agent_hard_cut.py"
 )
 TOKEN_SEARCH_DEMOTION_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260509_0017_demote_search_only_registry_assets.py"
+    "src/parallax/platform/db/alembic/versions/20260509_0017_demote_search_only_registry_assets.py"
 )
 TOKEN_SEARCH_AUDIT_TAIL_DEMOTION_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260509_0018_demote_search_tail_candidate_audit_refs.py"
+    "src/parallax/platform/db/alembic/versions/20260509_0018_demote_search_tail_candidate_audit_refs.py"
 )
 TOKEN_SYMBOL_SEARCH_TARGET_DEMOTION_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260509_0019_demote_symbol_search_tail_targets.py"
+    "src/parallax/platform/db/alembic/versions/20260509_0019_demote_symbol_search_tail_targets.py"
 )
 TOKEN_SYMBOL_SEARCH_TAIL_SWEEP_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260509_0020_sweep_symbol_search_tail_assets.py"
+    "src/parallax/platform/db/alembic/versions/20260509_0020_sweep_symbol_search_tail_assets.py"
 )
 ASSET_IDENTITY_EVIDENCE_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260510_0021_asset_identity_evidence_hard_cut.py"
+    "src/parallax/platform/db/alembic/versions/20260510_0021_asset_identity_evidence_hard_cut.py"
 )
 TOKEN_RADAR_RECOVERY_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260511_0024_price_observation_field_indexes.py"
+    "src/parallax/platform/db/alembic/versions/20260511_0024_price_observation_field_indexes.py"
 )
 TOKEN_FACTOR_EVAL_DIAGNOSTICS_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260511_0026_token_factor_eval_diagnostics.py"
+    "src/parallax/platform/db/alembic/versions/20260511_0026_token_factor_eval_diagnostics.py"
 )
 TOKEN_FACTOR_PULSE_CLEANUP_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260511_0027_prune_legacy_pulse_factor_snapshots.py"
+    "src/parallax/platform/db/alembic/versions/20260511_0027_prune_legacy_pulse_factor_snapshots.py"
 )
 PULSE_FACTOR_CONTRACT_CLEANUP_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260512_0031_prune_legacy_pulse_factor_contracts.py"
+    "src/parallax/platform/db/alembic/versions/20260512_0031_prune_legacy_pulse_factor_contracts.py"
 )
 US_EQUITY_SYMBOL_UNIVERSE_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260512_0034_us_equity_symbol_universe.py"
+    "src/parallax/platform/db/alembic/versions/20260512_0034_us_equity_symbol_universe.py"
 )
 EVENT_ANCHOR_CAPTURE_REDESIGN_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260515_0046_event_anchor_capture_redesign.py"
+    "src/parallax/platform/db/alembic/versions/20260515_0046_event_anchor_capture_redesign.py"
 )
 TOKEN_RADAR_RETENTION_WATCHLIST_STATS_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260520_0069_token_radar_retention_watchlist_stats.py"
+    "src/parallax/platform/db/alembic/versions/20260520_0069_token_radar_retention_watchlist_stats.py"
 )
 TOKEN_NARRATIVE_EPOCHS_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260520_0070_token_narrative_epochs.py"
+    "src/parallax/platform/db/alembic/versions/20260520_0070_token_narrative_epochs.py"
 )
 TOKEN_IMAGE_ASSETS_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0078_token_image_assets.py"
+    "src/parallax/platform/db/alembic/versions/20260521_0078_token_image_assets.py"
 )
 TOKEN_PROFILE_LOCAL_LOGO_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0079_token_profile_local_logo_hard_cut.py"
+    "src/parallax/platform/db/alembic/versions/20260521_0079_token_profile_local_logo_hard_cut.py"
 )
 TOKEN_RADAR_STORAGE_ROOT_FIX_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0085_token_radar_storage_root_fix.py"
+    "src/parallax/platform/db/alembic/versions/20260523_0085_token_radar_storage_root_fix.py"
 )
 NEWS_CONTENT_CLASSIFICATION_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0087_news_content_classification.py"
+    "src/parallax/platform/db/alembic/versions/20260523_0087_news_content_classification.py"
 )
 NEWS_PAGE_FILTER_INDEXES_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0088_news_page_filter_indexes.py"
+    "src/parallax/platform/db/alembic/versions/20260523_0088_news_page_filter_indexes.py"
 )
 TOKEN_IMAGE_UNSUPPORTED_CLEANUP_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0089_token_image_unsupported_cleanup.py"
+    "src/parallax/platform/db/alembic/versions/20260523_0089_token_image_unsupported_cleanup.py"
 )
 TOKEN_RADAR_POSTGRES_HARD_CUT_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0090_token_radar_postgres_hard_cut.py"
+    "src/parallax/platform/db/alembic/versions/20260523_0090_token_radar_postgres_hard_cut.py"
 )
 TOKEN_RADAR_TARGET_FEATURE_FRESHNESS_INDEX_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260524_0091_token_radar_target_feature_freshness_index.py"
+    "src/parallax/platform/db/alembic/versions/20260524_0091_token_radar_target_feature_freshness_index.py"
 )
 TOKEN_RADAR_TARGET_PROJECTION_COVERAGE_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260524_0093_token_radar_target_projection_coverage.py"
+    "src/parallax/platform/db/alembic/versions/20260524_0093_token_radar_target_projection_coverage.py"
 )
 RUNTIME_WORKER_DIRTY_TARGETS_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py"
+    "src/parallax/platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py"
 )
 POSTGRES_PERFORMANCE_QUEUE_HARD_CUT_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0099_postgres_performance_queue_hard_cut.py"
+    "src/parallax/platform/db/alembic/versions/20260526_0099_postgres_performance_queue_hard_cut.py"
 )
 WORKER_QUEUE_TERMINAL_EVENTS_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0100_worker_queue_terminal_events.py"
+    "src/parallax/platform/db/alembic/versions/20260526_0100_worker_queue_terminal_events.py"
 )
 POSTGRES_RUNTIME_ROOT_CAUSE_HARD_CUT_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0101_postgres_runtime_root_cause_hard_cut.py"
+    "src/parallax/platform/db/alembic/versions/20260526_0101_postgres_runtime_root_cause_hard_cut.py"
 )
 MACRO_OBSERVATION_SERIES_SOURCE_TS_TEXT_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0102_macro_observation_series_source_ts_text.py"
+    "src/parallax/platform/db/alembic/versions/20260526_0102_macro_observation_series_source_ts_text.py"
 )
 NORMALIZE_TERMINAL_REASON_BUCKETS_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0103_normalize_terminal_reason_buckets.py"
+    "src/parallax/platform/db/alembic/versions/20260526_0103_normalize_terminal_reason_buckets.py"
 )
 OPENNEWS_PROVIDER_SIGNAL_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0105_opennews_provider_signal.py"
+    "src/parallax/platform/db/alembic/versions/20260526_0105_opennews_provider_signal.py"
 )
 RUNTIME_RANK_SOURCE_EDGES_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0106_runtime_rank_source_edges.py"
+    "src/parallax/platform/db/alembic/versions/20260526_0106_runtime_rank_source_edges.py"
 )
 MACRO_GENERATION_EQUITY_EVIDENCE_JOBS_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0107_macro_generation_equity_evidence_jobs.py"
+    "src/parallax/platform/db/alembic/versions/20260526_0107_macro_generation_equity_evidence_jobs.py"
 )
 RUNTIME_PERF_LIFECYCLE_INDEXES_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0108_runtime_perf_lifecycle_indexes.py"
+    "src/parallax/platform/db/alembic/versions/20260526_0108_runtime_perf_lifecycle_indexes.py"
 )
 RANK_SOURCE_IDENTITY_CONFIDENCE_TEXT_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0109_rank_source_identity_confidence_text.py"
+    "src/parallax/platform/db/alembic/versions/20260526_0109_rank_source_identity_confidence_text.py"
 )
 EQUITY_FETCH_RUN_REAPER_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0110_equity_fetch_run_reaper.py"
+    "src/parallax/platform/db/alembic/versions/20260526_0110_equity_fetch_run_reaper.py"
 )
 TOKEN_RADAR_PUBLICATION_STATE_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0111_token_radar_publication_state.py"
+    "src/parallax/platform/db/alembic/versions/20260527_0111_token_radar_publication_state.py"
 )
 MACRO_SYNC_WORKER_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0112_macro_sync_worker.py"
+    "src/parallax/platform/db/alembic/versions/20260527_0112_macro_sync_worker.py"
 )
 TOKEN_RADAR_STABLE_PUBLICATION_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0113_token_radar_stable_publication.py"
+    "src/parallax/platform/db/alembic/versions/20260527_0113_token_radar_stable_publication.py"
 )
 RUNTIME_DB_PERFORMANCE_HARD_CUT_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0114_runtime_db_performance_hard_cut.py"
+    "src/parallax/platform/db/alembic/versions/20260527_0114_runtime_db_performance_hard_cut.py"
 )
 NEXT_RUNTIME_LIFECYCLE_HARD_CUT_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260527_0115_next_runtime_lifecycle_hard_cut.py"
+    "src/parallax/platform/db/alembic/versions/20260527_0115_next_runtime_lifecycle_hard_cut.py"
 )
 MACRO_WORKERSPACE_ROOT_FIX_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0116_macro_workerspace_root_fix.py"
+    "src/parallax/platform/db/alembic/versions/20260528_0116_macro_workerspace_root_fix.py"
 )
 NEWS_INTEL_CANONICAL_DEDUP_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0117_news_intel_canonical_dedup_hard_cut.py"
+    "src/parallax/platform/db/alembic/versions/20260528_0117_news_intel_canonical_dedup_hard_cut.py"
 )
 NEWS_REALTIME_POSTGRES_HOTPATH_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0118_news_realtime_postgres_hotpath_hard_cut.py"
+    "src/parallax/platform/db/alembic/versions/20260528_0118_news_realtime_postgres_hotpath_hard_cut.py"
 )
 NEWS_SOURCE_STATUS_HOTPATH_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0119_news_source_status_hotpath_indexes.py"
+    "src/parallax/platform/db/alembic/versions/20260528_0119_news_source_status_hotpath_indexes.py"
 )
 NEWS_TOKEN_PRESENCE_FILTER_INDEX_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0120_drop_news_token_presence_filter_index.py"
+    "src/parallax/platform/db/alembic/versions/20260528_0120_drop_news_token_presence_filter_index.py"
 )
 TOKEN_EQUITY_WORKERSPACE_ROOT_FIX_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0121_token_equity_workerspace_root_fix.py"
+    "src/parallax/platform/db/alembic/versions/20260528_0121_token_equity_workerspace_root_fix.py"
 )
 TOKEN_RADAR_RUNTIME_NOT_NULL_GUARDRAILS_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260528_0122_token_radar_runtime_not_null_guardrails.py"
+    "src/parallax/platform/db/alembic/versions/20260528_0122_token_radar_runtime_not_null_guardrails.py"
 )
 NEWS_PUBLIC_URL_HARD_IDENTITY_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260529_0123_news_public_url_hard_identity.py"
+    "src/parallax/platform/db/alembic/versions/20260529_0123_news_public_url_hard_identity.py"
 )
 NEWS_REBUILD_BRIEF_BACKLOG_HARD_CUT_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260531_0132_news_rebuild_brief_backlog_hard_cut.py"
+    "src/parallax/platform/db/alembic/versions/20260531_0132_news_rebuild_brief_backlog_hard_cut.py"
 )
 TOKEN_PULSE_EQUITY_CPU_HARD_CUT_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260529_0124_token_pulse_equity_cpu_hard_cut.py"
+    "src/parallax/platform/db/alembic/versions/20260529_0124_token_pulse_equity_cpu_hard_cut.py"
 )
 DROP_RETIRED_PRODUCT_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260529_0125_drop_"
+    "src/parallax/platform/db/alembic/versions/20260529_0125_drop_"
     + "_".join(("equity", "event", "intel"))
     + ".py"
 )
-ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
+ALEMBIC_VERSIONS = Path("src/parallax/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 LEGACY_TOKEN_RADAR_CURRENT_JSON_COLUMNS = {
     "asset_json",
@@ -1804,7 +1804,7 @@ def test_token_radar_registry_migration_adds_hard_cut_registry_and_price_tables(
         assert f"CREATE TABLE IF NOT EXISTS {table}" in text
 
     discovery_result_text = Path(
-        "src/gmgn_twitter_intel/platform/db/alembic/versions/20260507_0009_token_discovery_results.py"
+        "src/parallax/platform/db/alembic/versions/20260507_0009_token_discovery_results.py"
     ).read_text()
     assert "CREATE TABLE IF NOT EXISTS token_discovery_results" in discovery_result_text
     assert "DROP TABLE IF EXISTS discovery_tasks" in discovery_result_text

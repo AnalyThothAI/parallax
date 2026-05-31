@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-NEWS_INTEL_ROOT = ROOT / "src/gmgn_twitter_intel/domains/news_intel"
-ROUTES_NEWS = ROOT / "src/gmgn_twitter_intel/app/surfaces/api/routes_news.py"
-OPENNEWS_CLIENT = ROOT / "src/gmgn_twitter_intel/integrations/news_feeds/opennews_client.py"
-NEWS_PROVIDER_WIRING = ROOT / "src/gmgn_twitter_intel/app/runtime/provider_wiring/news.py"
+NEWS_INTEL_ROOT = ROOT / "src/parallax/domains/news_intel"
+ROUTES_NEWS = ROOT / "src/parallax/app/surfaces/api/routes_news.py"
+OPENNEWS_CLIENT = ROOT / "src/parallax/integrations/news_feeds/opennews_client.py"
+NEWS_PROVIDER_WIRING = ROOT / "src/parallax/app/runtime/provider_wiring/news.py"
 
 FORBIDDEN_IMPORTS = (
     "domains.token_intel.runtime",

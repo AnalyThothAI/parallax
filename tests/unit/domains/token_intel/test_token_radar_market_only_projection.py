@@ -3,7 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
-from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import TokenRadarProjection
+from parallax.domains.token_intel.services.token_radar_projection import TokenRadarProjection
 
 
 def _target_claim(*, market_dirty: bool = True, repair_dirty: bool = False) -> dict[str, Any]:

@@ -25,7 +25,7 @@ Base：`e7d28e821a1557a41979cf0ba5959355907eaf83`
 | hard-cut `rg`：`message anchor|message-anchor|message_anchor|anchor price|anchor_price|price_observations|market_observation_written|AnchorPriceWorker|should_persist_live_observation`，扫描 `web src tests docs AGENTS.md CLAUDE.md`，排除 historical Alembic 与 `docs/superpowers` | PASS，无命中 |
 | `uv run pytest tests/architecture/test_event_anchor_capture_redesign_contracts.py -q` | PASS，hard-cut guard 覆盖 `.html`、`.ts`、`.tsx` 与空格形式 legacy 文案 |
 | temp `HOME` 下 `uv run alembic upgrade head` | PASS，exit 0 |
-| temp `HOME` 下 `uv run gmgn-twitter-intel ops worker-status` | PASS，`ok: true`，返回 14 个 canonical workers |
+| temp `HOME` 下 `uv run parallax ops worker-status` | PASS，`ok: true`，返回 14 个 canonical workers |
 | temp `HOME` 下 `make docs-generated` | PASS，exit 0 |
 | `git diff --exit-code docs/generated` | PASS，无 diff |
 | `cd web && npm ci` | PASS，568 packages installed，0 vulnerabilities |
@@ -33,7 +33,7 @@ Base：`e7d28e821a1557a41979cf0ba5959355907eaf83`
 | `cd web && npm test` | PASS，53 files / 163 tests passed |
 
 全量 pytest 的 14 个 skipped 中，`test_docs_generated` 的 soft skip 来自用户当前
-`~/.gmgn-twitter-intel/workers.yaml` 仍含旧 worker 字段；已用 temp `HOME` 单独验证
+`~/.parallax/workers.yaml` 仍含旧 worker 字段；已用 temp `HOME` 单独验证
 `make docs-generated` 为 clean。其余 skips 为既有 TECH_DEBT 标注或无 source rows 场景。
 
 ## DB 抽样

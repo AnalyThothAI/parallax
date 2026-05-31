@@ -21,15 +21,15 @@
 
 | 阶段 | 文件 | 职责 |
 |------|------|------|
-| 实体抽取 | `src/gmgn_twitter_intel/pipeline/entity_extractor.py`（正则识别 EVM/Solana/TON CA、cashtag、hashtag、mention、URL、domain）| 把推文 surface 切成带 span 锚点的强类型实体 |
-| 证据 | `src/gmgn_twitter_intel/pipeline/token_evidence_builder.py` | CA → strong / cashtag → medium / gmgn_payload → strong |
-| Intent | `src/gmgn_twitter_intel/pipeline/token_intent_builder.py`（display alias 配对）| 证据聚合成 intent，键为 `ca:chain:addr` 或 `symbol:NORM` |
-| 解析 | `src/gmgn_twitter_intel/pipeline/token_intent_resolver.py` + `deterministic_token_resolver.py`（`MentionKeys` → `DeterministicResolution`）| Intent 落到 `EXACT / UNIQUE_BY_CONTEXT / AMBIGUOUS / NIL` 之一，附带 `reason_codes`、`candidate_ids`、`lookup_keys` |
-| Registry | `src/gmgn_twitter_intel/storage/registry_repository.py`（`registry_assets`、`cex_tokens`、`price_feeds`、`price_observations`）| 身份与最新观测查询 |
-| 同步 | `src/gmgn_twitter_intel/pipeline/asset_market_sync.py` + `asset_market_sync_worker.py` | OKX CEX universe + OKX DEX search/price 刷新 |
-| 重解析 | `src/gmgn_twitter_intel/pipeline/token_resolution_refresh.py` + `token_intent_rebuild.py` | lookup-key 驱动的滚动再决策 |
-| 编排 | `src/gmgn_twitter_intel/pipeline/ingest_service.py:62-148` | 单事务 9 表 5 仓 |
-| 评分 | `src/gmgn_twitter_intel/pipeline/token_radar_feature_builder.py` + `token_radar_projection.py` + 6 个 `retrieval/*_scoring.py` | v5 六个 score block，hard-cut 已落地 |
+| 实体抽取 | `src/parallax/pipeline/entity_extractor.py`（正则识别 EVM/Solana/TON CA、cashtag、hashtag、mention、URL、domain）| 把推文 surface 切成带 span 锚点的强类型实体 |
+| 证据 | `src/parallax/pipeline/token_evidence_builder.py` | CA → strong / cashtag → medium / gmgn_payload → strong |
+| Intent | `src/parallax/pipeline/token_intent_builder.py`（display alias 配对）| 证据聚合成 intent，键为 `ca:chain:addr` 或 `symbol:NORM` |
+| 解析 | `src/parallax/pipeline/token_intent_resolver.py` + `deterministic_token_resolver.py`（`MentionKeys` → `DeterministicResolution`）| Intent 落到 `EXACT / UNIQUE_BY_CONTEXT / AMBIGUOUS / NIL` 之一，附带 `reason_codes`、`candidate_ids`、`lookup_keys` |
+| Registry | `src/parallax/storage/registry_repository.py`（`registry_assets`、`cex_tokens`、`price_feeds`、`price_observations`）| 身份与最新观测查询 |
+| 同步 | `src/parallax/pipeline/asset_market_sync.py` + `asset_market_sync_worker.py` | OKX CEX universe + OKX DEX search/price 刷新 |
+| 重解析 | `src/parallax/pipeline/token_resolution_refresh.py` + `token_intent_rebuild.py` | lookup-key 驱动的滚动再决策 |
+| 编排 | `src/parallax/pipeline/ingest_service.py:62-148` | 单事务 9 表 5 仓 |
+| 评分 | `src/parallax/pipeline/token_radar_feature_builder.py` + `token_radar_projection.py` + 6 个 `retrieval/*_scoring.py` | v5 六个 score block，hard-cut 已落地 |
 
 ### 1.2 数据流与状态机
 

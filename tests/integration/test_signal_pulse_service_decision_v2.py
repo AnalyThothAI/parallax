@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from gmgn_twitter_intel.domains.pulse_lab.read_models.signal_pulse_service import _decision
+from parallax.domains.pulse_lab.read_models.signal_pulse_service import _decision
 
 
 def _row(decision_json: dict[str, Any]) -> dict[str, Any]:

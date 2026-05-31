@@ -1,6 +1,6 @@
 import unittest
 
-from gmgn_twitter_intel.domains.ingestion.services.normalizer import normalize_gmgn_payload
+from parallax.domains.ingestion.services.normalizer import normalize_gmgn_payload
 
 
 class EventNormalizerTests(unittest.TestCase):

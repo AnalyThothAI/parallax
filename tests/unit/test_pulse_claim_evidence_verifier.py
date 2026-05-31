@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.domains.pulse_lab.services.claim_evidence_verifier import ClaimEvidenceVerifier
+from parallax.domains.pulse_lab.services.claim_evidence_verifier import ClaimEvidenceVerifier
 
 
 def test_unknown_ref_blocks_publish() -> None:

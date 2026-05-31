@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from gmgn_twitter_intel.app.runtime.job_queue import (
+from parallax.app.runtime.job_queue import (
     NOTIFICATION_DELIVERIES,
     PULSE_AGENT_JOBS,
     BackoffPolicy,

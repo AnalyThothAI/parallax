@@ -32,9 +32,9 @@
   Expected branch: `codex/token-narrative-intelligence-hard-cut`; expected status: clean.
 - [ ] Confirm runtime config paths before live-data verification:
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
-  Expected: `config_path` and `workers_config_path` point at `~/.gmgn-twitter-intel/`; do not print secrets.
+  Expected: `config_path` and `workers_config_path` point at `~/.parallax/`; do not print secrets.
 - [ ] Baseline checks:
   ```bash
   uv run ruff check .
@@ -83,36 +83,36 @@ Reason: if backend removes `agent_brief` before web consumes `discussion_digest`
 
 ### Create
 
-- `src/gmgn_twitter_intel/domains/narrative_intel/__init__.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/ARCHITECTURE.md`
-- `src/gmgn_twitter_intel/domains/narrative_intel/_constants.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/providers.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/interfaces.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/types/__init__.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/types/mention_semantics.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/types/discussion_digest.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/types/evidence_refs.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/queries/__init__.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/queries/narrative_source_query.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/repositories/__init__.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/repositories/narrative_repository.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/services/__init__.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/services/fingerprints.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/services/narrative_admission.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/services/mention_semantics_service.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/services/discussion_digest_service.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/services/evidence_ref_validator.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/read_models/__init__.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/read_models/narrative_read_model.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/runtime/__init__.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/runtime/mention_semantics_worker.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/prompts/__init__.py`
-- `src/gmgn_twitter_intel/domains/narrative_intel/prompts/mention_semantics.md`
-- `src/gmgn_twitter_intel/domains/narrative_intel/prompts/discussion_digest.md`
-- `src/gmgn_twitter_intel/integrations/openai_agents/narrative_intel_agent_client.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_factories/narrative_intel.py`
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260518_0063_narrative_intel_read_models.py`
+- `src/parallax/domains/narrative_intel/__init__.py`
+- `src/parallax/domains/narrative_intel/ARCHITECTURE.md`
+- `src/parallax/domains/narrative_intel/_constants.py`
+- `src/parallax/domains/narrative_intel/providers.py`
+- `src/parallax/domains/narrative_intel/interfaces.py`
+- `src/parallax/domains/narrative_intel/types/__init__.py`
+- `src/parallax/domains/narrative_intel/types/mention_semantics.py`
+- `src/parallax/domains/narrative_intel/types/discussion_digest.py`
+- `src/parallax/domains/narrative_intel/types/evidence_refs.py`
+- `src/parallax/domains/narrative_intel/queries/__init__.py`
+- `src/parallax/domains/narrative_intel/queries/narrative_source_query.py`
+- `src/parallax/domains/narrative_intel/repositories/__init__.py`
+- `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`
+- `src/parallax/domains/narrative_intel/services/__init__.py`
+- `src/parallax/domains/narrative_intel/services/fingerprints.py`
+- `src/parallax/domains/narrative_intel/services/narrative_admission.py`
+- `src/parallax/domains/narrative_intel/services/mention_semantics_service.py`
+- `src/parallax/domains/narrative_intel/services/discussion_digest_service.py`
+- `src/parallax/domains/narrative_intel/services/evidence_ref_validator.py`
+- `src/parallax/domains/narrative_intel/read_models/__init__.py`
+- `src/parallax/domains/narrative_intel/read_models/narrative_read_model.py`
+- `src/parallax/domains/narrative_intel/runtime/__init__.py`
+- `src/parallax/domains/narrative_intel/runtime/mention_semantics_worker.py`
+- `src/parallax/domains/narrative_intel/runtime/token_discussion_digest_worker.py`
+- `src/parallax/domains/narrative_intel/prompts/__init__.py`
+- `src/parallax/domains/narrative_intel/prompts/mention_semantics.md`
+- `src/parallax/domains/narrative_intel/prompts/discussion_digest.md`
+- `src/parallax/integrations/openai_agents/narrative_intel_agent_client.py`
+- `src/parallax/app/runtime/worker_factories/narrative_intel.py`
+- `src/parallax/platform/db/alembic/versions/20260518_0063_narrative_intel_read_models.py`
 - `tests/architecture/test_narrative_intel_boundaries.py`
 - `tests/unit/domains/narrative_intel/test_narrative_admission.py`
 - `tests/unit/domains/narrative_intel/test_mention_semantics_service.py`
@@ -126,23 +126,23 @@ Reason: if backend removes `agent_brief` before web consumes `discussion_digest`
 
 ### Modify
 
-- `src/gmgn_twitter_intel/app/runtime/provider_wiring/types.py`
-- `src/gmgn_twitter_intel/app/runtime/provider_wiring/openai.py`
-- `src/gmgn_twitter_intel/app/runtime/providers_wiring.py`
-- `src/gmgn_twitter_intel/app/runtime/repository_session.py`
-- `src/gmgn_twitter_intel/app/runtime/wake_bus.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_registry.py`
-- `src/gmgn_twitter_intel/app/runtime/worker_factories/__init__.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/routes_radar.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/routes_search.py`
-- `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
-- `src/gmgn_twitter_intel/platform/config/settings.py`
-- `src/gmgn_twitter_intel/domains/token_intel/read_models/token_case_service.py`
-- `src/gmgn_twitter_intel/domains/token_intel/read_models/search_agent_brief.py`
-- `src/gmgn_twitter_intel/domains/token_intel/read_models/search_inspect_service.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_evidence_source_repository.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/evidence_packet_builder.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`
+- `src/parallax/app/runtime/provider_wiring/types.py`
+- `src/parallax/app/runtime/provider_wiring/openai.py`
+- `src/parallax/app/runtime/providers_wiring.py`
+- `src/parallax/app/runtime/repository_session.py`
+- `src/parallax/app/runtime/wake_bus.py`
+- `src/parallax/app/runtime/worker_registry.py`
+- `src/parallax/app/runtime/worker_factories/__init__.py`
+- `src/parallax/app/surfaces/api/routes_radar.py`
+- `src/parallax/app/surfaces/api/routes_search.py`
+- `src/parallax/app/surfaces/api/schemas.py`
+- `src/parallax/platform/config/settings.py`
+- `src/parallax/domains/token_intel/read_models/token_case_service.py`
+- `src/parallax/domains/token_intel/read_models/search_agent_brief.py`
+- `src/parallax/domains/token_intel/read_models/search_inspect_service.py`
+- `src/parallax/domains/pulse_lab/repositories/pulse_evidence_source_repository.py`
+- `src/parallax/domains/pulse_lab/services/evidence_packet_builder.py`
+- `src/parallax/domains/pulse_lab/ARCHITECTURE.md`
 - `tests/architecture/test_src_domain_architecture.py`
 - `tests/architecture/test_worker_runtime_contracts.py`
 - `tests/unit/test_worker_settings.py`
@@ -389,10 +389,10 @@ Downgrade may drop only the four new narrative tables and their indexes. Product
 - [ ] Add expected workers:
   ```python
   "mention_semantics": (
-      "gmgn_twitter_intel.domains.narrative_intel.runtime.mention_semantics_worker.MentionSemanticsWorker"
+      "parallax.domains.narrative_intel.runtime.mention_semantics_worker.MentionSemanticsWorker"
   ),
   "token_discussion_digest": (
-      "gmgn_twitter_intel.domains.narrative_intel.runtime.token_discussion_digest_worker.TokenDiscussionDigestWorker"
+      "parallax.domains.narrative_intel.runtime.token_discussion_digest_worker.TokenDiscussionDigestWorker"
   ),
   ```
 - [ ] Add both keys to `OLD_READYZ_WORKER_KEYS`.
@@ -415,7 +415,7 @@ Downgrade may drop only the four new narrative tables and their indexes. Product
 
 Create static gates:
 
-- [ ] `narrative_intel` must not import `pulse_lab` concrete modules. Pulse may consume narrative through `gmgn_twitter_intel.domains.narrative_intel.interfaces`.
+- [ ] `narrative_intel` must not import `pulse_lab` concrete modules. Pulse may consume narrative through `parallax.domains.narrative_intel.interfaces`.
 - [ ] API routes may import `NarrativeReadModel` but must not import narrative repositories or providers directly.
 - [ ] `token_intel` must not import `narrative_intel` concrete modules; API composition owns hydration.
 - [ ] `narrative_intel/runtime` must not import `integrations/openai_agents` directly; provider is injected.
@@ -423,7 +423,7 @@ Create static gates:
 
 ### 2. Narrative Domain Constants And Types
 
-#### `src/gmgn_twitter_intel/domains/narrative_intel/_constants.py`
+#### `src/parallax/domains/narrative_intel/_constants.py`
 
 - [ ] Define:
   ```python
@@ -809,10 +809,10 @@ Create static gates:
 - [ ] Add classes:
   ```python
   "mention_semantics": (
-      "gmgn_twitter_intel.domains.narrative_intel.runtime.mention_semantics_worker.MentionSemanticsWorker"
+      "parallax.domains.narrative_intel.runtime.mention_semantics_worker.MentionSemanticsWorker"
   ),
   "token_discussion_digest": (
-      "gmgn_twitter_intel.domains.narrative_intel.runtime.token_discussion_digest_worker.TokenDiscussionDigestWorker"
+      "parallax.domains.narrative_intel.runtime.token_discussion_digest_worker.TokenDiscussionDigestWorker"
   ),
   ```
 - [ ] Start priorities:
@@ -1167,9 +1167,9 @@ Create static gates:
   ```text
   domains/narrative_intel/ | Per-mention semantics, token-window narrative clusters, discussion digests, narrative coverage, evidence refs.
   ```
-- [ ] Add module architecture link to `src/gmgn_twitter_intel/domains/narrative_intel/ARCHITECTURE.md`.
+- [ ] Add module architecture link to `src/parallax/domains/narrative_intel/ARCHITECTURE.md`.
 
-### `src/gmgn_twitter_intel/domains/narrative_intel/ARCHITECTURE.md`
+### `src/parallax/domains/narrative_intel/ARCHITECTURE.md`
 
 - [ ] Document:
   - Purpose and boundaries.
@@ -1356,7 +1356,7 @@ Run after local server is on `http://localhost:8765` and workers are enabled wit
 
 - [ ] Confirm config paths:
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
 - [ ] Token Radar row has digest status:
   ```bash
@@ -1391,11 +1391,11 @@ Run after local server is on `http://localhost:8765` and workers are enabled wit
    uv run alembic upgrade head
    ```
 3. [ ] Deploy service and frontend bundle together.
-4. [ ] Ensure active `~/.gmgn-twitter-intel/workers.yaml` either includes new worker sections or relies on defaults. The config loader must accept missing sections through `WorkersSettings` defaults.
+4. [ ] Ensure active `~/.parallax/workers.yaml` either includes new worker sections or relies on defaults. The config loader must accept missing sections through `WorkersSettings` defaults.
 5. [ ] Start workers. Narrative catch-up should populate admissions first, then mention semantics, then digests.
 6. [ ] Watch worker health:
    ```bash
-   uv run gmgn-twitter-intel ops worker-status
+   uv run parallax ops worker-status
    ```
    Expected canonical worker keys include `mention_semantics` and `token_discussion_digest`.
 7. [ ] Run live verification curls above.
@@ -1420,7 +1420,7 @@ This is a hard-cut API release; rollback means rolling back application code and
 ## Completion Checklist
 
 - [ ] No runtime canonical token path returns or reads `agent_brief`.
-- [ ] `rg "agent_brief" src/gmgn_twitter_intel web/src web/tests tests | rg -v "topic|ambiguous|SearchAgentBrief|search_agent_brief|openapi"` shows no Token Case usage.
+- [ ] `rg "agent_brief" src/parallax web/src web/tests tests | rg -v "topic|ambiguous|SearchAgentBrief|search_agent_brief|openapi"` shows no Token Case usage.
 - [ ] `token_mention_semantics` and `token_discussion_digests` are documented as single-writer read models.
 - [ ] Narrative workers do not call providers inside DB sessions.
 - [ ] Pulse can read digest evidence but cannot trigger narrative workers.

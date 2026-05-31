@@ -46,28 +46,28 @@
 
 ### Schema and repositories
 
-- Create Alembic migration `src/gmgn_twitter_intel/platform/db/alembic/versions/20260511_0029_anchor_live_hard_cut.py`
+- Create Alembic migration `src/parallax/platform/db/alembic/versions/20260511_0029_anchor_live_hard_cut.py`
   - Truncate legacy `price_observations` and `token_market_price_baselines`.
   - Drop `current_market_field_facts`.
   - Drop current-market price indexes.
   - Add anchor-only partial unique/indexes.
-- Modify `src/gmgn_twitter_intel/domains/asset_market/repositories/price_observation_repository.py`
+- Modify `src/parallax/domains/asset_market/repositories/price_observation_repository.py`
   - Remove `_write_current_market_field_facts(...)`.
   - Remove `backfill_current_market_field_facts(...)`.
   - Keep baseline upsert for `observation_kind="message_anchor"` only.
   - Reject runtime writes with missing `source_resolution_id` unless explicitly marked as future settlement kind.
-- Delete `src/gmgn_twitter_intel/domains/asset_market/repositories/current_market_repository.py`.
-- Delete `src/gmgn_twitter_intel/domains/asset_market/read_models/current_market_service.py`.
-- Modify `src/gmgn_twitter_intel/app/runtime/repository_session.py`
+- Delete `src/parallax/domains/asset_market/repositories/current_market_repository.py`.
+- Delete `src/parallax/domains/asset_market/read_models/current_market_service.py`.
+- Modify `src/parallax/app/runtime/repository_session.py`
   - Remove `current_market` from `RepositorySession`.
-- Modify `src/gmgn_twitter_intel/domains/asset_market/interfaces.py`
+- Modify `src/parallax/domains/asset_market/interfaces.py`
   - Remove `CurrentMarketRepository`, `CurrentMarketService`, and `sync_dex_prices` exports.
 
 ### Anchor worker
 
-- Rename `src/gmgn_twitter_intel/domains/asset_market/queries/pending_market_observation_query.py` to `src/gmgn_twitter_intel/domains/asset_market/queries/pending_anchor_price_query.py`.
-- Rename `src/gmgn_twitter_intel/domains/asset_market/services/message_market_observation.py` to `src/gmgn_twitter_intel/domains/asset_market/services/anchor_price_observation.py`.
-- Rename `src/gmgn_twitter_intel/domains/asset_market/runtime/message_market_observation_worker.py` to `src/gmgn_twitter_intel/domains/asset_market/runtime/anchor_price_worker.py`.
+- Rename `src/parallax/domains/asset_market/queries/pending_market_observation_query.py` to `src/parallax/domains/asset_market/queries/pending_anchor_price_query.py`.
+- Rename `src/parallax/domains/asset_market/services/message_market_observation.py` to `src/parallax/domains/asset_market/services/anchor_price_observation.py`.
+- Rename `src/parallax/domains/asset_market/runtime/message_market_observation_worker.py` to `src/parallax/domains/asset_market/runtime/anchor_price_worker.py`.
 - Rename public names:
   - `PendingMarketObservationQuery` -> `PendingAnchorPriceQuery`
   - `observe_message_market(...)` -> `observe_anchor_prices(...)`
@@ -76,62 +76,62 @@
 
 ### Identity and route workers
 
-- Modify `src/gmgn_twitter_intel/domains/asset_market/services/asset_market_sync.py`
+- Modify `src/parallax/domains/asset_market/services/asset_market_sync.py`
   - Rename `sync_cex_universe(...)` to `sync_cex_routes(...)`.
   - Remove `price_observations` parameter and all ticker observation writes.
   - Delete `sync_dex_prices(...)` and DEX refresh constants.
-- Delete `src/gmgn_twitter_intel/domains/asset_market/runtime/asset_market_sync_worker.py`.
-- Delete `src/gmgn_twitter_intel/domains/asset_market/services/market_freshness_demand.py`.
-- Modify `src/gmgn_twitter_intel/domains/asset_market/runtime/token_discovery_worker.py`
+- Delete `src/parallax/domains/asset_market/runtime/asset_market_sync_worker.py`.
+- Delete `src/parallax/domains/asset_market/services/market_freshness_demand.py`.
+- Modify `src/parallax/domains/asset_market/runtime/token_discovery_worker.py`
   - Remove `pricefeeds_written` and `price_observations_written` counters.
   - Remove DEX `upsert_pricefeed(...)` and `insert_observation(...)` from `_write_dex_candidate(...)`.
   - Continue writing `asset_identity_evidence.raw_payload_json` with OKX candidate metadata.
-- Modify `src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py`
+- Modify `src/parallax/domains/asset_market/repositories/registry_repository.py`
   - Replace `find_assets_by_symbol_with_latest_observation(...)` with identity-evidence metadata reads.
   - Remove `chain_assets_needing_radar_price_refresh(...)`.
   - Replace `active_dex_market_stream_targets(...)` with `active_live_market_targets(...)` returning hot Asset and CexToken targets.
 
 ### Live price gateway
 
-- Delete `src/gmgn_twitter_intel/domains/asset_market/runtime/dex_market_stream_worker.py`.
-- Create `src/gmgn_twitter_intel/domains/asset_market/runtime/live_price_gateway.py`
+- Delete `src/parallax/domains/asset_market/runtime/dex_market_stream_worker.py`.
+- Create `src/parallax/domains/asset_market/runtime/live_price_gateway.py`
   - `LivePriceGateway`: selects hot targets, streams DEX prices, polls CEX tickers, updates in-memory cache, publishes `live_market_update`.
   - `LiveMarketCache`: process-local target snapshot map.
   - `LiveMarketSnapshot`: normalized payload builder.
-- Modify `src/gmgn_twitter_intel/app/runtime/app.py`
+- Modify `src/parallax/app/runtime/app.py`
   - Replace `asset_market_sync_worker`, `message_market_observation_worker`, and `dex_market_stream_worker` runtime fields with `anchor_price_worker`, optional `cex_route_sync_worker` if implemented, and `live_price_gateway`.
   - Start only AnchorPriceWorker, TokenDiscoveryWorker, TokenRadarProjectionWorker, Pulse/Notification workers, and LivePriceGateway.
 
 ### Token Radar projection/API
 
-- Modify `src/gmgn_twitter_intel/domains/token_intel/_constants.py`
+- Modify `src/parallax/domains/token_intel/_constants.py`
   - `TOKEN_RADAR_PROJECTION_VERSION = "token-radar-v12-anchor-live-hard-cut"`
   - `TOKEN_RADAR_SOURCE_TABLE = "token_intent_resolutions+asset_identity_current+anchor_price"`
-- Modify `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
+- Modify `src/parallax/domains/token_intel/services/token_radar_projection.py`
   - Delete `_hydrate_current_market(...)`.
   - Delete `_row_with_current_market(...)`, `_missing_current_market_fields(...)`, and `MARKET_FRESH_MS`.
   - Build market/factor facts from anchor baselines and identity metadata only.
   - Remove DB live market freshness as a high-alert blocker input.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py`
+- Modify `src/parallax/domains/token_intel/scoring/factor_snapshot.py`
   - Remove `_market_freshness_block_reason(...)` and the hard block it produces.
   - Make missing market metadata a risk/data-health fact, not a blocker.
   - Keep `timing_response` display-only with zero rank contribution until a settlement sampler exists.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`
+- Modify `src/parallax/domains/token_intel/read_models/asset_flow_service.py`
   - Constructor becomes `AssetFlowService(token_radar=...)`.
   - `_public_row(...)` returns `anchor_price`, not `current_market`.
   - Projection payload reports `anchor_coverage`, not `market_hydration`.
-- Modify `src/gmgn_twitter_intel/app/surfaces/api/http.py`
+- Modify `src/parallax/app/surfaces/api/http.py`
   - `/api/token-radar` constructs `AssetFlowService(token_radar=repos.token_radar)`.
   - Delete `/api/current-market`.
   - Add `/api/live-market` that reads `runtime.live_price_gateway.snapshot(...)` only.
-- Modify `src/gmgn_twitter_intel/app/surfaces/api/ws.py`
+- Modify `src/parallax/app/surfaces/api/ws.py`
   - Route `live_market_update` through `market_targets`.
   - Delete routing branch for `market_update`.
-- Modify `src/gmgn_twitter_intel/app/surfaces/cli/main.py`
+- Modify `src/parallax/app/surfaces/cli/main.py`
   - Delete `current-market` command.
   - Delete `ops backfill-current-market-field-facts`.
   - Change route sync command to call `sync_cex_routes(...)` and report no observation counters.
-- Modify `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`
+- Modify `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py`
   - Read price/market facts from `anchor_price` and factor snapshot identity metadata, not `row.current_market`.
 
 ### Frontend
@@ -161,7 +161,7 @@
 - Modify `docs/ARCHITECTURE.md`.
 - Modify `docs/CONTRACTS.md`.
 - Modify `docs/FRONTEND.md`.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`.
+- Modify `src/parallax/domains/token_intel/ARCHITECTURE.md`.
 - Regenerate `docs/generated/cli-help.md` after CLI removal.
 
 ---
@@ -169,12 +169,12 @@
 ## Task 1: Schema And Price Repository Hard Cut
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260511_0029_anchor_live_hard_cut.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/price_observation_repository.py`
-- Delete: `src/gmgn_twitter_intel/domains/asset_market/repositories/current_market_repository.py`
-- Delete: `src/gmgn_twitter_intel/domains/asset_market/read_models/current_market_service.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/repository_session.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/interfaces.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260511_0029_anchor_live_hard_cut.py`
+- Modify: `src/parallax/domains/asset_market/repositories/price_observation_repository.py`
+- Delete: `src/parallax/domains/asset_market/repositories/current_market_repository.py`
+- Delete: `src/parallax/domains/asset_market/read_models/current_market_service.py`
+- Modify: `src/parallax/app/runtime/repository_session.py`
+- Modify: `src/parallax/domains/asset_market/interfaces.py`
 - Delete tests: `tests/test_current_market_repository.py`
 - Modify tests: `tests/test_price_observation_read_models.py`, `tests/integration/test_price_observation_repository.py`, `tests/unit/test_price_observation_repository_policy.py`, `tests/unit/test_postgres_schema.py`
 
@@ -332,16 +332,16 @@
 - [ ] **Step 7: Commit**
 
   ```bash
-  git add src/gmgn_twitter_intel/platform/db/alembic/versions/20260511_0029_anchor_live_hard_cut.py \
-          src/gmgn_twitter_intel/domains/asset_market/repositories/price_observation_repository.py \
-          src/gmgn_twitter_intel/app/runtime/repository_session.py \
-          src/gmgn_twitter_intel/domains/asset_market/interfaces.py \
+  git add src/parallax/platform/db/alembic/versions/20260511_0029_anchor_live_hard_cut.py \
+          src/parallax/domains/asset_market/repositories/price_observation_repository.py \
+          src/parallax/app/runtime/repository_session.py \
+          src/parallax/domains/asset_market/interfaces.py \
           tests/test_price_observation_read_models.py \
           tests/integration/test_price_observation_repository.py \
           tests/unit/test_price_observation_repository_policy.py \
           tests/unit/test_postgres_schema.py
-  git add -u src/gmgn_twitter_intel/domains/asset_market/repositories/current_market_repository.py \
-             src/gmgn_twitter_intel/domains/asset_market/read_models/current_market_service.py \
+  git add -u src/parallax/domains/asset_market/repositories/current_market_repository.py \
+             src/parallax/domains/asset_market/read_models/current_market_service.py \
              tests/test_current_market_repository.py
   git commit -m "refactor: hard cut current market persistence"
   ```
@@ -349,10 +349,10 @@
 ## Task 2: Rename Message Quotes To Anchor Prices
 
 **Files:**
-- Move: `src/gmgn_twitter_intel/domains/asset_market/queries/pending_market_observation_query.py` -> `src/gmgn_twitter_intel/domains/asset_market/queries/pending_anchor_price_query.py`
-- Move: `src/gmgn_twitter_intel/domains/asset_market/services/message_market_observation.py` -> `src/gmgn_twitter_intel/domains/asset_market/services/anchor_price_observation.py`
-- Move: `src/gmgn_twitter_intel/domains/asset_market/runtime/message_market_observation_worker.py` -> `src/gmgn_twitter_intel/domains/asset_market/runtime/anchor_price_worker.py`
-- Modify: imports in `src/gmgn_twitter_intel/app/runtime/app.py`
+- Move: `src/parallax/domains/asset_market/queries/pending_market_observation_query.py` -> `src/parallax/domains/asset_market/queries/pending_anchor_price_query.py`
+- Move: `src/parallax/domains/asset_market/services/message_market_observation.py` -> `src/parallax/domains/asset_market/services/anchor_price_observation.py`
+- Move: `src/parallax/domains/asset_market/runtime/message_market_observation_worker.py` -> `src/parallax/domains/asset_market/runtime/anchor_price_worker.py`
+- Modify: imports in `src/parallax/app/runtime/app.py`
 - Move tests: `tests/unit/test_message_market_observation.py` -> `tests/unit/test_anchor_price_observation.py`
 - Modify integration tests that assert `message_quote`.
 
@@ -462,10 +462,10 @@
 - [ ] **Step 7: Commit**
 
   ```bash
-  git add -A src/gmgn_twitter_intel/domains/asset_market/queries \
-             src/gmgn_twitter_intel/domains/asset_market/services \
-             src/gmgn_twitter_intel/domains/asset_market/runtime \
-             src/gmgn_twitter_intel/app/runtime/app.py \
+  git add -A src/parallax/domains/asset_market/queries \
+             src/parallax/domains/asset_market/services \
+             src/parallax/domains/asset_market/runtime \
+             src/parallax/app/runtime/app.py \
              tests/unit/test_anchor_price_observation.py \
              tests/unit/test_token_target_stage_builder.py \
              tests/unit/test_token_target_posts_service.py \
@@ -476,13 +476,13 @@
 ## Task 3: Remove Price Refresh Workers And Discovery Price Side Effects
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/services/asset_market_sync.py`
-- Delete: `src/gmgn_twitter_intel/domains/asset_market/runtime/asset_market_sync_worker.py`
-- Delete: `src/gmgn_twitter_intel/domains/asset_market/services/market_freshness_demand.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/token_discovery_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/app.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/main.py`
+- Modify: `src/parallax/domains/asset_market/services/asset_market_sync.py`
+- Delete: `src/parallax/domains/asset_market/runtime/asset_market_sync_worker.py`
+- Delete: `src/parallax/domains/asset_market/services/market_freshness_demand.py`
+- Modify: `src/parallax/domains/asset_market/runtime/token_discovery_worker.py`
+- Modify: `src/parallax/domains/asset_market/repositories/registry_repository.py`
+- Modify: `src/parallax/app/runtime/app.py`
+- Modify: `src/parallax/app/surfaces/cli/main.py`
 - Delete/replace tests: `tests/unit/test_asset_market_sync.py`, `tests/test_market_freshness_demand.py`
 - Modify tests: `tests/integration/test_token_discovery_worker.py`, `tests/integration/test_registry_repository.py`, `tests/integration/test_cli.py`
 
@@ -642,10 +642,10 @@
 - [ ] **Step 11: Commit**
 
   ```bash
-  git add -A src/gmgn_twitter_intel/domains/asset_market \
-             src/gmgn_twitter_intel/domains/token_intel/services/deterministic_token_resolver.py \
-             src/gmgn_twitter_intel/app/runtime/app.py \
-             src/gmgn_twitter_intel/app/surfaces/cli/main.py \
+  git add -A src/parallax/domains/asset_market \
+             src/parallax/domains/token_intel/services/deterministic_token_resolver.py \
+             src/parallax/app/runtime/app.py \
+             src/parallax/app/surfaces/cli/main.py \
              tests/unit/test_asset_market_sync.py \
              tests/integration/test_token_discovery_worker.py \
              tests/integration/test_registry_repository.py \
@@ -657,10 +657,10 @@
 ## Task 4: Add LivePriceGateway Without DB Writes
 
 **Files:**
-- Delete: `src/gmgn_twitter_intel/domains/asset_market/runtime/dex_market_stream_worker.py`
-- Create: `src/gmgn_twitter_intel/domains/asset_market/runtime/live_price_gateway.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/app.py`
+- Delete: `src/parallax/domains/asset_market/runtime/dex_market_stream_worker.py`
+- Create: `src/parallax/domains/asset_market/runtime/live_price_gateway.py`
+- Modify: `src/parallax/domains/asset_market/repositories/registry_repository.py`
+- Modify: `src/parallax/app/runtime/app.py`
 - Replace tests: `tests/test_asset_market_stream_worker.py` -> `tests/test_live_price_gateway.py`
 
 - [ ] **Step 1: Write failing live gateway test**
@@ -809,9 +809,9 @@
 - [ ] **Step 8: Commit**
 
   ```bash
-  git add -A src/gmgn_twitter_intel/domains/asset_market/runtime \
-             src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py \
-             src/gmgn_twitter_intel/app/runtime/app.py \
+  git add -A src/parallax/domains/asset_market/runtime \
+             src/parallax/domains/asset_market/repositories/registry_repository.py \
+             src/parallax/app/runtime/app.py \
              tests/test_live_price_gateway.py
   git add -u tests/test_asset_market_stream_worker.py
   git commit -m "feat: add live price gateway without persistence"
@@ -820,10 +820,10 @@
 ## Task 5: Remove DB Current Market From Token Radar Projection And Scoring
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/_constants.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py`
+- Modify: `src/parallax/domains/token_intel/_constants.py`
+- Modify: `src/parallax/domains/token_intel/queries/token_radar_source_query.py`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py`
+- Modify: `src/parallax/domains/token_intel/scoring/factor_snapshot.py`
 - Modify tests: `tests/unit/test_token_radar_projection.py`, `tests/golden/test_token_radar_corpus.py`
 
 - [ ] **Step 1: Write failing projection hard-cut tests**
@@ -961,10 +961,10 @@
 - [ ] **Step 9: Commit**
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/token_intel/_constants.py \
-          src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py \
-          src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py \
-          src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py \
+  git add src/parallax/domains/token_intel/_constants.py \
+          src/parallax/domains/token_intel/queries/token_radar_source_query.py \
+          src/parallax/domains/token_intel/services/token_radar_projection.py \
+          src/parallax/domains/token_intel/scoring/factor_snapshot.py \
           tests/unit/test_token_radar_projection.py \
           tests/golden/test_token_radar_corpus.py
   git commit -m "refactor: project token radar from anchor prices"
@@ -973,12 +973,12 @@
 ## Task 6: Hard-Cut HTTP, WebSocket, CLI, And Pulse Read Models
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/http.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/ws.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/main.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/app.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`
+- Modify: `src/parallax/domains/token_intel/read_models/asset_flow_service.py`
+- Modify: `src/parallax/app/surfaces/api/http.py`
+- Modify: `src/parallax/app/surfaces/api/ws.py`
+- Modify: `src/parallax/app/surfaces/cli/main.py`
+- Modify: `src/parallax/app/runtime/app.py`
+- Modify: `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py`
 - Modify tests: `tests/unit/test_asset_flow_service.py`, `tests/integration/test_api_http.py`, `tests/integration/test_api_websocket.py`, `tests/integration/test_cli.py`, `tests/unit/test_signal_pulse_service.py`
 
 - [ ] **Step 1: Write failing API contract tests**
@@ -1136,12 +1136,12 @@
 - [ ] **Step 10: Commit**
 
   ```bash
-  git add src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py \
-          src/gmgn_twitter_intel/app/surfaces/api/http.py \
-          src/gmgn_twitter_intel/app/surfaces/api/ws.py \
-          src/gmgn_twitter_intel/app/surfaces/cli/main.py \
-          src/gmgn_twitter_intel/app/runtime/app.py \
-          src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py \
+  git add src/parallax/domains/token_intel/read_models/asset_flow_service.py \
+          src/parallax/app/surfaces/api/http.py \
+          src/parallax/app/surfaces/api/ws.py \
+          src/parallax/app/surfaces/cli/main.py \
+          src/parallax/app/runtime/app.py \
+          src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py \
           tests/unit/test_asset_flow_service.py \
           tests/integration/test_api_http.py \
           tests/integration/test_api_websocket.py \
@@ -1365,7 +1365,7 @@
 - Modify: `docs/ARCHITECTURE.md`
 - Modify: `docs/CONTRACTS.md`
 - Modify: `docs/FRONTEND.md`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/token_intel/ARCHITECTURE.md`
 - Modify: `docs/generated/cli-help.md`
 - Modify or delete stale active docs only if they describe code that this plan removes.
 
@@ -1390,7 +1390,7 @@
 - [ ] **Step 3: Regenerate CLI help**
 
   ```bash
-  uv run gmgn-twitter-intel --help > docs/generated/cli-help.md
+  uv run parallax --help > docs/generated/cli-help.md
   ```
 
   Verify removed commands:
@@ -1415,7 +1415,7 @@
   git add docs/ARCHITECTURE.md \
           docs/CONTRACTS.md \
           docs/FRONTEND.md \
-          src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md \
+          src/parallax/domains/token_intel/ARCHITECTURE.md \
           docs/generated/cli-help.md
   git commit -m "docs: document anchor live market boundary"
   ```

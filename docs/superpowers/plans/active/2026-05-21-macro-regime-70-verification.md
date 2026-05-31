@@ -7,19 +7,19 @@ Outcome: 87 / 100; target met.
 
 ## Runtime Evidence
 
-- `uv run gmgn-twitter-intel config` returned `ok: true`.
+- `uv run parallax config` returned `ok: true`.
 - Active runtime paths were
-  `/Users/qinghuan/.gmgn-twitter-intel/config.yaml` and
-  `/Users/qinghuan/.gmgn-twitter-intel/workers.yaml`.
+  `/Users/qinghuan/.parallax/config.yaml` and
+  `/Users/qinghuan/.parallax/workers.yaml`.
 - `ws_token_configured=true`; no raw token or secret value was printed.
 - In the macrodata-cli sibling worktree, `uv run macrodata doctor` returned
   `ok: true` with `fred_api_key_configured=false`.
 
 ## Import And Projection Smoke
 
-- `uv run gmgn-twitter-intel db migrate` succeeded and Alembic ran
+- `uv run parallax db migrate` succeeded and Alembic ran
   `20260521_0076 -> 20260521_0077`.
-- `uv run gmgn-twitter-intel db health` reported
+- `uv run parallax db health` reported
   `migration_version=20260521_0077`,
   `expected_migration_version=20260521_0077`, and
   `migration_status=ready`.
@@ -27,14 +27,14 @@ Outcome: 87 / 100; target met.
   `ok=true`, `coverage.requested=33`, `coverage.available=3`,
   `data_quality=partial`, and reason codes
   `missing_series`, `missing_api_key`, and `provider_unavailable`.
-- `uv run gmgn-twitter-intel macro import-bundle --file /tmp/macro-core.json`
+- `uv run parallax macro import-bundle --file /tmp/macro-core.json`
   imported 3 observations with run id
   `macro-import:dd405e4d4ee60931ba6fd6b153b6c525`, `status=partial`,
   and coverage `requested=33`, `available=3`.
-- `uv run gmgn-twitter-intel macro project-once` wrote a
+- `uv run parallax macro project-once` wrote a
   `macro_regime_v2` snapshot with `status=partial`, `regime=data_gap`, and
   snapshot id `macro-view:macro_regime_v2:1779359875010`.
-- `uv run gmgn-twitter-intel macro status` after projection reported
+- `uv run parallax macro status` after projection reported
   `migration_ready=true`, 3 observations, 3 series, and a latest v2 snapshot.
   `macro status` and `/api/macro` request the current projection version
   (`macro_regime_v2`) so stale or concurrently written v1 rows cannot shadow
@@ -104,11 +104,11 @@ Gmgn worktree:
 - `uv run python -m pytest tests/unit/domains/macro_intel tests/unit/test_cli_macro_commands.py -q`
   -> 30 passed after macro-core source-set alignment.
 - `uv run ruff check .` -> passed.
-- `uv run ruff check src/gmgn_twitter_intel/domains/macro_intel src/gmgn_twitter_intel/app/surfaces/cli/commands/macro.py tests/unit/domains/macro_intel tests/unit/test_cli_macro_commands.py`
+- `uv run ruff check src/parallax/domains/macro_intel src/parallax/app/surfaces/cli/commands/macro.py tests/unit/domains/macro_intel tests/unit/test_cli_macro_commands.py`
   -> passed after macro-core source-set alignment.
-- `uv run mypy src/gmgn_twitter_intel/domains/macro_intel src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py src/gmgn_twitter_intel/app/surfaces/cli/commands/macro.py`
+- `uv run mypy src/parallax/domains/macro_intel src/parallax/app/surfaces/api/routes_macro.py src/parallax/app/surfaces/cli/commands/macro.py`
   -> passed, 13 source files after current-version snapshot filtering.
-- `uv run mypy src/gmgn_twitter_intel/domains/macro_intel src/gmgn_twitter_intel/app/surfaces/cli/commands/macro.py`
+- `uv run mypy src/parallax/domains/macro_intel src/parallax/app/surfaces/cli/commands/macro.py`
   -> passed, 12 source files after macro-core source-set alignment.
 - `cd web && npm test -- --run tests/component/features/macro/MacroPage.test.tsx tests/routes/macro.route.test.tsx`
   -> 2 files, 3 tests passed.
@@ -116,8 +116,8 @@ Gmgn worktree:
 - `cd web && npm run lint` -> passed.
 - `cd web && npm run build` -> passed; Vite emitted the existing
   chunk-size warning for chunks over 500 kB.
-- `uv run gmgn-twitter-intel db health` -> ready at `20260521_0077`.
-- `uv run gmgn-twitter-intel macro status` -> `migration_ready=true`,
+- `uv run parallax db health` -> ready at `20260521_0077`.
+- `uv run parallax macro status` -> `migration_ready=true`,
   3 observations, 3 series, latest v2 snapshot after projection; post-review
   rerun with projection-version filtering confirmed
   `projection_version=macro_regime_v2`, `missing:fred:WRBWFRBL=true`, and

@@ -4,18 +4,18 @@ import time
 from dataclasses import replace
 from typing import Any
 
-from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
-from gmgn_twitter_intel.domains.asset_market.interfaces import (
+from parallax.app.runtime.repository_session import repositories_for_connection
+from parallax.domains.asset_market.interfaces import (
     CONFIDENCE_PROVIDER_EXACT,
     EVIDENCE_GMGN_PAYLOAD_EXACT,
 )
-from gmgn_twitter_intel.domains.asset_market.repositories.identity_evidence_repository import (
+from parallax.domains.asset_market.repositories.identity_evidence_repository import (
     IdentityEvidenceRepository,
 )
-from gmgn_twitter_intel.domains.asset_market.repositories.registry_repository import RegistryRepository
-from gmgn_twitter_intel.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
-from gmgn_twitter_intel.domains.evidence.services.ingest_service import IngestService
-from gmgn_twitter_intel.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
+from parallax.domains.asset_market.repositories.registry_repository import RegistryRepository
+from parallax.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
+from parallax.domains.evidence.services.ingest_service import IngestService
+from parallax.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 

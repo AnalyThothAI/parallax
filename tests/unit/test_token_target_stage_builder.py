@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import pytest
 
-from gmgn_twitter_intel.domains.token_intel.read_models.token_target_stage_builder import build_token_target_stages
+from parallax.domains.token_intel.read_models.token_target_stage_builder import build_token_target_stages
 
 
 def test_stage_builder_splits_seed_ignition_expansion_and_chase():

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import inspect
 
-from gmgn_twitter_intel.domains.narrative_intel.repositories.narrative_repository import NarrativeRepository
+from parallax.domains.narrative_intel.repositories.narrative_repository import NarrativeRepository
 
 
 def test_load_radar_admission_target_reads_ready_publication_state_generation() -> None:

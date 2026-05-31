@@ -50,15 +50,15 @@
 
 - [ ] Confirm live config paths before real-data diagnostics:
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
-  Expected: `config_path` and `workers_config_path` point at `~/.gmgn-twitter-intel/`; no secret values printed.
+  Expected: `config_path` and `workers_config_path` point at `~/.parallax/`; no secret values printed.
 
 - [ ] Capture current chain health without mutation:
   ```bash
-  uv run gmgn-twitter-intel ops worker-status
-  uv run gmgn-twitter-intel ops news-dedup-diagnostics
-  uv run gmgn-twitter-intel pulse health
+  uv run parallax ops worker-status
+  uv run parallax ops news-dedup-diagnostics
+  uv run parallax pulse health
   ```
 
 - [ ] Run baseline checks:
@@ -86,35 +86,35 @@ Known-failing baseline tests: record exact failures before implementation. If Po
 ### Model execution plane
 
 - Delete live package:
-  - `src/gmgn_twitter_intel/integrations/openai_agents/`
+  - `src/parallax/integrations/openai_agents/`
 - Create provider-neutral package:
-  - `src/gmgn_twitter_intel/integrations/model_execution/__init__.py`
-  - `src/gmgn_twitter_intel/integrations/model_execution/execution_gateway.py`
-  - `src/gmgn_twitter_intel/integrations/model_execution/structured_json_strategy.py`
-  - `src/gmgn_twitter_intel/integrations/model_execution/output_schema.py`
-  - `src/gmgn_twitter_intel/integrations/model_execution/usage.py`
-- `src/gmgn_twitter_intel/app/runtime/llm_gateway.py:1-85`
+  - `src/parallax/integrations/model_execution/__init__.py`
+  - `src/parallax/integrations/model_execution/execution_gateway.py`
+  - `src/parallax/integrations/model_execution/structured_json_strategy.py`
+  - `src/parallax/integrations/model_execution/output_schema.py`
+  - `src/parallax/integrations/model_execution/usage.py`
+- `src/parallax/app/runtime/llm_gateway.py:1-85`
   - Replace OpenAI client factory with a small LiteLLM execution config/value object or fold it into `model_execution`.
   - Remove `AsyncOpenAI`, `httpx.AsyncClient` client cache, and `agents.set_tracing_export_api_key`.
-- `src/gmgn_twitter_intel/platform/agent_execution.py:18-260`
+- `src/parallax/platform/agent_execution.py:18-260`
   - Rename runtime version to LiteLLM-native.
   - Change audit defaults: `provider="litellm"`, `backend="litellm_sdk"`.
   - Keep lane policy, reservation, error classes, request/result audit models.
-- `src/gmgn_twitter_intel/platform/agent_capabilities.py`
+- `src/parallax/platform/agent_capabilities.py`
   - Replace OpenAI/DeepSeek capability names with LiteLLM provider alias semantics.
   - Preserve request options needed for JSON object mode and model-specific provider kwargs.
 
 ### Runtime wiring
 
-- `src/gmgn_twitter_intel/app/runtime/provider_wiring/openai.py:1-240`
+- `src/parallax/app/runtime/provider_wiring/openai.py:1-240`
   - Delete or replace with `provider_wiring/model_execution.py`.
   - Rename all `OpenAI*Provider` wrappers to neutral names.
-- `src/gmgn_twitter_intel/app/runtime/providers_wiring.py`
+- `src/parallax/app/runtime/providers_wiring.py`
   - Wire the new model execution providers into runtime provider bundle.
-- `src/gmgn_twitter_intel/app/runtime/bootstrap.py`
+- `src/parallax/app/runtime/bootstrap.py`
   - Construct one shared LiteLLM-native execution gateway when LLM config is present.
   - Close only resources the new gateway actually owns.
-- `src/gmgn_twitter_intel/platform/config/settings.py:793-884`
+- `src/parallax/platform/config/settings.py:793-884`
   - Keep lane keys, but make model/provider config LiteLLM-native.
   - Add explicit tier/group disablement for `bulk_analysis` or narrative analysis.
   - Keep unknown lane validation strict.
@@ -139,29 +139,29 @@ Known-failing baseline tests: record exact failures before implementation. If Po
 
 ### News high-signal brief priority
 
-- `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py:49-173`
+- `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:49-173`
   - Remove provider-signal skip behavior at lines around `131-135`.
   - Treat provider signal as part of packet/context and prioritization.
-- `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py:1504-1571`
+- `src/parallax/domains/news_intel/repositories/news_repository.py:1504-1571`
   - Add/read high-signal candidate ordering from `news_page_rows` or source rows without request-time LLM.
   - Prioritize `score >= threshold` and missing/stale current brief.
-- `src/gmgn_twitter_intel/domains/news_intel/services/news_page_projection.py:212-252`
+- `src/parallax/domains/news_intel/services/news_page_projection.py:212-252`
   - Preserve provider score and provider signal, but expose agent brief/alert eligibility as distinct fields.
   - Do not let provider signal hide ready agent brief state.
 
 ### News notification rule
 
-- `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py:36-65`
+- `src/parallax/domains/notifications/services/notification_rules.py:36-65`
   - Inject News read model/repository into `NotificationRuleEngine`.
   - Add `news_high_signal` evaluation after existing rules.
-- `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py:314-412`
+- `src/parallax/domains/notifications/services/notification_rules.py:314-412`
   - Keep Pulse-specific rule behavior but move stable signature helpers into shared notification signature helpers.
-- `src/gmgn_twitter_intel/domains/notifications/repositories/notification_repository.py:22-198`
+- `src/parallax/domains/notifications/repositories/notification_repository.py:22-198`
   - Generalize semantic duplicate and external cooldown logic beyond Pulse.
   - Preserve existing Pulse notification behavior.
-- `src/gmgn_twitter_intel/domains/notifications/runtime/notification_worker.py:82-155`
+- `src/parallax/domains/notifications/runtime/notification_worker.py:82-155`
   - Ensure News high-signal candidates enqueue external deliveries only when channels/severity allow.
-- `src/gmgn_twitter_intel/platform/config/settings.py`
+- `src/parallax/platform/config/settings.py`
   - Add `notifications.rules.news_high_signal` defaults.
   - External threshold defaults to `90`; `85` path requires token-impact/content/source filters.
 
@@ -180,8 +180,8 @@ Known-failing baseline tests: record exact failures before implementation. If Po
   - `docs/WORKER_FLOW.md`
   - `docs/CONTRACTS.md`
   - `docs/RELIABILITY.md`
-  - `src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md`
-  - `src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`
+  - `src/parallax/domains/news_intel/ARCHITECTURE.md`
+  - `src/parallax/domains/pulse_lab/ARCHITECTURE.md`
 
 ## Storage / Migrations
 
@@ -274,7 +274,7 @@ Known-failing baseline tests: record exact failures before implementation. If Po
 ## Rollout Order
 
 1. Merge/deploy LiteLLM-native execution plane with external notifications still disabled.
-2. Configure operator `~/.gmgn-twitter-intel/config.yaml` and `workers.yaml` for LiteLLM model aliases and lane policies.
+2. Configure operator `~/.parallax/config.yaml` and `workers.yaml` for LiteLLM model aliases and lane policies.
 3. Disable narrative bulk tier initially.
 4. Enable News item brief worker and confirm high-score items produce ready briefs.
 5. Enable `news_high_signal` in-app only.

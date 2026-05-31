@@ -1,7 +1,7 @@
 import pytest
 
-from gmgn_twitter_intel import cli
-from gmgn_twitter_intel.app.surfaces.cli.parser import build_parser
+from parallax import cli
+from parallax.app.surfaces.cli.parser import build_parser
 
 
 def test_root_cli_exports_only_main():
@@ -10,8 +10,8 @@ def test_root_cli_exports_only_main():
 
 
 def test_cli_repository_dependencies_are_neutral():
-    from gmgn_twitter_intel.app.surfaces.cli import dependencies
-    from gmgn_twitter_intel.app.surfaces.cli.commands import db, ops, read_models
+    from parallax.app.surfaces.cli import dependencies
+    from parallax.app.surfaces.cli.commands import db, ops, read_models
 
     assert not hasattr(db, "_postgres_connection")
     assert not hasattr(db, "_repositories")

@@ -67,7 +67,7 @@ stateDiagram-v2
 
 ## File-level edits
 
-### `src/gmgn_twitter_intel/pipeline/token_discovery_worker.py`
+### `src/parallax/pipeline/token_discovery_worker.py`
 
 - Lines 25-30: add candidate admission constants:
   - `DEX_SYMBOL_CANDIDATES_PER_CHAIN = 3`
@@ -106,7 +106,7 @@ stateDiagram-v2
   ```
 - Lines 341-349: extend `_merge_lookup_result` to add the two new counters.
 
-### `src/gmgn_twitter_intel/storage/registry_repository.py`
+### `src/parallax/storage/registry_repository.py`
 
 - Lines 7-10: add status/source constants:
   ```python
@@ -169,7 +169,7 @@ stateDiagram-v2
   ```
   Return affected row count.
 
-### `src/gmgn_twitter_intel/pipeline/deterministic_token_resolver.py`
+### `src/parallax/pipeline/deterministic_token_resolver.py`
 
 - Lines 248-304: replace symbol identity filtering so active retained candidates are the identity set:
   - Delete `active_assets = [row for row in assets if _fresh(...)]`.
@@ -182,7 +182,7 @@ stateDiagram-v2
   - Remove the `SYMBOL_CANDIDATES_STALE` branch from the symbol path.
 - Lines 376-379: remove `_fresh` if no remaining call sites exist.
 
-### `src/gmgn_twitter_intel/storage/alembic/versions/20260509_0017_demote_search_only_registry_assets.py`
+### `src/parallax/storage/alembic/versions/20260509_0017_demote_search_only_registry_assets.py`
 
 - New Alembic revision:
   ```python
@@ -320,21 +320,21 @@ stateDiagram-v2
 ## Rollout order
 
 1. Land PR 1 code so future symbol discovery writes only retained candidates and all reads ignore `demoted_search`.
-2. Apply migration `20260509_0017` with `uv run gmgn-twitter-intel db migrate`.
+2. Apply migration `20260509_0017` with `uv run parallax db migrate`.
 3. Run one token discovery pass for high-collision symbols through existing ops path:
-   `uv run gmgn-twitter-intel ops run-token-discovery --limit 50`
+   `uv run parallax ops run-token-discovery --limit 50`
 4. Reprocess recent token intents:
-   `uv run gmgn-twitter-intel ops reprocess-token-intents --limit 500`
+   `uv run parallax ops reprocess-token-intents --limit 500`
 5. Rebuild token radar:
-   `uv run gmgn-twitter-intel ops rebuild-token-radar --window 24h --scope all`
+   `uv run parallax ops rebuild-token-radar --window 24h --scope all`
 6. Run verification queries against HANTA/UAP/VIRUS to confirm active candidates are bounded and demoted rows are excluded.
 
 ## Rollback
 
 1. Revert code to previous branch state.
 2. Run Alembic downgrade from `20260509_0017` to `20260509_0016` only if old code is redeployed; old code does not understand `demoted_search` as active and would keep excluding those rows.
-3. Re-run `uv run gmgn-twitter-intel ops run-token-discovery --limit 50` to repopulate discovery results under the old unbounded behavior if rollback is intentional.
-4. Rebuild radar after rollback with `uv run gmgn-twitter-intel ops rebuild-token-radar --window 24h --scope all`.
+3. Re-run `uv run parallax ops run-token-discovery --limit 50` to repopulate discovery results under the old unbounded behavior if rollback is intentional.
+4. Rebuild radar after rollback with `uv run parallax ops rebuild-token-radar --window 24h --scope all`.
 
 Not safely reversible: rejected future search rows are never persisted. This is intentional; if a rejected asset later matters, explicit CA/address or a future top-3 symbol search will reintroduce it.
 
@@ -351,7 +351,7 @@ Not safely reversible: rejected future search rows are never persisted. This is 
 - AC6:
   `uv run pytest tests/test_registry_repository.py::test_symbol_and_refresh_queries_ignore_demoted_search_assets`
 - AC7:
-  `uv run gmgn-twitter-intel db migrate` then:
+  `uv run parallax db migrate` then:
   ```sql
   SELECT symbol, chain_id, COUNT(*) AS active_count
   FROM registry_assets
@@ -380,7 +380,7 @@ Commands:
 - `uv run ruff check .` -> passed.
 - `uv run pytest` -> passed: 334 passed, 132 skipped. The skipped tests are PostgreSQL-backed tests under the default local DSN.
 - `uv run python -m compileall src tests` -> passed.
-- `GMGN_TEST_POSTGRES_DSN=postgresql://postgres:postgres@127.0.0.1:56432/gmgn_twitter_intel_test uv run pytest tests/test_registry_repository.py tests/test_token_discovery_worker.py tests/test_deterministic_token_resolver.py tests/test_token_intent_resolver.py tests/test_postgres_schema.py` -> passed: 38 passed.
+- `GMGN_TEST_POSTGRES_DSN=postgresql://postgres:postgres@127.0.0.1:56432/parallax_test uv run pytest tests/test_registry_repository.py tests/test_token_discovery_worker.py tests/test_deterministic_token_resolver.py tests/test_token_intent_resolver.py tests/test_postgres_schema.py` -> passed: 38 passed.
 
 Diff summary:
 

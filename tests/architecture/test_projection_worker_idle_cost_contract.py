@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src" / "gmgn_twitter_intel"
+SRC = ROOT / "src" / "parallax"
 
 PROJECTION_RUNTIME_GLOBS = ("domains/news_intel/runtime/*projection_worker.py",)
 

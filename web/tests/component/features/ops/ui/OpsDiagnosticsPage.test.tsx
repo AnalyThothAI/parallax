@@ -63,9 +63,9 @@ const fakeDiagnostics: OpsDiagnostics = {
     section_status_counts: { ok: 4, degraded: 1 },
   },
   config: {
-    app_home: "/Users/qinghuan/.gmgn-twitter-intel",
-    config_path: "/Users/qinghuan/.gmgn-twitter-intel/config.yaml",
-    workers_config_path: "/Users/qinghuan/.gmgn-twitter-intel/workers.yaml",
+    app_home: "/Users/qinghuan/.parallax",
+    config_path: "/Users/qinghuan/.parallax/config.yaml",
+    workers_config_path: "/Users/qinghuan/.parallax/workers.yaml",
     handles_count: 3,
     gmgn_configured: true,
     okx_dex_configured: true,

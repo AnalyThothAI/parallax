@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.integrations.binance.cex_profile_client import BinanceCexProfileClient
+from parallax.integrations.binance.cex_profile_client import BinanceCexProfileClient
 
 
 def test_binance_cex_profile_client_normalizes_and_dedupes_symbol_profiles():

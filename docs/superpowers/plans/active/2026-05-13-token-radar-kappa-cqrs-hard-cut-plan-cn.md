@@ -56,7 +56,7 @@
 - 2026-05-13 15:11 Asia/Shanghai — The Task 11 command in the plan uses `web/src/...` after `cd web`, which Vitest treats as nonexistent filters. The semantic validation was rerun with the same files as `src/...` relative paths and passed.
 - 2026-05-13 15:16 Asia/Shanghai — Provider connection state is diagnostic only: it is exposed through `connection_state_payload()` and `/api/status`, while worker correctness still depends on persisted facts plus periodic catch-up.
 - 2026-05-13 15:21 Asia/Shanghai — The no-fallback guard scans runtime source only and intentionally avoids banning the `live_market_update` event name or historical Alembic rollback references. The hard-cut ban targets runtime overlay/fallback paths, not the public WS event type.
-- 2026-05-13 15:56 Asia/Shanghai — The plan's `gmgn-twitter-intel token-radar rebuild` command is stale; the equivalent current CLI command is `gmgn-twitter-intel ops rebuild-token-radar`. The user asked to merge quickly and continue deep testing after merge, so `make check` is the pre-merge gate and `make check-all` remains the post-merge final audit.
+- 2026-05-13 15:56 Asia/Shanghai — The plan's `parallax token-radar rebuild` command is stale; the equivalent current CLI command is `parallax ops rebuild-token-radar`. The user asked to merge quickly and continue deep testing after merge, so `make check` is the pre-merge gate and `make check-all` remains the post-merge final audit.
 - 2026-05-13 15:56 Asia/Shanghai — PostgreSQL refused the exact Task 14 truncate because FK-derived tables reference `token_radar_rows` and `pulse_candidates`. Truncated `asset_signal_snapshots`, `asset_signal_outcomes`, `pulse_playbook_snapshots`, and `pulse_playbook_outcomes` alongside the planned derived tables because they are derived from the same radar/pulse read models.
 - 2026-05-13 16:54 Asia/Shanghai — The hard-cut fallback `rg` command still reports historical Alembic migration references to the removed baseline table. These are allowed rollback/history references, not runtime/web/test fallback paths; guard tests now avoid embedding the banned literals directly.
 - 2026-05-13 17:02 Asia/Shanghai — Do not restart the app from an old Docker image after a hard cut. Because rebuilding the image requires GitHub credentials for `marketlane-cli`, service restart is left as an operational handoff item rather than running stale code.
@@ -77,37 +77,37 @@
 
 | Path | Role | Target state |
 |---|---|---|
-| `src/gmgn_twitter_intel/integrations/gmgn/direct_ws.py` | `[ADAPTER]` | GMGN stream adapter；新增 connection state，不写业务事实。 |
-| `src/gmgn_twitter_intel/integrations/gmgn/gmgn_token_payload.py` | `[ADAPTER]` | 明确 GMGN WS price fields intentionally ignored。 |
-| `src/gmgn_twitter_intel/integrations/gmgn/openapi_client.py` | `[ADAPTER]` | GMGN exact-address quote/profile/candle adapter。 |
-| `src/gmgn_twitter_intel/integrations/okx/cex_client.py` | `[ADAPTER]` | OKX CEX quote adapter。 |
-| `src/gmgn_twitter_intel/integrations/okx/dex_client.py` | `[ADAPTER]` | OKX discovery adapter。 |
-| `src/gmgn_twitter_intel/integrations/okx/dex_ws_client.py` | `[ADAPTER]` | OKX DEX live market adapter；新增 connection state。 |
-| `src/gmgn_twitter_intel/domains/ingestion/runtime/collector_service.py` | `[COMMAND]` | 显式 snapshot gate outcome；不处理 market facts。 |
-| `src/gmgn_twitter_intel/domains/evidence/services/ingest_service.py` | `[COMMAND]` | 写 social/entity/intent/identity facts；不引入 market read model。 |
-| `src/gmgn_twitter_intel/domains/asset_market/types/market_observation.py` | `[FACT]` | 新增 `MarketObservation`、`MarketContext`、`MarketReadiness`。 |
-| `src/gmgn_twitter_intel/domains/asset_market/interfaces.py` | `[FACT]` | 暴露跨域可用的 market fact value types。 |
-| `src/gmgn_twitter_intel/domains/asset_market/providers.py` | `[ADAPTER]` | 保留窄 capability contracts；补 provider capability metadata。 |
-| `src/gmgn_twitter_intel/app/runtime/providers_wiring.py` | `[ADAPTER]` | OKX/GmGN adapter wire、provider-level health/cache/rate-limit。 |
-| `src/gmgn_twitter_intel/domains/asset_market/repositories/price_observation_repository.py` | `[FACT]` | 持久化/query `MarketObservation`；删除 baseline backfill。 |
-| `src/gmgn_twitter_intel/domains/asset_market/services/anchor_price_observation.py` | `[COMMAND][FACT]` | 写 `event_anchor` observations。 |
-| `src/gmgn_twitter_intel/domains/asset_market/services/live_observation_policy.py` | `[COMMAND][FACT]` | 新增 material observation 写入策略；阻止 raw WS frame 全量落库。 |
-| `src/gmgn_twitter_intel/domains/asset_market/runtime/live_price_gateway.py` | `[COMMAND][FACT][WAKE]` | 内存接收高频 live frames；只写 material `decision_latest` observations；WS publish 只是 fan-out。 |
-| `src/gmgn_twitter_intel/domains/asset_market/runtime/anchor_price_worker.py` | `[COMMAND][WAKE]` | 删除 callback，写完 facts 后 NOTIFY。 |
-| `src/gmgn_twitter_intel/domains/asset_market/runtime/resolution_refresh_worker.py` | `[COMMAND][WAKE]` | 删除 inline anchor/projection；只写 resolution/discovery facts 后 NOTIFY。 |
-| `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py` | `[QUERY][FACT]` | 用 lateral joins 从 `price_observations` 拉 `event_anchor` / `decision_latest`。 |
-| `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py` | `[PROJECTION]` | 构造新 `MarketContext` schema；删除 anchor-only `_market()`。 |
-| `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py` | `[PROJECTION][WAKE]` | LISTEN + catch-up；唯一写 `token_radar_rows`。 |
-| `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py` | `[SCORING]` | 新 market schema、DEX floor fail-closed。 |
-| `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot_contract.py` | `[SCORING]` | 新 snapshot contract。 |
-| `src/gmgn_twitter_intel/domains/token_intel/scoring/cross_section_normalizer.py` | `[SCORING]` | insufficient/all-tied cohort 返回 no-signal。 |
-| `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py` | `[QUERY][DELETE]` | 删除 `_overlay_live_market`；只序列化 projection row。 |
-| `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py` | `[QUERY][WAKE]` | 主 event loop task；listen `token_radar_updated` hint + catch-up。 |
-| `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py` | `[SCORING]` | 新 market/gate/no-signal 语义。 |
-| `src/gmgn_twitter_intel/app/runtime/app.py` | `[SURFACE][WAKE][DELETE]` | Wire listeners；删除 threaded pulse wrapper。 |
-| `src/gmgn_twitter_intel/app/surfaces/api/http.py` | `[SURFACE]` | `/api/token-radar` 返回新 market contract。 |
-| `src/gmgn_twitter_intel/app/surfaces/api/ws.py` | `[SURFACE]` | WS live payload 与 new market contract 对齐。 |
-| `src/gmgn_twitter_intel/app/surfaces/cli/main.py` | `[SURFACE][DELETE]` | 删除 price baseline backfill command；保留现有 projection rebuild 命令作为 smoke 入口。 |
+| `src/parallax/integrations/gmgn/direct_ws.py` | `[ADAPTER]` | GMGN stream adapter；新增 connection state，不写业务事实。 |
+| `src/parallax/integrations/gmgn/gmgn_token_payload.py` | `[ADAPTER]` | 明确 GMGN WS price fields intentionally ignored。 |
+| `src/parallax/integrations/gmgn/openapi_client.py` | `[ADAPTER]` | GMGN exact-address quote/profile/candle adapter。 |
+| `src/parallax/integrations/okx/cex_client.py` | `[ADAPTER]` | OKX CEX quote adapter。 |
+| `src/parallax/integrations/okx/dex_client.py` | `[ADAPTER]` | OKX discovery adapter。 |
+| `src/parallax/integrations/okx/dex_ws_client.py` | `[ADAPTER]` | OKX DEX live market adapter；新增 connection state。 |
+| `src/parallax/domains/ingestion/runtime/collector_service.py` | `[COMMAND]` | 显式 snapshot gate outcome；不处理 market facts。 |
+| `src/parallax/domains/evidence/services/ingest_service.py` | `[COMMAND]` | 写 social/entity/intent/identity facts；不引入 market read model。 |
+| `src/parallax/domains/asset_market/types/market_observation.py` | `[FACT]` | 新增 `MarketObservation`、`MarketContext`、`MarketReadiness`。 |
+| `src/parallax/domains/asset_market/interfaces.py` | `[FACT]` | 暴露跨域可用的 market fact value types。 |
+| `src/parallax/domains/asset_market/providers.py` | `[ADAPTER]` | 保留窄 capability contracts；补 provider capability metadata。 |
+| `src/parallax/app/runtime/providers_wiring.py` | `[ADAPTER]` | OKX/GmGN adapter wire、provider-level health/cache/rate-limit。 |
+| `src/parallax/domains/asset_market/repositories/price_observation_repository.py` | `[FACT]` | 持久化/query `MarketObservation`；删除 baseline backfill。 |
+| `src/parallax/domains/asset_market/services/anchor_price_observation.py` | `[COMMAND][FACT]` | 写 `event_anchor` observations。 |
+| `src/parallax/domains/asset_market/services/live_observation_policy.py` | `[COMMAND][FACT]` | 新增 material observation 写入策略；阻止 raw WS frame 全量落库。 |
+| `src/parallax/domains/asset_market/runtime/live_price_gateway.py` | `[COMMAND][FACT][WAKE]` | 内存接收高频 live frames；只写 material `decision_latest` observations；WS publish 只是 fan-out。 |
+| `src/parallax/domains/asset_market/runtime/anchor_price_worker.py` | `[COMMAND][WAKE]` | 删除 callback，写完 facts 后 NOTIFY。 |
+| `src/parallax/domains/asset_market/runtime/resolution_refresh_worker.py` | `[COMMAND][WAKE]` | 删除 inline anchor/projection；只写 resolution/discovery facts 后 NOTIFY。 |
+| `src/parallax/domains/token_intel/queries/token_radar_source_query.py` | `[QUERY][FACT]` | 用 lateral joins 从 `price_observations` 拉 `event_anchor` / `decision_latest`。 |
+| `src/parallax/domains/token_intel/services/token_radar_projection.py` | `[PROJECTION]` | 构造新 `MarketContext` schema；删除 anchor-only `_market()`。 |
+| `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py` | `[PROJECTION][WAKE]` | LISTEN + catch-up；唯一写 `token_radar_rows`。 |
+| `src/parallax/domains/token_intel/scoring/factor_snapshot.py` | `[SCORING]` | 新 market schema、DEX floor fail-closed。 |
+| `src/parallax/domains/token_intel/scoring/factor_snapshot_contract.py` | `[SCORING]` | 新 snapshot contract。 |
+| `src/parallax/domains/token_intel/scoring/cross_section_normalizer.py` | `[SCORING]` | insufficient/all-tied cohort 返回 no-signal。 |
+| `src/parallax/domains/token_intel/read_models/asset_flow_service.py` | `[QUERY][DELETE]` | 删除 `_overlay_live_market`；只序列化 projection row。 |
+| `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py` | `[QUERY][WAKE]` | 主 event loop task；listen `token_radar_updated` hint + catch-up。 |
+| `src/parallax/domains/pulse_lab/services/pulse_candidate_gate.py` | `[SCORING]` | 新 market/gate/no-signal 语义。 |
+| `src/parallax/app/runtime/app.py` | `[SURFACE][WAKE][DELETE]` | Wire listeners；删除 threaded pulse wrapper。 |
+| `src/parallax/app/surfaces/api/http.py` | `[SURFACE]` | `/api/token-radar` 返回新 market contract。 |
+| `src/parallax/app/surfaces/api/ws.py` | `[SURFACE]` | WS live payload 与 new market contract 对齐。 |
+| `src/parallax/app/surfaces/cli/main.py` | `[SURFACE][DELETE]` | 删除 price baseline backfill command；保留现有 projection rebuild 命令作为 smoke 入口。 |
 | `web/src/api/types.ts` | `[UI]` | 新 market TypeScript contract。 |
 | `web/src/api/useIntelSocket.ts` | `[UI]` | per-frame callback。 |
 | `web/src/features/live/useLiveData.ts` | `[UI][DELETE]` | 删除 `liveMarketUpdates[0]` patch。 |
@@ -204,7 +204,7 @@ Known-failing baseline tests: none expected.
 
 **Files:**
 - Modify: `docs/ARCHITECTURE.md`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/token_intel/ARCHITECTURE.md`
 - Modify: `docs/CONTRACTS.md`
 - Modify: `docs/generated/ws-protocol.md`
 
@@ -221,9 +221,9 @@ Known-failing baseline tests: none expected.
 ### Task 2 — MarketObservation Core Types
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/asset_market/types/market_observation.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/types/__init__.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/interfaces.py`
+- Create: `src/parallax/domains/asset_market/types/market_observation.py`
+- Modify: `src/parallax/domains/asset_market/types/__init__.py`
+- Modify: `src/parallax/domains/asset_market/interfaces.py`
 - Test: `tests/unit/test_market_observation.py`
 
 - [x] Add frozen dataclasses:
@@ -277,10 +277,10 @@ Known-failing baseline tests: none expected.
 ### Task 3 — Storage Hard Cut Migration And Live Partition Shape
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260513_0036_token_radar_kappa_cqrs_hard_cut.py`
-- Modify: `src/gmgn_twitter_intel/platform/db/alembic/README.md` if it documents manual partition maintenance.
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/price_observation_repository.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/main.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260513_0036_token_radar_kappa_cqrs_hard_cut.py`
+- Modify: `src/parallax/platform/db/alembic/README.md` if it documents manual partition maintenance.
+- Modify: `src/parallax/domains/asset_market/repositories/price_observation_repository.py`
+- Modify: `src/parallax/app/surfaces/cli/main.py`
 - Delete runtime dependency: `token_market_price_baselines`
 - Test: `tests/unit/test_price_observation_repository.py`
 
@@ -402,9 +402,9 @@ Known-failing baseline tests: none expected.
 ### Task 4 — Provider Capability Routing Without God Interface
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/providers.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/providers_wiring.py`
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
+- Modify: `src/parallax/domains/asset_market/providers.py`
+- Modify: `src/parallax/app/runtime/providers_wiring.py`
+- Modify: `src/parallax/platform/config/settings.py`
 - Test: `tests/unit/test_provider_capabilities.py`
 
 - [x] Add:
@@ -436,13 +436,13 @@ Known-failing baseline tests: none expected.
 ### Task 5 — Live Write Budget, Command Workers Write Material Facts, And Notify
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/services/anchor_price_observation.py`
-- Create: `src/gmgn_twitter_intel/domains/asset_market/services/live_observation_policy.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/anchor_price_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/live_price_gateway.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/resolution_refresh_worker.py`
-- Create: `src/gmgn_twitter_intel/app/runtime/wake_bus.py`
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
+- Modify: `src/parallax/domains/asset_market/services/anchor_price_observation.py`
+- Create: `src/parallax/domains/asset_market/services/live_observation_policy.py`
+- Modify: `src/parallax/domains/asset_market/runtime/anchor_price_worker.py`
+- Modify: `src/parallax/domains/asset_market/runtime/live_price_gateway.py`
+- Modify: `src/parallax/domains/asset_market/runtime/resolution_refresh_worker.py`
+- Create: `src/parallax/app/runtime/wake_bus.py`
+- Modify: `src/parallax/platform/config/settings.py`
 - Test: `tests/unit/test_anchor_price_worker.py`
 - Test: `tests/unit/test_live_observation_policy.py`
 - Test: `tests/unit/test_live_price_gateway.py`
@@ -461,7 +461,7 @@ Known-failing baseline tests: none expected.
   from dataclasses import dataclass
   from typing import Literal
 
-  from gmgn_twitter_intel.domains.asset_market.types.market_observation import MarketObservation
+  from parallax.domains.asset_market.types.market_observation import MarketObservation
 
 
   _GATE_FIELDS = (
@@ -579,9 +579,9 @@ Known-failing baseline tests: none expected.
 ### Task 6 — Projection Reads Facts And Builds MarketContext
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot_contract.py`
+- Modify: `src/parallax/domains/token_intel/queries/token_radar_source_query.py`
+- Modify: `src/parallax/domains/token_intel/services/token_radar_projection.py`
+- Modify: `src/parallax/domains/token_intel/scoring/factor_snapshot_contract.py`
 - Test: `tests/unit/test_token_radar_source_query.py`
 - Test: `tests/unit/test_token_radar_projection.py`
 
@@ -631,9 +631,9 @@ Known-failing baseline tests: none expected.
 ### Task 7 — Scoring Fail-Closed And Cohort No-Signal
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/cross_section_normalizer.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_diagnostics.py`
+- Modify: `src/parallax/domains/token_intel/scoring/factor_snapshot.py`
+- Modify: `src/parallax/domains/token_intel/scoring/cross_section_normalizer.py`
+- Modify: `src/parallax/domains/token_intel/scoring/factor_diagnostics.py`
 - Test: `tests/unit/test_factor_snapshot.py`
 - Test: `tests/unit/test_token_radar_apply_cross_section.py`
 
@@ -651,9 +651,9 @@ Known-failing baseline tests: none expected.
 ### Task 8 — Projection Worker LISTEN/Catch-up And One Writer
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/runtime/token_resolution_refresh.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/projection_repository.py`
+- Modify: `src/parallax/domains/token_intel/runtime/token_radar_projection_worker.py`
+- Modify: `src/parallax/domains/token_intel/runtime/token_resolution_refresh.py`
+- Modify: `src/parallax/domains/token_intel/repositories/projection_repository.py`
 - Test: `tests/unit/test_token_radar_projection_worker.py`
 - Test: `tests/unit/test_token_radar_idempotency.py`
 
@@ -672,9 +672,9 @@ Known-failing baseline tests: none expected.
 ### Task 9 — Pulse Candidate Worker Main Loop
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/app.py`
+- Modify: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`
+- Modify: `src/parallax/domains/pulse_lab/services/pulse_candidate_gate.py`
+- Modify: `src/parallax/app/runtime/app.py`
 - Test: `tests/unit/test_pulse_candidate_worker.py`
 - Test: `tests/unit/test_pulse_candidate_gate.py`
 
@@ -691,11 +691,11 @@ Known-failing baseline tests: none expected.
 ### Task 10 — Query/SURFACE Hard Cut
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/search_inspect_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/read_models/token_target_social_timeline_service.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/http.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/ws.py`
+- Modify: `src/parallax/domains/token_intel/read_models/asset_flow_service.py`
+- Modify: `src/parallax/domains/token_intel/read_models/search_inspect_service.py`
+- Modify: `src/parallax/domains/token_intel/read_models/token_target_social_timeline_service.py`
+- Modify: `src/parallax/app/surfaces/api/http.py`
+- Modify: `src/parallax/app/surfaces/api/ws.py`
 - Test: `tests/unit/test_token_radar_repository.py`
 - Test: `tests/integration/test_cli.py`
 
@@ -743,10 +743,10 @@ Known-failing baseline tests: none expected.
 ### Task 12 — IO State And Snapshot Gate Observability
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/integrations/okx/dex_ws_client.py`
-- Modify: `src/gmgn_twitter_intel/integrations/gmgn/direct_ws.py`
-- Modify: `src/gmgn_twitter_intel/domains/ingestion/runtime/collector_service.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/app.py`
+- Modify: `src/parallax/integrations/okx/dex_ws_client.py`
+- Modify: `src/parallax/integrations/gmgn/direct_ws.py`
+- Modify: `src/parallax/domains/ingestion/runtime/collector_service.py`
+- Modify: `src/parallax/app/runtime/app.py`
 - Test: `tests/unit/test_okx_dex_ws_client.py`
 - Test: `tests/unit/test_gmgn_token_payload.py`
 
@@ -771,7 +771,7 @@ Known-failing baseline tests: none expected.
 
 - [x] Regenerate CLI help:
   ```bash
-  uv run gmgn-twitter-intel --help > docs/generated/cli-help.md
+  uv run parallax --help > docs/generated/cli-help.md
   ```
 - [x] Update no-fallback test to ban runtime references to `_overlay_live_market`, `token_market_price_baselines`, `liveMarketUpdates[0]`, and old top-level `live_market` fallback.
 - [x] Update golden corpus expected snapshot to new market schema.
@@ -797,8 +797,8 @@ Known-failing baseline tests: none expected.
   ```
 - [x] Rebuild projections:
   ```bash
-  uv run gmgn-twitter-intel token-radar rebuild --window 5m --scope all --limit 100
-  uv run gmgn-twitter-intel token-radar rebuild --window 1h --scope all --limit 100
+  uv run parallax token-radar rebuild --window 5m --scope all --limit 100
+  uv run parallax token-radar rebuild --window 1h --scope all --limit 100
   ```
 - [x] Check no old runtime fallback remains:
   ```bash

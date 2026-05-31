@@ -1,4 +1,4 @@
-from gmgn_twitter_intel.domains.narrative_intel.services.narrative_admission import (
+from parallax.domains.narrative_intel.services.narrative_admission import (
     NarrativeAdmissionService,
 )
 

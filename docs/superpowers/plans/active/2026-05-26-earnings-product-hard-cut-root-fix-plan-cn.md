@@ -41,23 +41,23 @@ The first useful backend milestone is: a SEC filing metadata row creates an even
 
 ### Backend Storage And Types
 
-- Create `src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0104_equity_event_evidence_hard_cut.py`
-- Modify `src/gmgn_twitter_intel/domains/equity_event_intel/types.py`
-- Modify `src/gmgn_twitter_intel/domains/equity_event_intel/providers.py`
-- Modify `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py`
+- Create `src/parallax/platform/db/alembic/versions/20260526_0104_equity_event_evidence_hard_cut.py`
+- Modify `src/parallax/domains/equity_event_intel/types.py`
+- Modify `src/parallax/domains/equity_event_intel/providers.py`
+- Modify `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py`
 - Modify `tests/integration/test_postgres_schema_runtime.py`
 - Modify `tests/integration/test_equity_event_repository.py`
 - Add `tests/architecture/test_equity_event_hard_cut_contracts.py`
 
 ### Evidence Hydration And Processing
 
-- Create `src/gmgn_twitter_intel/domains/equity_event_intel/services/sec_evidence.py`
-- Modify `src/gmgn_twitter_intel/integrations/equity_events/sec_edgar_client.py`
-- Modify `src/gmgn_twitter_intel/app/runtime/provider_wiring/equity_events.py`
-- Modify `src/gmgn_twitter_intel/domains/equity_event_intel/services/sec_submission_normalizer.py`
-- Modify `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_fetch_worker.py`
-- Modify `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_process_worker.py`
-- Modify `src/gmgn_twitter_intel/domains/equity_event_intel/services/fact_candidates.py`
+- Create `src/parallax/domains/equity_event_intel/services/sec_evidence.py`
+- Modify `src/parallax/integrations/equity_events/sec_edgar_client.py`
+- Modify `src/parallax/app/runtime/provider_wiring/equity_events.py`
+- Modify `src/parallax/domains/equity_event_intel/services/sec_submission_normalizer.py`
+- Modify `src/parallax/domains/equity_event_intel/runtime/equity_event_fetch_worker.py`
+- Modify `src/parallax/domains/equity_event_intel/runtime/equity_event_process_worker.py`
+- Modify `src/parallax/domains/equity_event_intel/services/fact_candidates.py`
 - Add `tests/unit/domains/equity_event_intel/test_sec_evidence.py`
 - Modify `tests/unit/domains/equity_event_intel/test_sec_submission_normalizer.py`
 - Modify `tests/unit/domains/equity_event_intel/test_fact_candidates.py`
@@ -65,13 +65,13 @@ The first useful backend milestone is: a SEC filing metadata row creates an even
 
 ### Briefs, Projections, API
 
-- Modify `src/gmgn_twitter_intel/domains/equity_event_intel/services/brief_input.py`
-- Modify `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_brief_worker.py`
-- Modify `src/gmgn_twitter_intel/domains/equity_event_intel/services/page_projection.py`
-- Modify `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_page_projection_worker.py`
-- Modify `src/gmgn_twitter_intel/domains/equity_event_intel/queries/equity_event_query.py`
-- Modify `src/gmgn_twitter_intel/app/surfaces/api/routes_equity_events.py`
-- Modify `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
+- Modify `src/parallax/domains/equity_event_intel/services/brief_input.py`
+- Modify `src/parallax/domains/equity_event_intel/runtime/equity_event_brief_worker.py`
+- Modify `src/parallax/domains/equity_event_intel/services/page_projection.py`
+- Modify `src/parallax/domains/equity_event_intel/runtime/equity_event_page_projection_worker.py`
+- Modify `src/parallax/domains/equity_event_intel/queries/equity_event_query.py`
+- Modify `src/parallax/app/surfaces/api/routes_equity_events.py`
+- Modify `src/parallax/app/surfaces/api/schemas.py`
 - Modify `tests/unit/test_api_equity_events_contract.py`
 - Modify `tests/unit/domains/equity_event_intel/test_brief_input.py`
 - Modify `tests/unit/domains/equity_event_intel/test_page_projection.py`
@@ -95,7 +95,7 @@ The first useful backend milestone is: a SEC filing metadata row creates an even
 
 - Modify `docs/CONTRACTS.md`
 - Modify `docs/WORKERS.md`
-- Modify `src/gmgn_twitter_intel/domains/equity_event_intel/ARCHITECTURE.md`
+- Modify `src/parallax/domains/equity_event_intel/ARCHITECTURE.md`
 - Regenerate `docs/generated/openapi.json`
 - Regenerate `web/src/lib/types/openapi.ts`
 
@@ -115,10 +115,10 @@ The first useful backend milestone is: a SEC filing metadata row creates an even
 - [ ] **Step 0.2: Confirm real runtime config paths before live checks**
 
   ```bash
-  uv run gmgn-twitter-intel config
+  uv run parallax config
   ```
 
-  Expected: `config_path` and `workers_config_path` point under `~/.gmgn-twitter-intel/`. Record only paths, booleans, and counts.
+  Expected: `config_path` and `workers_config_path` point under `~/.parallax/`. Record only paths, booleans, and counts.
 
 - [ ] **Step 0.3: Run baseline targeted gates**
 
@@ -149,7 +149,7 @@ The first useful backend milestone is: a SEC filing metadata row creates an even
   from pathlib import Path
 
   ROOT = Path(__file__).resolve().parents[2]
-  SRC = ROOT / "src/gmgn_twitter_intel"
+  SRC = ROOT / "src/parallax"
 
 
   def test_equity_facts_and_briefs_do_not_read_raw_payload_text_as_evidence() -> None:
@@ -298,7 +298,7 @@ The first useful backend milestone is: a SEC filing metadata row creates an even
 ## Task 2: Add Evidence And Readiness Schema
 
 **Files:**
-- Add: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0104_equity_event_evidence_hard_cut.py`
+- Add: `src/parallax/platform/db/alembic/versions/20260526_0104_equity_event_evidence_hard_cut.py`
 - Modify: `tests/integration/test_postgres_schema_runtime.py`
 - Modify: `tests/architecture/test_worker_runtime_contracts.py`
 
@@ -448,11 +448,11 @@ The first useful backend milestone is: a SEC filing metadata row creates an even
 ## Task 3: Add SEC Evidence Hydration
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/equity_event_intel/services/sec_evidence.py`
-- Modify: `src/gmgn_twitter_intel/integrations/equity_events/sec_edgar_client.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/provider_wiring/equity_events.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/providers.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/types.py`
+- Create: `src/parallax/domains/equity_event_intel/services/sec_evidence.py`
+- Modify: `src/parallax/integrations/equity_events/sec_edgar_client.py`
+- Modify: `src/parallax/app/runtime/provider_wiring/equity_events.py`
+- Modify: `src/parallax/domains/equity_event_intel/providers.py`
+- Modify: `src/parallax/domains/equity_event_intel/types.py`
 - Add: `tests/unit/domains/equity_event_intel/test_sec_evidence.py`
 - Modify: `tests/unit/test_equity_event_provider_wiring.py`
 
@@ -563,8 +563,8 @@ The first useful backend milestone is: a SEC filing metadata row creates an even
 ## Task 4: Hard-Cut SEC Normalization And Repository Writes
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/services/sec_submission_normalizer.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py`
+- Modify: `src/parallax/domains/equity_event_intel/services/sec_submission_normalizer.py`
+- Modify: `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py`
 - Modify: `tests/unit/domains/equity_event_intel/test_sec_submission_normalizer.py`
 - Modify: `tests/integration/test_equity_event_repository.py`
 
@@ -628,7 +628,7 @@ The first useful backend milestone is: a SEC filing metadata row creates an even
 ## Task 5: Hydrate Evidence In The Fetch Worker
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_fetch_worker.py`
+- Modify: `src/parallax/domains/equity_event_intel/runtime/equity_event_fetch_worker.py`
 - Modify: `tests/integration/test_equity_event_workers.py`
 
 - [ ] **Step 5.1: Persist metadata and evidence in one source fetch pass**
@@ -669,9 +669,9 @@ The first useful backend milestone is: a SEC filing metadata row creates an even
 ## Task 6: Process Facts From Evidence Artifacts Only
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/services/fact_candidates.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_process_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py`
+- Modify: `src/parallax/domains/equity_event_intel/services/fact_candidates.py`
+- Modify: `src/parallax/domains/equity_event_intel/runtime/equity_event_process_worker.py`
+- Modify: `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py`
 - Modify: `tests/unit/domains/equity_event_intel/test_fact_candidates.py`
 - Modify: `tests/integration/test_equity_event_workers.py`
 
@@ -715,9 +715,9 @@ The first useful backend milestone is: a SEC filing metadata row creates an even
 ## Task 7: Make Brief Readiness Honest
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/services/brief_input.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_brief_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/types.py`
+- Modify: `src/parallax/domains/equity_event_intel/services/brief_input.py`
+- Modify: `src/parallax/domains/equity_event_intel/runtime/equity_event_brief_worker.py`
+- Modify: `src/parallax/domains/equity_event_intel/types.py`
 - Modify: `tests/unit/domains/equity_event_intel/test_brief_input.py`
 - Modify: `tests/unit/domains/equity_event_intel/test_brief_validation.py`
 - Modify: `tests/integration/test_equity_event_workers.py`
@@ -766,12 +766,12 @@ The first useful backend milestone is: a SEC filing metadata row creates an even
 ## Task 8: Rebuild Page, Calendar, Summary, And Source Status Contracts
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/services/page_projection.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/runtime/equity_event_page_projection_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/queries/equity_event_query.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/routes_equity_events.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
+- Modify: `src/parallax/domains/equity_event_intel/services/page_projection.py`
+- Modify: `src/parallax/domains/equity_event_intel/runtime/equity_event_page_projection_worker.py`
+- Modify: `src/parallax/domains/equity_event_intel/repositories/equity_event_repository.py`
+- Modify: `src/parallax/domains/equity_event_intel/queries/equity_event_query.py`
+- Modify: `src/parallax/app/surfaces/api/routes_equity_events.py`
+- Modify: `src/parallax/app/surfaces/api/schemas.py`
 - Modify: `tests/unit/domains/equity_event_intel/test_page_projection.py`
 - Modify: `tests/unit/test_api_equity_events_contract.py`
 - Modify: `tests/integration/test_equity_event_workers.py`
@@ -933,7 +933,7 @@ The first useful backend milestone is: a SEC filing metadata row creates an even
 **Files:**
 - Modify: `docs/CONTRACTS.md`
 - Modify: `docs/WORKERS.md`
-- Modify: `src/gmgn_twitter_intel/domains/equity_event_intel/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/equity_event_intel/ARCHITECTURE.md`
 - Modify: `docs/generated/openapi.json`
 - Modify: `web/src/lib/types/openapi.ts`
 
@@ -1002,13 +1002,13 @@ The first useful backend milestone is: a SEC filing metadata row creates an even
 - [ ] **Step 11.3: Confirm runtime config without exposing secrets**
 
   ```bash
-  uv run gmgn-twitter-intel config
-  uv run gmgn-twitter-intel db health
+  uv run parallax config
+  uv run parallax db health
   ```
 
   Expected:
 
-  - config paths under `~/.gmgn-twitter-intel/`.
+  - config paths under `~/.parallax/`.
   - equity event enabled.
   - SEC User-Agent configured.
   - company count reported.
@@ -1020,9 +1020,9 @@ The first useful backend milestone is: a SEC filing metadata row creates an even
   After migration and worker deployment, enqueue recent read-model targets:
 
   ```bash
-  uv run gmgn-twitter-intel ops enqueue-projection-dirty-targets --domain equity --projection page --since-hours 168
-  uv run gmgn-twitter-intel ops enqueue-projection-dirty-targets --domain equity --projection calendar --since-hours 168
-  uv run gmgn-twitter-intel ops enqueue-projection-dirty-targets --domain equity --projection brief_input --since-hours 168
+  uv run parallax ops enqueue-projection-dirty-targets --domain equity --projection page --since-hours 168
+  uv run parallax ops enqueue-projection-dirty-targets --domain equity --projection calendar --since-hours 168
+  uv run parallax ops enqueue-projection-dirty-targets --domain equity --projection brief_input --since-hours 168
   ```
 
   Expected: commands report target counts. If the CLI does not support one of these projection names after the hard cut, update the CLI in the same change so the command names match the projection names used by workers.

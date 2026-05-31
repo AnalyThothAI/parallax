@@ -5,11 +5,11 @@ import time
 from contextlib import contextmanager
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
-from gmgn_twitter_intel.app.runtime.worker_manifest import require_worker_manifest
-from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
-from gmgn_twitter_intel.app.runtime.worker_space import WorkerSpaceContract, contract_from_manifest
-from gmgn_twitter_intel.domains.token_intel.runtime import token_radar_projection_worker as module
+from parallax.app.runtime.worker_base import WorkerBase
+from parallax.app.runtime.worker_manifest import require_worker_manifest
+from parallax.app.runtime.worker_result import WorkerResult
+from parallax.app.runtime.worker_space import WorkerSpaceContract, contract_from_manifest
+from parallax.domains.token_intel.runtime import token_radar_projection_worker as module
 
 
 class FakeTokenRadar:

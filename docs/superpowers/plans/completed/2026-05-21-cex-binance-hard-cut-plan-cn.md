@@ -33,12 +33,12 @@
   - `docker compose build app`
   - `docker compose run --rm --no-deps app coinglass-cli --help`
   - `docker compose run --rm --no-deps app coinglass-cli canary`
-  - `docker compose run --rm --no-deps app gmgn-twitter-intel --help`
+  - `docker compose run --rm --no-deps app parallax --help`
   - `docker compose run --rm --no-deps app sh -lc 'command -v gcc || true; command -v git || true'` confirmed both absent.
 
 仍需在真实运行环境执行的 operator 步骤：
 
-- 确认 `uv run gmgn-twitter-intel config` 指向 `~/.gmgn-twitter-intel/`，只报告路径和 redacted booleans。
+- 确认 `uv run parallax config` 指向 `~/.parallax/`，只报告路径和 redacted booleans。
 - 备份并执行 `scripts/cex_binance_config_hard_cut.py`，迁移真实 operator config。
 - 跑 `ops sync-binance-usdt-perp-universe --execute` 写入 Binance USDT perpetual universe。
 - 维护窗口内先 `--dry-run` 再 `--execute` 跑 `ops cex-binance-hard-cut-cleanup`，确认 Binance canonical feed count 超过阈值后清旧 OKX CEX 数据。
@@ -53,10 +53,10 @@ Known unrelated failures / blocked environment checks:
 
 ## Pre-flight
 
-- [ ] Confirm runtime config paths with `uv run gmgn-twitter-intel config`; report only redacted booleans and paths.
+- [ ] Confirm runtime config paths with `uv run parallax config`; report only redacted booleans and paths.
 - [ ] Back up operator config before any hard-cut code is used:
   ```bash
-  cp ~/.gmgn-twitter-intel/config.yaml ~/.gmgn-twitter-intel/config.yaml.pre-cex-binance-hard-cut
+  cp ~/.parallax/config.yaml ~/.parallax/config.yaml.pre-cex-binance-hard-cut
   ```
 - [ ] After Task 0 creates the standalone config migration script, run its dry-run before rebuilding Docker. The script must not import `Settings`,
       because the new `extra="forbid"` settings model will reject old `providers.okx.cex_*` keys:
@@ -130,51 +130,51 @@ Docker ordering invariant:
 
 ### Binance integration
 
-- Create `src/gmgn_twitter_intel/integrations/binance/usdm_futures_client.py`
+- Create `src/parallax/integrations/binance/usdm_futures_client.py`
   - Define `BinanceUsdmFuturesClient`.
   - Implement `exchange_info()`, `usdt_perpetual_routes()`, `ticker_24hr(symbol=None)`, `premium_index(symbol=None)`, `open_interest_hist(symbol, period, limit)`, `ticker(symbol)`, and `candles(symbol, interval, limit)`.
   - Normalize route records from `exchangeInfo.baseAsset`, `quoteAsset`, `symbol`, `status`, and `contractType`; never infer base from `BTCUSDT` string slicing.
   - Return domain-facing records with explicit `provider='binance'`, `feed_type='cex_swap'`, `quote_symbol='USDT'`, `native_market_id=symbol`.
-- Modify `src/gmgn_twitter_intel/app/runtime/provider_wiring/binance.py`
+- Modify `src/parallax/app/runtime/provider_wiring/binance.py`
   - Add `BinanceUsdmFuturesMarketProvider` implementing existing `CexMarketProvider`.
   - Keep Binance profile clients separate from futures clients.
   - Add provider health capability for Binance CEX quote/profile without mentioning OKX CEX.
 
 ### OKX CEX removal and provider wiring
 
-- Modify `src/gmgn_twitter_intel/app/runtime/provider_wiring/okx.py`
+- Modify `src/parallax/app/runtime/provider_wiring/okx.py`
   - Remove `OkxCexMarketProvider`, `okx_cex_market()`, and CEX wiring from the OKX bundle.
   - Keep OKX DEX discovery / quote / WS providers intact.
-  - If OKX DEX imports HTTP helpers from `integrations/okx/cex_client.py`, first move shared helpers into `src/gmgn_twitter_intel/integrations/okx/http_utils.py`.
-- Modify `src/gmgn_twitter_intel/app/runtime/provider_wiring/types.py`
+  - If OKX DEX imports HTTP helpers from `integrations/okx/cex_client.py`, first move shared helpers into `src/parallax/integrations/okx/http_utils.py`.
+- Modify `src/parallax/app/runtime/provider_wiring/types.py`
   - Replace `sync_cex_market` and `message_cex_market` with a single `cex_market`.
   - Remove CEX fields from `OkxProviderBundle`, or rename the bundle to `OkxDexProviderBundle`.
-- Modify `src/gmgn_twitter_intel/app/runtime/provider_wiring/asset_market.py`
+- Modify `src/parallax/app/runtime/provider_wiring/asset_market.py`
   - Wire `AssetMarketProviders.cex_market` from Binance only.
   - Continue wiring `dex_discovery_market`, `dex_quote_market`, and `stream_dex_market` from OKX/GMGN as before.
   - Provider health should report Binance CEX and OKX DEX as separate capabilities.
-- Delete `src/gmgn_twitter_intel/integrations/okx/cex_client.py` after moving shared helpers.
+- Delete `src/parallax/integrations/okx/cex_client.py` after moving shared helpers.
 
 ### Settings and CLI
 
-- Modify `src/gmgn_twitter_intel/platform/config/settings.py`
+- Modify `src/parallax/platform/config/settings.py`
   - Remove `OkxProviderConfig.cex_base_url`, `cex_sync_enabled`, and `cex_inst_types`.
   - Add Binance fields: `cex_profile_base_url`, `usdm_futures_base_url`, `cex_universe_quote_symbol`, `cex_universe_contract_type`.
   - Keep `providers.okx` DEX-only in `default_config_yaml()`.
   - Update accessors so no `okx_cex_*` property remains.
-- Modify `src/gmgn_twitter_intel/app/surfaces/cli/commands/config.py`
+- Modify `src/parallax/app/surfaces/cli/commands/config.py`
   - Remove OKX CEX config diagnostics.
   - Show Binance futures configured/enabled booleans without secrets.
-- Modify `src/gmgn_twitter_intel/app/surfaces/cli/parser.py`
+- Modify `src/parallax/app/surfaces/cli/parser.py`
   - Remove `sync-okx-cex-universe`.
   - Add `sync-binance-usdt-perp-universe` with `--dry-run` and `--execute`.
-- Modify `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`
+- Modify `src/parallax/app/surfaces/cli/commands/ops.py`
   - Remove `OkxCexClient` imports and command handler.
   - Add `sync-binance-usdt-perp-universe` handler.
   - Add cleanup command `cex-binance-hard-cut-cleanup` with `--dry-run`, `--execute`, and `--min-binance-feeds`.
     This command owns destructive SQL cleanup after Binance sync.
 - Create `scripts/cex_binance_config_hard_cut.py`
-  - Read `~/.gmgn-twitter-intel/config.yaml` by default, or an explicit `--config-path`.
+  - Read `~/.parallax/config.yaml` by default, or an explicit `--config-path`.
   - Remove `providers.okx.cex_base_url`, `providers.okx.cex_sync_enabled`, and `providers.okx.cex_inst_types`.
   - Add `providers.binance.cex_profile_base_url`, `providers.binance.usdm_futures_base_url`,
     `providers.binance.cex_universe_quote_symbol`, and `providers.binance.cex_universe_contract_type`.
@@ -183,56 +183,56 @@ Docker ordering invariant:
 
 ### Registry and resolver
 
-- Create `src/gmgn_twitter_intel/domains/asset_market/services/binance_usdt_perp_universe_sync.py`
+- Create `src/parallax/domains/asset_market/services/binance_usdt_perp_universe_sync.py`
   - Implement `sync_binance_usdt_perp_universe(registry, routes, observed_at_ms, dry_run, execute)`.
   - Upsert Binance-backed `cex_tokens` and `price_feeds`.
   - Remove or plan removal of non-Binance-backed `cex_tokens` in `--execute`.
   - Return counts: `binance_usdt_perp_seen`, `cex_tokens_to_insert`, `cex_tokens_to_delete`, `pricefeeds_to_insert`, `old_okx_cex_rows_to_delete`, `duration_ms`.
-- Modify or retire `src/gmgn_twitter_intel/domains/asset_market/services/asset_market_sync.py`
+- Modify or retire `src/parallax/domains/asset_market/services/asset_market_sync.py`
   - Remove OKX ticker-shape parsing.
   - If the filename remains, make it delegate to explicit route sync with no OKX defaults.
-- Modify `src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py`
+- Modify `src/parallax/domains/asset_market/repositories/registry_repository.py`
   - Add `upsert_cex_route(route, observed_at_ms, commit=False)`.
   - Add `binance_usdt_perp_pricefeeds()` and cleanup helpers.
   - Change `find_preferred_cex_pricefeed(base_symbol)` to only return canonical Binance USDT swap.
   - Change `active_live_market_targets(...)` so CEX active targets only select Binance canonical USDT swap feeds.
 - Modify every duplicated preferred CEX feed read path, not only `RegistryRepository`:
-  - `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py`
-  - `src/gmgn_twitter_intel/domains/token_intel/queries/event_token_projection_query.py`
-  - `src/gmgn_twitter_intel/domains/token_intel/repositories/token_target_repository.py`
-  - `src/gmgn_twitter_intel/domains/account_quality/repositories/account_quality_repository.py`
+  - `src/parallax/domains/token_intel/queries/token_radar_source_query.py`
+  - `src/parallax/domains/token_intel/queries/event_token_projection_query.py`
+  - `src/parallax/domains/token_intel/repositories/token_target_repository.py`
+  - `src/parallax/domains/account_quality/repositories/account_quality_repository.py`
   - Each query must filter `provider='binance'`, `feed_type='cex_swap'`, `quote_symbol='USDT'`, `status='canonical'`.
-- Modify `src/gmgn_twitter_intel/domains/token_intel/services/deterministic_token_resolver.py`
+- Modify `src/parallax/domains/token_intel/services/deterministic_token_resolver.py`
   - Ensure explicit `exchange=okx` does not create or select OKX CEX routes.
   - Ensure symbol-only CEX resolution requires a Binance-backed feed.
 
 ### Market facts and CEX reads
 
-- Modify `src/gmgn_twitter_intel/domains/asset_market/types/market_tick.py`
+- Modify `src/parallax/domains/asset_market/types/market_tick.py`
   - Replace `okx_cex_rest` with `binance_cex_rest` in `MarketTickSourceProvider`.
-- Modify `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_poll_worker.py`
+- Modify `src/parallax/domains/asset_market/runtime/market_tick_poll_worker.py`
   - Rename CEX source constant to `binance_cex_rest`.
   - Read provider from `providers.cex_market`.
   - Write CEX ticks with `exchange='binance'`, `target_id='binance:<symbol>'`, `source_provider='binance_cex_rest'`.
-- Modify `src/gmgn_twitter_intel/domains/asset_market/services/event_market_capture.py`
+- Modify `src/parallax/domains/asset_market/services/event_market_capture.py`
   - Use `providers.cex_market`.
   - Replace comments and source constants from OKX CEX to Binance CEX.
-- Modify `src/gmgn_twitter_intel/domains/asset_market/runtime/event_anchor_backfill_worker.py`
+- Modify `src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py`
   - Use `providers.cex_market`.
   - Write CEX backfill ticks as Binance.
-- Modify `src/gmgn_twitter_intel/domains/asset_market/read_models/market_candles_service.py`
+- Modify `src/parallax/domains/asset_market/read_models/market_candles_service.py`
   - Emit `candle_source='binance_cex_candles'` for CEX tokens.
   - Call Binance CEX candle provider for CEX tokens.
-- Modify `src/gmgn_twitter_intel/app/runtime/worker_factories/asset_market.py`
+- Modify `src/parallax/app/runtime/worker_factories/asset_market.py`
   - Construct market tick poll and event anchor backfill when `cex_market` or DEX providers are present.
-- Modify `src/gmgn_twitter_intel/app/surfaces/api/routes_search.py`
+- Modify `src/parallax/app/surfaces/api/routes_search.py`
   - Pass `cex_market` instead of `message_cex_market`.
-- Modify `src/gmgn_twitter_intel/domains/asset_market/runtime/live_price_gateway.py`
+- Modify `src/parallax/domains/asset_market/runtime/live_price_gateway.py`
   - Preserve `open_interest_usd` from latest `market_ticks` in the live payload instead of hardcoding `None`.
 
 ### Storage / migrations
 
-- Create additive migration `src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0072_cex_binance_source_provider_additive.py`
+- Create additive migration `src/parallax/platform/db/alembic/versions/20260521_0072_cex_binance_source_provider_additive.py`
   - This migration must be safe when Docker runs `db migrate` before Binance universe sync.
   - Drop the old `market_ticks_source_provider_check`.
   - Add the new check as `NOT VALID` so old OKX CEX rows can remain temporarily, but new writes must use the new provider set:
@@ -245,7 +245,7 @@ Docker ordering invariant:
       CHECK (source_provider IN ('okx_dex_ws', 'okx_dex_rest', 'gmgn_dex_quote', 'binance_cex_rest'))
       NOT VALID;
     ```
-- Create `src/gmgn_twitter_intel/domains/asset_market/services/cex_binance_hard_cut_cleanup.py`
+- Create `src/parallax/domains/asset_market/services/cex_binance_hard_cut_cleanup.py`
   - Implement the SQL cleanup transaction used by the ops command.
   - Inputs: `dry_run`, `execute`, `min_binance_feeds`, `now_ms`.
   - Acquire an advisory transaction lock before modifying rows.
@@ -418,34 +418,34 @@ Docker ordering invariant:
 
 ### CEX OI/radar board foundation
 
-- Create `src/gmgn_twitter_intel/domains/cex_market_intel/__init__.py`
-- Create `src/gmgn_twitter_intel/domains/cex_market_intel/repositories/cex_derivative_series_repository.py`
+- Create `src/parallax/domains/cex_market_intel/__init__.py`
+- Create `src/parallax/domains/cex_market_intel/repositories/cex_derivative_series_repository.py`
   - Batch upsert Binance OI history points keyed by `(source_provider, exchange, instrument, family, period, timestamp_ms)`.
-- Create `src/gmgn_twitter_intel/domains/cex_market_intel/repositories/cex_oi_radar_repository.py`
+- Create `src/parallax/domains/cex_market_intel/repositories/cex_oi_radar_repository.py`
   - Publish current `cex_oi_radar_rows`.
   - Preserve existing current rows on failed/skipped attempts.
   - Track latest attempt and current payload hash in `cex_oi_radar_publication_state`.
-- Create `src/gmgn_twitter_intel/domains/cex_market_intel/services/binance_oi_radar_builder.py`
+- Create `src/parallax/domains/cex_market_intel/services/binance_oi_radar_builder.py`
   - Read Binance-backed `price_feeds`.
   - Fetch `ticker/24hr`, `premiumIndex`, and `openInterestHist`.
   - Compute latest OI USD, OI 4h/24h deltas, price 24h change, volume gate, funding label, bucket, and composite score.
-- Create `src/gmgn_twitter_intel/domains/cex_market_intel/scoring/oi_radar_scoring.py`
+- Create `src/parallax/domains/cex_market_intel/scoring/oi_radar_scoring.py`
   - Keep scoring deterministic and artifact-free.
   - Gate low quote-volume symbols before ranking.
-- Create `src/gmgn_twitter_intel/domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py`
+- Create `src/parallax/domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py`
   - Worker uses advisory lock, rate limiter, hard timeout, and partial-run degradation.
-- Create `src/gmgn_twitter_intel/app/runtime/worker_factories/cex_market_intel.py`
+- Create `src/parallax/app/runtime/worker_factories/cex_market_intel.py`
   - Construct `cex_oi_radar_board` only when Binance CEX provider is available.
-- Modify `src/gmgn_twitter_intel/app/runtime/worker_registry.py`
+- Modify `src/parallax/app/runtime/worker_registry.py`
   - Add `cex_oi_radar_board`.
-- Modify `src/gmgn_twitter_intel/platform/config/settings.py`
+- Modify `src/parallax/platform/config/settings.py`
   - Add `CexOiRadarBoardWorkerSettings`.
-- Modify `src/gmgn_twitter_intel/app/runtime/repository_session.py`
+- Modify `src/parallax/app/runtime/repository_session.py`
   - Wire CEX market intel repositories.
-- Create `src/gmgn_twitter_intel/app/surfaces/api/routes_cex.py`
+- Create `src/parallax/app/surfaces/api/routes_cex.py`
   - Add read-only `/api/cex/radar-board`.
 - Modify API route registration where existing routes are mounted.
-- Create migration `src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0073_cex_oi_radar_board.py`
+- Create migration `src/parallax/platform/db/alembic/versions/20260521_0073_cex_oi_radar_board.py`
   - Add `cex_derivative_series_points`.
   - Add `cex_oi_radar_rows`.
   - Add `cex_oi_radar_publication_state`.
@@ -466,7 +466,7 @@ Docker ordering invariant:
   - Update ops CLI contract.
 - Modify `docs/WORKERS.md`
   - Update market tick poll and event anchor CEX provider descriptions.
-- Modify `src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md`
+- Modify `src/parallax/domains/asset_market/ARCHITECTURE.md`
   - State CEX market facts are Binance-only.
 - Regenerate:
   - `docs/generated/cli-help.md`
@@ -527,9 +527,9 @@ Docker ordering invariant:
 ### Task 2: Add Binance USD-M futures provider
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/integrations/binance/usdm_futures_client.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/provider_wiring/binance.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/providers.py`
+- Create: `src/parallax/integrations/binance/usdm_futures_client.py`
+- Modify: `src/parallax/app/runtime/provider_wiring/binance.py`
+- Modify: `src/parallax/domains/asset_market/providers.py`
 
 - [ ] Implement `BinanceUsdmFuturesClient` with httpx and deterministic parser helpers.
 - [ ] Implement `BinanceUsdmFuturesMarketProvider` that returns existing `CexTicker` and `MarketCandle` shapes.
@@ -543,12 +543,12 @@ Docker ordering invariant:
 ### Task 3: Hard-cut config and provider wiring
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/provider_wiring/types.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/provider_wiring/asset_market.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/provider_wiring/okx.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/commands/config.py`
-- Delete: `src/gmgn_twitter_intel/integrations/okx/cex_client.py` after shared helper extraction.
+- Modify: `src/parallax/platform/config/settings.py`
+- Modify: `src/parallax/app/runtime/provider_wiring/types.py`
+- Modify: `src/parallax/app/runtime/provider_wiring/asset_market.py`
+- Modify: `src/parallax/app/runtime/provider_wiring/okx.py`
+- Modify: `src/parallax/app/surfaces/cli/commands/config.py`
+- Delete: `src/parallax/integrations/okx/cex_client.py` after shared helper extraction.
 
 - [ ] Remove OKX CEX settings and accessors.
 - [ ] Add Binance futures settings and defaults.
@@ -564,11 +564,11 @@ Docker ordering invariant:
 ### Task 4: Replace OKX CEX universe sync with Binance USDT perp sync
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/asset_market/services/binance_usdt_perp_universe_sync.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/services/asset_market_sync.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/parser.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`
+- Create: `src/parallax/domains/asset_market/services/binance_usdt_perp_universe_sync.py`
+- Modify: `src/parallax/domains/asset_market/services/asset_market_sync.py`
+- Modify: `src/parallax/domains/asset_market/repositories/registry_repository.py`
+- Modify: `src/parallax/app/surfaces/cli/parser.py`
+- Modify: `src/parallax/app/surfaces/cli/commands/ops.py`
 - Modify: `tests/unit/test_asset_market_sync.py`
 - Modify: `tests/integration/test_cli.py`
 
@@ -586,12 +586,12 @@ Docker ordering invariant:
 ### Task 5: Hard-cut CEX registry preference and resolution
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/registry_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/deterministic_token_resolver.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/queries/event_token_projection_query.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_target_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/account_quality/repositories/account_quality_repository.py`
+- Modify: `src/parallax/domains/asset_market/repositories/registry_repository.py`
+- Modify: `src/parallax/domains/token_intel/services/deterministic_token_resolver.py`
+- Modify: `src/parallax/domains/token_intel/queries/token_radar_source_query.py`
+- Modify: `src/parallax/domains/token_intel/queries/event_token_projection_query.py`
+- Modify: `src/parallax/domains/token_intel/repositories/token_target_repository.py`
+- Modify: `src/parallax/domains/account_quality/repositories/account_quality_repository.py`
 - Modify: `tests/unit/test_deterministic_token_resolver.py`
 - Modify: `tests/unit/test_token_intent_resolver.py`
 - Modify: `tests/unit/test_token_radar_projection.py`
@@ -616,14 +616,14 @@ Docker ordering invariant:
 ### Task 6: Switch CEX market facts, event anchors, and candles to Binance
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/types/market_tick.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_poll_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/services/event_market_capture.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/event_anchor_backfill_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/read_models/market_candles_service.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_factories/asset_market.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/routes_search.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/live_price_gateway.py`
+- Modify: `src/parallax/domains/asset_market/types/market_tick.py`
+- Modify: `src/parallax/domains/asset_market/runtime/market_tick_poll_worker.py`
+- Modify: `src/parallax/domains/asset_market/services/event_market_capture.py`
+- Modify: `src/parallax/domains/asset_market/runtime/event_anchor_backfill_worker.py`
+- Modify: `src/parallax/domains/asset_market/read_models/market_candles_service.py`
+- Modify: `src/parallax/app/runtime/worker_factories/asset_market.py`
+- Modify: `src/parallax/app/surfaces/api/routes_search.py`
+- Modify: `src/parallax/domains/asset_market/runtime/live_price_gateway.py`
 - Modify CEX provider-name tests listed in File-level edits.
 
 - [ ] Replace CEX source constants with `binance_cex_rest`.
@@ -649,10 +649,10 @@ Docker ordering invariant:
 ### Task 7: Add additive migration and lifecycle-safe SQL cleanup
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0072_cex_binance_source_provider_additive.py`
-- Create: `src/gmgn_twitter_intel/domains/asset_market/services/cex_binance_hard_cut_cleanup.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/parser.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260521_0072_cex_binance_source_provider_additive.py`
+- Create: `src/parallax/domains/asset_market/services/cex_binance_hard_cut_cleanup.py`
+- Modify: `src/parallax/app/surfaces/cli/parser.py`
+- Modify: `src/parallax/app/surfaces/cli/commands/ops.py`
 - Modify: `tests/integration/test_postgres_schema_runtime.py`
 - Create or modify cleanup-focused tests under `tests/integration/`
 
@@ -670,17 +670,17 @@ Docker ordering invariant:
 ### Task 8: Add Binance-only OI/radar board foundation
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/cex_market_intel/repositories/cex_derivative_series_repository.py`
-- Create: `src/gmgn_twitter_intel/domains/cex_market_intel/repositories/cex_oi_radar_repository.py`
-- Create: `src/gmgn_twitter_intel/domains/cex_market_intel/services/binance_oi_radar_builder.py`
-- Create: `src/gmgn_twitter_intel/domains/cex_market_intel/scoring/oi_radar_scoring.py`
-- Create: `src/gmgn_twitter_intel/domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py`
-- Create: `src/gmgn_twitter_intel/app/runtime/worker_factories/cex_market_intel.py`
-- Create: `src/gmgn_twitter_intel/app/surfaces/api/routes_cex.py`
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0073_cex_oi_radar_board.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/worker_registry.py`
-- Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/repository_session.py`
+- Create: `src/parallax/domains/cex_market_intel/repositories/cex_derivative_series_repository.py`
+- Create: `src/parallax/domains/cex_market_intel/repositories/cex_oi_radar_repository.py`
+- Create: `src/parallax/domains/cex_market_intel/services/binance_oi_radar_builder.py`
+- Create: `src/parallax/domains/cex_market_intel/scoring/oi_radar_scoring.py`
+- Create: `src/parallax/domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py`
+- Create: `src/parallax/app/runtime/worker_factories/cex_market_intel.py`
+- Create: `src/parallax/app/surfaces/api/routes_cex.py`
+- Create: `src/parallax/platform/db/alembic/versions/20260521_0073_cex_oi_radar_board.py`
+- Modify: `src/parallax/app/runtime/worker_registry.py`
+- Modify: `src/parallax/platform/config/settings.py`
+- Modify: `src/parallax/app/runtime/repository_session.py`
 - Create tests under `tests/unit/domains/cex_market_intel/` and `tests/integration/domains/cex_market_intel/`
 
 - [ ] Add OI/radar schema and repository methods.
@@ -702,7 +702,7 @@ Docker ordering invariant:
 - Modify: `docs/ARCHITECTURE.md`
 - Modify: `docs/CONTRACTS.md`
 - Modify: `docs/WORKERS.md`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/asset_market/ARCHITECTURE.md`
 - Regenerate: `docs/generated/cli-help.md`
 - Regenerate: `docs/generated/db-schema.md`
 
@@ -743,7 +743,7 @@ Docker ordering invariant:
   ```bash
   rg -n "OkxCex|okx_cex_rest|sync-okx-cex-universe|cex_inst_types|cex_sync_enabled|message_cex_market|sync_cex_market" \
     src tests docs/ARCHITECTURE.md docs/CONTRACTS.md docs/WORKERS.md \
-    --glob '!src/gmgn_twitter_intel/platform/db/alembic/versions/*'
+    --glob '!src/parallax/platform/db/alembic/versions/*'
   ```
   Expected: no runtime/test/doc hits except planned hard-cut spec and completed-plan text.
 - [ ] Run:
@@ -779,7 +779,7 @@ Do not use `make docker-up` for the first hard-cut rollout, because it starts `a
 1. Create DB backup.
 2. Back up and migrate operator config:
    ```bash
-   cp ~/.gmgn-twitter-intel/config.yaml ~/.gmgn-twitter-intel/config.yaml.pre-cex-binance-hard-cut
+   cp ~/.parallax/config.yaml ~/.parallax/config.yaml.pre-cex-binance-hard-cut
    uv run python scripts/cex_binance_config_hard_cut.py --dry-run
    uv run python scripts/cex_binance_config_hard_cut.py --execute
    ```
@@ -797,26 +797,26 @@ Do not use `make docker-up` for the first hard-cut rollout, because it starts `a
    ```
 6. Run Binance universe sync dry-run:
    ```bash
-   docker compose run --rm --no-deps app gmgn-twitter-intel ops sync-binance-usdt-perp-universe --dry-run
+   docker compose run --rm --no-deps app parallax ops sync-binance-usdt-perp-universe --dry-run
    ```
    Expected: `binance_usdt_perp_seen >= 400`.
 7. Run Binance universe sync execute:
    ```bash
-   docker compose run --rm --no-deps app gmgn-twitter-intel ops sync-binance-usdt-perp-universe --execute
+   docker compose run --rm --no-deps app parallax ops sync-binance-usdt-perp-universe --execute
    ```
 8. Run SQL cleanup dry-run:
    ```bash
-   docker compose run --rm --no-deps app gmgn-twitter-intel ops cex-binance-hard-cut-cleanup --dry-run --min-binance-feeds 400
+   docker compose run --rm --no-deps app parallax ops cex-binance-hard-cut-cleanup --dry-run --min-binance-feeds 400
    ```
    Expected: cleanup counts are plausible and no abort reason is present.
 9. Run SQL cleanup execute:
    ```bash
-   docker compose run --rm --no-deps app gmgn-twitter-intel ops cex-binance-hard-cut-cleanup --execute --min-binance-feeds 400
+   docker compose run --rm --no-deps app parallax ops cex-binance-hard-cut-cleanup --execute --min-binance-feeds 400
    ```
    Expected: OKX CEX rows are removed and `market_ticks_source_provider_check` is validated.
 10. Clean-reset Token Radar derived storage:
    ```bash
-   docker compose run --rm --no-deps app gmgn-twitter-intel ops reset-token-radar-postgres-hard-cut --execute
+   docker compose run --rm --no-deps app parallax ops reset-token-radar-postgres-hard-cut --execute
    ```
    Expected: Token Radar current/history/audit storage starts from zero and the next projection rebuilds from current material facts.
 11. Start app:
@@ -838,7 +838,7 @@ Rollback is DB backup + code rollback. There is no runtime OKX fallback.
 2. Restore DB backup taken before hard-cut cleanup.
 3. Deploy previous code revision.
 4. Start app and workers.
-5. Run `uv run gmgn-twitter-intel config` and confirm OKX CEX config returns only on the old code path.
+5. Run `uv run parallax config` and confirm OKX CEX config returns only on the old code path.
 
 The destructive cleanup command is not safely reversible from production tables because it deletes OKX CEX facts and routes. The backup is the rollback artifact.
 
@@ -854,25 +854,25 @@ The destructive cleanup command is not safely reversible from production tables 
 
 - AC1: Binance universe sync dry-run returns expected count.
   ```bash
-  uv run gmgn-twitter-intel ops sync-binance-usdt-perp-universe --dry-run
+  uv run parallax ops sync-binance-usdt-perp-universe --dry-run
   ```
   Expected JSON fields: `binance_usdt_perp_seen`, `cex_tokens_to_insert`, `cex_tokens_to_delete`, `pricefeeds_to_insert`, `old_okx_cex_rows_to_delete`.
 
 - AC2: OKX CEX CLI is gone.
   ```bash
-  uv run gmgn-twitter-intel ops --help | rg "sync-okx-cex-universe"
+  uv run parallax ops --help | rg "sync-okx-cex-universe"
   ```
   Expected: no match.
 
 - AC3: Binance CEX CLI exists.
   ```bash
-  uv run gmgn-twitter-intel ops --help | rg "sync-binance-usdt-perp-universe"
+  uv run parallax ops --help | rg "sync-binance-usdt-perp-universe"
   ```
   Expected: match.
 
 - AC3b: Cleanup CLI exists and supports dry-run/execute.
   ```bash
-  uv run gmgn-twitter-intel ops --help | rg "cex-binance-hard-cut-cleanup"
+  uv run parallax ops --help | rg "cex-binance-hard-cut-cleanup"
   ```
   Expected: match.
 
@@ -880,7 +880,7 @@ The destructive cleanup command is not safely reversible from production tables 
   ```bash
   rg -n "OkxCex|okx_cex_rest|sync-okx-cex-universe|cex_inst_types|cex_sync_enabled|message_cex_market|sync_cex_market" \
     src tests docs/ARCHITECTURE.md docs/CONTRACTS.md docs/WORKERS.md \
-    --glob '!src/gmgn_twitter_intel/platform/db/alembic/versions/*'
+    --glob '!src/parallax/platform/db/alembic/versions/*'
   ```
   Expected: no runtime/test/doc hits except hard-cut planning docs if included in the search.
 

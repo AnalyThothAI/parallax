@@ -42,7 +42,7 @@ Expected: current branch is `codex/macro-terminal-ui-navigation-hard-cut`; unrel
 ```bash
 sed -n '1,260p' docs/FRONTEND.md
 sed -n '1,240p' docs/WORKFLOW.md
-sed -n '1,240p' src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md
+sed -n '1,240p' src/parallax/domains/macro_intel/ARCHITECTURE.md
 sed -n '1,380p' timsun-assets-snapshot.md
 ```
 
@@ -59,11 +59,11 @@ Expected: Python should pass or expose unrelated baseline failures. Current fron
 
 ### Backend macro contract
 
-- Modify `src/gmgn_twitter_intel/domains/macro_intel/_constants.py`
+- Modify `src/parallax/domains/macro_intel/_constants.py`
   - Change `MACRO_MODULE_VIEW_VERSION` from `macro_module_view_v2` to `macro_module_view_v3`.
   - Do not keep a v2 constant for fallback rendering.
 
-- Modify `src/gmgn_twitter_intel/domains/macro_intel/services/macro_module_catalog.py`
+- Modify `src/parallax/domains/macro_intel/services/macro_module_catalog.py`
   - Keep existing module ids and route paths.
   - Add data-only board definitions for index pages, starting with `/macro/assets`.
   - Add helper functions that return concept groups without importing frontend code.
@@ -87,7 +87,7 @@ class MacroSectionBoardSpec:
     - `crypto`: `/macro/assets/crypto`, concepts `crypto:btc`, `crypto:eth`
     - `crypto_derivatives`: `/macro/assets/crypto-derivatives`, concepts `crypto:btc`, `crypto:eth`
 
-- Modify `src/gmgn_twitter_intel/domains/macro_intel/services/macro_module_views.py`
+- Modify `src/parallax/domains/macro_intel/services/macro_module_views.py`
   - Replace `_ordered_payload(...)` fields:
 
 ```python
@@ -130,7 +130,7 @@ def _ordered_payload(
   - For every non-overview module, do not read `snapshot["scenario_json"]` in `_module_read` or `_module_evidence`.
   - For every non-overview module, put global snapshot gaps only in `data_health.global_gaps` and mark them as reference-only, not module blockers.
 
-- Modify `src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py`
+- Modify `src/parallax/app/surfaces/api/routes_macro.py`
   - Keep `/api/macro/modules/{module_id}` as the module endpoint.
   - No fallback path for v2.
   - No frontend-specific navigation endpoint in this plan.
@@ -475,9 +475,9 @@ return {
 ## Task 1: Backend v3 Contract and Module Semantics
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/_constants.py`
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/services/macro_module_catalog.py`
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/services/macro_module_views.py`
+- Modify: `src/parallax/domains/macro_intel/_constants.py`
+- Modify: `src/parallax/domains/macro_intel/services/macro_module_catalog.py`
+- Modify: `src/parallax/domains/macro_intel/services/macro_module_views.py`
 - Test: `tests/unit/domains/macro_intel/test_macro_migration_contract.py`
 - Test: `tests/unit/domains/macro_intel/test_macro_module_catalog.py`
 - Test: `tests/unit/domains/macro_intel/test_macro_module_views.py`
@@ -542,9 +542,9 @@ Expected: PASS.
 - [ ] **Step 5: Commit backend contract slice**
 
 ```bash
-git add src/gmgn_twitter_intel/domains/macro_intel/_constants.py \
-  src/gmgn_twitter_intel/domains/macro_intel/services/macro_module_catalog.py \
-  src/gmgn_twitter_intel/domains/macro_intel/services/macro_module_views.py \
+git add src/parallax/domains/macro_intel/_constants.py \
+  src/parallax/domains/macro_intel/services/macro_module_catalog.py \
+  src/parallax/domains/macro_intel/services/macro_module_views.py \
   tests/unit/domains/macro_intel/test_macro_migration_contract.py \
   tests/unit/domains/macro_intel/test_macro_module_catalog.py \
   tests/unit/domains/macro_intel/test_macro_module_views.py \
@@ -1033,7 +1033,7 @@ Reason: the user requested one plan and no compatibility code. Splitting into pa
 
 1. Merge backend v3 and frontend v3 in the same PR.
 2. Deploy the service and frontend bundle together.
-3. Run `uv run gmgn-twitter-intel db health` after deploy.
+3. Run `uv run parallax db health` after deploy.
 4. Open `/macro`, `/macro/assets`, and one leaf page against the deployed app.
 5. Confirm no macro route is reading old v2 keys in browser console or network payloads.
 

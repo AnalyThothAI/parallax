@@ -24,28 +24,28 @@
 
 ## File Responsibility Map
 
-- `src/gmgn_twitter_intel/domains/macro_intel/_constants.py`: projection/module version constants, concept metadata, history thresholds.
-- `src/gmgn_twitter_intel/domains/macro_intel/services/macro_feature_engine.py`: concept history metrics, readiness, score participation, human labels.
-- `src/gmgn_twitter_intel/domains/macro_intel/services/macro_regime_engine.py`: v4 snapshot status and source coverage.
-- `src/gmgn_twitter_intel/domains/macro_intel/services/macro_module_catalog.py`: module questions, required concepts, chart/table specs, page labels.
-- `src/gmgn_twitter_intel/domains/macro_intel/services/macro_module_views.py`: v2 module payload builder.
-- `src/gmgn_twitter_intel/domains/macro_intel/services/macro_series_view.py`: chart hydration with point-count gaps.
-- `src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py`: concept history counts for CLI/status diagnostics.
-- `src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py`: hard-cut API responses.
-- `src/gmgn_twitter_intel/app/surfaces/cli/commands/macro.py`: status/backfill diagnostics.
+- `src/parallax/domains/macro_intel/_constants.py`: projection/module version constants, concept metadata, history thresholds.
+- `src/parallax/domains/macro_intel/services/macro_feature_engine.py`: concept history metrics, readiness, score participation, human labels.
+- `src/parallax/domains/macro_intel/services/macro_regime_engine.py`: v4 snapshot status and source coverage.
+- `src/parallax/domains/macro_intel/services/macro_module_catalog.py`: module questions, required concepts, chart/table specs, page labels.
+- `src/parallax/domains/macro_intel/services/macro_module_views.py`: v2 module payload builder.
+- `src/parallax/domains/macro_intel/services/macro_series_view.py`: chart hydration with point-count gaps.
+- `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`: concept history counts for CLI/status diagnostics.
+- `src/parallax/app/surfaces/api/routes_macro.py`: hard-cut API responses.
+- `src/parallax/app/surfaces/cli/commands/macro.py`: status/backfill diagnostics.
 - `web/src/features/macro/model/*`: v2 labels, value formatting, chart/table models.
 - `web/src/features/macro/ui/pages/*`: user-facing page grammar.
 - `web/src/features/macro/ui/charts/*`: insufficient-history and missing chart states.
 - `web/src/features/macro/ui/tables/*`: display-ready table rendering, no JSON dumps.
 - `web/src/features/macro/ui/shell/*`: terminal-grade page header/nav/status.
-- `docs/ARCHITECTURE.md`, `src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md`, `docs/CONTRACTS.md`, `docs/SETUP.md`: hard-cut contract and operations docs.
+- `docs/ARCHITECTURE.md`, `src/parallax/domains/macro_intel/ARCHITECTURE.md`, `docs/CONTRACTS.md`, `docs/SETUP.md`: hard-cut contract and operations docs.
 
 ## Task 1 - Backend History Readiness Diagnostics
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/_constants.py`
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/repositories/macro_intel_repository.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/commands/macro.py`
+- Modify: `src/parallax/domains/macro_intel/_constants.py`
+- Modify: `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`
+- Modify: `src/parallax/app/surfaces/cli/commands/macro.py`
 - Modify: `tests/unit/test_cli_macro_commands.py`
 - Test: `tests/unit/domains/macro_intel/test_macro_migration_contract.py`
 
@@ -69,7 +69,7 @@
 **Tests:**
 ```bash
 uv run pytest tests/unit/test_cli_macro_commands.py tests/unit/domains/macro_intel/test_macro_migration_contract.py -q
-uv run ruff check src/gmgn_twitter_intel/domains/macro_intel src/gmgn_twitter_intel/app/surfaces/cli/commands/macro.py tests/unit/test_cli_macro_commands.py
+uv run ruff check src/parallax/domains/macro_intel src/parallax/app/surfaces/cli/commands/macro.py tests/unit/test_cli_macro_commands.py
 ```
 
 **Commit checkpoint:** `macro history readiness diagnostics`
@@ -77,9 +77,9 @@ uv run ruff check src/gmgn_twitter_intel/domains/macro_intel src/gmgn_twitter_in
 ## Task 2 - Projection V4 Feature And Status Semantics
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/services/macro_feature_engine.py`
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/services/macro_regime_engine.py`
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/runtime/macro_view_projection_worker.py`
+- Modify: `src/parallax/domains/macro_intel/services/macro_feature_engine.py`
+- Modify: `src/parallax/domains/macro_intel/services/macro_regime_engine.py`
+- Modify: `src/parallax/domains/macro_intel/runtime/macro_view_projection_worker.py`
 - Modify: `tests/unit/domains/macro_intel/test_macro_feature_engine.py`
 - Modify: `tests/unit/domains/macro_intel/test_macro_regime_engine.py`
 - Modify: `tests/unit/domains/macro_intel/test_macro_view_projection_worker.py`
@@ -96,7 +96,7 @@ uv run ruff check src/gmgn_twitter_intel/domains/macro_intel src/gmgn_twitter_in
 **Tests:**
 ```bash
 uv run pytest tests/unit/domains/macro_intel/test_macro_feature_engine.py tests/unit/domains/macro_intel/test_macro_regime_engine.py tests/unit/domains/macro_intel/test_macro_view_projection_worker.py -q
-uv run mypy src/gmgn_twitter_intel/domains/macro_intel
+uv run mypy src/parallax/domains/macro_intel
 ```
 
 **Commit checkpoint:** `macro regime v4 readiness`
@@ -104,9 +104,9 @@ uv run mypy src/gmgn_twitter_intel/domains/macro_intel
 ## Task 3 - Module View V2 Backend Contract
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/services/macro_module_catalog.py`
-- Replace: `src/gmgn_twitter_intel/domains/macro_intel/services/macro_module_views.py`
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/services/macro_series_view.py`
+- Modify: `src/parallax/domains/macro_intel/services/macro_module_catalog.py`
+- Replace: `src/parallax/domains/macro_intel/services/macro_module_views.py`
+- Modify: `src/parallax/domains/macro_intel/services/macro_series_view.py`
 - Modify: `tests/unit/domains/macro_intel/test_macro_module_catalog.py`
 - Replace assertions in: `tests/unit/domains/macro_intel/test_macro_module_views.py`
 - Modify: `tests/unit/domains/macro_intel/test_macro_series_view.py`
@@ -126,7 +126,7 @@ uv run mypy src/gmgn_twitter_intel/domains/macro_intel
 **Tests:**
 ```bash
 uv run pytest tests/unit/domains/macro_intel/test_macro_module_catalog.py tests/unit/domains/macro_intel/test_macro_module_views.py tests/unit/domains/macro_intel/test_macro_series_view.py -q
-uv run ruff check src/gmgn_twitter_intel/domains/macro_intel tests/unit/domains/macro_intel
+uv run ruff check src/parallax/domains/macro_intel tests/unit/domains/macro_intel
 ```
 
 **Commit checkpoint:** `macro module view v2 contract`
@@ -134,11 +134,11 @@ uv run ruff check src/gmgn_twitter_intel/domains/macro_intel tests/unit/domains/
 ## Task 4 - API Contracts, OpenAPI, And Docs
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py`
+- Modify: `src/parallax/app/surfaces/api/routes_macro.py`
 - Modify: `tests/unit/test_api_macro_contract.py`
 - Modify: `docs/CONTRACTS.md`
 - Modify: `docs/ARCHITECTURE.md`
-- Modify: `src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md`
+- Modify: `src/parallax/domains/macro_intel/ARCHITECTURE.md`
 - Regenerate: `docs/generated/openapi.json`
 - Regenerate: `web/src/lib/types/openapi.ts`
 - Modify if generated facade needs it: `web/src/lib/types/frontend-contracts.ts`
@@ -154,7 +154,7 @@ uv run ruff check src/gmgn_twitter_intel/domains/macro_intel tests/unit/domains/
 **Tests:**
 ```bash
 uv run pytest tests/unit/test_api_macro_contract.py tests/unit/domains/macro_intel -q
-uv run ruff check src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py tests/unit/test_api_macro_contract.py
+uv run ruff check src/parallax/app/surfaces/api/routes_macro.py tests/unit/test_api_macro_contract.py
 cd web && npm run generate:types
 ```
 
@@ -241,13 +241,13 @@ cd web && npm run build
 - Create after implementation: `docs/superpowers/plans/active/2026-05-24-macro-workbench-hard-cut-root-fix-verification.md`
 
 **Steps:**
-- [ ] Document that real-data debugging starts with `uv run gmgn-twitter-intel config` and only reports redacted paths/booleans.
+- [ ] Document that real-data debugging starts with `uv run parallax config` and only reports redacted paths/booleans.
 - [ ] Document history backfill:
   ```bash
   uv run macrodata bundle history macro-core --start YYYY-MM-DD --end YYYY-MM-DD \
-    | uv run gmgn-twitter-intel macro import-bundle --stdin
-  uv run gmgn-twitter-intel macro project-once
-  uv run gmgn-twitter-intel macro status
+    | uv run parallax macro import-bundle --stdin
+  uv run parallax macro project-once
+  uv run parallax macro status
   ```
 - [ ] Document FRED public CSV timeout and optional FRED API key as source health, not a frontend issue.
 - [ ] Record expected good status: history coverage above threshold and no required concept below minimum history for pages claimed `ready`.
@@ -255,9 +255,9 @@ cd web && npm run build
 
 **Tests:**
 ```bash
-uv run gmgn-twitter-intel config
-uv run gmgn-twitter-intel db health
-uv run gmgn-twitter-intel macro status
+uv run parallax config
+uv run parallax db health
+uv run parallax macro status
 ```
 
 **Commit checkpoint:** `macro hard cut ops docs`
@@ -275,8 +275,8 @@ uv run gmgn-twitter-intel macro status
   ```
 - [ ] Run backend lint/type checks:
   ```bash
-  uv run ruff check src/gmgn_twitter_intel/domains/macro_intel src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py src/gmgn_twitter_intel/app/surfaces/cli/commands/macro.py tests/unit/domains/macro_intel tests/unit/test_api_macro_contract.py tests/unit/test_cli_macro_commands.py
-  uv run mypy src/gmgn_twitter_intel/domains/macro_intel src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py src/gmgn_twitter_intel/app/surfaces/cli/commands/macro.py
+  uv run ruff check src/parallax/domains/macro_intel src/parallax/app/surfaces/api/routes_macro.py src/parallax/app/surfaces/cli/commands/macro.py tests/unit/domains/macro_intel tests/unit/test_api_macro_contract.py tests/unit/test_cli_macro_commands.py
+  uv run mypy src/parallax/domains/macro_intel src/parallax/app/surfaces/api/routes_macro.py src/parallax/app/surfaces/cli/commands/macro.py
   ```
 - [ ] Run frontend focused tests:
   ```bash

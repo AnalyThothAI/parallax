@@ -1,5 +1,5 @@
 [project]
-name = "gmgn-twitter-intel"
+name = "parallax"
 version = "0.1.0"
 description = "Parallax Market Research System: evidence-first market research with PostgreSQL-backed facts, signals, agent audit, and outcome attribution."
 readme = "README.md"
@@ -41,14 +41,14 @@ dev = [
 ]
 
 [project.scripts]
-gmgn-twitter-intel = "gmgn_twitter_intel.cli:main"
+parallax = "parallax.cli:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/gmgn_twitter_intel"]
+packages = ["src/parallax"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -126,7 +126,7 @@ mypy_path = "src"
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = "gmgn_twitter_intel.app.*"
+module = "parallax.app.*"
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
 disallow_untyped_decorators = false
@@ -136,7 +136,7 @@ warn_return_any = false
 disable_error_code = ["arg-type", "attr-defined", "union-attr", "index", "operator", "assignment", "no-untyped-call"]
 
 [[tool.mypy.overrides]]
-module = "gmgn_twitter_intel.integrations.*"
+module = "parallax.integrations.*"
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
 disallow_untyped_decorators = false
@@ -155,10 +155,10 @@ ignore_missing_imports = true
 
 [tool.coverage.run]
 branch = true
-source = ["src/gmgn_twitter_intel"]
+source = ["src/parallax"]
 omit = [
-  "src/gmgn_twitter_intel/platform/db/alembic/versions/*",
-  "src/gmgn_twitter_intel/cli.py",
+  "src/parallax/platform/db/alembic/versions/*",
+  "src/parallax/cli.py",
 ]
 
 [tool.coverage.report]

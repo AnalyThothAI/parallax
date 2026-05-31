@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.asset_market.profile_source_selection import (
+from parallax.domains.asset_market.profile_source_selection import (
     select_gmgn_stream_source,
     select_okx_dex_source,
 )
-from gmgn_twitter_intel.domains.asset_market.services.token_profile_current_projection import (
+from parallax.domains.asset_market.services.token_profile_current_projection import (
     project_token_profile_current,
 )
 

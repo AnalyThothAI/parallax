@@ -56,8 +56,8 @@ TradingAgents references used for architectural comparison:
 
 Read-only production diagnostics used the operator-owned runtime config:
 
-- `config_path`: `/Users/qinghuan/.gmgn-twitter-intel/config.yaml`
-- `workers_config_path`: `/Users/qinghuan/.gmgn-twitter-intel/workers.yaml`
+- `config_path`: `/Users/qinghuan/.parallax/config.yaml`
+- `workers_config_path`: `/Users/qinghuan/.parallax/workers.yaml`
 
 Window: approximately `2026-05-18 13:06:48` to `2026-05-18 17:06:48` Asia/Shanghai.
 

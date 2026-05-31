@@ -6,9 +6,9 @@ from typing import Any
 import pytest
 from psycopg import errors as psycopg_errors
 
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_candidates_repository import PulseCandidatesRepository
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_jobs_repository import PulseJobsRepository
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_runs_repository import PulseRunsRepository
+from parallax.domains.pulse_lab.repositories.pulse_candidates_repository import PulseCandidatesRepository
+from parallax.domains.pulse_lab.repositories.pulse_jobs_repository import PulseJobsRepository
+from parallax.domains.pulse_lab.repositories.pulse_runs_repository import PulseRunsRepository
 from tests.postgres_test_utils import connect_postgres_test, reset_postgres_schema
 
 pytestmark = pytest.mark.integration

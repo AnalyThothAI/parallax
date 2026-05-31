@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import httpx
 
-from gmgn_twitter_intel.integrations.coingecko.search_client import (
+from parallax.integrations.coingecko.search_client import (
     CoingeckoSearchClient,
     CoingeckoSearchHit,
 )

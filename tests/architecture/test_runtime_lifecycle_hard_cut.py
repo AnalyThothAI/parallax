@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from gmgn_twitter_intel.app.runtime.worker_manifest import all_worker_manifests
+from parallax.app.runtime.worker_manifest import all_worker_manifests
 
 ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src" / "gmgn_twitter_intel"
+SRC = ROOT / "src" / "parallax"
 
 CANONICAL_LIFECYCLE_DOCS = (
     ROOT / "AGENTS.md",

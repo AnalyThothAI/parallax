@@ -7,22 +7,22 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
-from gmgn_twitter_intel.app.runtime.worker_manifest import require_worker_manifest
-from gmgn_twitter_intel.app.runtime.worker_space import WorkerSpaceContract, contract_from_manifest
-from gmgn_twitter_intel.domains.asset_market.repositories.registry_repository import RegistryRepository
-from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
-from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import (
+from parallax.app.runtime.repository_session import repositories_for_connection
+from parallax.app.runtime.worker_manifest import require_worker_manifest
+from parallax.app.runtime.worker_space import WorkerSpaceContract, contract_from_manifest
+from parallax.domains.asset_market.repositories.registry_repository import RegistryRepository
+from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
+from parallax.domains.pulse_lab.runtime.pulse_candidate_worker import (
     PulseCandidateWorker,
     PulseTriggerThresholds,
 )
-from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import PulseGateThresholds
-from gmgn_twitter_intel.domains.token_intel.interfaces import (
+from parallax.domains.pulse_lab.services.pulse_candidate_gate import PulseGateThresholds
+from parallax.domains.token_intel.interfaces import (
     TOKEN_RADAR_PROJECTION_VERSION,
     TOKEN_RADAR_RESOLVER_POLICY_VERSION,
     TOKEN_RADAR_VENUES,
 )
-from gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
+from parallax.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate

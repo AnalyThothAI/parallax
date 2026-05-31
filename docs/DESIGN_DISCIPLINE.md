@@ -16,7 +16,7 @@ If the user asks for a spec, do not write a plan inside it. If the user asks for
 
 Before writing any new service or scoring scheme:
 
-1. List all files in the relevant `src/gmgn_twitter_intel/<area>/` and `tests/` directories.
+1. List all files in the relevant `src/parallax/<area>/` and `tests/` directories.
 2. Read existing `*_service.py` candidates end to end. Most "new" features here are 80 % covered by an existing service plus a few missing joins.
 3. Trace the data flow from `collector → ingest → enrichment → retrieval → api/http.py → web/`. Cite the actual files and line ranges as evidence in the spec, not as instructions.
 4. Identify fields already in the DB but unconsumed by retrieval services. These are usually the cheapest wins.

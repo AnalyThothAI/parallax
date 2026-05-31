@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
-from gmgn_twitter_intel.domains.token_intel.repositories.intent_resolution_repository import IntentResolutionRepository
-from gmgn_twitter_intel.domains.token_intel.services.deterministic_token_resolver import DeterministicResolution
+from parallax.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
+from parallax.domains.token_intel.repositories.intent_resolution_repository import IntentResolutionRepository
+from parallax.domains.token_intel.services.deterministic_token_resolver import DeterministicResolution
 
 
 def test_insert_resolution_serializes_current_row_by_intent_before_superseding() -> None:

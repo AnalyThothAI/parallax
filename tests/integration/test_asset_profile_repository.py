@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from gmgn_twitter_intel.domains.asset_market.repositories.asset_profile_repository import (
+from parallax.domains.asset_market.repositories.asset_profile_repository import (
     ERROR_REFRESH_MS,
     GMGN_DEX_PROFILE_PROVIDER,
     READY_REFRESH_MS,
     AssetProfileRepository,
 )
-from gmgn_twitter_intel.domains.asset_market.repositories.registry_repository import RegistryRepository
+from parallax.domains.asset_market.repositories.registry_repository import RegistryRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 

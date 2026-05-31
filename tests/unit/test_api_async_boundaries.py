@@ -1,7 +1,7 @@
 import ast
 from pathlib import Path
 
-API_DIR = Path("src/gmgn_twitter_intel/app/surfaces/api")
+API_DIR = Path("src/parallax/app/surfaces/api")
 HTTP_METHODS = {"delete", "get", "patch", "post", "put"}
 
 
@@ -27,7 +27,7 @@ def test_api_surface_does_not_manually_offload_sync_repository_reads() -> None:
 
 
 def test_readyz_uses_sync_route_boundary() -> None:
-    source = Path("src/gmgn_twitter_intel/app/runtime/app.py").read_text(encoding="utf-8")
+    source = Path("src/parallax/app/runtime/app.py").read_text(encoding="utf-8")
     routes = _api_route_functions(source, outer_function_name="create_app")
     readyz = next(route for route in routes if route.name == "readyz")
 
@@ -35,8 +35,8 @@ def test_readyz_uses_sync_route_boundary() -> None:
 
 
 def test_runtime_splits_db_pools_by_execution_role() -> None:
-    app_source = Path("src/gmgn_twitter_intel/app/runtime/app.py").read_text(encoding="utf-8")
-    source = Path("src/gmgn_twitter_intel/app/runtime/bootstrap.py").read_text(encoding="utf-8")
+    app_source = Path("src/parallax/app/runtime/app.py").read_text(encoding="utf-8")
+    source = Path("src/parallax/app/runtime/bootstrap.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
     runtime_class = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "Runtime")
     fields = {

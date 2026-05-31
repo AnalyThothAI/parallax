@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src" / "gmgn_twitter_intel"
+SRC = ROOT / "src" / "parallax"
 MODEL_EXECUTION = SRC / "integrations" / "model_execution"
 GATEWAY_FILES = {
     MODEL_EXECUTION / "execution_gateway.py",
@@ -182,8 +182,8 @@ def test_news_item_brief_has_no_runtime_legacy_hash_fallback() -> None:
         "old_hash",
     )
     paths = [
-        "src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py",
-        "src/gmgn_twitter_intel/domains/news_intel/services/news_item_brief_input.py",
+        "src/parallax/domains/news_intel/runtime/news_item_brief_worker.py",
+        "src/parallax/domains/news_intel/services/news_item_brief_input.py",
     ]
     for path in paths:
         text = Path(path).read_text(encoding="utf-8")

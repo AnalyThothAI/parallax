@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from hashlib import sha256
 
-from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
-from gmgn_twitter_intel.domains.asset_market.repositories.token_image_asset_repository import (
+from parallax.app.runtime.repository_session import repositories_for_connection
+from parallax.domains.asset_market.repositories.token_image_asset_repository import (
     TokenImageAssetRepository,
 )
 from tests.postgres_test_utils import connect_postgres_test

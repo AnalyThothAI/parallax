@@ -3,7 +3,7 @@
 **Status**: Draft, awaiting review
 **Date**: 2026-05-14
 **Owner**: Claude with Qinghuan
-**Scope**: 在 `gmgn-twitter-intel` 服务里新增一条独立的链上数据维度——Uniswap V4 hook 发现与排行榜。仅 ETH 主网。仅 pull-based（无实时告警）。无 Twitter 联动。本文是 spec，不含 alembic 完整 migration、文件级任务、PR 拆分（那些进 plan）。
+**Scope**: 在 `parallax` 服务里新增一条独立的链上数据维度——Uniswap V4 hook 发现与排行榜。仅 ETH 主网。仅 pull-based（无实时告警）。无 Twitter 联动。本文是 spec，不含 alembic 完整 migration、文件级任务、PR 拆分（那些进 plan）。
 
 **Related**:
 
@@ -23,7 +23,7 @@
 - Uniswap V4 主网 PoolManager 地址：`0x000000000004444c5dc75cb358380d2e3de08a90`
 - HookRank 已建好 hook 维度 schema 的公开 subgraph：`https://api.studio.thegraph.com/query/83028/univ4/v300`（免费、无运维、与 hookrank.io 网页同源）
 - Uniswap 官方 v4-subgraph 按 pool 维度建模，hook 维度聚合需自己写
-- 项目既有 `UpstreamClientProtocol`（`src/gmgn_twitter_intel/domains/ingestion/providers.py:9-27`）只装载单一 GMGN WebSocket upstream，hook radar 不走 ingestion 通道——它不是事件流，是 pull discovery
+- 项目既有 `UpstreamClientProtocol`（`src/parallax/domains/ingestion/providers.py:9-27`）只装载单一 GMGN WebSocket upstream，hook radar 不走 ingestion 通道——它不是事件流，是 pull discovery
 - `pulse_candidates.target_type` 是 `Literal["Asset", "CexToken"]`（`domains/pulse_lab/interfaces.py:43`），`pulse_status` 是为 token 设计的 5 档 enum
 - `asset_venues`、`asset_identity_evidence`、`price_feeds` 已有 `chain + address` 字段，但其语义是"该 asset 在该 venue 上的标识"——hook 不是 asset，硬塞会污染语义
 - 既有 DEX provider 模式：`AssetMarketProviders`（frozen dataclass）+ `DexMarketStreamProvider`（Protocol）+ `OkxDexWebSocketMarketProviderAdapter`（实现）—— hook radar 沿用此模式
@@ -114,7 +114,7 @@ CREATE INDEX hook_snapshots_hook_time_idx ON hook_snapshots (hook_id, captured_a
 
 **FK 索引规范**：按既有 `feedback_hard_cut_style` 与 `project_fk_index_gap` 偏好，`hook_snapshots.hook_id` FK 自带 index（上面 `hook_snapshots_hook_time_idx` 复合索引前缀已覆盖）。
 
-### 5.2 Domain 层（`src/gmgn_twitter_intel/domains/hook_radar/`）
+### 5.2 Domain 层（`src/parallax/domains/hook_radar/`）
 
 ```
 domains/hook_radar/
@@ -356,7 +356,7 @@ hook_radar.snapshot.top_n_hooks          int,  默认 200
 ## 11. 验证 checklist（落地后）
 
 - [ ] 单元 / 集成 / 组件 / E2E 全绿（按 `docs/TESTING.md` 命令）
-- [ ] `uv run gmgn-twitter-intel --help` 包含 hook radar 相关命令（如有）
+- [ ] `uv run parallax --help` 包含 hook radar 相关命令（如有）
 - [ ] HookRadarWorker 启动后 30min 内 `hook_addresses` 至少有 N > 50 行（HookRank 主网 hook 数量级）
 - [ ] `risk_tier` 分布合理（不应全是 'unknown' —— inspector 起作用了）
 - [ ] `/api/hook-radar/feed?sort=volume` 返回非空且按 volume_24h_usd 倒序

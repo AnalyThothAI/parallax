@@ -278,7 +278,7 @@ must be truthful:
 
 No fallback to suppressed current digest.
 
-**CLI `uv run gmgn-twitter-intel ops rebuild-narrative-intel`**
+**CLI `uv run parallax ops rebuild-narrative-intel`**
 
 The rebuild/drain command becomes the supported operational cleanup path. It must report:
 
@@ -290,15 +290,15 @@ The rebuild/drain command becomes the supported operational cleanup path. It mus
 
 **Operator config hard cut**
 
-Before starting a new image, live `~/.gmgn-twitter-intel/workers.yaml` must not contain
+Before starting a new image, live `~/.parallax/workers.yaml` must not contain
 `max_pending_source_age_seconds`. This is an intentional breaking config cut because
 `PerWorkerSettings` rejects unknown keys. The deployment gate is:
 
 ```bash
-uv run gmgn-twitter-intel config
+uv run parallax config
 ```
 
-The command must succeed with `workers_config_path` under `~/.gmgn-twitter-intel/`.
+The command must succeed with `workers_config_path` under `~/.parallax/`.
 
 ## Acceptance Criteria
 

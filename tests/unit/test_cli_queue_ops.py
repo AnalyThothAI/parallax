@@ -6,12 +6,12 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any
 
-from gmgn_twitter_intel.cli import main
+from parallax.cli import main
 from tests.unit.test_queue_terminal import _FakeTerminalConnection, _terminal_row
 
 
 def test_queue_inspect_dispatches_through_ops_handler(monkeypatch) -> None:
-    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+    from parallax.app.surfaces.cli.commands import ops as ops_module
 
     conn = _FakeTerminalConnection()
     conn.rows = [
@@ -40,8 +40,8 @@ def test_queue_inspect_dispatches_through_ops_handler(monkeypatch) -> None:
 
 
 def test_queue_inspect_passes_reason_bucket_to_terminal_inspect(monkeypatch) -> None:
-    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
-    from gmgn_twitter_intel.app.surfaces.cli.commands import queue_ops
+    from parallax.app.surfaces.cli.commands import ops as ops_module
+    from parallax.app.surfaces.cli.commands import queue_ops
 
     calls: list[dict[str, Any]] = []
 
@@ -82,7 +82,7 @@ def test_queue_inspect_passes_reason_bucket_to_terminal_inspect(monkeypatch) -> 
 
 
 def test_queue_resolve_requires_execute_and_non_empty_reason(monkeypatch) -> None:
-    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+    from parallax.app.surfaces.cli.commands import ops as ops_module
 
     @contextmanager
     def fake_repositories(_settings: object):
@@ -128,7 +128,7 @@ def test_queue_resolve_requires_execute_and_non_empty_reason(monkeypatch) -> Non
 
 
 def test_queue_resolve_retry_uses_registered_transition(monkeypatch) -> None:
-    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+    from parallax.app.surfaces.cli.commands import ops as ops_module
 
     conn = _FakeTerminalConnection()
     conn.rows = [
@@ -198,7 +198,7 @@ def test_queue_resolve_retry_uses_registered_transition(monkeypatch) -> None:
 
 
 def test_queue_resolve_retry_rolls_back_when_transition_requeues_nothing(monkeypatch) -> None:
-    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+    from parallax.app.surfaces.cli.commands import ops as ops_module
 
     conn = _FakeTerminalConnection()
     conn.rows = [
@@ -247,7 +247,7 @@ def test_queue_resolve_retry_rolls_back_when_transition_requeues_nothing(monkeyp
 
 
 def test_queue_retry_transitions_cover_phase_five_terminal_queues() -> None:
-    from gmgn_twitter_intel.app.surfaces.cli.commands import queue_ops
+    from parallax.app.surfaces.cli.commands import queue_ops
 
     assert set(queue_ops.QUEUE_RETRY_TRANSITIONS) >= {
         ("resolution_refresh", "token_discovery_dirty_lookup_keys"),
@@ -259,8 +259,8 @@ def test_queue_retry_transitions_cover_phase_five_terminal_queues() -> None:
 
 
 def test_queue_inspect_active_uses_queue_health_adapter(monkeypatch) -> None:
-    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
-    from gmgn_twitter_intel.app.surfaces.cli.commands import queue_ops
+    from parallax.app.surfaces.cli.commands import ops as ops_module
+    from parallax.app.surfaces.cli.commands import queue_ops
 
     conn = _FakeTerminalConnection()
 

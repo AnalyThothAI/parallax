@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
-from gmgn_twitter_intel.domains.asset_market.repositories.token_profile_current_dirty_target_repository import (
+from parallax.app.runtime.repository_session import repositories_for_connection
+from parallax.domains.asset_market.repositories.token_profile_current_dirty_target_repository import (
     TokenProfileCurrentDirtyTargetRepository,
 )
 
