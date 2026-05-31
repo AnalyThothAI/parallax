@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from parallax.domains.news_intel._constants import (
     NEWS_ITEM_BRIEF_GUARDRAIL_VERSION,
     NEWS_ITEM_BRIEF_PROMPT_VERSION,
@@ -415,6 +417,35 @@ def test_agent_run_and_current_brief_round_trip_gateway_audit_metadata(tmp_path)
     assert current["status"] == "ready"
     assert current["brief_json"]["summary_zh"] == "ETF filing lifts SOL attention."
     assert fetched == current
+
+
+def test_upsert_news_item_agent_brief_rejects_ready_without_publishable_text(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo)
+        run = _insert_run(repo, news_item_id=news_item_id, run_id="run-empty-ready", output_hash="output-empty")
+
+        with pytest.raises(ValueError, match="ready news item agent brief requires publishable"):
+            repo.upsert_news_item_agent_brief(
+                news_item_id=news_item_id,
+                agent_run_id=run["run_id"],
+                status="ready",
+                direction="bullish",
+                decision_class="driver",
+                brief_json={},
+                input_hash="input-empty",
+                artifact_version_hash="artifact-empty",
+                prompt_version=NEWS_ITEM_BRIEF_PROMPT_VERSION,
+                schema_version=NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+                validator_version=NEWS_ITEM_BRIEF_VALIDATOR_VERSION,
+                computed_at_ms=NOW_MS + 1,
+                created_at_ms=NOW_MS + 1,
+                updated_at_ms=NOW_MS + 1,
+            )
+    finally:
+        conn.close()
 
 
 def test_upsert_news_item_agent_brief_replaces_current_row_for_item(tmp_path) -> None:

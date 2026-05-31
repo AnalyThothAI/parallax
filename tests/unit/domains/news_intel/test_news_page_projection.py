@@ -215,6 +215,14 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
                 "market_read_zh": "叙事催化增强。",
                 "bull_view": {"strength": "strong", "thesis_zh": "新增需求预期"},
                 "bear_view": {"strength": "weak", "thesis_zh": "审批仍不确定"},
+                "affected_assets": [
+                    {
+                        "symbol": "SOL",
+                        "target_id": "asset:sol",
+                        "impact_direction": "bullish",
+                        "reason_zh": "ETF 申请直接影响 SOL。",
+                    }
+                ],
                 "data_gaps": [{"kind": "price_reaction"}],
             },
             "input_hash": "input-1",
@@ -247,6 +255,14 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
         "input_hash": "input-1",
         "bull_view": {"strength": "strong", "thesis_zh": "新增需求预期"},
         "bear_view": {"strength": "weak", "thesis_zh": "审批仍不确定"},
+        "affected_assets": [
+            {
+                "symbol": "SOL",
+                "target_id": "asset:sol",
+                "impact_direction": "bullish",
+                "reason_zh": "ETF 申请直接影响 SOL。",
+            }
+        ],
     }
 
 

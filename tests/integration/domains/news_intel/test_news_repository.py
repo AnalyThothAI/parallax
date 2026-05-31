@@ -1844,6 +1844,41 @@ def test_list_news_page_rows_only_returns_projected_items_after_fallback_hard_cu
     assert {row["row_id"] for row in rows} == {"row-projected"}
 
 
+def test_list_news_page_rows_filters_to_current_projection_version(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        current_item_id = _insert_source_provider_and_item(
+            repo,
+            source_item_key="current-projection",
+            title="Current projection",
+        )
+        stale_item_id = _insert_source_provider_and_item(
+            repo,
+            source_item_key="stale-projection",
+            title="Stale projection",
+        )
+        repo.replace_page_rows_for_items(
+            news_item_ids=[current_item_id, stale_item_id],
+            rows=[
+                _page_row("row-current-version", current_item_id, source_id="source-1"),
+                _page_row(
+                    "row-stale-version",
+                    stale_item_id,
+                    source_id="source-1",
+                    projection_version="news_page_rows_v2",
+                ),
+            ],
+        )
+
+        rows = repo.list_news_page_rows(limit=10)
+    finally:
+        conn.close()
+
+    assert [row["row_id"] for row in rows] == ["row-current-version"]
+
+
 def test_list_news_page_rows_requires_enabled_observation_edge(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
@@ -2393,6 +2428,58 @@ def test_news_high_signal_candidates_do_not_require_ready_agent_status(tmp_path)
     assert rows[0]["signal"]["alert_eligibility"]["provider_score"] == 90
 
 
+def test_news_high_signal_candidates_filter_to_current_projection_version(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        current_item_id = _insert_source_provider_and_item(
+            repo,
+            source_item_key="current-candidate",
+            title="Current candidate",
+        )
+        stale_item_id = _insert_source_provider_and_item(
+            repo,
+            source_item_key="stale-candidate",
+            title="Stale candidate",
+        )
+        ready_signal = {
+            "direction": "bullish",
+            "alert_eligibility": {
+                "in_app_eligible": True,
+                "external_push_ready": True,
+                "provider_score": 91,
+                "decision_class": "driver",
+            },
+        }
+        repo.replace_page_rows_for_items(
+            news_item_ids=[current_item_id, stale_item_id],
+            rows=[
+                {
+                    **_page_row("row-current-candidate", current_item_id, source_id="source-1"),
+                    "signal_json": ready_signal,
+                    "token_impacts_json": [{"symbol": "BTC", "score": 91}],
+                },
+                {
+                    **_page_row(
+                        "row-stale-candidate",
+                        stale_item_id,
+                        source_id="source-1",
+                        projection_version="news_page_rows_v2",
+                    ),
+                    "signal_json": ready_signal,
+                    "token_impacts_json": [{"symbol": "ETH", "score": 91}],
+                },
+            ],
+        )
+
+        rows = repo.list_news_high_signal_notification_candidates(min_score=85, limit=10)
+    finally:
+        conn.close()
+
+    assert [row["row_id"] for row in rows] == ["row-current-candidate"]
+
+
 def test_list_news_page_rows_uses_composite_cursor(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
@@ -2905,6 +2992,67 @@ def test_get_news_item_detail_hydrates_agent_brief_and_latest_run_summary(tmp_pa
     }
     assert "request_json" not in detail["agent_run"]
     assert "response_json" not in detail["agent_run"]
+
+
+def test_get_news_item_detail_reads_current_projected_signal_and_lanes(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo, source_item_key="detail-projection")
+        run = _insert_agent_run(repo, news_item_id=news_item_id, run_id="run-detail-projected")
+        repo.upsert_news_item_agent_brief(
+            news_item_id=news_item_id,
+            agent_run_id=run["run_id"],
+            status="ready",
+            direction="bearish",
+            decision_class="driver",
+            brief_json={
+                "summary_zh": "原始 agent brief 不应覆盖当前投影。",
+                "market_read_zh": "detail 必须与 page projection 一致。",
+            },
+            input_hash="input-brief-1",
+            artifact_version_hash="artifact-brief-1",
+            prompt_version=NEWS_ITEM_BRIEF_PROMPT_VERSION,
+            schema_version=NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+            validator_version=NEWS_ITEM_BRIEF_VALIDATOR_VERSION,
+            computed_at_ms=NOW_MS + 100,
+            created_at_ms=NOW_MS + 100,
+            updated_at_ms=NOW_MS + 100,
+        )
+        repo.replace_page_rows_for_items(
+            news_item_ids=[news_item_id],
+            rows=[
+                {
+                    **_page_row("row-detail-current", news_item_id, source_id="source-1"),
+                    "signal_json": {
+                        "source": "provider",
+                        "status": "ready",
+                        "direction": "bullish",
+                        "score": 88,
+                        "method": "projected-page-row",
+                    },
+                    "token_impacts_json": [{"symbol": "BTC", "score": 88}],
+                    "token_lanes_json": [{"lane": "resolved", "symbol": "BTC"}],
+                    "fact_lanes_json": [{"status": "accepted", "event_type": "macro"}],
+                    "content_tags_json": ["macro"],
+                    "content_classification_json": {"policy_version": "projected"},
+                }
+            ],
+        )
+
+        detail = repo.get_news_item_detail(news_item_id=news_item_id)
+    finally:
+        conn.close()
+
+    assert detail is not None
+    assert detail["signal"]["method"] == "projected-page-row"
+    assert detail["signal"]["direction"] == "bullish"
+    assert detail["token_impacts"] == [{"symbol": "BTC", "score": 88}]
+    assert detail["token_lanes"] == [{"lane": "resolved", "symbol": "BTC"}]
+    assert detail["fact_lanes"] == [{"status": "accepted", "event_type": "macro"}]
+    assert detail["content_tags"] == ["macro"]
+    assert detail["content_classification"] == {"policy_version": "projected"}
 
 
 def test_get_news_item_detail_exposes_canonical_observation_evidence(tmp_path) -> None:
@@ -3438,7 +3586,7 @@ def _page_row(
     *,
     source_id: str,
     latest_at_ms: int = NOW_MS,
-    projection_version: str = "test-v1",
+    projection_version: str = NEWS_PAGE_PROJECTION_VERSION,
     computed_at_ms: int = NOW_MS,
 ) -> dict[str, object]:
     return {

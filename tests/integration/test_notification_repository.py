@@ -304,7 +304,7 @@ def test_insert_notification_with_outcome_reports_created_and_aggregated_rows(tm
     assert legacy_duplicate is None
 
 
-def test_insert_notification_upgrades_same_news_source_when_semantic_signature_changes(tmp_path):
+def test_insert_notification_creates_new_news_row_when_semantic_signature_changes(tmp_path):
     repo = repository(tmp_path)
 
     created = repo.insert_notification_with_outcome(
@@ -349,15 +349,14 @@ def test_insert_notification_upgrades_same_news_source_when_semantic_signature_c
     rows = repo.list_notifications(limit=10, rule_id="news_high_signal")
 
     assert created.created is True
-    assert upgraded.created is False
-    assert upgraded.aggregated is True
-    assert len(rows) == 1
-    assert rows[0]["occurrence_count"] == 1
-    assert rows[0]["title"] == "Agent title"
-    assert rows[0]["body"] == "Agent body"
-    assert rows[0]["channels_json"] == ["in_app", "pushdeer"]
-    assert rows[0]["payload_json"]["semantic_signature"] == "sha256:agent-driver"
-    assert rows[0]["payload_json"]["external_push_eligible"] is True
+    assert upgraded.created is True
+    assert upgraded.aggregated is False
+    assert len(rows) == 2
+    assert {row["title"] for row in rows} == {"Provider headline", "Agent title"}
+    assert {row["payload_json"]["semantic_signature"] for row in rows} == {
+        "sha256:provider-context",
+        "sha256:agent-driver",
+    }
 
 
 def test_insert_notification_suppresses_same_pulse_signature_only(tmp_path):

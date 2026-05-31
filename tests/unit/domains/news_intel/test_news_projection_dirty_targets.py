@@ -5,7 +5,12 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from parallax.app.runtime.projection_dirty_targets import enqueue_projection_dirty_targets
+from parallax.domains.news_intel.repositories.news_projection_dirty_target_repository import (
+    NewsProjectionDirtyTargetRepository,
+)
 from parallax.domains.news_intel.repositories.news_repository import NewsRepository
 from parallax.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
 from parallax.domains.news_intel.runtime.news_item_brief_worker import NewsItemBriefWorker
@@ -22,6 +27,23 @@ from parallax.domains.news_intel.types.source_provider import (
 from parallax.domains.token_intel.interfaces import TokenIdentityLookupResult
 
 NOW_MS = 1_779_000_000_000
+
+
+def test_dirty_target_repository_rejects_retired_story_projection_name() -> None:
+    repo = NewsProjectionDirtyTargetRepository(object())
+
+    with pytest.raises(ValueError, match="unsupported news projection_name: story"):
+        repo.enqueue_targets(
+            [
+                {
+                    "projection_name": "story",
+                    "target_kind": "news_item",
+                    "target_id": "news-1",
+                }
+            ],
+            reason="legacy_story_projection",
+            now_ms=NOW_MS,
+        )
 
 
 def test_page_projection_worker_empty_dirty_queue_does_not_scan() -> None:

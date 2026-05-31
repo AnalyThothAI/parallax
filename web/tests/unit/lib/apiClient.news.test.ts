@@ -156,6 +156,46 @@ describe("news API client normalization", () => {
     expect(rows.items[1].agent_brief).toBeUndefined();
   });
 
+  it("does not normalize retired news row aliases after the hard cut", async () => {
+    server.use(
+      http.get(/.*\/api\/news$/, () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            items: [
+              {
+                row_id: "row-legacy",
+                news_item_id: "news-legacy",
+                lifecycle_status: "processed",
+                title: "Legacy title",
+                url: "https://legacy.example/news",
+                published_at_ms: 1_700_000_000_000,
+                source_json: {
+                  provider_type: "opennews",
+                  coverage_tags_json: ["legacy"],
+                },
+                content_tags_json: ["legacy_tag"],
+                token_mentions: [{ display_symbol: "OLD", resolution_status: "resolved" }],
+                fact_candidates: [{ event_type: "legacy", validation_status: "accepted" }],
+              },
+            ],
+            next_cursor: null,
+          },
+        }),
+      ),
+    );
+
+    const rows = await fetchNewsRows({ limit: 1, token: "test-token" });
+
+    expect(rows.items[0].headline).toBe("Untitled news item");
+    expect(rows.items[0].canonical_url).toBeNull();
+    expect(rows.items[0].latest_at_ms).toBeNull();
+    expect(rows.items[0].source).toBeNull();
+    expect(rows.items[0].content_tags).toEqual([]);
+    expect(rows.items[0].token_lanes).toEqual([]);
+    expect(rows.items[0].fact_lanes).toEqual([]);
+  });
+
   it("normalizes item detail agent run error aliases", async () => {
     server.use(
       http.get(/.*\/api\/news\/items\/news-failed$/, () =>
@@ -192,5 +232,28 @@ describe("news API client normalization", () => {
     expect(item.agent_run?.error_class).toBe("ProviderError");
     expect(item.agent_run?.error).toBe("provider timeout");
     expect(item.agent_run?.error_message).toBe("provider timeout");
+  });
+
+  it("does not reconstruct detail lanes from retired token and fact aliases", async () => {
+    server.use(
+      http.get(/.*\/api\/news\/items\/news-legacy-detail$/, () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            row_id: "row-legacy-detail",
+            news_item_id: "news-legacy-detail",
+            lifecycle_status: "processed",
+            headline: "Legacy detail",
+            token_mentions: [{ display_symbol: "OLD", resolution_status: "resolved" }],
+            fact_candidates: [{ event_type: "legacy", validation_status: "accepted" }],
+          },
+        }),
+      ),
+    );
+
+    const item = await fetchNewsItem({ newsItemId: "news-legacy-detail" });
+
+    expect(item.token_lanes).toEqual([]);
+    expect(item.fact_lanes).toEqual([]);
   });
 });

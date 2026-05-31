@@ -364,7 +364,7 @@ class NotificationRuleEngine:
                         "canonical_url": row.get("canonical_url"),
                         "source_domain": row.get("source_domain"),
                         "duplicate_count": _int(row.get("duplicate_count")),
-                        "token_impacts": _safe_signature_list(row.get("token_impacts")),
+                        "token_impacts": _news_token_impacts_payload(row.get("token_impacts")),
                     },
                     channels=channels,
                 )
@@ -699,6 +699,26 @@ def _safe_signature_list(value: Any) -> list[str]:
     return safe
 
 
+def _news_token_impacts_payload(value: Any) -> list[dict[str, Any]]:
+    impacts: list[dict[str, Any]] = []
+    for item in _list(value):
+        if not isinstance(item, dict):
+            continue
+        symbol = _symbol(item.get("symbol") or item.get("target_symbol"))
+        if not symbol:
+            continue
+        score = _int(item.get("score") or item.get("provider_score"))
+        payload = {
+            "symbol": symbol,
+            "score": score or None,
+            "signal": item.get("signal") or item.get("provider_signal"),
+            "grade": item.get("grade") or item.get("provider_grade"),
+            "market_type": item.get("market_type"),
+        }
+        impacts.append({key: value for key, value in payload.items() if value is not None})
+    return impacts[:12]
+
+
 def _stable_hash(payload: Any) -> str:
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return "sha256:" + hashlib.sha256(encoded.encode("utf-8")).hexdigest()
@@ -789,7 +809,6 @@ def _news_display_title(row: dict[str, Any], *, agent_brief: dict[str, Any]) -> 
 
 
 def _news_semantic_signature(row: dict[str, Any], *, agent_brief: dict[str, Any]) -> str:
-    brief_json = _dict(agent_brief.get("brief_json"))
     signal = _dict(row.get("signal"))
     eligibility = _dict(signal.get("alert_eligibility"))
     return _stable_hash(
@@ -798,8 +817,8 @@ def _news_semantic_signature(row: dict[str, Any], *, agent_brief: dict[str, Any]
             "decision_class": agent_brief.get("decision_class") or eligibility.get("decision_class"),
             "direction": agent_brief.get("direction") or signal.get("direction"),
             "content_class": row.get("content_class"),
-            "content_tags": _safe_signature_list(row.get("content_tags") or row.get("content_tags_json")),
-            "affected_assets": _news_affected_asset_symbols(brief_json.get("affected_assets")),
+            "content_tags": _safe_signature_list(row.get("content_tags")),
+            "affected_assets": _news_affected_asset_symbols(_news_agent_affected_assets(agent_brief)),
         }
     )
 
@@ -825,8 +844,7 @@ def _news_external_push_signature(
 
 def _news_external_asset_bucket(row: dict[str, Any]) -> str:
     symbols: list[str] = []
-    brief_json = _dict(_dict(row.get("agent_brief")).get("brief_json"))
-    for symbol in _news_affected_asset_symbols(brief_json.get("affected_assets")):
+    for symbol in _news_affected_asset_symbols(_news_agent_affected_assets(_dict(row.get("agent_brief")))):
         normalized = _news_external_asset_symbol(symbol)
         if normalized and normalized not in symbols:
             symbols.append(normalized)
@@ -865,9 +883,13 @@ def _news_primary_symbol(row: dict[str, Any]) -> str | None:
             symbol = _symbol(impact.get("symbol") or impact.get("target_symbol"))
             if symbol:
                 return symbol
-    brief_json = _dict(_dict(row.get("agent_brief")).get("brief_json"))
-    symbols = _news_affected_asset_symbols(brief_json.get("affected_assets"))
+    symbols = _news_affected_asset_symbols(_news_agent_affected_assets(_dict(row.get("agent_brief"))))
     return symbols[0] if symbols else None
+
+
+def _news_agent_affected_assets(agent_brief: dict[str, Any]) -> list[Any]:
+    brief_json = _dict(agent_brief.get("brief_json"))
+    return _list(agent_brief.get("affected_assets")) or _list(brief_json.get("affected_assets"))
 
 
 def _news_affected_asset_symbols(value: Any) -> list[str]:

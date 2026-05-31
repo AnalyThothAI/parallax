@@ -9,6 +9,7 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
+from parallax.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION
 from parallax.domains.news_intel.services.news_canonical_identity import (
     CANONICAL_POLICY_VERSION,
     CanonicalIdentity,
@@ -1551,7 +1552,8 @@ class NewsRepository:
               computed_at_ms,
               projection_version
             FROM news_page_rows
-            WHERE COALESCE((signal_json -> 'alert_eligibility' ->> 'in_app_eligible')::boolean, false) = true
+            WHERE projection_version = %s
+              AND COALESCE((signal_json -> 'alert_eligibility' ->> 'in_app_eligible')::boolean, false) = true
               AND COALESCE(NULLIF(signal_json -> 'alert_eligibility' ->> 'provider_score', '')::int, -1) >= %s
               AND EXISTS (
                 SELECT 1
@@ -1567,7 +1569,7 @@ class NewsRepository:
               row_id DESC
             LIMIT %s
             """,
-            (int(min_score), max(0, int(limit))),
+            (NEWS_PAGE_PROJECTION_VERSION, int(min_score), max(0, int(limit))),
         ).fetchall()
         payloads: list[dict[str, Any]] = []
         for row in rows:
@@ -1637,7 +1639,8 @@ class NewsRepository:
               computed_at_ms,
               projection_version
             FROM news_page_rows
-            WHERE (
+            WHERE projection_version = %s
+              AND (
               %s::bigint IS NULL
               OR (latest_at_ms, row_id) < (%s::bigint, %s::text)
             )
@@ -1653,6 +1656,7 @@ class NewsRepository:
             LIMIT %s
             """,
             (
+                NEWS_PAGE_PROJECTION_VERSION,
                 cursor_time,
                 cursor_time,
                 cursor_id,
@@ -2245,6 +2249,33 @@ class NewsRepository:
         ).fetchone()
         if row is None:
             return None
+        page_row = self.conn.execute(
+            """
+            SELECT
+              row_id,
+              latest_at_ms,
+              lifecycle_status,
+              token_lanes_json AS token_lanes,
+              fact_lanes_json AS fact_lanes,
+              signal_json AS signal,
+              token_impacts_json AS token_impacts,
+              content_class,
+              content_tags_json AS content_tags,
+              content_classification_json AS content_classification,
+              source_json AS page_source,
+              agent_brief_json AS page_agent_brief,
+              agent_status,
+              agent_brief_computed_at_ms,
+              computed_at_ms,
+              projection_version
+            FROM news_page_rows
+            WHERE news_item_id = %s
+              AND projection_version = %s
+            ORDER BY latest_at_ms DESC, row_id DESC
+            LIMIT 1
+            """,
+            (news_item_id, NEWS_PAGE_PROJECTION_VERSION),
+        ).fetchone()
         observation_rows = self.conn.execute(
             """
             SELECT to_jsonb(edges.*)
@@ -2281,20 +2312,23 @@ class NewsRepository:
         provider_signal = _json_dict(item_payload.get("provider_signal_json"))
         provider_token_impacts = _json_list(item_payload.get("provider_token_impacts_json"))
         agent_brief = _detail_agent_brief(row["agent_brief"])
+        projected = dict(page_row) if page_row is not None else {}
+        projected_signal = _json_dict(projected.get("signal")) or _projection_missing_signal(
+            agent_brief=agent_brief,
+            provider_signal=provider_signal,
+        )
         token_mentions = _json_list(row["token_mentions"])
         fact_candidates = _json_list(row["fact_candidates"])
         public_item = _public_news_item_payload(item_payload)
         return {
             **public_item,
-            "content_tags": _json_list(item_payload.get("content_tags_json")),
-            "content_classification": _json_dict(item_payload.get("content_classification_json")),
-            "signal": _signal_from_provider_or_agent(provider_signal=provider_signal, agent_brief=agent_brief),
-            "token_impacts": provider_token_impacts,
-            "token_lanes": _token_lanes_from_mentions(
-                token_mentions=token_mentions,
-                provider_token_impacts=provider_token_impacts,
-            ),
-            "fact_lanes": [_fact_lane_from_candidate(candidate) for candidate in fact_candidates],
+            "content_class": projected.get("content_class") or item_payload.get("content_class"),
+            "content_tags": _json_list(projected.get("content_tags")),
+            "content_classification": _json_dict(projected.get("content_classification")),
+            "signal": projected_signal,
+            "token_impacts": _json_list(projected.get("token_impacts")),
+            "token_lanes": _json_list(projected.get("token_lanes")),
+            "fact_lanes": _json_list(projected.get("fact_lanes")),
             "provider_signal": provider_signal,
             "provider_token_impacts": provider_token_impacts,
             "source": _public_source_payload(_json_dict(row["source"])),
@@ -3381,41 +3415,35 @@ def _signal_from_agent_brief(value: Any) -> dict[str, Any]:
     }
 
 
-def _signal_from_provider_or_agent(
+def _projection_missing_signal(
     *,
-    provider_signal: Mapping[str, Any],
     agent_brief: Mapping[str, Any],
+    provider_signal: Mapping[str, Any],
 ) -> dict[str, Any]:
     provider_payload = _provider_signal_payload(provider_signal)
     provider_score = _optional_int(provider_payload.get("score")) if provider_payload else None
-    if str(agent_brief.get("status") or "") == "ready":
-        direction = str(agent_brief.get("direction") or "neutral")
-        return _signal_with_independent_state(
-            {
-                "source": "agent",
-                "status": "ready",
-                "direction": direction,
-                "label_zh": _direction_label(direction),
-                "score": provider_score,
-                "grade": provider_payload.get("grade") if provider_payload else None,
-                "title_zh": _json_dict(agent_brief.get("brief_json")).get("title_zh"),
-                "summary_zh": _json_dict(agent_brief.get("brief_json")).get("summary_zh"),
-                "method": "news_item_brief",
-            },
-            provider_signal=provider_payload,
-            agent_brief=agent_brief,
-        )
-    if provider_payload:
-        return _signal_with_independent_state(
-            provider_payload,
-            provider_signal=provider_payload,
-            agent_brief=agent_brief,
-        )
-    return _signal_with_independent_state(
-        _signal_from_agent_brief(agent_brief),
-        provider_signal=None,
-        agent_brief=agent_brief,
-    )
+    agent_status = str(agent_brief.get("status") or "pending")
+    return {
+        "source": "partial",
+        "status": "pending",
+        "direction": "neutral",
+        "label_zh": "中性",
+        "method": "projection_missing",
+        "provider_signal": provider_payload,
+        "alert_eligibility": {
+            key: value
+            for key, value in {
+                "agent_status": agent_status,
+                "decision_class": agent_brief.get("decision_class"),
+                "provider_status": provider_payload.get("status") if provider_payload else None,
+                "provider_score": provider_score,
+                "in_app_eligible": False,
+                "external_push_ready": False,
+                "external_push_block_reason": "projection_missing",
+            }.items()
+            if value is not None
+        },
+    }
 
 
 def _provider_signal_payload(provider_signal: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -3441,54 +3469,6 @@ def _provider_signal_payload(provider_signal: Mapping[str, Any]) -> dict[str, An
     }
 
 
-def _signal_with_independent_state(
-    signal: Mapping[str, Any],
-    *,
-    provider_signal: Mapping[str, Any] | None,
-    agent_brief: Mapping[str, Any],
-) -> dict[str, Any]:
-    agent_status = str(agent_brief.get("status") or "pending")
-    provider_score = _optional_int(provider_signal.get("score")) if provider_signal else None
-    in_app_eligible = _alert_eligible(agent_brief=agent_brief, provider_score=provider_score)
-    external_push_ready, external_push_block_reason = _external_push_readiness(agent_brief)
-    payload = {
-        **signal,
-        "provider_signal": dict(provider_signal) if provider_signal else None,
-        "alert_eligibility": {
-            key: value
-            for key, value in {
-                "agent_status": agent_status,
-                "decision_class": agent_brief.get("decision_class"),
-                "provider_status": provider_signal.get("status") if provider_signal else None,
-                "provider_score": provider_score,
-                "in_app_eligible": in_app_eligible,
-                "external_push_ready": external_push_ready,
-                "external_push_block_reason": external_push_block_reason,
-                "external_push_basis": "agent_brief" if external_push_ready else None,
-            }.items()
-            if value is not None
-        },
-    }
-    return {key: value for key, value in payload.items() if value is not None}
-
-
-def _alert_eligible(*, agent_brief: Mapping[str, Any], provider_score: int | None) -> bool:
-    if str(agent_brief.get("status") or "") == "ready" and str(agent_brief.get("decision_class") or "") in {
-        "driver",
-        "watch",
-    }:
-        return True
-    return provider_score is not None and provider_score >= 70
-
-
-def _external_push_readiness(agent_brief: Mapping[str, Any]) -> tuple[bool, str | None]:
-    if str(agent_brief.get("status") or "") != "ready":
-        return False, "agent_brief_not_ready"
-    if not _agent_publishable_summary(agent_brief):
-        return False, "agent_brief_missing_summary"
-    return True, None
-
-
 def _agent_publishable_summary(agent_brief: Mapping[str, Any]) -> bool:
     brief_json = _json_dict(agent_brief.get("brief_json"))
     return bool(
@@ -3500,65 +3480,6 @@ def _agent_publishable_summary(agent_brief: Mapping[str, Any]) -> bool:
             or ""
         ).strip()
     )
-
-
-def _token_lanes_from_mentions(
-    *,
-    token_mentions: Sequence[Any],
-    provider_token_impacts: Sequence[Any],
-) -> list[dict[str, Any]]:
-    impacts_by_symbol = {
-        str(impact.get("symbol") or "").upper(): impact
-        for impact in (_json_dict(value) for value in provider_token_impacts)
-        if str(impact.get("symbol") or "")
-    }
-    lanes: list[dict[str, Any]] = []
-    for mention in token_mentions:
-        payload = _json_dict(mention)
-        status = str(payload.get("resolution_status") or "")
-        lane = {
-            "lane": _token_lane_name(status),
-            "resolution_status": status,
-            "symbol": payload.get("display_symbol") or payload.get("observed_symbol") or payload.get("symbol"),
-            "target_type": payload.get("target_type"),
-            "target_id": payload.get("target_id"),
-            "display_name": payload.get("display_name"),
-            "reason_codes": _json_list(payload.get("reason_codes_json")),
-            "candidate_targets": _json_list(payload.get("candidate_targets_json")),
-        }
-        impact = impacts_by_symbol.get(str(lane.get("symbol") or "").upper())
-        if impact:
-            lane.update(
-                {
-                    "provider_signal": impact.get("signal"),
-                    "provider_score": _optional_int(impact.get("score")),
-                    "provider_grade": impact.get("grade"),
-                    "market_type": impact.get("market_type"),
-                }
-            )
-        lanes.append({key: value for key, value in lane.items() if value is not None})
-    return lanes
-
-
-def _token_lane_name(status: str) -> str:
-    if status in {"exact_address", "known_symbol", "unique_by_context", "resolved"}:
-        return "resolved"
-    if status in {"non_crypto", "nil"}:
-        return "ignored"
-    return "attention"
-
-
-def _fact_lane_from_candidate(candidate: Any) -> dict[str, Any]:
-    payload = _json_dict(candidate)
-    return {
-        "fact_candidate_id": payload.get("fact_candidate_id"),
-        "event_type": payload.get("event_type"),
-        "claim": payload.get("claim"),
-        "realis": payload.get("realis"),
-        "status": payload.get("validation_status") or payload.get("status"),
-        "rejection_reasons": _json_list(payload.get("rejection_reasons_json")),
-        "affected_targets": _json_list(payload.get("affected_targets_json")),
-    }
 
 
 def _direction_label(direction: str) -> str:
@@ -3668,13 +3589,17 @@ def _agent_run_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _agent_brief_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    status = str(payload["status"])
+    brief_json = _json_dict(payload.get("brief_json") or {})
+    if status == "ready" and not _agent_publishable_summary({**payload, "brief_json": brief_json}):
+        raise ValueError("ready news item agent brief requires publishable summary or market_read text")
     return {
         "news_item_id": str(payload["news_item_id"]),
         "agent_run_id": str(payload["agent_run_id"]),
-        "status": str(payload["status"]),
+        "status": status,
         "direction": str(payload["direction"]),
         "decision_class": str(payload["decision_class"]),
-        "brief_json": _json(payload.get("brief_json") or {}),
+        "brief_json": _json(brief_json),
         "input_hash": str(payload["input_hash"]),
         "artifact_version_hash": str(payload["artifact_version_hash"]),
         "prompt_version": str(payload["prompt_version"]),
@@ -4132,12 +4057,15 @@ def _public_agent_brief_payload(value: Any) -> dict[str, Any]:
         "prompt_version",
         "schema_version",
         "computed_at_ms",
+        "affected_assets",
     )
     public_payload = {key: payload.get(key) for key in allowed if key in payload}
     public_payload["status"] = str(public_payload.get("status") or "pending")
     public_payload["brief_json"] = brief_json
     if "title_zh" not in public_payload and brief_json.get("title_zh"):
         public_payload["title_zh"] = brief_json.get("title_zh")
+    if "affected_assets" not in public_payload and brief_json.get("affected_assets"):
+        public_payload["affected_assets"] = _json_list(brief_json.get("affected_assets"))
     return public_payload
 
 

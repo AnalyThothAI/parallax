@@ -1,6 +1,6 @@
 import { useNewsPageWithToken } from "@features/news/useNewsPage";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { server } from "@tests/msw/server";
 import { HttpResponse, http } from "msw";
 import { createElement, type ReactNode } from "react";
@@ -82,6 +82,75 @@ describe("useNewsPage", () => {
     expect(observedParams.min_score).toBe("70");
     expect(observedParams.q).toBe("btc");
     expect(observedKeys).toEqual(["limit", "min_score", "q", "signal"].sort());
+  });
+
+  it("clears previous filter rows while the next filter is loading", async () => {
+    let releaseEth: (() => void) | null = null;
+    server.use(
+      http.get(/.*\/api\/news$/, ({ request }) => {
+        const q = new URL(request.url).searchParams.get("q");
+        if (q === "btc") {
+          return HttpResponse.json({
+            ok: true,
+            data: {
+              items: [
+                {
+                  row_id: "row-btc",
+                  news_item_id: "news-btc",
+                  lifecycle_status: "processed",
+                  headline: "BTC headline",
+                  latest_at_ms: 1_779_000_000_000,
+                  signal: { source: "provider", status: "ready", direction: "bullish" },
+                  token_lanes: [],
+                  fact_lanes: [],
+                },
+              ],
+              next_cursor: null,
+            },
+          });
+        }
+        return new Promise((resolve) => {
+          releaseEth = () =>
+            resolve(
+              HttpResponse.json({
+                ok: true,
+                data: {
+                  items: [
+                    {
+                      row_id: "row-eth",
+                      news_item_id: "news-eth",
+                      lifecycle_status: "processed",
+                      headline: "ETH headline",
+                      latest_at_ms: 1_779_000_000_100,
+                      signal: { source: "provider", status: "ready", direction: "bearish" },
+                      token_lanes: [],
+                      fact_lanes: [],
+                    },
+                  ],
+                  next_cursor: null,
+                },
+              }),
+            );
+        });
+      }),
+    );
+
+    const { result, rerender } = renderHook(
+      ({ q }: { q: string }) => useNewsPageWithToken("token", { q }),
+      { initialProps: { q: "btc" }, wrapper: wrapper() },
+    );
+
+    await waitFor(() => expect(result.current.data?.items[0]?.headline).toBe("BTC headline"));
+
+    rerender({ q: "eth" });
+
+    await waitFor(() => expect(releaseEth).not.toBeNull());
+    expect(result.current.data).toBeUndefined();
+
+    await act(async () => {
+      releaseEth?.();
+    });
+    await waitFor(() => expect(result.current.data?.items[0]?.headline).toBe("ETH headline"));
   });
 });
 

@@ -135,30 +135,20 @@ export async function fetchNewsItem({
 
 function normalizeNewsRow<T extends NewsRow>(row: T): T {
   const payload = row as T & Record<string, unknown>;
-  const source = normalizeNewsSource(payload.source ?? payload.source_json, payload);
-  const contentTags = stringArray(payload.content_tags ?? payload.content_tags_json);
-  const contentClassification = objectOrNull(
-    payload.content_classification ?? payload.content_classification_json,
-  );
+  const source = normalizeNewsSource(payload.source, payload);
+  const contentTags = stringArray(payload.content_tags);
+  const contentClassification = objectOrNull(payload.content_classification);
   return {
     ...row,
-    canonical_url: stringOrNull(payload.canonical_url ?? payload.url),
+    canonical_url: stringOrNull(payload.canonical_url),
     content_class: stringOrNull(payload.content_class),
     content_tags: contentTags,
-    content_tags_json: contentTags,
     content_classification: contentClassification ?? {},
-    content_classification_json: contentClassification ?? {},
-    headline: stringOrNull(payload.headline ?? payload.title) ?? "Untitled news item",
-    latest_at_ms: numberOrNull(
-      payload.latest_at_ms ??
-        payload.published_at_ms ??
-        payload.fetched_at_ms ??
-        payload.updated_at_ms,
-    ),
+    headline: stringOrNull(payload.headline) ?? "Untitled news item",
+    latest_at_ms: numberOrNull(payload.latest_at_ms),
     provider_type: source?.provider_type ?? null,
     source,
     source_domain: stringOrNull(payload.source_domain) ?? source?.source_domain ?? null,
-    source_json: source,
     source_quality_status: source?.source_quality_status ?? null,
     source_role: source?.source_role ?? null,
     summary: stringOrNull(payload.summary),
@@ -182,12 +172,7 @@ function normalizeNewsSource(raw: unknown, row: Record<string, unknown>): NewsSo
   const providerType = stringOrNull(payload?.provider_type ?? row.provider_type);
   const sourceRole = stringOrNull(payload?.source_role ?? row.source_role);
   const trustTier = stringOrNull(payload?.trust_tier ?? row.trust_tier);
-  const coverageTags = stringArray(
-    payload?.coverage_tags ??
-      payload?.coverage_tags_json ??
-      row.coverage_tags ??
-      row.coverage_tags_json,
-  );
+  const coverageTags = stringArray(payload?.coverage_tags ?? row.coverage_tags);
   const sourceQualityStatus = stringOrNull(
     payload?.source_quality_status ?? row.source_quality_status,
   );
@@ -218,13 +203,12 @@ function normalizeNewsSource(raw: unknown, row: Record<string, unknown>): NewsSo
 
 function normalizeNewsDetail(row: NewsItemDetail): NewsItemDetail {
   const payload = row as NewsItemDetail & Record<string, unknown>;
-  const tokenMentions = Array.isArray(row.token_mentions) ? row.token_mentions : [];
   return normalizeNewsRow({
     ...row,
     content: stringOrNull(payload.content ?? payload.body_text),
     source_domain: row.source_domain ?? row.source?.source_domain ?? null,
-    token_lanes: row.token_lanes ?? tokenMentions.map((mention) => mentionToTokenLane(mention)),
-    fact_lanes: row.fact_lanes ?? row.fact_candidates ?? [],
+    token_lanes: row.token_lanes,
+    fact_lanes: row.fact_lanes,
     agent_brief: payload.agent_brief
       ? normalizeAgentBrief(payload.agent_brief, undefined, payload.agent_brief_computed_at_ms)
       : undefined,
@@ -267,9 +251,9 @@ function normalizeTokenLanes(raw: unknown): NewsTokenLane[] {
         targetId || resolution === "resolved"
           ? "resolved"
           : stringOrNull(payload.lane) || "attention",
-      reason_codes: stringArray(payload.reason_codes ?? payload.reason_codes_json),
+      reason_codes: stringArray(payload.reason_codes),
       resolution_status: resolution,
-      symbol: stringOrNull(payload.symbol ?? payload.display_symbol ?? payload.observed_symbol),
+      symbol: stringOrNull(payload.symbol),
       target_id: targetId,
       target_type: stringOrNull(payload.target_type),
       provider_signal: stringOrNull(payload.provider_signal),
@@ -288,12 +272,12 @@ function normalizeFactLanes(raw: unknown): NewsFactLane[] {
     const payload = fact && typeof fact === "object" ? (fact as Record<string, unknown>) : {};
     return {
       ...(payload as NewsFactLane),
-      affected_targets: arrayOrEmpty(payload.affected_targets ?? payload.affected_targets_json),
+      affected_targets: arrayOrEmpty(payload.affected_targets),
       claim: stringOrNull(payload.claim),
       event_type: stringOrNull(payload.event_type),
       realis: stringOrNull(payload.realis),
-      rejection_reasons: stringArray(payload.rejection_reasons ?? payload.rejection_reasons_json),
-      status: stringOrNull(payload.status ?? payload.validation_status) ?? "attention",
+      rejection_reasons: stringArray(payload.rejection_reasons),
+      status: stringOrNull(payload.status) ?? "attention",
     };
   });
 }
@@ -394,21 +378,6 @@ function normalizeAgentRun(raw: unknown): NewsAgentRunSummary | null {
     error_class: stringOrNull(payload.error_class),
     error: stringOrNull(payload.error),
     error_message: stringOrNull(payload.error_message ?? payload.error),
-  };
-}
-
-function mentionToTokenLane(mention: unknown): NewsTokenLane {
-  const payload =
-    mention && typeof mention === "object" ? (mention as Record<string, unknown>) : {};
-  const targetId = stringOrNull(payload.target_id);
-  const resolution = stringOrNull(payload.resolution_status);
-  return {
-    lane: targetId || resolution === "resolved" ? "resolved" : "attention",
-    reason_codes: stringArray(payload.reason_codes ?? payload.reason_codes_json),
-    resolution_status: resolution,
-    symbol: stringOrNull(payload.observed_symbol ?? payload.display_symbol ?? payload.symbol),
-    target_id: targetId,
-    target_type: stringOrNull(payload.target_type),
   };
 }
 

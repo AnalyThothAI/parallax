@@ -251,32 +251,7 @@ class NotificationRepository:
         ).fetchone()
         if row is not None:
             return dict(row)
-        if rule_id != "news_high_signal":
-            return None
-        source_ref = _aggregation_source_ref(source_table, source_id, event_id)
-        if not source_ref:
-            return None
-        row = self.conn.execute(
-            """
-            SELECT *
-            FROM notifications
-            WHERE rule_id = %s
-              AND (
-                (source_table = %s AND source_id = %s)
-                OR payload_json @> %s
-              )
-            ORDER BY last_seen_at_ms DESC, created_at_ms DESC
-            LIMIT 1
-            FOR UPDATE
-            """,
-            (
-                rule_id,
-                str(source_table or ""),
-                str(source_id or ""),
-                _json({_AGGREGATION_SOURCE_REFS_KEY: [source_ref]}),
-            ),
-        ).fetchone()
-        return dict(row) if row is not None else None
+        return None
 
     def _external_push_cooldown_duplicate(
         self,

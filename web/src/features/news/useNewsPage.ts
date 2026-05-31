@@ -28,7 +28,6 @@ export const useNewsPageWithToken = (
 ) =>
   useQuery({
     enabled: Boolean(token) && enabled,
-    placeholderData: (previousData) => previousData,
     queryKey: queryKeys.newsRows({ cursor, limit, min_score, q, signal, status }),
     queryFn: () => fetchNewsRows({ cursor, limit, min_score, q, signal, status, token }),
     refetchInterval: 15_000,

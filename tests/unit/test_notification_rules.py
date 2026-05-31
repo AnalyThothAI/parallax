@@ -937,6 +937,7 @@ def test_news_high_signal_uses_ready_agent_brief_for_display_and_builds_push_sig
     assert candidate.payload["semantic_signature"].startswith("sha256:")
     assert candidate.payload["external_push_signature"].startswith("sha256:")
     assert candidate.payload["external_push_eligible"] is True
+    assert candidate.payload["token_impacts"] == [{"symbol": "BOV"}]
     assert candidate.dedup_key == f"news_high_signal:{candidate.payload['semantic_signature']}"
     assert candidate.title == "AI 标题：重大上所催化"
     assert candidate.payload["display_title"] == "AI 标题：重大上所催化"

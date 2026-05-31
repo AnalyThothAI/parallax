@@ -9,6 +9,8 @@ from typing import Any
 from parallax.platform.db.json_safety import postgres_safe_json
 from parallax.platform.db.queue_terminal import terminalize_source_row
 
+_ALLOWED_PROJECTION_NAMES = frozenset({"brief_input", "page", "source_quality"})
+
 
 class NewsProjectionDirtyTargetRepository:
     def __init__(self, conn: Any) -> None:
@@ -176,6 +178,7 @@ class NewsProjectionDirtyTargetRepository:
             "limit": max(0, int(limit)),
         }
         if projection_name is not None:
+            _validate_projection_name(str(projection_name))
             projection_filter = "AND projection_name = %(projection_name)s"
             params["projection_name"] = str(projection_name)
         rows = self.conn.execute(
@@ -419,6 +422,7 @@ class NewsProjectionDirtyTargetRepository:
         projection_filter = ""
         params: dict[str, Any] = {"now_ms": int(now_ms)}
         if projection_name is not None:
+            _validate_projection_name(str(projection_name))
             projection_filter = "AND projection_name = %(projection_name)s"
             params["projection_name"] = str(projection_name)
         row = self.conn.execute(
@@ -552,6 +556,7 @@ def _dirty_records(
             window = ""
         if not projection_name or not target_kind or not target_id:
             continue
+        _validate_projection_name(projection_name)
         source_watermark_ms = int(row.get("source_watermark_ms") or 0)
         priority = _priority_value(row)
         target_due_at_ms = int(row.get("due_at_ms") or default_due_at_ms)
@@ -611,6 +616,7 @@ def _key_records(keys: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
         attempt_count = int(key.get("attempt_count") or 0)
         if not projection_name or not target_kind or not target_id:
             raise ValueError("news projection dirty target completion requires full target key from claim_due")
+        _validate_projection_name(projection_name)
         if not has_window:
             raise ValueError("news projection dirty target completion requires window from claim_due")
         if projection_name == "source_quality" and not window:
@@ -635,6 +641,11 @@ def _key_records(keys: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
             }
         )
     return records
+
+
+def _validate_projection_name(projection_name: str) -> None:
+    if projection_name not in _ALLOWED_PROJECTION_NAMES:
+        raise ValueError(f"unsupported news projection_name: {projection_name}")
 
 
 def _key_params(records: list[dict[str, Any]]) -> dict[str, list[Any]]:

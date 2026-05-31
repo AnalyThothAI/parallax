@@ -138,13 +138,10 @@ export type NewsRow = {
   trust_tier?: string | null;
   coverage_tags?: string[];
   source_quality_status?: string | null;
-  source_json?: NewsSourceSummary | Record<string, unknown> | null;
   source?: NewsSourceSummary | null;
   canonical_url?: string | null;
   content_class?: string | null;
-  content_tags_json?: string[];
   content_tags?: string[];
-  content_classification_json?: Record<string, unknown>;
   content_classification?: Record<string, unknown>;
   signal: NewsSignalSummary;
   token_impacts?: NewsTokenLane[];
