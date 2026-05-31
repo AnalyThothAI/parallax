@@ -5,6 +5,7 @@ from typing import Any
 from parallax.domains.asset_market.identity_evidence_policy import (
     EVIDENCE_GMGN_PAYLOAD_EXACT,
     EVIDENCE_OKX_DEX_EXACT_ADDRESS,
+    EVIDENCE_OKX_DEX_SYMBOL_CANDIDATE,
 )
 from parallax.domains.asset_market.profile_source_selection import (
     select_gmgn_stream_source,
@@ -52,7 +53,7 @@ class TokenProfileSourceQuery:
         rows_by_asset = self._identity_evidence_rows(
             asset_ids=asset_ids,
             provider="gmgn",
-            evidence_kind=EVIDENCE_GMGN_PAYLOAD_EXACT,
+            evidence_kinds=[EVIDENCE_GMGN_PAYLOAD_EXACT],
         )
         return {
             asset_id: selected
@@ -64,7 +65,7 @@ class TokenProfileSourceQuery:
         rows_by_asset = self._identity_evidence_rows(
             asset_ids=asset_ids,
             provider="okx",
-            evidence_kind=EVIDENCE_OKX_DEX_EXACT_ADDRESS,
+            evidence_kinds=[EVIDENCE_OKX_DEX_EXACT_ADDRESS, EVIDENCE_OKX_DEX_SYMBOL_CANDIDATE],
         )
         return {
             asset_id: selected
@@ -98,21 +99,22 @@ class TokenProfileSourceQuery:
         *,
         asset_ids: list[str],
         provider: str,
-        evidence_kind: str,
+        evidence_kinds: list[str],
     ) -> dict[str, list[dict[str, Any]]]:
         requested = _dedupe(asset_ids)
-        if not requested:
+        kinds = _dedupe(evidence_kinds)
+        if not requested or not kinds:
             return {}
         rows = self.conn.execute(
             """
             SELECT *
             FROM asset_identity_evidence
             WHERE provider = %s
-              AND evidence_kind = %s
+              AND evidence_kind = ANY(%s)
               AND asset_id = ANY(%s)
             ORDER BY asset_id ASC, observed_at_ms DESC, evidence_id DESC
             """,
-            (provider, evidence_kind, requested),
+            (provider, kinds, requested),
         ).fetchall()
         grouped: dict[str, list[dict[str, Any]]] = {}
         for row in rows:

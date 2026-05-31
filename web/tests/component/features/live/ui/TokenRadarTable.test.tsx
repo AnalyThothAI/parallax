@@ -340,6 +340,7 @@ describe("TokenRadarTable rows", () => {
 
     const row = screen.getByRole("article", { name: "Token Radar item $OPN" });
     expect(row.querySelector(".radar-token-logo")).not.toBeInTheDocument();
+    expect(row.querySelector(".radar-case-mark")).toBeInTheDocument();
     expect(within(row).getByRole("link", { name: "X" })).toHaveAttribute(
       "href",
       "https://x.com/opn",

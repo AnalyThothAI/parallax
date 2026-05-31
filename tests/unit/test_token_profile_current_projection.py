@@ -521,7 +521,7 @@ def test_project_token_profile_current_keeps_first_unusable_logo_fallback_flags(
     assert row["quality_flags"] == ["source_without_logo"]
 
 
-def test_select_okx_dex_source_ignores_symbol_candidates():
+def test_select_okx_dex_source_prefers_exact_address_over_symbol_candidates():
     selected = select_okx_dex_source(
         [
             okx_row(
@@ -543,16 +543,20 @@ def test_select_okx_dex_source_ignores_symbol_candidates():
     assert selected["evidence_id"] == "exact"
 
 
-def test_select_okx_dex_source_can_use_symbol_metadata_without_logo():
+def test_select_okx_dex_source_uses_symbol_candidate_when_exact_address_is_absent():
     selected = select_okx_dex_source(
         [
-            okx_row(evidence_id="older-logo", logo_url="https://okx.example/exact.png", observed_at_ms=4_000),
-            okx_row(evidence_id="newer-symbol", logo_url=None, symbol="NEW", name="New Token", observed_at_ms=5_000),
+            okx_row(
+                evidence_id="symbol-candidate",
+                evidence_kind="okx_dex_symbol_candidate",
+                logo_url="https://okx.example/symbol.png",
+                observed_at_ms=5_000,
+            ),
         ]
     )
 
     assert selected is not None
-    assert selected["evidence_id"] == "newer-symbol"
+    assert selected["evidence_id"] == "symbol-candidate"
 
 
 def test_select_gmgn_stream_source_can_use_symbol_metadata_without_icon_url():

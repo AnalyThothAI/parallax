@@ -53,9 +53,9 @@ def test_gmgn_stream_profiles_reads_exact_payload_metadata_without_requiring_ico
     params = conn.params[-1]
     assert "FROM asset_identity_evidence" in sql
     assert "provider = %s" in sql
-    assert "evidence_kind = %s" in sql
+    assert "evidence_kind = ANY(%s)" in sql
     assert "raw_payload_json ? %s" not in sql
-    assert params == ("gmgn", "gmgn_payload_exact", ["asset:abc"])
+    assert params == ("gmgn", ["gmgn_payload_exact"], ["asset:abc"])
 
 
 def test_okx_dex_profiles_reads_exact_address_metadata_without_requiring_logos():
@@ -78,10 +78,30 @@ def test_okx_dex_profiles_reads_exact_address_metadata_without_requiring_logos()
     params = conn.params[-1]
     assert "FROM asset_identity_evidence" in sql
     assert "provider = %s" in sql
-    assert "evidence_kind = %s" in sql
+    assert "evidence_kind = ANY(%s)" in sql
     assert "raw_payload_json ? %s" not in sql
-    assert params == ("okx", "okx_dex_exact_address", ["asset:abc"])
-    assert "okx_dex_symbol_candidate" not in sql
+    assert params == ("okx", ["okx_dex_exact_address", "okx_dex_symbol_candidate"], ["asset:abc"])
+
+
+def test_okx_dex_profiles_can_use_address_bound_symbol_candidate_metadata():
+    conn = _Conn(
+        rows=[
+            {
+                "asset_id": "asset:abc",
+                "provider": "okx",
+                "evidence_kind": "okx_dex_symbol_candidate",
+                "evidence_id": "okx-symbol",
+                "raw_payload_json": {
+                    "tokenSymbol": "OKX",
+                    "tokenLogoUrl": "https://static.oklink.com/cdn/web3/currency/token/large/1-0xabc/type=default",
+                },
+            }
+        ]
+    )
+
+    rows = TokenProfileSourceQuery(conn).okx_dex_profiles(["asset:abc"])
+
+    assert rows["asset:abc"]["evidence_id"] == "okx-symbol"
 
 
 def test_cex_token_profiles_reads_binance_source_cache_without_requiring_logo_columns():
