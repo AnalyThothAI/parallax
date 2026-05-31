@@ -192,6 +192,9 @@ NEWS_PUBLIC_URL_HARD_IDENTITY_MIGRATION = Path(
 NEWS_REBUILD_BRIEF_BACKLOG_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260531_0132_news_rebuild_brief_backlog_hard_cut.py"
 )
+NEWS_PUBLIC_URL_IDENTITY_INDEX_SCOPE_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260531_0133_news_public_url_identity_index_scope.py"
+)
 TOKEN_PULSE_EQUITY_CPU_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260529_0124_token_pulse_equity_cpu_hard_cut.py"
 )
@@ -1727,6 +1730,22 @@ def test_news_rebuild_brief_backlog_hard_cut_removes_historical_llm_backfill_tar
     assert "news_public_url_hard_identity_rebuild" in text
     assert "news_canonical_url_hard_identity_rebuild" in text
     assert "news_item_processed" not in text
+
+
+def test_news_public_url_identity_index_scope_excludes_generic_public_urls() -> None:
+    assert NEWS_PUBLIC_URL_IDENTITY_INDEX_SCOPE_MIGRATION.exists(), (
+        f"{NEWS_PUBLIC_URL_IDENTITY_INDEX_SCOPE_MIGRATION} missing; add a migration that narrows "
+        "ux_news_items_public_canonical_url to hard canonical-url identities only"
+    )
+    text = NEWS_PUBLIC_URL_IDENTITY_INDEX_SCOPE_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    assert 'revision = "20260531_0133"' in text
+    assert 'down_revision = "20260531_0132"' in text
+    assert "DROP INDEX CONCURRENTLY IF EXISTS ux_news_items_public_canonical_url" in text
+    assert "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS ux_news_items_public_canonical_url" in text
+    assert "canonical_url ~* '^https?://'" in normalized_text
+    assert "canonical_item_key = ('canonical-url:' || canonical_url)" in normalized_text
 
 
 def test_asset_migration_adds_identity_resolution_tables() -> None:

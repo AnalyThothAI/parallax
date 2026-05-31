@@ -1222,9 +1222,13 @@ def test_opennews_ready_content_hash_promotes_even_when_url_is_not_article_ident
         )
 
         rows = conn.execute("SELECT news_item_id, canonical_item_key, url_identity_kind FROM news_items").fetchall()
-        edge = conn.execute(
-            "SELECT news_item_id, provider_article_key, match_type FROM news_item_observation_edges"
-        ).fetchone()
+        edges = conn.execute(
+            """
+            SELECT provider_item_id, news_item_id, provider_article_key, match_type
+              FROM news_item_observation_edges
+             ORDER BY provider_item_id
+            """
+        ).fetchall()
         old_item_count = conn.execute(
             "SELECT COUNT(*) AS count FROM news_items WHERE news_item_id = %s",
             (partial_news["news_item_id"],),
@@ -1236,15 +1240,18 @@ def test_opennews_ready_content_hash_promotes_even_when_url_is_not_article_ident
     assert [dict(row) for row in rows] == [
         {
             "news_item_id": ready_news["news_item_id"],
-            "canonical_item_key": "canonical-url:https://example.com/",
+            "canonical_item_key": "content-hash:content-ready-homepage",
             "url_identity_kind": "homepage",
         }
     ]
-    assert dict(edge) == {
-        "news_item_id": ready_news["news_item_id"],
-        "provider_article_key": "opennews:2367422",
-        "match_type": "same_canonical_url",
-    }
+    assert [dict(row) for row in edges] == [
+        {
+            "provider_item_id": ready_provider["provider_item_id"],
+            "news_item_id": ready_news["news_item_id"],
+            "provider_article_key": "opennews:2367422",
+            "match_type": "same_content_hash",
+        },
+    ]
 
 
 def test_identity_promotion_reselects_old_representative_when_edges_remain(tmp_path) -> None:
