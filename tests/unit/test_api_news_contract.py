@@ -47,7 +47,6 @@ def test_news_api_lists_provider_signal_news_rows_without_postgres() -> None:
                 {
                     "row_id": "row-1",
                     "news_item_id": "news-1",
-                    "story_id": None,
                     "latest_at_ms": 3_000,
                     "lifecycle_status": "raw",
                     "headline": "SOL ETF approved",
@@ -66,7 +65,6 @@ def test_news_api_lists_provider_signal_news_rows_without_postgres() -> None:
                         "grade": "A",
                     },
                     "token_impacts": [{"symbol": "BTC", "score": 82, "signal": "long"}],
-                    "story": {},
                     "source": {"source_id": "opennews-realtime", "provider_type": "opennews"},
                     "computed_at_ms": 3_100,
                     "projection_version": "news_page_v1",
@@ -213,7 +211,6 @@ class FakeNewsRepository:
             {
                 "row_id": "row-1",
                 "news_item_id": "news-1",
-                "story_id": None,
                 "latest_at_ms": 3_000,
                 "lifecycle_status": "raw",
                 "headline": "SOL ETF approved",
@@ -232,7 +229,6 @@ class FakeNewsRepository:
                     "grade": "A",
                 },
                 "token_impacts": [{"symbol": "BTC", "score": 82, "signal": "long"}],
-                "story": {},
                 "source": {"source_id": "opennews-realtime", "provider_type": "opennews"},
                 "computed_at_ms": 3_100,
                 "projection_version": "news_page_v1",
@@ -241,9 +237,6 @@ class FakeNewsRepository:
 
     def get_news_item_detail(self, *, news_item_id: str):
         return {"news_item_id": news_item_id}
-
-    def get_news_story_detail(self, *, story_id: str):
-        return {"story_id": story_id}
 
     def get_news_fact_detail(self, *, fact_candidate_id: str):
         return {"fact_candidate_id": fact_candidate_id}

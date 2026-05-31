@@ -24,7 +24,6 @@ def _packet():
             "published_at_ms": 1_779_000_000_000,
             "content_hash": "sha256:item",
         },
-        story=None,
         token_mentions=[
             {
                 "mention_id": "token-1",
@@ -47,7 +46,6 @@ def _packet():
                 "evidence_quote": "ABC perpetual contract support is live",
             }
         ],
-        story_members=[],
         agent_config=NewsItemBriefAgentConfig(
             model="gpt-5-mini",
             artifact_version_hash="artifact-v1",

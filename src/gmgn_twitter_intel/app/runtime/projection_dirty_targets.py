@@ -10,9 +10,9 @@ from gmgn_twitter_intel.domains.news_intel.services.news_item_agent_policy impor
 )
 
 DOMAIN_CHOICES = ("all", "news")
-PROJECTION_CHOICES = ("all", "story", "brief_input", "page", "source_quality")
+PROJECTION_CHOICES = ("all", "brief_input", "page", "source_quality")
 
-_NEWS_ITEM_PROJECTIONS = ("story", "brief_input", "page")
+_NEWS_ITEM_PROJECTIONS = ("brief_input", "page")
 _DEFAULT_SOURCE_QUALITY_WINDOWS = ("24h", "7d")
 
 

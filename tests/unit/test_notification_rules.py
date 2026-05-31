@@ -994,7 +994,6 @@ def test_news_high_signal_semantic_dedup_ignores_projection_and_summary_churn():
         "source_domain": "example.test",
         "canonical_url": "https://example.test/news-1",
         "duplicate_count": 3,
-        "story": {"story_id": "story-1"},
         "signal": {
             "direction": "bullish",
             "alert_eligibility": {
@@ -1038,64 +1037,9 @@ def test_news_high_signal_semantic_dedup_ignores_projection_and_summary_churn():
     assert len(candidates) == 1
 
 
-def test_news_high_signal_semantic_dedup_uses_top_level_story_id_when_story_payload_is_empty():
-    base_row = {
-        "news_item_id": "news-1",
-        "story_id": "story-1",
-        "latest_at_ms": NOW_MS - 5_000,
-        "agent_brief_computed_at_ms": NOW_MS - 1_000,
-        "headline": "Major listing catalyst",
-        "source_domain": "example.test",
-        "canonical_url": "https://example.test/news-1",
-        "duplicate_count": 1,
-        "story": {},
-        "signal": {
-            "direction": "bullish",
-            "alert_eligibility": {
-                "eligible": True,
-                "provider_score": 90,
-                "decision_class": "driver",
-            },
-        },
-        "token_impacts": [{"symbol": "BOV", "score": 90}],
-        "agent_brief": {
-            "status": "ready",
-            "direction": "bullish",
-            "decision_class": "driver",
-            "summary_zh": "第一版中文摘要。",
-            "brief_json": {
-                "summary_zh": "第一版中文摘要。",
-                "watch_triggers": ["成交量确认"],
-                "affected_assets": [{"symbol": "BOV"}],
-            },
-        },
-    }
-    revised_row = {
-        **base_row,
-        "news_item_id": "news-2",
-        "canonical_url": "https://example.test/news-2",
-        "agent_brief": {
-            **base_row["agent_brief"],
-            "summary_zh": "第二版中文摘要。",
-            "brief_json": {
-                **base_row["agent_brief"]["brief_json"],
-                "summary_zh": "第二版中文摘要。",
-            },
-        },
-    }
-
-    candidates = [
-        item for item in engine(news=FakeNews([base_row, revised_row])).evaluate(now_ms=NOW_MS)
-        if item.rule_id == "news_high_signal"
-    ]
-
-    assert len(candidates) == 1
-
-
 def test_news_high_signal_external_push_signature_uses_asset_cooldown_not_item_identity():
     base_row = {
         "news_item_id": "news-1",
-        "story_id": "story-1",
         "latest_at_ms": NOW_MS - 5_000,
         "agent_brief_computed_at_ms": NOW_MS - 1_000,
         "headline": "Iran disruption lifts oil risk",
@@ -1127,7 +1071,6 @@ def test_news_high_signal_external_push_signature_uses_asset_cooldown_not_item_i
     same_topic_row = {
         **base_row,
         "news_item_id": "news-2",
-        "story_id": "story-2",
         "headline": "Hormuz risk sends crude higher",
         "canonical_url": "https://example.test/news-2",
         "content_tags": ["hormuz"],

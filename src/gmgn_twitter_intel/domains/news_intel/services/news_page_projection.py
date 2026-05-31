@@ -13,7 +13,6 @@ _IGNORED_TOKEN_STATUSES = frozenset({"non_crypto", "nil"})
 def build_news_page_row(
     *,
     item: dict[str, Any],
-    story: dict[str, Any] | None,
     token_mentions: list[dict[str, Any]],
     fact_candidates: list[dict[str, Any]],
     agent_brief: dict[str, Any] | None = None,
@@ -27,7 +26,6 @@ def build_news_page_row(
     }
     token_lanes = [_merge_provider_impact(_token_lane(row), impacts_by_symbol) for row in token_mentions]
     fact_lanes = [_fact_lane(row) for row in fact_candidates]
-    story_payload = _json_object(story)
     source_payload = _source_payload(item)
     agent_payload = _compact_agent_brief(agent_brief)
     agent_status = str(agent_payload.get("status") or "pending")
@@ -36,7 +34,6 @@ def build_news_page_row(
     return {
         "row_id": _stable_id("news-page-row", NEWS_PAGE_PROJECTION_VERSION, news_item_id),
         "news_item_id": news_item_id,
-        "story_id": story_payload.get("story_id"),
         "latest_at_ms": int(item.get("published_at_ms") or computed_at_ms),
         "lifecycle_status": _lifecycle(item=item, token_lanes=token_lanes, fact_lanes=fact_lanes),
         "headline": str(item.get("title") or ""),
@@ -52,7 +49,6 @@ def build_news_page_row(
         "content_tags_json": content_tags,
         "content_classification": content_classification,
         "content_classification_json": content_classification,
-        "story": story_payload,
         "source": source_payload,
         "agent_brief": agent_payload,
         "agent_brief_json": agent_payload,

@@ -13,7 +13,6 @@ from gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker i
 from gmgn_twitter_intel.domains.news_intel.runtime.news_source_quality_projection_worker import (
     NewsSourceQualityProjectionWorker,
 )
-from gmgn_twitter_intel.domains.news_intel.runtime.news_story_projection_worker import NewsStoryProjectionWorker
 from gmgn_twitter_intel.domains.token_intel.interfaces import TokenIdentityLookupResult
 from gmgn_twitter_intel.domains.token_intel.services.deterministic_token_resolver import (
     DeterministicResolution,
@@ -58,17 +57,6 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
             wake_bus=ctx.wake_bus,
             source_quality_windows=workers.news_source_quality_projection.windows,
             wake_waiter=ctx.db.wake_listener(worker_name, workers.news_item_process.wakes_on),
-        )
-
-    if workers.news_story_projection.enabled:
-        worker_name = "news_story_projection"
-        constructed["news_story_projection"] = NewsStoryProjectionWorker(
-            name=worker_name,
-            settings=workers.news_story_projection,
-            db=ctx.db,
-            telemetry=ctx.telemetry,
-            wake_bus=ctx.wake_bus,
-            wake_waiter=ctx.db.wake_listener(worker_name, workers.news_story_projection.wakes_on),
         )
 
     brief_provider = getattr(news_providers, "brief_provider", None)

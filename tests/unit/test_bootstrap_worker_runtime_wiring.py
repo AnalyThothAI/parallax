@@ -33,7 +33,6 @@ from gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker i
 from gmgn_twitter_intel.domains.news_intel.runtime.news_source_quality_projection_worker import (
     NewsSourceQualityProjectionWorker,
 )
-from gmgn_twitter_intel.domains.news_intel.runtime.news_story_projection_worker import NewsStoryProjectionWorker
 from gmgn_twitter_intel.domains.notifications.runtime.notification_delivery import NotificationDeliveryWorker
 from gmgn_twitter_intel.domains.notifications.runtime.notification_worker import NotificationWorker
 from gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
@@ -212,17 +211,13 @@ def test_worker_factory_wires_news_fetch_by_default() -> None:
     assert workers["news_item_process"].identity_lookup is not None
     assert workers["news_item_process"].wake_waiter.channels == ("news_item_written",)
     assert workers["news_item_process"].settings.advisory_lock_key == 2026051902
-    assert isinstance(workers["news_story_projection"], NewsStoryProjectionWorker)
-    assert workers["news_story_projection"].wake_bus is db.wake
-    assert workers["news_story_projection"].wake_waiter.channels == ("news_item_processed",)
-    assert workers["news_story_projection"].settings.advisory_lock_key == 2026051903
+    assert "news_story_projection" not in workers
     assert not isinstance(workers["news_item_brief"], NewsItemBriefWorker)
     assert isinstance(workers["news_page_projection"], NewsPageProjectionWorker)
     assert workers["news_page_projection"].wake_bus is db.wake
     assert workers["news_page_projection"].wake_waiter.channels == (
         "news_item_written",
         "news_item_processed",
-        "news_story_updated",
         "news_item_brief_updated",
         "news_page_dirty",
     )
@@ -232,7 +227,6 @@ def test_worker_factory_wires_news_fetch_by_default() -> None:
     assert workers["news_source_quality_projection"].wake_waiter.channels == (
         "news_item_written",
         "news_item_processed",
-        "news_story_updated",
         "news_item_brief_updated",
     )
     assert workers["news_source_quality_projection"].settings.advisory_lock_key == 2026052201
@@ -380,7 +374,7 @@ def test_worker_factory_wires_news_item_brief_when_configured() -> None:
     assert isinstance(workers["news_item_brief"], NewsItemBriefWorker)
     assert workers["news_item_brief"].provider is providers.news_intel.brief_provider
     assert workers["news_item_brief"].wake_bus is db.wake
-    assert workers["news_item_brief"].wake_waiter.channels == ("news_item_processed", "news_story_updated")
+    assert workers["news_item_brief"].wake_waiter.channels == ("news_item_processed",)
     assert workers["news_item_brief"].settings.advisory_lock_key == 2026052001
 
 

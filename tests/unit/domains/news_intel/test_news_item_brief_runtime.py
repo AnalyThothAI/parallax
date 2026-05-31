@@ -25,10 +25,8 @@ def test_stage_spec_is_traceable() -> None:
             "published_at_ms": 1_779_000_000_000,
             "content_hash": "sha256:item",
         },
-        story=None,
         token_mentions=[],
         fact_candidates=[],
-        story_members=[],
         agent_config=NewsItemBriefAgentConfig(
             model="gpt-5-mini",
             artifact_version_hash="artifact-v1",
@@ -69,10 +67,8 @@ def test_stage_payload_uses_material_packet_without_fetch_time() -> None:
             "fetched_at_ms": 1_779_000_010_000,
             "content_hash": "sha256:stage",
         },
-        story=None,
         token_mentions=[],
         fact_candidates=[],
-        story_members=[],
         agent_config=NewsItemBriefAgentConfig(
             model="test-model",
             artifact_version_hash="artifact-v1",

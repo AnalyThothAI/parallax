@@ -33,9 +33,6 @@ class NewsPageQuery:
     def get_item(self, *, news_item_id: str) -> dict[str, Any] | None:
         return cast(dict[str, Any] | None, self.repository.get_news_item_detail(news_item_id=news_item_id))
 
-    def get_story(self, *, story_id: str) -> dict[str, Any] | None:
-        return cast(dict[str, Any] | None, self.repository.get_news_story_detail(story_id=story_id))
-
     def get_fact(self, *, fact_candidate_id: str) -> dict[str, Any] | None:
         return cast(dict[str, Any] | None, self.repository.get_news_fact_detail(fact_candidate_id=fact_candidate_id))
 

@@ -322,7 +322,7 @@ class NewsFetchWorker(WorkerBase):
         _enqueue_news_item_dirty_targets(
             repos,
             news_item_ids=dirty_news_item_ids,
-            projection_names=("story", "page"),
+            projection_names=("page",),
             reason="news_item_written",
             now_ms=fetched_at_ms,
         )

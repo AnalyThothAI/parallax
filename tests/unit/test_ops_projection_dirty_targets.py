@@ -23,7 +23,7 @@ def test_enqueue_projection_dirty_targets_dry_run_reports_counts_without_writes(
     )
 
     assert result["execute"] is False
-    assert result["news"]["news_item_targets"] == 5
+    assert result["news"]["news_item_targets"] == 3
     assert result["news"]["source_quality_targets"] == 4
     assert repos.news_dirty.enqueued == []
     assert repos.conn.transactions == 0
@@ -46,22 +46,10 @@ def test_enqueue_projection_dirty_targets_execute_enqueues_only_dirty_targets() 
     assert repos.conn.transactions == 1
     assert repos.news_dirty.enqueued[0]["rows"] == [
         {
-            "projection_name": "story",
-            "target_kind": "news_item",
-            "target_id": "news-1",
-            "source_watermark_ms": NOW_MS - 1_000,
-        },
-        {
             "projection_name": "page",
             "target_kind": "news_item",
             "target_id": "news-1",
             "source_watermark_ms": NOW_MS - 1_000,
-        },
-        {
-            "projection_name": "story",
-            "target_kind": "news_item",
-            "target_id": "news-2",
-            "source_watermark_ms": NOW_MS - 2_000,
         },
         {
             "projection_name": "brief_input",

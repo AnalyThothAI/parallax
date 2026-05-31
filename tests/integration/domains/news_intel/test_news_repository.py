@@ -85,7 +85,6 @@ def test_source_fetch_provider_and_news_item_round_trip(tmp_path) -> None:
                 {
                     "row_id": "row-1",
                     "news_item_id": news["news_item_id"],
-                    "story_id": None,
                     "latest_at_ms": NOW_MS - 60_000,
                     "lifecycle_status": "raw",
                     "headline": "SOL ETF filing",
@@ -101,7 +100,6 @@ def test_source_fetch_provider_and_news_item_round_trip(tmp_path) -> None:
                         "label_zh": "中性",
                     },
                     "token_impacts": [],
-                    "story": {},
                     "source": {
                         "source_id": "coindesk-rss",
                         "provider_type": "rss",
@@ -135,7 +133,8 @@ def test_source_fetch_provider_and_news_item_round_trip(tmp_path) -> None:
     assert rows[0]["headline"] == "SOL ETF filing"
     assert rows[0]["latest_at_ms"] == NOW_MS - 60_000
     assert rows[0]["canonical_url"] == "https://www.coindesk.com/news/sol-etf"
-    assert rows[0]["story"] == {}
+    assert "story" not in rows[0]
+    assert "story_id" not in rows[0]
     assert rows[0]["source"] == {
         "source_id": "coindesk-rss",
         "provider_type": "rss",
@@ -1562,7 +1561,6 @@ def test_replace_page_rows_for_items_removes_stale_rows_in_item_scope(tmp_path) 
                 {
                     "row_id": "row-stale",
                     "news_item_id": news_item_id,
-                    "story_id": "story-old",
                     "latest_at_ms": NOW_MS,
                     "source_domain": "example.com",
                     "headline": "Stale",
@@ -1571,7 +1569,6 @@ def test_replace_page_rows_for_items_removes_stale_rows_in_item_scope(tmp_path) 
                     "lifecycle_status": "raw",
                     "token_lanes_json": [],
                     "fact_lanes_json": [],
-                    "story_json": {"story_id": "story-old"},
                     "source_json": {"source_id": "source-1"},
                     "projection_version": "test-v1",
                     "computed_at_ms": NOW_MS,
@@ -1579,7 +1576,6 @@ def test_replace_page_rows_for_items_removes_stale_rows_in_item_scope(tmp_path) 
                 {
                     "row_id": "row-other",
                     "news_item_id": other_news_item_id,
-                    "story_id": "story-other",
                     "latest_at_ms": NOW_MS,
                     "source_domain": "example.com",
                     "headline": "Other",
@@ -1588,7 +1584,6 @@ def test_replace_page_rows_for_items_removes_stale_rows_in_item_scope(tmp_path) 
                     "lifecycle_status": "raw",
                     "token_lanes_json": [],
                     "fact_lanes_json": [],
-                    "story_json": {"story_id": "story-other"},
                     "source_json": {"source_id": "source-1"},
                     "projection_version": "test-v1",
                     "computed_at_ms": NOW_MS,
@@ -1602,7 +1597,6 @@ def test_replace_page_rows_for_items_removes_stale_rows_in_item_scope(tmp_path) 
                 {
                     "row_id": "row-fresh",
                     "news_item_id": news_item_id,
-                    "story_id": "story-new",
                     "latest_at_ms": NOW_MS + 1,
                     "source_domain": "example.com",
                     "headline": "Fresh",
@@ -1611,7 +1605,6 @@ def test_replace_page_rows_for_items_removes_stale_rows_in_item_scope(tmp_path) 
                     "lifecycle_status": "processed",
                     "token_lanes_json": [{"lane": "resolved", "symbol": "SOL"}],
                     "fact_lanes_json": [],
-                    "story_json": {"story_id": "story-new"},
                     "source_json": {"source_id": "source-1"},
                     "projection_version": "test-v1",
                     "computed_at_ms": NOW_MS + 1,
@@ -2624,27 +2617,12 @@ def test_page_projection_loader_includes_source_classification_changes(tmp_path)
     assert candidates[0]["item"]["source_quality_status"] == "healthy"
 
 
-def test_updating_news_item_clears_stale_story_and_page_projection(tmp_path) -> None:
+def test_updating_news_item_clears_stale_item_facts_and_refreshes_page_projection(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         repo = NewsRepository(conn)
         news_item_id = _insert_source_provider_and_item(repo)
-        item = conn.execute("SELECT * FROM news_items WHERE news_item_id = %s", (news_item_id,)).fetchone()
-        repo.create_story_from_item(
-            story_id="story-1",
-            item=item,
-            policy_version="test-story-v1",
-            now_ms=NOW_MS,
-        )
-        repo.replace_story_member_for_item(
-            story_id="story-1",
-            news_item_id=news_item_id,
-            relation="representative",
-            match_reason="exact_url",
-            match_score=1.0,
-            now_ms=NOW_MS,
-        )
         repo.replace_page_rows_for_items(
             news_item_ids=[news_item_id],
             rows=[
@@ -2694,10 +2672,6 @@ def test_updating_news_item_clears_stale_story_and_page_projection(tmp_path) -> 
             ("fact-old", news_item_id, Jsonb({"asset": True}), Jsonb([]), Jsonb([]), NOW_MS, NOW_MS),
         )
         conn.commit()
-        story_before = conn.execute(
-            "SELECT item_count, source_count, status FROM news_story_groups WHERE story_id = %s",
-            ("story-1",),
-        ).fetchone()
         provider = conn.execute(
             "SELECT provider_item_id FROM news_items WHERE news_item_id = %s",
             (news_item_id,),
@@ -2717,10 +2691,6 @@ def test_updating_news_item_clears_stale_story_and_page_projection(tmp_path) -> 
             now_ms=NOW_MS + 1,
         )
 
-        story_count = conn.execute(
-            "SELECT COUNT(*) AS count FROM news_story_members WHERE news_item_id = %s",
-            (news_item_id,),
-        ).fetchone()["count"]
         page_count = conn.execute(
             "SELECT COUNT(*) AS count FROM news_page_rows WHERE news_item_id = %s",
             (news_item_id,),
@@ -2737,10 +2707,6 @@ def test_updating_news_item_clears_stale_story_and_page_projection(tmp_path) -> 
             "SELECT COUNT(*) AS count FROM news_fact_candidates WHERE news_item_id = %s",
             (news_item_id,),
         ).fetchone()["count"]
-        story = conn.execute(
-            "SELECT item_count, source_count, status FROM news_story_groups WHERE story_id = %s",
-            ("story-1",),
-        ).fetchone()
         status = conn.execute(
             "SELECT lifecycle_status FROM news_items WHERE news_item_id = %s",
             (news_item_id,),
@@ -2760,7 +2726,7 @@ def test_updating_news_item_clears_stale_story_and_page_projection(tmp_path) -> 
         page_result = page_worker.run_once_sync(now_ms=NOW_MS + 3)
         refreshed_page = conn.execute(
             """
-            SELECT story_id, token_lanes_json, fact_lanes_json
+            SELECT token_lanes_json, fact_lanes_json
               FROM news_page_rows
              WHERE news_item_id = %s
             """,
@@ -2769,68 +2735,14 @@ def test_updating_news_item_clears_stale_story_and_page_projection(tmp_path) -> 
     finally:
         conn.close()
 
-    assert story_count == 1
     assert page_count == 1
     assert entity_count == 0
     assert mention_count == 0
     assert fact_count == 0
-    assert dict(story) == dict(story_before)
     assert status == "raw"
     assert page_result.processed == 1
-    assert refreshed_page["story_id"] == "story-1"
     assert refreshed_page["token_lanes_json"] == []
     assert refreshed_page["fact_lanes_json"] == []
-
-
-def test_replace_story_member_for_item_clears_stale_membership(tmp_path) -> None:
-    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
-    try:
-        migrate(conn)
-        repo = NewsRepository(conn)
-        news_item_id = _insert_source_provider_and_item(repo)
-        for story_id in ("story-old", "story-new"):
-            repo.create_story_from_item(
-                story_id=story_id,
-                item={
-                    "title": story_id,
-                    "canonical_url": f"https://example.com/{story_id}",
-                    "published_at_ms": NOW_MS,
-                },
-                policy_version="test",
-                now_ms=NOW_MS,
-            )
-        repo.replace_story_member_for_item(
-            story_id="story-old",
-            news_item_id=news_item_id,
-            relation="representative",
-            match_reason="initial",
-            match_score=1.0,
-            now_ms=NOW_MS,
-        )
-        repo.replace_story_member_for_item(
-            story_id="story-new",
-            news_item_id=news_item_id,
-            relation="representative",
-            match_reason="recomputed",
-            match_score=1.0,
-            now_ms=NOW_MS + 1,
-        )
-
-        memberships = conn.execute(
-            "SELECT story_id, match_reason FROM news_story_members WHERE news_item_id = %s",
-            (news_item_id,),
-        ).fetchall()
-        story_rows = conn.execute(
-            "SELECT story_id, item_count, status FROM news_story_groups ORDER BY story_id",
-        ).fetchall()
-    finally:
-        conn.close()
-
-    assert [dict(row) for row in memberships] == [{"story_id": "story-new", "match_reason": "recomputed"}]
-    assert [dict(row) for row in story_rows] == [
-        {"story_id": "story-new", "item_count": 1, "status": "active"},
-        {"story_id": "story-old", "item_count": 0, "status": "stale"},
-    ]
 
 
 def test_update_item_content_classification_persists_materialized_fields(tmp_path) -> None:
@@ -3017,7 +2929,7 @@ def test_get_news_item_detail_exposes_canonical_observation_evidence(tmp_path) -
     assert "fetch_run_id" not in detail["fetch_run"]
 
 
-def test_story_and_fact_detail_sanitize_internal_urls(tmp_path) -> None:
+def test_fact_detail_sanitizes_internal_urls(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -3026,24 +2938,6 @@ def test_story_and_fact_detail_sanitize_internal_urls(tmp_path) -> None:
         conn.execute(
             "UPDATE news_items SET canonical_url = 'opennews://item/internal-url' WHERE news_item_id = %s",
             (news_item_id,),
-        )
-        repo.create_story_from_item(
-            story_id="story-internal-url",
-            item={
-                "title": "Internal URL",
-                "canonical_url": "opennews://item/internal-url",
-                "published_at_ms": NOW_MS,
-            },
-            policy_version="test",
-            now_ms=NOW_MS,
-        )
-        repo.replace_story_member_for_item(
-            story_id="story-internal-url",
-            news_item_id=news_item_id,
-            relation="representative",
-            match_reason="test",
-            match_score=1.0,
-            now_ms=NOW_MS,
         )
         conn.execute(
             """
@@ -3061,17 +2955,10 @@ def test_story_and_fact_detail_sanitize_internal_urls(tmp_path) -> None:
             """,
             (news_item_id, NOW_MS, NOW_MS),
         )
-        story = repo.get_news_story_detail(story_id="story-internal-url")
         fact = repo.get_news_fact_detail(fact_candidate_id="fact-internal-url")
     finally:
         conn.close()
 
-    assert story is not None
-    assert story["members"][0]["canonical_url"] == ""
-    assert story["canonical_url"] == ""
-    assert story["members"][0]["observation_edges"][0]["source_id"] == "source-1"
-    assert story["members"][0]["provider_observations"][0]["source_id"] == "source-1"
-    assert "source_item_key" not in story["members"][0]["provider_observations"][0]
     assert fact is not None
     assert fact["canonical_url"] == ""
 
@@ -3440,7 +3327,6 @@ def _page_row(
     return {
         "row_id": row_id,
         "news_item_id": news_item_id,
-        "story_id": None,
         "latest_at_ms": latest_at_ms,
         "source_domain": "example.com",
         "headline": row_id,
@@ -3449,7 +3335,6 @@ def _page_row(
         "lifecycle_status": "raw",
         "token_lanes_json": [],
         "fact_lanes_json": [],
-        "story_json": {},
         "source_json": {"source_id": source_id},
         "projection_version": projection_version,
         "computed_at_ms": computed_at_ms,

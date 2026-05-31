@@ -109,25 +109,6 @@ class NewsItemBriefNewsItem(BaseModel):
     source: NewsItemBriefSource = Field(default_factory=NewsItemBriefSource)
 
 
-class NewsItemBriefStoryMember(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    news_item_id: str = Field(min_length=1, max_length=160)
-    source_domain: str = Field(default="", max_length=255)
-    title: str = Field(default="", max_length=500)
-    published_at_ms: int = Field(default=0, ge=0)
-
-
-class NewsItemBriefStoryContext(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    story_id: str = Field(min_length=1, max_length=160)
-    item_count: int = Field(default=0, ge=0)
-    source_count: int = Field(default=0, ge=0)
-    representative_title: str = Field(default="", max_length=500)
-    members: list[NewsItemBriefStoryMember] = Field(default_factory=list, max_length=8)
-
-
 class NewsItemBriefTokenLane(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -228,7 +209,6 @@ class NewsItemBriefInputPacket(BaseModel):
 
     packet_id: str = Field(min_length=1, max_length=160)
     news_item: NewsItemBriefNewsItem
-    story_context: NewsItemBriefStoryContext | None = None
     token_lanes: list[NewsItemBriefTokenLane] = Field(default_factory=list, max_length=50)
     fact_lanes: list[NewsItemBriefFactLane] = Field(default_factory=list, max_length=50)
     context_items: list[NewsItemBriefContextItem] = Field(default_factory=list, max_length=8)
@@ -292,8 +272,6 @@ __all__ = [
     "NewsItemBriefSideView",
     "NewsItemBriefSource",
     "NewsItemBriefStatus",
-    "NewsItemBriefStoryContext",
-    "NewsItemBriefStoryMember",
     "NewsItemBriefTokenLane",
     "default_news_item_brief_agent_config",
 ]

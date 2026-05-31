@@ -14,7 +14,7 @@ GMGN public stream
   → domains/social_enrichment   (watched-event extraction)
   → domains/pulse_lab           (candidate gate, agent route, decision, audit ledger)
   → domains/watchlist_intel     (handle timeline read model and account topic summaries)
-  → domains/news_intel          (configured news ingestion, news facts, story and page read models)
+  → domains/news_intel          (configured news ingestion, news facts, item briefs, page read model)
   → domains/cex_market_intel    (centralized exchange derivative radar read models)
   → domains/macro_intel         (macro observation facts and regime view snapshots)
   → domains/notifications       (rules, delivery)
@@ -130,8 +130,6 @@ are wrong too.
    read models must declare their single writer in the owning module's
    ARCHITECTURE.md. `token_profile_current` is written only by
    `TokenProfileCurrentWorker`; it may expose token logos only from ready
-   local rows in `token_image_assets`. `news_story_groups` and `news_story_members`
-   are written only by `NewsStoryProjectionWorker`;
    `news_items.content_class`, `news_items.content_tags_json`, and
    `news_items.content_classification_json` are written by
    `NewsItemProcessWorker` as item-level material facts;
@@ -287,7 +285,7 @@ direction is still enforced by the package rules below.
 | `domains/notifications/` | Notification rules, repository, delivery, workers, candidate types. |
 | `domains/pulse_lab/` | Signal Pulse read model, factor-snapshot candidate gate / worker, unified decision runtime policy, stage replay ledger, and pulse persistence. |
 | `domains/watchlist_intel/` | Watchlist handle-level topic summaries, signal/all handle timeline read model, summary job queue, and handle summary worker. |
-| `domains/news_intel/` | Configured news source ingestion, news item facts, token mention observations, deterministic story grouping, fact candidates, item-scoped agent brief read model, and the News page read model. |
+| `domains/news_intel/` | Configured news source ingestion, news item facts, token mention observations, fact candidates, item-scoped agent brief read model, and the News page read model. |
 | `domains/cex_market_intel/` | Centralized exchange derivative series and Binance OI radar board projection. |
 | `domains/macro_intel/` | `macro_sync` fact ingest from packaged macrodata-cli bundles, macro sync/import audit, deterministic macro feature/regime/scenario scoring, and the Macro read model. |
 | `domains/account_quality/` | Account-quality snapshots, account-quality read service, account-alert read service. |
@@ -304,7 +302,7 @@ own maps next to the code they describe, and this file links to them.
 | Asset market and market tick capture | [`src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md) | Asset identity evidence ledger, `MarketTick` schema, capture-tier / stream / poll workers, cache-only live fan-out, profile / discovery workers, provider capability model. |
 | CEX market intelligence | [`src/gmgn_twitter_intel/domains/cex_market_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/cex_market_intel/ARCHITECTURE.md) | Binance USDT perpetual universe consumption, OI radar board read model, CEX detail snapshots, and snapshot-only Token Case / Agent read paths. |
 | Signal Pulse pipeline | [`src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md) | Candidate gate, agent route policy, stage runtime, decision persistence, audit ledger, abstain contract. |
-| News intelligence | [`src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md) | Configured source ingestion, raw news item facts, token mention observations, story grouping, fact candidates, and the News page read model. |
+| News intelligence | [`src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md) | Configured source ingestion, raw news item facts, token mention observations, fact candidates, item briefs, and the News page read model. |
 | Macro intelligence | [`src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md) | `macro_sync` fact ingest, macro observation facts, deterministic `macro_regime_v4` feature/regime/scenario scoring, module v3 views, and Macro projection ownership. |
 
 When a subsystem needs more than a short row here, add

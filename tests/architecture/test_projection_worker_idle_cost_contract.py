@@ -12,20 +12,13 @@ SRC = ROOT / "src" / "gmgn_twitter_intel"
 PROJECTION_RUNTIME_GLOBS = ("domains/news_intel/runtime/*projection_worker.py",)
 
 ALLOWED_PROJECTION_REPOSITORY_CALLS = {
-    "add_story_member",
     "claim_due",
-    "create_story_from_event",
-    "create_story_from_item",
     "enqueue_targets",
     "list_news_item_ids_for_sources",
-    "list_news_item_ids_for_stories",
     "list_source_quality_inputs_for_targets",
     "load_items_for_page_projection",
-    "load_items_for_story_projection",
     "mark_done",
     "mark_error",
-    "refresh_story_from_member",
-    "replace_story_member_for_item",
     "replace_page_rows",
     "replace_page_rows_for_items",
     "replace_source_quality_rows",
@@ -46,7 +39,6 @@ CLAIM_MARK_METHODS = {"claim_due", "mark_done", "mark_error"}
 NEWS_PROJECTION_WORKERS = {
     SRC / "domains/news_intel/runtime/news_page_projection_worker.py",
     SRC / "domains/news_intel/runtime/news_source_quality_projection_worker.py",
-    SRC / "domains/news_intel/runtime/news_story_projection_worker.py",
 }
 AGENT_BRIEF_WORKERS = {
     SRC / "domains/news_intel/runtime/news_item_brief_worker.py",

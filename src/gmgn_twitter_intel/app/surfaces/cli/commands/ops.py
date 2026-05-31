@@ -531,7 +531,7 @@ def _rebuild_news_canonical_items(
     targets = [
         {"projection_name": projection_name, "target_kind": "news_item", "target_id": news_item_id}
         for news_item_id in news_item_ids
-        for projection_name in ("story", "page", "brief_input")
+        for projection_name in ("page", "brief_input")
     ]
     data: dict[str, Any] = {
         "mode": "execute" if execute else "dry_run",

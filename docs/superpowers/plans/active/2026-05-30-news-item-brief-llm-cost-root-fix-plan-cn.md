@@ -5,6 +5,7 @@
 **Goal:** 根治 `news_item_brief` unchanged item 重复 LLM 调用、provider quota retry storm、以及 `brief_input` failed dirty queue 常驻问题。
 
 **Architecture:** 这是 hard cut，不保留 runtime legacy hash fallback。News brief 的唯一身份是 semantic material payload hash；dirty target 只做 wake hint，处理后必须 done/terminalize/evict；provider quota/balance 是共享 execution plane 的 lane/provider backpressure，不是 item-level failure。
+Story 是本地 page read-model context，不是 6551/OpenNews provider truth，也不是 `news_item_brief` 的 LLM input identity。
 
 **Tech Stack:** Python 3.13, Pydantic v2, psycopg/PostgreSQL, existing LiteLLM-native `AgentExecutionGateway`, pytest, ruff, existing `worker_queue_terminal_events`.
 
@@ -19,6 +20,7 @@
 - [ ] Do not keep runtime legacy hash compatibility branches.
 - [ ] Do not compare old `request_json.packet` hashes in `_current_brief_is_fresh`.
 - [ ] Do not let `fetched_at_ms`, `updated_at_ms`, lease owner, attempt count, dirty target timestamps, run ids, UUIDs, or generated timestamps enter LLM semantic input identity.
+- [ ] Do not keep `news_story_projection`, `news_story_updated`, story dirty targets, story API routes, or story read-model schema in the active runtime.
 - [ ] Do not write item-level failed current briefs for provider-wide quota/balance/auth/config outages.
 - [ ] Do not leave unchanged failed `brief_input` rows in the hot dirty queue forever.
 - [ ] Do not add runtime hash backfill or dual-hash compatibility code in this plan; old ready current briefs refresh once under rollout RPM control.
@@ -42,11 +44,13 @@
 ### Freshness And Candidate Loading
 
 - Modify: `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
-  - Remove `items.updated_at_ms` and projection-only `stories.updated_at_ms` from brief `source_updated_at_ms`.
+  - Remove `items.updated_at_ms`, projection-only `stories.updated_at_ms`, story joins, and story member timestamps from brief `source_updated_at_ms`.
   - Prefer item processed/material timestamps and child material rows.
 - Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py`
   - Make freshness an exact semantic hash + version match.
   - Treat terminal failed current brief as fresh only when its terminal marker and input hash match.
+- Modify: `src/gmgn_twitter_intel/platform/config/settings.py` and `src/gmgn_twitter_intel/app/runtime/worker_manifest.py`
+  - Remove `news_story_projection` and all `news_story_updated` wake inputs.
 - Modify: `tests/unit/domains/news_intel/test_news_item_brief_worker.py`
   - Prove volatile source watermark does not trigger provider call.
 - Modify: `tests/integration/domains/news_intel/test_news_item_agent_brief_repository.py`
@@ -176,18 +180,14 @@ def test_packet_hash_ignores_fetched_at_ms() -> None:
     }
     first = build_news_item_brief_input_packet(
         item=base_item,
-        story=None,
         token_mentions=[],
         fact_candidates=[],
-        story_members=[],
         agent_config=_agent_config(),
     )
     second = build_news_item_brief_input_packet(
         item={**base_item, "fetched_at_ms": 1_779_000_090_000},
-        story=None,
         token_mentions=[],
         fact_candidates=[],
-        story_members=[],
         agent_config=_agent_config(),
     )
 
@@ -219,10 +219,8 @@ def test_stage_payload_uses_material_packet_without_fetch_time() -> None:
             "fetched_at_ms": 1_779_000_010_000,
             "content_hash": "sha256:stage",
         },
-        story=None,
         token_mentions=[],
         fact_candidates=[],
-        story_members=[],
         agent_config=NewsItemBriefAgentConfig(
             model="test-model",
             artifact_version_hash="artifact-v1",
@@ -563,8 +561,7 @@ GREATEST(
   COALESCE(stories.updated_at_ms, 0),
   COALESCE(mention_updates.updated_at_ms, 0),
   COALESCE(fact_updates.updated_at_ms, 0),
-  COALESCE(context_updates.updated_at_ms, 0),
-  COALESCE(story_member_updates.updated_at_ms, 0)
+  COALESCE(context_updates.updated_at_ms, 0)
 ) AS source_updated_at_ms
 ```
 
@@ -575,12 +572,11 @@ GREATEST(
   COALESCE(items.processed_at_ms, items.created_at_ms, 0),
   COALESCE(mention_updates.updated_at_ms, 0),
   COALESCE(fact_updates.updated_at_ms, 0),
-  COALESCE(context_updates.updated_at_ms, 0),
-  COALESCE(story_member_updates.updated_at_ms, 0)
+  COALESCE(context_updates.updated_at_ms, 0)
 ) AS source_updated_at_ms
 ```
 
-`processed_at_ms` exists in the News schema and is written by `NewsRepository.mark_item_processed`; do not use `items.updated_at_ms` in this expression.
+`processed_at_ms` exists in the News schema and is written by `NewsRepository.mark_item_processed`; do not use `items.updated_at_ms` or projection timestamps in this expression.
 
 - [ ] **Step 4: Add repository integration test**
 
@@ -1407,7 +1403,7 @@ Expected:
 ## Rollback
 
 1. Disable `news_item_brief` in operator `workers.yaml` if provider-started run growth returns.
-2. Leave deterministic News workers running: `news_fetch`, `news_item_process`, `news_story_projection`, `news_page_projection`, `news_source_quality_projection`.
+2. Leave deterministic News workers running: `news_fetch`, `news_item_process`, `news_page_projection`, `news_source_quality_projection`.
 3. Do not revert DB terminal events; they are audit facts. Use explicit terminal retry tooling if an operator needs to resurrect a target.
 4. If quota classification causes false circuit-open, lower circuit open duration or fix classifier markers, then restart process to clear in-memory circuit.
 

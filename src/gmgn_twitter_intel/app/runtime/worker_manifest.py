@@ -421,30 +421,6 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         wakes_out=("news_item_processed",),
     ),
     WorkerManifest(
-        name="news_story_projection",
-        domain="news_intel",
-        factory="news_intel.py",
-        lane=WorkerLane.PROJECTION,
-        kind=WorkerKind.PROJECTION,
-        worker_class=(
-            "gmgn_twitter_intel.domains.news_intel.runtime.news_story_projection_worker.NewsStoryProjectionWorker"
-        ),
-        start_priority=92,
-        input_contract=("news_projection_dirty_targets:story",),
-        ordering_keys=("story_id",),
-        writes_read_models=("news_story_groups", "news_story_members"),
-        writes_control_plane=("news_projection_dirty_targets",),
-        current_read_model_identities=(
-            ("news_story_groups", ("story_id",)),
-            ("news_story_members", ("story_id", "news_item_id")),
-        ),
-        idempotency_evidence=("news story projection primary key", "dirty target payload hash"),
-        dirty_target_tables=("news_projection_dirty_targets",),
-        advisory_lock_key="2026051903",
-        wakes_on=("news_item_processed",),
-        wakes_out=("news_story_updated",),
-    ),
-    WorkerManifest(
         name="news_item_brief",
         domain="news_intel",
         factory="news_intel.py",
@@ -461,7 +437,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         side_effect_ledgers=("news_item_agent_runs", "news_item_agent_briefs"),
         dirty_target_tables=("news_projection_dirty_targets",),
         advisory_lock_key="2026052001",
-        wakes_on=("news_item_processed", "news_story_updated"),
+        wakes_on=("news_item_processed",),
         wakes_out=("news_item_brief_updated",),
     ),
     WorkerManifest(
@@ -483,7 +459,6 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         wakes_on=(
             "news_item_written",
             "news_item_processed",
-            "news_story_updated",
             "news_item_brief_updated",
             "news_page_dirty",
         ),
@@ -507,7 +482,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         idempotency_evidence=("news source/window projection identity", "dirty target payload hash"),
         dirty_target_tables=("news_projection_dirty_targets",),
         advisory_lock_key="2026052201",
-        wakes_on=("news_item_written", "news_item_processed", "news_story_updated", "news_item_brief_updated"),
+        wakes_on=("news_item_written", "news_item_processed", "news_item_brief_updated"),
     ),
     WorkerManifest(
         name="cex_oi_radar_board",

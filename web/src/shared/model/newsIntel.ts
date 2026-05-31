@@ -114,7 +114,6 @@ export type NewsAgentRunSummary = {
 export type NewsRow = {
   row_id: string;
   news_item_id: string;
-  story_id?: string | null;
   latest_at_ms?: number | null;
   lifecycle_status: string;
   headline: string;
@@ -156,12 +155,6 @@ export type NewsSourceSummary = {
 export type NewsItemDetail = NewsRow & {
   content?: string | null;
   body_text?: string | null;
-  story_members?: Array<{
-    story_id?: string | null;
-    status?: string | null;
-    representative_title?: string | null;
-    latest_seen_at_ms?: number | null;
-  }>;
   entities?: unknown[];
   token_mentions?: unknown[];
   fact_candidates?: NewsFactLane[];

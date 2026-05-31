@@ -5725,48 +5725,6 @@
         ]
       }
     },
-    "/api/news/stories/{story_id}": {
-      "get": {
-        "operationId": "get_news_story_api_news_stories__story_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "story_id",
-            "required": true,
-            "schema": {
-              "title": "Story Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiEnvelope_NewsObjectData_"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get News Story",
-        "tags": [
-          "api"
-        ]
-      }
-    },
     "/api/notification-deliveries": {
       "get": {
         "operationId": "notification_deliveries_api_notification_deliveries_get",

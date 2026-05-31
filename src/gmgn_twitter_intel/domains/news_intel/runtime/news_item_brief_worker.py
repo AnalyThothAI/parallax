@@ -662,10 +662,8 @@ def _packet_from_candidate(
 ) -> NewsItemBriefInputPacket:
     return build_news_item_brief_input_packet(
         item=_dict(candidate.get("item") or candidate),
-        story=_optional_dict(candidate.get("story")),
         token_mentions=_list_of_dicts(candidate.get("token_mentions")),
         fact_candidates=_list_of_dicts(candidate.get("fact_candidates")),
-        story_members=_list_of_dicts(candidate.get("story_members")),
         context_items=_list_of_dicts(candidate.get("context_items")),
         agent_config=agent_config,
     )

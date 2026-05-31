@@ -283,21 +283,6 @@ class NewsRepository:
         ).fetchall()
         return [str(row["source_id"]) for row in rows]
 
-    def list_news_item_ids_for_stories(self, *, story_ids: Sequence[str]) -> list[str]:
-        normalized_ids = list(dict.fromkeys(str(story_id) for story_id in story_ids if str(story_id)))
-        if not normalized_ids:
-            return []
-        rows = self.conn.execute(
-            """
-            SELECT news_item_id
-              FROM news_story_members
-             WHERE story_id = ANY(%s::text[])
-             ORDER BY story_id ASC, news_item_id ASC
-            """,
-            (normalized_ids,),
-        ).fetchall()
-        return [str(row["news_item_id"]) for row in rows]
-
     def list_news_item_ids_for_canonical_rebuild(self, *, limit: int) -> list[str]:
         rows = self.conn.execute(
             """
@@ -1547,7 +1532,6 @@ class NewsRepository:
             SELECT
               row_id,
               news_item_id,
-              story_id,
               latest_at_ms,
               headline,
               summary,
@@ -1560,7 +1544,6 @@ class NewsRepository:
               token_impacts_json AS token_impacts,
               content_class,
               content_tags_json AS content_tags,
-              story_json AS story,
               source_json AS source,
               agent_brief_json AS agent_brief,
               agent_status,
@@ -1632,7 +1615,6 @@ class NewsRepository:
             SELECT
               row_id,
               news_item_id,
-              story_id,
               latest_at_ms,
               lifecycle_status,
               headline,
@@ -1649,7 +1631,6 @@ class NewsRepository:
               content_class,
               content_tags_json AS content_tags,
               content_classification_json AS content_classification,
-              story_json AS story,
               source_json AS source,
               agent_brief_json AS agent_brief,
               agent_status,
@@ -1933,167 +1914,6 @@ class NewsRepository:
         if commit:
             self.conn.commit()
 
-    def load_items_for_story_projection(self, *, news_item_ids: Sequence[str]) -> list[dict[str, Any]]:
-        target_ids = list(dict.fromkeys(str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)))
-        if not target_ids:
-            return []
-        rows = self.conn.execute(
-            """
-            WITH target_items AS (
-              SELECT items.*,
-                     sources.provider_type
-                FROM news_items AS items
-                JOIN news_sources AS sources ON sources.source_id = items.source_id
-               WHERE items.news_item_id = ANY(%s::text[])
-                 AND items.lifecycle_status = 'processed'
-            )
-            SELECT items.*,
-                   COALESCE(mentions.token_targets, '[]'::jsonb) AS token_targets
-              FROM target_items AS items
-              LEFT JOIN LATERAL (
-                SELECT jsonb_agg(DISTINCT mentions.target_type || ':' || mentions.target_id)
-                         FILTER (WHERE mentions.target_id IS NOT NULL) AS token_targets
-                  FROM news_token_mentions AS mentions
-                 WHERE mentions.news_item_id = items.news_item_id
-              ) AS mentions ON true
-             ORDER BY items.published_at_ms ASC, items.news_item_id ASC
-            """,
-            (target_ids,),
-        ).fetchall()
-        return [dict(row) for row in rows]
-
-    def create_story_from_item(
-        self,
-        *,
-        story_id: str,
-        item: Mapping[str, Any],
-        policy_version: str,
-        now_ms: int,
-        commit: bool = True,
-    ) -> None:
-        self.conn.execute(
-            """
-            INSERT INTO news_story_groups (
-              story_id, policy_version, representative_title, canonical_url,
-              first_seen_at_ms, latest_seen_at_ms, source_count, item_count,
-              token_targets_json, status, created_at_ms, updated_at_ms
-            )
-            VALUES (%s, %s, %s, %s, %s, %s, 0, 0, %s, 'active', %s, %s)
-            ON CONFLICT (story_id) DO NOTHING
-            """,
-            (
-                story_id,
-                policy_version,
-                str(item.get("title") or item.get("representative_title") or ""),
-                str(item.get("canonical_url") or "") or None,
-                int(item.get("published_at_ms") or now_ms),
-                int(item.get("published_at_ms") or now_ms),
-                _json(_json_list(item.get("token_targets"))),
-                int(now_ms),
-                int(now_ms),
-            ),
-        )
-        if commit:
-            self.conn.commit()
-
-    def refresh_story_from_member(
-        self,
-        *,
-        story_id: str,
-        item: Mapping[str, Any],
-        now_ms: int,
-        commit: bool = True,
-    ) -> None:
-        self.conn.execute(
-            """
-            UPDATE news_story_groups
-               SET latest_seen_at_ms = GREATEST(latest_seen_at_ms, %s),
-                   updated_at_ms = %s
-             WHERE story_id = %s
-            """,
-            (int(item.get("published_at_ms") or now_ms), int(now_ms), story_id),
-        )
-        if commit:
-            self.conn.commit()
-
-    def replace_story_member_for_item(
-        self,
-        *,
-        story_id: str,
-        news_item_id: str,
-        relation: str,
-        match_reason: str,
-        match_score: float,
-        now_ms: int,
-        commit: bool = True,
-    ) -> None:
-        old_story_rows = self.conn.execute(
-            """
-            SELECT DISTINCT story_id
-              FROM news_story_members
-             WHERE news_item_id = %s
-            """,
-            (news_item_id,),
-        ).fetchall()
-        old_story_ids = [str(row["story_id"]) for row in old_story_rows]
-        self.conn.execute(
-            """
-            INSERT INTO news_story_members (
-              story_id, news_item_id, relation, match_reason, match_score, created_at_ms
-            )
-            VALUES (%s, %s, %s, %s, %s, %s)
-            ON CONFLICT (news_item_id) DO UPDATE SET
-              story_id = EXCLUDED.story_id,
-              relation = EXCLUDED.relation,
-              match_reason = EXCLUDED.match_reason,
-              match_score = EXCLUDED.match_score,
-              created_at_ms = EXCLUDED.created_at_ms
-            """,
-            (story_id, news_item_id, relation, match_reason, float(match_score), int(now_ms)),
-        )
-        for refresh_story_id in dict.fromkeys([*old_story_ids, story_id]):
-            if not refresh_story_id:
-                continue
-            self._refresh_story_counts(story_id=refresh_story_id, now_ms=now_ms)
-        if commit:
-            self.conn.commit()
-
-    def _refresh_story_counts(self, *, story_id: str, now_ms: int) -> None:
-        self.conn.execute(
-            """
-            WITH requested AS (
-              SELECT %s::text AS story_id
-            ),
-            counts AS (
-                SELECT members.story_id,
-                       COUNT(DISTINCT items.news_item_id)::int AS item_count,
-                       COUNT(DISTINCT items.source_domain)::int AS source_count,
-                       COALESCE(
-                         jsonb_agg(DISTINCT mentions.target_type || ':' || mentions.target_id)
-                           FILTER (WHERE mentions.target_id IS NOT NULL),
-                         '[]'::jsonb
-                       ) AS token_targets_json,
-                       MAX(items.published_at_ms) AS latest_seen_at_ms
-                  FROM news_story_members AS members
-                  JOIN news_items AS items ON items.news_item_id = members.news_item_id
-                  LEFT JOIN news_token_mentions AS mentions ON mentions.news_item_id = items.news_item_id
-                 WHERE members.story_id = (SELECT story_id FROM requested)
-                 GROUP BY members.story_id
-            )
-            UPDATE news_story_groups AS story
-               SET item_count = COALESCE(counts.item_count, 0),
-                   source_count = COALESCE(counts.source_count, 0),
-                   token_targets_json = COALESCE(counts.token_targets_json, '[]'::jsonb),
-                   latest_seen_at_ms = COALESCE(counts.latest_seen_at_ms, story.latest_seen_at_ms),
-                   status = CASE WHEN counts.story_id IS NULL THEN 'stale' ELSE 'active' END,
-                   updated_at_ms = %s
-              FROM requested
-              LEFT JOIN counts ON counts.story_id = requested.story_id
-             WHERE story.story_id = requested.story_id
-            """,
-            (story_id, int(now_ms)),
-        )
-
     def load_items_for_page_projection(self, *, news_item_ids: Sequence[str]) -> list[dict[str, Any]]:
         target_ids = list(dict.fromkeys(str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)))
         if not target_ids:
@@ -2130,7 +1950,6 @@ class NewsRepository:
                   'provider_article_keys_json',
                     COALESCE(edge_summary.provider_article_keys_json, items.provider_article_keys_json)
                 ) AS item,
-              story.story_json AS story,
               CASE
                 WHEN current_brief.news_item_id IS NULL THEN NULL
                 ELSE to_jsonb(current_brief.*)
@@ -2175,14 +1994,6 @@ class NewsRepository:
             ) AS edge_summary ON true
             LEFT JOIN news_item_agent_briefs AS current_brief ON current_brief.news_item_id = items.news_item_id
             LEFT JOIN LATERAL (
-              SELECT to_jsonb(stories.*) AS story_json
-                FROM news_story_members AS members
-                JOIN news_story_groups AS stories ON stories.story_id = members.story_id
-               WHERE members.news_item_id = items.news_item_id
-               ORDER BY members.created_at_ms DESC, members.story_id DESC
-               LIMIT 1
-            ) AS story ON true
-            LEFT JOIN LATERAL (
               SELECT COALESCE(jsonb_agg(to_jsonb(mentions.*) ORDER BY mentions.mention_id), '[]'::jsonb)
                 AS token_mentions
                 FROM news_token_mentions AS mentions
@@ -2201,7 +2012,6 @@ class NewsRepository:
         return [
             {
                 "item": _json_dict(row["item"]),
-                "story": _json_dict(row["story"]) if row["story"] is not None else None,
                 "current_brief": _json_dict(row["current_brief"]) if row["current_brief"] is not None else None,
                 "token_mentions": _json_list(row["token_mentions"]),
                 "fact_candidates": _json_list(row["fact_candidates"]),
@@ -2223,24 +2033,15 @@ class NewsRepository:
               SELECT
                 items.news_item_id,
                 target_ids.ordinal,
-                member.story_id,
                 items.published_at_ms,
                 GREATEST(
                   COALESCE(items.processed_at_ms, items.created_at_ms, 0),
                   COALESCE(mention_updates.updated_at_ms, 0),
                   COALESCE(fact_updates.updated_at_ms, 0),
-                  COALESCE(context_updates.updated_at_ms, 0),
-                  COALESCE(story_member_updates.updated_at_ms, 0)
+                  COALESCE(context_updates.updated_at_ms, 0)
                 ) AS source_updated_at_ms
               FROM target_ids
               JOIN news_items AS items ON items.news_item_id = target_ids.news_item_id
-              LEFT JOIN LATERAL (
-                SELECT story_id
-                  FROM news_story_members
-                 WHERE news_item_id = items.news_item_id
-                 ORDER BY created_at_ms DESC, story_id DESC
-                 LIMIT 1
-              ) AS member ON true
               LEFT JOIN LATERAL (
                 SELECT MAX(created_at_ms) AS updated_at_ms
                   FROM news_token_mentions
@@ -2256,12 +2057,14 @@ class NewsRepository:
                   FROM news_context_items
                  WHERE parent_news_item_id = items.news_item_id
               ) AS context_updates ON true
-              LEFT JOIN LATERAL (
-                SELECT MAX(created_at_ms) AS updated_at_ms
-                  FROM news_story_members
-                 WHERE story_id = member.story_id
-              ) AS story_member_updates ON true
               WHERE items.lifecycle_status = 'processed'
+                AND EXISTS (
+                  SELECT 1
+                    FROM news_item_observation_edges AS edges
+                    JOIN news_sources AS edge_sources ON edge_sources.source_id = edges.source_id
+                   WHERE edges.news_item_id = items.news_item_id
+                     AND edge_sources.enabled = true
+                )
             )
             SELECT
               to_jsonb(items.*)
@@ -2274,7 +2077,6 @@ class NewsRepository:
                   'source_domains_json', COALESCE(edge_summary.source_domains_json, '[]'::jsonb),
                   'provider_article_keys_json', COALESCE(edge_summary.provider_article_keys_json, '[]'::jsonb)
                 ) AS item,
-              CASE WHEN stories.story_id IS NULL THEN NULL ELSE to_jsonb(stories.*) END AS story,
               CASE
                 WHEN current_brief.news_item_id IS NULL THEN NULL
                 ELSE to_jsonb(current_brief.*)
@@ -2283,12 +2085,10 @@ class NewsRepository:
               candidates.source_updated_at_ms,
               COALESCE(token_rows.rows, '[]'::jsonb) AS token_mentions,
               COALESCE(fact_rows.rows, '[]'::jsonb) AS fact_candidates,
-              COALESCE(context_rows.rows, '[]'::jsonb) AS context_items,
-              COALESCE(story_member_rows.rows, '[]'::jsonb) AS story_members
+              COALESCE(context_rows.rows, '[]'::jsonb) AS context_items
             FROM candidates
             JOIN news_items AS items ON items.news_item_id = candidates.news_item_id
             JOIN news_sources AS sources ON sources.source_id = items.source_id
-            LEFT JOIN news_story_groups AS stories ON stories.story_id = candidates.story_id
             LEFT JOIN news_item_agent_briefs AS current_brief ON current_brief.news_item_id = items.news_item_id
             LEFT JOIN LATERAL (
               SELECT COUNT(*)::int AS duplicate_count,
@@ -2340,15 +2140,6 @@ class NewsRepository:
                    LIMIT 25
                 ) AS context_items
             ) AS context_rows ON true
-            LEFT JOIN LATERAL (
-              SELECT jsonb_agg(
-                       to_jsonb(member_items.*)
-                       ORDER BY member_items.published_at_ms DESC, member_items.news_item_id ASC
-                     ) AS rows
-                FROM news_story_members AS members
-                JOIN news_items AS member_items ON member_items.news_item_id = members.news_item_id
-               WHERE members.story_id = candidates.story_id
-            ) AS story_member_rows ON true
             ORDER BY candidates.ordinal ASC
             """,
             (target_ids,),
@@ -2361,11 +2152,9 @@ class NewsRepository:
             results.append(
                 {
                     "item": item,
-                    "story": _json_dict(row["story"]) if row["story"] is not None else None,
                     "token_mentions": _json_list(row["token_mentions"]),
                     "fact_candidates": _json_list(row["fact_candidates"]),
                     "context_items": context_items,
-                    "story_members": _json_list(row["story_members"]),
                     "current_brief": _json_dict(row["current_brief"]) if row["current_brief"] is not None else None,
                     "latest_run": _json_dict(row["latest_run"]) if row["latest_run"] is not None else None,
                     "source_updated_at_ms": int(row["source_updated_at_ms"] or 0),
@@ -2457,20 +2246,6 @@ class NewsRepository:
         ).fetchone()
         if row is None:
             return None
-        story_rows = self.conn.execute(
-            """
-            SELECT to_jsonb(members.*)
-                     || jsonb_build_object(
-                       'representative_title', stories.representative_title,
-                       'latest_seen_at_ms', stories.latest_seen_at_ms
-                     ) AS story_member
-              FROM news_story_members AS members
-              JOIN news_story_groups AS stories ON stories.story_id = members.story_id
-             WHERE members.news_item_id = %s
-             ORDER BY members.created_at_ms DESC, members.story_id DESC
-            """,
-            (news_item_id,),
-        ).fetchall()
         observation_rows = self.conn.execute(
             """
             SELECT to_jsonb(edges.*)
@@ -2532,7 +2307,6 @@ class NewsRepository:
             "agent_run": _public_agent_run_payload(_json_dict(row["agent_run"]))
             if row["agent_run"] is not None
             else None,
-            "story_members": [_json_dict(story_row["story_member"]) for story_row in story_rows],
             "observation_edges": [
                 _public_observation_edge_payload(_json_dict(observation_row["observation_edge"]))
                 for observation_row in observation_rows
@@ -2545,126 +2319,6 @@ class NewsRepository:
             "token_mentions": token_mentions,
             "fact_candidates": fact_candidates,
             "context_items": context_items,
-        }
-
-    def get_news_story_detail(self, *, story_id: str) -> dict[str, Any] | None:
-        row = self.conn.execute(
-            """
-            SELECT to_jsonb(stories.*) AS story,
-                   COALESCE(
-                     jsonb_agg(
-                       jsonb_build_object(
-                         'news_item_id', items.news_item_id,
-                         'headline', items.title,
-                         'source_domain', items.source_domain,
-                         'canonical_url',
-                           CASE
-                             WHEN left(items.canonical_url, 7) = 'http://'
-                               OR left(items.canonical_url, 8) = 'https://'
-                             THEN items.canonical_url
-                             ELSE ''
-                           END,
-                         'published_at_ms', items.published_at_ms,
-                         'relation', members.relation,
-                         'match_reason', members.match_reason,
-                         'match_score', members.match_score,
-                         'observation_edges', COALESCE(observations.observation_edges, '[]'::jsonb),
-                         'provider_observations', COALESCE(observations.provider_observations, '[]'::jsonb)
-                       )
-                       ORDER BY items.published_at_ms DESC, items.news_item_id ASC
-                     ) FILTER (WHERE items.news_item_id IS NOT NULL),
-                     '[]'::jsonb
-                   ) AS members
-              FROM news_story_groups AS stories
-              LEFT JOIN news_story_members AS members ON members.story_id = stories.story_id
-              LEFT JOIN news_items AS items ON items.news_item_id = members.news_item_id
-              LEFT JOIN LATERAL (
-                SELECT
-                  COALESCE(
-                    jsonb_agg(
-                      jsonb_build_object(
-                        'news_item_id', edges.news_item_id,
-                        'source_id', edges.source_id,
-                        'source_domain', sources.source_domain,
-                        'source_name', sources.source_name,
-                        'source_role', sources.source_role,
-                        'trust_tier', sources.trust_tier,
-                        'enabled', sources.enabled,
-                        'match_type', edges.match_type,
-                        'match_confidence', edges.match_confidence,
-                        'policy_version', edges.policy_version,
-                        'first_seen_at_ms', edges.first_seen_at_ms,
-                        'last_seen_at_ms', edges.last_seen_at_ms,
-                        'provider_payload_status', provider_items.provider_payload_status,
-                        'provider_published_at_ms', provider_items.provider_published_at_ms,
-                        'provider_observed_at_ms', provider_items.provider_observed_at_ms
-                      )
-                      ORDER BY sources.enabled DESC, edges.source_id ASC, edges.provider_item_id ASC
-                    ),
-                    '[]'::jsonb
-                  ) AS observation_edges,
-                  COALESCE(
-                    jsonb_agg(
-                      jsonb_build_object(
-                        'source_id', edges.source_id,
-                        'canonical_url',
-                          CASE
-                            WHEN left(provider_items.canonical_url, 7) = 'http://'
-                              OR left(provider_items.canonical_url, 8) = 'https://'
-                            THEN provider_items.canonical_url
-                            ELSE ''
-                          END,
-                        'fetched_at_ms', provider_items.fetched_at_ms,
-                        'provider_payload_status', provider_items.provider_payload_status,
-                        'provider_published_at_ms', provider_items.provider_published_at_ms,
-                        'provider_observed_at_ms', provider_items.provider_observed_at_ms,
-                        'source_domain', sources.source_domain,
-                        'source_name', sources.source_name,
-                        'source_role', sources.source_role,
-                        'trust_tier', sources.trust_tier,
-                        'enabled', sources.enabled
-                      )
-                      ORDER BY sources.enabled DESC, edges.source_id ASC, edges.provider_item_id ASC
-                    ),
-                    '[]'::jsonb
-                  ) AS provider_observations
-                  FROM news_item_observation_edges AS edges
-                  JOIN news_provider_items AS provider_items ON provider_items.provider_item_id = edges.provider_item_id
-                  JOIN news_sources AS sources ON sources.source_id = edges.source_id
-                 WHERE edges.news_item_id = items.news_item_id
-              ) AS observations ON true
-             WHERE stories.story_id = %s
-             GROUP BY stories.story_id
-            """,
-            (story_id,),
-        ).fetchone()
-        if row is None:
-            return None
-        token_mentions = self.conn.execute(
-            """
-            SELECT COALESCE(jsonb_agg(DISTINCT to_jsonb(mentions.*)), '[]'::jsonb) AS rows
-              FROM news_story_members AS members
-              JOIN news_token_mentions AS mentions ON mentions.news_item_id = members.news_item_id
-             WHERE members.story_id = %s
-            """,
-            (story_id,),
-        ).fetchone()
-        fact_candidates = self.conn.execute(
-            """
-            SELECT COALESCE(jsonb_agg(DISTINCT to_jsonb(facts.*)), '[]'::jsonb) AS rows
-              FROM news_story_members AS members
-              JOIN news_fact_candidates AS facts ON facts.news_item_id = members.news_item_id
-             WHERE members.story_id = %s
-            """,
-            (story_id,),
-        ).fetchone()
-        story_payload = _json_dict(row["story"])
-        story_payload["canonical_url"] = _public_url(story_payload.get("canonical_url"))
-        return {
-            **story_payload,
-            "members": _json_list(row["members"]),
-            "token_mentions": _json_list(token_mentions["rows"] if token_mentions is not None else []),
-            "fact_candidates": _json_list(fact_candidates["rows"] if fact_candidates is not None else []),
         }
 
     def get_news_fact_detail(self, *, fact_candidate_id: str) -> dict[str, Any] | None:
@@ -3263,19 +2917,19 @@ class NewsRepository:
             returned = self.conn.execute(
                 """
                 INSERT INTO news_page_rows (
-                  row_id, news_item_id, story_id, latest_at_ms, lifecycle_status,
+                  row_id, news_item_id, latest_at_ms, lifecycle_status,
                   headline, summary, source_domain, canonical_url, token_lanes_json,
                   fact_lanes_json, content_class, content_tags_json, content_classification_json,
-                  story_json, source_json, signal_json, token_impacts_json, agent_brief_json,
+                  source_json, signal_json, token_impacts_json, agent_brief_json,
                   agent_status, agent_brief_computed_at_ms, computed_at_ms, projection_version,
                   canonical_item_key, duplicate_count, source_ids_json, source_domains_json,
                   provider_article_keys_json, payload_hash
                 )
                 VALUES (
-                  %(row_id)s, %(news_item_id)s, %(story_id)s, %(latest_at_ms)s, %(lifecycle_status)s,
+                  %(row_id)s, %(news_item_id)s, %(latest_at_ms)s, %(lifecycle_status)s,
                   %(headline)s, %(summary)s, %(source_domain)s, %(canonical_url)s, %(token_lanes_json)s,
                   %(fact_lanes_json)s, %(content_class)s, %(content_tags_json)s, %(content_classification_json)s,
-                  %(story_json)s, %(source_json)s, %(signal_json)s, %(token_impacts_json)s,
+                  %(source_json)s, %(signal_json)s, %(token_impacts_json)s,
                   %(agent_brief_json)s, %(agent_status)s, %(agent_brief_computed_at_ms)s,
                   %(computed_at_ms)s, %(projection_version)s, %(canonical_item_key)s,
                   %(duplicate_count)s, %(source_ids_json)s, %(source_domains_json)s,
@@ -3283,7 +2937,6 @@ class NewsRepository:
                 )
                 ON CONFLICT (row_id) DO UPDATE SET
                   news_item_id = EXCLUDED.news_item_id,
-                  story_id = EXCLUDED.story_id,
                   latest_at_ms = EXCLUDED.latest_at_ms,
                   lifecycle_status = EXCLUDED.lifecycle_status,
                   headline = EXCLUDED.headline,
@@ -3295,7 +2948,6 @@ class NewsRepository:
                   content_class = EXCLUDED.content_class,
                   content_tags_json = EXCLUDED.content_tags_json,
                   content_classification_json = EXCLUDED.content_classification_json,
-                  story_json = EXCLUDED.story_json,
                   source_json = EXCLUDED.source_json,
                   signal_json = EXCLUDED.signal_json,
                   token_impacts_json = EXCLUDED.token_impacts_json,
@@ -3496,7 +3148,6 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     payload["headline"] = str(payload.get("headline") or payload.get("title") or "")
     payload["canonical_url"] = str(payload.get("canonical_url") or payload.get("url") or "")
     payload["summary"] = str(payload.get("summary") or "")
-    payload["story_id"] = payload.get("story_id")
     payload["token_lanes_json"] = _json(payload.get("token_lanes_json", payload.get("token_lanes")) or [])
     payload["fact_lanes_json"] = _json(payload.get("fact_lanes_json", payload.get("fact_lanes")) or [])
     payload["token_impacts_json"] = _json(payload.get("token_impacts_json", payload.get("token_impacts")) or [])
@@ -3505,7 +3156,6 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     payload["content_classification_json"] = _json(
         payload.get("content_classification_json", payload.get("content_classification")) or {}
     )
-    payload["story_json"] = _json(payload.get("story_json", payload.get("story")) or {})
     payload["source_json"] = _json(payload.get("source_json", payload.get("source")) or {})
     agent_brief = payload.get("agent_brief_json", payload.get("agent_brief")) or {"status": "pending"}
     agent_status = str(payload.get("agent_status") or payload.get("agent_brief_status") or "pending")

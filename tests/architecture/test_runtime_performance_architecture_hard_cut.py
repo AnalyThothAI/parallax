@@ -80,7 +80,6 @@ def test_opennews_provider_signal_never_reenters_news_brief_input_hot_path() -> 
     policy = "needs_news_item_agent_brief"
     hot_path_files = (
         "src/gmgn_twitter_intel/domains/news_intel/runtime/news_fetch_worker.py",
-        "src/gmgn_twitter_intel/domains/news_intel/runtime/news_story_projection_worker.py",
         "src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_process_worker.py",
         "src/gmgn_twitter_intel/app/runtime/projection_dirty_targets.py",
     )

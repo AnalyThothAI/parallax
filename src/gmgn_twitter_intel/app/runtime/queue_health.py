@@ -109,7 +109,6 @@ QUEUE_HEALTH_ADAPTER_SPECS: dict[str, QueueHealthAdapterSpec] = {
 }
 
 DIRTY_TARGET_WORKER_FILTERS: dict[tuple[str, str], tuple[str, str]] = {
-    ("news_projection_dirty_targets", "news_story_projection"): ("projection_name", "story"),
     ("news_projection_dirty_targets", "news_item_brief"): ("projection_name", "brief_input"),
     ("news_projection_dirty_targets", "news_page_projection"): ("projection_name", "page"),
     ("news_projection_dirty_targets", "news_source_quality_projection"): ("projection_name", "source_quality"),

@@ -157,7 +157,6 @@ def _dirty_targets_for_processed_item(
     source_quality_windows: Iterable[str],
 ) -> list[dict[str, Any]]:
     targets: list[dict[str, Any]] = [
-        {"projection_name": "story", "target_kind": "news_item", "target_id": news_item_id},
         {"projection_name": "page", "target_kind": "news_item", "target_id": news_item_id},
     ]
     if _needs_agent_brief(item):

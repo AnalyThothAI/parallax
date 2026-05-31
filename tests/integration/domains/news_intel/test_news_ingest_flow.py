@@ -11,7 +11,6 @@ from gmgn_twitter_intel.domains.news_intel.repositories.news_repository import N
 from gmgn_twitter_intel.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
 from gmgn_twitter_intel.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
 from gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
-from gmgn_twitter_intel.domains.news_intel.runtime.news_story_projection_worker import NewsStoryProjectionWorker
 from gmgn_twitter_intel.domains.news_intel.types.source_provider import (
     NewsProviderFetchResult,
     NewsProviderObservation,
@@ -89,13 +88,6 @@ def test_news_workers_ingest_process_project_and_query_visible_news(tmp_path) ->
             identity_lookup=_FakeIdentityLookup(),
             wake_bus=wake_bus,
         )
-        story = NewsStoryProjectionWorker(
-            name="news_story_projection",
-            settings=_worker_settings(batch_size=10),
-            db=db,
-            telemetry=object(),
-            wake_bus=wake_bus,
-        )
         page = NewsPageProjectionWorker(
             name="news_page_projection",
             settings=_worker_settings(batch_size=10),
@@ -106,18 +98,15 @@ def test_news_workers_ingest_process_project_and_query_visible_news(tmp_path) ->
 
         fetch_result = fetch.run_once_sync(now_ms=NOW_MS)
         process_result = process.run_once_sync(now_ms=NOW_MS + 1)
-        story_result = story.run_once_sync(now_ms=NOW_MS + 2)
         page_result = page.run_once_sync(now_ms=NOW_MS + 3)
         query = NewsPageQuery(repository=NewsRepository(conn))
         page_data = query.list_news(limit=10)
         item_detail = query.get_item(news_item_id=page_data["items"][0]["news_item_id"])
-        story_detail = query.get_story(story_id=page_data["items"][0]["story_id"])
     finally:
         conn.close()
 
     assert fetch_result.processed == 1
     assert process_result.processed == 1
-    assert story_result.processed == 1
     assert page_result.processed == 1
     assert feed_client.calls == [
         {
@@ -134,14 +123,14 @@ def test_news_workers_ingest_process_project_and_query_visible_news(tmp_path) ->
     assert wake_bus.notifications == [
         {"channel": "news_item_written", "source_id": "binance-announcements", "count": 1},
         {"channel": "news_item_processed", "count": 1},
-        {"channel": "news_story_updated", "count": 1},
     ]
 
     row = page_data["items"][0]
     assert row["headline"] == "Binance lists $BTC for spot trading"
     assert row["canonical_url"] == "https://www.binance.com/en/support/announcement/btc-listing"
     assert row["lifecycle_status"] == "accepted"
-    assert row["story_id"]
+    assert "story_id" not in row
+    assert "story" not in row
     assert row["source"]["source_role"] == "official_exchange"
     assert row["token_lanes"][0]["resolution_status"] == "known_symbol"
     assert row["token_lanes"][0]["target_type"] == "CexToken"
@@ -153,11 +142,6 @@ def test_news_workers_ingest_process_project_and_query_visible_news(tmp_path) ->
     assert item_detail["provider_item"]["source_id"] == "binance-announcements"
     assert item_detail["observation_edges"][0]["source_id"] == "binance-announcements"
     assert item_detail["fetch_run"]["status"] == "success"
-    assert item_detail["story_members"][0]["story_id"] == row["story_id"]
-    assert story_detail is not None
-    assert story_detail["members"][0]["observation_edges"][0]["source_id"] == "binance-announcements"
-    assert story_detail["token_mentions"][0]["target_type"] == "CexToken"
-    assert story_detail["fact_candidates"][0]["event_type"] == "exchange_listing"
 
 
 def _worker_settings(*, batch_size: int) -> SimpleNamespace:
@@ -170,7 +154,7 @@ class _SingleConnectionWorkerDB:
 
     @contextmanager
     def worker_session(self, name: str, statement_timeout_seconds: float | None = None):
-        assert name in {"news_fetch", "news_item_process", "news_story_projection", "news_page_projection"}
+        assert name in {"news_fetch", "news_item_process", "news_page_projection"}
         assert statement_timeout_seconds == 30
         yield repositories_for_connection(self.conn)
 
@@ -229,6 +213,3 @@ class _FakeWakeBus:
 
     def notify_news_item_processed(self, *, count: int) -> None:
         self.notifications.append({"channel": "news_item_processed", "count": count})
-
-    def notify_news_story_updated(self, *, count: int) -> None:
-        self.notifications.append({"channel": "news_story_updated", "count": count})

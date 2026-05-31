@@ -1250,16 +1250,6 @@ class NewsItemProcessWorkerSettings(PerWorkerSettings):
         return tuple(_split_values(value))
 
 
-class NewsStoryProjectionWorkerSettings(PerWorkerSettings):
-    advisory_lock_key: int = 2026051903
-    wakes_on: tuple[str, ...] = ("news_item_processed",)
-
-    @field_validator("wakes_on", mode="before")
-    @classmethod
-    def parse_tuple(cls, value: Any) -> tuple[str, ...]:
-        return tuple(_split_values(value))
-
-
 class NewsItemBriefWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=10.0, ge=0)
     soft_timeout_seconds: float = Field(default=180.0, ge=0)
@@ -1267,7 +1257,7 @@ class NewsItemBriefWorkerSettings(PerWorkerSettings):
     batch_size: int = Field(default=5, ge=1)
     advisory_lock_key: int = 2026052001
     backpressure_cooldown_ms: int = Field(default=60_000, ge=1)
-    wakes_on: tuple[str, ...] = ("news_item_processed", "news_story_updated")
+    wakes_on: tuple[str, ...] = ("news_item_processed",)
 
     @field_validator("wakes_on", mode="before")
     @classmethod
@@ -1280,7 +1270,6 @@ class NewsPageProjectionWorkerSettings(PerWorkerSettings):
     wakes_on: tuple[str, ...] = (
         "news_item_written",
         "news_item_processed",
-        "news_story_updated",
         "news_item_brief_updated",
         "news_page_dirty",
     )
@@ -1298,7 +1287,6 @@ class NewsSourceQualityProjectionWorkerSettings(PerWorkerSettings):
     wakes_on: tuple[str, ...] = (
         "news_item_written",
         "news_item_processed",
-        "news_story_updated",
         "news_item_brief_updated",
     )
     windows: tuple[str, ...] = ("24h", "7d")
@@ -1357,7 +1345,6 @@ class WorkersSettings(BaseModel):
     )
     news_fetch: NewsFetchWorkerSettings = Field(default_factory=NewsFetchWorkerSettings)
     news_item_process: NewsItemProcessWorkerSettings = Field(default_factory=NewsItemProcessWorkerSettings)
-    news_story_projection: NewsStoryProjectionWorkerSettings = Field(default_factory=NewsStoryProjectionWorkerSettings)
     news_item_brief: NewsItemBriefWorkerSettings = Field(default_factory=NewsItemBriefWorkerSettings)
     news_page_projection: NewsPageProjectionWorkerSettings = Field(default_factory=NewsPageProjectionWorkerSettings)
     news_source_quality_projection: NewsSourceQualityProjectionWorkerSettings = Field(
@@ -2049,10 +2036,6 @@ news_item_process:
   enabled: true
   advisory_lock_key: 2026051902
   wakes_on: ["news_item_written"]
-news_story_projection:
-  enabled: true
-  advisory_lock_key: 2026051903
-  wakes_on: ["news_item_processed"]
 news_item_brief:
   enabled: true
   interval_seconds: 10.0
@@ -2061,18 +2044,18 @@ news_item_brief:
   batch_size: 5
   advisory_lock_key: 2026052001
   backpressure_cooldown_ms: 60000
-  wakes_on: ["news_item_processed", "news_story_updated"]
+  wakes_on: ["news_item_processed"]
 news_page_projection:
   enabled: true
   advisory_lock_key: 2026051904
   wakes_on:
-    ["news_item_written", "news_item_processed", "news_story_updated", "news_item_brief_updated", "news_page_dirty"]
+    ["news_item_written", "news_item_processed", "news_item_brief_updated", "news_page_dirty"]
 news_source_quality_projection:
   enabled: true
   interval_seconds: 60.0
   batch_size: 100
   advisory_lock_key: 2026052201
-  wakes_on: ["news_item_written", "news_item_processed", "news_story_updated", "news_item_brief_updated"]
+  wakes_on: ["news_item_written", "news_item_processed", "news_item_brief_updated"]
   windows: ["24h", "7d"]
 pulse_candidate:
   enabled: true

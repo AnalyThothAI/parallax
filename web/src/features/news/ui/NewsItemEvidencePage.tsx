@@ -312,7 +312,6 @@ function MetadataEvidence({ item }: { item: NewsItemDetail }) {
         <FieldRow label="Source" value={item.source?.source_name || item.source_domain} />
         <FieldRow label="Domain" value={item.source?.source_domain || item.source_domain} />
         <FieldRow label="Trust" value={item.source?.trust_tier} />
-        <FieldRow label="Story id" value={item.story_id} />
       </dl>
     </section>
   );

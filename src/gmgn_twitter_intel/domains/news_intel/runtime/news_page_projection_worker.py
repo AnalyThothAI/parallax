@@ -52,11 +52,10 @@ class NewsPageProjectionWorker(WorkerBase):
                     payloads = repos.news.load_items_for_page_projection(news_item_ids=claimed_ids)
                     rows_by_item_id: dict[str, dict[str, Any]] = {}
                     for payload in payloads:
-                        item, story, token_mentions, fact_candidates, current_brief = _projection_parts(payload)
+                        item, token_mentions, fact_candidates, current_brief = _projection_parts(payload)
                         news_item_id = str(item["news_item_id"])
                         rows_by_item_id[news_item_id] = build_news_page_row(
                             item=item,
-                            story=story,
                             token_mentions=token_mentions,
                             fact_candidates=fact_candidates,
                             agent_brief=current_brief,
@@ -120,13 +119,11 @@ class NewsPageProjectionWorker(WorkerBase):
 
 def _projection_parts(
     payload: Mapping[str, Any],
-) -> tuple[dict[str, Any], dict[str, Any] | None, list[dict[str, Any]], list[dict[str, Any]], dict[str, Any] | None]:
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]], dict[str, Any] | None]:
     item = dict(payload.get("item") or payload)
-    story = payload.get("story")
     current_brief = payload.get("current_brief")
     return (
         item,
-        dict(story) if story is not None else None,
         [dict(row) for row in payload.get("token_mentions") or []],
         [dict(row) for row in payload.get("fact_candidates") or []],
         dict(current_brief) if current_brief is not None else None,

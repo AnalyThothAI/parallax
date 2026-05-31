@@ -24,7 +24,7 @@ Enum fields must stay English exactly as the schema allows.
 
 # Evidence Discipline
 
-Every material claim must cite `evidence_refs` copied from the packet. Valid refs are only the packet refs such as `item:title`, `item:summary`, `item:body_excerpt`, `fact:<id>`, `token:<id>`, and `story:<news_item_id>`.
+Every material claim must cite `evidence_refs` copied from the packet. Valid refs are only the packet refs such as `item:title`, `item:summary`, `item:body_excerpt`, `fact:<id>`, `token:<id>`, `context:<id>`, `provider:signal`, and `provider:token:<symbol>`.
 
 If the packet lacks enough evidence, set `status="insufficient"` and explain the missing evidence in `data_gaps`.
 

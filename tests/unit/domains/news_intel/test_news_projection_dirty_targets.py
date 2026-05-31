@@ -116,7 +116,8 @@ def test_load_items_for_page_projection_filters_target_items_before_projection_j
     assert "WITH target_items AS (" in sql
     assert "WHERE items.news_item_id = ANY(%s::text[])" in sql
     assert "FROM target_items AS items" in sql
-    assert sql.count("WHERE members.news_item_id = items.news_item_id") == 1
+    assert "news_story_members" not in sql
+    assert "news_story_groups" not in sql
     assert "page.computed_at_ms" not in sql
     assert "page.projection_version" not in sql
     assert "HAVING page.row_id IS NULL" not in sql
@@ -141,8 +142,6 @@ def test_fetch_worker_enqueues_news_item_and_source_quality_dirty_for_inserted_a
     assert repos.dirty.enqueued == [
         {
             "rows": [
-                {"projection_name": "story", "target_kind": "news_item", "target_id": "news-inserted"},
-                {"projection_name": "story", "target_kind": "news_item", "target_id": "news-updated"},
                 {"projection_name": "page", "target_kind": "news_item", "target_id": "news-inserted"},
                 {"projection_name": "page", "target_kind": "news_item", "target_id": "news-updated"},
             ],
@@ -314,7 +313,7 @@ def test_news_repository_material_source_reconcile_reports_updated_status() -> N
     assert any("ON CONFLICT (source_id) DO UPDATE SET" in sql for sql in conn.sql)
 
 
-def test_process_worker_enqueues_story_page_and_source_quality_dirty_in_same_transaction_after_writes() -> None:
+def test_process_worker_enqueues_page_and_source_quality_dirty_in_same_transaction_after_writes() -> None:
     repos = FakeProcessRepos()
     worker = NewsItemProcessWorker(
         name="news_item_process",
@@ -333,7 +332,6 @@ def test_process_worker_enqueues_story_page_and_source_quality_dirty_in_same_tra
     assert repos.dirty.enqueued == [
         {
             "rows": [
-                {"projection_name": "story", "target_kind": "news_item", "target_id": "news-1"},
                 {"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"},
                 {"projection_name": "source_quality", "target_kind": "source", "target_id": "source-1", "window": "4h"},
                 {
@@ -556,7 +554,6 @@ def _page_payload(news_item_id: str) -> dict[str, Any]:
             "published_at_ms": 1000,
             "lifecycle_status": "processed",
         },
-        "story": None,
         "current_brief": None,
         "token_mentions": [],
         "fact_candidates": [],

@@ -251,28 +251,11 @@ def test_load_items_for_brief_targets_payload_contains_packet_inputs_and_audit_r
                 }
             ],
         )
-        repo.create_story_from_item(
-            story_id="story-payload",
-            item={"title": "SOL ETF filing", "canonical_url": "https://example.com/payload", "published_at_ms": NOW_MS},
-            policy_version="test",
-            now_ms=NOW_MS,
-        )
-        repo.replace_story_member_for_item(
-            story_id="story-payload",
-            news_item_id=news_item_id,
-            relation="representative",
-            match_reason="test",
-            match_score=1.0,
-            now_ms=NOW_MS + 2,
-        )
-
         row = _load_items_for_brief_targets(repo, news_item_ids=[news_item_id])[0]
         packet = build_news_item_brief_input_packet(
             item=row["item"],
-            story=row["story"],
             token_mentions=row["token_mentions"],
             fact_candidates=row["fact_candidates"],
-            story_members=row["story_members"],
             agent_config=default_news_item_brief_agent_config(
                 model="gpt-5-mini",
                 artifact_version_hash=ARTIFACT_HASH,
@@ -286,9 +269,9 @@ def test_load_items_for_brief_targets_payload_contains_packet_inputs_and_audit_r
     assert row["item"]["trust_tier"] == "high"
     assert row["current_brief"]["agent_run_id"] == "run-current"
     assert row["latest_run"]["run_id"] == "run-current"
-    assert row["source_updated_at_ms"] == NOW_MS + 2
-    assert row["story"]["story_id"] == "story-payload"
-    assert row["story_members"][0]["news_item_id"] == news_item_id
+    assert row["source_updated_at_ms"] == NOW_MS + 1
+    assert "story" not in row
+    assert "story_members" not in row
     assert packet.news_item.source.source_name == "Payload Source"
     assert packet.token_lanes[0].mention_id == "mention-payload"
 

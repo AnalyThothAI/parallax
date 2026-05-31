@@ -114,7 +114,6 @@ WORKER_CLASSIFICATION: dict[str, str] = {
     "token_discussion_digest": "dirty_target_consumer",
     "news_fetch": "bounded_provider_scheduler",
     "news_item_process": "target_scoped_expansion",
-    "news_story_projection": "dirty_target_consumer",
     "news_item_brief": "dirty_target_consumer",
     "news_page_projection": "dirty_target_consumer",
     "news_source_quality_projection": "dirty_target_consumer",

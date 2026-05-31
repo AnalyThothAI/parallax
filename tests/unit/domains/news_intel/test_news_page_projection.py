@@ -16,7 +16,6 @@ def test_build_news_page_row_includes_token_and_fact_lanes() -> None:
             "published_at_ms": 1000,
             "lifecycle_status": "processed",
         },
-        story={"story_id": "story-1", "item_count": 2, "source_count": 1},
         token_mentions=[
             {
                 "resolution_status": "unknown_attention",
@@ -39,7 +38,8 @@ def test_build_news_page_row_includes_token_and_fact_lanes() -> None:
     assert row["token_lanes"][0]["lane"] == "attention"
     assert row["token_lanes"][0]["reason_codes"] == ["SYMBOL_NOT_IN_REGISTRY"]
     assert row["fact_lanes"][0]["status"] == "attention"
-    assert row["story"] == {"story_id": "story-1", "item_count": 2, "source_count": 1}
+    assert "story" not in row
+    assert "story_id" not in row
     assert row["source"] == {
         "source_id": "example-rss",
         "source_domain": "example.test",
@@ -65,7 +65,6 @@ def test_build_news_page_row_includes_compact_source_classification() -> None:
             "canonical_url": "https://coinbase.com/a",
             "published_at_ms": 1000,
         },
-        story=None,
         token_mentions=[],
         fact_candidates=[],
         computed_at_ms=2000,
@@ -100,7 +99,6 @@ def test_build_news_page_row_copies_item_level_content_classification() -> None:
                 "none_value": None,
             },
         },
-        story=None,
         token_mentions=[],
         fact_candidates=[],
         computed_at_ms=2000,
@@ -128,14 +126,12 @@ def test_build_news_page_row_uses_stable_row_id() -> None:
 
     first = build_news_page_row(
         item=item,
-        story=None,
         token_mentions=[],
         fact_candidates=[],
         computed_at_ms=2000,
     )
     second = build_news_page_row(
         item=item,
-        story={"story_id": "story-1"},
         token_mentions=[],
         fact_candidates=[],
         computed_at_ms=3000,
@@ -156,7 +152,6 @@ def test_build_news_page_row_marks_attention_for_unknown_token_without_facts() -
             "published_at_ms": 1000,
             "lifecycle_status": "processed",
         },
-        story=None,
         token_mentions=[
             {
                 "resolution_status": "unknown_attention",
@@ -182,7 +177,6 @@ def test_build_news_page_row_marks_accepted_when_no_attention_lanes() -> None:
             "published_at_ms": 1000,
             "lifecycle_status": "processed",
         },
-        story=None,
         token_mentions=[
             {
                 "resolution_status": "known_symbol",
@@ -209,7 +203,6 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
             "canonical_url": "https://example.test/a",
             "published_at_ms": 1000,
         },
-        story=None,
         token_mentions=[],
         fact_candidates=[],
         agent_brief={
@@ -278,7 +271,6 @@ def test_build_news_page_row_preserves_provider_signal_without_masking_ready_age
                 "method": "opennews.aiRating",
             },
         },
-        story=None,
         token_mentions=[],
         fact_candidates=[],
         agent_brief={
@@ -333,7 +325,6 @@ def test_build_news_page_row_uses_pending_agent_brief_when_missing() -> None:
             "canonical_url": "https://example.test/a",
             "published_at_ms": 1000,
         },
-        story=None,
         token_mentions=[],
         fact_candidates=[],
         computed_at_ms=4000,

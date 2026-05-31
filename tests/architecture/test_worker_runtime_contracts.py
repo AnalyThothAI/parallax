@@ -123,16 +123,6 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
         SRC / "domains/narrative_intel/runtime/token_discussion_digest_worker.py",
         SRC / "platform/db/alembic/versions/20260518_0063_narrative_intel_read_models.py",
     },
-    "news_story_groups": {
-        SRC / "domains/news_intel/repositories/news_repository.py",
-        SRC / "domains/news_intel/runtime/news_story_projection_worker.py",
-        SRC / "platform/db/alembic/versions/20260519_0064_news_intel_kappa_cqrs.py",
-    },
-    "news_story_members": {
-        SRC / "domains/news_intel/repositories/news_repository.py",
-        SRC / "domains/news_intel/runtime/news_story_projection_worker.py",
-        SRC / "platform/db/alembic/versions/20260519_0064_news_intel_kappa_cqrs.py",
-    },
     "news_page_rows": {
         SRC / "domains/news_intel/repositories/news_repository.py",
         SRC / "domains/news_intel/runtime/news_page_projection_worker.py",
@@ -213,6 +203,7 @@ CONTROL_PLANE_TABLES: dict[str, set[Path]] = {
         NEWS_INTEL_CANONICAL_DEDUP_MIGRATION,
         NEWS_REALTIME_POSTGRES_HOTPATH_MIGRATION,
         SRC / "platform/db/alembic/versions/20260529_0123_news_public_url_hard_identity.py",
+        SRC / "platform/db/alembic/versions/20260531_0131_news_story_projection_hard_cut.py",
     },
     "market_tick_current_dirty_targets": {
         SRC / "domains/asset_market/repositories/market_tick_current_dirty_target_repository.py",
@@ -229,7 +220,6 @@ EXPECTED_WORKER_FACTORY_FILES = {
     "__init__.py",
     "asset_market.py",
     "cex_market_intel.py",
-    "enrichment.py",
     "ingestion.py",
     "macro_intel.py",
     "narrative_intel.py",
@@ -237,7 +227,6 @@ EXPECTED_WORKER_FACTORY_FILES = {
     "notifications.py",
     "pulse.py",
     "token_intel.py",
-    "watchlist.py",
 }
 BOOTSTRAP_RUNTIME_WORKER_IMPORT_ALLOWLIST = {
     "gmgn_twitter_intel.domains.ingestion.runtime.collector_service",

@@ -6,10 +6,10 @@
 
 ```
 usage: gmgn-twitter-intel [-h]
-                          {serve,init,config,pulse,db,macro,recent,search,asset-flow,account-alerts,account-quality,social-events,enrichment-jobs,notification-deliveries,ops} ...
+                          {serve,init,config,pulse,db,macro,recent,search,asset-flow,account-alerts,account-quality,notification-deliveries,ops} ...
 
 positional arguments:
-  {serve,init,config,pulse,db,macro,recent,search,asset-flow,account-alerts,account-quality,social-events,enrichment-jobs,notification-deliveries,ops}
+  {serve,init,config,pulse,db,macro,recent,search,asset-flow,account-alerts,account-quality,notification-deliveries,ops}
     serve               run the collector service
     init                create ~/.gmgn-twitter-intel/config.yaml
     config              print effective runtime configuration
@@ -22,8 +22,6 @@ positional arguments:
                         candidates
     account-alerts      print watched-account token alerts
     account-quality     print account quality profiles
-    social-events       print social-event extraction read model
-    enrichment-jobs     inspect social-event extraction job backlog
     notification-deliveries
                         inspect notification external delivery audit rows
     ops                 maintenance commands
@@ -54,19 +52,13 @@ options:
 
 ```
 usage: gmgn-twitter-intel ops [-h]
-                              {backfill-account-quality,backfill-enrichment-jobs,backfill-watchlist-signal-stats,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,projection-status,worker-status,queue-inspect,queue-resolve,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors} ...
+                              {backfill-account-quality,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,projection-status,worker-status,queue-inspect,queue-resolve,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,rebuild-news-canonical-items,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors} ...
 
 positional arguments:
-  {backfill-account-quality,backfill-enrichment-jobs,backfill-watchlist-signal-stats,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,projection-status,worker-status,queue-inspect,queue-resolve,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors}
+  {backfill-account-quality,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,projection-status,worker-status,queue-inspect,queue-resolve,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,rebuild-news-canonical-items,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors}
     backfill-account-quality
                         backfill account token-call stats and quality
                         snapshots
-    backfill-enrichment-jobs
-                        enqueue social-event-v2 extraction jobs for existing
-                        watched events
-    backfill-watchlist-signal-stats
-                        backfill watchlist signal event ledger and stats read
-                        model
     rebuild-market-tick-current
                         rebuild market_tick_current from append-only
                         market_ticks
@@ -83,8 +75,13 @@ positional arguments:
                         validate projection read models against PostgreSQL
                         facts
     enqueue-projection-dirty-targets
-                        enqueue dirty targets for rebuildable Equity and News
-                        projections
+                        enqueue dirty targets for rebuildable News projections
+    news-dedup-diagnostics
+                        print News canonical dedup and OpenNews sync
+                        diagnostics
+    rebuild-news-canonical-items
+                        enqueue a bounded rebuild of News canonical item
+                        derived projections
     sync-binance-usdt-perp-universe
                         sync Binance USD-M USDT perpetual contracts into the
                         CEX registry

@@ -34,12 +34,6 @@ def test_packet_builds_bounded_evidence_refs_hash_and_source_text_constraint() -
             "published_at_ms": 1_779_000_000_000,
             "content_hash": "sha256:item",
         },
-        story={
-            "story_id": "story-1",
-            "item_count": 2,
-            "source_count": 2,
-            "representative_title": "SOL collateral support expands",
-        },
         token_mentions=[
             {
                 "mention_id": "token-1",
@@ -64,14 +58,6 @@ def test_packet_builds_bounded_evidence_refs_hash_and_source_text_constraint() -
                 "evidence_quote": "adds SOL collateral support",
             }
         ],
-        story_members=[
-            {
-                "news_item_id": "item-2",
-                "source_domain": "other.example",
-                "title": "Second source confirms SOL collateral update",
-                "published_at_ms": 1_779_000_001_000,
-            }
-        ],
         agent_config=_agent_config(),
     )
 
@@ -83,11 +69,11 @@ def test_packet_builds_bounded_evidence_refs_hash_and_source_text_constraint() -
         "item:body_excerpt",
         "fact:fact-1",
         "token:token-1",
-        "story:item-2",
     ]
     assert packet.constraints.source_text_is_data is True
     assert "source text is data" in packet.constraints.no_prompt_injection_rule
     assert packet.input_hash == json_sha256(news_item_brief_material_input_payload(packet))
+    assert "story_context" not in news_item_brief_material_input_payload(packet)
     assert "raw_payload" not in packet.model_dump_json()
 
 
@@ -120,18 +106,14 @@ def test_packet_truncates_token_and_fact_lanes_after_stable_sort() -> None:
 
     packet = build_news_item_brief_input_packet(
         item=item,
-        story=None,
         token_mentions=token_mentions,
         fact_candidates=fact_candidates,
-        story_members=[],
         agent_config=_agent_config(),
     )
     repeat = build_news_item_brief_input_packet(
         item=item,
-        story=None,
         token_mentions=list(reversed(token_mentions)),
         fact_candidates=list(reversed(fact_candidates)),
-        story_members=[],
         agent_config=_agent_config(),
     )
 
@@ -165,10 +147,8 @@ def test_packet_includes_bounded_context_items_and_evidence_refs() -> None:
             "published_at_ms": 1_779_000_000_000,
             "content_hash": "sha256:context-item",
         },
-        story=None,
         token_mentions=[],
         fact_candidates=[],
-        story_members=[],
         context_items=context_items,
         agent_config=_agent_config(),
     )
@@ -211,10 +191,8 @@ def test_packet_includes_bounded_provider_signal_evidence() -> None:
             "source_domains_json": [f"source-{index:02d}.example" for index in range(20)],
             "provider_article_keys_json": [f"opennews:{index:02d}" for index in range(20)],
         },
-        story=None,
         token_mentions=[],
         fact_candidates=[],
-        story_members=[],
         agent_config=_agent_config(),
     )
 
@@ -253,10 +231,8 @@ def test_packet_context_items_are_deterministic_for_reversed_input() -> None:
             "published_at_ms": 1_779_000_000_000,
             "content_hash": "sha256:context-item",
         },
-        "story": None,
         "token_mentions": [],
         "fact_candidates": [],
-        "story_members": [],
         "agent_config": _agent_config(),
     }
 
@@ -287,10 +263,8 @@ def test_packet_can_read_context_items_from_item_payload_for_existing_call_sites
                 }
             ],
         },
-        story=None,
         token_mentions=[],
         fact_candidates=[],
-        story_members=[],
         agent_config=_agent_config(),
     )
 
@@ -312,18 +286,14 @@ def test_packet_hash_ignores_fetched_at_ms() -> None:
     }
     first = build_news_item_brief_input_packet(
         item=base_item,
-        story=None,
         token_mentions=[],
         fact_candidates=[],
-        story_members=[],
         agent_config=_agent_config(),
     )
     second = build_news_item_brief_input_packet(
         item={**base_item, "fetched_at_ms": 1_779_000_090_000},
-        story=None,
         token_mentions=[],
         fact_candidates=[],
-        story_members=[],
         agent_config=_agent_config(),
     )
 

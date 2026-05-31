@@ -6,7 +6,6 @@ from types import SimpleNamespace
 from gmgn_twitter_intel.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
 from gmgn_twitter_intel.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
 from gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
-from gmgn_twitter_intel.domains.news_intel.runtime.news_story_projection_worker import NewsStoryProjectionWorker
 from gmgn_twitter_intel.domains.news_intel.types.source_provider import (
     NewsProviderContextObservation,
     NewsProviderFetchResult,
@@ -222,8 +221,6 @@ def test_news_fetch_worker_enqueues_dirty_targets_for_all_affected_news_items() 
 
     news_item_written = next(batch for batch in db.dirty.enqueued if batch["reason"] == "news_item_written")
     assert news_item_written["rows"] == [
-        {"projection_name": "story", "target_kind": "news_item", "target_id": "news-old"},
-        {"projection_name": "story", "target_kind": "news_item", "target_id": "news-new"},
         {"projection_name": "page", "target_kind": "news_item", "target_id": "news-old"},
         {"projection_name": "page", "target_kind": "news_item", "target_id": "news-new"},
     ]
@@ -610,7 +607,6 @@ def test_news_item_process_uses_opennews_provider_tokens_and_enqueues_brief_inpu
     assert db.repo.entities["news-1"][0].normalized_value == "BTC"
     assert db.repo.mentions["news-1"][0].observed_symbol == "BTC"
     assert db.dirty.enqueued[0]["rows"] == [
-        {"projection_name": "story", "target_kind": "news_item", "target_id": "news-1"},
         {"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"},
         {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-1", "priority": 18},
         {
@@ -624,171 +620,6 @@ def test_news_item_process_uses_opennews_provider_tokens_and_enqueues_brief_inpu
             "target_kind": "source",
             "target_id": "opennews-realtime",
             "window": "7d",
-        },
-    ]
-
-
-def test_news_story_projection_worker_assigns_items_in_worker_session_and_notifies() -> None:
-    repo = FakeStoryProjectionRepository()
-    db = FakeProjectionDB("news_story_projection", repo)
-    wake_bus = FakeWakeBus()
-    worker = NewsStoryProjectionWorker(
-        name="news_story_projection",
-        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
-        db=db,
-        telemetry=object(),
-        wake_bus=wake_bus,
-        clock_ms=lambda: NOW_MS,
-    )
-
-    result = worker.run_once_sync(now_ms=NOW_MS)
-
-    assert result.processed == 1
-    assert db.sessions == ["news_story_projection"]
-    assert repo.created_stories[0]["item"]["news_item_id"] == "news-1"
-    assert repo.story_members[0]["relation"] == "representative"
-    assert wake_bus.notifications == [{"channel": "news_story_updated", "count": 1}]
-
-
-def test_news_story_projection_worker_enqueues_brief_dirty_for_opennews_provider_signal() -> None:
-    repo = FakeStoryProjectionRepository(
-        items=[
-            {
-                "news_item_id": "news-1",
-                "canonical_item_key": "opennews:article-1",
-                "source_id": "opennews-news",
-                "provider_type": "opennews",
-                "provider_signal_json": {
-                    "source": "provider",
-                    "provider": "opennews",
-                    "status": "ready",
-                    "score": 91,
-                },
-                "canonical_url": "https://opennews.test/a",
-                "url_identity_kind": "article",
-                "content_hash": "hash-1",
-                "title_fingerprint": "btc headline",
-                "published_at_ms": 1000,
-                "token_targets": ["symbol:BTC"],
-            }
-        ]
-    )
-    db = FakeProjectionDB("news_story_projection", repo)
-    worker = NewsStoryProjectionWorker(
-        name="news_story_projection",
-        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
-        db=db,
-        telemetry=object(),
-        wake_bus=FakeWakeBus(),
-        clock_ms=lambda: NOW_MS,
-    )
-
-    result = worker.run_once_sync(now_ms=NOW_MS)
-
-    assert result.processed == 1
-    assert db.dirty.enqueued[0]["rows"] == [
-        {
-            "projection_name": "page",
-            "target_kind": "news_item",
-            "target_id": "news-1",
-            "source_watermark_ms": NOW_MS,
-        },
-        {
-            "projection_name": "brief_input",
-            "target_kind": "news_item",
-            "target_id": "news-1",
-            "source_watermark_ms": NOW_MS,
-            "priority": 9,
-        },
-    ]
-
-
-def test_news_story_projection_worker_keeps_provider_signal_across_story_members() -> None:
-    repo = FakeStoryProjectionRepository(
-        items_by_load=[
-            [
-                {
-                    "news_item_id": "news-1",
-                    "canonical_item_key": "article-url:https://example.test/a",
-                    "source_id": "source-1",
-                    "provider_type": "rss",
-                    "provider_signal_json": {},
-                    "canonical_url": "https://example.test/a",
-                    "url_identity_kind": "article",
-                    "content_hash": "hash-1",
-                    "title_fingerprint": "btc headline",
-                    "published_at_ms": 1000,
-                    "token_targets": ["symbol:BTC"],
-                }
-            ],
-            [
-                {
-                    "news_item_id": "news-1",
-                    "canonical_item_key": "article-url:https://example.test/a",
-                    "source_id": "source-1",
-                    "provider_type": "rss",
-                    "provider_signal_json": {},
-                    "canonical_url": "https://example.test/a",
-                    "url_identity_kind": "article",
-                    "content_hash": "hash-1",
-                    "title_fingerprint": "btc headline",
-                    "published_at_ms": 1000,
-                    "token_targets": ["symbol:BTC"],
-                },
-                {
-                    "news_item_id": "news-2",
-                    "canonical_item_key": "opennews:article-2",
-                    "source_id": "opennews-news",
-                    "provider_type": "opennews",
-                    "provider_signal_json": {
-                        "source": "provider",
-                        "provider": "opennews",
-                        "status": "ready",
-                        "score": 77,
-                    },
-                    "canonical_url": "https://opennews.test/b",
-                    "url_identity_kind": "article",
-                    "content_hash": "hash-2",
-                    "title_fingerprint": "btc headline",
-                    "published_at_ms": 1001,
-                    "token_targets": ["symbol:BTC"],
-                },
-            ],
-        ],
-        story_member_ids=["news-1", "news-2"],
-    )
-    db = FakeProjectionDB("news_story_projection", repo)
-    worker = NewsStoryProjectionWorker(
-        name="news_story_projection",
-        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
-        db=db,
-        telemetry=object(),
-        wake_bus=FakeWakeBus(),
-        clock_ms=lambda: NOW_MS,
-    )
-
-    result = worker.run_once_sync(now_ms=NOW_MS)
-
-    assert result.processed == 1
-    assert db.dirty.enqueued[0]["rows"] == [
-        {
-            "projection_name": "page",
-            "target_kind": "news_item",
-            "target_id": "news-1",
-            "source_watermark_ms": NOW_MS,
-        },
-        {
-            "projection_name": "page",
-            "target_kind": "news_item",
-            "target_id": "news-2",
-            "source_watermark_ms": NOW_MS,
-        },
-        {
-            "projection_name": "brief_input",
-            "target_kind": "news_item",
-            "target_id": "news-2",
-            "source_watermark_ms": NOW_MS,
-            "priority": 23,
         },
     ]
 
@@ -896,18 +727,6 @@ class FakeProjectionDB:
                     "attempt_count": 1,
                 }
             ]
-        if expected_name == "news_story_projection":
-            claimed = [
-                {
-                    "projection_name": "story",
-                    "target_kind": "news_item",
-                    "target_id": "news-1",
-                    "window": "",
-                    "payload_hash": "hash-1",
-                    "lease_owner": expected_name,
-                    "attempt_count": 1,
-                }
-            ]
         self.dirty = FakeProjectionDirtyTargetRepository(claimed)
         self.sessions: list[str] = []
 
@@ -991,9 +810,6 @@ class FakeWakeBus:
 
     def notify_news_item_written(self, *, source_id: str, count: int) -> None:
         self.notifications.append({"source_id": source_id, "count": count})
-
-    def notify_news_story_updated(self, *, count: int) -> None:
-        self.notifications.append({"channel": "news_story_updated", "count": count})
 
 
 class FakeItemProcessWakeBus:
@@ -1153,64 +969,6 @@ class FakeItemProcessRepository:
         self.failed_items.append({"news_item_id": news_item_id, "error": error, "now_ms": now_ms})
 
 
-class FakeStoryProjectionRepository:
-    def __init__(
-        self,
-        items: list[dict[str, object]] | None = None,
-        *,
-        items_by_load: list[list[dict[str, object]]] | None = None,
-        story_member_ids: list[str] | None = None,
-    ) -> None:
-        self.items = items
-        self.items_by_load = [list(batch) for batch in items_by_load or []]
-        self.story_member_ids = story_member_ids
-        self.created_stories: list[dict[str, object]] = []
-        self.refreshed_stories: list[dict[str, object]] = []
-        self.story_members: list[dict[str, object]] = []
-
-    def list_items_missing_story(self, *, limit: int):
-        raise AssertionError("story projection worker must not scan missing stories")
-
-    def load_items_for_story_projection(self, *, news_item_ids):
-        assert list(news_item_ids) in (["news-1"], ["news-1", "news-2"])
-        if self.items_by_load:
-            return [dict(item) for item in self.items_by_load.pop(0)]
-        if self.items is not None:
-            return [dict(item) for item in self.items]
-        return [
-            {
-                "news_item_id": "news-1",
-                "canonical_item_key": "article-url:https://example.test/a",
-                "source_id": "source-1",
-                "provider_type": "rss",
-                "provider_signal_json": {},
-                "canonical_url": "https://example.test/a",
-                "url_identity_kind": "article",
-                "content_hash": "hash-1",
-                "title_fingerprint": "coinbase lists newx",
-                "published_at_ms": 1000,
-                "token_targets": ["symbol:NEWX"],
-            }
-        ]
-
-    def create_story_from_item(self, **payload):
-        self.created_stories.append(payload)
-
-    def refresh_story_from_member(self, **payload):
-        self.refreshed_stories.append(payload)
-
-    def replace_story_member_for_item(self, **payload):
-        self.story_members.append(payload)
-
-    def list_news_item_ids_for_stories(self, *, story_ids):
-        if self.story_member_ids is not None:
-            return list(self.story_member_ids)
-        wanted = set(story_ids)
-        return [
-            str(member["news_item_id"]) for member in self.story_members if str(member.get("story_id") or "") in wanted
-        ]
-
-
 class FakePageProjectionRepository:
     def __init__(self) -> None:
         self.replaced_news_item_ids: list[str] = []
@@ -1230,7 +988,6 @@ class FakePageProjectionRepository:
                     "published_at_ms": 1000,
                     "lifecycle_status": "processed",
                 },
-                "story": None,
                 "token_mentions": [
                     {
                         "resolution_status": "unknown_attention",

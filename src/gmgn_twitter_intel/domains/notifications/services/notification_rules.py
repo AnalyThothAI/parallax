@@ -798,11 +798,6 @@ def _news_external_push_signature(
     )
 
 
-def _news_story_id(row: dict[str, Any]) -> str:
-    story = _dict(row.get("story"))
-    return str(row.get("story_id") or story.get("story_id") or "").strip()
-
-
 def _news_external_asset_bucket(row: dict[str, Any]) -> str:
     symbols: list[str] = []
     brief_json = _dict(_dict(row.get("agent_brief")).get("brief_json"))
@@ -827,8 +822,7 @@ def _news_external_asset_bucket(row: dict[str, Any]) -> str:
         return "CL"
     if symbols:
         return "|".join(symbols[:3])
-    story_id = _news_story_id(row)
-    return f"story:{story_id}" if story_id else str(row.get("news_item_id") or "unknown")
+    return str(row.get("news_item_id") or "unknown")
 
 
 def _news_external_asset_symbol(value: Any) -> str | None:

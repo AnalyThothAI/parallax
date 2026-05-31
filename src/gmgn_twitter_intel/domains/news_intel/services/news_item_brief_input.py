@@ -14,8 +14,6 @@ from gmgn_twitter_intel.domains.news_intel.types.news_item_brief import (
     NewsItemBriefProviderSignalEvidence,
     NewsItemBriefProviderTokenImpact,
     NewsItemBriefSource,
-    NewsItemBriefStoryContext,
-    NewsItemBriefStoryMember,
     NewsItemBriefTokenLane,
 )
 from gmgn_twitter_intel.platform.agent_hashing import json_sha256
@@ -23,7 +21,6 @@ from gmgn_twitter_intel.platform.agent_hashing import json_sha256
 BODY_EXCERPT_MAX_CHARS = 2000
 MAX_TOKEN_LANES = 50
 MAX_FACT_LANES = 50
-MAX_STORY_MEMBERS = 8
 MAX_CONTEXT_ITEMS = 8
 CONTEXT_BODY_EXCERPT_MAX_CHARS = 500
 MAX_PROVIDER_TOKEN_IMPACTS = 12
@@ -34,10 +31,8 @@ PROVIDER_SUMMARY_MAX_CHARS = 600
 def build_news_item_brief_input_packet(
     *,
     item: Mapping[str, Any],
-    story: Mapping[str, Any] | None,
     token_mentions: Sequence[Mapping[str, Any]],
     fact_candidates: Sequence[Mapping[str, Any]],
-    story_members: Sequence[Mapping[str, Any]],
     agent_config: NewsItemBriefAgentConfig,
     context_items: Sequence[Mapping[str, Any]] = (),
 ) -> NewsItemBriefInputPacket:
@@ -60,22 +55,15 @@ def build_news_item_brief_input_packet(
     fact_lanes = [_fact_lane(row) for row in sorted(fact_candidates, key=_fact_sort_key)[:MAX_FACT_LANES]]
     context_item_lanes = _context_items(context_items or _json_list(item.get("context_items")))
     provider_signal_evidence = _provider_signal_evidence(item)
-    story_context = _story_context(
-        story=story,
-        story_members=story_members,
-        current_news_item_id=news_item.news_item_id,
-    )
     evidence_refs = _evidence_refs(
         news_item=news_item,
         token_lanes=token_lanes,
         fact_lanes=fact_lanes,
         context_items=context_item_lanes,
         provider_signal_evidence=provider_signal_evidence,
-        story_context=story_context,
     )
     packet_id = _packet_id(
         news_item=news_item,
-        story_context=story_context,
         token_lanes=token_lanes,
         fact_lanes=fact_lanes,
         context_items=context_item_lanes,
@@ -85,7 +73,6 @@ def build_news_item_brief_input_packet(
     packet = NewsItemBriefInputPacket(
         packet_id=packet_id,
         news_item=news_item,
-        story_context=story_context,
         token_lanes=token_lanes,
         fact_lanes=fact_lanes,
         context_items=context_item_lanes,
@@ -225,33 +212,6 @@ def _provider_impact_sort_key(row: NewsItemBriefProviderTokenImpact) -> tuple[in
     return (-(row.score if row.score is not None else -1), row.symbol)
 
 
-def _story_context(
-    *,
-    story: Mapping[str, Any] | None,
-    story_members: Sequence[Mapping[str, Any]],
-    current_news_item_id: str,
-) -> NewsItemBriefStoryContext | None:
-    if story is None or not _str(story.get("story_id")):
-        return None
-    members = [
-        NewsItemBriefStoryMember(
-            news_item_id=_str(row.get("news_item_id")),
-            source_domain=_bounded(row.get("source_domain"), 255),
-            title=_bounded(row.get("title") or row.get("representative_title"), 500),
-            published_at_ms=_int(row.get("published_at_ms") or row.get("created_at_ms")),
-        )
-        for row in sorted(story_members, key=_story_member_sort_key)
-        if _str(row.get("news_item_id")) and _str(row.get("news_item_id")) != current_news_item_id
-    ][:MAX_STORY_MEMBERS]
-    return NewsItemBriefStoryContext(
-        story_id=_str(story.get("story_id")),
-        item_count=_int(story.get("item_count")),
-        source_count=_int(story.get("source_count")),
-        representative_title=_bounded(story.get("representative_title"), 500),
-        members=members,
-    )
-
-
 def _evidence_refs(
     *,
     news_item: NewsItemBriefNewsItem,
@@ -259,7 +219,6 @@ def _evidence_refs(
     fact_lanes: list[NewsItemBriefFactLane],
     context_items: list[NewsItemBriefContextItem],
     provider_signal_evidence: NewsItemBriefProviderSignalEvidence | None,
-    story_context: NewsItemBriefStoryContext | None,
 ) -> list[str]:
     refs: list[str] = []
     if news_item.title:
@@ -274,15 +233,12 @@ def _evidence_refs(
     if provider_signal_evidence is not None:
         refs.append("provider:signal")
         refs.extend(f"provider:token:{row.symbol}" for row in provider_signal_evidence.token_impacts if row.symbol)
-    if story_context is not None:
-        refs.extend(f"story:{row.news_item_id}" for row in story_context.members if row.news_item_id)
     return _stable_unique(refs)
 
 
 def _packet_id(
     *,
     news_item: NewsItemBriefNewsItem,
-    story_context: NewsItemBriefStoryContext | None,
     token_lanes: list[NewsItemBriefTokenLane],
     fact_lanes: list[NewsItemBriefFactLane],
     context_items: list[NewsItemBriefContextItem],
@@ -293,8 +249,6 @@ def _packet_id(
         {
             "news_item_id": news_item.news_item_id,
             "content_hash": news_item.content_hash,
-            "story_id": story_context.story_id if story_context is not None else "",
-            "story_members": [row.news_item_id for row in story_context.members] if story_context is not None else [],
             "tokens": [row.mention_id for row in token_lanes],
             "facts": [row.fact_candidate_id for row in fact_lanes],
             "context_items": [row.context_item_id for row in context_items],
@@ -314,10 +268,6 @@ def _mention_sort_key(row: Mapping[str, Any]) -> tuple[str, str]:
 
 def _fact_sort_key(row: Mapping[str, Any]) -> tuple[str, str]:
     return (_str(row.get("fact_candidate_id")), _str(row.get("claim")))
-
-
-def _story_member_sort_key(row: Mapping[str, Any]) -> tuple[int, str]:
-    return (-_int(row.get("published_at_ms") or row.get("created_at_ms")), _str(row.get("news_item_id")))
 
 
 def _json_list(value: Any) -> list[Any]:

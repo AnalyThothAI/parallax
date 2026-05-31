@@ -47,16 +47,6 @@ def get_news_item(request: Request, news_item_id: str) -> JSONResponse:
     return _json({"ok": True, "data": row})
 
 
-@router.get("/news/stories/{story_id}", response_model=api_schemas.ApiEnvelope[api_schemas.NewsObjectData])
-def get_news_story(request: Request, story_id: str) -> JSONResponse:
-    runtime = _authenticated_runtime(request)
-    with runtime.repositories() as repos:
-        row = _news_read_model(repos).get_story(story_id=story_id)
-    if row is None:
-        return JSONResponse({"ok": False, "error": "news_story_not_found"}, status_code=404)
-    return _json({"ok": True, "data": row})
-
-
 @router.get("/news/facts/{fact_candidate_id}", response_model=api_schemas.ApiEnvelope[api_schemas.NewsObjectData])
 def get_news_fact(request: Request, fact_candidate_id: str) -> JSONResponse:
     runtime = _authenticated_runtime(request)

@@ -18,6 +18,8 @@ def test_page_projection_loader_reads_source_payload_for_claimed_targets() -> No
     assert "'provider_type', source_rep.provider_type" in conn.sql
     assert "'source_quality_status', source_rep.source_quality_status" in conn.sql
     assert "'coverage_tags_json', source_rep.coverage_tags_json" in conn.sql
+    assert "news_story_members" not in conn.sql
+    assert "news_story_groups" not in conn.sql
 
 
 def test_brief_target_loader_includes_provider_duplicate_aggregation() -> None:
@@ -32,6 +34,9 @@ def test_brief_target_loader_includes_provider_duplicate_aggregation() -> None:
     assert "'source_ids_json', COALESCE(edge_summary.source_ids_json, '[]'::jsonb)" in conn.sql
     assert "'source_domains_json', COALESCE(edge_summary.source_domains_json, '[]'::jsonb)" in conn.sql
     assert "'provider_article_keys_json', COALESCE(edge_summary.provider_article_keys_json, '[]'::jsonb)" in conn.sql
+    assert "edge_sources.enabled = true" in conn.sql
+    assert "story_member_rows" not in conn.sql
+    assert "news_story_groups AS stories" not in conn.sql
 
 
 class CapturingConnection:

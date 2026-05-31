@@ -122,11 +122,6 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.pulse_candidate.stale_job_ttl_by_window_seconds == {"1h": 3600, "4h": 14400}
     assert settings.pulse_candidate.trigger_thresholds.min_rank_score == 45
     assert settings.pulse_candidate.gate_thresholds.high_conviction_min == 78
-    assert settings.handle_summary.time_threshold_ms == 1_800_000
-    assert settings.handle_summary.interval_seconds == 30
-    assert settings.handle_summary.statement_timeout_seconds == 10
-    assert settings.handle_summary.reconcile_limit == 20
-    assert settings.handle_summary.window_days == 3
     assert settings.macro_sync.enabled is True
     assert settings.macro_sync.interval_seconds == 900.0
     assert settings.macro_sync.bundle_name == "macro-core"
@@ -316,7 +311,6 @@ def test_agent_runtime_settings_default_lanes() -> None:
     assert settings.agent_runtime.lanes["pulse.risk_portfolio_judge"].timeout_seconds == 180
     assert settings.agent_runtime.lanes["narrative.discussion_digest"].timeout_seconds == 180
     assert settings.agent_runtime.lanes["narrative.mention_semantics"].priority == "bulk"
-    assert settings.agent_runtime.lanes["watchlist.handle_summary"].priority == "low"
     assert settings.agent_runtime.lanes["news.item_brief"].priority == "low"
     assert settings.agent_runtime.lanes["news.item_brief"].max_concurrency == 1
     assert settings.agent_runtime.lanes["news.item_brief"].timeout_seconds == 180
@@ -354,7 +348,6 @@ def test_agent_runtime_settings_partial_lane_override_preserves_default_lanes() 
     assert settings.agent_runtime.lanes["pulse.pipeline"].timeout_seconds == 240
     assert settings.agent_runtime.lanes["pulse.pipeline"].model is None
     assert settings.agent_runtime.lanes["narrative.mention_semantics"].priority == "bulk"
-    assert settings.agent_runtime.lanes["watchlist.handle_summary"].priority == "low"
     assert settings.agent_runtime.lanes["news.item_brief"].timeout_seconds == 180
 
 
@@ -439,20 +432,18 @@ def test_news_workers_have_defaults():
     assert settings.news_fetch.advisory_lock_key == 2026051905
     assert settings.news_item_process.advisory_lock_key == 2026051902
     assert settings.news_item_process.wakes_on == ("news_item_written",)
-    assert settings.news_story_projection.advisory_lock_key == 2026051903
-    assert settings.news_story_projection.wakes_on == ("news_item_processed",)
+    assert not hasattr(settings, "news_story_projection")
     assert settings.news_item_brief.interval_seconds == 10
     assert settings.news_item_brief.soft_timeout_seconds == 180
     assert settings.news_item_brief.hard_timeout_seconds == 240
     assert settings.news_item_brief.batch_size == 5
     assert settings.news_item_brief.advisory_lock_key == 2026052001
     assert settings.news_item_brief.backpressure_cooldown_ms == 60_000
-    assert settings.news_item_brief.wakes_on == ("news_item_processed", "news_story_updated")
+    assert settings.news_item_brief.wakes_on == ("news_item_processed",)
     assert settings.news_page_projection.advisory_lock_key == 2026051904
     assert settings.news_page_projection.wakes_on == (
         "news_item_written",
         "news_item_processed",
-        "news_story_updated",
         "news_item_brief_updated",
         "news_page_dirty",
     )
@@ -462,7 +453,6 @@ def test_news_workers_have_defaults():
     assert settings.news_source_quality_projection.wakes_on == (
         "news_item_written",
         "news_item_processed",
-        "news_story_updated",
         "news_item_brief_updated",
     )
     assert settings.news_source_quality_projection.windows == ("24h", "7d")

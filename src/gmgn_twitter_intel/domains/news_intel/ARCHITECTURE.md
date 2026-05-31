@@ -1,9 +1,8 @@
 # News Intel Architecture
 
 News Intel owns configured news source ingestion, raw news item facts,
-deterministic entity and token mention observations, deterministic story
-grouping, fact candidates, item-scoped agent briefs, and the independent News
-page read model.
+deterministic entity and token mention observations, fact candidates,
+item-scoped agent briefs, and the independent News page read model.
 
 The bounded context does not own Token Radar, Pulse, or market facts. News
 workers never write Token Radar current/history/audit read models, Signal Pulse tables, or price tick
@@ -18,8 +17,7 @@ forced into a resolved asset.
   material facts or control-plane state owned by News Intel.
 - Provider raw feed entries are inputs. The persisted fact path is
   `news_provider_items` plus normalized `news_items`.
-- `news_story_groups`, `news_story_members`, and `news_page_rows` are
-  rebuildable read models.
+- `news_page_rows` is the rebuildable News page read model.
 - `news_sources` carries source classification (`provider_type`,
   `source_role`, `trust_tier`, `coverage_tags`) and source policy JSON. The
   page read model copies the compact classification fields into `source_json`
@@ -40,8 +38,7 @@ forced into a resolved asset.
 - `news_source_quality_rows` is a rebuildable source-quality read model
   written only by `NewsSourceQualityProjectionWorker`; `news_sources`
   stores only the compact latest `source_quality_status`.
-- `news_fact_candidates` references only `news_items`; story association is
-  derived through read-model queries.
+- `news_fact_candidates` references only `news_items`.
 
 ## Stage Map
 
@@ -49,9 +46,8 @@ forced into a resolved asset.
 |-------|----------------|
 | Fetch | Reconcile configured sources into `news_sources`, fetch due feeds, persist provider items and normalized news items. |
 | Item processing | Read raw `news_items`, extract entities and token mentions deterministically, classify item content, and write attention-safe observations and fact candidates. |
-| Story projection | Rebuild deterministic story groups and memberships from news item facts and observations. |
-| Item brief | Build bounded item/story/token/fact packets, reserve `news.item_brief`, execute through the shared `AgentExecutionGateway`, validate the output, write the run ledger, and upsert the current brief. |
-| Page projection | Rebuild the News page rows from news facts, story state, item lifecycle, and the current item brief. |
+| Item brief | Build bounded item/token/fact packets, reserve `news.item_brief`, execute through the shared `AgentExecutionGateway`, validate the output, write the run ledger, and upsert the current brief. |
+| Page projection | Rebuild the News page rows from news facts, item lifecycle, and the current item brief. |
 | Source quality projection | Rebuild per-source quality windows from source/fetch/item/token/fact/brief/context rows and update compact source quality status. |
 | API/UI | Read-only surfaces over projected `news_page_rows`, with explicit source/content/decision filters and source status diagnostics. Raw `news_items` are worker inputs, not public fallback rows. |
 

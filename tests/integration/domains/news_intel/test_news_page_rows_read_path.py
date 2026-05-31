@@ -113,7 +113,6 @@ def _page_row(row_id: str, news_item_id: str) -> dict[str, object]:
     return {
         "row_id": row_id,
         "news_item_id": news_item_id,
-        "story_id": None,
         "latest_at_ms": NOW_MS,
         "lifecycle_status": "processed",
         "headline": row_id,
@@ -122,7 +121,6 @@ def _page_row(row_id: str, news_item_id: str) -> dict[str, object]:
         "canonical_url": f"https://example.com/{row_id}",
         "token_lanes_json": [],
         "fact_lanes_json": [],
-        "story_json": {},
         "source_json": {"source_id": "source-1", "source_role": "specialist_media", "trust_tier": "standard"},
         "agent_brief_json": {"status": "ready", "direction": "neutral"},
         "agent_status": "ready",
