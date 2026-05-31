@@ -241,8 +241,29 @@ def test_validation_allows_descriptive_sell_pressure_language() -> None:
 @pytest.mark.parametrize(
     "phrase",
     [
+        "DeFi 杠杆解除压力可能造成 WETH 和 wstETH 的短期抛售压力。",
+        "永续合约暂停可能导致剩余持仓者集中平仓。",
+        "合约上线后需关注杠杆机制带来的双向波动风险。",
+        "多头仓位拥挤会放大清算和回撤风险。",
+    ],
+)
+def test_validation_allows_descriptive_derivatives_and_position_language(phrase: str) -> None:
+    packet = _packet()
+    result = validate_news_item_brief_output(
+        payload=_ready_payload(market_read_zh=phrase),
+        packet=packet,
+        audit={},
+    )
+
+    assert result.publishable is True
+    assert result.status == "ready"
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
         "This includes order instructions for ABC.",
-        "Risk depends on position size.",
+        "Recommended position size is 5%.",
         "There is no execution permission in the source.",
         "This should not be treated as portfolio advice.",
     ],

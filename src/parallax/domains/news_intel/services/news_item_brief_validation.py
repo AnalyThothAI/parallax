@@ -14,15 +14,18 @@ from parallax.domains.news_intel.types.news_item_brief import (
 from parallax.platform.agent_hashing import json_sha256
 
 _FORBIDDEN_EXECUTION_RE = re.compile(
-    r"(?:建议|可以|应当|应该|立刻|马上|直接).{0,16}(?:买入|卖出|加仓|减仓|开仓|做多|做空|杠杆|目标价|止损|止盈)|"
-    r"(?:买入|卖出|加仓|减仓)(?:建议|计划|指令|点位)|"
-    r"开仓|做多|做空|仓位|杠杆|目标价|止损|止盈|配仓|"
-    r"\b(?:order\s+instructions?|position\s+(?:size|sizing)|"
-    r"execution\s+permission|portfolio\s+(?:advice|allocation)|"
-    r"stop[-\s]+loss|take[-\s]+profit|target\s+prices?)\b|"
-    r"\b(?:should|recommend(?:ed|s)?|go|enter|open)\s+(?:buy|sell|long|short|leverage)\b|"
+    r"(?:建议|推荐|应当|应该|必须|不要|立刻|马上|适合|设置|可以|直接).{0,16}"
+    r"(?:买入|卖出|加仓|减仓|开仓|建仓|做多|做空|杠杆|目标价|止损|止盈|配仓|仓位)|"
+    r"(?:买入|卖出|加仓|减仓|开仓|建仓|做多|做空).{0,8}"
+    r"(?:建议|计划|指令|点位|止损|止盈|目标价|杠杆|仓位)|"
+    r"(?:止损|止盈|目标价|配仓).{0,8}(?:买入|卖出|开仓|建仓|做多|做空)|"
+    r"\b(?:order\s+instructions?|execution\s+permission|portfolio\s+(?:advice|allocation))\b|"
+    r"\b(?:should|must|recommend(?:ed|s)?|advise(?:d)?|set)\b.{0,24}"
+    r"\b(?:position\s+(?:size|sizing)|leverage|stop[-\s]+loss|take[-\s]+profit|target\s+prices?)\b|"
+    r"\b(?:should|must|recommend(?:ed|s)?|advise(?:d)?|go|enter|open|set)\s+"
+    r"(?:buy|sell|long|short|leverage|a\s+stop|stop[-\s]+loss|take[-\s]+profit)\b|"
     r"\b(?:go|enter|open)\s+(?:long|short)\b|"
-    r"\b(?:long|short)\s+position\b",
+    r"\b(?:leverage\s*\d+x|\d+x\s*leverage|target\s+price\s*(?:is|=|:))\b",
     re.IGNORECASE,
 )
 

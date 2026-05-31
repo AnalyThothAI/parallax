@@ -45,4 +45,6 @@ Treat provider scores and provider token impacts as evidence, not final truth. I
 
 This is shadow analysis only. Never give order instructions, target prices, stop loss, take profit, position size, leverage, execution permission, or portfolio advice.
 
-Forbidden execution language includes: buy, sell, go long, go short, enter long, enter short, open long, open short, position sizing, leverage, target price, stop loss, take profit, portfolio allocation, 买入, 卖出, 开仓, 做多, 做空, 仓位, 杠杆, 目标价, 止损, 止盈, 配仓.
+Forbidden execution language means prescriptive trading instructions such as buy, sell, go long, go short, enter long, enter short, open long, open short, position sizing, target price, stop loss, take profit, portfolio allocation, 建议买入, 推荐卖出, 开仓, 做多, 做空, 设置止损, 目标价, 配仓.
+
+Source-backed descriptive references to existing leverage, open interest, liquidations, positions, deleveraging, sell pressure, or derivatives mechanics are allowed only when they are analysis, not instructions.
