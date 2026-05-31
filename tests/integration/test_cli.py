@@ -20,7 +20,6 @@ from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import
 from gmgn_twitter_intel.domains.evidence.services.ingest_service import IngestService
 from gmgn_twitter_intel.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
 from gmgn_twitter_intel.domains.notifications.repositories.notification_repository import NotificationRepository
-from gmgn_twitter_intel.domains.social_enrichment.repositories.enrichment_repository import EnrichmentRepository
 from gmgn_twitter_intel.domains.token_intel.interfaces import SignalRepository
 from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import TokenRadarProjection
 from gmgn_twitter_intel.platform.config.settings import default_workers_yaml
@@ -69,12 +68,10 @@ def seed_postgres(db_path: Path) -> None:
         evidence = EvidenceRepository(conn)
         entities = EntityRepository(conn)
         signals = SignalRepository(conn)
-        enrichment = EnrichmentRepository(conn)
         ingest = IngestService(
             evidence=evidence,
             entities=entities,
             signals=signals,
-            enrichment=enrichment,
         )
         snapshot = parse_gmgn_token_payload(
             {
@@ -346,7 +343,7 @@ class CliTests(unittest.TestCase):
         self.assertTrue(payload["data"]["notifications"]["channels"]["pushdeer"]["url_configured"])
         self.assertEqual(payload["data"]["notifications"]["channels"]["pushdeer"]["provider"], "apprise")
 
-    def test_recent_search_asset_flow_social_enrichment_and_alerts_use_postgres_runtime_store(self):
+    def test_recent_search_asset_flow_and_alerts_use_postgres_runtime_store(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
             db_path = home / ".gmgn-twitter-intel" / "postgres_test_db"
@@ -361,8 +358,6 @@ class CliTests(unittest.TestCase):
                     stdout=stdout,
                 )
                 alerts_code = main(["account-alerts", "--window", "24h", "--limit", "5"], stdout=stdout)
-                jobs_code = main(["enrichment-jobs", "--limit", "5"], stdout=stdout)
-                social_events_code = main(["social-events", "--window", "1h", "--limit", "5"], stdout=stdout)
 
         lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
         self.assertEqual(
@@ -371,10 +366,8 @@ class CliTests(unittest.TestCase):
                 search_code,
                 asset_flow_code,
                 alerts_code,
-                jobs_code,
-                social_events_code,
             ],
-            [0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0],
         )
         self.assertEqual(lines[0]["data"]["events"][0]["event_id"], "event-1")
         self.assertEqual(lines[1]["data"]["items"][0]["event"]["event_id"], "event-1")
@@ -385,8 +378,6 @@ class CliTests(unittest.TestCase):
             {item["alert_type"] for item in lines[3]["data"]["items"]},
             {"account_token"},
         )
-        self.assertEqual(lines[4]["data"]["counts"]["pending"], 1)
-        self.assertEqual(lines[5]["data"]["items"], [])
 
     def test_notification_deliveries_command_reads_delivery_audit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -398,18 +389,18 @@ class CliTests(unittest.TestCase):
                 migrate(conn)
                 notifications = NotificationRepository(conn)
                 notification = notifications.insert_notification(
-                    dedup_key="hot:pepe",
-                    rule_id="hot_quality_token_5m",
+                    dedup_key="news:pepe",
+                    rule_id="news_high_signal",
                     severity="high",
-                    title="PEPE heat",
-                    body="heat score 88",
+                    title="PEPE news",
+                    body="news score 88",
                     entity_type="token",
                     entity_key="token:eth:pepe",
                     symbol="PEPE",
-                    source_table="token_flow",
+                    source_table="news_items",
                     source_id="token:eth:pepe",
                     occurrence_at_ms=1_700_000_060_000,
-                    payload={"social_heat_score": 88},
+                    payload={"provider_score": 88},
                     channels=["in_app", "pushdeer"],
                 )
                 self.assertIsNotNone(notification)
@@ -657,30 +648,6 @@ def test_rebuild_token_radar_one_shot_skips_when_live_worker_holds_lock(monkeypa
     assert ("acquire", "token_radar_projection", configured_lock_key) in events
     assert not any(event[0] == "rebuild" for event in events)
     assert events[-1] == ("worker_close",)
-
-
-def test_social_enrichment_cli_reports_empty_read_models_without_error(tmp_path, monkeypatch):
-    app_home = tmp_path / ".gmgn-twitter-intel"
-    db_path = app_home / "postgres_test_db"
-    write_runtime_config(tmp_path, db_path=db_path)
-    conn = connect_postgres_test(db_path, read_only=False)
-    try:
-        migrate(conn)
-    finally:
-        conn.close()
-    monkeypatch.setenv("HOME", str(tmp_path))
-    stdout = io.StringIO()
-
-    codes = [
-        main(["social-events", "--window", "1h", "--limit", "5"], stdout=stdout),
-        main(["ops", "backfill-enrichment-jobs", "--limit", "5"], stdout=stdout),
-    ]
-
-    lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
-    assert codes == [0, 0]
-    assert [line["ok"] for line in lines] == [True, True]
-    assert lines[0]["data"]["items"] == []
-    assert lines[1]["data"]["jobs_enqueued"] == 0
 
 
 def test_init_creates_runtime_config(tmp_path, monkeypatch):

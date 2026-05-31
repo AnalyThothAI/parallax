@@ -34,7 +34,6 @@
 
   .watchlist-monitor-hero,
   .watchlist-signal-card,
-  .watchlist-summary-panel,
   .watchlist-evidence-panel,
   .watchlist-cluster-panel {
     min-width: 0;
@@ -183,109 +182,6 @@
 
   .watchlist-signal-card.agent {
     border-color: var(--agent-line);
-  }
-
-  .watchlist-summary-panel {
-    display: grid;
-    grid-template-columns: minmax(0, 1.1fr) minmax(220px, 0.35fr);
-    gap: 12px;
-    padding: 12px;
-  }
-
-  .watchlist-summary-main {
-    display: grid;
-    grid-template-columns: 38px minmax(0, 1fr);
-    gap: 10px;
-    min-width: 0;
-  }
-
-  .watchlist-summary-icon {
-    display: grid;
-    width: 38px;
-    height: 38px;
-    place-items: center;
-    border: 1px solid var(--agent-line);
-    border-radius: 6px;
-    color: var(--agent);
-    background: var(--agent-soft);
-  }
-
-  .watchlist-summary-icon svg,
-  .watchlist-summary-meta svg {
-    width: 15px;
-    height: 15px;
-  }
-
-  .watchlist-summary-main p {
-    margin: 7px 0 0;
-    color: var(--bone);
-    font-size: 15px;
-    line-height: 1.55;
-    overflow-wrap: anywhere;
-  }
-
-  .watchlist-summary-meta {
-    display: flex;
-    flex-wrap: wrap;
-    align-content: start;
-    justify-content: flex-end;
-    gap: 7px;
-    min-width: 0;
-  }
-
-  .watchlist-summary-meta span,
-  .watchlist-summary-empty {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    min-height: 24px;
-    border: 1px solid var(--line-soft);
-    border-radius: 4px;
-    color: var(--ash);
-    background: rgba(7, 10, 10, 0.7);
-    padding: 0 8px;
-    font-family: var(--mono);
-    font-size: 10px;
-    white-space: nowrap;
-  }
-
-  .watchlist-topic-strip {
-    display: grid;
-    grid-column: 1 / -1;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 8px;
-    min-width: 0;
-  }
-
-  .watchlist-topic-pill {
-    display: grid;
-    gap: 5px;
-    min-width: 0;
-    border: 1px solid var(--line-soft);
-    background: rgba(18, 23, 19, 0.72);
-    padding: 9px;
-  }
-
-  .watchlist-topic-pill b {
-    overflow: hidden;
-    color: var(--bone);
-    font-family: var(--mono);
-    font-size: 12px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .watchlist-topic-pill span,
-  .watchlist-topic-pill p {
-    margin: 0;
-    color: var(--dim);
-    font-size: 11px;
-    line-height: 1.4;
-  }
-
-  .watchlist-topic-pill p {
-    color: var(--ash);
-    overflow-wrap: anywhere;
   }
 
   .watchlist-scope-tabs {

@@ -74,10 +74,6 @@ from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_runs_repository imp
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_trigger_dirty_target_repository import (
     PulseTriggerDirtyTargetRepository,
 )
-from gmgn_twitter_intel.domains.social_enrichment.repositories.enrichment_repository import EnrichmentRepository
-from gmgn_twitter_intel.domains.social_enrichment.repositories.social_event_extraction_repository import (
-    SocialEventExtractionRepository,
-)
 from gmgn_twitter_intel.domains.token_intel.interfaces import EventTokenProjectionQuery, SignalRepository
 from gmgn_twitter_intel.domains.token_intel.repositories.intent_resolution_repository import IntentResolutionRepository
 from gmgn_twitter_intel.domains.token_intel.repositories.token_evidence_repository import TokenEvidenceRepository
@@ -137,8 +133,6 @@ class RepositorySession:
     token_radar: TokenRadarRepository
     token_factor_evaluations: TokenFactorEvaluationRepository
     token_targets: TokenTargetRepository
-    enrichment: EnrichmentRepository
-    social_event_extractions: SocialEventExtractionRepository
     notifications: NotificationRepository
     pulse_jobs: PulseJobsRepository
     pulse_admission: PulseAdmissionRepository
@@ -205,8 +199,6 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         token_radar=TokenRadarRepository(conn),
         token_factor_evaluations=TokenFactorEvaluationRepository(conn),
         token_targets=TokenTargetRepository(conn),
-        enrichment=EnrichmentRepository(conn),
-        social_event_extractions=SocialEventExtractionRepository(conn),
         notifications=NotificationRepository(conn),
         pulse_jobs=PulseJobsRepository(conn),
         pulse_admission=PulseAdmissionRepository(conn),

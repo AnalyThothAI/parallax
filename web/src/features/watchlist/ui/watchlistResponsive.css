@@ -16,9 +16,6 @@
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
-    .watchlist-topic-strip {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
   }
 
   @media (max-width: 840px) {
@@ -36,17 +33,6 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .watchlist-summary-panel {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .watchlist-summary-meta {
-      justify-content: flex-start;
-    }
-
-    .watchlist-topic-strip {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
   }
 
   @media (max-width: 580px) {
@@ -67,8 +53,5 @@
       font-size: 22px;
     }
 
-    .watchlist-topic-strip {
-      grid-template-columns: minmax(0, 1fr);
-    }
   }
 }

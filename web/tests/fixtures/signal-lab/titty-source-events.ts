@@ -1,8 +1,8 @@
-import type { SocialEventDetail } from "@lib/types";
+import type { SourceEventDetail } from "@lib/types";
 
 export const TITTY_NOW_MS = 1778726642689;
 
-export const tittySourceEventsFixture: SocialEventDetail[] = [
+export const tittySourceEventsFixture: SourceEventDetail[] = [
   {
     event_id: "gmgn:twitter_monitor_basic:aac4a193-4d22-44e9-be67-34f18f57c907",
     timestamp_ms: 1778723098000,

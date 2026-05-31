@@ -1579,8 +1579,9 @@ class NewsRepository:
                    AND sources.enabled = true
               )
             ORDER BY
-              COALESCE(NULLIF(signal_json -> 'alert_eligibility' ->> 'provider_score', '')::int, -1) DESC,
               latest_at_ms DESC,
+              agent_brief_computed_at_ms DESC NULLS LAST,
+              COALESCE(NULLIF(signal_json -> 'alert_eligibility' ->> 'provider_score', '')::int, -1) DESC,
               row_id DESC
             LIMIT %s
             """,
@@ -3554,6 +3555,7 @@ def _signal_from_agent_brief(value: Any) -> dict[str, Any]:
         "status": "ready",
         "direction": direction,
         "label_zh": _direction_label(direction),
+        "title_zh": _json_dict(payload.get("brief_json")).get("title_zh"),
         "summary_zh": _json_dict(payload.get("brief_json")).get("summary_zh"),
         "method": "news_item_brief",
     }
@@ -3576,6 +3578,7 @@ def _signal_from_provider_or_agent(
                 "label_zh": _direction_label(direction),
                 "score": provider_score,
                 "grade": provider_payload.get("grade") if provider_payload else None,
+                "title_zh": _json_dict(agent_brief.get("brief_json")).get("title_zh"),
                 "summary_zh": _json_dict(agent_brief.get("brief_json")).get("summary_zh"),
                 "method": "news_item_brief",
             },
@@ -4274,6 +4277,7 @@ def _public_agent_brief_payload(value: Any) -> dict[str, Any]:
         "status",
         "direction",
         "decision_class",
+        "title_zh",
         "summary_zh",
         "market_read_zh",
         "impact_zh",
@@ -4286,6 +4290,8 @@ def _public_agent_brief_payload(value: Any) -> dict[str, Any]:
     public_payload = {key: payload.get(key) for key in allowed if key in payload}
     public_payload["status"] = str(public_payload.get("status") or "pending")
     public_payload["brief_json"] = brief_json
+    if "title_zh" not in public_payload and brief_json.get("title_zh"):
+        public_payload["title_zh"] = brief_json.get("title_zh")
     return public_payload
 
 

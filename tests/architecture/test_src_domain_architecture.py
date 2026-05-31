@@ -19,7 +19,6 @@ DOMAINS = {
     "macro_intel",
     "narrative_intel",
     "news_intel",
-    "social_enrichment",
     "notifications",
     "pulse_lab",
     "watchlist_intel",
@@ -33,9 +32,7 @@ PROVIDER_DOMAINS = {
     "asset_market",
     "narrative_intel",
     "news_intel",
-    "social_enrichment",
     "pulse_lab",
-    "watchlist_intel",
 }
 LEGACY_PACKAGES = {"collector", "pipeline", "retrieval", "storage", "market"}
 SQL_ALLOWED_PARTS = {
@@ -82,9 +79,7 @@ PROVIDER_WIRING_FACADE_PUBLIC_EXPORTS = {
     "NarrativeIntelProviders",
     "NewsIntelProviders",
     "PulseLabProviders",
-    "SocialEnrichmentProviders",
     "UpstreamClientFactory",
-    "WatchlistIntelProviders",
     "WiredProviders",
     "wire_asset_market_providers",
     "wire_providers",

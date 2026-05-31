@@ -10,6 +10,7 @@ Only output one JSON object matching the typed `NewsItemBriefPayload` schema. Do
 
 Natural-language analytical fields must be Simplified Chinese:
 
+- `title_zh`
 - `summary_zh`
 - `market_read_zh`
 - `bull_view.thesis_zh`
@@ -31,6 +32,7 @@ If the packet lacks enough evidence, set `status="insufficient"` and explain the
 
 For provider score >=70 news, write the analytical fields in Simplified Chinese with enough detail for an operator to decide whether the event deserves attention:
 
+- `title_zh`: short operator-facing Chinese title for the core source-backed change; no trading instruction or unsupported hype.
 - `summary_zh`: state what changed, who/what is involved, and the source-backed confidence boundary.
 - `market_read_zh`: explain likely crypto-market transmission channels such as listing access, regulatory overhang, liquidity, derivatives attention, protocol/user impact, or narrative spillover.
 - `affected_assets[].reason_zh`: describe the asset-specific impact and cite evidence; do not infer unrelated tokens from ticker similarity.

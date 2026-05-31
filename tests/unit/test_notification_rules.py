@@ -24,15 +24,6 @@ class FakeAccountAlerts:
         return self.alerts
 
 
-class FakeAssetFlow:
-    def __init__(self, data):
-        self.data = data
-
-    def asset_flow(self, **kwargs):
-        self.kwargs = kwargs
-        return self.data
-
-
 class FakePulse:
     def __init__(self, items, *, page_size: int | None = None):
         self.items = items
@@ -73,7 +64,7 @@ class FakeNews:
         return self.rows
 
 
-def engine(*, events=None, alerts=None, asset_flow=None, pulse=None, news=None, notifications=None):
+def engine(*, events=None, alerts=None, pulse=None, news=None, notifications=None):
     return NotificationRuleEngine(
         settings=Settings(
             ws_token="secret",
@@ -82,40 +73,9 @@ def engine(*, events=None, alerts=None, asset_flow=None, pulse=None, news=None, 
         ),
         evidence=FakeEvidence(events or []),
         account_alerts=FakeAccountAlerts(alerts or []),
-        asset_flow=FakeAssetFlow(asset_flow or {"targets": [], "attention": []}),
         pulse=pulse or FakePulse([]),
         news=news,
     )
-
-
-def radar_score(*, heat: int, quality: int, opportunity: int) -> dict:
-    def block(score: int) -> dict:
-        return {
-            "score": score,
-            "score_version": "social_opportunity_v3",
-            "reasons": [],
-            "risks": [],
-            "contributions": [],
-            "risk_caps": [],
-        }
-
-    return {
-        "heat": block(heat),
-        "quality": block(quality),
-        "propagation": block(60),
-        "tradeability": block(80),
-        "timing": block(50),
-        "opportunity": {
-            **block(opportunity),
-            "components": {
-                "heat": heat,
-                "quality": quality,
-                "propagation": 60,
-                "tradeability": 80,
-                "timing": 50,
-            },
-        },
-    }
 
 
 def test_watched_account_activity_candidate_uses_committed_event_identity():
@@ -290,154 +250,6 @@ def test_watched_account_token_alert_does_not_fall_back_to_alert_key_when_cooldo
     )
 
     assert candidate.dedup_key == f"watched_account_token_alert:asset:solana:token:troll:author:toly:{NOW_MS // 1000}"
-
-
-def test_hot_quality_token_candidate_uses_asset_flow_contract():
-    candidates = engine(
-        asset_flow={
-            "targets": [
-                {
-                    "target": {
-                        "target_type": "Asset",
-                        "target_id": "asset:eip155:1:erc20:0xpepe",
-                        "symbol": "PEPE",
-                        "chain_id": "eth",
-                        "address": "0xpepe",
-                    },
-                    "attention": {
-                        "mentions_window": 5,
-                        "unique_authors": 3,
-                        "watched_mentions": 1,
-                        "latest_seen_ms": NOW_MS,
-                    },
-                    "resolution": {"status": "EXACT"},
-                    "score": radar_score(heat=92, quality=78, opportunity=81),
-                    "decision": "investigate",
-                    "factor_snapshot": _factor_snapshot(
-                        symbol="PEPE",
-                        target_type="Asset",
-                        target_id="asset:eip155:1:erc20:0xpepe",
-                        eligible_for_high_alert=True,
-                        blocked_reasons=[],
-                        market_facts={"market_status": "fresh"},
-                        social_facts={"mentions_1h": 5, "unique_authors": 3, "watched_mentions": 1},
-                        rank_score=81,
-                    ),
-                    "data_health": {"identity": "EXACT", "market": "ready"},
-                },
-                {
-                    "target": {
-                        "target_type": None,
-                        "target_id": None,
-                        "symbol": "FOMO",
-                    },
-                    "attention": {
-                        "mentions_window": 1,
-                        "unique_authors": 1,
-                        "watched_mentions": 0,
-                        "latest_seen_ms": NOW_MS,
-                    },
-                    "resolution": {"status": "NIL"},
-                    "score": radar_score(heat=100, quality=70, opportunity=96),
-                    "decision": "investigate",
-                    "factor_snapshot": _factor_snapshot(
-                        symbol="FOMO",
-                        target_type=None,
-                        target_id=None,
-                        eligible_for_high_alert=False,
-                        blocked_reasons=["identity_unresolved"],
-                        market_facts={"market_status": "missing"},
-                        social_facts={"mentions_1h": 1, "unique_authors": 1, "watched_mentions": 0},
-                        rank_score=96,
-                    ),
-                    "data_health": {"identity": "NIL", "market": "no_resolved_target"},
-                },
-            ],
-            "attention": [],
-        }
-    ).evaluate(now_ms=NOW_MS)
-
-    hot = [item for item in candidates if item.rule_id == "hot_quality_token_5m"]
-    assert len(hot) == 1
-    assert hot[0].dedup_key == "hot_quality_token_5m:asset:eip155:1:erc20:0xpepe:1888889"
-    assert hot[0].severity == "high"
-    assert hot[0].symbol == "PEPE"
-    assert "## $PEPE 5m heat alert" in hot[0].body
-    assert "**Heat:** 82" in hot[0].body
-    assert "**Discussion quality:** 70" in hot[0].body
-    assert "`0xpepe`" in hot[0].body
-    assert "[GMGN](https://gmgn.ai/eth/token/0xpepe)" in hot[0].body
-    assert "[X Search]" in hot[0].body
-    assert hot[0].source_table == "token_radar_current_rows"
-    assert hot[0].payload["target_id"] == "asset:eip155:1:erc20:0xpepe"
-    assert hot[0].payload["social_heat_score"] == 82
-    assert hot[0].payload["decision"] == "driver"
-    assert hot[0].payload["score_version"] == "token_factor_snapshot_v3_social_attention"
-
-
-def test_investigate_token_radar_rows_do_not_fire_tradeable_token_alerts():
-    candidates = engine(
-        asset_flow={
-            "targets": [],
-            "attention": [
-                {
-                    "target": {
-                        "target_id": None,
-                        "symbol": "VERSA",
-                    },
-                    "attention": {
-                        "mentions_window": 9,
-                        "unique_authors": 5,
-                        "watched_mentions": 2,
-                        "latest_seen_ms": NOW_MS,
-                    },
-                    "resolution": {"status": "NIL"},
-                    "score": radar_score(heat=100, quality=70, opportunity=98),
-                    "decision": "investigate",
-                    "factor_snapshot": _factor_snapshot(
-                        symbol="VERSA",
-                        target_type=None,
-                        target_id=None,
-                        eligible_for_high_alert=False,
-                        blocked_reasons=["identity_unresolved"],
-                        market_facts={"market_status": "missing"},
-                        social_facts={"mentions_1h": 9, "unique_authors": 5, "watched_mentions": 2},
-                        rank_score=98,
-                    ),
-                    "data_health": {"identity": "NIL", "market": "no_resolved_target"},
-                }
-            ],
-        }
-    ).evaluate(now_ms=NOW_MS)
-
-    assert not [item for item in candidates if item.rule_id in {"hot_quality_token_5m", "quality_token_5m"}]
-
-
-def test_disabled_rule_does_not_emit_candidates():
-    notifications = NotificationsConfig(
-        rules={
-            "hot_quality_token_5m": NotificationRuleConfig(enabled=False),
-        }
-    )
-    candidates = engine(
-        notifications=notifications,
-        asset_flow={
-            "targets": [
-                {
-                    "target": {"target_id": "asset:eip155:1:erc20:0xpepe", "symbol": "PEPE"},
-                    "attention": {
-                        "mentions_window": 10,
-                        "unique_authors": 5,
-                        "watched_mentions": 2,
-                    },
-                    "resolution": {"status": "EXACT"},
-                },
-            ],
-            "attention": [],
-        },
-    ).evaluate(now_ms=NOW_MS)
-
-    assert [item for item in candidates if item.rule_id == "hot_quality_token_5m"] == []
 
 
 def test_signal_pulse_rule_is_enabled_by_default():
@@ -826,28 +638,28 @@ def test_signal_pulse_rule_can_be_disabled():
 def test_signal_pulse_candidate_rule_uses_window_scope_status_without_downstream_score_gates():
     hot_row = pulse_candidate(
         "pulse-hot",
-        window="5m",
+        window="1h",
         scope="all",
         candidate_score=74,
         radar_score={"heat": {"score": 72}},
     )
     cold_row = pulse_candidate(
         "pulse-cold",
-        window="5m",
+        window="1h",
         scope="all",
         candidate_score=74,
         radar_score={"heat": {"score": 12}},
     )
     low_score_row = pulse_candidate(
         "pulse-low-score",
-        window="5m",
+        window="1h",
         scope="all",
         candidate_score=9,
         radar_score={"heat": {"score": 75}},
     )
     ignored_scope_row = pulse_candidate(
         "pulse-ignored-scope",
-        window="5m",
+        window="1h",
         scope="matched",
         candidate_score=90,
         radar_score={"heat": {"score": 90}},
@@ -858,7 +670,7 @@ def test_signal_pulse_candidate_rule_uses_window_scope_status_without_downstream
             "signal_pulse_candidate": {
                 "enabled": True,
                 "channels": ["in_app", "pushdeer"],
-                "window": "5m",
+                "window": "1h",
                 "scopes": ["all"],
                 "statuses": ["token_watch"],
                 "cooldown_seconds": 120,
@@ -882,7 +694,7 @@ def test_signal_pulse_candidate_rule_uses_window_scope_status_without_downstream
     )
     assert pulse.calls == [
         {
-            "window": "5m",
+            "window": "1h",
             "scope": "all",
             "status": "token_watch",
             "limit": 50,
@@ -1085,8 +897,10 @@ def test_news_high_signal_requires_ready_agent_brief_and_builds_push_signatures(
                     "status": "ready",
                     "direction": "bullish",
                     "decision_class": "driver",
+                    "title_zh": "AI 标题：重大上所催化",
                     "summary_zh": "高分新闻已由 agent 归纳。",
                     "brief_json": {
+                        "title_zh": "AI 标题：重大上所催化",
                         "summary_zh": "高分新闻已由 agent 归纳。",
                         "watch_triggers": ["成交量确认"],
                         "affected_assets": [{"symbol": "BOV"}],
@@ -1112,7 +926,7 @@ def test_news_high_signal_requires_ready_agent_brief_and_builds_push_signatures(
         if item.rule_id == "news_high_signal"
     ]
 
-    assert news.calls == [{"min_score": 85, "limit": 50}]
+    assert news.calls == [{"min_score": 85, "limit": 1000}]
     assert len(candidates) == 1
     candidate = candidates[0]
     assert candidate.severity == "critical"
@@ -1122,7 +936,53 @@ def test_news_high_signal_requires_ready_agent_brief_and_builds_push_signatures(
     assert candidate.payload["external_push_signature"].startswith("sha256:")
     assert candidate.payload["external_push_eligible"] is True
     assert candidate.dedup_key == f"news_high_signal:{candidate.payload['semantic_signature']}"
+    assert candidate.title == "AI 标题：重大上所催化"
+    assert candidate.payload["display_title"] == "AI 标题：重大上所催化"
     assert "高分新闻已由 agent 归纳" in candidate.body
+    assert candidate.occurrence_at_ms == NOW_MS - 5_000
+
+
+def test_news_high_signal_skips_stale_source_items_even_when_agent_finished_now():
+    news = FakeNews(
+        [
+            {
+                "news_item_id": "news-old",
+                "latest_at_ms": NOW_MS - 7 * 60 * 60_000,
+                "agent_brief_computed_at_ms": NOW_MS - 1_000,
+                "headline": "Old high signal",
+                "source_domain": "example.test",
+                "canonical_url": "https://example.test/old",
+                "signal": {
+                    "direction": "bullish",
+                    "alert_eligibility": {
+                        "eligible": True,
+                        "provider_score": 90,
+                        "decision_class": "driver",
+                    },
+                },
+                "token_impacts": [{"symbol": "OLD", "score": 90}],
+                "agent_brief": {
+                    "status": "ready",
+                    "direction": "bullish",
+                    "decision_class": "driver",
+                    "title_zh": "旧新闻不应推送",
+                    "summary_zh": "agent 刚完成，但源新闻已经过期。",
+                    "brief_json": {
+                        "title_zh": "旧新闻不应推送",
+                        "summary_zh": "agent 刚完成，但源新闻已经过期。",
+                        "affected_assets": [{"symbol": "OLD"}],
+                    },
+                },
+            }
+        ]
+    )
+
+    candidates = [
+        item for item in engine(news=news).evaluate(now_ms=NOW_MS)
+        if item.rule_id == "news_high_signal"
+    ]
+
+    assert candidates == []
 
 
 def test_news_high_signal_semantic_dedup_ignores_projection_and_summary_churn():
@@ -1175,9 +1035,7 @@ def test_news_high_signal_semantic_dedup_ignores_projection_and_summary_churn():
         if item.rule_id == "news_high_signal"
     ]
 
-    assert len(candidates) == 2
-    assert candidates[0].dedup_key == candidates[1].dedup_key
-    assert candidates[0].payload["semantic_signature"] == candidates[1].payload["semantic_signature"]
+    assert len(candidates) == 1
 
 
 def test_news_high_signal_semantic_dedup_uses_top_level_story_id_when_story_payload_is_empty():
@@ -1231,9 +1089,7 @@ def test_news_high_signal_semantic_dedup_uses_top_level_story_id_when_story_payl
         if item.rule_id == "news_high_signal"
     ]
 
-    assert len(candidates) == 2
-    assert candidates[0].dedup_key == candidates[1].dedup_key
-    assert candidates[0].payload["semantic_signature"] == candidates[1].payload["semantic_signature"]
+    assert len(candidates) == 1
 
 
 def test_news_high_signal_external_push_signature_uses_asset_cooldown_not_item_identity():
@@ -1246,6 +1102,7 @@ def test_news_high_signal_external_push_signature_uses_asset_cooldown_not_item_i
         "source_domain": "example.test",
         "canonical_url": "https://example.test/news-1",
         "duplicate_count": 1,
+        "content_tags": ["iran"],
         "signal": {
             "direction": "bullish",
             "alert_eligibility": {
@@ -1273,6 +1130,7 @@ def test_news_high_signal_external_push_signature_uses_asset_cooldown_not_item_i
         "story_id": "story-2",
         "headline": "Hormuz risk sends crude higher",
         "canonical_url": "https://example.test/news-2",
+        "content_tags": ["hormuz"],
         "agent_brief": {
             **base_row["agent_brief"],
             "summary_zh": "第二条同主题新闻。",
@@ -1305,6 +1163,7 @@ def test_news_high_signal_external_push_signature_uses_asset_cooldown_not_item_i
 
     assert len(candidates) == 2
     assert candidates[0].payload["semantic_signature"] != candidates[1].payload["semantic_signature"]
+    assert candidates[0].dedup_key != candidates[1].dedup_key
     assert candidates[0].payload["external_push_signature"] == candidates[1].payload["external_push_signature"]
     assert candidates[0].channels == ("in_app", "pushdeer")
     assert candidates[1].channels == ("in_app",)

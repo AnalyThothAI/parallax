@@ -27,6 +27,7 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
   const tokenImpacts = newsDisplayTokenLanes(item);
   const tokenIdentities = item.token_lanes ?? [];
   const facts = item.fact_lanes ?? [];
+  const displayTitle = item.agent_brief?.title_zh || item.signal.title_zh || item.headline;
 
   return (
     <article className="news-evidence-page">
@@ -37,10 +38,10 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
             <span className={newsSignalTone(item.signal)}>{newsSignalLabel(item.signal)}</span>
             <span>{newsSignalScoreLabel(item.signal)}</span>
           </div>
-          <h2>{item.headline}</h2>
+          <h2>{displayTitle}</h2>
           <p>{item.summary || item.signal.summary_en || "No persisted source summary is present."}</p>
         </div>
-        <SourcePacket item={item} />
+        <SourcePacket item={item} displayTitle={displayTitle} />
       </header>
 
       <section className="news-evidence-metric-grid" aria-label="provider signal context">
@@ -77,12 +78,12 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
   );
 }
 
-function SourcePacket({ item }: { item: NewsItemDetail }) {
+function SourcePacket({ item, displayTitle }: { item: NewsItemDetail; displayTitle: string }) {
   return (
     <section className="news-evidence-source-packet" aria-label="source packet">
       <span>Source packet</span>
       <b>{item.source?.source_name || item.source_domain || item.signal.provider || "source unknown"}</b>
-      <p>{item.headline}</p>
+      <p>{displayTitle}</p>
       <small>
         {item.source?.provider_type || item.provider_type || item.signal.source}
         {item.latest_at_ms ? ` · ${formatRelativeTime(item.latest_at_ms)} ago` : ""}

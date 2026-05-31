@@ -27,7 +27,6 @@ from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import
 from gmgn_twitter_intel.domains.evidence.services.ingest_service import IngestService
 from gmgn_twitter_intel.domains.ingestion.runtime.collector_service import CollectorService
 from gmgn_twitter_intel.domains.notifications.repositories.notification_repository import NotificationRepository
-from gmgn_twitter_intel.domains.social_enrichment.interfaces import EnrichmentRepository
 from gmgn_twitter_intel.domains.token_intel.interfaces import SignalRepository
 from gmgn_twitter_intel.platform.config.settings import Settings
 from gmgn_twitter_intel.platform.db.postgres_client import postgres_health_check
@@ -50,12 +49,10 @@ class Runtime:
     evidence: Any | None = None
     entities: Any | None = None
     signals: Any | None = None
-    enrichment: Any | None = None
     notifications: Any | None = None
     read_evidence: Any | None = None
     read_entities: Any | None = None
     read_signals: Any | None = None
-    read_enrichment: Any | None = None
     read_notifications: Any | None = None
     ingest: Any | None = None
     stock_quote_provider: Any | None = None
@@ -98,9 +95,7 @@ def bootstrap(settings: Settings, *, start_collector: bool = True) -> Runtime:
             raise RuntimeError(f"postgres health check failed: {startup_db}")
 
         if (
-            settings.llm_configured
-            or settings.pulse_agent_configured
-            or settings.watchlist_handle_summary_configured
+            settings.pulse_agent_configured
             or settings.narrative_intel_configured
             or settings.news_item_brief_configured
         ):
@@ -157,7 +152,6 @@ def _assemble_runtime(
     evidence = PooledRepository(db.api_pool, EvidenceRepository)
     entities = PooledRepository(db.api_pool, EntityRepository)
     signals = PooledRepository(db.api_pool, SignalRepository)
-    enrichment = PooledRepository(db.api_pool, EnrichmentRepository)
     notifications = PooledRepository(db.api_pool, NotificationRepository)
     ingest = _PooledIngestStore(
         db,
@@ -206,12 +200,10 @@ def _assemble_runtime(
         evidence=evidence,
         entities=entities,
         signals=signals,
-        enrichment=enrichment,
         notifications=notifications,
         read_evidence=evidence,
         read_entities=entities,
         read_signals=signals,
-        read_enrichment=enrichment,
         read_notifications=notifications,
         ingest=ingest,
         stock_quote_provider=providers.macrodata.stock_quote_provider,
@@ -308,7 +300,6 @@ def _ingest_service_for_repos(
         evidence=repos.evidence,
         entities=repos.entities,
         signals=repos.signals,
-        enrichment=repos.enrichment,
         registry=repos.registry,
         identity_evidence=repos.identity_evidence,
         token_intent_lookup=repos.token_intent_lookup,

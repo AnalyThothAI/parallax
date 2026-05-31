@@ -59,7 +59,7 @@ def handle_config(_args: object) -> tuple[int, dict[str, Any]]:
                     "channels": list(settings.upstream_channels),
                     "chains": list(settings.upstream_chains),
                 },
-                "enrichment": {
+                "agent_execution": {
                     "llm_configured": settings.llm_configured,
                     "provider": settings.llm_provider,
                     "model": settings.agent_runtime_default_model,
@@ -100,7 +100,7 @@ def handle_config(_args: object) -> tuple[int, dict[str, Any]]:
                 },
                 "notifications": {
                     "enabled": settings.notifications.enabled,
-                    "token_flow_limit": settings.notifications.token_flow_limit,
+                    "candidate_limit": settings.notifications.candidate_limit,
                     "retention_days": settings.notifications.retention_days,
                     "rules": {
                         rule_id: rule.model_dump(mode="json") for rule_id, rule in settings.notifications.rules.items()

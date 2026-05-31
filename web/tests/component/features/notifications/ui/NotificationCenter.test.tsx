@@ -21,11 +21,11 @@ const summary: NotificationSummary = {
 
 const notification: NotificationItem = {
   notification_id: "n1",
-  dedup_key: "hot:pepe",
-  rule_id: "hot_quality_token_5m",
+  dedup_key: "news:pepe",
+  rule_id: "news_high_signal",
   severity: "high",
-  title: "PEPE attention",
-  body: "Attention 88, discussion 76",
+  title: "PEPE news",
+  body: "News score 88",
   entity_type: "token",
   entity_key: "token:eth:pepe",
   author_handle: null,
@@ -33,7 +33,7 @@ const notification: NotificationItem = {
   chain: "eth",
   address: "0xpepe",
   event_id: null,
-  source_table: "token_flow",
+  source_table: "news_items",
   source_id: "token:eth:pepe",
   occurrence_count: 1,
   first_seen_at_ms: 1_700_000_000_000,
@@ -41,7 +41,7 @@ const notification: NotificationItem = {
   created_at_ms: 1_700_000_000_000,
   updated_at_ms: 1_700_000_000_000,
   read_at_ms: null,
-  payload: { social_heat_score: 88 },
+  payload: { provider_score: 88 },
   channels: ["in_app"],
 };
 
@@ -76,12 +76,12 @@ describe("notification center components", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /open PEPE attention/i }));
-    fireEvent.click(screen.getByRole("button", { name: /mark PEPE attention read/i }));
+    fireEvent.click(screen.getByRole("button", { name: /open PEPE news/i }));
+    fireEvent.click(screen.getByRole("button", { name: /mark PEPE news read/i }));
     fireEvent.click(screen.getByRole("button", { name: /mark all read/i }));
     fireEvent.click(screen.getByRole("button", { name: /close notifications/i }));
 
-    expect(screen.getByText("PEPE attention")).toBeInTheDocument();
+    expect(screen.getByText("PEPE news")).toBeInTheDocument();
     expect(onOpenNotification).toHaveBeenCalledWith(notification);
     expect(onMarkRead).toHaveBeenCalledWith("n1");
     expect(onMarkAllRead).toHaveBeenCalledOnce();

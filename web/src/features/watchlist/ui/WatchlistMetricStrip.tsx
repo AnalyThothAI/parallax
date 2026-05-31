@@ -30,25 +30,19 @@ export function WatchlistMetricStrip({
         value={metrics?.source_event_count ?? 0}
       />
       <SignalCard
-        detail="structured social events"
-        label="Structured signals"
-        tone={metrics?.signal_event_count ? "opportunity" : "neutral"}
-        value={metrics?.signal_event_count ?? 0}
-      />
-      <SignalCard
         detail="resolved crypto targets"
         label="Resolved targets"
         tone={metrics?.resolved_token_count ? "info" : "neutral"}
         value={metrics?.resolved_token_count ?? 0}
       />
       <SignalCard
-        detail="unresolved extracted mentions"
+        detail="unresolved source mentions"
         label="Candidate mentions"
-        tone={metrics?.candidate_mention_count ? "agent" : "neutral"}
+        tone={metrics?.candidate_mention_count ? "info" : "neutral"}
         value={metrics?.candidate_mention_count ?? 0}
       />
       <SignalCard
-        detail="hashtags and anchor terms"
+        detail="hashtags in source posts"
         label="Narratives"
         tone={metrics?.narrative_count ? "health" : "neutral"}
         value={metrics?.narrative_count ?? 0}

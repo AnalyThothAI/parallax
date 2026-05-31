@@ -46,7 +46,7 @@ export const queryKeys = {
   ) => ["signal-lab-pulse", window, scope, status, visibility, handle, q, limit] as const,
   signalPulseCandidate: (candidateId: string | null, visibility: SignalPulseVisibilityFilter) =>
     ["signal-lab-pulse-candidate", candidateId, visibility] as const,
-  sourceEventsByIds: (ids: string[]) => ["social-events", "by-ids", [...ids].sort()] as const,
+  sourceEventsByIds: (ids: string[]) => ["events", "by-ids", [...ids].sort()] as const,
   signalLabAccountEvents: (token: string, scope: ScopeKey, handle: string) =>
     ["signal-lab-account-events", token, scope, handle] as const,
   searchInspect: (token: string, q: string, window: WindowKey, scope: ScopeKey) =>
@@ -125,7 +125,6 @@ export const queryKeys = {
   macroAssetCorrelation: (window: string) => ["macro", "asset-correlation", window] as const,
   watchlistHandleOverview: (handle: string, scope: WatchlistTimelineScope) =>
     ["watchlist-handle-overview", handle, scope] as const,
-  watchlistHandleSummary: (handle: string) => ["watchlist-handle-summary", handle] as const,
   watchlistHandleTimeline: (handle: string, scope: WatchlistTimelineScope, limit: number) =>
     ["watchlist-handle-timeline", handle, scope, limit] as const,
 };

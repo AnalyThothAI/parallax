@@ -7,6 +7,7 @@ export type NewsSignalSummary = {
   signal?: "long" | "short" | "neutral" | string | null;
   score?: number | null;
   grade?: string | null;
+  title_zh?: string | null;
   summary_zh?: string | null;
   summary_en?: string | null;
   method?: string | null;
@@ -72,6 +73,7 @@ export type NewsAgentBrief = {
   status: NewsAgentBriefStatus;
   direction?: "bullish" | "bearish" | "mixed" | "neutral" | string | null;
   decision_class?: "driver" | "watch" | "context" | "discard" | string | null;
+  title_zh?: string | null;
   summary_zh?: string | null;
   market_read_zh?: string | null;
   bull_strength?: string | null;

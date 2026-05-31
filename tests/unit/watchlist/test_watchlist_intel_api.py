@@ -8,84 +8,8 @@ from gmgn_twitter_intel.app.surfaces.api.exceptions import (
     api_unauthorized_response,
 )
 from gmgn_twitter_intel.app.surfaces.api.http import create_api_router
-from gmgn_twitter_intel.app.surfaces.api.routes_watchlist import _watchlist_handle_summary_config
 from gmgn_twitter_intel.domains.watchlist_intel.types import encode_watchlist_timeline_cursor
 from gmgn_twitter_intel.platform.config.settings import Settings
-
-DEFAULT_SUMMARY = object()
-
-
-def test_watchlist_handle_summary_endpoint_requires_configured_handle():
-    app = _app(FakeWatchlistIntelRepository())
-
-    with TestClient(app) as client:
-        ok = client.get("/api/watchlist/handle/toly/summary?token=secret")
-        missing = client.get("/api/watchlist/handle/unknown/summary?token=secret")
-
-    assert ok.status_code == 200
-    assert ok.json()["data"]["handle"] == "toly"
-    assert ok.json()["data"]["summary_zh"] == "Toly 正在反复讨论 SOL 与 BONK。"
-    assert missing.status_code == 404
-    assert missing.json()["error"] == "handle_not_found"
-
-
-def test_watchlist_handle_summary_endpoint_returns_not_ready_with_pending_recompute():
-    app = _app(FakeWatchlistIntelRepository(summary=False, pending_job={"status": "pending"}))
-
-    with TestClient(app) as client:
-        response = client.get("/api/watchlist/handle/toly/summary?token=secret")
-
-    assert response.status_code == 200
-    data = response.json()["data"]
-    assert data["status"] == "not_ready"
-    assert data["summary_zh"] == ""
-    assert data["is_stale"] is False
-    assert data["pending_recompute"] is True
-    assert "pending_job" not in data
-
-
-def test_watchlist_handle_summary_endpoint_marks_old_summary_stale():
-    app = _app(FakeWatchlistIntelRepository(summary={"generated_at_ms": 1}))
-
-    with TestClient(app) as client:
-        response = client.get("/api/watchlist/handle/toly/summary?token=secret")
-
-    assert response.status_code == 200
-    data = response.json()["data"]
-    assert data["status"] == "ready"
-    assert data["is_stale"] is True
-    assert data["pending_recompute"] is False
-
-
-def test_watchlist_handle_summary_config_uses_worker_settings():
-    runtime = type(
-        "Runtime",
-        (),
-        {
-            "settings": Settings(
-                ws_token="secret",
-                workers={
-                    "handle_summary": {
-                        "signal_threshold": 17,
-                        "time_threshold_ms": 123_000,
-                        "min_interval_ms": 45_000,
-                        "input_limit": 9,
-                        "window_days": 3,
-                        "max_attempts": 6,
-                    }
-                },
-            )
-        },
-    )()
-
-    config = _watchlist_handle_summary_config(runtime)
-
-    assert config.signal_threshold == 17
-    assert config.time_threshold_ms == 123_000
-    assert config.min_interval_ms == 45_000
-    assert config.input_limit == 9
-    assert config.window_days == 3
-    assert config.max_attempts == 6
 
 
 def test_watchlist_handle_timeline_endpoint_validates_cursor_and_scope():
@@ -99,7 +23,9 @@ def test_watchlist_handle_timeline_endpoint_validates_cursor_and_scope():
 
     assert ok.status_code == 200
     assert ok.json()["data"]["query"]["scope"] == "signal"
-    assert ok.json()["data"]["items"][0]["social_event"]["summary_zh"] == "SOL 讨论升温。"
+    item = ok.json()["data"]["items"][0]
+    assert item["event_id"] == "event-1"
+    assert item["social_event"] is None
     assert bad_cursor.status_code == 400
     assert bad_cursor.json()["error"] == "invalid_cursor"
     assert bad_scope.status_code == 400
@@ -120,46 +46,21 @@ def test_watchlist_handle_timeline_endpoint_uses_spec_limit_contract():
     assert over_limit.status_code == 422
 
 
+def test_watchlist_handle_overview_endpoint_requires_configured_handle():
+    app = _app(FakeWatchlistIntelRepository())
+
+    with TestClient(app) as client:
+        ok = client.get("/api/watchlist/handle/toly/overview?token=secret")
+        missing = client.get("/api/watchlist/handle/unknown/overview?token=secret")
+
+    assert ok.status_code == 200
+    assert ok.json()["data"]["query"]["handle"] == "toly"
+    assert ok.json()["data"]["metrics"]["source_event_count"] == 1
+    assert missing.status_code == 404
+    assert missing.json()["error"] == "handle_not_found"
+
+
 class FakeWatchlistIntelRepository:
-    def __init__(self, *, summary=DEFAULT_SUMMARY, pending_job=None):
-        self._summary = (
-            {
-                "handle": "toly",
-                "generated_at_ms": 2_000,
-                "input_event_count": 2,
-                "signal_count_at_generation": 2,
-                "model": "test-model",
-                "summary_zh": "Toly 正在反复讨论 SOL 与 BONK。",
-                "topics": [{"title": "SOL", "description": "SOL 生态讨论升温。", "event_count": 1}],
-            }
-            if summary is DEFAULT_SUMMARY
-            else None
-            if summary is False
-            else summary
-        )
-        self._pending_job = pending_job
-
-    def get_handle_summary(self, handle):
-        if handle != "toly":
-            return None
-        if self._summary is None:
-            return None
-        return {
-            "handle": "toly",
-            "input_event_count": 2,
-            "signal_count_at_generation": 2,
-            "model": "test-model",
-            "summary_zh": "Toly 正在反复讨论 SOL 与 BONK。",
-            "topics": [{"title": "SOL", "description": "SOL 生态讨论升温。", "event_count": 1}],
-            **self._summary,
-        }
-
-    def pending_summary_job(self, handle):
-        return self._pending_job
-
-    def count_signal_events_total(self, handle):
-        return 2 if handle == "toly" else 0
-
     def timeline(self, *, handle, scope, cursor, limit):
         from gmgn_twitter_intel.domains.watchlist_intel.types import decode_watchlist_timeline_cursor
 
@@ -172,11 +73,43 @@ class FakeWatchlistIntelRepository:
                     "event_id": "event-1",
                     "received_at_ms": 1_000,
                     "text_clean": "$SOL launch",
-                    "social_event": {"summary_zh": "SOL 讨论升温。"},
+                    "social_event": None,
                 }
             ],
             "has_more": False,
             "next_cursor": None,
+        }
+
+    def handles_overview(self, *, handles, since_ms):
+        return [
+            {
+                "handle": handle,
+                "last_source_event_at_ms": 1_000,
+                "recent_source_event_count": 1,
+                "recent_signal_event_count": 0,
+                "total_signal_event_count": 0,
+            }
+            for handle in handles
+        ]
+
+    def handle_overview(self, *, handle, scope, since_ms):
+        return {
+            "query": {"handle": handle, "scope": scope},
+            "metrics": {
+                "source_event_count": 1,
+                "signal_event_count": 0,
+                "resolved_token_count": 0,
+                "candidate_mention_count": 1,
+                "narrative_count": 0,
+                "last_source_event_at_ms": 1_000,
+            },
+            "resolved_token_clusters": [],
+            "candidate_mention_clusters": [
+                {"label": "$SOL", "count": 1, "query": "$SOL", "kind": "candidate_mention"}
+            ],
+            "narrative_clusters": [],
+            "clusters_truncated": False,
+            "risk_notes": ["candidate_mentions_unresolved"],
         }
 
 

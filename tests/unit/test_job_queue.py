@@ -4,11 +4,9 @@ from typing import Any
 
 import pytest
 
-from gmgn_twitter_intel.app.runtime import job_queue
 from gmgn_twitter_intel.app.runtime.job_queue import (
-    ENRICHMENT_JOBS,
     NOTIFICATION_DELIVERIES,
-    WATCHLIST_HANDLE_SUMMARY_JOBS,
+    PULSE_AGENT_JOBS,
     BackoffPolicy,
     JobQueue,
 )
@@ -45,8 +43,8 @@ def test_job_queue_rejects_non_allowlisted_descriptor() -> None:
 def test_claim_batch_uses_allowlisted_table_and_skip_locked() -> None:
     conn = FakeConn(rows=[{"job_id": "job-1"}])
     queue = JobQueue(
-        descriptor=ENRICHMENT_JOBS,
-        worker_name="enrichment",
+        descriptor=PULSE_AGENT_JOBS,
+        worker_name="pulse_candidate",
         lease_ms=120_000,
         max_attempts=3,
         now_ms=lambda: 1_000,
@@ -56,38 +54,11 @@ def test_claim_batch_uses_allowlisted_table_and_skip_locked() -> None:
 
     assert rows == [{"job_id": "job-1"}]
     sql, params = conn.executed[0]
-    assert "FROM enrichment_jobs" in sql
+    assert "FROM pulse_agent_jobs" in sql
     assert "FOR UPDATE SKIP LOCKED" in sql
     assert "attempt_count = job.attempt_count + 1" in sql
     assert "attempt_count < max_attempts" in sql
     assert params == (1_000, -119_000, 2, 1_000)
-
-
-def test_watchlist_claim_sets_unique_lease_token_and_expiry(monkeypatch) -> None:
-    conn = FakeConn()
-    uuids = iter(["aaa111", "bbb222"])
-    monkeypatch.setattr(job_queue, "_new_token_suffix", lambda: next(uuids))
-    queue = JobQueue(
-        descriptor=WATCHLIST_HANDLE_SUMMARY_JOBS,
-        worker_name="handle summary",
-        lease_ms=60_000,
-        max_attempts=3,
-        now_ms=lambda: 10_000,
-    )
-
-    queue.claim_batch(limit=1, conn=conn)
-    queue.claim_batch(limit=1, conn=conn)
-
-    sql, params = conn.executed[0]
-    _second_sql, second_params = conn.executed[1]
-    assert WATCHLIST_HANDLE_SUMMARY_JOBS.name == "watchlist_handle_summary_jobs"
-    assert "FROM watchlist_handle_summary_jobs" in sql
-    assert "lease_token = %s" in sql
-    assert "lease_expires_at_ms = %s" in sql
-    assert "attempt_count < max_attempts" in sql
-    assert params == (10_000, 10_000, 1, "worker:handle_summary:aaa111", 70_000, 10_000)
-    assert second_params[3] == "worker:handle_summary:bbb222"
-    assert params[3] != second_params[3]
 
 
 def test_finalize_success_and_failure_are_descriptor_specific() -> None:
@@ -133,50 +104,6 @@ def test_notification_claim_records_last_attempt_time() -> None:
     assert params == (20_000, -100_000, 1, 20_000, 20_000)
 
 
-def test_lease_finalize_requires_token_and_clears_lease_columns() -> None:
-    conn = FakeConn(rows=[{"handle": "alice", "status": "done"}], rowcount=1)
-    queue = JobQueue(
-        descriptor=WATCHLIST_HANDLE_SUMMARY_JOBS,
-        worker_name="handle_summary",
-        lease_ms=60_000,
-        max_attempts=3,
-        now_ms=lambda: 30_000,
-    )
-
-    with pytest.raises(ValueError, match="lease_token_required"):
-        queue.finalize_success("alice", conn=conn)
-
-    row = queue.finalize_success("alice", conn=conn, lease_token="token-1")
-    sql, params = conn.executed[0]
-    assert row == {"handle": "alice", "status": "done"}
-    assert "status = 'running'" in sql
-    assert "lease_token = %s" in sql
-    assert "lease_token = NULL" in sql
-    assert "lease_expires_at_ms = NULL" in sql
-    assert params == ("done", 30_000, "alice", "token-1")
-
-
-def test_lease_finalize_failure_uses_token_and_returns_none_when_lease_lost() -> None:
-    conn = FakeConn(rows=[], rowcount=0)
-    queue = JobQueue(
-        descriptor=WATCHLIST_HANDLE_SUMMARY_JOBS,
-        worker_name="handle_summary",
-        lease_ms=60_000,
-        max_attempts=3,
-        now_ms=lambda: 30_000,
-    )
-
-    row = queue.finalize_failure("alice", error="lost", conn=conn, lease_token="wrong-token")
-
-    sql, params = conn.executed[0]
-    assert row is None
-    assert "status = 'running'" in sql
-    assert "lease_token = %s" in sql
-    assert "lease_token = NULL" in sql
-    assert "lease_expires_at_ms = NULL" in sql
-    assert params == (30_000, 300_000, 5_000, "lost", 30_000, "alice", "wrong-token")
-
-
 def test_backoff_policy_defaults_to_linear_five_seconds_capped_at_five_minutes() -> None:
     policy = BackoffPolicy()
 
@@ -188,8 +115,8 @@ def test_backoff_policy_defaults_to_linear_five_seconds_capped_at_five_minutes()
 def test_reclaim_stale_marks_exhausted_running_jobs_dead() -> None:
     conn = FakeConn()
     queue = JobQueue(
-        descriptor=ENRICHMENT_JOBS,
-        worker_name="enrichment",
+        descriptor=PULSE_AGENT_JOBS,
+        worker_name="pulse_candidate",
         lease_ms=120_000,
         max_attempts=3,
         now_ms=lambda: 1_000,
@@ -198,7 +125,7 @@ def test_reclaim_stale_marks_exhausted_running_jobs_dead() -> None:
     queue.reclaim_stale(conn=conn)
 
     sql, params = conn.executed[0]
-    assert "UPDATE enrichment_jobs" in sql
+    assert "UPDATE pulse_agent_jobs" in sql
     assert "CASE WHEN attempt_count >= max_attempts THEN 'dead' ELSE 'failed' END" in sql
     assert "updated_at_ms < %s" in sql
     assert "AND attempt_count >= max_attempts" not in sql

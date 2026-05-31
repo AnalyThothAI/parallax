@@ -5,8 +5,8 @@ import type {
   SignalPulseItem,
   SignalPulseStatusFilter,
   SignalPulseVisibilityFilter,
-  SocialEventDetail,
-  SocialEventsByIdsData,
+  SourceEventDetail,
+  SourceEventsByIdsData,
   WindowKey,
 } from "@lib/types";
 import { queryKeys } from "@shared/query/queryKeys";
@@ -91,8 +91,8 @@ export function useSourceEvents({ token, ids }: SourceEventsArgs) {
   const normalizedIds = ids.filter(Boolean);
   return useQuery({
     queryKey: queryKeys.sourceEventsByIds(normalizedIds),
-    queryFn: async (): Promise<SocialEventDetail[]> => {
-      const response = await getApi<SocialEventsByIdsData>("/api/social-events/by-ids", {
+    queryFn: async (): Promise<SourceEventDetail[]> => {
+      const response = await getApi<SourceEventsByIdsData>("/api/events/by-ids", {
         token,
         params: { ids: normalizedIds.join(",") },
       });

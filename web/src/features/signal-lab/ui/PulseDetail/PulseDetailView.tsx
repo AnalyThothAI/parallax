@@ -1,4 +1,4 @@
-import type { SignalPulseItem, SocialEventDetail } from "@lib/types";
+import type { SignalPulseItem, SourceEventDetail } from "@lib/types";
 import { useMemo, type ReactNode } from "react";
 
 import {
@@ -17,7 +17,7 @@ import { PulseTimeline } from "./PulseTimeline";
 
 type Props = {
   item: SignalPulseItem;
-  sourceEvents: SocialEventDetail[];
+  sourceEvents: SourceEventDetail[];
   density?: DetailDensity;
   actions?: ReactNode;
   now?: number;

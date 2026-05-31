@@ -10,7 +10,7 @@ import type {
   SignalPulseItem,
   SignalPulseStagePayload,
   SignalPulseStages,
-  SocialEventDetail,
+  SourceEventDetail,
   TokenFactorFamily,
   TokenFactorFamilyKey,
 } from "@lib/types";
@@ -201,7 +201,7 @@ export type PulseDetailViewModel = {
 };
 export type BuildPulseDetailViewInput = {
   item: SignalPulseItem;
-  sourceEvents: SocialEventDetail[];
+  sourceEvents: SourceEventDetail[];
   now: number;
 };
 
@@ -321,7 +321,7 @@ function buildFreshness(item: SignalPulseItem, now: number): FreshnessRow[] {
   return rows;
 }
 
-function buildBurst(events: SocialEventDetail[], now: number): BurstHistogram {
+function buildBurst(events: SourceEventDetail[], now: number): BurstHistogram {
   const bucketMs = HISTOGRAM_SPAN_MS / HISTOGRAM_BUCKETS;
   const startMs = now - HISTOGRAM_SPAN_MS;
   const bins: BurstBin[] = Array.from({ length: HISTOGRAM_BUCKETS }, (_, index) => ({
@@ -631,7 +631,7 @@ function buildMarket(item: SignalPulseItem): PulseDetailViewModel["market"] {
 
 function buildEvidence(
   item: SignalPulseItem,
-  events: SocialEventDetail[],
+  events: SourceEventDetail[],
   burst: BurstHistogram,
 ): EvidenceView {
   const citedSet = new Set(
@@ -1030,7 +1030,7 @@ function detectMismatch(item: SignalPulseItem): GateAgentMismatch {
   };
 }
 
-function classifyAuthor(event: SocialEventDetail, authorShare: number): EvidenceAuthorTag {
+function classifyAuthor(event: SourceEventDetail, authorShare: number): EvidenceAuthorTag {
   if (event.author_watched) {
     return "watched";
   }
@@ -1099,8 +1099,8 @@ function scoreBandLabel(value: string | null | undefined): string {
 }
 
 function authorRunIndex(
-  events: SocialEventDetail[],
-  event: SocialEventDetail,
+  events: SourceEventDetail[],
+  event: SourceEventDetail,
   index: number,
 ): number {
   let count = 0;

@@ -335,14 +335,6 @@ def _provider_state_payload(provider: object | None) -> dict[str, object | None]
     return value if isinstance(value, dict) else {"state": "failed", "last_state_change_at_ms": None}
 
 
-def _enrichment_job_counts(runtime: Runtime) -> dict[str, int]:
-    try:
-        with runtime.repositories() as repos:
-            return repos.enrichment.job_counts()
-    except Exception:
-        return {}
-
-
 def _notification_summary(runtime: Runtime) -> dict[str, object]:
     try:
         with runtime.repositories() as repos:

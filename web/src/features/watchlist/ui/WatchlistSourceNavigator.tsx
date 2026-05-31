@@ -1,6 +1,6 @@
 import { formatRelativeTime } from "@lib/format";
 import type { WatchlistTimelineScope } from "@lib/types";
-import { AtSign, Bell, Radio, SignalHigh } from "lucide-react";
+import { AtSign, Bell, Radio } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 
@@ -42,7 +42,6 @@ export function WatchlistSourceNavigator({
       <div className="watchlist-source-stats" aria-label="Twitter source totals">
         <SourceStat icon={<AtSign aria-hidden />} label="sources" value={rows.length} />
         <SourceStat icon={<Bell aria-hidden />} label="unread" value={totals.unread} />
-        <SourceStat icon={<SignalHigh aria-hidden />} label="signals" value={totals.signals} />
       </div>
 
       <nav
@@ -63,10 +62,8 @@ export function WatchlistSourceNavigator({
               <small>{lastSeenLabel(row.lastSeenAtMs)}</small>
             </span>
             <span className="watchlist-source-row-counts" aria-label={`${row.handle} stats`}>
-              <span>{row.recentSignalCount} signals</span>
               <span>{row.recentSourceCount} posts</span>
               {row.unreadCount > 0 ? <strong>{row.unreadCount} unread</strong> : null}
-              {row.summaryIsStale ? <em>stale</em> : null}
             </span>
             <span className="watchlist-source-meter" aria-hidden>
               <span style={{ width: `${Math.max(6, (row.activityScore / maxActivity) * 100)}%` }} />
@@ -92,13 +89,12 @@ function lastSeenLabel(value: number | null): string {
   return value ? `${formatRelativeTime(value)} ago` : "no recent posts";
 }
 
-function sourceTotals(rows: WatchlistRow[]): { signals: number; unread: number } {
+function sourceTotals(rows: WatchlistRow[]): { unread: number } {
   return rows.reduce(
     (totals, row) => ({
-      signals: totals.signals + row.recentSignalCount,
       unread: totals.unread + row.unreadCount,
     }),
-    { signals: 0, unread: 0 },
+    { unread: 0 },
   );
 }
 

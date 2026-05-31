@@ -187,6 +187,7 @@ class NewsProjectionDirtyTargetRepository:
                 AND (leased_until_ms IS NULL OR leased_until_ms <= %(now_ms)s)
                 {projection_filter}
               ORDER BY priority ASC,
+                       source_watermark_ms DESC,
                        due_at_ms ASC,
                        updated_at_ms ASC,
                        projection_name ASC,

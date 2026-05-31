@@ -14,7 +14,9 @@ from gmgn_twitter_intel.domains.news_intel.types.news_item_brief import (
 from gmgn_twitter_intel.platform.agent_hashing import json_sha256
 
 _FORBIDDEN_EXECUTION_RE = re.compile(
-    r"买入|卖出|开仓|做多|做空|仓位|杠杆|目标价|止损|止盈|配仓|"
+    r"(?:建议|可以|应当|应该|立刻|马上|直接)(?:买入|卖出|加仓|减仓)|"
+    r"(?:买入|卖出|加仓|减仓)(?:建议|计划|指令|点位)|"
+    r"开仓|做多|做空|仓位|杠杆|目标价|止损|止盈|配仓|"
     r"\b(?:buy|sell|leverage|order\s+instructions?|position\s+(?:size|sizing)|"
     r"execution\s+permission|portfolio\s+(?:advice|allocation)|"
     r"stop[-\s]+loss|take[-\s]+profit|target\s+prices?)\b|"
@@ -110,6 +112,8 @@ def _unknown_evidence_ref_errors(
 def _status_invariant_errors(payload: NewsItemBriefPayload) -> list[dict[str, str]]:
     errors: list[dict[str, str]] = []
     if payload.status == "ready":
+        if not payload.title_zh.strip():
+            errors.append(_error("ready_invariant", "ready requires title_zh"))
         if not payload.summary_zh.strip():
             errors.append(_error("ready_invariant", "ready requires summary_zh"))
         if not payload.evidence_refs:

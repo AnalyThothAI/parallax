@@ -16,7 +16,6 @@ describe("watchlist helpers", () => {
 
     expect(rows.map((row) => row.handle)).toEqual(["traderpow", "cz_binance", "theunipcs", "toly"]);
     expect(rows.map((row) => row.unreadCount)).toEqual([3, 1, 0, 0]);
-    expect(rows.map((row) => row.recentSignalCount)).toEqual([0, 0, 8, 4]);
     expect(rows).toHaveLength(4);
   });
 
@@ -34,8 +33,6 @@ describe("watchlist helpers", () => {
           lastSourceEventAtMs: 1_700_000_100_000,
           recentSignals: 6,
           recentSources: 8,
-          stale: true,
-          status: "ready",
           totalSignals: 80,
         }),
         handleRow("sources", {
@@ -47,15 +44,12 @@ describe("watchlist helpers", () => {
       ],
     });
 
-    expect(rows.map((row) => row.handle)).toEqual(["signals", "sources", "quiet"]);
+    expect(rows.map((row) => row.handle)).toEqual(["sources", "signals", "quiet"]);
     expect(rows[0]).toMatchObject({
-      activityScore: 68,
-      lastSeenAtMs: 1_700_000_100_000,
-      recentSignalCount: 6,
-      recentSourceCount: 8,
-      summaryIsStale: true,
-      summaryStatus: "ready",
-      totalSignalCount: 80,
+      activityScore: 12,
+      lastSeenAtMs: 1_700_000_400_000,
+      recentSourceCount: 12,
+      totalSignalCount: 12,
     });
   });
 });
@@ -66,8 +60,6 @@ function handleRow(
     lastSourceEventAtMs: number | null;
     recentSignals?: number;
     recentSources?: number;
-    stale?: boolean;
-    status?: "ready" | "not_ready";
     totalSignals?: number;
   },
 ): WatchlistHandleRowOverview {
@@ -77,7 +69,5 @@ function handleRow(
     recent_source_event_count: options.recentSources ?? (options.lastSourceEventAtMs ? 1 : 0),
     recent_signal_event_count: options.recentSignals ?? 0,
     total_signal_event_count: options.totalSignals ?? 0,
-    summary_status: options.status ?? "not_ready",
-    summary_is_stale: options.stale ?? false,
   };
 }

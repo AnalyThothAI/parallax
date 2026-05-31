@@ -3,7 +3,6 @@ from __future__ import annotations
 import base64
 import json
 import re
-from dataclasses import dataclass
 from typing import Any
 
 WATCHLIST_HANDLE_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
@@ -11,18 +10,6 @@ WATCHLIST_HANDLE_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
 class WatchlistTimelineCursorError(ValueError):
     pass
-
-
-@dataclass(frozen=True, slots=True)
-class HandleSummaryJob:
-    handle: str
-    status: str
-    next_run_at_ms: int
-    pending_signal_count: int
-    trigger_reason: str
-    lease_expires_at_ms: int | None
-    attempt_count: int
-    max_attempts: int
 
 
 def normalize_watchlist_handle(value: str) -> str:
@@ -70,7 +57,6 @@ def json_default(value: Any) -> Any:
 
 __all__ = [
     "WATCHLIST_HANDLE_RE",
-    "HandleSummaryJob",
     "WatchlistTimelineCursorError",
     "decode_watchlist_timeline_cursor",
     "encode_watchlist_timeline_cursor",

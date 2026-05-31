@@ -1,6 +1,5 @@
 export { WatchlistPage } from "./ui/WatchlistPage";
 export { useHandleOverviewQuery } from "./api/useHandleOverviewQuery";
-export { useHandleSummaryQuery } from "./api/useHandleSummaryQuery";
 export { useHandleTimelineQuery } from "./api/useHandleTimelineQuery";
 export { useWatchlistHandlesOverviewQuery } from "./api/useWatchlistHandlesOverviewQuery";
 export { normalizeWatchlistHandle } from "./model/watchlistCase";

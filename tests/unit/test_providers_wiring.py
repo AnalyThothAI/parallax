@@ -322,11 +322,6 @@ def test_litellm_providers_receive_agent_execution_gateway(monkeypatch) -> None:
     db_pool = object()
     created: list[object] = []
 
-    def fake_social_client(**kwargs):
-        client = SimpleNamespace(provider="litellm", _agent_gateway=kwargs["agent_gateway"])
-        created.append(client)
-        return client
-
     def fake_narrative_client(**kwargs):
         client = SimpleNamespace(
             provider="litellm",
@@ -350,20 +345,13 @@ def test_litellm_providers_receive_agent_execution_gateway(monkeypatch) -> None:
         created.append(client)
         return client
 
-    def fake_watchlist_client(**kwargs):
-        client = SimpleNamespace(provider="litellm", _agent_gateway=kwargs["agent_gateway"])
-        created.append(client)
-        return client
-
     def fake_news_item_brief_client(**kwargs):
         client = SimpleNamespace(provider="litellm", _agent_gateway=kwargs["agent_gateway"])
         created.append(client)
         return client
 
-    monkeypatch.setattr(model_execution_wiring, "LiteLLMSocialEventClient", fake_social_client)
     monkeypatch.setattr(model_execution_wiring, "LiteLLMNarrativeIntelClient", fake_narrative_client)
     monkeypatch.setattr(model_execution_wiring, "LiteLLMPulseDecisionClient", fake_pulse_client)
-    monkeypatch.setattr(model_execution_wiring, "LiteLLMWatchlistSummaryClient", fake_watchlist_client)
     monkeypatch.setattr(model_execution_wiring, "LiteLLMNewsItemBriefClient", fake_news_item_brief_client)
 
     providers = providers_wiring.wire_providers(
@@ -373,16 +361,12 @@ def test_litellm_providers_receive_agent_execution_gateway(monkeypatch) -> None:
         db_pool=db_pool,
     )
 
-    assert providers.social_enrichment.event_enrichment is not None
-    assert providers.social_enrichment.event_enrichment._agent_gateway is gateway
     assert providers.pulse_lab.decision_provider is not None
     contract = providers.pulse_lab.decision_provider.runtime_contract
     assert contract.stage_names == ("signal_analyst", "bear_case", "risk_portfolio_judge")
     assert contract.safety_net_enabled is True
     assert providers.narrative_intel.narrative_provider is not None
     assert providers.narrative_intel.narrative_provider._client._agent_gateway is gateway
-    assert providers.watchlist_intel.summary_provider is not None
-    assert providers.watchlist_intel.summary_provider._agent_gateway is gateway
     assert providers.news_intel.brief_provider is not None
     assert providers.news_intel.brief_provider._agent_gateway is gateway
     assert all(getattr(client, "_agent_gateway", None) is gateway for client in created)
@@ -806,7 +790,6 @@ def _settings_with_all_llm_models() -> Settings:
                 "defaults": {"model": "gpt-enrich"},
                 "lanes": {
                     "pulse.signal_analyst": {"model": "gpt-pulse"},
-                    "watchlist.handle_summary": {"model": "gpt-summary"},
                     "news.item_brief": {"model": "gpt-news"},
                 },
             },

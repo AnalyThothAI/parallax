@@ -88,11 +88,6 @@ RUNTIME_WORKER_CONTRACTS: tuple[RuntimeWorkerHardCutContract, ...] = (
         payload_loader_markers=(),
     ),
     RuntimeWorkerHardCutContract(
-        path=SRC / "domains/watchlist_intel/runtime/handle_summary_worker.py",
-        banned_calls=("handles_missing_summary_jobs", "reconcile_missing_jobs_once"),
-        control_claim_markers=("claim_next_summary_job",),
-    ),
-    RuntimeWorkerHardCutContract(
         path=SRC / "domains/macro_intel/runtime/macro_view_projection_worker.py",
         banned_calls=("refresh_observation_series_rows",),
         control_claim_markers=("claim_macro_projection_dirty_targets",),
@@ -127,8 +122,6 @@ WORKER_CLASSIFICATION: dict[str, str] = {
     "macro_sync": "bounded_provider_scheduler",
     "macro_view_projection": "dirty_target_consumer",
     "pulse_candidate": "dirty_target_consumer",
-    "enrichment": "leased_job_consumer",
-    "handle_summary": "leased_job_consumer",
     "notification_rule": "target_scoped_expansion",
     "notification_delivery": "leased_job_consumer",
 }
@@ -153,7 +146,6 @@ CONTROL_PLANE_TABLES = frozenset(
         "token_image_source_dirty_targets",
         "asset_profile_refresh_targets",
         "token_capture_tier_dirty_targets",
-        "watchlist_handle_summary_jobs",
     }
 )
 

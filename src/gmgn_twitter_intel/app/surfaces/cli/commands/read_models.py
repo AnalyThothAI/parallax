@@ -20,8 +20,6 @@ READ_MODEL_COMMANDS = frozenset(
         "asset-flow",
         "account-alerts",
         "account-quality",
-        "social-events",
-        "enrichment-jobs",
         "notification-deliveries",
     }
 )
@@ -33,7 +31,6 @@ def handle_read_model(args: object) -> tuple[int, dict[str, Any]]:
     with repositories(settings) as repos:
         evidence = repos.evidence
         signals = repos.signals
-        enrichment = repos.enrichment
         notifications = repos.notifications
 
         if command == "recent":
@@ -102,33 +99,6 @@ def handle_read_model(args: object) -> tuple[int, dict[str, Any]]:
             ).account_quality_for_handles(handles)
             return 0, {"ok": True, "data": data}
 
-        if command == "social-events":
-            return (
-                0,
-                {
-                    "ok": True,
-                    "data": repos.social_event_extractions.recent(
-                        window=args.window,
-                        limit=args.limit,
-                        handles=_handle_set(args.handles),
-                        event_types=_csv_set(args.event_types),
-                    ),
-                },
-            )
-
-        if command == "enrichment-jobs":
-            items = enrichment.list_jobs(limit=args.limit, status=args.status)
-            return (
-                0,
-                {
-                    "ok": True,
-                    "data": {
-                        "items": items,
-                        "counts": enrichment.job_counts(),
-                    },
-                },
-            )
-
         if command == "notification-deliveries":
             return (
                 0,
@@ -145,10 +115,6 @@ def handle_read_model(args: object) -> tuple[int, dict[str, Any]]:
 
 def _handle_set(raw: str) -> set[str]:
     return {item.strip().lstrip("@").lower() for item in raw.split(",") if item.strip()}
-
-
-def _csv_set(raw: str) -> set[str]:
-    return {item.strip() for item in raw.split(",") if item.strip()}
 
 
 def _now_ms() -> int:

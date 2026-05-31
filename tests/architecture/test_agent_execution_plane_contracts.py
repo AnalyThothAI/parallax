@@ -136,13 +136,9 @@ def test_domain_packages_do_not_import_litellm_sdk() -> None:
     assert violations == []
 
 
-def test_watchlist_prompt_not_owned_by_model_execution_integration() -> None:
+def test_watchlist_summary_agent_client_stays_removed() -> None:
     path = MODEL_EXECUTION / "watchlist_summary_agent_client.py"
-    if not path.exists():
-        raise AssertionError("watchlist_summary_agent_client.py must exist")
-    text = path.read_text(encoding="utf-8")
-    assert "You summarize a watched crypto Twitter account" not in text
-    assert "WatchlistHandleSummaryPayload" not in text
+    assert not path.exists()
 
 
 def test_agent_execution_types_have_single_live_source() -> None:

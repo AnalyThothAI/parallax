@@ -92,8 +92,7 @@ class _DisabledWorker(WorkerBase):
 
 
 def _worker_settings(settings: Settings, name: str, *, enabled: bool) -> Any:
-    config_name = "handle_summary" if name == "handle_summary" else name
-    config = getattr(settings.workers, config_name, None)
+    config = getattr(settings.workers, name, None)
     if config is None:
         return SimpleNamespace(enabled=enabled)
     if getattr(config, "enabled", True) == enabled:
@@ -124,12 +123,6 @@ def worker_factory_specs() -> tuple[WorkerFactorySpec, ...]:
     )
     from gmgn_twitter_intel.app.runtime.worker_factories.cex_market_intel import (
         construct_cex_market_intel_workers,
-    )
-    from gmgn_twitter_intel.app.runtime.worker_factories.enrichment import (
-        WORKER_KEYS as ENRICHMENT_KEYS,
-    )
-    from gmgn_twitter_intel.app.runtime.worker_factories.enrichment import (
-        construct_enrichment_workers,
     )
     from gmgn_twitter_intel.app.runtime.worker_factories.ingestion import (
         WORKER_KEYS as INGESTION_KEYS,
@@ -173,12 +166,6 @@ def worker_factory_specs() -> tuple[WorkerFactorySpec, ...]:
     from gmgn_twitter_intel.app.runtime.worker_factories.token_intel import (
         construct_token_intel_workers,
     )
-    from gmgn_twitter_intel.app.runtime.worker_factories.watchlist import (
-        WORKER_KEYS as WATCHLIST_KEYS,
-    )
-    from gmgn_twitter_intel.app.runtime.worker_factories.watchlist import (
-        construct_watchlist_workers,
-    )
 
     return (
         WorkerFactorySpec("ingestion.py", INGESTION_KEYS, construct_ingestion_workers),
@@ -189,9 +176,7 @@ def worker_factory_specs() -> tuple[WorkerFactorySpec, ...]:
         WorkerFactorySpec("narrative_intel.py", NARRATIVE_INTEL_KEYS, construct_narrative_intel_workers),
         WorkerFactorySpec("news_intel.py", NEWS_INTEL_KEYS, construct_news_intel_workers),
         WorkerFactorySpec("pulse.py", PULSE_KEYS, construct_pulse_workers),
-        WorkerFactorySpec("watchlist.py", WATCHLIST_KEYS, construct_watchlist_workers),
         WorkerFactorySpec("notifications.py", NOTIFICATION_KEYS, construct_notification_workers),
-        WorkerFactorySpec("enrichment.py", ENRICHMENT_KEYS, construct_enrichment_workers),
     )
 
 

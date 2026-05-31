@@ -191,11 +191,9 @@ def fake_wired_providers(
             stream_dex_market=None,
             discovery_chain_ids=(),
         ),
-        social_enrichment=SimpleNamespace(event_enrichment=None),
         pulse_lab=SimpleNamespace(
             decision_provider=FakePulseProvider(model=settings.agent_runtime_model_for_lane("pulse.signal_analyst"))
         ),
-        watchlist_intel=SimpleNamespace(summary_provider=None),
         macrodata=SimpleNamespace(stock_quote_provider=None),
         agent_execution_gateway=agent_execution_gateway,
     )

@@ -89,15 +89,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/enrichment-jobs": {
+    "/api/events/by-ids": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Enrichment Jobs */
-        get: operations["enrichment_jobs_api_enrichment_jobs_get"];
+        /** Events By Ids */
+        get: operations["events_by_ids_api_events_by_ids_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -497,40 +497,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/social-events": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Social Events */
-        get: operations["social_events_api_social_events_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/social-events/by-ids": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Social Events By Ids */
-        get: operations["social_events_by_ids_api_social_events_by_ids_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/status": {
         parameters: {
             query?: never;
@@ -659,23 +625,6 @@ export interface paths {
         };
         /** Watchlist Handle Overview */
         get: operations["watchlist_handle_overview_api_watchlist_handle__handle__overview_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/watchlist/handle/{handle}/summary": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Watchlist Handle Summary */
-        get: operations["watchlist_handle_summary_api_watchlist_handle__handle__summary_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -835,33 +784,9 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        /** ApiEnvelope[EnrichmentJobsData] */
-        ApiEnvelope_EnrichmentJobsData_: {
-            data?: components["schemas"]["EnrichmentJobsData"] | null;
-            /** Error */
-            error?: string | null;
-            /** Field */
-            field?: string | null;
-            /** Ok */
-            ok: boolean;
-        } & {
-            [key: string]: unknown;
-        };
         /** ApiEnvelope[LiveMarketData] */
         ApiEnvelope_LiveMarketData_: {
             data?: components["schemas"]["LiveMarketData"] | null;
-            /** Error */
-            error?: string | null;
-            /** Field */
-            field?: string | null;
-            /** Ok */
-            ok: boolean;
-        } & {
-            [key: string]: unknown;
-        };
-        /** ApiEnvelope[LooseData] */
-        ApiEnvelope_LooseData_: {
-            data?: components["schemas"]["LooseData"] | null;
             /** Error */
             error?: string | null;
             /** Field */
@@ -1063,9 +988,9 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        /** ApiEnvelope[SocialEventsByIdsData] */
-        ApiEnvelope_SocialEventsByIdsData_: {
-            data?: components["schemas"]["SocialEventsByIdsData"] | null;
+        /** ApiEnvelope[SourceEventsByIdsData] */
+        ApiEnvelope_SourceEventsByIdsData_: {
+            data?: components["schemas"]["SourceEventsByIdsData"] | null;
             /** Error */
             error?: string | null;
             /** Field */
@@ -1159,18 +1084,6 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        /** ApiEnvelope[WatchlistHandleSummaryData] */
-        ApiEnvelope_WatchlistHandleSummaryData_: {
-            data?: components["schemas"]["WatchlistHandleSummaryData"] | null;
-            /** Error */
-            error?: string | null;
-            /** Field */
-            field?: string | null;
-            /** Ok */
-            ok: boolean;
-        } & {
-            [key: string]: unknown;
-        };
         /** ApiEnvelope[WatchlistHandleTimelineData] */
         ApiEnvelope_WatchlistHandleTimelineData_: {
             data?: components["schemas"]["WatchlistHandleTimelineData"] | null;
@@ -1206,19 +1119,6 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        /** EnrichmentJobsData */
-        EnrichmentJobsData: {
-            /** Counts */
-            counts?: {
-                [key: string]: unknown;
-            };
-            /** Items */
-            items?: {
-                [key: string]: unknown;
-            }[];
-        } & {
-            [key: string]: unknown;
-        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1237,10 +1137,6 @@ export interface components {
             /** Target Type */
             target_type: string;
         } & {
-            [key: string]: unknown;
-        };
-        /** LooseData */
-        LooseData: {
             [key: string]: unknown;
         };
         /** NarrativeAdmissionHealth */
@@ -2044,8 +1940,8 @@ export interface components {
             signal_analyst?: components["schemas"]["SignalPulseStagePayload"] | null;
             write_gate?: components["schemas"]["SignalPulseStagePayload"] | null;
         };
-        /** SocialEventDetail */
-        SocialEventDetail: {
+        /** SourceEventDetail */
+        SourceEventDetail: {
             /** Action */
             action: string;
             /** Author Followers */
@@ -2074,10 +1970,10 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        /** SocialEventsByIdsData */
-        SocialEventsByIdsData: {
+        /** SourceEventsByIdsData */
+        SourceEventsByIdsData: {
             /** Events */
-            events?: components["schemas"]["SocialEventDetail"][];
+            events?: components["schemas"]["SourceEventDetail"][];
             /** Not Found */
             not_found?: string[];
         } & {
@@ -2285,6 +2181,8 @@ export interface components {
             scope: string;
             /** Targets */
             targets?: components["schemas"]["TokenRadarRowData"][];
+            /** Venue */
+            venue: string;
             /** Window */
             window: string;
         } & {
@@ -2346,69 +2244,10 @@ export interface components {
              */
             recent_source_event_count: number;
             /**
-             * Summary Is Stale
-             * @default false
-             */
-            summary_is_stale: boolean;
-            /**
-             * Summary Status
-             * @enum {string}
-             */
-            summary_status: "ready" | "not_ready";
-            /**
              * Total Signal Event Count
              * @default 0
              */
             total_signal_event_count: number;
-        } & {
-            [key: string]: unknown;
-        };
-        /** WatchlistHandleSummaryData */
-        WatchlistHandleSummaryData: {
-            /** Generated At Ms */
-            generated_at_ms?: number | null;
-            /** Handle */
-            handle: string;
-            /**
-             * Input Event Count
-             * @default 0
-             */
-            input_event_count: number;
-            /**
-             * Is Stale
-             * @default false
-             */
-            is_stale: boolean;
-            /** Model */
-            model?: string | null;
-            /**
-             * Pending Recompute
-             * @default false
-             */
-            pending_recompute: boolean;
-            /**
-             * Signal Count
-             * @default 0
-             */
-            signal_count: number;
-            /**
-             * Signal Count At Generation
-             * @default 0
-             */
-            signal_count_at_generation: number;
-            /** Staleness Ms */
-            staleness_ms?: number | null;
-            /** Status */
-            status: string;
-            /**
-             * Summary Zh
-             * @default
-             */
-            summary_zh: string;
-            /** Topics */
-            topics?: {
-                [key: string]: unknown;
-            }[];
         } & {
             [key: string]: unknown;
         };
@@ -2761,11 +2600,10 @@ export interface operations {
             };
         };
     };
-    enrichment_jobs_api_enrichment_jobs_get: {
+    events_by_ids_api_events_by_ids_get: {
         parameters: {
             query?: {
-                limit?: number;
-                status?: string | null;
+                ids?: string;
             };
             header?: never;
             path?: never;
@@ -2779,7 +2617,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiEnvelope_EnrichmentJobsData_"];
+                    "application/json": components["schemas"]["ApiEnvelope_SourceEventsByIdsData_"];
                 };
             };
             /** @description Validation Error */
@@ -3488,71 +3326,6 @@ export interface operations {
             };
         };
     };
-    social_events_api_social_events_get: {
-        parameters: {
-            query?: {
-                window?: string;
-                limit?: number;
-                handles?: string;
-                event_types?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiEnvelope_LooseData_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    social_events_by_ids_api_social_events_by_ids_get: {
-        parameters: {
-            query?: {
-                ids?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiEnvelope_SocialEventsByIdsData_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     status_api_status_get: {
         parameters: {
             query?: never;
@@ -3752,6 +3525,7 @@ export interface operations {
                 window?: string;
                 limit?: number;
                 scope?: string;
+                venue?: string;
             };
             header?: never;
             path?: never;
@@ -3799,37 +3573,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiEnvelope_WatchlistHandleOverviewData_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    watchlist_handle_summary_api_watchlist_handle__handle__summary_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                handle: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiEnvelope_WatchlistHandleSummaryData_"];
                 };
             };
             /** @description Validation Error */

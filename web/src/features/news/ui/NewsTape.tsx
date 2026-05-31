@@ -24,10 +24,11 @@ export function NewsTape({ rows, onOpen }: NewsTapeProps) {
         const tokens = newsDisplayTokenLanes(row);
         const visibleTokens = tokens.slice(0, 5);
         const overflowCount = Math.max(0, tokens.length - visibleTokens.length);
+        const displayTitle = row.agent_brief?.title_zh || row.signal.title_zh || row.headline;
         return (
           <div className="news-tape-row" key={row.row_id}>
             <button
-              aria-label={`Open news item ${row.headline}`}
+              aria-label={`Open news item ${displayTitle}`}
               className="news-tape-row-main"
               type="button"
               onClick={() => onOpen(row.news_item_id)}
@@ -45,7 +46,7 @@ export function NewsTape({ rows, onOpen }: NewsTapeProps) {
                 <small>{newsSignalScoreLabel(row.signal)}</small>
               </span>
               <span className="news-tape-copy">
-                <strong>{row.headline}</strong>
+                <strong>{displayTitle}</strong>
                 <small>{row.signal.summary_zh || row.summary || "No summary available."}</small>
               </span>
               <span className="news-tape-token-strip">
@@ -65,7 +66,7 @@ export function NewsTape({ rows, onOpen }: NewsTapeProps) {
               </span>
             </button>
             <button
-              aria-label={`Open ${row.headline}`}
+              aria-label={`Open ${displayTitle}`}
               className="news-tape-open"
               type="button"
               onClick={() => onOpen(row.news_item_id)}

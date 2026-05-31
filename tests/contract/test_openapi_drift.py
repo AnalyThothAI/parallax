@@ -173,7 +173,7 @@ def test_signal_pulse_stages_schema_exposes_only_evidence_first_stage_fields() -
 def test_signal_pulse_stages_openapi_type_has_no_index_signature() -> None:
     """Generated OpenAPI TS must not allow arbitrary stage keys on SignalPulseStages."""
     text = OPENAPI_TS_PATH.read_text(encoding="utf-8")
-    section = text.split("/** SignalPulseStages */", 1)[1].split("/** SocialEventDetail */", 1)[0]
+    section = text.split("/** SignalPulseStages */", 1)[1].split("/** SourceEventDetail */", 1)[0]
 
     assert "[key: string]" not in section
 

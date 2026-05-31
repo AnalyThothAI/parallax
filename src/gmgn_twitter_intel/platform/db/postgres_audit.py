@@ -23,13 +23,8 @@ CORE_TABLES = (
     "token_radar_current_rows",
     "token_radar_publication_state",
     "token_radar_target_first_seen",
-    "enrichment_jobs",
-    "social_event_extractions",
     "notifications",
     "token_score_evaluations",
-    "watchlist_handle_summary_jobs",
-    "watchlist_handle_summaries",
-    "watchlist_handle_summary_runs",
 )
 
 PROJECTION_TABLES = (

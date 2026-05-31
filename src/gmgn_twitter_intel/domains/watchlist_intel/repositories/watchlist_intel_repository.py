@@ -1,12 +1,8 @@
 from __future__ import annotations
 
 import json
-import time
-import uuid
 from collections.abc import Sequence
 from typing import Any
-
-from psycopg.types.json import Jsonb
 
 from gmgn_twitter_intel.domains.evidence.interfaces import decode_event_row
 from gmgn_twitter_intel.domains.token_intel.interfaces import EventTokenProjectionQuery
@@ -14,578 +10,13 @@ from gmgn_twitter_intel.domains.watchlist_intel.types import (
     WatchlistTimelineCursorError,
     decode_watchlist_timeline_cursor,
     encode_watchlist_timeline_cursor,
-    json_default,
     normalize_watchlist_handle,
 )
-from gmgn_twitter_intel.platform.db.postgres_client import transaction
 
 
 class WatchlistIntelRepository:
     def __init__(self, conn: Any):
         self.conn = conn
-
-    def enqueue_handle_summary_job(
-        self,
-        *,
-        handle: str,
-        next_run_at_ms: int,
-        pending_signal_count: int,
-        trigger_reason: str,
-        max_attempts: int = 3,
-        commit: bool = True,
-    ) -> dict[str, Any]:
-        normalized = normalize_watchlist_handle(handle)
-        now_ms = _now_ms()
-        row = self.conn.execute(
-            """
-            INSERT INTO watchlist_handle_summary_jobs(
-              handle, status, next_run_at_ms, pending_signal_count, trigger_reason,
-              lease_expires_at_ms, lease_token, attempt_count, max_attempts, last_error, created_at_ms, updated_at_ms
-            )
-            VALUES (%s, 'pending', %s, %s, %s, NULL, NULL, 0, %s, NULL, %s, %s)
-            ON CONFLICT(handle) DO UPDATE SET
-              status = CASE
-                WHEN watchlist_handle_summary_jobs.status = 'running' THEN 'running'
-                ELSE 'pending'
-              END,
-              next_run_at_ms = LEAST(watchlist_handle_summary_jobs.next_run_at_ms, excluded.next_run_at_ms),
-              pending_signal_count = GREATEST(
-                watchlist_handle_summary_jobs.pending_signal_count,
-                excluded.pending_signal_count
-              ),
-              trigger_reason = excluded.trigger_reason,
-              lease_token = CASE
-                WHEN watchlist_handle_summary_jobs.status = 'running' THEN watchlist_handle_summary_jobs.lease_token
-                ELSE NULL
-              END,
-              lease_expires_at_ms = CASE
-                WHEN watchlist_handle_summary_jobs.status = 'running'
-                  THEN watchlist_handle_summary_jobs.lease_expires_at_ms
-                ELSE NULL
-              END,
-              max_attempts = excluded.max_attempts,
-              attempt_count = CASE
-                WHEN watchlist_handle_summary_jobs.status = 'dead' THEN 0
-                ELSE watchlist_handle_summary_jobs.attempt_count
-              END,
-              last_error = NULL,
-              updated_at_ms = excluded.updated_at_ms
-            RETURNING *
-            """,
-            (
-                normalized,
-                int(next_run_at_ms),
-                max(0, int(pending_signal_count)),
-                str(trigger_reason or "signal"),
-                max(1, int(max_attempts)),
-                now_ms,
-                now_ms,
-            ),
-        ).fetchone()
-        if commit:
-            self.conn.commit()
-        return dict(row)
-
-    def claim_next_summary_job(self, *, now_ms: int, lease_ms: int) -> dict[str, Any] | None:
-        self.conn.execute(
-            """
-            UPDATE watchlist_handle_summary_jobs
-            SET status = 'dead',
-                lease_token = NULL,
-                last_error = COALESCE(last_error, 'summary_job_attempts_exhausted'),
-                updated_at_ms = %s
-            WHERE status = 'running'
-              AND lease_expires_at_ms IS NOT NULL
-              AND lease_expires_at_ms <= %s
-              AND attempt_count >= max_attempts
-            """,
-            (int(now_ms), int(now_ms)),
-        )
-        lease_token = f"lease-{uuid.uuid4().hex}"
-        row = self.conn.execute(
-            """
-            WITH picked AS (
-              SELECT handle
-              FROM watchlist_handle_summary_jobs
-              WHERE next_run_at_ms <= %s
-                AND attempt_count < max_attempts
-                AND (
-                  status IN ('pending', 'failed')
-                  OR (
-                    status = 'running'
-                    AND lease_expires_at_ms IS NOT NULL
-                    AND lease_expires_at_ms <= %s
-                  )
-                )
-              ORDER BY next_run_at_ms ASC, updated_at_ms ASC, handle ASC
-              LIMIT 1
-              FOR UPDATE SKIP LOCKED
-            )
-            UPDATE watchlist_handle_summary_jobs jobs
-            SET status = 'running',
-                lease_expires_at_ms = %s,
-                lease_token = %s,
-                attempt_count = jobs.attempt_count + 1,
-                last_error = NULL,
-                updated_at_ms = %s
-            FROM picked
-            WHERE jobs.handle = picked.handle
-            RETURNING jobs.*
-            """,
-            (int(now_ms), int(now_ms), int(now_ms) + max(1, int(lease_ms)), lease_token, int(now_ms)),
-        ).fetchone()
-        self.conn.commit()
-        return dict(row) if row else None
-
-    def mark_summary_job_failed(
-        self,
-        job: dict[str, Any],
-        error: str,
-        *,
-        now_ms: int,
-        retry_delay_ms: int = 30_000,
-        commit: bool = True,
-    ) -> dict[str, Any] | None:
-        handle = normalize_watchlist_handle(str(job.get("handle") or ""))
-        lease_token = str(job.get("lease_token") or "")
-        if not lease_token:
-            return None
-        attempt_count = int(job.get("attempt_count") or 0)
-        max_attempts = max(1, int(job.get("max_attempts") or 1))
-        status = "dead" if attempt_count >= max_attempts else "failed"
-        row = self.conn.execute(
-            """
-            UPDATE watchlist_handle_summary_jobs
-            SET status = %s,
-                lease_expires_at_ms = NULL,
-                lease_token = NULL,
-                next_run_at_ms = %s,
-                last_error = %s,
-                updated_at_ms = %s
-            WHERE handle = %s
-              AND status = 'running'
-              AND lease_token = %s
-            RETURNING *
-            """,
-            (
-                status,
-                int(now_ms) + max(0, int(retry_delay_ms)),
-                _compact_error(error),
-                int(now_ms),
-                handle,
-                lease_token,
-            ),
-        ).fetchone()
-        if commit:
-            self.conn.commit()
-        return dict(row) if row else None
-
-    def release_job_for_backpressure(
-        self,
-        job: dict[str, Any],
-        *,
-        reason: str,
-        now_ms: int,
-        delay_ms: int = 30_000,
-        commit: bool = True,
-    ) -> dict[str, Any] | None:
-        handle = normalize_watchlist_handle(str(job.get("handle") or ""))
-        lease_token = str(job.get("lease_token") or "")
-        if not lease_token:
-            return None
-        attempt_count = int(job.get("attempt_count") or 0)
-        row = self.conn.execute(
-            """
-            UPDATE watchlist_handle_summary_jobs
-            SET status = 'pending',
-                lease_expires_at_ms = NULL,
-                lease_token = NULL,
-                attempt_count = GREATEST(0, attempt_count - 1),
-                next_run_at_ms = %s,
-                last_error = %s,
-                updated_at_ms = %s
-            WHERE handle = %s
-              AND status = 'running'
-              AND lease_token = %s
-              AND attempt_count = %s
-            RETURNING *
-            """,
-            (
-                int(now_ms) + max(0, int(delay_ms)),
-                _compact_error(f"agent_backpressure:{reason}"),
-                int(now_ms),
-                handle,
-                lease_token,
-                attempt_count,
-            ),
-        ).fetchone()
-        if commit:
-            self.conn.commit()
-        return dict(row) if row else None
-
-    def delete_summary_job(self, handle: str, *, commit: bool = True) -> bool:
-        cursor = self.conn.execute(
-            "DELETE FROM watchlist_handle_summary_jobs WHERE handle = %s",
-            (normalize_watchlist_handle(handle),),
-        )
-        if commit:
-            self.conn.commit()
-        return bool(cursor.rowcount)
-
-    def pending_summary_job(self, handle: str) -> dict[str, Any] | None:
-        row = self.conn.execute(
-            "SELECT * FROM watchlist_handle_summary_jobs WHERE handle = %s",
-            (normalize_watchlist_handle(handle),),
-        ).fetchone()
-        return dict(row) if row else None
-
-    def upsert_handle_summary(
-        self,
-        *,
-        handle: str,
-        generated_at_ms: int,
-        input_window_start_ms: int,
-        input_window_end_ms: int,
-        input_event_count: int,
-        signal_count_at_generation: int,
-        model: str,
-        summary_zh: str,
-        topics: list[dict[str, Any]],
-        raw_response: dict[str, Any],
-        commit: bool = True,
-    ) -> dict[str, Any]:
-        now_ms = _now_ms()
-        row = self.conn.execute(
-            """
-            INSERT INTO watchlist_handle_summaries(
-              handle, generated_at_ms, input_window_start_ms, input_window_end_ms, input_event_count,
-              signal_count_at_generation, model, summary_zh, topics_json, raw_response_json,
-              created_at_ms, updated_at_ms
-            )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT(handle) DO UPDATE SET
-              generated_at_ms = excluded.generated_at_ms,
-              input_window_start_ms = excluded.input_window_start_ms,
-              input_window_end_ms = excluded.input_window_end_ms,
-              input_event_count = excluded.input_event_count,
-              signal_count_at_generation = excluded.signal_count_at_generation,
-              model = excluded.model,
-              summary_zh = excluded.summary_zh,
-              topics_json = excluded.topics_json,
-              raw_response_json = excluded.raw_response_json,
-              updated_at_ms = excluded.updated_at_ms
-            RETURNING *
-            """,
-            (
-                normalize_watchlist_handle(handle),
-                int(generated_at_ms),
-                int(input_window_start_ms),
-                int(input_window_end_ms),
-                max(0, int(input_event_count)),
-                max(0, int(signal_count_at_generation)),
-                str(model or ""),
-                str(summary_zh or ""),
-                _json(topics),
-                _json(raw_response),
-                now_ms,
-                now_ms,
-            ),
-        ).fetchone()
-        if commit:
-            self.conn.commit()
-        return _decode_summary(dict(row))
-
-    def insert_summary_run(
-        self,
-        *,
-        run_id: str,
-        handle: str,
-        status: str,
-        model: str,
-        request_json: dict[str, Any],
-        response_json: dict[str, Any] | None,
-        input_event_count: int,
-        usage_json: dict[str, Any] | None,
-        error: str | None,
-        started_at_ms: int,
-        finished_at_ms: int,
-        safety_net_used: bool = False,
-        safety_net_retries: int = 0,
-        parse_mode: str = "strict",
-        commit: bool = True,
-    ) -> dict[str, Any]:
-        row = self.conn.execute(
-            """
-            INSERT INTO watchlist_handle_summary_runs(
-              run_id, handle, status, model, request_json, response_json, input_event_count,
-              usage_json, error, started_at_ms, finished_at_ms, created_at_ms,
-              safety_net_used, safety_net_retries, parse_mode
-            )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING *
-            """,
-            (
-                str(run_id),
-                normalize_watchlist_handle(handle),
-                str(status),
-                str(model or ""),
-                _json(request_json),
-                _json(response_json) if response_json is not None else None,
-                max(0, int(input_event_count)),
-                _json(usage_json or {}),
-                _compact_error(error) if error else None,
-                int(started_at_ms),
-                int(finished_at_ms),
-                _now_ms(),
-                bool(safety_net_used),
-                max(0, int(safety_net_retries)),
-                str(parse_mode or "strict"),
-            ),
-        ).fetchone()
-        if commit:
-            self.conn.commit()
-        return dict(row)
-
-    def complete_handle_summary(
-        self,
-        *,
-        job: dict[str, Any],
-        summary: dict[str, Any],
-        run: dict[str, Any],
-        handle: str,
-    ) -> dict[str, Any] | None:
-        if normalize_watchlist_handle(handle) != normalize_watchlist_handle(str(job.get("handle") or "")):
-            return None
-        with transaction(self.conn):
-            if not self.delete_claimed_summary_job(job, commit=False):
-                return None
-            stored_summary = self.upsert_handle_summary(**summary, commit=False)
-            self.insert_summary_run(**run, commit=False)
-        return stored_summary
-
-    def delete_claimed_summary_job(self, job: dict[str, Any], *, commit: bool = True) -> bool:
-        handle = normalize_watchlist_handle(str(job.get("handle") or ""))
-        lease_token = str(job.get("lease_token") or "")
-        if not lease_token:
-            return False
-        cursor = self.conn.execute(
-            """
-            DELETE FROM watchlist_handle_summary_jobs
-            WHERE handle = %s
-              AND status = 'running'
-              AND lease_token = %s
-            """,
-            (handle, lease_token),
-        )
-        if commit:
-            self.conn.commit()
-        return bool(cursor.rowcount)
-
-    def get_handle_summary(self, handle: str) -> dict[str, Any] | None:
-        row = self.conn.execute(
-            "SELECT * FROM watchlist_handle_summaries WHERE handle = %s",
-            (normalize_watchlist_handle(handle),),
-        ).fetchone()
-        return _decode_summary(dict(row)) if row else None
-
-    def record_signal_event_state(
-        self,
-        *,
-        handle: str,
-        event_id: str,
-        received_at_ms: int,
-        is_signal_event: bool,
-        commit: bool = True,
-    ) -> bool:
-        normalized_event_id = str(event_id or "").strip()
-        if not normalized_event_id:
-            return False
-        existing = self.conn.execute(
-            "SELECT handle FROM watchlist_handle_signal_events WHERE event_id = %s",
-            (normalized_event_id,),
-        ).fetchone()
-        existing_handle = str(existing["handle"]) if existing else None
-        changed_handles: set[str] = set()
-
-        if not bool(is_signal_event):
-            if existing_handle:
-                self.conn.execute(
-                    "DELETE FROM watchlist_handle_signal_events WHERE event_id = %s",
-                    (normalized_event_id,),
-                )
-                changed_handles.add(existing_handle)
-            self._recompute_signal_stats(changed_handles)
-            if commit:
-                self.conn.commit()
-            return bool(existing_handle)
-
-        try:
-            normalized_handle = normalize_watchlist_handle(handle)
-        except ValueError:
-            if commit:
-                self.conn.commit()
-            return False
-
-        now_ms = _now_ms()
-        self.conn.execute(
-            """
-            INSERT INTO watchlist_handle_signal_events(event_id, handle, received_at_ms, created_at_ms, updated_at_ms)
-            VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT(event_id) DO UPDATE SET
-              handle = excluded.handle,
-              received_at_ms = excluded.received_at_ms,
-              updated_at_ms = excluded.updated_at_ms
-            """,
-            (normalized_event_id, normalized_handle, int(received_at_ms), now_ms, now_ms),
-        )
-        changed_handles.add(normalized_handle)
-        if existing_handle and existing_handle != normalized_handle:
-            changed_handles.add(existing_handle)
-        self._recompute_signal_stats(changed_handles)
-        if commit:
-            self.conn.commit()
-        return True
-
-    def signal_stats_for_handle(self, handle: str) -> dict[str, Any] | None:
-        row = self.conn.execute(
-            """
-            SELECT *
-            FROM watchlist_handle_signal_stats
-            WHERE handle = %s
-            """,
-            (normalize_watchlist_handle(handle),),
-        ).fetchone()
-        return dict(row) if row else None
-
-    def backfill_signal_stats_batch(
-        self,
-        *,
-        after_received_at_ms: int | None,
-        after_event_id: str | None,
-        batch_size: int,
-        dry_run: bool = False,
-        commit: bool = True,
-    ) -> dict[str, Any]:
-        parsed_limit = max(0, int(batch_size))
-        if parsed_limit <= 0:
-            return {
-                "processed": 0,
-                "signal_events": 0,
-                "normalized_handles": 0,
-                "last_received_at_ms": after_received_at_ms,
-                "last_event_id": after_event_id,
-                "has_more": False,
-            }
-        clauses: list[str] = []
-        params: list[Any] = []
-        if after_received_at_ms is not None and after_event_id:
-            clauses.append("(se.received_at_ms, se.event_id) > (%s, %s)")
-            params.extend([int(after_received_at_ms), str(after_event_id)])
-        rows = self.conn.execute(
-            f"""
-            SELECT
-              se.event_id,
-              se.author_handle,
-              se.normalized_handle,
-              e.author_handle AS event_author_handle,
-              se.received_at_ms,
-              se.is_signal_event
-            FROM social_event_extractions se
-            LEFT JOIN events e
-              ON e.event_id = se.event_id
-             AND se.normalized_handle IS NULL
-            {"WHERE " + " AND ".join(clauses) if clauses else ""}
-            ORDER BY se.received_at_ms ASC, se.event_id ASC
-            LIMIT %s
-            """,
-            (*params, parsed_limit),
-        ).fetchall()
-        processed = 0
-        signal_events = 0
-        normalized_handles = 0
-        last_received_at_ms = after_received_at_ms
-        last_event_id = after_event_id
-        for raw_row in rows:
-            row = dict(raw_row)
-            processed += 1
-            last_received_at_ms = int(row["received_at_ms"])
-            last_event_id = str(row["event_id"])
-            handle = _safe_normalize_handle(row.get("normalized_handle"))
-            if handle is None:
-                handle = _safe_normalize_handle(row.get("author_handle"))
-            if handle is None:
-                handle = _safe_normalize_handle(row.get("event_author_handle"))
-            if handle and handle != row.get("normalized_handle"):
-                if not dry_run:
-                    self.conn.execute(
-                        """
-                        UPDATE social_event_extractions
-                        SET normalized_handle = %s,
-                            updated_at_ms = %s
-                        WHERE event_id = %s
-                          AND normalized_handle IS DISTINCT FROM %s
-                        """,
-                        (handle, _now_ms(), str(row["event_id"]), handle),
-                    )
-                normalized_handles += 1
-            if handle and bool(row.get("is_signal_event")):
-                signal_events += 1
-            if handle and not dry_run:
-                self.record_signal_event_state(
-                    handle=handle,
-                    event_id=str(row["event_id"]),
-                    received_at_ms=int(row["received_at_ms"]),
-                    is_signal_event=bool(row.get("is_signal_event")),
-                    commit=False,
-                )
-        if commit and not dry_run:
-            self.conn.commit()
-        return {
-            "processed": processed,
-            "signal_events": signal_events,
-            "normalized_handles": normalized_handles,
-            "last_received_at_ms": last_received_at_ms,
-            "last_event_id": last_event_id,
-            "has_more": len(rows) == parsed_limit,
-        }
-
-    def count_signal_events_total(self, handle: str) -> int:
-        row = self.conn.execute(
-            """
-            SELECT total_signal_count
-            FROM watchlist_handle_signal_stats
-            WHERE handle = %s
-            """,
-            (normalize_watchlist_handle(handle),),
-        ).fetchone()
-        return int(row["total_signal_count"] if row else 0)
-
-    def signal_events_for_summary(self, *, handle: str, since_ms: int, limit: int) -> list[dict[str, Any]]:
-        rows = self.conn.execute(
-            """
-            WITH selected AS (
-              SELECT *
-              FROM social_event_extractions
-              WHERE normalized_handle = %s
-                AND is_signal_event = TRUE
-                AND btrim(summary_zh) <> ''
-                AND received_at_ms >= %s
-              ORDER BY received_at_ms DESC, event_id DESC
-              LIMIT %s
-            )
-            SELECT
-              se.*,
-              e.text_clean AS event_text,
-              e.canonical_url AS canonical_url,
-              e.cashtags_json AS event_cashtags_json,
-              e.hashtags_json AS event_hashtags_json
-            FROM selected se
-            JOIN events e ON e.event_id = se.event_id
-            ORDER BY se.received_at_ms DESC, se.event_id DESC
-            """,
-            (normalize_watchlist_handle(handle), int(since_ms), max(0, int(limit))),
-        ).fetchall()
-        return [_decode_social_event(dict(row)) for row in rows]
 
     def timeline(self, *, handle: str, scope: str, cursor: str | None, limit: int) -> dict[str, Any]:
         normalized = normalize_watchlist_handle(handle)
@@ -593,8 +24,6 @@ class WatchlistIntelRepository:
         parsed_limit = max(0, int(limit))
         clauses = ["lower(e.author_handle) = %s"]
         params: list[Any] = [normalized]
-        if parsed_scope == "signal":
-            clauses.append("se.is_signal_event = TRUE")
         if cursor:
             try:
                 cursor_received_at_ms, cursor_event_id = decode_watchlist_timeline_cursor(cursor)
@@ -605,26 +34,8 @@ class WatchlistIntelRepository:
         rows = self.conn.execute(
             f"""
             SELECT
-              e.*,
-              se.extraction_id AS se_extraction_id,
-              se.schema_version AS se_schema_version,
-              se.model_version AS se_model_version,
-              se.event_type AS se_event_type,
-              se.source_action AS se_source_action,
-              se.subject AS se_subject,
-              se.direction_hint AS se_direction_hint,
-              se.attention_mechanism AS se_attention_mechanism,
-              se.impact_hint AS se_impact_hint,
-              se.semantic_novelty_hint AS se_semantic_novelty_hint,
-              se.confidence AS se_confidence,
-              se.is_signal_event AS se_is_signal_event,
-              se.anchor_terms_json AS se_anchor_terms_json,
-              se.token_candidates_json AS se_token_candidates_json,
-              se.semantic_risks_json AS se_semantic_risks_json,
-              se.summary_zh AS se_summary_zh,
-              se.raw_response_json AS se_raw_response_json
+              e.*
             FROM events e
-            LEFT JOIN social_event_extractions se ON se.event_id = e.event_id
             WHERE {" AND ".join(clauses)}
             ORDER BY e.received_at_ms DESC, e.event_id DESC
             LIMIT %s
@@ -677,37 +88,13 @@ class WatchlistIntelRepository:
             """,
             (handle, int(since_ms)),
         ).fetchone()
-        recent_signal = self.conn.execute(
-            """
-            SELECT COUNT(*) AS count
-            FROM social_event_extractions
-            WHERE author_handle = %s
-              AND received_at_ms >= %s
-              AND is_signal_event = TRUE
-            """,
-            (handle, int(since_ms)),
-        ).fetchone()
-        summary = self.conn.execute(
-            """
-            SELECT generated_at_ms, signal_count_at_generation
-            FROM watchlist_handle_summaries
-            WHERE handle = %s
-            """,
-            (handle,),
-        ).fetchone()
-        summary_row = dict(summary) if summary else {}
-        recent_signal_count = int(recent_signal["count"] if recent_signal else 0)
         return _decode_handle_overview_row(
             {
                 "handle": handle,
                 "last_source_event_at_ms": last_event["received_at_ms"] if last_event else None,
                 "recent_source_event_count": int(recent_source["count"] if recent_source else 0),
-                "recent_signal_event_count": recent_signal_count,
-                "total_signal_event_count": max(
-                    int(summary_row.get("signal_count_at_generation") or 0),
-                    recent_signal_count,
-                ),
-                "summary_generated_at_ms": summary_row.get("generated_at_ms"),
+                "recent_signal_event_count": 0,
+                "total_signal_event_count": 0,
             }
         )
 
@@ -717,31 +104,11 @@ class WatchlistIntelRepository:
         cluster_limit = max(0, int(limit))
         clauses = ["lower(e.author_handle) = %s", "e.received_at_ms >= %s"]
         params: list[Any] = [normalized, int(since_ms)]
-        if parsed_scope == "signal":
-            clauses.append("se.is_signal_event = TRUE")
         rows = self.conn.execute(
             f"""
             SELECT
-              e.*,
-              se.extraction_id AS se_extraction_id,
-              se.schema_version AS se_schema_version,
-              se.model_version AS se_model_version,
-              se.event_type AS se_event_type,
-              se.source_action AS se_source_action,
-              se.subject AS se_subject,
-              se.direction_hint AS se_direction_hint,
-              se.attention_mechanism AS se_attention_mechanism,
-              se.impact_hint AS se_impact_hint,
-              se.semantic_novelty_hint AS se_semantic_novelty_hint,
-              se.confidence AS se_confidence,
-              se.is_signal_event AS se_is_signal_event,
-              se.anchor_terms_json AS se_anchor_terms_json,
-              se.token_candidates_json AS se_token_candidates_json,
-              se.semantic_risks_json AS se_semantic_risks_json,
-              se.summary_zh AS se_summary_zh,
-              se.raw_response_json AS se_raw_response_json
+              e.*
             FROM events e
-            LEFT JOIN social_event_extractions se ON se.event_id = e.event_id
             WHERE {" AND ".join(clauses)}
             ORDER BY e.received_at_ms DESC, e.event_id DESC
             """,
@@ -754,11 +121,7 @@ class WatchlistIntelRepository:
             item["token_resolutions"] = resolutions_by_event.get(str(item["event_id"]), [])
         clusters = _overview_clusters(events)
         source_event_count = len(events)
-        signal_event_count = sum(
-            1
-            for item in events
-            if isinstance(item.get("social_event"), dict) and item["social_event"].get("is_signal_event")
-        )
+        signal_event_count = 0
         last_source_event_at_ms = max((int(item.get("received_at_ms") or 0) for item in events), default=None)
         candidate_mention_count = _cluster_count(clusters["candidate_mention_clusters"])
         resolved_token_count = _cluster_count(clusters["resolved_token_clusters"])
@@ -786,63 +149,8 @@ class WatchlistIntelRepository:
     def token_resolutions_for_events(self, event_ids: tuple[str, ...]) -> dict[str, list[dict[str, Any]]]:
         return EventTokenProjectionQuery(self.conn).for_events(event_ids)
 
-    def _recompute_signal_stats(self, handles: set[str]) -> None:
-        for handle in sorted(handles):
-            aggregate = self.conn.execute(
-                """
-                SELECT
-                  COUNT(*) AS total_signal_count,
-                  MIN(received_at_ms) AS first_signal_at_ms,
-                  MAX(received_at_ms) AS latest_signal_at_ms
-                FROM watchlist_handle_signal_events
-                WHERE handle = %s
-                """,
-                (handle,),
-            ).fetchone()
-            total_signal_count = int(aggregate["total_signal_count"] if aggregate else 0)
-            if total_signal_count <= 0:
-                self.conn.execute("DELETE FROM watchlist_handle_signal_stats WHERE handle = %s", (handle,))
-                continue
-            latest = self.conn.execute(
-                """
-                SELECT event_id, received_at_ms
-                FROM watchlist_handle_signal_events
-                WHERE handle = %s
-                ORDER BY received_at_ms DESC, event_id DESC
-                LIMIT 1
-                """,
-                (handle,),
-            ).fetchone()
-            now_ms = _now_ms()
-            self.conn.execute(
-                """
-                INSERT INTO watchlist_handle_signal_stats(
-                  handle, total_signal_count, latest_signal_at_ms, latest_signal_event_id,
-                  first_signal_at_ms, created_at_ms, updated_at_ms
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT(handle) DO UPDATE SET
-                  total_signal_count = excluded.total_signal_count,
-                  latest_signal_at_ms = excluded.latest_signal_at_ms,
-                  latest_signal_event_id = excluded.latest_signal_event_id,
-                  first_signal_at_ms = excluded.first_signal_at_ms,
-                  updated_at_ms = excluded.updated_at_ms
-                """,
-                (
-                    handle,
-                    total_signal_count,
-                    int(latest["received_at_ms"]),
-                    str(latest["event_id"]),
-                    int(aggregate["first_signal_at_ms"]),
-                    now_ms,
-                    now_ms,
-                ),
-            )
-
-
 def _decode_timeline_row(row: dict[str, Any]) -> dict[str, Any]:
     event = decode_event_row(row)
-    social_event = _decode_social_event_alias(row) if row.get("se_extraction_id") else None
     return {
         "event_id": str(row.get("event_id") or ""),
         "received_at_ms": int(row.get("received_at_ms") or 0),
@@ -854,67 +162,17 @@ def _decode_timeline_row(row: dict[str, Any]) -> dict[str, Any]:
         "hashtags": _loads(row.get("hashtags_json"), []),
         "mentions": _loads(row.get("mentions_json"), []),
         "event": event,
-        "social_event": social_event,
+        "social_event": None,
     }
-
-
-def _decode_social_event_alias(row: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "extraction_id": row.get("se_extraction_id"),
-        "schema_version": row.get("se_schema_version"),
-        "model_version": row.get("se_model_version"),
-        "event_type": row.get("se_event_type"),
-        "source_action": row.get("se_source_action"),
-        "subject": row.get("se_subject"),
-        "direction_hint": row.get("se_direction_hint"),
-        "attention_mechanism": row.get("se_attention_mechanism"),
-        "impact_hint": row.get("se_impact_hint"),
-        "semantic_novelty_hint": row.get("se_semantic_novelty_hint"),
-        "confidence": row.get("se_confidence"),
-        "is_signal_event": bool(row.get("se_is_signal_event")),
-        "anchor_terms": _loads(row.get("se_anchor_terms_json"), []),
-        "token_candidates": _loads(row.get("se_token_candidates_json"), []),
-        "semantic_risks": _loads(row.get("se_semantic_risks_json"), []),
-        "summary_zh": row.get("se_summary_zh") or "",
-        "raw_response": _loads(row.get("se_raw_response_json"), {}),
-    }
-
-
-def _decode_social_event(row: dict[str, Any]) -> dict[str, Any]:
-    row["anchor_terms"] = _loads(row.pop("anchor_terms_json", []), [])
-    row["token_candidates"] = _loads(row.pop("token_candidates_json", []), [])
-    row["semantic_risks"] = _loads(row.pop("semantic_risks_json", []), [])
-    row["raw_response"] = _loads(row.pop("raw_response_json", {}), {})
-    row["cashtags"] = _loads(row.pop("event_cashtags_json", []), [])
-    row["hashtags"] = _loads(row.pop("event_hashtags_json", []), [])
-    row["is_signal_event"] = bool(row.get("is_signal_event"))
-    return row
-
-
-def _safe_normalize_handle(value: Any) -> str | None:
-    try:
-        return normalize_watchlist_handle(str(value or ""))
-    except ValueError:
-        return None
-
-
-def _decode_summary(row: dict[str, Any]) -> dict[str, Any]:
-    row["topics"] = _loads(row.pop("topics_json", []), [])
-    row["raw_response"] = _loads(row.pop("raw_response_json", {}), {})
-    return row
 
 
 def _decode_handle_overview_row(row: dict[str, Any]) -> dict[str, Any]:
-    summary_generated_at_ms = row.get("summary_generated_at_ms")
     return {
         "handle": str(row.get("handle") or ""),
         "last_source_event_at_ms": _optional_int(row.get("last_source_event_at_ms")),
         "recent_source_event_count": int(row.get("recent_source_event_count") or 0),
         "recent_signal_event_count": int(row.get("recent_signal_event_count") or 0),
         "total_signal_event_count": int(row.get("total_signal_event_count") or 0),
-        "summary_status": "ready" if summary_generated_at_ms is not None else "not_ready",
-        "summary_is_stale": False,
-        "summary_generated_at_ms": _optional_int(summary_generated_at_ms),
     }
 
 
@@ -948,23 +206,6 @@ def _overview_clusters(events: list[dict[str, Any]]) -> dict[str, Any]:
             cluster["count"] += 1
 
     for item in events:
-        raw_social_event = item.get("social_event")
-        social_event = raw_social_event if isinstance(raw_social_event, dict) else {}
-        for candidate in _list(social_event.get("token_candidates")):
-            symbol = _candidate_symbol(candidate)
-            if not symbol:
-                continue
-            key = _symbol_key(symbol)
-            if key in resolved_symbols:
-                continue
-            _increment_cluster(
-                candidates,
-                key,
-                label=_money_label(symbol),
-                query=_money_label(symbol),
-                kind="candidate_mention",
-                source="social_event_candidates",
-            )
         for cashtag in _list(item.get("cashtags")):
             symbol = _clean_symbol(cashtag)
             if not symbol:
@@ -991,18 +232,6 @@ def _overview_clusters(events: list[dict[str, Any]]) -> dict[str, Any]:
                     kind="narrative",
                     source="event_hashtags",
                 )
-        for anchor in _list(social_event.get("anchor_terms")):
-            term = _anchor_term(anchor)
-            if term and _symbol_key(term) not in resolved_symbols:
-                _increment_cluster(
-                    narratives,
-                    f"anchor:{term.lower()}",
-                    label=term,
-                    query=term,
-                    kind="narrative",
-                    source="anchor_terms",
-                )
-
     return {
         "resolved_token_clusters": _sorted_clusters(resolved.values()),
         "candidate_mention_clusters": _sorted_clusters(candidates.values()),
@@ -1069,24 +298,6 @@ def _token_symbol(value: dict[str, Any]) -> str | None:
     return None
 
 
-def _candidate_symbol(value: Any) -> str | None:
-    if isinstance(value, dict):
-        return _clean_symbol(value.get("symbol") or value.get("ticker") or value.get("token"))
-    return _clean_symbol(value)
-
-
-def _anchor_term(value: Any) -> str | None:
-    if isinstance(value, dict):
-        term = str(value.get("term") or value.get("label") or "").strip()
-    else:
-        term = str(value or "").strip()
-    if not term or term.startswith(("$", "#", "@")):
-        return None
-    if len(term) > 48:
-        return None
-    return term
-
-
 def _clean_symbol(value: Any) -> str | None:
     symbol = str(value or "").strip().lstrip("$").upper()
     return symbol or None
@@ -1131,18 +342,6 @@ def _loads(value: Any, default: Any) -> Any:
         return json.loads(value)
     except json.JSONDecodeError:
         return default
-
-
-def _json(value: Any) -> Jsonb:
-    return Jsonb(value, dumps=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True, default=json_default))
-
-
-def _compact_error(error: Any) -> str:
-    return str(error or "")[:1000]
-
-
-def _now_ms() -> int:
-    return int(time.time() * 1000)
 
 
 __all__ = ["WatchlistIntelRepository"]

@@ -6,7 +6,6 @@ import yaml
 from pydantic import ValidationError
 
 from gmgn_twitter_intel.domains.news_intel.types.source_classification import PROVIDER_TYPES, SOURCE_ROLES
-from gmgn_twitter_intel.domains.social_enrichment.repositories.enrichment_repository import RUNNING_TIMEOUT_MS
 from gmgn_twitter_intel.platform.config.settings import (
     NEWS_PROVIDER_TYPES,
     NEWS_SOURCE_ROLES,
@@ -73,32 +72,19 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.log_file == tmp_path / ".gmgn-twitter-intel" / "logs" / "gmgn-twitter-intel.log"
     assert settings.llm_configured is False
     assert settings.llm_timeout_seconds == 120
-    assert settings.llm_timeout_seconds * 1000 < RUNNING_TIMEOUT_MS
     assert settings.agent_runtime_default_model == "deepseek-v4-flash"
     assert settings.agent_runtime_model_for_lane("pulse.pipeline") == "deepseek-v4-flash"
     assert settings.agent_runtime_model_for_lane("pulse.signal_analyst") == "deepseek-v4-flash"
     assert settings.agent_runtime_model_for_lane("pulse.bear_case") == "deepseek-v4-flash"
     assert settings.agent_runtime_model_for_lane("pulse.risk_portfolio_judge") == "deepseek-v4-flash"
     assert settings.pulse_agent_configured is False
-    assert settings.watchlist_handle_summary_configured is False
-    assert settings.workers.enrichment.interval_seconds == 2
-    assert settings.workers.enrichment.concurrency == 4
+    assert not hasattr(settings.workers, "enrichment")
     assert settings.workers.pulse_candidate.interval_seconds == 60
     assert settings.workers.pulse_candidate.batch_size == 10
     assert settings.workers.pulse_candidate.max_attempts == 3
     assert settings.workers.pulse_candidate.trigger_thresholds.min_rank_score == 45
     assert settings.workers.pulse_candidate.gate_thresholds.trade_candidate_min == 72
-    assert settings.workers.handle_summary.enabled is True
-    assert settings.workers.handle_summary.signal_threshold == 10
-    assert settings.workers.handle_summary.time_threshold_ms == 1_800_000
-    assert settings.workers.handle_summary.min_interval_ms == 300_000
-    assert settings.workers.handle_summary.input_limit == 80
-    assert settings.workers.handle_summary.interval_seconds == 30
-    assert settings.workers.handle_summary.statement_timeout_seconds == 10
-    assert settings.workers.handle_summary.reconcile_limit == 20
-    assert settings.workers.handle_summary.window_days == 3
-    assert settings.workers.handle_summary.lease_ms == 120_000
-    assert settings.workers.handle_summary.max_attempts == 3
+    assert not hasattr(settings.workers, "handle_summary")
     assert settings.gmgn_configured is False
     assert settings.upstream_chains == ("sol", "eth", "base", "bsc")
     assert settings.upstream_channels == ("twitter_monitor_basic", "twitter_monitor_token")
@@ -378,7 +364,7 @@ def test_load_settings_rejects_unknown_top_level_keys(tmp_path, monkeypatch):
         load_settings()
 
 
-def test_postgres_storage_and_llm_enrichment_can_be_explicitly_configured(tmp_path, monkeypatch):
+def test_postgres_storage_and_llm_can_be_explicitly_configured(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     write_config(
         tmp_path,
@@ -415,13 +401,8 @@ def test_postgres_storage_and_llm_enrichment_can_be_explicitly_configured(tmp_pa
                     "disable_thinking": True,
                     "include_usage": True,
                 },
-                "lanes": {
-                    "watchlist.handle_summary": {
-                        "model": "gpt-summary",
-                    },
-                },
+                "lanes": {},
             },
-            "enrichment": {"interval_seconds": 0.5, "concurrency": 3},
             "pulse_candidate": {
                 "interval_seconds": 1,
                 "batch_size": 100,
@@ -433,17 +414,6 @@ def test_postgres_storage_and_llm_enrichment_can_be_explicitly_configured(tmp_pa
                     "high_info_rejection_min": 25,
                     "high_conviction_min": 74,
                 },
-            },
-            "handle_summary": {
-                "interval_seconds": 1,
-                "concurrency": 8,
-                "lease_ms": 10_000,
-                "max_attempts": 1,
-                "signal_threshold": 1,
-                "time_threshold_ms": 60_000,
-                "min_interval_ms": 60_000,
-                "input_limit": 500,
-                "window_days": 30,
             },
         },
     )
@@ -464,8 +434,6 @@ def test_postgres_storage_and_llm_enrichment_can_be_explicitly_configured(tmp_pa
     assert settings.llm_trace_api_key == "sk-trace"
     assert settings.llm_trace_export_configured is False
     assert settings.llm_trace_include_sensitive_data is False
-    assert settings.workers.enrichment.interval_seconds == 0.5
-    assert settings.workers.enrichment.concurrency == 3
     assert settings.workers.pulse_candidate.interval_seconds == 1
     assert settings.workers.pulse_candidate.batch_size == 100
     assert settings.workers.pulse_candidate.max_attempts == 1
@@ -478,17 +446,6 @@ def test_postgres_storage_and_llm_enrichment_can_be_explicitly_configured(tmp_pa
     assert settings.workers.pulse_candidate.gate_thresholds.token_watch_min == 40
     assert settings.workers.pulse_candidate.gate_thresholds.high_info_rejection_min == 25
     assert settings.workers.pulse_candidate.gate_thresholds.high_conviction_min == 74
-    assert settings.agent_runtime_model_for_lane("watchlist.handle_summary") == "gpt-summary"
-    assert settings.watchlist_handle_summary_configured is True
-    assert settings.workers.handle_summary.signal_threshold == 1
-    assert settings.workers.handle_summary.time_threshold_ms == 60_000
-    assert settings.workers.handle_summary.min_interval_ms == 60_000
-    assert settings.workers.handle_summary.interval_seconds == 1
-    assert settings.workers.handle_summary.concurrency == 8
-    assert settings.workers.handle_summary.input_limit == 500
-    assert settings.workers.handle_summary.window_days == 30
-    assert settings.workers.handle_summary.lease_ms == 10_000
-    assert settings.workers.handle_summary.max_attempts == 1
 
 
 def test_agent_runtime_lane_model_can_override_default_model(tmp_path, monkeypatch):
@@ -769,24 +726,24 @@ def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path
         {
             "ws_token": "secret",
             "handles": ["toly"],
-            "notifications": {
-                "enabled": True,
-                "token_flow_limit": 40,
+                "notifications": {
+                    "enabled": True,
+                    "candidate_limit": 40,
                 "rules": {
-                    "hot_quality_token_5m": {
-                        "enabled": True,
-                        "channels": ["in_app"],
-                        "social_heat_min": 82,
-                        "discussion_quality_min": 72,
-                        "cooldown_seconds": 600,
-                    },
                     "signal_pulse_candidate": {
                         "enabled": True,
                         "channels": ["in_app", "pushdeer"],
-                        "window": "5m",
+                        "window": "1h",
                         "scopes": ["all"],
                         "statuses": ["trade_candidate", "token_watch"],
                         "cooldown_seconds": 120,
+                    },
+                    "news_high_signal": {
+                        "enabled": True,
+                        "channels": ["in_app", "pushdeer"],
+                        "combined_score_min": 70,
+                        "external_score_min": 85,
+                        "cooldown_seconds": 1800,
                     },
                 },
                 "channels": {
@@ -804,24 +761,48 @@ def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path
     settings = load_settings()
 
     assert settings.notifications.enabled is True
-    assert settings.notifications.token_flow_limit == 40
+    assert settings.notifications.candidate_limit == 40
     activity_rule = settings.notifications.rules["watched_account_activity"]
     assert activity_rule.channels == ("in_app",)
     assert activity_rule.cooldown_seconds == 300
     alert_rule = settings.notifications.rules["watched_account_token_alert"]
     assert alert_rule.channels == ("in_app",)
     assert alert_rule.cooldown_seconds == 900
-    assert settings.notifications.rules["hot_quality_token_5m"].social_heat_min == 82
-    assert settings.notifications.rules["hot_quality_token_5m"].discussion_quality_min == 72
-    assert settings.notifications.rules["hot_quality_token_5m"].cooldown_seconds == 600
+    assert "hot_quality_token_5m" not in settings.notifications.rules
+    assert "quality_token_5m" not in settings.notifications.rules
     pulse_rule = settings.notifications.rules["signal_pulse_candidate"]
     assert pulse_rule.channels == ("in_app", "pushdeer")
-    assert pulse_rule.window == "5m"
+    assert pulse_rule.window == "1h"
     assert pulse_rule.scopes == ("all",)
     assert pulse_rule.statuses == ("trade_candidate", "token_watch")
     assert pulse_rule.cooldown_seconds == 120
+    news_rule = settings.notifications.rules["news_high_signal"]
+    assert news_rule.combined_score_min == 70
+    assert news_rule.external_score_min == 85
+    assert news_rule.cooldown_seconds == 1800
     assert settings.notifications.channels["pushdeer"].provider == "pushdeer"
     assert settings.notifications.channels["pushdeer"].url == "pushdeer://pushKey"
+
+
+def test_notification_settings_reject_legacy_5min_token_rules(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "notifications": {
+                "rules": {
+                    "hot_quality_token_5m": {
+                        "enabled": False,
+                    }
+                }
+            },
+        },
+    )
+
+    with pytest.raises(ValidationError):
+        load_settings()
 
 
 def test_notification_settings_reject_removed_rule_fields(tmp_path, monkeypatch):
@@ -856,6 +837,27 @@ def test_signal_pulse_rule_rejects_token_flow_thresholds(tmp_path, monkeypatch):
                 "rules": {
                     "signal_pulse_candidate": {
                         "social_heat_min": 70,
+                    }
+                }
+            },
+        },
+    )
+
+    with pytest.raises(ValidationError):
+        load_settings()
+
+
+def test_signal_pulse_notification_rule_rejects_removed_5m_window(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "notifications": {
+                "rules": {
+                    "signal_pulse_candidate": {
+                        "window": "5m",
                     }
                 }
             },
@@ -908,8 +910,6 @@ def test_load_settings_requires_workers_yaml(tmp_path, monkeypatch):
 @pytest.mark.parametrize(
     "removed_payload",
     [
-        {"llm": {"enrichment_poll_interval": 2}},
-        {"llm": {"enrichment_concurrency": 4}},
         {"llm": {"pulse_agent_batch_size": 10}},
         {"llm": {"watchlist_handle_summary_poll_interval_seconds": 2}},
         {"notifications": {"poll_interval_seconds": 5}},
@@ -935,8 +935,6 @@ def test_config_example_excludes_worker_runtime_knobs() -> None:
     payload = yaml.safe_load(Path("config.example.yaml").read_text(encoding="utf-8"))
     llm = payload["llm"]
     forbidden_llm_keys = {
-        "enrichment_poll_interval",
-        "enrichment_concurrency",
         "pulse_agent_enabled",
         "pulse_agent_interval_seconds",
         "pulse_agent_batch_size",
@@ -970,10 +968,9 @@ def test_config_example_excludes_worker_runtime_knobs() -> None:
     ]
     assert "workers" not in payload
     workers = WorkersSettings(**yaml.safe_load(default_workers_yaml()))
-    assert workers.enrichment.concurrency == 4
+    assert not hasattr(workers, "enrichment")
     assert workers.pulse_candidate.trigger_thresholds.min_rank_score == 45
-    assert workers.handle_summary.time_threshold_ms == 1_800_000
-    assert workers.handle_summary.window_days == 3
+    assert not hasattr(workers, "handle_summary")
     Settings(**{**payload, "workers": workers})
 
 

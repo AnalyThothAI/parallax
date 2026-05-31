@@ -15,7 +15,7 @@ export function WatchlistInsightRail({
   riskNotes: string[];
 }) {
   return (
-    <aside className="watchlist-extraction-panel" aria-label="Extracted account signals">
+    <aside className="watchlist-extraction-panel" aria-label="Watchlist source context">
       <ClusterPanel
         emptyLabel="No resolved token targets in this window."
         eyebrow="token projection"
@@ -24,7 +24,7 @@ export function WatchlistInsightRail({
       />
       <ClusterPanel
         emptyLabel="No unresolved candidate mentions in this window."
-        eyebrow="extracted candidates"
+        eyebrow="source candidates"
         items={candidateClusters}
         title="Candidate mentions"
       />

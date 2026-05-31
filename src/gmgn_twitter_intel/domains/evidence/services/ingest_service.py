@@ -30,7 +30,6 @@ from gmgn_twitter_intel.domains.evidence.interfaces import (
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.domains.ingestion.interfaces import IngestedEvent
-from gmgn_twitter_intel.domains.social_enrichment.interfaces import watched_social_event_priority
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
     IntentResolutionRepository,
     SignalRepository,
@@ -66,7 +65,6 @@ class IngestService:
         evidence: EvidenceRepository,
         entities: EntityRepository,
         signals: SignalRepository,
-        enrichment: Any,
         registry: RegistryRepository | None = None,
         identity_evidence: IdentityEvidenceRepository | None = None,
         token_intent_lookup: TokenIntentLookupRepository | None = None,
@@ -86,7 +84,6 @@ class IngestService:
         self.evidence = evidence
         self.entities = entities
         self.signals = signals
-        self.enrichment = enrichment
         self.registry = registry or RegistryRepository(evidence.conn)
         self.identity_evidence = identity_evidence or IdentityEvidenceRepository(evidence.conn)
         self.token_intent_lookup = token_intent_lookup or TokenIntentLookupRepository(evidence.conn)
@@ -261,19 +258,6 @@ class IngestService:
                 intents_by_id={item.intent_id: item for item in prepared.intents},
                 is_watched=prepared.is_watched,
             )
-            enrichment_job_id = None
-            enrichment_priority = watched_social_event_priority(
-                event=prepared.raw_event,
-                entities=prepared.entities,
-                token_resolutions=token_resolutions,
-            )
-            if prepared.is_watched and enrichment_priority is not None:
-                enrichment_job_id = self.enrichment.enqueue_watched_event(
-                    event_id=prepared.event_id,
-                    received_at_ms=prepared.event_ms,
-                    priority=enrichment_priority,
-                    commit=False,
-                )
         return IngestedEvent(
             event=prepared.raw_event,
             entities=[_entity_payload(entity) for entity in prepared.entities],
@@ -281,7 +265,6 @@ class IngestService:
             token_intents=token_intents,
             token_resolutions=token_resolutions,
             inserted=True,
-            enrichment_job_id=enrichment_job_id,
         )
 
     def market_resolution_for_decision(self, decision: Any) -> dict[str, Any] | None:

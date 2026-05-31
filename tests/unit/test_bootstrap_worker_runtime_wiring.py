@@ -467,8 +467,6 @@ def _settings(
             "mention_semantics": {"enabled": mention_semantics_enabled},
             "token_discussion_digest": {"enabled": token_discussion_digest_enabled},
             "pulse_candidate": {"enabled": False},
-            "enrichment": {"enabled": False},
-            "handle_summary": {"enabled": False},
             "notification_rule": {"enabled": notifications_enabled},
             "notification_delivery": {"enabled": notifications_enabled},
         },
@@ -493,8 +491,6 @@ class FakeProviders:
             stream_dex_market=object() if stream_dex_market is _UNSET else stream_dex_market,
         )
         self.pulse_lab = SimpleNamespace(decision_provider=None)
-        self.watchlist_intel = SimpleNamespace(summary_provider=None)
-        self.social_enrichment = SimpleNamespace(event_enrichment=None)
         self.ingestion = SimpleNamespace(upstream_client_factory=upstream_client_factory)
         self.macrodata = SimpleNamespace(stock_quote_provider=None)
         self.news_intel = SimpleNamespace(feed_client=object(), brief_provider=brief_provider)

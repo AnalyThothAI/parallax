@@ -66,6 +66,7 @@ class NewsItemBriefPayload(BaseModel):
     status: NewsItemBriefStatus
     direction: NewsItemBriefDirection
     decision_class: NewsItemBriefDecision
+    title_zh: str = Field(default="", max_length=180)
     summary_zh: str = Field(default="", max_length=1200)
     market_read_zh: str = Field(default="", max_length=1200)
     bull_view: NewsItemBriefSideView = Field(default_factory=NewsItemBriefSideView)

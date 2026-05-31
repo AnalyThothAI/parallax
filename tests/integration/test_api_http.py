@@ -862,20 +862,20 @@ def test_api_exposes_notification_list_summary_and_read_state(tmp_path):
             channels=["in_app"],
         )
         runtime.notifications.insert_notification(
-            dedup_key="hot:pepe",
-            rule_id="hot_quality_token_5m",
+            dedup_key="news:pepe",
+            rule_id="news_high_signal",
             severity="high",
-            title="PEPE heat",
-            body="heat score 88",
+            title="PEPE news",
+            body="news score 88",
             entity_type="token",
             entity_key="token:eth:pepe",
             symbol="PEPE",
             chain="eth",
             address=PEPE,
-            source_table="token_flow",
+            source_table="news_items",
             source_id="token:eth:pepe",
             occurrence_at_ms=1_700_000_060_000,
-            payload={"social_heat_score": 88},
+            payload={"provider_score": 88},
             channels=["in_app"],
         )
         assert first is not None
@@ -893,8 +893,8 @@ def test_api_exposes_notification_list_summary_and_read_state(tmp_path):
     assert summary.json()["data"]["account_unread_counts"] == {"toly": 1}
 
     assert listed.status_code == 200
-    assert listed.json()["data"]["items"][0]["rule_id"] == "hot_quality_token_5m"
-    assert listed.json()["data"]["items"][0]["payload"]["social_heat_score"] == 88
+    assert listed.json()["data"]["items"][0]["rule_id"] == "news_high_signal"
+    assert listed.json()["data"]["items"][0]["payload"]["provider_score"] == 88
     assert listed.json()["data"]["items"][0]["channels"] == ["in_app"]
 
     assert read.status_code == 200
@@ -960,18 +960,18 @@ def test_api_exposes_notification_delivery_audit(tmp_path):
     with TestClient(app) as client:
         runtime = client.app.state.service
         notification = runtime.notifications.insert_notification(
-            dedup_key="hot:pepe",
-            rule_id="hot_quality_token_5m",
+            dedup_key="news:pepe",
+            rule_id="news_high_signal",
             severity="high",
-            title="PEPE heat",
-            body="heat score 88",
+            title="PEPE news",
+            body="news score 88",
             entity_type="token",
             entity_key="token:eth:pepe",
             symbol="PEPE",
-            source_table="token_flow",
+            source_table="news_items",
             source_id="token:eth:pepe",
             occurrence_at_ms=1_700_000_060_000,
-            payload={"social_heat_score": 88},
+            payload={"provider_score": 88},
             channels=["in_app", "pushdeer"],
         )
         assert notification is not None
@@ -992,13 +992,13 @@ def test_api_exposes_notification_delivery_audit(tmp_path):
     assert body["data"]["items"][0]["status"] == "pending"
 
 
-def test_api_exposes_social_enrichment_read_models_and_deletes_harness_routes(tmp_path):
+def test_api_deletes_social_enrichment_and_harness_routes(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
         headers = {"Authorization": "Bearer secret"}
-        social_events = client.get("/api/social-events?window=1h&limit=5", headers=headers)
         deleted = [
+            client.get("/api/social-events?window=1h&limit=5", headers=headers),
             client.get("/api/attention-seeds?window=1h&limit=5", headers=headers),
             client.get("/api/harness-snapshots?window=1h&horizon=6h&limit=5", headers=headers),
             client.get("/api/harness-outcomes?window=1h&horizon=6h&limit=5", headers=headers),
@@ -1007,9 +1007,7 @@ def test_api_exposes_social_enrichment_read_models_and_deletes_harness_routes(tm
             client.get("/api/harness-score-buckets?horizon=6h", headers=headers),
         ]
 
-    assert social_events.status_code == 200
-    assert social_events.json()["data"]["items"] == []
-    assert [response.status_code for response in deleted] == [404, 404, 404, 404, 404, 404]
+    assert [response.status_code for response in deleted] == [404, 404, 404, 404, 404, 404, 404]
 
 
 def test_api_exposes_signal_pulse_empty_contract_after_hard_cut(tmp_path):

@@ -1,10 +1,9 @@
-import type { WatchlistSocialEvent, WatchlistTimelineItem } from "@lib/types";
+import type { WatchlistTimelineItem } from "@lib/types";
 import type { TokenCasePostEvent, TokenCaseTone } from "@shared/model/tokenCaseViewModel";
 import {
   buildTokenPostEventMarket,
   cleanText,
   normalizeTokenSymbol,
-  numberValue,
   relativeTimeLabel,
   tokenPricePill,
 } from "@shared/model/tokenPostEvent";
@@ -12,32 +11,25 @@ import {
 type TokenResolution = NonNullable<WatchlistTimelineItem["token_resolutions"]>[number];
 
 export function buildWatchlistTimelineEvent(item: WatchlistTimelineItem): TokenCasePostEvent {
-  const social = item.social_event;
   const resolution = primaryResolution(item.token_resolutions);
   const price = resolution?.price;
-  const summary = cleanText(social?.summary_zh);
   const sourceText = cleanText(item.text_clean);
-  const text = summary ?? sourceText ?? "(empty source event)";
-  const confidence = numberValue(social?.confidence);
-  const tokenSymbols = uniqueStrings([
-    resolutionSymbol(resolution),
-    ...termsFromRecords(social?.token_candidates, "symbol"),
-    ...(item.cashtags ?? []),
-  ]);
+  const text = sourceText ?? "(empty source event)";
+  const tokenSymbols = uniqueStrings([resolutionSymbol(resolution), ...(item.cashtags ?? [])]);
 
   return {
     id: item.event_id,
     handle: cleanText(item.author_handle),
     text,
-    sourceText: summary ? sourceText : null,
-    detailsLabel: summary ? "Original" : null,
+    sourceText: null,
+    detailsLabel: null,
     url: cleanText(item.canonical_url),
     timestampMs: item.received_at_ms ?? null,
     timeLabel: item.received_at_ms ? relativeTimeLabel(item.received_at_ms) : null,
-    phase: summary ? "signal" : "source",
-    role: cleanText(social?.event_type) ?? cleanText(item.action),
+    phase: "source",
+    role: cleanText(item.action),
     isWatched: true,
-    pills: watchlistPills({ item, price, resolution, social, tokenSymbols }),
+    pills: watchlistPills({ item, price, resolution, tokenSymbols }),
     market: buildTokenPostEventMarket({
       fallbackProvider: "mention price",
       observationKind: price?.observation_kind,
@@ -46,11 +38,10 @@ export function buildWatchlistTimelineEvent(item: WatchlistTimelineItem): TokenC
       status: price?.status,
     }),
     quality: {
-      score: confidence,
-      scoreLabel:
-        confidence === null ? "confidence -" : `confidence ${Math.round(confidence * 100)}%`,
-      reasons: social?.semantic_risks ?? [],
-      contributions: socialContributions(social),
+      score: null,
+      scoreLabel: "source event",
+      reasons: [],
+      contributions: [],
     },
   };
 }
@@ -59,64 +50,26 @@ function watchlistPills({
   item,
   price,
   resolution,
-  social,
   tokenSymbols,
 }: {
   item: WatchlistTimelineItem;
   price: TokenResolution["price"] | undefined;
   resolution: TokenResolution | null;
-  social: WatchlistSocialEvent | null | undefined;
   tokenSymbols: string[];
 }): TokenCasePostEvent["pills"] {
   const pricePill = tokenPricePill(price?.price_usd, price?.status);
   return uniquePills([
-    {
-      label: social?.summary_zh ? "signal" : "source",
-      tone: social?.summary_zh ? "opportunity" : "health",
-    },
+    { label: "source", tone: "health" },
     ...tokenSymbols.map((symbol) => ({ label: `$${symbol}`, tone: "opportunity" as const })),
     pricePill,
     resolution?.resolution_status
       ? { label: resolution.resolution_status.replaceAll("_", " "), tone: "info" as const }
       : null,
-    social?.subject ? { label: social.subject, tone: "info" as const } : null,
-    social?.direction_hint ? { label: social.direction_hint, tone: "neutral" as const } : null,
     ...(item.hashtags ?? []).map((value) => ({
       label: `#${value.replace(/^#+/, "")}`,
       tone: "neutral" as const,
     })),
   ]).slice(0, 8);
-}
-
-function socialContributions(
-  social: WatchlistSocialEvent | null | undefined,
-): TokenCasePostEvent["quality"]["contributions"] {
-  if (!social) {
-    return [];
-  }
-  const rows: TokenCasePostEvent["quality"]["contributions"] = [];
-  if (social.impact_hint != null) {
-    rows.push({
-      label: "impact",
-      value: formatHint(social.impact_hint),
-      reason: "LLM social-event impact hint",
-    });
-  }
-  if (social.semantic_novelty_hint != null) {
-    rows.push({
-      label: "novelty",
-      value: formatHint(social.semantic_novelty_hint),
-      reason: "LLM novelty hint",
-    });
-  }
-  if (social.attention_mechanism) {
-    rows.push({
-      label: "attention",
-      value: social.attention_mechanism,
-      reason: "Detected attention mechanism",
-    });
-  }
-  return rows;
 }
 
 function primaryResolution(
@@ -167,24 +120,4 @@ function uniqueStrings(values: Array<string | null | undefined>): string[] {
     out.push(normalized);
   }
   return out;
-}
-
-function termsFromRecords(
-  records: Array<Record<string, unknown>> | undefined,
-  key: string,
-): string[] {
-  return [
-    ...new Set(
-      (records ?? [])
-        .map((item) => {
-          const value = item[key];
-          return typeof value === "string" ? value : "";
-        })
-        .filter(Boolean),
-    ),
-  ];
-}
-
-function formatHint(value: number): string {
-  return Number.isFinite(value) ? value.toFixed(2) : "-";
 }

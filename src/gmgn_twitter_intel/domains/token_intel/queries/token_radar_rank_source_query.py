@@ -441,10 +441,10 @@ hydrated AS (
     ap.gmgn_platform_followers,
     COALESCE(ap.gmgn_user_tags, ARRAY[]::TEXT[]) AS gmgn_user_tags,
     ap.first_seen_ms AS account_profile_first_seen_ms,
-    see.direction_hint AS llm_direction_hint,
-    see.impact_hint AS llm_impact_hint,
-    see.semantic_novelty_hint AS llm_semantic_novelty_hint,
-    see.confidence AS llm_label_confidence,
+    NULL::text AS llm_direction_hint,
+    NULL::double precision AS llm_impact_hint,
+    NULL::double precision AS llm_semantic_novelty_hint,
+    NULL::double precision AS llm_label_confidence,
     registry_assets.chain_id AS asset_chain_id,
     registry_assets.token_standard AS asset_token_standard,
     registry_assets.address AS asset_address,
@@ -518,9 +518,6 @@ hydrated AS (
   LEFT JOIN account_profiles ap
     ON events.received_at_ms >= source_edges.score_since_ms
    AND ap.handle = LOWER(events.author_handle)
-  LEFT JOIN social_event_extractions see
-    ON events.received_at_ms >= source_edges.score_since_ms
-   AND see.event_id = source_edges.event_id
   LEFT JOIN registry_assets
     ON events.received_at_ms >= source_edges.score_since_ms
    AND source_edges.target_type = 'Asset'

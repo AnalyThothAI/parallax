@@ -199,52 +199,6 @@
         "title": "ApiEnvelope[BootstrapData]",
         "type": "object"
       },
-      "ApiEnvelope_EnrichmentJobsData_": {
-        "additionalProperties": true,
-        "properties": {
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/EnrichmentJobsData"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
-          "field": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Field"
-          },
-          "ok": {
-            "title": "Ok",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "ok"
-        ],
-        "title": "ApiEnvelope[EnrichmentJobsData]",
-        "type": "object"
-      },
       "ApiEnvelope_LiveMarketData_": {
         "additionalProperties": true,
         "properties": {
@@ -289,52 +243,6 @@
           "ok"
         ],
         "title": "ApiEnvelope[LiveMarketData]",
-        "type": "object"
-      },
-      "ApiEnvelope_LooseData_": {
-        "additionalProperties": true,
-        "properties": {
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/LooseData"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
-          "field": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Field"
-          },
-          "ok": {
-            "title": "Ok",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "ok"
-        ],
-        "title": "ApiEnvelope[LooseData]",
         "type": "object"
       },
       "ApiEnvelope_NarrativeBacklogHealthData_": {
@@ -1073,13 +981,13 @@
         "title": "ApiEnvelope[SignalPulseItem]",
         "type": "object"
       },
-      "ApiEnvelope_SocialEventsByIdsData_": {
+      "ApiEnvelope_SourceEventsByIdsData_": {
         "additionalProperties": true,
         "properties": {
           "data": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/SocialEventsByIdsData"
+                "$ref": "#/components/schemas/SourceEventsByIdsData"
               },
               {
                 "type": "null"
@@ -1116,7 +1024,7 @@
         "required": [
           "ok"
         ],
-        "title": "ApiEnvelope[SocialEventsByIdsData]",
+        "title": "ApiEnvelope[SourceEventsByIdsData]",
         "type": "object"
       },
       "ApiEnvelope_StatusData_": {
@@ -1441,52 +1349,6 @@
         "title": "ApiEnvelope[WatchlistHandleOverviewData]",
         "type": "object"
       },
-      "ApiEnvelope_WatchlistHandleSummaryData_": {
-        "additionalProperties": true,
-        "properties": {
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/WatchlistHandleSummaryData"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
-          "field": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Field"
-          },
-          "ok": {
-            "title": "Ok",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "ok"
-        ],
-        "title": "ApiEnvelope[WatchlistHandleSummaryData]",
-        "type": "object"
-      },
       "ApiEnvelope_WatchlistHandleTimelineData_": {
         "additionalProperties": true,
         "properties": {
@@ -1605,26 +1467,6 @@
         "title": "BootstrapData",
         "type": "object"
       },
-      "EnrichmentJobsData": {
-        "additionalProperties": true,
-        "properties": {
-          "counts": {
-            "additionalProperties": true,
-            "title": "Counts",
-            "type": "object"
-          },
-          "items": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Items",
-            "type": "array"
-          }
-        },
-        "title": "EnrichmentJobsData",
-        "type": "object"
-      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1678,12 +1520,6 @@
           "target_id"
         ],
         "title": "LiveMarketData",
-        "type": "object"
-      },
-      "LooseData": {
-        "additionalProperties": true,
-        "properties": {},
-        "title": "LooseData",
         "type": "object"
       },
       "NarrativeAdmissionHealth": {
@@ -3921,7 +3757,7 @@
         "title": "SignalPulseStages",
         "type": "object"
       },
-      "SocialEventDetail": {
+      "SourceEventDetail": {
         "additionalProperties": true,
         "properties": {
           "action": {
@@ -4012,15 +3848,15 @@
           "channel",
           "action"
         ],
-        "title": "SocialEventDetail",
+        "title": "SourceEventDetail",
         "type": "object"
       },
-      "SocialEventsByIdsData": {
+      "SourceEventsByIdsData": {
         "additionalProperties": true,
         "properties": {
           "events": {
             "items": {
-              "$ref": "#/components/schemas/SocialEventDetail"
+              "$ref": "#/components/schemas/SourceEventDetail"
             },
             "title": "Events",
             "type": "array"
@@ -4033,7 +3869,7 @@
             "type": "array"
           }
         },
-        "title": "SocialEventsByIdsData",
+        "title": "SourceEventsByIdsData",
         "type": "object"
       },
       "StatusData": {
@@ -4564,6 +4400,10 @@
             "title": "Targets",
             "type": "array"
           },
+          "venue": {
+            "title": "Venue",
+            "type": "string"
+          },
           "window": {
             "title": "Window",
             "type": "string"
@@ -4571,7 +4411,8 @@
         },
         "required": [
           "window",
-          "scope"
+          "scope",
+          "venue"
         ],
         "title": "TokenRadarData",
         "type": "object"
@@ -4711,19 +4552,6 @@
             "title": "Recent Source Event Count",
             "type": "integer"
           },
-          "summary_is_stale": {
-            "default": false,
-            "title": "Summary Is Stale",
-            "type": "boolean"
-          },
-          "summary_status": {
-            "enum": [
-              "ready",
-              "not_ready"
-            ],
-            "title": "Summary Status",
-            "type": "string"
-          },
           "total_signal_event_count": {
             "default": 0,
             "title": "Total Signal Event Count",
@@ -4731,100 +4559,9 @@
           }
         },
         "required": [
-          "handle",
-          "summary_status"
+          "handle"
         ],
         "title": "WatchlistHandleRowOverview",
-        "type": "object"
-      },
-      "WatchlistHandleSummaryData": {
-        "additionalProperties": true,
-        "properties": {
-          "generated_at_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Generated At Ms"
-          },
-          "handle": {
-            "title": "Handle",
-            "type": "string"
-          },
-          "input_event_count": {
-            "default": 0,
-            "title": "Input Event Count",
-            "type": "integer"
-          },
-          "is_stale": {
-            "default": false,
-            "title": "Is Stale",
-            "type": "boolean"
-          },
-          "model": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Model"
-          },
-          "pending_recompute": {
-            "default": false,
-            "title": "Pending Recompute",
-            "type": "boolean"
-          },
-          "signal_count": {
-            "default": 0,
-            "title": "Signal Count",
-            "type": "integer"
-          },
-          "signal_count_at_generation": {
-            "default": 0,
-            "title": "Signal Count At Generation",
-            "type": "integer"
-          },
-          "staleness_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Staleness Ms"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "summary_zh": {
-            "default": "",
-            "title": "Summary Zh",
-            "type": "string"
-          },
-          "topics": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Topics",
-            "type": "array"
-          }
-        },
-        "required": [
-          "handle",
-          "status"
-        ],
-        "title": "WatchlistHandleSummaryData",
         "type": "object"
       },
       "WatchlistHandleTimelineData": {
@@ -5544,34 +5281,18 @@
         ]
       }
     },
-    "/api/enrichment-jobs": {
+    "/api/events/by-ids": {
       "get": {
-        "operationId": "enrichment_jobs_api_enrichment_jobs_get",
+        "operationId": "events_by_ids_api_events_by_ids_get",
         "parameters": [
           {
             "in": "query",
-            "name": "limit",
+            "name": "ids",
             "required": false,
             "schema": {
-              "default": 50,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "status",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Status"
+              "default": "",
+              "title": "Ids",
+              "type": "string"
             }
           }
         ],
@@ -5580,7 +5301,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiEnvelope_EnrichmentJobsData_"
+                  "$ref": "#/components/schemas/ApiEnvelope_SourceEventsByIdsData_"
                 }
               }
             },
@@ -5597,7 +5318,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Enrichment Jobs",
+        "summary": "Events By Ids",
         "tags": [
           "api"
         ]
@@ -6841,122 +6562,6 @@
         ]
       }
     },
-    "/api/social-events": {
-      "get": {
-        "operationId": "social_events_api_social_events_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "window",
-            "required": false,
-            "schema": {
-              "default": "1h",
-              "title": "Window",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "handles",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Handles",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "event_types",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Event Types",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiEnvelope_LooseData_"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Social Events",
-        "tags": [
-          "api"
-        ]
-      }
-    },
-    "/api/social-events/by-ids": {
-      "get": {
-        "operationId": "social_events_by_ids_api_social_events_by_ids_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "ids",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Ids",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiEnvelope_SocialEventsByIdsData_"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Social Events By Ids",
-        "tags": [
-          "api"
-        ]
-      }
-    },
     "/api/status": {
       "get": {
         "operationId": "status_api_status_get",
@@ -7408,6 +7013,16 @@
               "title": "Scope",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "venue",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "title": "Venue",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -7485,48 +7100,6 @@
           }
         },
         "summary": "Watchlist Handle Overview",
-        "tags": [
-          "api"
-        ]
-      }
-    },
-    "/api/watchlist/handle/{handle}/summary": {
-      "get": {
-        "operationId": "watchlist_handle_summary_api_watchlist_handle__handle__summary_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "handle",
-            "required": true,
-            "schema": {
-              "title": "Handle",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiEnvelope_WatchlistHandleSummaryData_"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Watchlist Handle Summary",
         "tags": [
           "api"
         ]

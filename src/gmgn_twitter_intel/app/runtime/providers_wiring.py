@@ -8,9 +8,7 @@ from gmgn_twitter_intel.app.runtime.provider_wiring.types import (
     NarrativeIntelProviders,
     NewsIntelProviders,
     PulseLabProviders,
-    SocialEnrichmentProviders,
     UpstreamClientFactory,
-    WatchlistIntelProviders,
     WiredProviders,
 )
 
@@ -21,9 +19,7 @@ __all__ = [
     "NarrativeIntelProviders",
     "NewsIntelProviders",
     "PulseLabProviders",
-    "SocialEnrichmentProviders",
     "UpstreamClientFactory",
-    "WatchlistIntelProviders",
     "WiredProviders",
     "wire_asset_market_providers",
     "wire_providers",

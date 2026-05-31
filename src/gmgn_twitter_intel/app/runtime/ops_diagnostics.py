@@ -538,10 +538,8 @@ def _queue_reason(*, status: str, dead_count: int, failed_count: int, due_count:
 
 def _queue_worker_name(queue_name: str) -> str:
     return {
-        "enrichment_jobs": "enrichment",
         "notification_deliveries": "notification_delivery",
         "pulse_agent_jobs": "pulse_candidate",
-        "watchlist_handle_summary_jobs": "handle_summary",
     }.get(queue_name, queue_name)
 
 
@@ -619,10 +617,8 @@ def _news_domain(runtime: Any) -> dict[str, Any]:
 
 
 def _watchlist_domain(runtime: Any) -> dict[str, Any]:
-    workers = _workers_payload(workers_status_payload(runtime)["workers"])
-    handle_worker = next((worker for worker in workers if worker.get("name") == "handle_summary"), None)
-    status = str((handle_worker or {}).get("status") or "unknown")
-    return {"status": status, "handle_summary_worker": handle_worker}
+    configured_handles = tuple(getattr(getattr(runtime, "settings", None), "handles", ()) or ())
+    return {"status": "ok" if configured_handles else "idle", "configured_handle_count": len(configured_handles)}
 
 
 def _notifications_domain(runtime: Any) -> dict[str, Any]:

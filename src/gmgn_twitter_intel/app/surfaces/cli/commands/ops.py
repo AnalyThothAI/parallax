@@ -230,16 +230,6 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
             )
             return 0, {"ok": True, "data": data}
 
-        if args.ops_command == "backfill-watchlist-signal-stats":
-            data = _backfill_watchlist_signal_stats(
-                repos.watchlist_intel,
-                batch_size=args.batch_size,
-                max_batches=args.max_batches,
-                after_cursor=args.after_cursor,
-                dry_run=bool(args.dry_run),
-            )
-            return 0, {"ok": True, "data": data}
-
         if args.ops_command == "enqueue-token-radar-dirty-targets":
             data = _enqueue_token_radar_dirty_targets(
                 repos,
@@ -253,7 +243,6 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
             return 0, {"ok": True, "data": data}
 
         signals = repos.signals
-        enrichment = repos.enrichment
 
         if args.ops_command == "backfill-account-quality":
             data = AccountQualityService(
@@ -261,9 +250,6 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
                 repository=AccountQualityRepository(signals.conn),
             ).backfill_account_token_call_stats(limit=args.limit)
             return 0, {"ok": True, "data": data}
-
-        if args.ops_command == "backfill-enrichment-jobs":
-            return 0, {"ok": True, "data": enrichment.enqueue_missing_watched_events(limit=args.limit)}
 
         if args.ops_command == "projection-status":
             return 0, {"ok": True, "data": ProjectionRepository(signals.conn).status_summary()}
@@ -375,67 +361,6 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
             return (0 if data["ok"] else 1), {"ok": data["ok"], "data": data}
 
     return 2, {"ok": False, "error": f"unknown ops command: {args.ops_command}"}
-
-
-def _backfill_watchlist_signal_stats(
-    repository: object,
-    *,
-    batch_size: int,
-    max_batches: int,
-    dry_run: bool,
-    after_cursor: str = "",
-) -> dict[str, Any]:
-    parsed_batch_size = max(1, int(batch_size))
-    parsed_max_batches = max(1, int(max_batches))
-    parsed_cursor = _cursor_mapping(after_cursor)
-    after_received_at_ms = _optional_int(parsed_cursor.get("received_at_ms"))
-    after_event_id = str(parsed_cursor.get("event_id") or "") or None
-    batches = 0
-    processed = 0
-    signal_events = 0
-    normalized_handles = 0
-    has_more = False
-    for _ in range(parsed_max_batches):
-        result = _object_dict(
-            _call_with_supported_kwargs(
-                repository.backfill_signal_stats_batch,
-                after_received_at_ms=after_received_at_ms,
-                after_event_id=after_event_id,
-                batch_size=parsed_batch_size,
-                dry_run=dry_run,
-                commit=not dry_run,
-            )
-        )
-        batches += 1
-        processed += int(result.get("processed") or 0)
-        signal_events += int(result.get("signal_events") or 0)
-        normalized_handles += int(result.get("normalized_handles") or 0)
-        has_more = bool(result.get("has_more"))
-        next_received_at_ms = _optional_int(result.get("last_received_at_ms"))
-        next_event_id = str(result.get("last_event_id") or "") or None
-        if next_received_at_ms is not None and next_event_id is not None:
-            after_received_at_ms = next_received_at_ms
-            after_event_id = next_event_id
-        if not has_more or next_received_at_ms is None or next_event_id is None:
-            break
-    last_cursor = (
-        {"received_at_ms": after_received_at_ms, "event_id": after_event_id}
-        if after_received_at_ms is not None and after_event_id is not None
-        else None
-    )
-    return {
-        "processed": processed,
-        "upserted": signal_events,
-        "has_more": has_more,
-        "last_cursor": last_cursor,
-        "next_after_cursor": _cursor_json(last_cursor),
-        "batches": batches,
-        "signal_events": signal_events,
-        "normalized_handles": normalized_handles,
-        "last_received_at_ms": after_received_at_ms,
-        "last_event_id": after_event_id,
-        "dry_run": bool(dry_run),
-    }
 
 
 def _run_market_tick_current_rebuild(

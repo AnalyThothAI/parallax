@@ -34,12 +34,10 @@ def backend_hot_path_settings(tmp_path: Path) -> Settings:
         },
         notifications={
             "enabled": True,
-            "token_flow_limit": 50,
+            "candidate_limit": 50,
             "rules": {
                 "watched_account_activity": {"enabled": False},
                 "watched_account_token_alert": {"enabled": False},
-                "hot_quality_token_5m": {"enabled": False},
-                "quality_token_5m": {"enabled": False},
                 "signal_pulse_candidate": {
                     "enabled": True,
                     "channels": ("in_app", "log"),

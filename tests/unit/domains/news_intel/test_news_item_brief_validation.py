@@ -64,6 +64,7 @@ def _ready_payload(**overrides: Any) -> dict[str, Any]:
         "status": "ready",
         "direction": "bullish",
         "decision_class": "driver",
+        "title_zh": "ABC 永续合约上线带来交易覆盖变化",
         "summary_zh": "交易所上线 ABC 永续合约，事件本身提高了该资产的可交易关注度。",
         "market_read_zh": "影响主要来自交易入口和衍生品关注度增加，但仍需核对流动性和真实成交反应。",
         "bull_view": {
@@ -187,6 +188,31 @@ def test_validation_rejects_forbidden_execution_language() -> None:
     assert result.publishable is False
     assert result.status == "failed"
     assert any(error["code"] == "forbidden_execution_language" for error in result.errors)
+
+
+def test_validation_rejects_forbidden_execution_language_in_title() -> None:
+    packet = _packet()
+    result = validate_news_item_brief_output(
+        payload=_ready_payload(title_zh="ABC 可以开仓做多"),
+        packet=packet,
+        audit={},
+    )
+
+    assert result.publishable is False
+    assert result.status == "failed"
+    assert any(error["code"] == "forbidden_execution_language" for error in result.errors)
+
+
+def test_validation_allows_descriptive_sell_pressure_language() -> None:
+    packet = _packet()
+    result = validate_news_item_brief_output(
+        payload=_ready_payload(market_read_zh="投资者可能预期价格下跌而提前卖出，形成短期抛售压力。"),
+        packet=packet,
+        audit={},
+    )
+
+    assert result.publishable is True
+    assert result.status == "ready"
 
 
 @pytest.mark.parametrize(

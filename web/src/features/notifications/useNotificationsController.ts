@@ -104,28 +104,6 @@ export function useNotificationsController({
       setMobileTask("lab");
       return;
     }
-    if (
-      notification.entity_type === "social_event" ||
-      notification.source_table === "social_event_extractions"
-    ) {
-      let q: string | null = null;
-      let handle: string | null = null;
-      if (notification.symbol) {
-        q = notification.symbol;
-      } else if (notification.author_handle) {
-        handle = normalizedHandle(notification.author_handle);
-      } else if (notification.event_id) {
-        q = notification.event_id;
-      }
-      if (handle && !q) {
-        navigate(watchlistPath({ handle }));
-        setMobileTask("radar");
-      } else {
-        navigate(signalLabPath({ q, handle }));
-        setMobileTask("lab");
-      }
-      return;
-    }
     if (notification.symbol) {
       navigate(signalLabPath({ q: notification.symbol }));
       setMobileTask("lab");

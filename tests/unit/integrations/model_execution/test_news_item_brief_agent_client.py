@@ -72,6 +72,7 @@ class FakeGateway:
             status="ready",
             direction="neutral",
             decision_class="context",
+            title_zh="中性新闻摘要",
             summary_zh="摘要",
             market_read_zh="市场解读",
         )

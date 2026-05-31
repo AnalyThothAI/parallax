@@ -12,6 +12,5 @@ class IngestedEvent:
     entities: list[dict[str, Any]]
     alerts: list[dict[str, Any]]
     inserted: bool
-    enrichment_job_id: str | None = None
     token_intents: list[dict[str, Any]] = field(default_factory=list)
     token_resolutions: list[dict[str, Any]] = field(default_factory=list)

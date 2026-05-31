@@ -10,8 +10,6 @@ from gmgn_twitter_intel.app.runtime.provider_wiring.types import (
     NarrativeIntelProviders,
     NewsIntelProviders,
     PulseLabProviders,
-    SocialEnrichmentProviders,
-    WatchlistIntelProviders,
     WiredProviders,
 )
 from gmgn_twitter_intel.platform.config.settings import Settings
@@ -37,14 +35,6 @@ def wire_providers(
             upstream_client_factory=gmgn.gmgn_upstream_factory(settings) if start_collector else None,
         ),
         asset_market=asset_market.wire_asset_market(settings),
-        social_enrichment=SocialEnrichmentProviders(
-            event_enrichment=model_execution.litellm_social_event_provider(
-                settings,
-                agent_gateway=_require_agent_execution_gateway(agent_execution_gateway),
-            )
-            if settings.llm_configured
-            else None,
-        ),
         narrative_intel=NarrativeIntelProviders(
             narrative_provider=model_execution.litellm_narrative_intel_provider(
                 settings,
@@ -77,14 +67,6 @@ def wire_providers(
             if settings.workers.pulse_candidate.enabled and settings.pulse_agent_configured
             else None,
         ),
-        watchlist_intel=WatchlistIntelProviders(
-            summary_provider=model_execution.litellm_watchlist_summary_provider(
-                settings,
-                agent_gateway=_require_agent_execution_gateway(agent_execution_gateway),
-            )
-            if settings.workers.handle_summary.enabled and settings.watchlist_handle_summary_configured
-            else None,
-        ),
         macrodata=macrodata.wire_macrodata(settings),
         agent_execution_gateway=agent_execution_gateway,
     )
@@ -109,8 +91,6 @@ __all__ = [
     "NarrativeIntelProviders",
     "NewsIntelProviders",
     "PulseLabProviders",
-    "SocialEnrichmentProviders",
-    "WatchlistIntelProviders",
     "WiredProviders",
     "wire_asset_market_providers",
     "wire_providers",

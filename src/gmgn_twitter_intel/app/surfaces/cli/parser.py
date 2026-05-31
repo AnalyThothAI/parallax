@@ -89,16 +89,6 @@ def build_parser() -> argparse.ArgumentParser:
     account_quality = subcommands.add_parser("account-quality", help="print account quality profiles")
     account_quality.add_argument("--handles", default="", help="comma separated account handles")
 
-    social_events = subcommands.add_parser("social-events", help="print social-event extraction read model")
-    social_events.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
-    social_events.add_argument("--limit", type=int, default=50)
-    social_events.add_argument("--handles", default="")
-    social_events.add_argument("--event-types", default="")
-
-    enrichment_jobs = subcommands.add_parser("enrichment-jobs", help="inspect social-event extraction job backlog")
-    enrichment_jobs.add_argument("--status", choices=("pending", "running", "failed", "dead", "done"), default=None)
-    enrichment_jobs.add_argument("--limit", type=int, default=50)
-
     notification_deliveries = subcommands.add_parser(
         "notification-deliveries",
         help="inspect notification external delivery audit rows",
@@ -117,19 +107,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="backfill account token-call stats and quality snapshots",
     )
     backfill_account_quality.add_argument("--limit", type=int, default=1000)
-    backfill_enrichment_jobs = ops_subcommands.add_parser(
-        "backfill-enrichment-jobs",
-        help="enqueue social-event-v2 extraction jobs for existing watched events",
-    )
-    backfill_enrichment_jobs.add_argument("--limit", type=int, default=1000)
-    backfill_watchlist_signal_stats = ops_subcommands.add_parser(
-        "backfill-watchlist-signal-stats",
-        help="backfill watchlist signal event ledger and stats read model",
-    )
-    backfill_watchlist_signal_stats.add_argument("--batch-size", type=int, default=5000)
-    backfill_watchlist_signal_stats.add_argument("--max-batches", type=int, default=1)
-    backfill_watchlist_signal_stats.add_argument("--after-cursor", default="")
-    backfill_watchlist_signal_stats.add_argument("--dry-run", action="store_true")
     rebuild_market_tick_current = ops_subcommands.add_parser(
         "rebuild-market-tick-current",
         help="rebuild market_tick_current from append-only market_ticks",

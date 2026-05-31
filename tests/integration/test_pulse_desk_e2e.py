@@ -573,17 +573,11 @@ class _EmptyAlerts:
         return []
 
 
-class _EmptyAssetFlow:
-    def asset_flow(self, **_: Any) -> dict[str, Any]:
-        return {"targets": [], "attention": []}
-
-
 def _notification_engine(pulse: Any) -> NotificationRuleEngine:
     return NotificationRuleEngine(
         settings=Settings(ws_token="secret"),
         evidence=_EmptyEvidence(),
         account_alerts=_EmptyAlerts(),
-        asset_flow=_EmptyAssetFlow(),
         pulse=pulse,
     )
 

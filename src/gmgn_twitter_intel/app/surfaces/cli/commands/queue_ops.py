@@ -161,22 +161,6 @@ def _retry_event_anchor_job(
     return {"requeued": 1, "job": row}
 
 
-def _retry_enrichment_job(
-    repos: object,
-    event: dict[str, Any],
-    *,
-    now_ms: int,
-    reason: str,
-) -> dict[str, Any]:
-    repo = getattr(repos, "enrichment", None)
-    retry = getattr(repo, "retry_terminal_job_from_snapshot", None)
-    if not callable(retry):
-        raise ValueError("enrichment_repository_required")
-    row = retry(_source_row(event), now_ms=int(now_ms), reason=reason)
-    _require_requeued(row, "enrichment_job_retry_not_requeued")
-    return {"requeued": 1, "job": row}
-
-
 def _retry_mention_semantics(
     repos: object,
     event: dict[str, Any],
@@ -243,7 +227,6 @@ def _require_requeued(row: object, code: str) -> None:
 QUEUE_RETRY_TRANSITIONS = {
     ("resolution_refresh", "token_discovery_dirty_lookup_keys"): _retry_discovery_lookup_key,
     ("event_anchor_backfill", "event_anchor_backfill_jobs"): _retry_event_anchor_job,
-    ("enrichment", "enrichment_jobs"): _retry_enrichment_job,
     ("mention_semantics", "token_mention_semantics"): _retry_mention_semantics,
     ("pulse_candidate", "pulse_agent_jobs"): _retry_pulse_agent_job,
 }

@@ -7,11 +7,9 @@ from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_factories import WorkerFactoryContext
 from gmgn_twitter_intel.app.runtime.worker_manifest import manifest_names_for_factory
 from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_service import AccountAlertService
-from gmgn_twitter_intel.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
 from gmgn_twitter_intel.domains.notifications.runtime.notification_delivery import NotificationDeliveryWorker
 from gmgn_twitter_intel.domains.notifications.runtime.notification_worker import NotificationWorker
 from gmgn_twitter_intel.domains.notifications.services.notification_rules import NotificationRuleEngine
-from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
 from gmgn_twitter_intel.platform.config.settings import Settings
 
 WORKER_KEYS = manifest_names_for_factory("notifications.py")
@@ -59,10 +57,6 @@ def _notification_rule_engine(settings: Settings, repos: Any) -> NotificationRul
         settings=settings,
         evidence=repos.evidence,
         account_alerts=AccountAlertService(repos.signals),
-        asset_flow=AssetFlowService(
-            token_radar=repos.token_radar,
-            profiles=TokenProfileReadModel(token_profiles=repos.token_profiles),
-        ),
         pulse=repos.pulse_read,
         news=repos.news,
     )

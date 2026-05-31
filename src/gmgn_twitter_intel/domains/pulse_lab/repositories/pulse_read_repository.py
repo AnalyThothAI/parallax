@@ -320,9 +320,7 @@ def _candidate_handle_filter_clause(candidate_alias: str, handle: str | None) ->
             SELECT 1
             FROM jsonb_array_elements_text({event_ids_sql}) AS pulse_event(event_id)
             LEFT JOIN events ON events.event_id = pulse_event.event_id
-            LEFT JOIN social_event_extractions
-              ON social_event_extractions.event_id = pulse_event.event_id
-            WHERE lower(coalesce(social_event_extractions.author_handle, events.author_handle, '')) = %s
+            WHERE lower(coalesce(events.author_handle, '')) = %s
           )
         )
         """,

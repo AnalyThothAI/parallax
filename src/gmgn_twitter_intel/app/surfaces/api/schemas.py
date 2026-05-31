@@ -450,7 +450,7 @@ class SignalPulseData(ApiSchema):
     agent_worker_running: bool | None = None
 
 
-class SocialEventDetail(ApiSchema):
+class SourceEventDetail(ApiSchema):
     event_id: str
     timestamp_ms: int
     source_provider: str
@@ -464,24 +464,9 @@ class SocialEventDetail(ApiSchema):
     canonical_url: str | None = None
 
 
-class SocialEventsByIdsData(ApiSchema):
-    events: list[SocialEventDetail] = Field(default_factory=list)
+class SourceEventsByIdsData(ApiSchema):
+    events: list[SourceEventDetail] = Field(default_factory=list)
     not_found: list[str] = Field(default_factory=list)
-
-
-class WatchlistHandleSummaryData(ApiSchema):
-    handle: str
-    status: str
-    generated_at_ms: int | None = None
-    staleness_ms: int | None = None
-    is_stale: bool = False
-    pending_recompute: bool = False
-    signal_count: int = 0
-    input_event_count: int = 0
-    signal_count_at_generation: int = 0
-    model: str | None = None
-    summary_zh: str = ""
-    topics: list[JsonObject] = Field(default_factory=list)
 
 
 class WatchlistHandleRowOverview(ApiSchema):
@@ -490,8 +475,6 @@ class WatchlistHandleRowOverview(ApiSchema):
     recent_source_event_count: int = 0
     recent_signal_event_count: int = 0
     total_signal_event_count: int = 0
-    summary_status: Literal["ready", "not_ready"]
-    summary_is_stale: bool = False
 
 
 class WatchlistHandlesOverviewData(ApiSchema):

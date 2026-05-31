@@ -472,30 +472,6 @@ export type RecentData = {
   items: LivePayload[];
 };
 
-export type WatchlistTopic = {
-  title: string;
-  description: string;
-  event_count: number;
-  top_event_ids?: string[];
-  symbols?: string[];
-  confidence?: number | null;
-};
-
-export type WatchlistHandleSummaryData = {
-  handle: string;
-  status: "ready" | "not_ready" | string;
-  generated_at_ms?: number | null;
-  staleness_ms?: number | null;
-  is_stale: boolean;
-  pending_recompute: boolean;
-  signal_count: number;
-  input_event_count: number;
-  signal_count_at_generation: number;
-  model?: string | null;
-  summary_zh: string;
-  topics: WatchlistTopic[];
-};
-
 export type WatchlistHandleRowOverview = components["schemas"]["WatchlistHandleRowOverview"];
 export type WatchlistHandlesOverviewData = components["schemas"]["WatchlistHandlesOverviewData"];
 export type WatchlistOverviewCluster = components["schemas"]["WatchlistOverviewCluster"];
@@ -1940,7 +1916,7 @@ export type SignalPulseData = {
   next_cursor?: string | null;
 };
 
-export type SocialEventDetail = {
+export type SourceEventDetail = {
   event_id: string;
   timestamp_ms: number;
   source_provider: string;
@@ -1954,8 +1930,8 @@ export type SocialEventDetail = {
   canonical_url: string | null;
 };
 
-export type SocialEventsByIdsData = {
-  events: SocialEventDetail[];
+export type SourceEventsByIdsData = {
+  events: SourceEventDetail[];
   not_found: string[];
 };
 

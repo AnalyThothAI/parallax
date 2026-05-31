@@ -31,13 +31,8 @@ class QueueHealthAdapterSpec:
 
 
 STATUS_QUEUE_SPECS: dict[str, StatusQueueSpec] = {
-    "enrichment_jobs": StatusQueueSpec(table="enrichment_jobs"),
     "pulse_agent_jobs": StatusQueueSpec(table="pulse_agent_jobs"),
     "notification_deliveries": StatusQueueSpec(table="notification_deliveries"),
-    "watchlist_handle_summary_jobs": StatusQueueSpec(
-        table="watchlist_handle_summary_jobs",
-        lease_column="lease_expires_at_ms",
-    ),
     "event_anchor_backfill_jobs": StatusQueueSpec(
         table="event_anchor_backfill_jobs",
         active_statuses=("pending",),
@@ -65,9 +60,6 @@ QUEUE_HEALTH_ADAPTER_SPECS: dict[str, QueueHealthAdapterSpec] = {
     "asset_profile_refresh_targets": QueueHealthAdapterSpec(table="asset_profile_refresh_targets", kind="dirty_target"),
     "discussion_digest_dirty_targets": QueueHealthAdapterSpec(
         table="discussion_digest_dirty_targets", kind="dirty_target"
-    ),
-    "enrichment_jobs": QueueHealthAdapterSpec(
-        table="enrichment_jobs", kind="status_queue", status_queue=STATUS_QUEUE_SPECS["enrichment_jobs"]
     ),
     "event_anchor_backfill_jobs": QueueHealthAdapterSpec(
         table="event_anchor_backfill_jobs",
@@ -114,11 +106,6 @@ QUEUE_HEALTH_ADAPTER_SPECS: dict[str, QueueHealthAdapterSpec] = {
         table="token_radar_source_dirty_events", kind="dirty_target"
     ),
     "token_radar_dirty_targets": QueueHealthAdapterSpec(table="token_radar_dirty_targets", kind="dirty_target"),
-    "watchlist_handle_summary_jobs": QueueHealthAdapterSpec(
-        table="watchlist_handle_summary_jobs",
-        kind="status_queue",
-        status_queue=STATUS_QUEUE_SPECS["watchlist_handle_summary_jobs"],
-    ),
 }
 
 DIRTY_TARGET_WORKER_FILTERS: dict[tuple[str, str], tuple[str, str]] = {

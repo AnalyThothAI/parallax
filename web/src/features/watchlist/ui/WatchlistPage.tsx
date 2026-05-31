@@ -7,7 +7,6 @@ import * as PageState from "@shared/ui/PageState";
 import { useEffect, useMemo } from "react";
 
 import { useHandleOverviewQuery } from "../api/useHandleOverviewQuery";
-import { useHandleSummaryQuery } from "../api/useHandleSummaryQuery";
 import { useHandleTimelineQuery } from "../api/useHandleTimelineQuery";
 import { useWatchlistHandlesOverviewQuery } from "../api/useWatchlistHandlesOverviewQuery";
 import { normalizeWatchlistHandle } from "../model/watchlistCase";
@@ -15,7 +14,6 @@ import { buildWatchlistRows, emptyWatchlistHandleRow } from "../model/watchlistR
 import { useWatchlistRouteState } from "../state/watchlistRouteState";
 
 import { HandleTimeline } from "./HandleTimeline";
-import { HandleTopicSummary } from "./HandleTopicSummary";
 import { WatchlistHero } from "./WatchlistHero";
 import { WatchlistInsightRail } from "./WatchlistInsightRail";
 import { WatchlistMetricStrip } from "./WatchlistMetricStrip";
@@ -52,7 +50,6 @@ export function WatchlistPage({
     scope: timelineScope,
     token,
   });
-  const summaryQuery = useHandleSummaryQuery({ handle: selectedHandle, token });
   const timelineQuery = useHandleTimelineQuery({
     handle: selectedHandle,
     scope: timelineScope,
@@ -113,7 +110,6 @@ export function WatchlistPage({
                 onRetry={() => overviewQuery.refetch()}
               />
             ) : null}
-            <HandleTopicSummary query={summaryQuery} />
             <div className="watchlist-monitor-grid">
               <section
                 className="watchlist-evidence-panel"

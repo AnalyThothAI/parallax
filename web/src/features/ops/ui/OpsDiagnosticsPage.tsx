@@ -474,7 +474,6 @@ function runtimeChain(diagnostics: OpsDiagnostics): ChainLane[] {
   const agentExecutionStatus = statusString(agentExecution.status) ?? "disabled";
   const queues = diagnostics.queues;
   const pulseQueue = queues.find((item) => item.queue_name === "pulse_agent_jobs");
-  const enrichmentQueue = queues.find((item) => item.queue_name === "enrichment_jobs");
   const providerState = worstStatus(diagnostics.providers);
   const workerState = worstStatus(diagnostics.workers);
 
@@ -520,10 +519,9 @@ function runtimeChain(diagnostics: OpsDiagnostics): ChainLane[] {
       status: worstStatus([
         diagnostics.domains.notifications,
         diagnostics.domains.watchlist,
-        enrichmentQueue ?? {},
       ]),
-      intent: "Watchlist summaries、enrichment jobs 和 notifications 服务操作员。",
-      primary: `${numberString(enrichmentQueue?.dead_count)} 个 enrichment 死信`,
+      intent: "Watchlist source monitor 和 notifications 服务操作员。",
+      primary: `Watchlist${statusLabel(statusTone(diagnostics.domains.watchlist?.status))}`,
       secondary: `通知${statusLabel(statusTone(diagnostics.domains.notifications?.status))}`,
       icon: "list",
     },

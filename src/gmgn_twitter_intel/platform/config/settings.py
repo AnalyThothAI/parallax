@@ -18,8 +18,6 @@ NOTIFICATION_SEVERITIES = ("info", "warning", "high", "critical")
 NOTIFICATION_RULE_IDS = (
     "watched_account_activity",
     "watched_account_token_alert",
-    "hot_quality_token_5m",
-    "quality_token_5m",
     "signal_pulse_candidate",
     "news_high_signal",
 )
@@ -423,9 +421,6 @@ class NotificationRuleConfig(BaseModel):
 
     enabled: bool = True
     channels: tuple[str, ...] = ("in_app",)
-    social_heat_min: int | None = None
-    discussion_quality_min: int | None = None
-    opportunity_min: int | None = None
     combined_score_min: float | None = None
     cooldown_seconds: int = 0
     window: str | None = None
@@ -491,7 +486,7 @@ class NotificationsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
-    token_flow_limit: int = 50
+    candidate_limit: int = 50
     retention_days: int = 30
     rules: dict[str, NotificationRuleConfig] = Field(
         default_factory=lambda: {
@@ -522,11 +517,11 @@ class NotificationsConfig(BaseModel):
             if not isinstance(payload, Mapping):
                 raise ValueError(f"notifications.rules.{key} must be a mapping")
             if key == "signal_pulse_candidate":
-                forbidden = {"social_heat_min", "discussion_quality_min", "opportunity_min", "combined_score_min"}
+                forbidden = {"combined_score_min"}
                 present = sorted(forbidden.intersection(payload))
                 if present:
                     joined = ", ".join(present)
-                    raise ValueError(f"notifications.rules.{key} does not accept token-flow thresholds: {joined}")
+                    raise ValueError(f"notifications.rules.{key} does not accept news thresholds: {joined}")
                 allowed_statuses = {"trade_candidate", "token_watch", "risk_rejected_high_info"}
                 raw_statuses = payload.get("statuses")
                 if raw_statuses is not None:
@@ -534,12 +529,20 @@ class NotificationsConfig(BaseModel):
                     unsupported = sorted(parsed_statuses - allowed_statuses)
                     if unsupported:
                         raise ValueError(f"unsupported Signal Pulse statuses: {unsupported}")
+                raw_window = payload.get("window")
+                if raw_window is not None:
+                    parsed_window = str(raw_window).strip()
+                    if parsed_window not in PULSE_CANDIDATE_WINDOW_SET:
+                        allowed = ", ".join(PULSE_CANDIDATE_WINDOWS)
+                        raise ValueError(
+                            f"unsupported Signal Pulse notification window: {parsed_window}; allowed: {allowed}"
+                        )
             if key == "news_high_signal":
-                forbidden = {"social_heat_min", "discussion_quality_min", "opportunity_min", "statuses"}
+                forbidden = {"statuses"}
                 present = sorted(forbidden.intersection(payload))
                 if present:
                     joined = ", ".join(present)
-                    raise ValueError(f"notifications.rules.{key} does not accept token-flow/pulse thresholds: {joined}")
+                    raise ValueError(f"notifications.rules.{key} does not accept pulse settings: {joined}")
             merged[key] = {**merged[key], **dict(payload)}
         return merged
 
@@ -817,8 +820,6 @@ def _default_agent_lanes() -> dict[str, AgentLaneSettings]:
         "pulse.risk_portfolio_judge": AgentLaneSettings(priority="high", max_concurrency=1, timeout_seconds=180.0),
         "narrative.mention_semantics": AgentLaneSettings(priority="bulk", max_concurrency=1, timeout_seconds=180.0),
         "narrative.discussion_digest": AgentLaneSettings(priority="normal", max_concurrency=1, timeout_seconds=180.0),
-        "social.event_enrichment": AgentLaneSettings(priority="normal", max_concurrency=2, timeout_seconds=180.0),
-        "watchlist.handle_summary": AgentLaneSettings(priority="low", max_concurrency=1, timeout_seconds=180.0),
         "news.item_brief": AgentLaneSettings(priority="low", max_concurrency=1, timeout_seconds=180.0),
     }
 
@@ -1222,28 +1223,6 @@ class TokenDiscussionDigestWorkerSettings(PerWorkerSettings):
         return value
 
 
-class EnrichmentWorkerSettings(PerWorkerSettings):
-    interval_seconds: float = Field(default=2.0, ge=0)
-    concurrency: int = Field(default=4, ge=1)
-    batch_size: int = Field(default=1, ge=1)
-    max_attempts: int = Field(default=3, ge=1)
-
-
-class HandleSummaryWorkerSettings(PerWorkerSettings):
-    interval_seconds: float = Field(default=30.0, ge=0)
-    concurrency: int = Field(default=1, ge=1)
-    batch_size: int = Field(default=1, ge=1)
-    statement_timeout_seconds: float = Field(default=10.0, ge=0)
-    lease_ms: int = Field(default=120_000, ge=1)
-    max_attempts: int = Field(default=3, ge=1)
-    reconcile_limit: int = Field(default=20, ge=1)
-    signal_threshold: int = Field(default=10, ge=1)
-    time_threshold_ms: int = Field(default=1_800_000, ge=1)
-    min_interval_ms: int = Field(default=300_000, ge=1)
-    input_limit: int = Field(default=80, ge=1)
-    window_days: int = Field(default=3, ge=1)
-
-
 class NotificationRuleWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=5.0, ge=0)
     batch_size: int = Field(default=50, ge=1)
@@ -1372,8 +1351,6 @@ class WorkersSettings(BaseModel):
         default_factory=TokenDiscussionDigestWorkerSettings
     )
     pulse_candidate: PulseCandidateWorkerSettings = Field(default_factory=PulseCandidateWorkerSettings)
-    enrichment: EnrichmentWorkerSettings = Field(default_factory=EnrichmentWorkerSettings)
-    handle_summary: HandleSummaryWorkerSettings = Field(default_factory=HandleSummaryWorkerSettings)
     notification_rule: NotificationRuleWorkerSettings = Field(default_factory=NotificationRuleWorkerSettings)
     notification_delivery: NotificationDeliveryWorkerSettings = Field(
         default_factory=NotificationDeliveryWorkerSettings
@@ -1501,10 +1478,6 @@ class Settings(BaseModel):
 
     @property
     def pulse_agent_configured(self) -> bool:
-        return bool(self.llm_api_key and self.agent_runtime_default_model)
-
-    @property
-    def watchlist_handle_summary_configured(self) -> bool:
         return bool(self.llm_api_key and self.agent_runtime_default_model)
 
     @property
@@ -1808,7 +1781,7 @@ upstream:
 
 notifications:
   enabled: true
-  token_flow_limit: 50
+  candidate_limit: 50
   retention_days: 30
   rules:
     watched_account_activity:
@@ -1817,18 +1790,6 @@ notifications:
     watched_account_token_alert:
       enabled: true
       channels: ["in_app"]
-    hot_quality_token_5m:
-      enabled: true
-      channels: ["in_app"]
-      social_heat_min: 80
-      discussion_quality_min: 70
-      cooldown_seconds: 900
-    quality_token_5m:
-      enabled: true
-      channels: ["in_app"]
-      social_heat_min: 65
-      discussion_quality_min: 80
-      cooldown_seconds: 900
     signal_pulse_candidate:
       enabled: true
       channels: ["in_app"]
@@ -1907,14 +1868,6 @@ agent_runtime:
       timeout_seconds: 180.0
     narrative.discussion_digest:
       priority: "normal"
-      max_concurrency: 1
-      timeout_seconds: 180.0
-    social.event_enrichment:
-      priority: "normal"
-      max_concurrency: 2
-      timeout_seconds: 180.0
-    watchlist.handle_summary:
-      priority: "low"
       max_concurrency: 1
       timeout_seconds: 180.0
     news.item_brief:
@@ -2146,26 +2099,6 @@ pulse_candidate:
     token_watch_min: 45
     high_info_rejection_min: 30
     high_conviction_min: 78
-enrichment:
-  enabled: true
-  interval_seconds: 2.0
-  concurrency: 4
-  batch_size: 1
-  max_attempts: 3
-handle_summary:
-  enabled: true
-  interval_seconds: 30.0
-  concurrency: 1
-  batch_size: 1
-  statement_timeout_seconds: 10.0
-  lease_ms: 120000
-  max_attempts: 3
-  reconcile_limit: 20
-  signal_threshold: 10
-  time_threshold_ms: 1800000
-  min_interval_ms: 300000
-  input_limit: 80
-  window_days: 3
 notification_rule:
   enabled: true
   interval_seconds: 5.0
@@ -2257,20 +2190,6 @@ def _default_notification_rule_payloads() -> dict[str, dict[str, Any]]:
         "watched_account_token_alert": {
             "enabled": True,
             "channels": ("in_app",),
-            "cooldown_seconds": 900,
-        },
-        "hot_quality_token_5m": {
-            "enabled": True,
-            "channels": ("in_app",),
-            "social_heat_min": 80,
-            "discussion_quality_min": 70,
-            "cooldown_seconds": 900,
-        },
-        "quality_token_5m": {
-            "enabled": True,
-            "channels": ("in_app",),
-            "social_heat_min": 65,
-            "discussion_quality_min": 80,
             "cooldown_seconds": 900,
         },
         "signal_pulse_candidate": {

@@ -15,7 +15,6 @@ from gmgn_twitter_intel.domains.asset_market.providers import (
 from gmgn_twitter_intel.domains.ingestion.providers import UpstreamClientProtocol
 from gmgn_twitter_intel.domains.news_intel.providers import NewsItemBriefProvider, NewsSourceProvider
 from gmgn_twitter_intel.domains.pulse_lab.providers import PulseDecisionProvider
-from gmgn_twitter_intel.domains.social_enrichment.providers import SocialEventEnrichmentProvider
 
 UpstreamClientFactory = Callable[[Callable[..., Any]], UpstreamClientProtocol | None]
 
@@ -46,11 +45,6 @@ class OkxProviderBundle:
 
 
 @dataclass(frozen=True, slots=True)
-class SocialEnrichmentProviders:
-    event_enrichment: SocialEventEnrichmentProvider | None = None
-
-
-@dataclass(frozen=True, slots=True)
 class PulseLabProviders:
     decision_provider: PulseDecisionProvider | None = None
 
@@ -67,11 +61,6 @@ class NewsIntelProviders:
 
 
 @dataclass(frozen=True, slots=True)
-class WatchlistIntelProviders:
-    summary_provider: object | None = None
-
-
-@dataclass(frozen=True, slots=True)
 class MacrodataProviders:
     stock_quote_provider: object | None = None
 
@@ -80,11 +69,9 @@ class MacrodataProviders:
 class WiredProviders:
     ingestion: IngestionProviders
     asset_market: AssetMarketProviders
-    social_enrichment: SocialEnrichmentProviders
     narrative_intel: NarrativeIntelProviders
     news_intel: NewsIntelProviders
     pulse_lab: PulseLabProviders
-    watchlist_intel: WatchlistIntelProviders
     macrodata: MacrodataProviders
     agent_execution_gateway: object | None = None
 
@@ -97,8 +84,6 @@ __all__ = [
     "NewsIntelProviders",
     "OkxProviderBundle",
     "PulseLabProviders",
-    "SocialEnrichmentProviders",
     "UpstreamClientFactory",
-    "WatchlistIntelProviders",
     "WiredProviders",
 ]

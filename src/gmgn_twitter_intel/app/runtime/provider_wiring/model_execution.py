@@ -13,10 +13,6 @@ from gmgn_twitter_intel.integrations.model_execution.news_item_brief_agent_clien
     LiteLLMNewsItemBriefClient,
 )
 from gmgn_twitter_intel.integrations.model_execution.pulse_decision_agent_client import LiteLLMPulseDecisionClient
-from gmgn_twitter_intel.integrations.model_execution.social_event_agent_client import LiteLLMSocialEventClient
-from gmgn_twitter_intel.integrations.model_execution.watchlist_summary_agent_client import (
-    LiteLLMWatchlistSummaryClient,
-)
 from gmgn_twitter_intel.platform.agent_execution import (
     AgentCapacityReservation,
     AgentRuntimePolicy,
@@ -153,16 +149,6 @@ class LiteLLMPulseDecisionProvider:
         await self._client.aclose()
 
 
-def litellm_social_event_provider(
-    settings: Settings,
-    *,
-    agent_gateway: AgentExecutionGateway,
-) -> LiteLLMSocialEventClient:
-    return LiteLLMSocialEventClient(
-        agent_gateway=agent_gateway,
-    )
-
-
 def litellm_pulse_decision_provider(
     settings: Settings,
     *,
@@ -189,16 +175,6 @@ def litellm_narrative_intel_provider(
         LiteLLMNarrativeIntelClient(
             agent_gateway=agent_gateway,
         )
-    )
-
-
-def litellm_watchlist_summary_provider(
-    settings: Settings,
-    *,
-    agent_gateway: AgentExecutionGateway,
-) -> LiteLLMWatchlistSummaryClient:
-    return LiteLLMWatchlistSummaryClient(
-        agent_gateway=agent_gateway,
     )
 
 
@@ -251,6 +227,4 @@ __all__ = [
     "litellm_narrative_intel_provider",
     "litellm_news_item_brief_provider",
     "litellm_pulse_decision_provider",
-    "litellm_social_event_provider",
-    "litellm_watchlist_summary_provider",
 ]

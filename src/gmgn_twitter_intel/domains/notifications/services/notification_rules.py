@@ -5,10 +5,9 @@ import json
 import time
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import quote
 
 from gmgn_twitter_intel.domains.pulse_lab.interfaces import contains_trading_execution_instruction
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_DEFAULT_VENUE, is_token_factor_snapshot
+from gmgn_twitter_intel.domains.token_intel.interfaces import is_token_factor_snapshot
 from gmgn_twitter_intel.platform.config.settings import NotificationRuleConfig, Settings
 
 from ..types import NotificationCandidate
@@ -16,6 +15,9 @@ from ..types import NotificationCandidate
 WATCHED_ACTIVITY_WINDOW_MS = 60 * 60_000
 DEFAULT_LIMIT = 50
 MAX_SIGNAL_PULSE_NOTIFICATION_PAGES = 5
+NEWS_HIGH_SIGNAL_QUERY_MIN_LIMIT = 500
+NEWS_HIGH_SIGNAL_QUERY_MULTIPLIER = 20
+NEWS_HIGH_SIGNAL_RECENCY_WINDOW_MS = 2 * 60 * 60_000
 SIGNAL_PULSE_RULE_ID = "signal_pulse_candidate"
 NEWS_HIGH_SIGNAL_RULE_ID = "news_high_signal"
 DEFAULT_SIGNAL_PULSE_WINDOW = "1h"
@@ -41,14 +43,12 @@ class NotificationRuleEngine:
         settings: Settings,
         evidence: Any,
         account_alerts: Any,
-        asset_flow: Any,
         pulse: Any = None,
         news: Any = None,
     ) -> None:
         self.settings = settings
         self.evidence = evidence
         self.account_alerts = account_alerts
-        self.asset_flow = asset_flow
         self.pulse = pulse
         self.news = news
 
@@ -59,11 +59,6 @@ class NotificationRuleEngine:
         candidates: list[NotificationCandidate] = []
         candidates.extend(self._watched_account_activity(now_ms=now))
         candidates.extend(self._watched_account_token_alerts(now_ms=now))
-        hot_entity_keys: set[str] = set()
-        hot_candidates = self._hot_quality_tokens(now_ms=now)
-        hot_entity_keys.update(key for item in hot_candidates if (key := item.entity_key))
-        candidates.extend(hot_candidates)
-        candidates.extend(self._quality_tokens(now_ms=now, skip_entity_keys=hot_entity_keys))
         candidates.extend(self._signal_pulse_candidates(now_ms=now))
         candidates.extend(self._news_high_signal_candidates(now_ms=now))
         return candidates
@@ -182,140 +177,6 @@ class NotificationRuleEngine:
             )
         return candidates
 
-    def _hot_quality_tokens(self, *, now_ms: int) -> list[NotificationCandidate]:
-        rule_id = "hot_quality_token_5m"
-        rule = self._rule(rule_id)
-        if not rule.enabled:
-            return []
-        return self._token_candidates(
-            rule_id=rule_id,
-            rule=rule,
-            now_ms=now_ms,
-            severity="high",
-            title_suffix="hot social quality",
-        )
-
-    def _quality_tokens(self, *, now_ms: int, skip_entity_keys: set[str]) -> list[NotificationCandidate]:
-        rule_id = "quality_token_5m"
-        rule = self._rule(rule_id)
-        if not rule.enabled:
-            return []
-        return [
-            candidate
-            for candidate in self._token_candidates(
-                rule_id=rule_id,
-                rule=rule,
-                now_ms=now_ms,
-                severity="warning",
-                title_suffix="quality discussion",
-            )
-            if candidate.entity_key not in skip_entity_keys
-        ]
-
-    def _token_candidates(
-        self,
-        *,
-        rule_id: str,
-        rule: NotificationRuleConfig,
-        now_ms: int,
-        severity: str,
-        title_suffix: str,
-    ) -> list[NotificationCandidate]:
-        data = self.asset_flow.asset_flow(
-            window="5m",
-            limit=self._limit(),
-            scope="all",
-            venue=TOKEN_RADAR_DEFAULT_VENUE,
-            now_ms=now_ms,
-        )
-        items: list[dict[str, Any]] = []
-        if isinstance(data, dict):
-            items.extend(data.get("targets") or [])
-            items.extend(data.get("attention") or [])
-        candidates: list[NotificationCandidate] = []
-        for item in items:
-            factor_snapshot = _asset_flow_factor_snapshot(item)
-            if factor_snapshot is None:
-                continue
-            decision = _asset_flow_decision(factor_snapshot)
-            if decision not in {"driver", "watch"}:
-                continue
-            social_heat_score = _score_value(item, "heat")
-            discussion_quality_score = _score_value(item, "quality")
-            opportunity_score = _score_value(item, "opportunity")
-            if rule.social_heat_min is not None and social_heat_score < rule.social_heat_min:
-                continue
-            if rule.discussion_quality_min is not None and discussion_quality_score < rule.discussion_quality_min:
-                continue
-            if rule.opportunity_min is not None and opportunity_score < rule.opportunity_min:
-                continue
-            target = _dict(item.get("target"))
-            attention = _dict(item.get("attention"))
-            data_health = _dict(factor_snapshot.get("data_health"))
-            identity_key = str(target.get("target_id") or "").strip()
-            if not identity_key:
-                continue
-            symbol = _symbol(target.get("symbol"))
-            occurrence_at_ms = _int(attention.get("latest_seen_ms") or now_ms)
-            bucket = occurrence_at_ms // max(1, int(rule.cooldown_seconds or 300) * 1000)
-            target_type = str(target.get("target_type") or "")
-            venue_type = "cex" if target_type == "CexToken" else "dex" if target_type == "Asset" else None
-            chain = _chain(target.get("chain_id")) if target_type == "Asset" else None
-            address = str(target.get("address") or "") or None if target_type == "Asset" else None
-            timing = {"chase_risk": False}
-            payload = {
-                "identity_key": identity_key,
-                "target_id": identity_key,
-                "target_type": target_type or None,
-                "venue_type": venue_type,
-                "exchange": target.get("provider") if target_type == "CexToken" else None,
-                "inst_id": target.get("native_market_id"),
-                "symbol": symbol,
-                "chain": chain,
-                "address": address,
-                "social_heat_score": social_heat_score,
-                "discussion_quality_score": discussion_quality_score,
-                "opportunity_score": opportunity_score,
-                "score_version": str(factor_snapshot.get("schema_version") or ""),
-                "decision": decision,
-                "data_health": data_health,
-                "mentions": _int(attention.get("mentions_window")),
-                "unique_authors": _int(attention.get("unique_authors")),
-                "watched_mentions": _int(attention.get("watched_mentions")),
-                "timing": timing,
-            }
-            candidates.append(
-                NotificationCandidate(
-                    dedup_key=f"{rule_id}:{identity_key}:{bucket}",
-                    rule_id=rule_id,
-                    severity=severity,
-                    title=f"${symbol} {title_suffix}" if symbol else title_suffix,
-                    body=_token_markdown_body(
-                        heading="5m heat alert" if rule_id == "hot_quality_token_5m" else "5m quality alert",
-                        symbol=symbol,
-                        chain=chain,
-                        address=address,
-                        identity_key=identity_key,
-                        social_heat_score=social_heat_score,
-                        discussion_quality_score=discussion_quality_score,
-                        opportunity_score=opportunity_score,
-                        mentions=_int(attention.get("mentions_window")),
-                        chase_risk=bool(timing.get("chase_risk")),
-                    ),
-                    entity_type="token",
-                    entity_key=identity_key,
-                    symbol=symbol,
-                    chain=chain,
-                    address=address,
-                    source_table="token_radar_current_rows",
-                    source_id=identity_key,
-                    occurrence_at_ms=occurrence_at_ms,
-                    payload=payload,
-                    channels=rule.channels,
-                )
-            )
-        return candidates
-
     def _signal_pulse_candidates(self, *, now_ms: int) -> list[NotificationCandidate]:
         rule = self._rule(SIGNAL_PULSE_RULE_ID)
         if not rule.enabled or self.pulse is None:
@@ -424,13 +285,17 @@ class NotificationRuleEngine:
         external_min_score = int(rule.external_score_min if rule.external_score_min is not None else 85)
         rows = self.news.list_news_high_signal_notification_candidates(
             min_score=min_score,
-            limit=self._limit(),
+            limit=self._news_high_signal_query_limit(),
         )
         candidates: list[NotificationCandidate] = []
+        seen_semantic_signatures: set[str] = set()
         seen_external_push_signatures: set[str] = set()
         for row in rows:
             news_item_id = str(row.get("news_item_id") or "")
             if not news_item_id:
+                continue
+            source_latest_at_ms = _int(row.get("latest_at_ms"))
+            if source_latest_at_ms and source_latest_at_ms < now_ms - NEWS_HIGH_SIGNAL_RECENCY_WINDOW_MS:
                 continue
             signal = _dict(row.get("signal"))
             eligibility = _dict(signal.get("alert_eligibility"))
@@ -441,8 +306,11 @@ class NotificationRuleEngine:
             decision_class = str(agent_brief.get("decision_class") or eligibility.get("decision_class") or "")
             if decision_class not in {"driver", "watch"}:
                 continue
-            occurrence_at_ms = _int(row.get("agent_brief_computed_at_ms") or row.get("latest_at_ms") or now_ms)
+            occurrence_at_ms = _int(row.get("latest_at_ms") or row.get("agent_brief_computed_at_ms") or now_ms)
             semantic_signature = _news_semantic_signature(row, agent_brief=agent_brief)
+            if semantic_signature in seen_semantic_signatures:
+                continue
+            seen_semantic_signatures.add(semantic_signature)
             external_push_signature = _news_external_push_signature(
                 row,
                 provider_score=provider_score,
@@ -463,7 +331,7 @@ class NotificationRuleEngine:
             channels = rule.channels if external_push_eligible else tuple(c for c in rule.channels if c == "in_app")
             source_id = news_item_id
             summary = _news_agent_summary(agent_brief)
-            title = _compact_text(row.get("headline") or "News high signal", limit=96)
+            title = _news_display_title(row, agent_brief=agent_brief)
             body = _news_body(row, provider_score=provider_score, summary=summary)
             candidates.append(
                 NotificationCandidate(
@@ -485,6 +353,7 @@ class NotificationRuleEngine:
                         "direction": agent_brief.get("direction") or signal.get("direction"),
                         "semantic_signature": semantic_signature,
                         "in_app_signature": semantic_signature,
+                        "display_title": title,
                         "external_push_signature": external_push_signature,
                         "external_push_eligible": external_push_eligible,
                         "external_push_suppression_reason": suppression_reason,
@@ -503,38 +372,13 @@ class NotificationRuleEngine:
         return self.settings.notifications.rules[rule_id]
 
     def _limit(self) -> int:
-        return max(DEFAULT_LIMIT, int(self.settings.notifications.token_flow_limit))
+        return max(DEFAULT_LIMIT, int(self.settings.notifications.candidate_limit))
 
-
-def _score_value(item: dict[str, Any], key: str) -> int:
-    factor_snapshot = _asset_flow_factor_snapshot(item)
-    if factor_snapshot is None:
-        return 0
-    if key == "heat":
-        return _int(_dict(_dict(factor_snapshot.get("families")).get("social_heat")).get("score"))
-    if key == "quality":
-        return _int(_dict(_dict(factor_snapshot.get("families")).get("semantic_catalyst")).get("score"))
-    if key == "opportunity":
-        return _int(_dict(factor_snapshot.get("composite")).get("rank_score"))
-    return 0
-
-
-def _asset_flow_factor_snapshot(item: dict[str, Any]) -> dict[str, Any] | None:
-    value = item.get("factor_snapshot")
-    if not is_token_factor_snapshot(value):
-        return None
-    return _dict(value)
-
-
-def _asset_flow_decision(factor_snapshot: dict[str, Any]) -> str:
-    value = str(_dict(factor_snapshot.get("composite")).get("recommended_decision") or "").strip().lower()
-    if value in {"driver", "high_alert", "alert", "trade_candidate"}:
-        return "driver"
-    if value in {"watch", "token_watch"}:
-        return "watch"
-    if value in {"discard", "ignore"}:
-        return "discard"
-    return "investigate"
+    def _news_high_signal_query_limit(self) -> int:
+        return max(
+            NEWS_HIGH_SIGNAL_QUERY_MIN_LIMIT,
+            self._limit() * NEWS_HIGH_SIGNAL_QUERY_MULTIPLIER,
+        )
 
 
 def _score_version(block: Any) -> str | None:
@@ -908,16 +752,28 @@ def _news_agent_summary(agent_brief: dict[str, Any]) -> str:
     )
 
 
+def _news_display_title(row: dict[str, Any], *, agent_brief: dict[str, Any]) -> str:
+    brief_json = _dict(agent_brief.get("brief_json"))
+    signal = _dict(row.get("signal"))
+    return _compact_text(
+        agent_brief.get("title_zh")
+        or brief_json.get("title_zh")
+        or signal.get("title_zh")
+        or row.get("headline")
+        or "News high signal",
+        limit=96,
+    )
+
+
 def _news_semantic_signature(row: dict[str, Any], *, agent_brief: dict[str, Any]) -> str:
     brief_json = _dict(agent_brief.get("brief_json"))
-    story_id = _news_story_id(row)
-    semantic_item_key = f"story:{story_id}" if story_id else f"news_item:{row.get('news_item_id')}"
     return _stable_hash(
         {
-            "semantic_item_key": semantic_item_key,
+            "asset_bucket": _news_external_asset_bucket(row),
             "decision_class": agent_brief.get("decision_class"),
             "direction": agent_brief.get("direction"),
-            "watch_triggers": _safe_signature_list(brief_json.get("watch_triggers")),
+            "content_class": row.get("content_class"),
+            "content_tags": _safe_signature_list(row.get("content_tags") or row.get("content_tags_json")),
             "affected_assets": _news_affected_asset_symbols(brief_json.get("affected_assets")),
         }
     )
@@ -1016,50 +872,6 @@ def _news_body(row: dict[str, Any], *, provider_score: int, summary: str) -> str
     if url:
         lines.append(url)
     return "\n".join(lines)
-
-
-def _token_markdown_body(
-    *,
-    heading: str,
-    symbol: str | None,
-    chain: str | None,
-    address: str | None,
-    identity_key: str,
-    social_heat_score: int,
-    discussion_quality_score: int,
-    opportunity_score: int,
-    mentions: int,
-    chase_risk: bool,
-) -> str:
-    display = f"${symbol}" if symbol else identity_key
-    lines = [
-        f"## {display} {heading}",
-        "",
-        f"- **Heat:** {social_heat_score}",
-        f"- **Discussion quality:** {discussion_quality_score}",
-        f"- **Opportunity:** {opportunity_score}",
-        f"- **5m mentions:** {mentions}",
-        f"- **Chase risk:** {'yes' if chase_risk else 'no'}",
-    ]
-    if chain:
-        lines.append(f"- **Chain:** `{chain}`")
-    if address:
-        lines.append(f"- **Address:** `{address}`")
-    lines.append(f"- **Identity:** `{identity_key}`")
-    links = _token_links(symbol=symbol, chain=chain, address=address)
-    if links:
-        lines.extend(["", "**Links**"])
-        lines.extend(f"- [{label}]({url})" for label, url in links)
-    return "\n".join(lines)
-
-
-def _token_links(*, symbol: str | None, chain: str | None, address: str | None) -> list[tuple[str, str]]:
-    links: list[tuple[str, str]] = []
-    if chain and address:
-        links.append(("GMGN", f"https://gmgn.ai/{quote(chain)}/token/{quote(address)}"))
-    if symbol:
-        links.append(("X Search", f"https://x.com/search?q={quote('$' + symbol)}&f=live"))
-    return links
 
 
 def _now_ms() -> int:
