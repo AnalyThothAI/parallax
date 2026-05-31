@@ -74,12 +74,15 @@ Each lane may override `model`; otherwise it inherits
 `agent_runtime.defaults.model`.
 
 Agent runtime uses one structured-output path: provider JSON object mode
-plus application-side Pydantic validation before domain validation. There
-is no provider-enforced schema branch or compatibility fallback. Agent
-execution audit reports `provider_family`, `output_strategy=json_object`,
-and `schema_enforcement=client_validate` for observability. Lane status
-and backpressure counters are operational signals only; they are not
-product readiness and are not business facts.
+plus application-side Pydantic validation before lightweight domain
+validation. There is no provider-enforced schema branch or compatibility
+fallback. News item brief domain validation keeps the JSON shape and
+unexpected tool-action audit boundary; evidence refs, sparse source text,
+and descriptive trading-mechanics language are not publication blockers.
+Agent execution audit reports `provider_family`,
+`output_strategy=json_object`, and `schema_enforcement=client_validate`
+for observability. Lane status and backpressure counters are operational
+signals only; they are not product readiness and are not business facts.
 
 ## WebSocket at `/ws`
 
@@ -211,6 +214,9 @@ News Intel contract:
   not a compatibility route.
 - Missing or unavailable brief state is represented as
   `agent_brief.status = pending | disabled | failed | stale | insufficient`;
+  `failed` is reserved for schema/provider/unreadable-output failure, not for
+  thin evidence or missing `evidence_refs`; sparse but parseable news should
+  still return a standard brief with optional `data_gaps`.
   it is not a 5xx by itself. Frontend clients must render this state directly
   and must not synthesize Chinese summary, bull/bear thesis, decision class, or
   next-action text from the headline.

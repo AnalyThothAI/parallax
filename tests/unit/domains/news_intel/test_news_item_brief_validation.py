@@ -107,7 +107,7 @@ def test_valid_ready_payload_is_publishable_and_hashes_normalized_output() -> No
     assert result.output_hash == json_sha256(result.payload)
 
 
-def test_validation_rejects_payload_when_unsupported_asset_gap_exceeds_schema_cap() -> None:
+def test_validation_caps_unsupported_asset_gaps_instead_of_blocking_publish() -> None:
     packet = _packet()
     existing_gaps = [{"description_zh": f"已有数据缺口 {index}", "severity": "low"} for index in range(12)]
     payload = _ready_payload(
@@ -129,10 +129,12 @@ def test_validation_rejects_payload_when_unsupported_asset_gap_exceeds_schema_ca
 
     result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
 
-    assert result.publishable is False
-    assert result.status == "failed"
-    assert result.payload is None
-    assert any(error["code"] == "schema_invalid" for error in result.errors)
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
+    assert result.payload is not None
+    assert result.payload["affected_assets"] == _ready_payload()["affected_assets"]
+    assert len(result.payload["data_gaps"]) == 12
 
 
 def test_valid_insufficient_payload_is_publishable_when_data_gaps_explain_missing_evidence() -> None:
@@ -161,7 +163,7 @@ def test_valid_insufficient_payload_is_publishable_when_data_gaps_explain_missin
     assert result.payload is not None
 
 
-def test_validation_rejects_fake_evidence_ref() -> None:
+def test_validation_allows_unknown_evidence_refs_without_blocking_publish() -> None:
     packet = _packet()
     result = validate_news_item_brief_output(
         payload=_ready_payload(evidence_refs=["item:summary", "fact:missing"]),
@@ -169,13 +171,14 @@ def test_validation_rejects_fake_evidence_ref() -> None:
         audit={},
     )
 
-    assert result.publishable is False
-    assert result.status == "failed"
-    assert result.payload is None
-    assert {"code": "unknown_evidence_ref", "message": "fact:missing"} in result.errors
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
+    assert result.payload is not None
+    assert result.payload["evidence_refs"] == ["item:summary", "fact:missing"]
 
 
-def test_validation_rejects_forbidden_execution_language() -> None:
+def test_validation_allows_execution_language_without_blocking_publish() -> None:
     packet = _packet()
     result = validate_news_item_brief_output(
         payload=_ready_payload(market_read_zh="可以开仓做多 ABC。"),
@@ -183,12 +186,12 @@ def test_validation_rejects_forbidden_execution_language() -> None:
         audit={},
     )
 
-    assert result.publishable is False
-    assert result.status == "failed"
-    assert any(error["code"] == "forbidden_execution_language" for error in result.errors)
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
 
 
-def test_validation_rejects_explicit_leveraged_trade_advice() -> None:
+def test_validation_allows_explicit_leveraged_language_without_blocking_publish() -> None:
     packet = _packet()
     result = validate_news_item_brief_output(
         payload=_ready_payload(market_read_zh="建议做多并使用 5 倍杠杆。"),
@@ -196,9 +199,9 @@ def test_validation_rejects_explicit_leveraged_trade_advice() -> None:
         audit={},
     )
 
-    assert result.publishable is False
-    assert result.status == "failed"
-    assert any(error["code"] == "forbidden_execution_language" for error in result.errors)
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
 
 
 def test_validation_allows_buy_crypto_product_name() -> None:
@@ -213,7 +216,7 @@ def test_validation_allows_buy_crypto_product_name() -> None:
     assert result.status == "ready"
 
 
-def test_validation_rejects_forbidden_execution_language_in_title() -> None:
+def test_validation_allows_execution_language_in_title_without_blocking_publish() -> None:
     packet = _packet()
     result = validate_news_item_brief_output(
         payload=_ready_payload(title_zh="ABC 可以开仓做多"),
@@ -221,9 +224,9 @@ def test_validation_rejects_forbidden_execution_language_in_title() -> None:
         audit={},
     )
 
-    assert result.publishable is False
-    assert result.status == "failed"
-    assert any(error["code"] == "forbidden_execution_language" for error in result.errors)
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
 
 
 def test_validation_allows_descriptive_sell_pressure_language() -> None:
@@ -268,7 +271,7 @@ def test_validation_allows_descriptive_derivatives_and_position_language(phrase:
         "This should not be treated as portfolio advice.",
     ],
 )
-def test_validation_rejects_forbidden_execution_language_from_plan_terms(phrase: str) -> None:
+def test_validation_allows_execution_boundary_terms_without_blocking_publish(phrase: str) -> None:
     packet = _packet()
     result = validate_news_item_brief_output(
         payload=_ready_payload(market_read_zh=phrase),
@@ -276,9 +279,9 @@ def test_validation_rejects_forbidden_execution_language_from_plan_terms(phrase:
         audit={},
     )
 
-    assert result.publishable is False
-    assert result.status == "failed"
-    assert any(error["code"] == "forbidden_execution_language" for error in result.errors)
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
 
 
 @pytest.mark.parametrize(
@@ -288,7 +291,7 @@ def test_validation_rejects_forbidden_execution_language_from_plan_terms(phrase:
         {"bull_view": {"strength": "moderate", "thesis_zh": "上线永续合约扩大交易覆盖。", "evidence_refs": []}},
     ],
 )
-def test_validation_rejects_non_neutral_ready_side_without_complete_thesis_and_evidence(
+def test_validation_allows_ready_side_without_evidence_refs(
     side_patch: dict[str, Any],
 ) -> None:
     packet = _packet()
@@ -301,9 +304,48 @@ def test_validation_rejects_non_neutral_ready_side_without_complete_thesis_and_e
         audit={},
     )
 
-    assert result.publishable is False
-    assert result.status == "failed"
-    assert any(error["code"] == "ready_invariant" for error in result.errors)
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
+
+
+def test_validation_allows_ready_without_top_level_evidence_refs() -> None:
+    packet = _packet()
+    result = validate_news_item_brief_output(
+        payload=_ready_payload(evidence_refs=[]),
+        packet=packet,
+        audit={},
+    )
+
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
+
+
+def test_validation_allows_insufficient_without_data_gaps() -> None:
+    packet = _packet()
+    result = validate_news_item_brief_output(
+        payload={
+            "status": "insufficient",
+            "direction": "neutral",
+            "decision_class": "context",
+            "summary_zh": "",
+            "market_read_zh": "",
+            "bull_view": {"strength": "absent", "thesis_zh": "", "evidence_refs": []},
+            "bear_view": {"strength": "absent", "thesis_zh": "", "evidence_refs": []},
+            "affected_assets": [],
+            "watch_triggers": [],
+            "invalidation_conditions": [],
+            "data_gaps": [],
+            "evidence_refs": [],
+        },
+        packet=packet,
+        audit={},
+    )
+
+    assert result.publishable is True
+    assert result.status == "insufficient"
+    assert result.errors == []
 
 
 def test_validation_rejects_unexpected_tool_or_handoff_audit() -> None:

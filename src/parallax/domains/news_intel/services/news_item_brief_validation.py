@@ -13,39 +13,7 @@ from parallax.domains.news_intel.types.news_item_brief import (
 )
 from parallax.platform.agent_hashing import json_sha256
 
-_FORBIDDEN_EXECUTION_RE = re.compile(
-    r"(?:建议|推荐|应当|应该|必须|不要|立刻|马上|适合|设置|可以|直接).{0,16}"
-    r"(?:买入|卖出|加仓|减仓|开仓|建仓|做多|做空|杠杆|目标价|止损|止盈|配仓|仓位)|"
-    r"(?:买入|卖出|加仓|减仓|开仓|建仓|做多|做空).{0,8}"
-    r"(?:建议|计划|指令|点位|止损|止盈|目标价|杠杆|仓位)|"
-    r"(?:止损|止盈|目标价|配仓).{0,8}(?:买入|卖出|开仓|建仓|做多|做空)|"
-    r"\b(?:order\s+instructions?|execution\s+permission|portfolio\s+(?:advice|allocation))\b|"
-    r"\b(?:should|must|recommend(?:ed|s)?|advise(?:d)?|set)\b.{0,24}"
-    r"\b(?:position\s+(?:size|sizing)|leverage|stop[-\s]+loss|take[-\s]+profit|target\s+prices?)\b|"
-    r"\b(?:should|must|recommend(?:ed|s)?|advise(?:d)?|go|enter|open|set)\s+"
-    r"(?:buy|sell|long|short|leverage|a\s+stop|stop[-\s]+loss|take[-\s]+profit)\b|"
-    r"\b(?:go|enter|open)\s+(?:long|short)\b|"
-    r"\b(?:leverage\s*\d+x|\d+x\s*leverage|target\s+price\s*(?:is|=|:))\b",
-    re.IGNORECASE,
-)
-
 _ACTION_AUDIT_KEYS = frozenset({"tool_calls", "tools", "handoffs"})
-_NON_NATURAL_KEYS = frozenset(
-    {
-        "status",
-        "direction",
-        "decision_class",
-        "strength",
-        "evidence_refs",
-        "symbol",
-        "name",
-        "resolution_status",
-        "target_type",
-        "target_id",
-        "impact_direction",
-        "severity",
-    }
-)
 
 
 class NewsItemBriefValidationResult(BaseModel):
@@ -72,10 +40,6 @@ def validate_news_item_brief_output(
     errors: list[dict[str, str]] = []
     payload_dict = parsed.model_dump(mode="json")
     errors.extend(_unexpected_action_errors(audit))
-    errors.extend(_unknown_evidence_ref_errors(payload_dict, packet=packet))
-    if _contains_forbidden_execution_language(payload_dict):
-        errors.append(_error("forbidden_execution_language", "natural-language output contains execution language"))
-    errors.extend(_status_invariant_errors(parsed))
     payload_dict = _drop_unsupported_assets(payload_dict, packet=packet)
     try:
         normalized = NewsItemBriefPayload.model_validate(payload_dict)
@@ -101,59 +65,6 @@ def _unexpected_action_errors(audit: Any) -> list[dict[str, str]]:
         if key in _ACTION_AUDIT_KEYS and _non_empty(value):
             errors.append(_error("unexpected_agent_action", key))
     return _dedupe_errors(errors)
-
-
-def _unknown_evidence_ref_errors(
-    payload: Mapping[str, Any],
-    *,
-    packet: NewsItemBriefInputPacket,
-) -> list[dict[str, str]]:
-    allowed = set(packet.evidence_refs)
-    refs = sorted({ref for ref in _walk_evidence_refs(payload) if ref not in allowed})
-    return [_error("unknown_evidence_ref", ref) for ref in refs]
-
-
-def _status_invariant_errors(payload: NewsItemBriefPayload) -> list[dict[str, str]]:
-    errors: list[dict[str, str]] = []
-    if payload.status == "ready":
-        if not payload.title_zh.strip():
-            errors.append(_error("ready_invariant", "ready requires title_zh"))
-        if not payload.summary_zh.strip():
-            errors.append(_error("ready_invariant", "ready requires summary_zh"))
-        if not payload.evidence_refs:
-            errors.append(_error("ready_invariant", "ready requires top-level evidence_refs"))
-        side_errors = [
-            message
-            for side_name, side in (("bull_view", payload.bull_view), ("bear_view", payload.bear_view))
-            for message in _side_invariant_errors(side_name, side)
-        ]
-        errors.extend(_error("ready_invariant", message) for message in side_errors)
-        has_side = _is_complete_side(payload.bull_view) or _is_complete_side(payload.bear_view)
-        if payload.direction != "neutral" and not has_side:
-            errors.append(
-                _error(
-                    "ready_invariant",
-                    "ready requires at least one complete bull or bear side unless neutral",
-                )
-            )
-    if payload.status == "insufficient" and not payload.data_gaps:
-        errors.append(_error("insufficient_invariant", "insufficient requires data_gaps"))
-    return errors
-
-
-def _side_invariant_errors(side_name: str, side: Any) -> list[str]:
-    if side.strength == "absent":
-        return []
-    errors: list[str] = []
-    if not side.thesis_zh.strip():
-        errors.append(f"{side_name} with strength requires thesis_zh")
-    if not side.evidence_refs:
-        errors.append(f"{side_name} with strength requires evidence_refs")
-    return errors
-
-
-def _is_complete_side(side: Any) -> bool:
-    return side.strength != "absent" and bool(side.thesis_zh.strip()) and bool(side.evidence_refs)
 
 
 def _drop_unsupported_assets(payload: dict[str, Any], *, packet: NewsItemBriefInputPacket) -> dict[str, Any]:
@@ -184,7 +95,7 @@ def _drop_unsupported_assets(payload: dict[str, Any], *, packet: NewsItemBriefIn
             for symbol in sorted(set(dropped_symbols))
         ]
     )
-    normalized["data_gaps"] = gaps
+    normalized["data_gaps"] = gaps[:12]
     return normalized
 
 
@@ -210,35 +121,6 @@ def _source_backed_asset_labels(packet: NewsItemBriefInputPacket) -> set[str]:
         for target in fact.affected_targets:
             labels.update(_norm(value) for value in target.values() if isinstance(value, str))
     return {label for label in labels if label}
-
-
-def _walk_evidence_refs(value: Any) -> list[str]:
-    refs: list[str] = []
-    if isinstance(value, Mapping):
-        for key, child in value.items():
-            if key == "evidence_refs" and isinstance(child, list):
-                refs.extend(str(item).strip() for item in child if str(item).strip())
-                continue
-            refs.extend(_walk_evidence_refs(child))
-    elif isinstance(value, list):
-        for child in value:
-            refs.extend(_walk_evidence_refs(child))
-    return refs
-
-
-def _contains_forbidden_execution_language(value: Any, *, parent_key: str = "") -> bool:
-    if isinstance(value, Mapping):
-        for key, child in value.items():
-            if key in _NON_NATURAL_KEYS:
-                continue
-            if _contains_forbidden_execution_language(child, parent_key=str(key)):
-                return True
-        return False
-    if isinstance(value, list):
-        return any(_contains_forbidden_execution_language(child, parent_key=parent_key) for child in value)
-    if isinstance(value, str):
-        return bool(_FORBIDDEN_EXECUTION_RE.search(value))
-    return False
 
 
 def _walk_mapping_items(value: Any) -> list[tuple[str, Any]]:

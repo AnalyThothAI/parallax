@@ -29,6 +29,10 @@ def test_worker_skips_fresh_current_even_when_source_updated_is_noisy() -> None:
     asyncio.run(_test_worker_skips_fresh_current_even_when_source_updated_is_noisy())
 
 
+def test_worker_reprocesses_failed_current_even_when_input_hash_matches() -> None:
+    asyncio.run(_test_worker_reprocesses_failed_current_even_when_input_hash_matches())
+
+
 def test_worker_skips_claimed_target_below_current_provider_score_floor() -> None:
     asyncio.run(_test_worker_skips_claimed_target_below_current_provider_score_floor())
 
@@ -120,6 +124,39 @@ async def _test_worker_skips_fresh_current_even_when_source_updated_is_noisy() -
     assert db.news.briefs == []
     assert len(db.dirty.done) == 1
     assert result.skipped == 1
+
+
+async def _test_worker_reprocesses_failed_current_even_when_input_hash_matches() -> None:
+    candidate = _candidate()
+    provider = FakeBriefProvider(payload=_ready_payload())
+    packet = provider.packet_for_candidate(candidate)
+    agent_config = provider.agent_config()
+    candidate["current_brief"] = {
+        "news_item_id": candidate["item"]["news_item_id"],
+        "status": "failed",
+        "input_hash": packet.input_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
+        "prompt_version": packet.prompt_version,
+        "schema_version": packet.schema_version,
+        "validator_version": agent_config.validator_version,
+        "computed_at_ms": NOW_MS - 60_000,
+        "brief_json": {
+            "status": "failed",
+            "terminal": True,
+            "terminal_reason": "domain_validation_failed",
+        },
+    }
+    db = FakeDB([candidate])
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.request_audit_calls
+    assert provider.execution_calls == 1
+    assert db.news.runs[0]["status"] == "completed"
+    assert db.news.briefs[0]["status"] == "ready"
+    assert len(db.dirty.done) == 1
+    assert result.processed == 1
 
 
 async def _test_worker_skips_claimed_target_below_current_provider_score_floor() -> None:
@@ -353,13 +390,13 @@ async def _test_worker_provider_error_releases_acquired_reservation() -> None:
     assert result.failed == 1
 
 
-def test_worker_validation_failure_terminalizes_without_retrying() -> None:
-    asyncio.run(_test_worker_validation_failure_terminalizes_without_retrying())
+def test_worker_validation_failure_requeues_without_terminal_current() -> None:
+    asyncio.run(_test_worker_validation_failure_requeues_without_terminal_current())
 
 
-async def _test_worker_validation_failure_terminalizes_without_retrying() -> None:
+async def _test_worker_validation_failure_requeues_without_terminal_current() -> None:
     db = FakeDB([_candidate()])
-    provider = FakeBriefProvider(payload={**_ready_payload(), "evidence_refs": ["fact:unknown"]})
+    provider = FakeBriefProvider(payload={"status": "ready"})
     wake_bus = FakeWakeBus()
     worker = _worker(db=db, provider=provider, wake_bus=wake_bus)
 
@@ -368,13 +405,11 @@ async def _test_worker_validation_failure_terminalizes_without_retrying() -> Non
     assert provider.execution_calls == 1
     assert db.news.runs[0]["status"] == "failed"
     assert db.news.runs[0]["outcome"] == "failed"
-    assert db.news.runs[0]["validation_errors_json"][0]["code"] == "unknown_evidence_ref"
-    assert db.dirty.errors == []
-    assert len(db.dirty.terminalized) == 1
-    assert db.dirty.terminalized[0]["terminal_attempt_count"] == 1
-    assert db.news.briefs[0]["status"] == "failed"
-    assert db.news.briefs[0]["brief_json"]["terminal"] is True
-    assert db.news.briefs[0]["brief_json"]["terminal_reason"] == "domain_validation_failed"
+    assert db.news.runs[0]["validation_errors_json"][0]["code"] == "schema_invalid"
+    assert len(db.dirty.errors) == 1
+    assert db.dirty.error_kwargs[-1]["count_attempt"] is True
+    assert db.dirty.terminalized == []
+    assert db.news.briefs == []
     assert wake_bus.brief_updates == []
     assert result.failed == 1
     assert result.notes["validation_failed"] == 1

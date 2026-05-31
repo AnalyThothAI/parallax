@@ -51,7 +51,7 @@ forced into a resolved asset.
 |-------|----------------|
 | Fetch | Reconcile configured sources into `news_sources`, fetch due feeds, persist provider items and normalized news items. |
 | Item processing | Read raw `news_items`, extract entities and token mentions deterministically, classify item content, and write attention-safe observations and fact candidates. |
-| Item brief | Build bounded item/token/fact packets, reserve `news.item_brief`, execute through the shared `AgentExecutionGateway`, validate the output, write the run ledger, and upsert the current brief. |
+| Item brief | Build bounded item/token/fact packets, reserve `news.item_brief`, execute through the shared `AgentExecutionGateway`, shape-validate the standard brief output, write the run ledger, and upsert the current brief. Evidence refs and sparse source context are audit/quality metadata, not publication gates. |
 | Page projection | Rebuild the News page rows from news facts, item lifecycle, and the current item brief. |
 | Source quality projection | Rebuild per-source quality windows from source/fetch/item/token/fact/brief/context rows and update compact source quality status. |
 | API/UI | Read-only surfaces over projected `news_page_rows`, with explicit source/content/decision filters and source status diagnostics. Raw `news_items` are worker inputs, not public fallback rows. |

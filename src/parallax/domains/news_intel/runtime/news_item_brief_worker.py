@@ -251,7 +251,6 @@ class NewsItemBriefWorker(WorkerBase):
                 retry_reason="domain_validation_failed",
                 retry_attempt_limited=True,
                 retry_counts_attempt=True,
-                force_terminal=True,
                 terminal_run_id=run_id,
                 terminal_errors=validation.errors,
             )
@@ -710,7 +709,7 @@ def _current_brief_is_fresh(
     if current is None:
         return False
     status = str(current.get("status") or "")
-    if status == "failed" and not _current_brief_is_terminal_failure(current):
+    if status == "failed":
         return False
     if status not in {"ready", "insufficient", "failed"}:
         return False
@@ -723,12 +722,6 @@ def _current_brief_is_fresh(
     if str(current.get("schema_version") or "") != agent_config.schema_version:
         return False
     return str(current.get("validator_version") or "") == agent_config.validator_version
-
-
-def _current_brief_is_terminal_failure(current: Mapping[str, Any]) -> bool:
-    brief = _optional_dict(current.get("brief_json"))
-    return bool(brief and brief.get("terminal") is True)
-
 
 def _target_ids(rows: Iterable[Mapping[str, Any]]) -> list[str]:
     return _unique_values(
