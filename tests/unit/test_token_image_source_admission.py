@@ -28,7 +28,11 @@ def test_image_source_candidates_cover_all_exact_profile_source_families() -> No
             "observed_at_ms": 303,
         },
         okx_dex={
-            "raw_payload_json": {"tokenLogoUrl": "https://static.okx.com/cdn/assets/bonk.png"},
+            "raw_payload_json": {
+                "tokenLogoUrl": (
+                    "https://static.oklink.com/cdn/web3/currency/token/large/56-0xbonk-107/type=default_90_0?v=177"
+                )
+            },
             "observed_at_ms": 404,
         },
         cex_profile=None,

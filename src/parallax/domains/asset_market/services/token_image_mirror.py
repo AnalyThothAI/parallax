@@ -12,7 +12,7 @@ from curl_cffi import requests as curl_requests
 TOKEN_IMAGE_MIRROR_ALLOWED_PATH_PREFIXES = {
     "bin.bnbstatic.com": ("/",),
     "gmgn.ai": ("/external-res/",),
-    "static.okx.com": ("/",),
+    "static.oklink.com": ("/cdn/web3/currency/token/",),
 }
 TOKEN_IMAGE_MIRROR_CURL_IMPERSONATE = "chrome142"
 TOKEN_IMAGE_MIRROR_HEADERS = {
@@ -99,7 +99,7 @@ class TokenImageMirrorService:
         if len(content) > TOKEN_IMAGE_MIRROR_MAX_BYTES:
             raise _TokenImageMirrorError("image_too_large: byte_limit_exceeded")
 
-        media = _verified_media(content=content, content_type=headers.get("content-type"))
+        media = _verified_media(content=content)
         content_hash = sha256(content).hexdigest()
         filename = f"{content_hash}{media.file_extension}"
         self._write_cache_file(filename=filename, content=content)
@@ -195,20 +195,10 @@ def _required_claimed_source_url(value: Any) -> str:
     return text
 
 
-def _verified_media(*, content: bytes, content_type: str | None) -> _VerifiedMedia:
-    header_media_type = _header_media_type(content_type)
+def _verified_media(*, content: bytes) -> _VerifiedMedia:
     magic_media_type = _magic_media_type(content)
     if magic_media_type is None:
         raise _TokenImageMirrorError("unsupported_image_bytes: unknown_magic")
-
-    if header_media_type is None:
-        return _VerifiedMedia(
-            media_type=magic_media_type,
-            file_extension=_MEDIA_EXTENSIONS[magic_media_type],
-        )
-
-    if header_media_type != magic_media_type:
-        raise _TokenImageMirrorError("unsupported_image_bytes: media_type_mismatch")
 
     return _VerifiedMedia(
         media_type=magic_media_type,
@@ -226,13 +216,6 @@ def _magic_media_type(content: bytes) -> str | None:
     if len(content) >= 12 and content.startswith(b"RIFF") and content[8:12] == b"WEBP":
         return "image/webp"
     return None
-
-
-def _header_media_type(value: str | None) -> str | None:
-    media_type = str(value or "").partition(";")[0].strip().lower()
-    if not media_type:
-        return None
-    return media_type if media_type in _MEDIA_EXTENSIONS else None
 
 
 def _response_headers(response: Any) -> dict[str, str]:

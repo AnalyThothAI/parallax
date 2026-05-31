@@ -737,6 +737,7 @@ def _run_token_profile_image_repair_once(settings: object, *, limit: int, now_ms
                   AND (
                     quality_flags_json ? 'logo_mirror_pending'
                     OR quality_flags_json ? 'source_not_admitted'
+                    OR quality_flags_json ? 'logo_mirror_unsupported'
                   )
                 ORDER BY updated_at_ms DESC, target_type ASC, target_id ASC
                 LIMIT %s

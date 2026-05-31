@@ -104,7 +104,10 @@ def test_project_token_profile_current_uses_gmgn_stream_when_openapi_is_missing_
 
 
 def test_project_token_profile_current_keeps_gmgn_openapi_metadata_without_logo():
-    okx_logo_url = "https://okx.example/logo.png"
+    okx_logo_url = (
+        "https://static.oklink.com/cdn/web3/currency/token/large/"
+        "1-0xdac17f958d2ee523a2206206994597c13d831ec7-106/type=default_90_0?v=1"
+    )
     row = project_token_profile_current(
         target={"target_type": "Asset", "target_id": ASSET_ID},
         gmgn_openapi=gmgn_openapi_row(status="ready", logo_url=None, symbol="GMGN", observed_at_ms=1_000),
@@ -204,7 +207,10 @@ def test_project_token_profile_current_uses_binance_web3_before_stream_and_okx_w
 
 
 def test_project_token_profile_current_uses_okx_exact_logo_when_gmgn_sources_are_absent():
-    okx_logo_url = "https://static.okx.com/cdn/wallet/logo/usdt.png"
+    okx_logo_url = (
+        "https://static.oklink.com/cdn/web3/currency/token/large/"
+        "1-0xdac17f958d2ee523a2206206994597c13d831ec7-106/type=default_90_0?v=1"
+    )
     row = project_token_profile_current(
         target={"target_type": "Asset", "target_id": ASSET_ID},
         gmgn_openapi=None,
@@ -690,7 +696,7 @@ def ready_image(source_url: str) -> dict:
     elif "bnbstatic.com/btc" in source_url:
         slug = "cex"
         provider = "binance_cex_profile"
-    elif "okx" in source_url:
+    elif "oklink.com" in source_url:
         slug = "okx"
         provider = "okx_dex_evidence"
     else:

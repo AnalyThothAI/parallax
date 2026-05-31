@@ -17,12 +17,15 @@ PNG_BYTES = b"\x89PNG\r\n\x1a\nunit-test"
 def test_allowed_token_image_source_urls_are_provider_scoped() -> None:
     assert is_allowed_token_image_source_url("https://gmgn.ai/external-res/token-alpha.png")
     assert is_allowed_token_image_source_url("https://bin.bnbstatic.com/static/images/token.webp")
-    assert is_allowed_token_image_source_url("https://static.okx.com/cdn/assets/token.gif")
+    assert is_allowed_token_image_source_url(
+        "https://static.oklink.com/cdn/web3/currency/token/large/56-token/type=default_90_0?v=1"
+    )
 
 
 def test_rejected_token_image_source_urls_require_https_known_host_and_path() -> None:
     assert not is_allowed_token_image_source_url("http://gmgn.ai/external-res/token-alpha.png")
     assert not is_allowed_token_image_source_url("https://gmgn.ai/not-external/token-alpha.png")
+    assert not is_allowed_token_image_source_url("https://static.okx.com/cdn/assets/token.gif")
     assert not is_allowed_token_image_source_url("https://example.com/external-res/token-alpha.png")
 
 
@@ -93,6 +96,32 @@ def test_mirror_accepts_valid_image_bytes_when_content_type_is_missing(tmp_path)
         }
     ]
     assert repo.error_rows == []
+
+
+def test_mirror_uses_magic_bytes_when_provider_content_type_disagrees(tmp_path) -> None:
+    repo = _FakeTokenImageAssetRepository()
+    service = TokenImageMirrorService(
+        repository=repo,
+        app_home=tmp_path,
+        http_client=_FakeImageClient(_FakeImageResponse(content=PNG_BYTES, content_type="image/webp")),
+    )
+
+    result = service.mirror_source({"source_url": GMGN_URL}, now_ms=NOW_MS)
+
+    content_hash = sha256(PNG_BYTES).hexdigest()
+    assert result["status"] == "ready"
+    assert repo.ready_rows == [
+        {
+            "source_url": GMGN_URL,
+            "media_type": "image/png",
+            "file_extension": ".png",
+            "content_sha256": content_hash,
+            "byte_size": len(PNG_BYTES),
+            "storage_path": f"{content_hash}.png",
+            "now_ms": NOW_MS,
+        }
+    ]
+    assert repo.unsupported_rows == []
 
 
 def test_mirror_rejects_malformed_png_with_only_four_byte_prefix(tmp_path) -> None:

@@ -348,7 +348,12 @@
           },
           okx_dex={
               "evidence_id": "okx-evidence",
-              "raw_payload_json": {"tokenLogoUrl": "https://static.okx.com/cdn/assets/token.png"},
+              "raw_payload_json": {
+                  "tokenLogoUrl": (
+                      "https://static.oklink.com/cdn/web3/currency/token/large/"
+                      "56-0xbonk-107/type=default_90_0?v=177"
+                  )
+              },
               "observed_at_ms": 40,
           },
           cex_profile=None,
@@ -369,7 +374,11 @@
           gmgn_openapi={"logo_url": "http://gmgn.ai/external-res/insecure.png"},
           binance_web3={"logo_url": ""},
           gmgn_stream={"raw_payload_json": {"i": "not-a-url"}},
-          okx_dex={"raw_payload_json": {"tokenLogoUrl": "https://static.okx.com/cdn/wallet/logo/default-logo/0.png"}},
+          okx_dex={
+              "raw_payload_json": {
+                  "tokenLogoUrl": "https://static.oklink.com/cdn/wallet/logo/default-logo/0.png"
+              }
+          },
           cex_profile=None,
       )
 
