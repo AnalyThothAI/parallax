@@ -12,8 +12,10 @@ class StocksRadarService:
         self,
         *,
         conn: Any,
+        quote_provider: Any | None = None,
         stock_rows_query: Any | None = None,
     ) -> None:
+        self.quote_provider = quote_provider
         self.stock_rows_query = stock_rows_query or StocksRadarQuery(conn)
 
     def stocks_radar(
@@ -67,7 +69,21 @@ class StocksRadarService:
                 seen.add(normalized)
         if not unique_symbols:
             return {}
-        return {symbol: _unavailable_quote("read_model_unavailable") for symbol in unique_symbols}
+        if self.quote_provider is None:
+            return {
+                symbol: _unavailable_quote("quote_provider_unavailable", symbol=symbol)
+                for symbol in unique_symbols
+            }
+        quotes: dict[str, dict[str, Any]] = {}
+        for symbol in unique_symbols:
+            try:
+                quote = self.quote_provider.quote(symbol)
+            except Exception:
+                quote = _unavailable_quote("quote_provider_error", symbol=symbol)
+            quotes[symbol] = (
+                quote if isinstance(quote, dict) else _unavailable_quote("quote_provider_error", symbol=symbol)
+            )
+        return quotes
 
 
 def _public_row(row: dict[str, Any], *, quote: dict[str, Any]) -> dict[str, Any]:
@@ -99,7 +115,7 @@ def _public_row(row: dict[str, Any], *, quote: dict[str, Any]) -> dict[str, Any]
     }
 
 
-def _unavailable_quote(error: str) -> dict[str, Any]:
+def _unavailable_quote(error: str, *, symbol: str | None = None) -> dict[str, Any]:
     return {
         "status": "unavailable",
         "price": None,
@@ -107,7 +123,7 @@ def _unavailable_quote(error: str) -> dict[str, Any]:
         "change_pct": None,
         "asof": None,
         "provider": None,
-        "provider_symbol": None,
+        "provider_symbol": symbol,
         "latency_class": None,
         "freshness_class": None,
         "error": error,

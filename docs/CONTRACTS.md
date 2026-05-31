@@ -300,9 +300,11 @@ US Stocks radar contract:
   `resolution_status = NON_CRYPTO` and `CONFIRMED_US_EQUITY`; `Asset` and
   `CexToken` rows are not part of this response.
 - Rows expose social attention facts, latest evidence, source event ids, and a
-  request-time `quote` snapshot from macrodata-cli's Yahoo price provider. Quote lookup is per-row: a quote
+  request-time `quote` snapshot from the runtime `stock_quote_provider`, wired
+  from macrodata-cli's Yahoo price provider when `providers.macrodata.enabled`
+  is true. Quotes are not persisted as a Stocks read model. Per-row provider
   failure returns `quote.status = "unavailable"` and does not fail the whole
-  response.
+  response; a missing provider reports `quote_provider_unavailable`.
 
 Macro contract:
 

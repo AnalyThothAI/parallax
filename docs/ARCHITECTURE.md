@@ -47,6 +47,21 @@ operator-triggered execution of the same sync service used by `macro_sync`.
 coverage; one-point history is projected as `partial` with structured gaps
 rather than `ready`.
 
+US Stocks radar uses macrodata through a narrower request-time quote lane, not
+the macro observation projection. The flow is:
+
+```text
+GMGN cashtag event
+  -> token_intents / token_intent_resolutions
+  -> MarketInstrument + CONFIRMED_US_EQUITY
+  -> /api/stocks-radar social row query
+  -> runtime stock_quote_provider (macrodata Yahoo)
+  -> web /stocks
+```
+
+The quote snapshot is per-row and non-persistent. Provider failures degrade only
+that row's `quote` block; they are not PostgreSQL read-model freshness failures.
+
 This repository is the system of record for agent work: if a production
 decision changes, update the nearest architecture / contract / reliability
 document in the same change. A fresh agent must not need chat history to know

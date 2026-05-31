@@ -30,15 +30,13 @@ def test_market_candles_read_model_has_no_provider_io() -> None:
     assert [token for token in forbidden if token in source] == []
 
 
-def test_stocks_radar_api_and_read_model_do_not_reach_quote_provider() -> None:
+def test_stocks_radar_api_wires_runtime_stock_quote_provider_without_parallel_fanout() -> None:
     route_source = (SRC / "app/surfaces/api/routes_radar.py").read_text()
     service_source = (SRC / "domains/token_intel/read_models/stocks_radar_service.py").read_text()
 
-    assert "stock_quote_provider" not in route_source
-    assert "quote_provider" not in route_source
-    assert "quote_provider" not in service_source
+    assert "runtime.stock_quote_provider" in route_source
+    assert "quote_provider" in service_source
     assert "ThreadPoolExecutor" not in service_source
-    assert ".quote(" not in service_source
 
 
 def test_macro_api_routes_do_not_reach_macrodata_providers() -> None:
