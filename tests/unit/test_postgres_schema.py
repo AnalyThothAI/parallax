@@ -189,6 +189,9 @@ TOKEN_RADAR_RUNTIME_NOT_NULL_GUARDRAILS_MIGRATION = Path(
 NEWS_PUBLIC_URL_HARD_IDENTITY_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260529_0123_news_public_url_hard_identity.py"
 )
+NEWS_REBUILD_BRIEF_BACKLOG_HARD_CUT_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260531_0132_news_rebuild_brief_backlog_hard_cut.py"
+)
 TOKEN_PULSE_EQUITY_CPU_HARD_CUT_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260529_0124_token_pulse_equity_cpu_hard_cut.py"
 )
@@ -1708,6 +1711,22 @@ def test_news_public_url_hard_identity_migration_guards_database_duplicates() ->
     assert "DELETE FROM news_items AS items" in text
     assert "news_public_url_hard_identity_rebuild" in text
     assert "canonical_url ~* '^https?://'" in normalized_text
+
+
+def test_news_rebuild_brief_backlog_hard_cut_removes_historical_llm_backfill_targets() -> None:
+    assert NEWS_REBUILD_BRIEF_BACKLOG_HARD_CUT_MIGRATION.exists(), (
+        f"{NEWS_REBUILD_BRIEF_BACKLOG_HARD_CUT_MIGRATION} missing; add a migration that clears old rebuild "
+        "brief_input targets without touching realtime news_item_processed targets"
+    )
+    text = NEWS_REBUILD_BRIEF_BACKLOG_HARD_CUT_MIGRATION.read_text()
+
+    assert 'revision = "20260531_0132"' in text
+    assert 'down_revision = "20260531_0131"' in text
+    assert "DELETE FROM news_projection_dirty_targets" in text
+    assert "projection_name = 'brief_input'" in text
+    assert "news_public_url_hard_identity_rebuild" in text
+    assert "news_canonical_url_hard_identity_rebuild" in text
+    assert "news_item_processed" not in text
 
 
 def test_asset_migration_adds_identity_resolution_tables() -> None:

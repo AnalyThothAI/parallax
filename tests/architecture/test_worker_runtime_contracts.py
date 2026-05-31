@@ -204,6 +204,7 @@ CONTROL_PLANE_TABLES: dict[str, set[Path]] = {
         NEWS_REALTIME_POSTGRES_HOTPATH_MIGRATION,
         SRC / "platform/db/alembic/versions/20260529_0123_news_public_url_hard_identity.py",
         SRC / "platform/db/alembic/versions/20260531_0131_news_story_projection_hard_cut.py",
+        SRC / "platform/db/alembic/versions/20260531_0132_news_rebuild_brief_backlog_hard_cut.py",
     },
     "market_tick_current_dirty_targets": {
         SRC / "domains/asset_market/repositories/market_tick_current_dirty_target_repository.py",
