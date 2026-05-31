@@ -46,19 +46,24 @@ Useful live-data smoke checks:
 uv run parallax config
 uv run parallax ops worker-status
 uv run parallax ops refresh-asset-profiles --limit 5
-uv run parallax ops mirror-token-images --limit 50 --source-limit 500
+uv run parallax ops rebuild-token-profiles --limit 500
+uv run parallax ops repair-token-profile-images --limit 500
+uv run parallax ops mirror-token-images --limit 50
 uv run parallax ops rebuild-token-profiles --limit 500
 uv run parallax asset-flow --window 1h --scope all --limit 20
 ```
 
 The first command confirms the real config paths. The profile refresh command
 exercises the GMGN exact-token profile lane that feeds `asset_profiles.logo_url`
-for DEX token icon source URLs. The mirror command copies eligible provider
-images into `~/.parallax/cache/token-images`, and the rebuild command
-projects `token_profile_current.logo_url` to local `/api/token-images/{image_id}`
-paths or `NULL`. Provider blocks, rate limits, unsupported image types, and
-missing mirror rows should surface as explicit diagnostic results or fallback
-marks, not as fake public profile facts.
+for DEX token icon source URLs. `rebuild-token-profiles` admits exact profile
+and evidence logo sources into `token_image_source_dirty_targets`; the repair
+command re-enqueues already-current rows whose icons were stuck before source
+admission existed. The mirror command copies eligible provider images into
+`~/.parallax/cache/token-images`, and the final rebuild projects
+`token_profile_current.logo_url` to local `/api/token-images/{image_id}` paths
+or `NULL`. Provider blocks, rate limits, unsupported image types, and missing
+mirror rows should surface as explicit diagnostic results or fallback marks,
+not as fake public profile facts.
 
 Macro live-data debugging starts the same way: first run
 `uv run parallax config` and confirm `config_path` /

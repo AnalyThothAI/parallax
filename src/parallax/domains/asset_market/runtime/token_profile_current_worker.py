@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, cast
+from typing import Any
 
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.asset_market.queries.token_profile_source_query import TokenProfileSourceQuery
+from parallax.domains.asset_market.services.token_image_source_admission import (
+    admit_token_image_sources,
+    image_source_candidates_for_target,
+)
 from parallax.domains.asset_market.services.token_profile_current_projection import (
     project_token_profile_current,
 )
@@ -110,10 +114,16 @@ def _project_claimed_token_profiles(
     gmgn_stream = query.gmgn_stream_profiles(asset_ids)
     okx_dex = query.okx_dex_profiles(asset_ids)
     cex_profiles = query.cex_token_profiles(cex_token_ids)
-    ready_images_by_source_url = _ready_images_by_source_url(
-        repos=repos,
-        sources=[gmgn_openapi, binance_web3, gmgn_stream, okx_dex, cex_profiles],
+    image_candidates = _image_source_candidates_for_targets(
+        targets=targets,
+        gmgn_openapi=gmgn_openapi,
+        binance_web3=binance_web3,
+        gmgn_stream=gmgn_stream,
+        okx_dex=okx_dex,
+        cex_profiles=cex_profiles,
     )
+    admission = admit_token_image_sources(repos=repos, candidates=image_candidates, now_ms=now_ms)
+    _record_image_admission(result, admission.counts)
     for target in targets:
         target_id = str(target.get("target_id") or "")
         row = project_token_profile_current(
@@ -123,7 +133,7 @@ def _project_claimed_token_profiles(
             gmgn_stream=gmgn_stream.get(target_id),
             okx_dex=okx_dex.get(target_id),
             cex_profile=cex_profiles.get(target_id),
-            ready_images_by_source_url=ready_images_by_source_url,
+            image_states_by_source_key=admission.image_states_by_source_key,
             computed_at_ms=now_ms,
         )
         repos.token_profiles.upsert_current(row, commit=False)
@@ -141,39 +151,29 @@ def _dedupe_targets(rows: list[dict[str, Any]]) -> list[dict[str, str]]:
     return list(targets.values())
 
 
-def _ready_images_by_source_url(*, repos: Any, sources: list[dict[str, dict[str, Any]]]) -> dict[str, dict[str, Any]]:
-    source_urls = _candidate_logo_urls(sources)
-    if not source_urls:
-        return {}
-    return cast(dict[str, dict[str, Any]], repos.token_image_assets.ready_by_source_urls(source_urls))
-
-
-def _candidate_logo_urls(sources: list[dict[str, dict[str, Any]]]) -> list[str]:
-    urls: list[str] = []
-    for rows_by_target in sources:
-        for row in rows_by_target.values():
-            for value in _logo_url_values(row):
-                url = _clean_absolute_http_url(value)
-                if url:
-                    urls.append(url)
-    return list(dict.fromkeys(urls))
-
-
-def _logo_url_values(row: dict[str, Any]) -> list[Any]:
-    raw = row.get("raw_payload_json")
-    raw_payload = dict(raw) if isinstance(raw, dict) else {}
-    return [
-        row.get("logo_url"),
-        raw_payload.get("i"),
-        raw_payload.get("tokenLogoUrl"),
-    ]
-
-
-def _clean_absolute_http_url(value: Any) -> str | None:
-    text = str(value or "").strip()
-    if text.startswith(("http://", "https://")):
-        return text
-    return None
+def _image_source_candidates_for_targets(
+    *,
+    targets: list[dict[str, str]],
+    gmgn_openapi: dict[str, dict[str, Any]],
+    binance_web3: dict[str, dict[str, Any]],
+    gmgn_stream: dict[str, dict[str, Any]],
+    okx_dex: dict[str, dict[str, Any]],
+    cex_profiles: dict[str, dict[str, Any]],
+) -> list[Any]:
+    candidates: list[Any] = []
+    for target in targets:
+        target_id = str(target.get("target_id") or "")
+        candidates.extend(
+            image_source_candidates_for_target(
+                target=target,
+                gmgn_openapi=gmgn_openapi.get(target_id),
+                binance_web3=binance_web3.get(target_id),
+                gmgn_stream=gmgn_stream.get(target_id),
+                okx_dex=okx_dex.get(target_id),
+                cex_profile=cex_profiles.get(target_id),
+            )
+        )
+    return candidates
 
 
 def _record_row(result: dict[str, Any], row: dict[str, Any]) -> None:
@@ -189,6 +189,16 @@ def _record_row(result: dict[str, Any], row: dict[str, Any]) -> None:
         counts[str(provider)] = int(counts.get(str(provider)) or 0) + 1
 
 
+def _record_image_admission(result: dict[str, Any], counts: dict[str, int]) -> None:
+    result["image_candidates"] += int(counts.get("candidates") or 0)
+    result["image_sources_admitted"] += int(counts.get("admitted") or 0)
+    result["image_ready_existing"] += int(counts.get("ready_existing") or 0)
+    result["image_pending_existing"] += int(counts.get("pending_existing") or 0)
+    result["image_error_existing"] += int(counts.get("error_existing") or 0)
+    result["image_unsupported_existing"] += int(counts.get("unsupported_existing") or 0)
+    result["image_dirty_existing"] += int(counts.get("dirty_existing") or 0)
+
+
 def _empty_result(*, now_ms: int) -> dict[str, Any]:
     return {
         "selected": 0,
@@ -202,6 +212,13 @@ def _empty_result(*, now_ms: int) -> dict[str, Any]:
         "unsupported": 0,
         "error": 0,
         "with_logo": 0,
+        "image_candidates": 0,
+        "image_sources_admitted": 0,
+        "image_ready_existing": 0,
+        "image_pending_existing": 0,
+        "image_error_existing": 0,
+        "image_unsupported_existing": 0,
+        "image_dirty_existing": 0,
         "source_provider": {},
         "started_at_ms": int(now_ms),
         "finished_at_ms": int(now_ms),

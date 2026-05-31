@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
 GMGN_DEX_PROFILE_PROVIDER = "gmgn_dex_profile"
@@ -23,15 +24,19 @@ def project_token_profile_current(
     okx_dex: dict[str, Any] | None,
     computed_at_ms: int,
     cex_profile: dict[str, Any] | None = None,
-    ready_images_by_source_url: dict[str, dict[str, Any]] | None = None,
+    image_states_by_source_key: dict[tuple[str, str, str], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    ready_images = ready_images_by_source_url or {}
+    image_states = image_states_by_source_key or {}
     target_type = _clean(target.get("target_type"))
     target_id = _clean(target.get("target_id"))
+    if not target_type or not target_id:
+        raise ValueError("token profile current projection target_type and target_id are required")
     if target_type == "CexToken":
         logo = _select_logo(
             _cex_logo_candidates(cex_profile),
-            ready_images,
+            image_states,
+            target_type=target_type,
+            target_id=target_id,
         )
         if _cex_profile_metadata_ready(cex_profile):
             return _cex_token_profile_row(
@@ -57,7 +62,9 @@ def project_token_profile_current(
             gmgn_stream=gmgn_stream,
             okx_dex=okx_dex,
         ),
-        ready_images,
+        image_states,
+        target_type=target_type,
+        target_id=target_id,
     )
     gmgn_openapi_source = gmgn_openapi
     if gmgn_openapi_source is not None and _asset_profile_metadata_ready(gmgn_openapi_source):
@@ -280,10 +287,9 @@ def _ready_row(
     description: Any = None,
     observed_at_ms: int | None = None,
     quality_flags: list[str] | None = None,
-    ready_images_by_source_url: dict[str, dict[str, Any]] | None = None,
     logo: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    resolved_logo = logo or _project_logo(logo_url, ready_images_by_source_url or {})
+    resolved_logo = logo or _empty_logo(_source_without_logo_flags(_clean(logo_url)))
     return {
         "target_type": _clean(target_type),
         "target_id": _clean(target_id),
@@ -372,8 +378,10 @@ def _cex_profile_metadata_ready(row: dict[str, Any] | None) -> bool:
 
 def _project_logo(
     provider_logo_url: Any,
-    ready_images_by_source_url: dict[str, dict[str, Any]],
+    image_states_by_source_key: dict[tuple[str, str, str], dict[str, Any]],
     *,
+    target_type: str | None,
+    target_id: str | None,
     selected_source_provider: str | None = None,
 ) -> dict[str, Any]:
     source_url = _clean(provider_logo_url)
@@ -389,44 +397,59 @@ def _project_logo(
         fields["quality_flags"] = missing_flags
         return fields
 
-    ready_image = ready_images_by_source_url.get(str(source_url))
-    public_url = _clean(ready_image.get("public_url") if ready_image is not None else None)
-    if public_url:
-        fields["logo_url"] = public_url
-        fields["logo_image_id"] = _clean(ready_image.get("image_id")) if ready_image is not None else None
-        fields["logo_source_provider"] = _clean(selected_source_provider) or (
-            _clean(ready_image.get("source_provider")) if ready_image is not None else None
-        )
-        fields["logo_source_url_hash"] = _clean(ready_image.get("source_url_hash")) if ready_image is not None else None
+    state = image_states_by_source_key.get((_source_url_hash(str(source_url)), str(target_type), str(target_id)))
+    if state is None:
+        fields["quality_flags"] = ["source_not_admitted"]
         return fields
 
-    fields["quality_flags"] = ["logo_mirror_pending"]
+    status = _clean(state.get("status"))
+    public_url = _clean(state.get("public_url"))
+    if status == STATUS_READY and public_url:
+        fields["logo_url"] = public_url
+        fields["logo_image_id"] = _clean(state.get("image_id"))
+        fields["logo_source_provider"] = _clean(selected_source_provider) or (
+            _clean(state.get("source_provider")) if state is not None else None
+        )
+        fields["logo_source_url_hash"] = _clean(state.get("source_url_hash"))
+        return fields
+
+    fields["quality_flags"] = [_logo_lifecycle_quality_flag(status)]
     return fields
 
 
 def _select_logo(
     candidates: list[tuple[str, Any]],
-    ready_images_by_source_url: dict[str, dict[str, Any]],
+    image_states_by_source_key: dict[tuple[str, str, str], dict[str, Any]],
+    *,
+    target_type: str | None,
+    target_id: str | None,
 ) -> dict[str, Any]:
     usable_candidates: list[tuple[str, str]] = []
-    fallback_flags: list[str] = ["source_without_logo"]
+    fallback_flags: list[str] | None = None
     for provider, source_url in candidates:
         flags = _source_without_logo_flags(_clean(source_url))
         if flags:
-            fallback_flags = flags
+            if fallback_flags is None:
+                fallback_flags = flags
             continue
         usable_candidates.append((provider, str(_clean(source_url))))
 
+    non_ready_logos: list[dict[str, Any]] = []
     for provider, source_url in usable_candidates:
         logo = _project_logo(
             source_url,
-            ready_images_by_source_url,
+            image_states_by_source_key,
+            target_type=target_type,
+            target_id=target_id,
             selected_source_provider=provider,
         )
         if logo["logo_url"]:
             return logo
+        non_ready_logos.append(logo)
 
-    return _empty_logo(["logo_mirror_pending"] if usable_candidates else fallback_flags)
+    if non_ready_logos:
+        return non_ready_logos[0]
+    return _empty_logo(fallback_flags or ["source_without_logo"])
 
 
 def _empty_logo(quality_flags: list[str]) -> dict[str, Any]:
@@ -446,15 +469,21 @@ def _asset_logo_candidates(
     gmgn_stream: dict[str, Any] | None,
     okx_dex: dict[str, Any] | None,
 ) -> list[tuple[str, Any]]:
-    return [
-        (GMGN_DEX_PROFILE_PROVIDER, (gmgn_openapi or {}).get("logo_url")),
-        (BINANCE_WEB3_PROFILE_PROVIDER, (binance_web3 or {}).get("logo_url")),
-        (GMGN_STREAM_PROFILE_PROVIDER, _raw(gmgn_stream or {}).get("i")),
-        (OKX_DEX_PROFILE_PROVIDER, _raw(okx_dex or {}).get("tokenLogoUrl")),
-    ]
+    candidates: list[tuple[str, Any]] = []
+    if gmgn_openapi is not None:
+        candidates.append((GMGN_DEX_PROFILE_PROVIDER, gmgn_openapi.get("logo_url")))
+    if binance_web3 is not None:
+        candidates.append((BINANCE_WEB3_PROFILE_PROVIDER, binance_web3.get("logo_url")))
+    if gmgn_stream is not None:
+        candidates.append((GMGN_STREAM_PROFILE_PROVIDER, _raw(gmgn_stream).get("i")))
+    if okx_dex is not None:
+        candidates.append((OKX_DEX_PROFILE_PROVIDER, _raw(okx_dex).get("tokenLogoUrl")))
+    return candidates
 
 
 def _cex_logo_candidates(cex_profile: dict[str, Any] | None) -> list[tuple[str, Any]]:
+    if cex_profile is None:
+        return []
     provider = _clean((cex_profile or {}).get("provider")) or BINANCE_CEX_PROFILE_PROVIDER
     return [(provider, (cex_profile or {}).get("logo_url"))]
 
@@ -467,6 +496,20 @@ def _source_without_logo_flags(value: str | None, *, placeholder_flag: str = "pl
     if "/default-logo/" in value:
         return [placeholder_flag, "source_without_logo"]
     return []
+
+
+def _logo_lifecycle_quality_flag(status: str | None) -> str:
+    if status == STATUS_UNSUPPORTED:
+        return "logo_mirror_unsupported"
+    if status == STATUS_ERROR:
+        return "logo_mirror_failed"
+    if status in {"pending", "mirror_pending"}:
+        return "logo_mirror_pending"
+    return "source_not_admitted"
+
+
+def _source_url_hash(source_url: str) -> str:
+    return hashlib.sha256(source_url.encode("utf-8")).hexdigest()
 
 
 def _okx_placeholder_logo_flags(value: str | None) -> list[str]:

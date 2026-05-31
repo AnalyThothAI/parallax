@@ -304,17 +304,12 @@ Token Radar rows that will become stale, but they do not delete Token Radar
 tables directly. Run the domain rebuild path after those fact-level cleanups so
 Token Radar reprojects from the updated facts.
 
-Before re-enabling Watchlist handle summaries against existing data, backfill
-compact watchlist read models in bounded batches:
-
-```bash
-uv run parallax ops backfill-watchlist-signal-stats --batch-size 5000 --max-batches 20
-```
-
-`handle_summary` should stay disabled in operator-owned
-`~/.parallax/workers.yaml` until
-`backfill-watchlist-signal-stats` reports `has_more=false` and the stats row
-counts are plausible for the configured handles.
+Watchlist handle-summary agent tables and their signal-stats backfill were
+retired in the 2026-05-30 hard cut that dropped
+`watchlist_handle_signal_stats` and related social/watchlist agent storage.
+Do not run or reintroduce `ops backfill-watchlist-signal-stats`; rebuilding
+watchlist intelligence now requires a new product contract and schema instead
+of replaying the retired command.
 
 ## Provider connection state
 

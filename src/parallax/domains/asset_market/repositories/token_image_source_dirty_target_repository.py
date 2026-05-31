@@ -190,6 +190,40 @@ class TokenImageSourceDirtyTargetRepository:
             self.conn.commit()
         return [dict(row) for row in rows]
 
+    def existing_by_source_targets(
+        self,
+        targets: Iterable[Mapping[str, Any]],
+    ) -> dict[tuple[str, str, str], dict[str, Any]]:
+        records = _target_identity_records(targets)
+        if not records:
+            return {}
+        rows = self.conn.execute(
+            """
+            WITH incoming AS (
+              SELECT *
+              FROM unnest(
+                %(source_url_hashes)s::text[],
+                %(target_types)s::text[],
+                %(target_ids)s::text[]
+              ) AS incoming(source_url_hash, target_type, target_id)
+            )
+            SELECT queue.*
+            FROM token_image_source_dirty_targets queue
+            JOIN incoming
+              ON queue.source_url_hash = incoming.source_url_hash
+             AND queue.target_type = incoming.target_type
+             AND queue.target_id = incoming.target_id
+            """,
+            {
+                "source_url_hashes": [record["source_url_hash"] for record in records],
+                "target_types": [record["target_type"] for record in records],
+                "target_ids": [record["target_id"] for record in records],
+            },
+        ).fetchall()
+        return {
+            (str(row["source_url_hash"]), str(row["target_type"]), str(row["target_id"])): dict(row) for row in rows
+        }
+
     def mark_done(self, claims: Iterable[Mapping[str, Any]], *, now_ms: int, commit: bool = True) -> int:
         records = _claim_records(claims)
         if not records:
@@ -316,6 +350,21 @@ def _target_records(
         }
         record["payload_hash"] = str(target.get("payload_hash") or _payload_hash({**record, "dirty_reason": reason}))
         records[(record["source_url_hash"], target_type, target_id)] = record
+    return list(records.values())
+
+
+def _target_identity_records(targets: Iterable[Mapping[str, Any]]) -> list[dict[str, str]]:
+    records: dict[tuple[str, str, str], dict[str, str]] = {}
+    for target in targets:
+        source_url = _required_source_url(target.get("source_url"))
+        target_type = _required_text(target.get("target_type"), field_name="target_type")
+        target_id = _required_text(target.get("target_id"), field_name="target_id")
+        source_url_hash = _source_url_hash(source_url)
+        records[(source_url_hash, target_type, target_id)] = {
+            "source_url_hash": source_url_hash,
+            "target_type": target_type,
+            "target_id": target_id,
+        }
     return list(records.values())
 
 

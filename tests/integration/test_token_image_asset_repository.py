@@ -12,6 +12,8 @@ from tests.postgres_test_utils import reset_postgres_schema as migrate
 NOW_MS = 1_779_000_000_000
 SOURCE_URL = "https://gmgn.ai/external-res/token-alpha.png"
 SECOND_SOURCE_URL = "https://bin.bnbstatic.com/static/images/token-beta.webp"
+THIRD_SOURCE_URL = "https://gmgn.ai/external-res/token-gamma.jpg"
+FOURTH_SOURCE_URL = "https://assets.example.test/token-delta.gif"
 
 
 def test_upsert_pending_sources_is_idempotent_and_hashes_source_url(tmp_path):
@@ -52,7 +54,7 @@ def test_upsert_pending_sources_is_idempotent_and_hashes_source_url(tmp_path):
     assert rows[0]["updated_at_ms"] == NOW_MS + 1
 
 
-def test_claim_due_sources_sets_durable_lease_before_returning_rows(tmp_path):
+def test_by_source_urls_returns_all_lifecycle_states_without_claiming(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -61,32 +63,50 @@ def test_claim_due_sources_sets_durable_lease_before_returning_rows(tmp_path):
             [
                 _source_row(SOURCE_URL),
                 _source_row(SECOND_SOURCE_URL, source_provider="binance_cex_profile"),
+                _source_row(THIRD_SOURCE_URL),
+                _source_row(FOURTH_SOURCE_URL),
             ],
             now_ms=NOW_MS,
         )
-        repo.mark_error(
+        ready_row = repo.mark_ready(
             SECOND_SOURCE_URL,
+            media_type="image/webp",
+            file_extension=".webp",
+            content_sha256="b" * 64,
+            byte_size=2048,
+            storage_path="bbbbbbbb.webp",
+            now_ms=NOW_MS + 100,
+        )
+        repo.mark_error(
+            THIRD_SOURCE_URL,
             error="429 rate limited",
             now_ms=NOW_MS + 10,
             retry_ms=5_000,
         )
-
-        claim_now_ms = NOW_MS + 6_000
-        claimed = repo.claim_due_sources(now_ms=claim_now_ms, limit=10)
-        duplicate_claim = repo.claim_due_sources(now_ms=claim_now_ms + 1, limit=10)
-        leased_until_ms = conn.execute(
-            "SELECT next_refresh_at_ms FROM token_image_assets WHERE source_url = %s",
-            (SOURCE_URL,),
-        ).fetchone()["next_refresh_at_ms"]
-        after_lease = repo.claim_due_sources(now_ms=leased_until_ms, limit=10)
+        repo.mark_unsupported(
+            FOURTH_SOURCE_URL,
+            error="unsupported_image_bytes: unknown_magic",
+            now_ms=NOW_MS + 20,
+        )
+        rows = repo.by_source_urls(
+            [
+                FOURTH_SOURCE_URL,
+                THIRD_SOURCE_URL,
+                SECOND_SOURCE_URL,
+                SOURCE_URL,
+                SOURCE_URL,
+            ]
+        )
     finally:
         conn.close()
 
-    assert [row["source_url"] for row in claimed] == [SOURCE_URL, SECOND_SOURCE_URL]
-    assert [row["status"] for row in claimed] == ["pending", "pending"]
-    assert all(row["next_refresh_at_ms"] > claim_now_ms for row in claimed)
-    assert duplicate_claim == []
-    assert [row["source_url"] for row in after_lease] == [SOURCE_URL, SECOND_SOURCE_URL]
+    assert set(rows) == {SOURCE_URL, SECOND_SOURCE_URL, THIRD_SOURCE_URL, FOURTH_SOURCE_URL}
+    assert rows[SOURCE_URL]["status"] == "pending"
+    assert rows[SOURCE_URL]["next_refresh_at_ms"] == NOW_MS
+    assert rows[SECOND_SOURCE_URL] == ready_row
+    assert rows[THIRD_SOURCE_URL]["status"] == "error"
+    assert rows[THIRD_SOURCE_URL]["next_refresh_at_ms"] == NOW_MS + 5_010
+    assert rows[FOURTH_SOURCE_URL]["status"] == "unsupported"
 
 
 def test_mark_ready_persists_download_metadata_and_public_url(tmp_path):
@@ -217,7 +237,7 @@ def test_mark_error_does_not_downgrade_unsupported_row(tmp_path):
     assert row == unsupported_row
 
 
-def test_mark_unsupported_is_terminal_and_not_claimed(tmp_path):
+def test_mark_unsupported_is_terminal(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -229,7 +249,6 @@ def test_mark_unsupported_is_terminal_and_not_claimed(tmp_path):
             error="unsupported_image_bytes: media_type_mismatch",
             now_ms=NOW_MS + 200,
         )
-        claimed = repo.claim_due_sources(now_ms=NOW_MS + 1_000_000, limit=10)
         row = conn.execute(
             "SELECT * FROM token_image_assets WHERE source_url = %s",
             (SOURCE_URL,),
@@ -237,7 +256,6 @@ def test_mark_unsupported_is_terminal_and_not_claimed(tmp_path):
     finally:
         conn.close()
 
-    assert claimed == []
     assert row["status"] == "unsupported"
     assert row["failure_count"] == 1
     assert row["last_error"] == "unsupported_image_bytes: media_type_mismatch"

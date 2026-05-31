@@ -15,6 +15,13 @@ class _ExecuteMode(argparse.Action):
         namespace.dry_run = False
 
 
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="parallax")
     subcommands = parser.add_subparsers(dest="command")
@@ -226,7 +233,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="mirror provider token images into the local cache",
     )
     mirror_token_images.add_argument("--limit", type=int, default=500)
-    mirror_token_images.add_argument("--source-limit", type=int, default=5000)
+    repair_token_profile_images = ops_subcommands.add_parser(
+        "repair-token-profile-images",
+        help="enqueue current profile targets so token image source admission can repair stuck icons",
+    )
+    repair_token_profile_images.add_argument("--limit", type=_positive_int, default=500)
     reprocess_token_intents = ops_subcommands.add_parser(
         "reprocess-token-intents",
         help="re-resolve recent unresolved token intents and rebuild token radar",

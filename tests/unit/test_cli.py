@@ -5,25 +5,19 @@ import pytest
 from parallax.app.surfaces.cli.parser import build_parser
 
 
-def test_ops_backfill_watchlist_signal_stats_parser_accepts_batch_controls() -> None:
-    args = build_parser().parse_args(
-        [
-            "ops",
-            "backfill-watchlist-signal-stats",
-            "--batch-size",
-            "5000",
-            "--max-batches",
-            "1",
-            "--dry-run",
-        ]
-    )
-
-    assert args.command == "ops"
-    assert args.ops_command == "backfill-watchlist-signal-stats"
-    assert args.batch_size == 5000
-    assert args.max_batches == 1
-    assert args.after_cursor == ""
-    assert args.dry_run is True
+def test_removed_watchlist_signal_stats_backfill_command_is_not_registered() -> None:
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(
+            [
+                "ops",
+                "backfill-watchlist-signal-stats",
+                "--batch-size",
+                "5000",
+                "--max-batches",
+                "1",
+                "--dry-run",
+            ]
+        )
 
 
 def test_removed_token_radar_storage_ops_commands_are_not_registered() -> None:
@@ -54,15 +48,17 @@ def test_ops_mirror_token_images_parser_accepts_limits() -> None:
             "mirror-token-images",
             "--limit",
             "500",
-            "--source-limit",
-            "5000",
         ]
     )
 
     assert args.command == "ops"
     assert args.ops_command == "mirror-token-images"
     assert args.limit == 500
-    assert args.source_limit == 5000
+
+
+def test_ops_mirror_token_images_parser_rejects_source_limit() -> None:
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["ops", "mirror-token-images", "--source-limit", "5000"])
 
 
 def test_ops_rebuild_market_tick_current_parser_requires_explicit_mode() -> None:

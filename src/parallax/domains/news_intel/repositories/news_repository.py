@@ -2937,7 +2937,8 @@ class NewsRepository:
                 'ge_threshold_rows', COALESCE((SELECT SUM(ge_threshold_rows)::int FROM material_title_duplicates), 0),
                 'ge_threshold_duplicate_rows',
                   COALESCE((SELECT SUM(GREATEST(ge_threshold_rows - 1, 0))::int FROM material_title_duplicates), 0),
-                'top_groups', COALESCE((SELECT jsonb_agg(payload) FROM top_material_title_duplicate_groups), '[]'::jsonb)
+                'top_groups',
+                  COALESCE((SELECT jsonb_agg(payload) FROM top_material_title_duplicate_groups), '[]'::jsonb)
               ) AS material_title_duplicate_groups,
               jsonb_build_object(
                 'groups', COALESCE((SELECT COUNT(*)::int FROM case_insensitive_url_duplicates), 0),

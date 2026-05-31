@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
 import yaml
 
 from parallax.app.runtime.repository_session import repositories_for_connection
@@ -154,7 +155,8 @@ class CliTests(unittest.TestCase):
             ["ops", "cex-binance-hard-cut-cleanup", "--dry-run"],
             ["ops", "run-resolution-refresh", "--limit", "5"],
             ["ops", "refresh-asset-profiles", "--limit", "5"],
-            ["ops", "mirror-token-images", "--limit", "5", "--source-limit", "50"],
+            ["ops", "mirror-token-images", "--limit", "5"],
+            ["ops", "repair-token-profile-images", "--limit", "5"],
             ["ops", "reprocess-token-intents", "--window", "24h", "--limit", "5", "--lookup-key", "symbol:SLOP"],
             ["ops", "rebuild-token-intents", "--window", "5m", "--limit", "5"],
             ["ops", "audit-token-intent", "--event-id", "event-1"],
@@ -229,38 +231,52 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[12].limit, 5)
         self.assertEqual(parsed[13].ops_command, "mirror-token-images")
         self.assertEqual(parsed[13].limit, 5)
-        self.assertEqual(parsed[13].source_limit, 50)
-        self.assertEqual(parsed[14].ops_command, "reprocess-token-intents")
-        self.assertEqual(parsed[14].window, "24h")
-        self.assertEqual(parsed[14].lookup_key, ["symbol:SLOP"])
-        self.assertEqual(parsed[15].ops_command, "rebuild-token-intents")
-        self.assertEqual(parsed[15].window, "5m")
-        self.assertEqual(parsed[16].ops_command, "audit-token-intent")
-        self.assertEqual(parsed[17].ops_command, "rebuild-token-radar")
-        self.assertEqual(parsed[18].ops_command, "audit-token-radar")
-        self.assertEqual(parsed[19].ops_command, "rebuild-narrative-intel")
-        self.assertEqual(parsed[19].window, "1h")
-        self.assertEqual(parsed[19].scope, "all")
-        self.assertEqual(parsed[19].semantic_limit, 5)
-        self.assertEqual(parsed[19].digest_limit, 5)
-        self.assertTrue(parsed[19].drain)
-        self.assertEqual(parsed[20].ops_command, "factor-diagnostics")
-        self.assertEqual(parsed[20].limit, 200)
-        self.assertEqual(parsed[21].ops_command, "settle-token-factors")
-        self.assertEqual(parsed[21].now_ms, 1_700_000_000_000)
-        self.assertEqual(parsed[22].ops_command, "sync-us-equity-symbols")
-        self.assertEqual(parsed[23].ops_command, "rebuild-token-profiles")
-        self.assertEqual(parsed[23].limit, 5)
-        self.assertEqual(parsed[24].ops_command, "rebuild-market-tick-current")
-        self.assertTrue(parsed[24].dry_run)
-        self.assertEqual(parsed[25].ops_command, "enqueue-token-radar-dirty-targets")
-        self.assertEqual(parsed[25].source, "events")
-        self.assertEqual(parsed[25].since_ms, 0)
-        self.assertEqual(parsed[25].limit, 5000)
+        self.assertEqual(parsed[14].ops_command, "repair-token-profile-images")
+        self.assertEqual(parsed[14].limit, 5)
+        self.assertEqual(parsed[15].ops_command, "reprocess-token-intents")
+        self.assertEqual(parsed[15].window, "24h")
+        self.assertEqual(parsed[15].lookup_key, ["symbol:SLOP"])
+        self.assertEqual(parsed[16].ops_command, "rebuild-token-intents")
+        self.assertEqual(parsed[16].window, "5m")
+        self.assertEqual(parsed[17].ops_command, "audit-token-intent")
+        self.assertEqual(parsed[18].ops_command, "rebuild-token-radar")
+        self.assertEqual(parsed[19].ops_command, "audit-token-radar")
+        self.assertEqual(parsed[20].ops_command, "rebuild-narrative-intel")
+        self.assertEqual(parsed[20].window, "1h")
+        self.assertEqual(parsed[20].scope, "all")
+        self.assertEqual(parsed[20].semantic_limit, 5)
+        self.assertEqual(parsed[20].digest_limit, 5)
+        self.assertTrue(parsed[20].drain)
+        self.assertEqual(parsed[21].ops_command, "factor-diagnostics")
+        self.assertEqual(parsed[21].limit, 200)
+        self.assertEqual(parsed[22].ops_command, "settle-token-factors")
+        self.assertEqual(parsed[22].now_ms, 1_700_000_000_000)
+        self.assertEqual(parsed[23].ops_command, "sync-us-equity-symbols")
+        self.assertEqual(parsed[24].ops_command, "rebuild-token-profiles")
+        self.assertEqual(parsed[24].limit, 5)
+        self.assertEqual(parsed[25].ops_command, "rebuild-market-tick-current")
         self.assertTrue(parsed[25].dry_run)
         self.assertEqual(parsed[26].ops_command, "enqueue-token-radar-dirty-targets")
-        self.assertEqual(parsed[26].source, "market-current")
-        self.assertTrue(parsed[26].execute)
+        self.assertEqual(parsed[26].source, "events")
+        self.assertEqual(parsed[26].since_ms, 0)
+        self.assertEqual(parsed[26].limit, 5000)
+        self.assertTrue(parsed[26].dry_run)
+        self.assertEqual(parsed[27].ops_command, "enqueue-token-radar-dirty-targets")
+        self.assertEqual(parsed[27].source, "market-current")
+        self.assertTrue(parsed[27].execute)
+
+    def test_cli_ops_mirror_token_images_has_no_source_limit_option(self):
+        parser = build_parser()
+
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["ops", "mirror-token-images", "--source-limit", "9"])
+
+    def test_cli_ops_repair_token_profile_images_rejects_non_positive_limit(self):
+        parser = build_parser()
+
+        for limit in ("0", "-1"):
+            with self.subTest(limit=limit), self.assertRaises(SystemExit):
+                parser.parse_args(["ops", "repair-token-profile-images", "--limit", limit])
 
     def test_config_prints_effective_runtime_settings(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -281,9 +297,9 @@ class CliTests(unittest.TestCase):
             payload["data"]["config_path"],
             str(home / ".parallax" / "config.yaml"),
         )
-        self.assertTrue(payload["data"]["enrichment"]["llm_configured"])
-        self.assertEqual(payload["data"]["enrichment"]["model"], "gpt-test")
-        self.assertEqual(payload["data"]["enrichment"]["provider"], "litellm")
+        self.assertTrue(payload["data"]["agent_execution"]["llm_configured"])
+        self.assertEqual(payload["data"]["agent_execution"]["model"], "gpt-test")
+        self.assertEqual(payload["data"]["agent_execution"]["provider"], "litellm")
         self.assertEqual(
             payload["data"]["providers"]["gmgn"],
             {
@@ -822,12 +838,12 @@ def test_cli_ops_factor_diagnostics_reads_latest_token_radar_current_rows(monkey
     payload = json.loads(stdout.getvalue())
     assert code == 0
     assert captured == {
-            "window": "1h",
-            "scope": "all",
-            "venue": "all",
-            "limit": 7,
-            "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
-        }
+        "window": "1h",
+        "scope": "all",
+        "venue": "all",
+        "limit": 7,
+        "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+    }
     assert payload["ok"] is True
     assert payload["data"]["row_count"] == 1
 
@@ -953,14 +969,14 @@ def test_cli_ops_refresh_asset_profiles_emits_skipped_without_profile_provider(m
     assert payload == {
         "ok": True,
         "data": {
-                "providers": [],
-                "selected": 0,
-                "claimed": 0,
-                "queue_depth": 0,
-                "source_rows_scanned": 0,
-                "targets_loaded": 0,
-                "rows_written": 0,
-                "ready": 0,
+            "providers": [],
+            "selected": 0,
+            "claimed": 0,
+            "queue_depth": 0,
+            "source_rows_scanned": 0,
+            "targets_loaded": 0,
+            "rows_written": 0,
+            "ready": 0,
             "missing": 0,
             "error": 0,
             "provider_blocked": 0,
@@ -1135,7 +1151,7 @@ def test_cli_ops_mirror_token_images_is_db_only_and_closes_db(monkeypatch, tmp_p
 
     class FakeWorker:
         def __init__(self, *, name, settings, db, telemetry, app_home):
-            captured["worker"] = (name, settings.batch_size, settings.source_limit, db, telemetry, app_home)
+            captured["worker"] = (name, settings.batch_size, db, telemetry, app_home)
 
         async def run_once(self, *, now_ms):
             captured["now_ms"] = now_ms
@@ -1170,16 +1186,242 @@ def test_cli_ops_mirror_token_images_is_db_only_and_closes_db(monkeypatch, tmp_p
     monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_000_000)
     stdout = io.StringIO()
 
-    code = main(["ops", "mirror-token-images", "--limit", "3", "--source-limit", "9"], stdout=stdout)
+    code = main(["ops", "mirror-token-images", "--limit", "3"], stdout=stdout)
 
     payload = json.loads(stdout.getvalue())
     assert code == 0
     assert captured["worker"][0] == "token_image_mirror"
     assert captured["worker"][1] == 3
-    assert captured["worker"][2] == 9
     assert captured["closed_worker"] is True
     assert closed == ["api", "worker", "tool", "wake"]
     assert payload["data"]["mirrored"] == 2
+
+
+def test_cli_ops_repair_token_profile_images_enqueues_profiles_then_runs_worker(monkeypatch, tmp_path):
+    from parallax.app.surfaces.cli.commands import ops as ops_module
+
+    captured: dict[str, object] = {"events": []}
+    closed: list[str] = []
+
+    @contextmanager
+    def fake_repositories(_settings):
+        raise AssertionError("repair-token-profile-images must not hold an outer repository session")
+
+    class FakeCursor:
+        def fetchall(self):
+            return [
+                {
+                    "target_type": "Asset",
+                    "target_id": "asset:gmgn",
+                    "source_watermark_ms": 1_699_999_999_000,
+                },
+                {
+                    "target_type": "CexToken",
+                    "target_id": "cex_token:BTC",
+                    "source_watermark_ms": None,
+                },
+            ]
+
+    class FakeConn:
+        def execute(self, sql, params):
+            captured["sql"] = sql
+            captured["params"] = params
+            captured["events"].append("select")
+            return FakeCursor()
+
+    class FakeTransaction:
+        def __enter__(self):
+            captured["events"].append("transaction_start")
+
+        def __exit__(self, exc_type, exc, tb):
+            captured["events"].append("transaction_commit")
+            return False
+
+    class FakeProfileDirtyTargets:
+        def enqueue_targets(self, targets, *, reason, now_ms, commit):
+            captured["events"].append("enqueue_profiles")
+            captured["enqueued"] = {
+                "targets": list(targets),
+                "reason": reason,
+                "now_ms": now_ms,
+                "commit": commit,
+            }
+            return {"targets": len(captured["enqueued"]["targets"])}
+
+    class FailingImageSourceDirtyTargets:
+        def enqueue_targets(self, *_args, **_kwargs):
+            raise AssertionError("repair-token-profile-images must not enqueue image source dirty targets")
+
+    class FakeRepos:
+        conn = FakeConn()
+        token_profile_current_dirty_targets = FakeProfileDirtyTargets()
+        token_image_source_dirty_targets = FailingImageSourceDirtyTargets()
+
+        def transaction(self):
+            return FakeTransaction()
+
+    class FakePool:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def close(self) -> None:
+            closed.append(self.name)
+
+    class FakeDB:
+        api_pool = FakePool("api")
+        worker_pool = FakePool("worker")
+        tool_pool = FakePool("tool")
+        wake_pool = FakePool("wake")
+
+        @contextmanager
+        def worker_session(self, name):
+            captured["worker_session_name"] = name
+            yield FakeRepos()
+
+    class FakeWorker:
+        def __init__(self, *, name, settings, db, telemetry):
+            captured["events"].append("worker_init")
+            captured["worker"] = (name, settings.batch_size, db, telemetry)
+
+        async def run_once(self, *, now_ms):
+            captured["events"].append("worker_run")
+            captured["worker_now_ms"] = now_ms
+            return SimpleNamespace(notes={"result": {"selected": 2, "ready": 2, "with_logo": 1}})
+
+        async def aclose(self):
+            captured["events"].append("worker_close")
+
+    def fail_wire_asset_market_providers(*_args, **_kwargs):
+        raise AssertionError("repair-token-profile-images must not wire asset providers")
+
+    write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db", llm=True)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
+    monkeypatch.setattr(ops_module.DBPoolBundle, "create", lambda settings, *, telemetry: FakeDB())
+    monkeypatch.setattr(ops_module, "wire_asset_market_providers", fail_wire_asset_market_providers)
+    monkeypatch.setattr(ops_module, "TokenProfileCurrentWorker", FakeWorker)
+    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_000_000)
+    stdout = io.StringIO()
+
+    code = main(["ops", "repair-token-profile-images", "--limit", "3"], stdout=stdout)
+
+    payload = json.loads(stdout.getvalue())
+    assert code == 0
+    assert captured["worker_session_name"] == "token_profile_image_repair"
+    assert "FROM token_profile_current" in captured["sql"]
+    assert "status = 'ready'" in captured["sql"]
+    assert "quality_flags_json ? 'logo_mirror_pending'" in captured["sql"]
+    assert "quality_flags_json ? 'source_not_admitted'" in captured["sql"]
+    assert captured["params"] == (3,)
+    assert captured["enqueued"] == {
+        "targets": [
+            {
+                "target_type": "Asset",
+                "target_id": "asset:gmgn",
+                "source_watermark_ms": 1_699_999_999_000,
+                "priority": 25,
+            },
+            {
+                "target_type": "CexToken",
+                "target_id": "cex_token:BTC",
+                "source_watermark_ms": 1_700_000_000_000,
+                "priority": 25,
+            },
+        ],
+        "reason": "token_profile_image_repair",
+        "now_ms": 1_700_000_000_000,
+        "commit": False,
+    }
+    assert captured["worker"][0] == "token_profile_current"
+    assert captured["worker"][1] == 3
+    assert captured["events"] == [
+        "transaction_start",
+        "select",
+        "enqueue_profiles",
+        "transaction_commit",
+        "worker_init",
+        "worker_run",
+        "worker_close",
+    ]
+    assert closed == ["api", "worker", "tool", "wake"]
+    assert payload["data"] == {
+        "selected_targets": 2,
+        "profile_targets_enqueued": 2,
+        "profile_rebuild": {"selected": 2, "ready": 2, "with_logo": 1},
+    }
+
+
+def test_cli_ops_repair_token_profile_images_closes_db_when_worker_close_fails(monkeypatch, tmp_path):
+    from parallax.app.surfaces.cli.commands import ops as ops_module
+
+    closed: list[str] = []
+
+    class FakeCursor:
+        def fetchall(self):
+            return []
+
+    class FakeConn:
+        def execute(self, *_args, **_kwargs):
+            return FakeCursor()
+
+    class FakeTransaction:
+        def __enter__(self):
+            return None
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class FakeProfileDirtyTargets:
+        def enqueue_targets(self, targets, *, reason, now_ms, commit):
+            return {"targets": len(list(targets))}
+
+    class FakeRepos:
+        conn = FakeConn()
+        token_profile_current_dirty_targets = FakeProfileDirtyTargets()
+
+        def transaction(self):
+            return FakeTransaction()
+
+    class FakePool:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def close(self) -> None:
+            closed.append(self.name)
+
+    class FakeDB:
+        api_pool = FakePool("api")
+        worker_pool = FakePool("worker")
+        tool_pool = FakePool("tool")
+        wake_pool = FakePool("wake")
+
+        @contextmanager
+        def worker_session(self, _name):
+            yield FakeRepos()
+
+    class FakeWorker:
+        def __init__(self, *, name, settings, db, telemetry):
+            pass
+
+        async def run_once(self, *, now_ms):
+            return SimpleNamespace(notes={"result": {}})
+
+        async def aclose(self):
+            raise RuntimeError("worker close failed")
+
+    write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db", llm=True)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(ops_module.DBPoolBundle, "create", lambda settings, *, telemetry: FakeDB())
+    monkeypatch.setattr(ops_module, "TokenProfileCurrentWorker", FakeWorker)
+
+    with pytest.raises(RuntimeError, match="worker close failed"):
+        ops_module._run_token_profile_image_repair_once(
+            ops_module.load_settings(require_ws_token=False),
+            limit=3,
+            now_ms=1_700_000_000_000,
+        )
+
+    assert closed == ["api", "worker", "tool", "wake"]
 
 
 def test_cli_ops_refresh_asset_profiles_closes_db_when_provider_wiring_fails(monkeypatch, tmp_path):

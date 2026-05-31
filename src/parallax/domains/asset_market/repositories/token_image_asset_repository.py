@@ -9,7 +9,6 @@ from parallax.platform.db.json_safety import postgres_safe_json, postgres_safe_t
 
 READY_MEDIA_TYPES = {"image/gif", "image/jpeg", "image/png", "image/webp"}
 READY_FILE_EXTENSIONS = {".gif", ".jpg", ".png", ".webp"}
-CLAIM_LEASE_MS = 10 * 60 * 1000
 
 
 class TokenImageAssetRepository:
@@ -62,37 +61,6 @@ class TokenImageAssetRepository:
         if commit:
             self.conn.commit()
         return affected
-
-    def claim_due_sources(self, now_ms: int, limit: int) -> list[dict[str, Any]]:
-        claim_limit = int(limit)
-        if claim_limit <= 0:
-            return []
-
-        lease_until_ms = int(now_ms) + CLAIM_LEASE_MS
-        rows = self.conn.execute(
-            """
-            WITH picked AS (
-              SELECT image_id
-              FROM token_image_assets
-              WHERE status IN ('pending', 'error')
-                AND next_refresh_at_ms <= %s
-              ORDER BY next_refresh_at_ms ASC, updated_at_ms ASC, image_id ASC
-              LIMIT %s
-              FOR UPDATE SKIP LOCKED
-            )
-            UPDATE token_image_assets AS asset
-            SET status = 'pending',
-                next_refresh_at_ms = %s,
-                updated_at_ms = %s
-            FROM picked
-            WHERE asset.image_id = picked.image_id
-              AND asset.status IN ('pending', 'error')
-              AND asset.next_refresh_at_ms <= %s
-            RETURNING asset.*
-            """,
-            (int(now_ms), claim_limit, lease_until_ms, int(now_ms), int(now_ms)),
-        ).fetchall()
-        return [dict(row) for row in rows]
 
     def mark_ready(
         self,
@@ -214,6 +182,20 @@ class TokenImageAssetRepository:
             FROM token_image_assets
             WHERE status = 'ready'
               AND source_url_hash = ANY(%s)
+            """,
+            (source_url_hashes,),
+        ).fetchall()
+        return {str(row["source_url"]): dict(row) for row in rows}
+
+    def by_source_urls(self, source_urls: list[str]) -> dict[str, dict[str, Any]]:
+        source_url_hashes = [_source_url_hash(source_url) for source_url in _unique_source_urls(source_urls)]
+        if not source_url_hashes:
+            return {}
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM token_image_assets
+            WHERE source_url_hash = ANY(%s)
             """,
             (source_url_hashes,),
         ).fetchall()

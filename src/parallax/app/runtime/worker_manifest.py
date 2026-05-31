@@ -74,9 +74,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="asset_market.py",
         lane=WorkerLane.INGEST,
         kind=WorkerKind.FACT_INGEST,
-        worker_class=(
-            "parallax.domains.asset_market.runtime.market_tick_stream_worker.MarketTickStreamWorker"
-        ),
+        worker_class=("parallax.domains.asset_market.runtime.market_tick_stream_worker.MarketTickStreamWorker"),
         start_priority=30,
         input_contract=("token_capture_tier stream targets", "stream provider ticks"),
         ordering_keys=("target_type", "target_id", "observed_at_ms"),
@@ -128,9 +126,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="asset_market.py",
         lane=WorkerLane.IDENTITY_MARKET_FACT,
         kind=WorkerKind.FACT_LIFECYCLE,
-        worker_class=(
-            "parallax.domains.asset_market.runtime.event_anchor_backfill_worker.EventAnchorBackfillWorker"
-        ),
+        worker_class=("parallax.domains.asset_market.runtime.event_anchor_backfill_worker.EventAnchorBackfillWorker"),
         start_priority=45,
         input_contract=("event_anchor_backfill_jobs",),
         ordering_keys=("event_id", "intent_id", "target_id"),
@@ -147,9 +143,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="asset_market.py",
         lane=WorkerLane.PROJECTION,
         kind=WorkerKind.PROJECTION,
-        worker_class=(
-            "parallax.domains.asset_market.runtime.token_capture_tier_worker.TokenCaptureTierWorker"
-        ),
+        worker_class=("parallax.domains.asset_market.runtime.token_capture_tier_worker.TokenCaptureTierWorker"),
         start_priority=20,
         input_contract=("token_capture_tier_dirty_targets",),
         ordering_keys=("target_type", "target_id"),
@@ -178,9 +172,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="asset_market.py",
         lane=WorkerLane.IDENTITY_MARKET_FACT,
         kind=WorkerKind.FACT_LIFECYCLE,
-        worker_class=(
-            "parallax.domains.asset_market.runtime.resolution_refresh_worker.ResolutionRefreshWorker"
-        ),
+        worker_class=("parallax.domains.asset_market.runtime.resolution_refresh_worker.ResolutionRefreshWorker"),
         start_priority=60,
         input_contract=("token_intents", "asset_identity_resolution backlog"),
         ordering_keys=("target_type", "lookup_key"),
@@ -200,14 +192,12 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="asset_market.py",
         lane=WorkerLane.IDENTITY_MARKET_FACT,
         kind=WorkerKind.FACT_LIFECYCLE,
-        worker_class=(
-            "parallax.domains.asset_market.runtime.asset_profile_refresh_worker.AssetProfileRefreshWorker"
-        ),
+        worker_class=("parallax.domains.asset_market.runtime.asset_profile_refresh_worker.AssetProfileRefreshWorker"),
         start_priority=70,
         input_contract=("asset_profile_refresh_targets",),
         ordering_keys=("target_type", "target_id", "provider"),
         writes_facts=("asset_profiles",),
-        writes_control_plane=("asset_profile_refresh_targets", "token_image_source_dirty_targets"),
+        writes_control_plane=("asset_profile_refresh_targets", "token_profile_current_dirty_targets"),
         uses_provider_io=True,
         idempotency_evidence=("asset_profiles target/provider identity", "dirty target payload hash"),
         dirty_target_tables=("asset_profile_refresh_targets",),
@@ -218,9 +208,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="asset_market.py",
         lane=WorkerLane.IDENTITY_MARKET_FACT,
         kind=WorkerKind.FACT_LIFECYCLE,
-        worker_class=(
-            "parallax.domains.asset_market.runtime.token_image_mirror_worker.TokenImageMirrorWorker"
-        ),
+        worker_class=("parallax.domains.asset_market.runtime.token_image_mirror_worker.TokenImageMirrorWorker"),
         start_priority=82,
         input_contract=("token_image_source_dirty_targets",),
         ordering_keys=("target_type", "target_id", "source_url"),
@@ -237,16 +225,18 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="asset_market.py",
         lane=WorkerLane.PROJECTION,
         kind=WorkerKind.PROJECTION,
-        worker_class=(
-            "parallax.domains.asset_market.runtime.token_profile_current_worker.TokenProfileCurrentWorker"
-        ),
+        worker_class=("parallax.domains.asset_market.runtime.token_profile_current_worker.TokenProfileCurrentWorker"),
         start_priority=85,
         input_contract=("token_profile_current_dirty_targets",),
         ordering_keys=("target_type", "target_id"),
         writes_read_models=("token_profile_current",),
-        writes_control_plane=("token_profile_current_dirty_targets",),
+        writes_control_plane=("token_profile_current_dirty_targets", "token_image_source_dirty_targets"),
         current_read_model_identities=(("token_profile_current", ("target_type", "target_id")),),
-        idempotency_evidence=("token_profile_current target primary key", "dirty target payload hash"),
+        idempotency_evidence=(
+            "token_profile_current target primary key",
+            "token image source dirty target source_url_hash/target key",
+            "dirty target payload hash",
+        ),
         dirty_target_tables=("token_profile_current_dirty_targets",),
     ),
     WorkerManifest(
@@ -255,9 +245,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="token_intel.py",
         lane=WorkerLane.PROJECTION,
         kind=WorkerKind.PROJECTION,
-        worker_class=(
-            "parallax.domains.token_intel.runtime.token_radar_projection_worker.TokenRadarProjectionWorker"
-        ),
+        worker_class=("parallax.domains.token_intel.runtime.token_radar_projection_worker.TokenRadarProjectionWorker"),
         start_priority=80,
         input_contract=("token_radar_source_dirty_events", "token_radar_dirty_targets"),
         ordering_keys=("window", "scope", "venue", "target_type", "target_id", "source_event_id"),
@@ -316,9 +304,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="narrative_intel.py",
         lane=WorkerLane.PROJECTION,
         kind=WorkerKind.PROJECTION,
-        worker_class=(
-            "parallax.domains.narrative_intel.runtime.narrative_admission_worker.NarrativeAdmissionWorker"
-        ),
+        worker_class=("parallax.domains.narrative_intel.runtime.narrative_admission_worker.NarrativeAdmissionWorker"),
         start_priority=87,
         input_contract=("narrative_admission_dirty_targets",),
         ordering_keys=("window", "scope", "target_type", "target_id"),
@@ -336,9 +322,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="narrative_intel.py",
         lane=WorkerLane.AGENT,
         kind=WorkerKind.AGENT_SIDE_EFFECT,
-        worker_class=(
-            "parallax.domains.narrative_intel.runtime.mention_semantics_worker.MentionSemanticsWorker"
-        ),
+        worker_class=("parallax.domains.narrative_intel.runtime.mention_semantics_worker.MentionSemanticsWorker"),
         start_priority=88,
         input_contract=("token_mention_semantics status queue",),
         ordering_keys=("event_id", "target_type", "target_id", "text_fingerprint"),
@@ -363,8 +347,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         lane=WorkerLane.AGENT,
         kind=WorkerKind.AGENT_SIDE_EFFECT,
         worker_class=(
-            "parallax.domains.narrative_intel.runtime.token_discussion_digest_worker."
-            "TokenDiscussionDigestWorker"
+            "parallax.domains.narrative_intel.runtime.token_discussion_digest_worker.TokenDiscussionDigestWorker"
         ),
         start_priority=89,
         input_contract=("discussion_digest_dirty_targets", "token_mention_semantics"),
@@ -490,9 +473,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="cex_market_intel.py",
         lane=WorkerLane.PROJECTION,
         kind=WorkerKind.PROJECTION,
-        worker_class=(
-            "parallax.domains.cex_market_intel.runtime.cex_oi_radar_board_worker.CexOiRadarBoardWorker"
-        ),
+        worker_class=("parallax.domains.cex_market_intel.runtime.cex_oi_radar_board_worker.CexOiRadarBoardWorker"),
         start_priority=95,
         input_contract=("cex market universe", "open interest providers"),
         ordering_keys=("provider", "exchange", "quote_symbol", "contract_type", "period", "target_id"),
@@ -623,9 +604,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="notifications.py",
         lane=WorkerLane.NOTIFICATION,
         kind=WorkerKind.NOTIFICATION_DELIVERY,
-        worker_class=(
-            "parallax.domains.notifications.runtime.notification_delivery.NotificationDeliveryWorker"
-        ),
+        worker_class=("parallax.domains.notifications.runtime.notification_delivery.NotificationDeliveryWorker"),
         start_priority=130,
         input_contract=("notification_deliveries",),
         ordering_keys=("delivery_id", "channel"),

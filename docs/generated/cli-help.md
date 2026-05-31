@@ -6,7 +6,7 @@
 
 ```
 usage: parallax [-h]
-                          {serve,init,config,pulse,db,macro,recent,search,asset-flow,account-alerts,account-quality,notification-deliveries,ops} ...
+                {serve,init,config,pulse,db,macro,recent,search,asset-flow,account-alerts,account-quality,notification-deliveries,ops} ...
 
 positional arguments:
   {serve,init,config,pulse,db,macro,recent,search,asset-flow,account-alerts,account-quality,notification-deliveries,ops}
@@ -52,10 +52,10 @@ options:
 
 ```
 usage: parallax ops [-h]
-                              {backfill-account-quality,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,projection-status,worker-status,queue-inspect,queue-resolve,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,rebuild-news-canonical-items,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors} ...
+                    {backfill-account-quality,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,projection-status,worker-status,queue-inspect,queue-resolve,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,cleanup-news-brief-input,rebuild-news-canonical-items,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors} ...
 
 positional arguments:
-  {backfill-account-quality,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,projection-status,worker-status,queue-inspect,queue-resolve,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,rebuild-news-canonical-items,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors}
+  {backfill-account-quality,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,projection-status,worker-status,queue-inspect,queue-resolve,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,cleanup-news-brief-input,rebuild-news-canonical-items,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors}
     backfill-account-quality
                         backfill account token-call stats and quality
                         snapshots
@@ -79,6 +79,9 @@ positional arguments:
     news-dedup-diagnostics
                         print News canonical dedup and OpenNews sync
                         diagnostics
+    cleanup-news-brief-input
+                        delete stale News brief_input dirty targets that no
+                        longer pass the brief policy
     rebuild-news-canonical-items
                         enqueue a bounded rebuild of News canonical item
                         derived projections
@@ -103,6 +106,9 @@ positional arguments:
                         rebuild canonical token profile current facts
     mirror-token-images
                         mirror provider token images into the local cache
+    repair-token-profile-images
+                        enqueue current profile targets so token image source
+                        admission can repair stuck icons
     reprocess-token-intents
                         re-resolve recent unresolved token intents and rebuild
                         token radar

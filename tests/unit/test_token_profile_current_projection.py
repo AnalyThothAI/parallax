@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from hashlib import sha256
+
+import pytest
+
 from parallax.domains.asset_market.profile_source_selection import (
     select_gmgn_stream_source,
     select_okx_dex_source,
@@ -9,6 +13,26 @@ from parallax.domains.asset_market.services.token_profile_current_projection imp
 )
 
 ASSET_ID = "asset:eip155:1:erc20:0xabc"
+
+
+def test_project_token_profile_current_requires_target_identity():
+    with pytest.raises(
+        ValueError,
+        match="token profile current projection target_type and target_id are required",
+    ):
+        project_token_profile_current(
+            target={"target_type": "Asset", "target_id": " "},
+            gmgn_openapi=gmgn_openapi_row(
+                status="ready",
+                logo_url="https://gmgn.example/logo.png",
+                symbol="GMGN",
+                observed_at_ms=1_000,
+            ),
+            binance_web3=None,
+            gmgn_stream=None,
+            okx_dex=None,
+            computed_at_ms=10_000,
+        )
 
 
 def test_project_token_profile_current_prefers_gmgn_openapi_ready_profile():
@@ -30,7 +54,7 @@ def test_project_token_profile_current_prefers_gmgn_openapi_ready_profile():
         ),
         gmgn_stream=gmgn_stream_row(icon_url="https://stream.example/logo.png", observed_at_ms=2_000),
         okx_dex=okx_row(logo_url="https://okx.example/logo.png", observed_at_ms=3_000),
-        ready_images_by_source_url=ready_images(gmgn_logo_url),
+        image_states_by_source_key=ready_image_states((gmgn_logo_url, "Asset", ASSET_ID)),
         computed_at_ms=10_000,
     )
 
@@ -63,7 +87,7 @@ def test_project_token_profile_current_uses_gmgn_stream_when_openapi_is_missing_
             observed_at_ms=2_000,
         ),
         okx_dex=okx_row(logo_url="https://okx.example/logo.png", observed_at_ms=3_000),
-        ready_images_by_source_url=ready_images(stream_logo_url),
+        image_states_by_source_key=ready_image_states((stream_logo_url, "Asset", ASSET_ID)),
         computed_at_ms=10_000,
     )
 
@@ -87,7 +111,7 @@ def test_project_token_profile_current_keeps_gmgn_openapi_metadata_without_logo(
         binance_web3=None,
         gmgn_stream=None,
         okx_dex=okx_row(logo_url=okx_logo_url, observed_at_ms=3_000),
-        ready_images_by_source_url=ready_images(okx_logo_url),
+        image_states_by_source_key=ready_image_states((okx_logo_url, "Asset", ASSET_ID)),
         computed_at_ms=10_000,
     )
 
@@ -110,7 +134,7 @@ def test_project_token_profile_current_uses_lower_priority_ready_logo_when_metad
         binance_web3=None,
         gmgn_stream=gmgn_stream_row(icon_url=stream_logo_url, observed_at_ms=2_000),
         okx_dex=None,
-        ready_images_by_source_url=ready_images(stream_logo_url),
+        image_states_by_source_key=ready_image_states((stream_logo_url, "Asset", ASSET_ID)),
         computed_at_ms=10_000,
     )
 
@@ -129,12 +153,13 @@ def test_project_token_profile_current_uses_selected_candidate_provider_for_logo
         binance_web3=None,
         gmgn_stream=gmgn_stream_row(icon_url=shared_logo_url, observed_at_ms=2_000),
         okx_dex=None,
-        ready_images_by_source_url={
-            shared_logo_url: {
+        image_states_by_source_key={
+            source_key(shared_logo_url, "Asset", ASSET_ID): {
                 "image_id": "image-shared",
                 "source_url": shared_logo_url,
                 "source_provider": "gmgn_dex_profile",
                 "source_url_hash": "hash-shared",
+                "status": "ready",
                 "public_url": "/api/token-images/image-shared",
             }
         },
@@ -164,7 +189,7 @@ def test_project_token_profile_current_uses_binance_web3_before_stream_and_okx_w
         ),
         gmgn_stream=gmgn_stream_row(icon_url="https://gmgn-stream.example/icon.png", observed_at_ms=2_000),
         okx_dex=okx_row(logo_url="https://okx.example/logo.png", observed_at_ms=3_000),
-        ready_images_by_source_url=ready_images(binance_logo_url),
+        image_states_by_source_key=ready_image_states((binance_logo_url, "Asset", ASSET_ID)),
         computed_at_ms=10_000,
     )
 
@@ -191,7 +216,7 @@ def test_project_token_profile_current_uses_okx_exact_logo_when_gmgn_sources_are
             name="Tether USD",
             observed_at_ms=3_000,
         ),
-        ready_images_by_source_url=ready_images(okx_logo_url),
+        image_states_by_source_key=ready_image_states((okx_logo_url, "Asset", ASSET_ID)),
         computed_at_ms=10_000,
     )
 
@@ -288,7 +313,7 @@ def test_project_token_profile_current_uses_binance_cex_profile_source_cache():
             "raw_payload_json": {"rank": 1},
             "observed_at_ms": 9_000,
         },
-        ready_images_by_source_url=ready_images(cex_logo_url),
+        image_states_by_source_key=ready_image_states((cex_logo_url, "CexToken", "cex_token:BTC")),
         computed_at_ms=10_000,
     )
 
@@ -331,7 +356,7 @@ def test_project_token_profile_current_falls_back_to_specific_cex_source_ref():
     assert row["status"] == "ready"
     assert row["source_ref"] == "binance_cex_profile:cex_token:BTC"
     assert row["logo_url"] is None
-    assert row["quality_flags"] == ["logo_mirror_pending"]
+    assert row["quality_flags"] == ["source_not_admitted"]
 
 
 def test_project_token_profile_current_sets_pending_flag_without_remote_logo_fallback():
@@ -346,7 +371,7 @@ def test_project_token_profile_current_sets_pending_flag_without_remote_logo_fal
         binance_web3=None,
         gmgn_stream=None,
         okx_dex=None,
-        ready_images_by_source_url={},
+        image_states_by_source_key={},
         computed_at_ms=10_000,
     )
 
@@ -355,7 +380,105 @@ def test_project_token_profile_current_sets_pending_flag_without_remote_logo_fal
     assert row["logo_image_id"] is None
     assert row["logo_source_provider"] is None
     assert row["logo_source_url_hash"] is None
-    assert row["quality_flags"] == ["logo_mirror_pending"]
+    assert row["quality_flags"] == ["source_not_admitted"]
+
+
+def test_project_token_profile_current_marks_unsupported_lifecycle_without_pending_flag():
+    logo_url = "https://gmgn.example/logo.png"
+    row = project_token_profile_current(
+        target={"target_type": "Asset", "target_id": ASSET_ID},
+        gmgn_openapi=gmgn_openapi_row(status="ready", logo_url=logo_url, symbol="GMGN", observed_at_ms=1_000),
+        binance_web3=None,
+        gmgn_stream=None,
+        okx_dex=None,
+        image_states_by_source_key=image_states(
+            (logo_url, "Asset", ASSET_ID, {"status": "unsupported", "source_url_hash": "hash-unsupported"})
+        ),
+        computed_at_ms=10_000,
+    )
+
+    assert row["status"] == "ready"
+    assert row["logo_url"] is None
+    assert row["quality_flags"] == ["logo_mirror_unsupported"]
+
+
+def test_project_token_profile_current_marks_error_lifecycle_without_pending_flag():
+    logo_url = "https://gmgn.example/logo.png"
+    row = project_token_profile_current(
+        target={"target_type": "Asset", "target_id": ASSET_ID},
+        gmgn_openapi=gmgn_openapi_row(status="ready", logo_url=logo_url, symbol="GMGN", observed_at_ms=1_000),
+        binance_web3=None,
+        gmgn_stream=None,
+        okx_dex=None,
+        image_states_by_source_key=image_states(
+            (logo_url, "Asset", ASSET_ID, {"status": "error", "source_url_hash": "hash-error"})
+        ),
+        computed_at_ms=10_000,
+    )
+
+    assert row["status"] == "ready"
+    assert row["logo_url"] is None
+    assert row["quality_flags"] == ["logo_mirror_failed"]
+
+
+def test_project_token_profile_current_marks_usable_source_without_state_as_not_admitted():
+    logo_url = "https://gmgn.example/logo.png"
+    row = project_token_profile_current(
+        target={"target_type": "Asset", "target_id": ASSET_ID},
+        gmgn_openapi=gmgn_openapi_row(status="ready", logo_url=logo_url, symbol="GMGN", observed_at_ms=1_000),
+        binance_web3=None,
+        gmgn_stream=None,
+        okx_dex=None,
+        image_states_by_source_key={},
+        computed_at_ms=10_000,
+    )
+
+    assert row["status"] == "ready"
+    assert row["logo_url"] is None
+    assert row["quality_flags"] == ["source_not_admitted"]
+
+
+def test_project_token_profile_current_does_not_reuse_ready_image_state_from_other_target():
+    logo_url = "https://gmgn.example/shared-logo.png"
+    row = project_token_profile_current(
+        target={"target_type": "Asset", "target_id": ASSET_ID},
+        gmgn_openapi=gmgn_openapi_row(status="ready", logo_url=logo_url, symbol="GMGN", observed_at_ms=1_000),
+        binance_web3=None,
+        gmgn_stream=None,
+        okx_dex=None,
+        image_states_by_source_key=ready_image_states((logo_url, "Asset", "asset:other")),
+        computed_at_ms=10_000,
+    )
+
+    assert row["status"] == "ready"
+    assert row["logo_url"] is None
+    assert row["quality_flags"] == ["source_not_admitted"]
+
+
+def test_project_token_profile_current_lower_priority_ready_logo_wins_over_higher_priority_pending():
+    gmgn_logo_url = "https://gmgn.example/logo.png"
+    stream_logo_url = "https://gmgn-stream.example/icon.png"
+    row = project_token_profile_current(
+        target={"target_type": "Asset", "target_id": ASSET_ID},
+        gmgn_openapi=gmgn_openapi_row(status="ready", logo_url=gmgn_logo_url, symbol="GMGN", observed_at_ms=1_000),
+        binance_web3=None,
+        gmgn_stream=gmgn_stream_row(icon_url=stream_logo_url, observed_at_ms=2_000),
+        okx_dex=None,
+        image_states_by_source_key={
+            source_key(gmgn_logo_url, "Asset", ASSET_ID): {
+                "status": "mirror_pending",
+                "source_url": gmgn_logo_url,
+                "source_url_hash": "hash-gmgn",
+            },
+            source_key(stream_logo_url, "Asset", ASSET_ID): ready_image(stream_logo_url),
+        },
+        computed_at_ms=10_000,
+    )
+
+    assert row["status"] == "ready"
+    assert row["logo_url"] == "/api/token-images/image-stream"
+    assert row["logo_source_provider"] == "gmgn_stream_snapshot"
+    assert row["quality_flags"] == []
 
 
 def test_project_token_profile_current_marks_source_without_logo_when_no_provider_logo_candidates():
@@ -370,6 +493,25 @@ def test_project_token_profile_current_marks_source_without_logo_when_no_provide
 
     assert row["status"] == "ready"
     assert row["logo_url"] is None
+    assert row["quality_flags"] == ["source_without_logo"]
+
+
+def test_project_token_profile_current_keeps_first_unusable_logo_fallback_flags():
+    row = project_token_profile_current(
+        target={"target_type": "Asset", "target_id": ASSET_ID},
+        gmgn_openapi=gmgn_openapi_row(status="ready", logo_url=None, symbol="GMGN", observed_at_ms=1_000),
+        binance_web3=None,
+        gmgn_stream=None,
+        okx_dex=okx_row(
+            logo_url="https://static.okx.com/cdn/wallet/logo/default-logo/0.png",
+            symbol="GMGN",
+            observed_at_ms=3_000,
+        ),
+        computed_at_ms=10_000,
+    )
+
+    assert row["status"] == "ready"
+    assert row["profile_provider"] == "gmgn_dex_profile"
     assert row["quality_flags"] == ["source_without_logo"]
 
 
@@ -520,8 +662,22 @@ def okx_row(
     }
 
 
-def ready_images(*source_urls: str) -> dict[str, dict]:
-    return {source_url: ready_image(source_url) for source_url in source_urls}
+def source_key(source_url: str, target_type: str, target_id: str) -> tuple[str, str, str]:
+    return (sha256(source_url.encode("utf-8")).hexdigest(), target_type, target_id)
+
+
+def ready_image_states(*source_targets: tuple[str, str, str]) -> dict[tuple[str, str, str], dict]:
+    return {
+        source_key(source_url, target_type, target_id): ready_image(source_url)
+        for source_url, target_type, target_id in source_targets
+    }
+
+
+def image_states(*states: tuple[str, str, str, dict]) -> dict[tuple[str, str, str], dict]:
+    return {
+        source_key(source_url, target_type, target_id): {"source_url": source_url, **state}
+        for source_url, target_type, target_id, state in states
+    }
 
 
 def ready_image(source_url: str) -> dict:
@@ -545,5 +701,6 @@ def ready_image(source_url: str) -> dict:
         "source_url": source_url,
         "source_provider": provider,
         "source_url_hash": f"hash-{slug}",
+        "status": "ready",
         "public_url": f"/api/token-images/image-{slug}",
     }

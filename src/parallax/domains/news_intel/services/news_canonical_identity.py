@@ -6,6 +6,8 @@ from typing import Any
 
 from parallax.domains.news_intel.services.news_url_identity import (
     hard_public_url_identity_key,
+)
+from parallax.domains.news_intel.services.news_url_identity import (
     url_identity_kind as classify_url_identity_kind,
 )
 

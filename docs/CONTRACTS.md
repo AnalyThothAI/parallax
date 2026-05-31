@@ -287,7 +287,10 @@ Token Radar market contract:
   or a same-origin `/api/token-images/{image_id}` path. Provider logo URLs from
   GMGN, Binance, OKX, or CEX profile sources are retained only as server-side
   mirror inputs and provenance; frontend clients must not derive or render
-  provider image URLs from raw payloads.
+  provider image URLs from raw payloads. `logo_mirror_pending` means an image
+  dirty target is already pending or in flight. `logo_mirror_unsupported` is
+  terminal. `logo_mirror_failed` means the current mirrored asset is in
+  error/backoff and may be retried; clients must still render no provider URL.
 
 US Stocks radar contract:
 

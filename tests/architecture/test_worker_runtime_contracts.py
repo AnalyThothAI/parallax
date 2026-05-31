@@ -441,6 +441,38 @@ def test_token_image_mirror_starts_between_profile_refresh_and_current_projectio
 
 
 @pytest.mark.architecture
+def test_token_profile_current_owns_image_source_admission() -> None:
+    manifests = {manifest.name: manifest for manifest in all_worker_manifests()}
+    token_profile_current = manifests["token_profile_current"]
+
+    assert "token_image_source_dirty_targets" not in manifests["asset_profile_refresh"].writes_control_plane
+    assert "token_image_source_dirty_targets" in token_profile_current.writes_control_plane
+    assert set(token_profile_current.idempotency_evidence) >= {
+        "token_profile_current target primary key",
+        "token image source dirty target source_url_hash/target key",
+        "dirty target payload hash",
+    }
+    assert token_profile_current.dirty_target_tables == ("token_profile_current_dirty_targets",)
+
+
+@pytest.mark.architecture
+def test_token_image_mirror_is_only_token_image_assets_writer() -> None:
+    writers = [
+        manifest.name
+        for manifest in all_worker_manifests()
+        if "token_image_assets"
+        in (
+            *manifest.writes_facts,
+            *manifest.writes_read_models,
+            *manifest.writes_control_plane,
+            *manifest.side_effect_ledgers,
+        )
+    ]
+
+    assert writers == ["token_image_mirror"]
+
+
+@pytest.mark.architecture
 def test_non_continuous_worker_defaults_have_finite_hard_timeout() -> None:
     from parallax.platform.config.settings import WorkersSettings, default_workers_yaml
 

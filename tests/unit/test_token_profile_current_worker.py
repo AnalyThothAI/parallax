@@ -53,23 +53,23 @@ def test_token_profile_current_worker_run_once_records_result_and_uses_one_db_se
 
 def test_rebuild_token_profile_current_once_projects_sources_and_writes_rows():
     ready_assets = {
-        "https://gmgn.example/logo.png": ready_image(
-            "https://gmgn.example/logo.png",
+        "https://gmgn.ai/external-res/logo.png": ready_image(
+            "https://gmgn.ai/external-res/logo.png",
             image_id="image-gmgn",
             source_provider="gmgn_dex_profile",
         ),
-        "https://binance.example/logo.png": ready_image(
-            "https://binance.example/logo.png",
+        "https://bin.bnbstatic.com/static/images/binance.png": ready_image(
+            "https://bin.bnbstatic.com/static/images/binance.png",
             image_id="image-binance",
             source_provider="binance_web3_profile",
         ),
-        "https://stream.example/logo.png": ready_image(
-            "https://stream.example/logo.png",
+        "https://gmgn.ai/external-res/stream.png": ready_image(
+            "https://gmgn.ai/external-res/stream.png",
             image_id="image-stream",
             source_provider="gmgn_stream_snapshot",
         ),
-        "https://bin.bnbstatic.com/btc.png": ready_image(
-            "https://bin.bnbstatic.com/btc.png",
+        "https://bin.bnbstatic.com/static/images/btc.png": ready_image(
+            "https://bin.bnbstatic.com/static/images/btc.png",
             image_id="image-cex",
             source_provider="binance_cex_profile",
         ),
@@ -86,7 +86,7 @@ def test_rebuild_token_profile_current_once_projects_sources_and_writes_rows():
                 "provider": "gmgn_dex_profile",
                 "status": "ready",
                 "symbol": "GMGN",
-                "logo_url": "https://gmgn.example/logo.png",
+                "logo_url": "https://gmgn.ai/external-res/logo.png",
                 "raw_payload_json": {"profile": True},
                 "observed_at_ms": 1_000,
             }
@@ -97,7 +97,7 @@ def test_rebuild_token_profile_current_once_projects_sources_and_writes_rows():
                 "provider": "binance_web3_profile",
                 "status": "ready",
                 "symbol": "BN",
-                "logo_url": "https://binance.example/logo.png",
+                "logo_url": "https://bin.bnbstatic.com/static/images/binance.png",
                 "raw_payload_json": {"source_provider": "binance_web3_profile"},
                 "observed_at_ms": 1_500,
             }
@@ -108,7 +108,7 @@ def test_rebuild_token_profile_current_once_projects_sources_and_writes_rows():
                 "provider": "gmgn",
                 "evidence_kind": "gmgn_payload_exact",
                 "evidence_id": "stream-1",
-                "raw_payload_json": {"i": "https://stream.example/logo.png"},
+                "raw_payload_json": {"i": "https://gmgn.ai/external-res/stream.png"},
                 "observed_at_ms": 2_000,
             }
         },
@@ -119,7 +119,7 @@ def test_rebuild_token_profile_current_once_projects_sources_and_writes_rows():
                 "base_symbol": "BTC",
                 "provider": "binance_cex_profile",
                 "symbol": "BTC",
-                "logo_url": "https://bin.bnbstatic.com/btc.png",
+                "logo_url": "https://bin.bnbstatic.com/static/images/btc.png",
                 "source_ref": "binance_marketing_symbol_list:BTC",
                 "raw_payload_json": {"rank": 1},
                 "observed_at_ms": 9_000,
@@ -150,6 +150,13 @@ def test_rebuild_token_profile_current_once_projects_sources_and_writes_rows():
         "binance_web3_profile": 1,
         "gmgn_dex_profile": 1,
     }
+    assert result["image_candidates"] == 4
+    assert result["image_sources_admitted"] == 0
+    assert result["image_ready_existing"] == 4
+    assert result["image_pending_existing"] == 0
+    assert result["image_error_existing"] == 0
+    assert result["image_unsupported_existing"] == 0
+    assert result["image_dirty_existing"] == 0
     assert [row["target_id"] for row in repos.token_profiles.rows] == ["asset:gmgn", "asset:stream", "cex_token:BTC"]
     assert repos.token_profiles.rows[1]["profile_provider"] == "binance_web3_profile"
     assert repos.token_profiles.rows[0]["logo_url"] == "/api/token-images/image-gmgn"
@@ -158,12 +165,13 @@ def test_rebuild_token_profile_current_once_projects_sources_and_writes_rows():
     assert repos.token_profiles.rows[2]["logo_image_id"] == "image-cex"
     assert repos.token_image_assets.source_url_calls == [
         [
-            "https://gmgn.example/logo.png",
-            "https://binance.example/logo.png",
-            "https://stream.example/logo.png",
-            "https://bin.bnbstatic.com/btc.png",
+            "https://gmgn.ai/external-res/logo.png",
+            "https://bin.bnbstatic.com/static/images/binance.png",
+            "https://gmgn.ai/external-res/stream.png",
+            "https://bin.bnbstatic.com/static/images/btc.png",
         ]
     ]
+    assert repos.token_image_source_dirty_targets.enqueued == []
     assert repos.token_profiles.commits == [False, False, False]
     assert repos.dirty_targets.claim_calls == [
         {
@@ -180,6 +188,43 @@ def test_rebuild_token_profile_current_once_projects_sources_and_writes_rows():
         claim("CexToken", "cex_token:BTC"),
     ]
     assert repos.transactions == 1
+
+
+def test_rebuild_token_profile_current_once_admits_missing_image_sources_before_projection():
+    logo_url = "https://gmgn.ai/external-res/missing.png"
+    repos = FakeRepos(
+        claims=[claim("Asset", "asset:gmgn")],
+        gmgn_openapi={
+            "asset:gmgn": {
+                "asset_id": "asset:gmgn",
+                "provider": "gmgn_dex_profile",
+                "status": "ready",
+                "symbol": "GMGN",
+                "logo_url": logo_url,
+                "raw_payload_json": {"profile": True},
+                "observed_at_ms": 1_000,
+            }
+        },
+        binance_web3={},
+        gmgn_stream={},
+        okx_dex={},
+        ready_image_assets={},
+    )
+
+    result = module.rebuild_token_profile_current_once(
+        repos=repos,
+        now_ms=10_000,
+        limit=100,
+        lease_owner="profile-worker",
+        lease_ms=60_000,
+        retry_ms=30_000,
+    )
+
+    assert result["image_candidates"] == 1
+    assert result["image_sources_admitted"] == 1
+    assert [row["source_url"] for row in repos.token_image_source_dirty_targets.enqueued] == [logo_url]
+    assert repos.token_profiles.rows[0]["logo_url"] is None
+    assert repos.token_profiles.rows[0]["quality_flags"] == ["logo_mirror_pending"]
 
 
 def test_rebuild_token_profile_current_once_empty_queue_does_not_load_profile_sources():
@@ -299,6 +344,7 @@ class FakeRepos:
         )
         self.token_profiles = FakeTokenProfiles()
         self.token_image_assets = FakeTokenImageAssets(ready_image_assets or {})
+        self.token_image_source_dirty_targets = FakeImageSourceDirtyTargets()
 
     def transaction(self):
         return FakeTransaction(self)
@@ -411,7 +457,7 @@ class FakeTokenImageAssets:
         self.assets_by_source_url = assets_by_source_url
         self.source_url_calls: list[list[str]] = []
 
-    def ready_by_source_urls(self, source_urls):
+    def by_source_urls(self, source_urls):
         self.source_url_calls.append(list(source_urls))
         return {
             source_url: self.assets_by_source_url[source_url]
@@ -420,12 +466,49 @@ class FakeTokenImageAssets:
         }
 
 
+class FakeImageSourceDirtyTargets:
+    def __init__(self, rows: dict[tuple[str, str, str], dict] | None = None) -> None:
+        self.rows = rows or {}
+        self.identity_calls: list[list[dict]] = []
+        self.enqueued: list[dict] = []
+        self.enqueue_calls: list[dict] = []
+
+    def existing_by_source_targets(self, targets):
+        self.identity_calls.append([dict(target) for target in targets])
+        return {
+            (
+                str(target["source_url_hash"]),
+                str(target["target_type"]),
+                str(target["target_id"]),
+            ): self.rows[
+                (
+                    str(target["source_url_hash"]),
+                    str(target["target_type"]),
+                    str(target["target_id"]),
+                )
+            ]
+            for target in targets
+            if (
+                str(target["source_url_hash"]),
+                str(target["target_type"]),
+                str(target["target_id"]),
+            )
+            in self.rows
+        }
+
+    def enqueue_targets(self, targets, *, reason, now_ms, commit=True):
+        self.enqueue_calls.append({"reason": reason, "now_ms": now_ms, "commit": commit})
+        self.enqueued.extend(dict(target) for target in targets)
+        return {"targets": len(targets)}
+
+
 def ready_image(source_url: str, *, image_id: str, source_provider: str) -> dict:
     return {
         "image_id": image_id,
         "source_url": source_url,
         "source_provider": source_provider,
         "source_url_hash": f"hash-{image_id}",
+        "status": "ready",
         "public_url": f"/api/token-images/{image_id}",
     }
 

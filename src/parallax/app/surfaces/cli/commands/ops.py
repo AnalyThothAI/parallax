@@ -98,9 +98,12 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
         data = _run_token_image_mirror_worker_once(
             settings,
             limit=args.limit,
-            source_limit=args.source_limit,
             now_ms=_now_ms(),
         )
+        return 0, {"ok": True, "data": data}
+
+    if args.ops_command == "repair-token-profile-images":
+        data = _run_token_profile_image_repair_once(settings, limit=args.limit, now_ms=_now_ms())
         return 0, {"ok": True, "data": data}
 
     if args.ops_command == "run-resolution-refresh":
@@ -508,9 +511,7 @@ def _enqueue_token_radar_dirty_targets(
             now_ms=now_ms,
             limit=parsed_limit,
         )
-        data["enqueued"] = int(
-            repository.enqueue_events(rows, reason="ops_events_repair", now_ms=now_ms, commit=True)
-        )
+        data["enqueued"] = int(repository.enqueue_events(rows, reason="ops_events_repair", now_ms=now_ms, commit=True))
         return data
     if source == "market-current":
         repository = repos.token_radar_dirty_targets
@@ -694,7 +695,7 @@ def _run_token_profile_current_worker_once(settings: object, *, limit: int, now_
             _close_db_bundle(db)
 
 
-def _run_token_image_mirror_worker_once(settings: object, *, limit: int, source_limit: int, now_ms: int) -> dict:
+def _run_token_image_mirror_worker_once(settings: object, *, limit: int, now_ms: int) -> dict:
     telemetry = TelemetryRegistry()
     db = None
     worker = None
@@ -705,7 +706,6 @@ def _run_token_image_mirror_worker_once(settings: object, *, limit: int, source_
             settings=_worker_settings_with_overrides(
                 settings.workers.token_image_mirror,
                 batch_size=limit,
-                source_limit=source_limit,
             ),
             db=db,
             telemetry=telemetry,
@@ -718,6 +718,67 @@ def _run_token_image_mirror_worker_once(settings: object, *, limit: int, source_
             asyncio.run(worker.aclose())
         if db is not None:
             _close_db_bundle(db)
+
+
+def _run_token_profile_image_repair_once(settings: object, *, limit: int, now_ms: int) -> dict:
+    telemetry = TelemetryRegistry()
+    db = None
+    worker = None
+    bounded_limit = max(1, int(limit))
+    profile_rebuild = {}
+    try:
+        db = DBPoolBundle.create(settings, telemetry=telemetry)
+        with db.worker_session("token_profile_image_repair") as repos, repos.transaction():
+            rows = repos.conn.execute(
+                """
+                SELECT target_type, target_id, updated_at_ms AS source_watermark_ms
+                FROM token_profile_current
+                WHERE status = 'ready'
+                  AND (
+                    quality_flags_json ? 'logo_mirror_pending'
+                    OR quality_flags_json ? 'source_not_admitted'
+                  )
+                ORDER BY updated_at_ms DESC, target_type ASC, target_id ASC
+                LIMIT %s
+                """,
+                (bounded_limit,),
+            ).fetchall()
+            targets = [
+                {
+                    "target_type": str(row["target_type"]),
+                    "target_id": str(row["target_id"]),
+                    "source_watermark_ms": int(row["source_watermark_ms"] or now_ms),
+                    "priority": 25,
+                }
+                for row in rows
+            ]
+            enqueue_result = repos.token_profile_current_dirty_targets.enqueue_targets(
+                targets,
+                reason="token_profile_image_repair",
+                now_ms=now_ms,
+                commit=False,
+            )
+
+        worker = TokenProfileCurrentWorker(
+            name="token_profile_current",
+            settings=_worker_settings_with_overrides(settings.workers.token_profile_current, batch_size=bounded_limit),
+            db=db,
+            telemetry=telemetry,
+        )
+        worker_result = asyncio.run(worker.run_once(now_ms=now_ms))
+        profile_rebuild = dict(worker_result.notes.get("result") or {})
+        return {
+            "selected_targets": len(rows),
+            "profile_targets_enqueued": int(enqueue_result.get("targets", 0)),
+            "profile_rebuild": profile_rebuild,
+        }
+    finally:
+        try:
+            if worker is not None:
+                asyncio.run(worker.aclose())
+        finally:
+            if db is not None:
+                _close_db_bundle(db)
 
 
 def _run_resolution_refresh_worker_once(

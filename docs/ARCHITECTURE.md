@@ -395,23 +395,25 @@ Resolved DEX asset profile facts live in `domains/asset_market`, not in Token
 Radar scoring snapshots. The runtime profile lane is:
 
 ```
-resolved Asset(chain,address)
-  → asset_profile_refresh_targets
-  → AssetProfileRefreshWorker
-  → dex_profile_sources[].token_profile(...)
-  → asset_profiles (GMGN OpenAPI + Binance Web3 source caches)
-  → token_profile_current_dirty_targets
-  → TokenProfileCurrentWorker
-  → token_profile_current
-  → TokenProfileReadModel
-  → /api/token-radar + /api/search/inspect + CLI asset-flow
-  → shared frontend TokenProfileCard
+resolved/current profile target
+  -> token_profile_current_dirty_targets
+  -> TokenProfileCurrentWorker
+  -> exact persisted profile/evidence sources
+  -> token_image_source_dirty_targets for usable logo candidates
+  -> TokenImageMirrorWorker
+  -> token_image_assets + cache/token-images
+  -> token_profile_current.logo_url = /api/token-images/{image_id}
+  -> TokenProfileReadModel
+  -> /api/token-radar + /api/search/inspect + CLI asset-flow + frontend
 ```
 
 Only `asset_market` workers and explicit ops commands may call the profile provider.
 HTTP handlers, CLI read commands, Token Radar projection, Search read models,
 and frontend components read persisted `token_profile_current` through
-`TokenProfileReadModel`. The current profile projection only marks rows
+`TokenProfileReadModel`. `asset_profile_refresh` writes only `asset_profiles`
+and profile-current dirty targets when source facts change; it wakes
+`TokenProfileCurrentWorker` but does not own image source admission. The current
+profile projection only marks rows
 `ready` when the selected source has a usable logo; it also promotes exact
 GMGN stream snapshot icons, exact OKX DEX evidence, and Binance CEX profile
 source-cache rows already stored in PostgreSQL; it does not use request-time

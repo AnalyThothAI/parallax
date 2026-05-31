@@ -69,7 +69,7 @@ RUNTIME_WORKER_CONTRACTS: tuple[RuntimeWorkerHardCutContract, ...] = (
     RuntimeWorkerHardCutContract(
         path=SRC / "domains/asset_market/runtime/token_image_mirror_worker.py",
         banned_calls=("candidate_sources",),
-        control_claim_markers=("token_image_source_dirty_targets.claim_due", "token_image_assets.claim_due_sources"),
+        control_claim_markers=("token_image_source_dirty_targets.claim_due",),
     ),
     RuntimeWorkerHardCutContract(
         path=SRC / "domains/asset_market/runtime/asset_profile_refresh_worker.py",
