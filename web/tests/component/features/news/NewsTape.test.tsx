@@ -33,6 +33,15 @@ describe("NewsTape", () => {
     fireEvent.click(screen.getByRole("button", { name: /open btc etf flows expand/i }));
     expect(onOpen).toHaveBeenCalledTimes(2);
   });
+
+  it("surfaces agent review state separately from provider score", () => {
+    render(<NewsTape rows={[rowWithInsufficientAgentBrief]} onOpen={vi.fn()} />);
+
+    expect(screen.getByText("AGENT INSUFF")).toBeInTheDocument();
+    expect(screen.getByText("A · 90")).toBeInTheDocument();
+    expect(screen.getByText("Provider high score without enough agent evidence")).toBeInTheDocument();
+    expect(screen.queryByText("Insufficient agent title")).not.toBeInTheDocument();
+  });
 });
 
 const rowWithBtcEth: NewsRow = {
@@ -90,4 +99,32 @@ const rowWithBtcEth: NewsRow = {
     },
   ],
   fact_lanes: [],
+};
+
+const rowWithInsufficientAgentBrief: NewsRow = {
+  ...rowWithBtcEth,
+  row_id: "row-2",
+  news_item_id: "news-2",
+  headline: "Provider high score without enough agent evidence",
+  signal: {
+    ...rowWithBtcEth.signal,
+    score: 90,
+    summary_zh: "Provider summary remains visible.",
+    alert_eligibility: {
+      in_app_eligible: true,
+      external_push_ready: false,
+      external_push_block_reason: "agent_brief_not_ready",
+      agent_status: "insufficient",
+      decision_class: "context",
+      provider_status: "ready",
+      provider_score: 90,
+    },
+  },
+  agent_brief: {
+    status: "insufficient",
+    direction: "neutral",
+    decision_class: "context",
+    title_zh: "Insufficient agent title",
+    summary_zh: "证据不足。",
+  },
 };

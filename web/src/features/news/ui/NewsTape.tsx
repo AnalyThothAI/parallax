@@ -3,6 +3,7 @@ import type { NewsRow } from "@shared/model/newsIntel";
 import { ExternalLink } from "lucide-react";
 
 import {
+  newsAgentReviewBadge,
   newsDisplayTokenLanes,
   newsSignalLabel,
   newsSignalScoreLabel,
@@ -24,7 +25,12 @@ export function NewsTape({ rows, onOpen }: NewsTapeProps) {
         const tokens = newsDisplayTokenLanes(row);
         const visibleTokens = tokens.slice(0, 5);
         const overflowCount = Math.max(0, tokens.length - visibleTokens.length);
-        const displayTitle = row.agent_brief?.title_zh || row.signal.title_zh || row.headline;
+        const reviewBadge = newsAgentReviewBadge(row);
+        const useAgentTitle =
+          row.signal.alert_eligibility?.external_push_ready === true || row.agent_brief?.status === "ready";
+        const displayTitle = useAgentTitle
+          ? row.agent_brief?.title_zh || row.signal.title_zh || row.headline
+          : row.signal.title_zh || row.headline;
         return (
           <div className="news-tape-row" key={row.row_id}>
             <button
@@ -47,7 +53,14 @@ export function NewsTape({ rows, onOpen }: NewsTapeProps) {
               </span>
               <span className="news-tape-copy">
                 <strong>{displayTitle}</strong>
-                <small>{row.signal.summary_zh || row.summary || "No summary available."}</small>
+                <small>
+                  <span className={`news-tape-review ${reviewBadge.tone}`}>
+                    {reviewBadge.label}
+                  </span>
+                  <span className="news-tape-summary-text">
+                    {row.signal.summary_zh || row.summary || "No summary available."}
+                  </span>
+                </small>
               </span>
               <span className="news-tape-token-strip">
                 {visibleTokens.map((lane, index) => (

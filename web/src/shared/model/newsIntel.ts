@@ -1,3 +1,14 @@
+export type NewsAlertEligibility = {
+  in_app_eligible?: boolean | null;
+  external_push_ready?: boolean | null;
+  external_push_block_reason?: string | null;
+  external_push_basis?: string | null;
+  agent_status?: string | null;
+  decision_class?: string | null;
+  provider_status?: string | null;
+  provider_score?: number | null;
+};
+
 export type NewsSignalSummary = {
   source: "provider" | "agent" | "partial" | string;
   provider?: string | null;
@@ -11,6 +22,8 @@ export type NewsSignalSummary = {
   summary_zh?: string | null;
   summary_en?: string | null;
   method?: string | null;
+  provider_signal?: NewsSignalSummary | Record<string, unknown> | null;
+  alert_eligibility?: NewsAlertEligibility | null;
 };
 
 export type NewsTokenLane = {
@@ -138,6 +151,8 @@ export type NewsRow = {
   token_lanes: NewsTokenLane[];
   fact_lanes: NewsFactLane[];
   agent_brief?: NewsAgentBrief;
+  agent_brief_status?: NewsAgentBriefStatus | null;
+  agent_status?: NewsAgentBriefStatus | null;
   agent_brief_computed_at_ms?: number | null;
 };
 

@@ -311,8 +311,53 @@ def test_build_news_page_row_preserves_provider_signal_without_masking_ready_age
         "decision_class": "watch",
         "provider_status": "ready",
         "provider_score": 92,
-        "eligible": True,
+        "in_app_eligible": True,
+        "external_push_ready": True,
+        "external_push_basis": "agent_brief",
     }
+
+
+def test_build_news_page_row_keeps_provider_candidate_separate_from_external_push_ready() -> None:
+    row = build_news_page_row(
+        item={
+            "news_item_id": "news-1",
+            "title": "High score provider alert",
+            "summary": "",
+            "source_domain": "example.test",
+            "canonical_url": "https://example.test/a",
+            "published_at_ms": 1000,
+            "provider_signal_json": {
+                "source": "provider",
+                "provider": "opennews",
+                "status": "ready",
+                "direction": "bullish",
+                "signal": "long",
+                "score": 90,
+                "grade": "A",
+                "summary_zh": "Provider summary.",
+                "method": "opennews.aiRating",
+            },
+        },
+        token_mentions=[],
+        fact_candidates=[],
+        agent_brief={
+            "agent_run_id": "run-1",
+            "status": "insufficient",
+            "direction": "neutral",
+            "decision_class": "context",
+            "brief_json": {
+                "summary_zh": "证据不足，不能形成 agent brief。",
+                "data_gaps": [{"kind": "missing_context"}],
+            },
+            "computed_at_ms": 3000,
+        },
+        computed_at_ms=4000,
+    )
+
+    eligibility = row["signal"]["alert_eligibility"]
+    assert eligibility["in_app_eligible"] is True
+    assert eligibility["external_push_ready"] is False
+    assert eligibility["external_push_block_reason"] == "agent_brief_not_ready"
 
 
 def test_build_news_page_row_uses_pending_agent_brief_when_missing() -> None:

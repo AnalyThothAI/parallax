@@ -304,6 +304,62 @@ def test_insert_notification_with_outcome_reports_created_and_aggregated_rows(tm
     assert legacy_duplicate is None
 
 
+def test_insert_notification_upgrades_same_news_source_when_semantic_signature_changes(tmp_path):
+    repo = repository(tmp_path)
+
+    created = repo.insert_notification_with_outcome(
+        dedup_key="news_high_signal:sha256:provider-context",
+        rule_id="news_high_signal",
+        severity="critical",
+        title="Provider headline",
+        body="Provider body",
+        entity_type="news_item",
+        entity_key="news_item:news-1",
+        source_table="news_page_rows",
+        source_id="news-1",
+        occurrence_at_ms=1_700_000_000_000,
+        payload={
+            "news_item_id": "news-1",
+            "semantic_signature": "sha256:provider-context",
+            "external_push_signature": None,
+            "external_push_eligible": False,
+        },
+        channels=["in_app"],
+    )
+    upgraded = repo.insert_notification_with_outcome(
+        dedup_key="news_high_signal:sha256:agent-driver",
+        rule_id="news_high_signal",
+        severity="critical",
+        title="Agent title",
+        body="Agent body",
+        entity_type="news_item",
+        entity_key="news_item:news-1",
+        source_table="news_page_rows",
+        source_id="news-1",
+        occurrence_at_ms=1_700_000_120_000,
+        payload={
+            "news_item_id": "news-1",
+            "semantic_signature": "sha256:agent-driver",
+            "external_push_signature": "sha256:agent-push",
+            "external_push_eligible": True,
+        },
+        channels=["in_app", "pushdeer"],
+    )
+
+    rows = repo.list_notifications(limit=10, rule_id="news_high_signal")
+
+    assert created.created is True
+    assert upgraded.created is False
+    assert upgraded.aggregated is True
+    assert len(rows) == 1
+    assert rows[0]["occurrence_count"] == 1
+    assert rows[0]["title"] == "Agent title"
+    assert rows[0]["body"] == "Agent body"
+    assert rows[0]["channels_json"] == ["in_app", "pushdeer"]
+    assert rows[0]["payload_json"]["semantic_signature"] == "sha256:agent-driver"
+    assert rows[0]["payload_json"]["external_push_eligible"] is True
+
+
 def test_insert_notification_suppresses_same_pulse_signature_only(tmp_path):
     repo = repository(tmp_path)
 

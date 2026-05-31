@@ -887,7 +887,9 @@ def test_news_high_signal_uses_ready_agent_brief_for_display_and_builds_push_sig
                 "signal": {
                     "direction": "bullish",
                     "alert_eligibility": {
-                        "eligible": True,
+                        "in_app_eligible": True,
+                        "external_push_ready": True,
+                        "external_push_basis": "agent_brief",
                         "provider_score": 85,
                         "decision_class": "driver",
                     },
@@ -942,7 +944,7 @@ def test_news_high_signal_uses_ready_agent_brief_for_display_and_builds_push_sig
     assert candidate.occurrence_at_ms == NOW_MS - 5_000
 
 
-def test_news_high_signal_uses_provider_score_when_agent_brief_is_insufficient():
+def test_news_high_signal_keeps_provider_score_in_app_until_agent_brief_is_ready():
     news = FakeNews(
         [
             {
@@ -957,7 +959,9 @@ def test_news_high_signal_uses_provider_score_when_agent_brief_is_insufficient()
                 "signal": {
                     "direction": "bullish",
                     "alert_eligibility": {
-                        "eligible": True,
+                        "in_app_eligible": True,
+                        "external_push_ready": False,
+                        "external_push_block_reason": "agent_brief_not_ready",
                         "provider_score": 90,
                         "decision_class": "context",
                     },
@@ -996,13 +1000,69 @@ def test_news_high_signal_uses_provider_score_when_agent_brief_is_insufficient()
     assert len(candidates) == 1
     candidate = candidates[0]
     assert candidate.severity == "critical"
-    assert candidate.channels == ("in_app", "pushdeer")
+    assert candidate.channels == ("in_app",)
     assert candidate.title == "Provider high signal should alert"
     assert "Score: 90" in candidate.body
     assert "证据不足" not in candidate.body
     assert candidate.payload["provider_score"] == 90
     assert candidate.payload["decision_class"] == "context"
-    assert candidate.payload["external_push_eligible"] is True
+    assert candidate.payload["external_push_eligible"] is False
+    assert candidate.payload["external_push_suppression_reason"] == "agent_brief_not_ready"
+
+
+def test_news_high_signal_uses_projection_external_push_readiness() -> None:
+    news = FakeNews(
+        [
+            {
+                "news_item_id": "news-ready-without-publishable-brief",
+                "latest_at_ms": NOW_MS - 5_000,
+                "agent_brief_computed_at_ms": NOW_MS - 1_000,
+                "headline": "Ready status without publishable agent text",
+                "source_domain": "example.test",
+                "canonical_url": "https://example.test/ready-empty",
+                "signal": {
+                    "direction": "bullish",
+                    "alert_eligibility": {
+                        "in_app_eligible": True,
+                        "external_push_ready": False,
+                        "external_push_block_reason": "agent_brief_missing_summary",
+                        "provider_score": 90,
+                        "decision_class": "driver",
+                    },
+                },
+                "token_impacts": [{"symbol": "BTC", "score": 90}],
+                "agent_brief": {
+                    "status": "ready",
+                    "direction": "bullish",
+                    "decision_class": "driver",
+                    "title_zh": "AI 标题但缺少正文",
+                    "brief_json": {"title_zh": "AI 标题但缺少正文"},
+                },
+            }
+        ]
+    )
+    notifications = NotificationsConfig(
+        rules={
+            "news_high_signal": {
+                "enabled": True,
+                "channels": ["in_app", "pushdeer"],
+                "combined_score_min": 85,
+                "external_score_min": 85,
+                "cooldown_seconds": 3600,
+            }
+        }
+    )
+
+    candidates = [
+        item for item in engine(news=news, notifications=notifications).evaluate(now_ms=NOW_MS)
+        if item.rule_id == "news_high_signal"
+    ]
+
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate.channels == ("in_app",)
+    assert candidate.payload["external_push_eligible"] is False
+    assert candidate.payload["external_push_suppression_reason"] == "agent_brief_missing_summary"
 
 
 def test_news_high_signal_skips_stale_source_items_even_when_agent_finished_now():
@@ -1018,7 +1078,9 @@ def test_news_high_signal_skips_stale_source_items_even_when_agent_finished_now(
                 "signal": {
                     "direction": "bullish",
                     "alert_eligibility": {
-                        "eligible": True,
+                        "in_app_eligible": True,
+                        "external_push_ready": True,
+                        "external_push_basis": "agent_brief",
                         "provider_score": 90,
                         "decision_class": "driver",
                     },
@@ -1060,7 +1122,9 @@ def test_news_high_signal_semantic_dedup_ignores_projection_and_summary_churn():
         "signal": {
             "direction": "bullish",
             "alert_eligibility": {
-                "eligible": True,
+                "in_app_eligible": True,
+                "external_push_ready": True,
+                "external_push_basis": "agent_brief",
                 "provider_score": 90,
                 "decision_class": "driver",
             },
@@ -1113,7 +1177,9 @@ def test_news_high_signal_external_push_signature_uses_asset_cooldown_not_item_i
         "signal": {
             "direction": "bullish",
             "alert_eligibility": {
-                "eligible": True,
+                "in_app_eligible": True,
+                "external_push_ready": True,
+                "external_push_basis": "agent_brief",
                 "provider_score": 90,
                 "decision_class": "driver",
             },

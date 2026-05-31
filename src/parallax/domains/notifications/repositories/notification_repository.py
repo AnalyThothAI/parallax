@@ -100,6 +100,9 @@ class NotificationRepository:
         semantic_duplicate = self._semantic_signature_duplicate(
             rule_id=rule_id,
             payload=normalized_payload,
+            source_table=source_table,
+            source_id=source_id,
+            event_id=event_id,
         )
         if semantic_duplicate is not None:
             aggregated = self._aggregate_notification_row(
@@ -214,8 +217,15 @@ class NotificationRepository:
         *,
         rule_id: str,
         payload: dict[str, Any],
+        source_table: str,
+        source_id: str,
+        event_id: str | None,
     ) -> dict[str, Any] | None:
-        semantic_signature = str(payload.get("semantic_signature") or payload.get("in_app_signature") or "").strip()
+        signature_key_sql = "payload_json->>'semantic_signature'"
+        semantic_signature = str(payload.get("semantic_signature") or "").strip()
+        if rule_id != "news_high_signal":
+            signature_key_sql = "COALESCE(payload_json->>'semantic_signature', payload_json->>'in_app_signature')"
+            semantic_signature = str(payload.get("semantic_signature") or payload.get("in_app_signature") or "").strip()
         if not semantic_signature:
             return None
         external_clause = ""
@@ -231,13 +241,40 @@ class NotificationRepository:
             SELECT *
             FROM notifications
             WHERE rule_id = %s
-              AND COALESCE(payload_json->>'semantic_signature', payload_json->>'in_app_signature') = %s
+              AND {signature_key_sql} = %s
               {external_clause}
             ORDER BY last_seen_at_ms DESC, created_at_ms DESC
             LIMIT 1
             FOR UPDATE
             """,
             params,
+        ).fetchone()
+        if row is not None:
+            return dict(row)
+        if rule_id != "news_high_signal":
+            return None
+        source_ref = _aggregation_source_ref(source_table, source_id, event_id)
+        if not source_ref:
+            return None
+        row = self.conn.execute(
+            """
+            SELECT *
+            FROM notifications
+            WHERE rule_id = %s
+              AND (
+                (source_table = %s AND source_id = %s)
+                OR payload_json @> %s
+              )
+            ORDER BY last_seen_at_ms DESC, created_at_ms DESC
+            LIMIT 1
+            FOR UPDATE
+            """,
+            (
+                rule_id,
+                str(source_table or ""),
+                str(source_id or ""),
+                _json({_AGGREGATION_SOURCE_REFS_KEY: [source_ref]}),
+            ),
         ).fetchone()
         return dict(row) if row is not None else None
 
@@ -297,7 +334,8 @@ class NotificationRepository:
         if existing_ref:
             existing_refs = _append_unique(existing_refs, existing_ref)
         incoming_ref = _aggregation_source_ref(source_table, source_id, event_id)
-        if incoming_ref and incoming_ref in existing_refs:
+        same_source_ref_seen = bool(incoming_ref and incoming_ref in existing_refs)
+        if same_source_ref_seen and not _external_push_upgrade(existing_payload, payload):
             return False
         merged_refs = _append_unique(existing_refs, incoming_ref)
         next_payload = dict(payload)
@@ -316,7 +354,7 @@ class NotificationRepository:
                 event_id = %s,
                 source_table = %s,
                 source_id = %s,
-                occurrence_count = occurrence_count + 1,
+                occurrence_count = occurrence_count + %s,
                 last_seen_at_ms = GREATEST(last_seen_at_ms, %s),
                 payload_json = %s,
                 channels_json = %s,
@@ -334,6 +372,7 @@ class NotificationRepository:
                 event_id,
                 source_table,
                 source_id,
+                0 if same_source_ref_seen else 1,
                 int(occurrence_at_ms),
                 _json(next_payload),
                 _json(channels),
@@ -794,6 +833,13 @@ def _aggregation_source_ref(source_table: str, source_id: str, event_id: str | N
     if not source:
         return None
     return f"{table}:{source}" if table else source
+
+
+def _external_push_upgrade(existing_payload: dict[str, Any], incoming_payload: dict[str, Any]) -> bool:
+    return (
+        existing_payload.get("external_push_eligible") is not True
+        and incoming_payload.get("external_push_eligible") is True
+    )
 
 
 def _append_unique(values: list[str], value: str | None) -> list[str]:

@@ -1551,7 +1551,7 @@ class NewsRepository:
               computed_at_ms,
               projection_version
             FROM news_page_rows
-            WHERE COALESCE((signal_json -> 'alert_eligibility' ->> 'eligible')::boolean, false) = true
+            WHERE COALESCE((signal_json -> 'alert_eligibility' ->> 'in_app_eligible')::boolean, false) = true
               AND COALESCE(NULLIF(signal_json -> 'alert_eligibility' ->> 'provider_score', '')::int, -1) >= %s
               AND EXISTS (
                 SELECT 1
@@ -3449,6 +3449,8 @@ def _signal_with_independent_state(
 ) -> dict[str, Any]:
     agent_status = str(agent_brief.get("status") or "pending")
     provider_score = _optional_int(provider_signal.get("score")) if provider_signal else None
+    in_app_eligible = _alert_eligible(agent_brief=agent_brief, provider_score=provider_score)
+    external_push_ready, external_push_block_reason = _external_push_readiness(agent_brief)
     payload = {
         **signal,
         "provider_signal": dict(provider_signal) if provider_signal else None,
@@ -3459,7 +3461,10 @@ def _signal_with_independent_state(
                 "decision_class": agent_brief.get("decision_class"),
                 "provider_status": provider_signal.get("status") if provider_signal else None,
                 "provider_score": provider_score,
-                "eligible": _alert_eligible(agent_brief=agent_brief, provider_score=provider_score),
+                "in_app_eligible": in_app_eligible,
+                "external_push_ready": external_push_ready,
+                "external_push_block_reason": external_push_block_reason,
+                "external_push_basis": "agent_brief" if external_push_ready else None,
             }.items()
             if value is not None
         },
@@ -3474,6 +3479,27 @@ def _alert_eligible(*, agent_brief: Mapping[str, Any], provider_score: int | Non
     }:
         return True
     return provider_score is not None and provider_score >= 70
+
+
+def _external_push_readiness(agent_brief: Mapping[str, Any]) -> tuple[bool, str | None]:
+    if str(agent_brief.get("status") or "") != "ready":
+        return False, "agent_brief_not_ready"
+    if not _agent_publishable_summary(agent_brief):
+        return False, "agent_brief_missing_summary"
+    return True, None
+
+
+def _agent_publishable_summary(agent_brief: Mapping[str, Any]) -> bool:
+    brief_json = _json_dict(agent_brief.get("brief_json"))
+    return bool(
+        str(
+            agent_brief.get("summary_zh")
+            or brief_json.get("summary_zh")
+            or agent_brief.get("market_read_zh")
+            or brief_json.get("market_read_zh")
+            or ""
+        ).strip()
+    )
 
 
 def _token_lanes_from_mentions(

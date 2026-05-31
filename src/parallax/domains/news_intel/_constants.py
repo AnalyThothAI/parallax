@@ -1,7 +1,7 @@
 NEWS_ENTITY_POLICY_VERSION = "news_entity_extraction_v1"
 NEWS_TOKEN_MENTION_POLICY_VERSION = "news_token_mentions_v1"
 NEWS_FACT_POLICY_VERSION = "news_fact_candidates_v1"
-NEWS_PAGE_PROJECTION_VERSION = "news_page_rows_v2"
+NEWS_PAGE_PROJECTION_VERSION = "news_page_rows_v3"
 NEWS_ITEM_BRIEF_PROMPT_VERSION = "news-item-brief-v1"
 NEWS_ITEM_BRIEF_SCHEMA_VERSION = "news_item_brief_v1"
 NEWS_ITEM_BRIEF_VALIDATOR_VERSION = "news_item_brief_validator_v1"

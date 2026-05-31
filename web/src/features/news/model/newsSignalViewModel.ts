@@ -18,6 +18,40 @@ export const newsSignalScoreLabel = (signal: Pick<NewsSignalSummary, "score" | "
     ? "score --"
     : [signal.grade, String(signal.score)].filter(Boolean).join(" · ");
 
+export type NewsAgentReviewBadge = {
+  label: string;
+  tone: "is-ready" | "is-waiting" | "is-blocked" | "is-failed";
+};
+
+export const newsAgentReviewBadge = (
+  row: Pick<NewsRow, "agent_brief" | "agent_brief_status" | "agent_status" | "signal">,
+): NewsAgentReviewBadge => {
+  const eligibility = row.signal.alert_eligibility;
+  const status = String(
+    eligibility?.agent_status ?? row.agent_brief?.status ?? row.agent_status ?? row.agent_brief_status ?? "pending",
+  ).toLowerCase();
+
+  if (eligibility?.external_push_ready === true) {
+    return { label: "AGENT READY", tone: "is-ready" };
+  }
+  if (status === "ready") {
+    return { label: "AGENT HOLD", tone: "is-blocked" };
+  }
+  if (status === "insufficient") {
+    return { label: "AGENT INSUFF", tone: "is-blocked" };
+  }
+  if (status === "failed") {
+    return { label: "AGENT FAILED", tone: "is-failed" };
+  }
+  if (status === "disabled") {
+    return { label: "AGENT OFF", tone: "is-failed" };
+  }
+  if (status === "stale") {
+    return { label: "AGENT STALE", tone: "is-waiting" };
+  }
+  return { label: "AGENT WAIT", tone: "is-waiting" };
+};
+
 export const tokenImpactLabel = (
   lane: Pick<NewsTokenLane, "provider_score" | "provider_grade">,
 ): string =>

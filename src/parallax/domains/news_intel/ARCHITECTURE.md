@@ -18,6 +18,11 @@ forced into a resolved asset.
 - Provider raw feed entries are inputs. The persisted fact path is
   `news_provider_items` plus normalized `news_items`.
 - `news_page_rows` is the rebuildable News page read model.
+  `signal.alert_eligibility` separates provider/in-app candidate visibility
+  (`in_app_eligible`) from external notification readiness
+  (`external_push_ready`, `external_push_block_reason`). Provider high-score
+  rows may be visible before an agent brief is publishable; external phone
+  pushes require the explicit ready state.
 - `news_sources` carries source classification (`provider_type`,
   `source_role`, `trust_tier`, `coverage_tags`) and source policy JSON. The
   page read model copies the compact classification fields into `source_json`

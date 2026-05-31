@@ -302,28 +302,35 @@ class NotificationRuleEngine:
             provider_score = _int(eligibility.get("provider_score") or signal.get("score"))
             agent_brief = _dict(row.get("agent_brief"))
             ready_agent_brief = _ready_news_agent_brief(agent_brief)
+            external_push_ready, readiness_suppression_reason = _news_external_push_readiness(
+                eligibility=eligibility,
+                ready_agent_brief=ready_agent_brief,
+            )
             decision_class = str(eligibility.get("decision_class") or ready_agent_brief.get("decision_class") or "")
             occurrence_at_ms = _int(row.get("latest_at_ms") or row.get("agent_brief_computed_at_ms") or now_ms)
             semantic_signature = _news_semantic_signature(row, agent_brief=ready_agent_brief)
             if semantic_signature in seen_semantic_signatures:
                 continue
             seen_semantic_signatures.add(semantic_signature)
-            external_push_signature = _news_external_push_signature(
-                row,
-                provider_score=provider_score,
-                occurrence_at_ms=occurrence_at_ms,
-                cooldown_seconds=rule.cooldown_seconds,
-            )
-            external_push_eligible = (
-                provider_score >= external_min_score and _has_external_channels(rule.channels)
-            )
+            external_push_signature = None
+            external_push_eligible = False
             suppression_reason = None
-            if not external_push_eligible:
+            if provider_score < external_min_score or not _has_external_channels(rule.channels):
                 suppression_reason = "external_threshold_or_channel"
-            elif external_push_signature in seen_external_push_signatures:
-                external_push_eligible = False
-                suppression_reason = "external_signature_duplicate"
-            if external_push_eligible:
+            elif not external_push_ready:
+                suppression_reason = readiness_suppression_reason
+            else:
+                external_push_signature = _news_external_push_signature(
+                    row,
+                    provider_score=provider_score,
+                    occurrence_at_ms=occurrence_at_ms,
+                    cooldown_seconds=rule.cooldown_seconds,
+                )
+                external_push_eligible = True
+                if external_push_signature in seen_external_push_signatures:
+                    external_push_eligible = False
+                    suppression_reason = "external_signature_duplicate"
+            if external_push_eligible and external_push_signature:
                 seen_external_push_signatures.add(external_push_signature)
             channels = rule.channels if external_push_eligible else tuple(c for c in rule.channels if c == "in_app")
             source_id = news_item_id
@@ -349,7 +356,6 @@ class NotificationRuleEngine:
                         "decision_class": decision_class,
                         "direction": agent_brief.get("direction") or signal.get("direction"),
                         "semantic_signature": semantic_signature,
-                        "in_app_signature": semantic_signature,
                         "display_title": title,
                         "external_push_signature": external_push_signature,
                         "external_push_eligible": external_push_eligible,
@@ -753,6 +759,20 @@ def _ready_news_agent_brief(agent_brief: dict[str, Any]) -> dict[str, Any]:
     if str(agent_brief.get("status") or "") != "ready":
         return {}
     return agent_brief
+
+
+def _news_external_push_readiness(
+    *,
+    eligibility: dict[str, Any],
+    ready_agent_brief: dict[str, Any],
+) -> tuple[bool, str | None]:
+    if eligibility.get("external_push_ready") is not True:
+        return False, str(eligibility.get("external_push_block_reason") or "external_push_state_missing")
+    if not ready_agent_brief:
+        return False, "agent_brief_not_ready"
+    if not _news_agent_summary(ready_agent_brief):
+        return False, "agent_brief_missing_summary"
+    return True, None
 
 
 def _news_display_title(row: dict[str, Any], *, agent_brief: dict[str, Any]) -> str:

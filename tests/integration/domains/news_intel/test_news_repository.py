@@ -2366,7 +2366,9 @@ def test_news_high_signal_candidates_do_not_require_ready_agent_status(tmp_path)
                     "signal_json": {
                         "direction": "bullish",
                         "alert_eligibility": {
-                            "eligible": True,
+                            "in_app_eligible": True,
+                            "external_push_ready": False,
+                            "external_push_block_reason": "agent_brief_not_ready",
                             "provider_score": 90,
                             "decision_class": "context",
                         },

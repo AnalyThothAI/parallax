@@ -278,6 +278,8 @@ def _signal_with_independent_state(
 ) -> dict[str, Any]:
     agent_status = str(agent_signal.get("status") or "pending")
     provider_score = _optional_int_or_none(provider_signal.get("score")) if provider_signal else None
+    in_app_eligible = _alert_eligible(agent_signal=agent_signal, provider_score=provider_score)
+    external_push_ready, external_push_block_reason = _external_push_readiness(agent_signal)
     return _compact_mapping(
         {
             **signal,
@@ -288,7 +290,10 @@ def _signal_with_independent_state(
                     "decision_class": agent_signal.get("decision_class"),
                     "provider_status": provider_signal.get("status") if provider_signal else None,
                     "provider_score": provider_score,
-                    "eligible": _alert_eligible(agent_signal=agent_signal, provider_score=provider_score),
+                    "in_app_eligible": in_app_eligible,
+                    "external_push_ready": external_push_ready,
+                    "external_push_block_reason": external_push_block_reason,
+                    "external_push_basis": "agent_brief" if external_push_ready else None,
                 }
             ),
         }
@@ -302,6 +307,18 @@ def _alert_eligible(*, agent_signal: Mapping[str, Any], provider_score: int | No
     }:
         return True
     return provider_score is not None and provider_score >= 70
+
+
+def _external_push_readiness(agent_signal: Mapping[str, Any]) -> tuple[bool, str | None]:
+    if str(agent_signal.get("status") or "") != "ready":
+        return False, "agent_brief_not_ready"
+    if not _agent_publishable_summary(agent_signal):
+        return False, "agent_brief_missing_summary"
+    return True, None
+
+
+def _agent_publishable_summary(agent_signal: Mapping[str, Any]) -> bool:
+    return bool(str(agent_signal.get("summary_zh") or agent_signal.get("market_read_zh") or "").strip())
 
 
 def _direction_label(direction: str) -> str:

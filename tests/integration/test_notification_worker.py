@@ -92,13 +92,15 @@ def news_candidate(
     semantic_signature: str = "sha256:news-semantic",
     external_push_eligible: bool = True,
     channels=("in_app", "pushdeer"),
+    title: str | None = None,
+    body: str | None = None,
 ):
     return NotificationCandidate(
         dedup_key=f"news_high_signal:{semantic_signature}",
         rule_id="news_high_signal",
         severity="critical",
-        title=f"news {news_item_id}",
-        body=f"news body {news_item_id}",
+        title=title or f"news {news_item_id}",
+        body=body or f"news body {news_item_id}",
         entity_type="news_item",
         entity_key=f"news_item:{news_item_id}",
         source_table="news_page_rows",
@@ -107,7 +109,6 @@ def news_candidate(
         payload={
             "news_item_id": news_item_id,
             "semantic_signature": semantic_signature,
-            "in_app_signature": semantic_signature,
             "external_push_signature": "sha256:news-external",
             "external_push_eligible": external_push_eligible,
         },
@@ -252,6 +253,64 @@ def test_process_once_requeues_failed_delivery_for_new_aggregated_news_occurrenc
     assert deliveries[0]["status"] == "pending"
     assert deliveries[0]["attempt_count"] == 0
     assert deliveries[0]["last_error"] is None
+
+
+def test_process_once_enqueues_news_external_delivery_when_agent_ready_upgrades_same_source(tmp_path):
+    conn, repo, worker = open_worker(
+        tmp_path,
+        candidates=[
+            news_candidate(
+                news_item_id="news-1",
+                source_id="news-1",
+                occurrence_at_ms=1_700_000_000_000,
+                external_push_eligible=False,
+                channels=("in_app",),
+                title="provider headline",
+                body="provider raw body",
+            )
+        ],
+        delivery_channels={
+            "pushdeer": NotificationChannelConfig(
+                enabled=True,
+                provider="pushdeer",
+                url="pushdeer://test-key",
+                min_severity="high",
+            )
+        },
+    )
+    try:
+        inserted = asyncio.run(worker.process_once(now_ms=1_700_000_100_000))
+        assert len(inserted) == 1
+        assert repo.list_deliveries(limit=10) == []
+
+        worker.rule_engine = StaticRuleEngine(
+            [
+                news_candidate(
+                    news_item_id="news-1",
+                    source_id="news-1",
+                    occurrence_at_ms=1_700_000_300_000,
+                    external_push_eligible=True,
+                    channels=("in_app", "pushdeer"),
+                    title="agent title",
+                    body="agent brief body",
+                )
+            ]
+        )
+        duplicate = asyncio.run(worker.process_once(now_ms=1_700_000_300_500))
+        notifications = repo.list_notifications(limit=10, rule_id="news_high_signal")
+        deliveries = repo.list_deliveries(limit=10)
+    finally:
+        conn.close()
+
+    assert duplicate == []
+    assert len(notifications) == 1
+    assert notifications[0]["occurrence_count"] == 1
+    assert notifications[0]["title"] == "agent title"
+    assert notifications[0]["body"] == "agent brief body"
+    assert notifications[0]["channels_json"] == ["in_app", "pushdeer"]
+    assert len(deliveries) == 1
+    assert deliveries[0]["channel_id"] == "pushdeer"
+    assert deliveries[0]["status"] == "pending"
 
 
 def test_process_once_does_not_requeue_failed_delivery_for_non_news_aggregation(tmp_path):

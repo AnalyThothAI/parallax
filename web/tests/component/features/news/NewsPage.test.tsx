@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { NewsPage } from "@features/news";
 import { fetchNewsItem, fetchNewsRows } from "@lib/api/client";
 import type { NewsItemDetail, NewsRow } from "@shared/model/newsIntel";
@@ -62,6 +65,14 @@ describe("NewsPage", () => {
     expect(screen.queryByText("Content")).not.toBeInTheDocument();
     expect(screen.queryByText("Decision")).not.toBeInTheDocument();
     expect(fetchNewsRowsMock).toHaveBeenCalledWith(defaultNewsFetchParams);
+  });
+
+  it("anchors sparse and loading queue content at the top of the scroll surface", () => {
+    const newsCss = readFileSync(join(process.cwd(), "src/features/news/news.css"), "utf8");
+    const tableWrapRule = cssRuleBody(newsCss, ".news-table-wrap");
+
+    expect(tableWrapRule).toContain("align-content: start");
+    expect(tableWrapRule).toContain("grid-auto-rows: max-content");
   });
 
   it("requests backend hard-cut filters from signal, score, and search controls", async () => {
@@ -155,6 +166,11 @@ function renderNews(children: ReactNode) {
 function LocationProbe() {
   const location = useLocation();
   return <span data-testid="location">{location.pathname}</span>;
+}
+
+function cssRuleBody(css: string, selector: string): string {
+  const match = new RegExp(`${selector.replace(".", "\\.")}\\s*\\{(?<body>[^}]*)\\}`).exec(css);
+  return match?.groups?.body ?? "";
 }
 
 function mockNewsRows() {

@@ -180,7 +180,11 @@ News Intel contract:
   compact source metadata (`provider_type`, `source_role`, `trust_tier`,
   `coverage_tags`, `source_quality_status`), item content classification
   (`content_class`, `content_tags`, `content_classification`), compact
-  `agent_brief`, and provider/source/story metadata. A ready compact brief may
+  `agent_brief`, and provider/source/story metadata. `signal.alert_eligibility`
+  distinguishes in-app provider candidates from external push readiness via
+  `in_app_eligible`, `external_push_ready`, and
+  `external_push_block_reason`; PushDeer delivery must not treat provider score
+  alone as a publishable agent brief. A ready compact brief may
   still include `summary_zh`, `market_read_zh`, bull/bear strengths,
   evidence/data-gap metadata, run id, prompt/schema versions, and hashes when
   available, but OpenNews provider rows can carry provider signal and token
