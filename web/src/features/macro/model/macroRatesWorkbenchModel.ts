@@ -147,8 +147,9 @@ export function buildRatesWorkbenchView(
   module: MacroModuleView,
   moduleId: RatesModuleId,
 ): RatesWorkbenchView {
-  const proxyHeadline = proxyHeadlineForModule(module, moduleId);
-  const readiness = proxyHeadline ? "proxy" : readinessFromModule(module);
+  const officialReadiness = readinessFromOfficialTables(module, moduleId);
+  const proxyHeadline = officialReadiness ? null : proxyHeadlineForModule(module, moduleId);
+  const readiness = proxyHeadline ? "proxy" : (officialReadiness ?? readinessFromModule(module));
   const readHeadline = readableText(module.module_read.headline);
   const marketHeadline = sanitizePrimaryText(
     proxyHeadline ??
@@ -158,6 +159,9 @@ export function buildRatesWorkbenchView(
   const marketExplanation = sanitizePrimaryText(
     readableText(module.module_read.crypto_read) ??
       readableText(module.module_read.token_impact) ??
+      readableText(module.module_read.data_note) ??
+      readableText(module.module_read.methodology_note) ??
+      readableText(module.module_read.summary) ??
       neutralFallbackExplanation(moduleId),
   );
 
@@ -256,16 +260,41 @@ function proxyHeadlineForModule(module: MacroModuleView, moduleId: RatesModuleId
   const futureGapCodes = allGapCodes(module);
   if (
     moduleId === "rates/auctions" &&
+    !hasOfficialAuctionSurface(module.tables) &&
     futureGapCodes.some((code) => AUCTION_PROXY_GAPS.has(code))
   ) {
     return RATES_PAGE_COPY[moduleId].proxyHeadline ?? null;
   }
   if (
     moduleId === "rates/expectations" &&
+    !hasOfficialExpectationsSurface(module.tables) &&
     futureGapCodes.some((code) => EXPECTATIONS_PROXY_GAPS.has(code))
   ) {
     return RATES_PAGE_COPY[moduleId].proxyHeadline ?? null;
   }
+  return null;
+}
+
+function readinessFromOfficialTables(
+  module: MacroModuleView,
+  moduleId: RatesModuleId,
+): RatesReadiness | null {
+  if (moduleId === "rates/auctions") {
+    const surface = auctionOfficialSurface(module.tables);
+    if (surface.hasCalendar && surface.hasResults) {
+      return "ready";
+    }
+    if (surface.hasCalendar || surface.hasResults) {
+      return "partial";
+    }
+    return null;
+  }
+
+  if (moduleId === "rates/expectations" && hasOfficialExpectationsSurface(module.tables)) {
+    const hasFutureGap = allGapCodes(module).some((code) => EXPECTATIONS_PROXY_GAPS.has(code));
+    return hasFutureGap ? "partial" : readinessFromModule(module);
+  }
+
   return null;
 }
 
@@ -375,22 +404,60 @@ function orderedTables(
 }
 
 function auctionTablePriority(table: MacroModuleTable): number {
-  const text = tableSearchText(table);
-  if (/未来拍卖|拍卖日历|auction_calendar/.test(text)) {
+  if (isAuctionCalendarTable(table)) {
     return 0;
   }
-  if (/拍卖结果|auction_results/.test(text)) {
+  if (isAuctionResultsTable(table)) {
     return 1;
   }
-  return text.includes("proxy") || text.includes("代理") ? 3 : 2;
+  return isProxyTable(table) ? 3 : 2;
 }
 
 function expectationsTablePriority(table: MacroModuleTable): number {
-  const text = tableSearchText(table);
-  if (/会议概率|meeting_probability|fomc/.test(text)) {
+  if (isMeetingProbabilityTable(table)) {
     return 0;
   }
-  return text.includes("proxy") || text.includes("代理") ? 2 : 1;
+  return isProxyTable(table) ? 2 : 1;
+}
+
+function hasOfficialAuctionSurface(tables: MacroModuleTable[]): boolean {
+  const surface = auctionOfficialSurface(tables);
+  return surface.hasCalendar || surface.hasResults;
+}
+
+function auctionOfficialSurface(tables: MacroModuleTable[]): {
+  hasCalendar: boolean;
+  hasResults: boolean;
+} {
+  return {
+    hasCalendar: tables.some(isAuctionCalendarTable),
+    hasResults: tables.some(isAuctionResultsTable),
+  };
+}
+
+function hasOfficialExpectationsSurface(tables: MacroModuleTable[]): boolean {
+  return tables.some(isMeetingProbabilityTable);
+}
+
+function isAuctionCalendarTable(table: MacroModuleTable): boolean {
+  return /treasury_auction_calendar|auction_calendar|未来拍卖|拍卖日历/.test(
+    tableSearchText(table),
+  );
+}
+
+function isAuctionResultsTable(table: MacroModuleTable): boolean {
+  return /treasury_auction_results|auction_results|最近拍卖|拍卖结果/.test(tableSearchText(table));
+}
+
+function isMeetingProbabilityTable(table: MacroModuleTable): boolean {
+  return /fomc_probability|fomc_meeting_probability|meeting_probability|会议概率/.test(
+    tableSearchText(table),
+  );
+}
+
+function isProxyTable(table: MacroModuleTable): boolean {
+  const text = tableSearchText(table);
+  return text.includes("proxy") || text.includes("代理");
 }
 
 function tableSearchText(table: MacroModuleTable): string {
