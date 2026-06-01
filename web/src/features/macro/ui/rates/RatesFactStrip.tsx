@@ -5,7 +5,7 @@ export function RatesFactStrip({ facts }: { facts: RatesFact[] }) {
   return (
     <MacroPanel
       ariaLabel="关键事实"
-      className="macro-rates-fact-panel"
+      className="macro-rates-fact-strip macro-rates-fact-panel"
       meta={`${facts.length} 项`}
       span="full"
       title="关键事实"

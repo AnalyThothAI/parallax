@@ -17,7 +17,7 @@ export function RatesDiagnosticsPanel({
   const meta = `${view.diagnostics.moduleHealthLabel} / 全局缺口 ${view.diagnostics.globalGapReferenceCount}`;
 
   return (
-    <>
+    <div className="macro-rates-diagnostics">
       <MacroDataHealthPanel
         ariaLabel="利率数据诊断"
         buckets={buckets}
@@ -32,7 +32,7 @@ export function RatesDiagnosticsPanel({
       >
         <MacroSourceTable caption="利率数据源" source={module.provenance} />
       </MacroPanel>
-    </>
+    </div>
   );
 }
 

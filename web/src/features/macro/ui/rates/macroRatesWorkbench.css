@@ -46,10 +46,17 @@
 
   .macro-rates-market-read,
   .macro-rates-chart-copy,
+  .macro-rates-fact-strip,
+  .macro-rates-decision-support,
+  .macro-rates-detail-tables,
   .macro-rates-table-stack {
     display: grid;
     gap: 12px;
     min-width: 0;
+  }
+
+  .macro-rates-diagnostics {
+    display: contents;
   }
 
   .macro-rates-market-read-head {
@@ -217,6 +224,7 @@
     min-height: 96px;
   }
 
+  .macro-rates-corridor-chart,
   .macro-rates-corridor {
     display: grid;
     gap: 10px;
@@ -227,6 +235,7 @@
     background: rgba(10, 16, 27, 0.26);
   }
 
+  .macro-rates-corridor-chart figcaption,
   .macro-rates-corridor figcaption {
     color: var(--text-primary, #f8fafc);
     font-size: 0.86rem;
@@ -268,6 +277,7 @@
     stroke-width: 3;
   }
 
+  .macro-rates-chart-legend,
   .macro-rates-corridor-legend {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
@@ -387,6 +397,7 @@
       grid-column: span 7;
     }
 
+    .macro-rates-fact-strip,
     .macro-rates-fact-panel {
       grid-column: span 5;
     }
@@ -418,6 +429,7 @@
       grid-template-columns: minmax(0, 1fr);
     }
 
+    .macro-rates-corridor-chart,
     .macro-rates-corridor {
       padding: 10px;
     }

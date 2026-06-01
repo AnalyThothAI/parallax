@@ -22,7 +22,10 @@ export function RatesCorridorChart({ model }: { model: RatesCorridorModel }) {
   const geometry = useMemo(() => buildGeometry(model), [model]);
 
   return (
-    <figure aria-label="联邦基金目标走廊" className="macro-rates-corridor">
+    <figure
+      aria-label="联邦基金目标走廊"
+      className="macro-rates-corridor-chart macro-rates-corridor"
+    >
       <figcaption>联邦基金目标走廊</figcaption>
       {geometry.hasData ? (
         <>
@@ -90,7 +93,7 @@ export function RatesCorridorChart({ model }: { model: RatesCorridorModel }) {
               </text>
             ))}
           </svg>
-          <div className="macro-rates-corridor-legend">
+          <div className="macro-rates-chart-legend macro-rates-corridor-legend">
             {model.lower ? <LegendChip series={model.lower} tone="band" /> : null}
             {model.upper ? <LegendChip series={model.upper} tone="band" /> : null}
             {model.lines.map((series) => (

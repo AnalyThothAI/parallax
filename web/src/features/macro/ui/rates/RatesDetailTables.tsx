@@ -11,7 +11,7 @@ export function RatesDetailTables({ tables }: { tables: RatesDetailTable[] }) {
   return (
     <MacroPanel
       ariaLabel="利率明细"
-      className="macro-rates-detail-panel"
+      className="macro-rates-detail-tables macro-rates-detail-panel"
       meta={`${primaryTables.length} 张`}
       span="full"
       title="利率明细"

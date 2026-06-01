@@ -7,7 +7,7 @@ export function RatesDecisionSupport({ groups }: { groups: RatesDecisionGroup[] 
   return (
     <MacroPanel
       ariaLabel="决策支持"
-      className="macro-rates-decision-panel"
+      className="macro-rates-decision-support macro-rates-decision-panel"
       meta={`${itemCount} 条`}
       span="full"
       title="决策支持"
