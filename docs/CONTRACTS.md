@@ -57,8 +57,8 @@ per manifest worker key, in manifest start-priority order:
 `asset_profile_refresh`, `token_image_mirror`, `token_profile_current`,
 `token_radar_projection`, `narrative_admission`, `mention_semantics`,
 `token_discussion_digest`, `news_fetch`, `news_item_process`,
-`news_story_projection`, `news_item_brief`, `news_page_projection`,
-`news_source_quality_projection`, `cex_oi_radar_board`,
+`news_item_brief`, `news_page_projection`, `news_source_quality_projection`,
+`cex_oi_radar_board`,
 `macro_sync`, `macro_view_projection`, `pulse_candidate`, `enrichment`, `handle_summary`,
 `notification_rule`, and `notification_delivery`.
 
@@ -177,15 +177,17 @@ News Intel contract:
   lanes are present. Signal filtering reads persisted `signal_json`, and
   keyword search scans projected headline, summary, and token lanes.
 - News rows expose deterministic fields (`headline`, `summary`,
-  `source_domain`, `token_lanes`, `fact_lanes`, lifecycle/story metadata),
-  canonical signal metadata (`signal.direction`, `signal.score`,
-  `signal.reason`), provider token impact rows (`token_impacts`), plus
-  compact source metadata (`provider_type`, `source_role`, `trust_tier`,
-  `coverage_tags`, `source_quality_status`), item content classification
-  (`content_class`, `content_tags`, `content_classification`), compact
-  `agent_brief`, and provider/source/story metadata. `signal.alert_eligibility`
-  distinguishes in-app provider candidates from external push readiness via
-  `in_app_eligible`, `external_push_ready`, and
+  `source_domain`, `token_lanes`, `fact_lanes`, lifecycle metadata), provider
+  token impact rows (`token_impacts`), compact source metadata
+  (`provider_type`, `source_role`, `trust_tier`, `coverage_tags`,
+  `source_quality_status`), item content classification (`content_class`,
+  `content_tags`, `content_classification`), compact `agent_brief`, and
+  provider/source metadata. `signal` is an explicit envelope:
+  `signal.display_signal` is the row-level display choice,
+  `signal.provider_signal` is provider-native signal evidence,
+  `signal.agent_signal` is the current compact agent signal, and
+  `signal.alert_eligibility` distinguishes in-app provider candidates from
+  external push readiness via `in_app_eligible`, `external_push_ready`, and
   `external_push_block_reason`; PushDeer delivery must not treat provider score
   alone as a publishable agent brief. A ready compact brief may
   still include `summary_zh`, `market_read_zh`, bull/bear strengths,
@@ -199,6 +201,8 @@ News Intel contract:
   control-plane fetch status, redacted latest fetch errors,
   `source_quality_status`, provider capability summaries, source hygiene
   warnings, and the latest `news_source_quality_rows` payload when available.
+  Source quality may be `unknown`, `stale`, or `degraded`; it does not block
+  `/api/news` rows from serving canonical item facts.
   Supported provider types are currently `rss`, `atom`, `json_feed`,
   `cryptopanic`, and `opennews`; configured unsupported provider types are
   reported before an operator expects data from them. OpenNews credentials live

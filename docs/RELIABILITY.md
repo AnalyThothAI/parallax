@@ -229,6 +229,9 @@ discovery is allowed only in manual ops repair commands that enqueue dirty
 targets and do not write read-model rows. Normal worker idle paths must be
 proportional to queue depth, not to the size of `events`, `token_intents`,
 `token_intent_resolutions`, or market tick fact tables.
+News source-quality runtime follows the same rule: the worker processes durable
+source refresh/window targets and expands configured windows inside that worker;
+broad source/window coverage is an ops repair enqueue concern only.
 
 The same dirty-target rule applies to runtime agent/profile tails:
 `pulse_candidate`, `narrative_admission`, `token_discussion_digest`,
