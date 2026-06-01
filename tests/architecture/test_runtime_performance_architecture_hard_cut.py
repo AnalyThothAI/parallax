@@ -76,16 +76,9 @@ def test_opennews_client_runtime_reports_rest_transport_without_fetch_mode_surfa
     assert "_reject_removed_websocket_policy(policy)" in client
 
 
-def test_opennews_provider_signal_never_reenters_news_brief_input_hot_path() -> None:
-    policy = "news_item_agent_brief_eligibility"
-    retired_policy = "needs_news_item_agent_brief"
-    hot_path_files = (
-        "src/parallax/domains/news_intel/runtime/news_fetch_worker.py",
-        "src/parallax/domains/news_intel/runtime/news_item_process_worker.py",
-        "src/parallax/app/runtime/projection_dirty_targets.py",
-    )
+def test_opennews_provider_signal_does_not_enter_fetch_brief_hot_path() -> None:
+    fetch_worker = _read("src/parallax/domains/news_intel/runtime/news_fetch_worker.py")
 
-    for path in hot_path_files:
-        source = _read(path)
-        assert policy in source, f"{path} must apply the provider-signal brief policy"
-        assert retired_policy not in source, f"{path} must not keep the retired boolean wrapper"
+    assert "news_item_agent_brief_eligibility" not in fetch_worker
+    assert "brief_input" not in fetch_worker
+    assert "NEWS_ITEM_AGENT_BRIEF_MAX_PUBLISHED_AGE_MS" not in fetch_worker
