@@ -1,5 +1,5 @@
 // @responsive-spec
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { expectNoUnhandledApiRequests } from "@tests/e2e/support/layoutAssertions";
 import {
   expectHiddenMacroLabelsAbsent,
@@ -80,6 +80,7 @@ test.describe("macro responsive audit", () => {
       for (const route of [...PRODUCT_ROUTES, ...HIDDEN_DIRECT_ROUTES]) {
         await page.goto(route);
         await expect(page.getByLabel("宏观工作台")).toBeVisible();
+        await expectRatesWorkbenchHierarchy(page);
         await expectNoMacroBodyOverflow(page);
         await expectNoMacroMetricFragmentation(page);
         await expectMacroTableFramesBounded(page);
@@ -91,6 +92,7 @@ test.describe("macro responsive audit", () => {
         await page.goto(route);
         await expect(page).toHaveURL(target);
         await expect(page.getByLabel("宏观工作台")).toBeVisible();
+        await expectRatesWorkbenchHierarchy(page);
         await expectNoMacroBodyOverflow(page);
         await expectNoMacroMetricFragmentation(page);
         await expectMacroTableFramesBounded(page);
@@ -102,3 +104,41 @@ test.describe("macro responsive audit", () => {
     expect(consoleErrors).toEqual([]);
   });
 });
+
+async function expectRatesWorkbenchHierarchy(page: Page) {
+  const path = new URL(page.url()).pathname;
+  if (!path.startsWith("/macro/rates/")) return;
+
+  await expect(page.getByLabel("利率页导航")).toBeVisible();
+  await expect(page.getByLabel("市场解读")).toBeVisible();
+  await expect(page.getByLabel("主要图表")).toBeVisible();
+  await expect(page.getByLabel("利率数据诊断")).toBeVisible();
+
+  const order = await page.evaluate(() => {
+    const labels = ["市场解读", "关键事实", "主要图表", "决策支持", "利率明细", "利率数据诊断"];
+    const regions = Array.from(document.querySelectorAll<HTMLElement>("[aria-label]"));
+    return labels.map((label) =>
+      regions.findIndex((element) => element.getAttribute("aria-label") === label),
+    );
+  });
+
+  expect(order).not.toContain(-1);
+  expect(order).toEqual([...order].sort((left, right) => left - right));
+
+  const primaryText = await page.evaluate(() => {
+    const root = document.querySelector<HTMLElement>(".macro-page-scaffold");
+    const diagnostics = root?.querySelector<HTMLElement>('[aria-label="利率数据诊断"]');
+    if (!root || !diagnostics) return document.body.innerText;
+
+    const parts: string[] = [];
+    for (const child of Array.from(root.children)) {
+      if (child.contains(diagnostics)) break;
+      parts.push((child as HTMLElement).innerText ?? child.textContent ?? "");
+    }
+    return parts.join("\n");
+  });
+
+  expect(primaryText).not.toMatch(
+    /macro_module_view_v3|source_snapshot_id|rates:dgs|fed:effr|fed_funds_futures_missing|fomc_probability_feed_missing|treasury_auction_(calendar|results)_missing|\{|\}/,
+  );
+}

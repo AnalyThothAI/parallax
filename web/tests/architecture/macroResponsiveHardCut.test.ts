@@ -43,6 +43,7 @@ describe("macro responsive hard cut", () => {
         "macroPageScaffold.css",
         "macroPanel.css",
         "macroPages.css",
+        "macroRatesWorkbench.css",
         "macroShell.css",
         "macroTableFrame.css",
         "macroTables.css",
