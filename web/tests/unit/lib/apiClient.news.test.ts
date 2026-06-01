@@ -24,7 +24,7 @@ describe("news API client normalization", () => {
                 lifecycle_status: "attention",
                 headline: "SEC reviews tokenized stocks",
                 source_domain: "sec.gov",
-                signal: {
+                signal: newsSignalEnvelope({
                   source: "provider",
                   provider: "opennews",
                   status: "ready",
@@ -32,7 +32,7 @@ describe("news API client normalization", () => {
                   label_zh: "利好",
                   score: 82,
                   grade: "A",
-                },
+                }),
                 token_lanes: {
                   bad: "shape",
                 },
@@ -82,8 +82,8 @@ describe("news API client normalization", () => {
     expect(observedParams.q).toBe("tokenized");
     expect(observedParams.signal).toBe("bullish");
     expect(observedKeys).toEqual(["cursor", "limit", "min_score", "q", "signal"].sort());
-    expect(rows.items[0].signal.label_zh).toBe("利好");
-    expect(rows.items[0].signal.score).toBe(82);
+    expect(rows.items[0].signal.display_signal.label_zh).toBe("利好");
+    expect(rows.items[0].signal.display_signal.score).toBe(82);
     expect(rows.items[0].token_lanes).toEqual([]);
     expect(rows.items[0].token_impacts?.[0].provider_score).toBe(82);
     expect(rows.items[0].source?.provider_type).toBe("opennews");
@@ -102,13 +102,13 @@ describe("news API client normalization", () => {
                 news_item_id: "news-flat",
                 lifecycle_status: "processed",
                 headline: "Flat brief",
-                signal: {
+                signal: newsSignalEnvelope({
                   source: "agent",
                   status: "ready",
                   direction: "bearish",
                   label_zh: "利空",
                   method: "news_item_brief",
-                },
+                }),
                 agent_brief: {
                   status: "ready",
                   brief_json: {
@@ -132,12 +132,12 @@ describe("news API client normalization", () => {
                 news_item_id: "news-missing",
                 lifecycle_status: "processed",
                 headline: "Missing brief",
-                signal: {
+                signal: newsSignalEnvelope({
                   source: "partial",
                   status: "partial",
                   direction: "neutral",
                   label_zh: "中性",
-                },
+                }),
               },
             ],
             next_cursor: null,
@@ -257,3 +257,17 @@ describe("news API client normalization", () => {
     expect(item.fact_lanes).toEqual([]);
   });
 });
+
+function newsSignalEnvelope(displaySignal: Record<string, unknown>) {
+  return {
+    display_signal: displaySignal,
+    provider_signal: displaySignal.source === "provider" ? displaySignal : null,
+    agent_signal: { status: "pending" },
+    alert_eligibility: {
+      in_app_eligible: true,
+      external_push_ready: false,
+      agent_status: "pending",
+      provider_score: displaySignal.score,
+    },
+  };
+}

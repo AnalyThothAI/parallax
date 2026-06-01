@@ -3332,13 +3332,13 @@ def _news_page_row_filter_sql(
         filters.append("lifecycle_status = %s")
         filter_params.append(str(status))
     if direction:
-        filters.append("LOWER(signal_json ->> 'direction') = %s")
+        filters.append("LOWER(signal_json -> 'display_signal' ->> 'direction') = %s")
         filter_params.append(str(direction).strip().lower())
     if signal:
-        filters.append("LOWER(signal_json ->> 'direction') = %s")
+        filters.append("LOWER(signal_json -> 'display_signal' ->> 'direction') = %s")
         filter_params.append(str(signal).strip().lower())
     if min_score is not None:
-        filters.append("COALESCE(NULLIF(signal_json ->> 'score', '')::int, -1) >= %s")
+        filters.append("COALESCE(NULLIF(signal_json -> 'display_signal' ->> 'score', '')::int, -1) >= %s")
         filter_params.append(int(min_score))
     if decision_class:
         filters.append("agent_brief_json ->> 'decision_class' = %s")
@@ -3421,21 +3421,42 @@ def _signal_from_agent_brief(value: Any) -> dict[str, Any]:
     payload = _json_dict(value)
     if str(payload.get("status") or "") != "ready":
         return {
-            "source": "partial",
-            "status": "partial",
-            "direction": "neutral",
-            "label_zh": "中性",
-            "method": "pending",
+            "display_signal": {
+                "source": "partial",
+                "status": "partial",
+                "direction": "neutral",
+                "label_zh": "中性",
+                "method": "pending",
+            },
+            "provider_signal": None,
+            "agent_signal": payload or {"status": "pending"},
+            "alert_eligibility": {
+                "agent_status": str(payload.get("status") or "pending"),
+                "in_app_eligible": False,
+                "external_push_ready": False,
+                "external_push_block_reason": "agent_brief_not_ready",
+            },
         }
     direction = str(payload.get("direction") or "neutral")
     return {
-        "source": "agent",
-        "status": "ready",
-        "direction": direction,
-        "label_zh": _direction_label(direction),
-        "title_zh": _json_dict(payload.get("brief_json")).get("title_zh"),
-        "summary_zh": _json_dict(payload.get("brief_json")).get("summary_zh"),
-        "method": "news_item_brief",
+        "display_signal": {
+            "source": "agent",
+            "status": "ready",
+            "direction": direction,
+            "label_zh": _direction_label(direction),
+            "title_zh": _json_dict(payload.get("brief_json")).get("title_zh"),
+            "summary_zh": _json_dict(payload.get("brief_json")).get("summary_zh"),
+            "method": "news_item_brief",
+        },
+        "provider_signal": None,
+        "agent_signal": payload,
+        "alert_eligibility": {
+            "agent_status": "ready",
+            "decision_class": payload.get("decision_class"),
+            "in_app_eligible": str(payload.get("decision_class") or "") in {"driver", "watch"},
+            "external_push_ready": _agent_publishable_summary(payload),
+            "external_push_basis": "agent_brief" if _agent_publishable_summary(payload) else None,
+        },
     }
 
 
@@ -3448,12 +3469,15 @@ def _projection_missing_signal(
     provider_score = _optional_int(provider_payload.get("score")) if provider_payload else None
     agent_status = str(agent_brief.get("status") or "pending")
     return {
-        "source": "partial",
-        "status": "pending",
-        "direction": "neutral",
-        "label_zh": "中性",
-        "method": "projection_missing",
+        "display_signal": {
+            "source": "partial",
+            "status": "pending",
+            "direction": "neutral",
+            "label_zh": "中性",
+            "method": "projection_missing",
+        },
         "provider_signal": provider_payload,
+        "agent_signal": dict(agent_brief),
         "alert_eligibility": {
             key: value
             for key, value in {

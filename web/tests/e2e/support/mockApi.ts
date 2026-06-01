@@ -205,7 +205,7 @@ function newsItemDetailData(path: string) {
 }
 
 function newsProviderSignal() {
-  return {
+  const displaySignal = {
     source: "provider",
     provider: "opennews",
     status: "ready",
@@ -217,6 +217,18 @@ function newsProviderSignal() {
     summary_zh: "OpenNews aiRating flags liquidity rotation as a positive crypto-beta signal.",
     summary_en: "Provider aiRating links the liquidity rotation to crypto beta.",
     method: "opennews.aiRating",
+  };
+  return {
+    display_signal: displaySignal,
+    provider_signal: displaySignal,
+    agent_signal: { status: "pending" },
+    alert_eligibility: {
+      in_app_eligible: true,
+      external_push_ready: false,
+      agent_status: "pending",
+      provider_status: "ready",
+      provider_score: 82,
+    },
   };
 }
 

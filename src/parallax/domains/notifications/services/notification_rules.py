@@ -298,8 +298,9 @@ class NotificationRuleEngine:
             if source_latest_at_ms and source_latest_at_ms < now_ms - NEWS_HIGH_SIGNAL_RECENCY_WINDOW_MS:
                 continue
             signal = _dict(row.get("signal"))
+            display_signal = _news_display_signal(row)
             eligibility = _dict(signal.get("alert_eligibility"))
-            provider_score = _int(eligibility.get("provider_score") or signal.get("score"))
+            provider_score = _int(eligibility.get("provider_score") or display_signal.get("score"))
             agent_brief = _dict(row.get("agent_brief"))
             ready_agent_brief = _ready_news_agent_brief(agent_brief)
             external_push_ready, readiness_suppression_reason = _news_external_push_readiness(
@@ -354,7 +355,7 @@ class NotificationRuleEngine:
                         "news_item_id": news_item_id,
                         "provider_score": provider_score,
                         "decision_class": decision_class,
-                        "direction": agent_brief.get("direction") or signal.get("direction"),
+                        "direction": agent_brief.get("direction") or display_signal.get("direction"),
                         "semantic_signature": semantic_signature,
                         "display_title": title,
                         "external_push_signature": external_push_signature,
@@ -797,25 +798,30 @@ def _news_external_push_readiness(
 
 def _news_display_title(row: dict[str, Any], *, agent_brief: dict[str, Any]) -> str:
     brief_json = _dict(agent_brief.get("brief_json"))
-    signal = _dict(row.get("signal"))
+    display_signal = _news_display_signal(row)
     return _compact_text(
         agent_brief.get("title_zh")
         or brief_json.get("title_zh")
-        or signal.get("title_zh")
+        or display_signal.get("title_zh")
         or row.get("headline")
         or "News high signal",
         limit=96,
     )
 
 
+def _news_display_signal(row: dict[str, Any]) -> dict[str, Any]:
+    return _dict(_dict(row.get("signal")).get("display_signal"))
+
+
 def _news_semantic_signature(row: dict[str, Any], *, agent_brief: dict[str, Any]) -> str:
     signal = _dict(row.get("signal"))
+    display_signal = _news_display_signal(row)
     eligibility = _dict(signal.get("alert_eligibility"))
     return _stable_hash(
         {
             "asset_bucket": _news_external_asset_bucket(row),
             "decision_class": agent_brief.get("decision_class") or eligibility.get("decision_class"),
-            "direction": agent_brief.get("direction") or signal.get("direction"),
+            "direction": agent_brief.get("direction") or display_signal.get("direction"),
             "content_class": row.get("content_class"),
             "content_tags": _safe_signature_list(row.get("content_tags")),
             "affected_assets": _news_affected_asset_symbols(_news_agent_affected_assets(agent_brief)),
@@ -830,12 +836,12 @@ def _news_external_push_signature(
     occurrence_at_ms: int,
     cooldown_seconds: int,
 ) -> str:
-    signal = _dict(row.get("signal"))
+    display_signal = _news_display_signal(row)
     agent_brief = _ready_news_agent_brief(_dict(row.get("agent_brief")))
     return _stable_hash(
         {
             "asset_bucket": _news_external_asset_bucket(row),
-            "direction": agent_brief.get("direction") or signal.get("direction"),
+            "direction": agent_brief.get("direction") or display_signal.get("direction"),
             "provider_score_band": provider_score // 5,
             "cooldown_bucket": _cooldown_bucket(occurrence_at_ms, cooldown_seconds),
         }

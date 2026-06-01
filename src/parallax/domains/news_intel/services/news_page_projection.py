@@ -171,7 +171,7 @@ def _source_payload(item: dict[str, Any]) -> dict[str, Any]:
             "source_role": item.get("source_role"),
             "trust_tier": item.get("trust_tier"),
             "coverage_tags": _json_list(item.get("coverage_tags_json")),
-            "source_quality_status": item.get("source_quality_status"),
+            "source_quality_status": item.get("source_quality_status") or "unknown",
         }
     )
 
@@ -304,24 +304,23 @@ def _signal_with_independent_state(
     provider_score = _optional_int_or_none(provider_signal.get("score")) if provider_signal else None
     in_app_eligible = _alert_eligible(agent_signal=agent_signal, provider_score=provider_score)
     external_push_ready, external_push_block_reason = _external_push_readiness(agent_signal)
-    return _compact_mapping(
-        {
-            **signal,
-            "provider_signal": dict(provider_signal) if provider_signal else None,
-            "alert_eligibility": _compact_mapping(
-                {
-                    "agent_status": agent_status,
-                    "decision_class": agent_signal.get("decision_class"),
-                    "provider_status": provider_signal.get("status") if provider_signal else None,
-                    "provider_score": provider_score,
-                    "in_app_eligible": in_app_eligible,
-                    "external_push_ready": external_push_ready,
-                    "external_push_block_reason": external_push_block_reason,
-                    "external_push_basis": "agent_brief" if external_push_ready else None,
-                }
-            ),
-        }
-    )
+    return {
+        "display_signal": _compact_mapping(signal),
+        "provider_signal": dict(provider_signal) if provider_signal else None,
+        "agent_signal": dict(agent_signal),
+        "alert_eligibility": _compact_mapping(
+            {
+                "agent_status": agent_status,
+                "decision_class": agent_signal.get("decision_class"),
+                "provider_status": provider_signal.get("status") if provider_signal else None,
+                "provider_score": provider_score,
+                "in_app_eligible": in_app_eligible,
+                "external_push_ready": external_push_ready,
+                "external_push_block_reason": external_push_block_reason,
+                "external_push_basis": "agent_brief" if external_push_ready else None,
+            }
+        ),
+    }
 
 
 def _alert_eligible(*, agent_signal: Mapping[str, Any], provider_score: int | None) -> bool:

@@ -9,6 +9,7 @@ import type {
   NewsItemDetail,
   NewsRowsData,
   NewsRow,
+  NewsSignalEnvelope,
   NewsSignalSummary,
   NewsSourceSummary,
   NewsTokenLane,
@@ -216,7 +217,30 @@ function normalizeNewsDetail(row: NewsItemDetail): NewsItemDetail {
   });
 }
 
-function normalizeNewsSignal(raw: unknown): NewsSignalSummary {
+function normalizeNewsSignal(raw: unknown): NewsSignalEnvelope {
+  const payload = objectOrNull(raw) ?? {};
+  const displayPayload = objectOrNull(payload.display_signal) ?? {};
+  const providerPayload = objectOrNull(payload.provider_signal);
+  const agentPayload = objectOrNull(payload.agent_signal) ?? {};
+  const alertPayload = objectOrNull(payload.alert_eligibility) ?? {};
+  return {
+    display_signal: normalizeNewsSignalSummary(displayPayload),
+    provider_signal: providerPayload ? normalizeNewsSignalSummary(providerPayload) : null,
+    agent_signal: agentPayload,
+    alert_eligibility: {
+      in_app_eligible: booleanOrNull(alertPayload.in_app_eligible),
+      external_push_ready: booleanOrNull(alertPayload.external_push_ready),
+      external_push_block_reason: stringOrNull(alertPayload.external_push_block_reason),
+      external_push_basis: stringOrNull(alertPayload.external_push_basis),
+      agent_status: stringOrNull(alertPayload.agent_status),
+      decision_class: stringOrNull(alertPayload.decision_class),
+      provider_status: stringOrNull(alertPayload.provider_status),
+      provider_score: numberOrNull(alertPayload.provider_score),
+    },
+  };
+}
+
+function normalizeNewsSignalSummary(raw: unknown): NewsSignalSummary {
   const payload = objectOrNull(raw) ?? {};
   const direction = stringOrNull(payload.direction) ?? "neutral";
   const status = stringOrNull(payload.status) ?? "partial";
@@ -409,6 +433,10 @@ function numberOrNull(value: unknown): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
+}
+
+function booleanOrNull(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
 }
 
 function stringOrNull(value: unknown): string | null {
