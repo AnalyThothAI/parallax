@@ -1284,11 +1284,7 @@ class NewsSourceQualityProjectionWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=60.0, ge=0)
     batch_size: int = Field(default=100, ge=1)
     advisory_lock_key: int = 2026052201
-    wakes_on: tuple[str, ...] = (
-        "news_item_written",
-        "news_item_processed",
-        "news_item_brief_updated",
-    )
+    wakes_on: tuple[str, ...] = ("news_item_written",)
     windows: tuple[str, ...] = ("24h", "7d")
 
     @field_validator("wakes_on", "windows", mode="before")
@@ -2055,7 +2051,7 @@ news_source_quality_projection:
   interval_seconds: 60.0
   batch_size: 100
   advisory_lock_key: 2026052201
-  wakes_on: ["news_item_written", "news_item_processed", "news_item_brief_updated"]
+  wakes_on: ["news_item_written"]
   windows: ["24h", "7d"]
 pulse_candidate:
   enabled: true

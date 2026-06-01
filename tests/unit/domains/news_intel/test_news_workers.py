@@ -869,7 +869,17 @@ class FakeProjectionDirtyTargetRepository:
     def mark_done(self, rows, *, now_ms: int, commit: bool = True):
         return len(rows)
 
-    def mark_error(self, rows, *, error: str, retry_ms: int, now_ms: int, commit: bool = True):
+    def mark_error(
+        self,
+        rows,
+        *,
+        error: str,
+        retry_ms: int,
+        now_ms: int,
+        count_attempt: bool = True,
+        commit: bool = True,
+    ):
+        del count_attempt
         return len(rows)
 
 

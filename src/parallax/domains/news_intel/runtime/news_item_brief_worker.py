@@ -8,6 +8,15 @@ from typing import Any, cast
 
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
+from parallax.domains.news_intel.runtime.news_projection_work import (
+    claim_item_brief_work,
+    enqueue_page_reprojection,
+    item_brief_news_item_ids,
+    mark_work_done,
+    mark_work_error,
+    queue_item_brief_depth,
+    terminalize_work,
+)
 from parallax.domains.news_intel.services.news_item_agent_policy import (
     news_item_agent_brief_eligibility,
 )
@@ -37,7 +46,6 @@ class NewsItemBriefWorker(WorkerBase):
         *,
         provider: Any | None = None,
         wake_bus: Any | None = None,
-        source_quality_windows: Iterable[str] | None = None,
         clock_ms: Callable[[], int] | None = None,
         run_id_factory: Callable[[], str] | None = None,
         **kwargs: Any,
@@ -45,7 +53,6 @@ class NewsItemBriefWorker(WorkerBase):
         super().__init__(**kwargs)
         self.provider = provider
         self.wake_bus = wake_bus
-        self.source_quality_windows = _source_quality_windows(source_quality_windows)
         self.clock_ms = clock_ms or _now_ms
         self.run_id_factory = run_id_factory or _default_run_id
 
@@ -371,24 +378,19 @@ class NewsItemBriefWorker(WorkerBase):
         with self._repository_session() as repos:
             return cast(
                 list[dict[str, Any]],
-                repos.news_projection_dirty_targets.claim_due(
+                claim_item_brief_work(
+                    repos,
                     limit=max(1, int(limit)),
                     lease_ms=self._lease_ms(),
                     now_ms=now_ms,
                     lease_owner=_claim_owner(self.name),
-                    projection_name="brief_input",
                 ),
             )
 
     def _queue_depth(self, *, now_ms: int | None = None) -> int:
         resolved_now_ms = self.clock_ms() if now_ms is None else int(now_ms)
         with self._repository_session() as repos:
-            return int(
-                repos.news_projection_dirty_targets.queue_depth(
-                    now_ms=resolved_now_ms,
-                    projection_name="brief_input",
-                )
-            )
+            return queue_item_brief_depth(repos, now_ms=resolved_now_ms)
 
     def _load_candidates(self, *, claimed: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
         news_item_ids = _target_ids(claimed)
@@ -459,7 +461,7 @@ class NewsItemBriefWorker(WorkerBase):
 
     def _mark_targets_done(self, targets: Iterable[Mapping[str, Any]], *, now_ms: int) -> None:
         with self._repository_session() as repos:
-            repos.news_projection_dirty_targets.mark_done(targets, now_ms=now_ms)
+            mark_work_done(repos, targets, now_ms=now_ms)
 
     def _mark_targets_error(
         self,
@@ -471,7 +473,8 @@ class NewsItemBriefWorker(WorkerBase):
         count_attempt: bool = True,
     ) -> None:
         with self._repository_session() as repos:
-            repos.news_projection_dirty_targets.mark_error(
+            mark_work_error(
+                repos,
                 targets,
                 error=str(error),
                 retry_ms=retry_ms,
@@ -489,16 +492,15 @@ class NewsItemBriefWorker(WorkerBase):
         terminal_attempt_count: int | None = None,
     ) -> int:
         with self._repository_session() as repos:
-            return int(
-                repos.news_projection_dirty_targets.terminalize_targets(
-                    [target],
-                    worker_name=self.name,
-                    final_reason=outcome.retry_reason,
-                    final_reason_bucket=outcome.retry_reason,
-                    now_ms=now_ms,
-                    semantic_payload_hash=packet.input_hash,
-                    terminal_attempt_count=terminal_attempt_count,
-                )
+            return terminalize_work(
+                repos,
+                [target],
+                worker_name=self.name,
+                final_reason=outcome.retry_reason,
+                final_reason_bucket=outcome.retry_reason,
+                now_ms=now_ms,
+                semantic_payload_hash=packet.input_hash,
+                terminal_attempt_count=terminal_attempt_count,
             )
 
     def _insert_run(
@@ -583,27 +585,9 @@ class NewsItemBriefWorker(WorkerBase):
                 updated_at_ms=int(computed_at_ms),
                 commit=False,
             )
-            source_ids = repos.news.list_source_ids_for_news_items(
+            enqueue_page_reprojection(
+                repos,
                 news_item_ids=[packet.news_item.news_item_id],
-            )
-            repos.news_projection_dirty_targets.enqueue_targets(
-                [
-                    {
-                        "projection_name": "page",
-                        "target_kind": "news_item",
-                        "target_id": packet.news_item.news_item_id,
-                    },
-                    *[
-                        {
-                            "projection_name": "source_quality",
-                            "target_kind": "source",
-                            "target_id": source_id,
-                            "window": window,
-                        }
-                        for source_id in source_ids
-                        for window in getattr(self, "source_quality_windows", ("24h", "7d"))
-                    ],
-                ],
                 reason="news_item_brief_updated",
                 now_ms=int(computed_at_ms),
                 commit=False,
@@ -730,27 +714,7 @@ def _current_brief_is_fresh(
     return str(current.get("validator_version") or "") == agent_config.validator_version
 
 def _target_ids(rows: Iterable[Mapping[str, Any]]) -> list[str]:
-    return _unique_values(
-        [
-            str(row.get("target_id") or "")
-            for row in rows
-            if str(row.get("projection_name") or "") == "brief_input"
-            and str(row.get("target_kind") or "") == "news_item"
-            and str(row.get("window") or "") == ""
-        ]
-    )
-
-
-def _unique_values(values: Iterable[str]) -> list[str]:
-    seen: set[str] = set()
-    result: list[str] = []
-    for value in values:
-        item = str(value)
-        if not item or item in seen:
-            continue
-        seen.add(item)
-        result.append(item)
-    return result
+    return item_brief_news_item_ids(rows)
 
 
 def _backpressure_outcome(reservation: AgentCapacityReservation) -> str:
@@ -805,11 +769,6 @@ def _failed_brief(
         payload["terminal"] = True
         payload["terminal_reason"] = terminal_reason
     return payload
-
-
-def _source_quality_windows(windows: Iterable[str] | None) -> tuple[str, ...]:
-    normalized = tuple(dict.fromkeys(str(window).strip().lower() for window in (windows or ()) if str(window).strip()))
-    return normalized or ("24h", "7d")
 
 
 def _provider_error_audit(error: Exception) -> dict[str, Any] | None:

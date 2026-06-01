@@ -166,8 +166,10 @@ class FakeDirtyRepo:
         error: str,
         retry_ms: int,
         now_ms: int,
+        count_attempt: bool = True,
         commit: bool = True,
     ) -> int:
+        del count_attempt
         self.marked_error.append([dict(row) for row in rows])
         return len(rows)
 

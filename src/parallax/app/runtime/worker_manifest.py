@@ -465,7 +465,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         idempotency_evidence=("news source/window projection identity", "dirty target payload hash"),
         dirty_target_tables=("news_projection_dirty_targets",),
         advisory_lock_key="2026052201",
-        wakes_on=("news_item_written", "news_item_processed", "news_item_brief_updated"),
+        wakes_on=("news_item_written",),
     ),
     WorkerManifest(
         name="cex_oi_radar_board",

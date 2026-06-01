@@ -99,6 +99,7 @@ def enqueue_source_quality_windows(
             "target_id": source_id,
             "window": window,
             "source_watermark_ms": int(watermarks.get((source_id, window), 0)),
+            **({"due_at_ms": int(due_at_ms)} if due_at_ms is not None else {}),
         }
         for source_id, window in _unique_pairs(source_windows)
     ]
