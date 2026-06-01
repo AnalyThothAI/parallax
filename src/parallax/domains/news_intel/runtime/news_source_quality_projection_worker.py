@@ -11,10 +11,10 @@ from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.news_intel.runtime.news_projection_work import (
     claim_source_quality_work,
     enqueue_page_reprojection,
-    enqueue_source_quality_windows,
+    enqueue_source_quality_window_work,
     mark_work_done,
     mark_work_error,
-    source_quality_windows_for_claimed,
+    source_quality_claim_windows,
 )
 from parallax.domains.news_intel.services.source_quality_projection import build_source_quality_rows
 from parallax.domains.news_intel.types.source_quality_policy import window_ms_for_label
@@ -66,7 +66,7 @@ class NewsSourceQualityProjectionWorker(WorkerBase):
                 )
             try:
                 with _transaction(repos.conn):
-                    source_windows = source_quality_windows_for_claimed(claimed, configured_windows=windows)
+                    source_windows = source_quality_claim_windows(claimed, configured_windows=windows)
                     aggregate_inputs = repos.news.list_source_quality_inputs_for_targets(
                         source_windows=source_windows,
                         now_ms=now,
@@ -104,7 +104,7 @@ class NewsSourceQualityProjectionWorker(WorkerBase):
                     mark_work_done(repos, claimed, now_ms=now, commit=False)
                     future_targets = _future_source_quality_targets(aggregate_inputs, now_ms=now)
                     if future_targets:
-                        rescheduled = enqueue_source_quality_windows(
+                        rescheduled = enqueue_source_quality_window_work(
                             repos,
                             source_windows=[
                                 (str(target["source_id"]), str(target["window"])) for target in future_targets

@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from contextlib import nullcontext
 from typing import Any
 
+from parallax.domains.news_intel.runtime.news_projection_work import (
+    enqueue_item_brief_work,
+    enqueue_page_reprojection,
+    enqueue_source_quality_refresh,
+)
 from parallax.domains.news_intel.services.news_item_agent_policy import (
     news_item_agent_brief_eligibility,
     news_item_agent_brief_priority,
@@ -14,7 +19,6 @@ DOMAIN_CHOICES = ("all", "news")
 PROJECTION_CHOICES = ("all", "brief_input", "page", "source_quality")
 
 _NEWS_ITEM_PROJECTIONS = ("brief_input", "page")
-_DEFAULT_SOURCE_QUALITY_WINDOWS = ("24h", "7d")
 
 
 def enqueue_projection_dirty_targets(
@@ -25,7 +29,6 @@ def enqueue_projection_dirty_targets(
     now_ms: int,
     projection: str = "all",
     since_ms: int | None = None,
-    source_quality_windows: Iterable[str] | None = None,
 ) -> dict[str, Any]:
     normalized_domain = str(domain or "all").strip().lower()
     if normalized_domain not in DOMAIN_CHOICES:
@@ -35,7 +38,6 @@ def enqueue_projection_dirty_targets(
         raise ValueError(f"unsupported projection dirty target projection: {normalized_projection}")
     if execute and normalized_projection in {"all", "brief_input"} and since_ms is None:
         raise ValueError("executing brief_input repair requires --since-hours to bound expensive agent work")
-    windows = _source_quality_windows(source_quality_windows)
     include_news = normalized_domain in {"all", "news"}
     result: dict[str, Any] = {
         "domain": normalized_domain,
@@ -55,7 +57,6 @@ def enqueue_projection_dirty_targets(
                 now_ms=now_ms,
                 projection=normalized_projection,
                 since_ms=since_ms,
-                windows=windows,
             )
     return result
 
@@ -67,7 +68,6 @@ def _enqueue_news_targets(
     now_ms: int,
     projection: str,
     since_ms: int | None,
-    windows: tuple[str, ...],
 ) -> dict[str, int]:
     news_item_projections = _selected_projections(projection, _NEWS_ITEM_PROJECTIONS)
     include_source_quality = projection in {"all", "source_quality"}
@@ -88,51 +88,55 @@ def _enqueue_news_targets(
         if include_source_quality
         else []
     )
-    news_item_targets = [
-        _news_item_dirty_target(
-            projection_name=selected_projection,
-            row=row,
-        )
+    page_rows = [row for row in news_item_rows if "page" in news_item_projections]
+    brief_rows = [
+        row
         for row in news_item_rows
-        for selected_projection in news_item_projections
-        if selected_projection != "brief_input" or _row_brief_eligible(row, now_ms=now_ms)
+        if "brief_input" in news_item_projections and _row_brief_eligible(row, now_ms=now_ms)
     ]
-    source_quality_targets = [
-        {
-            "projection_name": "source_quality",
-            "target_kind": "source",
-            "target_id": source_id,
-            "window": window,
-        }
-        for source_id in source_ids
-        for window in windows
-    ]
-    enqueued_news_items = (
-        repos.news_projection_dirty_targets.enqueue_targets(
-            news_item_targets,
+    watermarks = {str(row["news_item_id"]): int(row["source_watermark_ms"] or 0) for row in news_item_rows}
+    enqueued_pages = (
+        enqueue_page_reprojection(
+            repos,
+            news_item_ids=[str(row["news_item_id"]) for row in page_rows],
+            source_watermark_ms_by_news_item_id=watermarks,
             reason="ops_projection_dirty_repair",
             now_ms=now_ms,
             commit=False,
         )
-        if execute and news_item_targets
+        if execute and page_rows
+        else 0
+    )
+    enqueued_briefs = (
+        enqueue_item_brief_work(
+            repos,
+            news_item_ids=[str(row["news_item_id"]) for row in brief_rows],
+            priority_by_news_item_id={str(row["news_item_id"]): _news_item_brief_priority(row) for row in brief_rows},
+            source_watermark_ms_by_news_item_id=watermarks,
+            reason="ops_projection_dirty_repair",
+            now_ms=now_ms,
+            commit=False,
+        )
+        if execute and brief_rows
         else 0
     )
     enqueued_source_quality = (
-        repos.news_projection_dirty_targets.enqueue_targets(
-            source_quality_targets,
+        enqueue_source_quality_refresh(
+            repos,
+            source_ids=source_ids,
             reason="ops_projection_dirty_repair",
             now_ms=now_ms,
             commit=False,
         )
-        if execute and source_quality_targets
+        if execute and source_ids
         else 0
     )
     return {
         "news_item_ids": len(news_item_rows),
-        "news_item_targets": len(news_item_targets),
-        "news_item_targets_enqueued": int(enqueued_news_items),
+        "news_item_targets": len(page_rows) + len(brief_rows),
+        "news_item_targets_enqueued": int(enqueued_pages) + int(enqueued_briefs),
         "source_ids": len(source_ids),
-        "source_quality_targets": len(source_quality_targets),
+        "source_quality_targets": len(source_ids),
         "source_quality_targets_enqueued": int(enqueued_source_quality),
     }
 
@@ -145,23 +149,6 @@ def _selected_projections(requested: str, available: tuple[str, ...]) -> tuple[s
     return ()
 
 
-def _news_item_dirty_target(*, projection_name: str, row: Mapping[str, Any]) -> dict[str, Any]:
-    target = {
-        "projection_name": projection_name,
-        "target_kind": "news_item",
-        "target_id": str(row["news_item_id"]),
-        "source_watermark_ms": int(row["source_watermark_ms"] or 0),
-    }
-    if projection_name == "brief_input":
-        target["priority"] = news_item_agent_brief_priority(
-            item=row,
-            token_mentions=_json_list(row.get("token_mentions_json")),
-            fact_candidates=_json_list(row.get("fact_candidates_json")),
-            context_items=_json_list(row.get("context_items_json")),
-        )
-    return target
-
-
 def _row_brief_eligible(row: Mapping[str, Any], *, now_ms: int) -> bool:
     return news_item_agent_brief_eligibility(
         item=row,
@@ -170,6 +157,15 @@ def _row_brief_eligible(row: Mapping[str, Any], *, now_ms: int) -> bool:
         context_items=_json_list(row.get("context_items_json")),
         now_ms=now_ms,
     ).eligible
+
+
+def _news_item_brief_priority(row: Mapping[str, Any]) -> int:
+    return news_item_agent_brief_priority(
+        item=row,
+        token_mentions=_json_list(row.get("token_mentions_json")),
+        fact_candidates=_json_list(row.get("fact_candidates_json")),
+        context_items=_json_list(row.get("context_items_json")),
+    )
 
 
 def _fetch_ids(conn: Any, sql: str, column: str) -> list[str]:
@@ -232,11 +228,6 @@ def _json_list(value: Any) -> list[dict[str, Any]]:
         if isinstance(parsed, list):
             return [dict(row) for row in parsed if isinstance(row, Mapping)]
     return []
-
-
-def _source_quality_windows(windows: Iterable[str] | None) -> tuple[str, ...]:
-    normalized = tuple(dict.fromkeys(str(window).strip().lower() for window in (windows or ()) if str(window).strip()))
-    return normalized or _DEFAULT_SOURCE_QUALITY_WINDOWS
 
 
 def _transaction(conn: Any) -> Any:

@@ -71,8 +71,37 @@ def token_radar_max_market_tick_observed_at_ms(conn: Any) -> int | None:
     return int(value) if value is not None else None
 
 
+def token_profile_image_repair_targets(conn: Any, *, limit: int, now_ms: int) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT target_type, target_id, updated_at_ms AS source_watermark_ms
+        FROM token_profile_current
+        WHERE status = 'ready'
+          AND (
+            quality_flags_json ? 'logo_mirror_pending'
+            OR quality_flags_json ? 'source_not_admitted'
+            OR quality_flags_json ? 'logo_mirror_unsupported'
+            OR quality_flags_json ? 'logo_mirror_failed'
+          )
+        ORDER BY updated_at_ms DESC, target_type ASC, target_id ASC
+        LIMIT %s
+        """,
+        (int(limit),),
+    ).fetchall()
+    return [
+        {
+            "target_type": str(row["target_type"]),
+            "target_id": str(row["target_id"]),
+            "source_watermark_ms": int(row["source_watermark_ms"] or now_ms),
+            "priority": 25,
+        }
+        for row in rows
+    ]
+
+
 __all__ = [
     "market_tick_current_rebuild_estimate",
+    "token_profile_image_repair_targets",
     "token_radar_max_market_tick_observed_at_ms",
     "token_radar_max_resolution_ms",
     "token_radar_source_count",

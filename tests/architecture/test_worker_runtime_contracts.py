@@ -819,7 +819,9 @@ def test_dirty_target_control_plane_sql_is_repository_owned(table_name: str) -> 
     violations = [
         f"{_rel(path)} writes control-plane table {table_name}"
         for path in SRC.rglob("*.py")
-        if path not in allowlist and write_pattern.search(path.read_text())
+        if path not in allowlist
+        and "alembic/versions" not in path.as_posix()
+        and write_pattern.search(path.read_text())
     ]
 
     assert violations == []

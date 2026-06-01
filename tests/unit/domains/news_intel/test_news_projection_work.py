@@ -8,7 +8,7 @@ from parallax.domains.news_intel.runtime.news_projection_work import (
     enqueue_page_reprojection,
     enqueue_source_quality_refresh,
     page_news_item_ids,
-    source_quality_windows_for_claimed,
+    source_quality_claim_windows,
 )
 
 NOW_MS = 1_800_000
@@ -128,7 +128,7 @@ def test_page_ids_and_source_quality_refresh_expansion() -> None:
     ]
 
     assert page_news_item_ids(page_rows) == ["news-1"]
-    assert source_quality_windows_for_claimed(source_rows, configured_windows=("24h", "7d")) == [
+    assert source_quality_claim_windows(source_rows, configured_windows=("24h", "7d")) == [
         ("source-1", "24h"),
         ("source-1", "7d"),
     ]

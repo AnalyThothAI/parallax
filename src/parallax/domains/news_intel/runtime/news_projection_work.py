@@ -81,7 +81,7 @@ def enqueue_source_quality_refresh(
     )
 
 
-def enqueue_source_quality_windows(
+def enqueue_source_quality_window_work(
     repos: Any,
     *,
     source_windows: Iterable[tuple[str, str]],
@@ -173,7 +173,7 @@ def item_brief_news_item_ids(rows: Iterable[Mapping[str, Any]]) -> list[str]:
     return _target_ids(rows, projection_name=ITEM_BRIEF_INPUT, target_kind="news_item", require_empty_window=True)
 
 
-def source_quality_windows_for_claimed(
+def source_quality_claim_windows(
     rows: Iterable[Mapping[str, Any]],
     *,
     configured_windows: Sequence[str],
@@ -204,7 +204,14 @@ def _claim(repos: Any, *, projection_name: str, **kwargs: Any) -> list[dict[str,
 def _enqueue(repos: Any, targets: list[dict[str, Any]], *, reason: str, now_ms: int, commit: bool) -> int:
     if not targets:
         return 0
-    return int(repos.news_projection_dirty_targets.enqueue_targets(targets, reason=reason, now_ms=now_ms, commit=commit))
+    return int(
+        repos.news_projection_dirty_targets.enqueue_targets(
+            targets,
+            reason=reason,
+            now_ms=now_ms,
+            commit=commit,
+        )
+    )
 
 
 def _news_item_target(

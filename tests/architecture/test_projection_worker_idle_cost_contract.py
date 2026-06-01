@@ -40,6 +40,9 @@ NEWS_PROJECTION_WORKERS = {
     SRC / "domains/news_intel/runtime/news_page_projection_worker.py",
     SRC / "domains/news_intel/runtime/news_source_quality_projection_worker.py",
 }
+NEWS_PROJECTION_WORK_ADAPTERS = {
+    SRC / "domains/news_intel/runtime/news_projection_work.py",
+}
 AGENT_BRIEF_WORKERS = {
     SRC / "domains/news_intel/runtime/news_item_brief_worker.py",
 }
@@ -77,7 +80,10 @@ def test_dirty_target_claim_and_completion_are_projection_worker_owned() -> None
             if method_name not in CLAIM_MARK_METHODS:
                 continue
             chain = _attribute_chain(call.func)
-            if "news_projection_dirty_targets" in chain and path not in NEWS_PROJECTION_WORKERS | AGENT_BRIEF_WORKERS:
+            if (
+                "news_projection_dirty_targets" in chain
+                and path not in NEWS_PROJECTION_WORKERS | NEWS_PROJECTION_WORK_ADAPTERS | AGENT_BRIEF_WORKERS
+            ):
                 violations.append(f"{_rel(path)} calls news dirty target {method_name}")
 
     assert violations == []
@@ -92,7 +98,7 @@ def test_agent_brief_workers_claim_dirty_targets_instead_of_scanning_candidates(
         banned = sorted(str(name) for name in calls if name in BANNED_AGENT_BRIEF_DISCOVERY_CALLS)
         if banned:
             violations.append(f"{_rel(path)} calls broad agent brief discovery methods: {', '.join(banned)}")
-        if "claim_due" not in calls:
+        if "claim_due" not in calls and "claim_item_brief_work" not in calls:
             violations.append(f"{_rel(path)} does not claim dirty targets")
 
     assert violations == []
@@ -108,6 +114,8 @@ def _projection_worker_paths() -> list[Path]:
 def _call_method_name(call: ast.Call) -> str | None:
     if isinstance(call.func, ast.Attribute):
         return call.func.attr
+    if isinstance(call.func, ast.Name):
+        return call.func.id
     return None
 
 

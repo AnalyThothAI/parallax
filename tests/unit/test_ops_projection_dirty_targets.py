@@ -19,12 +19,11 @@ def test_enqueue_projection_dirty_targets_dry_run_reports_counts_without_writes(
         execute=False,
         now_ms=NOW_MS,
         projection="all",
-        source_quality_windows=("4h", "24h"),
     )
 
     assert result["execute"] is False
     assert result["news"]["news_item_targets"] == 3
-    assert result["news"]["source_quality_targets"] == 4
+    assert result["news"]["source_quality_targets"] == 2
     assert repos.news_dirty.enqueued == []
     assert repos.conn.transactions == 0
 
@@ -39,7 +38,6 @@ def test_enqueue_projection_dirty_targets_execute_enqueues_only_dirty_targets() 
         now_ms=NOW_MS,
         projection="all",
         since_ms=NOW_MS - 24 * 60 * 60 * 1000,
-        source_quality_windows=("4h", "24h"),
     )
 
     assert result["execute"] is True
@@ -52,13 +50,6 @@ def test_enqueue_projection_dirty_targets_execute_enqueues_only_dirty_targets() 
             "source_watermark_ms": NOW_MS - 1_000,
         },
         {
-            "projection_name": "brief_input",
-            "target_kind": "news_item",
-            "target_id": "news-2",
-            "source_watermark_ms": NOW_MS - 2_000,
-            "priority": 12,
-        },
-        {
             "projection_name": "page",
             "target_kind": "news_item",
             "target_id": "news-2",
@@ -66,10 +57,17 @@ def test_enqueue_projection_dirty_targets_execute_enqueues_only_dirty_targets() 
         },
     ]
     assert repos.news_dirty.enqueued[1]["rows"] == [
-        {"projection_name": "source_quality", "target_kind": "source", "target_id": "source-1", "window": "4h"},
-        {"projection_name": "source_quality", "target_kind": "source", "target_id": "source-1", "window": "24h"},
-        {"projection_name": "source_quality", "target_kind": "source", "target_id": "source-2", "window": "4h"},
-        {"projection_name": "source_quality", "target_kind": "source", "target_id": "source-2", "window": "24h"},
+        {
+            "projection_name": "brief_input",
+            "target_kind": "news_item",
+            "target_id": "news-2",
+            "source_watermark_ms": NOW_MS - 2_000,
+            "priority": 12,
+        },
+    ]
+    assert repos.news_dirty.enqueued[2]["rows"] == [
+        {"projection_name": "source_quality", "target_kind": "source", "target_id": "source-1", "window": "_refresh"},
+        {"projection_name": "source_quality", "target_kind": "source", "target_id": "source-2", "window": "_refresh"},
     ]
 
 
@@ -107,7 +105,6 @@ def test_enqueue_projection_dirty_targets_execute_requires_bounded_brief_repair(
             execute=True,
             now_ms=NOW_MS,
             projection="all",
-            source_quality_windows=("4h", "24h"),
         )
     except ValueError as exc:
         assert "--since-hours" in str(exc)
@@ -125,7 +122,6 @@ def test_enqueue_projection_dirty_targets_can_scope_brief_input_repair() -> None
         now_ms=NOW_MS,
         projection="brief_input",
         since_ms=NOW_MS - 24 * 60 * 60 * 1000,
-        source_quality_windows=("4h", "24h"),
     )
 
     assert result["projection"] == "brief_input"
@@ -158,15 +154,27 @@ class FakeConn:
                 [
                     {
                         "news_item_id": "news-1",
+                        "published_at_ms": NOW_MS - 1_000,
                         "source_watermark_ms": NOW_MS - 1_000,
+                        "lifecycle_status": "processed",
+                        "content_classification_json": {},
                         "provider_type": "rss",
                         "provider_signal_json": {},
+                        "token_mentions_json": [],
+                        "fact_candidates_json": [],
+                        "context_items_json": [],
                     },
                     {
                         "news_item_id": "news-2",
+                        "published_at_ms": NOW_MS - 2_000,
                         "source_watermark_ms": NOW_MS - 2_000,
+                        "lifecycle_status": "processed",
+                        "content_classification_json": {"policy_version": "news_content_classification_v1"},
                         "provider_type": "opennews",
                         "provider_signal_json": {"source": "provider", "provider": "opennews", "score": 88},
+                        "token_mentions_json": [{"resolution_status": "known_symbol", "display_symbol": "BTC"}],
+                        "fact_candidates_json": [],
+                        "context_items_json": [],
                     },
                 ]
             )
@@ -192,7 +200,16 @@ class FakeDirtyRepo:
     def __init__(self) -> None:
         self.enqueued: list[dict[str, Any]] = []
 
-    def enqueue_targets(self, rows: list[dict[str, Any]], *, reason: str, now_ms: int, commit: bool = True) -> int:
+    def enqueue_targets(
+        self,
+        rows: list[dict[str, Any]],
+        *,
+        reason: str,
+        now_ms: int,
+        commit: bool = True,
+        due_at_ms: int | None = None,
+    ) -> int:
+        del due_at_ms
         self.enqueued.append(
             {
                 "rows": [dict(row) for row in rows],
