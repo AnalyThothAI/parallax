@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -15,17 +16,31 @@ class NewsItemAgentBriefEligibility:
 
 
 def news_item_agent_brief_eligibility(
-    item: Mapping[str, Any],
     *,
+    item: Mapping[str, Any],
+    token_mentions: Sequence[Mapping[str, Any]],
+    fact_candidates: Sequence[Mapping[str, Any]],
+    context_items: Sequence[Mapping[str, Any]],
     now_ms: int,
     max_published_age_ms: int = NEWS_ITEM_AGENT_BRIEF_MAX_PUBLISHED_AGE_MS,
 ) -> NewsItemAgentBriefEligibility:
+    if str(item.get("lifecycle_status") or "").strip().lower() != "processed":
+        return NewsItemAgentBriefEligibility(eligible=False, reason="item_not_processed")
+    if not _mapping(item.get("content_classification_json")):
+        return NewsItemAgentBriefEligibility(eligible=False, reason="classification_missing")
+
     provider_signal = _mapping(item.get("provider_signal_json"))
     if str(provider_signal.get("source") or "").strip().lower() != "provider":
         return NewsItemAgentBriefEligibility(eligible=False, reason="source_not_provider_signal")
     score = _optional_int(provider_signal.get("score"))
     if score is None or score < NEWS_ITEM_AGENT_BRIEF_MIN_PROVIDER_SCORE:
         return NewsItemAgentBriefEligibility(eligible=False, reason="below_score_threshold")
+    if not _has_processed_market_context(
+        token_mentions=token_mentions,
+        fact_candidates=fact_candidates,
+        context_items=context_items,
+    ):
+        return NewsItemAgentBriefEligibility(eligible=False, reason="no_processed_market_context")
 
     published_at_ms = _optional_int(item.get("published_at_ms"))
     if published_at_ms is None:
@@ -38,7 +53,14 @@ def news_item_agent_brief_eligibility(
     return NewsItemAgentBriefEligibility(eligible=True, reason="eligible")
 
 
-def news_item_agent_brief_priority(item: Mapping[str, Any]) -> int:
+def news_item_agent_brief_priority(
+    *,
+    item: Mapping[str, Any],
+    token_mentions: Sequence[Mapping[str, Any]],
+    fact_candidates: Sequence[Mapping[str, Any]],
+    context_items: Sequence[Mapping[str, Any]],
+) -> int:
+    del token_mentions, fact_candidates, context_items
     provider_signal = _mapping(item.get("provider_signal_json"))
     if str(provider_signal.get("source") or "").strip().lower() != "provider":
         return 100
@@ -50,8 +72,33 @@ def news_item_agent_brief_priority(item: Mapping[str, Any]) -> int:
     return 100
 
 
+def _has_processed_market_context(
+    *,
+    token_mentions: Sequence[Mapping[str, Any]],
+    fact_candidates: Sequence[Mapping[str, Any]],
+    context_items: Sequence[Mapping[str, Any]],
+) -> bool:
+    if context_items:
+        return True
+    for mention in token_mentions:
+        if str(mention.get("resolution_status") or "").strip().lower() not in {"", "non_crypto", "nil"}:
+            return True
+    for candidate in fact_candidates:
+        if str(candidate.get("validation_status") or candidate.get("status") or "").strip().lower() != "rejected":
+            return True
+    return False
+
+
 def _mapping(value: Any) -> dict[str, Any]:
-    return dict(value) if isinstance(value, Mapping) else {}
+    if isinstance(value, Mapping):
+        return dict(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return dict(parsed) if isinstance(parsed, Mapping) else {}
+    return {}
 
 
 def _optional_int(value: Any) -> int | None:

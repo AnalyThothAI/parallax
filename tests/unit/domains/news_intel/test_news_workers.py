@@ -707,20 +707,20 @@ def test_news_item_process_uses_opennews_provider_tokens_and_enqueues_brief_inpu
     assert result.processed == 1
     assert db.repo.entities["news-1"][0].normalized_value == "BTC"
     assert db.repo.mentions["news-1"][0].observed_symbol == "BTC"
-    assert db.dirty.enqueued[0]["rows"] == [
-        {"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"},
-        {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-1", "priority": 18},
+    assert db.dirty.enqueued == [
         {
-            "projection_name": "source_quality",
-            "target_kind": "source",
-            "target_id": "opennews-realtime",
-            "window": "24h",
+            "rows": [{"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"}],
+            "reason": "news_item_processed",
+            "now_ms": NOW_MS,
+            "commit": False,
         },
         {
-            "projection_name": "source_quality",
-            "target_kind": "source",
-            "target_id": "opennews-realtime",
-            "window": "7d",
+            "rows": [
+                {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-1", "priority": 18}
+            ],
+            "reason": "news_item_processed",
+            "now_ms": NOW_MS,
+            "commit": False,
         },
     ]
 

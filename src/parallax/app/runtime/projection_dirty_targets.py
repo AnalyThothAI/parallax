@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable, Mapping
 from contextlib import nullcontext
 from typing import Any
@@ -94,7 +95,7 @@ def _enqueue_news_targets(
         )
         for row in news_item_rows
         for selected_projection in news_item_projections
-        if selected_projection != "brief_input" or news_item_agent_brief_eligibility(row, now_ms=now_ms).eligible
+        if selected_projection != "brief_input" or _row_brief_eligible(row, now_ms=now_ms)
     ]
     source_quality_targets = [
         {
@@ -152,8 +153,23 @@ def _news_item_dirty_target(*, projection_name: str, row: Mapping[str, Any]) -> 
         "source_watermark_ms": int(row["source_watermark_ms"] or 0),
     }
     if projection_name == "brief_input":
-        target["priority"] = news_item_agent_brief_priority(row)
+        target["priority"] = news_item_agent_brief_priority(
+            item=row,
+            token_mentions=_json_list(row.get("token_mentions_json")),
+            fact_candidates=_json_list(row.get("fact_candidates_json")),
+            context_items=_json_list(row.get("context_items_json")),
+        )
     return target
+
+
+def _row_brief_eligible(row: Mapping[str, Any], *, now_ms: int) -> bool:
+    return news_item_agent_brief_eligibility(
+        item=row,
+        token_mentions=_json_list(row.get("token_mentions_json")),
+        fact_candidates=_json_list(row.get("fact_candidates_json")),
+        context_items=_json_list(row.get("context_items_json")),
+        now_ms=now_ms,
+    ).eligible
 
 
 def _fetch_ids(conn: Any, sql: str, column: str) -> list[str]:
@@ -172,16 +188,50 @@ def _fetch_news_item_rows(conn: Any, *, since_ms: int | None) -> list[dict[str, 
         SELECT items.news_item_id,
                items.published_at_ms,
                items.published_at_ms AS source_watermark_ms,
+               items.lifecycle_status,
+               items.content_class,
+               items.content_classification_json,
                items.provider_signal_json,
-               sources.provider_type
+               sources.provider_type,
+               COALESCE(mentions.token_mentions_json, '[]'::jsonb) AS token_mentions_json,
+               COALESCE(facts.fact_candidates_json, '[]'::jsonb) AS fact_candidates_json,
+               COALESCE(context_items.context_items_json, '[]'::jsonb) AS context_items_json
           FROM news_items AS items
           JOIN news_sources AS sources ON sources.source_id = items.source_id
+          LEFT JOIN LATERAL (
+            SELECT jsonb_agg(to_jsonb(mentions.*) ORDER BY mentions.mention_id) AS token_mentions_json
+              FROM news_token_mentions AS mentions
+             WHERE mentions.news_item_id = items.news_item_id
+          ) AS mentions ON true
+          LEFT JOIN LATERAL (
+            SELECT jsonb_agg(to_jsonb(facts.*) ORDER BY facts.fact_candidate_id) AS fact_candidates_json
+              FROM news_fact_candidates AS facts
+             WHERE facts.news_item_id = items.news_item_id
+          ) AS facts ON true
+          LEFT JOIN LATERAL (
+            SELECT jsonb_agg(to_jsonb(context_items.*) ORDER BY context_items.context_item_id) AS context_items_json
+              FROM news_context_items AS context_items
+             WHERE context_items.parent_news_item_id = items.news_item_id
+          ) AS context_items ON true
          {where_clause}
          ORDER BY items.news_item_id ASC
         """,
         params,
     ).fetchall()
     return [dict(row) for row in rows if row["news_item_id"] is not None]
+
+
+def _json_list(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, list):
+        return [dict(row) for row in value if isinstance(row, Mapping)]
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+        if isinstance(parsed, list):
+            return [dict(row) for row in parsed if isinstance(row, Mapping)]
+    return []
 
 
 def _source_quality_windows(windows: Iterable[str] | None) -> tuple[str, ...]:

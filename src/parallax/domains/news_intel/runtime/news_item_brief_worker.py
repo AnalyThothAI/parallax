@@ -131,7 +131,13 @@ class NewsItemBriefWorker(WorkerBase):
                     await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
                     skipped += 1
                     continue
-                eligibility = news_item_agent_brief_eligibility(_dict(candidate.get("item") or candidate), now_ms=now)
+                eligibility = news_item_agent_brief_eligibility(
+                    item=_dict(candidate.get("item") or candidate),
+                    token_mentions=_list_of_dicts(candidate.get("token_mentions")),
+                    fact_candidates=_list_of_dicts(candidate.get("fact_candidates")),
+                    context_items=_list_of_dicts(candidate.get("context_items")),
+                    now_ms=now,
+                )
                 if not eligibility.eligible:
                     notes["policy_skipped"] += 1
                     await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)

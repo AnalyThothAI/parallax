@@ -578,6 +578,9 @@ class FakeOpsProjectionConn:
                         "news_item_id": "news-provider",
                         "published_at_ms": NOW_MS - 1_000,
                         "source_watermark_ms": NOW_MS - 1_000,
+                        "lifecycle_status": "processed",
+                        "content_class": "crypto_market",
+                        "content_classification_json": {"policy_version": "news_content_classification_v1"},
                         "provider_type": "opennews",
                         "provider_signal_json": {
                             "source": "provider",
@@ -585,6 +588,9 @@ class FakeOpsProjectionConn:
                             "status": "ready",
                             "score": 95,
                         },
+                        "token_mentions_json": [{"resolution_status": "known_symbol", "display_symbol": "BTC"}],
+                        "fact_candidates_json": [],
+                        "context_items_json": [],
                     }
                 ]
             )
