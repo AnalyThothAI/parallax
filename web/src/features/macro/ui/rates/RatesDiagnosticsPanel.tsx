@@ -1,7 +1,7 @@
 import type { MacroModuleView } from "@lib/types";
 
-import type { MacroDataHealthBucket } from "../../model/macroModulePresentation";
 import { tableCaption } from "../../model/macroModulePageModel";
+import type { MacroDataHealthBucket } from "../../model/macroModulePresentation";
 import type { RatesWorkbenchView } from "../../model/macroRatesWorkbenchModel";
 import { MacroDataHealthPanel } from "../primitives/MacroDataHealthPanel";
 import { MacroPanel } from "../primitives/MacroPanel";

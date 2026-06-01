@@ -56,6 +56,9 @@ const HIDDEN_DIRECT_ROUTES = [
   "/macro/credit/cds",
 ];
 
+const RATES_PRIMARY_RAW_TEXT_PATTERN =
+  /macro_module_view_v3|source_snapshot_id|\b(?:rates|fed|liquidity|inflation):[a-z0-9_:-]+\b|\b[a-z][a-z0-9]*(?:_[a-z0-9]+)*_missing\b|\{|\}/;
+
 test.describe("macro responsive audit", () => {
   test("macro product and hidden-supported routes satisfy responsive layout contract", async ({
     page,
@@ -68,7 +71,10 @@ test.describe("macro responsive audit", () => {
     const consoleErrors: string[] = [];
 
     page.on("console", (message) => {
-      if (message.type() === "error") consoleErrors.push(message.text());
+      const text = message.text();
+      if (message.type() === "error" && !isMockWebSocketHandshakeError(text)) {
+        consoleErrors.push(text);
+      }
     });
     page.on("pageerror", (error) => consoleErrors.push(error.message));
 
@@ -113,6 +119,7 @@ async function expectRatesWorkbenchHierarchy(page: Page) {
   await expect(page.getByLabel("市场解读")).toBeVisible();
   await expect(page.getByLabel("主要图表")).toBeVisible();
   await expect(page.getByLabel("利率数据诊断")).toBeVisible();
+  await expect(page.getByText("图表序列加载中")).toHaveCount(0);
 
   const order = await page.evaluate(() => {
     const labels = ["市场解读", "关键事实", "主要图表", "决策支持", "利率明细", "利率数据诊断"];
@@ -138,7 +145,9 @@ async function expectRatesWorkbenchHierarchy(page: Page) {
     return parts.join("\n");
   });
 
-  expect(primaryText).not.toMatch(
-    /macro_module_view_v3|source_snapshot_id|rates:dgs|fed:effr|fed_funds_futures_missing|fomc_probability_feed_missing|treasury_auction_(calendar|results)_missing|\{|\}/,
-  );
+  expect(primaryText).not.toMatch(RATES_PRIMARY_RAW_TEXT_PATTERN);
+}
+
+function isMockWebSocketHandshakeError(text: string): boolean {
+  return /WebSocket connection to 'ws:\/\/(?:127\.0\.0\.1|localhost):\d+\/ws' failed/.test(text);
 }
