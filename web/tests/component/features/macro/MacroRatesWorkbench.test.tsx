@@ -2,6 +2,7 @@ import { MacroWorkbenchRoute } from "@features/macro/MacroWorkbenchRoute";
 import { MacroModulePageRenderer } from "@features/macro/ui/pages/MacroModulePageRenderer";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import {
+  macroAuctionsOfficialModuleFixture,
   macroAuctionsProxyModuleFixture,
   macroExpectationsProxyModuleFixture,
   macroFedFundsModuleFixture,
@@ -127,6 +128,18 @@ describe("Macro rates workbench", () => {
     const marketRead = screen.getByRole("region", { name: "市场解读" });
     expect(within(marketRead).getAllByText(/当前为政策路径代理页面/).length).toBeGreaterThan(0);
     expect(marketRead).not.toHaveTextContent("fomc_probability_feed_missing");
+  });
+
+  it("keeps non-primary official auction tables inspectable in diagnostics", () => {
+    renderRatesModule(
+      macroAuctionsOfficialModuleFixture(),
+      "rates/auctions",
+      "/macro/rates/auctions",
+    );
+
+    expect(screen.getByRole("table", { name: "未来拍卖日历" })).toBeInTheDocument();
+    const diagnostics = screen.getByRole("region", { name: "利率诊断明细" });
+    expect(within(diagnostics).getByRole("table", { name: "最近拍卖结果" })).toBeInTheDocument();
   });
 
   it("renders the fed funds corridor band and EFFR line", async () => {

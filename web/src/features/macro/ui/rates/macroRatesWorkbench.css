@@ -388,6 +388,7 @@
     line-height: 1.4;
   }
 
+  .macro-rates-diagnostic-tables,
   .macro-rates-source-diagnostics {
     opacity: 0.86;
   }
