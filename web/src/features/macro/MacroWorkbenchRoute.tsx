@@ -4,6 +4,7 @@ import * as PageState from "@shared/ui/PageState";
 import { useMacroModuleQuery } from "./api/useMacroModuleQuery";
 import type { MacroPageKind, MacroProductTier } from "./model/macroPageRegistry";
 import { macroAsOfLabel, macroModuleTitle, macroStatusLabel } from "./model/macroPageViewModel";
+import { isRatesModuleId } from "./model/macroRatesWorkbenchModel";
 import { buildMacroBreadcrumbs, type MacroModuleId } from "./model/macroRoutes";
 import { MacroMatrixPage } from "./ui/pages/MacroMatrixPage";
 import { MacroModulePageRenderer } from "./ui/pages/MacroModulePageRenderer";
@@ -97,6 +98,19 @@ function macroModuleHeader({
   module: MacroModuleView;
   moduleId: MacroModuleId;
 }): MacroShellHeaderModel {
+  if (isRatesModuleId(moduleId)) {
+    return {
+      breadcrumbs: buildMacroBreadcrumbs(moduleId),
+      eyebrow: "利率工作台",
+      question: module.snapshot.question ?? module.snapshot.subtitle ?? null,
+      statusItems: [
+        { label: "数据", value: macroStatusLabel(module) },
+        { label: "截至", value: macroAsOfLabel(module) },
+      ],
+      title: macroModuleTitle(moduleId, module),
+    };
+  }
+
   return {
     breadcrumbs: buildMacroBreadcrumbs(moduleId),
     eyebrow: module.snapshot.section ?? "宏观工作台",

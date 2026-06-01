@@ -35,7 +35,7 @@ export function MacroMarketBoard({
       span="full"
       title={title}
     >
-      <PrimaryChart
+      <MacroPrimaryChart
         chart={chart}
         moduleId={moduleId}
         seriesData={seriesData}
@@ -59,7 +59,7 @@ function TableSourceNote({ source }: { source: MacroModuleTable["source"] }) {
   return <p className="macro-table-source-note">{formatMacroScalar(note)}</p>;
 }
 
-function PrimaryChart({
+export function MacroPrimaryChart({
   chart,
   moduleId,
   seriesData,

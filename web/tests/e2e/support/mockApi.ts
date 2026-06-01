@@ -1,9 +1,14 @@
 import type { Page, Route } from "@playwright/test";
 import {
+  macroAuctionsProxyModuleFixture,
   macroCorrelationFixture,
+  macroExpectationsProxyModuleFixture,
+  macroFedFundsModuleFixture,
   macroModuleFixture,
   macroOverviewModuleFixture,
+  macroRealRatesModuleFixture,
   macroSeriesFixture,
+  macroYieldCurveModuleFixture,
 } from "@tests/fixtures/macroFixture";
 import { marketContextFixture, marketObservationFixture } from "@tests/fixtures/marketFixtures";
 import { tokenCaseFixture, tokenCasePostsFixture } from "@tests/fixtures/tokenCaseFixture";
@@ -1457,6 +1462,20 @@ function isParentMacroModule(moduleId: string) {
 function macroModuleData(moduleId: string) {
   if (moduleId === "overview") {
     return macroOverviewModuleFixture();
+  }
+  switch (moduleId) {
+    case "rates/fed-funds":
+      return macroFedFundsModuleFixture();
+    case "rates/yield-curve":
+      return macroYieldCurveModuleFixture();
+    case "rates/auctions":
+      return macroAuctionsProxyModuleFixture();
+    case "rates/real-rates":
+      return macroRealRatesModuleFixture();
+    case "rates/expectations":
+      return macroExpectationsProxyModuleFixture();
+    default:
+      break;
   }
   const base = macroModuleFixture();
   return macroModuleFixture({

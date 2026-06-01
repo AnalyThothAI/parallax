@@ -3,6 +3,7 @@ import type {
   MacroModuleChart,
   MacroModuleTable,
   MacroModuleView,
+  MacroSemanticRecord,
   MacroSeriesData,
 } from "@lib/types";
 
@@ -266,6 +267,382 @@ export function macroYieldCurveModuleFixture(): MacroModuleView {
   });
 }
 
+export function macroFedFundsModuleFixture(): MacroModuleView {
+  const primaryChart: MacroModuleChart = {
+    id: "fed_funds_corridor",
+    title: "政策利率走廊",
+    subtitle: "目标区间、EFFR、IORB 与 SOFR",
+    kind: "rates_corridor",
+    status: "partial",
+    status_label: "SOFR 30D 待接入",
+    min_points: 1,
+    missing_concept_keys: ["fed:sofr_30d"],
+    series: [
+      {
+        concept_key: "fed:target_lower",
+        label: "目标下限",
+        latest: 4.25,
+        unit: "percent",
+        points: [
+          { observed_at: "2026-05-19", value: 4.25 },
+          { observed_at: "2026-05-20", value: 4.25 },
+        ],
+      },
+      {
+        concept_key: "fed:target_upper",
+        label: "目标上限",
+        latest: 4.5,
+        unit: "percent",
+        points: [
+          { observed_at: "2026-05-19", value: 4.5 },
+          { observed_at: "2026-05-20", value: 4.5 },
+        ],
+      },
+      {
+        concept_key: "fed:effr",
+        label: "EFFR",
+        latest: 4.33,
+        unit: "percent",
+        points: [
+          { observed_at: "2026-05-19", value: 4.33 },
+          { observed_at: "2026-05-20", value: 4.33 },
+        ],
+      },
+      {
+        concept_key: "fed:iorb",
+        label: "IORB",
+        latest: 4.4,
+        unit: "percent",
+      },
+      {
+        concept_key: "liquidity:sofr",
+        label: "SOFR",
+        latest: 4.31,
+        unit: "percent",
+        points: [
+          { observed_at: "2026-05-19", value: 4.32 },
+          { observed_at: "2026-05-20", value: 4.31 },
+        ],
+      },
+      {
+        concept_key: "fed:sofr_30d",
+        label: "SOFR 30D",
+        latest: null,
+        unit: "percent",
+        status: "missing",
+        status_label: "待接入",
+      },
+    ],
+  };
+  return macroModuleFixture({
+    snapshot: {
+      ...macroModuleFixture().snapshot,
+      module_id: "rates/fed-funds",
+      route_path: "/macro/rates/fed-funds",
+      section: "rates",
+      title: "联邦基金与走廊",
+      subtitle: "目标区间、有效联邦基金利率与隔夜融资",
+      question: "政策走廊是否稳定，隔夜融资是否溢出目标区间？",
+      status: "partial",
+      status_label: "走廊数据部分可用",
+    },
+    tiles: [
+      ratesTile("fed:target_lower", "目标下限", "4.25%", "Federal Reserve"),
+      ratesTile("fed:target_upper", "目标上限", "4.50%", "Federal Reserve"),
+      ratesTile("fed:effr", "EFFR", "4.33%", "Federal Reserve Bank of New York"),
+      ratesTile("fed:iorb", "IORB", "4.40%", "Federal Reserve"),
+      ratesTile("liquidity:sofr", "SOFR", "4.31%", "Federal Reserve Bank of New York"),
+    ],
+    primary_chart: primaryChart,
+    tables: [fedFundsTable()],
+    module_read: {
+      headline: "联邦基金走廊：隔夜利率保持在目标区间内",
+      regime_label: "走廊稳定",
+      confidence_label: "中等置信度",
+      crypto_read: "隔夜融资代理显示美元资金面暂未出现明显挤压。",
+      token_impact: "加密风险资产需要继续观察 SOFR 与有效联邦基金利率的相对位置。",
+    },
+    module_evidence: {
+      confirmations: [{ label: "EFFR 位于目标区间内", description: "隔夜政策利率未显示越界压力" }],
+      contradictions: [],
+      watch_triggers: [
+        { label: "SOFR 上行", description: "若 SOFR 持续贴近区间上沿，需要关注融资压力" },
+      ],
+      invalidations: [{ label: "EFFR 越过上限", description: "政策走廊稳定判断失效" }],
+    },
+    data_health: {
+      summary_status: "partial",
+      summary_label: "走廊数据部分可用",
+      module_gaps: [{ code: "sofr_30d_missing", label: "SOFR 30D 尚未入库", severity: "info" }],
+      chart_gaps: [],
+      global_gaps: [],
+      future_integration_gaps: [],
+    },
+  });
+}
+
+export function macroAuctionsProxyModuleFixture(
+  overrides: Partial<MacroModuleView> = {},
+): MacroModuleView {
+  return macroModuleFixture({
+    snapshot: {
+      ...macroModuleFixture().snapshot,
+      module_id: "rates/auctions",
+      route_path: "/macro/rates/auctions",
+      section: "rates",
+      title: "国债拍卖",
+      subtitle: "官方拍卖日历和结果接入前的代理视图",
+      question: "拍卖供给压力是否体现在曲线和长端收益率上？",
+      status: "partial",
+      status_label: "代理数据",
+    },
+    tiles: [
+      ratesTile("rates:dgs10", "10年期美债收益率", "4.20%", "U.S. Treasury"),
+      ratesTile("rates:dgs30", "30年期美债收益率", "4.70%", "U.S. Treasury"),
+    ],
+    primary_chart: {
+      id: "auction_proxy_yields",
+      title: "拍卖代理：长端收益率",
+      subtitle: "官方拍卖数据未接入时使用曲线代理",
+      kind: "line",
+      status: "partial",
+      status_label: "代理数据",
+      series: [
+        { concept_key: "rates:dgs10", label: "10年期美债收益率", latest: 4.2, unit: "percent" },
+        { concept_key: "rates:dgs30", label: "30年期美债收益率", latest: 4.7, unit: "percent" },
+      ],
+    },
+    tables: [auctionProxyYieldTable()],
+    module_read: {
+      headline: "国债拍卖：官方日历和结果尚未入库",
+      regime_label: "代理页",
+      confidence_label: "低置信度",
+      crypto_read: "长端收益率代理可用于观察供给压力，但不能替代官方拍卖结果。",
+      token_impact: "加密风险资产仅获得中性背景信息，不能从代理数值推出方向结论。",
+    },
+    module_evidence: {
+      confirmations: [
+        { label: "长端收益率代理可用", description: "10年期与30年期收益率最新值存在" },
+      ],
+      contradictions: [
+        { label: "官方拍卖结果缺失", description: "尾部利差与投标覆盖倍数尚未接入" },
+      ],
+      watch_triggers: [
+        { label: "官方日历补齐", description: "接入未来拍卖安排后切换到正式拍卖页面" },
+      ],
+      invalidations: [],
+    },
+    data_health: {
+      summary_status: "partial",
+      summary_label: "拍卖代理数据可用",
+      module_gaps: [],
+      chart_gaps: [],
+      global_gaps: [],
+      future_integration_gaps: [
+        {
+          code: "treasury_auction_calendar_missing",
+          label: "官方拍卖日历尚未入库",
+          severity: "warning",
+        },
+        {
+          code: "treasury_auction_results_missing",
+          label: "官方拍卖结果尚未入库",
+          severity: "warning",
+        },
+      ],
+    },
+    ...overrides,
+  });
+}
+
+export function macroAuctionsOfficialModuleFixture(): MacroModuleView {
+  return macroAuctionsProxyModuleFixture({
+    snapshot: {
+      ...macroAuctionsProxyModuleFixture().snapshot,
+      status: "ok",
+      status_label: "官方数据可用",
+    },
+    tiles: [
+      ratesTile("treasury:next_auction_size", "下一场拍卖规模", "420 亿美元", "U.S. Treasury"),
+      ratesTile("treasury:bid_to_cover", "最近投标覆盖倍数", "2.42", "U.S. Treasury"),
+    ],
+    tables: [auctionCalendarTable(), auctionResultsTable(), auctionProxyYieldTable()],
+    module_read: {
+      headline: "国债拍卖：官方日历与最近结果可用",
+      regime_label: "官方拍卖数据可用",
+      confidence_label: "中等置信度",
+      crypto_read: "拍卖供给压力可用官方日历和结果直接观察。",
+      token_impact: "加密风险资产需要结合长端收益率反应确认融资冲击。",
+    },
+    data_health: {
+      summary_status: "ok",
+      summary_label: "官方拍卖数据可用",
+      module_gaps: [],
+      chart_gaps: [],
+      global_gaps: [],
+      future_integration_gaps: [],
+    },
+  });
+}
+
+export function macroRealRatesModuleFixture(): MacroModuleView {
+  return macroModuleFixture({
+    snapshot: {
+      ...macroModuleFixture().snapshot,
+      module_id: "rates/real-rates",
+      route_path: "/macro/rates/real-rates",
+      section: "rates",
+      title: "实际利率",
+      subtitle: "TIPS 实际收益率与通胀补偿",
+      question: "实际利率是在压制估值，还是通胀补偿主导？",
+      status: "ok",
+      status_label: "可用",
+    },
+    tiles: [
+      ratesTile("rates:real_5y", "5年期实际利率", "1.78%", "U.S. Treasury"),
+      ratesTile("rates:real_10y", "10年期实际利率", "1.94%", "U.S. Treasury"),
+      ratesTile("inflation:breakeven_10y", "10年期通胀补偿", "2.26%", "FRED"),
+    ],
+    primary_chart: {
+      id: "real_rates_snapshot",
+      title: "实际利率与通胀补偿",
+      kind: "line",
+      status: "ok",
+      status_label: "可用",
+      series: [
+        { concept_key: "rates:real_5y", label: "5年期实际利率", latest: 1.78, unit: "percent" },
+        { concept_key: "rates:real_10y", label: "10年期实际利率", latest: 1.94, unit: "percent" },
+        {
+          concept_key: "inflation:breakeven_10y",
+          label: "10年期通胀补偿",
+          latest: 2.26,
+          unit: "percent",
+        },
+      ],
+    },
+    tables: [realRatesTable()],
+    module_read: {
+      headline: "实际利率：估值压力仍需结合通胀补偿判断",
+      regime_label: "实际利率可用",
+      confidence_label: "中等置信度",
+      crypto_read: "实际利率处于可观察状态，但方向判断依赖后台解读文本而非单点数值。",
+      token_impact: "长久期代币需要关注实际利率与通胀补偿的组合变化。",
+    },
+    module_evidence: {
+      confirmations: [{ label: "TIPS 曲线可用", description: "5年期和10年期实际利率最新值存在" }],
+      contradictions: [],
+      watch_triggers: [{ label: "实际利率快速上行", description: "估值压力需要重新评估" }],
+      invalidations: [],
+    },
+    data_health: {
+      summary_status: "ok",
+      summary_label: "实际利率数据可用",
+      module_gaps: [],
+      chart_gaps: [],
+      global_gaps: [],
+      future_integration_gaps: [],
+    },
+  });
+}
+
+export function macroExpectationsProxyModuleFixture(
+  overrides: Partial<MacroModuleView> = {},
+): MacroModuleView {
+  return macroModuleFixture({
+    snapshot: {
+      ...macroModuleFixture().snapshot,
+      module_id: "rates/expectations",
+      route_path: "/macro/rates/expectations",
+      section: "rates",
+      title: "政策预期",
+      subtitle: "期货概率接入前的代理视图",
+      question: "市场是否在重新定价降息、维持或加息路径？",
+      status: "partial",
+      status_label: "代理数据",
+    },
+    tiles: [
+      ratesTile("fed:target_upper", "目标上限", "4.50%", "Federal Reserve"),
+      ratesTile("fed:effr", "EFFR", "4.33%", "Federal Reserve Bank of New York"),
+    ],
+    primary_chart: {
+      id: "policy_path_proxy",
+      title: "政策路径代理",
+      subtitle: "正式会议概率接入前展示政策利率代理",
+      kind: "line",
+      status: "partial",
+      status_label: "代理数据",
+      series: [
+        { concept_key: "fed:target_upper", label: "目标上限", latest: 4.5, unit: "percent" },
+        { concept_key: "fed:effr", label: "EFFR", latest: 4.33, unit: "percent" },
+      ],
+    },
+    tables: [policyProxyTable()],
+    module_read: {
+      headline: "政策预期：正式会议概率尚未入库",
+      regime_label: "代理页",
+      confidence_label: "低置信度",
+      crypto_read: "政策利率代理只能说明当前走廊状态，不能生成正式降息概率。",
+      token_impact: "加密风险资产等待联邦基金期货和会议概率数据确认政策路径。",
+    },
+    module_evidence: {
+      confirmations: [{ label: "政策利率代理可用", description: "目标上限与 EFFR 最新值存在" }],
+      contradictions: [{ label: "会议概率缺失", description: "正式 FOMC 概率源尚未接入" }],
+      watch_triggers: [{ label: "会议概率接入", description: "接入后切换到正式政策路径页面" }],
+      invalidations: [],
+    },
+    data_health: {
+      summary_status: "partial",
+      summary_label: "政策路径代理数据可用",
+      module_gaps: [],
+      chart_gaps: [],
+      global_gaps: [],
+      future_integration_gaps: [
+        {
+          code: "fed_funds_futures_missing",
+          label: "联邦基金期货数据尚未入库",
+          severity: "warning",
+        },
+        {
+          code: "fomc_probability_feed_missing",
+          label: "FOMC 概率数据尚未入库",
+          severity: "warning",
+        },
+      ],
+    },
+    ...overrides,
+  });
+}
+
+export function macroExpectationsOfficialModuleFixture(): MacroModuleView {
+  return macroExpectationsProxyModuleFixture({
+    snapshot: {
+      ...macroExpectationsProxyModuleFixture().snapshot,
+      status: "ok",
+      status_label: "官方概率可用",
+    },
+    tiles: [
+      ratesTile("fed:next_meeting_hold_probability", "下次会议维持概率", "61%", "CME FedWatch"),
+      ratesTile("fed:next_meeting_cut_probability", "下次会议降息概率", "34%", "CME FedWatch"),
+    ],
+    tables: [meetingProbabilityTable(), policyProxyTable()],
+    module_read: {
+      headline: "政策预期：会议概率数据可用",
+      regime_label: "会议概率可用",
+      confidence_label: "中等置信度",
+      crypto_read: "政策路径可以从会议概率表读取，方向判断仍以后台解读为准。",
+      token_impact: "加密风险资产需要观察概率变化是否与利率曲线同步。",
+    },
+    data_health: {
+      summary_status: "ok",
+      summary_label: "政策预期数据可用",
+      module_gaps: [],
+      chart_gaps: [],
+      global_gaps: [],
+      future_integration_gaps: [],
+    },
+  });
+}
+
 export function macroCryptoDerivativesModuleFixture(): MacroModuleView {
   const primaryChart: MacroModuleChart = {
     id: "crypto_proxy_performance",
@@ -450,6 +827,196 @@ function ratesTable(): MacroModuleTable {
         },
       },
     ],
+  };
+}
+
+function ratesTile(
+  conceptKey: string,
+  label: string,
+  displayValue: string,
+  sourceLabel: string,
+): MacroModuleView["tiles"][number] {
+  return {
+    concept_key: conceptKey,
+    label,
+    value: displayValue,
+    display_value: displayValue,
+    unit: "percent",
+    unit_label: "%",
+    source_label: sourceLabel,
+    observed_at: "2026-05-20",
+    observed_at_label: "观测于 2026-05-20",
+    quality: "ok",
+    quality_label: "可用",
+  };
+}
+
+function fedFundsTable(): MacroModuleTable {
+  return {
+    id: "fed_funds_corridor_snapshot",
+    title: "联邦基金走廊快照",
+    status: "partial",
+    columns: [
+      { key: "indicator", label: "指标" },
+      { key: "latest", label: "最新值" },
+      { key: "source", label: "来源" },
+      { key: "quality", label: "质量" },
+    ],
+    rows: [
+      ratesRow("fed:target_lower", "目标下限", "4.25%", "Federal Reserve", "可用"),
+      ratesRow("fed:target_upper", "目标上限", "4.50%", "Federal Reserve", "可用"),
+      ratesRow("fed:effr", "EFFR", "4.33%", "Federal Reserve Bank of New York", "可用"),
+      ratesRow("fed:iorb", "IORB", "4.40%", "Federal Reserve", "可用"),
+      ratesRow("liquidity:sofr", "SOFR", "4.31%", "Federal Reserve Bank of New York", "可用"),
+    ],
+  };
+}
+
+function auctionProxyYieldTable(): MacroModuleTable {
+  return {
+    id: "auction_proxy_yield_snapshot",
+    title: "拍卖代理：长端收益率",
+    status: "partial",
+    columns: [
+      { key: "indicator", label: "指标" },
+      { key: "latest", label: "最新值" },
+      { key: "source", label: "来源" },
+      { key: "quality", label: "质量" },
+    ],
+    rows: [
+      ratesRow("rates:dgs10", "10年期美债收益率", "4.20%", "U.S. Treasury", "代理"),
+      ratesRow("rates:dgs30", "30年期美债收益率", "4.70%", "U.S. Treasury", "代理"),
+    ],
+  };
+}
+
+function auctionCalendarTable(): MacroModuleTable {
+  return {
+    id: "treasury_auction_calendar",
+    title: "未来拍卖日历",
+    status: "ok",
+    columns: [
+      { key: "security", label: "品种" },
+      { key: "auction_date", label: "拍卖日期" },
+      { key: "amount", label: "规模" },
+      { key: "settlement", label: "交割" },
+    ],
+    rows: [
+      {
+        row_id: "auction:2026-05-21:10y",
+        cells: {
+          security: { display_value: "10年期国债", sort_value: "10Y" },
+          auction_date: { display_value: "2026-05-21", sort_value: "2026-05-21" },
+          amount: { display_value: "420 亿美元", sort_value: 42_000_000_000 },
+          settlement: { display_value: "2026-05-31", sort_value: "2026-05-31" },
+        },
+      },
+    ],
+  };
+}
+
+function auctionResultsTable(): MacroModuleTable {
+  return {
+    id: "treasury_auction_results",
+    title: "最近拍卖结果",
+    status: "ok",
+    columns: [
+      { key: "security", label: "品种" },
+      { key: "tail", label: "尾部利差" },
+      { key: "bid_to_cover", label: "投标覆盖倍数" },
+      { key: "indirect", label: "间接投标" },
+    ],
+    rows: [
+      {
+        row_id: "auction-result:2026-05-14:30y",
+        cells: {
+          security: { display_value: "30年期国债", sort_value: "30Y" },
+          tail: { display_value: "0.4 bp", sort_value: 0.4 },
+          bid_to_cover: { display_value: "2.42", sort_value: 2.42 },
+          indirect: { display_value: "68%", sort_value: 68 },
+        },
+      },
+    ],
+  };
+}
+
+function realRatesTable(): MacroModuleTable {
+  return {
+    id: "real_rates_snapshot",
+    title: "实际利率快照",
+    status: "ok",
+    columns: [
+      { key: "indicator", label: "指标" },
+      { key: "latest", label: "最新值" },
+      { key: "source", label: "来源" },
+      { key: "quality", label: "质量" },
+    ],
+    rows: [
+      ratesRow("rates:real_5y", "5年期实际利率", "1.78%", "U.S. Treasury", "可用"),
+      ratesRow("rates:real_10y", "10年期实际利率", "1.94%", "U.S. Treasury", "可用"),
+      ratesRow("inflation:breakeven_10y", "10年期通胀补偿", "2.26%", "FRED", "可用"),
+    ],
+  };
+}
+
+function policyProxyTable(): MacroModuleTable {
+  return {
+    id: "policy_path_proxy_snapshot",
+    title: "政策路径代理快照",
+    status: "partial",
+    columns: [
+      { key: "indicator", label: "指标" },
+      { key: "latest", label: "最新值" },
+      { key: "source", label: "来源" },
+      { key: "quality", label: "质量" },
+    ],
+    rows: [
+      ratesRow("fed:target_upper", "目标上限", "4.50%", "Federal Reserve", "代理"),
+      ratesRow("fed:effr", "EFFR", "4.33%", "Federal Reserve Bank of New York", "代理"),
+    ],
+  };
+}
+
+function meetingProbabilityTable(): MacroModuleTable {
+  return {
+    id: "fomc_meeting_probability",
+    title: "会议概率",
+    status: "ok",
+    columns: [
+      { key: "meeting", label: "会议" },
+      { key: "hold_probability", label: "维持概率" },
+      { key: "cut_probability", label: "降息概率" },
+      { key: "source", label: "来源" },
+    ],
+    rows: [
+      {
+        row_id: "fomc:2026-06",
+        cells: {
+          meeting: { display_value: "2026-06 FOMC", sort_value: "2026-06" },
+          hold_probability: { display_value: "61%", sort_value: 61 },
+          cut_probability: { display_value: "34%", sort_value: 34 },
+          source: { display_value: "CME FedWatch", sort_value: "CME FedWatch" },
+        },
+      },
+    ],
+  };
+}
+
+function ratesRow(
+  rowId: string,
+  indicator: string,
+  latest: string,
+  source: string,
+  quality: string,
+): MacroSemanticRecord {
+  return {
+    row_id: rowId,
+    cells: {
+      indicator: { display_value: indicator, sort_value: indicator },
+      latest: { display_value: latest, sort_value: latest },
+      source: { display_value: source, sort_value: source },
+      quality: { display_value: quality, sort_value: quality },
+    },
   };
 }
 

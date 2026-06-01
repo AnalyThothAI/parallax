@@ -1,5 +1,5 @@
 // @responsive-spec
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { expectNoUnhandledApiRequests } from "@tests/e2e/support/layoutAssertions";
 import {
   expectHiddenMacroLabelsAbsent,
@@ -56,6 +56,9 @@ const HIDDEN_DIRECT_ROUTES = [
   "/macro/credit/cds",
 ];
 
+const RATES_PRIMARY_RAW_TEXT_PATTERN =
+  /macro_module_view_v3|source_snapshot_id|\b(?:rates|fed|liquidity|inflation):[a-z0-9_:-]+\b|\b[a-z][a-z0-9]*(?:_[a-z0-9]+)*_missing\b|\{|\}/;
+
 test.describe("macro responsive audit", () => {
   test("macro product and hidden-supported routes satisfy responsive layout contract", async ({
     page,
@@ -68,7 +71,10 @@ test.describe("macro responsive audit", () => {
     const consoleErrors: string[] = [];
 
     page.on("console", (message) => {
-      if (message.type() === "error") consoleErrors.push(message.text());
+      const text = message.text();
+      if (message.type() === "error" && !isMockWebSocketHandshakeError(text)) {
+        consoleErrors.push(text);
+      }
     });
     page.on("pageerror", (error) => consoleErrors.push(error.message));
 
@@ -80,6 +86,7 @@ test.describe("macro responsive audit", () => {
       for (const route of [...PRODUCT_ROUTES, ...HIDDEN_DIRECT_ROUTES]) {
         await page.goto(route);
         await expect(page.getByLabel("宏观工作台")).toBeVisible();
+        await expectRatesWorkbenchHierarchy(page);
         await expectNoMacroBodyOverflow(page);
         await expectNoMacroMetricFragmentation(page);
         await expectMacroTableFramesBounded(page);
@@ -91,6 +98,7 @@ test.describe("macro responsive audit", () => {
         await page.goto(route);
         await expect(page).toHaveURL(target);
         await expect(page.getByLabel("宏观工作台")).toBeVisible();
+        await expectRatesWorkbenchHierarchy(page);
         await expectNoMacroBodyOverflow(page);
         await expectNoMacroMetricFragmentation(page);
         await expectMacroTableFramesBounded(page);
@@ -102,3 +110,44 @@ test.describe("macro responsive audit", () => {
     expect(consoleErrors).toEqual([]);
   });
 });
+
+async function expectRatesWorkbenchHierarchy(page: Page) {
+  const path = new URL(page.url()).pathname;
+  if (!path.startsWith("/macro/rates/")) return;
+
+  await expect(page.getByLabel("利率页导航")).toBeVisible();
+  await expect(page.getByLabel("市场解读")).toBeVisible();
+  await expect(page.getByLabel("主要图表")).toBeVisible();
+  await expect(page.getByLabel("利率数据诊断")).toBeVisible();
+  await expect(page.getByText("图表序列加载中")).toHaveCount(0);
+
+  const order = await page.evaluate(() => {
+    const labels = ["市场解读", "关键事实", "主要图表", "决策支持", "利率明细", "利率数据诊断"];
+    const regions = Array.from(document.querySelectorAll<HTMLElement>("[aria-label]"));
+    return labels.map((label) =>
+      regions.findIndex((element) => element.getAttribute("aria-label") === label),
+    );
+  });
+
+  expect(order).not.toContain(-1);
+  expect(order).toEqual([...order].sort((left, right) => left - right));
+
+  const primaryText = await page.evaluate(() => {
+    const root = document.querySelector<HTMLElement>(".macro-page-scaffold");
+    const diagnostics = root?.querySelector<HTMLElement>('[aria-label="利率数据诊断"]');
+    if (!root || !diagnostics) return document.body.innerText;
+
+    const parts: string[] = [];
+    for (const child of Array.from(root.children)) {
+      if (child.contains(diagnostics)) break;
+      parts.push((child as HTMLElement).innerText ?? child.textContent ?? "");
+    }
+    return parts.join("\n");
+  });
+
+  expect(primaryText).not.toMatch(RATES_PRIMARY_RAW_TEXT_PATTERN);
+}
+
+function isMockWebSocketHandshakeError(text: string): boolean {
+  return /WebSocket connection to 'ws:\/\/(?:127\.0\.0\.1|localhost):\d+\/ws' failed/.test(text);
+}
