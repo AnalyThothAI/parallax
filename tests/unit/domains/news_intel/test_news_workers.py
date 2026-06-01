@@ -746,7 +746,7 @@ def test_news_page_projection_worker_replaces_rows_without_emitting_wake() -> No
     assert repo.replaced_rows[0]["news_item_id"] == "news-1"
     assert repo.replaced_rows[0]["lifecycle_status"] == "attention"
     assert repo.replaced_rows[0]["agent_status"] == "ready"
-    assert repo.replaced_rows[0]["agent_brief_json"]["agent_run_id"] == "run-1"
+    assert repo.replaced_rows[0]["agent_brief"]["agent_run_id"] == "run-1"
     assert wake_bus.notifications == []
 
 

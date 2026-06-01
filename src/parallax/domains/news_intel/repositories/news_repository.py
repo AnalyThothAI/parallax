@@ -3390,21 +3390,19 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     payload = dict(row)
     payload["latest_at_ms"] = int(payload["latest_at_ms"])
     payload["computed_at_ms"] = int(payload["computed_at_ms"])
-    payload["headline"] = str(payload.get("headline") or payload.get("title") or "")
-    payload["canonical_url"] = str(payload.get("canonical_url") or payload.get("url") or "")
+    payload["headline"] = str(payload.get("headline") or "")
+    payload["canonical_url"] = str(payload.get("canonical_url") or "")
     payload["summary"] = str(payload.get("summary") or "")
-    payload["token_lanes_json"] = _json(payload.get("token_lanes_json", payload.get("token_lanes")) or [])
-    payload["fact_lanes_json"] = _json(payload.get("fact_lanes_json", payload.get("fact_lanes")) or [])
-    payload["token_impacts_json"] = _json(payload.get("token_impacts_json", payload.get("token_impacts")) or [])
+    payload["token_lanes_json"] = _json(payload.get("token_lanes") or [])
+    payload["fact_lanes_json"] = _json(payload.get("fact_lanes") or [])
+    payload["token_impacts_json"] = _json(payload.get("token_impacts") or [])
     payload["content_class"] = str(payload.get("content_class") or "low_signal")
-    payload["content_tags_json"] = _json(payload.get("content_tags_json", payload.get("content_tags")) or [])
-    payload["content_classification_json"] = _json(
-        payload.get("content_classification_json", payload.get("content_classification")) or {}
-    )
-    payload["source_json"] = _json(payload.get("source_json", payload.get("source")) or {})
-    agent_brief = payload.get("agent_brief_json", payload.get("agent_brief")) or {"status": "pending"}
-    agent_status = str(payload.get("agent_status") or payload.get("agent_brief_status") or "pending")
-    signal = payload.get("signal_json", payload.get("signal")) or _signal_from_agent_brief(agent_brief)
+    payload["content_tags_json"] = _json(payload.get("content_tags") or [])
+    payload["content_classification_json"] = _json(payload.get("content_classification") or {})
+    payload["source_json"] = _json(payload.get("source") or {})
+    agent_brief = payload.get("agent_brief") or {"status": "pending"}
+    agent_status = str(payload.get("agent_status") or "pending")
+    signal = payload["signal"]
     payload["signal_json"] = _json(signal)
     payload["agent_brief_json"] = _json(agent_brief)
     payload["agent_status"] = agent_status
@@ -3417,17 +3415,9 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
 def _apply_page_row_summary(payload: dict[str, Any], summary: Mapping[str, Any]) -> None:
     payload["canonical_item_key"] = str(payload.get("canonical_item_key") or summary.get("canonical_item_key") or "")
     payload["duplicate_count"] = int(payload.get("duplicate_count") or summary.get("duplicate_observation_count") or 1)
-    payload["source_ids_json"] = _json(
-        payload.get("source_ids_json", payload.get("source_ids")) or summary.get("source_ids_json") or []
-    )
-    payload["source_domains_json"] = _json(
-        payload.get("source_domains_json", payload.get("source_domains")) or summary.get("source_domains_json") or []
-    )
-    payload["provider_article_keys_json"] = _json(
-        payload.get("provider_article_keys_json", payload.get("provider_article_keys"))
-        or summary.get("provider_article_keys_json")
-        or []
-    )
+    payload["source_ids_json"] = _json(summary.get("source_ids_json") or [])
+    payload["source_domains_json"] = _json(summary.get("source_domains_json") or [])
+    payload["provider_article_keys_json"] = _json(summary.get("provider_article_keys_json") or [])
 
 
 def _detail_agent_brief(value: Any) -> dict[str, Any]:

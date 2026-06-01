@@ -107,12 +107,10 @@ def test_build_news_page_row_copies_item_level_content_classification() -> None:
 
     assert row["content_class"] == "regulation"
     assert row["content_tags"] == ["sec", "tokenized_stocks"]
-    assert row["content_tags_json"] == ["sec", "tokenized_stocks"]
     assert row["content_classification"] == {
         "policy_version": "news_content_classification_v1",
         "matched_rules": ["regulatory_body"],
     }
-    assert row["content_classification_json"] == row["content_classification"]
 
 
 def test_page_source_status_defaults_unknown_when_source_quality_missing() -> None:
@@ -255,10 +253,8 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
     )
 
     assert row["agent_status"] == "ready"
-    assert row["agent_brief_status"] == "ready"
     assert row["agent_brief_computed_at_ms"] == 3000
-    assert row["agent_brief"] == row["agent_brief_json"]
-    assert row["agent_brief_json"] == {
+    assert row["agent_brief"] == {
         "status": "ready",
         "direction": "bullish",
         "decision_class": "driver",
@@ -363,7 +359,6 @@ def test_build_news_page_row_preserves_provider_signal_without_masking_ready_age
     )
 
     assert row["agent_status"] == "ready"
-    assert row["agent_brief_status"] == "ready"
     assert row["signal"]["display_signal"]["source"] == "agent"
     assert row["signal"]["display_signal"]["direction"] == "bearish"
     assert row["signal"]["display_signal"]["score"] == 92
@@ -449,6 +444,5 @@ def test_build_news_page_row_uses_pending_agent_brief_when_missing() -> None:
     )
 
     assert row["agent_status"] == "pending"
-    assert row["agent_brief_status"] == "pending"
     assert row["agent_brief_computed_at_ms"] is None
-    assert row["agent_brief_json"] == {"status": "pending"}
+    assert row["agent_brief"] == {"status": "pending"}

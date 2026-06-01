@@ -23,6 +23,17 @@ def _rel(path: Path) -> str:
     return str(path.relative_to(ROOT))
 
 
+def _function_source(path: str, function_name: str) -> str:
+    source = _read(path)
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == function_name:
+            segment = ast.get_source_segment(source, node)
+            assert segment is not None
+            return segment
+    raise AssertionError(f"{path} has no function {function_name}")
+
+
 def test_news_fetch_has_no_agent_brief_admission_dependency() -> None:
     source = _read("src/parallax/domains/news_intel/runtime/news_fetch_worker.py")
     tree = ast.parse(source)
@@ -56,9 +67,11 @@ def test_news_runtime_workers_do_not_use_raw_dirty_projection_strings() -> None:
         if rel in ALLOWED_DIRTY_STRING_FILES:
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Constant) and node.value in RAW_PROJECTION_STRINGS:
-                offenders.append(f"{rel}:{node.lineno}:{node.value}")
+        offenders.extend(
+            f"{rel}:{node.lineno}:{node.value}"
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Constant) and node.value in RAW_PROJECTION_STRINGS
+        )
     assert offenders == []
 
 
@@ -85,3 +98,56 @@ def test_news_has_single_item_brief_llm_lane() -> None:
             if any(isinstance(target, ast.Name) and target.id.endswith("_LANE") for target in node.targets):
                 lane_names.add(node.value.value)
     assert sorted(lane_names) == ["news.item_brief"]
+
+
+def test_news_item_brief_input_has_no_provider_signal_field_aliases() -> None:
+    source = _function_source(
+        "src/parallax/domains/news_intel/services/news_item_brief_input.py",
+        "_provider_signal_evidence",
+    )
+    forbidden = {
+        'item.get("provider_signal")',
+        'item.get("provider_token_impacts")',
+        'item.get("source_ids")',
+        'item.get("source_domains")',
+        'item.get("provider_article_keys")',
+    }
+    offenders = sorted(token for token in forbidden if token in source)
+    assert offenders == []
+
+
+def test_news_page_row_payload_has_no_retired_public_field_aliases() -> None:
+    source = _function_source(
+        "src/parallax/domains/news_intel/repositories/news_repository.py",
+        "_page_row_payload",
+    )
+    forbidden = {
+        'payload.get("title")',
+        'payload.get("url")',
+        'payload.get("token_lanes_json",',
+        'payload.get("fact_lanes_json",',
+        'payload.get("token_impacts_json",',
+        'payload.get("content_tags_json",',
+        'payload.get("content_classification_json",',
+        'payload.get("source_json",',
+        'payload.get("agent_brief_json",',
+        'payload.get("agent_brief_status")',
+        'payload.get("signal_json",',
+    }
+    offenders = sorted(token for token in forbidden if token in source)
+    assert offenders == []
+
+
+def test_news_page_projection_outputs_semantic_fields_only() -> None:
+    source = _function_source(
+        "src/parallax/domains/news_intel/services/news_page_projection.py",
+        "build_news_page_row",
+    )
+    forbidden = {
+        '"content_tags_json":',
+        '"content_classification_json":',
+        '"agent_brief_json":',
+        '"agent_brief_status":',
+    }
+    offenders = sorted(token for token in forbidden if token in source)
+    assert offenders == []
