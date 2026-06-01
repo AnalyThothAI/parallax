@@ -1866,6 +1866,30 @@ class NewsRepository:
         if commit:
             self.conn.commit()
 
+    def mark_news_items_for_reprocessing(
+        self,
+        *,
+        news_item_ids: Sequence[str],
+        now_ms: int,
+        commit: bool = True,
+    ) -> int:
+        scoped_ids = [str(item) for item in news_item_ids if str(item or "")]
+        if not scoped_ids:
+            return 0
+        cursor = self.conn.execute(
+            """
+            UPDATE news_items
+               SET lifecycle_status = 'raw',
+                   updated_at_ms = GREATEST(updated_at_ms, %s)
+             WHERE news_item_id = ANY(%s::text[])
+               AND lifecycle_status = 'processed'
+            """,
+            (int(now_ms), scoped_ids),
+        )
+        if commit:
+            self.conn.commit()
+        return int(getattr(cursor, "rowcount", 0) or 0)
+
     def update_item_content_classification(
         self,
         *,

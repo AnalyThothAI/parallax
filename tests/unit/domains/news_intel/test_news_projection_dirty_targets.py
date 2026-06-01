@@ -173,18 +173,7 @@ def test_fetch_worker_enqueues_news_item_and_source_quality_dirty_for_inserted_a
         },
         {
             "rows": [
-                {
-                    "projection_name": "source_quality",
-                    "target_kind": "source",
-                    "target_id": "source-1",
-                    "window": "24h",
-                },
-                {
-                    "projection_name": "source_quality",
-                    "target_kind": "source",
-                    "target_id": "source-1",
-                    "window": "7d",
-                },
+                {"projection_name": "source_quality", "target_kind": "source", "target_id": "source-1", "window": "_refresh"},
             ],
             "reason": "news_fetch_run_finished",
             "now_ms": NOW_MS,
@@ -230,13 +219,7 @@ def test_fetch_worker_enqueues_page_and_source_quality_dirty_for_material_source
                     "projection_name": "source_quality",
                     "target_kind": "source",
                     "target_id": "source-updated",
-                    "window": "24h",
-                },
-                {
-                    "projection_name": "source_quality",
-                    "target_kind": "source",
-                    "target_id": "source-updated",
-                    "window": "7d",
+                    "window": "_refresh",
                 },
             ],
             "reason": "source_metadata_changed",
@@ -245,18 +228,7 @@ def test_fetch_worker_enqueues_page_and_source_quality_dirty_for_material_source
         },
         {
             "rows": [
-                {
-                    "projection_name": "source_quality",
-                    "target_kind": "source",
-                    "target_id": "source-1",
-                    "window": "24h",
-                },
-                {
-                    "projection_name": "source_quality",
-                    "target_kind": "source",
-                    "target_id": "source-1",
-                    "window": "7d",
-                },
+                {"projection_name": "source_quality", "target_kind": "source", "target_id": "source-1", "window": "_refresh"},
             ],
             "reason": "news_fetch_run_finished",
             "now_ms": NOW_MS,

@@ -67,13 +67,16 @@ def enqueue_source_quality_refresh(
     ]
     if not targets:
         return 0
+    kwargs: dict[str, Any] = {}
+    if due_at_ms is not None:
+        kwargs["due_at_ms"] = int(due_at_ms)
     return int(
         repos.news_projection_dirty_targets.enqueue_targets(
             targets,
             reason=reason,
             now_ms=now_ms,
-            due_at_ms=due_at_ms,
             commit=commit,
+            **kwargs,
         )
     )
 
@@ -101,13 +104,16 @@ def enqueue_source_quality_windows(
     ]
     if not targets:
         return 0
+    kwargs: dict[str, Any] = {}
+    if due_at_ms is not None:
+        kwargs["due_at_ms"] = int(due_at_ms)
     return int(
         repos.news_projection_dirty_targets.enqueue_targets(
             targets,
             reason=reason,
             now_ms=now_ms,
-            due_at_ms=due_at_ms,
             commit=commit,
+            **kwargs,
         )
     )
 

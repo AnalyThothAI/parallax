@@ -4,18 +4,18 @@ import asyncio
 import hashlib
 import json
 import time
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Mapping
 from inspect import isawaitable
 from typing import Any
 
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.news_intel.providers import NewsSourceProvider
-from parallax.domains.news_intel.services.news_canonical_identity import canonical_identity_for_observation
-from parallax.domains.news_intel.services.news_item_agent_policy import (
-    NEWS_ITEM_AGENT_BRIEF_MAX_PUBLISHED_AGE_MS,
-    news_item_agent_brief_eligibility,
+from parallax.domains.news_intel.runtime.news_projection_work import (
+    enqueue_page_reprojection,
+    enqueue_source_quality_refresh,
 )
+from parallax.domains.news_intel.services.news_canonical_identity import canonical_identity_for_observation
 from parallax.domains.news_intel.services.news_provider_contract import (
     NewsProviderContractError,
     validate_news_provider_contract,
@@ -37,7 +37,6 @@ class NewsFetchWorker(WorkerBase):
         news_settings: Any,
         wake_bus: Any | None,
         feed_client: NewsSourceProvider,
-        source_quality_windows: Iterable[str] | None = None,
         clock_ms: Callable[[], int] | None = None,
         **kwargs: Any,
     ) -> None:
@@ -45,7 +44,6 @@ class NewsFetchWorker(WorkerBase):
         self.news_settings = news_settings
         self.wake_bus = wake_bus
         self.feed_client = feed_client
-        self.source_quality_windows = _source_quality_windows(source_quality_windows)
         self.clock_ms = clock_ms or _now_ms
 
     async def on_close(self) -> None:
@@ -85,19 +83,19 @@ class NewsFetchWorker(WorkerBase):
             changed_item_ids = (
                 repos.news.list_news_item_ids_for_sources(source_ids=changed_source_ids) if changed_source_ids else []
             )
-            metadata_dirty_count = _enqueue_news_item_dirty_targets(
+            metadata_dirty_count = enqueue_page_reprojection(
                 repos,
                 news_item_ids=changed_item_ids,
-                projection_names=("page",),
                 reason="source_metadata_changed",
                 now_ms=now,
+                commit=False,
             )
-            _enqueue_source_quality_dirty_targets(
+            enqueue_source_quality_refresh(
                 repos,
                 source_ids=changed_source_ids,
-                windows=self.source_quality_windows,
                 reason="source_metadata_changed",
                 now_ms=now,
+                commit=False,
             )
             due_sources = repos.news.claim_due_sources(now_ms=now, limit=self._batch_size(), commit=False)
         _notify_news_page_dirty(
@@ -180,12 +178,12 @@ class NewsFetchWorker(WorkerBase):
                             http_status=feed_result.status_code,
                             commit=False,
                         )
-                        _enqueue_source_quality_dirty_targets(
+                        enqueue_source_quality_refresh(
                             repos,
                             source_ids=[source_id],
-                            windows=self.source_quality_windows,
                             reason="news_fetch_run_finished",
                             now_ms=now_ms,
+                            commit=False,
                         )
                     return WorkerResult(processed=0)
 
@@ -224,12 +222,12 @@ class NewsFetchWorker(WorkerBase):
                         http_status=feed_result.status_code,
                         commit=False,
                     )
-                    _enqueue_source_quality_dirty_targets(
+                    enqueue_source_quality_refresh(
                         repos,
                         source_ids=[source_id],
-                        windows=self.source_quality_windows,
                         reason="news_fetch_run_finished",
                         now_ms=now_ms,
+                        commit=False,
                     )
             written = counts["inserted"] + counts["updated"]
             if written > 0 and self.wake_bus is not None:
@@ -251,8 +249,6 @@ class NewsFetchWorker(WorkerBase):
     ) -> dict[str, int]:
         counts = {"fetched": 0, "inserted": 0, "updated": 0, "duplicate": 0}
         dirty_news_item_ids: list[str] = []
-        brief_dirty_news_item_ids: list[str] = []
-        brief_ineligible_news_item_ids: set[str] = set()
         repository = repos.news
         source_id = str(source["source_id"])
         parent_ids_by_source_key: dict[str, str] = {}
@@ -308,40 +304,20 @@ class NewsFetchWorker(WorkerBase):
                 commit=False,
             )
             news_item_id = str(news.get("news_item_id") or "")
-            eligible_for_brief = False
             if news_item_id:
                 parent_ids_by_source_key[observation.source_item_key] = news_item_id
-                eligibility = news_item_agent_brief_eligibility(
-                    {
-                        "published_at_ms": item_published_at_ms,
-                        "provider_signal_json": observation.provider_signal,
-                    },
-                    now_ms=fetched_at_ms,
-                )
-                eligible_for_brief = eligibility.eligible
-                if not eligible_for_brief:
-                    brief_ineligible_news_item_ids.add(news_item_id)
             status = str(news.get("status") or provider.get("status") or "duplicate")
             if status in counts:
                 counts[status] += 1
             if news_item_id and status in {"inserted", "updated"}:
                 affected_item_ids = _affected_news_item_ids(news, fallback_news_item_id=news_item_id)
                 dirty_news_item_ids.extend(affected_item_ids)
-                if eligible_for_brief:
-                    brief_dirty_news_item_ids.append(news_item_id)
-        _enqueue_news_item_dirty_targets(
+        enqueue_page_reprojection(
             repos,
             news_item_ids=dirty_news_item_ids,
-            projection_names=("page",),
             reason="news_item_written",
             now_ms=fetched_at_ms,
-        )
-        _enqueue_news_item_dirty_targets(
-            repos,
-            news_item_ids=brief_dirty_news_item_ids,
-            projection_names=("brief_input",),
-            reason="news_item_written",
-            now_ms=fetched_at_ms,
+            commit=False,
         )
         context_parent_ids = self._persist_context_observations(
             repository,
@@ -350,14 +326,19 @@ class NewsFetchWorker(WorkerBase):
             context_observations=context_observations,
             fetched_at_ms=fetched_at_ms,
         )
-        _enqueue_news_item_dirty_targets(
-            repos,
-            news_item_ids=context_parent_ids,
-            projection_names=("page", "brief_input"),
-            reason="news_context_written",
-            now_ms=fetched_at_ms,
-            brief_ineligible_news_item_ids=brief_ineligible_news_item_ids,
-        )
+        if context_parent_ids:
+            repository.mark_news_items_for_reprocessing(
+                news_item_ids=context_parent_ids,
+                now_ms=fetched_at_ms,
+                commit=False,
+            )
+            enqueue_page_reprojection(
+                repos,
+                news_item_ids=context_parent_ids,
+                reason="news_context_written",
+                now_ms=fetched_at_ms,
+                commit=False,
+            )
         return counts
 
     def _persist_context_observations(
@@ -422,50 +403,6 @@ def _payload_hash(payload: Mapping[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _enqueue_news_item_dirty_targets(
-    repos: Any,
-    *,
-    news_item_ids: list[str],
-    projection_names: Iterable[str],
-    reason: str,
-    now_ms: int,
-    brief_ineligible_news_item_ids: Iterable[str] = (),
-) -> int:
-    brief_ineligible_ids = set(str(item) for item in brief_ineligible_news_item_ids if str(item))
-    targets = [
-        {"projection_name": projection_name, "target_kind": "news_item", "target_id": news_item_id}
-        for projection_name in dict.fromkeys(str(name) for name in projection_names if str(name))
-        for news_item_id in dict.fromkeys(str(item) for item in news_item_ids if str(item))
-        if projection_name != "brief_input" or news_item_id not in brief_ineligible_ids
-    ]
-    if not targets:
-        return 0
-    return int(repos.news_projection_dirty_targets.enqueue_targets(targets, reason=reason, now_ms=now_ms, commit=False))
-
-
-def _enqueue_source_quality_dirty_targets(
-    repos: Any,
-    *,
-    source_ids: Iterable[str],
-    windows: Iterable[str],
-    reason: str,
-    now_ms: int,
-) -> int:
-    targets = [
-        {
-            "projection_name": "source_quality",
-            "target_kind": "source",
-            "target_id": source_id,
-            "window": window,
-        }
-        for source_id in dict.fromkeys(str(source_id) for source_id in source_ids if str(source_id))
-        for window in _source_quality_windows(windows)
-    ]
-    if not targets:
-        return 0
-    return int(repos.news_projection_dirty_targets.enqueue_targets(targets, reason=reason, now_ms=now_ms, commit=False))
-
-
 def _notify_news_page_dirty(wake_bus: Any | None, *, count: int, reason: str) -> None:
     if count <= 0 or wake_bus is None:
         return
@@ -491,9 +428,40 @@ def _source_fetch_since_ms(
 ) -> int | None:
     if str(source.get("provider_type") or "").strip().lower() != "opennews":
         return None
-    live_floor_ms = max(0, int(now_ms) - NEWS_ITEM_AGENT_BRIEF_MAX_PUBLISHED_AGE_MS)
-    cursor_high_watermark_ms = _cursor_high_watermark_ms(source_cursor) or 0
-    return max(live_floor_ms, cursor_high_watermark_ms)
+    cursor_high_watermark_ms = _cursor_high_watermark_ms(source_cursor)
+    if cursor_high_watermark_ms is not None:
+        return max(0, cursor_high_watermark_ms - _fetch_policy_overlap_ms(source, source_cursor))
+    max_initial_fetch_age_ms = _fetch_policy_int(source, "max_initial_fetch_age_ms")
+    if max_initial_fetch_age_ms is None:
+        max_initial_fetch_age_ms = _fetch_policy_int(source, "max_catchup_age_ms")
+    if max_initial_fetch_age_ms is None:
+        return None
+    return max(0, int(now_ms) - max_initial_fetch_age_ms)
+
+
+def _fetch_policy_overlap_ms(source: Mapping[str, Any], source_cursor: Mapping[str, Any]) -> int:
+    value = _fetch_policy_int(source, "rest_overlap_ms")
+    if value is None:
+        value = _fetch_policy_int(source, "overlap_ms")
+    if value is None:
+        try:
+            value = int(source_cursor.get("overlap_ms") or 0)
+        except (TypeError, ValueError):
+            value = 0
+    return max(0, int(value or 0))
+
+
+def _fetch_policy_int(source: Mapping[str, Any], key: str) -> int | None:
+    raw = source.get("fetch_policy_json")
+    if raw is None:
+        raw = source.get("fetch_policy")
+    policy = _mapping(raw)
+    value = policy.get(key)
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
 
 
 def _affected_news_item_ids(news: Mapping[str, Any], *, fallback_news_item_id: str) -> list[str]:
@@ -502,11 +470,6 @@ def _affected_news_item_ids(news: Mapping[str, Any], *, fallback_news_item_id: s
     if not item_ids:
         item_ids = [str(fallback_news_item_id)]
     return list(dict.fromkeys(item_ids))
-
-
-def _source_quality_windows(windows: Iterable[str] | None) -> tuple[str, ...]:
-    normalized = tuple(dict.fromkeys(str(window).strip().lower() for window in (windows or ()) if str(window).strip()))
-    return normalized or ("24h", "7d")
 
 
 def _optional_str(value: Any) -> str | None:
@@ -530,6 +493,18 @@ def _schema_provider_types(repository: Any) -> tuple[str, ...]:
     if callable(constraint_values):
         return tuple(str(value) for value in constraint_values())
     return tuple(PROVIDER_TYPES)
+
+
+def _mapping(value: Any) -> dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return dict(parsed) if isinstance(parsed, Mapping) else {}
+    return {}
 
 
 def _now_ms() -> int:
