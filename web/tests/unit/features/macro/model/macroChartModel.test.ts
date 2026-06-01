@@ -155,6 +155,40 @@ describe("macroChartModel", () => {
     expect(model.points.map((point) => point.tenorYears)).toEqual([2, 5, 10, 30]);
   });
 
+  it("uses the latest inline point when a yield curve series omits latest", () => {
+    const chart: MacroModuleChart = {
+      id: "yield_curve",
+      series: [
+        {
+          concept_key: "rates:dgs10",
+          label: "10Y",
+          unit: "percent",
+          points: [
+            { observed_at: "2026-05-19", value: 4.1 },
+            { observed_at: "2026-05-20", value: "4.2" },
+          ],
+        },
+        {
+          concept_key: "rates:dgs2",
+          label: "2Y",
+          unit: "percent",
+          points: [{ observed_at: "2026-05-20", value: 3.8 }],
+        },
+        {
+          concept_key: "rates:10y2y",
+          label: "10Y-2Y",
+          unit: "percent",
+          points: [{ observed_at: "2026-05-20", value: 0.4 }],
+        },
+      ],
+    };
+
+    const model = buildMacroYieldCurveModel(chart);
+
+    expect(model.points.map((point) => point.conceptKey)).toEqual(["rates:dgs2", "rates:dgs10"]);
+    expect(model.points.map((point) => point.value)).toEqual([3.8, 4.2]);
+  });
+
   it("coerces heatmap matrix rows to raw numeric labels using row keys as columns", () => {
     const matrix = buildMacroHeatmapMatrix([
       {

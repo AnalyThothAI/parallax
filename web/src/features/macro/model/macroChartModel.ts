@@ -141,7 +141,7 @@ export function buildMacroYieldCurveModel(chart: MacroModuleChart): MacroYieldCu
     .map((series) => {
       const key = conceptKey(series);
       const tenorYears = TENOR_YEARS_BY_CONCEPT[key];
-      const value = numericValue(series.latest);
+      const value = latestSeriesNumericValue(series);
       if (!tenorYears || value === null) {
         return null;
       }
@@ -250,6 +250,20 @@ function normalizeSeriesPoints(points: MacroSeriesPoint[]): MacroChartPoint[] {
 
 function inlineSeriesPoints(series: MacroSemanticRecord): MacroSeriesPoint[] {
   return Array.isArray(series.points) ? (series.points as MacroSeriesPoint[]) : [];
+}
+
+function latestSeriesNumericValue(series: MacroSemanticRecord): number | null {
+  return (
+    numericValue(series.latest) ??
+    numericValue(series.latest_value) ??
+    numericValue(series.value) ??
+    latestInlinePointValue(series)
+  );
+}
+
+function latestInlinePointValue(series: MacroSemanticRecord): number | null {
+  const points = normalizeSeriesPoints(inlineSeriesPoints(series));
+  return points.at(-1)?.value ?? null;
 }
 
 function normalizeReturnPoints(points: MacroChartPoint[]): MacroChartPoint[] {

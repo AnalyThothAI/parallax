@@ -161,6 +161,43 @@ describe("Macro chart primitives", () => {
     ]);
   });
 
+  it("renders yield curve points from inline observations when latest is missing", () => {
+    render(
+      <MacroYieldCurveChart
+        chart={{
+          id: "yield_curve",
+          series: [
+            {
+              concept_key: "rates:dgs10",
+              label: "10Y",
+              unit: "percent",
+              points: [
+                { observed_at: "2026-05-19", value: 4.1 },
+                { observed_at: "2026-05-20", value: "4.2" },
+              ],
+            },
+            {
+              concept_key: "rates:dgs2",
+              label: "2Y",
+              unit: "percent",
+              points: [{ observed_at: "2026-05-20", value: 3.8 }],
+            },
+            {
+              concept_key: "rates:10y2y",
+              label: "10Y-2Y",
+              unit: "percent",
+              points: [{ observed_at: "2026-05-20", value: 0.4 }],
+            },
+          ],
+        }}
+        title="Yield curve"
+      />,
+    );
+
+    const points = screen.getAllByTestId("macro-yield-curve-point");
+    expect(points.map((point) => point.textContent)).toEqual(["2Y3.8%", "10Y4.2%"]);
+  });
+
   it("renders localized chart empty states for yield curves and heatmaps", () => {
     const { rerender } = render(
       <MacroYieldCurveChart chart={{ id: "yield_curve", series: [] }} title="Yield curve" />,
