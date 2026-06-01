@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { NewsPage } from "@features/news";
 import { fetchNewsItem, fetchNewsRows } from "@lib/api/client";
-import type { NewsItemDetail, NewsRow } from "@shared/model/newsIntel";
+import type { NewsItemDetail, NewsRow, NewsSignalEnvelope, NewsSignalSummary } from "@shared/model/newsIntel";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -189,7 +189,7 @@ const providerRow: NewsRow = {
   latest_at_ms: 1_779_000_000_000,
   source_domain: "6551.io",
   canonical_url: "https://example.test/news-1",
-  signal: {
+  signal: newsSignalEnvelope({
     source: "provider",
     provider: "opennews",
     status: "ready",
@@ -200,7 +200,7 @@ const providerRow: NewsRow = {
     grade: "A",
     summary_zh: "ETF 资金流持续增强。",
     method: "opennews.aiRating",
-  },
+  }),
   token_lanes: [
     {
       lane: "resolved",
@@ -215,6 +215,21 @@ const providerRow: NewsRow = {
   ],
   fact_lanes: [{ event_type: "fund_flow", status: "accepted" }],
 };
+
+function newsSignalEnvelope(displaySignal: NewsSignalSummary): NewsSignalEnvelope {
+  return {
+    display_signal: displaySignal,
+    provider_signal: displaySignal.source === "provider" ? displaySignal : null,
+    agent_signal: { status: "pending" },
+    alert_eligibility: {
+      in_app_eligible: true,
+      external_push_ready: false,
+      agent_status: "pending",
+      provider_status: displaySignal.status,
+      provider_score: displaySignal.score,
+    },
+  };
+}
 
 const providerDetail: NewsItemDetail = {
   ...providerRow,

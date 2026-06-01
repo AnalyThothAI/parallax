@@ -27,7 +27,9 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
   const tokenImpacts = newsDisplayTokenLanes(item);
   const tokenIdentities = item.token_lanes ?? [];
   const facts = item.fact_lanes ?? [];
-  const displayTitle = item.agent_brief?.title_zh || item.signal.title_zh || item.headline;
+  const displaySignal = item.signal.display_signal;
+  const providerSignal = item.signal.provider_signal;
+  const displayTitle = item.agent_brief?.title_zh || displaySignal.title_zh || item.headline;
 
   return (
     <article className="news-evidence-page">
@@ -35,11 +37,11 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
         <div className="news-evidence-hero-copy">
           <div className="news-evidence-kicker">
             <span>Evidence page</span>
-            <span className={newsSignalTone(item.signal)}>{newsSignalLabel(item.signal)}</span>
-            <span>{newsSignalScoreLabel(item.signal)}</span>
+            <span className={newsSignalTone(displaySignal)}>{newsSignalLabel(displaySignal)}</span>
+            <span>{newsSignalScoreLabel(displaySignal)}</span>
           </div>
           <h2>{displayTitle}</h2>
-          <p>{item.summary || item.signal.summary_en || "No persisted source summary is present."}</p>
+          <p>{item.summary || displaySignal.summary_en || "No persisted source summary is present."}</p>
         </div>
         <SourcePacket item={item} displayTitle={displayTitle} />
       </header>
@@ -47,13 +49,13 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
       <section className="news-evidence-metric-grid" aria-label="provider signal context">
         <EvidenceMetric
           label="Provider aiRating"
-          value={newsSignalScoreLabel(item.signal)}
-          detail={item.signal.method || item.signal.provider || item.signal.source}
+          value={providerSignal ? newsSignalScoreLabel(providerSignal) : "score --"}
+          detail={providerSignal?.method || providerSignal?.provider || providerSignal?.source}
         />
         <EvidenceMetric
           label="Direction"
-          value={newsSignalLabel(item.signal)}
-          detail={item.signal.direction}
+          value={newsSignalLabel(displaySignal)}
+          detail={displaySignal.direction}
         />
         <EvidenceMetric
           label="Token impacts"
@@ -82,10 +84,10 @@ function SourcePacket({ item, displayTitle }: { item: NewsItemDetail; displayTit
   return (
     <section className="news-evidence-source-packet" aria-label="source packet">
       <span>Source packet</span>
-      <b>{item.source?.source_name || item.source_domain || item.signal.provider || "source unknown"}</b>
+      <b>{item.source?.source_name || item.source_domain || "source unknown"}</b>
       <p>{displayTitle}</p>
       <small>
-        {item.source?.provider_type || item.provider_type || item.signal.source}
+        {item.source?.provider_type || item.provider_type || "provider unknown"}
         {item.latest_at_ms ? ` · ${formatRelativeTime(item.latest_at_ms)} ago` : ""}
       </small>
       {item.canonical_url ? (
@@ -128,25 +130,27 @@ function ProviderSignalEvidence({
   item: NewsItemDetail;
   tokenImpacts: NewsTokenLane[];
 }) {
+  const displaySignal = item.signal.display_signal;
+  const providerSignal = item.signal.provider_signal;
   return (
     <section className="news-evidence-section news-evidence-provider-rating">
       <div className="news-evidence-section-heading">
         <h3>Provider rating details</h3>
-        <span className={`news-evidence-pill ${newsSignalTone(item.signal)}`}>
-          {item.signal.status}
+        <span className={`news-evidence-pill ${newsSignalTone(displaySignal)}`}>
+          {providerSignal?.status || "missing"}
         </span>
       </div>
       <dl className="news-evidence-definition-grid">
-        <FieldRow label="Source" value={item.signal.provider || item.signal.source} />
-        <FieldRow label="Method" value={item.signal.method} />
-        <FieldRow label="Direction" value={item.signal.direction} />
-        <FieldRow label="Signal" value={item.signal.signal} />
-        <FieldRow label="Score" value={item.signal.score == null ? null : String(item.signal.score)} />
-        <FieldRow label="Grade" value={item.signal.grade} />
+        <FieldRow label="Source" value={providerSignal?.provider || providerSignal?.source} />
+        <FieldRow label="Method" value={providerSignal?.method} />
+        <FieldRow label="Direction" value={providerSignal?.direction} />
+        <FieldRow label="Signal" value={providerSignal?.signal} />
+        <FieldRow label="Score" value={providerSignal?.score == null ? null : String(providerSignal.score)} />
+        <FieldRow label="Grade" value={providerSignal?.grade} />
       </dl>
       <p>
-        {item.signal.summary_zh ||
-          item.signal.summary_en ||
+        {providerSignal?.summary_zh ||
+          providerSignal?.summary_en ||
           "No provider aiRating summary is present."}
       </p>
       <TokenImpactList tokens={tokenImpacts} />

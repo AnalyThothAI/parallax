@@ -1,5 +1,5 @@
 import { NewsTape } from "@features/news/ui/NewsTape";
-import type { NewsRow } from "@shared/model/newsIntel";
+import type { NewsRow, NewsSignalEnvelope, NewsSignalSummary } from "@shared/model/newsIntel";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -52,7 +52,7 @@ const rowWithBtcEth: NewsRow = {
   summary: "ETF desk activity stays elevated.",
   latest_at_ms: 1_779_000_000_000,
   source_domain: "6551.io",
-  signal: {
+  signal: newsSignalEnvelope({
     source: "provider",
     provider: "opennews",
     status: "ready",
@@ -63,7 +63,7 @@ const rowWithBtcEth: NewsRow = {
     grade: "A",
     summary_zh: "ETF 资金流持续增强。",
     method: "opennews.aiRating",
-  },
+  }),
   token_lanes: [
     {
       lane: "resolved",
@@ -106,10 +106,18 @@ const rowWithInsufficientAgentBrief: NewsRow = {
   row_id: "row-2",
   news_item_id: "news-2",
   headline: "Provider high score without enough agent evidence",
-  signal: {
-    ...rowWithBtcEth.signal,
+  signal: newsSignalEnvelope({
+    source: "provider",
+    provider: "opennews",
+    status: "ready",
+    direction: "bullish",
+    label_zh: "利好",
+    signal: "long",
     score: 90,
+    grade: "A",
     summary_zh: "Provider summary remains visible.",
+    method: "opennews.aiRating",
+  }, {
     alert_eligibility: {
       in_app_eligible: true,
       external_push_ready: false,
@@ -119,7 +127,7 @@ const rowWithInsufficientAgentBrief: NewsRow = {
       provider_status: "ready",
       provider_score: 90,
     },
-  },
+  }),
   agent_brief: {
     status: "insufficient",
     direction: "neutral",
@@ -128,3 +136,22 @@ const rowWithInsufficientAgentBrief: NewsRow = {
     summary_zh: "证据不足。",
   },
 };
+
+function newsSignalEnvelope(
+  displaySignal: NewsSignalSummary,
+  overrides: { alert_eligibility?: Record<string, unknown> } = {},
+): NewsSignalEnvelope {
+  return {
+    display_signal: displaySignal,
+    provider_signal: displaySignal.source === "provider" ? displaySignal : null,
+    agent_signal: { status: overrides.alert_eligibility?.agent_status ?? "pending" },
+    alert_eligibility: {
+      in_app_eligible: true,
+      external_push_ready: false,
+      agent_status: "pending",
+      provider_status: displaySignal.status,
+      provider_score: displaySignal.score,
+      ...overrides.alert_eligibility,
+    },
+  };
+}

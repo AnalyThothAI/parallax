@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from types import SimpleNamespace
 
-from parallax.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
+from parallax.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker, _source_fetch_since_ms
 from parallax.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
 from parallax.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
 from parallax.domains.news_intel.types.source_provider import (
@@ -168,7 +168,7 @@ def test_news_fetch_worker_passes_source_sync_cursor_and_updates_after_success()
     result = worker.run_once_sync(now_ms=NOW_MS)
 
     assert result.failed == 0
-    assert feed.calls[0]["since_ms"] == NOW_MS - 60_000
+    assert feed.calls[0]["since_ms"] == NOW_MS - 660_000
     assert feed.calls[0]["cursor"] == {"high_watermark_ms": NOW_MS - 60_000, "overlap_ms": 600_000}
     assert db.repo.sync_updates == [
         {
@@ -181,7 +181,7 @@ def test_news_fetch_worker_passes_source_sync_cursor_and_updates_after_success()
     assert db.repo.events.index("update_source_sync_state") < db.repo.events.index("finish_fetch_run")
 
 
-def test_news_fetch_worker_bounds_opennews_since_ms_to_brief_window_without_cursor() -> None:
+def test_news_fetch_worker_does_not_bound_opennews_since_ms_to_brief_window_without_cursor() -> None:
     source = {
         "source_id": "opennews-realtime",
         "provider_type": "opennews",
@@ -196,7 +196,39 @@ def test_news_fetch_worker_bounds_opennews_since_ms_to_brief_window_without_curs
     result = worker.run_once_sync(now_ms=NOW_MS)
 
     assert result.failed == 0
-    assert feed.calls[0]["since_ms"] == NOW_MS - (8 * 3_600_000)
+    assert feed.calls[0]["since_ms"] is None
+
+
+def test_opennews_fetch_since_uses_cursor_overlap_not_agent_brief_age() -> None:
+    since_ms = _source_fetch_since_ms(
+        source={
+            "provider_type": "opennews",
+            "fetch_policy_json": {"rest_overlap_ms": 900_000},
+        },
+        source_cursor={"high_watermark_ms": 10_000_000},
+        now_ms=20_000_000,
+    )
+
+    assert since_ms == 9_100_000
+
+
+def test_opennews_first_fetch_since_uses_optional_fetch_policy_catchup_only() -> None:
+    assert (
+        _source_fetch_since_ms(
+            source={"provider_type": "opennews", "fetch_policy_json": {"max_initial_fetch_age_ms": 3_600_000}},
+            source_cursor={},
+            now_ms=20_000_000,
+        )
+        == 16_400_000
+    )
+    assert (
+        _source_fetch_since_ms(
+            source={"provider_type": "opennews", "fetch_policy_json": {}},
+            source_cursor={},
+            now_ms=20_000_000,
+        )
+        is None
+    )
 
 
 def test_news_fetch_worker_enqueues_dirty_targets_for_all_affected_news_items() -> None:
@@ -244,7 +276,7 @@ def test_news_fetch_worker_enqueues_dirty_targets_for_all_affected_news_items() 
     ]
 
 
-def test_news_fetch_worker_enqueues_brief_input_for_eligible_provider_signal_update() -> None:
+def test_news_fetch_worker_does_not_enqueue_brief_input_for_provider_signal_update() -> None:
     source = {
         "source_id": "opennews-news",
         "provider_type": "opennews",
@@ -291,11 +323,7 @@ def test_news_fetch_worker_enqueues_brief_input_for_eligible_provider_signal_upd
         "target_kind": "news_item",
         "target_id": "news-eligible",
     } in news_item_written_rows
-    assert {
-        "projection_name": "brief_input",
-        "target_kind": "news_item",
-        "target_id": "news-eligible",
-    } in news_item_written_rows
+    assert all(row["projection_name"] != "brief_input" for row in news_item_written_rows)
 
 
 def test_news_fetch_worker_persists_context_observations() -> None:
@@ -399,7 +427,7 @@ def test_news_fetch_worker_persists_context_observations() -> None:
     ]
 
 
-def test_news_fetch_worker_keeps_brief_dirty_for_opennews_provider_signal_context() -> None:
+def test_news_fetch_worker_marks_context_parent_for_reprocessing_without_brief_dirty() -> None:
     source = {
         "source_id": "opennews-news",
         "provider_type": "opennews",
@@ -447,8 +475,8 @@ def test_news_fetch_worker_keeps_brief_dirty_for_opennews_provider_signal_contex
     context_dirty = next(batch for batch in db.dirty.enqueued if batch["reason"] == "news_context_written")
     assert context_dirty["rows"] == [
         {"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"},
-        {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-1"},
     ]
+    assert db.repo.reprocess_news_item_ids == ["news-1"]
 
 
 def test_news_fetch_worker_persists_context_only_observations_without_processing_items() -> None:
@@ -679,20 +707,20 @@ def test_news_item_process_uses_opennews_provider_tokens_and_enqueues_brief_inpu
     assert result.processed == 1
     assert db.repo.entities["news-1"][0].normalized_value == "BTC"
     assert db.repo.mentions["news-1"][0].observed_symbol == "BTC"
-    assert db.dirty.enqueued[0]["rows"] == [
-        {"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"},
-        {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-1", "priority": 18},
+    assert db.dirty.enqueued == [
         {
-            "projection_name": "source_quality",
-            "target_kind": "source",
-            "target_id": "opennews-realtime",
-            "window": "24h",
+            "rows": [{"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"}],
+            "reason": "news_item_processed",
+            "now_ms": NOW_MS,
+            "commit": False,
         },
         {
-            "projection_name": "source_quality",
-            "target_kind": "source",
-            "target_id": "opennews-realtime",
-            "window": "7d",
+            "rows": [
+                {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-1", "priority": 18}
+            ],
+            "reason": "news_item_processed",
+            "now_ms": NOW_MS,
+            "commit": False,
         },
     ]
 
@@ -718,7 +746,7 @@ def test_news_page_projection_worker_replaces_rows_without_emitting_wake() -> No
     assert repo.replaced_rows[0]["news_item_id"] == "news-1"
     assert repo.replaced_rows[0]["lifecycle_status"] == "attention"
     assert repo.replaced_rows[0]["agent_status"] == "ready"
-    assert repo.replaced_rows[0]["agent_brief_json"]["agent_run_id"] == "run-1"
+    assert repo.replaced_rows[0]["agent_brief"]["agent_run_id"] == "run-1"
     assert wake_bus.notifications == []
 
 
@@ -841,7 +869,17 @@ class FakeProjectionDirtyTargetRepository:
     def mark_done(self, rows, *, now_ms: int, commit: bool = True):
         return len(rows)
 
-    def mark_error(self, rows, *, error: str, retry_ms: int, now_ms: int, commit: bool = True):
+    def mark_error(
+        self,
+        rows,
+        *,
+        error: str,
+        retry_ms: int,
+        now_ms: int,
+        count_attempt: bool = True,
+        commit: bool = True,
+    ):
+        del count_attempt
         return len(rows)
 
 
@@ -927,6 +965,7 @@ class FakeNewsRepository:
         self.sync_cursors: dict[str, dict[str, object]] = {}
         self.sync_updates: list[dict[str, object]] = []
         self.events: list[str] = []
+        self.reprocess_news_item_ids: list[str] = []
 
     def reconcile_configured_sources(self, sources, *, now_ms: int, commit: bool = True):
         self.reconciled_sources = list(sources)
@@ -984,6 +1023,10 @@ class FakeNewsRepository:
     def upsert_news_context_item(self, **payload):
         self.context_items.append(payload)
         return payload
+
+    def mark_news_items_for_reprocessing(self, *, news_item_ids, now_ms: int, commit: bool = True):
+        self.reprocess_news_item_ids.extend(str(item) for item in news_item_ids)
+        return len(news_item_ids)
 
     def finish_fetch_run(self, **payload):
         self.events.append("finish_fetch_run")

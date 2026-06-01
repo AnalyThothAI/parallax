@@ -92,6 +92,9 @@ are wrong too.
    `token_profile_current_dirty_targets`, `token_image_source_dirty_targets`,
    `asset_profile_refresh_targets`, `token_capture_tier_dirty_targets`, and
    `news_fetch_runs` own worker scheduling state and are not product truth.
+   `news_projection_dirty_targets` is News Intel scheduling state for semantic
+   page reprojection, item brief, and source-quality refresh/window work; it is
+   not a public News fact.
    `macro_import_runs`, `macro_sync_windows`, `macro_sync_runs`,
    `macro_projection_dirty_targets`, and notification delivery rows record
    importer/sync, projection scheduling, or side-effect control state; macro

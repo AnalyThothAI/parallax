@@ -4,11 +4,16 @@ import asyncio
 import hashlib
 import json
 import time
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Mapping
+from dataclasses import asdict, is_dataclass
 from typing import Any
 
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
+from parallax.domains.news_intel.runtime.news_projection_work import (
+    enqueue_item_brief_work,
+    enqueue_page_reprojection,
+)
 from parallax.domains.news_intel.services.news_content_classification import classify_news_item_content
 from parallax.domains.news_intel.services.news_entity_extraction import NewsEntity, extract_news_entities
 from parallax.domains.news_intel.services.news_fact_candidates import build_fact_candidates
@@ -26,14 +31,12 @@ class NewsItemProcessWorker(WorkerBase):
         *,
         identity_lookup: TokenIdentityLookup | None = None,
         wake_bus: Any | None = None,
-        source_quality_windows: Iterable[str] | None = None,
         clock_ms: Callable[[], int] | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         self.identity_lookup = identity_lookup
         self.wake_bus = wake_bus
-        self.source_quality_windows = _source_quality_windows(source_quality_windows)
         self.clock_ms = clock_ms or _now_ms
 
     async def run_once(self) -> WorkerResult:
@@ -110,17 +113,45 @@ class NewsItemProcessWorker(WorkerBase):
                         commit=False,
                     )
                     repos.news.mark_item_processed(news_item_id=news_item_id, processed_at_ms=now, commit=False)
-                    repos.news_projection_dirty_targets.enqueue_targets(
-                        _dirty_targets_for_processed_item(
-                            item=item_payload,
-                            news_item_id=news_item_id,
-                            source_quality_windows=self.source_quality_windows,
-                            now_ms=now,
-                        ),
+                    processed_item = {
+                        **item_payload,
+                        "lifecycle_status": "processed",
+                        "content_class": classification.content_class,
+                        "content_tags_json": classification.content_tags,
+                        "content_classification_json": classification.classification_payload,
+                    }
+                    mention_payloads = [_object_payload(mention) for mention in mentions]
+                    candidate_payloads = [_object_payload(candidate) for candidate in candidates]
+                    enqueue_page_reprojection(
+                        repos,
+                        news_item_ids=[news_item_id],
                         reason="news_item_processed",
                         now_ms=now,
                         commit=False,
                     )
+                    eligibility = news_item_agent_brief_eligibility(
+                        item=processed_item,
+                        token_mentions=mention_payloads,
+                        fact_candidates=candidate_payloads,
+                        context_items=[],
+                        now_ms=now,
+                    )
+                    if eligibility.eligible:
+                        enqueue_item_brief_work(
+                            repos,
+                            news_item_ids=[news_item_id],
+                            priority_by_news_item_id={
+                                news_item_id: news_item_agent_brief_priority(
+                                    item=processed_item,
+                                    token_mentions=mention_payloads,
+                                    fact_candidates=candidate_payloads,
+                                    context_items=[],
+                                )
+                            },
+                            reason="news_item_processed",
+                            now_ms=now,
+                            commit=False,
+                        )
                 processed += 1
             except Exception as exc:  # pragma: no cover - exercised by integration/ops paths.
                 failed += 1
@@ -149,41 +180,6 @@ class NewsItemProcessWorker(WorkerBase):
 
     def _batch_size(self) -> int:
         return max(1, int(getattr(self.settings, "batch_size", 10)))
-
-
-def _dirty_targets_for_processed_item(
-    *,
-    item: Mapping[str, Any],
-    news_item_id: str,
-    source_quality_windows: Iterable[str],
-    now_ms: int,
-) -> list[dict[str, Any]]:
-    targets: list[dict[str, Any]] = [
-        {"projection_name": "page", "target_kind": "news_item", "target_id": news_item_id},
-    ]
-    if _needs_agent_brief(item, now_ms=now_ms):
-        targets.append(
-            {
-                "projection_name": "brief_input",
-                "target_kind": "news_item",
-                "target_id": news_item_id,
-                "priority": news_item_agent_brief_priority(item),
-            }
-        )
-    targets.extend(
-        {
-            "projection_name": "source_quality",
-            "target_kind": "source",
-            "target_id": str(item["source_id"]),
-            "window": window,
-        }
-        for window in source_quality_windows
-    )
-    return targets
-
-
-def _needs_agent_brief(item: Mapping[str, Any], *, now_ms: int) -> bool:
-    return news_item_agent_brief_eligibility(item, now_ms=now_ms).eligible
 
 
 def _entities_from_provider_impacts(
@@ -257,9 +253,15 @@ def _json_list(value: object) -> list[Any]:
     return []
 
 
-def _source_quality_windows(windows: Iterable[str] | None) -> tuple[str, ...]:
-    normalized = tuple(dict.fromkeys(str(window).strip().lower() for window in (windows or ()) if str(window).strip()))
-    return normalized or ("24h", "7d")
+def _object_payload(value: Any) -> dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    if is_dataclass(value):
+        return dict(asdict(value))
+    dump = getattr(value, "model_dump", None)
+    if dump is not None:
+        return dict(dump(mode="json"))
+    return dict(getattr(value, "__dict__", {}) or {})
 
 
 def _now_ms() -> int:

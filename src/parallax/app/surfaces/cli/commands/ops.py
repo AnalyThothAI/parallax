@@ -13,6 +13,7 @@ from parallax.app.runtime.llm_gateway import LLMGateway
 from parallax.app.runtime.narrative_bulk_analysis_gate import narrative_bulk_analysis_enabled
 from parallax.app.runtime.ops_cli_queries import (
     market_tick_current_rebuild_estimate,
+    token_profile_image_repair_targets,
     token_radar_max_market_tick_observed_at_ms,
     token_radar_max_resolution_ms,
     token_radar_source_count,
@@ -294,7 +295,6 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
                 now_ms=now_ms,
                 projection=args.projection,
                 since_ms=since_ms,
-                source_quality_windows=settings.workers.news_source_quality_projection.windows,
             )
             return 0, {"ok": True, "data": data}
 
@@ -729,31 +729,7 @@ def _run_token_profile_image_repair_once(settings: object, *, limit: int, now_ms
     try:
         db = DBPoolBundle.create(settings, telemetry=telemetry)
         with db.worker_session("token_profile_image_repair") as repos, repos.transaction():
-            rows = repos.conn.execute(
-                """
-                SELECT target_type, target_id, updated_at_ms AS source_watermark_ms
-                FROM token_profile_current
-                WHERE status = 'ready'
-                  AND (
-                    quality_flags_json ? 'logo_mirror_pending'
-                    OR quality_flags_json ? 'source_not_admitted'
-                    OR quality_flags_json ? 'logo_mirror_unsupported'
-                    OR quality_flags_json ? 'logo_mirror_failed'
-                  )
-                ORDER BY updated_at_ms DESC, target_type ASC, target_id ASC
-                LIMIT %s
-                """,
-                (bounded_limit,),
-            ).fetchall()
-            targets = [
-                {
-                    "target_type": str(row["target_type"]),
-                    "target_id": str(row["target_id"]),
-                    "source_watermark_ms": int(row["source_watermark_ms"] or now_ms),
-                    "priority": 25,
-                }
-                for row in rows
-            ]
+            targets = token_profile_image_repair_targets(repos.conn, limit=bounded_limit, now_ms=now_ms)
             enqueue_result = repos.token_profile_current_dirty_targets.enqueue_targets(
                 targets,
                 reason="token_profile_image_repair",
@@ -770,7 +746,7 @@ def _run_token_profile_image_repair_once(settings: object, *, limit: int, now_ms
         worker_result = asyncio.run(worker.run_once(now_ms=now_ms))
         profile_rebuild = dict(worker_result.notes.get("result") or {})
         return {
-            "selected_targets": len(rows),
+            "selected_targets": len(targets),
             "profile_targets_enqueued": int(enqueue_result.get("targets", 0)),
             "profile_rebuild": profile_rebuild,
         }

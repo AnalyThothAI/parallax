@@ -497,6 +497,9 @@ def _candidate(*, provider_score: int = 88) -> dict[str, Any]:
             "published_at_ms": NOW_MS - 1_000,
             "fetched_at_ms": NOW_MS - 900,
             "content_hash": "content-hash-1",
+            "lifecycle_status": "processed",
+            "content_class": "crypto_market",
+            "content_classification_json": {"policy_version": "news_content_classification_v1"},
             "source_domain": "example.com",
             "source_name": "Example",
             "source_role": "observed_source",
@@ -510,7 +513,16 @@ def _candidate(*, provider_score: int = 88) -> dict[str, Any]:
                 "grade": "A",
             },
         },
-        "token_mentions": [],
+        "token_mentions": [
+            {
+                "mention_id": "mention-news-item-1-sol",
+                "observed_symbol": "SOL",
+                "normalized_symbol": "SOL",
+                "resolution_status": "known_symbol",
+                "display_symbol": "SOL",
+                "target_id": "cex:SOL",
+            }
+        ],
         "fact_candidates": [],
         "current_brief": None,
         "latest_run": None,

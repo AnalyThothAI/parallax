@@ -22,8 +22,13 @@ export type NewsSignalSummary = {
   summary_zh?: string | null;
   summary_en?: string | null;
   method?: string | null;
-  provider_signal?: NewsSignalSummary | Record<string, unknown> | null;
-  alert_eligibility?: NewsAlertEligibility | null;
+};
+
+export type NewsSignalEnvelope = {
+  display_signal: NewsSignalSummary;
+  provider_signal: NewsSignalSummary | null;
+  agent_signal: Record<string, unknown>;
+  alert_eligibility: NewsAlertEligibility;
 };
 
 export type NewsTokenLane = {
@@ -143,7 +148,7 @@ export type NewsRow = {
   content_class?: string | null;
   content_tags?: string[];
   content_classification?: Record<string, unknown>;
-  signal: NewsSignalSummary;
+  signal: NewsSignalEnvelope;
   token_impacts?: NewsTokenLane[];
   token_lanes: NewsTokenLane[];
   fact_lanes: NewsFactLane[];

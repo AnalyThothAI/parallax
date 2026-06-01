@@ -173,18 +173,7 @@ def test_fetch_worker_enqueues_news_item_and_source_quality_dirty_for_inserted_a
         },
         {
             "rows": [
-                {
-                    "projection_name": "source_quality",
-                    "target_kind": "source",
-                    "target_id": "source-1",
-                    "window": "24h",
-                },
-                {
-                    "projection_name": "source_quality",
-                    "target_kind": "source",
-                    "target_id": "source-1",
-                    "window": "7d",
-                },
+                {"projection_name": "source_quality", "target_kind": "source", "target_id": "source-1", "window": "_refresh"},
             ],
             "reason": "news_fetch_run_finished",
             "now_ms": NOW_MS,
@@ -230,13 +219,7 @@ def test_fetch_worker_enqueues_page_and_source_quality_dirty_for_material_source
                     "projection_name": "source_quality",
                     "target_kind": "source",
                     "target_id": "source-updated",
-                    "window": "24h",
-                },
-                {
-                    "projection_name": "source_quality",
-                    "target_kind": "source",
-                    "target_id": "source-updated",
-                    "window": "7d",
+                    "window": "_refresh",
                 },
             ],
             "reason": "source_metadata_changed",
@@ -245,18 +228,7 @@ def test_fetch_worker_enqueues_page_and_source_quality_dirty_for_material_source
         },
         {
             "rows": [
-                {
-                    "projection_name": "source_quality",
-                    "target_kind": "source",
-                    "target_id": "source-1",
-                    "window": "24h",
-                },
-                {
-                    "projection_name": "source_quality",
-                    "target_kind": "source",
-                    "target_id": "source-1",
-                    "window": "7d",
-                },
+                {"projection_name": "source_quality", "target_kind": "source", "target_id": "source-1", "window": "_refresh"},
             ],
             "reason": "news_fetch_run_finished",
             "now_ms": NOW_MS,
@@ -335,7 +307,7 @@ def test_news_repository_material_source_reconcile_reports_updated_status() -> N
     assert any("ON CONFLICT (source_id) DO UPDATE SET" in sql for sql in conn.sql)
 
 
-def test_process_worker_enqueues_page_and_source_quality_dirty_in_same_transaction_after_writes() -> None:
+def test_process_worker_enqueues_page_and_brief_dirty_in_same_transaction_after_writes() -> None:
     repos = FakeProcessRepos()
     worker = NewsItemProcessWorker(
         name="news_item_process",
@@ -344,7 +316,6 @@ def test_process_worker_enqueues_page_and_source_quality_dirty_in_same_transacti
         telemetry=object(),
         identity_lookup=FakeIdentityLookup(),
         wake_bus=None,
-        source_quality_windows=("4h", "24h"),
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)
@@ -353,16 +324,13 @@ def test_process_worker_enqueues_page_and_source_quality_dirty_in_same_transacti
     assert repos.news.write_commits == [False, False, False, False, False]
     assert repos.dirty.enqueued == [
         {
-            "rows": [
-                {"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"},
-                {"projection_name": "source_quality", "target_kind": "source", "target_id": "source-1", "window": "4h"},
-                {
-                    "projection_name": "source_quality",
-                    "target_kind": "source",
-                    "target_id": "source-1",
-                    "window": "24h",
-                },
-            ],
+            "rows": [{"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"}],
+            "reason": "news_item_processed",
+            "now_ms": NOW_MS,
+            "commit": False,
+        },
+        {
+            "rows": [{"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-1", "priority": 14}],
             "reason": "news_item_processed",
             "now_ms": NOW_MS,
             "commit": False,
@@ -405,7 +373,7 @@ def test_ops_projection_repair_enqueues_provider_signal_brief_input_dirty_target
     ]
 
 
-def test_brief_worker_enqueues_page_and_source_quality_dirty_in_same_transaction_after_current_brief_write() -> None:
+def test_brief_worker_enqueues_only_page_dirty_after_current_brief_write() -> None:
     repos = FakeBriefRepos()
     worker = object.__new__(NewsItemBriefWorker)
     WorkerAttrs = {
@@ -436,16 +404,7 @@ def test_brief_worker_enqueues_page_and_source_quality_dirty_in_same_transaction
     assert repos.news.brief_commits == [False]
     assert repos.dirty.enqueued == [
         {
-            "rows": [
-                {"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"},
-                {
-                    "projection_name": "source_quality",
-                    "target_kind": "source",
-                    "target_id": "source-1",
-                    "window": "24h",
-                },
-                {"projection_name": "source_quality", "target_kind": "source", "target_id": "source-1", "window": "7d"},
-            ],
+            "rows": [{"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"}],
             "reason": "news_item_brief_updated",
             "now_ms": NOW_MS,
             "commit": False,
@@ -606,6 +565,9 @@ class FakeOpsProjectionConn:
                         "news_item_id": "news-provider",
                         "published_at_ms": NOW_MS - 1_000,
                         "source_watermark_ms": NOW_MS - 1_000,
+                        "lifecycle_status": "processed",
+                        "content_class": "crypto_market",
+                        "content_classification_json": {"policy_version": "news_content_classification_v1"},
                         "provider_type": "opennews",
                         "provider_signal_json": {
                             "source": "provider",
@@ -613,6 +575,9 @@ class FakeOpsProjectionConn:
                             "status": "ready",
                             "score": 95,
                         },
+                        "token_mentions_json": [{"resolution_status": "known_symbol", "display_symbol": "BTC"}],
+                        "fact_candidates_json": [],
+                        "context_items_json": [],
                     }
                 ]
             )
@@ -720,8 +685,10 @@ class FakeDirtyRepository:
         error: str,
         retry_ms: int,
         now_ms: int,
+        count_attempt: bool = True,
         commit: bool = True,
     ) -> int:
+        del count_attempt
         self.marked_error.append([dict(row) for row in rows])
         return len(rows)
 
@@ -888,6 +855,13 @@ class FakeProcessRepos:
                 "title": "Coinbase lists $BTC for trading",
                 "summary": "",
                 "body_text": "",
+                "published_at_ms": NOW_MS - 1_000,
+                "provider_signal_json": {
+                    "source": "provider",
+                    "provider": "opennews",
+                    "status": "ready",
+                    "score": 86,
+                },
             }
         ]
 

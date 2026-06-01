@@ -44,6 +44,7 @@ def test_build_news_page_row_includes_token_and_fact_lanes() -> None:
         "source_id": "example-rss",
         "source_domain": "example.test",
         "coverage_tags": [],
+        "source_quality_status": "unknown",
     }
     assert row["projection_version"] == NEWS_PAGE_PROJECTION_VERSION
 
@@ -106,12 +107,29 @@ def test_build_news_page_row_copies_item_level_content_classification() -> None:
 
     assert row["content_class"] == "regulation"
     assert row["content_tags"] == ["sec", "tokenized_stocks"]
-    assert row["content_tags_json"] == ["sec", "tokenized_stocks"]
     assert row["content_classification"] == {
         "policy_version": "news_content_classification_v1",
         "matched_rules": ["regulatory_body"],
     }
-    assert row["content_classification_json"] == row["content_classification"]
+
+
+def test_page_source_status_defaults_unknown_when_source_quality_missing() -> None:
+    row = build_news_page_row(
+        item={
+            "news_item_id": "news-1",
+            "title": "Market update",
+            "summary": "",
+            "source_domain": "example.com",
+            "published_at_ms": 1_000,
+            "source_quality_status": None,
+            "provider_signal_json": {},
+        },
+        token_mentions=[],
+        fact_candidates=[],
+        computed_at_ms=2_000,
+    )
+
+    assert row["source"]["source_quality_status"] == "unknown"
 
 
 def test_build_news_page_row_uses_stable_row_id() -> None:
@@ -235,10 +253,8 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
     )
 
     assert row["agent_status"] == "ready"
-    assert row["agent_brief_status"] == "ready"
     assert row["agent_brief_computed_at_ms"] == 3000
-    assert row["agent_brief"] == row["agent_brief_json"]
-    assert row["agent_brief_json"] == {
+    assert row["agent_brief"] == {
         "status": "ready",
         "direction": "bullish",
         "decision_class": "driver",
@@ -264,6 +280,43 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
             }
         ],
     }
+
+
+def test_page_signal_envelope_separates_provider_agent_display_and_alert() -> None:
+    row = build_news_page_row(
+        item={
+            "news_item_id": "news-1",
+            "title": "Binance lists EXAMPLE",
+            "summary": "Listing starts today",
+            "source_domain": "6551.io",
+            "canonical_url": "https://example.com/news-1",
+            "published_at_ms": 1_000,
+            "provider_signal_json": {
+                "source": "provider",
+                "provider": "opennews",
+                "status": "ready",
+                "direction": "bullish",
+                "score": 90,
+                "method": "opennews.aiRating",
+            },
+        },
+        token_mentions=[],
+        fact_candidates=[],
+        agent_brief={
+            "status": "ready",
+            "direction": "bullish",
+            "decision_class": "watch",
+            "brief_json": {"summary_zh": "交易所上线带来流动性关注。"},
+            "computed_at_ms": 2_000,
+        },
+        computed_at_ms=3_000,
+    )
+
+    assert set(row["signal"]) == {"display_signal", "provider_signal", "agent_signal", "alert_eligibility"}
+    assert row["signal"]["display_signal"]["source"] == "agent"
+    assert row["signal"]["provider_signal"]["provider"] == "opennews"
+    assert row["signal"]["agent_signal"]["status"] == "ready"
+    assert row["signal"]["alert_eligibility"]["external_push_ready"] is True
 
 
 def test_build_news_page_row_preserves_provider_signal_without_masking_ready_agent_brief() -> None:
@@ -306,10 +359,9 @@ def test_build_news_page_row_preserves_provider_signal_without_masking_ready_age
     )
 
     assert row["agent_status"] == "ready"
-    assert row["agent_brief_status"] == "ready"
-    assert row["signal"]["source"] == "agent"
-    assert row["signal"]["direction"] == "bearish"
-    assert row["signal"]["score"] == 92
+    assert row["signal"]["display_signal"]["source"] == "agent"
+    assert row["signal"]["display_signal"]["direction"] == "bearish"
+    assert row["signal"]["display_signal"]["score"] == 92
     assert row["signal"]["provider_signal"] == {
         "source": "provider",
         "provider": "opennews",
@@ -392,6 +444,5 @@ def test_build_news_page_row_uses_pending_agent_brief_when_missing() -> None:
     )
 
     assert row["agent_status"] == "pending"
-    assert row["agent_brief_status"] == "pending"
     assert row["agent_brief_computed_at_ms"] is None
-    assert row["agent_brief_json"] == {"status": "pending"}
+    assert row["agent_brief"] == {"status": "pending"}

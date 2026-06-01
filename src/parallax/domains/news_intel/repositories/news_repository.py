@@ -1866,6 +1866,30 @@ class NewsRepository:
         if commit:
             self.conn.commit()
 
+    def mark_news_items_for_reprocessing(
+        self,
+        *,
+        news_item_ids: Sequence[str],
+        now_ms: int,
+        commit: bool = True,
+    ) -> int:
+        scoped_ids = [str(item) for item in news_item_ids if str(item or "")]
+        if not scoped_ids:
+            return 0
+        cursor = self.conn.execute(
+            """
+            UPDATE news_items
+               SET lifecycle_status = 'raw',
+                   updated_at_ms = GREATEST(updated_at_ms, %s)
+             WHERE news_item_id = ANY(%s::text[])
+               AND lifecycle_status = 'processed'
+            """,
+            (int(now_ms), scoped_ids),
+        )
+        if commit:
+            self.conn.commit()
+        return int(getattr(cursor, "rowcount", 0) or 0)
+
     def update_item_content_classification(
         self,
         *,
@@ -2690,7 +2714,24 @@ class NewsRepository:
             ),
             latest_quality AS (
               SELECT DISTINCT ON (quality.source_id)
-                     quality.*
+                     quality.row_id,
+                     quality.source_id,
+                     quality."window",
+                     quality.computed_at_ms,
+                     quality.fetch_success_rate,
+                     quality.items_fetched,
+                     quality.items_inserted,
+                     quality.duplicate_rate,
+                     quality.process_success_rate,
+                     quality.resolved_token_rate,
+                     quality.attention_rate,
+                     quality.accepted_fact_rate,
+                     quality.brief_ready_rate,
+                     quality.median_lag_ms,
+                     quality.quality_score,
+                     quality.diagnostics_json,
+                     quality.projection_version,
+                     quality.payload_hash
                 FROM news_source_quality_rows AS quality
                ORDER BY
                  quality.source_id,
@@ -3308,13 +3349,13 @@ def _news_page_row_filter_sql(
         filters.append("lifecycle_status = %s")
         filter_params.append(str(status))
     if direction:
-        filters.append("LOWER(signal_json ->> 'direction') = %s")
+        filters.append("LOWER(signal_json -> 'display_signal' ->> 'direction') = %s")
         filter_params.append(str(direction).strip().lower())
     if signal:
-        filters.append("LOWER(signal_json ->> 'direction') = %s")
+        filters.append("LOWER(signal_json -> 'display_signal' ->> 'direction') = %s")
         filter_params.append(str(signal).strip().lower())
     if min_score is not None:
-        filters.append("COALESCE(NULLIF(signal_json ->> 'score', '')::int, -1) >= %s")
+        filters.append("COALESCE(NULLIF(signal_json -> 'display_signal' ->> 'score', '')::int, -1) >= %s")
         filter_params.append(int(min_score))
     if decision_class:
         filters.append("agent_brief_json ->> 'decision_class' = %s")
@@ -3349,21 +3390,19 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     payload = dict(row)
     payload["latest_at_ms"] = int(payload["latest_at_ms"])
     payload["computed_at_ms"] = int(payload["computed_at_ms"])
-    payload["headline"] = str(payload.get("headline") or payload.get("title") or "")
-    payload["canonical_url"] = str(payload.get("canonical_url") or payload.get("url") or "")
+    payload["headline"] = str(payload.get("headline") or "")
+    payload["canonical_url"] = str(payload.get("canonical_url") or "")
     payload["summary"] = str(payload.get("summary") or "")
-    payload["token_lanes_json"] = _json(payload.get("token_lanes_json", payload.get("token_lanes")) or [])
-    payload["fact_lanes_json"] = _json(payload.get("fact_lanes_json", payload.get("fact_lanes")) or [])
-    payload["token_impacts_json"] = _json(payload.get("token_impacts_json", payload.get("token_impacts")) or [])
+    payload["token_lanes_json"] = _json(payload.get("token_lanes") or [])
+    payload["fact_lanes_json"] = _json(payload.get("fact_lanes") or [])
+    payload["token_impacts_json"] = _json(payload.get("token_impacts") or [])
     payload["content_class"] = str(payload.get("content_class") or "low_signal")
-    payload["content_tags_json"] = _json(payload.get("content_tags_json", payload.get("content_tags")) or [])
-    payload["content_classification_json"] = _json(
-        payload.get("content_classification_json", payload.get("content_classification")) or {}
-    )
-    payload["source_json"] = _json(payload.get("source_json", payload.get("source")) or {})
-    agent_brief = payload.get("agent_brief_json", payload.get("agent_brief")) or {"status": "pending"}
-    agent_status = str(payload.get("agent_status") or payload.get("agent_brief_status") or "pending")
-    signal = payload.get("signal_json", payload.get("signal")) or _signal_from_agent_brief(agent_brief)
+    payload["content_tags_json"] = _json(payload.get("content_tags") or [])
+    payload["content_classification_json"] = _json(payload.get("content_classification") or {})
+    payload["source_json"] = _json(payload.get("source") or {})
+    agent_brief = payload.get("agent_brief") or {"status": "pending"}
+    agent_status = str(payload.get("agent_status") or "pending")
+    signal = payload["signal"]
     payload["signal_json"] = _json(signal)
     payload["agent_brief_json"] = _json(agent_brief)
     payload["agent_status"] = agent_status
@@ -3376,17 +3415,9 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
 def _apply_page_row_summary(payload: dict[str, Any], summary: Mapping[str, Any]) -> None:
     payload["canonical_item_key"] = str(payload.get("canonical_item_key") or summary.get("canonical_item_key") or "")
     payload["duplicate_count"] = int(payload.get("duplicate_count") or summary.get("duplicate_observation_count") or 1)
-    payload["source_ids_json"] = _json(
-        payload.get("source_ids_json", payload.get("source_ids")) or summary.get("source_ids_json") or []
-    )
-    payload["source_domains_json"] = _json(
-        payload.get("source_domains_json", payload.get("source_domains")) or summary.get("source_domains_json") or []
-    )
-    payload["provider_article_keys_json"] = _json(
-        payload.get("provider_article_keys_json", payload.get("provider_article_keys"))
-        or summary.get("provider_article_keys_json")
-        or []
-    )
+    payload["source_ids_json"] = _json(summary.get("source_ids_json") or [])
+    payload["source_domains_json"] = _json(summary.get("source_domains_json") or [])
+    payload["provider_article_keys_json"] = _json(summary.get("provider_article_keys_json") or [])
 
 
 def _detail_agent_brief(value: Any) -> dict[str, Any]:
@@ -3397,21 +3428,42 @@ def _signal_from_agent_brief(value: Any) -> dict[str, Any]:
     payload = _json_dict(value)
     if str(payload.get("status") or "") != "ready":
         return {
-            "source": "partial",
-            "status": "partial",
-            "direction": "neutral",
-            "label_zh": "中性",
-            "method": "pending",
+            "display_signal": {
+                "source": "partial",
+                "status": "partial",
+                "direction": "neutral",
+                "label_zh": "中性",
+                "method": "pending",
+            },
+            "provider_signal": None,
+            "agent_signal": payload or {"status": "pending"},
+            "alert_eligibility": {
+                "agent_status": str(payload.get("status") or "pending"),
+                "in_app_eligible": False,
+                "external_push_ready": False,
+                "external_push_block_reason": "agent_brief_not_ready",
+            },
         }
     direction = str(payload.get("direction") or "neutral")
     return {
-        "source": "agent",
-        "status": "ready",
-        "direction": direction,
-        "label_zh": _direction_label(direction),
-        "title_zh": _json_dict(payload.get("brief_json")).get("title_zh"),
-        "summary_zh": _json_dict(payload.get("brief_json")).get("summary_zh"),
-        "method": "news_item_brief",
+        "display_signal": {
+            "source": "agent",
+            "status": "ready",
+            "direction": direction,
+            "label_zh": _direction_label(direction),
+            "title_zh": _json_dict(payload.get("brief_json")).get("title_zh"),
+            "summary_zh": _json_dict(payload.get("brief_json")).get("summary_zh"),
+            "method": "news_item_brief",
+        },
+        "provider_signal": None,
+        "agent_signal": payload,
+        "alert_eligibility": {
+            "agent_status": "ready",
+            "decision_class": payload.get("decision_class"),
+            "in_app_eligible": str(payload.get("decision_class") or "") in {"driver", "watch"},
+            "external_push_ready": _agent_publishable_summary(payload),
+            "external_push_basis": "agent_brief" if _agent_publishable_summary(payload) else None,
+        },
     }
 
 
@@ -3424,12 +3476,15 @@ def _projection_missing_signal(
     provider_score = _optional_int(provider_payload.get("score")) if provider_payload else None
     agent_status = str(agent_brief.get("status") or "pending")
     return {
-        "source": "partial",
-        "status": "pending",
-        "direction": "neutral",
-        "label_zh": "中性",
-        "method": "projection_missing",
+        "display_signal": {
+            "source": "partial",
+            "status": "pending",
+            "direction": "neutral",
+            "label_zh": "中性",
+            "method": "projection_missing",
+        },
         "provider_signal": provider_payload,
+        "agent_signal": dict(agent_brief),
         "alert_eligibility": {
             key: value
             for key, value in {

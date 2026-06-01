@@ -3,7 +3,7 @@ from __future__ import annotations
 from parallax.domains.news_intel.services.news_item_brief_input import (
     build_news_item_brief_input_packet,
 )
-from parallax.domains.news_intel.services.news_item_brief_runtime import (
+from parallax.domains.news_intel.services.news_item_brief_stage import (
     build_news_item_brief_stage,
 )
 from parallax.domains.news_intel.types.news_item_brief import (

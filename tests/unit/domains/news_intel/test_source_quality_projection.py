@@ -174,17 +174,14 @@ def test_source_quality_projection_worker_builds_rows_for_configured_windows() -
     repo = FakeSourceQualityRepository()
     db = FakeSourceQualityDB(
         repo,
-        claimed=[
-            _source_quality_claim("coindesk", window="24h"),
-            _source_quality_claim("coindesk", window="7d"),
-        ],
+        claimed=[_source_quality_claim("coindesk", window="_refresh")],
     )
     worker = NewsSourceQualityProjectionWorker(
         name="news_source_quality_projection",
         settings=SimpleNamespace(
             batch_size=100,
             statement_timeout_seconds=30,
-            windows=("24h", "7d"),
+            windows=("4h", "24h"),
         ),
         db=db,
         telemetry=object(),
@@ -196,14 +193,12 @@ def test_source_quality_projection_worker_builds_rows_for_configured_windows() -
     assert result.processed == 2
     assert db.sessions == ["news_source_quality_projection"]
     assert repo.list_calls == [
-        {"source_windows": [("coindesk", "24h"), ("coindesk", "7d")], "now_ms": NOW_MS},
+        {"source_windows": [("coindesk", "4h"), ("coindesk", "24h")], "now_ms": NOW_MS},
     ]
-    assert [row["window"] for row in repo.rows] == ["24h", "7d"]
-    assert repo.status_windows == ["24h"]
+    assert [row["window"] for row in repo.rows] == ["4h", "24h"]
+    assert repo.status_windows == ["4h"]
     assert all(row["source_id"] == "coindesk" for row in repo.rows)
-    assert db.dirty.marked_done == [
-        [_source_quality_claim("coindesk", window="24h"), _source_quality_claim("coindesk", window="7d")]
-    ]
+    assert db.dirty.marked_done == [[_source_quality_claim("coindesk", window="_refresh")]]
 
 
 def test_source_quality_projection_worker_empty_dirty_queue_does_not_scan_sources() -> None:
@@ -590,7 +585,17 @@ class FakeDirtyTargets:
         self.marked_done.append([dict(row) for row in rows])
         return len(rows)
 
-    def mark_error(self, rows, *, error: str, retry_ms: int, now_ms: int, commit: bool = True):
+    def mark_error(
+        self,
+        rows,
+        *,
+        error: str,
+        retry_ms: int,
+        now_ms: int,
+        count_attempt: bool = True,
+        commit: bool = True,
+    ):
+        del count_attempt
         raise AssertionError(f"source quality worker should not mark error: {error}")
 
     def enqueue_targets(self, rows, *, reason: str, now_ms: int, commit: bool = True, due_at_ms: int | None = None):

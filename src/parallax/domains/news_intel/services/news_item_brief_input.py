@@ -40,7 +40,7 @@ def build_news_item_brief_input_packet(
         news_item_id=_str(item.get("news_item_id")),
         title=_bounded(item.get("title"), 500),
         summary=_bounded(item.get("summary"), 2000),
-        body_excerpt=_bounded(item.get("body_text") or item.get("body_excerpt"), BODY_EXCERPT_MAX_CHARS),
+        body_excerpt=_bounded(item.get("body_text"), BODY_EXCERPT_MAX_CHARS),
         canonical_url=_bounded(item.get("canonical_url"), 2000),
         published_at_ms=_int(item.get("published_at_ms")),
         content_hash=_bounded(item.get("content_hash"), 160),
@@ -141,11 +141,11 @@ def _context_items(rows: Sequence[Any]) -> list[NewsItemBriefContextItem]:
                 author=_optional_bounded(payload.get("author"), 255),
                 canonical_url=_optional_bounded(payload.get("canonical_url"), 2000),
                 body_excerpt=_bounded(
-                    payload.get("body_text") or payload.get("body_excerpt"),
+                    payload.get("body_text"),
                     CONTEXT_BODY_EXCERPT_MAX_CHARS,
                 ),
                 published_at_ms=_optional_int(payload.get("published_at_ms")),
-                engagement=_json_object(payload.get("engagement_json") or payload.get("engagement")),
+                engagement=_json_object(payload.get("engagement_json")),
             )
         )
     return context_items
@@ -158,12 +158,11 @@ def _context_item_sort_key(row: Any) -> tuple[int, int, str]:
 
 
 def _provider_signal_evidence(item: Mapping[str, Any]) -> NewsItemBriefProviderSignalEvidence | None:
-    provider_signal = _json_object(item.get("provider_signal_json") or item.get("provider_signal"))
+    provider_signal = _json_object(item.get("provider_signal_json"))
     provider_impacts = [
         impact
         for impact in (
-            _provider_token_impact(row)
-            for row in _json_list(item.get("provider_token_impacts_json") or item.get("provider_token_impacts"))
+            _provider_token_impact(row) for row in _json_list(item.get("provider_token_impacts_json"))
         )
         if impact is not None
     ]
@@ -183,10 +182,10 @@ def _provider_signal_evidence(item: Mapping[str, Any]) -> NewsItemBriefProviderS
         method=_bounded(provider_signal.get("method") or "provider.signal", 128),
         token_impacts=sorted(provider_impacts, key=_provider_impact_sort_key)[:MAX_PROVIDER_TOKEN_IMPACTS],
         duplicate_count=_bounded_count(item.get("duplicate_count")),
-        source_ids=_bounded_string_list(item.get("source_ids_json") or item.get("source_ids"), 160),
-        source_domains=_bounded_string_list(item.get("source_domains_json") or item.get("source_domains"), 255),
+        source_ids=_bounded_string_list(item.get("source_ids_json"), 160),
+        source_domains=_bounded_string_list(item.get("source_domains_json"), 255),
         provider_article_keys=_bounded_string_list(
-            item.get("provider_article_keys_json") or item.get("provider_article_keys"),
+            item.get("provider_article_keys_json"),
             255,
         ),
     )

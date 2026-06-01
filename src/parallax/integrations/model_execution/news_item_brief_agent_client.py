@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from parallax.domains.news_intel.services.news_item_brief_runtime import (
+from parallax.domains.news_intel.services.news_item_brief_stage import (
     build_news_item_brief_stage,
 )
 from parallax.domains.news_intel.types.news_item_brief import (

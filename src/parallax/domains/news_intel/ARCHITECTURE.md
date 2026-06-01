@@ -17,12 +17,15 @@ forced into a resolved asset.
   material facts or control-plane state owned by News Intel.
 - Provider raw feed entries are inputs. The persisted fact path is
   `news_provider_items` plus normalized `news_items`.
-- `news_page_rows` is the rebuildable News page read model.
-  `signal.alert_eligibility` separates provider/in-app candidate visibility
-  (`in_app_eligible`) from external notification readiness
-  (`external_push_ready`, `external_push_block_reason`). Provider high-score
-  rows may be visible before an agent brief is publishable; external phone
-  pushes require the explicit ready state.
+- `news_page_rows` is the rebuildable News page read model. Its `signal_json`
+  is an explicit envelope: `display_signal` is the product display choice,
+  `provider_signal` preserves provider-native evidence, `agent_signal`
+  preserves compact current-brief state, and `alert_eligibility` separates
+  provider/in-app candidate visibility (`in_app_eligible`) from external
+  notification readiness (`external_push_ready`,
+  `external_push_block_reason`). Provider high-score rows may be visible before
+  an agent brief is publishable; external phone pushes require the explicit
+  ready state.
 - `news_sources` carries source classification (`provider_type`,
   `source_role`, `trust_tier`, `coverage_tags`) and source policy JSON. The
   page read model copies the compact classification fields into `source_json`
@@ -47,13 +50,32 @@ forced into a resolved asset.
 
 ## Stage Map
 
+Required core:
+
+```text
+news_fetch -> news_item_process -> news_page_projection
+```
+
+Optional enhancement:
+
+```text
+news_item_process -> news_item_brief -> news_page_projection
+```
+
+Operational projection:
+
+```text
+news_fetch/source refresh -> news_source_quality_projection
+  -> page dirty only when compact source status changes
+```
+
 | Stage | Responsibility |
 |-------|----------------|
-| Fetch | Reconcile configured sources into `news_sources`, fetch due feeds, persist provider items and normalized news items. |
-| Item processing | Read raw `news_items`, extract entities and token mentions deterministically, classify item content, and write attention-safe observations and fact candidates. |
-| Item brief | Build bounded item/token/fact packets, reserve `news.item_brief`, execute through the shared `AgentExecutionGateway`, shape-validate the standard brief output, write the run ledger, and upsert the current brief. Evidence refs and sparse source context are audit/quality metadata, not publication gates. |
-| Page projection | Rebuild the News page rows from news facts, item lifecycle, and the current item brief. |
-| Source quality projection | Rebuild per-source quality windows from source/fetch/item/token/fact/brief/context rows and update compact source quality status. |
+| Fetch | Reconcile configured sources into `news_sources`, fetch due feeds, persist provider items and normalized news items, then enqueue semantic page/source-refresh work. It does not create agent brief work. |
+| Item processing | Read raw `news_items`, extract entities and token mentions deterministically, classify item content, write attention-safe observations and fact candidates, and admit optional item-brief work only after processed-state policy passes. |
+| Item brief | Build bounded item/token/fact packets, reserve `news.item_brief`, execute through the shared `AgentExecutionGateway`, shape-validate the standard brief output, write the run ledger, upsert the current brief, and dirty page rows. Evidence refs and sparse source context are audit/quality metadata, not publication gates. |
+| Page projection | Rebuild the News page rows from news facts, item lifecycle, provider-native signal, and the current item brief. |
+| Source quality projection | Own source-quality windows, expand source refresh intents into configured source/window work, rebuild source quality rows, and dirty page rows only when compact source quality status changes. It is an operational projection, not item hot-path fanout. |
 | API/UI | Read-only surfaces over projected `news_page_rows`, with explicit source/content/decision filters and source status diagnostics. Raw `news_items` are worker inputs, not public fallback rows. |
 
 ## Provider Waves
