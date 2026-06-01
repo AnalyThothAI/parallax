@@ -2714,7 +2714,24 @@ class NewsRepository:
             ),
             latest_quality AS (
               SELECT DISTINCT ON (quality.source_id)
-                     quality.*
+                     quality.row_id,
+                     quality.source_id,
+                     quality."window",
+                     quality.computed_at_ms,
+                     quality.fetch_success_rate,
+                     quality.items_fetched,
+                     quality.items_inserted,
+                     quality.duplicate_rate,
+                     quality.process_success_rate,
+                     quality.resolved_token_rate,
+                     quality.attention_rate,
+                     quality.accepted_fact_rate,
+                     quality.brief_ready_rate,
+                     quality.median_lag_ms,
+                     quality.quality_score,
+                     quality.diagnostics_json,
+                     quality.projection_version,
+                     quality.payload_hash
                 FROM news_source_quality_rows AS quality
                ORDER BY
                  quality.source_id,
