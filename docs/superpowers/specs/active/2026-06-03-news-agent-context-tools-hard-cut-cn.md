@@ -1,353 +1,683 @@
-# Spec — News Agent Context Tools Hard Cut
+# Spec — News Local Research Harness Hard Cut
 
-**Status**: Draft  
-**Date**: 2026-06-03  
-**Owner**: Qinghuan / Codex  
-**Base**: local `main` at `a80b705a`  
+**Status**: Draft
+**Date**: 2026-06-03
+**Owner**: Qinghuan / Codex
+**Base**: local `main` at `a80b705a`
+**External reference**: `shareAI-lab/learn-claude-code` at `91682fa7fc1f919a7cf38a534548115565989943`
 **Related**:
 
 - `src/parallax/domains/news_intel/ARCHITECTURE.md`
-- `docs/superpowers/specs/active/2026-06-01-news-intel-kiss-simplification-cn.md`
-- `docs/superpowers/specs/completed/2026-06-03-news-intel-hard-cut-residual-root-fix-cn.md`
 - `docs/AGENT_EXECUTION.md`
+- `src/parallax/platform/agent_execution.py`
+- `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py`
+- `src/parallax/domains/news_intel/services/news_item_brief_input.py`
+- `src/parallax/domains/news_intel/prompts/news_item_brief.md`
 
-## Background
+## Executive Summary
 
-News Intel 当前已经完成了必要的链路收敛：News owns configured source ingestion、deterministic entity/token/fact observations、item-scoped agent briefs，以及独立的 News page read model（`src/parallax/domains/news_intel/ARCHITECTURE.md:3`）。News bounded context 明确不拥有 Token Radar、Pulse 或 market facts，News workers 也不能写这些跨域 read models（`src/parallax/domains/news_intel/ARCHITECTURE.md:7`）。当前 truth/read-model 规则也已经明确：`news_item_agent_runs` 是单条新闻 brief attempt 的 append-only audit ledger，`news_item_agent_briefs` 是 current item-scoped brief read model，且 `NewsItemBriefWorker` 是二者唯一 runtime writer（`src/parallax/domains/news_intel/ARCHITECTURE.md:43`）。
+This spec replaces the earlier fixed-prefetch News context design with an **adaptive News-local research harness**.
 
-最新 stage map 已经把核心链路和可选 agent 链路分开：required core 是 `news_fetch -> news_item_process -> news_page_projection`，optional enhancement 是 `news_item_process -> news_item_brief -> news_page_projection`（`src/parallax/domains/news_intel/ARCHITECTURE.md:53`）。Fetch 只负责 provider facts、normalized news items 和 semantic page/source-refresh work，不再创建 agent brief work；item processing 才负责 processed-state policy 后的 optional item-brief admission（`src/parallax/domains/news_intel/ARCHITECTURE.md:72`）。
+The worker still owns admission, persistence, and current brief writes. The shared `AgentExecutionGateway` and `AgentStageSpec` remain unchanged. The change is inside the News item brief lane:
 
-当前 News agent 入口是 `NewsItemBriefWorker.run_once()`。它先读取 brief queue depth，再 reserve `news.item_brief` lane，只有 reservation 成功后才 claim dirty targets（`src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:69`）。随后 worker 加载 candidates、执行 processed-state eligibility、构建 packet、检查 current brief freshness、调用 provider，并在验证通过后写 `news_item_agent_runs` 和 `news_item_agent_briefs`（`src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:99`, `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:141`, `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:153`, `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:238`, `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:271`, `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:289`）。写 current brief 时会 enqueue page reprojection，但不改其他 read model（`src/parallax/domains/news_intel/runtime/news_item_brief_worker.py:569`）。
+1. Build a small base packet from the current item, token lanes, fact lanes, and provider evidence.
+2. Run a **deterministic News research policy** that chooses bounded News-owned read-only tool calls from content class, fact lanes, observation summary, and resolved target refs.
+3. Execute those tool calls in the News harness through a registry, permission hooks, deterministic budgets, redaction, and hashing.
+4. Ask a **Brief Synthesizer** model stage to produce the final `NewsItemBriefPayload` v2 using only the base packet and compact research packet.
+5. Validate, append `news_item_agent_runs`, upsert `news_item_agent_briefs`, and dirty page projection.
 
-当前 agent input 是 bounded packet，而不是可检索上下文。`build_news_item_brief_input_packet()` 只接收 item、token mentions、fact candidates 和 agent config（`src/parallax/domains/news_intel/services/news_item_brief_input.py:28`），packet 只包含 `news_item`、`token_lanes`、`fact_lanes`、`provider_signal_evidence`、`evidence_refs`、constraints、prompt/schema version 和 input hash（`src/parallax/domains/news_intel/types/news_item_brief.py:195`）。packet hash 由 material input payload 生成，排除 `input_hash` 自身（`src/parallax/domains/news_intel/services/news_item_brief_input.py:80`）。测试已经明确 legacy `context_items` 不应进入 packet（`tests/unit/domains/news_intel/test_news_item_brief_input.py:179`）。
+This is closer to the harness philosophy in `learn-claude-code` in the parts that matter for Parallax P0: tool schema, permission hooks, context compaction, audit, and phase-specific recovery. It is not a full Claude Code/PI runtime because the model does not receive native tools and does not control the database. That is intentional: live News brief latency is already high, and the useful tool policy is mostly deterministic from existing News facts.
 
-当前 prompt 明确要求 agent 不调用工具、不请求外部数据、不使用 packet 外知识（`src/parallax/domains/news_intel/prompts/news_item_brief.md:5`）。这与当前 `AgentStageSpec` 的能力一致：stage spec 只有 lane、stage、instructions、input payload、output type、prompt/schema metadata 和 trace metadata，且 `extra="forbid"`，没有 tools 字段（`src/parallax/platform/agent_execution.py:130`）。News adapter 也只是 build stage 并交给 shared gateway audit/execute（`src/parallax/integrations/model_execution/news_item_brief_agent_client.py:51`, `src/parallax/integrations/model_execution/news_item_brief_agent_client.py:55`）。
+## Why The Previous Design Was Not Enough
 
-Repository 里已经存在可复用的 News-owned evidence surface，但多数没有进入 item brief packet。`load_items_for_brief_targets()` 目前会取 processed item、enabled observation summary、current brief、latest run、token mentions 和 fact candidates（`src/parallax/domains/news_intel/repositories/news_repository.py:2021`, `src/parallax/domains/news_intel/repositories/news_repository.py:2062`, `src/parallax/domains/news_intel/repositories/news_repository.py:2073`, `src/parallax/domains/news_intel/repositories/news_repository.py:2079`）。`get_news_item_detail()` 已经能返回 observation edges 和 provider observations 的 public-safe 版本，并剥离 provider item id、source item key、raw payload 等敏感/内部字段（`src/parallax/domains/news_intel/repositories/news_repository.py:2238`, `src/parallax/domains/news_intel/repositories/news_repository.py:2279`, `tests/integration/domains/news_intel/test_news_repository.py:3517`）。source quality 输入、source status 和 dedup diagnostics 已经存在于 repository 层（`src/parallax/domains/news_intel/repositories/news_repository.py:2328`, `src/parallax/domains/news_intel/repositories/news_repository.py:2558`, `src/parallax/domains/news_intel/repositories/news_repository.py:2671`）。
+The previous plan improved the packet by prefetching three fixed context classes. That would help, but it was too coarse: it did not define tools as typed, permissioned, compacted, auditable interfaces.
 
-## Problem
+The missing harness properties were:
 
-当前 News agent 能把单条 provider high-score 新闻转成结构化中文 brief，但它看不到足够的 News-owned context：它不知道这条新闻是首次出现、重复观测、多源确认还是旧消息回流；它不能稳定利用 source quality、dedup/observation history、相似新闻、旧 brief/run history；也不能查询项目自己的 News 数据库来验证“数据库中是否已有同类型新闻”。结果是 agent 的判断仍停留在单条 item + token/fact packet 上，缺少符合 trader/operator 工作流的 novelty、confirmation、source consensus 和历史对照能力。
+- **Explicit research policy**: the host did not first declare why a context lane was useful or skipped.
+- **Adaptive observation**: every item got the same context, even when different content classes need different evidence.
+- **Tool registry**: repository reads were not described as a stable tool catalog with schemas, permissions, and result contracts.
+- **Prompt assembly**: one prompt had to carry identity, policy, research semantics, and output schema instead of runtime sections.
+- **Context budget**: result truncation existed, but not as a first-class pre-model budget pipeline.
+- **Recovery and audit**: failures in research policy, tool execution, and synthesis were not separated.
 
-这个问题不应该通过改 shared application workflow kernel 解决。当前 `AgentStageSpec` 没有 tool contract，强行做 gateway-level tool-calling 会变成全局 agent runtime 改造。正确方向是在 News agent 自己的 adapter/worker 边界内 hard-cut 出一个 read-only、bounded、DB-backed context tool facade，把工具结果作为 material input snapshot 喂给现有 typed stage。
+`learn-claude-code` repeatedly emphasizes that an agent product is the model plus a harness: tools, knowledge, observation, action interfaces, and permissions. Its lessons also show stable patterns this design borrows: tool schema plus handler dispatch, todo planning, hook-based permission, runtime prompt assembly, context compaction, memory/audit separation, and error recovery.
 
-## First Principles
+## Current Parallax Constraints
 
-1. PostgreSQL material facts and current read models remain product truth. Agent trace、tool result、prompt summary 和 model output 都不能替代 `news_items`、`news_item_observation_edges`、`news_token_mentions`、`news_fact_candidates`、`news_item_agent_runs`、`news_item_agent_briefs` 或 `news_page_rows` 的既有 ownership（`src/parallax/domains/news_intel/ARCHITECTURE.md:13`）。
-2. News agent enhancement must stay inside the News agent boundary. News domain code delegates model execution to `AgentExecutionGateway` but owns validation and persistence（`src/parallax/domains/news_intel/ARCHITECTURE.md:108`）。This work must not add shared gateway tools, new global runtime hooks, or cross-domain write paths.
-3. Context is a turn snapshot. Every DB-backed context result included in the agent run must be bounded, deterministic, hashed, and included in the material input hash so freshness/replay semantics remain content-stable（`src/parallax/domains/news_intel/services/news_item_brief_input.py:77`, `src/parallax/platform/agent_execution.py:145`）。
-4. Tool wrappers are a safety boundary, not model freedom. The model must never receive raw SQL, raw provider payloads, raw HTTP/WS provider access, ORM sessions, credentials, or unbounded result sets.
-5. Hard cut, no compatibility code. The new News item brief packet/schema/prompt replaces the old packet shape. Implementation must not keep v1/v2 dual parsing, legacy `context_items` restoration, feature flags for old behavior, or fallback prompts.
+The shared Parallax agent execution contract is not a Claude-style runtime tool loop today:
+
+- `AgentStageSpec` has one `input_payload` and no `tools` field.
+- News model execution currently builds a stage and delegates to `AgentExecutionGateway`.
+- `NewsItemBriefWorker` is the only runtime writer for `news_item_agent_runs` and `news_item_agent_briefs`.
+- News Intel cannot import or write Token Radar, Pulse, or market read models.
+
+Therefore this spec implements a **local harness loop inside News**:
+
+```text
+Host research policy -> News harness executes read-only tools -> LLM synthesizer JSON
+```
+
+It does not implement:
+
+```text
+LLM native tool_use -> gateway executes tools -> tool_result -> same model loop
+```
+
+That second shape belongs to a separate shared-kernel spec.
 
 ## Goals
 
-- G1. Item brief input becomes a News-owned context snapshot containing the base item packet plus bounded DB-backed retrieval context for observation history, source quality, similar/repeat news, and brief/run history.
-- G2. All retrieval context is produced by typed read-only domain tools with explicit input schema, source table list, query version, row limit, truncation flag, and `result_hash`.
-- G3. The model output can express novelty and confirmation, not only direction and market read. New output semantics must cover `novelty_status`, `confirmation_state`, `source_consensus_zh`, and `retrieval_notes_zh`.
-- G4. No shared `AgentExecutionGateway`, `AgentStageSpec`, lane accounting, or application workflow kernel changes are required.
-- G5. No News provider IO, external HTTP call, raw SQL tool, mutation tool, or cross-domain market/Token Radar repository is exposed to the News agent in P0/P1.
-- G6. Old current briefs from previous schema/prompt are not served through compatibility branches. They are either naturally stale through version bump plus dirty work, or explicitly cleared/reprojected by the implementation plan.
-- G7. `news_item_agent_runs` remains the audit ledger and `news_item_agent_briefs` remains the current read model. Tool results are run input evidence, not a new business fact table.
-- G8. Architecture tests continue to enforce that `news_intel` does not reference Token Radar, Pulse, or market tick tables（`tests/architecture/test_news_intel_boundaries.py:11`, `tests/architecture/test_news_intel_boundaries.py:18`）。
+- G1. Give News item brief a News-local research harness where host policy chooses bounded News-owned read tools before final synthesis.
+- G2. Keep all tools read-only, schema-described, permission-checked, redacted, budgeted, hashed, and audited.
+- G3. Preserve Kappa/CQRS boundaries: PostgreSQL News facts/read models remain truth; tool results are run input evidence only.
+- G4. Add prompt assembly for the v2 synthesizer and make research-policy/tool semantics explicit in the synthesis packet.
+- G5. Add output semantics for novelty, confirmation, source consensus, and retrieval notes.
+- G6. Hard-cut old prompt/schema/current brief serving; no v1/v2 compatibility reader.
+- G7. Keep shared `AgentExecutionGateway`, `AgentStageSpec`, lane accounting, and application workflow kernel unchanged.
+- G8. Provide objective latency and failure controls so the enhanced agent does not overwhelm the worker lane.
 
 ## Non-goals
 
-- N1. This spec does not implement gateway-level dynamic tool-calling or add a `tools` field to `AgentStageSpec`.
-- N2. This spec does not give the model arbitrary SQL, provider clients, network access, write access, or retryable side-effect tools.
-- N3. This spec does not restore `news_context_items`, `context_items`, replies, comments, social threads, or any half-connected legacy context path.
-- N4. This spec does not reintroduce `news_story_groups`, `news_story_members`, or a story projection worker.
-- N5. This spec does not add market price, Token Radar, Pulse, macro, or cross-domain trading context to the News domain. Those require a later adapter-level spec if still needed.
-- N6. This spec does not redesign `/api/news` or the React News page beyond exposing compact new brief fields already carried by the current brief read model.
-- N7. This spec does not preserve old item brief schema output as a serving fallback.
+- N1. No shared gateway-level tool-calling and no `tools` field on `AgentStageSpec`.
+- N2. No arbitrary SQL, provider clients, external HTTP, write tools, mutation tools, or retryable side-effect tools.
+- N3. No `news_context_items`, legacy `context_items`, replies/comments/social threads, or story projection tables.
+- N4. No cross-domain Token Radar, Pulse, market tick, macro, or CEX context in P0.
+- N5. No long-term LLM memory table. News DB facts and run ledger are enough for this cut.
+- N6. No public API redesign beyond compact v2 brief fields and stale state.
+- N7. No attempt to make source quality an admission dependency.
 
 ## Target Architecture
 
-After this change, `news_item_brief` remains one worker and one typed model stage, but its input builder becomes a small News agent harness:
-
-```text
-item brief dirty target
-  -> reserve news.item_brief
-  -> claim processed item target
-  -> load base candidate facts
-  -> evaluate item brief eligibility
-  -> compile News agent context snapshot
-  -> build NewsItemBriefInputPacket v2
-  -> skip fresh current brief by v2 input hash/artifact/prompt/schema/validator
-  -> execute existing typed AgentStageSpec
-  -> validate NewsItemBriefPayload v2
-  -> append news_item_agent_runs
-  -> upsert news_item_agent_briefs
-  -> page dirty
+```mermaid
+flowchart TD
+  A["brief_input dirty target"] --> B["NewsItemBriefWorker"]
+  B --> C["reserve news.item_brief lane"]
+  C --> D["claim processed target"]
+  D --> E["load base candidate facts"]
+  E --> F["eligibility policy"]
+  F -->|ineligible| X["mark done; no research; no model synthesis"]
+  F -->|eligible| G["build NewsItemBriefBasePacket"]
+  G --> H{"preliminary freshness gate"}
+  H -->|fresh and not forced| Y["skip model and tools"]
+  H -->|stale| Z["NewsItemResearchPolicy"]
+  Z --> K["NewsItemResearchPlan from host policy"]
+  K -->|no tool calls| AA["empty research packet"]
+  K --> L["PreToolUse hooks and budget guard"]
+  L --> M["NewsResearchToolRegistry"]
+  M --> N["execute SELECT-only tools"]
+  N --> O["PostToolUse redact + compact + hash"]
+  AA --> P["build NewsItemBriefSynthesisPacket"]
+  O --> P["build NewsItemBriefSynthesisPacket"]
+  P --> Q{"final freshness gate"}
+  Q -->|same synth input hash| Y
+  Q -->|changed| R["assemble synthesizer prompt"]
+  R --> S["Brief Synthesizer stage"]
+  S --> T["validate NewsItemBriefPayload v2"]
+  T --> U["insert news_item_agent_runs"]
+  T --> V["upsert news_item_agent_briefs"]
+  V --> W["enqueue page reprojection"]
 ```
 
-### NewsAgentContextCompiler
+## Plain-English Walkthrough
 
-`NewsAgentContextCompiler` is the deterministic pre-model compiler for a single `news_item_id`. It receives the already-loaded candidate and uses News repository read methods to fetch bounded context. It does not own persistence and does not call the model. It returns:
+1. **The worker receives a brief target.**
+   This is the same queue surface as today. Backpressure and lane reservation still happen before claim.
 
-- base item/token/fact/provider packet material;
-- ordered `context_tool_results`;
-- `context_budget` metadata;
-- `context_snapshot_hash`;
-- exclusion reasons when a tool has no rows, is skipped by policy, or truncates output.
+2. **The worker loads the item and checks eligibility.**
+   If the item is not processed or does not pass the brief policy, the worker stops. It does not run research tools or the model.
 
-The compiler is part of News item brief input construction. It must run after item eligibility passes and before current brief freshness check, because `context_snapshot_hash` changes the packet `input_hash`.
+3. **The worker builds the base packet.**
+   The base packet is the small, deterministic view of the current item: headline/body excerpt, token lanes, fact lanes, provider signal evidence, source ids, and current versions.
 
-### NewsAgentReadToolFacade
+4. **A cheap freshness gate may skip work.**
+   If the current brief already matches the base packet, prompt/schema/tool catalog versions, and the dirty reason does not force context refresh, the worker can skip the expensive path.
 
-`NewsAgentReadToolFacade` wraps repository reads as typed read-only tools. These tools are not exposed to `AgentStageSpec` as runtime tools; they are deterministic context fetches whose results enter the packet. Every tool returns an envelope:
+5. **The harness chooses research tools deterministically.**
+   `NewsItemResearchPolicy` uses content class, base budget report, observation summary, target resolution quality, fact lanes, and dirty reason. Low-signal or already self-contained items get an explicit empty research packet. Fact-bearing or target-specific items get bounded tool calls. This is not old compatibility mode: the synthesizer still writes strict v2 output and the run ledger still records why research was skipped or selected.
+
+6. **The News harness executes only allowed tools.**
+   The model does not get SQL or DB handles. The host policy names tools from a registry. The harness validates the tool name and arguments, enforces limits, blocks unsafe or cross-domain requests, and runs SELECT-only repository methods.
+
+7. **Tool results are compacted and hashed.**
+   Raw provider payloads, source item keys, feed URLs, sync cursors, credentials, and oversized text are removed. Each result gets a stable material hash. Runtime metadata like latency and `generated_at_ms` is audit-only.
+
+8. **The Synthesizer writes the final brief.**
+   It sees the base packet and compact research packet. It outputs one strict `NewsItemBriefPayload` v2 with novelty, confirmation, source consensus, and retrieval notes.
+
+9. **Validation is still the publication gate.**
+   The validator checks schema, grounding, evidence refs, action-audit violations, heuristic-vs-exact claims, and unsupported assets.
+
+10. **The run is audited and the current brief is updated.**
+    `news_item_agent_runs` stores the research policy decision, tool result hashes, synthesis audit, and response. `news_item_agent_briefs` stores the current v2 brief. Page projection is dirtied.
+
+## Harness Mapping
+
+| Harness idea from `learn-claude-code` | News design mapping | Objective fit |
+|---|---|---|
+| Agent loop stays simple; mechanisms attach around it | Shared gateway stays unchanged; News adds host research policy -> tool executor -> synthesizer orchestration | Fits current `AgentStageSpec` without pretending it has native tools |
+| Tool = schema + handler | `NewsResearchToolDefinition` + repository handler | Clear, testable, bounded action surface |
+| TodoWrite prevents drift | Host policy outputs `research_todos` and skip/selection reasons before tool calls | Improves reasoning visibility without giving mutation power |
+| PreToolUse / PostToolUse hooks | Permission/redaction/hash hooks around each News tool call | Enforces trust boundary before results reach model |
+| Prompt assembled at runtime | Synthesizer prompt is built from sections and receives a typed research packet | Reduces prompt contradiction and makes evidence policy explicit |
+| Context compaction and tool budget | Per-tool row limits, total char budget, deterministic truncation, result hashes | Keeps model input predictable and replayable |
+| Memory vs session state separation | News DB facts are memory; run ledger is audit; neither is blindly injected | Avoids self-invalidating run-history context |
+| Error recovery | Separate research policy, tool, and synthesis failure handling | Failures are diagnosable and retry policy can differ by phase |
+
+This is not a perfect Claude Code clone. It is a product-specific adaptation. P0 deliberately keeps planning deterministic because the live DB shows tool selection is mostly content-class and evidence-lane driven, while extra model turns would materially increase latency.
+
+## Concrete Example
+
+Suppose a processed item arrives:
 
 ```text
-tool_name
-schema_version
-query_version
-input
-source_tables
-limit
-rows
-truncated
-result_hash
-generated_at_ms
+Title: "SEC is said to approve spot SOL ETF filings"
+Symbols: SOL
+Source: specialist media
+Published: now
 ```
 
-Tool envelopes are sorted by `tool_name` and `query_version` before hashing. Row ordering must be deterministic. Empty results are explicit rows or empty arrays, not omitted fields.
+The worker does not fetch "all news in the last 24 hours" and paste it into the prompt. The flow is:
 
-### Required P0 Tools
+1. Base packet contains the current item only: title, summary/body excerpt, source role/trust tier, extracted SOL mention, fact candidates, provider signal, and item observation summary.
+2. `NewsItemResearchPolicy` sees a fact-bearing ETF/regulation-style item with a resolved SOL target and emits a bounded plan, for example:
+   - `get_observation_history(news_item_id, limit=25)`;
+   - `search_news_archive(query_terms=["SOL ETF", "SEC", "approval"], symbols=["SOL"], window_hours=168, limit=8)`;
+   - `get_target_news_context(target_refs=[{"target_type": "CexToken", "target_id": "cex_token:SOL"}], window_hours=72, limit=12)`;
+   - `get_fact_context(news_item_id, include_rejected=false, limit=20)`.
+3. Executor still clamps every input even though P0 calls are host-generated. If a future P1 planner asks for `window_hours=720`, the archive search becomes `168`. If it asks for `limit=100`, it becomes `8` or `12` depending on the tool.
+4. Tools query PostgreSQL through `NewsRepository` only. They return compact rows such as other item ids, short titles, published time, source role, match reason, confidence, and compact current brief status. They do not return raw provider payloads or full historical article bodies.
+5. Synthesizer receives the compact evidence and can say: "this is an update in a 72h SOL ETF stream" or "multi-source confirmed" only if exact observation/source evidence supports that claim.
 
-1. `get_news_observation_history`
+Therefore "24h" is not the universal rule. P0 uses different windows by evidence type:
 
-   Purpose: answer whether the item is single-source, multi-source, repeated, or dedup-collapsed. Output includes enabled source count, duplicate count, source roles/trust tiers, provider payload status, published/observed time bounds, match/dedup confidence where available, and public URLs. It must use public-safe observation data like the detail query already exposes（`src/parallax/domains/news_intel/repositories/news_repository.py:2238`）。
+- exact observation history: no time window, item-scoped, capped by edge count;
+- archive similarity: default 168h, max 168h, max 8 compact rows;
+- target context: default 72h, max 168h, max 12 compact rows;
+- source quality: configured source-quality windows, usually `24h` and `7d`;
+- fact context: no time window, item-scoped, max 20 compact fact rows.
 
-2. `get_source_quality_context`
+Real-data calibration from the live DB on 2026-06-03 showed an important nuance: multiple `source_id`s can still be the same aggregator domain. For example, `opennews-news` and `opennews-listing` both map to `6551.io`. That is useful duplicate/coverage evidence, but it is not independent source confirmation. The validator must treat independent confirmation as `source_domain_count > 1` or a future explicit independent-source policy, not merely `source_count > 1`.
 
-   Purpose: let the agent distinguish authority/specialist/aggregator quality and fetch/processing health. Output includes current compact `source_quality_status`, latest quality row summary, recent fetch outcome, and source classification. It may reuse `list_source_status()` and source-quality rows（`src/parallax/domains/news_intel/repositories/news_repository.py:2558`）。
+The same live sample also showed why tool choice must be evidence-lane aware rather than score-only:
 
-3. `get_existing_brief_history`
+| Evidence lane | Live DB observation | Design consequence |
+|---|---|---|
+| Source/observation | Past 24h had many duplicate edges, but multi-`source_id` examples still had `source_domain_count = 1` because both lanes were `6551.io` | `get_observation_history` supports duplicate/coverage claims, not independent confirmation, unless domains differ |
+| Token mentions | Broad subjects such as `BTC`, `ETH`, `SOL`, `CL`, and synthetic `XYZ-CL` produce very large candidate sets | target context must prefer resolved `target_type`/`target_id`; symbol-only rows stay heuristic |
+| Facts | Facts are dense for ETF/listing/regulation/security/protocol classes and nearly absent for low-signal, crypto-market, and geopolitics classes | `get_fact_context` should be conditional, not a default call |
+| Source quality | Current live sources are OpenNews lanes on the same aggregator domain with quality scores around watch tier | source quality is source-health context, not source-independence evidence |
+| Latency | Current single-stage ready briefs already run around p50 9s and p95 19s in the sampled lane | P0 must avoid an extra planner model call; every added context row must earn its keep |
 
-   Purpose: prevent repeated failures and make current/previous audit state visible. Output includes current brief compact metadata and latest N run summaries: status, outcome, input/output hash, prompt/schema/artifact versions, error class, latency, and usage summary. It must not return full old `request_json` or full old `response_json` by default.
+Concrete live simulation:
 
-4. `find_similar_news_items`
+- Item: `news-item-44d7b208d471b817414ebacb3915c09d`, title `Grayscale gets behind the hype, launching its HYPG Hyperliquid ETF on Nasdaq`.
+- Base shape: `content_class=etf_fund_flow`, provider score 85, resolved `HYPE -> CexToken`, ambiguous `NASDAQ`, one `attention` ETF/fund-flow fact, source domain `6551.io`.
+- Research policy selects `get_observation_history`, `get_fact_context`, narrow archive search on `Grayscale/HYPG/HYPE`, and resolved `get_target_news_context` for HYPE.
+- Research policy does not select broad symbol context for `NASDAQ`, does not treat source quality as independent confirmation, and does not pass all HYPE rows. The 72h HYPE context can be hundreds of mentions, so the tool returns aggregate counts, high-score counts, latest/top evidence, truncation flags, and matching basis.
 
-   Purpose: answer the user's core need: the DB may already have同类型新闻. Output includes up to 8 similar items from News-owned facts/read models with match reason and confidence hint. Matching may use canonical URL/key, provider article keys, content hash, title fingerprint, source-domain/title overlap, token overlap, and recent page rows. It must not use removed story tables.
+Current live fact candidates are `attention` rows, not accepted facts. The synthesizer may use them as structured evidence candidates but must not phrase them as independently verified facts.
 
-### P1 Tools
+## Core Components
 
-1. `get_token_mentions_context`
+### `NewsItemBriefWorker`
 
-   Purpose: expose all mention resolution states and ambiguity reasons in a compact tool result when the main packet truncates or when output validation needs stronger asset provenance.
+Owns orchestration:
 
-2. `get_fact_candidates_context`
+- reserve/claim;
+- eligibility;
+- base packet construction;
+- research policy decision;
+- tool execution;
+- synthesis call;
+- validation;
+- run/current brief persistence;
+- dirty page enqueue.
 
-   Purpose: expose accepted/attention/rejected fact candidates with evidence quotes and rejection reasons when a single item has many facts or the model needs to understand deterministic validation boundaries.
+It must not hold a DB session while calling the synthesis model stage.
 
-3. `get_related_provider_signal_context`
+### `NewsItemBriefPromptAssembler`
 
-   Purpose: compare current provider-native signal with recent provider high-score items in the same source/domain/token neighborhood. This is still News-owned because it reads `news_items.provider_signal_json` and `news_page_rows`, not external provider APIs.
+Builds the v2 synthesizer prompt from sections.
 
-### Prompt And Output Schema
+Required sections:
 
-The prompt must be hard-cut to the new contract:
+- identity and role;
+- News boundary and trust policy;
+- research packet contract;
+- context budget;
+- evidence and uncertainty rules;
+- output schema guidance;
+- stale/hard-cut version metadata.
 
-- remove the statement that the agent does not use tools or packet-external context;
-- replace it with: the agent may use only the packet and `context_tool_results`;
-- explain that tool results are source-backed DB observations, not final truth;
-- require explicit uncertainty when similar news is heuristic rather than exact identity;
-- prohibit trading instructions as today.
+The prompt is assembled from real runtime state, not by keyword guessing.
 
-`NewsItemBriefPayload` becomes v2 and adds:
+### `NewsItemResearchPolicy`
+
+Input: `NewsItemBriefBasePacket`.
+
+Output: `NewsItemResearchPlan`.
+
+This deterministic policy chooses tool calls and emits visible `research_todos`, skip reasons, and evidence-lane reasons. High score only gates eligibility; it does not justify calling every tool. The policy must be versioned and tested against live-data shapes such as fact-bearing ETF/listing/regulation items, broad market subjects, same-domain multi-source lanes, and unresolved symbols.
+
+### `NewsResearchToolRegistry`
+
+Defines allowed tools:
+
+- name;
+- description;
+- input schema;
+- query version;
+- source tables;
+- max rows;
+- max chars;
+- supports confirmation claims;
+- supports source-health claims;
+- requires allowed context target;
+- result basis enum;
+- concurrency safety;
+- handler.
+
+Adding a new News research tool means adding one definition and one handler. The worker loop does not grow one `if` branch per tool.
+
+### `NewsResearchToolExecutor`
+
+Executes policy-selected tools:
+
+- validates schema;
+- runs pre-tool hooks;
+- batches concurrency-safe read tools;
+- calls repository handlers;
+- runs post-tool hooks;
+- returns redacted, compact, hashed `NewsResearchToolResult` objects.
+
+### Brief Synthesizer Stage
+
+Input: `NewsItemBriefSynthesisPacket`.
+
+Output: `NewsItemBriefPayload` v2.
+
+It may use only the base packet and research packet. It must not invent unseen sources or turn heuristic matches into canonical confirmation.
+
+### Validator
+
+The validator remains stricter than the prompt:
+
+- rejects schema drift;
+- rejects non-empty runtime action traces such as `tool_calls`, `tools`, or `handoffs` in model audit;
+- validates asset grounding against base packet and tool evidence;
+- validates novelty/confirmation claims against result confidence;
+- marks output unpublishable when evidence is insufficient.
+
+## P0 Tool Catalog
+
+All P0 tools are read-only PostgreSQL SELECTs owned by `news_intel`. No tool receives a SQL string, table name, provider URL, credential, network target, or mutation instruction from the model.
+
+The executor applies these global hard limits before any repository handler runs:
+
+- max 5 tool calls per item;
+- max 2 `search_news_archive` calls per item;
+- target max 3,000 material result characters across all tool outputs;
+- hard max 6,000 material result characters across all tool outputs;
+- max 25 rows for any one tool, with stricter defaults below;
+- max 5 query terms and max 5 symbols per archive call;
+- max 5 target refs per target-context call, selected only from base-packet allowed refs;
+- deterministic truncation order, with `truncated=true` and before/after counts.
+
+The synthesizer input budget is separate from DB execution:
+
+- base packet target max: 12,000 material characters;
+- research plan target max: 1,000 material characters;
+- tool results target max: 3,000 material characters;
+- tool results hard max: 6,000 material characters;
+- total synthesis packet target max: 18,000 material characters before prompt text.
+
+If base token/fact lanes exceed the base budget, the packet includes a `base_budget_report` with original counts, kept counts, and truncation reasons. `NewsItemResearchPolicy` uses this to decide whether `get_fact_context` is worth calling.
+
+### Research Tool Selection Policy
+
+The host policy must not treat provider score as a command to fetch every context lane. Score decides eligibility; content class and base-packet evidence decide tool choice.
+
+| Item shape | Default tool policy | Tools usually skipped |
+|---|---|---|
+| `exchange_listing`, `etf_fund_flow`, `regulation`, `security_hack`, `protocol_development` with fact candidates | Call `get_observation_history`; call `get_fact_context` when facts are truncated or fact status/reason matters; use archive search with title/fact terms; use target context only for resolved targets | broad symbol fallback |
+| `crypto_market` broad price/risk update | Call archive search only with narrow title terms or resolved target refs; target context only if there is a specific token catalyst | fact context when no fact candidates; source quality unless source reliability is disputed |
+| `energy_geopolitics`, rates/macro, market-structure news | Call archive search with event terms; target context only for resolved non-crypto targets and label market-subject heuristics | crypto asset context claims from `BTC`/`CL` impact lists |
+| `low_signal` but high provider score | Call observation history and source quality only when source/duplicate status affects publishability; archive search only for distinctive event phrases | target context from broad symbols; fact context if no facts |
+| Base packet reports many token mentions but low resolution confidence | Prefer no target context; ask archive search for title/fact matches instead | symbol-only target lookup except as explicitly heuristic |
+
+The policy must reject or downgrade `get_target_news_context` calls using only broad symbol fallbacks when the research todo claims confirmation, novelty, or source consensus. A fallback may be allowed only when the todo explicitly says it is looking for weak background context.
+
+Target context must return aggregate counts and top evidence, not a raw recent-news list. A live HYPE ETF example had about 252 HYPE mentions in 72h; the tool should surface counts, high-score counts, source-domain counts, latest items, and top 3-5 compact evidence rows rather than expanding all rows into the synthesizer packet.
+
+### `get_observation_history`
+
+Purpose: determine whether the current canonical item is single-source, multi-source, repeated, or dedup-collapsed.
+
+Input:
+
+```json
+{"news_item_id": "string", "limit": 25}
+```
+
+Defaults and clamps:
+
+- no time window;
+- limit default 25, max 25;
+- item-scoped only.
+
+Reads:
+
+- `news_items`;
+- `news_item_observation_edges`;
+- public-safe source/provider observation fields.
+
+Returns:
+
+- source count;
+- source domain count;
+- source independence class: `single_source`, `same_domain_multi_lane`, or `independent_domains`;
+- duplicate/observation count;
+- first/last observed time;
+- source roles/trust tiers;
+- public URLs;
+- match/dedup confidence;
+- evidence refs.
+
+### `search_news_archive`
+
+Purpose: answer whether the News DB already has similar or same-theme news.
+
+Input:
+
+```json
+{
+  "query_terms": ["string"],
+  "symbols": ["SOL"],
+  "window_hours": 168,
+  "match_modes": ["title", "token", "fact", "source_title"],
+  "limit": 8
+}
+```
+
+Defaults and clamps:
+
+- default `window_hours`: 168;
+- max `window_hours`: 168 in P0;
+- limit default 8, max 8;
+- max 5 query terms, each max 64 chars;
+- max 5 symbols;
+- must receive the current item id from the harness context and must exclude it.
+
+Reads:
+
+- `news_items`;
+- `news_page_rows`;
+- `news_token_mentions`;
+- `news_item_agent_briefs` for compact current brief status only.
+
+Returns only other `news_item_id`s plus compact public-safe summaries. It excludes the current item, deduplicates candidates, and labels `match_reason`, `matching_basis`, and `match_confidence` as `strong` or `heuristic`.
+
+Candidate ordering must rank exact/canonical matches first, then title/fact matches, then token-only matches. Token-only matches for broad symbols or market subjects such as `BTC`, `ETH`, `SOL`, `CL`, or synthetic provider symbols such as `XYZ-CL` are allowed only as `symbol_heuristic`; they cannot support novelty or confirmation claims without a title/fact/observation match.
+
+Implementation must use bounded branches, not one broad `OR` scan:
+
+- exact/canonical branch when public canonical identity or observation edge evidence exists;
+- title branch using existing title trigram support, bounded by `published_at_ms`;
+- token branch from recent processed items joined to `news_token_mentions`;
+- compact current-brief branch only for already selected candidates.
+
+P0 must not scan full `body_text` history. Summary/body semantic search belongs to a later indexed retrieval spec.
+
+### `get_source_quality`
+
+Purpose: check the quality/health/classification of the current item source.
+
+Input:
+
+```json
+{"news_item_id": "string"}
+```
+
+Defaults and clamps:
+
+- item-scoped only;
+- returns at most the source row plus compact quality rows for configured windows, normally `24h` and `7d`.
+
+Reads only the current item source and its compact source-quality rows from `news_source_quality_rows`. It must not run all-source `list_source_status()` per item.
+
+This tool cannot establish source independence by itself. In the current live source mix, source-quality rows mostly describe aggregator lane health and extraction quality. Independence must come from observation/source-domain evidence, not from quality score alone.
+
+### `get_target_news_context`
+
+Purpose: summarize recent News-owned context for resolved entities or market targets mentioned by the item.
+
+Input:
+
+```json
+{
+  "target_refs": [
+    {"target_type": "CexToken", "target_id": "cex_token:SOL"}
+  ],
+  "symbol_fallbacks": ["SOL"],
+  "window_hours": 72,
+  "limit": 12
+}
+```
+
+Defaults and clamps:
+
+- default `window_hours`: 72;
+- max `window_hours`: 168 in P0;
+- limit default 12, max 12;
+- max 5 resolved target refs;
+- max 3 symbol fallbacks, and only when the base packet has no usable resolved target for the policy's stated question.
+
+Reads:
+
+- `news_token_mentions`;
+- `news_items`;
+- `news_page_rows`;
+- compact current brief metadata where available.
+
+This helps distinguish "new asset-specific catalyst" from "one more article in an ongoing stream".
+
+No caller can invent target ids. The base packet exposes an `allowed_context_targets` list built by the harness from resolved mentions, including target type, target id, display symbol, resolution status, confidence, and whether the target is crypto, non-crypto, or unknown. The executor rejects target refs not present in that allow-list.
+
+Target refs must use the exact `target_type` and `target_id` values from `news_token_mentions`. The policy must not synthesize target ids from display symbols or normalize away prefixes such as `cex_token:`.
+
+Symbol-only matching is a fallback, not the normal path. Every returned row must include `matching_basis`, one of:
+
+- `resolved_target`: matched the requested `target_type`/`target_id`;
+- `title_or_fact_symbol`: matched a symbol in title/fact evidence, not only a provider impact list;
+- `symbol_heuristic`: matched only by display/observed symbol;
+- `market_subject_heuristic`: matched a broad non-crypto or synthetic subject.
+
+For live OpenNews-style payloads, provider impacts can include broad market subjects (`BTC`, `CL`) and synthetic symbols (`XYZ-CL`). The synthesizer must not treat `symbol_heuristic` or `market_subject_heuristic` rows as asset-specific confirmation unless the item also has exact observation, title, fact, or resolved target evidence.
+
+The tool name is intentionally `target`, not `asset`: News mentions include crypto tokens, ETFs, equities, commodities, rates, macro subjects, and provider synthetic symbols. Calling all of these "assets" would hide a real trust-boundary problem.
+
+### `get_fact_context`
+
+Purpose: expose deterministic fact candidate details when the base packet is truncated or when rejection/attention reasons matter.
+
+Input:
+
+```json
+{"news_item_id": "string", "include_rejected": false, "limit": 20}
+```
+
+Defaults and clamps:
+
+- no time window;
+- item-scoped only;
+- `include_rejected` default false;
+- limit default 20, max 20.
+
+Reads:
+
+- `news_fact_candidates`;
+- item-local evidence refs.
+
+It is read-only and item-scoped.
+
+This tool is intentionally cheap and partly redundant with the base packet. The research policy should call it only when the base packet reports fact truncation, rejected/attention facts matter, or the synthesizer needs more deterministic fact detail.
+
+## Research Plan Contract
+
+`NewsItemResearchPlan` fields:
+
+- `status`: `ready`, `skip`, or `failed`;
+- `research_todos`: list of `{id, content_zh, status}`;
+- `tool_calls`: list of `{tool_call_id, tool_name, input, purpose_zh, expected_evidence}`;
+- `budget`: max calls, max rows, max chars;
+- `skip_reason_zh`;
+- `policy_notes_zh`;
+- `evidence_refs`.
+
+Hard limits:
+
+- max 5 tool calls;
+- max 2 calls to `search_news_archive`;
+- no unknown tool names;
+- no tool call may request a table, SQL, provider URL, credential, or mutation.
+
+## Tool Result Contract
+
+`NewsResearchToolResult` fields:
+
+- `tool_call_id`;
+- `tool_name`;
+- `schema_version`;
+- `query_version`;
+- `input`;
+- `source_tables`;
+- `rows`;
+- `row_count`;
+- `truncated`;
+- `skipped_reason`;
+- `result_hash`;
+- `generated_at_ms`;
+- `latency_ms`;
+- `redaction_notes`;
+- `evidence_refs`.
+
+Material hash includes stable query identity, input, rows, truncation, skip reason, and result hash. It excludes `generated_at_ms`, latency, usage, run ids, current brief, and latest run metadata.
+
+## Synthesis Output Contract
+
+`NewsItemBriefPayload` v2 adds:
 
 - `novelty_status`: `new`, `repeat`, `update`, `duplicate`, `unclear`;
 - `confirmation_state`: `single_source`, `multi_source_confirmed`, `provider_only`, `conflicting`, `unclear`;
-- `source_consensus_zh`: concise Chinese statement about source quality and confirmation;
-- `retrieval_notes_zh`: concise Chinese statement about similar/prior context used;
-- `retrieval_evidence_refs`: bounded refs such as `tool:get_news_observation_history`, `similar:item:<news_item_id>`, `source_quality:<source_id>`, `brief_history:<run_id>`.
+- `source_consensus_zh`;
+- `retrieval_notes_zh`;
+- `retrieval_evidence_refs`;
+- `research_todos_zh`;
+- `used_tool_call_ids`.
 
-The old v1 output shape is not supported as a serving fallback. The implementation must bump `NEWS_ITEM_BRIEF_PROMPT_VERSION`, `NEWS_ITEM_BRIEF_SCHEMA_VERSION`, `NEWS_ITEM_BRIEF_VALIDATOR_VERSION`, and `NEWS_ITEM_BRIEF_GUARDRAIL_VERSION` together（`src/parallax/domains/news_intel/_constants.py:5`）。
+The old v1 output shape is not a serving fallback.
 
-### Audit And Freshness
+## Freshness And Replay
 
-No new ledger table is introduced. Tool envelopes are part of run input evidence:
+The design uses three material hashes:
 
-- `request_json` stores the material packet plus compact tool envelope metadata.
-- `input_hash` includes every tool result hash.
-- `trace_metadata_json` may include `context_snapshot_hash`, tool names, tool result hashes, truncation flags, and query versions.
-- `news_item_agent_runs` remains append-only audit（`src/parallax/domains/news_intel/repositories/news_repository.py:1368`）。
-- `news_item_agent_briefs` remains current serving state（`src/parallax/domains/news_intel/repositories/news_repository.py:1397`）。
+1. `base_input_hash`: base packet plus base packet builder version.
+2. `research_packet_hash`: research policy version, tool catalog version, selected tool calls, material tool results, truncation flags, skip reasons, and result hashes.
+3. `synthesis_input_hash`: base packet, research packet, synthesizer prompt version, output schema version, validator version, and tool catalog version.
 
-Old current briefs with previous schema/prompt are not upgraded in place. The implementation plan must choose a hard-cut cleanup path: either clear old `news_item_agent_briefs` and reproject affected page rows to pending, or enqueue rebrief work for eligible rows and prevent old schema rows from being treated as fresh. No compatibility reader may translate v1 rows into v2 output.
+Current brief freshness uses `synthesis_input_hash`. A preliminary skip can use `base_input_hash` only when the dirty reason does not require context refresh. This saves latency for no-op requeues but still lets forced context refresh rebuild tool evidence.
 
-## Conceptual Data Flow
+When the research policy chooses the empty path, `research_packet_hash` still includes a harness-created `NewsItemResearchPlan(status="skip", tool_calls=[], skip_reason_zh=...)` and policy version. It is not a v1 fallback.
 
-```mermaid
-flowchart LR
-  A["brief_input dirty target"] --> B["NewsItemBriefWorker"]
-  B --> C["load processed item candidate"]
-  C --> D["eligibility policy"]
-  D --> E["NewsAgentContextCompiler"]
-  E --> F["NewsAgentReadToolFacade"]
-  F --> G["context_tool_results"]
-  G --> H["NewsItemBriefInputPacket v2"]
-  H --> I["existing AgentStageSpec execute"]
-  I --> J["NewsItemBriefPayload v2 validation"]
-  J --> K["news_item_agent_runs"]
-  J --> L["news_item_agent_briefs"]
-  L --> M["news_page_projection"]
+The run ledger stores:
+
+- research policy decision;
+- selected research plan or empty plan;
+- tool calls and result hashes;
+- synthesizer request/audit/response;
+- validation result;
+- final payload or failure payload.
+
+No new business fact table is introduced.
+
+## Error Handling
+
+Research policy failures:
+
+- invalid base packet or unsupported policy state: write failed run, do not publish current brief;
+- empty/skip plan: synthesize only if validator can accept thin context, otherwise failed run.
+
+Tool failures:
+
+- unknown or disallowed tool from host policy: fail fast because this is a code/config bug;
+- query timeout: return skipped tool result with error class, then synthesize with uncertainty;
+- result over budget: deterministic compaction and truncation;
+- sensitive field found after redaction: fail validation before synthesis if not safely removable.
+
+Synthesizer failures:
+
+- schema invalid: one repair retry;
+- unsupported assets or ungrounded claims: validator drops/blocks per existing policy;
+- runtime audit claims tool calls/handoffs: reject publishable output.
+
+Transient model failures:
+
+- use existing gateway/provider retry behavior where available;
+- record phase-specific error class in run ledger.
+
+## Serving Hard Cut
+
+Old current briefs with missing or mismatched schema return:
+
+```json
+{
+  "status": "stale",
+  "stale_schema_version": "news_item_brief_v1",
+  "required_schema_version": "news_item_brief_v2"
+}
 ```
 
-The only new arrows are compiler-to-read-tool and tool-result-to-packet. There is no model-to-tool loop in P0/P1, no provider network arrow, and no new writer.
-
-## Core Models
-
-### NewsItemBriefInputPacket v2
-
-Semantic fields:
-
-- `news_item`: current bounded item material.
-- `token_lanes`: deterministic token mentions.
-- `fact_lanes`: deterministic fact candidates.
-- `provider_signal_evidence`: compact provider-native signal.
-- `context_tool_results`: ordered list of read-only tool envelopes.
-- `context_snapshot_hash`: hash of all tool envelopes.
-- `evidence_refs`: stable refs from item/token/fact/provider/tool rows.
-- `constraints`: source text is data, tool results are bounded observations, no trading instructions.
-- `prompt_version`, `schema_version`, `input_hash`.
-
-### NewsContextToolResult
-
-Semantic fields:
-
-- identity: `tool_name`, `schema_version`, `query_version`;
-- provenance: `source_tables`, `generated_at_ms`;
-- input: normalized input and limits;
-- output: rows plus `truncated`;
-- audit: `result_hash`, exclusion reason when skipped.
-
-Tool result rows are evidence, not truth tables.
-
-### SimilarNewsItem
-
-Semantic fields:
-
-- `news_item_id`, title/headline, source domain/name/role/trust tier;
-- published/fetched timestamps;
-- provider score/direction where present;
-- current agent status and compact decision where present;
-- match reason: `same_canonical_url`, `same_provider_article_key`, `same_content_hash`, `same_title_fingerprint`, `token_overlap`, `source_title_overlap`;
-- `match_confidence`: `exact`, `strong`, `heuristic`;
-- `evidence_ref`.
-
-### ObservationHistory
-
-Semantic fields:
-
-- enabled/disabled source counts;
-- duplicate/source/provider article counts;
-- first/last observed and published timestamps;
-- source roles and trust tiers;
-- public URLs;
-- provider payload status;
-- evidence refs.
-
-### SourceQualityContext
-
-Semantic fields:
-
-- source id/domain/name/role/trust tier;
-- current `source_quality_status`;
-- latest quality window and quality score;
-- fetch success, duplicate rate, process success, resolved token rate, accepted/attention fact rates;
-- latest fetch run compact status;
-- evidence refs.
-
-### BriefHistoryContext
-
-Semantic fields:
-
-- current brief status and version metadata;
-- latest N run summaries;
-- error class/status/outcome;
-- input/output hash and execution trace id;
-- usage/latency summary;
-- evidence refs.
-
-## Interface Contracts
-
-### Public HTTP / WebSocket / CLI
-
-No new public route is required.
-
-Existing `/api/news` and item detail surfaces continue to read projected rows/detail data. After v2 briefs are written, compact new v2 fields may appear inside the existing agent brief envelope. Public surfaces must not execute tools, run agents, fetch providers, repair data, or expose raw tool internals.
-
-### Agent Input Contract
-
-The News item brief stage still receives one `input_payload` through `AgentStageSpec`. The payload is now packet v2 and includes precomputed `context_tool_results`. Because `AgentStageSpec` forbids extra fields and has no runtime tool list, this is the only allowed P0/P1 agent input mechanism（`src/parallax/platform/agent_execution.py:130`）。
-
-### Agent Output Contract
-
-The output remains one strict JSON object, now matching `NewsItemBriefPayload` v2. The validator must reject schema drift and unexpected runtime action traces just as current validation rejects non-empty tool/action audit keys（`src/parallax/domains/news_intel/services/news_item_brief_validation.py:16`, `src/parallax/domains/news_intel/services/news_item_brief_validation.py:29`）。
-
-### Repository Contract
-
-Repository methods used by tools are read-only, bounded, and deterministic. They may be new methods in `NewsRepository` or narrow wrappers over existing methods, but they must not:
-
-- call providers;
-- mutate dirty targets or read models;
-- return raw payload JSON, credentials, sync cursors, provider item ids, source item keys, or feed URLs;
-- reference `news_story_*`, Token Radar, Pulse, or market tick tables.
+Readers must not translate v1 into v2. Cleanup may clear old current briefs through `NewsRepository` and enqueue both page reprojection and eligible `brief_input` work.
 
 ## Acceptance Criteria
 
-- AC1. WHEN `news_item_brief` processes an eligible target THEN it SHALL build a packet v2 containing `context_tool_results` for observation history, source quality context, similar news, and brief history before calling the model.
-- AC2. WHEN a context tool runs THEN it SHALL return a bounded envelope containing `tool_name`, `schema_version`, `query_version`, normalized input, `source_tables`, `limit`, `rows`, `truncated`, `generated_at_ms`, and `result_hash`.
-- AC3. WHEN tool results differ THEN packet `input_hash` SHALL differ, so current brief freshness cannot skip changed context.
-- AC4. WHEN tool results are empty THEN the packet SHALL include an explicit empty/skipped result with an exclusion reason rather than silently omitting that context class.
-- AC5. WHEN the prompt is updated THEN it SHALL no longer say the agent cannot use tools or packet-external context; it SHALL say the agent may use only packet fields and precomputed `context_tool_results`.
-- AC6. WHEN output schema is updated THEN the system SHALL bump prompt, schema, validator, and guardrail versions together.
-- AC7. WHEN old v1 current briefs exist THEN the system SHALL NOT translate them through compatibility code; they SHALL be cleared, marked stale by version mismatch, or replaced by v2 rebrief output through a hard-cut cleanup/rebuild path.
-- AC8. WHEN item detail or page projection reads an old v1 brief during the transition THEN it SHALL not fabricate v2 fields; the serving state must be pending/stale until v2 output exists.
-- AC9. WHEN `find_similar_news_items` runs THEN it SHALL use only current News-owned tables/read models and SHALL NOT reference `news_story_groups`, `news_story_members`, or removed context tables.
-- AC10. WHEN `find_similar_news_items` returns heuristic matches THEN rows SHALL label match reason and confidence so the model cannot treat heuristic similarity as canonical truth.
-- AC11. WHEN observation history or provider observations enter a tool result THEN provider item ids, source item keys, raw payload JSON, feed URLs, sync cursors, and credentials SHALL be absent.
-- AC12. WHEN source quality context enters the packet THEN it SHALL use existing source/source-quality data and SHALL NOT make source quality a hot-path writer or item admission dependency.
-- AC13. WHEN model output names affected assets THEN validation SHALL continue dropping unsupported assets not grounded in item text, token lanes, fact lanes, or tool evidence.
-- AC14. WHEN the agent run is inserted THEN `news_item_agent_runs.request_json` and/or `trace_metadata_json` SHALL include enough compact tool metadata and hashes to explain the input without adding a new ledger table.
-- AC15. WHEN provider capacity is denied before claim THEN behavior SHALL remain no claim and no ledger write, preserving current backpressure semantics（`tests/unit/domains/news_intel/test_news_item_brief_worker.py:229`）。
-- AC16. WHEN provider execution happens THEN the worker SHALL NOT hold a DB session through model execution, preserving the current no-DB-session-during-execution behavior（`tests/unit/domains/news_intel/test_news_item_brief_worker.py:52`）。
-- AC17. WHEN architecture tests scan News Intel THEN they SHALL still pass forbidden cross-domain import/table rules.
-- AC18. WHEN implementation is complete THEN there SHALL be no legacy `context_items` packet path, v1/v2 dual parser, compatibility feature flag, old prompt fallback, or restored story/context table reference.
+- AC1. Eligible stale item brief work writes v2 only through the new synthesis packet path: base packet -> deterministic research packet -> synthesis.
+- AC2. Research policy produces visible research todos, selected tool calls, and skip/selection reasons; the model does not decide tool calls in P0.
+- AC3. Unknown tools, mutation requests, SQL requests, provider/network requests, and cross-domain requests are rejected before execution.
+- AC4. P0 tool results are SELECT-only, public-safe, bounded, redacted, compacted, and hashed.
+- AC5. `search_news_archive` returns only other items, excludes current item, and labels confidence.
+- AC6. Source quality uses targeted item-source reads, not all-source status scans.
+- AC7. `generated_at_ms`, latency, usage, and run metadata do not affect freshness hashes.
+- AC8. Synthesizer prompt uses only base packet and research packet.
+- AC9. Validator rejects ungrounded assets and heuristic matches presented as exact confirmation.
+- AC10. No shared `AgentStageSpec` or gateway tool-calling change is required.
+- AC11. Worker does not hold DB sessions during the synthesis model call.
+- AC12. Old or missing-schema current briefs serve as `stale`, not translated v2.
+- AC13. Architecture tests still forbid Token Radar, Pulse, market, `news_story_*`, and legacy context table references.
+- AC14. Run ledger contains enough compact phase/tool audit to replay why a brief was produced.
+- AC15. Provider capacity denied before claim still results in no claim and no ledger write.
 
 ## Risks
 
 | Risk | Severity | Mitigation |
-|------|----------|------------|
-| Tool context makes packets too large. | High | Hard limits per tool, deterministic truncation, compact rows, and context budget metadata. |
-| Similar-news heuristics create false confirmation. | High | Every match carries reason/confidence; prompt and schema distinguish exact/strong/heuristic matches. |
-| Old briefs remain visible after schema hard cut. | Medium | Plan must clear/reproject old current briefs or force stale-by-version before serving v2 fields. |
-| Tool reads slow down brief worker. | Medium | Use bounded SELECTs, small limits, deterministic indexes already used by page/source queries, and per-tool query budgets. |
-| Source quality over-influences market judgment. | Medium | Source quality is context and uncertainty, not admission or ranking truth. |
-| Tool result audit becomes a shadow fact table. | Medium | Store compact envelopes in run audit only; no new persistent business table. |
-| Implementation accidentally changes shared agent runtime. | High | Acceptance criteria forbid `AgentStageSpec`/gateway tool changes in P0/P1. |
-| Cross-domain context is tempting for market reads. | Medium | Keep Token Radar/market context out of News domain; reserve adapter-level P2 spec. |
+|---|---|---|
+| Research packet grows too large. | High | Aggregate-first tool outputs, max 5 tool calls, bounded DB queries, 2-3k research-packet target. |
+| Host policy chooses weak or irrelevant tools. | Medium | Versioned policy, live-data-shaped tests, registry semantic metadata, validator checks. |
+| Archive search becomes slow. | High | Bounded `UNION ALL` branches, stable indexes, small limits, query tests, no broad OR scan. |
+| Model over-trusts heuristic matches. | High | `match_confidence`, prompt rule, validator block for exact confirmation claims without exact evidence. |
+| Tool results leak internal provider data. | High | Allow-list columns, redaction hooks, public-safe tests, no `to_jsonb(table.*)`. |
+| Run history self-invalidates freshness. | Medium | Run history is audit only and excluded from model-visible context/input hash. |
+| The local harness drifts toward a second global kernel. | Medium | Keep it News-only, read-only, and typed; defer true runtime tool loop to separate shared-kernel spec. |
 
 ## Evolution Path
 
-1. P0: deterministic News context compiler with observation history, source quality context, similar news, and brief history precomputed before the model call.
-2. P1: add token/fact detail tools and related provider-signal context if P0 output still shows asset grounding or novelty gaps.
-3. P2: consider a News adapter-level two-pass tool-intent flow only if deterministic P0/P1 context is insufficient. This still must not change shared gateway tools unless a separate application-kernel spec is approved.
-4. P3: consider cross-domain market/radar context through an integration-layer facade, not through `news_intel` imports, only after News-owned context improves brief quality.
+- P0: adaptive News-local research harness with five read-only News tools and an empty-plan fast path.
+- P1: add optional LLM planner only for context-worthy ambiguous cases if deterministic policy still misses important context and latency budget allows it.
+- P2: add provider-signal neighborhood and trace-only previous-run diagnostics if needed.
+- P3: add cross-domain market/radar context through an integration-layer adapter, not `news_intel` imports.
+- P4: consider shared gateway-native tool loop only after a separate application-kernel design.
 
-## Alternatives Considered
+## Objective Harness Assessment
 
-- Add gateway-level tool-calling now — rejected because `AgentStageSpec` has no tools field and `extra="forbid"`; this would be a shared workflow kernel change, not a News agent optimization.
-- Give the model arbitrary SQL over Parallax DB — rejected because it violates tool-wrapper safety, query budget, provenance, and Kappa/CQRS boundaries.
-- Restore `context_items` — rejected because latest hard-cut tests explicitly keep legacy context items out of the packet, and the current schema cleanup removed `news_context_items` as an active surface.
-- Reintroduce story projection tables for similar news — rejected because story projection was hard-cut; similar news can be a bounded read-only heuristic over current News facts/read models.
-- Add a new `news_agent_tool_runs` table — rejected because tool results are run input evidence, not business truth. Existing `news_item_agent_runs` can audit compact tool metadata and hashes.
-- Keep v1 and v2 brief schemas side by side — rejected because the user explicitly requested no compatibility code and because old-current serving fallback would hide whether v2 context actually improved the agent.
-
-## Boundaries
-
-| Class | Behaviour |
-|-------|-----------|
-| Always | Build packet v2 from current News facts plus bounded read-only context tool envelopes; hash tool results into input identity; write only existing run/current brief outputs; keep model execution through the current gateway. |
-| Ask first | Add cross-domain market/Token Radar context; add true runtime model-to-tool loops; add public API fields outside the current brief envelope; delete historical run ledger rows. |
-| Never | Keep v1/v2 compatibility code; expose arbitrary SQL/provider/network tools; restore `context_items` or `news_story_*`; mutate read models from tools; import Token Radar/Pulse/market repositories into `news_intel`. |
+This design fits harness principles better than fixed prefetch because tools are typed, permissioned, compacted, and audited, while the host protects latency with deterministic selection. It does not fully implement Claude Code-style agency because the model does not choose tools in P0 and the shared gateway still lacks native `tool_use`. That is an intentional compromise: it improves evidence quality while respecting Parallax's current architecture, live latency, and Kappa/CQRS constraints.
