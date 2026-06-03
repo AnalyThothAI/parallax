@@ -453,12 +453,8 @@ def test_explicit_rss_provider_article_key_is_not_global_identity(tmp_path) -> N
         stored_provider = conn.execute(
             "SELECT provider_article_id, provider_article_key FROM news_provider_items"
         ).fetchone()
-        edge = conn.execute(
-            "SELECT provider_article_key, match_type FROM news_item_observation_edges"
-        ).fetchone()
-        stored_news = conn.execute(
-            "SELECT canonical_item_key, provider_article_keys_json FROM news_items"
-        ).fetchone()
+        edge = conn.execute("SELECT provider_article_key, match_type FROM news_item_observation_edges").fetchone()
+        stored_news = conn.execute("SELECT canonical_item_key, provider_article_keys_json FROM news_items").fetchone()
     finally:
         conn.close()
 
@@ -542,9 +538,7 @@ def test_old_rss_provider_article_key_is_cleared_on_upsert(tmp_path) -> None:
               FROM news_provider_items
             """
         ).fetchone()
-        edge = conn.execute(
-            "SELECT provider_article_key, match_type FROM news_item_observation_edges"
-        ).fetchone()
+        edge = conn.execute("SELECT provider_article_key, match_type FROM news_item_observation_edges").fetchone()
         stored_news = conn.execute(
             "SELECT provider_article_keys_json FROM news_items WHERE news_item_id = %s",
             (news["news_item_id"],),
@@ -3821,9 +3815,7 @@ def test_research_target_context_returns_exact_aggregate_and_heuristic_fallback_
 
         context = repo.get_target_news_context(
             current_news_item_id=current_id,
-            target_refs=[
-                NewsContextTargetRef(target_type="cex_token", target_id="binance:SOL", display_symbol="SOL")
-            ],
+            target_refs=[NewsContextTargetRef(target_type="cex_token", target_id="binance:SOL", display_symbol="SOL")],
             symbol_fallbacks=["SOL", "ARB"],
             window_hours=72,
             limit=12,
@@ -3858,9 +3850,7 @@ def test_research_target_context_empty_result_returns_zero_count_envelope(tmp_pa
 
         context = repo.get_target_news_context(
             current_news_item_id=current_id,
-            target_refs=[
-                NewsContextTargetRef(target_type="cex_token", target_id="binance:SOL", display_symbol="SOL")
-            ],
+            target_refs=[NewsContextTargetRef(target_type="cex_token", target_id="binance:SOL", display_symbol="SOL")],
             symbol_fallbacks=["ARB"],
             window_hours=72,
             limit=12,

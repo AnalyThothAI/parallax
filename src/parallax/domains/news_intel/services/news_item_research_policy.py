@@ -142,9 +142,9 @@ def classify_news_item_research_policy(base_packet: NewsItemBriefBasePacket) -> 
     )
     todos.append(_todo("todo-observations", "检查观测历史、来源聚合和同域重复线索。"))
 
-    if (
-        has_provider_signal or content_class in SOURCE_QUALITY_CLASSES
-    ) and len(calls) < NEWS_RESEARCH_EXECUTOR_MAX_TOOL_CALLS:
+    if (has_provider_signal or content_class in SOURCE_QUALITY_CLASSES) and len(
+        calls
+    ) < NEWS_RESEARCH_EXECUTOR_MAX_TOOL_CALLS:
         _append_call(
             calls,
             tool_name="get_source_quality",

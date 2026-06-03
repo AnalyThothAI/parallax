@@ -42,8 +42,7 @@ def build_news_item_brief_stage(*, packet: NewsItemBriefSynthesisPacket, run_id:
             "phase": "synthesis",
             "news_item_id": news_item_id,
             "run_id": str(run_id),
-            "base_input_hash": packet.base_packet.input_hash
-            or json_sha256(input_payload["base_packet"]),
+            "base_input_hash": packet.base_packet.input_hash or json_sha256(input_payload["base_packet"]),
             "research_packet_hash": research_packet_hash,
             "tool_catalog_version": NEWS_ITEM_RESEARCH_TOOL_CATALOG_VERSION,
             "synthesis_input_hash": synthesis_input_hash,
@@ -51,5 +50,6 @@ def build_news_item_brief_stage(*, packet: NewsItemBriefSynthesisPacket, run_id:
             "schema_version": packet.schema_version,
         },
     )
+
 
 __all__ = ["build_news_item_brief_stage", "news_item_brief_instructions"]

@@ -322,9 +322,7 @@ def test_base_packet_reports_truncated_facts_tokens_and_material_budget() -> Non
     assert report.kept_token_count < 70
     assert report.kept_fact_count < 70
     assert report.material_chars <= report.material_budget_chars
-    assert {"token_lanes_budget", "fact_lanes_budget", "material_budget"}.issubset(
-        set(report.truncation_reasons)
-    )
+    assert {"token_lanes_budget", "fact_lanes_budget", "material_budget"}.issubset(set(report.truncation_reasons))
 
 
 def test_base_and_synthesis_hashes_are_deterministic_and_omit_runtime_fields() -> None:

@@ -24,9 +24,7 @@ def test_cleanup_news_item_brief_schema_hard_cut_dry_run_only_lists_candidates()
         "brief_input_targets_enqueued": 0,
         "news_item_ids": ["news-1", "news-2"],
     }
-    assert repos.news.calls == [
-        ("list", {"required_schema_version": NEWS_ITEM_BRIEF_SCHEMA_VERSION, "limit": 5000})
-    ]
+    assert repos.news.calls == [("list", {"required_schema_version": NEWS_ITEM_BRIEF_SCHEMA_VERSION, "limit": 5000})]
     assert repos.news_projection_dirty_targets.enqueued == []
     assert repos.conn.commits == 0
 

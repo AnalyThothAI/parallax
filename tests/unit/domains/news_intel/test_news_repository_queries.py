@@ -144,12 +144,8 @@ def test_archive_search_uses_bounded_union_branches_and_excludes_current_item() 
     assert "items.title ilike" in sql
     token_branch = sql[sql.index("token_branch") : sql.index("fact_branch")]
     fact_branch = sql[sql.index("fact_branch") : sql.index("source_title_branch")]
-    assert token_branch.index("from news_token_mentions as mentions") < token_branch.index(
-        "join news_items as items"
-    )
-    assert fact_branch.index("from news_fact_candidates as facts") < fact_branch.index(
-        "join news_items as items"
-    )
+    assert token_branch.index("from news_token_mentions as mentions") < token_branch.index("join news_items as items")
+    assert fact_branch.index("from news_fact_candidates as facts") < fact_branch.index("join news_items as items")
     assert "items.news_item_id <> %s" in sql
     assert "body_text" not in sql
     assert "raw_payload_json" not in sql

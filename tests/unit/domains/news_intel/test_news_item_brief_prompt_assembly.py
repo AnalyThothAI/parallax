@@ -7,9 +7,7 @@ from parallax.domains.news_intel.services.news_item_brief_prompt_assembly import
     build_news_item_brief_synthesizer_prompt,
 )
 
-ACTIVE_PROMPT_PATH = (
-    Path(__file__).resolve().parents[4] / "src/parallax/domains/news_intel/prompts/news_item_brief.md"
-)
+ACTIVE_PROMPT_PATH = Path(__file__).resolve().parents[4] / "src/parallax/domains/news_intel/prompts/news_item_brief.md"
 
 
 def test_synthesizer_prompt_states_research_packet_evidence_boundary() -> None:

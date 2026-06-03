@@ -283,9 +283,7 @@ def _provider_signal_evidence(item: Mapping[str, Any]) -> NewsItemBriefProviderS
     provider_signal = _json_object(item.get("provider_signal_json"))
     provider_impacts = [
         impact
-        for impact in (
-            _provider_token_impact(row) for row in _json_list(item.get("provider_token_impacts_json"))
-        )
+        for impact in (_provider_token_impact(row) for row in _json_list(item.get("provider_token_impacts_json")))
         if impact is not None
     ]
     has_provider_signal = str(provider_signal.get("source") or "").strip().lower() == "provider"

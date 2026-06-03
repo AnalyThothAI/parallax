@@ -2683,10 +2683,7 @@ class NewsRepository:
             ),
         ).fetchall()
         truncated = len(rows) > bounded_limit
-        return [
-            _archive_search_row(row, truncated=truncated)
-            for row in rows[:bounded_limit]
-        ]
+        return [_archive_search_row(row, truncated=truncated) for row in rows[:bounded_limit]]
 
     def get_source_quality_context_for_item(self, *, news_item_id: str) -> dict[str, Any]:
         row = self.conn.execute(
@@ -2782,12 +2779,11 @@ class NewsRepository:
     ) -> dict[str, Any]:
         normalized_refs = _normalize_target_refs(target_refs)
         resolved_symbols = {
-            ref.get("display_symbol", "").upper()
-            for ref in normalized_refs
-            if ref.get("display_symbol")
+            ref.get("display_symbol", "").upper() for ref in normalized_refs if ref.get("display_symbol")
         }
         fallback_symbols = [
-            symbol for symbol in _bounded_strings(symbol_fallbacks, max_items=3, max_length=32, uppercase=True)
+            symbol
+            for symbol in _bounded_strings(symbol_fallbacks, max_items=3, max_length=32, uppercase=True)
             if symbol not in resolved_symbols
         ]
         bounded_limit = _bounded_int(limit, default=12, minimum=1, maximum=12)
@@ -2947,11 +2943,7 @@ class NewsRepository:
         )
         first = rows[0]
         matching_basis = list(
-            dict.fromkeys(
-                str(item.get("matching_basis") or "")
-                for item in top_items
-                if item.get("matching_basis")
-            )
+            dict.fromkeys(str(item.get("matching_basis") or "") for item in top_items if item.get("matching_basis"))
         )
         return {
             "counts": {
@@ -4906,8 +4898,7 @@ def _archive_search_row(row: Mapping[str, Any], *, truncated: bool) -> dict[str,
 
 def _target_context_row(row: Mapping[str, Any]) -> dict[str, Any]:
     evidence_ref = (
-        f"news_token_mentions:{row.get('news_item_id')}:"
-        f"{row.get('matching_basis')}:{row.get('display_symbol')}"
+        f"news_token_mentions:{row.get('news_item_id')}:{row.get('matching_basis')}:{row.get('display_symbol')}"
     )
     return {
         "news_item_id": row.get("news_item_id"),
@@ -5061,6 +5052,7 @@ def _provider_capability_tags(*, row: Mapping[str, Any]) -> list[str]:
     if trust_tier in {"official", "high"}:
         tags.append("high_trust")
     return list(dict.fromkeys(tags))
+
 
 def _json(value: Any) -> Jsonb:
     return Jsonb(value, dumps=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True))

@@ -17,13 +17,9 @@ QUEUE_MIGRATION = Path("src/parallax/platform/db/alembic/versions/20260506_0002_
 STALE_RUNNING_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260506_0003_enrichment_stale_running_claims.py"
 )
-PROJECTION_MIGRATION = Path(
-    "src/parallax/platform/db/alembic/versions/20260506_0004_projection_operations.py"
-)
+PROJECTION_MIGRATION = Path("src/parallax/platform/db/alembic/versions/20260506_0004_projection_operations.py")
 ASSET_MIGRATION = Path("src/parallax/platform/db/alembic/versions/20260506_0005_asset_identity_resolution.py")
-TOKEN_RADAR_INTENT_MIGRATION = Path(
-    "src/parallax/platform/db/alembic/versions/20260507_0007_token_radar_v3_intents.py"
-)
+TOKEN_RADAR_INTENT_MIGRATION = Path("src/parallax/platform/db/alembic/versions/20260507_0007_token_radar_v3_intents.py")
 TOKEN_RADAR_REGISTRY_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260507_0008_token_radar_deterministic_registry.py"
 )
@@ -87,9 +83,7 @@ TOKEN_RADAR_RETENTION_WATCHLIST_STATS_MIGRATION = Path(
 TOKEN_NARRATIVE_EPOCHS_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260520_0070_token_narrative_epochs.py"
 )
-TOKEN_IMAGE_ASSETS_MIGRATION = Path(
-    "src/parallax/platform/db/alembic/versions/20260521_0078_token_image_assets.py"
-)
+TOKEN_IMAGE_ASSETS_MIGRATION = Path("src/parallax/platform/db/alembic/versions/20260521_0078_token_image_assets.py")
 TOKEN_PROFILE_LOCAL_LOGO_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260521_0079_token_profile_local_logo_hard_cut.py"
 )
@@ -153,9 +147,7 @@ EQUITY_FETCH_RUN_REAPER_MIGRATION = Path(
 TOKEN_RADAR_PUBLICATION_STATE_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260527_0111_token_radar_publication_state.py"
 )
-MACRO_SYNC_WORKER_MIGRATION = Path(
-    "src/parallax/platform/db/alembic/versions/20260527_0112_macro_sync_worker.py"
-)
+MACRO_SYNC_WORKER_MIGRATION = Path("src/parallax/platform/db/alembic/versions/20260527_0112_macro_sync_worker.py")
 TOKEN_RADAR_STABLE_PUBLICATION_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260527_0113_token_radar_stable_publication.py"
 )
@@ -205,9 +197,7 @@ TOKEN_PULSE_EQUITY_CPU_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260529_0124_token_pulse_equity_cpu_hard_cut.py"
 )
 DROP_RETIRED_PRODUCT_MIGRATION = Path(
-    "src/parallax/platform/db/alembic/versions/20260529_0125_drop_"
-    + "_".join(("equity", "event", "intel"))
-    + ".py"
+    "src/parallax/platform/db/alembic/versions/20260529_0125_drop_" + "_".join(("equity", "event", "intel")) + ".py"
 )
 ALEMBIC_VERSIONS = Path("src/parallax/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
