@@ -198,6 +198,10 @@ NEWS_PUBLIC_URL_IDENTITY_INDEX_SCOPE_MIGRATION = Path(
 CEX_DETAIL_PAYLOAD_HASH_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260603_0142_cex_detail_payload_hash_hard_cut.py"
 )
+NEWS_ITEM_PROCESS_CLAIM_HARD_CUT_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260603_0143_news_item_process_claim_hard_cut.py"
+)
+NEWS_REPOSITORY = Path("src/parallax/domains/news_intel/repositories/news_repository.py")
 TOKEN_PULSE_EQUITY_CPU_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260529_0124_token_pulse_equity_cpu_hard_cut.py"
 )
@@ -1031,6 +1035,8 @@ def test_runtime_performance_hard_cut_revision_chain() -> None:
         (NEWS_PUBLIC_URL_HARD_IDENTITY_MIGRATION, "20260529_0123", "20260528_0122"),
         (TOKEN_PULSE_EQUITY_CPU_HARD_CUT_MIGRATION, "20260529_0124", "20260529_0123"),
         (DROP_RETIRED_PRODUCT_MIGRATION, "20260529_0125", "20260529_0124"),
+        (CEX_DETAIL_PAYLOAD_HASH_MIGRATION, "20260603_0142", "20260601_0141"),
+        (NEWS_ITEM_PROCESS_CLAIM_HARD_CUT_MIGRATION, "20260603_0143", "20260603_0142"),
     )
 
     for migration, revision, down_revision in migrations:
@@ -1464,6 +1470,54 @@ def test_news_realtime_postgres_hotpath_migration_adds_concurrent_hotpath_indexe
         "ix_news_context_items_source_effective_time",
     ):
         assert f"DROP INDEX CONCURRENTLY IF EXISTS {index_name}" in downgrade_text
+
+
+def test_news_item_process_claim_hard_cut_migration_replaces_legacy_claim_states() -> None:
+    text = NEWS_ITEM_PROCESS_CLAIM_HARD_CUT_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+    upgrade_text, downgrade_text = text.split("def downgrade() -> None:", maxsplit=1)
+
+    assert 'revision = "20260603_0143"' in text
+    assert 'down_revision = "20260603_0142"' in text
+    assert "processing_lease_owner TEXT" in text
+    assert "processing_leased_until_ms BIGINT" in text
+    assert "processing_next_due_at_ms BIGINT NOT NULL DEFAULT 0" in text
+    assert "processing_terminal_error TEXT" in text
+    assert "DROP INDEX CONCURRENTLY IF EXISTS ix_news_items_unprocessed_claim" in text
+    assert "DROP CONSTRAINT IF EXISTS news_items_lifecycle_status_check" in text
+    assert "lifecycle_status = 'process_retryable'" in text
+    assert "lifecycle_status = 'process_terminal_failed'" in text
+    assert "ix_news_items_processing_lease_expiry" in text
+    assert "'processing'," in text
+    assert "WHERE lifecycle_status = 'process_failed'" in normalized_text
+    assert (
+        "WHERE lifecycle_status = 'processed' AND COALESCE(content_classification_json::text, '{}') = '{}'"
+        in normalized_text
+    )
+    assert "SET lifecycle_status = 'raw'" in normalized_text
+    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_items_unprocessed_claim" in text
+    assert (
+        "ON news_items(lifecycle_status, processing_next_due_at_ms, published_at_ms, news_item_id)"
+        in normalized_text
+    )
+    assert (
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_items_processing_lease_expiry"
+        in normalized_text
+    )
+    assert "ON news_items(processing_leased_until_ms, news_item_id)" in normalized_text
+    assert "WHERE lifecycle_status = 'processing'" in normalized_text
+    assert "WHERE lifecycle_status = 'raw'" in normalized_text
+    assert "OR lifecycle_status = 'process_retryable'" in normalized_text
+    assert "AND processing_leased_until_ms <= %s" in NEWS_REPOSITORY.read_text()
+    assert "COALESCE(processing_leased_until_ms, 0) <= %s" not in NEWS_REPOSITORY.read_text()
+    assert "DROP INDEX CONCURRENTLY IF EXISTS ix_news_items_unprocessed_claim" in downgrade_text
+    assert "DROP INDEX CONCURRENTLY IF EXISTS ix_news_items_processing_lease_expiry" in downgrade_text
+    assert upgrade_text.index("op.execute(_DROP_LEGACY_LIFECYCLE_CHECK_SQL)") < upgrade_text.index(
+        "SET lifecycle_status = 'process_retryable'"
+    )
+    assert downgrade_text.index("DROP CONSTRAINT IF EXISTS news_items_lifecycle_status_check") < downgrade_text.index(
+        "SET lifecycle_status = CASE"
+    )
 
 
 def test_news_source_status_hotpath_migration_adds_source_first_indexes() -> None:

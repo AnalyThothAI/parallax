@@ -1242,6 +1242,7 @@ class NewsFetchWorkerSettings(PerWorkerSettings):
 
 class NewsItemProcessWorkerSettings(PerWorkerSettings):
     advisory_lock_key: int = 2026051902
+    retry_delay_ms: int = Field(default=60_000, ge=1)
     wakes_on: tuple[str, ...] = ("news_item_written",)
 
     @field_validator("wakes_on", mode="before")
@@ -2031,6 +2032,7 @@ news_fetch:
 news_item_process:
   enabled: true
   advisory_lock_key: 2026051902
+  retry_delay_ms: 60000
   wakes_on: ["news_item_written"]
 news_item_brief:
   enabled: true

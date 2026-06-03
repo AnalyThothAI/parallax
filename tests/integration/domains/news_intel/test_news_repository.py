@@ -2306,6 +2306,186 @@ def test_canonical_dedup_migration_backfills_opennews_provider_id_only_from_payl
     ]
 
 
+def test_news_item_process_claim_hard_cut_migration_repairs_legacy_rows_and_downgrades_cleanly(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
+        conn.execute("CREATE SCHEMA public")
+        conn.execute("GRANT ALL ON SCHEMA public TO public")
+        conn.commit()
+        config = alembic_config()
+        config.attributes["database_url"] = _test_postgres_dsn()
+        command.upgrade(config, "20260603_0142")
+
+        conn.execute(
+            """
+            INSERT INTO news_sources (
+              source_id, provider_type, feed_url, source_domain, source_name,
+              source_role, trust_tier, created_at_ms, updated_at_ms
+            )
+            VALUES (
+              'source-legacy', 'rss', 'https://example.com/rss.xml', 'example.com', 'Example',
+              'observed_source', 'standard', %s, %s
+            )
+            """,
+            (NOW_MS, NOW_MS),
+        )
+        conn.execute(
+            """
+            INSERT INTO news_provider_items (
+              provider_item_id, source_id, source_item_key, canonical_url, payload_hash,
+              raw_payload_json, fetched_at_ms
+            )
+            VALUES
+              (
+                'provider-item-failed', 'source-legacy', 'guid-failed', 'https://example.com/failed',
+                'hash-failed', '{"title":"Failed"}'::jsonb, %s
+              ),
+              (
+                'provider-item-unclassified', 'source-legacy', 'guid-unclassified',
+                'https://example.com/unclassified', 'hash-unclassified',
+                '{"title":"Unclassified"}'::jsonb, %s
+              )
+            """,
+            (NOW_MS, NOW_MS),
+        )
+        conn.execute(
+            """
+            INSERT INTO news_items (
+              news_item_id, provider_item_id, source_id, source_domain, canonical_url,
+              title, summary, body_text, language, published_at_ms, fetched_at_ms,
+              content_hash, title_fingerprint, lifecycle_status, processing_attempts,
+              processing_error, processed_at_ms, content_classification_json, created_at_ms, updated_at_ms
+            )
+            VALUES
+              (
+                'news-item-failed', 'provider-item-failed', 'source-legacy', 'example.com',
+                'https://example.com/failed', 'Failed', 'Summary', 'Body', 'en', %s, %s,
+                'content-failed', 'failed', 'process_failed', 2, 'boom', NULL, '{"policy_version":"legacy"}'::jsonb,
+                %s, %s
+              ),
+              (
+                'news-item-unclassified', 'provider-item-unclassified', 'source-legacy', 'example.com',
+                'https://example.com/unclassified', 'Unclassified', 'Summary', 'Body', 'en', %s, %s,
+                'content-unclassified', 'unclassified', 'processed', 5, 'stale', %s, '{}'::jsonb,
+                %s, %s
+              )
+            """,
+            (NOW_MS, NOW_MS, NOW_MS, NOW_MS, NOW_MS, NOW_MS, NOW_MS + 10, NOW_MS, NOW_MS),
+        )
+        conn.commit()
+
+        command.upgrade(config, "20260603_0143")
+
+        upgraded_rows = conn.execute(
+            """
+            SELECT news_item_id, lifecycle_status, processing_attempts, processing_error,
+                   processing_terminal_error, processing_next_due_at_ms, processed_at_ms
+              FROM news_items
+             ORDER BY news_item_id
+            """
+        ).fetchall()
+        upgraded_constraint = conn.execute(
+            """
+            SELECT pg_get_constraintdef(oid) AS constraint_def
+              FROM pg_constraint
+             WHERE conrelid = 'news_items'::regclass
+               AND conname = 'news_items_lifecycle_status_check'
+            """
+        ).fetchone()["constraint_def"]
+        claim_index_exists = conn.execute(
+            "SELECT to_regclass('public.ix_news_items_unprocessed_claim') IS NOT NULL AS exists"
+        ).fetchone()["exists"]
+        expiry_index_exists = conn.execute(
+            "SELECT to_regclass('public.ix_news_items_processing_lease_expiry') IS NOT NULL AS exists"
+        ).fetchone()["exists"]
+
+        conn.execute(
+            """
+            UPDATE news_items
+               SET lifecycle_status = 'process_retryable',
+                   processing_next_due_at_ms = %s,
+                   processing_error = 'retry me'
+             WHERE news_item_id = 'news-item-failed'
+            """,
+            (NOW_MS + 100,),
+        )
+        conn.execute(
+            """
+            UPDATE news_items
+               SET lifecycle_status = 'process_terminal_failed',
+                   processing_terminal_error = 'gave up'
+             WHERE news_item_id = 'news-item-unclassified'
+            """
+        )
+        conn.commit()
+
+        command.downgrade(config, "20260603_0142")
+
+        downgraded_rows = conn.execute(
+            """
+            SELECT news_item_id, lifecycle_status, processing_error, processed_at_ms
+              FROM news_items
+             ORDER BY news_item_id
+            """
+        ).fetchall()
+        downgraded_constraint = conn.execute(
+            """
+            SELECT pg_get_constraintdef(oid) AS constraint_def
+              FROM pg_constraint
+             WHERE conrelid = 'news_items'::regclass
+               AND conname = 'news_items_lifecycle_status_check'
+            """
+        ).fetchone()["constraint_def"]
+    finally:
+        conn.close()
+
+    assert [dict(row) for row in upgraded_rows] == [
+        {
+            "news_item_id": "news-item-failed",
+            "lifecycle_status": "process_retryable",
+            "processing_attempts": 2,
+            "processing_error": "boom",
+            "processing_terminal_error": None,
+            "processing_next_due_at_ms": 0,
+            "processed_at_ms": None,
+        },
+        {
+            "news_item_id": "news-item-unclassified",
+            "lifecycle_status": "raw",
+            "processing_attempts": 0,
+            "processing_error": None,
+            "processing_terminal_error": None,
+            "processing_next_due_at_ms": 0,
+            "processed_at_ms": None,
+        },
+    ]
+    assert claim_index_exists is True
+    assert expiry_index_exists is True
+    for allowed_status in ("raw", "processing", "processed", "process_retryable", "process_terminal_failed"):
+        assert allowed_status in upgraded_constraint
+    assert "process_failed" not in upgraded_constraint
+
+    assert [dict(row) for row in downgraded_rows] == [
+        {
+            "news_item_id": "news-item-failed",
+            "lifecycle_status": "process_failed",
+            "processing_error": "retry me",
+            "processed_at_ms": None,
+        },
+        {
+            "news_item_id": "news-item-unclassified",
+            "lifecycle_status": "process_failed",
+            "processing_error": "gave up",
+            "processed_at_ms": None,
+        },
+    ]
+    for allowed_status in ("raw", "processed", "process_failed"):
+        assert allowed_status in downgraded_constraint
+    assert "process_retryable" not in downgraded_constraint
+    assert "process_terminal_failed" not in downgraded_constraint
+
+
 def test_page_projection_rebuilds_and_lists_agent_brief_columns_when_brief_updates(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
@@ -2912,30 +3092,355 @@ def test_update_item_content_classification_persists_materialized_fields(tmp_pat
     assert row["updated_at_ms"] == NOW_MS + 1
 
 
-def test_list_unprocessed_items_claims_processed_unclassified_items(tmp_path) -> None:
+def test_claim_unprocessed_items_sets_processing_lease_and_skips_immediate_reclaim(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         repo = NewsRepository(conn)
-        classified_id = _insert_source_provider_and_item(repo, source_item_key="classified", title="Classified")
-        unclassified_id = _insert_source_provider_and_item(repo, source_item_key="unclassified", title="Unclassified")
-        repo.update_item_content_classification(
-            news_item_id=classified_id,
-            content_class="crypto_market",
-            content_tags=["crypto_market"],
-            classification_payload={"policy_version": "test"},
+        news_item_id = _insert_source_provider_and_item(repo)
+
+        first = repo.claim_unprocessed_items(
+            limit=10,
+            lease_owner="worker-a",
+            lease_ms=60_000,
             now_ms=NOW_MS + 1,
         )
-        repo.mark_item_processed(news_item_id=classified_id, processed_at_ms=NOW_MS + 2)
-        repo.mark_item_processed(news_item_id=unclassified_id, processed_at_ms=NOW_MS + 2)
-
-        rows = repo.list_unprocessed_items(limit=10, now_ms=NOW_MS + 3)
+        second = repo.claim_unprocessed_items(
+            limit=10,
+            lease_owner="worker-b",
+            lease_ms=60_000,
+            now_ms=NOW_MS + 2,
+        )
+        row = conn.execute(
+            """
+            SELECT lifecycle_status, processing_lease_owner, processing_leased_until_ms,
+                   processing_attempts, processing_error, processing_next_due_at_ms
+              FROM news_items
+             WHERE news_item_id = %s
+            """,
+            (news_item_id,),
+        ).fetchone()
     finally:
         conn.close()
 
-    assert [row["news_item_id"] for row in rows] == [unclassified_id]
-    assert rows[0]["lifecycle_status"] == "processed"
-    assert rows[0]["content_classification_json"] == {}
+    assert [row["news_item_id"] for row in first] == [news_item_id]
+    assert second == []
+    assert row["lifecycle_status"] == "processing"
+    assert row["processing_lease_owner"] == "worker-a"
+    assert row["processing_leased_until_ms"] == NOW_MS + 60_001
+    assert row["processing_attempts"] == 1
+    assert row["processing_error"] is None
+    assert row["processing_next_due_at_ms"] == 0
+
+
+def test_claim_unprocessed_items_claims_due_retryable_but_not_future_retryable(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        due_id = _insert_source_provider_and_item(repo, source_item_key="due", title="Due")
+        future_id = _insert_source_provider_and_item(repo, source_item_key="future", title="Future")
+        repo.mark_item_process_retryable(
+            news_item_id=due_id,
+            error="retry me",
+            next_due_at_ms=NOW_MS - 1,
+            now_ms=NOW_MS,
+        )
+        repo.mark_item_process_retryable(
+            news_item_id=future_id,
+            error="not yet",
+            next_due_at_ms=NOW_MS + 60_000,
+            now_ms=NOW_MS,
+        )
+
+        rows = repo.claim_unprocessed_items(
+            limit=10,
+            lease_owner="worker-a",
+            lease_ms=30_000,
+            now_ms=NOW_MS,
+        )
+    finally:
+        conn.close()
+
+    assert [row["news_item_id"] for row in rows] == [due_id]
+    assert rows[0]["lifecycle_status"] == "processing"
+    assert rows[0]["processing_attempts"] == 1
+
+
+def test_claim_unprocessed_items_prioritizes_due_retryable_ahead_of_raw_when_limit_is_small(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        raw_id = _insert_source_provider_and_item(repo, source_item_key="raw-priority", title="Raw priority")
+        due_id = _insert_source_provider_and_item(repo, source_item_key="due-priority", title="Due priority")
+        repo.mark_item_process_retryable(
+            news_item_id=due_id,
+            error="retry me first",
+            next_due_at_ms=NOW_MS - 1,
+            now_ms=NOW_MS,
+        )
+
+        rows = repo.claim_unprocessed_items(
+            limit=1,
+            lease_owner="worker-a",
+            lease_ms=30_000,
+            now_ms=NOW_MS,
+        )
+    finally:
+        conn.close()
+
+    assert raw_id != due_id
+    assert [row["news_item_id"] for row in rows] == [due_id]
+
+
+def test_release_expired_processing_items_requeues_expired_claims(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo)
+        claimed = repo.claim_unprocessed_items(
+            limit=10,
+            lease_owner="worker-a",
+            lease_ms=100,
+            now_ms=NOW_MS,
+        )
+
+        released = repo.release_expired_processing_items(now_ms=NOW_MS + 101)
+        row = conn.execute(
+            """
+            SELECT lifecycle_status, processing_lease_owner, processing_leased_until_ms,
+                   processing_next_due_at_ms
+              FROM news_items
+             WHERE news_item_id = %s
+            """,
+            (news_item_id,),
+        ).fetchone()
+        reclaimed = repo.claim_unprocessed_items(
+            limit=10,
+            lease_owner="worker-b",
+            lease_ms=100,
+            now_ms=NOW_MS + 101,
+        )
+    finally:
+        conn.close()
+
+    assert [row["news_item_id"] for row in claimed] == [news_item_id]
+    assert released == 1
+    assert row["lifecycle_status"] == "process_retryable"
+    assert row["processing_lease_owner"] is None
+    assert row["processing_leased_until_ms"] is None
+    assert row["processing_next_due_at_ms"] == NOW_MS + 101
+    assert [item["news_item_id"] for item in reclaimed] == [news_item_id]
+
+
+def test_mark_item_process_terminal_failed_persists_terminal_status(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo)
+        repo.claim_unprocessed_items(
+            limit=10,
+            lease_owner="worker-a",
+            lease_ms=60_000,
+            now_ms=NOW_MS,
+        )
+
+        repo.mark_item_process_terminal_failed(
+            news_item_id=news_item_id,
+            error="gave up",
+            now_ms=NOW_MS + 1,
+            lease_owner="worker-a",
+            processing_attempts=1,
+        )
+        row = conn.execute(
+            """
+            SELECT lifecycle_status, processing_lease_owner, processing_leased_until_ms,
+                   processing_next_due_at_ms, processing_error, processing_terminal_error
+              FROM news_items
+             WHERE news_item_id = %s
+            """,
+            (news_item_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row["lifecycle_status"] == "process_terminal_failed"
+    assert row["processing_lease_owner"] is None
+    assert row["processing_leased_until_ms"] is None
+    assert row["processing_next_due_at_ms"] == 0
+    assert row["processing_error"] is None
+    assert row["processing_terminal_error"] == "gave up"
+
+
+def test_stale_processed_claim_cannot_clobber_newer_claim(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo, source_item_key="stale-processed")
+        first_claim = repo.claim_unprocessed_items(
+            limit=1,
+            lease_owner="worker-a",
+            lease_ms=100,
+            now_ms=NOW_MS,
+        )[0]
+        repo.release_expired_processing_items(now_ms=NOW_MS + 101)
+        second_claim = repo.claim_unprocessed_items(
+            limit=1,
+            lease_owner="worker-b",
+            lease_ms=100,
+            now_ms=NOW_MS + 101,
+        )[0]
+
+        stale_rowcount = repo.mark_item_processed(
+            news_item_id=news_item_id,
+            processed_at_ms=NOW_MS + 102,
+            lease_owner=str(first_claim["processing_lease_owner"]),
+            processing_attempts=int(first_claim["processing_attempts"]),
+        )
+        current_row = conn.execute(
+            """
+            SELECT lifecycle_status, processing_lease_owner, processing_attempts
+              FROM news_items
+             WHERE news_item_id = %s
+            """,
+            (news_item_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert stale_rowcount == 0
+    assert second_claim["processing_attempts"] == 2
+    assert current_row["lifecycle_status"] == "processing"
+    assert current_row["processing_lease_owner"] == "worker-b"
+    assert current_row["processing_attempts"] == 2
+
+
+def test_stale_retryable_claim_cannot_clobber_newer_claim(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo, source_item_key="stale-retryable")
+        first_claim = repo.claim_unprocessed_items(
+            limit=1,
+            lease_owner="worker-a",
+            lease_ms=100,
+            now_ms=NOW_MS,
+        )[0]
+        repo.release_expired_processing_items(now_ms=NOW_MS + 101)
+        second_claim = repo.claim_unprocessed_items(
+            limit=1,
+            lease_owner="worker-b",
+            lease_ms=100,
+            now_ms=NOW_MS + 101,
+        )[0]
+
+        stale_rowcount = repo.mark_item_process_retryable(
+            news_item_id=news_item_id,
+            error="too late",
+            next_due_at_ms=NOW_MS + 500,
+            now_ms=NOW_MS + 102,
+            lease_owner=str(first_claim["processing_lease_owner"]),
+            processing_attempts=int(first_claim["processing_attempts"]),
+        )
+        current_row = conn.execute(
+            """
+            SELECT lifecycle_status, processing_lease_owner, processing_attempts, processing_next_due_at_ms
+              FROM news_items
+             WHERE news_item_id = %s
+            """,
+            (news_item_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert stale_rowcount == 0
+    assert second_claim["processing_attempts"] == 2
+    assert current_row["lifecycle_status"] == "processing"
+    assert current_row["processing_lease_owner"] == "worker-b"
+    assert current_row["processing_attempts"] == 2
+    assert current_row["processing_next_due_at_ms"] == NOW_MS + 101
+
+
+def test_stale_terminal_failed_claim_cannot_clobber_newer_claim(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo, source_item_key="stale-terminal")
+        first_claim = repo.claim_unprocessed_items(
+            limit=1,
+            lease_owner="worker-a",
+            lease_ms=100,
+            now_ms=NOW_MS,
+        )[0]
+        repo.release_expired_processing_items(now_ms=NOW_MS + 101)
+        second_claim = repo.claim_unprocessed_items(
+            limit=1,
+            lease_owner="worker-b",
+            lease_ms=100,
+            now_ms=NOW_MS + 101,
+        )[0]
+
+        stale_rowcount = repo.mark_item_process_terminal_failed(
+            news_item_id=news_item_id,
+            error="too late",
+            now_ms=NOW_MS + 102,
+            lease_owner=str(first_claim["processing_lease_owner"]),
+            processing_attempts=int(first_claim["processing_attempts"]),
+        )
+        current_row = conn.execute(
+            """
+            SELECT lifecycle_status, processing_lease_owner, processing_attempts, processing_terminal_error
+              FROM news_items
+             WHERE news_item_id = %s
+            """,
+            (news_item_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert stale_rowcount == 0
+    assert second_claim["processing_attempts"] == 2
+    assert current_row["lifecycle_status"] == "processing"
+    assert current_row["processing_lease_owner"] == "worker-b"
+    assert current_row["processing_attempts"] == 2
+    assert current_row["processing_terminal_error"] is None
+
+
+def test_claim_unprocessed_items_ignores_processed_unclassified_rows_after_hard_cut(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        raw_id = _insert_source_provider_and_item(repo, source_item_key="raw", title="Raw")
+        unclassified_id = _insert_source_provider_and_item(repo, source_item_key="processed", title="Processed")
+        repo.mark_item_processed(news_item_id=unclassified_id, processed_at_ms=NOW_MS + 1)
+
+        rows = repo.claim_unprocessed_items(
+            limit=10,
+            lease_owner="worker-a",
+            lease_ms=60_000,
+            now_ms=NOW_MS + 2,
+        )
+        stale_row = conn.execute(
+            """
+            SELECT lifecycle_status, content_classification_json
+              FROM news_items
+             WHERE news_item_id = %s
+            """,
+            (unclassified_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert [row["news_item_id"] for row in rows] == [raw_id]
+    assert stale_row["lifecycle_status"] == "processed"
+    assert stale_row["content_classification_json"] == {}
 
 
 def test_get_news_item_detail_hydrates_agent_brief_and_latest_run_summary(tmp_path) -> None:
