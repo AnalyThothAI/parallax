@@ -52,8 +52,39 @@ def test_registry_schemas_expose_archive_match_modes_and_fact_include_rejected()
     registry = build_news_research_tool_registry()
 
     archive_props = registry["search_news_archive"].input_schema["properties"]
-    assert archive_props["match_modes"]["items"]["enum"] == ["title", "summary", "token", "fact"]
+    assert archive_props["match_modes"]["items"]["enum"] == ["title", "token", "fact", "source_title"]
     assert archive_props["match_modes"]["maxItems"] == 4
 
     fact_props = registry["get_fact_context"].input_schema["properties"]
     assert fact_props["include_rejected"]["type"] == "boolean"
+
+
+def test_registry_source_tables_are_news_owned_real_tables() -> None:
+    registry = build_news_research_tool_registry()
+    forbidden_tables = {"asset_identity_current", "news_observations", "news_source_quality"}
+
+    for tool in registry.values():
+        assert forbidden_tables.isdisjoint(tool.source_tables)
+
+    assert set(registry["get_observation_history"].source_tables) == {
+        "news_items",
+        "news_item_observation_edges",
+        "news_sources",
+    }
+    assert set(registry["get_source_quality"].source_tables) == {
+        "news_sources",
+        "news_source_quality_rows",
+    }
+    assert set(registry["get_target_news_context"].source_tables) == {
+        "news_items",
+        "news_token_mentions",
+        "news_page_rows",
+        "news_item_agent_briefs",
+    }
+    assert set(registry["search_news_archive"].source_tables) == {
+        "news_items",
+        "news_token_mentions",
+        "news_sources",
+        "news_page_rows",
+        "news_item_agent_briefs",
+    }

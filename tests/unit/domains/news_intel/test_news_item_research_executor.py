@@ -22,6 +22,7 @@ class FakeNewsRepo:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.fail_handlers: set[str] = set()
         self.mapping_handlers: set[str] = set()
+        self.rows_by_handler: dict[str, Any] = {}
 
     def get_news_observation_history(self, *, news_item_id: str, limit: int) -> list[dict[str, Any]] | dict[str, Any]:
         return self._record("get_news_observation_history", {"news_item_id": news_item_id, "limit": limit})
@@ -91,6 +92,8 @@ class FakeNewsRepo:
         self.calls.append((name, kwargs))
         if name in self.fail_handlers:
             raise TimeoutError(f"{name} timed out")
+        if name in self.rows_by_handler:
+            return self.rows_by_handler[name]
         row = {
             "news_item_id": "news-2",
             "title": "ETF follow-up",
@@ -211,6 +214,227 @@ def test_executor_normalizes_mapping_repo_output_into_one_public_row() -> None:
     ]
 
 
+def test_executor_preserves_target_context_aggregate_envelope_and_redacts_nested_fields() -> None:
+    repo = FakeNewsRepo()
+    repo.rows_by_handler["get_target_news_context"] = {
+        "counts": {"items": 4, "sources": 3},
+        "top_items": [
+            {
+                "news_item_id": "news-2",
+                "title": "SOL ETF update",
+                "summary": "Compact summary",
+                "published_at_ms": 1_778_999_000_000,
+                "source_domain": "example.com",
+                "source_name": "Example",
+                "source_role": "primary",
+                "trust_tier": "tier_1",
+                "target_type": "CexToken",
+                "target_id": "cex_token:SOL",
+                "display_symbol": "SOL",
+                "matching_basis": "target_ref",
+                "match_reason": "resolved token mention",
+                "match_confidence": 0.93,
+                "brief_status": "ready",
+                "novelty_status": "update",
+                "confirmation_state": "multi_source_confirmed",
+                "result_basis": "exact_target",
+                "evidence_ref": "target:news-2",
+                "raw_payload_json": {"body": "raw"},
+                "unexpected_internal_column": "internal",
+                "nested": {"api_key": "secret", "public_note": "drop whole internal nesting"},
+            }
+        ],
+        "latest_items": [
+            {
+                "news_item_id": "news-3",
+                "title": "Latest SOL note",
+                "source_domain": "latest.example",
+                "matching_basis": "symbol_heuristic",
+                "match_confidence": 0.71,
+                "result_basis": "symbol_heuristic",
+                "secret": "drop",
+            }
+        ],
+        "source_domain_count": 3,
+        "high_score_count": 2,
+        "matching_basis": ["target_ref", "symbol_heuristic"],
+        "truncated": False,
+        "result_basis": "exact_target",
+        "evidence_refs": ["target:news-2", "target:news-3"],
+        "provider_item_id": "raw-provider-id",
+        "unexpected_internal_column": "internal",
+    }
+    plan = _plan(
+        [
+            _call(
+                "target",
+                "get_target_news_context",
+                {"target_refs": [{"target_type": "CexToken", "target_id": "cex_token:SOL"}]},
+            )
+        ]
+    )
+
+    result = execute_news_research_plan(repo, plan, base_packet=_base_packet(), now_ms=NOW_MS)
+
+    assert result.status == "ok"
+    assert result.tool_results[0].rows == [
+        {
+            "counts": {"items": 4, "sources": 3},
+            "top_items": [
+                {
+                    "news_item_id": "news-2",
+                    "title": "SOL ETF update",
+                    "summary": "Compact summary",
+                    "published_at_ms": 1_778_999_000_000,
+                    "source_domain": "example.com",
+                    "source_name": "Example",
+                    "source_role": "primary",
+                    "trust_tier": "tier_1",
+                    "target_type": "CexToken",
+                    "target_id": "cex_token:SOL",
+                    "display_symbol": "SOL",
+                    "matching_basis": "target_ref",
+                    "match_reason": "resolved token mention",
+                    "match_confidence": 0.93,
+                    "brief_status": "ready",
+                    "novelty_status": "update",
+                    "confirmation_state": "multi_source_confirmed",
+                    "result_basis": "exact_target",
+                    "evidence_ref": "target:news-2",
+                }
+            ],
+            "latest_items": [
+                {
+                    "news_item_id": "news-3",
+                    "title": "Latest SOL note",
+                    "source_domain": "latest.example",
+                    "matching_basis": "symbol_heuristic",
+                    "match_confidence": 0.71,
+                    "result_basis": "symbol_heuristic",
+                }
+            ],
+            "source_domain_count": 3,
+            "high_score_count": 2,
+            "matching_basis": ["target_ref", "symbol_heuristic"],
+            "truncated": False,
+            "result_basis": "exact_target",
+            "evidence_refs": ["target:news-2", "target:news-3"],
+        }
+    ]
+    assert "filtered:unexpected_internal_column" in result.tool_results[0].redaction_notes
+    assert "redacted:provider_item_id" in result.tool_results[0].redaction_notes
+    assert "redacted:top_items.0.raw_payload_json" in result.tool_results[0].redaction_notes
+    assert "redacted:top_items.0.nested.api_key" in result.tool_results[0].redaction_notes
+    assert "redacted:latest_items.0.secret" in result.tool_results[0].redaction_notes
+
+
+def test_executor_preserves_archive_compact_public_fields() -> None:
+    repo = FakeNewsRepo()
+    repo.rows_by_handler["search_news_archive"] = [
+        {
+            "news_item_id": "news-4",
+            "title": "Archive title",
+            "summary": "Archive summary",
+            "published_at_ms": 1_778_990_000_000,
+            "canonical_url": "https://example.com/news-4",
+            "source_domain": "example.com",
+            "source_name": "Example",
+            "source_role": "primary",
+            "trust_tier": "tier_1",
+            "matched_terms": ["ETF"],
+            "match_reason": "title term",
+            "matching_basis": "title",
+            "match_confidence": 0.82,
+            "brief_status": "ready",
+            "novelty_status": "repeat",
+            "confirmation_state": "multi_source_confirmed",
+            "source_consensus_zh": "多来源确认",
+            "result_basis": "similar_news",
+            "evidence_ref": "archive:news-4",
+            "unexpected_internal_column": "internal",
+        }
+    ]
+    plan = _plan([_call("archive", "search_news_archive", {"query_terms": ["ETF"]})])
+
+    result = execute_news_research_plan(repo, plan, base_packet=_base_packet(), now_ms=NOW_MS)
+
+    assert result.tool_results[0].rows == [
+        {
+            "news_item_id": "news-4",
+            "title": "Archive title",
+            "summary": "Archive summary",
+            "published_at_ms": 1_778_990_000_000,
+            "canonical_url": "https://example.com/news-4",
+            "source_domain": "example.com",
+            "source_name": "Example",
+            "source_role": "primary",
+            "trust_tier": "tier_1",
+            "matched_terms": ["ETF"],
+            "match_reason": "title term",
+            "matching_basis": "title",
+            "match_confidence": 0.82,
+            "brief_status": "ready",
+            "novelty_status": "repeat",
+            "confirmation_state": "multi_source_confirmed",
+            "source_consensus_zh": "多来源确认",
+            "result_basis": "similar_news",
+            "evidence_ref": "archive:news-4",
+        }
+    ]
+    assert "filtered:unexpected_internal_column" in result.tool_results[0].redaction_notes
+
+
+def test_executor_preserves_source_quality_compact_public_fields() -> None:
+    repo = FakeNewsRepo()
+    repo.rows_by_handler["get_source_quality_context_for_item"] = {
+        "source_domain": "example.com",
+        "source_name": "Example",
+        "source_role": "primary",
+        "trust_tier": "tier_1",
+        "window": "7d",
+        "computed_at_ms": 1_778_999_999_000,
+        "items_fetched": 42,
+        "duplicate_rate": 0.12,
+        "quality_score": 91,
+        "diagnostics_json": {"freshness": "ok", "token": "drop nested token"},
+        "source_quality_status": "healthy",
+        "provider_health_status": "ok",
+        "provider_status": "active",
+        "source_health": "ok",
+        "result_basis": "source_quality",
+        "evidence_ref": "source:example.com",
+        "sync_cursor": "cursor",
+        "unexpected_internal_column": "internal",
+    }
+    plan = _plan([_call("quality", "get_source_quality", {})])
+
+    result = execute_news_research_plan(repo, plan, base_packet=_base_packet(), now_ms=NOW_MS)
+
+    assert result.tool_results[0].rows == [
+        {
+            "source_domain": "example.com",
+            "source_name": "Example",
+            "source_role": "primary",
+            "trust_tier": "tier_1",
+            "window": "7d",
+            "computed_at_ms": 1_778_999_999_000,
+            "items_fetched": 42,
+            "duplicate_rate": 0.12,
+            "quality_score": 91,
+            "diagnostics_json": {"freshness": "ok"},
+            "source_quality_status": "healthy",
+            "provider_health_status": "ok",
+            "provider_status": "active",
+            "source_health": "ok",
+            "result_basis": "source_quality",
+            "evidence_ref": "source:example.com",
+        }
+    ]
+    assert "redacted:diagnostics_json.token" in result.tool_results[0].redaction_notes
+    assert "redacted:sync_cursor" in result.tool_results[0].redaction_notes
+    assert "filtered:unexpected_internal_column" in result.tool_results[0].redaction_notes
+
+
 def test_executor_clamps_archive_target_fact_and_observation_inputs() -> None:
     repo = FakeNewsRepo()
     plan = _plan(
@@ -221,7 +445,7 @@ def test_executor_clamps_archive_target_fact_and_observation_inputs() -> None:
                 {
                     "query_terms": ["a", "b", "c", "d", "e", "f"],
                     "symbols": ["BTC", "ETH", "SOL", "DOGE", "XRP", "ADA"],
-                    "match_modes": ["fact", "unknown", "title", "token", "summary", "body"],
+                    "match_modes": ["fact", "unknown", "title", "token", "summary", "source_title", "body"],
                     "window_hours": 999,
                     "limit": 99,
                 },
@@ -258,7 +482,7 @@ def test_executor_clamps_archive_target_fact_and_observation_inputs() -> None:
             "query_terms": ["a", "b", "c", "d", "e"],
             "symbols": ["BTC", "ETH", "SOL", "DOGE", "XRP"],
             "window_hours": 168,
-            "match_modes": ["fact", "title", "token", "summary"],
+            "match_modes": ["fact", "title", "token", "source_title"],
             "limit": 8,
             "now_ms": NOW_MS,
         },
@@ -286,7 +510,7 @@ def test_executor_clamps_archive_target_fact_and_observation_inputs() -> None:
         {
             "query_terms": ["a", "b", "c", "d", "e"],
             "symbols": ["BTC", "ETH", "SOL", "DOGE", "XRP"],
-            "match_modes": ["fact", "title", "token", "summary"],
+            "match_modes": ["fact", "title", "token", "source_title"],
             "window_hours": 168,
             "limit": 8,
         },
@@ -331,6 +555,7 @@ def test_executor_clamps_search_terms_symbols_and_fallback_string_lengths() -> N
 
     assert repo.calls[0][1]["query_terms"] == ["x" * 64]
     assert repo.calls[0][1]["symbols"] == ["S" * 32]
+    assert repo.calls[0][1]["match_modes"] == ["title", "token", "fact", "source_title"]
     assert repo.calls[1][1]["symbol_fallbacks"] == ["F" * 32]
 
 

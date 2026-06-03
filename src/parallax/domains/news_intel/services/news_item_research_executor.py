@@ -24,7 +24,7 @@ NEWS_RESEARCH_EXECUTOR_TARGET_TOTAL_CHARS = 3_000
 NEWS_RESEARCH_EXECUTOR_HARD_TOTAL_CHARS = 6_000
 NEWS_RESEARCH_EXECUTOR_MAX_TOOL_CALLS = 5
 NEWS_RESEARCH_EXECUTOR_MAX_ARCHIVE_SEARCHES = 2
-NEWS_RESEARCH_ARCHIVE_MATCH_MODES = ("title", "summary", "token", "fact")
+NEWS_RESEARCH_ARCHIVE_MATCH_MODES = ("title", "token", "fact", "source_title")
 
 ExecutionStatus = Literal["ok", "partial", "failed", "skipped"]
 
@@ -74,6 +74,26 @@ _PUBLIC_ROW_KEYS_BY_TOOL = {
             "content_class",
             "source_domain",
             "source_name",
+            "source_role",
+            "trust_tier",
+            "source_count",
+            "source_domain_count",
+            "independence_class",
+            "independent_source_confirmed",
+            "same_domain_notes",
+            "duplicate_count",
+            "observation_count",
+            "first_observed_at_ms",
+            "last_observed_at_ms",
+            "canonical_url",
+            "public_url",
+            "match_confidence",
+            "match_reason",
+            "matching_basis",
+            "source_ids",
+            "source_domains",
+            "source_role_summary",
+            "trust_tier_summary",
             "result_basis",
             "evidence_ref",
             "evidence_refs",
@@ -86,7 +106,15 @@ _PUBLIC_ROW_KEYS_BY_TOOL = {
             "source_name",
             "source_role",
             "trust_tier",
+            "window",
+            "computed_at_ms",
+            "items_fetched",
+            "duplicate_rate",
             "quality_score",
+            "diagnostics_json",
+            "source_quality_status",
+            "provider_health_status",
+            "provider_status",
             "source_health",
             "result_basis",
             "evidence_ref",
@@ -104,6 +132,21 @@ _PUBLIC_ROW_KEYS_BY_TOOL = {
             "published_at_ms",
             "source_domain",
             "source_name",
+            "source_role",
+            "trust_tier",
+            "counts",
+            "top_items",
+            "latest_items",
+            "source_domain_count",
+            "high_score_count",
+            "matching_basis",
+            "match_reason",
+            "match_confidence",
+            "truncated",
+            "brief_status",
+            "novelty_status",
+            "confirmation_state",
+            "source_consensus_zh",
             "result_basis",
             "evidence_ref",
             "evidence_refs",
@@ -118,15 +161,51 @@ _PUBLIC_ROW_KEYS_BY_TOOL = {
             "canonical_url",
             "source_domain",
             "source_name",
+            "source_role",
+            "trust_tier",
             "symbols",
             "matched_terms",
             "match_modes",
+            "match_reason",
+            "matching_basis",
+            "match_confidence",
+            "brief_status",
+            "novelty_status",
+            "confirmation_state",
+            "source_consensus_zh",
             "result_basis",
             "evidence_ref",
             "evidence_refs",
         }
     ),
 }
+_TARGET_CONTEXT_ITEM_PUBLIC_KEYS = frozenset(
+    {
+        "news_item_id",
+        "title",
+        "summary",
+        "published_at_ms",
+        "source_domain",
+        "source_name",
+        "source_role",
+        "trust_tier",
+        "target_type",
+        "target_id",
+        "display_symbol",
+        "matching_basis",
+        "match_reason",
+        "match_confidence",
+        "brief_status",
+        "novelty_status",
+        "confirmation_state",
+        "source_consensus_zh",
+        "summary_zh",
+        "market_read_zh",
+        "result_basis",
+        "evidence_ref",
+        "evidence_refs",
+    }
+)
 
 
 class NewsResearchPlanExecutionResult(BaseModel):
@@ -527,7 +606,12 @@ def _public_safe_rows(
     for row in raw_rows:
         if not isinstance(row, Mapping):
             continue
-        public_row = _public_row(row, public_keys=public_keys, redaction_notes=redaction_notes)
+        public_row = _public_row(
+            row,
+            public_keys=public_keys,
+            path="",
+            redaction_notes=redaction_notes,
+        )
         redacted = _redact_mapping(public_row, path="", redaction_notes=redaction_notes)
         if redacted:
             result.append(redacted)
@@ -538,19 +622,46 @@ def _public_row(
     row: Mapping[str, Any],
     *,
     public_keys: frozenset[str],
+    path: str,
     redaction_notes: list[str],
 ) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in row.items():
         key_text = str(key)
+        child_path = f"{path}.{key_text}" if path else key_text
         if key_text in public_keys:
-            result[key_text] = value
+            result[key_text] = _public_value(
+                key=key_text,
+                value=value,
+                path=child_path,
+                redaction_notes=redaction_notes,
+            )
             continue
-        _note_filtered(redaction_notes, key_text)
-        _scan_sensitive_value(value, path=key_text, redaction_notes=redaction_notes)
+        _note_filtered(redaction_notes, child_path)
+        _scan_sensitive_value(value, path=child_path, redaction_notes=redaction_notes)
         if _is_sensitive_key(key_text):
-            _note_redaction(redaction_notes, key_text)
+            _note_redaction(redaction_notes, child_path)
     return result
+
+
+def _public_value(*, key: str, value: Any, path: str, redaction_notes: list[str]) -> Any:
+    if key not in {"top_items", "latest_items"}:
+        return value
+    if not isinstance(value, list):
+        return []
+    public_items: list[dict[str, Any]] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, Mapping):
+            continue
+        public_item = _public_row(
+            item,
+            public_keys=_TARGET_CONTEXT_ITEM_PUBLIC_KEYS,
+            path=f"{path}.{index}",
+            redaction_notes=redaction_notes,
+        )
+        if public_item:
+            public_items.append(public_item)
+    return public_items
 
 
 def _scan_sensitive_value(value: Any, *, path: str, redaction_notes: list[str]) -> None:
