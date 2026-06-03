@@ -223,7 +223,7 @@ def _rank_row_payload(row: Mapping[str, Any], *, exited: bool) -> dict[str, Any]
         "capture_target_id": capture_target_id,
         "lane": str(row.get("lane") or ""),
         "rank": row.get("rank"),
-        "rank_score": row.get("rank_score", row.get("score")),
+        "rank_score": _rank_score_payload(row.get("rank_score", row.get("score"))),
         "decision": row.get("decision"),
         "quality_status": row.get("quality_status"),
         "degraded_reasons_json": _json_ready(row.get("degraded_reasons_json") or []),
@@ -289,6 +289,16 @@ def _rank_row_product_payload_hash(row: Mapping[str, Any], *, rank_payload: Mapp
     }
     encoded = json.dumps(_json_ready(payload), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _rank_score_payload(value: Any) -> str | None:
+    if value is None or str(value).strip() == "":
+        return None
+    try:
+        normalized = Decimal(str(value)).normalize()
+    except Exception:
+        return str(value)
+    return format(normalized, "f")
 
 
 def _stable_factor_snapshot(value: Any) -> Any:

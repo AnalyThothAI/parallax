@@ -1134,7 +1134,12 @@ def test_capture_tier_rank_set_fingerprint_accepts_decimal_rank_scores() -> None
         "generation_id": "gen-1",
     }
 
-    assert token_capture_tier_rank_set_payload_hash(reason="repair", rows=[row])
+    assert token_capture_tier_rank_set_payload_hash(reason="repair", rows=[row]) == (
+        token_capture_tier_rank_set_payload_hash(
+            reason="repair",
+            rows=[{**row, "rank_score": 88.5, "score": 88.5}],
+        )
+    )
 
 
 def test_capture_tier_rank_set_fingerprint_uses_factor_snapshot_live_market_key() -> None:
