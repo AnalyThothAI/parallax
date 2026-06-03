@@ -213,9 +213,14 @@ def token_capture_tier_rank_set_payload_hash(
 
 
 def _rank_row_payload(row: Mapping[str, Any], *, exited: bool) -> dict[str, Any]:
+    source_target_type = str(row.get("target_type") or row.get("target_type_key") or "").strip()
+    source_target_id = str(row.get("target_id") or row.get("identity_id") or "").strip()
+    capture_target_type, capture_target_id = _capture_rank_target(row, source_target_type=source_target_type)
     return {
-        "target_type": str(row.get("target_type") or row.get("target_type_key") or ""),
-        "target_id": str(row.get("target_id") or row.get("identity_id") or ""),
+        "source_target_type": source_target_type,
+        "source_target_id": source_target_id,
+        "capture_target_type": capture_target_type,
+        "capture_target_id": capture_target_id,
         "lane": str(row.get("lane") or ""),
         "rank": row.get("rank"),
         "rank_score": row.get("rank_score", row.get("score")),
@@ -223,15 +228,35 @@ def _rank_row_payload(row: Mapping[str, Any], *, exited: bool) -> dict[str, Any]
         "degraded_reasons_json": _json_ready(row.get("degraded_reasons_json") or []),
         "payload_hash": row.get("payload_hash"),
         "generation_id": row.get("generation_id") or row.get("current_generation_id"),
-        "source_watermark_ms": int(row.get("source_max_received_at_ms") or row.get("source_watermark_ms") or 0),
         "exited": bool(exited),
     }
 
 
-def _rank_payload_sort_key(row: Mapping[str, Any]) -> tuple[str, str, str, str]:
+def _capture_rank_target(row: Mapping[str, Any], *, source_target_type: str) -> tuple[str, str]:
+    if source_target_type == "Asset":
+        chain_id = str(row.get("chain_id") or row.get("asset_chain_id") or row.get("chain") or "").strip()
+        address = str(row.get("address") or row.get("asset_address") or row.get("token_address") or "").strip()
+        if chain_id and address:
+            normalized_address = address.lower() if address.startswith(("0x", "0X")) else address
+            return "chain_token", f"{chain_id}:{normalized_address}"
+        return "", ""
+
+    if source_target_type == "CexToken":
+        provider = str(row.get("provider") or "").strip().lower()
+        native_market_id = str(row.get("native_market_id") or "").strip().upper()
+        if provider and native_market_id:
+            return "cex_symbol", f"{provider}:{native_market_id}"
+        return "", ""
+
+    return "", ""
+
+
+def _rank_payload_sort_key(row: Mapping[str, Any]) -> tuple[str, str, str, str, str, str]:
     return (
-        str(row.get("target_type") or ""),
-        str(row.get("target_id") or ""),
+        str(row.get("source_target_type") or ""),
+        str(row.get("source_target_id") or ""),
+        str(row.get("capture_target_type") or ""),
+        str(row.get("capture_target_id") or ""),
         str(row.get("lane") or ""),
         str(row.get("exited") or ""),
     )

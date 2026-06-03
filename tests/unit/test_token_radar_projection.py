@@ -3,6 +3,9 @@ from __future__ import annotations
 from contextlib import contextmanager
 
 import parallax.domains.token_intel.services.token_radar_projection as token_radar_projection_module
+from parallax.domains.asset_market.repositories.token_capture_tier_dirty_target_repository import (
+    token_capture_tier_rank_set_payload_hash,
+)
 from parallax.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
 from parallax.domains.token_intel.interfaces import (
     TOKEN_RADAR_FACTOR_FAMILIES,
@@ -1012,6 +1015,72 @@ def test_projection_capture_tier_fingerprint_changes_when_rank_payload_changes_w
     assert first_hash != second_hash
     assert repos.token_capture_tier_dirty_targets.enqueued[0]["source_watermark_ms"] == now_ms - 1_000
     assert repos.token_capture_tier_dirty_targets.enqueued[1]["source_watermark_ms"] == now_ms - 1_000
+
+
+def test_capture_tier_rank_set_fingerprint_ignores_source_watermark_metadata() -> None:
+    row = {
+        "target_type": "Asset",
+        "target_id": "asset-1",
+        "chain_id": "eip155:1",
+        "address": "0xABC",
+        "rank": 1,
+        "rank_score": 88,
+        "lane": "resolved",
+        "quality_status": "ready",
+        "degraded_reasons_json": [],
+        "source_max_received_at_ms": 1_777_800_000_000,
+        "payload_hash": "row-hash",
+        "generation_id": "gen-1",
+    }
+
+    assert token_capture_tier_rank_set_payload_hash(reason="repair", rows=[row]) == (
+        token_capture_tier_rank_set_payload_hash(
+            reason="repair",
+            rows=[{**row, "source_max_received_at_ms": 1_777_800_030_000}],
+        )
+    )
+
+
+def test_capture_tier_rank_set_fingerprint_includes_live_market_key() -> None:
+    cex_row = {
+        "target_type": "CexToken",
+        "target_id": "cex-token:btc",
+        "provider": "binance",
+        "native_market_id": "BTCUSDT",
+        "rank": 1,
+        "rank_score": 88,
+        "lane": "resolved",
+        "quality_status": "ready",
+        "degraded_reasons_json": [],
+        "payload_hash": "row-hash",
+        "generation_id": "gen-1",
+    }
+    asset_row = {
+        "target_type": "Asset",
+        "target_id": "asset-1",
+        "chain_id": "eip155:1",
+        "address": "0xABC",
+        "rank": 1,
+        "rank_score": 88,
+        "lane": "resolved",
+        "quality_status": "ready",
+        "degraded_reasons_json": [],
+        "payload_hash": "row-hash",
+        "generation_id": "gen-1",
+    }
+
+    assert token_capture_tier_rank_set_payload_hash(reason="repair", rows=[cex_row]) != (
+        token_capture_tier_rank_set_payload_hash(
+            reason="repair",
+            rows=[{**cex_row, "native_market_id": "ETHUSDT"}],
+        )
+    )
+    assert token_capture_tier_rank_set_payload_hash(reason="repair", rows=[asset_row]) != (
+        token_capture_tier_rank_set_payload_hash(
+            reason="repair",
+            rows=[{**asset_row, "address": "0xDEF"}],
+        )
+    )
 
 
 def test_projection_enqueues_pulse_trigger_for_matched_realtime_rank_changes() -> None:
@@ -2484,36 +2553,10 @@ class FakeCaptureTierDirtyTargets:
     ):
         row_list = list(rows)
         exited_list = list(exited_rows)
-        payload_hash = token_radar_projection_module.stable_token_radar_payload_hash(
-            {
-                "reason": reason,
-                "rows": [
-                    {
-                        "target_type": row.get("target_type"),
-                        "target_id": row.get("target_id"),
-                        "rank": row.get("rank"),
-                        "rank_score": row.get("rank_score"),
-                        "quality_status": row.get("quality_status"),
-                        "degraded_reasons_json": row.get("degraded_reasons_json") or [],
-                        "payload_hash": row.get("payload_hash"),
-                        "generation_id": row.get("generation_id"),
-                    }
-                    for row in row_list
-                ],
-                "exited_rows": [
-                    {
-                        "target_type": row.get("target_type"),
-                        "target_id": row.get("target_id"),
-                        "rank": row.get("rank"),
-                        "rank_score": row.get("rank_score"),
-                        "quality_status": row.get("quality_status"),
-                        "degraded_reasons_json": row.get("degraded_reasons_json") or [],
-                        "payload_hash": row.get("payload_hash"),
-                        "generation_id": row.get("generation_id"),
-                    }
-                    for row in exited_list
-                ],
-            }
+        payload_hash = token_capture_tier_rank_set_payload_hash(
+            reason=reason,
+            rows=row_list,
+            exited_rows=exited_list,
         )
         self.enqueued.append(
             {
