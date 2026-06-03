@@ -84,11 +84,15 @@ def _has_independent_source_confirmation(*, packet: NewsItemBriefBasePacket, aud
     for result in _tool_results(audit):
         if str(result.get("tool_name") or "") != "get_observation_history":
             continue
-        domains = {
-            _norm(row.get("source_domain"))
-            for row in _result_rows(result)
-            if _norm(row.get("source_domain")) and not _is_heuristic_row(row)
-        }
+        domains: set[str] = set()
+        for row in _result_rows(result):
+            if _is_heuristic_row(row):
+                continue
+            if _row_confirms_independent_sources(row):
+                return True
+            domain = _norm(row.get("source_domain"))
+            if domain:
+                domains.add(domain)
         if len(domains) > 1:
             return True
     return False
@@ -203,18 +207,32 @@ def _tool_results(audit: Any) -> list[dict[str, Any]]:
 
 
 def _result_rows(result: Mapping[str, Any]) -> list[dict[str, Any]]:
-    rows = _json_object_list(result.get("rows"))
-    if rows:
-        return rows
+    rows = _rows_with_nested_items(_json_object_list(result.get("rows")))
     payload = result.get("payload")
     if isinstance(payload, Mapping):
-        nested_rows = _json_object_list(payload.get("rows"))
-        if nested_rows:
-            return nested_rows
+        rows.extend(_rows_with_nested_items(_json_object_list(payload.get("rows"))))
         for key in ("top_items", "latest_items"):
-            nested_rows.extend(_json_object_list(payload.get(key)))
-        return nested_rows
-    return []
+            rows.extend(_json_object_list(payload.get(key)))
+    return rows
+
+
+def _rows_with_nested_items(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    expanded: list[dict[str, Any]] = []
+    for row in rows:
+        expanded.append(row)
+        for key in ("top_items", "latest_items"):
+            expanded.extend(_json_object_list(row.get(key)))
+    return expanded
+
+
+def _row_confirms_independent_sources(row: Mapping[str, Any]) -> bool:
+    if _boolish(row.get("independent_source_confirmed")):
+        return True
+    domain_count = _int_or_none(row.get("source_domain_count"))
+    if domain_count is not None:
+        return domain_count > 1
+    source_domains = {_norm(domain) for domain in _json_list(row.get("source_domains")) if _norm(domain)}
+    return len(source_domains) > 1
 
 
 def _source_backed_asset_labels(packet: NewsItemBriefBasePacket) -> set[str]:
@@ -296,6 +314,30 @@ def _as_dict(value: Any) -> dict[str, Any]:
     if isinstance(value, Mapping):
         return {str(key): child for key, child in value.items()}
     return {}
+
+
+def _boolish(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return _norm(value) in {"1", "true", "yes"}
+    if isinstance(value, int | float):
+        return value != 0
+    return False
+
+
+def _int_or_none(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.isdigit():
+            return int(stripped)
+    return None
 
 
 def _non_empty(value: Any) -> bool:
