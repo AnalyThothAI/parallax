@@ -105,7 +105,7 @@ def worker_lane_statuses(workers: dict[str, dict[str, Any]]) -> dict[str, dict[s
             WorkerLaneStatus(
                 lane=lane_name,
                 enabled_workers=sum(1 for status in statuses if status.get("enabled")),
-                running_workers=sum(1 for status in statuses if status.get("running")),
+                running_workers=sum(1 for status in statuses if _worker_effective_status(status) == "running"),
                 stopped_workers=sum(1 for status in statuses if _worker_effective_status(status) == "stopped"),
                 disabled_workers=sum(1 for status in statuses if _worker_effective_status(status) == "disabled"),
                 intentionally_not_started_workers=sum(
@@ -145,6 +145,8 @@ def _worker_effective_status(status: dict[str, Any]) -> str:
         return "disabled"
     if _worker_failed(status):
         return "failed"
+    if _worker_degraded(status):
+        return "degraded"
     if status.get("running"):
         return "running"
     return "stopped"
@@ -154,7 +156,34 @@ def _worker_failed(status: dict[str, Any]) -> bool:
     if status.get("last_error"):
         return True
     result = status.get("last_result")
-    return isinstance(result, dict) and result.get("ok") is False
+    if not isinstance(result, dict):
+        return False
+    if result.get("ok") is False:
+        return True
+    return _positive_result_count(result, "failed") or _positive_result_count(result, "dead")
+
+
+def _positive_result_count(result: dict[str, Any], key: str) -> bool:
+    try:
+        return int(result.get(key) or 0) > 0
+    except (TypeError, ValueError):
+        return False
+
+
+def _worker_degraded(status: dict[str, Any]) -> bool:
+    result = status.get("last_result")
+    if not isinstance(result, dict):
+        return False
+    if result.get("degraded") is True:
+        return True
+    if str(result.get("status") or "").strip().lower() == "degraded":
+        return True
+    notes = result.get("notes")
+    if not isinstance(notes, dict):
+        return False
+    if notes.get("degraded") is True:
+        return True
+    return str(notes.get("status") or "").strip().lower() == "degraded"
 
 
 def _max_int(values: object) -> int | None:

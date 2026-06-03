@@ -54,7 +54,7 @@ def test_worker_lane_statuses_aggregate_failures_timeouts_and_depths() -> None:
     projection = worker_lane_statuses(workers)["projection"]
 
     assert projection["enabled_workers"] >= 2
-    assert projection["running_workers"] >= 1
+    assert projection["running_workers"] == 0
     assert projection["failed_workers"] >= 2
     assert projection["soft_timed_out_workers"] >= 1
     assert projection["hard_timed_out_workers"] >= 1
@@ -65,3 +65,49 @@ def test_worker_lane_statuses_aggregate_failures_timeouts_and_depths() -> None:
     assert projection["queue_health"]["terminal_count"] == 4
     assert projection["queue_health"]["unresolved_terminal_count"] == 3
     assert projection["queue_health"]["blocked_count"] == 3
+
+
+def test_worker_lane_statuses_count_each_worker_in_one_effective_status_bucket() -> None:
+    workers = manifest_worker_statuses(
+        {
+            "token_profile_current": {
+                "enabled": True,
+                "running": True,
+                "effective_status": "degraded",
+            },
+            "token_radar_projection": {
+                "enabled": True,
+                "running": False,
+                "effective_status": "stopped",
+            },
+            "market_tick_current_projection": {
+                "enabled": True,
+                "running": False,
+                "effective_status": "stopped",
+            },
+        }
+    )
+
+    projection = worker_lane_statuses(workers)["projection"]
+
+    assert projection["degraded_workers"] == 1
+    assert projection["running_workers"] == 0
+    assert projection["stopped_workers"] == 2
+
+
+def test_worker_lane_statuses_failed_result_counts_failed_before_degraded_notes() -> None:
+    workers = manifest_worker_statuses(
+        {
+            "token_profile_current": {
+                "enabled": True,
+                "running": True,
+                "last_result": {"failed": 1, "notes": {"degraded": True}},
+            },
+        }
+    )
+
+    projection = worker_lane_statuses(workers)["projection"]
+
+    assert projection["failed_workers"] == 1
+    assert projection["degraded_workers"] == 0
+    assert projection["running_workers"] == 0

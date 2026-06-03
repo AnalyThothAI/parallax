@@ -232,6 +232,8 @@ class WorkerBase(ABC):
             return "disabled"
         if self.last_error or _worker_result_failed(self.last_result):
             return "failed"
+        if _worker_result_degraded(self.last_result):
+            return "degraded"
         if self.running:
             return "running"
         return "stopped"
@@ -519,6 +521,15 @@ def _worker_result_payload(result: WorkerResult | None) -> dict[str, Any] | None
 
 def _worker_result_failed(result: WorkerResult | None) -> bool:
     return result is not None and (int(result.failed) > 0 or int(result.dead) > 0)
+
+
+def _worker_result_degraded(result: WorkerResult | None) -> bool:
+    if result is None:
+        return False
+    notes = dict(result.notes)
+    if notes.get("degraded") is True:
+        return True
+    return str(notes.get("status") or "").strip().lower() == "degraded"
 
 
 def _compact_status_notes(notes: dict[str, Any]) -> dict[str, Any]:
