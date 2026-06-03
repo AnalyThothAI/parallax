@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -127,6 +128,10 @@ def worker_lane_statuses(workers: dict[str, dict[str, Any]]) -> dict[str, dict[s
             )
         )
     return lanes
+
+
+def effective_worker_status(status: Mapping[str, Any]) -> str:
+    return _worker_effective_status(dict(status))
 
 
 def _worker_effective_status(status: dict[str, Any]) -> str:

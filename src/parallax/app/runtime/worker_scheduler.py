@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from parallax.app.runtime.worker_manifest import worker_start_priority
+from parallax.app.runtime.worker_status import effective_worker_status
 
 _START_PRIORITY = worker_start_priority()
 
@@ -154,9 +155,8 @@ def worker_effective_status(worker: Any) -> str:
     if isinstance(explicit, str) and explicit:
         return explicit
     payload = _worker_status_payload(worker)
-    payload_status = payload.get("effective_status")
-    if isinstance(payload_status, str) and payload_status:
-        return payload_status
+    if payload:
+        return effective_worker_status(payload)
     if not _worker_enabled(worker):
         return "disabled"
     if getattr(worker, "last_error", None):

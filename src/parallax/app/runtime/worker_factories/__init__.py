@@ -139,64 +139,41 @@ class UnavailableWorker(_SentinelWorker):
 
 def _missing_worker_sentinel(ctx: WorkerFactoryContext, name: str) -> WorkerBase:
     if not _worker_config_enabled(ctx.settings, name):
-        return DisabledWorker(
-            name=name,
-            settings=_worker_settings(ctx.settings, name, enabled=False),
-            db=ctx.db,
-            telemetry=ctx.telemetry,
-        )
-    if _worker_disabled_by_settings(ctx.settings, name):
-        return DisabledWorker(
-            name=name,
-            settings=_worker_settings(ctx.settings, name, enabled=False),
-            db=ctx.db,
-            telemetry=ctx.telemetry,
-        )
-    if name == "collector" and not ctx.collector_start_requested:
-        return IntentionallyNotStartedWorker(
-            name=name,
-            settings=_worker_settings(ctx.settings, name, enabled=False),
-            db=ctx.db,
-            telemetry=ctx.telemetry,
-        )
+        return disabled_worker(ctx, name)
+    return unavailable_worker(ctx, name, "factory_not_constructed")
+
+
+def disabled_worker(ctx: WorkerFactoryContext, name: str) -> WorkerBase:
+    return DisabledWorker(
+        name=name,
+        settings=_worker_settings(ctx.settings, name, enabled=False),
+        db=ctx.db,
+        telemetry=ctx.telemetry,
+    )
+
+
+def intentionally_not_started_worker(ctx: WorkerFactoryContext, name: str) -> WorkerBase:
+    return IntentionallyNotStartedWorker(
+        name=name,
+        settings=_worker_settings(ctx.settings, name, enabled=False),
+        db=ctx.db,
+        telemetry=ctx.telemetry,
+    )
+
+
+def unavailable_worker(ctx: WorkerFactoryContext, name: str, reason: str) -> WorkerBase:
     return UnavailableWorker(
         name=name,
         settings=_worker_settings(ctx.settings, name, enabled=True),
         db=ctx.db,
         telemetry=ctx.telemetry,
-        reason=_unavailable_reason(name),
+        reason=reason,
     )
 
 
 def _worker_config_enabled(settings: Settings, name: str) -> bool:
     config = getattr(settings.workers, name, None)
     return bool(getattr(config, "enabled", True))
-
-
-def _worker_disabled_by_settings(settings: Settings, name: str) -> bool:
-    if name.startswith("news_"):
-        news_intel = getattr(settings, "news_intel", None)
-        return not bool(getattr(news_intel, "enabled", True))
-    if name == "macro_sync":
-        return not bool(getattr(settings, "macrodata_enabled", True))
-    return False
-
-
-def _unavailable_reason(name: str) -> str:
-    return {
-        "collector": "missing_ingestion_upstream_client_factory",
-        "market_tick_stream": "missing_asset_market_stream_provider",
-        "market_tick_poll": "missing_asset_market_quote_provider",
-        "asset_profile_refresh": "missing_asset_profile_provider",
-        "resolution_refresh": "missing_asset_discovery_provider",
-        "cex_oi_radar_board": "missing_cex_oi_market_provider",
-        "news_fetch": "missing_news_intel_feed_client",
-        "news_item_brief": "missing_news_item_brief_provider",
-        "pulse_candidate": "missing_pulse_decision_provider",
-        "narrative_admission": "missing_narrative_intel_provider",
-        "mention_semantics": "missing_narrative_intel_provider",
-        "token_discussion_digest": "missing_narrative_intel_provider",
-    }.get(name, "factory_not_constructed")
 
 
 def _redacted_reason(reason: str) -> str:
@@ -327,5 +304,8 @@ __all__ = [
     "WorkerFactoryContext",
     "WorkerFactorySpec",
     "construct_workers",
+    "disabled_worker",
+    "intentionally_not_started_worker",
+    "unavailable_worker",
     "worker_factory_specs",
 ]

@@ -177,6 +177,7 @@ def fake_wired_providers(
     start_collector,
     agent_execution_gateway=None,
     asset_market=None,
+    news_intel=None,
     upstream_client_factory=None,
 ):
     return SimpleNamespace(
@@ -195,13 +196,13 @@ def fake_wired_providers(
             decision_provider=FakePulseProvider(model=settings.agent_runtime_model_for_lane("pulse.signal_analyst"))
         ),
         narrative_intel=SimpleNamespace(narrative_provider=None),
-        news_intel=SimpleNamespace(feed_client=None, brief_provider=None),
+        news_intel=news_intel or SimpleNamespace(feed_client=None, brief_provider=None),
         macrodata=SimpleNamespace(stock_quote_provider=None),
         agent_execution_gateway=agent_execution_gateway,
     )
 
 
-def patch_runtime_dependencies(monkeypatch, *, asset_market=None, upstream_client_factory=None):
+def patch_runtime_dependencies(monkeypatch, *, asset_market=None, news_intel=None, upstream_client_factory=None):
     monkeypatch.setattr(bootstrap_module.DBPoolBundle, "create", lambda *_, **__: FakeDB())
     monkeypatch.setattr(bootstrap_module, "postgres_health_check", lambda *_, **__: {"ok": True})
     monkeypatch.setattr(
@@ -212,6 +213,7 @@ def patch_runtime_dependencies(monkeypatch, *, asset_market=None, upstream_clien
             start_collector=start_collector,
             agent_execution_gateway=agent_execution_gateway,
             asset_market=asset_market,
+            news_intel=news_intel,
             upstream_client_factory=upstream_client_factory,
         ),
     )
@@ -238,13 +240,13 @@ def test_healthz_readyz_and_metrics_return_status(monkeypatch, tmp_path):
         "parallax.app.runtime.worker_scheduler.WorkerScheduler.start",
         noop_scheduler_start,
     )
-    patch_runtime_dependencies(monkeypatch)
+    patch_runtime_dependencies(monkeypatch, news_intel=SimpleNamespace(feed_client=object(), brief_provider=None))
     monkeypatch.setattr(
         app_module,
         "postgres_health_check",
         lambda *_, **__: {"ok": True, "probe": "postgres_liveness"},
     )
-    settings = make_settings(tmp_path)
+    settings = make_settings(tmp_path, workers={"cex_oi_radar_board": {"enabled": False}})
     app = create_app(settings=settings, start_collector=False)
 
     with TestClient(app) as client:
@@ -298,6 +300,12 @@ def test_healthz_readyz_and_metrics_return_status(monkeypatch, tmp_path):
     assert payload["workers"]["market_tick_poll"]["unavailable_reason"] == "missing_asset_market_quote_provider"
     assert "worker:market_tick_stream:unavailable:missing_asset_market_stream_provider" in payload["reasons"]
     assert "worker:market_tick_poll:unavailable:missing_asset_market_quote_provider" in payload["reasons"]
+    worker_unavailable_reasons = sorted(reason for reason in payload["reasons"] if ":unavailable:" in reason)
+    assert worker_unavailable_reasons == [
+        "worker:market_tick_poll:unavailable:missing_asset_market_quote_provider",
+        "worker:market_tick_stream:unavailable:missing_asset_market_stream_provider",
+    ]
+    assert not any("factory_not_constructed" in reason for reason in payload["reasons"])
     assert "event_anchor_backfill" in payload["workers"]
     assert payload["workers"]["event_anchor_backfill"]["enabled"] is True
     assert set(payload["worker_lanes"]) >= {"ingest", "projection", "agent"}

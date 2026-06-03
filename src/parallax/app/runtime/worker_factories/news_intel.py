@@ -4,7 +4,7 @@ import time
 from typing import Any
 
 from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_factories import WorkerFactoryContext
+from parallax.app.runtime.worker_factories import WorkerFactoryContext, disabled_worker, unavailable_worker
 from parallax.app.runtime.worker_manifest import manifest_names_for_factory
 from parallax.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
 from parallax.domains.news_intel.runtime.news_item_brief_worker import NewsItemBriefWorker
@@ -26,21 +26,34 @@ WORKER_KEYS = manifest_names_for_factory("news_intel.py")
 def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerBase]:
     workers = ctx.settings.workers
     if not ctx.settings.news_intel.enabled:
-        return {}
+        return {
+            name: disabled_worker(ctx, name)
+            for name in (
+                "news_fetch",
+                "news_item_process",
+                "news_item_brief",
+                "news_page_projection",
+                "news_source_quality_projection",
+            )
+            if getattr(workers, name).enabled
+        }
 
     constructed: dict[str, WorkerBase] = {}
     news_providers = getattr(ctx.providers, "news_intel", None)
     feed_client = getattr(news_providers, "feed_client", None)
-    if workers.news_fetch.enabled and feed_client is not None:
-        constructed["news_fetch"] = NewsFetchWorker(
-            name="news_fetch",
-            settings=workers.news_fetch,
-            db=ctx.db,
-            telemetry=ctx.telemetry,
-            news_settings=ctx.settings.news_intel,
-            wake_bus=ctx.wake_bus,
-            feed_client=feed_client,
-        )
+    if workers.news_fetch.enabled:
+        if feed_client is not None:
+            constructed["news_fetch"] = NewsFetchWorker(
+                name="news_fetch",
+                settings=workers.news_fetch,
+                db=ctx.db,
+                telemetry=ctx.telemetry,
+                news_settings=ctx.settings.news_intel,
+                wake_bus=ctx.wake_bus,
+                feed_client=feed_client,
+            )
+        else:
+            constructed["news_fetch"] = unavailable_worker(ctx, "news_fetch", "missing_news_intel_feed_client")
 
     if workers.news_item_process.enabled:
         worker_name = "news_item_process"
@@ -58,17 +71,22 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
         )
 
     brief_provider = getattr(news_providers, "brief_provider", None)
-    if workers.news_item_brief.enabled and ctx.settings.news_item_brief_configured and brief_provider is not None:
+    if workers.news_item_brief.enabled:
         worker_name = "news_item_brief"
-        constructed["news_item_brief"] = NewsItemBriefWorker(
-            name=worker_name,
-            settings=workers.news_item_brief,
-            db=ctx.db,
-            telemetry=ctx.telemetry,
-            provider=brief_provider,
-            wake_bus=ctx.wake_bus,
-            wake_waiter=ctx.db.wake_listener(worker_name, workers.news_item_brief.wakes_on),
-        )
+        if not ctx.settings.news_item_brief_configured:
+            constructed[worker_name] = disabled_worker(ctx, worker_name)
+        elif brief_provider is not None:
+            constructed[worker_name] = NewsItemBriefWorker(
+                name=worker_name,
+                settings=workers.news_item_brief,
+                db=ctx.db,
+                telemetry=ctx.telemetry,
+                provider=brief_provider,
+                wake_bus=ctx.wake_bus,
+                wake_waiter=ctx.db.wake_listener(worker_name, workers.news_item_brief.wakes_on),
+            )
+        else:
+            constructed[worker_name] = unavailable_worker(ctx, worker_name, "missing_news_item_brief_provider")
 
     if workers.news_page_projection.enabled:
         worker_name = "news_page_projection"
