@@ -792,6 +792,57 @@ def test_readiness_uses_scheduler_workers_payload(monkeypatch):
     assert "pulse_agent" not in payload
 
 
+def test_readiness_worker_lanes_count_each_effective_status(monkeypatch):
+    projection_statuses = {
+        "market_tick_current_projection": {"enabled": False, "running": False, "effective_status": "disabled"},
+        "token_capture_tier": {
+            "enabled": False,
+            "running": False,
+            "effective_status": "intentionally_not_started",
+        },
+        "token_profile_current": {
+            "enabled": True,
+            "running": False,
+            "effective_status": "unavailable",
+            "unavailable_reason": "missing_profile_source",
+        },
+        "token_radar_projection": {"enabled": True, "running": True, "effective_status": "degraded"},
+        "narrative_admission": {"enabled": True, "running": True, "effective_status": "running"},
+        "news_page_projection": {"enabled": True, "running": False, "effective_status": "stopped"},
+        "news_source_quality_projection": {
+            "enabled": True,
+            "running": False,
+            "effective_status": "failed",
+            "last_error": "projection failed",
+        },
+        "cex_oi_radar_board": {"enabled": True, "running": False, "effective_status": "stopped"},
+        "macro_view_projection": {"enabled": False, "running": False, "effective_status": "disabled"},
+    }
+    runtime = SimpleNamespace(
+        settings=Settings(ws_token="secret", handles=("toly",), notifications={"enabled": False}),
+        collector=SimpleNamespace(status=SimpleNamespace(to_dict=lambda: {"frames_received": 0})),
+        providers=SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=None)),
+        agent_execution_gateway=None,
+        scheduler=SimpleNamespace(
+            status_payload=lambda: projection_statuses,
+            unhealthy_reasons=lambda: [],
+        ),
+    )
+    monkeypatch.setattr(app_module, "_db_status", lambda _: {"ok": True, "probe": "fake"})
+    monkeypatch.setattr(app_module, "_news_provider_contract_payload", lambda _: {"ok": True})
+
+    payload, _status_code = _readiness_payload(runtime, now_ms=12_001)
+
+    projection = payload["worker_lanes"]["projection"]
+    assert projection["disabled_workers"] == 2
+    assert projection["intentionally_not_started_workers"] == 1
+    assert projection["unavailable_workers"] == 1
+    assert projection["degraded_workers"] == 1
+    assert projection["running_workers"] == 1
+    assert projection["stopped_workers"] == 2
+    assert projection["failed_workers"] == 1
+
+
 def test_readiness_reports_okx_circuit_open_without_failing_app(monkeypatch):
     runtime = SimpleNamespace(
         settings=Settings(ws_token="secret", handles=("toly",), notifications={"enabled": False}),

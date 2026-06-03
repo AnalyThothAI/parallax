@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from parallax.app.runtime.job_queue import JOB_QUEUE_DESCRIPTORS, JobQueueDescriptor
-from parallax.app.runtime.worker_status import workers_status_payload
+from parallax.app.runtime.worker_status import effective_worker_status, workers_status_payload
 from parallax.domains.narrative_intel.queries import NarrativeBacklogHealthQuery
 from parallax.domains.pulse_lab.queries.pulse_freshness_health_queries import (
     fetch_pulse_health_candidates,
@@ -335,12 +335,15 @@ def _workers_payload(workers: Mapping[str, dict[str, Any]]) -> list[dict[str, An
         last_error = status.get("last_error")
         enabled = bool(status.get("enabled"))
         running = bool(status.get("running"))
+        effective_status = effective_worker_status(status)
         payloads.append(
             {
                 "name": name,
                 "group": _worker_group(name),
                 "enabled": enabled,
                 "running": running,
+                "effective_status": effective_status,
+                "unavailable_reason": status.get("unavailable_reason"),
                 "last_started_at_ms": status.get("last_started_at_ms"),
                 "last_finished_at_ms": status.get("last_finished_at_ms"),
                 "last_result": status.get("last_result"),
@@ -349,29 +352,29 @@ def _workers_payload(workers: Mapping[str, dict[str, Any]]) -> list[dict[str, An
                 "pool_wait_ms_p99": status.get("pool_wait_ms_p99"),
                 "queue_depth": status.get("queue_depth"),
                 "details": status.get("details") or {},
-                "status": _worker_status(enabled=enabled, running=running, last_error=last_error),
-                "reason": _worker_reason(enabled=enabled, running=running, last_error=last_error),
+                "status": effective_status,
+                "reason": _worker_reason(
+                    effective_status=effective_status,
+                    unavailable_reason=status.get("unavailable_reason"),
+                    last_error=last_error,
+                ),
             }
         )
     return payloads
 
 
-def _worker_status(*, enabled: bool, running: bool, last_error: Any) -> str:
-    if not enabled:
+def _worker_reason(*, effective_status: str, unavailable_reason: Any, last_error: Any) -> str:
+    if effective_status == "disabled":
         return "disabled"
-    if last_error:
-        return "degraded"
-    if not running:
-        return "idle"
-    return "ok"
-
-
-def _worker_reason(*, enabled: bool, running: bool, last_error: Any) -> str:
-    if not enabled:
-        return "disabled"
-    if last_error:
-        return "last_error_visible"
-    if not running:
+    if effective_status == "intentionally_not_started":
+        return "intentionally_not_started"
+    if effective_status == "unavailable":
+        return str(unavailable_reason or "unavailable")
+    if effective_status == "failed":
+        return "last_error_visible" if last_error else "worker_failed"
+    if effective_status == "degraded":
+        return "worker_degraded"
+    if effective_status == "stopped":
         return "not_currently_running"
     return "running"
 
@@ -776,14 +779,18 @@ def _overall_payload(
         reasons.extend(
             str(item.get("reason") or item.get("error_type") or item.get("status"))
             for item in source
-            if item.get("status") in {"blocked", "degraded", "unknown"}
+            if item.get("status") in {"blocked", "degraded", "failed", "unavailable", "unknown"}
         )
     if agent_execution.get("status") in {"blocked", "degraded", "unknown"}:
         reasons.append(f"agent_execution_{agent_execution.get('status')}")
     if database.get("status") != "ok":
         reasons.append(str(database.get("reason") or "database_not_ready"))
     status = (
-        "blocked" if counts.get("blocked") else "degraded" if counts.get("degraded") or counts.get("unknown") else "ok"
+        "blocked"
+        if counts.get("blocked") or counts.get("unavailable") or counts.get("failed")
+        else "degraded"
+        if counts.get("degraded") or counts.get("unknown")
+        else "ok"
     )
     return {
         "status": status,

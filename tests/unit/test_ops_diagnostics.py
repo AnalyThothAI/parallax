@@ -121,6 +121,52 @@ def test_ops_diagnostics_reuses_effective_worker_lane_counts() -> None:
     assert lane_totals["failed_workers"] == 1
 
 
+def test_ops_diagnostics_worker_rows_and_overall_counts_use_effective_status() -> None:
+    runtime = FakeRuntime()
+    runtime.scheduler.status_payload = lambda: {
+        "market_tick_stream": {
+            "enabled": True,
+            "running": False,
+            "effective_status": "unavailable",
+            "unavailable_reason": "missing_asset_market_stream_provider",
+            "last_error": None,
+        },
+        "token_radar_projection": {
+            "enabled": True,
+            "running": True,
+            "effective_status": "failed",
+            "unavailable_reason": None,
+            "last_error": None,
+            "last_result": {"ok": False},
+        },
+        "token_profile_current": {
+            "enabled": True,
+            "running": True,
+            "effective_status": "degraded",
+            "unavailable_reason": None,
+            "last_error": None,
+            "last_result": {"notes": {"degraded": True}},
+        },
+    }
+
+    payload = ops_diagnostics_payload(runtime, now_ms=10_000, since_hours=4, window="1h", scope="all")
+
+    workers_by_name = {worker["name"]: worker for worker in payload["workers"]}
+    assert workers_by_name["market_tick_stream"]["effective_status"] == "unavailable"
+    assert workers_by_name["market_tick_stream"]["status"] == "unavailable"
+    assert workers_by_name["market_tick_stream"]["reason"] == "missing_asset_market_stream_provider"
+    assert workers_by_name["token_radar_projection"]["effective_status"] == "failed"
+    assert workers_by_name["token_radar_projection"]["status"] == "failed"
+    assert workers_by_name["token_radar_projection"]["reason"] == "worker_failed"
+    assert workers_by_name["token_profile_current"]["effective_status"] == "degraded"
+    assert workers_by_name["token_profile_current"]["status"] == "degraded"
+    assert workers_by_name["token_profile_current"]["reason"] == "worker_degraded"
+    assert payload["overall"]["section_status_counts"]["unavailable"] == 1
+    assert payload["overall"]["section_status_counts"]["failed"] == 1
+    assert payload["overall"]["section_status_counts"]["degraded"] >= 1
+    assert payload["overall"]["status"] == "blocked"
+
+
 def test_ops_queue_payload_rejects_unknown_queue_without_sql() -> None:
     runtime = FakeRuntime()
 
