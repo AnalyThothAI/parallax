@@ -162,7 +162,6 @@ class FakeConn:
                         "provider_signal_json": {},
                         "token_mentions_json": [],
                         "fact_candidates_json": [],
-                        "context_items_json": [],
                     },
                     {
                         "news_item_id": "news-2",
@@ -174,7 +173,6 @@ class FakeConn:
                         "provider_signal_json": {"source": "provider", "provider": "opennews", "score": 88},
                         "token_mentions_json": [{"resolution_status": "known_symbol", "display_symbol": "BTC"}],
                         "fact_candidates_json": [],
-                        "context_items_json": [],
                     },
                 ]
             )

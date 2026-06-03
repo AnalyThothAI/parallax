@@ -120,8 +120,6 @@ def test_news_api_source_status_includes_provider_diagnostics_without_postgres()
             "last_seen_at_ms": 3_000,
             "latest_item_published_at_ms": 2_000,
             "latest_item_fetched_at_ms": 3_000,
-            "latest_context_seen_at_ms": None,
-            "context_item_count": 0,
             "latest_fetch_run": {
                 "status": "success",
                 "started_at_ms": 2_900,

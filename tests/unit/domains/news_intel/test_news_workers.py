@@ -7,7 +7,6 @@ from parallax.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorke
 from parallax.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
 from parallax.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
 from parallax.domains.news_intel.types.source_provider import (
-    NewsProviderContextObservation,
     NewsProviderFetchResult,
     NewsProviderObservation,
     NewsSourceHttpCache,
@@ -324,217 +323,6 @@ def test_news_fetch_worker_does_not_enqueue_brief_input_for_provider_signal_upda
         "target_id": "news-eligible",
     } in news_item_written_rows
     assert all(row["projection_name"] != "brief_input" for row in news_item_written_rows)
-
-
-def test_news_fetch_worker_persists_context_observations() -> None:
-    source = {
-        "source_id": "example-rss",
-        "provider_type": "rss",
-        "feed_url": "https://example.com/rss.xml",
-        "source_domain": "example.com",
-        "source_name": "Example",
-    }
-    db = FakeDB(FakeNewsRepository([source]))
-    feed = FakeNewsSourceProvider(
-        db,
-        NewsProviderFetchResult(
-            status_code=200,
-            observations=[
-                NewsProviderObservation(
-                    source_item_key="guid-1",
-                    canonical_url="https://example.com/story",
-                    title="SOL ETF approved",
-                    summary="Issuer confirms launch.",
-                    body_text="Primary body stays primary.",
-                    language="en",
-                    published_at_ms=NOW_MS - 10,
-                    raw_payload={"id": "guid-1", "title": "SOL ETF approved"},
-                ),
-                NewsProviderObservation(
-                    source_item_key="guid-2",
-                    canonical_url="https://example.com/second-story",
-                    title="BTC ETF launches",
-                    summary="Second issuer confirms launch.",
-                    body_text="Second primary body.",
-                    language="en",
-                    published_at_ms=NOW_MS - 8,
-                    raw_payload={"id": "guid-2", "title": "BTC ETF launches"},
-                ),
-            ],
-            context_observations=[
-                NewsProviderContextObservation(
-                    context_item_id="ctx-1",
-                    parent_source_item_key="guid-2",
-                    context_type="reply",
-                    author="analyst",
-                    canonical_url="https://example.social/post/1",
-                    body_text="Context should live outside news_items.body_text.",
-                    published_at_ms=NOW_MS - 5,
-                    engagement={"likes": 42},
-                    raw_payload={"id": "ctx-1", "kind": "reply"},
-                ),
-                NewsProviderContextObservation(
-                    context_item_id="ctx-unresolved",
-                    parent_source_item_key="missing-guid",
-                    context_type="reply",
-                    author=None,
-                    canonical_url="https://example.social/post/unresolved",
-                    body_text="Context without a parent should still be stored.",
-                    published_at_ms=None,
-                    engagement=None,
-                    raw_payload={"id": "ctx-unresolved", "kind": "reply"},
-                ),
-            ],
-        ),
-    )
-    worker = _worker(db=db, feed_client=feed, wake_bus=FakeWakeBus(), sources=[source])
-
-    result = worker.run_once_sync(now_ms=NOW_MS)
-
-    assert result.processed == 2
-    assert db.repo.news_items[0]["body_text"] == "Primary body stays primary."
-    assert db.repo.context_items == [
-        {
-            "context_item_id": "ctx-1",
-            "source_id": "example-rss",
-            "parent_news_item_id": "news-2",
-            "provider_item_id": None,
-            "context_type": "reply",
-            "author": "analyst",
-            "canonical_url": "https://example.social/post/1",
-            "body_text": "Context should live outside news_items.body_text.",
-            "published_at_ms": NOW_MS - 5,
-            "engagement_json": {"likes": 42},
-            "raw_payload_json": {"id": "ctx-1", "kind": "reply"},
-            "created_at_ms": NOW_MS,
-            "commit": False,
-        },
-        {
-            "context_item_id": "ctx-unresolved",
-            "source_id": "example-rss",
-            "parent_news_item_id": None,
-            "provider_item_id": None,
-            "context_type": "reply",
-            "author": None,
-            "canonical_url": "https://example.social/post/unresolved",
-            "body_text": "Context without a parent should still be stored.",
-            "published_at_ms": None,
-            "engagement_json": {},
-            "raw_payload_json": {"id": "ctx-unresolved", "kind": "reply"},
-            "created_at_ms": NOW_MS,
-            "commit": False,
-        },
-    ]
-
-
-def test_news_fetch_worker_marks_context_parent_for_reprocessing_without_brief_dirty() -> None:
-    source = {
-        "source_id": "opennews-news",
-        "provider_type": "opennews",
-        "feed_url": "https://opennews.test/news",
-        "source_domain": "opennews.test",
-        "source_name": "OpenNews",
-    }
-    db = FakeDB(FakeNewsRepository([source]))
-    feed = FakeNewsSourceProvider(
-        db,
-        NewsProviderFetchResult(
-            status_code=200,
-            observations=[
-                NewsProviderObservation(
-                    source_item_key="opennews-1",
-                    canonical_url="https://opennews.test/story",
-                    title="BTC headline",
-                    summary="Provider summary",
-                    body_text="",
-                    language="en",
-                    published_at_ms=NOW_MS,
-                    raw_payload={"id": "opennews-1", "title": "BTC headline"},
-                    provider_signal={"source": "provider", "provider": "opennews", "status": "ready", "score": 88},
-                )
-            ],
-            context_observations=[
-                NewsProviderContextObservation(
-                    context_item_id="ctx-opennews-1",
-                    parent_source_item_key="opennews-1",
-                    context_type="reply",
-                    author="analyst",
-                    canonical_url=None,
-                    body_text="Context",
-                    published_at_ms=NOW_MS,
-                    engagement=None,
-                    raw_payload={"id": "ctx-opennews-1"},
-                )
-            ],
-        ),
-    )
-    worker = _worker(db=db, feed_client=feed, wake_bus=FakeWakeBus(), sources=[source])
-
-    worker.run_once_sync(now_ms=NOW_MS)
-
-    context_dirty = next(batch for batch in db.dirty.enqueued if batch["reason"] == "news_context_written")
-    assert context_dirty["rows"] == [
-        {"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"},
-    ]
-    assert db.repo.reprocess_news_item_ids == ["news-1"]
-
-
-def test_news_fetch_worker_persists_context_only_observations_without_processing_items() -> None:
-    source = {
-        "source_id": "example-rss",
-        "provider_type": "rss",
-        "feed_url": "https://example.com/rss.xml",
-        "source_domain": "example.com",
-        "source_name": "Example",
-    }
-    db = FakeDB(FakeNewsRepository([source]))
-    feed = FakeNewsSourceProvider(
-        db,
-        NewsProviderFetchResult(
-            status_code=200,
-            observations=[],
-            context_observations=[
-                NewsProviderContextObservation(
-                    context_item_id="ctx-only",
-                    parent_source_item_key="missing-guid",
-                    context_type="reply",
-                    author="analyst",
-                    canonical_url=None,
-                    body_text="Context-only update.",
-                    published_at_ms=None,
-                    engagement=None,
-                    raw_payload={"id": "ctx-only"},
-                )
-            ],
-        ),
-    )
-    wake_bus = FakeWakeBus()
-    worker = _worker(db=db, feed_client=feed, wake_bus=wake_bus, sources=[source])
-
-    result = worker.run_once_sync(now_ms=NOW_MS)
-
-    assert result.processed == 0
-    assert db.repo.news_items == []
-    assert db.repo.context_items == [
-        {
-            "context_item_id": "ctx-only",
-            "source_id": "example-rss",
-            "parent_news_item_id": None,
-            "provider_item_id": None,
-            "context_type": "reply",
-            "author": "analyst",
-            "canonical_url": None,
-            "body_text": "Context-only update.",
-            "published_at_ms": None,
-            "engagement_json": {},
-            "raw_payload_json": {"id": "ctx-only"},
-            "created_at_ms": NOW_MS,
-            "commit": False,
-        }
-    ]
-    assert db.repo.finished_runs[0]["fetched_count"] == 0
-    assert db.repo.finished_runs[0]["inserted_count"] == 0
-    assert wake_bus.notifications == []
 
 
 def test_news_fetch_worker_passes_cryptopanic_source_context_to_feed_client() -> None:
@@ -958,14 +746,12 @@ class FakeNewsRepository:
         self.fetch_runs: list[dict[str, object]] = []
         self.provider_items: list[dict[str, object]] = []
         self.news_items: list[dict[str, object]] = []
-        self.context_items: list[dict[str, object]] = []
         self.finished_runs: list[dict[str, object]] = []
         self.cache_updates: list[dict[str, object]] = []
         self.news_results: list[dict[str, object]] = []
         self.sync_cursors: dict[str, dict[str, object]] = {}
         self.sync_updates: list[dict[str, object]] = []
         self.events: list[str] = []
-        self.reprocess_news_item_ids: list[str] = []
 
     def reconcile_configured_sources(self, sources, *, now_ms: int, commit: bool = True):
         self.reconciled_sources = list(sources)
@@ -1019,14 +805,6 @@ class FakeNewsRepository:
         if self.news_results:
             return dict(self.news_results.pop(0))
         return {"news_item_id": f"news-{len(self.news_items)}", "status": "inserted"}
-
-    def upsert_news_context_item(self, **payload):
-        self.context_items.append(payload)
-        return payload
-
-    def mark_news_items_for_reprocessing(self, *, news_item_ids, now_ms: int, commit: bool = True):
-        self.reprocess_news_item_ids.extend(str(item) for item in news_item_ids)
-        return len(news_item_ids)
 
     def finish_fetch_run(self, **payload):
         self.events.append("finish_fetch_run")

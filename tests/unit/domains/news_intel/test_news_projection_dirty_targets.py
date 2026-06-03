@@ -173,7 +173,12 @@ def test_fetch_worker_enqueues_news_item_and_source_quality_dirty_for_inserted_a
         },
         {
             "rows": [
-                {"projection_name": "source_quality", "target_kind": "source", "target_id": "source-1", "window": "_refresh"},
+                {
+                    "projection_name": "source_quality",
+                    "target_kind": "source",
+                    "target_id": "source-1",
+                    "window": "_refresh",
+                },
             ],
             "reason": "news_fetch_run_finished",
             "now_ms": NOW_MS,
@@ -228,7 +233,12 @@ def test_fetch_worker_enqueues_page_and_source_quality_dirty_for_material_source
         },
         {
             "rows": [
-                {"projection_name": "source_quality", "target_kind": "source", "target_id": "source-1", "window": "_refresh"},
+                {
+                    "projection_name": "source_quality",
+                    "target_kind": "source",
+                    "target_id": "source-1",
+                    "window": "_refresh",
+                },
             ],
             "reason": "news_fetch_run_finished",
             "now_ms": NOW_MS,
@@ -267,7 +277,6 @@ def test_news_repository_source_reconcile_noop_does_not_update_timestamp() -> No
         "asset_universe_json": [],
         "authority_scope_json": {},
         "fetch_policy_json": {},
-        "context_policy_json": {},
         "cost_policy_json": {},
         "updated_at_ms": NOW_MS - 1_000,
     }
@@ -293,7 +302,6 @@ def test_news_repository_material_source_reconcile_reports_updated_status() -> N
         "asset_universe_json": [],
         "authority_scope_json": {},
         "fetch_policy_json": {},
-        "context_policy_json": {},
         "cost_policy_json": {},
         "updated_at_ms": NOW_MS - 1_000,
     }
@@ -330,7 +338,14 @@ def test_process_worker_enqueues_page_and_brief_dirty_in_same_transaction_after_
             "commit": False,
         },
         {
-            "rows": [{"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-1", "priority": 14}],
+            "rows": [
+                {
+                    "projection_name": "brief_input",
+                    "target_kind": "news_item",
+                    "target_id": "news-1",
+                    "priority": 14,
+                }
+            ],
             "reason": "news_item_processed",
             "now_ms": NOW_MS,
             "commit": False,
@@ -577,7 +592,6 @@ class FakeOpsProjectionConn:
                         },
                         "token_mentions_json": [{"resolution_status": "known_symbol", "display_symbol": "BTC"}],
                         "fact_candidates_json": [],
-                        "context_items_json": [],
                     }
                 ]
             )
@@ -798,9 +812,6 @@ class FakeFetchRepos:
         self.conn.record("finish_fetch_run")
         return dict(payload)
 
-    def upsert_news_context_item(self, **payload: Any) -> dict[str, Any]:
-        return dict(payload)
-
 
 class FakeProvider:
     provider_type = "fake"
@@ -960,8 +971,6 @@ class FakeSourceQualityRepos:
                 "attention_fact_count": 0,
                 "accepted_fact_count": 1,
                 "ready_brief_count": 1,
-                "context_item_count": 0,
-                "context_parent_item_count": 0,
                 "useful_item_count": 1,
                 "latest_item_published_at_ms": NOW_MS - 1_000,
                 "median_lag_ms": 100,

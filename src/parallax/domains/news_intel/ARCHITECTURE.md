@@ -95,8 +95,9 @@ alongside configured provider types and source hygiene warnings.
   candidates after authority-scope validation.
 - Wave 4: add OpenBB/macro source adapters only where they do not cross
   ownership with `macro_intel`.
-- Wave 5: add social/community/developer context sources. Replies, comments,
-  and threads belong in `news_context_items`, not in `news_items.body_text`.
+- Wave 5: add social/community/developer primary-item sources only after a
+  fresh spec. Replies, comments, and threads are not a current News runtime
+  storage surface.
 
 ## Boundaries
 

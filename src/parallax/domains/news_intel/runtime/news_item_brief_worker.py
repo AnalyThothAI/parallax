@@ -142,7 +142,6 @@ class NewsItemBriefWorker(WorkerBase):
                     item=_dict(candidate.get("item") or candidate),
                     token_mentions=_list_of_dicts(candidate.get("token_mentions")),
                     fact_candidates=_list_of_dicts(candidate.get("fact_candidates")),
-                    context_items=_list_of_dicts(candidate.get("context_items")),
                     now_ms=now,
                 )
                 if not eligibility.eligible:
@@ -684,7 +683,6 @@ def _packet_from_candidate(
         item=_dict(candidate.get("item") or candidate),
         token_mentions=_list_of_dicts(candidate.get("token_mentions")),
         fact_candidates=_list_of_dicts(candidate.get("fact_candidates")),
-        context_items=_list_of_dicts(candidate.get("context_items")),
         agent_config=agent_config,
     )
 

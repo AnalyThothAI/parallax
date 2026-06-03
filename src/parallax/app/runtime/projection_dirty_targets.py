@@ -154,7 +154,6 @@ def _row_brief_eligible(row: Mapping[str, Any], *, now_ms: int) -> bool:
         item=row,
         token_mentions=_json_list(row.get("token_mentions_json")),
         fact_candidates=_json_list(row.get("fact_candidates_json")),
-        context_items=_json_list(row.get("context_items_json")),
         now_ms=now_ms,
     ).eligible
 
@@ -164,7 +163,6 @@ def _news_item_brief_priority(row: Mapping[str, Any]) -> int:
         item=row,
         token_mentions=_json_list(row.get("token_mentions_json")),
         fact_candidates=_json_list(row.get("fact_candidates_json")),
-        context_items=_json_list(row.get("context_items_json")),
     )
 
 
@@ -190,8 +188,7 @@ def _fetch_news_item_rows(conn: Any, *, since_ms: int | None) -> list[dict[str, 
                items.provider_signal_json,
                sources.provider_type,
                COALESCE(mentions.token_mentions_json, '[]'::jsonb) AS token_mentions_json,
-               COALESCE(facts.fact_candidates_json, '[]'::jsonb) AS fact_candidates_json,
-               COALESCE(context_items.context_items_json, '[]'::jsonb) AS context_items_json
+               COALESCE(facts.fact_candidates_json, '[]'::jsonb) AS fact_candidates_json
           FROM news_items AS items
           JOIN news_sources AS sources ON sources.source_id = items.source_id
           LEFT JOIN LATERAL (
@@ -204,11 +201,6 @@ def _fetch_news_item_rows(conn: Any, *, since_ms: int | None) -> list[dict[str, 
               FROM news_fact_candidates AS facts
              WHERE facts.news_item_id = items.news_item_id
           ) AS facts ON true
-          LEFT JOIN LATERAL (
-            SELECT jsonb_agg(to_jsonb(context_items.*) ORDER BY context_items.context_item_id) AS context_items_json
-              FROM news_context_items AS context_items
-             WHERE context_items.parent_news_item_id = items.news_item_id
-          ) AS context_items ON true
          {where_clause}
          ORDER BY items.news_item_id ASC
         """,

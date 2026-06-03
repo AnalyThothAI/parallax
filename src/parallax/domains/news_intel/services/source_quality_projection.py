@@ -4,9 +4,9 @@ import hashlib
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-_FORMULA_ID = "fetch25|process15|resolved15|brief15|dedupe10|freshness10|useful_fact_or_context10"
+_FORMULA_ID = "fetch25|process15|resolved15|brief15|dedupe10|freshness10|useful_fact10"
 _FORMULA_HASH = hashlib.sha256(_FORMULA_ID.encode()).hexdigest()[:12]
-SOURCE_QUALITY_PROJECTION_VERSION = f"news_source_quality_projection:v1:{_FORMULA_HASH}"
+SOURCE_QUALITY_PROJECTION_VERSION = f"news_source_quality_projection:v2:{_FORMULA_HASH}"
 
 _COUNT_KEYS = (
     "fetch_run_count",
@@ -22,7 +22,6 @@ _COUNT_KEYS = (
     "accepted_fact_count",
     "fact_count",
     "ready_brief_count",
-    "context_item_count",
     "useful_item_count",
     "median_lag_ms",
 )
@@ -36,7 +35,7 @@ def quality_score(metrics: Mapping[str, float | int | None]) -> float:
         + 15 * _metric(metrics, "brief_ready_rate")
         + 10 * (1 - _metric(metrics, "duplicate_rate", default=1.0))
         + 10 * _metric(metrics, "normalized_freshness")
-        + 10 * _metric(metrics, "useful_fact_or_context_rate")
+        + 10 * _metric(metrics, "useful_fact_rate")
     )
     return round(max(0.0, min(100.0, score)), 2)
 
@@ -137,7 +136,7 @@ def _metrics_from_input(
                 computed_at_ms=computed_at_ms,
                 window_ms=window_ms,
             ),
-            "useful_fact_or_context_rate": _rate(useful_item_count, item_count),
+            "useful_fact_rate": _rate(useful_item_count, item_count),
         }
     )
 
@@ -169,7 +168,7 @@ def _has_score_input(metrics: Mapping[str, float]) -> bool:
             "brief_ready_rate",
             "duplicate_rate",
             "normalized_freshness",
-            "useful_fact_or_context_rate",
+            "useful_fact_rate",
         )
     )
 

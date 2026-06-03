@@ -70,10 +70,28 @@ def test_preview_and_generic_urls_do_not_get_hard_public_identity() -> None:
     assert service.hard_public_url_identity_key("https://www.treeofalpha.com/preview_article?id=123") == ""
     assert service.hard_public_url_identity_key("https://www.binance.com/en/support/announcement") == ""
     assert service.hard_public_url_identity_key("https://tass.ru/") == ""
+    assert service.hard_public_url_identity_key("https://example.com/news/index") == ""
+    assert service.hard_public_url_identity_key("https://example.com/news/index.html") == ""
+    assert service.hard_public_url_identity_key("https://example.com/news/rss") == ""
+    assert service.hard_public_url_identity_key("https://example.com/en/news/rss") == ""
 
 
 def test_article_url_gets_canonical_hard_public_identity() -> None:
     service = _service()
     canonical_url = "https://www.binance.com/en/support/announcement/binance-will-list-example-abc123"
+
+    assert service.hard_public_url_identity_key(canonical_url) == f"canonical-url:{canonical_url}"
+
+
+def test_article_under_rss_named_section_gets_hard_public_identity() -> None:
+    service = _service()
+    canonical_url = "https://example.com/news/rss/story-123456"
+
+    assert service.hard_public_url_identity_key(canonical_url) == f"canonical-url:{canonical_url}"
+
+
+def test_article_ending_in_index_html_gets_hard_public_identity() -> None:
+    service = _service()
+    canonical_url = "https://example.com/news/story/index.html"
 
     assert service.hard_public_url_identity_key(canonical_url) == f"canonical-url:{canonical_url}"

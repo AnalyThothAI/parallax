@@ -56,6 +56,10 @@ from parallax.domains.narrative_intel.runtime.narrative_admission_worker import 
 from parallax.domains.narrative_intel.runtime.token_discussion_digest_worker import (
     TokenDiscussionDigestWorker,
 )
+from parallax.domains.news_intel.services.news_intel_hard_cut_cleanup import (
+    NewsIntelHardCutCleanupAbort,
+    cleanup_news_intel_hard_cut,
+)
 from parallax.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_DEFAULT_VENUE,
@@ -209,6 +213,17 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
                 score_threshold=score_threshold,
                 execute=bool(args.execute),
             )
+            return 0, {"ok": True, "data": data}
+
+        if args.ops_command == "cleanup-news-intel-hard-cut":
+            try:
+                data = cleanup_news_intel_hard_cut(
+                    repos,
+                    execute=bool(args.execute),
+                    now_ms=_now_ms(),
+                )
+            except NewsIntelHardCutCleanupAbort as exc:
+                return 1, {"ok": False, "error": str(exc)}
             return 0, {"ok": True, "data": data}
 
         if args.ops_command == "rebuild-news-canonical-items":

@@ -20,7 +20,6 @@ def news_item_agent_brief_eligibility(
     item: Mapping[str, Any],
     token_mentions: Sequence[Mapping[str, Any]],
     fact_candidates: Sequence[Mapping[str, Any]],
-    context_items: Sequence[Mapping[str, Any]],
     now_ms: int,
     max_published_age_ms: int = NEWS_ITEM_AGENT_BRIEF_MAX_PUBLISHED_AGE_MS,
 ) -> NewsItemAgentBriefEligibility:
@@ -38,7 +37,6 @@ def news_item_agent_brief_eligibility(
     if not _has_processed_market_context(
         token_mentions=token_mentions,
         fact_candidates=fact_candidates,
-        context_items=context_items,
     ):
         return NewsItemAgentBriefEligibility(eligible=False, reason="no_processed_market_context")
 
@@ -58,9 +56,8 @@ def news_item_agent_brief_priority(
     item: Mapping[str, Any],
     token_mentions: Sequence[Mapping[str, Any]],
     fact_candidates: Sequence[Mapping[str, Any]],
-    context_items: Sequence[Mapping[str, Any]],
 ) -> int:
-    del token_mentions, fact_candidates, context_items
+    del token_mentions, fact_candidates
     provider_signal = _mapping(item.get("provider_signal_json"))
     if str(provider_signal.get("source") or "").strip().lower() != "provider":
         return 100
@@ -76,10 +73,7 @@ def _has_processed_market_context(
     *,
     token_mentions: Sequence[Mapping[str, Any]],
     fact_candidates: Sequence[Mapping[str, Any]],
-    context_items: Sequence[Mapping[str, Any]],
 ) -> bool:
-    if context_items:
-        return True
     for mention in token_mentions:
         if str(mention.get("resolution_status") or "").strip().lower() not in {"", "non_crypto", "nil"}:
             return True
