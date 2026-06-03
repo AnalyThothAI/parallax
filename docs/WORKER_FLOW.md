@@ -235,7 +235,6 @@ Examples:
 
 - `event_anchor_backfill_jobs`
 - `pulse_agent_jobs`
-- `watchlist_handle_summary_jobs`
 - notification delivery rows
 
 These rows schedule work. They are not product facts by themselves.
@@ -252,8 +251,7 @@ the queue is empty.
 Worker identity and lane grouping come from `WorkerManifest v1` only.
 `workers.yaml` can tune a manifest worker's cadence, lease, timeout, attempt,
 batch, wake, and agent budget settings, but it cannot create a worker or alias
-an old queue name. For watchlist summaries the queue contract is
-`watchlist_handle_summary_jobs`.
+an old queue name.
 
 ### Narrative Currentness State
 
@@ -332,9 +330,9 @@ Use these rules when adding or reviewing a worker:
 6. Provider IO must not happen while a worker holds a DB session.
    Materialize DB rows, close the session, call the provider, then open a
    new worker session to persist results.
-   Workers with `RuntimeWorkerContext` enforce this through explicit
-   `claim_session`, `payload_session`, `provider_io`, `persist_session`, and
-   `transaction_session` boundaries. A provider call inside a DB session or
+   The worker manifest declares whether a worker performs provider IO; the
+   worker implementation enforces the boundary with explicit worker
+   session/transaction helpers. A provider call inside a DB session or
    transaction is a bug.
 
 7. Cancellation cleanup is part of the domain state machine. If a

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, cast
 
 from loguru import logger
@@ -35,7 +37,6 @@ class TokenRadarProjectionWorker(WorkerBase):
         telemetry: Any,
         wake_bus: Any | None = None,
         wake_waiter: Any | None = None,
-        worker_space_contract: Any | None = None,
         enqueue_narrative_admission: bool = True,
     ) -> None:
         super().__init__(
@@ -44,7 +45,6 @@ class TokenRadarProjectionWorker(WorkerBase):
             db=db,
             telemetry=telemetry,
             wake_waiter=wake_waiter,
-            worker_space_contract=worker_space_contract,
         )
         self.windows = tuple(getattr(settings, "windows", DEFAULT_WINDOWS) or DEFAULT_WINDOWS)
         self.scopes = tuple(getattr(settings, "scopes", DEFAULT_SCOPES) or DEFAULT_SCOPES)
@@ -113,9 +113,8 @@ class TokenRadarProjectionWorker(WorkerBase):
             self.limit = original_limit
 
     def _rebuild_once(self, *, computed_at_ms: int) -> dict[str, Any]:
-        runtime_context = self._runtime_context()
         try:
-            with runtime_context.claim_session() as repos:
+            with self._worker_session() as repos:
                 work_items = self._next_work_items(
                     publication_state=_latest_publication_state_from_repos(
                         repos,
@@ -148,14 +147,8 @@ class TokenRadarProjectionWorker(WorkerBase):
                     if work_items and source_dirty_repo is not None
                     else []
                 )
-            runtime_context.mark_claimed(count=len(target_claims) + len(source_claims))
             if work_items:
-                session = (
-                    runtime_context.payload_session()
-                    if target_claims or source_claims
-                    else runtime_context.persist_session()
-                )
-                with session as repos:
+                with self._worker_session() as repos:
                     projection = _projection_class()(
                         repos=repos,
                         enqueue_narrative_admission=self.enqueue_narrative_admission,
@@ -288,8 +281,7 @@ class TokenRadarProjectionWorker(WorkerBase):
         return due
 
     def _latest_publication_state(self) -> dict[tuple[str, str, str], dict[str, Any]]:
-        runtime_context = self._runtime_context()
-        with runtime_context.persist_session() as repos:
+        with self._worker_session() as repos:
             return _latest_publication_state_from_repos(
                 repos,
                 windows=self.windows,
@@ -334,9 +326,8 @@ class TokenRadarProjectionWorker(WorkerBase):
         computed_at_ms: int,
         error: str,
     ) -> None:
-        runtime_context = self._runtime_context()
         try:
-            with runtime_context.persist_session() as repos:
+            with self._worker_session() as repos:
                 repos.token_radar.mark_publication_failed(
                     projection_version=TOKEN_RADAR_PROJECTION_VERSION,
                     window=window,
@@ -350,6 +341,14 @@ class TokenRadarProjectionWorker(WorkerBase):
                 )
         except Exception as exc:  # pragma: no cover - diagnostic side path
             logger.exception(f"failed to mark token radar publication failure: {exc}")
+
+    @contextmanager
+    def _worker_session(self) -> Iterator[Any]:
+        with self.db.worker_session(
+            self.name,
+            statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+        ) as repos:
+            yield repos
 
 
 def _now_ms() -> int:

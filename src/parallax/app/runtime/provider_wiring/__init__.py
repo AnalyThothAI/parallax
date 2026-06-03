@@ -5,6 +5,7 @@ from typing import Any
 from parallax.app.runtime.narrative_bulk_analysis_gate import narrative_bulk_analysis_enabled
 from parallax.app.runtime.provider_wiring.types import (
     AssetMarketProviders,
+    CexMarketIntelProviders,
     IngestionProviders,
     MacrodataProviders,
     NarrativeIntelProviders,
@@ -24,6 +25,7 @@ def wire_providers(
 ) -> WiredProviders:
     from parallax.app.runtime.provider_wiring import (
         asset_market,
+        cex_market_intel,
         gmgn,
         macrodata,
         model_execution,
@@ -35,6 +37,7 @@ def wire_providers(
             upstream_client_factory=gmgn.gmgn_upstream_factory(settings) if start_collector else None,
         ),
         asset_market=asset_market.wire_asset_market(settings),
+        cex_market_intel=cex_market_intel.wire_cex_market_intel(settings),
         narrative_intel=NarrativeIntelProviders(
             narrative_provider=model_execution.litellm_narrative_intel_provider(
                 settings,
@@ -86,6 +89,7 @@ def _require_agent_execution_gateway(agent_execution_gateway: object | None) -> 
 
 __all__ = [
     "AssetMarketProviders",
+    "CexMarketIntelProviders",
     "IngestionProviders",
     "MacrodataProviders",
     "NarrativeIntelProviders",

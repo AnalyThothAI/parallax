@@ -56,6 +56,117 @@ def test_ops_diagnostics_survives_news_section_failure() -> None:
     assert payload["queues"]
 
 
+def test_ops_diagnostics_reuses_effective_worker_lane_counts() -> None:
+    runtime = FakeRuntime()
+    runtime.scheduler.status_payload = lambda: {
+        "collector": {
+            "enabled": False,
+            "running": False,
+            "effective_status": "intentionally_not_started",
+            "unavailable_reason": None,
+        },
+        "market_tick_stream": {
+            "enabled": True,
+            "running": True,
+            "effective_status": "running",
+            "unavailable_reason": None,
+        },
+        "market_tick_poll": {
+            "enabled": True,
+            "running": False,
+            "effective_status": "stopped",
+            "unavailable_reason": None,
+        },
+        "token_radar_projection": {
+            "enabled": True,
+            "running": False,
+            "effective_status": "unavailable",
+            "unavailable_reason": "missing_projection_dependency",
+        },
+        "token_profile_current": {
+            "enabled": True,
+            "running": True,
+            "effective_status": "degraded",
+            "unavailable_reason": "optional_profile_source_missing",
+        },
+        "pulse_candidate": {
+            "enabled": True,
+            "running": False,
+            "last_error": "agent lane failed",
+            "effective_status": "failed",
+            "unavailable_reason": None,
+        },
+    }
+
+    payload = ops_diagnostics_payload(runtime, now_ms=10_000, since_hours=4, window="1h", scope="all")
+
+    lane_totals = {
+        key: sum(int(lane.get(key, 0)) for lane in payload["worker_lanes"].values())
+        for key in (
+            "disabled_workers",
+            "intentionally_not_started_workers",
+            "unavailable_workers",
+            "degraded_workers",
+            "running_workers",
+            "stopped_workers",
+            "failed_workers",
+        )
+    }
+    assert lane_totals["disabled_workers"] >= 1
+    assert lane_totals["intentionally_not_started_workers"] == 1
+    assert lane_totals["unavailable_workers"] == 1
+    assert lane_totals["degraded_workers"] == 1
+    assert lane_totals["running_workers"] >= 1
+    assert lane_totals["stopped_workers"] >= 1
+    assert lane_totals["failed_workers"] == 1
+
+
+def test_ops_diagnostics_worker_rows_and_overall_counts_use_effective_status() -> None:
+    runtime = FakeRuntime()
+    runtime.scheduler.status_payload = lambda: {
+        "market_tick_stream": {
+            "enabled": True,
+            "running": False,
+            "effective_status": "unavailable",
+            "unavailable_reason": "missing_asset_market_stream_provider",
+            "last_error": None,
+        },
+        "token_radar_projection": {
+            "enabled": True,
+            "running": True,
+            "effective_status": "failed",
+            "unavailable_reason": None,
+            "last_error": None,
+            "last_result": {"ok": False},
+        },
+        "token_profile_current": {
+            "enabled": True,
+            "running": True,
+            "effective_status": "degraded",
+            "unavailable_reason": None,
+            "last_error": None,
+            "last_result": {"notes": {"degraded": True}},
+        },
+    }
+
+    payload = ops_diagnostics_payload(runtime, now_ms=10_000, since_hours=4, window="1h", scope="all")
+
+    workers_by_name = {worker["name"]: worker for worker in payload["workers"]}
+    assert workers_by_name["market_tick_stream"]["effective_status"] == "unavailable"
+    assert workers_by_name["market_tick_stream"]["status"] == "unavailable"
+    assert workers_by_name["market_tick_stream"]["reason"] == "missing_asset_market_stream_provider"
+    assert workers_by_name["token_radar_projection"]["effective_status"] == "failed"
+    assert workers_by_name["token_radar_projection"]["status"] == "failed"
+    assert workers_by_name["token_radar_projection"]["reason"] == "worker_failed"
+    assert workers_by_name["token_profile_current"]["effective_status"] == "degraded"
+    assert workers_by_name["token_profile_current"]["status"] == "degraded"
+    assert workers_by_name["token_profile_current"]["reason"] == "worker_degraded"
+    assert payload["overall"]["section_status_counts"]["unavailable"] == 1
+    assert payload["overall"]["section_status_counts"]["failed"] == 1
+    assert payload["overall"]["section_status_counts"]["degraded"] >= 1
+    assert payload["overall"]["status"] == "blocked"
+
+
 def test_ops_queue_payload_rejects_unknown_queue_without_sql() -> None:
     runtime = FakeRuntime()
 
@@ -74,26 +185,26 @@ def test_ops_queue_payload_marks_dead_queue_blocked() -> None:
     assert payload["summary"]["status"] == "blocked"
 
 
-def test_ops_queue_payload_uses_handle_summary_queue_contract() -> None:
+def test_ops_queue_payload_uses_pulse_agent_queue_contract() -> None:
     runtime = FakeRuntime()
 
     payload = ops_queue_payload(
         runtime,
-        queue_name="watchlist_handle_summary_jobs",
+        queue_name="pulse_agent_jobs",
         status=None,
         limit=20,
         now_ms=10_000,
     )
     old_payload = ops_queue_payload(
         runtime,
-        queue_name="_".join(("watchlist", "summary", "jobs")),
+        queue_name="watchlist_handle_summary_jobs",
         status=None,
         limit=20,
         now_ms=10_000,
     )
 
-    assert payload["queue_name"] == "watchlist_handle_summary_jobs"
-    assert payload["summary"]["worker_name"] == "handle_summary"
+    assert payload["queue_name"] == "pulse_agent_jobs"
+    assert payload["summary"]["worker_name"] == "pulse_candidate"
     assert old_payload == INVALID_QUEUE
 
 

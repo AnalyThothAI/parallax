@@ -351,10 +351,12 @@ def test_process_worker_enqueues_page_and_brief_dirty_in_same_transaction_after_
             "commit": False,
         }
     ]
+    assert "direct_commit" not in repos.conn.events
+    assert "tx:release_expired_processing_items" in repos.conn.events
+    assert "tx:claim_unprocessed_items" in repos.conn.events
     assert "tx:replace_item_entities" in repos.conn.events
     assert "tx:dirty:news_item_processed" in repos.conn.events
     assert "autocommit:dirty:news_item_processed" not in repos.conn.events
-    assert "direct_commit" not in repos.conn.events
 
 
 def test_ops_projection_repair_enqueues_provider_signal_brief_input_dirty_target() -> None:
@@ -855,7 +857,21 @@ class FakeProcessRepos:
         self.news_projection_dirty_targets = self.dirty
         self.write_commits: list[bool] = []
 
-    def list_unprocessed_items(self, *, limit: int, now_ms: int) -> list[dict[str, Any]]:
+    def release_expired_processing_items(self, *, now_ms: int, commit: bool = True) -> int:
+        self.conn.record("release_expired_processing_items")
+        return 0
+
+    def claim_unprocessed_items(
+        self,
+        *,
+        limit: int,
+        lease_owner: str,
+        lease_ms: int,
+        now_ms: int,
+        commit: bool = True,
+    ) -> list[dict[str, Any]]:
+        del lease_ms, commit
+        self.conn.record("claim_unprocessed_items")
         return [
             {
                 "news_item_id": "news-1",
@@ -867,6 +883,8 @@ class FakeProcessRepos:
                 "summary": "",
                 "body_text": "",
                 "published_at_ms": NOW_MS - 1_000,
+                "processing_attempts": 1,
+                "processing_lease_owner": lease_owner,
                 "provider_signal_json": {
                     "source": "provider",
                     "provider": "opennews",
@@ -892,11 +910,24 @@ class FakeProcessRepos:
         self.conn.record("update_item_content_classification")
         self.write_commits.append(payload["commit"])
 
-    def mark_item_processed(self, *, news_item_id: str, processed_at_ms: int, commit: bool = True) -> None:
+    def mark_item_processed(
+        self,
+        *,
+        news_item_id: str,
+        processed_at_ms: int,
+        lease_owner: str,
+        processing_attempts: int,
+        commit: bool = True,
+    ) -> int:
+        del lease_owner, processing_attempts
         self.conn.record("mark_item_processed")
         self.write_commits.append(commit)
+        return 1
 
-    def mark_item_process_failed(self, **payload: Any) -> None:
+    def mark_item_process_retryable(self, **payload: Any) -> int:
+        raise AssertionError("process should not fail")
+
+    def mark_item_process_terminal_failed(self, **payload: Any) -> int:
         raise AssertionError("process should not fail")
 
 

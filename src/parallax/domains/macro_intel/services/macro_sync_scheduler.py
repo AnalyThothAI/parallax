@@ -21,7 +21,10 @@ def ensure_due_macro_sync_windows(
     max_bootstrap_windows_per_cycle: int,
     max_attempts: int,
 ) -> dict[str, Any]:
-    max_observed_at = repos.macro_intel.macro_observations_max_observed_at()
+    max_observed_at = repos.macro_intel.macro_sync_state_max_observed_at(
+        source_name=source_name,
+        bundle_name=bundle_name,
+    )
     enqueued_bootstrap = 0
     enqueued_gap = 0
     enqueued_steady = 0

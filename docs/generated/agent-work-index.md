@@ -8,14 +8,14 @@ This index makes the planning lane visible to coding agents. Active files are wo
 
 | Lane | Active | Completed |
 |------|--------|-----------|
-| `specs` | 93 | 35 |
-| `plans` | 146 | 35 |
+| `specs` | 88 | 41 |
+| `plans` | 133 | 49 |
 
 ## Lifecycle Flags
 
 | Flag | Count | Meaning |
 |------|-------|---------|
-| `review-lifecycle` | 32 | Active file has a status that looks complete/implemented/verified and should be reviewed for migration to `completed/` or marked superseded. |
+| `review-lifecycle` | 25 | Active file has a status that looks complete/implemented/verified and should be reviewed for migration to `completed/` or marked superseded. |
 | `missing-status` | 141 | File has no status line in its first 40 lines. |
 
 ## Items
@@ -58,13 +58,11 @@ This index makes the planning lane visible to coding agents. Active files are wo
 | `specs` | `active` | In Progress | - | `docs/superpowers/specs/active/2026-05-14-token-case-redesign-cn.md` |
 | `specs` | `active` | In Progress | - | `docs/superpowers/specs/active/2026-05-14-token-intel-product-cleanup-cn.md` |
 | `specs` | `active` | Draft, awaiting review | - | `docs/superpowers/specs/active/2026-05-14-uniswap-v4-hook-radar-cn.md` |
-| `specs` | `active` | Draft | - | `docs/superpowers/specs/active/2026-05-14-watchlist-handle-intel-cn.md` |
 | `specs` | `active` | Draft, awaiting review | - | `docs/superpowers/specs/active/2026-05-15-event-anchor-capture-redesign-cn.md` |
 | `specs` | `active` | Approved for hard-cut plan | - | `docs/superpowers/specs/active/2026-05-15-worker-runtime-platform-cn.md` |
 | `specs` | `active` | unspecified | `missing-status` | `docs/superpowers/specs/active/2026-05-16-event-token-projection-unification-cn.md` |
 | `specs` | `active` | Draft, awaiting review | - | `docs/superpowers/specs/active/2026-05-16-price-pipeline-throughput-recovery-cn.md` |
 | `specs` | `active` | unspecified | `missing-status` | `docs/superpowers/specs/active/2026-05-16-pulse-agent-desk-redesign-cn.md` |
-| `specs` | `active` | unspecified | `missing-status` | `docs/superpowers/specs/active/2026-05-16-unified-agent-worker-runtime-cn.md` |
 | `specs` | `active` | Implemented | `review-lifecycle` | `docs/superpowers/specs/active/2026-05-16-watchlist-page-single-source-hard-cut-cn.md` |
 | `specs` | `active` | Implementing | - | `docs/superpowers/specs/active/2026-05-17-gmgn-openapi-provider-gateway-cn.md` |
 | `specs` | `active` | Draft | - | `docs/superpowers/specs/active/2026-05-17-pulse-agent-harness-v3-hard-cut-cn.md` |
@@ -74,11 +72,9 @@ This index makes the planning lane visible to coding agents. Active files are wo
 | `specs` | `active` | Draft, recalibrated after subagent review | - | `docs/superpowers/specs/active/2026-05-18-pulse-signal-evidence-architecture-recovery-cn.md` |
 | `specs` | `active` | Draft, awaiting review | - | `docs/superpowers/specs/active/2026-05-18-token-narrative-intelligence-hard-cut-cn.md` |
 | `specs` | `active` | Draft | - | `docs/superpowers/specs/active/2026-05-19-agent-execution-plane-backpressure-and-backlog-root-fix-cn.md` |
-| `specs` | `active` | Implemented | `review-lifecycle` | `docs/superpowers/specs/active/2026-05-19-agent-execution-plane-hard-cut-cn.md` |
 | `specs` | `active` | Implemented | `review-lifecycle` | `docs/superpowers/specs/active/2026-05-19-agent-worker-backlog-and-pulse-publication-root-fix-cn.md` |
 | `specs` | `active` | Draft, awaiting review | - | `docs/superpowers/specs/active/2026-05-19-narrative-intel-throughput-cqrs-hard-cut-cn.md` |
 | `specs` | `active` | Implemented in `codex/news-intel-kappa-cqrs`, pending final review | `review-lifecycle` | `docs/superpowers/specs/active/2026-05-19-news-intel-kappa-cqrs-cn.md` |
-| `specs` | `active` | Implemented | `review-lifecycle` | `docs/superpowers/specs/active/2026-05-19-ops-diagnostics-panel-cn.md` |
 | `specs` | `active` | Draft, approved for spec by Qinghuan; refreshed against current code on 2026-05-20 | - | `docs/superpowers/specs/active/2026-05-20-news-item-agent-brief-cn.md` |
 | `specs` | `active` | Draft, awaiting review | - | `docs/superpowers/specs/active/2026-05-20-pulse-1h-4h-research-committee-cn.md` |
 | `specs` | `active` | Draft, awaiting review | - | `docs/superpowers/specs/active/2026-05-20-token-narrative-epoch-product-semantics-hard-cut-cn.md` |
@@ -107,7 +103,6 @@ This index makes the planning lane visible to coding agents. Active files are wo
 | `specs` | `active` | Draft | - | `docs/superpowers/specs/active/2026-05-27-runtime-db-performance-hard-cut-cn.md` |
 | `specs` | `active` | unspecified | `missing-status` | `docs/superpowers/specs/active/2026-05-27-token-radar-kiss-current-row-hard-cut-cn.md` |
 | `specs` | `active` | Implemented core hard-cut slice in `codex/news-intel-dedup-root-fix` | `review-lifecycle` | `docs/superpowers/specs/active/2026-05-28-news-intel-dedup-root-fix-cn.md` |
-| `specs` | `active` | Active | - | `docs/superpowers/specs/active/2026-05-28-token-radar-equity-workerspace-root-fix-cn.md` |
 | `specs` | `active` | Approved | - | `docs/superpowers/specs/active/2026-05-29-earnings-hard-delete-design-cn.md` |
 | `specs` | `active` | Approved | - | `docs/superpowers/specs/active/2026-05-29-litellm-native-agent-news-alert-hard-cut-cn.md` |
 | `specs` | `active` | Draft, engineering review applied; hard-cut implementation required | - | `docs/superpowers/specs/active/2026-05-30-news-item-brief-llm-cost-root-fix-cn.md` |
@@ -141,6 +136,10 @@ This index makes the planning lane visible to coding agents. Active files are wo
 | `specs` | `completed` | Draft | - | `docs/superpowers/specs/completed/2026-05-12-search-intel-page-kiss-cn.md` |
 | `specs` | `completed` | unspecified | `missing-status` | `docs/superpowers/specs/completed/2026-05-14-architecture-docs-kappa-cqrs-refresh.md` |
 | `specs` | `completed` | Draft, awaiting review | - | `docs/superpowers/specs/completed/2026-05-14-pulse-detail-redesign-cn.md` |
+| `specs` | `completed` | Draft | - | `docs/superpowers/specs/completed/2026-05-14-watchlist-handle-intel-cn.md` |
+| `specs` | `completed` | unspecified | `missing-status` | `docs/superpowers/specs/completed/2026-05-16-unified-agent-worker-runtime-cn.md` |
+| `specs` | `completed` | Implemented | - | `docs/superpowers/specs/completed/2026-05-19-agent-execution-plane-hard-cut-cn.md` |
+| `specs` | `completed` | Implemented | - | `docs/superpowers/specs/completed/2026-05-19-ops-diagnostics-panel-cn.md` |
 | `specs` | `completed` | unspecified | `missing-status` | `docs/superpowers/specs/completed/2026-05-21-binance-usdt-perp-oi-radar-worker-cn.md` |
 | `specs` | `completed` | unspecified | `missing-status` | `docs/superpowers/specs/completed/2026-05-21-cex-binance-hard-cut-cn.md` |
 | `specs` | `completed` | Draft | - | `docs/superpowers/specs/completed/2026-05-21-cex-detail-snapshot-agent-cn.md` |
@@ -148,6 +147,8 @@ This index makes the planning lane visible to coding agents. Active files are wo
 | `specs` | `completed` | unspecified | `missing-status` | `docs/superpowers/specs/completed/2026-05-22-shadcn-sidebar-navigation-cn.md` |
 | `specs` | `completed` | Draft | - | `docs/superpowers/specs/completed/2026-05-26-runtime-performance-architecture-root-fix-cn.md` |
 | `specs` | `completed` | Draft | - | `docs/superpowers/specs/completed/2026-05-27-macro-sync-worker-hard-cut-cn.md` |
+| `specs` | `completed` | Active | - | `docs/superpowers/specs/completed/2026-05-28-token-radar-equity-workerspace-root-fix-cn.md` |
+| `specs` | `completed` | Completed | - | `docs/superpowers/specs/completed/2026-06-03-news-intel-hard-cut-residual-root-fix-cn.md` |
 | `specs` | `completed` | unspecified | `missing-status` | `docs/superpowers/specs/completed/token-radar-social-heat-research.md` |
 | `specs` | `completed` | unspecified | `missing-status` | `docs/superpowers/specs/completed/token-radar-social-heat-spec.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-08-signal-lab-pulse-agent-concrete-cn.md` |
@@ -192,7 +193,6 @@ This index makes the planning lane visible to coding agents. Active files are wo
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-14-token-case-redesign-verification-cn.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-14-token-intel-product-cleanup-plan-cn.md` |
 | `plans` | `active` | Implemented pending final full-suite verification | `review-lifecycle` | `docs/superpowers/plans/active/2026-05-14-unified-agent-runtime-phase-0b-plan-cn.md` |
-| `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-14-watchlist-handle-intel-plan-cn.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-14-watchlist-handle-intel-review-fixes-plan-cn.md` |
 | `plans` | `active` | Draft | - | `docs/superpowers/plans/active/2026-05-15-event-anchor-capture-redesign-plan-cn.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-15-event-anchor-capture-redesign-verification-cn.md` |
@@ -201,7 +201,6 @@ This index makes the planning lane visible to coding agents. Active files are wo
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-16-price-pipeline-throughput-recovery-plan-cn.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-16-pulse-agent-desk-redesign-plan-cn.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-16-pulse-agent-desk-redesign-verification-cn.md` |
-| `plans` | `active` | ** Draft | - | `docs/superpowers/plans/active/2026-05-16-unified-agent-worker-runtime-plan-cn.md` |
 | `plans` | `active` | ** Implemented | `review-lifecycle` | `docs/superpowers/plans/active/2026-05-16-watchlist-page-single-source-hard-cut-plan-cn.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-17-backend-architecture-hard-cut-plan-cn.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-17-binance-profile-source-hard-cut-plan-cn.md` |
@@ -218,7 +217,6 @@ This index makes the planning lane visible to coding agents. Active files are wo
 | `plans` | `active` | ** Draft | - | `docs/superpowers/plans/active/2026-05-19-agent-execution-plane-hard-cut-plan-cn.md` |
 | `plans` | `active` | Complete | `review-lifecycle` | `docs/superpowers/plans/active/2026-05-19-agent-worker-backlog-and-pulse-publication-root-fix-cn.md` |
 | `plans` | `active` | ** Draft | - | `docs/superpowers/plans/active/2026-05-19-narrative-intel-throughput-cqrs-hard-cut-plan-cn.md` |
-| `plans` | `active` | ** Implemented in `codex/news-intel-kappa-cqrs`, pending final review | `review-lifecycle` | `docs/superpowers/plans/active/2026-05-19-news-intel-kappa-cqrs-plan-cn.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-19-news-intel-table-hard-cut.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-19-ops-diagnostics-panel-plan-cn.md` |
 | `plans` | `active` | ** Draft | - | `docs/superpowers/plans/active/2026-05-20-agent-model-capability-adapter-plan-cn.md` |
@@ -242,14 +240,12 @@ This index makes the planning lane visible to coding agents. Active files are wo
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-21-signal-pulse-agent-cost-guard-verification-cn.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-21-token-image-local-mirror-hard-cut/verification.md` |
 | `plans` | `active` | Draft | - | `docs/superpowers/plans/active/2026-05-21-token-image-local-mirror-hard-cut-plan-cn.md` |
-| `plans` | `active` | ** Draft | - | `docs/superpowers/plans/active/2026-05-22-equity-event-intel-plan-cn.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-22-macro-watchlist-ui-redesign.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-22-macro-workbench-benchmark-redesign-plan-cn.md` |
 | `plans` | `active` | ** Active plan, not implemented | `review-lifecycle` | `docs/superpowers/plans/active/2026-05-22-news-source-chain-classification-plan-cn.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-22-shadcn-frontend-system-hardening-plan-cn.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-22-shadcn-frontend-system-hardening-verification-cn.md` |
 | `plans` | `active` | ** Draft | - | `docs/superpowers/plans/active/2026-05-22-token-radar-narrative-1h-throughput-root-fix-plan-cn.md` |
-| `plans` | `active` | ** Implemented on `codex/news-intel-root-fix`; live verification recorded in `2026-05-23-news-intel-root-fix-verification-cn.md` | `review-lifecycle` | `docs/superpowers/plans/active/2026-05-23-news-intel-root-fix-plan-cn.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-23-news-intel-root-fix-verification-cn.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-23-sidebar-navigation-latency-root-fix-plan-cn.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-23-sidebar-navigation-latency-root-fix-verification-cn.md` |
@@ -264,26 +260,18 @@ This index makes the planning lane visible to coding agents. Active files are wo
 | `plans` | `active` | ** Implemented locally and merged | `review-lifecycle` | `docs/superpowers/plans/active/2026-05-25-kappa-cqrs-runtime-integrity-hard-cut-plan-cn.md` |
 | `plans` | `active` | ** Draft | - | `docs/superpowers/plans/active/2026-05-25-macro-terminal-hard-cut-plan-cn.md` |
 | `plans` | `active` | ** In progress | - | `docs/superpowers/plans/active/2026-05-25-runtime-performance-root-fix-plan-cn.md` |
-| `plans` | `active` | ** Implemented through Phase 9 for listed runtime scope; Phase 10 Docker/live verification pending | `review-lifecycle` | `docs/superpowers/plans/active/2026-05-25-runtime-worker-constraint-hard-cut-plan-cn.md` |
 | `plans` | `active` | ** Draft, ready for execution | - | `docs/superpowers/plans/active/2026-05-26-earnings-product-hard-cut-root-fix-plan-cn.md` |
 | `plans` | `active` | Proposed | - | `docs/superpowers/plans/active/2026-05-26-macro-responsive-ui-layout-hard-cut-plan-cn.md` |
 | `plans` | `active` | Draft | - | `docs/superpowers/plans/active/2026-05-26-macro-terminal-ui-navigation-hard-cut-plan-cn.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-26-macro-terminal-ui-navigation-hard-cut-verification-cn.md` |
-| `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-26-opennews-provider-signal-news-redesign-hard-cut-plan-cn.md` |
 | `plans` | `active` | Draft | - | `docs/superpowers/plans/active/2026-05-26-postgres-performance-queue-hard-cut-plan-cn.md` |
 | `plans` | `active` | ** Approved for implementation in this thread on 2026-05-26. | - | `docs/superpowers/plans/active/2026-05-26-postgres-runtime-root-cause-hard-cut-plan-cn.md` |
-| `plans` | `active` | ** Implemented in `codex/worker-contract-hard-cut` | `review-lifecycle` | `docs/superpowers/plans/active/2026-05-26-worker-contract-hard-cut-plan-cn.md` |
-| `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-26-worker-contract-hard-cut-verification-cn.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-27-macro-sync-worker-hard-cut-verification-cn.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-27-news-router-detail-hard-cut-plan-cn.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-27-token-radar-kiss-current-row-hard-cut-plan-cn.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-27-token-radar-root-cause-stable-publication-plan-cn.md` |
-| `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-28-news-intel-dedup-root-fix-plan-cn.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-28-news-intel-dedup-root-fix-verification-cn.md` |
-| `plans` | `active` | ** Completed in feature branch; project-wide `make check-all` remains blocked by unrelated non-News format drift. | `review-lifecycle` | `docs/superpowers/plans/active/2026-05-28-news-realtime-postgres-hotpath-hard-cut-plan-cn.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-28-news-realtime-postgres-hotpath-hard-cut-verification-cn.md` |
-| `plans` | `active` | ** Draft plan for approval. | - | `docs/superpowers/plans/active/2026-05-28-token-radar-equity-workerspace-root-fix-plan-cn.md` |
-| `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-28-token-radar-equity-workerspace-root-fix-verification-cn.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-29-earnings-hard-delete-plan-cn.md` |
 | `plans` | `active` | ** Implemented - verification complete | `review-lifecycle` | `docs/superpowers/plans/active/2026-05-29-litellm-native-agent-news-alert-hard-cut-plan-cn.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-29-litellm-native-agent-news-alert-hard-cut-verification-cn.md` |
@@ -321,13 +309,27 @@ This index makes the planning lane visible to coding agents. Active files are wo
 | `plans` | `completed` | ** Completed | - | `docs/superpowers/plans/completed/2026-05-12-search-intel-page-plan-cn.md` |
 | `plans` | `completed` | unspecified | `missing-status` | `docs/superpowers/plans/completed/2026-05-12-search-intel-page-verification.md` |
 | `plans` | `completed` | ** Pending | - | `docs/superpowers/plans/completed/2026-05-14-architecture-docs-kappa-cqrs-refresh-plan.md` |
+| `plans` | `completed` | unspecified | `missing-status` | `docs/superpowers/plans/completed/2026-05-14-watchlist-handle-intel-plan-cn.md` |
+| `plans` | `completed` | ** Draft | - | `docs/superpowers/plans/completed/2026-05-16-unified-agent-worker-runtime-plan-cn.md` |
 | `plans` | `completed` | ** Completed on 2026-05-18 in branch/worktree `codex/test-system-hard-cut`. | - | `docs/superpowers/plans/completed/2026-05-18-test-system-hard-cut-plan-cn.md` |
+| `plans` | `completed` | ** Implemented in `codex/news-intel-kappa-cqrs`, pending final review | - | `docs/superpowers/plans/completed/2026-05-19-news-intel-kappa-cqrs-plan-cn.md` |
 | `plans` | `completed` | ** Superseded for Token Radar storage by `docs/superpowers/plans/active/2026-05-23-token-radar-storage-root-fix-cleanup-plan-cn.md` | - | `docs/superpowers/plans/completed/2026-05-20-token-radar-retention-watchlist-summary-hard-cut-plan-cn.md` |
 | `plans` | `completed` | unspecified | `missing-status` | `docs/superpowers/plans/completed/2026-05-21-cex-binance-hard-cut-plan-cn.md` |
+| `plans` | `completed` | ** Draft | - | `docs/superpowers/plans/completed/2026-05-22-equity-event-intel-plan-cn.md` |
 | `plans` | `completed` | unspecified | `missing-status` | `docs/superpowers/plans/completed/2026-05-22-shadcn-sidebar-navigation-plan-cn.md` |
 | `plans` | `completed` | unspecified | `missing-status` | `docs/superpowers/plans/completed/2026-05-22-shadcn-sidebar-navigation-verification-cn.md` |
+| `plans` | `completed` | ** Implemented on `codex/news-intel-root-fix`; live verification recorded in `2026-05-23-news-intel-root-fix-verification-cn.md` | - | `docs/superpowers/plans/completed/2026-05-23-news-intel-root-fix-plan-cn.md` |
+| `plans` | `completed` | ** Implemented through Phase 9 for listed runtime scope; Phase 10 Docker/live verification pending | - | `docs/superpowers/plans/completed/2026-05-25-runtime-worker-constraint-hard-cut-plan-cn.md` |
+| `plans` | `completed` | unspecified | `missing-status` | `docs/superpowers/plans/completed/2026-05-26-opennews-provider-signal-news-redesign-hard-cut-plan-cn.md` |
 | `plans` | `completed` | unspecified | `missing-status` | `docs/superpowers/plans/completed/2026-05-26-runtime-performance-architecture-root-fix-plan-cn.md` |
+| `plans` | `completed` | ** Implemented in `codex/worker-contract-hard-cut` | - | `docs/superpowers/plans/completed/2026-05-26-worker-contract-hard-cut-plan-cn.md` |
+| `plans` | `completed` | unspecified | `missing-status` | `docs/superpowers/plans/completed/2026-05-26-worker-contract-hard-cut-verification-cn.md` |
 | `plans` | `completed` | ** Draft | - | `docs/superpowers/plans/completed/2026-05-27-macro-sync-worker-hard-cut-plan-cn.md` |
 | `plans` | `completed` | unspecified | `missing-status` | `docs/superpowers/plans/completed/2026-05-27-next-runtime-lifecycle-hard-cut-plan-cn.md` |
 | `plans` | `completed` | unspecified | `missing-status` | `docs/superpowers/plans/completed/2026-05-27-runtime-db-performance-hard-cut-plan-cn.md` |
 | `plans` | `completed` | unspecified | `missing-status` | `docs/superpowers/plans/completed/2026-05-27-runtime-db-performance-hard-cut-verification-cn.md` |
+| `plans` | `completed` | unspecified | `missing-status` | `docs/superpowers/plans/completed/2026-05-28-news-intel-dedup-root-fix-plan-cn.md` |
+| `plans` | `completed` | ** Completed in feature branch; project-wide `make check-all` remains blocked by unrelated non-News format drift. | - | `docs/superpowers/plans/completed/2026-05-28-news-realtime-postgres-hotpath-hard-cut-plan-cn.md` |
+| `plans` | `completed` | ** Draft plan for approval. | - | `docs/superpowers/plans/completed/2026-05-28-token-radar-equity-workerspace-root-fix-plan-cn.md` |
+| `plans` | `completed` | unspecified | `missing-status` | `docs/superpowers/plans/completed/2026-05-28-token-radar-equity-workerspace-root-fix-verification-cn.md` |
+| `plans` | `completed` | ** Completed | - | `docs/superpowers/plans/completed/2026-06-03-news-intel-hard-cut-residual-root-fix-cn.md` |

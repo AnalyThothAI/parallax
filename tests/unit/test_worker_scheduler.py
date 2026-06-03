@@ -56,6 +56,7 @@ class FakeWorker:
         self.closed = 0
         self.run_order: list[str] | None = None
         self.last_error: str | None = None
+        self.last_result: dict[str, Any] | None = None
 
     async def run(self) -> None:
         if self.run_order is not None:
@@ -91,6 +92,7 @@ class FakeWorker:
         return {
             "enabled": self.settings.enabled,
             "running": self.started_event.is_set() and not self.stop_event.is_set(),
+            "last_result": self.last_result,
             "last_error": self.last_error,
         }
 
@@ -105,8 +107,6 @@ def test_scheduler_starts_enabled_workers_in_dependency_order_with_task_names() 
             "market_tick_poll": FakeWorker("market_tick_poll"),
             "resolution_refresh": FakeWorker("resolution_refresh"),
             "asset_profile_refresh": FakeWorker("asset_profile_refresh"),
-            "enrichment": FakeWorker("enrichment"),
-            "handle_summary": FakeWorker("handle_summary"),
             "pulse_candidate": FakeWorker("pulse_candidate"),
             "token_radar_projection": FakeWorker("token_radar_projection"),
             "token_profile_current": FakeWorker("token_profile_current"),
@@ -132,8 +132,6 @@ def test_scheduler_starts_enabled_workers_in_dependency_order_with_task_names() 
             "token_radar_projection",
             "token_profile_current",
             "pulse_candidate",
-            "enrichment",
-            "handle_summary",
             "notification_rule",
             "notification_delivery",
         ]
@@ -148,8 +146,6 @@ def test_scheduler_starts_enabled_workers_in_dependency_order_with_task_names() 
             "worker:token_radar_projection",
             "worker:token_profile_current",
             "worker:pulse_candidate",
-            "worker:enrichment",
-            "worker:handle_summary",
             "worker:notification_rule",
             "worker:notification_delivery",
         ]
@@ -357,3 +353,24 @@ def test_scheduler_unhealthy_reasons_reports_hard_timeout_as_liveness_failure() 
         assert "worker:pulse_candidate:hard_timeout" in scheduler.unhealthy_reasons()
 
     asyncio.run(scenario())
+
+
+def test_scheduler_unhealthy_reasons_reports_result_derived_failed_workers() -> None:
+    workers = {
+        "token_radar_projection": FakeWorker("token_radar_projection"),
+        "token_profile_current": FakeWorker("token_profile_current"),
+        "market_tick_poll": FakeWorker("market_tick_poll"),
+    }
+    workers["token_radar_projection"].last_result = {"ok": False}
+    workers["token_profile_current"].last_result = {"failed": 1}
+    workers["market_tick_poll"].last_result = {"dead": 1}
+    scheduler = WorkerScheduler(workers=workers, db=FakeDB(), stop_timeout_seconds=0.1)
+
+    reasons = scheduler.unhealthy_reasons()
+
+    assert "worker:token_radar_projection:failed" in reasons
+    assert "worker:token_profile_current:failed" in reasons
+    assert "worker:market_tick_poll:failed" in reasons
+    assert "worker:token_radar_projection:stopped" not in reasons
+    assert "worker:token_profile_current:stopped" not in reasons
+    assert "worker:market_tick_poll:stopped" not in reasons

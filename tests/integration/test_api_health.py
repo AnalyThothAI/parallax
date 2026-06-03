@@ -177,6 +177,7 @@ def fake_wired_providers(
     start_collector,
     agent_execution_gateway=None,
     asset_market=None,
+    news_intel=None,
     upstream_client_factory=None,
 ):
     return SimpleNamespace(
@@ -194,12 +195,14 @@ def fake_wired_providers(
         pulse_lab=SimpleNamespace(
             decision_provider=FakePulseProvider(model=settings.agent_runtime_model_for_lane("pulse.signal_analyst"))
         ),
+        narrative_intel=SimpleNamespace(narrative_provider=None),
+        news_intel=news_intel or SimpleNamespace(feed_client=None, brief_provider=None),
         macrodata=SimpleNamespace(stock_quote_provider=None),
         agent_execution_gateway=agent_execution_gateway,
     )
 
 
-def patch_runtime_dependencies(monkeypatch, *, asset_market=None, upstream_client_factory=None):
+def patch_runtime_dependencies(monkeypatch, *, asset_market=None, news_intel=None, upstream_client_factory=None):
     monkeypatch.setattr(bootstrap_module.DBPoolBundle, "create", lambda *_, **__: FakeDB())
     monkeypatch.setattr(bootstrap_module, "postgres_health_check", lambda *_, **__: {"ok": True})
     monkeypatch.setattr(
@@ -210,6 +213,7 @@ def patch_runtime_dependencies(monkeypatch, *, asset_market=None, upstream_clien
             start_collector=start_collector,
             agent_execution_gateway=agent_execution_gateway,
             asset_market=asset_market,
+            news_intel=news_intel,
             upstream_client_factory=upstream_client_factory,
         ),
     )
@@ -236,24 +240,30 @@ def test_healthz_readyz_and_metrics_return_status(monkeypatch, tmp_path):
         "parallax.app.runtime.worker_scheduler.WorkerScheduler.start",
         noop_scheduler_start,
     )
-    patch_runtime_dependencies(monkeypatch)
+    patch_runtime_dependencies(monkeypatch, news_intel=SimpleNamespace(feed_client=object(), brief_provider=None))
     monkeypatch.setattr(
         app_module,
         "postgres_health_check",
         lambda *_, **__: {"ok": True, "probe": "postgres_liveness"},
     )
-    settings = make_settings(tmp_path)
+    settings = make_settings(tmp_path, workers={"cex_oi_radar_board": {"enabled": False}})
     app = create_app(settings=settings, start_collector=False)
 
     with TestClient(app) as client:
         health = client.get("/healthz")
         ready = client.get("/readyz")
+        api_status = client.get("/api/status", headers={"Authorization": "Bearer secret"})
         metrics = client.get("/metrics")
 
     payload = ready.json()
+    api_status_payload = api_status.json()["data"]
     assert health.status_code == 200
     assert health.text == "ok\n"
-    assert ready.status_code == 200
+    assert ready.status_code == 503
+    assert api_status.status_code == 200
+    assert api_status_payload["workers"] == payload["workers"]
+    assert api_status_payload["worker_lanes"] == payload["worker_lanes"]
+    assert api_status_payload["reasons"] == payload["reasons"]
     assert payload["store"] == "postgresql"
     assert payload["db"]["ok"] is True
     assert payload["db"]["probe"] == "postgres_liveness"
@@ -278,14 +288,39 @@ def test_healthz_readyz_and_metrics_return_status(monkeypatch, tmp_path):
         "collector",
         "token_radar_projection",
         "pulse_candidate",
-        "enrichment",
         "event_anchor_backfill",
     }
     assert payload["workers"]["collector"]["enabled"] is False
+    assert payload["workers"]["collector"]["effective_status"] == "intentionally_not_started"
+    assert payload["workers"]["collector"]["unavailable_reason"] is None
     assert payload["workers"]["collector"]["last_result"] is None
+    assert payload["workers"]["market_tick_stream"]["effective_status"] == "unavailable"
+    assert payload["workers"]["market_tick_stream"]["unavailable_reason"] == "missing_asset_market_stream_provider"
+    assert payload["workers"]["market_tick_poll"]["effective_status"] == "unavailable"
+    assert payload["workers"]["market_tick_poll"]["unavailable_reason"] == "missing_asset_market_quote_provider"
+    assert "worker:market_tick_stream:unavailable:missing_asset_market_stream_provider" in payload["reasons"]
+    assert "worker:market_tick_poll:unavailable:missing_asset_market_quote_provider" in payload["reasons"]
+    worker_unavailable_reasons = sorted(reason for reason in payload["reasons"] if ":unavailable:" in reason)
+    assert worker_unavailable_reasons == [
+        "worker:market_tick_poll:unavailable:missing_asset_market_quote_provider",
+        "worker:market_tick_stream:unavailable:missing_asset_market_stream_provider",
+    ]
+    assert not any("factory_not_constructed" in reason for reason in payload["reasons"])
     assert "event_anchor_backfill" in payload["workers"]
     assert payload["workers"]["event_anchor_backfill"]["enabled"] is True
     assert set(payload["worker_lanes"]) >= {"ingest", "projection", "agent"}
+    for lane in payload["worker_lanes"].values():
+        assert set(lane) >= {
+            "disabled_workers",
+            "intentionally_not_started_workers",
+            "unavailable_workers",
+            "degraded_workers",
+            "running_workers",
+            "stopped_workers",
+            "failed_workers",
+        }
+    assert payload["worker_lanes"]["ingest"]["intentionally_not_started_workers"] >= 1
+    assert payload["worker_lanes"]["ingest"]["unavailable_workers"] >= 1
     assert payload["worker_lanes"]["projection"]["enabled_workers"] >= 1
     assert payload["worker_lanes"]["agent"]["failed_workers"] == 0
     assert metrics.status_code == 200
@@ -755,6 +790,87 @@ def test_readiness_uses_scheduler_workers_payload(monkeypatch):
     assert payload["workers"]["pulse_candidate"]["last_result"] == {"processed": 1}
     assert payload["agent_execution"] == agent_execution
     assert "pulse_agent" not in payload
+
+
+def test_readiness_worker_lanes_count_each_effective_status(monkeypatch):
+    projection_statuses = {
+        "market_tick_current_projection": {"enabled": False, "running": False, "effective_status": "disabled"},
+        "token_capture_tier": {
+            "enabled": False,
+            "running": False,
+            "effective_status": "intentionally_not_started",
+        },
+        "token_profile_current": {
+            "enabled": True,
+            "running": False,
+            "effective_status": "unavailable",
+            "unavailable_reason": "missing_profile_source",
+        },
+        "token_radar_projection": {"enabled": True, "running": True, "effective_status": "degraded"},
+        "narrative_admission": {"enabled": True, "running": True, "effective_status": "running"},
+        "news_page_projection": {"enabled": True, "running": False, "effective_status": "stopped"},
+        "news_source_quality_projection": {
+            "enabled": True,
+            "running": False,
+            "effective_status": "failed",
+            "last_error": "projection failed",
+        },
+        "cex_oi_radar_board": {"enabled": True, "running": False, "effective_status": "stopped"},
+        "macro_view_projection": {"enabled": False, "running": False, "effective_status": "disabled"},
+    }
+    runtime = SimpleNamespace(
+        settings=Settings(ws_token="secret", handles=("toly",), notifications={"enabled": False}),
+        collector=SimpleNamespace(status=SimpleNamespace(to_dict=lambda: {"frames_received": 0})),
+        providers=SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=None)),
+        agent_execution_gateway=None,
+        scheduler=SimpleNamespace(
+            status_payload=lambda: projection_statuses,
+            unhealthy_reasons=lambda: [],
+        ),
+    )
+    monkeypatch.setattr(app_module, "_db_status", lambda _: {"ok": True, "probe": "fake"})
+    monkeypatch.setattr(app_module, "_news_provider_contract_payload", lambda _: {"ok": True})
+
+    payload, _status_code = _readiness_payload(runtime, now_ms=12_001)
+
+    projection = payload["worker_lanes"]["projection"]
+    assert projection["disabled_workers"] == 2
+    assert projection["intentionally_not_started_workers"] == 1
+    assert projection["unavailable_workers"] == 1
+    assert projection["degraded_workers"] == 1
+    assert projection["running_workers"] == 1
+    assert projection["stopped_workers"] == 2
+    assert projection["failed_workers"] == 1
+
+
+def test_readiness_reports_result_derived_failed_worker(monkeypatch):
+    failed_worker = SimpleNamespace(
+        status_payload=lambda: {
+            "enabled": True,
+            "running": False,
+            "last_result": {"ok": False},
+            "last_error": None,
+        }
+    )
+    runtime = SimpleNamespace(
+        settings=Settings(ws_token="secret", handles=("toly",), notifications={"enabled": False}),
+        collector=SimpleNamespace(status=SimpleNamespace(to_dict=lambda: {"frames_received": 0})),
+        providers=SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=None)),
+        agent_execution_gateway=None,
+        scheduler=bootstrap_module.WorkerScheduler(
+            workers={"token_radar_projection": failed_worker},
+            db=FakeDB(),
+        ),
+    )
+    monkeypatch.setattr(app_module, "_db_status", lambda _: {"ok": True, "probe": "fake"})
+    monkeypatch.setattr(app_module, "_news_provider_contract_payload", lambda _: {"ok": True})
+
+    payload, status_code = _readiness_payload(runtime, now_ms=12_001)
+
+    assert status_code == 503
+    assert payload["ok"] is False
+    assert payload["workers"]["token_radar_projection"]["effective_status"] == "failed"
+    assert "worker:token_radar_projection:failed" in payload["reasons"]
 
 
 def test_readiness_reports_okx_circuit_open_without_failing_app(monkeypatch):

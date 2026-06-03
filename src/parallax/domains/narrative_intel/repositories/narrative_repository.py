@@ -96,14 +96,15 @@ class NarrativeRepository:
                 "last_seen_at_ms": now_ms,
                 "updated_at_ms": now_ms,
             }
-            self.conn.execute(
+            payload["payload_hash"] = admission_payload_hash(payload)
+            cursor = self.conn.execute(
                 """
                 INSERT INTO narrative_admissions (
                   admission_id, target_type, target_id, "window", scope, schema_version, status, reason,
                   priority, last_radar_rank, last_rank_score, source_event_ids_json, source_fingerprint,
                   source_max_received_at_ms, projection_computed_at_ms, source_window_start_ms,
                   source_window_end_ms, source_event_count, independent_author_count, admission_generation,
-                  admitted_at_ms, last_seen_at_ms, updated_at_ms
+                  admitted_at_ms, last_seen_at_ms, updated_at_ms, payload_hash
                 )
                 VALUES (
                   %(admission_id)s, %(target_type)s, %(target_id)s, %(window)s, %(scope)s, %(schema_version)s,
@@ -111,7 +112,7 @@ class NarrativeRepository:
                   %(source_event_ids_json)s, %(source_fingerprint)s, %(source_max_received_at_ms)s,
                   %(projection_computed_at_ms)s, %(source_window_start_ms)s, %(source_window_end_ms)s,
                   %(source_event_count)s, %(independent_author_count)s, %(admission_generation)s,
-                  %(admitted_at_ms)s, %(last_seen_at_ms)s, %(updated_at_ms)s
+                  %(admitted_at_ms)s, %(last_seen_at_ms)s, %(updated_at_ms)s, %(payload_hash)s
                 )
                 ON CONFLICT (target_type, target_id, "window", scope, schema_version)
                 DO UPDATE SET
@@ -130,11 +131,13 @@ class NarrativeRepository:
                   independent_author_count = EXCLUDED.independent_author_count,
                   admission_generation = EXCLUDED.admission_generation,
                   last_seen_at_ms = EXCLUDED.last_seen_at_ms,
-                  updated_at_ms = EXCLUDED.updated_at_ms
+                  updated_at_ms = EXCLUDED.updated_at_ms,
+                  payload_hash = EXCLUDED.payload_hash
+                WHERE narrative_admissions.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
                 """,
                 payload,
             )
-            upserted += 1
+            upserted += int(getattr(cursor, "rowcount", 0) or 0)
         if commit:
             _commit_if_available(self.conn)
         return {"upserted": upserted, "seen": len(selected)}
@@ -1449,24 +1452,7 @@ class NarrativeRepository:
 
     def replace_current_digest(self, digest: dict[str, Any], *, now_ms: int) -> dict[str, Any]:
         payload = _digest_payload(digest, now_ms=now_ms)
-        self.conn.execute(
-            """
-            DELETE FROM token_discussion_digests
-            WHERE target_type = %s
-              AND target_id = %s
-              AND "window" = %s
-              AND scope = %s
-              AND schema_version = %s
-            """,
-            (
-                payload["target_type"],
-                payload["target_id"],
-                payload["window"],
-                payload["scope"],
-                payload["schema_version"],
-            ),
-        )
-        self.conn.execute(
+        cursor = self.conn.execute(
             """
             INSERT INTO token_discussion_digests (
               digest_id, target_type, target_id, "window", scope, schema_version, model_version,
@@ -1477,7 +1463,8 @@ class NarrativeRepository:
               attention_valence_mix_json, propagation_read_json, reflexivity_read_json,
               watch_triggers_json, invalidation_conditions_json, data_gaps_json,
               semantic_coverage, source_event_count, labeled_event_count, independent_author_count,
-              evidence_refs_json, model_run_id, computed_at_ms, expires_at_ms, superseded_at_ms
+              evidence_refs_json, model_run_id, computed_at_ms, expires_at_ms, superseded_at_ms,
+              payload_hash
             )
             VALUES (
               %(digest_id)s, %(target_type)s, %(target_id)s, %(window)s, %(scope)s, %(schema_version)s,
@@ -1490,10 +1477,11 @@ class NarrativeRepository:
               %(reflexivity_read_json)s, %(watch_triggers_json)s, %(invalidation_conditions_json)s,
               %(data_gaps_json)s, %(semantic_coverage)s, %(source_event_count)s, %(labeled_event_count)s,
               %(independent_author_count)s, %(evidence_refs_json)s, %(model_run_id)s, %(computed_at_ms)s,
-              %(expires_at_ms)s, %(superseded_at_ms)s
+              %(expires_at_ms)s, %(superseded_at_ms)s, %(payload_hash)s
             )
-            ON CONFLICT (digest_id)
+            ON CONFLICT (target_type, target_id, "window", scope, schema_version) WHERE is_current
             DO UPDATE SET
+              digest_id = EXCLUDED.digest_id,
               model_version = EXCLUDED.model_version,
               status = EXCLUDED.status,
               is_current = true,
@@ -1505,6 +1493,8 @@ class NarrativeRepository:
               epoch_closed_at_ms = EXCLUDED.epoch_closed_at_ms,
               display_current_until_ms = EXCLUDED.display_current_until_ms,
               refresh_reason = EXCLUDED.refresh_reason,
+              source_fingerprint = EXCLUDED.source_fingerprint,
+              label_fingerprint = EXCLUDED.label_fingerprint,
               headline_zh = EXCLUDED.headline_zh,
               dominant_narratives_json = EXCLUDED.dominant_narratives_json,
               bull_view_json = EXCLUDED.bull_view_json,
@@ -1524,16 +1514,32 @@ class NarrativeRepository:
               model_run_id = EXCLUDED.model_run_id,
               computed_at_ms = EXCLUDED.computed_at_ms,
               expires_at_ms = EXCLUDED.expires_at_ms,
-              superseded_at_ms = EXCLUDED.superseded_at_ms
+              superseded_at_ms = EXCLUDED.superseded_at_ms,
+              payload_hash = EXCLUDED.payload_hash
+            WHERE token_discussion_digests.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
             """,
             payload,
         )
+        rows_written = int(getattr(cursor, "rowcount", 0) or 0)
+        if rows_written == 0:
+            current = self.current_digest_for_target(
+                target_type=payload["target_type"],
+                target_id=payload["target_id"],
+                window=payload["window"],
+                scope=payload["scope"],
+                schema_version=payload["schema_version"],
+            )
+            _commit_if_available(self.conn)
+            if current is not None:
+                return {**current, "rows_written": 0}
         _commit_if_available(self.conn)
         return {
             **digest,
             "digest_id": payload["digest_id"],
             "computed_at_ms": payload["computed_at_ms"],
             "is_current": True,
+            "payload_hash": payload["payload_hash"],
+            "rows_written": rows_written,
         }
 
     def mark_admissions_digest_scanned(
@@ -1598,6 +1604,32 @@ class NarrativeRepository:
               AND digest.status = 'ready'
               AND digest.is_current = true
             ORDER BY digest.computed_at_ms DESC, digest.digest_id DESC
+            LIMIT 1
+            """,
+            (target_type, target_id, window, scope, schema_version),
+        ).fetchone()
+        return _row(row) if row else None
+
+    def current_digest_for_target(
+        self,
+        *,
+        target_type: str,
+        target_id: str,
+        window: str,
+        scope: str,
+        schema_version: str,
+    ) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            SELECT *
+            FROM token_discussion_digests
+            WHERE target_type = %s
+              AND target_id = %s
+              AND "window" = %s
+              AND scope = %s
+              AND schema_version = %s
+              AND is_current = true
+            ORDER BY computed_at_ms DESC, digest_id DESC
             LIMIT 1
             """,
             (target_type, target_id, window, scope, schema_version),
@@ -2118,6 +2150,7 @@ def deterministic_digest_id(
     schema_version: str,
     source_fingerprint: str | None,
     label_fingerprint: str | None,
+    status: str = "",
 ) -> str:
     return _stable_id(
         "discussion_digest",
@@ -2126,6 +2159,7 @@ def deterministic_digest_id(
         window,
         scope,
         schema_version,
+        status or "",
         source_fingerprint or "",
         label_fingerprint or "",
     )
@@ -2137,6 +2171,34 @@ def deterministic_run_id(*, stage: str, input_hash: str, started_at_ms: int) -> 
 
 def _stable_id(*parts: str) -> str:
     return hashlib.sha256("\x1f".join(str(part) for part in parts).encode("utf-8")).hexdigest()
+
+
+def admission_payload_hash(payload: dict[str, Any]) -> str:
+    return _stable_payload_hash(
+        {
+            key: value
+            for key, value in payload.items()
+            if key
+            not in {
+                "admission_id",
+                "projection_computed_at_ms",
+                "admission_generation",
+                "admitted_at_ms",
+                "last_seen_at_ms",
+                "updated_at_ms",
+                "payload_hash",
+            }
+        }
+    )
+
+
+def digest_payload_hash(digest: dict[str, Any], *, now_ms: int) -> str:
+    return _digest_payload_fields(digest, now_ms=now_ms)["payload_hash"]
+
+
+def _stable_payload_hash(payload: dict[str, Any]) -> str:
+    encoded = json.dumps(_json_ready(payload), ensure_ascii=True, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def _stable_ids(values: Sequence[str]) -> list[str]:
@@ -2172,6 +2234,10 @@ def _semantic_digest_claim_records(claims: Sequence[dict[str, Any]]) -> list[dic
 
 
 def _digest_payload(digest: dict[str, Any], *, now_ms: int) -> dict[str, Any]:
+    return _digest_payload_fields(digest, now_ms=now_ms)
+
+
+def _digest_payload_fields(digest: dict[str, Any], *, now_ms: int) -> dict[str, Any]:
     source_event_ids = _json_list(digest.get("source_event_ids") or digest.get("source_event_ids_json"))
     source_fingerprint = digest.get("source_fingerprint")
     if not source_fingerprint:
@@ -2182,6 +2248,7 @@ def _digest_payload(digest: dict[str, Any], *, now_ms: int) -> dict[str, Any]:
     label_fingerprint = digest.get("label_fingerprint")
     if not label_fingerprint:
         label_fingerprint = build_label_fingerprint(digest.get("semantic_rows") or [])
+    status = str(digest.get("status") or "pending")
     digest_id = deterministic_digest_id(
         target_type=_required(digest, "target_type"),
         target_id=_required(digest, "target_id"),
@@ -2190,8 +2257,9 @@ def _digest_payload(digest: dict[str, Any], *, now_ms: int) -> dict[str, Any]:
         schema_version=str(digest.get("schema_version") or NARRATIVE_SCHEMA_VERSION),
         source_fingerprint=source_fingerprint,
         label_fingerprint=label_fingerprint,
+        status=status,
     )
-    return {
+    payload = {
         "digest_id": digest_id,
         "target_type": _required(digest, "target_type"),
         "target_id": _required(digest, "target_id"),
@@ -2199,7 +2267,7 @@ def _digest_payload(digest: dict[str, Any], *, now_ms: int) -> dict[str, Any]:
         "scope": _required(digest, "scope"),
         "schema_version": str(digest.get("schema_version") or NARRATIVE_SCHEMA_VERSION),
         "model_version": str(digest.get("model_version") or "unknown"),
-        "status": str(digest.get("status") or "pending"),
+        "status": status,
         "epoch_id": digest.get("epoch_id"),
         "epoch_policy_version": digest.get("epoch_policy_version"),
         "source_event_ids_json": _json(source_event_ids),
@@ -2231,6 +2299,26 @@ def _digest_payload(digest: dict[str, Any], *, now_ms: int) -> dict[str, Any]:
         "expires_at_ms": digest.get("expires_at_ms"),
         "superseded_at_ms": digest.get("superseded_at_ms"),
     }
+    payload["payload_hash"] = _stable_payload_hash(
+        {
+            key: value
+            for key, value in payload.items()
+            if key
+            not in {
+                "digest_id",
+                "is_current",
+                "epoch_id",
+                "epoch_closed_at_ms",
+                "display_current_until_ms",
+                "model_run_id",
+                "computed_at_ms",
+                "expires_at_ms",
+                "superseded_at_ms",
+                "payload_hash",
+            }
+        }
+    )
+    return payload
 
 
 def _allowed_refs_for_semantics(semantics: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -2255,6 +2343,17 @@ def _author_count(rows: Sequence[dict[str, Any]]) -> int:
 
 def _json(value: Any) -> Jsonb:
     return Jsonb(value, dumps=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True, default=str))
+
+
+def _json_ready(value: Any) -> Any:
+    raw = getattr(value, "obj", value)
+    if isinstance(raw, dict):
+        return {str(key): _json_ready(inner) for key, inner in raw.items()}
+    if isinstance(raw, tuple | list):
+        return [_json_ready(inner) for inner in raw]
+    if isinstance(raw, set | frozenset):
+        return sorted(_json_ready(inner) for inner in raw)
+    return raw
 
 
 def _json_list(value: Any) -> list[str]:

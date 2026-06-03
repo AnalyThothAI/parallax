@@ -165,6 +165,50 @@ def test_worker_base_run_calls_hooks_updates_status_and_metrics() -> None:
     asyncio.run(scenario())
 
 
+def test_worker_status_payload_maps_degraded_result_notes_to_effective_status() -> None:
+    class DegradedWorker(WorkerBase):
+        async def run_once(self) -> WorkerResult:
+            await self.stop()
+            return WorkerResult(processed=1, notes={"degraded": True, "provider_state": "degraded_recoverable"})
+
+    async def scenario() -> None:
+        worker = DegradedWorker(
+            name="degraded_worker",
+            settings=worker_settings(),
+            db=FakeDB(),
+            telemetry=FakeTelemetry(),
+        )
+
+        await worker.run()
+        payload = worker.status_payload()
+
+        assert payload["effective_status"] == "degraded"
+        assert payload["last_result"]["notes"]["degraded"] is True
+
+    asyncio.run(scenario())
+
+
+def test_worker_status_payload_failed_result_takes_precedence_over_degraded_notes() -> None:
+    class FailedDegradedWorker(WorkerBase):
+        async def run_once(self) -> WorkerResult:
+            await self.stop()
+            return WorkerResult(failed=1, notes={"degraded": True})
+
+    async def scenario() -> None:
+        worker = FailedDegradedWorker(
+            name="failed_degraded_worker",
+            settings=worker_settings(),
+            db=FakeDB(),
+            telemetry=FakeTelemetry(),
+        )
+
+        await worker.run()
+
+        assert worker.status_payload()["effective_status"] == "failed"
+
+    asyncio.run(scenario())
+
+
 def test_worker_base_rejects_concurrent_run_on_same_instance() -> None:
     class BlockingWorker(WorkerBase):
         def __init__(self, **kwargs: Any) -> None:

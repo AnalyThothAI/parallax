@@ -94,47 +94,9 @@ class LivePriceGateway(WorkerBase):
         self.target_limit = DEFAULT_LIVE_TARGET_LIMIT
         self.target_ttl_seconds = DEFAULT_LIVE_TARGET_TTL_SECONDS
         self.live_stale_after_ms = int(self.target_ttl_seconds * 1000)
-        self.cycle_interval_seconds = interval
         self.on_live_market_update = on_live_market_update
         self.clock = clock or _now_ms
         self._cache: dict[tuple[str, str], LiveMarketSnapshot] = {}
-
-    async def run(self) -> None:
-        if not self.enabled:
-            return
-        run_once_task: asyncio.Task[WorkerResult | None] | None = None
-        self.running = True
-        try:
-            await self.on_start()
-            while not self._stop_event.is_set() or run_once_task is not None:
-                self.last_started_at_ms = int(self.clock())
-                started = time.perf_counter()
-                if run_once_task is None:
-                    run_once_task = self._create_run_once_task()
-                try:
-                    result, run_once_task = await self._run_once_with_timeout(run_once_task)
-                except asyncio.CancelledError:
-                    await self._cancel_run_once_task(run_once_task)
-                    run_once_task = None
-                    raise
-                except Exception as exc:  # pragma: no cover - watchdog path
-                    if run_once_task is not None and run_once_task.done():
-                        self._discard_run_once_task(run_once_task)
-                        run_once_task = None
-                    self.last_error = str(exc)
-                    self._record_failed_iteration(started)
-                    await self._sleep(self.cycle_interval_seconds)
-                    continue
-                self.last_error = None
-                self.last_result = result
-                self._record_successful_iteration(started, result)
-                if self._stop_event.is_set():
-                    break
-                await self._sleep(self.cycle_interval_seconds)
-        finally:
-            await self._cancel_run_once_task(run_once_task)
-            self.running = False
-            await self.on_stop()
 
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
         result = await self._run_cycle(now_ms=now_ms)
@@ -215,13 +177,6 @@ class LivePriceGateway(WorkerBase):
             "target_id": snapshot.target_id,
             **snapshot.to_payload(now_ms=observed_now_ms, stale_after_ms=self.live_stale_after_ms),
         }
-
-    async def _sleep(self, delay_seconds: float) -> None:
-        remaining = max(0.0, float(delay_seconds))
-        while remaining > 0 and not self._stop_event.is_set():
-            step = min(0.1, remaining)
-            await asyncio.sleep(step)
-            remaining -= step
 
     def _active_targets(self, *, now_ms: int) -> list[dict[str, Any]]:
         with self.db.worker_session(self.name) as repos:

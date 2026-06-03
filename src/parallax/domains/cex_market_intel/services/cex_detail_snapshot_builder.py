@@ -38,6 +38,7 @@ def build_cex_detail_snapshot(
 
     level_bands = _list_of_dicts(row.get("level_bands") or row.get("level_bands_json"))
     observed_at_ms = _int_or_none(row.get("observed_at_ms"))
+    observed_at_source = _observed_at_source(row, observed_at_ms=observed_at_ms, computed_at_ms=int(computed_at_ms))
     baseline_ready = any(
         value is not None for value in (price_usd, mark_price, open_interest_usd, volume_24h_usd, funding_rate)
     )
@@ -87,6 +88,7 @@ def build_cex_detail_snapshot(
         "degraded_reasons": tuple(sorted(set(degraded_reasons))),
         "source_refs": source_refs,
         "observed_at_ms": observed_at_ms,
+        "observed_at_source": observed_at_source,
         "computed_at_ms": int(computed_at_ms),
     }
 
@@ -223,6 +225,15 @@ def _int_or_none(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _observed_at_source(row: dict[str, Any], *, observed_at_ms: int | None, computed_at_ms: int) -> str:
+    source = str(row.get("observed_at_source") or "").strip().lower()
+    if source in {"provider", "computed"}:
+        return source
+    if observed_at_ms is None or observed_at_ms == computed_at_ms:
+        return "computed"
+    return "provider"
 
 
 def _strings(value: Any) -> list[str]:

@@ -12,6 +12,7 @@ from parallax.domains.asset_market.providers import (
     DexTokenQuoteProvider,
     ProviderHealth,
 )
+from parallax.domains.cex_market_intel.providers import CexOiMarketProvider, CoinglassDerivativesProvider
 from parallax.domains.ingestion.providers import UpstreamClientProtocol
 from parallax.domains.news_intel.providers import NewsItemBriefProvider, NewsSourceProvider
 from parallax.domains.pulse_lab.providers import PulseDecisionProvider
@@ -34,6 +35,12 @@ class AssetMarketProviders:
     stream_dex_market: DexMarketStreamProvider | None = None
     discovery_chain_ids: tuple[str, ...] = ()
     provider_health: tuple[ProviderHealth, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class CexMarketIntelProviders:
+    oi_market: CexOiMarketProvider | None = None
+    coinglass_derivatives: CoinglassDerivativesProvider | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +76,7 @@ class MacrodataProviders:
 class WiredProviders:
     ingestion: IngestionProviders
     asset_market: AssetMarketProviders
+    cex_market_intel: CexMarketIntelProviders
     narrative_intel: NarrativeIntelProviders
     news_intel: NewsIntelProviders
     pulse_lab: PulseLabProviders
@@ -78,6 +86,7 @@ class WiredProviders:
 
 __all__ = [
     "AssetMarketProviders",
+    "CexMarketIntelProviders",
     "IngestionProviders",
     "MacrodataProviders",
     "NarrativeIntelProviders",

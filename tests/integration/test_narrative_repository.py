@@ -5,7 +5,10 @@ from psycopg.types.json import Jsonb
 from parallax.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
 from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from parallax.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
-from parallax.domains.narrative_intel.repositories.narrative_repository import NarrativeRepository
+from parallax.domains.narrative_intel.repositories.narrative_repository import (
+    NarrativeRepository,
+    admission_payload_hash,
+)
 from parallax.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
@@ -48,6 +51,62 @@ def make_event(event_id: str) -> TwitterEvent:
         bio_change=None,
         matched_handles=["toly"],
         raw={"id": event_id},
+    )
+
+
+def insert_admitted_admission(
+    conn,
+    *,
+    admission_id: str,
+    target_id: str,
+    window: str,
+    source_event_ids: list[str],
+) -> None:
+    payload = {
+        "admission_id": admission_id,
+        "target_type": "chain_token",
+        "target_id": target_id,
+        "window": window,
+        "scope": "matched",
+        "schema_version": NARRATIVE_SCHEMA_VERSION,
+        "status": "admitted",
+        "reason": "unit_test",
+        "priority": 1,
+        "last_radar_rank": 1,
+        "last_rank_score": 90.0,
+        "source_event_ids_json": Jsonb(source_event_ids),
+        "source_fingerprint": "source-fingerprint",
+        "source_max_received_at_ms": 3_000,
+        "projection_computed_at_ms": None,
+        "source_window_start_ms": None,
+        "source_window_end_ms": 3_000,
+        "source_event_count": len(source_event_ids),
+        "independent_author_count": len(source_event_ids),
+        "admission_generation": None,
+        "admitted_at_ms": 3_000,
+        "last_seen_at_ms": 3_000,
+        "updated_at_ms": 3_000,
+    }
+    payload["payload_hash"] = admission_payload_hash(payload)
+    conn.execute(
+        """
+        INSERT INTO narrative_admissions(
+          admission_id, target_type, target_id, "window", scope, schema_version, status, reason,
+          priority, last_radar_rank, last_rank_score, source_event_ids_json, source_fingerprint,
+          source_max_received_at_ms, projection_computed_at_ms, source_window_start_ms, source_window_end_ms,
+          source_event_count, independent_author_count, admission_generation,
+          admitted_at_ms, last_seen_at_ms, updated_at_ms, payload_hash
+        )
+        VALUES (
+          %(admission_id)s, %(target_type)s, %(target_id)s, %(window)s, %(scope)s, %(schema_version)s,
+          %(status)s, %(reason)s, %(priority)s, %(last_radar_rank)s, %(last_rank_score)s,
+          %(source_event_ids_json)s, %(source_fingerprint)s, %(source_max_received_at_ms)s,
+          %(projection_computed_at_ms)s, %(source_window_start_ms)s, %(source_window_end_ms)s,
+          %(source_event_count)s, %(independent_author_count)s, %(admission_generation)s,
+          %(admitted_at_ms)s, %(last_seen_at_ms)s, %(updated_at_ms)s, %(payload_hash)s
+        )
+        """,
+        payload,
     )
 
 
@@ -239,6 +298,120 @@ def test_load_radar_admission_target_uses_current_row_when_publication_timestamp
     assert context["radar_row"]["row_computed_at_ms"] == 1_000
 
 
+def test_upsert_admissions_unchanged_payload_writes_zero_rows(tmp_path) -> None:
+    conn, _, repo = open_repo(tmp_path)
+    try:
+        row = {
+            "target_type": "chain_token",
+            "target_id": "solana:So111",
+            "window": "1h",
+            "scope": "matched",
+            "schema_version": NARRATIVE_SCHEMA_VERSION,
+            "source_event_ids": ["event-1", "event-2"],
+            "source_max_received_at_ms": 2_000,
+            "source_window_start_ms": 1_000,
+            "source_window_end_ms": 2_000,
+            "source_event_count": 2,
+            "independent_author_count": 2,
+            "rank": 4,
+            "rank_score": 72.5,
+            "admission_generation": "1h:matched:2000",
+        }
+
+        assert repo.upsert_admissions([row], now_ms=2_100) == {"upserted": 1, "seen": 1}
+        before = conn.execute(
+            """
+            SELECT admission_id, updated_at_ms, last_seen_at_ms, payload_hash
+            FROM narrative_admissions
+            WHERE target_type = 'chain_token'
+              AND target_id = 'solana:So111'
+              AND "window" = '1h'
+              AND scope = 'matched'
+            """
+        ).fetchone()
+
+        watermark_only_row = {
+            **row,
+            "computed_at_ms": 9_000,
+            "admission_generation": "1h:matched:9000",
+        }
+        assert repo.upsert_admissions([watermark_only_row], now_ms=9_000) == {"upserted": 0, "seen": 1}
+        after = conn.execute(
+            """
+            SELECT admission_id, updated_at_ms, last_seen_at_ms, payload_hash
+            FROM narrative_admissions
+            WHERE target_type = 'chain_token'
+              AND target_id = 'solana:So111'
+              AND "window" = '1h'
+              AND scope = 'matched'
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert before["payload_hash"]
+    assert after["payload_hash"] == before["payload_hash"]
+    assert after["admission_id"] == before["admission_id"]
+    assert after["updated_at_ms"] == before["updated_at_ms"]
+    assert after["last_seen_at_ms"] == before["last_seen_at_ms"]
+
+
+def test_replace_current_digest_unchanged_non_ready_writes_zero_rows(tmp_path) -> None:
+    conn, _, repo = open_repo(tmp_path)
+    try:
+        digest = {
+            "target_type": "chain_token",
+            "target_id": "solana:So111",
+            "window": "1h",
+            "scope": "matched",
+            "schema_version": NARRATIVE_SCHEMA_VERSION,
+            "model_version": "deterministic:pending",
+            "status": "pending",
+            "source_event_ids": ["event-1", "event-2"],
+            "source_fingerprint": "source:fingerprint",
+            "label_fingerprint": "labels:pending",
+            "semantic_coverage": 0.25,
+            "source_event_count": 2,
+            "labeled_event_count": 1,
+            "independent_author_count": 2,
+            "data_gaps": [{"reason": "semantic_labeling_pending"}],
+        }
+
+        first = repo.replace_current_digest(digest, now_ms=2_100)
+        before = conn.execute(
+            """
+            SELECT digest_id, computed_at_ms, payload_hash
+            FROM token_discussion_digests
+            WHERE target_type = 'chain_token'
+              AND target_id = 'solana:So111'
+              AND "window" = '1h'
+              AND scope = 'matched'
+              AND is_current = true
+            """
+        ).fetchone()
+        second = repo.replace_current_digest(digest, now_ms=9_000)
+        after = conn.execute(
+            """
+            SELECT digest_id, computed_at_ms, payload_hash
+            FROM token_discussion_digests
+            WHERE target_type = 'chain_token'
+              AND target_id = 'solana:So111'
+              AND "window" = '1h'
+              AND scope = 'matched'
+              AND is_current = true
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert first["rows_written"] == 1
+    assert second["rows_written"] == 0
+    assert before["payload_hash"]
+    assert after["payload_hash"] == before["payload_hash"]
+    assert after["digest_id"] == before["digest_id"]
+    assert after["computed_at_ms"] == before["computed_at_ms"]
+
+
 def test_repository_enqueues_completes_and_hydrates_semantics(tmp_path):
     conn, evidence, repo = open_repo(tmp_path)
     try:
@@ -344,20 +517,12 @@ def test_repository_enqueues_completes_and_hydrates_semantics(tmp_path):
             [{"event_id": "event-1", "target_type": "chain_token", "target_id": "solana:So111"}],
             schema_version="narrative_intel_v1",
         )
-        conn.execute(
-            """
-            INSERT INTO narrative_admissions(
-              admission_id, target_type, target_id, "window", scope, schema_version, status, reason,
-              priority, last_radar_rank, last_rank_score, source_event_ids_json, source_fingerprint,
-              source_max_received_at_ms, admitted_at_ms, last_seen_at_ms, updated_at_ms
-            )
-            VALUES (
-              'admission-event-1', 'chain_token', 'solana:So111', '24h', 'matched',
-              'narrative_intel_v1', 'admitted', 'unit_test', 1, 1, 90.0, %s,
-              'source-fingerprint', 3_000, 3_000, 3_000, 3_000
-            )
-            """,
-            (Jsonb(["event-1"]),),
+        insert_admitted_admission(
+            conn,
+            admission_id="admission-event-1",
+            target_id="solana:So111",
+            window="24h",
+            source_event_ids=["event-1"],
         )
         conn.commit()
         context = repo.digest_context(
@@ -529,20 +694,12 @@ def test_digest_context_counts_admission_source_set_without_semantics(tmp_path):
     try:
         for event_id in ["event-source-1", "event-source-2", "event-source-3"]:
             assert evidence.insert_event(make_event(event_id), is_watched=True) is True
-        conn.execute(
-            """
-            INSERT INTO narrative_admissions(
-              admission_id, target_type, target_id, "window", scope, schema_version, status, reason,
-              priority, last_radar_rank, last_rank_score, source_event_ids_json, source_fingerprint,
-              source_max_received_at_ms, admitted_at_ms, last_seen_at_ms, updated_at_ms
-            )
-            VALUES (
-              'admission-source-set', 'chain_token', 'solana:So111', '24h', 'matched',
-              'narrative_intel_v1', 'admitted', 'unit_test', 1, 1, 90.0, %s,
-              'source-fingerprint', 3_000, 3_000, 3_000, 3_000
-            )
-            """,
-            (Jsonb(["event-source-1", "event-source-2", "event-source-3"]),),
+        insert_admitted_admission(
+            conn,
+            admission_id="admission-source-set",
+            target_id="solana:So111",
+            window="24h",
+            source_event_ids=["event-source-1", "event-source-2", "event-source-3"],
         )
         conn.commit()
 
@@ -1151,7 +1308,7 @@ def test_replace_current_digest_replaces_previous_current_row(tmp_path):
         )
         rows = conn.execute(
             """
-            SELECT digest_id, is_current, superseded_at_ms
+            SELECT digest_id, is_current, source_fingerprint, label_fingerprint, superseded_at_ms
             FROM token_discussion_digests
             ORDER BY computed_at_ms ASC
             """
@@ -1167,6 +1324,8 @@ def test_replace_current_digest_replaces_previous_current_row(tmp_path):
         {
             "digest_id": second["digest_id"],
             "is_current": True,
+            "source_fingerprint": admission_fingerprint,
+            "label_fingerprint": "labels-2",
             "superseded_at_ms": None,
         }
     ]
@@ -1203,10 +1362,13 @@ def test_replace_current_digest_is_idempotent_for_same_digest(tmp_path):
         conn.close()
 
     assert second["digest_id"] == first["digest_id"]
+    assert first["rows_written"] == 1
+    assert second["rows_written"] == 0
     assert len(rows) == 1
     assert rows[0]["digest_id"] == first["digest_id"]
     assert rows[0]["is_current"] is True
-    assert rows[0]["computed_at_ms"] == 2_000
+    assert rows[0]["computed_at_ms"] == 1_000
+    assert second["computed_at_ms"] == 1_000
     assert rows[0]["superseded_at_ms"] is None
 
 

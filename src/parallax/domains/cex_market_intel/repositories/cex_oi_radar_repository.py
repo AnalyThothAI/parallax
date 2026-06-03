@@ -3,10 +3,17 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
 from psycopg.types.json import Jsonb
+
+
+@dataclass(frozen=True, slots=True)
+class CexBoardPublicationResult:
+    board_changed: bool
+    board_rows_written: int
 
 
 class CexOiRadarRepository:
@@ -49,6 +56,26 @@ class CexOiRadarRepository:
         notes: dict[str, Any] | None = None,
         commit: bool = True,
     ) -> int:
+        result = self.publish_board_with_result(
+            rows=rows,
+            computed_at_ms=computed_at_ms,
+            period=period,
+            status=status,
+            notes=notes,
+            commit=commit,
+        )
+        return result.board_rows_written
+
+    def publish_board_with_result(
+        self,
+        *,
+        rows: list[dict[str, Any]],
+        computed_at_ms: int,
+        period: str,
+        status: str,
+        notes: dict[str, Any] | None = None,
+        commit: bool = True,
+    ) -> CexBoardPublicationResult:
         board_period = str(period)
         computed_at = int(computed_at_ms)
         board_key = _board_key(board_period)
@@ -63,7 +90,7 @@ class CexOiRadarRepository:
                 latest_error=latest_error,
                 commit=commit,
             )
-            return 0
+            return CexBoardPublicationResult(board_changed=False, board_rows_written=0)
 
         current_payload_hash = _board_payload_hash(
             rows=rows,
@@ -87,7 +114,7 @@ class CexOiRadarRepository:
                 latest_error=latest_error,
                 commit=commit,
             )
-            return 0
+            return CexBoardPublicationResult(board_changed=False, board_rows_written=0)
 
         self.conn.execute(
             """
@@ -204,7 +231,7 @@ class CexOiRadarRepository:
 
         if commit:
             self.conn.commit()
-        return written
+        return CexBoardPublicationResult(board_changed=True, board_rows_written=written)
 
     def record_attempt_failure(
         self,

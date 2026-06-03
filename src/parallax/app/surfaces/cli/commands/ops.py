@@ -22,13 +22,14 @@ from parallax.app.runtime.projection_dirty_targets import enqueue_projection_dir
 from parallax.app.runtime.provider_wiring.model_execution import build_agent_execution_gateway
 from parallax.app.runtime.providers_wiring import wire_asset_market_providers, wire_providers
 from parallax.app.runtime.telemetry import TelemetryRegistry
-from parallax.app.runtime.worker_manifest import require_worker_manifest
-from parallax.app.runtime.worker_space import contract_from_manifest
 from parallax.app.runtime.worker_status import workers_status_payload
 from parallax.app.surfaces.cli.commands import queue_ops
 from parallax.app.surfaces.cli.dependencies import repositories
 from parallax.domains.account_quality.read_models.account_quality_service import AccountQualityService
 from parallax.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
+from parallax.domains.asset_market.repositories.token_capture_tier_dirty_target_repository import (
+    token_capture_tier_rank_set_payload_hash,
+)
 from parallax.domains.asset_market.runtime.asset_profile_refresh_worker import AssetProfileRefreshWorker
 from parallax.domains.asset_market.runtime.market_tick_current_projection_worker import (
     MarketTickCurrentProjectionWorker,
@@ -277,6 +278,17 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
                 repos,
                 source=args.source,
                 since_ms=args.since_ms,
+                limit=args.limit,
+                dry_run=bool(args.dry_run),
+                execute=bool(args.execute),
+                now_ms=_now_ms(),
+            )
+            return 0, {"ok": True, "data": data}
+
+        if args.ops_command == "enqueue-token-capture-tier-rank-set":
+            data = _enqueue_token_capture_tier_rank_set(
+                repos,
+                window=args.window,
                 limit=args.limit,
                 dry_run=bool(args.dry_run),
                 execute=bool(args.execute),
@@ -558,6 +570,60 @@ def _enqueue_token_radar_dirty_targets(
     raise ValueError(f"unknown token radar dirty target source: {source}")
 
 
+def _enqueue_token_capture_tier_rank_set(
+    repos: object,
+    *,
+    window: str,
+    limit: int,
+    dry_run: bool,
+    execute: bool,
+    now_ms: int,
+) -> dict[str, Any]:
+    parsed_window = str(window)
+    parsed_limit = max(0, int(limit))
+    since_ms = max(0, int(now_ms) - WINDOW_MS.get(parsed_window, WINDOW_MS["24h"]))
+    rows = repos.registry.ranked_live_market_targets(
+        projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+        since_ms=since_ms,
+        limit=parsed_limit,
+    )
+    reason = f"ops_capture_tier_repair:{parsed_window}"
+    payload_hash = token_capture_tier_rank_set_payload_hash(reason=reason, rows=rows)
+    source_watermark_ms = max((int(row.get("source_max_received_at_ms") or 0) for row in rows), default=0)
+    data: dict[str, Any] = {
+        "window": parsed_window,
+        "since_ms": since_ms,
+        "limit": parsed_limit,
+        "target_count": len(rows),
+        "reason": reason,
+        "payload_hash": payload_hash,
+        "source_watermark_ms": source_watermark_ms,
+        "dry_run": bool(dry_run),
+        "execute": bool(execute),
+    }
+    if dry_run:
+        data["would_enqueue"] = 1 if rows else 0
+        data["enqueued"] = 0
+        data["skipped"] = 0
+        return data
+    if not rows:
+        data["enqueued"] = 0
+        data["skipped"] = 1
+        return data
+    result = repos.token_capture_tier_dirty_targets.enqueue_rank_set(
+        reason=reason,
+        rows=rows,
+        exited_rows=[],
+        source_watermark_ms=source_watermark_ms,
+        now_ms=now_ms,
+        commit=True,
+    )
+    enqueued = int(result.get("targets") or 0)
+    data["enqueued"] = enqueued
+    data["skipped"] = 0 if enqueued else 1
+    return data
+
+
 def _rebuild_news_canonical_items(
     repos: object,
     *,
@@ -832,7 +898,6 @@ def _run_token_radar_projection_worker_once(
             settings=_worker_settings_with_overrides(settings.workers.token_radar_projection, batch_size=limit),
             db=db,
             telemetry=telemetry,
-            worker_space_contract=contract_from_manifest(require_worker_manifest(worker_name)),
             wake_bus=db.wake_emitter(),
             wake_waiter=db.wake_listener(worker_name, settings.workers.token_radar_projection.wakes_on),
             enqueue_narrative_admission=narrative_bulk_analysis_enabled(settings),

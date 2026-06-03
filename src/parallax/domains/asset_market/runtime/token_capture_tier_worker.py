@@ -141,44 +141,53 @@ def project_once(
         and (candidate.target_type, candidate.target_id) not in tier2_keys
     ]
 
+    rows_written = 0
     for candidate in tier1:
-        repos.token_capture_tiers.upsert_tier(
-            target_type=candidate.target_type,
-            target_id=candidate.target_id,
-            tier=1,
-            reason="ws_subscribed",
-            score=candidate.score,
-            updated_at_ms=int(now_ms),
+        rows_written += _changed_count(
+            repos.token_capture_tiers.upsert_tier(
+                target_type=candidate.target_type,
+                target_id=candidate.target_id,
+                tier=1,
+                reason="ws_subscribed",
+                score=candidate.score,
+                updated_at_ms=int(now_ms),
+            )
         )
     for candidate in tier2:
-        repos.token_capture_tiers.upsert_tier(
-            target_type=candidate.target_type,
-            target_id=candidate.target_id,
-            tier=2,
-            reason="batch_poll",
-            score=candidate.score,
-            updated_at_ms=int(now_ms),
+        rows_written += _changed_count(
+            repos.token_capture_tiers.upsert_tier(
+                target_type=candidate.target_type,
+                target_id=candidate.target_id,
+                tier=2,
+                reason="batch_poll",
+                score=candidate.score,
+                updated_at_ms=int(now_ms),
+            )
         )
     for candidate in tier3:
-        repos.token_capture_tiers.upsert_tier(
-            target_type=candidate.target_type,
-            target_id=candidate.target_id,
-            tier=3,
-            reason="inline_only",
-            score=candidate.score,
-            updated_at_ms=int(now_ms),
+        rows_written += _changed_count(
+            repos.token_capture_tiers.upsert_tier(
+                target_type=candidate.target_type,
+                target_id=candidate.target_id,
+                tier=3,
+                reason="inline_only",
+                score=candidate.score,
+                updated_at_ms=int(now_ms),
+            )
         )
 
     active_keys = [
         {"target_type": target_type, "target_id": target_id} for target_type, target_id in (*tier1_keys, *tier2_keys)
     ]
-    repos.token_capture_tiers.demote_hot_rows_outside_rank_set(
-        active_keys=active_keys,
-        updated_at_ms=int(now_ms),
+    rows_written += _changed_count(
+        repos.token_capture_tiers.demote_hot_rows_outside_rank_set(
+            active_keys=active_keys,
+            updated_at_ms=int(now_ms),
+        )
     )
     if commit:
         _commit_if_supported(repos)
-    return len(candidates)
+    return rows_written
 
 
 @dataclass(frozen=True, slots=True)
@@ -249,6 +258,15 @@ def _commit_if_supported(repos: Any) -> None:
     commit = getattr(repos, "commit", None)
     if callable(commit):
         commit()
+
+
+def _changed_count(value: Any) -> int:
+    if isinstance(value, bool):
+        return 1 if value else 0
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _settings(settings: Any | None, *, interval_seconds: float | None, batch_size: int) -> Any:
