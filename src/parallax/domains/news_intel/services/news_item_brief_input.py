@@ -5,7 +5,11 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from parallax.domains.news_intel.types.news_item_brief import (
+    NEWS_ITEM_RESEARCH_TOOL_CATALOG_VERSION,
+    NewsContextTargetRef,
     NewsItemBriefAgentConfig,
+    NewsItemBriefBasePacket,
+    NewsItemBriefBudgetReport,
     NewsItemBriefConstraints,
     NewsItemBriefFactLane,
     NewsItemBriefInputPacket,
@@ -13,7 +17,10 @@ from parallax.domains.news_intel.types.news_item_brief import (
     NewsItemBriefProviderSignalEvidence,
     NewsItemBriefProviderTokenImpact,
     NewsItemBriefSource,
+    NewsItemBriefSynthesisPacket,
     NewsItemBriefTokenLane,
+    news_item_brief_base_material_identity,
+    news_research_tool_material_identity,
 )
 from parallax.platform.agent_hashing import json_sha256
 
@@ -23,6 +30,7 @@ MAX_FACT_LANES = 50
 MAX_PROVIDER_TOKEN_IMPACTS = 12
 MAX_PROVIDER_AGGREGATION_VALUES = 12
 PROVIDER_SUMMARY_MAX_CHARS = 600
+DEFAULT_BASE_MATERIAL_BUDGET_CHARS = 12_000
 
 
 def build_news_item_brief_input_packet(
@@ -77,6 +85,112 @@ def build_news_item_brief_input_packet(
     return packet.model_copy(update={"input_hash": news_item_brief_material_input_hash(packet)})
 
 
+def build_news_item_brief_base_packet(
+    *,
+    item: Mapping[str, Any],
+    token_mentions: Sequence[Mapping[str, Any]],
+    fact_candidates: Sequence[Mapping[str, Any]],
+    agent_config: NewsItemBriefAgentConfig,
+    material_budget_chars: int = DEFAULT_BASE_MATERIAL_BUDGET_CHARS,
+) -> NewsItemBriefBasePacket:
+    news_item = _news_item(item)
+    original_token_count = len(token_mentions)
+    original_fact_count = len(fact_candidates)
+    token_lanes = [_token_lane(row) for row in sorted(token_mentions, key=_mention_sort_key)[:MAX_TOKEN_LANES]]
+    fact_lanes = [_fact_lane(row) for row in sorted(fact_candidates, key=_fact_sort_key)[:MAX_FACT_LANES]]
+    provider_signal_evidence = _provider_signal_evidence(item)
+    truncation_reasons: list[str] = []
+    if original_token_count > len(token_lanes):
+        truncation_reasons.append("token_lanes_budget")
+    if original_fact_count > len(fact_lanes):
+        truncation_reasons.append("fact_lanes_budget")
+    if any(not (_str(row.get("target_type")) and _str(row.get("target_id"))) for row in token_mentions):
+        truncation_reasons.append("unresolved_mentions_excluded")
+
+    material_budget = max(0, int(material_budget_chars))
+    content_class = _content_class(item)
+    packet_id = _packet_id(
+        news_item=news_item,
+        token_lanes=token_lanes,
+        fact_lanes=fact_lanes,
+        provider_signal_evidence=provider_signal_evidence,
+        agent_config=agent_config,
+    ).replace("news-item-brief:", "news-item-brief-base:", 1)
+
+    def make_packet(
+        *,
+        tokens: list[NewsItemBriefTokenLane],
+        facts: list[NewsItemBriefFactLane],
+        reasons: list[str],
+        material_chars: int = 0,
+    ) -> NewsItemBriefBasePacket:
+        report = NewsItemBriefBudgetReport(
+            material_budget_chars=material_budget,
+            material_chars=material_chars,
+            original_token_count=original_token_count,
+            kept_token_count=len(tokens),
+            original_fact_count=original_fact_count,
+            kept_fact_count=len(facts),
+            truncation_reasons=_stable_unique(reasons),
+        )
+        return NewsItemBriefBasePacket(
+            packet_id=packet_id,
+            news_item=news_item,
+            token_lanes=tokens,
+            fact_lanes=facts,
+            provider_signal_evidence=provider_signal_evidence,
+            evidence_refs=_evidence_refs(
+                news_item=news_item,
+                token_lanes=tokens,
+                fact_lanes=facts,
+                provider_signal_evidence=provider_signal_evidence,
+            ),
+            constraints=NewsItemBriefConstraints(),
+            allowed_context_targets=_allowed_context_targets(tokens),
+            content_class=content_class,
+            base_budget_report=report,
+            prompt_version=agent_config.prompt_version,
+            schema_version=agent_config.schema_version,
+        )
+
+    kept_tokens = list(token_lanes)
+    kept_facts = list(fact_lanes)
+    packet = make_packet(tokens=kept_tokens, facts=kept_facts, reasons=truncation_reasons)
+    material_chars = _material_chars(news_item_brief_base_material_identity(packet))
+    if material_budget and material_chars > material_budget:
+        truncation_reasons.append("material_budget")
+        while material_chars > material_budget and (kept_facts or kept_tokens):
+            if kept_facts:
+                kept_facts = kept_facts[:-1]
+            else:
+                kept_tokens = kept_tokens[:-1]
+            packet = make_packet(tokens=kept_tokens, facts=kept_facts, reasons=truncation_reasons)
+            material_chars = _material_chars(news_item_brief_base_material_identity(packet))
+    packet = make_packet(
+        tokens=kept_tokens,
+        facts=kept_facts,
+        reasons=truncation_reasons,
+        material_chars=material_chars,
+    )
+    for _ in range(5):
+        final_chars = _material_chars(news_item_brief_base_material_identity(packet))
+        if final_chars == packet.base_budget_report.material_chars:
+            break
+        if material_budget and final_chars > material_budget and (kept_facts or kept_tokens):
+            truncation_reasons.append("material_budget")
+            if kept_facts:
+                kept_facts = kept_facts[:-1]
+            else:
+                kept_tokens = kept_tokens[:-1]
+        packet = make_packet(
+            tokens=kept_tokens,
+            facts=kept_facts,
+            reasons=truncation_reasons,
+            material_chars=final_chars,
+        )
+    return packet.model_copy(update={"input_hash": news_item_brief_base_material_input_hash(packet)})
+
+
 def news_item_brief_material_input_payload(packet: NewsItemBriefInputPacket) -> dict[str, Any]:
     return packet.model_dump(
         mode="json",
@@ -88,6 +202,47 @@ def news_item_brief_material_input_payload(packet: NewsItemBriefInputPacket) -> 
 
 def news_item_brief_material_input_hash(packet: NewsItemBriefInputPacket) -> str:
     return json_sha256(news_item_brief_material_input_payload(packet))
+
+
+def news_item_brief_base_material_input_hash(packet: NewsItemBriefBasePacket) -> str:
+    return json_sha256(news_item_brief_base_material_identity(packet))
+
+
+def news_item_brief_synthesis_material_payload(packet: NewsItemBriefSynthesisPacket) -> dict[str, Any]:
+    research_material = {
+        "research_plan": packet.research_plan.model_dump(mode="json"),
+        "tool_results": [news_research_tool_material_identity(result) for result in packet.tool_results],
+        "tool_catalog_version": NEWS_ITEM_RESEARCH_TOOL_CATALOG_VERSION,
+    }
+    return {
+        "base_packet": news_item_brief_base_material_identity(packet.base_packet),
+        "research_packet": {
+            **research_material,
+            "research_packet_hash": json_sha256(research_material),
+        },
+    }
+
+
+def news_item_brief_synthesis_material_hash(packet: NewsItemBriefSynthesisPacket) -> str:
+    return json_sha256(news_item_brief_synthesis_material_payload(packet))
+
+
+def _news_item(item: Mapping[str, Any]) -> NewsItemBriefNewsItem:
+    return NewsItemBriefNewsItem(
+        news_item_id=_str(item.get("news_item_id")),
+        title=_bounded(item.get("title"), 500),
+        summary=_bounded(item.get("summary"), 2000),
+        body_excerpt=_bounded(item.get("body_text"), BODY_EXCERPT_MAX_CHARS),
+        canonical_url=_bounded(item.get("canonical_url"), 2000),
+        published_at_ms=_int(item.get("published_at_ms")),
+        content_hash=_bounded(item.get("content_hash"), 160),
+        source=NewsItemBriefSource(
+            source_domain=_bounded(item.get("source_domain"), 255),
+            source_name=_bounded(item.get("source_name"), 255),
+            source_role=_bounded(item.get("source_role"), 64),
+            trust_tier=_bounded(item.get("trust_tier"), 64),
+        ),
+    )
 
 
 def _token_lane(row: Mapping[str, Any]) -> NewsItemBriefTokenLane:
@@ -167,6 +322,56 @@ def _provider_token_impact(row: Any) -> NewsItemBriefProviderTokenImpact | None:
         signal=signal,
         grade=_optional_bounded(payload.get("grade"), 32),
     )
+
+
+def _allowed_context_targets(token_lanes: Sequence[NewsItemBriefTokenLane]) -> list[NewsContextTargetRef]:
+    refs: list[NewsContextTargetRef] = []
+    seen: set[tuple[str, str]] = set()
+    for lane in token_lanes:
+        target_type = _str(lane.target_type)
+        target_id = _str(lane.target_id)
+        if not target_type or not target_id:
+            continue
+        key = (target_type, target_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        refs.append(
+            NewsContextTargetRef(
+                target_type=target_type,
+                target_id=target_id,
+                display_symbol=_bounded(lane.display_symbol or lane.observed_symbol, 64),
+                resolution_status=_bounded(lane.resolution_status, 64),
+                confidence=lane.confidence,
+                target_scope=_target_scope(target_type),
+            )
+        )
+    return refs
+
+
+def _target_scope(target_type: str) -> str:
+    lowered = target_type.strip().lower()
+    if any(marker in lowered for marker in ("asset", "token", "cex", "crypto")):
+        return "crypto"
+    if lowered:
+        return "non_crypto"
+    return "unknown"
+
+
+def _content_class(item: Mapping[str, Any]) -> str | None:
+    direct = _optional_bounded(item.get("content_class"), 80)
+    if direct:
+        return direct
+    classification = _json_object(item.get("content_classification_json"))
+    for key in ("content_class", "class", "label"):
+        value = _optional_bounded(classification.get(key), 80)
+        if value:
+            return value
+    return None
+
+
+def _material_chars(payload: Mapping[str, Any]) -> int:
+    return len(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
 
 
 def _provider_impact_sort_key(row: NewsItemBriefProviderTokenImpact) -> tuple[int, str]:
@@ -333,7 +538,12 @@ def _bounded_string_list(value: Any, max_length: int) -> list[str]:
 
 __all__ = [
     "BODY_EXCERPT_MAX_CHARS",
+    "DEFAULT_BASE_MATERIAL_BUDGET_CHARS",
+    "build_news_item_brief_base_packet",
     "build_news_item_brief_input_packet",
+    "news_item_brief_base_material_input_hash",
     "news_item_brief_material_input_hash",
     "news_item_brief_material_input_payload",
+    "news_item_brief_synthesis_material_hash",
+    "news_item_brief_synthesis_material_payload",
 ]

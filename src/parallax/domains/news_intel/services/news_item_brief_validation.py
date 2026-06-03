@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from parallax.domains.news_intel.types.news_item_brief import (
     DataGap,
-    NewsItemBriefInputPacket,
+    NewsItemBriefBasePacket,
     NewsItemBriefPayload,
 )
 from parallax.platform.agent_hashing import json_sha256
@@ -29,7 +29,7 @@ class NewsItemBriefValidationResult(BaseModel):
 def validate_news_item_brief_output(
     *,
     payload: Any,
-    packet: NewsItemBriefInputPacket,
+    packet: NewsItemBriefBasePacket,
     audit: Any,
 ) -> NewsItemBriefValidationResult:
     try:
@@ -67,7 +67,7 @@ def _unexpected_action_errors(audit: Any) -> list[dict[str, str]]:
     return _dedupe_errors(errors)
 
 
-def _drop_unsupported_assets(payload: dict[str, Any], *, packet: NewsItemBriefInputPacket) -> dict[str, Any]:
+def _drop_unsupported_assets(payload: dict[str, Any], *, packet: NewsItemBriefBasePacket) -> dict[str, Any]:
     supported = _source_backed_asset_labels(packet)
     kept_assets: list[dict[str, Any]] = []
     dropped_symbols: list[str] = []
@@ -99,7 +99,7 @@ def _drop_unsupported_assets(payload: dict[str, Any], *, packet: NewsItemBriefIn
     return normalized
 
 
-def _source_backed_asset_labels(packet: NewsItemBriefInputPacket) -> set[str]:
+def _source_backed_asset_labels(packet: NewsItemBriefBasePacket) -> set[str]:
     labels: set[str] = set()
     text_fields = [
         packet.news_item.title,
