@@ -196,29 +196,20 @@ class CexOiRadarBoardWorker(WorkerBase):
         status: str,
         notes: dict[str, Any],
     ) -> dict[str, Any]:
-        publish_board_with_result = getattr(repos.cex_oi_radar, "publish_board_with_result", None)
-        if callable(publish_board_with_result):
-            board_result = publish_board_with_result(
+        with repos.transaction():
+            board_result = repos.cex_oi_radar.publish_board_with_result(
                 rows=rows,
                 computed_at_ms=computed_at_ms,
                 period=period,
                 status=status,
                 notes=notes,
+                commit=False,
             )
             board_changed = bool(board_result.board_changed)
             board_rows_written = int(board_result.board_rows_written)
-        else:
-            board_rows_written = int(
-                repos.cex_oi_radar.publish_board(
-                    rows=rows,
-                    computed_at_ms=computed_at_ms,
-                    period=period,
-                    status=status,
-                    notes=notes,
-                )
+            detail_rows_written = (
+                int(repos.cex_detail_snapshots.upsert_many(snapshots, commit=False)) if snapshots else 0
             )
-            board_changed = board_rows_written > 0
-        detail_rows_written = int(repos.cex_detail_snapshots.upsert_many(snapshots)) if snapshots else 0
         return {
             "board_changed": board_changed,
             "board_rows_written": board_rows_written,

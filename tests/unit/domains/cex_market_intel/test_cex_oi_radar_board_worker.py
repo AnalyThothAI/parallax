@@ -63,7 +63,7 @@ def test_cex_oi_radar_board_worker_zero_writes_when_board_and_detail_unchanged()
     assert result.notes["detail_rows_written"] == 0
     assert db.repos.cex_oi_radar.serving_rows_written == 0
     assert db.repos.cex_detail_snapshots.serving_rows_written == 0
-    assert db.publication_events == ["publish_board", "upsert_detail"]
+    assert db.publication_events == ["transaction_begin", "publish_board_with_result", "upsert_detail", "commit"]
 
 
 def test_cex_oi_radar_board_worker_changed_board_unchanged_detail_only_writes_board_rows():
@@ -86,7 +86,7 @@ def test_cex_oi_radar_board_worker_changed_board_unchanged_detail_only_writes_bo
     assert result.notes["detail_rows_written"] == 0
     assert db.repos.cex_oi_radar.serving_rows_written == 1
     assert db.repos.cex_detail_snapshots.serving_rows_written == 0
-    assert db.publication_events == ["publish_board", "upsert_detail"]
+    assert db.publication_events == ["transaction_begin", "publish_board_with_result", "upsert_detail", "commit"]
 
 
 def test_cex_oi_radar_board_worker_unchanged_board_changed_detail_only_writes_detail_rows():
@@ -109,7 +109,42 @@ def test_cex_oi_radar_board_worker_unchanged_board_changed_detail_only_writes_de
     assert result.notes["detail_rows_written"] == 1
     assert db.repos.cex_oi_radar.serving_rows_written == 0
     assert db.repos.cex_detail_snapshots.serving_rows_written == 1
-    assert db.publication_events == ["publish_board", "upsert_detail"]
+    assert db.publication_events == ["transaction_begin", "publish_board_with_result", "upsert_detail", "commit"]
+
+
+def test_cex_oi_radar_board_worker_rolls_back_board_publication_when_detail_write_fails():
+    db = _DB(detail_raises=True)
+    worker = CexOiRadarBoardWorker(
+        name="cex_oi_radar_board",
+        settings=SimpleNamespace(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
+        db=db,
+        telemetry=SimpleNamespace(),
+        oi_market=_Client(),
+        clock_ms=lambda: 1_778_000_000_000,
+    )
+
+    try:
+        worker.run_once_sync()
+    except RuntimeError as exc:
+        assert str(exc) == "detail boom"
+    else:
+        raise AssertionError("expected detail failure")
+
+    assert db.publication_events == [
+        "transaction_begin",
+        "publish_board_with_result",
+        "upsert_detail",
+        "rollback",
+    ]
+    assert db.repos.cex_oi_radar.published == []
+    assert db.repos.cex_oi_radar.serving_rows_written == 0
+    assert db.repos.cex_oi_radar.failed_attempts == [
+        {
+            "computed_at_ms": 1_778_000_000_000,
+            "period": "5m",
+            "notes": {"reason": "RuntimeError"},
+        }
+    ]
 
 
 def test_cex_oi_radar_board_worker_skips_when_previous_thread_still_finishing():
@@ -265,9 +300,16 @@ def test_cex_oi_radar_board_worker_adds_coinglass_enrichment_to_detail_snapshot(
 
 
 class _DB:
-    def __init__(self, *, universe=None, board_rows_written=None, detail_rows_written=None) -> None:
+    def __init__(
+        self,
+        *,
+        universe=None,
+        board_rows_written=None,
+        detail_rows_written=None,
+        detail_raises=False,
+    ) -> None:
         self.publication_events = []
-        self.repos = SimpleNamespace(
+        self.repos = _Repos(
             cex_oi_radar=_Repo(
                 universe=universe,
                 publication_events=self.publication_events,
@@ -276,7 +318,9 @@ class _DB:
             cex_detail_snapshots=_DetailRepo(
                 publication_events=self.publication_events,
                 detail_rows_written=detail_rows_written,
+                detail_raises=detail_raises,
             ),
+            publication_events=self.publication_events,
         )
 
     def worker_session(self, *_args, **_kwargs):
@@ -292,6 +336,36 @@ class _Session:
 
     def __exit__(self, *_args):
         return None
+
+
+class _Repos(SimpleNamespace):
+    def __init__(self, *, cex_oi_radar, cex_detail_snapshots, publication_events) -> None:
+        super().__init__(cex_oi_radar=cex_oi_radar, cex_detail_snapshots=cex_detail_snapshots)
+        self._publication_events = publication_events
+
+    def transaction(self):
+        return _Transaction(self)
+
+
+class _Transaction:
+    def __init__(self, repos) -> None:
+        self.repos = repos
+        self._published_snapshot = None
+        self._board_written_snapshot = 0
+
+    def __enter__(self):
+        self.repos._publication_events.append("transaction_begin")
+        self._published_snapshot = list(self.repos.cex_oi_radar.published)
+        self._board_written_snapshot = int(self.repos.cex_oi_radar.serving_rows_written)
+
+    def __exit__(self, exc_type, *_args):
+        if exc_type is None:
+            self.repos._publication_events.append("commit")
+            return False
+        self.repos.cex_oi_radar.published = list(self._published_snapshot or [])
+        self.repos.cex_oi_radar.serving_rows_written = self._board_written_snapshot
+        self.repos._publication_events.append("rollback")
+        return False
 
 
 class _Repo:
@@ -333,6 +407,20 @@ class _Repo:
         self.serving_rows_written += written
         return written
 
+    def publish_board_with_result(self, *, rows, computed_at_ms, period, status, notes, commit=True):
+        if commit:
+            raise AssertionError("worker must publish board inside explicit transaction with commit=False")
+        written = self.publish_board(
+            rows=rows,
+            computed_at_ms=computed_at_ms,
+            period=period,
+            status=status,
+            notes=notes,
+        )
+        if self._publication_events is not None:
+            self._publication_events[-1] = "publish_board_with_result"
+        return SimpleNamespace(board_changed=written > 0, board_rows_written=written)
+
     def record_attempt_failure(self, *, computed_at_ms, period, notes):
         self.failed_attempts.append(
             {
@@ -344,15 +432,20 @@ class _Repo:
 
 
 class _DetailRepo:
-    def __init__(self, *, publication_events=None, detail_rows_written=None) -> None:
+    def __init__(self, *, publication_events=None, detail_rows_written=None, detail_raises=False) -> None:
         self._publication_events = publication_events
         self._detail_rows_written = detail_rows_written
+        self._detail_raises = detail_raises
         self.upserted = []
         self.serving_rows_written = 0
 
-    def upsert_many(self, snapshots):
+    def upsert_many(self, snapshots, *, commit=False):
+        if commit:
+            raise AssertionError("worker must upsert detail inside explicit transaction with commit=False")
         if self._publication_events is not None:
             self._publication_events.append("upsert_detail")
+        if self._detail_raises:
+            raise RuntimeError("detail boom")
         self.upserted = list(snapshots)
         written = int(self._detail_rows_written if self._detail_rows_written is not None else len(self.upserted))
         self.serving_rows_written += written

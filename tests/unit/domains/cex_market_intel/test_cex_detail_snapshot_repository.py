@@ -99,6 +99,80 @@ def test_migration_and_runtime_detail_hash_use_same_numeric_canonicalization():
     assert migration.cex_detail_snapshot_payload_hash(db_snapshot) == _detail_payload_hash(runtime_snapshot)
 
 
+def test_migration_runtime_detail_hash_golden_covers_numeric_and_timestamp_rules():
+    migration = importlib.import_module(
+        "parallax.platform.db.alembic.versions.20260603_0142_cex_detail_payload_hash_hard_cut"
+    )
+    computed_db_snapshot = _snapshot(
+        computed_at_ms=1_778_000_000_000,
+        observed_at_ms=1_778_000_000_000,
+        observed_at_source="computed",
+        price_usd=Decimal("72000.0"),
+        mark_price=Decimal("72001.0"),
+        funding_rate=Decimal("0.000100"),
+        volume_24h_usd=Decimal("1000000.0"),
+        open_interest_usd=Decimal("2000000.0"),
+        level_price=Decimal("73000.0"),
+        level_size=Decimal("2000000.0"),
+    )
+    computed_runtime_snapshot = _snapshot(
+        computed_at_ms=1_778_000_999_999,
+        observed_at_ms=1_778_000_999_999,
+        observed_at_source="computed",
+        price_usd=72000.0,
+        mark_price=72001.0,
+        funding_rate=0.0001,
+        volume_24h_usd=1_000_000.0,
+        open_interest_usd=2_000_000.0,
+        level_price=73_000.0,
+        level_size=2_000_000.0,
+    )
+    provider_db_snapshot = _snapshot(
+        computed_at_ms=1_778_000_000_000,
+        observed_at_ms=1_778_000_123_456,
+        observed_at_source="provider",
+        price_usd=Decimal("72000.0"),
+        mark_price=Decimal("72001.0"),
+        funding_rate=Decimal("0.000100"),
+        volume_24h_usd=Decimal("1000000.0"),
+        open_interest_usd=Decimal("2000000.0"),
+        level_price=Decimal("73000.0"),
+        level_size=Decimal("2000000.0"),
+    )
+    provider_runtime_snapshot = _snapshot(
+        computed_at_ms=1_778_000_999_999,
+        observed_at_ms=1_778_000_123_456,
+        observed_at_source="provider",
+        price_usd=72000.0,
+        mark_price=72001.0,
+        funding_rate=0.0001,
+        volume_24h_usd=1_000_000.0,
+        open_interest_usd=2_000_000.0,
+        level_price=73_000.0,
+        level_size=2_000_000.0,
+    )
+    changed_provider_runtime_snapshot = _snapshot(
+        computed_at_ms=1_778_000_999_999,
+        observed_at_ms=1_778_000_654_321,
+        observed_at_source="provider",
+        price_usd=72000.0,
+        mark_price=72001.0,
+        funding_rate=0.0001,
+        volume_24h_usd=1_000_000.0,
+        open_interest_usd=2_000_000.0,
+        level_price=73_000.0,
+        level_size=2_000_000.0,
+    )
+
+    computed_hash = migration.cex_detail_snapshot_payload_hash(computed_db_snapshot)
+    provider_hash = migration.cex_detail_snapshot_payload_hash(provider_db_snapshot)
+
+    assert computed_hash == _detail_payload_hash(computed_runtime_snapshot)
+    assert provider_hash == _detail_payload_hash(provider_runtime_snapshot)
+    assert provider_hash != computed_hash
+    assert _detail_payload_hash(changed_provider_runtime_snapshot) != provider_hash
+
+
 def test_upsert_many_returns_changed_rowcount_and_gates_on_payload_hash():
     conn = _RecordingConn(rowcounts=[1, 0])
     first = _snapshot(computed_at_ms=1_778_000_000_000)
