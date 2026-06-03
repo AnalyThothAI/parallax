@@ -37,6 +37,79 @@ def test_cex_oi_radar_board_worker_publishes_current_board():
     assert result.notes["source_rows_scanned"] == 1
     assert result.notes["targets_loaded"] == 1
     assert result.notes["rows_written"] == 2
+    assert result.notes["board_changed"] is True
+    assert result.notes["board_rows_written"] == 1
+    assert result.notes["detail_changed_count"] == 1
+    assert result.notes["detail_rows_written"] == 1
+
+
+def test_cex_oi_radar_board_worker_zero_writes_when_board_and_detail_unchanged():
+    db = _DB(board_rows_written=0, detail_rows_written=0)
+    worker = CexOiRadarBoardWorker(
+        name="cex_oi_radar_board",
+        settings=SimpleNamespace(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
+        db=db,
+        telemetry=SimpleNamespace(),
+        oi_market=_Client(),
+        clock_ms=lambda: 1_778_000_000_000,
+    )
+
+    result = worker.run_once_sync()
+
+    assert result.notes["rows_written"] == 0
+    assert result.notes["board_changed"] is False
+    assert result.notes["board_rows_written"] == 0
+    assert result.notes["detail_changed_count"] == 0
+    assert result.notes["detail_rows_written"] == 0
+    assert db.repos.cex_oi_radar.serving_rows_written == 0
+    assert db.repos.cex_detail_snapshots.serving_rows_written == 0
+    assert db.publication_events == ["publish_board", "upsert_detail"]
+
+
+def test_cex_oi_radar_board_worker_changed_board_unchanged_detail_only_writes_board_rows():
+    db = _DB(board_rows_written=1, detail_rows_written=0)
+    worker = CexOiRadarBoardWorker(
+        name="cex_oi_radar_board",
+        settings=SimpleNamespace(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
+        db=db,
+        telemetry=SimpleNamespace(),
+        oi_market=_Client(),
+        clock_ms=lambda: 1_778_000_000_000,
+    )
+
+    result = worker.run_once_sync()
+
+    assert result.notes["rows_written"] == 1
+    assert result.notes["board_changed"] is True
+    assert result.notes["board_rows_written"] == 1
+    assert result.notes["detail_changed_count"] == 0
+    assert result.notes["detail_rows_written"] == 0
+    assert db.repos.cex_oi_radar.serving_rows_written == 1
+    assert db.repos.cex_detail_snapshots.serving_rows_written == 0
+    assert db.publication_events == ["publish_board", "upsert_detail"]
+
+
+def test_cex_oi_radar_board_worker_unchanged_board_changed_detail_only_writes_detail_rows():
+    db = _DB(board_rows_written=0, detail_rows_written=1)
+    worker = CexOiRadarBoardWorker(
+        name="cex_oi_radar_board",
+        settings=SimpleNamespace(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
+        db=db,
+        telemetry=SimpleNamespace(),
+        oi_market=_Client(),
+        clock_ms=lambda: 1_778_000_000_000,
+    )
+
+    result = worker.run_once_sync()
+
+    assert result.notes["rows_written"] == 1
+    assert result.notes["board_changed"] is False
+    assert result.notes["board_rows_written"] == 0
+    assert result.notes["detail_changed_count"] == 1
+    assert result.notes["detail_rows_written"] == 1
+    assert db.repos.cex_oi_radar.serving_rows_written == 0
+    assert db.repos.cex_detail_snapshots.serving_rows_written == 1
+    assert db.publication_events == ["publish_board", "upsert_detail"]
 
 
 def test_cex_oi_radar_board_worker_skips_when_previous_thread_still_finishing():
@@ -192,8 +265,19 @@ def test_cex_oi_radar_board_worker_adds_coinglass_enrichment_to_detail_snapshot(
 
 
 class _DB:
-    def __init__(self, *, universe=None) -> None:
-        self.repos = SimpleNamespace(cex_oi_radar=_Repo(universe=universe), cex_detail_snapshots=_DetailRepo())
+    def __init__(self, *, universe=None, board_rows_written=None, detail_rows_written=None) -> None:
+        self.publication_events = []
+        self.repos = SimpleNamespace(
+            cex_oi_radar=_Repo(
+                universe=universe,
+                publication_events=self.publication_events,
+                board_rows_written=board_rows_written,
+            ),
+            cex_detail_snapshots=_DetailRepo(
+                publication_events=self.publication_events,
+                detail_rows_written=detail_rows_written,
+            ),
+        )
 
     def worker_session(self, *_args, **_kwargs):
         return _Session(self.repos)
@@ -211,11 +295,14 @@ class _Session:
 
 
 class _Repo:
-    def __init__(self, *, universe=None) -> None:
+    def __init__(self, *, universe=None, publication_events=None, board_rows_written=None) -> None:
         self._universe = universe
+        self._publication_events = publication_events
+        self._board_rows_written = board_rows_written
         self.published = []
         self.failed_attempts = []
         self.requested_limit = None
+        self.serving_rows_written = 0
 
     def binance_usdt_perp_universe(self, *, limit):
         self.requested_limit = limit
@@ -231,6 +318,8 @@ class _Repo:
         ]
 
     def publish_board(self, *, rows, computed_at_ms, period, status, notes):
+        if self._publication_events is not None:
+            self._publication_events.append("publish_board")
         self.published.append(
             {
                 "rows": list(rows),
@@ -240,7 +329,9 @@ class _Repo:
                 "notes": notes,
             }
         )
-        return len(rows)
+        written = int(self._board_rows_written if self._board_rows_written is not None else len(rows))
+        self.serving_rows_written += written
+        return written
 
     def record_attempt_failure(self, *, computed_at_ms, period, notes):
         self.failed_attempts.append(
@@ -253,12 +344,19 @@ class _Repo:
 
 
 class _DetailRepo:
-    def __init__(self) -> None:
+    def __init__(self, *, publication_events=None, detail_rows_written=None) -> None:
+        self._publication_events = publication_events
+        self._detail_rows_written = detail_rows_written
         self.upserted = []
+        self.serving_rows_written = 0
 
     def upsert_many(self, snapshots):
+        if self._publication_events is not None:
+            self._publication_events.append("upsert_detail")
         self.upserted = list(snapshots)
-        return len(self.upserted)
+        written = int(self._detail_rows_written if self._detail_rows_written is not None else len(self.upserted))
+        self.serving_rows_written += written
+        return written
 
 
 class _Client:

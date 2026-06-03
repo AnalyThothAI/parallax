@@ -195,6 +195,9 @@ NEWS_REBUILD_BRIEF_BACKLOG_HARD_CUT_MIGRATION = Path(
 NEWS_PUBLIC_URL_IDENTITY_INDEX_SCOPE_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260531_0133_news_public_url_identity_index_scope.py"
 )
+CEX_DETAIL_PAYLOAD_HASH_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260603_0142_cex_detail_payload_hash_hard_cut.py"
+)
 TOKEN_PULSE_EQUITY_CPU_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260529_0124_token_pulse_equity_cpu_hard_cut.py"
 )
@@ -523,6 +526,20 @@ def test_macro_workerspace_root_fix_migration_hard_cuts_dates_and_counts() -> No
         maxsplit=1,
     )[0]
     assert "| `current_payload_hash` | `TEXT` | True | `None` |" in cex_publication_state
+
+
+def test_cex_detail_payload_hash_hard_cut_migration_backfills_not_null() -> None:
+    text = _migration_text(CEX_DETAIL_PAYLOAD_HASH_MIGRATION)
+    normalized_text = " ".join(text.split())
+
+    assert 'revision = "20260603_0142"' in text
+    assert 'down_revision = "20260601_0141"' in text
+    assert "ALTER TABLE cex_detail_snapshots ADD COLUMN IF NOT EXISTS payload_hash TEXT" in text
+    assert "cex_detail_snapshot_payload_hash(" in text
+    assert "WHERE payload_hash IS NULL OR payload_hash = ''" in normalized_text
+    assert "computed_at_ms" in text
+    assert "_source_refs_for_hash" in text
+    assert "ALTER TABLE cex_detail_snapshots ALTER COLUMN payload_hash SET NOT NULL" in text
 
 
 def test_token_radar_current_row_runtime_insert_contract_matches_hard_cut_schema() -> None:

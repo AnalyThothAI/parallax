@@ -134,20 +134,20 @@ class CexOiRadarBoardWorker(WorkerBase):
                     },
                 )
             status = "success" if int(built["failed"]) == 0 else "partial"
+            snapshots = [
+                build_cex_detail_snapshot(row=row, computed_at_ms=now, period=period)
+                for row in rows
+                if row.get("native_market_id")
+            ]
             with self._repository_session() as repos:
-                snapshots = [
-                    build_cex_detail_snapshot(row=row, computed_at_ms=now, period=period)
-                    for row in rows
-                    if row.get("native_market_id")
-                ]
-                detail_written = repos.cex_detail_snapshots.upsert_many(snapshots) if snapshots else 0
-                notes = {"failed_symbols": built["failed_symbols"][:20], "detail_snapshot_count": detail_written}
-                written = repos.cex_oi_radar.publish_board(
+                publication = self._publish_board_and_detail(
+                    repos,
                     rows=rows,
+                    snapshots=snapshots,
                     computed_at_ms=now,
                     period=period,
                     status=status,
-                    notes=notes,
+                    notes={"failed_symbols": built["failed_symbols"][:20], "detail_snapshot_count": len(snapshots)},
                 )
             return WorkerResult(
                 processed=len(rows),
@@ -159,7 +159,9 @@ class CexOiRadarBoardWorker(WorkerBase):
                     "queue_depth": 0,
                     "source_rows_scanned": len(universe),
                     "targets_loaded": len(universe),
-                    "rows_written": int(written) + int(detail_written),
+                    **publication,
+                    "rows_written": int(publication["board_rows_written"])
+                    + int(publication["detail_rows_written"]),
                 },
             )
         except Exception as exc:
@@ -182,6 +184,47 @@ class CexOiRadarBoardWorker(WorkerBase):
 
     def _batch_size(self) -> int:
         return max(1, int(getattr(self.settings, "batch_size", 100)))
+
+    def _publish_board_and_detail(
+        self,
+        repos: Any,
+        *,
+        rows: list[dict[str, Any]],
+        snapshots: list[dict[str, Any]],
+        computed_at_ms: int,
+        period: str,
+        status: str,
+        notes: dict[str, Any],
+    ) -> dict[str, Any]:
+        publish_board_with_result = getattr(repos.cex_oi_radar, "publish_board_with_result", None)
+        if callable(publish_board_with_result):
+            board_result = publish_board_with_result(
+                rows=rows,
+                computed_at_ms=computed_at_ms,
+                period=period,
+                status=status,
+                notes=notes,
+            )
+            board_changed = bool(board_result.board_changed)
+            board_rows_written = int(board_result.board_rows_written)
+        else:
+            board_rows_written = int(
+                repos.cex_oi_radar.publish_board(
+                    rows=rows,
+                    computed_at_ms=computed_at_ms,
+                    period=period,
+                    status=status,
+                    notes=notes,
+                )
+            )
+            board_changed = board_rows_written > 0
+        detail_rows_written = int(repos.cex_detail_snapshots.upsert_many(snapshots)) if snapshots else 0
+        return {
+            "board_changed": board_changed,
+            "board_rows_written": board_rows_written,
+            "detail_changed_count": detail_rows_written,
+            "detail_rows_written": detail_rows_written,
+        }
 
 
 def _now_ms() -> int:
