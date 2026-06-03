@@ -208,7 +208,7 @@ def token_capture_tier_rank_set_payload_hash(
         "rows": sorted([_rank_row_payload(row, exited=False) for row in rows], key=_rank_payload_sort_key),
         "exited_rows": sorted([_rank_row_payload(row, exited=True) for row in exited_rows], key=_rank_payload_sort_key),
     }
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    encoded = json.dumps(_json_ready(payload), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 

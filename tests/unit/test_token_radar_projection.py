@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from decimal import Decimal
 
 import parallax.domains.token_intel.services.token_radar_projection as token_radar_projection_module
 from parallax.domains.asset_market.repositories.token_capture_tier_dirty_target_repository import (
@@ -1115,6 +1116,25 @@ def test_capture_tier_rank_set_fingerprint_includes_live_market_key() -> None:
             rows=[{**asset_row, "address": "0xDEF"}],
         )
     )
+
+
+def test_capture_tier_rank_set_fingerprint_accepts_decimal_rank_scores() -> None:
+    row = {
+        "target_type": "CexToken",
+        "target_id": "cex-token:btc",
+        "provider": "binance",
+        "native_market_id": "BTCUSDT",
+        "rank": 1,
+        "rank_score": Decimal("88.5"),
+        "score": Decimal("88.5"),
+        "lane": "resolved",
+        "quality_status": "ready",
+        "degraded_reasons_json": [],
+        "payload_hash": "row-hash",
+        "generation_id": "gen-1",
+    }
+
+    assert token_capture_tier_rank_set_payload_hash(reason="repair", rows=[row])
 
 
 def test_capture_tier_rank_set_fingerprint_uses_factor_snapshot_live_market_key() -> None:
