@@ -3,6 +3,25 @@ from __future__ import annotations
 from typing import Any
 
 from parallax.domains.news_intel.repositories.news_repository import NewsRepository
+from parallax.domains.news_intel.types.news_item_brief import NewsContextTargetRef
+
+_FORBIDDEN_RESEARCH_SQL = (
+    "token_radar",
+    "pulse_candidates",
+    "market_ticks",
+    "asset_identity_current",
+    "news_story_groups",
+    "news_story_members",
+    "news_context_items",
+    "raw_payload_json",
+    "provider_item_id",
+    "provider_article_key",
+    "source_item_key",
+    "feed_url",
+    "sync_cursor",
+    "credential",
+    "secret",
+)
 
 
 def test_page_projection_loader_reads_source_payload_for_claimed_targets() -> None:
@@ -39,17 +58,164 @@ def test_brief_target_loader_includes_provider_duplicate_aggregation() -> None:
     assert "news_story_groups AS stories" not in conn.sql
 
 
+def test_research_reads_are_select_only_and_avoid_forbidden_tables_and_fields() -> None:
+    calls = (
+        (
+            "get_news_observation_history",
+            {"news_item_id": "news-1"},
+        ),
+        (
+            "search_news_archive",
+            {
+                "current_news_item_id": "news-1",
+                "query_terms": ["ETF"],
+                "symbols": ["SOL"],
+                "window_hours": 168,
+                "match_modes": ["title", "token", "fact", "source_title"],
+                "limit": 8,
+                "now_ms": 1_779_000_000_000,
+            },
+        ),
+        (
+            "get_source_quality_context_for_item",
+            {"news_item_id": "news-1"},
+        ),
+        (
+            "get_target_news_context",
+            {
+                "current_news_item_id": "news-1",
+                "target_refs": [
+                    NewsContextTargetRef(target_type="cex_token", target_id="binance:SOL", display_symbol="SOL")
+                ],
+                "symbol_fallbacks": ["SOL"],
+                "window_hours": 72,
+                "limit": 12,
+                "now_ms": 1_779_000_000_000,
+            },
+        ),
+        (
+            "get_fact_context",
+            {"news_item_id": "news-1"},
+        ),
+    )
+
+    for method_name, kwargs in calls:
+        conn = CapturingConnection()
+        repo = NewsRepository(conn)
+
+        result = getattr(repo, method_name)(**kwargs)
+
+        assert result in ([], {}) or isinstance(result, dict | list)
+        sql = conn.sql.lower()
+        assert sql.lstrip().startswith(("select", "with")), method_name
+        assert "insert " not in sql
+        assert "update " not in sql
+        assert "delete " not in sql
+        assert "notify " not in sql
+        assert "pg_advisory" not in sql
+        assert conn.commit_count == 0
+        for forbidden in _FORBIDDEN_RESEARCH_SQL:
+            assert forbidden not in sql, method_name
+
+
+def test_archive_search_uses_bounded_union_branches_and_excludes_current_item() -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    rows = repo.search_news_archive(
+        current_news_item_id="news-current",
+        query_terms=["SOL ETF"],
+        symbols=["SOL"],
+        window_hours=999,
+        match_modes=["title", "token", "fact", "source_title", "unknown"],
+        limit=99,
+        now_ms=1_779_000_000_000,
+    )
+
+    assert rows == []
+    sql = conn.sql.lower()
+    assert "title_branch" in sql
+    assert "token_branch" in sql
+    assert "fact_branch" in sql
+    assert "source_title_branch" in sql
+    assert sql.count("union all") >= 3
+    assert "items.news_item_id <> %s" in sql
+    assert "body_text" not in sql
+    assert "raw_payload_json" not in sql
+    assert "current_news_item_id" not in sql
+    assert conn.params is not None
+    assert "news-current" in _flatten_params(conn.params)
+
+
+def test_target_context_exact_refs_use_resolved_target_columns_and_prefilter_fallbacks() -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    rows = repo.get_target_news_context(
+        current_news_item_id="news-current",
+        target_refs=[{"target_type": "cex_token", "target_id": "binance:SOL", "display_symbol": "SOL"}],
+        symbol_fallbacks=["SOL"],
+        window_hours=72,
+        limit=12,
+        now_ms=1_779_000_000_000,
+    )
+
+    assert rows == {}
+    sql = conn.sql.lower()
+    assert "mentions.target_type" in sql
+    assert "mentions.target_id" in sql
+    assert "exact_ref_matches" in sql
+    assert "recent_items" in sql
+    assert "symbol_fallback_matches" in sql
+    assert sql.index("recent_items") < sql.index("symbol_fallback_matches")
+    assert "'symbol_heuristic'" in sql
+    assert "display_symbol" in sql
+
+
+def test_source_quality_context_is_targeted_to_item_sources() -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    result = repo.get_source_quality_context_for_item(news_item_id="news-1")
+
+    assert result == {}
+    sql = conn.sql.lower()
+    assert "news_source_quality_rows" in sql
+    assert "news_item_observation_edges" in sql
+    assert "where edges.news_item_id = %s" in sql
+    assert "multi_source_confirmed" not in sql
+    assert "independent_source_confirmed" not in sql
+
+
 class CapturingConnection:
     def __init__(self) -> None:
         self.sql = ""
         self.params: object = None
+        self.commit_count = 0
 
     def execute(self, sql: str, params: object = None) -> CapturingCursor:
         self.sql = sql
         self.params = params
         return CapturingCursor()
 
+    def commit(self) -> None:
+        self.commit_count += 1
+
 
 class CapturingCursor:
     def fetchall(self) -> list[dict[str, Any]]:
         return []
+
+    def fetchone(self) -> dict[str, Any] | None:
+        return None
+
+
+def _flatten_params(params: object) -> list[object]:
+    if isinstance(params, dict):
+        return [value for item in params.items() for value in _flatten_params(item)]
+    if isinstance(params, list | tuple):
+        flattened: list[object] = []
+        for item in params:
+            flattened.extend(_flatten_params(item))
+        return flattened
+    return [params]
