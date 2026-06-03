@@ -24,6 +24,7 @@ NEWS_RESEARCH_EXECUTOR_TARGET_TOTAL_CHARS = 3_000
 NEWS_RESEARCH_EXECUTOR_HARD_TOTAL_CHARS = 6_000
 NEWS_RESEARCH_EXECUTOR_MAX_TOOL_CALLS = 5
 NEWS_RESEARCH_EXECUTOR_MAX_ARCHIVE_SEARCHES = 2
+NEWS_RESEARCH_ARCHIVE_MATCH_MODES = ("title", "summary", "token", "fact")
 
 ExecutionStatus = Literal["ok", "partial", "failed", "skipped"]
 
@@ -48,6 +49,84 @@ _SENSITIVE_EXACT_KEYS = frozenset(
     }
 )
 _SENSITIVE_KEY_PARTS = ("secret", "password", "api_key", "apikey", "credential")
+_PUBLIC_ROW_KEYS_BY_TOOL = {
+    "get_fact_context": frozenset(
+        {
+            "news_item_id",
+            "fact_candidate_id",
+            "event_type",
+            "claim",
+            "realis",
+            "validation_status",
+            "affected_targets",
+            "evidence_quote",
+            "result_basis",
+            "evidence_ref",
+            "evidence_refs",
+        }
+    ),
+    "get_observation_history": frozenset(
+        {
+            "news_item_id",
+            "title",
+            "summary",
+            "published_at_ms",
+            "content_class",
+            "source_domain",
+            "source_name",
+            "result_basis",
+            "evidence_ref",
+            "evidence_refs",
+        }
+    ),
+    "get_source_quality": frozenset(
+        {
+            "news_item_id",
+            "source_domain",
+            "source_name",
+            "source_role",
+            "trust_tier",
+            "quality_score",
+            "source_health",
+            "result_basis",
+            "evidence_ref",
+            "evidence_refs",
+        }
+    ),
+    "get_target_news_context": frozenset(
+        {
+            "news_item_id",
+            "target_type",
+            "target_id",
+            "display_symbol",
+            "title",
+            "summary",
+            "published_at_ms",
+            "source_domain",
+            "source_name",
+            "result_basis",
+            "evidence_ref",
+            "evidence_refs",
+        }
+    ),
+    "search_news_archive": frozenset(
+        {
+            "news_item_id",
+            "title",
+            "summary",
+            "published_at_ms",
+            "canonical_url",
+            "source_domain",
+            "source_name",
+            "symbols",
+            "matched_terms",
+            "match_modes",
+            "result_basis",
+            "evidence_ref",
+            "evidence_refs",
+        }
+    ),
+}
 
 
 class NewsResearchPlanExecutionResult(BaseModel):
@@ -132,6 +211,20 @@ def execute_news_research_plan(
                 continue
 
         clamped_input = _clamp_input(tool=tool, call_input=call.input)
+        if base_packet is None:
+            skipped_call_count += 1
+            _add_error(error_codes, "base_packet_required")
+            tool_results.append(
+                _failed_tool_result(
+                    call=call,
+                    query_version=tool.query_version,
+                    source_tables=tool.source_tables,
+                    input_payload=clamped_input,
+                    error_code="base_packet_required",
+                    generated_at_ms=generated_at_ms,
+                )
+            )
+            continue
         if tool.requires_allowed_context_target:
             allowed_error = _allowed_target_error(clamped_input, base_packet=base_packet)
             if allowed_error is not None:
@@ -151,7 +244,13 @@ def execute_news_research_plan(
 
         started_ms = _now_ms()
         try:
-            rows = getattr(news_repo, tool.handler_name)(**clamped_input)
+            rows = _dispatch_repo_call(
+                news_repo,
+                tool=tool,
+                input_payload=clamped_input,
+                base_packet=base_packet,
+                generated_at_ms=generated_at_ms,
+            )
             executed_call_count += 1
         except Exception:
             skipped_call_count += 1
@@ -206,7 +305,7 @@ def _successful_tool_result(
     remaining_chars: int,
 ) -> tuple[NewsResearchToolResult, int]:
     redaction_notes: list[str] = []
-    clean_rows = _redacted_rows(rows, redaction_notes=redaction_notes)
+    clean_rows = _public_safe_rows(tool=tool, rows=rows, redaction_notes=redaction_notes)
     clean_rows = _label_symbol_fallback_rows(tool=tool, input_payload=input_payload, rows=clean_rows)
     compact_rows, truncated, row_chars = _compact_rows(
         clean_rows,
@@ -269,23 +368,71 @@ def _failed_tool_result(
 def _clamp_input(*, tool: NewsResearchToolDefinition, call_input: Mapping[str, Any]) -> dict[str, Any]:
     if tool.name == "search_news_archive":
         return {
-            "query_terms": _bounded_strings(call_input.get("query_terms"), max_items=5),
-            "symbols": _bounded_strings(call_input.get("symbols"), max_items=5),
+            "query_terms": _bounded_strings(call_input.get("query_terms"), max_items=5, max_length=64),
+            "symbols": _bounded_strings(call_input.get("symbols"), max_items=5, max_length=32),
+            "match_modes": _bounded_match_modes(call_input.get("match_modes")),
             "window_hours": _bounded_int(call_input.get("window_hours"), default=168, max_value=168),
             "limit": _bounded_int(call_input.get("limit"), default=8, max_value=8),
         }
     if tool.name == "get_target_news_context":
         return {
             "target_refs": _bounded_target_refs(call_input.get("target_refs"), max_items=5),
-            "symbol_fallbacks": _bounded_strings(call_input.get("symbol_fallbacks"), max_items=3),
+            "symbol_fallbacks": _bounded_strings(call_input.get("symbol_fallbacks"), max_items=3, max_length=32),
             "window_hours": _bounded_int(call_input.get("window_hours"), default=72, max_value=168),
             "limit": _bounded_int(call_input.get("limit"), default=12, max_value=12),
         }
     if tool.name == "get_fact_context":
-        return {"limit": _bounded_int(call_input.get("limit"), default=20, max_value=20)}
+        return {
+            "include_rejected": call_input.get("include_rejected") is True,
+            "limit": _bounded_int(call_input.get("limit"), default=20, max_value=20),
+        }
     if tool.name == "get_observation_history":
         return {"limit": _bounded_int(call_input.get("limit"), default=25, max_value=25)}
     return {}
+
+
+def _dispatch_repo_call(
+    news_repo: Any,
+    *,
+    tool: NewsResearchToolDefinition,
+    input_payload: Mapping[str, Any],
+    base_packet: NewsItemBriefBasePacket,
+    generated_at_ms: int,
+) -> Any:
+    news_item_id = base_packet.news_item.news_item_id
+    if tool.name == "get_observation_history":
+        return news_repo.get_news_observation_history(
+            news_item_id=news_item_id,
+            limit=input_payload["limit"],
+        )
+    if tool.name == "search_news_archive":
+        return news_repo.search_news_archive(
+            current_news_item_id=news_item_id,
+            query_terms=input_payload["query_terms"],
+            symbols=input_payload["symbols"],
+            window_hours=input_payload["window_hours"],
+            match_modes=input_payload["match_modes"],
+            limit=input_payload["limit"],
+            now_ms=generated_at_ms,
+        )
+    if tool.name == "get_source_quality":
+        return news_repo.get_source_quality_context_for_item(news_item_id=news_item_id)
+    if tool.name == "get_target_news_context":
+        return news_repo.get_target_news_context(
+            current_news_item_id=news_item_id,
+            target_refs=input_payload["target_refs"],
+            symbol_fallbacks=input_payload["symbol_fallbacks"],
+            window_hours=input_payload["window_hours"],
+            limit=input_payload["limit"],
+            now_ms=generated_at_ms,
+        )
+    if tool.name == "get_fact_context":
+        return news_repo.get_fact_context(
+            news_item_id=news_item_id,
+            include_rejected=input_payload["include_rejected"],
+            limit=input_payload["limit"],
+        )
+    raise ValueError(f"unsupported news research tool: {tool.name}")
 
 
 def _allowed_target_error(
@@ -313,13 +460,13 @@ def _bounded_int(value: Any, *, default: int, max_value: int) -> int:
     return max(1, min(max_value, parsed))
 
 
-def _bounded_strings(value: Any, *, max_items: int) -> list[str]:
+def _bounded_strings(value: Any, *, max_items: int, max_length: int) -> list[str]:
     if not isinstance(value, list | tuple):
         return []
     result: list[str] = []
     seen: set[str] = set()
     for item in value:
-        text = str(item or "").strip()
+        text = str(item or "").strip()[:max_length]
         if not text or text in seen:
             continue
         seen.add(text)
@@ -327,6 +474,20 @@ def _bounded_strings(value: Any, *, max_items: int) -> list[str]:
         if len(result) >= max_items:
             break
     return result
+
+
+def _bounded_match_modes(value: Any) -> list[str]:
+    if not isinstance(value, list | tuple):
+        return list(NEWS_RESEARCH_ARCHIVE_MATCH_MODES)
+    result: list[str] = []
+    for item in value:
+        mode = str(item or "").strip().lower()
+        if mode not in NEWS_RESEARCH_ARCHIVE_MATCH_MODES or mode in result:
+            continue
+        result.append(mode)
+        if len(result) >= len(NEWS_RESEARCH_ARCHIVE_MATCH_MODES):
+            break
+    return result or list(NEWS_RESEARCH_ARCHIVE_MATCH_MODES)
 
 
 def _bounded_target_refs(value: Any, *, max_items: int) -> list[dict[str, str]]:
@@ -337,8 +498,8 @@ def _bounded_target_refs(value: Any, *, max_items: int) -> list[dict[str, str]]:
     for item in value:
         if not isinstance(item, Mapping):
             continue
-        target_type = str(item.get("target_type") or "").strip()
-        target_id = str(item.get("target_id") or "").strip()
+        target_type = str(item.get("target_type") or "").strip()[:80]
+        target_id = str(item.get("target_id") or "").strip()[:160]
         if not target_type or not target_id or (target_type, target_id) in seen:
             continue
         seen.add((target_type, target_id))
@@ -348,17 +509,62 @@ def _bounded_target_refs(value: Any, *, max_items: int) -> list[dict[str, str]]:
     return refs
 
 
-def _redacted_rows(rows: Any, *, redaction_notes: list[str]) -> list[dict[str, Any]]:
-    if not isinstance(rows, list | tuple):
-        return []
+def _public_safe_rows(
+    *,
+    tool: NewsResearchToolDefinition,
+    rows: Any,
+    redaction_notes: list[str],
+) -> list[dict[str, Any]]:
+    raw_rows: list[Any]
+    if isinstance(rows, Mapping):
+        raw_rows = [rows]
+    elif isinstance(rows, list | tuple):
+        raw_rows = list(rows)
+    else:
+        raw_rows = []
     result: list[dict[str, Any]] = []
-    for row in rows:
+    public_keys = _PUBLIC_ROW_KEYS_BY_TOOL.get(tool.name, frozenset())
+    for row in raw_rows:
         if not isinstance(row, Mapping):
             continue
-        redacted = _redact_mapping(row, path="", redaction_notes=redaction_notes)
+        public_row = _public_row(row, public_keys=public_keys, redaction_notes=redaction_notes)
+        redacted = _redact_mapping(public_row, path="", redaction_notes=redaction_notes)
         if redacted:
             result.append(redacted)
     return result
+
+
+def _public_row(
+    row: Mapping[str, Any],
+    *,
+    public_keys: frozenset[str],
+    redaction_notes: list[str],
+) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in row.items():
+        key_text = str(key)
+        if key_text in public_keys:
+            result[key_text] = value
+            continue
+        _note_filtered(redaction_notes, key_text)
+        _scan_sensitive_value(value, path=key_text, redaction_notes=redaction_notes)
+        if _is_sensitive_key(key_text):
+            _note_redaction(redaction_notes, key_text)
+    return result
+
+
+def _scan_sensitive_value(value: Any, *, path: str, redaction_notes: list[str]) -> None:
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            key_text = str(key)
+            child_path = f"{path}.{key_text}"
+            if _is_sensitive_key(key_text):
+                _note_redaction(redaction_notes, child_path)
+                continue
+            _scan_sensitive_value(child, path=child_path, redaction_notes=redaction_notes)
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            _scan_sensitive_value(child, path=f"{path}.{index}", redaction_notes=redaction_notes)
 
 
 def _redact_mapping(value: Mapping[str, Any], *, path: str, redaction_notes: list[str]) -> dict[str, Any]:
@@ -391,6 +597,12 @@ def _is_sensitive_key(key: str) -> bool:
 
 def _note_redaction(redaction_notes: list[str], path: str) -> None:
     note = f"redacted:{path}"
+    if note not in redaction_notes:
+        redaction_notes.append(note)
+
+
+def _note_filtered(redaction_notes: list[str], path: str) -> None:
+    note = f"filtered:{path}"
     if note not in redaction_notes:
         redaction_notes.append(note)
 

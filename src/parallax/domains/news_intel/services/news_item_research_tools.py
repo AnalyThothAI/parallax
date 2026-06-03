@@ -32,6 +32,7 @@ def build_news_research_tool_registry() -> dict[str, NewsResearchToolDefinition]
             input_schema={
                 "type": "object",
                 "properties": {
+                    "include_rejected": {"type": "boolean"},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 20},
                 },
                 "additionalProperties": False,
@@ -136,6 +137,11 @@ def build_news_research_tool_registry() -> dict[str, NewsResearchToolDefinition]
                 "properties": {
                     "query_terms": {"type": "array", "maxItems": 5, "items": {"type": "string"}},
                     "symbols": {"type": "array", "maxItems": 5, "items": {"type": "string"}},
+                    "match_modes": {
+                        "type": "array",
+                        "maxItems": 4,
+                        "items": {"type": "string", "enum": ["title", "summary", "token", "fact"]},
+                    },
                     "window_hours": {"type": "integer", "minimum": 1, "maximum": 168},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 8},
                 },

@@ -21,38 +21,91 @@ class FakeNewsRepo:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.fail_handlers: set[str] = set()
+        self.mapping_handlers: set[str] = set()
 
-    def get_news_observation_history(self, **kwargs: Any) -> list[dict[str, Any]]:
-        return self._record("get_news_observation_history", kwargs)
+    def get_news_observation_history(self, *, news_item_id: str, limit: int) -> list[dict[str, Any]] | dict[str, Any]:
+        return self._record("get_news_observation_history", {"news_item_id": news_item_id, "limit": limit})
 
-    def search_news_archive(self, **kwargs: Any) -> list[dict[str, Any]]:
-        return self._record("search_news_archive", kwargs)
+    def search_news_archive(
+        self,
+        *,
+        current_news_item_id: str,
+        query_terms: list[str],
+        symbols: list[str],
+        window_hours: int,
+        match_modes: list[str],
+        limit: int,
+        now_ms: int,
+    ) -> list[dict[str, Any]] | dict[str, Any]:
+        return self._record(
+            "search_news_archive",
+            {
+                "current_news_item_id": current_news_item_id,
+                "query_terms": query_terms,
+                "symbols": symbols,
+                "window_hours": window_hours,
+                "match_modes": match_modes,
+                "limit": limit,
+                "now_ms": now_ms,
+            },
+        )
 
-    def get_source_quality_context_for_item(self, **kwargs: Any) -> list[dict[str, Any]]:
-        return self._record("get_source_quality_context_for_item", kwargs)
+    def get_source_quality_context_for_item(self, *, news_item_id: str) -> list[dict[str, Any]] | dict[str, Any]:
+        return self._record("get_source_quality_context_for_item", {"news_item_id": news_item_id})
 
-    def get_target_news_context(self, **kwargs: Any) -> list[dict[str, Any]]:
-        return self._record("get_target_news_context", kwargs)
+    def get_target_news_context(
+        self,
+        *,
+        current_news_item_id: str,
+        target_refs: list[dict[str, str]],
+        symbol_fallbacks: list[str],
+        window_hours: int,
+        limit: int,
+        now_ms: int,
+    ) -> list[dict[str, Any]] | dict[str, Any]:
+        return self._record(
+            "get_target_news_context",
+            {
+                "current_news_item_id": current_news_item_id,
+                "target_refs": target_refs,
+                "symbol_fallbacks": symbol_fallbacks,
+                "window_hours": window_hours,
+                "limit": limit,
+                "now_ms": now_ms,
+            },
+        )
 
-    def get_fact_context(self, **kwargs: Any) -> list[dict[str, Any]]:
-        return self._record("get_fact_context", kwargs)
+    def get_fact_context(
+        self,
+        *,
+        news_item_id: str,
+        include_rejected: bool,
+        limit: int,
+    ) -> list[dict[str, Any]] | dict[str, Any]:
+        return self._record(
+            "get_fact_context",
+            {"news_item_id": news_item_id, "include_rejected": include_rejected, "limit": limit},
+        )
 
-    def _record(self, name: str, kwargs: dict[str, Any]) -> list[dict[str, Any]]:
+    def _record(self, name: str, kwargs: dict[str, Any]) -> list[dict[str, Any]] | dict[str, Any]:
         self.calls.append((name, kwargs))
         if name in self.fail_handlers:
             raise TimeoutError(f"{name} timed out")
-        return [
-            {
-                "news_item_id": "news-2",
-                "title": "ETF follow-up",
-                "provider_item_id": "raw-provider-id",
-                "raw_payload_json": {"body": "raw"},
-                "nested": {"api_key": "secret", "kept": "visible"},
-                "token": "credential-token",
-                "result_basis": "exact_target",
-                "evidence_ref": "archive:news-2",
-            }
-        ]
+        row = {
+            "news_item_id": "news-2",
+            "title": "ETF follow-up",
+            "summary": "Public summary",
+            "provider_item_id": "raw-provider-id",
+            "raw_payload_json": {"body": "raw"},
+            "nested": {"api_key": "secret", "kept": "visible"},
+            "token": "credential-token",
+            "unexpected_internal_column": "internal",
+            "result_basis": "exact_target",
+            "evidence_ref": "archive:news-2",
+        }
+        if name in self.mapping_handlers:
+            return row
+        return [row]
 
 
 def test_executor_rejects_unknown_and_mutation_tool_calls_without_repo_call() -> None:
@@ -64,11 +117,11 @@ def test_executor_rejects_unknown_and_mutation_tool_calls_without_repo_call() ->
         ]
     )
 
-    result = execute_news_research_plan(repo, plan, now_ms=NOW_MS)
+    result = execute_news_research_plan(repo, plan, base_packet=_base_packet(), now_ms=NOW_MS)
 
     assert result.status == "partial"
     assert "unknown_tool" in result.error_codes
-    assert repo.calls == [("get_fact_context", {"limit": 2})]
+    assert repo.calls == [("get_fact_context", {"news_item_id": "news-1", "include_rejected": False, "limit": 2})]
     assert result.tool_results[0].status == "failed"
     assert result.tool_results[0].skipped_reason == "unknown_tool"
 
@@ -97,11 +150,23 @@ def test_executor_rejects_target_context_refs_outside_base_allowlist_before_repo
     assert result.tool_results[0].skipped_reason == "target_ref_not_allowed"
 
 
+def test_executor_requires_base_packet_for_contextual_repo_dispatch_before_repo_call() -> None:
+    repo = FakeNewsRepo()
+    plan = _plan([_call("call-1", "get_source_quality", {})])
+
+    result = execute_news_research_plan(repo, plan, now_ms=NOW_MS)
+
+    assert result.status == "failed"
+    assert result.error_codes == ["base_packet_required"]
+    assert repo.calls == []
+    assert result.tool_results[0].skipped_reason == "base_packet_required"
+
+
 def test_executor_redacts_sensitive_fields_and_computes_sha256_result_hash() -> None:
     repo = FakeNewsRepo()
     plan = _plan([_call("call-1", "search_news_archive", {"query_terms": ["ETF"], "limit": 4})])
 
-    result = execute_news_research_plan(repo, plan, now_ms=NOW_MS)
+    result = execute_news_research_plan(repo, plan, base_packet=_base_packet(), now_ms=NOW_MS)
 
     tool_result = result.tool_results[0]
     assert tool_result.status == "ok"
@@ -113,15 +178,37 @@ def test_executor_redacts_sensitive_fields_and_computes_sha256_result_hash() -> 
         {
             "news_item_id": "news-2",
             "title": "ETF follow-up",
-            "nested": {"kept": "visible"},
+            "summary": "Public summary",
             "result_basis": "exact_target",
             "evidence_ref": "archive:news-2",
         }
     ]
-    assert {"provider_item_id", "raw_payload_json"}.isdisjoint(tool_result.rows[0])
+    assert {
+        "provider_item_id",
+        "raw_payload_json",
+        "nested",
+        "token",
+        "unexpected_internal_column",
+    }.isdisjoint(tool_result.rows[0])
+    assert "filtered:unexpected_internal_column" in tool_result.redaction_notes
     assert "redacted:provider_item_id" in tool_result.redaction_notes
+    assert "redacted:raw_payload_json" in tool_result.redaction_notes
     assert "redacted:nested.api_key" in tool_result.redaction_notes
     assert "redacted:token" in tool_result.redaction_notes
+
+
+def test_executor_normalizes_mapping_repo_output_into_one_public_row() -> None:
+    repo = FakeNewsRepo()
+    repo.mapping_handlers.add("get_source_quality_context_for_item")
+    plan = _plan([_call("call-1", "get_source_quality", {})])
+
+    result = execute_news_research_plan(repo, plan, base_packet=_base_packet(), now_ms=NOW_MS)
+
+    assert result.status == "ok"
+    assert result.tool_results[0].row_count == 1
+    assert result.tool_results[0].rows == [
+        {"news_item_id": "news-2", "result_basis": "exact_target", "evidence_ref": "archive:news-2"}
+    ]
 
 
 def test_executor_clamps_archive_target_fact_and_observation_inputs() -> None:
@@ -134,6 +221,7 @@ def test_executor_clamps_archive_target_fact_and_observation_inputs() -> None:
                 {
                     "query_terms": ["a", "b", "c", "d", "e", "f"],
                     "symbols": ["BTC", "ETH", "SOL", "DOGE", "XRP", "ADA"],
+                    "match_modes": ["fact", "unknown", "title", "token", "summary", "body"],
                     "window_hours": 999,
                     "limit": 99,
                 },
@@ -155,7 +243,7 @@ def test_executor_clamps_archive_target_fact_and_observation_inputs() -> None:
                     "limit": 99,
                 },
             ),
-            _call("fact", "get_fact_context", {"limit": 99}),
+            _call("fact", "get_fact_context", {"include_rejected": "yes", "limit": 99}),
             _call("history", "get_observation_history", {"limit": 99}),
         ]
     )
@@ -166,14 +254,42 @@ def test_executor_clamps_archive_target_fact_and_observation_inputs() -> None:
     assert repo.calls[0] == (
         "search_news_archive",
         {
+            "current_news_item_id": "news-1",
             "query_terms": ["a", "b", "c", "d", "e"],
             "symbols": ["BTC", "ETH", "SOL", "DOGE", "XRP"],
             "window_hours": 168,
+            "match_modes": ["fact", "title", "token", "summary"],
             "limit": 8,
+            "now_ms": NOW_MS,
         },
     )
     assert repo.calls[1] == (
         "get_target_news_context",
+        {
+            "current_news_item_id": "news-1",
+            "target_refs": [
+                {"target_type": "CexToken", "target_id": "cex_token:SOL"},
+                {"target_type": "CexToken", "target_id": "cex_token:BTC"},
+                {"target_type": "CexToken", "target_id": "cex_token:ETH"},
+                {"target_type": "CexToken", "target_id": "cex_token:DOGE"},
+                {"target_type": "CexToken", "target_id": "cex_token:XRP"},
+            ],
+            "symbol_fallbacks": ["SOL", "BTC", "ETH"],
+            "window_hours": 168,
+            "limit": 12,
+            "now_ms": NOW_MS,
+        },
+    )
+    assert repo.calls[2] == ("get_fact_context", {"news_item_id": "news-1", "include_rejected": False, "limit": 20})
+    assert repo.calls[3] == ("get_news_observation_history", {"news_item_id": "news-1", "limit": 25})
+    assert [tool.input for tool in result.tool_results] == [
+        {
+            "query_terms": ["a", "b", "c", "d", "e"],
+            "symbols": ["BTC", "ETH", "SOL", "DOGE", "XRP"],
+            "match_modes": ["fact", "title", "token", "summary"],
+            "window_hours": 168,
+            "limit": 8,
+        },
         {
             "target_refs": [
                 {"target_type": "CexToken", "target_id": "cex_token:SOL"},
@@ -186,10 +302,51 @@ def test_executor_clamps_archive_target_fact_and_observation_inputs() -> None:
             "window_hours": 168,
             "limit": 12,
         },
+        {"include_rejected": False, "limit": 20},
+        {"limit": 25},
+    ]
+
+
+def test_executor_clamps_search_terms_symbols_and_fallback_string_lengths() -> None:
+    repo = FakeNewsRepo()
+    plan = _plan(
+        [
+            _call(
+                "archive",
+                "search_news_archive",
+                {"query_terms": ["x" * 80], "symbols": ["S" * 80]},
+            ),
+            _call(
+                "target",
+                "get_target_news_context",
+                {
+                    "target_refs": [{"target_type": "CexToken", "target_id": "cex_token:SOL"}],
+                    "symbol_fallbacks": ["F" * 80],
+                },
+            ),
+        ]
     )
-    assert repo.calls[2] == ("get_fact_context", {"limit": 20})
-    assert repo.calls[3] == ("get_news_observation_history", {"limit": 25})
-    assert [tool.input for tool in result.tool_results] == [call[1] for call in repo.calls]
+
+    execute_news_research_plan(repo, plan, base_packet=_base_packet(), now_ms=NOW_MS)
+
+    assert repo.calls[0][1]["query_terms"] == ["x" * 64]
+    assert repo.calls[0][1]["symbols"] == ["S" * 32]
+    assert repo.calls[1][1]["symbol_fallbacks"] == ["F" * 32]
+
+
+def test_executor_passes_include_rejected_true_only_when_explicit_true() -> None:
+    repo = FakeNewsRepo()
+    plan = _plan(
+        [
+            _call("default", "get_fact_context", {}),
+            _call("explicit", "get_fact_context", {"include_rejected": True}),
+        ]
+    )
+
+    execute_news_research_plan(repo, plan, base_packet=_base_packet(), now_ms=NOW_MS)
+
+    assert repo.calls[0] == ("get_fact_context", {"news_item_id": "news-1", "include_rejected": False, "limit": 20})
+    assert repo.calls[1] == ("get_fact_context", {"news_item_id": "news-1", "include_rejected": True, "limit": 20})
 
 
 def test_executor_applies_archive_and_total_tool_call_caps() -> None:
@@ -205,7 +362,7 @@ def test_executor_applies_archive_and_total_tool_call_caps() -> None:
         ]
     )
 
-    result = execute_news_research_plan(repo, plan, now_ms=NOW_MS)
+    result = execute_news_research_plan(repo, plan, base_packet=_base_packet(), now_ms=NOW_MS)
 
     assert len(result.tool_results) == 5
     assert len(repo.calls) == 4
@@ -219,7 +376,7 @@ def test_executor_handles_repo_exceptions_as_failed_tool_result_without_raising(
     repo.fail_handlers.add("get_fact_context")
     plan = _plan([_call("call-1", "get_fact_context", {"limit": 5})])
 
-    result = execute_news_research_plan(repo, plan, now_ms=NOW_MS)
+    result = execute_news_research_plan(repo, plan, base_packet=_base_packet(), now_ms=NOW_MS)
 
     assert result.status == "failed"
     assert result.error_codes == ["repo_exception"]

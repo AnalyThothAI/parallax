@@ -46,3 +46,14 @@ def test_registry_semantic_capability_metadata_is_explicit() -> None:
         "symbol_heuristic",
         "market_subject_heuristic",
     }.issubset(set(registry["get_target_news_context"].result_basis_values))
+
+
+def test_registry_schemas_expose_archive_match_modes_and_fact_include_rejected() -> None:
+    registry = build_news_research_tool_registry()
+
+    archive_props = registry["search_news_archive"].input_schema["properties"]
+    assert archive_props["match_modes"]["items"]["enum"] == ["title", "summary", "token", "fact"]
+    assert archive_props["match_modes"]["maxItems"] == 4
+
+    fact_props = registry["get_fact_context"].input_schema["properties"]
+    assert fact_props["include_rejected"]["type"] == "boolean"
