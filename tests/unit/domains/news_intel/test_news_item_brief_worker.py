@@ -7,6 +7,9 @@ from types import SimpleNamespace
 from typing import Any
 
 from parallax.domains.news_intel.runtime.news_item_brief_worker import NewsItemBriefWorker
+from parallax.domains.news_intel.services.news_item_brief_input import (
+    news_item_brief_synthesis_material_payload,
+)
 from parallax.domains.news_intel.types.news_item_brief import (
     NEWS_ITEM_BRIEF_LANE,
     NewsItemBriefPayload,
@@ -177,6 +180,7 @@ async def _test_worker_skips_fresh_current_even_when_source_updated_is_noisy() -
     provider.db = db
     packet = provider.packet_for_candidate(candidate)
     agent_config = provider.agent_config()
+    db.news.tool_calls.clear()
     candidate["source_updated_at_ms"] = NOW_MS + 60_000
     candidate["current_brief"] = {
         "news_item_id": candidate["item"]["news_item_id"],
@@ -189,6 +193,7 @@ async def _test_worker_skips_fresh_current_even_when_source_updated_is_noisy() -
         "computed_at_ms": NOW_MS - 60_000,
         "brief_json": _ready_payload(),
     }
+    candidate["latest_run"] = _latest_run_for_packet(packet)
     worker = _worker(db=db, provider=provider)
 
     result = await worker.run_once()
@@ -196,6 +201,7 @@ async def _test_worker_skips_fresh_current_even_when_source_updated_is_noisy() -
     assert provider.reserve_calls == [NEWS_ITEM_BRIEF_LANE]
     assert provider.request_audit_calls == []
     assert provider.execution_calls == 0
+    assert db.news.tool_calls == []
     assert db.news.runs == []
     assert db.news.briefs == []
     assert len(db.dirty.done) == 1
@@ -740,13 +746,16 @@ class FakeBriefProvider:
 
 
 def _audit(*, run_id: str, packet: Any, execution_started: bool) -> dict[str, Any]:
-    news_item = packet.base_packet.news_item if hasattr(packet, "base_packet") else packet.news_item
+    assert isinstance(packet, NewsItemBriefSynthesisPacket)
+    news_item = packet.base_packet.news_item
+    synthesis_payload = news_item_brief_synthesis_material_payload(packet)
+    research_packet_hash = synthesis_payload["research_packet"]["research_packet_hash"]
     return {
         "provider": "litellm",
         "backend": "litellm_sdk",
         "model": "gpt-5-mini",
         "lane": NEWS_ITEM_BRIEF_LANE,
-        "stage": "news_item_brief",
+        "stage": "news_item_brief_synthesis",
         "workflow_name": "parallax.news_item_brief",
         "agent_name": "NewsItemBriefAgent",
         "execution_trace_id": f"trace-{run_id}",
@@ -759,11 +768,35 @@ def _audit(*, run_id: str, packet: Any, execution_started: bool) -> dict[str, An
         "output_hash": "output-hash-1" if execution_started else None,
         "latency_ms": 123 if execution_started else None,
         "usage": {"input_tokens": 100, "output_tokens": 80} if execution_started else {},
-        "trace_metadata": {"run_id": run_id, "news_item_id": news_item.news_item_id},
+        "trace_metadata": {
+            "phase": "synthesis",
+            "run_id": run_id,
+            "news_item_id": news_item.news_item_id,
+            "base_input_hash": packet.base_packet.input_hash,
+            "research_packet_hash": research_packet_hash,
+            "synthesis_input_hash": packet.input_hash,
+        },
         "execution_started": execution_started,
         "status": "done" if execution_started else "planned",
         "error_class": None,
         "error_message": None,
+    }
+
+
+def _latest_run_for_packet(packet: NewsItemBriefSynthesisPacket) -> dict[str, Any]:
+    synthesis_payload = news_item_brief_synthesis_material_payload(packet)
+    research_packet_hash = synthesis_payload["research_packet"]["research_packet_hash"]
+    return {
+        "run_id": "latest-run-1",
+        "request_json": {
+            "research_plan": packet.research_plan.model_dump(mode="json"),
+            "research_hashes": {
+                "base_input_hash": packet.base_packet.input_hash,
+                "research_packet_hash": research_packet_hash,
+                "synthesis_input_hash": packet.input_hash,
+            },
+            "synthesis_input_hash": packet.input_hash,
+        },
     }
 
 

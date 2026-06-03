@@ -37,6 +37,7 @@ from parallax.domains.news_intel.services.news_item_research_policy import (
 )
 from parallax.domains.news_intel.types.news_item_brief import (
     NEWS_ITEM_BRIEF_LANE,
+    NEWS_ITEM_RESEARCH_TOOL_CATALOG_VERSION,
     NewsItemBriefAgentConfig,
     NewsItemBriefBasePacket,
     NewsItemBriefSynthesisPacket,
@@ -162,6 +163,10 @@ class NewsItemBriefWorker(WorkerBase):
                     continue
                 try:
                     base_packet = _base_packet_from_candidate(candidate, agent_config=agent_config)
+                    if _current_brief_base_is_fresh(candidate, base_packet=base_packet, agent_config=agent_config):
+                        await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
+                        skipped += 1
+                        continue
                     research_decision = classify_news_item_research_policy(base_packet)
                     research_execution = await asyncio.to_thread(
                         self._execute_research_plan,
@@ -836,6 +841,39 @@ def _current_brief_is_fresh(
     if str(current.get("schema_version") or "") != agent_config.schema_version:
         return False
     return str(current.get("validator_version") or "") == agent_config.validator_version
+
+
+def _current_brief_base_is_fresh(
+    candidate: Mapping[str, Any],
+    *,
+    base_packet: NewsItemBriefBasePacket,
+    agent_config: NewsItemBriefAgentConfig,
+) -> bool:
+    current = _optional_dict(candidate.get("current_brief"))
+    if current is None or str(current.get("status") or "") == "failed":
+        return False
+    if str(current.get("artifact_version_hash") or "") != agent_config.artifact_version_hash:
+        return False
+    if str(current.get("prompt_version") or "") != agent_config.prompt_version:
+        return False
+    if str(current.get("schema_version") or "") != agent_config.schema_version:
+        return False
+    if str(current.get("validator_version") or "") != agent_config.validator_version:
+        return False
+
+    latest_run = _optional_dict(candidate.get("latest_run"))
+    request_json = _dict(latest_run.get("request_json") if latest_run is not None else None)
+    research_hashes = _dict(request_json.get("research_hashes"))
+    research_plan = _dict(request_json.get("research_plan"))
+    if str(research_hashes.get("base_input_hash") or "") != base_packet.input_hash:
+        return False
+    if str(research_plan.get("tool_catalog_version") or "") != NEWS_ITEM_RESEARCH_TOOL_CATALOG_VERSION:
+        return False
+    synthesis_input_hash = str(
+        research_hashes.get("synthesis_input_hash") or request_json.get("synthesis_input_hash") or ""
+    )
+    return bool(synthesis_input_hash) and str(current.get("input_hash") or "") == synthesis_input_hash
+
 
 def _target_ids(rows: Iterable[Mapping[str, Any]]) -> list[str]:
     return item_brief_news_item_ids(rows)
