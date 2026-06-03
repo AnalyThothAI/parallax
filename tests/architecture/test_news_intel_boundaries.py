@@ -83,15 +83,22 @@ def _literal_strings(node: ast.AST) -> set[str]:
     return strings
 
 
-def _assigned_literal_strings(tree: ast.AST, names: set[str]) -> set[str]:
-    strings: set[str] = set()
+def _assigned_literal_strings_by_name(tree: ast.AST, names: set[str]) -> dict[str, set[str]]:
+    strings_by_name: dict[str, set[str]] = {name: set() for name in names}
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign):
+        if isinstance(node, ast.Assign):
+            target_names = {target.id for target in node.targets if isinstance(target, ast.Name)}
+            for name in target_names & names:
+                strings_by_name[name].update(_literal_strings(node.value))
             continue
-        target_names = {target.id for target in node.targets if isinstance(target, ast.Name)}
-        if target_names & names:
-            strings.update(_literal_strings(node.value))
-    return strings
+        if (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id in names
+            and node.value is not None
+        ):
+            strings_by_name[node.target.id].update(_literal_strings(node.value))
+    return strings_by_name
 
 
 def test_news_intel_domain_exists_with_python_files() -> None:
@@ -140,11 +147,14 @@ def test_news_item_brief_agent_stage_does_not_use_runtime_tools_keyword() -> Non
 
 def test_news_research_public_tool_outputs_exclude_raw_provider_payload_fields() -> None:
     executor = NEWS_INTEL_ROOT / "services/news_item_research_executor.py"
-    output_keys = _assigned_literal_strings(
+    output_keys_by_name = _assigned_literal_strings_by_name(
         _parse(executor),
         names={"_PUBLIC_ROW_KEYS_BY_TOOL", "_TARGET_CONTEXT_ITEM_PUBLIC_KEYS"},
     )
+    for name, values in output_keys_by_name.items():
+        assert values, f"{executor.relative_to(ROOT)} did not expose literal strings for {name}"
 
+    output_keys = set().union(*output_keys_by_name.values())
     for forbidden in RAW_PROVIDER_PAYLOAD_OUTPUT_KEYS:
         assert forbidden not in output_keys, f"public tool output allowlist exposes {forbidden}"
 
