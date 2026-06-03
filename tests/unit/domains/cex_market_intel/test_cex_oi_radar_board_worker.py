@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from parallax.domains.cex_market_intel.providers import (
+    CexFundingPremium,
+    CexOiTicker24h,
+    CexOpenInterestPoint,
+)
 from parallax.domains.cex_market_intel.runtime.cex_oi_radar_board_worker import (
     CexOiRadarBoardWorker,
 )
@@ -14,7 +19,7 @@ def test_cex_oi_radar_board_worker_publishes_current_board():
         settings=SimpleNamespace(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
         db=db,
         telemetry=SimpleNamespace(),
-        cex_market=_Client(),
+        oi_market=_Client(),
         clock_ms=lambda: 1_778_000_000_000,
     )
 
@@ -40,7 +45,7 @@ def test_cex_oi_radar_board_worker_skips_when_previous_thread_still_finishing():
         settings=SimpleNamespace(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
         db=_DB(),
         telemetry=SimpleNamespace(),
-        cex_market=_Client(),
+        oi_market=_Client(),
         clock_ms=lambda: 1_778_000_000_000,
     )
     worker._local_run_lock.acquire()
@@ -69,7 +74,7 @@ def test_cex_oi_radar_board_worker_caps_universe_to_batch_size():
         ),
         db=db,
         telemetry=SimpleNamespace(),
-        cex_market=_Client(),
+        oi_market=_Client(),
         clock_ms=lambda: 1_778_000_000_000,
     )
 
@@ -86,7 +91,7 @@ def test_cex_oi_radar_board_worker_publishes_skipped_board_for_empty_universe():
         settings=SimpleNamespace(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
         db=db,
         telemetry=SimpleNamespace(),
-        cex_market=_Client(),
+        oi_market=_Client(),
         clock_ms=lambda: 1_778_000_000_000,
     )
 
@@ -112,7 +117,7 @@ def test_cex_oi_radar_board_worker_records_failed_attempt_without_clearing_curre
         settings=SimpleNamespace(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
         db=db,
         telemetry=SimpleNamespace(),
-        cex_market=_FailingClient(),
+        oi_market=_FailingClient(),
         clock_ms=lambda: 1_778_000_000_000,
     )
 
@@ -140,7 +145,7 @@ def test_cex_oi_radar_board_worker_does_not_publish_empty_board_when_all_symbols
         settings=SimpleNamespace(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
         db=db,
         telemetry=SimpleNamespace(),
-        cex_market=_OpenInterestFailingClient(),
+        oi_market=_OpenInterestFailingClient(),
         clock_ms=lambda: 1_778_000_000_000,
     )
 
@@ -172,8 +177,8 @@ def test_cex_oi_radar_board_worker_adds_coinglass_enrichment_to_detail_snapshot(
         ),
         db=db,
         telemetry=SimpleNamespace(),
-        cex_market=_Client(),
-        coinglass=_CoinglassClient(),
+        oi_market=_Client(),
+        coinglass_derivatives=_CoinglassClient(),
         clock_ms=lambda: 1_778_000_000_000,
     )
 
@@ -257,26 +262,36 @@ class _DetailRepo:
 
 
 class _Client:
-    def ticker_24hr(self):
-        return [SimpleNamespace(symbol="BTCUSDT", last_price=100.0, quote_volume_24h=10_000_000.0)]
-
-    def premium_index(self):
-        return [SimpleNamespace(symbol="BTCUSDT", mark_price=101.0, last_funding_rate=0.0001)]
-
-    def open_interest_hist(self, *, symbol, period, limit):
+    def list_24h_tickers(self, symbol=None):
+        assert symbol is None
         return [
-            SimpleNamespace(symbol=symbol, open_interest_value=1000.0, time_ms=1),
-            SimpleNamespace(symbol=symbol, open_interest_value=1100.0, time_ms=2),
+            CexOiTicker24h(
+                symbol="BTCUSDT",
+                last_price=100.0,
+                quote_volume_24h=10_000_000.0,
+                price_change_pct_24h=1.0,
+            )
+        ]
+
+    def list_funding_premium(self, symbol=None):
+        assert symbol is None
+        return [CexFundingPremium(symbol="BTCUSDT", mark_price=101.0, last_funding_rate=0.0001)]
+
+    def list_open_interest_history(self, symbol, period, limit):
+        return [
+            CexOpenInterestPoint(symbol=symbol, open_interest_value=1000.0, observed_at_ms=1),
+            CexOpenInterestPoint(symbol=symbol, open_interest_value=1100.0, observed_at_ms=2),
         ]
 
 
 class _FailingClient(_Client):
-    def ticker_24hr(self):
+    def list_24h_tickers(self, symbol=None):
+        del symbol
         raise RuntimeError("boom")
 
 
 class _OpenInterestFailingClient(_Client):
-    def open_interest_hist(self, *, symbol, period, limit):
+    def list_open_interest_history(self, symbol, period, limit):
         del symbol, period, limit
         raise RuntimeError("oi boom")
 

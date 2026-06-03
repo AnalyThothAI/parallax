@@ -14,8 +14,9 @@ def construct_cex_market_intel_workers(ctx: WorkerFactoryContext) -> dict[str, W
     settings = ctx.settings.workers.cex_oi_radar_board
     if not settings.enabled:
         return {}
-    cex_market = getattr(ctx.providers.asset_market, "cex_market", None)
-    if cex_market is None:
+    cex_providers = getattr(ctx.providers, "cex_market_intel", None)
+    oi_market = getattr(cex_providers, "oi_market", None)
+    if oi_market is None:
         return {
             "cex_oi_radar_board": unavailable_worker(
                 ctx,
@@ -29,17 +30,7 @@ def construct_cex_market_intel_workers(ctx: WorkerFactoryContext) -> dict[str, W
             settings=settings,
             db=ctx.db,
             telemetry=ctx.telemetry,
-            cex_market=cex_market,
-            coinglass=_coinglass_client(settings),
+            oi_market=oi_market,
+            coinglass_derivatives=getattr(cex_providers, "coinglass_derivatives", None),
         )
     }
-
-
-def _coinglass_client(settings):
-    if int(getattr(settings, "coinglass_enrichment_limit", 0)) <= 0:
-        return None
-    try:
-        from coinglass_cli.client import CoinglassClient
-    except Exception:
-        return None
-    return CoinglassClient()

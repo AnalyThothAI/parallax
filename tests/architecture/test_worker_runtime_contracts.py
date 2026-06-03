@@ -527,6 +527,21 @@ def test_worker_construction_is_split_into_domain_factories() -> None:
 
 
 @pytest.mark.architecture
+def test_provider_io_worker_factories_do_not_import_raw_third_party_clients() -> None:
+    forbidden_module_roots = {
+        "coinglass_cli",
+    }
+    violations: list[str] = []
+    for path in WORKER_FACTORIES.glob("*.py"):
+        for module in _imported_modules(_parse(path)):
+            root = module.split(".", 1)[0]
+            if root in forbidden_module_roots:
+                violations.append(f"{_rel(path)} imports raw third-party client module {module}")
+
+    assert violations == []
+
+
+@pytest.mark.architecture
 def test_no_external_io_inside_db_session() -> None:
     violations: list[str] = []
     for path in _worker_runtime_paths():

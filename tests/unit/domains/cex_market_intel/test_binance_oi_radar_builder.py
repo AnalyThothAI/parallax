@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
+from parallax.domains.cex_market_intel.providers import (
+    CexFundingPremium,
+    CexOiTicker24h,
+    CexOpenInterestPoint,
+)
 from parallax.domains.cex_market_intel.services.binance_oi_radar_builder import (
     build_binance_oi_radar_rows,
 )
@@ -33,17 +36,26 @@ def test_build_binance_oi_radar_rows_scores_and_ranks_binance_universe():
 
 
 class _Client:
-    def ticker_24hr(self):
-        return [SimpleNamespace(symbol="BTCUSDT", last_price=100.0, quote_volume_24h=10_000_000.0)]
+    def list_24h_tickers(self, symbol=None):
+        assert symbol is None
+        return [
+            CexOiTicker24h(
+                symbol="BTCUSDT",
+                last_price=100.0,
+                quote_volume_24h=10_000_000.0,
+                price_change_pct_24h=1.0,
+            )
+        ]
 
-    def premium_index(self):
-        return [SimpleNamespace(symbol="BTCUSDT", mark_price=101.0, last_funding_rate=0.0001)]
+    def list_funding_premium(self, symbol=None):
+        assert symbol is None
+        return [CexFundingPremium(symbol="BTCUSDT", mark_price=101.0, last_funding_rate=0.0001)]
 
-    def open_interest_hist(self, *, symbol, period, limit):
+    def list_open_interest_history(self, symbol, period, limit):
         assert symbol == "BTCUSDT"
         assert period == "5m"
         assert limit == 2
         return [
-            SimpleNamespace(symbol=symbol, open_interest_value=1000.0, time_ms=1),
-            SimpleNamespace(symbol=symbol, open_interest_value=1100.0, time_ms=2),
+            CexOpenInterestPoint(symbol=symbol, open_interest_value=1000.0, observed_at_ms=1),
+            CexOpenInterestPoint(symbol=symbol, open_interest_value=1100.0, observed_at_ms=2),
         ]

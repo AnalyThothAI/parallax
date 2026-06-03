@@ -2,20 +2,21 @@ from __future__ import annotations
 
 from typing import Any
 
+from parallax.domains.cex_market_intel.providers import CexOiMarketProvider
 from parallax.domains.cex_market_intel.scoring.oi_radar_scoring import score_oi_radar_row
 
 
 def build_binance_oi_radar_rows(
     *,
     universe: list[dict[str, Any]],
-    client: Any,
+    client: CexOiMarketProvider,
     now_ms: int,
     period: str = "5m",
     limit: int = 500,
 ) -> dict[str, Any]:
     selected = universe[: max(1, int(limit))]
-    tickers = _by_symbol(client.ticker_24hr())
-    premiums = _by_symbol(client.premium_index())
+    tickers = _by_symbol(client.list_24h_tickers())
+    premiums = _by_symbol(client.list_funding_premium())
     rows: list[dict[str, Any]] = []
     failed_symbols: list[str] = []
 
@@ -24,7 +25,7 @@ def build_binance_oi_radar_rows(
         if not symbol:
             continue
         try:
-            history = list(client.open_interest_hist(symbol=symbol, period=period, limit=2))
+            history = list(client.list_open_interest_history(symbol, period, 2))
         except Exception:
             failed_symbols.append(symbol)
             continue
@@ -57,7 +58,7 @@ def build_binance_oi_radar_rows(
                 "mark_price": _attr(premium, "mark_price") or _attr(ticker, "last_price"),
                 "score": score_payload["score"],
                 "score_components": score_payload["components"],
-                "observed_at_ms": _attr(latest_oi, "time_ms") or now_ms,
+                "observed_at_ms": _attr(latest_oi, "observed_at_ms") or now_ms,
             }
         )
 

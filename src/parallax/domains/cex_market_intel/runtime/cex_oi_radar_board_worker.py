@@ -9,6 +9,7 @@ from typing import Any, cast
 
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
+from parallax.domains.cex_market_intel.providers import CexOiMarketProvider, CoinglassDerivativesProvider
 from parallax.domains.cex_market_intel.services.binance_oi_radar_builder import (
     build_binance_oi_radar_rows,
 )
@@ -24,14 +25,14 @@ class CexOiRadarBoardWorker(WorkerBase):
     def __init__(
         self,
         *,
-        cex_market: Any,
-        coinglass: Any | None = None,
+        oi_market: CexOiMarketProvider | None,
+        coinglass_derivatives: CoinglassDerivativesProvider | None = None,
         clock_ms: Callable[[], int] | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
-        self.cex_market = cex_market
-        self.coinglass = coinglass
+        self.oi_market = oi_market
+        self.coinglass_derivatives = coinglass_derivatives
         self.clock_ms = clock_ms or _now_ms
         self._local_run_lock = Lock()
 
@@ -57,7 +58,7 @@ class CexOiRadarBoardWorker(WorkerBase):
             self._local_run_lock.release()
 
     def _run_once_sync_locked(self, *, now_ms: int | None = None) -> WorkerResult:
-        if self.cex_market is None:
+        if self.oi_market is None:
             return WorkerResult(
                 skipped=1,
                 notes={
@@ -100,14 +101,14 @@ class CexOiRadarBoardWorker(WorkerBase):
         try:
             built = build_binance_oi_radar_rows(
                 universe=universe,
-                client=self.cex_market,
+                client=self.oi_market,
                 now_ms=now,
                 period=period,
                 limit=limit,
             )
             rows = enrich_rows_with_coinglass(
                 list(built["rows"]),
-                client=self.coinglass,
+                client=self.coinglass_derivatives,
                 now_ms=now,
                 limit=int(getattr(self.settings, "coinglass_enrichment_limit", 0)),
                 level_limit=int(getattr(self.settings, "coinglass_level_limit", 6)),
