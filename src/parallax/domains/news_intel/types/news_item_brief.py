@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-from collections.abc import Mapping, Sequence
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -231,7 +229,7 @@ class NewsItemBriefInputPacket(BaseModel):
 
 
 NewsItemResearchTodoStatus = Literal["pending", "done", "skipped"]
-NewsItemResearchPlanStatus = Literal["ready", "skipped", "failed"]
+NewsItemResearchPlanStatus = Literal["ready", "skip", "failed"]
 NewsResearchToolResultStatus = Literal["ok", "empty", "truncated", "failed"]
 NewsContextTargetScope = Literal["crypto", "non_crypto", "unknown"]
 
@@ -293,21 +291,28 @@ class NewsResearchToolResult(BaseModel):
     tool_call_id: str = Field(min_length=1, max_length=160)
     tool_name: str = Field(min_length=1, max_length=120)
     status: NewsResearchToolResultStatus
+    schema_version: str = Field(min_length=1, max_length=128)
+    query_version: str = Field(min_length=1, max_length=128)
+    source_tables: list[Annotated[str, Field(min_length=1, max_length=160)]] = Field(
+        default_factory=list,
+        max_length=12,
+    )
     input: dict[str, Any] = Field(default_factory=dict)
-    output: dict[str, Any] = Field(default_factory=dict)
+    rows: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    row_count: int = Field(default=0, ge=0)
+    truncated: bool = False
+    skipped_reason: str = Field(default="", max_length=500)
+    result_hash: str = Field(default="", max_length=128)
+    generated_at_ms: int = Field(default=0, ge=0)
+    latency_ms: int = Field(default=0, ge=0)
+    redaction_notes: list[Annotated[str, Field(min_length=1, max_length=160)]] = Field(
+        default_factory=list,
+        max_length=20,
+    )
     evidence_refs: list[Annotated[str, Field(min_length=1, max_length=160)]] = Field(
         default_factory=list,
         max_length=80,
     )
-    error_codes: list[Annotated[str, Field(min_length=1, max_length=120)]] = Field(default_factory=list, max_length=20)
-    truncation_reasons: list[Annotated[str, Field(min_length=1, max_length=120)]] = Field(
-        default_factory=list,
-        max_length=20,
-    )
-    result_hash: str = Field(default="", max_length=128)
-    generated_at_ms: int = Field(default=0, ge=0)
-    latency_ms: int = Field(default=0, ge=0)
-    runtime_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class NewsContextTargetRef(BaseModel):
@@ -401,7 +406,6 @@ def news_research_tool_material_identity(result: NewsResearchToolResult) -> dict
         exclude={
             "generated_at_ms",
             "latency_ms",
-            "runtime_metadata",
             "result_hash",
         },
     )
@@ -417,229 +421,6 @@ def news_item_brief_base_material_identity(packet: NewsItemBriefBasePacket) -> d
 
 def news_item_brief_base_material_hash(packet: NewsItemBriefBasePacket) -> str:
     return json_sha256(news_item_brief_base_material_identity(packet))
-
-
-def build_news_item_brief_base_packet(
-    *,
-    item: Mapping[str, Any],
-    token_mentions: Sequence[Mapping[str, Any]],
-    fact_candidates: Sequence[Mapping[str, Any]],
-    material_budget_chars: int,
-) -> NewsItemBriefBasePacket:
-    news_item = NewsItemBriefNewsItem(
-        news_item_id=_str(item.get("news_item_id")),
-        title=_bounded(item.get("title"), 500),
-        summary=_bounded(item.get("summary"), 2000),
-        body_excerpt=_bounded(item.get("body_text"), 2000),
-        canonical_url=_bounded(item.get("canonical_url"), 2000),
-        published_at_ms=_int(item.get("published_at_ms")),
-        content_hash=_bounded(item.get("content_hash"), 160),
-        source=NewsItemBriefSource(
-            source_domain=_bounded(item.get("source_domain"), 255),
-            source_name=_bounded(item.get("source_name"), 255),
-            source_role=_bounded(item.get("source_role"), 64),
-            trust_tier=_bounded(item.get("trust_tier"), 64),
-        ),
-    )
-    token_lanes = [_token_lane_from_mapping(row) for row in token_mentions[:50]]
-    all_fact_lanes = [_fact_lane_from_mapping(row) for row in fact_candidates]
-    fact_lanes, fact_truncated = _fit_fact_lanes_to_budget(
-        news_item=news_item,
-        token_lanes=token_lanes,
-        fact_lanes=all_fact_lanes,
-        material_budget_chars=material_budget_chars,
-    )
-    allowed_context_targets = _allowed_context_targets(token_lanes)
-    truncation_reasons: list[str] = []
-    if len(token_mentions) > len(token_lanes):
-        truncation_reasons.append("token_lanes_limit")
-    if fact_truncated:
-        truncation_reasons.append("fact_lanes_budget")
-    if len(fact_candidates) > len(all_fact_lanes):
-        truncation_reasons.append("fact_lanes_schema_limit")
-
-    packet = NewsItemBriefBasePacket(
-        packet_id=_str(item.get("news_item_id")) or "news-item",
-        news_item=news_item,
-        token_lanes=token_lanes,
-        fact_lanes=fact_lanes,
-        evidence_refs=_base_evidence_refs(news_item=news_item, token_lanes=token_lanes, fact_lanes=fact_lanes),
-        allowed_context_targets=allowed_context_targets,
-        content_class=_optional_bounded(item.get("content_class"), 80),
-        base_budget_report=NewsItemBriefBudgetReport(
-            material_budget_chars=material_budget_chars,
-            material_chars=_json_chars(
-                {
-                    "news_item": news_item.model_dump(mode="json"),
-                    "token_lanes": [lane.model_dump(mode="json") for lane in token_lanes],
-                    "fact_lanes": [lane.model_dump(mode="json") for lane in fact_lanes],
-                }
-            ),
-            original_token_count=len(token_mentions),
-            kept_token_count=len(token_lanes),
-            original_fact_count=len(fact_candidates),
-            kept_fact_count=len(fact_lanes),
-            truncation_reasons=truncation_reasons,
-        ),
-        prompt_version=NEWS_ITEM_BRIEF_PROMPT_VERSION,
-        schema_version=NEWS_ITEM_BRIEF_SCHEMA_VERSION,
-    )
-    return packet.model_copy(update={"input_hash": news_item_brief_base_material_hash(packet)})
-
-
-def _token_lane_from_mapping(row: Mapping[str, Any]) -> NewsItemBriefTokenLane:
-    return NewsItemBriefTokenLane(
-        mention_id=_str(row.get("mention_id")),
-        observed_symbol=_bounded(row.get("observed_symbol"), 64),
-        resolution_status=_bounded(row.get("resolution_status"), 64),
-        target_type=_optional_bounded(row.get("target_type"), 80),
-        target_id=_optional_bounded(row.get("target_id"), 160),
-        display_symbol=_bounded(row.get("display_symbol") or row.get("observed_symbol"), 64),
-        display_name=_optional_bounded(row.get("display_name"), 160),
-        reason_codes=[_bounded(value, 80) for value in _json_list(row.get("reason_codes_json"))[:12]],
-        candidate_targets=[_json_object(value) for value in _json_list(row.get("candidate_targets_json"))[:12]],
-        evidence_strength=_optional_bounded(row.get("evidence_strength"), 64),
-        confidence=_optional_float(row.get("confidence")),
-    )
-
-
-def _fact_lane_from_mapping(row: Mapping[str, Any]) -> NewsItemBriefFactLane:
-    return NewsItemBriefFactLane(
-        fact_candidate_id=_str(row.get("fact_candidate_id")),
-        event_type=_bounded(row.get("event_type"), 80),
-        claim=_bounded(row.get("claim"), 800),
-        realis=_bounded(row.get("realis"), 64),
-        validation_status=_bounded(row.get("validation_status"), 64),
-        affected_targets=[_json_object(value) for value in _json_list(row.get("affected_targets_json"))[:20]],
-        rejection_reasons=[_bounded(value, 120) for value in _json_list(row.get("rejection_reasons_json"))[:12]],
-        evidence_quote=_bounded(row.get("evidence_quote"), 500),
-    )
-
-
-def _fit_fact_lanes_to_budget(
-    *,
-    news_item: NewsItemBriefNewsItem,
-    token_lanes: list[NewsItemBriefTokenLane],
-    fact_lanes: list[NewsItemBriefFactLane],
-    material_budget_chars: int,
-) -> tuple[list[NewsItemBriefFactLane], bool]:
-    kept: list[NewsItemBriefFactLane] = []
-    fixed_chars = _json_chars(
-        {
-            "news_item": news_item.model_dump(mode="json"),
-            "token_lanes": [lane.model_dump(mode="json") for lane in token_lanes],
-        }
-    )
-    for lane in fact_lanes[:50]:
-        candidate = [*kept, lane]
-        candidate_chars = fixed_chars + _json_chars([entry.model_dump(mode="json") for entry in candidate])
-        if candidate_chars > material_budget_chars and kept:
-            return kept, True
-        if candidate_chars > material_budget_chars:
-            return [], True
-        kept.append(lane)
-    return kept, len(fact_lanes) > len(kept)
-
-
-def _allowed_context_targets(token_lanes: Sequence[NewsItemBriefTokenLane]) -> list[NewsContextTargetRef]:
-    refs: list[NewsContextTargetRef] = []
-    seen: set[tuple[str, str]] = set()
-    for lane in token_lanes:
-        if not lane.target_type or not lane.target_id:
-            continue
-        key = (lane.target_type, lane.target_id)
-        if key in seen:
-            continue
-        seen.add(key)
-        refs.append(
-            NewsContextTargetRef(
-                target_type=lane.target_type,
-                target_id=lane.target_id,
-                display_symbol=lane.display_symbol,
-                resolution_status=lane.resolution_status,
-                confidence=lane.confidence,
-                target_scope=_target_scope(lane),
-            )
-        )
-    return refs
-
-
-def _target_scope(lane: NewsItemBriefTokenLane) -> NewsContextTargetScope:
-    target_type = (lane.target_type or "").lower()
-    target_id = (lane.target_id or "").lower()
-    resolution_status = lane.resolution_status.lower()
-    if resolution_status == "non_crypto":
-        return "non_crypto"
-    if "token" in target_type or "asset" in target_type or target_id.startswith(("cex_token:", "asset:", "token:")):
-        return "crypto"
-    return "unknown"
-
-
-def _base_evidence_refs(
-    *,
-    news_item: NewsItemBriefNewsItem,
-    token_lanes: Sequence[NewsItemBriefTokenLane],
-    fact_lanes: Sequence[NewsItemBriefFactLane],
-) -> list[str]:
-    refs = [f"item:{news_item.news_item_id}"]
-    refs.extend(f"mention:{lane.mention_id}" for lane in token_lanes)
-    refs.extend(f"fact:{lane.fact_candidate_id}" for lane in fact_lanes)
-    return refs[:120]
-
-
-def _json_chars(value: Any) -> int:
-    return len(json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
-
-
-def _str(value: Any) -> str:
-    if value is None:
-        return ""
-    return str(value)
-
-
-def _bounded(value: Any, limit: int) -> str:
-    return _str(value).strip()[:limit]
-
-
-def _optional_bounded(value: Any, limit: int) -> str | None:
-    bounded = _bounded(value, limit)
-    return bounded or None
-
-
-def _int(value: Any) -> int:
-    try:
-        return max(0, int(value or 0))
-    except (TypeError, ValueError):
-        return 0
-
-
-def _optional_float(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _json_list(value: Any) -> list[Any]:
-    if isinstance(value, str):
-        try:
-            parsed = json.loads(value)
-        except json.JSONDecodeError:
-            return []
-        return parsed if isinstance(parsed, list) else []
-    return value if isinstance(value, list) else []
-
-
-def _json_object(value: Any) -> dict[str, Any]:
-    if isinstance(value, str):
-        try:
-            parsed = json.loads(value)
-        except json.JSONDecodeError:
-            return {}
-        return parsed if isinstance(parsed, dict) else {}
-    return value if isinstance(value, dict) else {}
 
 
 __all__ = [
@@ -686,7 +467,6 @@ __all__ = [
     "NewsItemResearchToolCall",
     "NewsResearchToolResult",
     "NewsResearchToolResultStatus",
-    "build_news_item_brief_base_packet",
     "default_news_item_brief_agent_config",
     "news_item_brief_base_material_hash",
     "news_item_brief_base_material_identity",
