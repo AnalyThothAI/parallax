@@ -7,14 +7,23 @@ from parallax.platform.config.settings import Settings
 
 
 def wire_cex_market_intel(settings: Settings) -> CexMarketIntelProviders:
+    oi_market = binance.binance_usdm_futures_oi_market(settings) if settings.binance_enabled else None
     return CexMarketIntelProviders(
-        oi_market=binance.binance_usdm_futures_oi_market(settings) if settings.binance_enabled else None,
-        coinglass_derivatives=_coinglass_derivatives(settings),
+        oi_market=oi_market,
+        coinglass_derivatives=_coinglass_derivatives(settings, oi_market=oi_market),
     )
 
 
-def _coinglass_derivatives(settings: Settings) -> CoinglassDerivativesProvider | None:
+def _coinglass_derivatives(
+    settings: Settings,
+    *,
+    oi_market: object | None,
+) -> CoinglassDerivativesProvider | None:
     worker_settings = settings.workers.cex_oi_radar_board
+    if not bool(getattr(worker_settings, "enabled", True)):
+        return None
+    if oi_market is None:
+        return None
     if int(getattr(worker_settings, "coinglass_enrichment_limit", 0)) <= 0:
         return None
     try:

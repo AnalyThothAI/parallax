@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
-from parallax.domains.cex_market_intel.providers import CexOiMarketProvider
+from parallax.domains.cex_market_intel.providers import CexFundingPremium, CexOiMarketProvider, CexOiTicker24h
 from parallax.domains.cex_market_intel.scoring.oi_radar_scoring import score_oi_radar_row
 
 
@@ -15,8 +16,8 @@ def build_binance_oi_radar_rows(
     limit: int = 500,
 ) -> dict[str, Any]:
     selected = universe[: max(1, int(limit))]
-    tickers = _by_symbol(client.list_24h_tickers())
-    premiums = _by_symbol(client.list_funding_premium())
+    tickers = _tickers_by_symbol(client.list_24h_tickers())
+    premiums = _premiums_by_symbol(client.list_funding_premium())
     rows: list[dict[str, Any]] = []
     failed_symbols: list[str] = []
 
@@ -74,9 +75,16 @@ def build_binance_oi_radar_rows(
     }
 
 
-def _by_symbol(payload: Any) -> dict[str, Any]:
-    rows = payload if isinstance(payload, list) else [payload]
-    return {str(getattr(row, "symbol", "")).upper(): row for row in rows if getattr(row, "symbol", None)}
+def _tickers_by_symbol(rows: Sequence[CexOiTicker24h]) -> dict[str, CexOiTicker24h]:
+    return {symbol: row for row in rows if (symbol := _symbol(row.symbol))}
+
+
+def _premiums_by_symbol(rows: Sequence[CexFundingPremium]) -> dict[str, CexFundingPremium]:
+    return {symbol: row for row in rows if (symbol := _symbol(row.symbol))}
+
+
+def _symbol(value: Any) -> str:
+    return str(value or "").strip().upper()
 
 
 def _attr(value: Any, name: str) -> Any:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
+import sys
+from types import ModuleType, SimpleNamespace
 
 from parallax.app.runtime import providers_wiring
 from parallax.app.runtime.provider_wiring import binance as binance_wiring
@@ -59,11 +60,53 @@ def test_wire_providers_populates_cex_market_intel_oi_market_when_binance_enable
     )
 
     providers = providers_wiring.wire_providers(
-        Settings(ws_token="secret", providers={"binance": {"enabled": True}}),
+        Settings(
+            ws_token="secret",
+            providers={"binance": {"enabled": True}},
+            workers={"cex_oi_radar_board": {"coinglass_enrichment_limit": 0}},
+        ),
         start_collector=False,
     )
 
     assert providers.cex_market_intel.oi_market is oi_provider
+
+
+def test_wire_cex_market_intel_does_not_construct_coinglass_when_worker_disabled(monkeypatch) -> None:
+    constructed: list[str] = []
+    _install_fake_coinglass(monkeypatch, constructed)
+    monkeypatch.setattr(
+        cex_market_intel_wiring.binance,
+        "binance_usdm_futures_oi_market",
+        lambda settings: object(),
+    )
+
+    providers = cex_market_intel_wiring.wire_cex_market_intel(
+        Settings(
+            ws_token="secret",
+            providers={"binance": {"enabled": True}},
+            workers={"cex_oi_radar_board": {"enabled": False, "coinglass_enrichment_limit": 5}},
+        )
+    )
+
+    assert providers.coinglass_derivatives is None
+    assert constructed == []
+
+
+def test_wire_cex_market_intel_does_not_construct_coinglass_without_oi_provider(monkeypatch) -> None:
+    constructed: list[str] = []
+    _install_fake_coinglass(monkeypatch, constructed)
+
+    providers = cex_market_intel_wiring.wire_cex_market_intel(
+        Settings(
+            ws_token="secret",
+            providers={"binance": {"enabled": False}},
+            workers={"cex_oi_radar_board": {"enabled": True, "coinglass_enrichment_limit": 5}},
+        )
+    )
+
+    assert providers.oi_market is None
+    assert providers.coinglass_derivatives is None
+    assert constructed == []
 
 
 def test_worker_factory_uses_cex_market_intel_oi_provider_not_generic_asset_market() -> None:
@@ -149,3 +192,16 @@ class _RawBinanceClient:
 
     def close(self) -> None:
         self.calls.append(("close",))
+
+
+def _install_fake_coinglass(monkeypatch, constructed: list[str]) -> None:
+    package = ModuleType("coinglass_cli")
+    client_module = ModuleType("coinglass_cli.client")
+
+    class FakeCoinglassClient:
+        def __init__(self) -> None:
+            constructed.append("coinglass")
+
+    client_module.CoinglassClient = FakeCoinglassClient
+    monkeypatch.setitem(sys.modules, "coinglass_cli", package)
+    monkeypatch.setitem(sys.modules, "coinglass_cli.client", client_module)
