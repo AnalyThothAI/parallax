@@ -391,7 +391,7 @@ def _successful_tool_result(
         max_rows=tool.max_rows,
         max_chars=min(tool.max_chars, max(0, remaining_chars)),
     )
-    status = "empty" if not compact_rows else "truncated" if truncated else "ok"
+    status = "truncated" if truncated else "ok" if compact_rows else "empty"
     result = NewsResearchToolResult(
         tool_call_id=call.tool_call_id,
         tool_name=call.tool_name,

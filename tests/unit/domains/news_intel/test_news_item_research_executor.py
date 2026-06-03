@@ -574,6 +574,29 @@ def test_executor_passes_include_rejected_true_only_when_explicit_true() -> None
     assert repo.calls[1] == ("get_fact_context", {"news_item_id": "news-1", "include_rejected": True, "limit": 20})
 
 
+def test_executor_reports_truncated_when_public_row_exceeds_material_budget() -> None:
+    repo = FakeNewsRepo()
+    repo.rows_by_handler["search_news_archive"] = [
+        {
+            "news_item_id": "news-huge",
+            "title": "x" * 2_000,
+            "summary": "oversized public row",
+            "result_basis": "similar_news",
+            "evidence_ref": "archive:news-huge",
+        }
+    ]
+    plan = _plan([_call("archive", "search_news_archive", {"query_terms": ["ETF"]})])
+
+    result = execute_news_research_plan(repo, plan, base_packet=_base_packet(), now_ms=NOW_MS)
+
+    tool_result = result.tool_results[0]
+    assert tool_result.status == "truncated"
+    assert tool_result.truncated is True
+    assert tool_result.row_count == 0
+    assert tool_result.rows == []
+    assert result.truncated is True
+
+
 def test_executor_applies_archive_and_total_tool_call_caps() -> None:
     repo = FakeNewsRepo()
     plan = _plan(
