@@ -2,6 +2,8 @@
 
 Router for coding agents (Codex, Cursor, generic LLM tooling). Project-wide rules; mirrored to `CLAUDE.md`. When you change one router, update the other. Substantive rules live under `docs/`; this file does not duplicate them.
 
+<!-- BEGIN SHARED AGENT ROUTER -->
+
 ## What this is
 
 `Parallax Market Research System`: a single Python service and CLI named `parallax` that ingests social, news, macro, DEX/CEX market, and provider evidence, extracts crypto entities, scores and audits research signals, and serves results over HTTP / WebSocket / CLI to a React operator console. GMGN's anonymous public WebSocket is one source adapter, not the product boundary. One PostgreSQL store. See `docs/ARCHITECTURE.md`.
@@ -32,6 +34,8 @@ Frontend CSS is harness-constrained, not convention-only. Before changing `web/s
 | PostgreSQL performance & queue diagnostics | `docs/references/POSTGRES_PERFORMANCE.md` |
 | Worker flow, lifecycle, state-machine debugging, and review checklist | `docs/WORKER_FLOW.md` |
 | Cross-domain worker inventory, runtime ownership, and worker best practices | `docs/WORKERS.md` |
+| Agent task reading matrix and sub-agent handoffs | `docs/agent-playbook/task-reading-matrix.md` |
+| Product LLM agent execution plane | `docs/AGENT_EXECUTION.md` |
 | Module architecture maps | `src/parallax/domains/<domain>/ARCHITECTURE.md`; discover current maps with `find src/parallax/domains -name ARCHITECTURE.md` |
 | Active / done specs & plans | `docs/superpowers/{specs,plans}/{active,completed}/` are planning artefacts; verify against code and canonical docs before treating an old active file as current truth |
 | External references & papers | `docs/references/` |
@@ -39,3 +43,5 @@ Frontend CSS is harness-constrained, not convention-only. Before changing `web/s
 | Tech debt log | `docs/TECH_DEBT.md` |
 
 CLI surface: `uv run parallax --help` is the source of truth (snapshot at `docs/generated/cli-help.md`).
+
+<!-- END SHARED AGENT ROUTER -->
