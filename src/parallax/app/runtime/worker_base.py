@@ -11,7 +11,6 @@ from typing import Any
 from loguru import logger as default_logger
 
 from parallax.app.runtime.worker_result import WorkerResult
-from parallax.app.runtime.worker_space import WorkerSpaceContract
 from parallax.platform.cancellation import WORKER_HARD_TIMEOUT_CANCEL_REASON
 
 _DEFAULT_INTERVAL_SECONDS = 5.0
@@ -68,7 +67,6 @@ class WorkerBase(ABC):
         wake_waiter: Any | None = None,
         job_queue: Any | None = None,
         logger: Any | None = None,
-        worker_space_contract: WorkerSpaceContract | None = None,
     ) -> None:
         self.name = str(name)
         self.settings = settings
@@ -78,7 +76,6 @@ class WorkerBase(ABC):
         self.wake_waiter = wake_waiter
         self.job_queue = job_queue
         self.logger = logger or default_logger.bind(worker=self.name)
-        self.worker_space_contract = worker_space_contract
 
         self.last_started_at_ms: int | None = None
         self.last_finished_at_ms: int | None = None
@@ -112,20 +109,6 @@ class WorkerBase(ABC):
     @abstractmethod
     async def run_once(self) -> WorkerResult:
         raise NotImplementedError
-
-    def _runtime_context(self) -> Any:
-        from parallax.app.runtime.runtime_worker_context import RuntimeWorkerContext
-        from parallax.app.runtime.worker_space import WorkerSpace
-
-        contract = self.worker_space_contract
-        if contract is None:
-            raise RuntimeError(f"worker:{self.name}:missing WorkerSpace contract")
-        return RuntimeWorkerContext(
-            worker_name=self.name,
-            db=self.db,
-            space=WorkerSpace(contract),
-            statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
-        )
 
     async def run(self) -> None:
         if not self.enabled:

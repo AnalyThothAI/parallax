@@ -7,8 +7,6 @@ from types import SimpleNamespace
 from typing import Any
 
 from parallax.app.runtime.providers_wiring import AssetMarketProviders
-from parallax.app.runtime.worker_manifest import require_worker_manifest
-from parallax.app.runtime.worker_space import WorkerSpaceContract, contract_from_manifest
 from parallax.domains.asset_market.providers import DexTokenQuote
 from parallax.domains.asset_market.runtime.event_anchor_backfill_worker import (
     EventAnchorBackfillWorker,
@@ -34,7 +32,6 @@ def test_event_anchor_provider_not_called_without_claim() -> None:
         min_age_ms=100,
         clock=lambda: NOW_MS,
         settings=_settings(),
-        worker_space_contract=_event_anchor_contract(),
     )
 
     result = asyncio.run(worker.run_once())
@@ -74,7 +71,6 @@ def test_run_once_expires_stale_jobs_before_provider_calls() -> None:
         min_age_ms=100,
         clock=lambda: NOW_MS,
         settings=_settings(),
-        worker_space_contract=_event_anchor_contract(),
     )
 
     result = asyncio.run(worker.run_once())
@@ -101,7 +97,6 @@ def test_run_once_with_no_due_rows_does_not_scan_ready_anchor_facts() -> None:
         min_age_ms=100,
         clock=lambda: NOW_MS,
         settings=_settings(),
-        worker_space_contract=_event_anchor_contract(),
     )
 
     result = asyncio.run(worker.run_once())
@@ -127,7 +122,6 @@ def test_run_once_reads_due_jobs_not_enriched_event_pending_rows() -> None:
         min_age_ms=100,
         clock=lambda: NOW_MS,
         settings=_settings(),
-        worker_space_contract=_event_anchor_contract(),
     )
 
     result = asyncio.run(worker.run_once())
@@ -171,7 +165,6 @@ def test_concurrent_captures_use_isolated_workerspace_session_depth() -> None:
         min_age_ms=100,
         clock=lambda: NOW_MS,
         settings=_settings(),
-        worker_space_contract=_event_anchor_contract(),
     )
 
     result = asyncio.run(worker.run_once())
@@ -202,7 +195,6 @@ def test_run_once_reschedules_rate_limited_jobs_inside_active_window() -> None:
         min_age_ms=100,
         clock=lambda: NOW_MS,
         settings=_settings(max_attempts=3),
-        worker_space_contract=_event_anchor_contract(),
     )
 
     result = asyncio.run(worker.run_once())
@@ -238,7 +230,6 @@ def test_run_once_stale_reschedule_lease_has_no_other_side_effects() -> None:
         min_age_ms=100,
         clock=lambda: NOW_MS,
         settings=_settings(max_attempts=3),
-        worker_space_contract=_event_anchor_contract(),
     )
 
     result = asyncio.run(worker.run_once())
@@ -286,7 +277,6 @@ def test_run_once_dispatches_to_capture_service_under_semaphore_then_persists_an
         min_age_ms=100,
         clock=lambda: NOW_MS,
         settings=_settings(),
-        worker_space_contract=_event_anchor_contract(),
     )
 
     result = asyncio.run(worker.run_once())
@@ -393,7 +383,6 @@ def test_run_once_cex_target_dispatches_to_message_cex_provider() -> None:
         min_age_ms=0,
         clock=lambda: NOW_MS,
         settings=_settings(),
-        worker_space_contract=_event_anchor_contract(),
     )
 
     result = asyncio.run(worker.run_once())
@@ -444,7 +433,6 @@ def test_run_once_provider_no_quote_terminalizes_job_and_does_not_wake() -> None
         min_age_ms=0,
         clock=lambda: NOW_MS,
         settings=_settings(),
-        worker_space_contract=_event_anchor_contract(),
     )
 
     result = asyncio.run(worker.run_once())
@@ -484,7 +472,6 @@ def test_run_once_stale_terminal_lease_does_not_mark_enriched_event_terminal() -
         min_age_ms=0,
         clock=lambda: NOW_MS,
         settings=_settings(),
-        worker_space_contract=_event_anchor_contract(),
     )
 
     result = asyncio.run(worker.run_once())
@@ -563,7 +550,6 @@ def test_run_once_wakes_only_targets_that_were_attached() -> None:
         min_age_ms=0,
         clock=lambda: NOW_MS,
         settings=_settings(),
-        worker_space_contract=_event_anchor_contract(),
     )
 
     result = asyncio.run(worker.run_once())
@@ -595,10 +581,6 @@ def _settings(*, max_attempts: int = 3) -> Any:
         active_window_ms=300_000,
         max_anchor_lag_ms=60_000,
     )
-
-
-def _event_anchor_contract() -> WorkerSpaceContract:
-    return contract_from_manifest(require_worker_manifest("event_anchor_backfill"))
 
 
 def _pending_row(*, event_id: str, target_type: str, target_id: str) -> dict[str, Any]:

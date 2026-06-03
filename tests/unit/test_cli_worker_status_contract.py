@@ -99,22 +99,6 @@ def test_cli_ops_worker_status_emits_manifest_workers_lanes_and_queue_depths(mon
                             }
                         ]
                     )
-                if "watchlist_handle_summary_jobs" in sql:
-                    return FakeRows(
-                        [
-                            {
-                                "total_count": 3,
-                                "active_count": 3,
-                                "due_count": 1,
-                                "running_count": 2,
-                                "failed_count": 0,
-                                "blocked_count": 0,
-                                "oldest_due_at_ms": 1,
-                                "oldest_running_at_ms": 2,
-                                "max_attempt_count": 1,
-                            }
-                        ]
-                    )
                 if "notification_deliveries" in sql:
                     return FakeRows(
                         [
@@ -152,13 +136,6 @@ def test_cli_ops_worker_status_emits_manifest_workers_lanes_and_queue_depths(mon
                         {"status": "pending", "count": 2},
                         {"status": "failed", "count": 3},
                         {"status": "running", "count": 1},
-                    ]
-                )
-            if "watchlist_handle_summary_jobs" in sql:
-                return FakeRows(
-                    [
-                        {"status": "pending", "count": 1},
-                        {"status": "running", "count": 2},
                     ]
                 )
             if "notification_deliveries" in sql:

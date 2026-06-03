@@ -73,6 +73,21 @@ class TokenDiscussionDigestWorker(WorkerBase):
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
         return await self.run_once_async(now_ms=now_ms)
 
+    def _due_targets_sync(self, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
+        lease_ms = max(1, int(getattr(self.settings, "lease_seconds", 60) or 60)) * 1000
+        with self._repository_session() as repos:
+            return list(
+                repos.discussion_digest_dirty_targets.claim_due(
+                    now_ms=now_ms,
+                    limit=limit,
+                    lease_owner=self.name,
+                    lease_ms=lease_ms,
+                    windows=_settings_windows(self.settings),
+                    scopes=_settings_scopes(self.settings),
+                    schema_version=NARRATIVE_SCHEMA_VERSION,
+                )
+            )
+
     async def run_once_async(self, *, now_ms: int | None = None) -> WorkerResult:
         resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
         limit = max(1, int(getattr(self.settings, "batch_size", 25) or 25))
@@ -553,21 +568,6 @@ class TokenDiscussionDigestWorker(WorkerBase):
             )
         finally:
             await _release_reservation(reservation)
-
-    def _due_targets_sync(self, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
-        lease_ms = max(1, int(getattr(self.settings, "lease_seconds", 60) or 60)) * 1000
-        with self._repository_session() as repos:
-            return list(
-                repos.discussion_digest_dirty_targets.claim_due(
-                    now_ms=now_ms,
-                    limit=limit,
-                    lease_owner=self.name,
-                    lease_ms=lease_ms,
-                    windows=_settings_windows(self.settings),
-                    scopes=_settings_scopes(self.settings),
-                    schema_version=NARRATIVE_SCHEMA_VERSION,
-                )
-            )
 
     def _queue_depth_sync(self, *, now_ms: int) -> int:
         with self._repository_session() as repos:

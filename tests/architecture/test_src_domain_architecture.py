@@ -30,6 +30,7 @@ ALLOWED_ROOTS = {"app", "domains", "integrations", "platform"}
 PROVIDER_DOMAINS = {
     "ingestion",
     "asset_market",
+    "cex_market_intel",
     "narrative_intel",
     "news_intel",
     "pulse_lab",
@@ -74,6 +75,7 @@ PROVIDER_WIRING_FACADE_ALLOWED_IMPORTS = {
 }
 PROVIDER_WIRING_FACADE_PUBLIC_EXPORTS = {
     "AssetMarketProviders",
+    "CexMarketIntelProviders",
     "IngestionProviders",
     "MacrodataProviders",
     "NarrativeIntelProviders",

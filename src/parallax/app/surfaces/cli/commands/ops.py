@@ -22,8 +22,6 @@ from parallax.app.runtime.projection_dirty_targets import enqueue_projection_dir
 from parallax.app.runtime.provider_wiring.model_execution import build_agent_execution_gateway
 from parallax.app.runtime.providers_wiring import wire_asset_market_providers, wire_providers
 from parallax.app.runtime.telemetry import TelemetryRegistry
-from parallax.app.runtime.worker_manifest import require_worker_manifest
-from parallax.app.runtime.worker_space import contract_from_manifest
 from parallax.app.runtime.worker_status import workers_status_payload
 from parallax.app.surfaces.cli.commands import queue_ops
 from parallax.app.surfaces.cli.dependencies import repositories
@@ -885,7 +883,6 @@ def _run_token_radar_projection_worker_once(
             settings=_worker_settings_with_overrides(settings.workers.token_radar_projection, batch_size=limit),
             db=db,
             telemetry=telemetry,
-            worker_space_contract=contract_from_manifest(require_worker_manifest(worker_name)),
             wake_bus=db.wake_emitter(),
             wake_waiter=db.wake_listener(worker_name, settings.workers.token_radar_projection.wakes_on),
             enqueue_narrative_admission=narrative_bulk_analysis_enabled(settings),

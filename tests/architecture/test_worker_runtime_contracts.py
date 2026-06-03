@@ -193,10 +193,6 @@ CONTROL_PLANE_TABLES: dict[str, set[Path]] = {
         SRC / "domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py",
         SRC / "platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py",
     },
-    "watchlist_handle_summary_jobs": {
-        SRC / "domains/watchlist_intel/repositories/watchlist_intel_repository.py",
-        SRC / "platform/db/alembic/versions/20260514_0045_watchlist_handle_intel.py",
-    },
     "news_projection_dirty_targets": {
         SRC / "domains/news_intel/repositories/news_projection_dirty_target_repository.py",
         SRC / "platform/db/alembic/versions/20260524_0094_projection_dirty_targets_hard_cut.py",
