@@ -1491,11 +1491,14 @@ def _capture_tier_fields_from_subject(*, target_type: Any, subject: Any) -> dict
             "native_market_id": None,
         }
     if str(target_type or "") == "CexToken":
+        pricefeed_provider, pricefeed_market_id = _cex_pricefeed_target(subject_map.get("pricefeed_id"))
         return {
             "chain_id": None,
             "address": None,
-            "provider": _optional_text(subject_map.get("provider") or subject_map.get("pricefeed_provider")),
-            "native_market_id": _optional_text(subject_map.get("native_market_id")),
+            "provider": _optional_text(
+                subject_map.get("provider") or subject_map.get("pricefeed_provider") or pricefeed_provider
+            ),
+            "native_market_id": _optional_text(subject_map.get("native_market_id") or pricefeed_market_id),
         }
     return {"chain_id": None, "address": None, "provider": None, "native_market_id": None}
 
@@ -1520,9 +1523,14 @@ def _capture_tier_target_key(row: Mapping[str, Any]) -> tuple[str, str]:
             return ("chain_token", f"{chain_id}:{normalized_address}")
         return ("", "")
     if target_type == "CexToken":
-        provider = (_optional_text(row.get("provider") or subject.get("provider")) or "").lower()
+        pricefeed_provider, pricefeed_market_id = _cex_pricefeed_target(
+            row.get("pricefeed_id") or subject.get("pricefeed_id")
+        )
+        provider = (
+            _optional_text(row.get("provider") or subject.get("provider") or pricefeed_provider) or ""
+        ).lower()
         native_market_id = (
-            _optional_text(row.get("native_market_id") or subject.get("native_market_id")) or ""
+            _optional_text(row.get("native_market_id") or subject.get("native_market_id") or pricefeed_market_id) or ""
         ).upper()
         if provider and native_market_id:
             return ("cex_symbol", f"{provider}:{native_market_id}")
@@ -1540,6 +1548,13 @@ def _rank_subject(row: Mapping[str, Any]) -> Mapping[str, Any]:
 def _optional_text(value: Any) -> str | None:
     text = str(value or "").strip()
     return text or None
+
+
+def _cex_pricefeed_target(value: Any) -> tuple[str | None, str | None]:
+    parts = str(value or "").strip().split(":")
+    if len(parts) < 5 or parts[0] != "pricefeed" or parts[1] != "cex":
+        return None, None
+    return parts[2].strip().lower() or None, parts[-1].strip().upper() or None
 
 
 def _transaction_context(conn: Any) -> AbstractContextManager[Any]:
@@ -2258,7 +2273,12 @@ def _row_from_target_feature(row: dict[str, Any], *, venue: str = TOKEN_RADAR_DE
     target_id = row.get("target_id")
     subject = factor_snapshot.get("subject") if isinstance(factor_snapshot, dict) else {}
     data_health = factor_snapshot.get("data_health") if isinstance(factor_snapshot, dict) else {}
-    capture_fields = _capture_tier_fields_from_subject(target_type=target_type, subject=subject)
+    subject_map = _dict(subject)
+    subject_with_pricefeed = {
+        **subject_map,
+        "pricefeed_id": row.get("pricefeed_id") or subject_map.get("pricefeed_id"),
+    }
+    capture_fields = _capture_tier_fields_from_subject(target_type=target_type, subject=subject_with_pricefeed)
     return {
         "row_id": _stable_id(
             "token-radar-row",

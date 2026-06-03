@@ -292,6 +292,23 @@ def test_project_group_populates_v3_data_health_from_top_level_snapshot():
     }
 
 
+def test_row_from_target_feature_derives_cex_live_key_from_pricefeed_id():
+    row = source_row("event-cex", received_at_ms=1_777_800_000_000)
+    row["target_type"] = "CexToken"
+    row["target_id"] = "cex_token:BTC"
+    row["cex_base_symbol"] = "BTC"
+    row["cex_token_status"] = "canonical"
+    row["pricefeed_id"] = "pricefeed:cex:binance:cex_swap:BTCUSDT"
+    row["native_market_id"] = None
+
+    projected = _project_group([row], now_ms=1_777_800_060_000, window="1h", scope="all")
+
+    assert projected is not None
+    current_row = _row_from_target_feature(_compact_rank_input_from_factor_row(projected))
+    assert current_row["provider"] == "binance"
+    assert current_row["native_market_id"] == "BTCUSDT"
+
+
 def test_project_group_carries_first_seen_global_into_compact_rank_input_cohort():
     row = source_row("event-first-seen", received_at_ms=1_777_800_000_000)
     row["first_seen_global_24h"] = True
@@ -1134,6 +1151,15 @@ def test_capture_tier_rank_set_fingerprint_uses_factor_snapshot_live_market_key(
         token_capture_tier_rank_set_payload_hash(
             reason="repair",
             rows=[{**asset_row, "chain_id": "eip155:1", "address": "0xABC", "factor_snapshot_json": {}}],
+        )
+    )
+    assert token_capture_tier_rank_set_payload_hash(
+        reason="repair",
+        rows=[{**cex_row, "factor_snapshot_json": {}, "pricefeed_id": "pricefeed:cex:binance:cex_swap:BTCUSDT"}],
+    ) == (
+        token_capture_tier_rank_set_payload_hash(
+            reason="repair",
+            rows=[{**cex_row, "provider": "binance", "native_market_id": "BTCUSDT", "factor_snapshot_json": {}}],
         )
     )
 

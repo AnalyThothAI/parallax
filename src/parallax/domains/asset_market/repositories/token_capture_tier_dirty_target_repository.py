@@ -253,8 +253,15 @@ def _capture_rank_target(row: Mapping[str, Any], *, source_target_type: str) -> 
         return "", ""
 
     if source_target_type == "CexToken":
-        provider = str(row.get("provider") or subject.get("provider") or "").strip().lower()
-        native_market_id = str(row.get("native_market_id") or subject.get("native_market_id") or "").strip().upper()
+        pricefeed_provider, pricefeed_market_id = _cex_pricefeed_target(
+            row.get("pricefeed_id") or subject.get("pricefeed_id")
+        )
+        provider = str(row.get("provider") or subject.get("provider") or pricefeed_provider or "").strip().lower()
+        native_market_id = (
+            str(row.get("native_market_id") or subject.get("native_market_id") or pricefeed_market_id or "")
+            .strip()
+            .upper()
+        )
         if provider and native_market_id:
             return "cex_symbol", f"{provider}:{native_market_id}"
         return "", ""
@@ -268,6 +275,13 @@ def _rank_subject(row: Mapping[str, Any]) -> Mapping[str, Any]:
         return {}
     subject = snapshot.get("subject")
     return subject if isinstance(subject, Mapping) else {}
+
+
+def _cex_pricefeed_target(value: Any) -> tuple[str | None, str | None]:
+    parts = str(value or "").strip().split(":")
+    if len(parts) < 5 or parts[0] != "pricefeed" or parts[1] != "cex":
+        return None, None
+    return parts[2].strip().lower() or None, parts[-1].strip().upper() or None
 
 
 def _rank_payload_sort_key(row: Mapping[str, Any]) -> tuple[str, str, str, str, str, str]:
