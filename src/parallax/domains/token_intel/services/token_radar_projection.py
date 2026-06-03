@@ -1457,6 +1457,7 @@ def _capture_tier_rank_payload(row: Mapping[str, Any]) -> tuple[Any, ...]:
         str(row.get("target_type") or row.get("target_type_key") or ""),
         str(row.get("target_id") or row.get("identity_id") or ""),
         capture_target,
+        _capture_tier_row_payload_hash(row),
         str(row.get("lane") or ""),
         row.get("rank"),
         row.get("rank_score", row.get("score")),
@@ -1534,6 +1535,27 @@ def _capture_tier_target_key(row: Mapping[str, Any]) -> tuple[str, str]:
         if provider and native_market_id:
             return ("cex_symbol", f"{provider}:{native_market_id}")
     return ("", "")
+
+
+def _capture_tier_row_payload_hash(row: Mapping[str, Any]) -> str:
+    return stable_token_radar_payload_hash(
+        {
+            "target_type": str(row.get("target_type") or row.get("target_type_key") or ""),
+            "target_id": str(row.get("target_id") or row.get("identity_id") or ""),
+            "capture_target": _capture_tier_target_key(row),
+            "lane": str(row.get("lane") or ""),
+            "rank": row.get("rank"),
+            "rank_score": row.get("rank_score", row.get("score")),
+            "decision": row.get("decision"),
+            "quality_status": row.get("quality_status"),
+            "degraded_reasons_json": _json_ready(row.get("degraded_reasons_json") or []),
+            "pricefeed_id": row.get("pricefeed_id"),
+            "factor_snapshot_json": row.get("factor_snapshot_json"),
+            "source_event_ids_json": _json_ready(row.get("source_event_ids_json") or []),
+            "data_health_json": _json_ready(row.get("data_health_json") or {}),
+            "resolution_json": _json_ready(row.get("resolution_json") or {}),
+        }
+    )
 
 
 def _rank_subject(row: Mapping[str, Any]) -> Mapping[str, Any]:

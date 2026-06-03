@@ -229,7 +229,7 @@ def _rank_row_payload(row: Mapping[str, Any], *, exited: bool) -> dict[str, Any]
         "degraded_reasons_json": _json_ready(row.get("degraded_reasons_json") or []),
         "exited": bool(exited),
     }
-    payload["tier_payload_hash"] = _rank_tier_payload_hash(payload)
+    payload["row_payload_hash"] = _rank_row_product_payload_hash(row, rank_payload=payload)
     return payload
 
 
@@ -278,9 +278,28 @@ def _rank_subject(row: Mapping[str, Any]) -> Mapping[str, Any]:
     return subject if isinstance(subject, Mapping) else {}
 
 
-def _rank_tier_payload_hash(payload: Mapping[str, Any]) -> str:
-    encoded = json.dumps(_json_ready(dict(payload)), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+def _rank_row_product_payload_hash(row: Mapping[str, Any], *, rank_payload: Mapping[str, Any]) -> str:
+    payload = {
+        **dict(rank_payload),
+        "pricefeed_id": row.get("pricefeed_id"),
+        "factor_snapshot_json": _stable_factor_snapshot(row.get("factor_snapshot_json")),
+        "source_event_ids_json": _json_ready(row.get("source_event_ids_json") or []),
+        "data_health_json": _json_ready(row.get("data_health_json") or {}),
+        "resolution_json": _json_ready(row.get("resolution_json") or {}),
+    }
+    encoded = json.dumps(_json_ready(payload), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _stable_factor_snapshot(value: Any) -> Any:
+    snapshot = _json_ready(value)
+    if not isinstance(snapshot, Mapping):
+        return snapshot
+    stable = dict(snapshot)
+    provenance = stable.get("provenance")
+    if isinstance(provenance, Mapping):
+        stable["provenance"] = {key: item for key, item in provenance.items() if str(key) != "computed_at_ms"}
+    return stable
 
 
 def _cex_pricefeed_target(value: Any) -> tuple[str | None, str | None]:

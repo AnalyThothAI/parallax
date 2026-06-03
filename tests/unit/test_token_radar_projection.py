@@ -1156,22 +1156,35 @@ def test_capture_tier_rank_set_fingerprint_uses_factor_snapshot_live_market_key(
     assert token_capture_tier_rank_set_payload_hash(reason="repair", rows=[cex_row]) == (
         token_capture_tier_rank_set_payload_hash(
             reason="repair",
-            rows=[{**cex_row, "provider": "binance", "native_market_id": "BTCUSDT", "factor_snapshot_json": {}}],
+            rows=[
+                {
+                    **cex_row,
+                    "provider": "binance",
+                    "native_market_id": "BTCUSDT",
+                }
+            ],
         )
     )
     assert token_capture_tier_rank_set_payload_hash(reason="repair", rows=[asset_row]) == (
         token_capture_tier_rank_set_payload_hash(
             reason="repair",
-            rows=[{**asset_row, "chain_id": "eip155:1", "address": "0xABC", "factor_snapshot_json": {}}],
+            rows=[{**asset_row, "chain_id": "eip155:1", "address": "0xABC"}],
         )
     )
     assert token_capture_tier_rank_set_payload_hash(
         reason="repair",
-        rows=[{**cex_row, "factor_snapshot_json": {}, "pricefeed_id": "pricefeed:cex:binance:cex_swap:BTCUSDT"}],
+        rows=[{**cex_row, "pricefeed_id": "pricefeed:cex:binance:cex_swap:BTCUSDT"}],
     ) == (
         token_capture_tier_rank_set_payload_hash(
             reason="repair",
-            rows=[{**cex_row, "provider": "binance", "native_market_id": "BTCUSDT", "factor_snapshot_json": {}}],
+            rows=[
+                {
+                    **cex_row,
+                    "provider": "binance",
+                    "native_market_id": "BTCUSDT",
+                    "pricefeed_id": "pricefeed:cex:binance:cex_swap:BTCUSDT",
+                }
+            ],
         )
     )
 
