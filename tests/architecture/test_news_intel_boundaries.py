@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -7,6 +8,15 @@ NEWS_INTEL_ROOT = ROOT / "src/parallax/domains/news_intel"
 ROUTES_NEWS = ROOT / "src/parallax/app/surfaces/api/routes_news.py"
 OPENNEWS_CLIENT = ROOT / "src/parallax/integrations/news_feeds/opennews_client.py"
 NEWS_PROVIDER_WIRING = ROOT / "src/parallax/app/runtime/provider_wiring/news.py"
+NEWS_ARCHITECTURE = NEWS_INTEL_ROOT / "ARCHITECTURE.md"
+AGENT_EXECUTION_DOC = ROOT / "docs/AGENT_EXECUTION.md"
+NEWS_ITEM_RESEARCH_HARNESS_FILES = (
+    NEWS_INTEL_ROOT / "services/news_item_brief_prompt_assembly.py",
+    NEWS_INTEL_ROOT / "services/news_item_brief_stage.py",
+    NEWS_INTEL_ROOT / "services/news_item_research_executor.py",
+    NEWS_INTEL_ROOT / "services/news_item_research_policy.py",
+    NEWS_INTEL_ROOT / "services/news_item_research_tools.py",
+)
 
 FORBIDDEN_IMPORTS = (
     "domains.token_intel.runtime",
@@ -24,6 +34,25 @@ FORBIDDEN_TABLE_REFERENCES = (
     "market_ticks",
 )
 
+FORBIDDEN_NEWS_RESEARCH_HARNESS_TOKENS = (
+    "token_radar",
+    "market_ticks",
+    "pulse_candidates",
+    "news_story_groups",
+    "news_story_members",
+    "news_context_items",
+)
+
+RAW_PROVIDER_PAYLOAD_OUTPUT_KEYS = (
+    "provider_item_id",
+    "raw_payload",
+    "raw_payload_json",
+    "provider_article_key",
+    "provider_article_keys",
+    "feed_url",
+    "sync_cursor",
+)
+
 FORBIDDEN_ROUTE_TOKENS = (
     "NewsFetchWorker",
     "NewsItemProcessWorker",
@@ -31,6 +60,38 @@ FORBIDDEN_ROUTE_TOKENS = (
     "resolve(",
     "extract_",
 )
+
+
+def _parse(path: Path) -> ast.AST:
+    return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
+
+def _call_name(node: ast.AST) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return f"{_call_name(node.value)}.{node.attr}"
+    return ""
+
+
+def _literal_strings(node: ast.AST) -> set[str]:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return {node.value}
+    strings: set[str] = set()
+    for child in ast.iter_child_nodes(node):
+        strings.update(_literal_strings(child))
+    return strings
+
+
+def _assigned_literal_strings(tree: ast.AST, names: set[str]) -> set[str]:
+    strings: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        target_names = {target.id for target in node.targets if isinstance(target, ast.Name)}
+        if target_names & names:
+            strings.update(_literal_strings(node.value))
+    return strings
 
 
 def test_news_intel_domain_exists_with_python_files() -> None:
@@ -50,6 +111,62 @@ def test_news_intel_does_not_write_or_reference_other_read_models() -> None:
         text = path.read_text()
         for forbidden in FORBIDDEN_TABLE_REFERENCES:
             assert forbidden not in text, f"{path} references forbidden table {forbidden}"
+
+
+def test_news_local_research_harness_stays_news_local() -> None:
+    for path in NEWS_ITEM_RESEARCH_HARNESS_FILES:
+        text = path.read_text(encoding="utf-8")
+        for forbidden in FORBIDDEN_NEWS_RESEARCH_HARNESS_TOKENS:
+            assert forbidden not in text, f"{path} references forbidden harness token {forbidden}"
+
+
+def test_news_item_brief_agent_stage_does_not_use_runtime_tools_keyword() -> None:
+    violations: list[str] = []
+    for path in NEWS_ITEM_RESEARCH_HARNESS_FILES:
+        tree = _parse(path)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if _call_name(node.func) != "AgentStageSpec":
+                continue
+            violations.extend(
+                f"{path.relative_to(ROOT)}:{node.lineno} passes tools="
+                for keyword in node.keywords
+                if keyword.arg == "tools"
+            )
+
+    assert violations == []
+
+
+def test_news_research_public_tool_outputs_exclude_raw_provider_payload_fields() -> None:
+    executor = NEWS_INTEL_ROOT / "services/news_item_research_executor.py"
+    output_keys = _assigned_literal_strings(
+        _parse(executor),
+        names={"_PUBLIC_ROW_KEYS_BY_TOOL", "_TARGET_CONTEXT_ITEM_PUBLIC_KEYS"},
+    )
+
+    for forbidden in RAW_PROVIDER_PAYLOAD_OUTPUT_KEYS:
+        assert forbidden not in output_keys, f"public tool output allowlist exposes {forbidden}"
+
+
+def test_news_agent_docs_describe_local_research_harness_boundary() -> None:
+    docs = "\n".join(
+        [
+            NEWS_ARCHITECTURE.read_text(encoding="utf-8"),
+            AGENT_EXECUTION_DOC.read_text(encoding="utf-8"),
+        ]
+    )
+
+    expected_phrases = (
+        "empty-plan synthesis",
+        "deterministic research policy",
+        "local read-only tool executor",
+        "There is no shared runtime tool loop",
+        "Tools are input evidence, not business facts",
+        "Host deterministic policy and read-only tool executor are News-local harness",
+    )
+    for phrase in expected_phrases:
+        assert phrase in docs
 
 
 def test_news_routes_stay_read_only_when_present() -> None:

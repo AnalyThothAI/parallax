@@ -25,6 +25,28 @@ There is no central durable `agent_tasks` queue. Domain workers own admission, c
 
 Domains submit typed `AgentStageSpec` packets with Pydantic output types. Domains must not branch on provider-specific response formats or call LiteLLM/OpenAI directly.
 
+## Domain-Local Harnesses
+
+Some product agents may prepare richer input evidence before submitting an
+`AgentStageSpec`. The News item brief lane is the current example: stale,
+eligible items run either empty-plan synthesis or a News-owned deterministic
+research policy, then a local read-only tool executor, then the synthesizer.
+
+There is no shared runtime tool loop. The shared `AgentExecutionGateway` still
+runs structured JSON model calls only. It does not receive `tools=`, execute
+domain tools, hold database sessions, or become a lower-level application
+workflow kernel.
+
+Tools are input evidence, not business facts. Tool outputs are compact,
+redacted, hashed material that a domain worker may include in a model packet
+and audit ledger. PostgreSQL facts and rebuildable read models remain truth,
+and a tool result becomes product state only if the owning domain validation
+and writer path publishes a derived read model.
+
+Host deterministic policy and read-only tool executor are News-local harness
+components. `NewsItemBriefWorker` remains the only runtime writer for
+`news_item_agent_runs` and `news_item_agent_briefs`.
+
 ## Runtime Flow
 
 ```text

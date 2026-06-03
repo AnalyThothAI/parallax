@@ -48,6 +48,40 @@ forced into a resolved asset.
   stores only the compact latest `source_quality_status`.
 - `news_fact_candidates` references only `news_items`.
 
+## News Item Brief Research Harness
+
+News item brief generation is adaptive. Eligible stale targets either follow
+empty-plan synthesis when the base packet is self-contained, or run:
+
+```text
+deterministic research policy -> local read-only tool executor -> synthesis
+```
+
+The deterministic policy is host code in News Intel. It chooses bounded
+News-owned tools from the base packet, content class, resolved target refs,
+fact lanes, observation summary, and dirty reason. The local executor validates
+tool names and inputs, enforces row and character clamps, runs SELECT-only
+repository methods, redacts raw provider payload fields, and hashes compact
+results before synthesis. The model receives only the synthesis packet and
+returns strict structured JSON.
+
+There is no shared runtime tool loop. `AgentExecutionGateway` still runs one
+structured JSON model call for the `news_item_brief_synthesis` stage; it does
+not receive native tools and does not execute database reads. `AgentStageSpec`
+continues to carry an `input_payload` without `tools=`.
+
+Tools are input evidence, not business facts. Their compact outputs may support
+novelty, duplicate/update, source-consensus, and retrieval-note claims, but
+PostgreSQL facts and rebuildable read models remain the product truth. Provider
+raw frames and tool results are never promoted directly into facts. The
+publication gate remains News validation plus the worker-owned run ledger and
+current brief write.
+
+`NewsItemBriefWorker` remains the only runtime writer for
+`news_item_agent_runs` and `news_item_agent_briefs`. Host deterministic policy
+and read-only tool executor are News-local harness components, not a lower
+level application workflow kernel and not a cross-domain agent runtime.
+
 ## Stage Map
 
 Required core:
@@ -73,7 +107,7 @@ news_fetch/source refresh -> news_source_quality_projection
 |-------|----------------|
 | Fetch | Reconcile configured sources into `news_sources`, fetch due feeds, persist provider items and normalized news items, then enqueue semantic page/source-refresh work. It does not create agent brief work. |
 | Item processing | Read raw `news_items`, extract entities and token mentions deterministically, classify item content, write attention-safe observations and fact candidates, and admit optional item-brief work only after processed-state policy passes. |
-| Item brief | Build bounded item/token/fact packets, reserve `news.item_brief`, execute through the shared `AgentExecutionGateway`, shape-validate the standard brief output, write the run ledger, upsert the current brief, and dirty page rows. Evidence refs and sparse source context are audit/quality metadata, not publication gates. |
+| Item brief | Build a bounded base packet, reserve `news.item_brief`, run empty-plan synthesis or deterministic research policy plus the local read-only tool executor, call the shared `AgentExecutionGateway` only for structured JSON synthesis, validate the v2 brief, write the run ledger, upsert the current brief, and dirty page rows. Tool evidence is run input context, not a fact or publication gate by itself. |
 | Page projection | Rebuild the News page rows from news facts, item lifecycle, provider-native signal, and the current item brief. |
 | Source quality projection | Own source-quality windows, expand source refresh intents into configured source/window work, rebuild source quality rows, and dirty page rows only when compact source quality status changes. It is an operational projection, not item hot-path fanout. |
 | API/UI | Read-only surfaces over projected `news_page_rows`, with explicit source/content/decision filters and source status diagnostics. Raw `news_items` are worker inputs, not public fallback rows. |
