@@ -843,6 +843,36 @@ def test_readiness_worker_lanes_count_each_effective_status(monkeypatch):
     assert projection["failed_workers"] == 1
 
 
+def test_readiness_reports_result_derived_failed_worker(monkeypatch):
+    failed_worker = SimpleNamespace(
+        status_payload=lambda: {
+            "enabled": True,
+            "running": False,
+            "last_result": {"ok": False},
+            "last_error": None,
+        }
+    )
+    runtime = SimpleNamespace(
+        settings=Settings(ws_token="secret", handles=("toly",), notifications={"enabled": False}),
+        collector=SimpleNamespace(status=SimpleNamespace(to_dict=lambda: {"frames_received": 0})),
+        providers=SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=None)),
+        agent_execution_gateway=None,
+        scheduler=bootstrap_module.WorkerScheduler(
+            workers={"token_radar_projection": failed_worker},
+            db=FakeDB(),
+        ),
+    )
+    monkeypatch.setattr(app_module, "_db_status", lambda _: {"ok": True, "probe": "fake"})
+    monkeypatch.setattr(app_module, "_news_provider_contract_payload", lambda _: {"ok": True})
+
+    payload, status_code = _readiness_payload(runtime, now_ms=12_001)
+
+    assert status_code == 503
+    assert payload["ok"] is False
+    assert payload["workers"]["token_radar_projection"]["effective_status"] == "failed"
+    assert "worker:token_radar_projection:failed" in payload["reasons"]
+
+
 def test_readiness_reports_okx_circuit_open_without_failing_app(monkeypatch):
     runtime = SimpleNamespace(
         settings=Settings(ws_token="secret", handles=("toly",), notifications={"enabled": False}),

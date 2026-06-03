@@ -97,8 +97,13 @@ class WorkerScheduler:
                 continue
             task_items = _worker_task_items(self.tasks, name)
             if not task_items:
+                failure_reason = _worker_failure_reason(name, worker, effective_status)
+                if failure_reason is not None:
+                    reasons.append(failure_reason)
+                    continue
                 reasons.append(f"worker:{name}:stopped")
                 continue
+            task_failure_emitted = False
             for task_key, task in task_items:
                 if task.cancelled():
                     reasons.append(f"worker:{task_key}:stopped")
@@ -107,15 +112,13 @@ class WorkerScheduler:
                     exc = task.exception()
                     if exc is not None:
                         reasons.append(f"worker:{task_key}:errored:{exc}")
+                        task_failure_emitted = True
                     else:
                         reasons.append(f"worker:{task_key}:stopped")
                     continue
-            last_error = getattr(worker, "last_error", None)
-            if _worker_hard_timed_out(worker):
-                reasons.append(f"worker:{name}:hard_timeout")
-                continue
-            if last_error:
-                reasons.append(f"worker:{name}:errored:{last_error}")
+            failure_reason = _worker_failure_reason(name, worker, effective_status)
+            if failure_reason is not None and not task_failure_emitted:
+                reasons.append(failure_reason)
         return reasons
 
     def _ordered_worker_names(self) -> list[str]:
@@ -175,6 +178,17 @@ def _worker_unavailable_reason(worker: Any) -> str:
     if isinstance(payload_reason, str) and payload_reason:
         return payload_reason
     return "unavailable"
+
+
+def _worker_failure_reason(name: str, worker: Any, effective_status: str) -> str | None:
+    last_error = getattr(worker, "last_error", None)
+    if _worker_hard_timed_out(worker):
+        return f"worker:{name}:hard_timeout"
+    if last_error:
+        return f"worker:{name}:errored:{last_error}"
+    if effective_status == "failed":
+        return f"worker:{name}:failed"
+    return None
 
 
 def _worker_status_payload(worker: Any) -> dict[str, Any]:
