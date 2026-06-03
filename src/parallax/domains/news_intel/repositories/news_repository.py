@@ -10,7 +10,7 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from parallax.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION
+from parallax.domains.news_intel._constants import NEWS_ITEM_BRIEF_SCHEMA_VERSION, NEWS_PAGE_PROJECTION_VERSION
 from parallax.domains.news_intel.services.news_canonical_identity import (
     CANONICAL_POLICY_VERSION,
     PROVIDER_GLOBAL_ARTICLE_ID_TYPES,
@@ -1443,6 +1443,55 @@ class NewsRepository:
             (news_item_id,),
         ).fetchone()
         return dict(row) if row is not None else None
+
+    def list_current_brief_ids_outside_schema(
+        self,
+        *,
+        required_schema_version: str = NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+        limit: int = 5000,
+    ) -> list[str]:
+        rows = self.conn.execute(
+            """
+            SELECT news_item_id
+              FROM news_item_agent_briefs
+             WHERE COALESCE(NULLIF(schema_version, ''), NULLIF(brief_json ->> 'schema_version', ''), '')
+                   <> %s
+             ORDER BY updated_at_ms ASC, news_item_id ASC
+             LIMIT %s
+            """,
+            (str(required_schema_version), max(1, int(limit))),
+        ).fetchall()
+        return [str(row["news_item_id"]) for row in rows]
+
+    def clear_current_briefs_outside_schema(
+        self,
+        *,
+        required_schema_version: str = NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+        news_item_ids: Sequence[str] | None = None,
+        commit: bool = True,
+    ) -> list[str]:
+        target_ids = [str(news_item_id) for news_item_id in dict.fromkeys(news_item_ids or []) if str(news_item_id)]
+        if news_item_ids is not None and not target_ids:
+            return []
+        if target_ids:
+            row_filter = "AND news_item_id = ANY(%s::text[])"
+            params: tuple[Any, ...] = (str(required_schema_version), target_ids)
+        else:
+            row_filter = ""
+            params = (str(required_schema_version),)
+        rows = self.conn.execute(
+            f"""
+            DELETE FROM news_item_agent_briefs
+             WHERE COALESCE(NULLIF(schema_version, ''), NULLIF(brief_json ->> 'schema_version', ''), '')
+                   <> %s
+               {row_filter}
+             RETURNING news_item_id
+            """,
+            params,
+        ).fetchall()
+        if commit:
+            self.conn.commit()
+        return [str(row["news_item_id"]) for row in rows]
 
     def list_page_source_items(self, *, limit: int, cursor: str | None = None) -> list[dict[str, Any]]:
         return self.list_news_page_rows(limit=limit, cursor=cursor)
@@ -4611,13 +4660,23 @@ def _public_agent_brief_payload(value: Any) -> dict[str, Any]:
     brief_json = _json_dict(payload.get("brief_json"))
     if not payload:
         return {"status": "pending", "brief_json": {}}
+    stale_payload = _stale_agent_brief_payload(payload, brief_json=brief_json)
+    if stale_payload is not None:
+        return stale_payload
     allowed = (
         "status",
         "direction",
         "decision_class",
+        "novelty_status",
+        "confirmation_state",
         "title_zh",
         "summary_zh",
         "market_read_zh",
+        "source_consensus_zh",
+        "retrieval_notes_zh",
+        "retrieval_evidence_refs",
+        "research_todos_zh",
+        "used_tool_call_ids",
         "impact_zh",
         "watch_items_zh",
         "confidence",
@@ -4629,11 +4688,46 @@ def _public_agent_brief_payload(value: Any) -> dict[str, Any]:
     public_payload = {key: payload.get(key) for key in allowed if key in payload}
     public_payload["status"] = str(public_payload.get("status") or "pending")
     public_payload["brief_json"] = brief_json
-    if "title_zh" not in public_payload and brief_json.get("title_zh"):
-        public_payload["title_zh"] = brief_json.get("title_zh")
+    for field in (
+        "novelty_status",
+        "confirmation_state",
+        "title_zh",
+        "summary_zh",
+        "market_read_zh",
+        "source_consensus_zh",
+        "retrieval_notes_zh",
+        "retrieval_evidence_refs",
+        "research_todos_zh",
+        "used_tool_call_ids",
+    ):
+        if field not in public_payload and brief_json.get(field) is not None:
+            public_payload[field] = brief_json.get(field)
     if "affected_assets" not in public_payload and brief_json.get("affected_assets"):
         public_payload["affected_assets"] = _json_list(brief_json.get("affected_assets"))
     return public_payload
+
+
+def _stale_agent_brief_payload(
+    payload: Mapping[str, Any],
+    *,
+    brief_json: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    schema_version = str(payload.get("schema_version") or brief_json.get("schema_version") or "")
+    if not schema_version and str(payload.get("status") or brief_json.get("status") or "") == "pending":
+        return None
+    if schema_version == NEWS_ITEM_BRIEF_SCHEMA_VERSION:
+        return None
+    return {
+        key: value
+        for key, value in {
+            "status": "stale",
+            "stale_schema_version": schema_version,
+            "required_schema_version": NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+            "computed_at_ms": payload.get("computed_at_ms"),
+            "agent_run_id": payload.get("agent_run_id"),
+        }.items()
+        if value is not None
+    }
 
 
 def _public_agent_run_payload(row: Mapping[str, Any]) -> dict[str, Any]:

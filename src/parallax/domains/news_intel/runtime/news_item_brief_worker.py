@@ -270,7 +270,16 @@ class NewsItemBriefWorker(WorkerBase):
 
         payload = result.get("payload") if isinstance(result, Mapping) else None
         audit = _audit_dict(result.get("agent_run_audit") if isinstance(result, Mapping) else None) or request_audit
-        validation = validate_news_item_brief_output(payload=payload, packet=packet.base_packet, audit=audit)
+        request_context = _request_json(
+            packet=packet,
+            audit=request_audit,
+            research_execution=research_execution,
+        )
+        validation = validate_news_item_brief_output(
+            payload=payload,
+            packet=packet.base_packet,
+            audit={**audit, "request_json": request_context},
+        )
         finished_at_ms = self.clock_ms()
         if not validation.publishable:
             await asyncio.to_thread(
@@ -285,11 +294,7 @@ class NewsItemBriefWorker(WorkerBase):
                 outcome="failed",
                 error_class="domain_validation_failed",
                 error="news item brief validation failed",
-                request_json=_request_json(
-                    packet=packet,
-                    audit=request_audit,
-                    research_execution=research_execution,
-                ),
+                request_json=request_context,
                 response_json=payload if isinstance(payload, Mapping) else {"payload": payload},
                 validation_errors=validation.errors,
                 execution_started=True,
@@ -319,11 +324,7 @@ class NewsItemBriefWorker(WorkerBase):
             outcome=str(validation.status),
             error_class=None,
             error=None,
-            request_json=_request_json(
-                packet=packet,
-                audit=request_audit,
-                research_execution=research_execution,
-            ),
+            request_json=request_context,
             response_json=payload_dict,
             validation_errors=[],
             execution_started=True,

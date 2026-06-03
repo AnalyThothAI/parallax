@@ -382,3 +382,246 @@ def test_validation_rejects_unexpected_tool_or_handoff_audit() -> None:
     assert result.publishable is False
     assert result.status == "failed"
     assert {"code": "unexpected_agent_action", "message": "tool_calls"} in result.errors
+
+
+@pytest.mark.parametrize(
+    ("audit_key", "value"),
+    [
+        ("tool_calls", [{"name": "get_observation_history"}]),
+        ("tools", [{"name": "search_news_archive"}]),
+        ("handoffs", [{"name": "planner"}]),
+    ],
+)
+def test_validation_rejects_any_non_empty_synthesizer_action_audit(audit_key: str, value: object) -> None:
+    result = validate_news_item_brief_output(
+        payload=_ready_payload(),
+        packet=_packet(),
+        audit={audit_key: value},
+    )
+
+    assert result.publishable is False
+    assert result.status == "failed"
+    assert {"code": "unexpected_agent_action", "message": audit_key} in result.errors
+
+
+def test_validation_rejects_multi_source_confirmation_from_heuristic_archive_matches() -> None:
+    result = validate_news_item_brief_output(
+        payload=_ready_payload(confirmation_state="multi_source_confirmed", used_tool_call_ids=["call-archive"]),
+        packet=_packet(),
+        audit={
+            "tool_results": [
+                {
+                    "tool_call_id": "call-archive",
+                    "tool_name": "search_news_archive",
+                    "status": "ok",
+                    "rows": [
+                        {
+                            "news_item_id": "archive-1",
+                            "source_domain": "alpha.example",
+                            "matching_basis": "symbol_heuristic",
+                            "match_confidence": "heuristic",
+                        },
+                        {
+                            "news_item_id": "archive-2",
+                            "source_domain": "beta.example",
+                            "matching_basis": "symbol_heuristic",
+                            "match_confidence": "heuristic",
+                        },
+                    ],
+                    "evidence_refs": ["news_items:archive-1", "news_items:archive-2"],
+                }
+            ]
+        },
+    )
+
+    assert result.publishable is False
+    assert {"code": "unsupported_confirmation_state", "message": "multi_source_confirmed"} in result.errors
+
+
+def test_validation_rejects_multi_source_confirmation_from_same_observation_domain() -> None:
+    result = validate_news_item_brief_output(
+        payload=_ready_payload(confirmation_state="multi_source_confirmed", used_tool_call_ids=["call-observe"]),
+        packet=_packet(),
+        audit={
+            "tool_results": [
+                {
+                    "tool_call_id": "call-observe",
+                    "tool_name": "get_observation_history",
+                    "status": "ok",
+                    "rows": [
+                        {"source_id": "opennews-news", "source_domain": "6551.io", "match_confidence": "strong"},
+                        {"source_id": "opennews-listing", "source_domain": "6551.io", "match_confidence": "strong"},
+                    ],
+                    "evidence_refs": ["news_item_observation_edges:item-1"],
+                }
+            ]
+        },
+    )
+
+    assert result.publishable is False
+    assert {"code": "unsupported_confirmation_state", "message": "multi_source_confirmed"} in result.errors
+
+
+def test_validation_allows_multi_source_confirmation_from_distinct_observation_domains() -> None:
+    result = validate_news_item_brief_output(
+        payload=_ready_payload(confirmation_state="multi_source_confirmed", used_tool_call_ids=["call-observe"]),
+        packet=_packet(),
+        audit={
+            "tool_results": [
+                {
+                    "tool_call_id": "call-observe",
+                    "tool_name": "get_observation_history",
+                    "status": "ok",
+                    "rows": [
+                        {"source_id": "source-a", "source_domain": "alpha.example", "match_confidence": "strong"},
+                        {"source_id": "source-b", "source_domain": "beta.example", "match_confidence": "strong"},
+                    ],
+                    "evidence_refs": ["news_item_observation_edges:item-1"],
+                }
+            ]
+        },
+    )
+
+    assert result.publishable is True
+    assert result.status == "ready"
+
+
+def test_validation_keeps_assets_grounded_by_exact_tool_evidence() -> None:
+    result = validate_news_item_brief_output(
+        payload=_ready_payload(
+            used_tool_call_ids=["call-target"],
+            affected_assets=[
+                {
+                    "symbol": "XYZ",
+                    "name": "XYZ Token",
+                    "resolution_status": "known_symbol",
+                    "target_type": "cex_token",
+                    "target_id": "binance:XYZ",
+                    "impact_direction": "bullish",
+                    "reason_zh": "精确 target context 证据支撑 XYZ。",
+                    "evidence_refs": ["news_token_mentions:archive-1:exact_target:XYZ"],
+                }
+            ],
+        ),
+        packet=_packet(),
+        audit={
+            "tool_results": [
+                {
+                    "tool_call_id": "call-target",
+                    "tool_name": "get_target_news_context",
+                    "status": "ok",
+                    "rows": [
+                        {
+                            "news_item_id": "archive-1",
+                            "target_type": "cex_token",
+                            "target_id": "binance:XYZ",
+                            "display_symbol": "XYZ",
+                            "matching_basis": "exact_target",
+                            "match_confidence": 0.91,
+                        }
+                    ],
+                    "evidence_refs": ["news_token_mentions:archive-1:exact_target:XYZ"],
+                }
+            ]
+        },
+    )
+
+    assert result.publishable is True
+    assert result.payload is not None
+    assert result.payload["affected_assets"][0]["symbol"] == "XYZ"
+
+
+def test_validation_reads_tool_evidence_from_worker_request_json_shape() -> None:
+    result = validate_news_item_brief_output(
+        payload=_ready_payload(
+            used_tool_call_ids=["call-target"],
+            affected_assets=[
+                {
+                    "symbol": "XYZ",
+                    "name": "XYZ Token",
+                    "resolution_status": "known_symbol",
+                    "target_type": "cex_token",
+                    "target_id": "binance:XYZ",
+                    "impact_direction": "bullish",
+                    "reason_zh": "精确 target context 证据支撑 XYZ。",
+                    "evidence_refs": ["news_token_mentions:archive-1:exact_target:XYZ"],
+                }
+            ],
+        ),
+        packet=_packet(),
+        audit={
+            "trace_metadata": {"input_hash": "sha256:input"},
+            "request_json": {
+                "tool_results": [
+                    {
+                        "tool_call_id": "call-target",
+                        "tool_name": "get_target_news_context",
+                        "status": "ok",
+                        "rows": [
+                            {
+                                "news_item_id": "archive-1",
+                                "target_type": "cex_token",
+                                "target_id": "binance:XYZ",
+                                "display_symbol": "XYZ",
+                                "matching_basis": "exact_target",
+                                "match_confidence": 0.91,
+                            }
+                        ],
+                    }
+                ],
+                "research_execution": {"tool_results": []},
+            },
+        },
+    )
+
+    assert result.publishable is True
+    assert result.payload is not None
+    assert result.payload["affected_assets"][0]["symbol"] == "XYZ"
+
+
+@pytest.mark.parametrize("matching_basis", ["symbol_heuristic", "market_subject_heuristic"])
+def test_validation_drops_exact_asset_confirmation_when_only_tool_match_is_heuristic(matching_basis: str) -> None:
+    result = validate_news_item_brief_output(
+        payload=_ready_payload(
+            used_tool_call_ids=["call-target"],
+            affected_assets=[
+                {
+                    "symbol": "XYZ",
+                    "name": "XYZ Token",
+                    "resolution_status": "known_symbol",
+                    "target_type": "cex_token",
+                    "target_id": "binance:XYZ",
+                    "impact_direction": "bullish",
+                    "reason_zh": "启发式匹配不能支撑精确资产确认。",
+                    "evidence_refs": [f"news_token_mentions:archive-1:{matching_basis}:XYZ"],
+                }
+            ],
+            data_gaps=[],
+        ),
+        packet=_packet(),
+        audit={
+            "tool_results": [
+                {
+                    "tool_call_id": "call-target",
+                    "tool_name": "get_target_news_context",
+                    "status": "ok",
+                    "rows": [
+                        {
+                            "news_item_id": "archive-1",
+                            "target_type": "cex_token",
+                            "target_id": "binance:XYZ",
+                            "display_symbol": "XYZ",
+                            "matching_basis": matching_basis,
+                            "match_confidence": "heuristic",
+                        }
+                    ],
+                    "evidence_refs": [f"news_token_mentions:archive-1:{matching_basis}:XYZ"],
+                }
+            ]
+        },
+    )
+
+    assert result.publishable is True
+    assert result.payload is not None
+    assert result.payload["affected_assets"] == []
+    assert result.payload["data_gaps"][0]["description_zh"].startswith("模型提到的资产 XYZ")

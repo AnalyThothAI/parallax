@@ -2853,6 +2853,7 @@ def test_page_projection_rebuilds_and_lists_agent_brief_columns_when_brief_updat
                         "status": "ready",
                         "summary_zh": "SOL ETF 申请提升关注。",
                         "agent_run_id": "run-brief-1",
+                        "schema_version": NEWS_ITEM_BRIEF_SCHEMA_VERSION,
                     },
                     "agent_status": "ready",
                     "agent_brief_computed_at_ms": NOW_MS + 100,
@@ -3575,6 +3576,78 @@ def test_fact_detail_sanitizes_internal_urls(tmp_path) -> None:
 
     assert fact is not None
     assert fact["canonical_url"] == ""
+
+
+def test_news_item_detail_returns_stale_agent_brief_for_old_schema(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo, source_id="source-stale-detail", source_item_key="stale")
+        _insert_schema_brief(
+            repo,
+            news_item_id=news_item_id,
+            run_id="run-stale-detail",
+            schema_version="news_item_brief_v1",
+        )
+
+        detail = repo.get_news_item_detail(news_item_id=news_item_id)
+    finally:
+        conn.close()
+
+    assert detail is not None
+    assert detail["agent_brief"] == {
+        "status": "stale",
+        "stale_schema_version": "news_item_brief_v1",
+        "required_schema_version": NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+        "computed_at_ms": NOW_MS,
+        "agent_run_id": "run-stale-detail",
+    }
+
+
+def test_repository_lists_and_clears_current_briefs_outside_schema(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        stale_id = _insert_source_provider_and_item(repo, source_id="source-stale", source_item_key="stale")
+        missing_id = _insert_source_provider_and_item(repo, source_id="source-missing", source_item_key="missing")
+        current_id = _insert_source_provider_and_item(repo, source_id="source-current", source_item_key="current")
+        _insert_schema_brief(
+            repo,
+            news_item_id=stale_id,
+            run_id="run-stale",
+            schema_version="news_item_brief_v1",
+        )
+        _insert_schema_brief(
+            repo,
+            news_item_id=missing_id,
+            run_id="run-missing",
+            schema_version="",
+        )
+        _insert_schema_brief(
+            repo,
+            news_item_id=current_id,
+            run_id="run-current",
+            schema_version=NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+        )
+
+        listed = repo.list_current_brief_ids_outside_schema(required_schema_version=NEWS_ITEM_BRIEF_SCHEMA_VERSION)
+        cleared = repo.clear_current_briefs_outside_schema(
+            required_schema_version=NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+            commit=True,
+        )
+        remaining = conn.execute(
+            "SELECT news_item_id, schema_version FROM news_item_agent_briefs ORDER BY news_item_id"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert set(listed) == {missing_id, stale_id}
+    assert set(cleared) == {missing_id, stale_id}
+    assert [dict(row) for row in remaining] == [
+        {"news_item_id": current_id, "schema_version": NEWS_ITEM_BRIEF_SCHEMA_VERSION}
+    ]
 
 
 def test_research_fact_context_is_item_scoped_bounded_and_rejection_aware(tmp_path) -> None:
@@ -4445,6 +4518,36 @@ def _insert_brief(repo: NewsRepository, *, news_item_id: str, run_id: str) -> No
         artifact_version_hash="artifact",
         prompt_version=NEWS_ITEM_BRIEF_PROMPT_VERSION,
         schema_version=NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+        validator_version=NEWS_ITEM_BRIEF_VALIDATOR_VERSION,
+        computed_at_ms=NOW_MS,
+        created_at_ms=NOW_MS,
+        updated_at_ms=NOW_MS,
+    )
+
+
+def _insert_schema_brief(
+    repo: NewsRepository,
+    *,
+    news_item_id: str,
+    run_id: str,
+    schema_version: str,
+) -> None:
+    _insert_agent_run(repo, news_item_id=news_item_id, run_id=run_id)
+    repo.upsert_news_item_agent_brief(
+        news_item_id=news_item_id,
+        agent_run_id=run_id,
+        status="ready",
+        direction="bullish",
+        decision_class="watch",
+        brief_json={
+            "summary_zh": "schema cleanup fixture",
+            "market_read_zh": "schema cleanup fixture",
+            "status": "ready",
+        },
+        input_hash=f"input-{run_id}",
+        artifact_version_hash="artifact",
+        prompt_version=NEWS_ITEM_BRIEF_PROMPT_VERSION,
+        schema_version=schema_version,
         validator_version=NEWS_ITEM_BRIEF_VALIDATOR_VERSION,
         computed_at_ms=NOW_MS,
         created_at_ms=NOW_MS,
