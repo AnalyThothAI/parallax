@@ -50,11 +50,13 @@ class TokenRadarRankSourceRepository:
         targets: Sequence[Mapping[str, Any]],
         *,
         projected_at_ms: int,
+        analysis_since_ms: int,
         commit: bool = True,
     ) -> int:
         return TokenRadarRankSourceQuery(self.conn).populate_edges_for_targets(
             targets,
             projected_at_ms=projected_at_ms,
+            analysis_since_ms=analysis_since_ms,
             commit=commit,
         )
 

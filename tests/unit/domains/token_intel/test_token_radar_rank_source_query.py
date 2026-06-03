@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from parallax.domains.token_intel._constants import TOKEN_RADAR_RESOLVER_POLICY_VERSION
 from parallax.domains.token_intel.queries.token_radar_rank_source_query import (
     TokenRadarFeatureSourceRequest,
     TokenRadarRankSourceQuery,
@@ -108,6 +109,7 @@ def test_rank_source_query_populates_edges_for_repair_targets() -> None:
     changed = TokenRadarRankSourceQuery(conn).populate_edges_for_targets(
         [{"target_type_key": "Asset", "identity_id": "asset-1"}],
         projected_at_ms=4,
+        analysis_since_ms=2,
         commit=False,
     )
 
@@ -119,7 +121,17 @@ def test_rank_source_query_populates_edges_for_repair_targets() -> None:
     assert "USING requested_targets requested" in conn.sql
     assert "stale_edges.target_type_key = requested.target_type_key" in conn.sql
     assert "stale_edges.identity_id = requested.identity_id" in conn.sql
+    assert "events.received_at_ms >= %s" in conn.sql
+    assert "stale_edges.event_received_at_ms >= %s" in conn.sql
     assert '"window"' not in conn.sql
+    assert conn.params[1:] == (
+        "token-radar-v13-social-attention",
+        4,
+        TOKEN_RADAR_RESOLVER_POLICY_VERSION,
+        2,
+        "token-radar-v13-social-attention",
+        2,
+    )
     assert conn.commit_count == 0
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from parallax.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
+    TOKEN_RADAR_DEFAULT_VENUE,
     TOKEN_RADAR_PROJECTION_VERSION,
 )
 from parallax.domains.token_intel.repositories.token_radar_dirty_target_repository import (
@@ -26,6 +27,7 @@ def test_publication_state_round_trips_ready_zero_rows(tmp_path):
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             window="5m",
             scope="matched",
+            venue=TOKEN_RADAR_DEFAULT_VENUE,
             generation_id="gen-5m-matched-1",
             published_at_ms=1_778_000_000_000,
             source_frontier_ms=1_777_999_999_000,
@@ -39,14 +41,15 @@ def test_publication_state_round_trips_ready_zero_rows(tmp_path):
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             windows=("5m",),
             scopes=("matched",),
+            venues=(TOKEN_RADAR_DEFAULT_VENUE,),
         )
     finally:
         conn.close()
 
-    ready_state = state[("5m", "matched")]
+    ready_state = state[("5m", "matched", TOKEN_RADAR_DEFAULT_VENUE)]
     assert isinstance(ready_state["updated_at_ms"], int)
     assert state == {
-        ("5m", "matched"): {
+        ("5m", "matched", TOKEN_RADAR_DEFAULT_VENUE): {
             "current_generation_id": "gen-5m-matched-1",
             "current_published_at_ms": 1_778_000_000_000,
             "current_source_frontier_ms": 1_777_999_999_000,
@@ -71,6 +74,7 @@ def test_publication_state_round_trips_failed_state_without_rows(tmp_path):
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             window="1h",
             scope="all",
+            venue=TOKEN_RADAR_DEFAULT_VENUE,
             generation_id="gen-1h-all-failed",
             started_at_ms=1_777_999_990_000,
             finished_at_ms=1_778_000_000_000,
@@ -81,16 +85,18 @@ def test_publication_state_round_trips_failed_state_without_rows(tmp_path):
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             windows=("1h",),
             scopes=("all",),
+            venues=(TOKEN_RADAR_DEFAULT_VENUE,),
         )
     finally:
         conn.close()
 
-    assert state[("1h", "all")]["current_generation_id"] is None
-    assert state[("1h", "all")]["latest_attempt_status"] == "failed"
-    assert state[("1h", "all")]["latest_attempt_error"] == "statement timeout"
-    assert state[("1h", "all")]["latest_attempt_started_at_ms"] == 1_777_999_990_000
-    assert state[("1h", "all")]["latest_attempt_finished_at_ms"] == 1_778_000_000_000
-    assert isinstance(state[("1h", "all")]["updated_at_ms"], int)
+    state_key = ("1h", "all", TOKEN_RADAR_DEFAULT_VENUE)
+    assert state[state_key]["current_generation_id"] is None
+    assert state[state_key]["latest_attempt_status"] == "failed"
+    assert state[state_key]["latest_attempt_error"] == "statement timeout"
+    assert state[state_key]["latest_attempt_started_at_ms"] == 1_777_999_990_000
+    assert state[state_key]["latest_attempt_finished_at_ms"] == 1_778_000_000_000
+    assert isinstance(state[state_key]["updated_at_ms"], int)
 
 
 def test_publish_and_latest_current_rows_persist_factor_snapshot_json(tmp_path):
@@ -133,6 +139,7 @@ def test_publish_and_latest_current_rows_persist_factor_snapshot_json(tmp_path):
         latest = repo.latest_current_rows(
             window="1h",
             scope="all",
+            venue=TOKEN_RADAR_DEFAULT_VENUE,
             limit=10,
             projection_version="token-radar-v11-factor-alpha-gated",
         )
@@ -182,6 +189,7 @@ def test_publish_current_generation_replaces_current_and_updates_publication_sta
         current = repo.latest_current_rows(
             window="1h",
             scope="all",
+            venue=TOKEN_RADAR_DEFAULT_VENUE,
             limit=10,
             projection_version="token-radar-v11-factor-alpha-gated",
         )
@@ -189,19 +197,21 @@ def test_publish_current_generation_replaces_current_and_updates_publication_sta
             projection_version="token-radar-v11-factor-alpha-gated",
             windows=("1h",),
             scopes=("all",),
+            venues=(TOKEN_RADAR_DEFAULT_VENUE,),
         )
     finally:
         conn.close()
 
     assert [row["row_id"] for row in current] == ["row-factor-newer"]
     assert current[0]["listed_at_ms"] == 1_778_000_000_000
-    assert state[("1h", "all")]["current_generation_id"] == stable_generation_id(
+    assert state[("1h", "all", TOKEN_RADAR_DEFAULT_VENUE)]["current_generation_id"] == stable_generation_id(
         projection_version="token-radar-v11-factor-alpha-gated",
         window="1h",
         scope="all",
+        venue=TOKEN_RADAR_DEFAULT_VENUE,
         rows=[newer],
     )
-    assert state[("1h", "all")]["current_row_count"] == 1
+    assert state[("1h", "all", TOKEN_RADAR_DEFAULT_VENUE)]["current_row_count"] == 1
 
 
 def test_publish_current_generation_unchanged_skips_current_rows_and_first_seen_rewrite(tmp_path):
@@ -224,6 +234,7 @@ def test_publish_current_generation_unchanged_skips_current_rows_and_first_seen_
             projection_version="token-radar-v11-factor-alpha-gated",
             windows=("1h",),
             scopes=("all",),
+            venues=(TOKEN_RADAR_DEFAULT_VENUE,),
         )
         conn.execute(
             """
@@ -275,7 +286,7 @@ def test_publish_current_generation_unchanged_skips_current_rows_and_first_seen_
 
     assert second_result == {
         "status": "unchanged",
-        "generation_id": state_after_first[("1h", "all")]["current_generation_id"],
+        "generation_id": state_after_first[("1h", "all", TOKEN_RADAR_DEFAULT_VENUE)]["current_generation_id"],
         "rows_written": 0,
     }
     assert counts["current_computed_at_ms"] == 1_778_000_000_000
@@ -717,6 +728,7 @@ def test_publish_current_generation_rejects_old_rows_after_newer_zero_row_genera
             projection_version="token-radar-v11-factor-alpha-gated",
             window="1h",
             scope="all",
+            venue=TOKEN_RADAR_DEFAULT_VENUE,
             generation_id="newer-empty-generation",
             published_at_ms=1_778_000_060_000,
             source_frontier_ms=1_778_000_060_000,
@@ -735,6 +747,7 @@ def test_publish_current_generation_rejects_old_rows_after_newer_zero_row_genera
         current = repo.latest_current_rows(
             window="1h",
             scope="all",
+            venue=TOKEN_RADAR_DEFAULT_VENUE,
             limit=10,
             projection_version="token-radar-v11-factor-alpha-gated",
         )
@@ -752,6 +765,7 @@ def _publish_generation(
     projection_version: str,
     window: str,
     scope: str,
+    venue: str = TOKEN_RADAR_DEFAULT_VENUE,
     computed_at_ms: int,
     rows: list[dict[str, object]],
 ) -> dict[str, object]:
@@ -759,10 +773,12 @@ def _publish_generation(
         projection_version=projection_version,
         window=window,
         scope=scope,
+        venue=venue,
         generation_id=stable_generation_id(
             projection_version=projection_version,
             window=window,
             scope=scope,
+            venue=venue,
             rows=rows,
         ),
         published_at_ms=computed_at_ms,

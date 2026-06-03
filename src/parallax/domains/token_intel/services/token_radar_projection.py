@@ -49,6 +49,7 @@ PROJECTION_VERSION = TOKEN_RADAR_PROJECTION_VERSION
 STALE_RUNNING_PROJECTION_MS = 10 * 60 * 1000
 STALE_RUNNING_CLEANUP_INTERVAL_MS = STALE_RUNNING_PROJECTION_MS
 MAX_ANALYSIS_LOOKBACK_MS = 48 * 60 * 60 * 1000
+RANK_SOURCE_REPAIR_SAFETY_MARGIN_MS = 5 * 60 * 1000
 DEX_DECISION_FLOORS = {
     "holders": 100,
     "liquidity_usd": 25_000.0,
@@ -191,6 +192,10 @@ class TokenRadarProjection:
                     self.repos.token_radar_rank_sources.populate_edges_for_targets(
                         edge_refresh_claims,
                         projected_at_ms=computed_at_ms,
+                        analysis_since_ms=_rank_source_repair_analysis_since_ms(
+                            computed_at_ms=computed_at_ms,
+                            work_items=source_work_items,
+                        ),
                         commit=False,
                     )
                 except Exception as exc:
@@ -789,6 +794,14 @@ class TokenRadarProjection:
             previous_by_key=previous_by_key,
             computed_at_ms=computed_at_ms,
         )
+        self._enqueue_token_capture_tier_for_rank_changes(
+            window=window,
+            scope=scope,
+            rows=rows,
+            exited_rows=exited_rows,
+            previous_by_key=previous_by_key,
+            computed_at_ms=computed_at_ms,
+        )
 
     def _enqueue_pulse_triggers_for_rank_changes(
         self,
@@ -937,6 +950,43 @@ class TokenRadarProjection:
         for reason, reason_targets in grouped.items():
             repo.enqueue_targets(reason_targets, reason=reason, now_ms=computed_at_ms, commit=False)
 
+    def _enqueue_token_capture_tier_for_rank_changes(
+        self,
+        *,
+        window: str,
+        scope: str,
+        rows: list[dict[str, Any]],
+        exited_rows: list[dict[str, Any]],
+        previous_by_key: dict[tuple[str, str, str], dict[str, Any]],
+        computed_at_ms: int,
+    ) -> None:
+        tier_rows = [row for row in rows if _capture_tier_relevant_row(row)]
+        tier_exited_rows = [row for row in exited_rows if _capture_tier_relevant_row(row)]
+        if not _capture_tier_rank_set_changed(
+            rows=tier_rows,
+            exited_rows=tier_exited_rows,
+            previous_by_key=previous_by_key,
+        ):
+            return
+        repo = getattr(self.repos, "token_capture_tier_dirty_targets", None)
+        if repo is None:
+            raise RuntimeError("token_capture_tier_dirty_targets repository is required for Token Radar capture tiers")
+        source_watermark_ms = max(
+            [
+                *[int(row.get("source_max_received_at_ms") or 0) for row in tier_rows],
+                *[int(row.get("source_max_received_at_ms") or 0) for row in tier_exited_rows],
+            ],
+            default=int(computed_at_ms),
+        )
+        repo.enqueue_rank_set(
+            reason=f"token_radar_capture_tier_rank_set:{window}:{scope}",
+            rows=tier_rows,
+            exited_rows=tier_exited_rows,
+            source_watermark_ms=source_watermark_ms,
+            now_ms=computed_at_ms,
+            commit=False,
+        )
+
     @staticmethod
     def _group_rows(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         grouped: dict[str, list[dict[str, Any]]] = {}
@@ -971,6 +1021,20 @@ def _analysis_since_ms(*, computed_at_ms: int, window_ms: int) -> int:
     score_since_ms = computed_at_ms - window_ms
     baseline_since_ms = score_since_ms - BASELINE_SLOT_COUNT * window_ms
     return max(baseline_since_ms, computed_at_ms - MAX_ANALYSIS_LOOKBACK_MS)
+
+
+def _rank_source_repair_analysis_since_ms(
+    *,
+    computed_at_ms: int,
+    work_items: tuple[tuple[str, str, str], ...],
+) -> int:
+    window_names = [str(item[0]) for item in work_items if item]
+    max_window_ms = max((WINDOW_MS.get(window, WINDOW_MS["24h"]) for window in window_names), default=WINDOW_MS["24h"])
+    return max(
+        0,
+        _analysis_since_ms(computed_at_ms=int(computed_at_ms), window_ms=max_window_ms)
+        - RANK_SOURCE_REPAIR_SAFETY_MARGIN_MS,
+    )
 
 
 def _resolve_work_items(
@@ -1368,6 +1432,43 @@ def _narrative_admission_reason(
     if int(previous.get("source_max_received_at_ms") or 0) != int(row.get("source_max_received_at_ms") or 0):
         return "token_radar_source_watermark_changed"
     return "token_radar_changed"
+
+
+def _capture_tier_rank_set_changed(
+    *,
+    rows: Sequence[Mapping[str, Any]],
+    exited_rows: Sequence[Mapping[str, Any]],
+    previous_by_key: Mapping[tuple[str, str, str], Mapping[str, Any]],
+) -> bool:
+    if exited_rows:
+        return True
+    for row in rows:
+        previous = previous_by_key.get(_current_key(row))
+        if previous is None:
+            return True
+        if _capture_tier_rank_payload(row) != _capture_tier_rank_payload(previous):
+            return True
+    return False
+
+
+def _capture_tier_rank_payload(row: Mapping[str, Any]) -> tuple[Any, ...]:
+    return (
+        str(row.get("target_type") or row.get("target_type_key") or ""),
+        str(row.get("target_id") or row.get("identity_id") or ""),
+        str(row.get("lane") or ""),
+        row.get("rank"),
+        row.get("rank_score", row.get("score")),
+        str(row.get("quality_status") or ""),
+        _json_ready(row.get("degraded_reasons_json") or []),
+        str(row.get("payload_hash") or ""),
+        str(row.get("generation_id") or row.get("current_generation_id") or ""),
+    )
+
+
+def _capture_tier_relevant_row(row: Mapping[str, Any]) -> bool:
+    return str(row.get("target_type") or row.get("target_type_key") or "") in {"Asset", "CexToken"} and bool(
+        str(row.get("target_id") or row.get("identity_id") or "").strip()
+    )
 
 
 def _transaction_context(conn: Any) -> AbstractContextManager[Any]:

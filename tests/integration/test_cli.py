@@ -205,6 +205,7 @@ class CliTests(unittest.TestCase):
                 "0",
                 "--execute",
             ],
+            ["ops", "enqueue-token-capture-tier-rank-set", "--execute"],
         ]
 
         parsed = [parser.parse_args(command) for command in commands]
@@ -264,6 +265,9 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[27].ops_command, "enqueue-token-radar-dirty-targets")
         self.assertEqual(parsed[27].source, "market-current")
         self.assertTrue(parsed[27].execute)
+        self.assertEqual(parsed[28].ops_command, "enqueue-token-capture-tier-rank-set")
+        self.assertEqual(parsed[28].window, "24h")
+        self.assertTrue(parsed[28].execute)
 
     def test_cli_ops_mirror_token_images_has_no_source_limit_option(self):
         parser = build_parser()

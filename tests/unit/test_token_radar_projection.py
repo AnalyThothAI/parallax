@@ -857,6 +857,7 @@ def test_projection_runtime_gate_suppresses_narrative_admission_dirty_targets() 
             "pulse_trigger_dirty_targets": FakeRuntimeDirtyTargets(),
             "narrative_admission_dirty_targets": FakeRuntimeDirtyTargets(),
             "token_profile_current_dirty_targets": FakeRuntimeDirtyTargets(),
+            "token_capture_tier_dirty_targets": FakeCaptureTierDirtyTargets(),
         },
     )()
 
@@ -873,7 +874,144 @@ def test_projection_runtime_gate_suppresses_narrative_admission_dirty_targets() 
 
     assert repos.pulse_trigger_dirty_targets.enqueued
     assert repos.token_profile_current_dirty_targets.enqueued
+    assert repos.token_capture_tier_dirty_targets.enqueued
     assert repos.narrative_admission_dirty_targets.enqueued == []
+
+
+def test_projection_enqueues_capture_tier_for_default_venue_rank_set_changes() -> None:
+    now_ms = 1_777_800_060_000
+    row = {
+        "target_type": "Asset",
+        "target_id": "asset-1",
+        "rank": 1,
+        "rank_score": 88,
+        "lane": "resolved",
+        "quality_status": "ready",
+        "degraded_reasons_json": [],
+        "source_max_received_at_ms": now_ms - 1_000,
+        "payload_hash": "row-hash",
+        "generation_id": "gen-1",
+    }
+    repos = type("Repos", (), {"token_capture_tier_dirty_targets": FakeCaptureTierDirtyTargets()})()
+
+    TokenRadarProjection(repos=repos)._enqueue_token_capture_tier_for_rank_changes(
+        window="24h",
+        scope="all",
+        rows=[row],
+        exited_rows=[],
+        previous_by_key={},
+        computed_at_ms=now_ms,
+    )
+
+    assert repos.token_capture_tier_dirty_targets.enqueued == [
+        {
+            "reason": "token_radar_capture_tier_rank_set:24h:all",
+            "rows": [row],
+            "exited_rows": [],
+            "source_watermark_ms": now_ms - 1_000,
+            "payload_hash": repos.token_capture_tier_dirty_targets.enqueued[0]["payload_hash"],
+            "now_ms": now_ms,
+            "commit": False,
+        }
+    ]
+
+
+def test_projection_skips_capture_tier_when_only_source_watermark_changed() -> None:
+    now_ms = 1_777_800_060_000
+    previous = {
+        "target_type": "Asset",
+        "target_id": "asset-1",
+        "rank": 1,
+        "rank_score": 88,
+        "lane": "resolved",
+        "quality_status": "ready",
+        "degraded_reasons_json": [],
+        "source_max_received_at_ms": now_ms - 10_000,
+        "payload_hash": "row-hash",
+        "generation_id": "gen-1",
+    }
+    row = {**previous, "source_max_received_at_ms": now_ms - 1_000}
+    repos = type("Repos", (), {"token_capture_tier_dirty_targets": FakeCaptureTierDirtyTargets()})()
+
+    TokenRadarProjection(repos=repos)._enqueue_token_capture_tier_for_rank_changes(
+        window="24h",
+        scope="all",
+        rows=[row],
+        exited_rows=[],
+        previous_by_key={("resolved", "Asset", "asset-1"): previous},
+        computed_at_ms=now_ms,
+    )
+
+    assert repos.token_capture_tier_dirty_targets.enqueued == []
+
+
+def test_projection_skips_capture_tier_for_unresolved_attention_rows() -> None:
+    now_ms = 1_777_800_060_000
+    row = {
+        "target_type": None,
+        "target_id": None,
+        "intent_id": "intent-1",
+        "rank": 1,
+        "rank_score": 88,
+        "lane": "attention",
+        "quality_status": "ready",
+        "source_max_received_at_ms": now_ms - 1_000,
+        "payload_hash": "row-hash",
+        "generation_id": "gen-1",
+    }
+    repos = type("Repos", (), {"token_capture_tier_dirty_targets": FakeCaptureTierDirtyTargets()})()
+
+    TokenRadarProjection(repos=repos)._enqueue_token_capture_tier_for_rank_changes(
+        window="24h",
+        scope="all",
+        rows=[row],
+        exited_rows=[],
+        previous_by_key={},
+        computed_at_ms=now_ms,
+    )
+
+    assert repos.token_capture_tier_dirty_targets.enqueued == []
+
+
+def test_projection_capture_tier_fingerprint_changes_when_rank_payload_changes_without_watermark_change() -> None:
+    now_ms = 1_777_800_060_000
+    previous = {
+        "target_type": "Asset",
+        "target_id": "asset-1",
+        "rank": 1,
+        "rank_score": 88,
+        "lane": "resolved",
+        "quality_status": "ready",
+        "degraded_reasons_json": [],
+        "source_max_received_at_ms": now_ms - 1_000,
+        "payload_hash": "row-hash",
+        "generation_id": "gen-1",
+    }
+    changed = {**previous, "rank_score": 89, "payload_hash": "row-hash-2"}
+    repos = type("Repos", (), {"token_capture_tier_dirty_targets": FakeCaptureTierDirtyTargets()})()
+
+    TokenRadarProjection(repos=repos)._enqueue_token_capture_tier_for_rank_changes(
+        window="24h",
+        scope="all",
+        rows=[previous],
+        exited_rows=[],
+        previous_by_key={},
+        computed_at_ms=now_ms,
+    )
+    TokenRadarProjection(repos=repos)._enqueue_token_capture_tier_for_rank_changes(
+        window="24h",
+        scope="all",
+        rows=[changed],
+        exited_rows=[],
+        previous_by_key={("resolved", "Asset", "asset-1"): previous},
+        computed_at_ms=now_ms,
+    )
+
+    first_hash = repos.token_capture_tier_dirty_targets.enqueued[0]["payload_hash"]
+    second_hash = repos.token_capture_tier_dirty_targets.enqueued[1]["payload_hash"]
+    assert first_hash != second_hash
+    assert repos.token_capture_tier_dirty_targets.enqueued[0]["source_watermark_ms"] == now_ms - 1_000
+    assert repos.token_capture_tier_dirty_targets.enqueued[1]["source_watermark_ms"] == now_ms - 1_000
 
 
 def test_projection_enqueues_pulse_trigger_for_matched_realtime_rank_changes() -> None:
@@ -1230,6 +1368,7 @@ def test_projection_rebuild_dirty_targets_marks_claim_done_with_payload_hash(mon
                 }
             ],
             "projected_at_ms": now_ms,
+            "analysis_since_ms": now_ms - 7 * 5 * 60 * 1000 - 5 * 60 * 1000,
             "commit": False,
         }
     ]
@@ -1244,6 +1383,54 @@ def test_projection_rebuild_dirty_targets_marks_claim_done_with_payload_hash(mon
         }
     ]
     assert dirty_targets.errors == []
+
+
+def test_projection_rebuild_dirty_targets_bounds_rank_source_repair_by_analysis_window(monkeypatch):
+    token_radar = FakeTokenRadar()
+    dirty_targets = FakeDirtyTargets(
+        [
+            {
+                "target_type_key": "Asset",
+                "identity_id": "asset-1",
+                "payload_hash": "claim-hash",
+                "lease_owner": "projection-worker",
+                "attempt_count": 1,
+            }
+        ]
+    )
+    repos = type(
+        "Repos",
+        (),
+        {
+            "conn": FakeTransactionConn(),
+            "token_radar": token_radar,
+            "token_radar_dirty_targets": dirty_targets,
+            "token_radar_rank_sources": FakeRankSources(token_radar=token_radar, rows_by_request={}),
+        },
+    )()
+    now_ms = 1_777_800_060_000
+
+    monkeypatch.setattr(
+        TokenRadarProjection,
+        "_project_source_request",
+        lambda self, **kwargs: {"source_rows": 0, "status": "unchanged", "rank_set_changed": False},
+    )
+    monkeypatch.setattr(
+        TokenRadarProjection,
+        "refresh_rank_set",
+        lambda self, **kwargs: {"rows_written": 0, "source_rows": 0, "status": "unchanged"},
+    )
+
+    TokenRadarProjection(repos=repos).rebuild_dirty_targets(
+        windows=("24h",),
+        scopes=("all",),
+        now_ms=now_ms,
+        limit=20,
+    )
+
+    assert token_radar.rank_source_populate_batches[0]["analysis_since_ms"] == (
+        now_ms - 48 * 60 * 60 * 1000 - 5 * 60 * 1000
+    )
 
 
 def test_projection_rebuild_dirty_targets_copies_source_event_ids_into_requests(monkeypatch):
@@ -2281,6 +2468,67 @@ class FakeRuntimeDirtyTargets:
         return {"targets": len(targets)}
 
 
+class FakeCaptureTierDirtyTargets:
+    def __init__(self):
+        self.enqueued: list[dict[str, object]] = []
+
+    def enqueue_rank_set(
+        self,
+        *,
+        reason,
+        rows,
+        exited_rows,
+        source_watermark_ms,
+        now_ms,
+        commit,
+    ):
+        row_list = list(rows)
+        exited_list = list(exited_rows)
+        payload_hash = token_radar_projection_module.stable_token_radar_payload_hash(
+            {
+                "reason": reason,
+                "rows": [
+                    {
+                        "target_type": row.get("target_type"),
+                        "target_id": row.get("target_id"),
+                        "rank": row.get("rank"),
+                        "rank_score": row.get("rank_score"),
+                        "quality_status": row.get("quality_status"),
+                        "degraded_reasons_json": row.get("degraded_reasons_json") or [],
+                        "payload_hash": row.get("payload_hash"),
+                        "generation_id": row.get("generation_id"),
+                    }
+                    for row in row_list
+                ],
+                "exited_rows": [
+                    {
+                        "target_type": row.get("target_type"),
+                        "target_id": row.get("target_id"),
+                        "rank": row.get("rank"),
+                        "rank_score": row.get("rank_score"),
+                        "quality_status": row.get("quality_status"),
+                        "degraded_reasons_json": row.get("degraded_reasons_json") or [],
+                        "payload_hash": row.get("payload_hash"),
+                        "generation_id": row.get("generation_id"),
+                    }
+                    for row in exited_list
+                ],
+            }
+        )
+        self.enqueued.append(
+            {
+                "reason": reason,
+                "rows": row_list,
+                "exited_rows": exited_list,
+                "source_watermark_ms": source_watermark_ms,
+                "payload_hash": payload_hash,
+                "now_ms": now_ms,
+                "commit": commit,
+            }
+        )
+        return {"targets": 1, "payload_hash": payload_hash}
+
+
 class FakeRankSources:
     def __init__(
         self,
@@ -2309,11 +2557,12 @@ class FakeRankSources:
         )
         return len(requests)
 
-    def populate_edges_for_targets(self, targets, *, projected_at_ms, commit):
+    def populate_edges_for_targets(self, targets, *, projected_at_ms, analysis_since_ms, commit):
         self.token_radar.rank_source_populate_batches.append(
             {
                 "targets": list(targets),
                 "projected_at_ms": projected_at_ms,
+                "analysis_since_ms": analysis_since_ms,
                 "commit": commit,
             }
         )

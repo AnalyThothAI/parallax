@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Iterable, Mapping
+from decimal import Decimal
 from typing import Any
 
 
@@ -8,8 +11,38 @@ class TokenCaptureTierDirtyTargetRepository:
     def __init__(self, conn: Any) -> None:
         self.conn = conn
 
-    def enqueue_global(self, *, reason: str, now_ms: int, commit: bool = True) -> dict[str, int]:
-        self.conn.execute(
+    def enqueue_rank_set(
+        self,
+        *,
+        reason: str,
+        rows: Iterable[Mapping[str, Any]],
+        exited_rows: Iterable[Mapping[str, Any]] = (),
+        now_ms: int,
+        source_watermark_ms: int | None = None,
+        commit: bool = True,
+    ) -> dict[str, int | str]:
+        row_records = list(rows)
+        exited_records = list(exited_rows)
+        payload_hash = token_capture_tier_rank_set_payload_hash(
+            reason=reason,
+            rows=row_records,
+            exited_rows=exited_records,
+        )
+        max_watermark_ms = max(
+            [
+                int(source_watermark_ms or 0),
+                *[
+                    int(row.get("source_max_received_at_ms") or row.get("source_watermark_ms") or 0)
+                    for row in row_records
+                ],
+                *[
+                    int(row.get("source_max_received_at_ms") or row.get("source_watermark_ms") or 0)
+                    for row in exited_records
+                ],
+            ],
+            default=0,
+        )
+        cursor = self.conn.execute(
             """
             INSERT INTO token_capture_tier_dirty_targets(
               work_name,
@@ -31,7 +64,7 @@ class TokenCaptureTierDirtyTargetRepository:
               'global',
               %(reason)s,
               %(payload_hash)s,
-              %(now_ms)s,
+              %(source_watermark_ms)s,
               50,
               %(now_ms)s,
               NULL,
@@ -55,16 +88,19 @@ class TokenCaptureTierDirtyTargetRepository:
               last_error = NULL,
               first_dirty_at_ms = token_capture_tier_dirty_targets.first_dirty_at_ms,
               updated_at_ms = EXCLUDED.updated_at_ms
+            WHERE token_capture_tier_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
             """,
             {
                 "reason": str(reason),
-                "payload_hash": f"capture-tier:{reason}:{int(now_ms)}",
+                "payload_hash": payload_hash,
                 "now_ms": int(now_ms),
+                "source_watermark_ms": int(max_watermark_ms),
             },
         )
         if commit:
             self.conn.commit()
-        return {"targets": 1}
+        changed = int(getattr(cursor, "rowcount", 0) or 0)
+        return {"targets": changed, "payload_hash": payload_hash}
 
     def claim_due(
         self,
@@ -159,3 +195,54 @@ def _claim_params(records: list[Mapping[str, Any]]) -> dict[str, list[Any]]:
         "lease_owners": [str(record["lease_owner"]) for record in records],
         "attempt_counts": [int(record["attempt_count"]) for record in records],
     }
+
+
+def token_capture_tier_rank_set_payload_hash(
+    *,
+    reason: str,
+    rows: Iterable[Mapping[str, Any]],
+    exited_rows: Iterable[Mapping[str, Any]] = (),
+) -> str:
+    payload = {
+        "reason": str(reason),
+        "rows": sorted([_rank_row_payload(row, exited=False) for row in rows], key=_rank_payload_sort_key),
+        "exited_rows": sorted([_rank_row_payload(row, exited=True) for row in exited_rows], key=_rank_payload_sort_key),
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _rank_row_payload(row: Mapping[str, Any], *, exited: bool) -> dict[str, Any]:
+    return {
+        "target_type": str(row.get("target_type") or row.get("target_type_key") or ""),
+        "target_id": str(row.get("target_id") or row.get("identity_id") or ""),
+        "lane": str(row.get("lane") or ""),
+        "rank": row.get("rank"),
+        "rank_score": row.get("rank_score", row.get("score")),
+        "quality_status": row.get("quality_status"),
+        "degraded_reasons_json": _json_ready(row.get("degraded_reasons_json") or []),
+        "payload_hash": row.get("payload_hash"),
+        "generation_id": row.get("generation_id") or row.get("current_generation_id"),
+        "source_watermark_ms": int(row.get("source_max_received_at_ms") or row.get("source_watermark_ms") or 0),
+        "exited": bool(exited),
+    }
+
+
+def _rank_payload_sort_key(row: Mapping[str, Any]) -> tuple[str, str, str, str]:
+    return (
+        str(row.get("target_type") or ""),
+        str(row.get("target_id") or ""),
+        str(row.get("lane") or ""),
+        str(row.get("exited") or ""),
+    )
+
+
+def _json_ready(value: Any) -> Any:
+    raw = getattr(value, "obj", value)
+    if isinstance(raw, Decimal):
+        return str(raw)
+    if isinstance(raw, Mapping):
+        return {str(key): _json_ready(item) for key, item in raw.items()}
+    if isinstance(raw, list | tuple | set):
+        return [_json_ready(item) for item in raw]
+    return raw

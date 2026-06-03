@@ -232,6 +232,78 @@ def test_enqueue_token_radar_dirty_targets_execute_dispatches_to_market_current_
     ]
 
 
+def test_enqueue_token_capture_tier_rank_set_dry_run_reads_bounded_current_rows(monkeypatch) -> None:
+    from parallax.app.surfaces.cli.commands import ops as ops_module
+
+    registry = _FakeCaptureTierRegistry()
+    dirty_targets = _FakeCaptureTierDirtyTargets()
+
+    @contextmanager
+    def fake_repositories(_settings: object):
+        yield SimpleNamespace(registry=registry, token_capture_tier_dirty_targets=dirty_targets)
+
+    monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
+    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
+    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_100_000)
+    stdout = io.StringIO()
+
+    code = main(
+        ["ops", "enqueue-token-capture-tier-rank-set", "--window", "24h", "--limit", "25", "--dry-run"],
+        stdout=stdout,
+    )
+
+    payload = json.loads(stdout.getvalue())
+    assert code == 0
+    assert payload["data"]["window"] == "24h"
+    assert payload["data"]["since_ms"] == 1_700_000_100_000 - 24 * 60 * 60 * 1000
+    assert payload["data"]["target_count"] == 2
+    assert payload["data"]["would_enqueue"] == 1
+    assert payload["data"]["enqueued"] == 0
+    assert dirty_targets.calls == []
+    assert registry.calls == [
+        ("token-radar-v13-social-attention", 1_700_000_100_000 - 24 * 60 * 60 * 1000, 25)
+    ]
+
+
+def test_enqueue_token_capture_tier_rank_set_execute_writes_rank_set_dirty_target(monkeypatch) -> None:
+    from parallax.app.surfaces.cli.commands import ops as ops_module
+
+    registry = _FakeCaptureTierRegistry()
+    dirty_targets = _FakeCaptureTierDirtyTargets()
+
+    @contextmanager
+    def fake_repositories(_settings: object):
+        yield SimpleNamespace(registry=registry, token_capture_tier_dirty_targets=dirty_targets)
+
+    monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
+    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
+    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_100_000)
+    stdout = io.StringIO()
+
+    code = main(
+        ["ops", "enqueue-token-capture-tier-rank-set", "--window", "1h", "--limit", "25", "--execute"],
+        stdout=stdout,
+    )
+
+    payload = json.loads(stdout.getvalue())
+    assert code == 0
+    assert payload["data"]["window"] == "1h"
+    assert payload["data"]["since_ms"] == 1_700_000_100_000 - 60 * 60 * 1000
+    assert payload["data"]["target_count"] == 2
+    assert payload["data"]["enqueued"] == 1
+    assert payload["data"]["skipped"] == 0
+    assert dirty_targets.calls == [
+        {
+            "reason": "ops_capture_tier_repair:1h",
+            "rows": registry.rows,
+            "exited_rows": [],
+            "source_watermark_ms": 1_700_000_099_000,
+            "now_ms": 1_700_000_100_000,
+            "commit": True,
+        }
+    ]
+
+
 def test_rebuild_token_radar_rank_inputs_command_is_not_registered() -> None:
     assert (
         main(
@@ -374,6 +446,58 @@ class _FakeDirtyTargetsRepository:
     ) -> int:
         self.calls.append(("enqueue_market_current_targets", since_ms, now_ms, limit, reason, commit))
         return 4
+
+
+class _FakeCaptureTierRegistry:
+    def __init__(self) -> None:
+        self.rows = [
+            {
+                "target_type": "Asset",
+                "target_id": "asset-1",
+                "rank_score": 88,
+                "source_max_received_at_ms": 1_700_000_099_000,
+                "payload_hash": "hash-1",
+            },
+            {
+                "target_type": "CexToken",
+                "target_id": "cex-1",
+                "rank_score": 77,
+                "source_max_received_at_ms": 1_700_000_098_000,
+                "payload_hash": "hash-2",
+            },
+        ]
+        self.calls: list[tuple[Any, ...]] = []
+
+    def ranked_live_market_targets(self, *, projection_version: str, since_ms: int, limit: int) -> list[dict[str, Any]]:
+        self.calls.append((projection_version, since_ms, limit))
+        return self.rows[:limit]
+
+
+class _FakeCaptureTierDirtyTargets:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def enqueue_rank_set(
+        self,
+        *,
+        reason: str,
+        rows: list[dict[str, Any]],
+        exited_rows: list[dict[str, Any]],
+        source_watermark_ms: int,
+        now_ms: int,
+        commit: bool,
+    ) -> dict[str, Any]:
+        self.calls.append(
+            {
+                "reason": reason,
+                "rows": list(rows),
+                "exited_rows": list(exited_rows),
+                "source_watermark_ms": source_watermark_ms,
+                "now_ms": now_ms,
+                "commit": commit,
+            }
+        )
+        return {"targets": 1, "payload_hash": "fingerprint"}
 
 
 class _FakeSourceDirtyEventsRepository:
