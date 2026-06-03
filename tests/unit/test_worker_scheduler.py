@@ -105,8 +105,6 @@ def test_scheduler_starts_enabled_workers_in_dependency_order_with_task_names() 
             "market_tick_poll": FakeWorker("market_tick_poll"),
             "resolution_refresh": FakeWorker("resolution_refresh"),
             "asset_profile_refresh": FakeWorker("asset_profile_refresh"),
-            "enrichment": FakeWorker("enrichment"),
-            "handle_summary": FakeWorker("handle_summary"),
             "pulse_candidate": FakeWorker("pulse_candidate"),
             "token_radar_projection": FakeWorker("token_radar_projection"),
             "token_profile_current": FakeWorker("token_profile_current"),
@@ -132,8 +130,6 @@ def test_scheduler_starts_enabled_workers_in_dependency_order_with_task_names() 
             "token_radar_projection",
             "token_profile_current",
             "pulse_candidate",
-            "enrichment",
-            "handle_summary",
             "notification_rule",
             "notification_delivery",
         ]
@@ -148,8 +144,6 @@ def test_scheduler_starts_enabled_workers_in_dependency_order_with_task_names() 
             "worker:token_radar_projection",
             "worker:token_profile_current",
             "worker:pulse_candidate",
-            "worker:enrichment",
-            "worker:handle_summary",
             "worker:notification_rule",
             "worker:notification_delivery",
         ]

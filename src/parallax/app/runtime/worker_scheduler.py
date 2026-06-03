@@ -31,7 +31,7 @@ class WorkerScheduler:
         try:
             for name in self._ordered_worker_names():
                 worker = self.workers[name]
-                if not _worker_enabled(worker):
+                if not _worker_startable(worker):
                     continue
                 concurrency = _worker_concurrency(name, worker)
                 for index in range(concurrency):
@@ -88,7 +88,11 @@ class WorkerScheduler:
     def unhealthy_reasons(self) -> list[str]:
         reasons: list[str] = []
         for name, worker in self.workers.items():
-            if not _worker_enabled(worker):
+            effective_status = worker_effective_status(worker)
+            if effective_status in {"disabled", "intentionally_not_started"}:
+                continue
+            if effective_status == "unavailable":
+                reasons.append(f"worker:{name}:unavailable:{_worker_unavailable_reason(worker)}")
                 continue
             task_items = _worker_task_items(self.tasks, name)
             if not task_items:
@@ -139,6 +143,49 @@ class WorkerScheduler:
 def _worker_enabled(worker: Any) -> bool:
     settings = getattr(worker, "settings", None)
     return bool(getattr(settings, "enabled", True))
+
+
+def _worker_startable(worker: Any) -> bool:
+    return worker_effective_status(worker) not in {"disabled", "intentionally_not_started", "unavailable"}
+
+
+def worker_effective_status(worker: Any) -> str:
+    explicit = getattr(worker, "effective_status", None)
+    if isinstance(explicit, str) and explicit:
+        return explicit
+    payload = _worker_status_payload(worker)
+    payload_status = payload.get("effective_status")
+    if isinstance(payload_status, str) and payload_status:
+        return payload_status
+    if not _worker_enabled(worker):
+        return "disabled"
+    if getattr(worker, "last_error", None):
+        return "failed"
+    if bool(getattr(worker, "running", False)):
+        return "running"
+    return "stopped"
+
+
+def _worker_unavailable_reason(worker: Any) -> str:
+    reason = getattr(worker, "unavailable_reason", None)
+    if isinstance(reason, str) and reason:
+        return reason
+    payload = _worker_status_payload(worker)
+    payload_reason = payload.get("unavailable_reason")
+    if isinstance(payload_reason, str) and payload_reason:
+        return payload_reason
+    return "unavailable"
+
+
+def _worker_status_payload(worker: Any) -> dict[str, Any]:
+    status_payload = getattr(worker, "status_payload", None)
+    if not callable(status_payload):
+        return {}
+    try:
+        payload = status_payload()
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def _worker_concurrency(name: str, worker: Any) -> int:

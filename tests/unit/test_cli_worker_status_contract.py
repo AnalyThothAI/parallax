@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+from collections import Counter
 from types import SimpleNamespace
 
 from parallax.app.runtime.worker_manifest import all_worker_manifests
@@ -29,6 +30,44 @@ def test_cli_ops_worker_status_emits_manifest_workers_lanes_and_queue_depths(mon
         "active_run_once_soft_timed_out_at_ms": None,
         "active_run_once_hard_timed_out_at_ms": None,
         "active_run_once_count": 0,
+        "effective_status": "disabled",
+        "unavailable_reason": None,
+    }
+    status_overrides = {
+        "collector": {
+            **base_worker,
+            "effective_status": "intentionally_not_started",
+        },
+        "market_tick_stream": {
+            **base_worker,
+            "enabled": True,
+            "running": True,
+            "effective_status": "running",
+        },
+        "market_tick_poll": {
+            **base_worker,
+            "enabled": True,
+            "effective_status": "stopped",
+        },
+        "token_radar_projection": {
+            **base_worker,
+            "enabled": True,
+            "effective_status": "unavailable",
+            "unavailable_reason": "missing_projection_dependency",
+        },
+        "token_profile_current": {
+            **base_worker,
+            "enabled": True,
+            "running": True,
+            "effective_status": "degraded",
+            "unavailable_reason": "optional_profile_source_missing",
+        },
+        "pulse_candidate": {
+            **base_worker,
+            "enabled": True,
+            "last_error": "agent lane failed",
+            "effective_status": "failed",
+        },
     }
 
     class FakeRows:
@@ -44,7 +83,7 @@ def test_cli_ops_worker_status_emits_manifest_workers_lanes_and_queue_depths(mon
     class FakeConn:
         def execute(self, sql, params=()):
             if "GROUP BY status" not in sql:
-                if "enrichment_jobs" in sql:
+                if "pulse_agent_jobs" in sql:
                     return FakeRows(
                         [
                             {
@@ -107,7 +146,7 @@ def test_cli_ops_worker_status_emits_manifest_workers_lanes_and_queue_depths(mon
                         }
                     ]
                 )
-            if "enrichment_jobs" in sql:
+            if "pulse_agent_jobs" in sql:
                 return FakeRows(
                     [
                         {"status": "pending", "count": 2},
@@ -162,7 +201,9 @@ def test_cli_ops_worker_status_emits_manifest_workers_lanes_and_queue_depths(mon
                 upstream_client=None,
             )
             self.scheduler = SimpleNamespace(
-                status_payload=lambda: {name: dict(base_worker) for name in manifest_names}
+                status_payload=lambda: {
+                    name: dict(status_overrides.get(name, base_worker)) for name in manifest_names
+                }
             )
 
         async def aclose(self):
@@ -192,9 +233,30 @@ def test_cli_ops_worker_status_emits_manifest_workers_lanes_and_queue_depths(mon
     assert all("active_run_once_count" in workers[name] for name in manifest_names)
     assert "projection" in worker_lanes
     assert "agent" in worker_lanes
-    assert worker_lanes["agent"]["queue_depth"] == 9
-    assert workers["enrichment"]["queue_depth"] == 6
-    assert workers["handle_summary"]["queue_depth"] == 3
+    lane_totals = Counter()
+    for lane in worker_lanes.values():
+        lane_totals.update(
+            {
+                "disabled": lane["disabled_workers"],
+                "intentionally_not_started": lane["intentionally_not_started_workers"],
+                "unavailable": lane["unavailable_workers"],
+                "degraded": lane["degraded_workers"],
+                "running": lane["running_workers"],
+                "stopped": lane["stopped_workers"],
+                "failed": lane["failed_workers"],
+            }
+        )
+    assert lane_totals["disabled"] >= 1
+    assert lane_totals["intentionally_not_started"] == 1
+    assert lane_totals["unavailable"] == 1
+    assert lane_totals["degraded"] == 1
+    assert lane_totals["running"] >= 1
+    assert lane_totals["stopped"] >= 1
+    assert lane_totals["failed"] == 1
+    assert workers["token_radar_projection"]["effective_status"] == "unavailable"
+    assert workers["token_radar_projection"]["unavailable_reason"] == "missing_projection_dependency"
+    assert workers["collector"]["effective_status"] == "intentionally_not_started"
+    assert workers["pulse_candidate"]["queue_depth"] == 6
     assert workers["notification_delivery"]["queue_depth"] == 4
     assert workers["collector"]["details"]["frames_received"] == 88
     assert workers["collector"]["details"]["matched_twitter_events"] == 7

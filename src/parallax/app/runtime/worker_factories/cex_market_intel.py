@@ -14,13 +14,16 @@ def construct_cex_market_intel_workers(ctx: WorkerFactoryContext) -> dict[str, W
     settings = ctx.settings.workers.cex_oi_radar_board
     if not settings.enabled:
         return {}
+    cex_market = getattr(ctx.providers.asset_market, "cex_market", None)
+    if cex_market is None:
+        return {}
     return {
         "cex_oi_radar_board": CexOiRadarBoardWorker(
             name="cex_oi_radar_board",
             settings=settings,
             db=ctx.db,
             telemetry=ctx.telemetry,
-            cex_market=getattr(ctx.providers.asset_market, "cex_market", None),
+            cex_market=cex_market,
             coinglass=_coinglass_client(settings),
         )
     }

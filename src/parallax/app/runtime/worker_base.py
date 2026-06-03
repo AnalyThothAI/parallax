@@ -25,6 +25,8 @@ _MAX_DURATION_SAMPLES = 256
 class WorkerStatus:
     enabled: bool
     running: bool
+    effective_status: str
+    unavailable_reason: str | None
     last_started_at_ms: int | None
     last_finished_at_ms: int | None
     last_result: dict[str, Any] | None
@@ -201,6 +203,8 @@ class WorkerBase(ABC):
         return WorkerStatus(
             enabled=self.enabled,
             running=self.running,
+            effective_status=self.effective_status,
+            unavailable_reason=self.unavailable_reason,
             last_started_at_ms=self.last_started_at_ms,
             last_finished_at_ms=self.last_finished_at_ms,
             last_result=_worker_result_payload(self.last_result),
@@ -218,6 +222,24 @@ class WorkerBase(ABC):
     @property
     def enabled(self) -> bool:
         return bool(getattr(self.settings, "enabled", True))
+
+    @property
+    def effective_status(self) -> str:
+        explicit = getattr(self, "_effective_status", None)
+        if explicit is not None:
+            return str(explicit)
+        if not self.enabled:
+            return "disabled"
+        if self.last_error or _worker_result_failed(self.last_result):
+            return "failed"
+        if self.running:
+            return "running"
+        return "stopped"
+
+    @property
+    def unavailable_reason(self) -> str | None:
+        reason = getattr(self, "_unavailable_reason", None)
+        return str(reason) if reason else None
 
     @property
     def interval_seconds(self) -> float:
@@ -493,6 +515,10 @@ def _worker_result_payload(result: WorkerResult | None) -> dict[str, Any] | None
         "skipped": int(result.skipped),
         "notes": _compact_status_notes(result.notes),
     }
+
+
+def _worker_result_failed(result: WorkerResult | None) -> bool:
+    return result is not None and (int(result.failed) > 0 or int(result.dead) > 0)
 
 
 def _compact_status_notes(notes: dict[str, Any]) -> dict[str, Any]:

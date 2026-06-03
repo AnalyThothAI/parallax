@@ -194,6 +194,8 @@ def fake_wired_providers(
         pulse_lab=SimpleNamespace(
             decision_provider=FakePulseProvider(model=settings.agent_runtime_model_for_lane("pulse.signal_analyst"))
         ),
+        narrative_intel=SimpleNamespace(narrative_provider=None),
+        news_intel=SimpleNamespace(feed_client=None, brief_provider=None),
         macrodata=SimpleNamespace(stock_quote_provider=None),
         agent_execution_gateway=agent_execution_gateway,
     )
@@ -248,12 +250,18 @@ def test_healthz_readyz_and_metrics_return_status(monkeypatch, tmp_path):
     with TestClient(app) as client:
         health = client.get("/healthz")
         ready = client.get("/readyz")
+        api_status = client.get("/api/status", headers={"Authorization": "Bearer secret"})
         metrics = client.get("/metrics")
 
     payload = ready.json()
+    api_status_payload = api_status.json()["data"]
     assert health.status_code == 200
     assert health.text == "ok\n"
-    assert ready.status_code == 200
+    assert ready.status_code == 503
+    assert api_status.status_code == 200
+    assert api_status_payload["workers"] == payload["workers"]
+    assert api_status_payload["worker_lanes"] == payload["worker_lanes"]
+    assert api_status_payload["reasons"] == payload["reasons"]
     assert payload["store"] == "postgresql"
     assert payload["db"]["ok"] is True
     assert payload["db"]["probe"] == "postgres_liveness"
@@ -278,14 +286,33 @@ def test_healthz_readyz_and_metrics_return_status(monkeypatch, tmp_path):
         "collector",
         "token_radar_projection",
         "pulse_candidate",
-        "enrichment",
         "event_anchor_backfill",
     }
     assert payload["workers"]["collector"]["enabled"] is False
+    assert payload["workers"]["collector"]["effective_status"] == "intentionally_not_started"
+    assert payload["workers"]["collector"]["unavailable_reason"] is None
     assert payload["workers"]["collector"]["last_result"] is None
+    assert payload["workers"]["market_tick_stream"]["effective_status"] == "unavailable"
+    assert payload["workers"]["market_tick_stream"]["unavailable_reason"] == "missing_asset_market_stream_provider"
+    assert payload["workers"]["market_tick_poll"]["effective_status"] == "unavailable"
+    assert payload["workers"]["market_tick_poll"]["unavailable_reason"] == "missing_asset_market_quote_provider"
+    assert "worker:market_tick_stream:unavailable:missing_asset_market_stream_provider" in payload["reasons"]
+    assert "worker:market_tick_poll:unavailable:missing_asset_market_quote_provider" in payload["reasons"]
     assert "event_anchor_backfill" in payload["workers"]
     assert payload["workers"]["event_anchor_backfill"]["enabled"] is True
     assert set(payload["worker_lanes"]) >= {"ingest", "projection", "agent"}
+    for lane in payload["worker_lanes"].values():
+        assert set(lane) >= {
+            "disabled_workers",
+            "intentionally_not_started_workers",
+            "unavailable_workers",
+            "degraded_workers",
+            "running_workers",
+            "stopped_workers",
+            "failed_workers",
+        }
+    assert payload["worker_lanes"]["ingest"]["intentionally_not_started_workers"] >= 1
+    assert payload["worker_lanes"]["ingest"]["unavailable_workers"] >= 1
     assert payload["worker_lanes"]["projection"]["enabled_workers"] >= 1
     assert payload["worker_lanes"]["agent"]["failed_workers"] == 0
     assert metrics.status_code == 200
