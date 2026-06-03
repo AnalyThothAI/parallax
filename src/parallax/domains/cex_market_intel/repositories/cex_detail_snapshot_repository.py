@@ -26,11 +26,11 @@ class CexDetailSnapshotRepository:
     def __init__(self, conn: Any):
         self.conn = conn
 
-    def upsert_many(self, snapshots: list[dict[str, Any]]) -> int:
+    def upsert_many(self, snapshots: list[dict[str, Any]], *, commit: bool = True) -> int:
         written = 0
         for snapshot in snapshots:
             written += self.upsert_snapshot(snapshot, commit=False)
-        if written:
+        if commit and written:
             self.conn.commit()
         return written
 

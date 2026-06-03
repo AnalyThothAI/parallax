@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import inspect
 from decimal import Decimal
 
 from parallax.domains.cex_market_intel.repositories.cex_detail_snapshot_repository import (
@@ -188,6 +189,24 @@ def test_upsert_many_returns_changed_rowcount_and_gates_on_payload_hash():
         "WHERE cex_detail_snapshots.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash"
         in all_sql
     )
+
+
+def test_upsert_many_accepts_commit_false_without_committing():
+    conn = _RecordingConn(rowcounts=[1, 0])
+    first = _snapshot(computed_at_ms=1_778_000_000_000)
+    second = _snapshot(computed_at_ms=1_778_000_999_999)
+
+    written = CexDetailSnapshotRepository(conn).upsert_many([first, second], commit=False)
+
+    assert written == 1
+    assert conn.commits == 0
+
+
+def test_upsert_many_commit_flag_is_keyword_only_real_repository_api():
+    signature = inspect.signature(CexDetailSnapshotRepository.upsert_many)
+
+    assert signature.parameters["commit"].kind is inspect.Parameter.KEYWORD_ONLY
+    assert signature.parameters["commit"].default is True
 
 
 def test_computed_at_change_only_does_not_update_detail_serving_row():
