@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from parallax.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION
+from parallax.domains.news_intel._constants import NEWS_ITEM_BRIEF_SCHEMA_VERSION, NEWS_PAGE_PROJECTION_VERSION
 from parallax.domains.news_intel.services.news_page_projection import build_news_page_row
 
 
@@ -229,8 +229,15 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
             "direction": "bullish",
             "decision_class": "driver",
             "brief_json": {
+                "novelty_status": "update",
+                "confirmation_state": "single_source",
                 "summary_zh": "SOL ETF 申请提升关注。",
                 "market_read_zh": "叙事催化增强。",
+                "source_consensus_zh": "当前只有单一来源确认。",
+                "retrieval_notes_zh": "已检查本地研究包。",
+                "retrieval_evidence_refs": ["item:summary"],
+                "research_todos_zh": ["跟踪后续审批"],
+                "used_tool_call_ids": ["call-1"],
                 "bull_view": {"strength": "strong", "thesis_zh": "新增需求预期"},
                 "bear_view": {"strength": "weak", "thesis_zh": "审批仍不确定"},
                 "affected_assets": [
@@ -246,7 +253,7 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
             "input_hash": "input-1",
             "artifact_version_hash": "artifact-1",
             "prompt_version": "prompt-v1",
-            "schema_version": "schema-v1",
+            "schema_version": NEWS_ITEM_BRIEF_SCHEMA_VERSION,
             "computed_at_ms": 3000,
         },
         computed_at_ms=4000,
@@ -258,14 +265,21 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
         "status": "ready",
         "direction": "bullish",
         "decision_class": "driver",
+        "novelty_status": "update",
+        "confirmation_state": "single_source",
         "summary_zh": "SOL ETF 申请提升关注。",
         "market_read_zh": "叙事催化增强。",
+        "source_consensus_zh": "当前只有单一来源确认。",
+        "retrieval_notes_zh": "已检查本地研究包。",
+        "retrieval_evidence_refs": ["item:summary"],
+        "research_todos_zh": ["跟踪后续审批"],
+        "used_tool_call_ids": ["call-1"],
         "bull_strength": "strong",
         "bear_strength": "weak",
         "data_gap_count": 1,
         "computed_at_ms": 3000,
         "agent_run_id": "run-1",
-        "schema_version": "schema-v1",
+        "schema_version": NEWS_ITEM_BRIEF_SCHEMA_VERSION,
         "prompt_version": "prompt-v1",
         "artifact_version_hash": "artifact-1",
         "input_hash": "input-1",
@@ -280,6 +294,71 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
             }
         ],
     }
+
+
+def test_build_news_page_row_returns_stale_agent_brief_for_old_schema() -> None:
+    row = build_news_page_row(
+        item={
+            "news_item_id": "news-1",
+            "title": "SOL ETF filing",
+            "summary": "",
+            "source_domain": "example.test",
+            "canonical_url": "https://example.test/a",
+            "published_at_ms": 1000,
+        },
+        token_mentions=[],
+        fact_candidates=[],
+        agent_brief={
+            "agent_run_id": "run-old",
+            "status": "ready",
+            "direction": "bullish",
+            "decision_class": "driver",
+            "brief_json": {"summary_zh": "旧 schema 摘要。"},
+            "schema_version": "news_item_brief_v1",
+            "computed_at_ms": 3000,
+        },
+        computed_at_ms=4000,
+    )
+
+    assert row["agent_status"] == "stale"
+    assert row["agent_brief"] == {
+        "status": "stale",
+        "stale_schema_version": "news_item_brief_v1",
+        "required_schema_version": NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+        "computed_at_ms": 3000,
+        "agent_run_id": "run-old",
+    }
+    assert row["signal"]["agent_signal"]["status"] == "stale"
+    assert row["signal"]["alert_eligibility"]["external_push_ready"] is False
+
+
+def test_build_news_page_row_returns_stale_agent_brief_for_missing_schema() -> None:
+    row = build_news_page_row(
+        item={
+            "news_item_id": "news-1",
+            "title": "SOL ETF filing",
+            "summary": "",
+            "source_domain": "example.test",
+            "canonical_url": "https://example.test/a",
+            "published_at_ms": 1000,
+        },
+        token_mentions=[],
+        fact_candidates=[],
+        agent_brief={
+            "agent_run_id": "run-missing",
+            "status": "ready",
+            "direction": "bullish",
+            "decision_class": "driver",
+            "brief_json": {"summary_zh": "缺少 schema。"},
+            "computed_at_ms": 3000,
+        },
+        computed_at_ms=4000,
+    )
+
+    assert row["agent_status"] == "stale"
+    assert row["agent_brief"]["status"] == "stale"
+    assert row["agent_brief"]["stale_schema_version"] == ""
+    assert row["agent_brief"]["required_schema_version"] == NEWS_ITEM_BRIEF_SCHEMA_VERSION
 
 
 def test_page_signal_envelope_separates_provider_agent_display_and_alert() -> None:
@@ -307,6 +386,7 @@ def test_page_signal_envelope_separates_provider_agent_display_and_alert() -> No
             "direction": "bullish",
             "decision_class": "watch",
             "brief_json": {"summary_zh": "交易所上线带来流动性关注。"},
+            "schema_version": NEWS_ITEM_BRIEF_SCHEMA_VERSION,
             "computed_at_ms": 2_000,
         },
         computed_at_ms=3_000,
@@ -353,6 +433,7 @@ def test_build_news_page_row_preserves_provider_signal_without_masking_ready_age
                 "bull_view": {"strength": "weak"},
                 "bear_view": {"strength": "moderate"},
             },
+            "schema_version": NEWS_ITEM_BRIEF_SCHEMA_VERSION,
             "computed_at_ms": 3000,
         },
         computed_at_ms=4000,
@@ -417,6 +498,7 @@ def test_build_news_page_row_keeps_provider_candidate_separate_from_external_pus
                 "summary_zh": "证据不足，不能形成 agent brief。",
                 "data_gaps": [{"kind": "missing_context"}],
             },
+            "schema_version": NEWS_ITEM_BRIEF_SCHEMA_VERSION,
             "computed_at_ms": 3000,
         },
         computed_at_ms=4000,

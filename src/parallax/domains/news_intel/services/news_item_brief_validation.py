@@ -8,12 +8,13 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from parallax.domains.news_intel.types.news_item_brief import (
     DataGap,
-    NewsItemBriefInputPacket,
+    NewsItemBriefBasePacket,
     NewsItemBriefPayload,
 )
 from parallax.platform.agent_hashing import json_sha256
 
 _ACTION_AUDIT_KEYS = frozenset({"tool_calls", "tools", "handoffs"})
+_HOST_EVIDENCE_AUDIT_CONTAINERS = frozenset({"request_json", "research_execution", "research_plan", "tool_results"})
 
 
 class NewsItemBriefValidationResult(BaseModel):
@@ -29,7 +30,7 @@ class NewsItemBriefValidationResult(BaseModel):
 def validate_news_item_brief_output(
     *,
     payload: Any,
-    packet: NewsItemBriefInputPacket,
+    packet: NewsItemBriefBasePacket,
     audit: Any,
 ) -> NewsItemBriefValidationResult:
     try:
@@ -40,7 +41,12 @@ def validate_news_item_brief_output(
     errors: list[dict[str, str]] = []
     payload_dict = parsed.model_dump(mode="json")
     errors.extend(_unexpected_action_errors(audit))
-    payload_dict = _drop_unsupported_assets(payload_dict, packet=packet)
+    if parsed.confirmation_state == "multi_source_confirmed" and not _has_independent_source_confirmation(
+        packet=packet,
+        audit=audit,
+    ):
+        errors.append(_error("unsupported_confirmation_state", "multi_source_confirmed"))
+    payload_dict = _drop_unsupported_assets(payload_dict, packet=packet, audit=audit)
     try:
         normalized = NewsItemBriefPayload.model_validate(payload_dict)
     except ValidationError as exc:
@@ -61,14 +67,44 @@ def validate_news_item_brief_output(
 def _unexpected_action_errors(audit: Any) -> list[dict[str, str]]:
     audit_dict = _as_dict(audit)
     errors: list[dict[str, str]] = []
-    for key, value in _walk_mapping_items(audit_dict):
+    for key, value in _walk_action_audit_items(audit_dict):
         if key in _ACTION_AUDIT_KEYS and _non_empty(value):
             errors.append(_error("unexpected_agent_action", key))
     return _dedupe_errors(errors)
 
 
-def _drop_unsupported_assets(payload: dict[str, Any], *, packet: NewsItemBriefInputPacket) -> dict[str, Any]:
-    supported = _source_backed_asset_labels(packet)
+def _has_independent_source_confirmation(*, packet: NewsItemBriefBasePacket, audit: Any) -> bool:
+    source_domains = {
+        _norm(domain)
+        for domain in (packet.provider_signal_evidence.source_domains if packet.provider_signal_evidence else [])
+        if _norm(domain)
+    }
+    if len(source_domains) > 1:
+        return True
+    for result in _tool_results(audit):
+        if str(result.get("tool_name") or "") != "get_observation_history":
+            continue
+        domains: set[str] = set()
+        for row in _result_rows(result):
+            if _is_heuristic_row(row):
+                continue
+            if _row_confirms_independent_sources(row):
+                return True
+            domain = _norm(row.get("source_domain"))
+            if domain:
+                domains.add(domain)
+        if len(domains) > 1:
+            return True
+    return False
+
+
+def _drop_unsupported_assets(
+    payload: dict[str, Any],
+    *,
+    packet: NewsItemBriefBasePacket,
+    audit: Any,
+) -> dict[str, Any]:
+    supported = _source_backed_asset_labels(packet) | _exact_tool_asset_labels(audit)
     kept_assets: list[dict[str, Any]] = []
     dropped_symbols: list[str] = []
     for asset in payload.get("affected_assets") or []:
@@ -99,7 +135,107 @@ def _drop_unsupported_assets(payload: dict[str, Any], *, packet: NewsItemBriefIn
     return normalized
 
 
-def _source_backed_asset_labels(packet: NewsItemBriefInputPacket) -> set[str]:
+def _exact_tool_asset_labels(audit: Any) -> set[str]:
+    labels: set[str] = set()
+    for result in _tool_results(audit):
+        for row in _result_rows(result):
+            if not _is_exact_tool_asset_row(row):
+                continue
+            labels.update(
+                _norm(value)
+                for value in (
+                    row.get("symbol"),
+                    row.get("display_symbol"),
+                    row.get("target_id"),
+                )
+                if value
+            )
+            for target in _json_list(row.get("affected_targets")):
+                if isinstance(target, Mapping):
+                    labels.update(_norm(value) for value in target.values() if isinstance(value, str))
+    return {label for label in labels if label}
+
+
+def _is_exact_tool_asset_row(row: Mapping[str, Any]) -> bool:
+    if _is_heuristic_row(row):
+        return False
+    matching_basis = _norm(row.get("matching_basis") or row.get("result_basis"))
+    if matching_basis == "exact_target":
+        return _confidence_is_exact(row.get("match_confidence"))
+    if matching_basis == "fact_candidate":
+        return True
+    return bool(_json_list(row.get("affected_targets")))
+
+
+def _is_heuristic_row(row: Mapping[str, Any]) -> bool:
+    basis_values = {
+        _norm(row.get("matching_basis")),
+        _norm(row.get("result_basis")),
+        _norm(row.get("match_confidence")),
+    }
+    return bool(basis_values & {"symbol_heuristic", "market_subject_heuristic", "heuristic"})
+
+
+def _confidence_is_exact(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, int | float):
+        return float(value) >= 0.8
+    return _norm(value) in {"exact", "strong", "high", "known_symbol", "unique_by_context"}
+
+
+def _tool_results(audit: Any) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    audit_dict = _as_dict(audit)
+    results.extend(_json_object_list(audit_dict.get("tool_results")))
+    results.extend(_json_object_list(_as_dict(audit_dict.get("research_execution")).get("tool_results")))
+    request_json = _as_dict(audit_dict.get("request_json"))
+    results.extend(_json_object_list(request_json.get("tool_results")))
+    results.extend(_json_object_list(_as_dict(request_json.get("research_execution")).get("tool_results")))
+    trace_metadata = _as_dict(audit_dict.get("trace_metadata"))
+    results.extend(_json_object_list(trace_metadata.get("tool_results")))
+    results.extend(_json_object_list(_as_dict(trace_metadata.get("request_json")).get("tool_results")))
+    for key, value in _walk_mapping_items(audit_dict):
+        if key != "tool_results":
+            continue
+        results.extend(_json_object_list(value))
+    deduped: dict[tuple[str, str], dict[str, Any]] = {}
+    for index, result in enumerate(results):
+        key = (str(result.get("tool_call_id") or index), str(result.get("tool_name") or ""))
+        deduped.setdefault(key, result)
+    return list(deduped.values())
+
+
+def _result_rows(result: Mapping[str, Any]) -> list[dict[str, Any]]:
+    rows = _rows_with_nested_items(_json_object_list(result.get("rows")))
+    payload = result.get("payload")
+    if isinstance(payload, Mapping):
+        rows.extend(_rows_with_nested_items(_json_object_list(payload.get("rows"))))
+        for key in ("top_items", "latest_items"):
+            rows.extend(_json_object_list(payload.get(key)))
+    return rows
+
+
+def _rows_with_nested_items(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    expanded: list[dict[str, Any]] = []
+    for row in rows:
+        expanded.append(row)
+        for key in ("top_items", "latest_items"):
+            expanded.extend(_json_object_list(row.get(key)))
+    return expanded
+
+
+def _row_confirms_independent_sources(row: Mapping[str, Any]) -> bool:
+    if _boolish(row.get("independent_source_confirmed")):
+        return True
+    domain_count = _int_or_none(row.get("source_domain_count"))
+    if domain_count is not None:
+        return domain_count > 1
+    source_domains = {_norm(domain) for domain in _json_list(row.get("source_domains")) if _norm(domain)}
+    return len(source_domains) > 1
+
+
+def _source_backed_asset_labels(packet: NewsItemBriefBasePacket) -> set[str]:
     labels: set[str] = set()
     text_fields = [
         packet.news_item.title,
@@ -135,6 +271,41 @@ def _walk_mapping_items(value: Any) -> list[tuple[str, Any]]:
     return items
 
 
+def _walk_action_audit_items(value: Any) -> list[tuple[str, Any]]:
+    items: list[tuple[str, Any]] = []
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            normalized_key = str(key)
+            items.append((normalized_key, child))
+            if normalized_key in _HOST_EVIDENCE_AUDIT_CONTAINERS:
+                continue
+            items.extend(_walk_action_audit_items(child))
+    elif isinstance(value, list):
+        for child in value:
+            items.extend(_walk_action_audit_items(child))
+    return items
+
+
+def _json_object_list(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list | tuple):
+        return []
+    rows: list[dict[str, Any]] = []
+    for item in value:
+        if isinstance(item, BaseModel):
+            rows.append(item.model_dump(mode="json"))
+        elif isinstance(item, Mapping):
+            rows.append({str(key): child for key, child in item.items()})
+    return rows
+
+
+def _json_list(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    return []
+
+
 def _as_dict(value: Any) -> dict[str, Any]:
     if value is None:
         return {}
@@ -143,6 +314,30 @@ def _as_dict(value: Any) -> dict[str, Any]:
     if isinstance(value, Mapping):
         return {str(key): child for key, child in value.items()}
     return {}
+
+
+def _boolish(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return _norm(value) in {"1", "true", "yes"}
+    if isinstance(value, int | float):
+        return value != 0
+    return False
+
+
+def _int_or_none(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.isdigit():
+            return int(stripped)
+    return None
 
 
 def _non_empty(value: Any) -> bool:

@@ -17,13 +17,9 @@ QUEUE_MIGRATION = Path("src/parallax/platform/db/alembic/versions/20260506_0002_
 STALE_RUNNING_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260506_0003_enrichment_stale_running_claims.py"
 )
-PROJECTION_MIGRATION = Path(
-    "src/parallax/platform/db/alembic/versions/20260506_0004_projection_operations.py"
-)
+PROJECTION_MIGRATION = Path("src/parallax/platform/db/alembic/versions/20260506_0004_projection_operations.py")
 ASSET_MIGRATION = Path("src/parallax/platform/db/alembic/versions/20260506_0005_asset_identity_resolution.py")
-TOKEN_RADAR_INTENT_MIGRATION = Path(
-    "src/parallax/platform/db/alembic/versions/20260507_0007_token_radar_v3_intents.py"
-)
+TOKEN_RADAR_INTENT_MIGRATION = Path("src/parallax/platform/db/alembic/versions/20260507_0007_token_radar_v3_intents.py")
 TOKEN_RADAR_REGISTRY_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260507_0008_token_radar_deterministic_registry.py"
 )
@@ -87,9 +83,7 @@ TOKEN_RADAR_RETENTION_WATCHLIST_STATS_MIGRATION = Path(
 TOKEN_NARRATIVE_EPOCHS_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260520_0070_token_narrative_epochs.py"
 )
-TOKEN_IMAGE_ASSETS_MIGRATION = Path(
-    "src/parallax/platform/db/alembic/versions/20260521_0078_token_image_assets.py"
-)
+TOKEN_IMAGE_ASSETS_MIGRATION = Path("src/parallax/platform/db/alembic/versions/20260521_0078_token_image_assets.py")
 TOKEN_PROFILE_LOCAL_LOGO_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260521_0079_token_profile_local_logo_hard_cut.py"
 )
@@ -153,9 +147,7 @@ EQUITY_FETCH_RUN_REAPER_MIGRATION = Path(
 TOKEN_RADAR_PUBLICATION_STATE_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260527_0111_token_radar_publication_state.py"
 )
-MACRO_SYNC_WORKER_MIGRATION = Path(
-    "src/parallax/platform/db/alembic/versions/20260527_0112_macro_sync_worker.py"
-)
+MACRO_SYNC_WORKER_MIGRATION = Path("src/parallax/platform/db/alembic/versions/20260527_0112_macro_sync_worker.py")
 TOKEN_RADAR_STABLE_PUBLICATION_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260527_0113_token_radar_stable_publication.py"
 )
@@ -210,14 +202,15 @@ NARRATIVE_ZERO_WRITE_HASHES_MIGRATION = Path(
 MACRO_SYNC_STATE_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260603_0146_macro_sync_state_hard_cut.py"
 )
+NEWS_RESEARCH_INDEX_SUPPORT_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260603_0147_news_research_index_support.py"
+)
 NEWS_REPOSITORY = Path("src/parallax/domains/news_intel/repositories/news_repository.py")
 TOKEN_PULSE_EQUITY_CPU_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260529_0124_token_pulse_equity_cpu_hard_cut.py"
 )
 DROP_RETIRED_PRODUCT_MIGRATION = Path(
-    "src/parallax/platform/db/alembic/versions/20260529_0125_drop_"
-    + "_".join(("equity", "event", "intel"))
-    + ".py"
+    "src/parallax/platform/db/alembic/versions/20260529_0125_drop_" + "_".join(("equity", "event", "intel")) + ".py"
 )
 ALEMBIC_VERSIONS = Path("src/parallax/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
@@ -1073,6 +1066,7 @@ def test_runtime_performance_hard_cut_revision_chain() -> None:
         (NEWS_ITEM_PROCESS_CLAIM_HARD_CUT_MIGRATION, "20260603_0144", "20260603_0143"),
         (NARRATIVE_ZERO_WRITE_HASHES_MIGRATION, "20260603_0145", "20260603_0144"),
         (MACRO_SYNC_STATE_HARD_CUT_MIGRATION, "20260603_0146", "20260603_0145"),
+        (NEWS_RESEARCH_INDEX_SUPPORT_MIGRATION, "20260603_0147", "20260603_0146"),
     )
 
     for migration, revision, down_revision in migrations:
@@ -1526,13 +1520,9 @@ def test_news_item_process_claim_hard_cut_migration_replaces_legacy_claim_states
     assert "SET lifecycle_status = 'raw'" in normalized_text
     assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_items_unprocessed_claim" in text
     assert (
-        "ON news_items(lifecycle_status, processing_next_due_at_ms, published_at_ms, news_item_id)"
-        in normalized_text
+        "ON news_items(lifecycle_status, processing_next_due_at_ms, published_at_ms, news_item_id)" in normalized_text
     )
-    assert (
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_items_processing_lease_expiry"
-        in normalized_text
-    )
+    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_items_processing_lease_expiry" in normalized_text
     assert "ON news_items(processing_leased_until_ms, news_item_id)" in normalized_text
     assert "WHERE lifecycle_status = 'processing'" in normalized_text
     assert "WHERE lifecycle_status = 'raw'" in normalized_text
@@ -1882,6 +1872,42 @@ def test_news_context_and_filter_hard_cut_drops_retired_schema() -> None:
     assert "CREATE TABLE" not in downgrade_text
     assert "context_policy_json" not in downgrade_text
     assert "news_context_items" not in downgrade_text
+
+
+def test_news_research_index_support_adds_concurrent_search_indexes() -> None:
+    assert NEWS_RESEARCH_INDEX_SUPPORT_MIGRATION.exists(), (
+        f"{NEWS_RESEARCH_INDEX_SUPPORT_MIGRATION} missing; add index support for News research reads"
+    )
+    text = NEWS_RESEARCH_INDEX_SUPPORT_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+    downgrade_text = text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+    for statement in (
+        'revision = "20260603_0147"',
+        'down_revision = "20260603_0146"',
+        "CREATE EXTENSION IF NOT EXISTS pg_trgm",
+        "with op.get_context().autocommit_block():",
+        "SET lock_timeout = '5s'",
+        "SET statement_timeout = '30min'",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_news_token_mentions_symbol_upper_item",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_news_fact_candidates_claim_trgm_valid",
+        "DROP INDEX CONCURRENTLY IF EXISTS idx_news_fact_candidates_claim_trgm_valid",
+        "DROP INDEX CONCURRENTLY IF EXISTS idx_news_token_mentions_symbol_upper_item",
+    ):
+        assert statement in text
+
+    assert (
+        "ON news_token_mentions ( upper(COALESCE(display_symbol, observed_symbol, '')), news_item_id )"
+        in normalized_text
+    )
+    assert (
+        "ON news_fact_candidates USING GIN (claim gin_trgm_ops) WHERE validation_status <> 'rejected'"
+        in normalized_text
+    )
+    assert "RESET lock_timeout" in text
+    assert "RESET statement_timeout" in text
+    assert "DROP INDEX CONCURRENTLY IF EXISTS idx_news_fact_candidates_claim_trgm_valid" in downgrade_text
+    assert "DROP INDEX CONCURRENTLY IF EXISTS idx_news_token_mentions_symbol_upper_item" in downgrade_text
 
 
 def test_asset_migration_adds_identity_resolution_tables() -> None:

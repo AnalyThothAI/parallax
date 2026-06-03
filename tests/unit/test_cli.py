@@ -184,3 +184,21 @@ def test_ops_news_dedup_commands_are_registered_without_compatibility_flags() ->
         parser.parse_args(["ops", "rebuild-news-canonical-items"])
     with pytest.raises(SystemExit):
         parser.parse_args(["ops", "cleanup-news-brief-input"])
+
+
+def test_ops_cleanup_news_item_brief_schema_hard_cut_requires_exactly_one_mode() -> None:
+    parser = build_parser()
+
+    dry_run = parser.parse_args(["ops", "cleanup-news-item-brief-schema-hard-cut", "--dry-run"])
+    execute = parser.parse_args(["ops", "cleanup-news-item-brief-schema-hard-cut", "--execute"])
+
+    assert dry_run.ops_command == "cleanup-news-item-brief-schema-hard-cut"
+    assert dry_run.dry_run is True
+    assert dry_run.execute is False
+    assert execute.execute is True
+    assert execute.dry_run is False
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ops", "cleanup-news-item-brief-schema-hard-cut"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ops", "cleanup-news-item-brief-schema-hard-cut", "--dry-run", "--execute"])

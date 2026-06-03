@@ -21,6 +21,7 @@ from parallax.domains.news_intel.types.news_item_brief import (
     NEWS_ITEM_BRIEF_AGENT_NAME,
     NEWS_ITEM_BRIEF_LANE,
     NEWS_ITEM_BRIEF_WORKFLOW_NAME,
+    NewsContextTargetRef,
 )
 from parallax.platform.db.postgres_migrations import alembic_config
 from tests.postgres_test_utils import connect_postgres_test
@@ -452,12 +453,8 @@ def test_explicit_rss_provider_article_key_is_not_global_identity(tmp_path) -> N
         stored_provider = conn.execute(
             "SELECT provider_article_id, provider_article_key FROM news_provider_items"
         ).fetchone()
-        edge = conn.execute(
-            "SELECT provider_article_key, match_type FROM news_item_observation_edges"
-        ).fetchone()
-        stored_news = conn.execute(
-            "SELECT canonical_item_key, provider_article_keys_json FROM news_items"
-        ).fetchone()
+        edge = conn.execute("SELECT provider_article_key, match_type FROM news_item_observation_edges").fetchone()
+        stored_news = conn.execute("SELECT canonical_item_key, provider_article_keys_json FROM news_items").fetchone()
     finally:
         conn.close()
 
@@ -541,9 +538,7 @@ def test_old_rss_provider_article_key_is_cleared_on_upsert(tmp_path) -> None:
               FROM news_provider_items
             """
         ).fetchone()
-        edge = conn.execute(
-            "SELECT provider_article_key, match_type FROM news_item_observation_edges"
-        ).fetchone()
+        edge = conn.execute("SELECT provider_article_key, match_type FROM news_item_observation_edges").fetchone()
         stored_news = conn.execute(
             "SELECT provider_article_keys_json FROM news_items WHERE news_item_id = %s",
             (news["news_item_id"],),
@@ -3032,6 +3027,7 @@ def test_page_projection_rebuilds_and_lists_agent_brief_columns_when_brief_updat
                         "status": "ready",
                         "summary_zh": "SOL ETF 申请提升关注。",
                         "agent_run_id": "run-brief-1",
+                        "schema_version": NEWS_ITEM_BRIEF_SCHEMA_VERSION,
                     },
                     "agent_status": "ready",
                     "agent_brief_computed_at_ms": NOW_MS + 100,
@@ -4081,6 +4077,342 @@ def test_fact_detail_sanitizes_internal_urls(tmp_path) -> None:
     assert fact["canonical_url"] == ""
 
 
+def test_news_item_detail_returns_stale_agent_brief_for_old_schema(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo, source_id="source-stale-detail", source_item_key="stale")
+        _insert_schema_brief(
+            repo,
+            news_item_id=news_item_id,
+            run_id="run-stale-detail",
+            schema_version="news_item_brief_v1",
+        )
+
+        detail = repo.get_news_item_detail(news_item_id=news_item_id)
+    finally:
+        conn.close()
+
+    assert detail is not None
+    assert detail["agent_brief"] == {
+        "status": "stale",
+        "stale_schema_version": "news_item_brief_v1",
+        "required_schema_version": NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+        "computed_at_ms": NOW_MS,
+        "agent_run_id": "run-stale-detail",
+    }
+
+
+def test_repository_lists_and_clears_current_briefs_outside_schema(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        stale_id = _insert_source_provider_and_item(repo, source_id="source-stale", source_item_key="stale")
+        missing_id = _insert_source_provider_and_item(repo, source_id="source-missing", source_item_key="missing")
+        current_id = _insert_source_provider_and_item(repo, source_id="source-current", source_item_key="current")
+        _insert_schema_brief(
+            repo,
+            news_item_id=stale_id,
+            run_id="run-stale",
+            schema_version="news_item_brief_v1",
+        )
+        _insert_schema_brief(
+            repo,
+            news_item_id=missing_id,
+            run_id="run-missing",
+            schema_version="",
+        )
+        _insert_schema_brief(
+            repo,
+            news_item_id=current_id,
+            run_id="run-current",
+            schema_version=NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+        )
+
+        listed = repo.list_current_brief_ids_outside_schema(required_schema_version=NEWS_ITEM_BRIEF_SCHEMA_VERSION)
+        cleared = repo.clear_current_briefs_outside_schema(
+            required_schema_version=NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+            commit=True,
+        )
+        remaining = conn.execute(
+            "SELECT news_item_id, schema_version FROM news_item_agent_briefs ORDER BY news_item_id"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert set(listed) == {missing_id, stale_id}
+    assert set(cleared) == {missing_id, stale_id}
+    assert [dict(row) for row in remaining] == [
+        {"news_item_id": current_id, "schema_version": NEWS_ITEM_BRIEF_SCHEMA_VERSION}
+    ]
+
+
+def test_research_fact_context_is_item_scoped_bounded_and_rejection_aware(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo)
+        _insert_fact_candidate(
+            conn,
+            news_item_id=news_item_id,
+            fact_candidate_id="fact-accepted",
+            validation_status="accepted",
+            claim="Issuer filed for a SOL ETF.",
+        )
+        _insert_fact_candidate(
+            conn,
+            news_item_id=news_item_id,
+            fact_candidate_id="fact-attention",
+            validation_status="attention",
+            claim="Analysts expect a decision window.",
+        )
+        _insert_fact_candidate(
+            conn,
+            news_item_id=news_item_id,
+            fact_candidate_id="fact-rejected",
+            validation_status="rejected",
+            claim="Rejected rumor.",
+        )
+        conn.commit()
+
+        default_rows = repo.get_fact_context(news_item_id=news_item_id, limit=10)
+        limited_rows = repo.get_fact_context(news_item_id=news_item_id, limit=1)
+        with_rejected = repo.get_fact_context(news_item_id=news_item_id, include_rejected=True, limit=10)
+    finally:
+        conn.close()
+
+    assert {row["validation_status"] for row in default_rows} == {"accepted", "attention"}
+    assert len(limited_rows) == 1
+    assert {row["validation_status"] for row in with_rejected} == {"accepted", "attention", "rejected"}
+    assert all(row["news_item_id"] == news_item_id for row in with_rejected)
+    assert all("raw_payload_json" not in row for row in with_rejected)
+    assert with_rejected[0]["result_basis"] == "fact_candidate"
+    assert with_rejected[0]["evidence_ref"].startswith("news_fact_candidates:")
+
+
+def test_research_observation_history_marks_same_domain_sources_not_independent(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo, source_id="source-1", source_item_key="shared")
+        _attach_observation_source(
+            repo,
+            news_item_id=news_item_id,
+            source_id="source-2",
+            source_domain="example.com",
+            source_name="Example Mirror",
+            source_item_key="shared-mirror",
+        )
+        conn.commit()
+
+        history = repo.get_news_observation_history(news_item_id=news_item_id, limit=10)
+    finally:
+        conn.close()
+
+    assert history["news_item_id"] == news_item_id
+    assert history["source_count"] == 2
+    assert history["source_domain_count"] == 1
+    assert history["observation_count"] == 2
+    assert history["duplicate_count"] == 2
+    assert history["independent_source_confirmed"] is False
+    assert history["independence_class"] == "same_domain_only"
+    assert history["source_ids"] == ["source-1", "source-2"]
+    assert history["source_domains"] == ["example.com"]
+    assert history["same_domain_notes"]
+    assert all("provider_item_id" not in row for row in history["observed_sources"])
+
+
+def test_research_archive_excludes_current_and_returns_compact_public_rows(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        current_id = _insert_source_provider_and_item(repo, source_item_key="current", title="SOL ETF current")
+        archive_id = _insert_source_provider_and_item(repo, source_item_key="archive", title="SOL ETF archive")
+        conn.execute(
+            """
+            UPDATE news_items
+               SET summary = 'Archive summary for SOL ETF.',
+                   body_text = repeat('body should not be selected ', 20),
+                   published_at_ms = %s
+             WHERE news_item_id = %s
+            """,
+            (NOW_MS - 60_000, archive_id),
+        )
+        _insert_token_mention(
+            conn,
+            news_item_id=archive_id,
+            mention_id="mention-archive-sol",
+            observed_symbol="SOL",
+            target_type="cex_token",
+            target_id="binance:SOL",
+            display_symbol="SOL",
+        )
+        _insert_brief(repo, news_item_id=archive_id, run_id="run-archive-sol")
+        conn.commit()
+
+        rows = repo.search_news_archive(
+            current_news_item_id=current_id,
+            query_terms=["SOL ETF"],
+            symbols=["SOL"],
+            window_hours=168,
+            match_modes=["title", "token", "fact", "source_title"],
+            limit=8,
+            now_ms=NOW_MS,
+        )
+    finally:
+        conn.close()
+
+    assert [row["news_item_id"] for row in rows] == [archive_id]
+    row = rows[0]
+    assert row["title"] == "SOL ETF archive"
+    assert row["summary"] == "Archive summary for SOL ETF."
+    assert row["source_domain"] == "example.com"
+    assert row["matched_terms"]
+    assert row["symbols"] == ["SOL"]
+    assert row["brief_status"] == "ready"
+    assert row["novelty_status"] == "follow_up"
+    assert row["confirmation_state"] == "unconfirmed"
+    assert row["source_consensus_zh"] == "单源观察。"
+    assert row["result_basis"] in {"term_match", "symbol_match", "similar_news"}
+    assert "body_text" not in row
+    assert "raw_payload_json" not in row
+    assert "provider_item_id" not in row
+
+
+def test_research_target_context_returns_exact_aggregate_and_heuristic_fallback_rows(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        current_id = _insert_source_provider_and_item(repo, source_item_key="target-current", title="Current SOL")
+        exact_id = _insert_source_provider_and_item(repo, source_item_key="target-exact", title="SOL exact listing")
+        fallback_id = _insert_source_provider_and_item(
+            repo,
+            source_item_key="target-fallback",
+            title="ARB fallback market update",
+        )
+        _insert_token_mention(
+            conn,
+            news_item_id=exact_id,
+            mention_id="mention-exact-sol",
+            observed_symbol="SOL",
+            target_type="cex_token",
+            target_id="binance:SOL",
+            display_symbol="SOL",
+            confidence=0.95,
+        )
+        _insert_token_mention(
+            conn,
+            news_item_id=fallback_id,
+            mention_id="mention-fallback-sol",
+            observed_symbol="ARB",
+            target_type=None,
+            target_id=None,
+            display_symbol="ARB",
+            confidence=0.35,
+        )
+        conn.commit()
+
+        context = repo.get_target_news_context(
+            current_news_item_id=current_id,
+            target_refs=[NewsContextTargetRef(target_type="cex_token", target_id="binance:SOL", display_symbol="SOL")],
+            symbol_fallbacks=["SOL", "ARB"],
+            window_hours=72,
+            limit=12,
+            now_ms=NOW_MS,
+        )
+    finally:
+        conn.close()
+
+    assert context["counts"]["total"] == 2
+    assert context["counts"]["exact_target"] == 1
+    assert context["counts"]["symbol_heuristic"] == 1
+    assert context["source_domain_count"] == 1
+    assert context["matching_basis"] == ["exact_target", "symbol_heuristic"]
+    assert {row["news_item_id"] for row in context["top_items"]} == {exact_id, fallback_id}
+    exact_row = next(row for row in context["top_items"] if row["news_item_id"] == exact_id)
+    fallback_row = next(row for row in context["top_items"] if row["news_item_id"] == fallback_id)
+    assert exact_row["target_type"] == "cex_token"
+    assert exact_row["target_id"] == "binance:SOL"
+    assert exact_row["matching_basis"] == "exact_target"
+    assert fallback_row["display_symbol"] == "ARB"
+    assert fallback_row["target_id"] == ""
+    assert fallback_row["matching_basis"] == "symbol_heuristic"
+    assert all("raw_payload_json" not in row for row in context["top_items"])
+
+
+def test_research_target_context_empty_result_returns_zero_count_envelope(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        current_id = _insert_source_provider_and_item(repo, source_item_key="target-empty", title="Current SOL")
+
+        context = repo.get_target_news_context(
+            current_news_item_id=current_id,
+            target_refs=[NewsContextTargetRef(target_type="cex_token", target_id="binance:SOL", display_symbol="SOL")],
+            symbol_fallbacks=["ARB"],
+            window_hours=72,
+            limit=12,
+            now_ms=NOW_MS,
+        )
+    finally:
+        conn.close()
+
+    assert context == {
+        "counts": {"total": 0, "exact_target": 0, "symbol_heuristic": 0},
+        "top_items": [],
+        "latest_items": [],
+        "source_domain_count": 0,
+        "high_score_count": 0,
+        "matching_basis": [],
+        "truncated": False,
+        "result_basis": "",
+        "evidence_refs": [],
+    }
+
+
+def test_research_source_quality_context_returns_targeted_source_health(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo, source_id="source-quality", title="Quality")
+        repo.replace_source_quality_rows(
+            rows=[
+                {
+                    **_source_quality_row(source_id="source-quality", computed_at_ms=NOW_MS),
+                    "diagnostics_json": {"status": "healthy", "health": "fresh", "window_ms": 86_400_000},
+                }
+            ],
+            status_window="24h",
+            commit=True,
+        )
+
+        context = repo.get_source_quality_context_for_item(news_item_id=news_item_id)
+    finally:
+        conn.close()
+
+    assert context["news_item_id"] == news_item_id
+    assert context["source_domain"] == "example.com"
+    assert context["source_name"] == "Example"
+    assert context["source_role"] == "observed_source"
+    assert context["trust_tier"] == "standard"
+    assert context["window"] == "24h"
+    assert context["items_fetched"] == 10
+    assert context["duplicate_rate"] == 0.2
+    assert context["quality_score"] == 82.0
+    assert context["source_quality_status"] == "healthy"
+    assert context["source_health"] == "fresh"
+    assert "multi_source_confirmed" not in context
+    assert "independent_source_confirmed" not in context
+
+
 def test_repository_session_exposes_news_repository(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
@@ -4552,6 +4884,170 @@ def _source_quality_row(*, source_id: str, computed_at_ms: int) -> dict[str, obj
         "diagnostics_json": {"status": "healthy", "window_ms": 86_400_000},
         "projection_version": "source-quality-test-v1",
     }
+
+
+def _insert_fact_candidate(
+    conn,
+    *,
+    news_item_id: str,
+    fact_candidate_id: str,
+    validation_status: str,
+    claim: str,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO news_fact_candidates (
+          fact_candidate_id, news_item_id, event_type, claim, realis, evidence_quote,
+          evidence_span_start, evidence_span_end, source_role, required_slots_json,
+          affected_targets_json, validation_status, rejection_reasons_json, extraction_method,
+          policy_version, created_at_ms, updated_at_ms
+        )
+        VALUES (
+          %s, %s, 'listing', %s, 'reported_claim', 'Evidence quote',
+          0, 14, 'observed_source', '{}'::jsonb, %s, %s, '[]'::jsonb,
+          'test', 'test', %s, %s
+        )
+        """,
+        (
+            fact_candidate_id,
+            news_item_id,
+            claim,
+            Jsonb([{"target_type": "cex_token", "target_id": "binance:SOL", "display_symbol": "SOL"}]),
+            validation_status,
+            NOW_MS,
+            NOW_MS,
+        ),
+    )
+
+
+def _insert_token_mention(
+    conn,
+    *,
+    news_item_id: str,
+    mention_id: str,
+    observed_symbol: str,
+    target_type: str | None,
+    target_id: str | None,
+    display_symbol: str,
+    confidence: float = 0.8,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO news_token_mentions (
+          mention_id, news_item_id, observed_symbol, resolution_status, target_type,
+          target_id, display_symbol, reason_codes_json, candidate_targets_json, evidence_strength,
+          confidence, created_at_ms
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, '[]'::jsonb, '[]'::jsonb, 'medium', %s, %s)
+        """,
+        (
+            mention_id,
+            news_item_id,
+            observed_symbol,
+            "known_symbol" if target_type and target_id else "ambiguous_symbol",
+            target_type,
+            target_id,
+            display_symbol,
+            confidence,
+            NOW_MS,
+        ),
+    )
+
+
+def _attach_observation_source(
+    repo: NewsRepository,
+    *,
+    news_item_id: str,
+    source_id: str,
+    source_domain: str,
+    source_name: str,
+    source_item_key: str,
+) -> None:
+    repo.upsert_source(
+        source_id=source_id,
+        provider_type="rss",
+        feed_url=f"https://{source_domain}/{source_id}.xml",
+        source_domain=source_domain,
+        source_name=source_name,
+        refresh_interval_seconds=300,
+        now_ms=NOW_MS,
+    )
+    fetch_run_id = repo.start_fetch_run(source_id=source_id, started_at_ms=NOW_MS)
+    provider = repo.upsert_provider_item(
+        source_id=source_id,
+        fetch_run_id=fetch_run_id,
+        source_item_key=source_item_key,
+        canonical_url=f"https://{source_domain}/news/{source_item_key}",
+        payload_hash=f"hash-{source_item_key}",
+        raw_payload_json={"title": source_name},
+        fetched_at_ms=NOW_MS,
+    )
+    repo.conn.execute(
+        """
+        INSERT INTO news_item_observation_edges (
+          provider_item_id, news_item_id, source_id, match_type, match_confidence,
+          policy_version, evidence_json, first_seen_at_ms, last_seen_at_ms
+        )
+        VALUES (%s, %s, %s, 'same_content_hash', 'medium', 'test', '{}'::jsonb, %s, %s)
+        """,
+        (provider["provider_item_id"], news_item_id, source_id, NOW_MS, NOW_MS),
+    )
+
+
+def _insert_brief(repo: NewsRepository, *, news_item_id: str, run_id: str) -> None:
+    _insert_agent_run(repo, news_item_id=news_item_id, run_id=run_id)
+    repo.upsert_news_item_agent_brief(
+        news_item_id=news_item_id,
+        agent_run_id=run_id,
+        status="ready",
+        direction="neutral",
+        decision_class="context",
+        brief_json={
+            "summary_zh": "简短摘要。",
+            "market_read_zh": "市场影响有限。",
+            "novelty_status": "follow_up",
+            "confirmation_state": "unconfirmed",
+            "source_consensus_zh": "单源观察。",
+        },
+        input_hash="input",
+        artifact_version_hash="artifact",
+        prompt_version=NEWS_ITEM_BRIEF_PROMPT_VERSION,
+        schema_version=NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+        validator_version=NEWS_ITEM_BRIEF_VALIDATOR_VERSION,
+        computed_at_ms=NOW_MS,
+        created_at_ms=NOW_MS,
+        updated_at_ms=NOW_MS,
+    )
+
+
+def _insert_schema_brief(
+    repo: NewsRepository,
+    *,
+    news_item_id: str,
+    run_id: str,
+    schema_version: str,
+) -> None:
+    _insert_agent_run(repo, news_item_id=news_item_id, run_id=run_id)
+    repo.upsert_news_item_agent_brief(
+        news_item_id=news_item_id,
+        agent_run_id=run_id,
+        status="ready",
+        direction="bullish",
+        decision_class="watch",
+        brief_json={
+            "summary_zh": "schema cleanup fixture",
+            "market_read_zh": "schema cleanup fixture",
+            "status": "ready",
+        },
+        input_hash=f"input-{run_id}",
+        artifact_version_hash="artifact",
+        prompt_version=NEWS_ITEM_BRIEF_PROMPT_VERSION,
+        schema_version=schema_version,
+        validator_version=NEWS_ITEM_BRIEF_VALIDATOR_VERSION,
+        computed_at_ms=NOW_MS,
+        created_at_ms=NOW_MS,
+        updated_at_ms=NOW_MS,
+    )
 
 
 class _SingleConnectionWorkerDB:

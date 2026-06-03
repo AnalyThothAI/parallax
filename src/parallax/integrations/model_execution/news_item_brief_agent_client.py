@@ -8,8 +8,8 @@ from parallax.domains.news_intel.services.news_item_brief_stage import (
 from parallax.domains.news_intel.types.news_item_brief import (
     NEWS_ITEM_BRIEF_PROMPT_VERSION,
     NEWS_ITEM_BRIEF_SCHEMA_VERSION,
-    NewsItemBriefInputPacket,
     NewsItemBriefPayload,
+    NewsItemBriefSynthesisPacket,
 )
 from parallax.integrations.model_execution.output_schema import StrictJsonOutputSchema
 from parallax.platform.agent_execution import (
@@ -48,7 +48,7 @@ class LiteLLMNewsItemBriefClient:
     def try_reserve_execution(self, lane: str, *, rate_units: int = 1) -> AgentCapacityReservation:
         return self._agent_gateway.try_reserve(lane, rate_units=rate_units)
 
-    def request_audit(self, *, run_id: str, packet: NewsItemBriefInputPacket) -> dict[str, Any]:
+    def request_audit(self, *, run_id: str, packet: NewsItemBriefSynthesisPacket) -> dict[str, Any]:
         stage = build_news_item_brief_stage(packet=packet, run_id=run_id)
         return self._agent_gateway.request_audit(stage).model_dump(mode="json")
 
@@ -56,7 +56,7 @@ class LiteLLMNewsItemBriefClient:
         self,
         *,
         run_id: str,
-        packet: NewsItemBriefInputPacket,
+        packet: NewsItemBriefSynthesisPacket,
         reservation: AgentCapacityReservation | None = None,
     ) -> dict[str, Any]:
         stage = build_news_item_brief_stage(packet=packet, run_id=run_id)

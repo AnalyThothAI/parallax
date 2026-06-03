@@ -7,7 +7,14 @@ from types import SimpleNamespace
 from typing import Any
 
 from parallax.domains.news_intel.runtime.news_item_brief_worker import NewsItemBriefWorker
-from parallax.domains.news_intel.types.news_item_brief import NEWS_ITEM_BRIEF_LANE, NewsItemBriefPayload
+from parallax.domains.news_intel.services.news_item_brief_input import (
+    news_item_brief_synthesis_material_payload,
+)
+from parallax.domains.news_intel.types.news_item_brief import (
+    NEWS_ITEM_BRIEF_LANE,
+    NewsItemBriefPayload,
+    NewsItemBriefSynthesisPacket,
+)
 from parallax.platform.agent_execution import (
     AgentCapacityReservation,
     AgentExecutionError,
@@ -25,8 +32,20 @@ def test_worker_processes_provider_signal_target_with_llm_context() -> None:
     asyncio.run(_test_worker_processes_provider_signal_target_with_llm_context())
 
 
+def test_worker_runs_research_tools_then_synthesizer_packet() -> None:
+    asyncio.run(_test_worker_runs_research_tools_then_synthesizer_packet())
+
+
+def test_worker_empty_research_path_skips_tools_but_writes_v2() -> None:
+    asyncio.run(_test_worker_empty_research_path_skips_tools_but_writes_v2())
+
+
 def test_worker_skips_fresh_current_even_when_source_updated_is_noisy() -> None:
     asyncio.run(_test_worker_skips_fresh_current_even_when_source_updated_is_noisy())
+
+
+def test_worker_reprocesses_current_when_research_policy_version_is_stale() -> None:
+    asyncio.run(_test_worker_reprocesses_current_when_research_policy_version_is_stale())
 
 
 def test_worker_reprocesses_failed_current_even_when_input_hash_matches() -> None:
@@ -52,11 +71,18 @@ async def _test_worker_writes_ready_brief_and_emits_wake() -> None:
     assert provider.reserve_calls == [NEWS_ITEM_BRIEF_LANE]
     assert provider.reserve_rate_units == [1]
     assert provider.execution_calls == 1
+    assert isinstance(provider.seen_packets[0], NewsItemBriefSynthesisPacket)
+    assert provider.seen_packets[0].base_packet.news_item.news_item_id == "news-item-1"
     assert provider.saw_db_session_during_execution is False
     assert db.news.runs[0]["status"] == "completed"
     assert db.news.runs[0]["outcome"] == "ready"
     assert db.news.runs[0]["execution_started"] is True
+    assert db.news.runs[0]["input_hash"] == provider.seen_packets[0].input_hash
+    assert db.news.runs[0]["request_json"]["synthesis_input_hash"] == provider.seen_packets[0].input_hash
+    assert db.news.runs[0]["request_json"]["research_plan"]["status"] in {"ready", "skip"}
+    assert "base_packet" in db.news.runs[0]["request_json"]
     assert db.news.briefs[0]["status"] == "ready"
+    assert db.news.briefs[0]["input_hash"] == provider.seen_packets[0].input_hash
     assert db.news.briefs[0]["brief_json"]["summary_zh"] == "SOL ETF filing boosts attention."
     assert wake_bus.brief_updates == [1]
     assert result.processed == 1
@@ -85,8 +111,8 @@ async def _test_worker_processes_provider_signal_target_with_llm_context() -> No
     assert provider.reserve_calls == [NEWS_ITEM_BRIEF_LANE]
     assert provider.reserve_rate_units == [1]
     assert provider.execution_calls == 1
-    assert provider.seen_packets[0].provider_signal_evidence.score == 88
-    assert provider.seen_packets[0].provider_signal_evidence.token_impacts[0].symbol == "SOL"
+    assert provider.seen_packets[0].base_packet.provider_signal_evidence.score == 88
+    assert provider.seen_packets[0].base_packet.provider_signal_evidence.token_impacts[0].symbol == "SOL"
     assert db.news.runs[0]["status"] == "completed"
     assert db.news.briefs[0]["status"] == "ready"
     assert len(db.dirty.done) == 1
@@ -95,11 +121,70 @@ async def _test_worker_processes_provider_signal_target_with_llm_context() -> No
     assert "provider_signal_skip" not in result.notes
 
 
+async def _test_worker_runs_research_tools_then_synthesizer_packet() -> None:
+    candidate = _candidate()
+    candidate["fact_candidates"] = [
+        {
+            "fact_candidate_id": "fact-news-item-1",
+            "event_type": "etf_filing",
+            "claim": "Issuer files for a SOL ETF.",
+            "realis": "actual",
+            "validation_status": "accepted",
+            "affected_targets_json": [{"symbol": "SOL"}],
+            "evidence_quote": "files for a SOL ETF",
+        }
+    ]
+    db = FakeDB([candidate])
+    provider = FakeBriefProvider(payload=_ready_payload())
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert result.processed == 1
+    assert provider.execution_calls == 1
+    assert isinstance(provider.seen_packets[0], NewsItemBriefSynthesisPacket)
+    assert provider.seen_packets[0].base_packet.fact_lanes
+    assert db.news.tool_calls[0] == "get_fact_context"
+    assert "search_news_archive" in db.news.tool_calls
+    run = db.news.runs[0]
+    assert run["request_json"]["research_plan"]["tool_calls"][0]["tool_name"] == "get_fact_context"
+    assert run["request_json"]["tool_results"][0]["result_hash"].startswith("sha256:")
+    assert run["request_json"]["research_execution"]["status"] == "ok"
+    assert run["request_json"]["research_hashes"]["synthesis_input_hash"] == provider.seen_packets[0].input_hash
+
+
+async def _test_worker_empty_research_path_skips_tools_but_writes_v2() -> None:
+    candidate = _candidate()
+    candidate["item"]["content_class"] = "low_signal"
+    candidate["token_mentions"][0].pop("target_type", None)
+    candidate["token_mentions"][0].pop("target_id", None)
+    db = FakeDB([candidate])
+    provider = FakeBriefProvider(payload=_ready_payload())
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert result.processed == 1
+    assert provider.execution_calls == 1
+    assert isinstance(provider.seen_packets[0], NewsItemBriefSynthesisPacket)
+    assert provider.seen_packets[0].research_plan.status == "skip"
+    assert provider.seen_packets[0].tool_results == []
+    assert db.news.tool_calls == []
+    run = db.news.runs[0]
+    assert run["request_json"]["research_plan"]["status"] == "skip"
+    assert run["request_json"]["research_plan"]["tool_calls"] == []
+    assert run["request_json"]["synthesis_input_hash"].startswith("sha256:")
+    assert db.news.briefs[0]["brief_json"]["novelty_status"] == "new"
+
+
 async def _test_worker_skips_fresh_current_even_when_source_updated_is_noisy() -> None:
     candidate = _candidate()
     provider = FakeBriefProvider(payload=_ready_payload())
+    db = FakeDB([candidate])
+    provider.db = db
     packet = provider.packet_for_candidate(candidate)
     agent_config = provider.agent_config()
+    db.news.tool_calls.clear()
     candidate["source_updated_at_ms"] = NOW_MS + 60_000
     candidate["current_brief"] = {
         "news_item_id": candidate["item"]["news_item_id"],
@@ -112,7 +197,7 @@ async def _test_worker_skips_fresh_current_even_when_source_updated_is_noisy() -
         "computed_at_ms": NOW_MS - 60_000,
         "brief_json": _ready_payload(),
     }
-    db = FakeDB([candidate])
+    candidate["latest_run"] = _latest_run_for_packet(packet)
     worker = _worker(db=db, provider=provider)
 
     result = await worker.run_once()
@@ -120,15 +205,53 @@ async def _test_worker_skips_fresh_current_even_when_source_updated_is_noisy() -
     assert provider.reserve_calls == [NEWS_ITEM_BRIEF_LANE]
     assert provider.request_audit_calls == []
     assert provider.execution_calls == 0
+    assert db.news.tool_calls == []
     assert db.news.runs == []
     assert db.news.briefs == []
     assert len(db.dirty.done) == 1
     assert result.skipped == 1
 
 
+async def _test_worker_reprocesses_current_when_research_policy_version_is_stale() -> None:
+    candidate = _candidate()
+    provider = FakeBriefProvider(payload=_ready_payload())
+    db = FakeDB([candidate])
+    provider.db = db
+    packet = provider.packet_for_candidate(candidate)
+    agent_config = provider.agent_config()
+    db.news.tool_calls.clear()
+    stale_synthesis_hash = "sha256:stale-synthesis"
+    latest_run = _latest_run_for_packet(packet)
+    latest_run["request_json"]["research_plan"]["policy_version"] = "news_item_research_policy_old"
+    latest_run["request_json"]["research_hashes"]["synthesis_input_hash"] = stale_synthesis_hash
+    latest_run["request_json"]["synthesis_input_hash"] = stale_synthesis_hash
+    candidate["current_brief"] = {
+        "news_item_id": candidate["item"]["news_item_id"],
+        "status": "ready",
+        "input_hash": stale_synthesis_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
+        "prompt_version": packet.prompt_version,
+        "schema_version": packet.schema_version,
+        "validator_version": agent_config.validator_version,
+        "computed_at_ms": NOW_MS - 60_000,
+        "brief_json": _ready_payload(),
+    }
+    candidate["latest_run"] = latest_run
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.execution_calls == 1
+    assert db.news.tool_calls
+    assert db.news.runs[0]["input_hash"] != stale_synthesis_hash
+    assert result.processed == 1
+
+
 async def _test_worker_reprocesses_failed_current_even_when_input_hash_matches() -> None:
     candidate = _candidate()
     provider = FakeBriefProvider(payload=_ready_payload())
+    db = FakeDB([candidate])
+    provider.db = db
     packet = provider.packet_for_candidate(candidate)
     agent_config = provider.agent_config()
     candidate["current_brief"] = {
@@ -146,7 +269,6 @@ async def _test_worker_reprocesses_failed_current_even_when_input_hash_matches()
             "terminal_reason": "domain_validation_failed",
         },
     }
-    db = FakeDB([candidate])
     worker = _worker(db=db, provider=provider)
 
     result = await worker.run_once()
@@ -520,6 +642,7 @@ def _candidate(*, provider_score: int = 88) -> dict[str, Any]:
                 "normalized_symbol": "SOL",
                 "resolution_status": "known_symbol",
                 "display_symbol": "SOL",
+                "target_type": "CexToken",
                 "target_id": "cex:SOL",
             }
         ],
@@ -547,8 +670,15 @@ def _ready_payload() -> dict[str, Any]:
         "status": "ready",
         "direction": "bullish",
         "decision_class": "driver",
+        "novelty_status": "new",
+        "confirmation_state": "single_source",
         "summary_zh": "SOL ETF filing boosts attention.",
         "market_read_zh": "SOL ETF 申请强化监管叙事，但审批时间仍不确定。",
+        "source_consensus_zh": "当前为单一来源和本地上下文支持。",
+        "retrieval_notes_zh": "已使用本地研究上下文。",
+        "retrieval_evidence_refs": ["item:summary"],
+        "research_todos_zh": ["跟踪后续监管文件"],
+        "used_tool_call_ids": [],
         "bull_view": {
             "strength": "moderate",
             "thesis_zh": "ETF 申请可能带来持续关注。",
@@ -634,11 +764,13 @@ class FakeBriefProvider:
         }
 
     def packet_for_candidate(self, candidate: dict[str, Any]) -> Any:
-        from parallax.domains.news_intel.runtime.news_item_brief_worker import _packet_from_candidate
+        from parallax.domains.news_intel.runtime.news_item_brief_worker import _synthesis_packet_from_candidate
 
-        return _packet_from_candidate(
+        return _synthesis_packet_from_candidate(
             candidate,
             agent_config=self.agent_config(),
+            news_repo=self.db.news if self.db is not None else FakeNewsRepository([candidate]),
+            now_ms=NOW_MS,
         )
 
     def agent_config(self) -> Any:
@@ -653,12 +785,16 @@ class FakeBriefProvider:
 
 
 def _audit(*, run_id: str, packet: Any, execution_started: bool) -> dict[str, Any]:
+    assert isinstance(packet, NewsItemBriefSynthesisPacket)
+    news_item = packet.base_packet.news_item
+    synthesis_payload = news_item_brief_synthesis_material_payload(packet)
+    research_packet_hash = synthesis_payload["research_packet"]["research_packet_hash"]
     return {
         "provider": "litellm",
         "backend": "litellm_sdk",
         "model": "gpt-5-mini",
         "lane": NEWS_ITEM_BRIEF_LANE,
-        "stage": "news_item_brief",
+        "stage": "news_item_brief_synthesis",
         "workflow_name": "parallax.news_item_brief",
         "agent_name": "NewsItemBriefAgent",
         "execution_trace_id": f"trace-{run_id}",
@@ -671,11 +807,35 @@ def _audit(*, run_id: str, packet: Any, execution_started: bool) -> dict[str, An
         "output_hash": "output-hash-1" if execution_started else None,
         "latency_ms": 123 if execution_started else None,
         "usage": {"input_tokens": 100, "output_tokens": 80} if execution_started else {},
-        "trace_metadata": {"run_id": run_id, "news_item_id": packet.news_item.news_item_id},
+        "trace_metadata": {
+            "phase": "synthesis",
+            "run_id": run_id,
+            "news_item_id": news_item.news_item_id,
+            "base_input_hash": packet.base_packet.input_hash,
+            "research_packet_hash": research_packet_hash,
+            "synthesis_input_hash": packet.input_hash,
+        },
         "execution_started": execution_started,
         "status": "done" if execution_started else "planned",
         "error_class": None,
         "error_message": None,
+    }
+
+
+def _latest_run_for_packet(packet: NewsItemBriefSynthesisPacket) -> dict[str, Any]:
+    synthesis_payload = news_item_brief_synthesis_material_payload(packet)
+    research_packet_hash = synthesis_payload["research_packet"]["research_packet_hash"]
+    return {
+        "run_id": "latest-run-1",
+        "request_json": {
+            "research_plan": packet.research_plan.model_dump(mode="json"),
+            "research_hashes": {
+                "base_input_hash": packet.base_packet.input_hash,
+                "research_packet_hash": research_packet_hash,
+                "synthesis_input_hash": packet.input_hash,
+            },
+            "synthesis_input_hash": packet.input_hash,
+        },
     }
 
 
@@ -737,6 +897,7 @@ class FakeNewsRepository:
         self.runs: list[dict[str, Any]] = []
         self.briefs: list[dict[str, Any]] = []
         self.loaded_target_ids: list[list[str]] = []
+        self.tool_calls: list[str] = []
 
     def load_items_for_brief_targets(self, *, news_item_ids: list[str]) -> list[dict[str, Any]]:
         self.loaded_target_ids.append(list(news_item_ids))
@@ -754,6 +915,73 @@ class FakeNewsRepository:
     def list_source_ids_for_news_items(self, *, news_item_ids: list[str]) -> list[str]:
         assert news_item_ids == ["news-item-1"]
         return ["source-1"]
+
+    def get_fact_context(self, **kwargs: Any) -> list[dict[str, Any]]:
+        self.tool_calls.append("get_fact_context")
+        return [
+            {
+                "news_item_id": kwargs["news_item_id"],
+                "fact_candidate_id": "fact-news-item-1",
+                "event_type": "etf_filing",
+                "claim": "Issuer files for a SOL ETF.",
+                "realis": "actual",
+                "validation_status": "accepted",
+                "evidence_ref": "fact:fact-news-item-1",
+            }
+        ]
+
+    def search_news_archive(self, **kwargs: Any) -> list[dict[str, Any]]:
+        self.tool_calls.append("search_news_archive")
+        return [
+            {
+                "news_item_id": "news-item-archive-1",
+                "title": "Earlier SOL ETF coverage",
+                "summary": "Earlier archive context.",
+                "published_at_ms": NOW_MS - 3_600_000,
+                "source_domain": "example.com",
+                "symbols": kwargs.get("symbols") or [],
+                "matched_terms": kwargs.get("query_terms") or [],
+                "evidence_ref": "archive:news-item-archive-1",
+            }
+        ]
+
+    def get_target_news_context(self, **kwargs: Any) -> list[dict[str, Any]]:
+        self.tool_calls.append("get_target_news_context")
+        return [
+            {
+                "news_item_id": "news-item-target-1",
+                "target_type": kwargs["target_refs"][0]["target_type"],
+                "target_id": kwargs["target_refs"][0]["target_id"],
+                "display_symbol": "SOL",
+                "title": "SOL target context",
+                "source_domain": "example.com",
+                "evidence_ref": "target:SOL",
+            }
+        ]
+
+    def get_news_observation_history(self, **kwargs: Any) -> list[dict[str, Any]]:
+        self.tool_calls.append("get_observation_history")
+        return [
+            {
+                "news_item_id": kwargs["news_item_id"],
+                "title": "SOL ETF filing",
+                "source_domain": "example.com",
+                "observation_count": 1,
+                "evidence_ref": "observation:news-item-1",
+            }
+        ]
+
+    def get_source_quality_context_for_item(self, **kwargs: Any) -> list[dict[str, Any]]:
+        self.tool_calls.append("get_source_quality")
+        return [
+            {
+                "news_item_id": kwargs["news_item_id"],
+                "source_domain": "example.com",
+                "trust_tier": "standard",
+                "quality_score": 80,
+                "evidence_ref": "source:example.com",
+            }
+        ]
 
 
 class FakeDirtyRepository:

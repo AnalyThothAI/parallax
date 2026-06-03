@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 from parallax.domains.news_intel.services.news_item_brief_input import (
+    build_news_item_brief_base_packet,
     build_news_item_brief_input_packet,
     news_item_brief_material_input_payload,
+    news_item_brief_synthesis_material_hash,
+    news_item_brief_synthesis_material_payload,
 )
-from parallax.domains.news_intel.types.news_item_brief import NewsItemBriefAgentConfig
+from parallax.domains.news_intel.types.news_item_brief import (
+    NewsItemBriefAgentConfig,
+    NewsItemBriefSynthesisPacket,
+    NewsItemResearchPlan,
+)
 from parallax.platform.agent_hashing import json_sha256
 
 
@@ -228,3 +235,133 @@ def test_packet_hash_ignores_fetched_at_ms() -> None:
 
     assert first.input_hash == second.input_hash
     assert "fetched_at_ms" not in first.model_dump(mode="json")["news_item"]
+
+
+def test_base_packet_exposes_allowed_context_targets_from_resolved_mentions() -> None:
+    packet = build_news_item_brief_base_packet(
+        item={
+            "news_item_id": "item-targets",
+            "title": "SOL target context",
+            "summary": "SOL gets target context.",
+            "content_hash": "sha256:targets",
+            "content_class": "exchange_listing",
+        },
+        token_mentions=[
+            {
+                "mention_id": "mention-sol",
+                "observed_symbol": "SOL",
+                "display_symbol": "SOL",
+                "resolution_status": "unique_by_context",
+                "target_type": "CexToken",
+                "target_id": "cex_token:SOL",
+                "confidence": 0.91,
+            },
+            {
+                "mention_id": "mention-noisy",
+                "observed_symbol": "XYZ-CL",
+                "display_symbol": "XYZ-CL",
+                "resolution_status": "unknown_attention",
+                "target_type": "CexToken",
+                "target_id": "cex_token:XYZ-CL",
+            },
+        ],
+        fact_candidates=[],
+        agent_config=_agent_config(),
+        material_budget_chars=12_000,
+    )
+
+    assert packet.content_class == "exchange_listing"
+    assert [target.target_id for target in packet.allowed_context_targets] == ["cex_token:SOL"]
+    assert packet.allowed_context_targets[0].target_type == "CexToken"
+    assert packet.allowed_context_targets[0].display_symbol == "SOL"
+    assert packet.allowed_context_targets[0].target_scope == "crypto"
+    assert packet.allowed_context_targets[0].confidence == 0.91
+    assert "unresolved_mentions_excluded" in packet.base_budget_report.truncation_reasons
+
+
+def test_base_packet_reports_truncated_facts_tokens_and_material_budget() -> None:
+    token_mentions = [
+        {
+            "mention_id": f"token-{index:03d}",
+            "observed_symbol": f"T{index:03d}",
+            "display_symbol": f"T{index:03d}",
+            "resolution_status": "known_symbol",
+            "target_type": "asset",
+            "target_id": f"asset:{index:03d}",
+        }
+        for index in range(70)
+    ]
+    fact_candidates = [
+        {
+            "fact_candidate_id": f"fact-{index:03d}",
+            "event_type": "listing",
+            "claim": "Long fact claim " + ("x" * 300) + str(index),
+            "realis": "actual",
+            "validation_status": "accepted",
+        }
+        for index in range(70)
+    ]
+
+    packet = build_news_item_brief_base_packet(
+        item={
+            "news_item_id": "item-budget",
+            "title": "Budgeted item",
+            "summary": "Budgeted item summary.",
+            "body_text": "body " * 200,
+            "content_hash": "sha256:budget",
+        },
+        token_mentions=token_mentions,
+        fact_candidates=fact_candidates,
+        agent_config=_agent_config(),
+        material_budget_chars=2_800,
+    )
+
+    report = packet.base_budget_report
+    assert report.original_token_count == 70
+    assert report.original_fact_count == 70
+    assert report.kept_token_count < 70
+    assert report.kept_fact_count < 70
+    assert report.material_chars <= report.material_budget_chars
+    assert {"token_lanes_budget", "fact_lanes_budget", "material_budget"}.issubset(set(report.truncation_reasons))
+
+
+def test_base_and_synthesis_hashes_are_deterministic_and_omit_runtime_fields() -> None:
+    base = build_news_item_brief_base_packet(
+        item={
+            "news_item_id": "item-hash",
+            "title": "BTC ETF flow update",
+            "summary": "ETF flow update.",
+            "fetched_at_ms": 1_779_000_010_000,
+            "content_hash": "sha256:hash",
+        },
+        token_mentions=[],
+        fact_candidates=[],
+        agent_config=_agent_config(),
+        material_budget_chars=12_000,
+    )
+    repeat = build_news_item_brief_base_packet(
+        item={
+            "news_item_id": "item-hash",
+            "title": "BTC ETF flow update",
+            "summary": "ETF flow update.",
+            "fetched_at_ms": 1_779_000_090_000,
+            "content_hash": "sha256:hash",
+        },
+        token_mentions=[],
+        fact_candidates=[],
+        agent_config=_agent_config(),
+        material_budget_chars=12_000,
+    )
+    packet = NewsItemBriefSynthesisPacket(
+        packet_id="synthesis-item-hash",
+        base_packet=base,
+        research_plan=NewsItemResearchPlan(status="skip", skip_reason_zh="无需补充检索。"),
+        tool_results=[],
+    )
+
+    assert base.input_hash == repeat.input_hash
+    assert "fetched_at_ms" not in base.model_dump_json()
+    assert news_item_brief_synthesis_material_hash(packet) == json_sha256(
+        news_item_brief_synthesis_material_payload(packet)
+    )
+    assert "input_hash" not in news_item_brief_synthesis_material_payload(packet)["base_packet"]

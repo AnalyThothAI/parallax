@@ -8,8 +8,8 @@ This index makes the planning lane visible to coding agents. Active files are wo
 
 | Lane | Active | Completed |
 |------|--------|-----------|
-| `specs` | 88 | 41 |
-| `plans` | 133 | 49 |
+| `specs` | 89 | 41 |
+| `plans` | 134 | 49 |
 
 ## Lifecycle Flags
 
@@ -110,6 +110,7 @@ This index makes the planning lane visible to coding agents. Active files are wo
 | `specs` | `active` | Approved for planning | - | `docs/superpowers/specs/active/2026-05-31-token-profile-image-mirror-kiss-root-fix-cn.md` |
 | `specs` | `active` | Draft | - | `docs/superpowers/specs/active/2026-06-01-news-intel-kiss-simplification-cn.md` |
 | `specs` | `active` | Approved | - | `docs/superpowers/specs/active/2026-06-01-rates-workbench-clarity-redesign.md` |
+| `specs` | `active` | Draft | - | `docs/superpowers/specs/active/2026-06-03-news-agent-context-tools-hard-cut-cn.md` |
 | `specs` | `completed` | unspecified | `missing-status` | `docs/superpowers/specs/completed/2026-05-04-closed-loop-social-event-harness-cn-evaluation.md` |
 | `specs` | `completed` | unspecified | `missing-status` | `docs/superpowers/specs/completed/2026-05-04-closed-loop-social-event-harness-design.md` |
 | `specs` | `completed` | unspecified | `missing-status` | `docs/superpowers/specs/completed/2026-05-04-market-observation-timing-production-spec-cn.md` |
@@ -284,6 +285,7 @@ This index makes the planning lane visible to coding agents. Active files are wo
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-06-01-news-intel-kiss-simplification-cn.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-06-01-rates-workbench-clarity-redesign-verification.md` |
 | `plans` | `active` | Draft | - | `docs/superpowers/plans/active/2026-06-01-rates-workbench-clarity-redesign.md` |
+| `plans` | `active` | Draft | - | `docs/superpowers/plans/active/2026-06-03-news-agent-context-tools-hard-cut-cn.md` |
 | `plans` | `completed` | unspecified | `missing-status` | `docs/superpowers/plans/completed/2026-05-04-market-observation-timing-production-plan-cn.md` |
 | `plans` | `completed` | unspecified | `missing-status` | `docs/superpowers/plans/completed/2026-05-05-production-notifications-phase1-phase2.md` |
 | `plans` | `completed` | unspecified | `missing-status` | `docs/superpowers/plans/completed/2026-05-05-responsive-token-radar-cockpit.md` |

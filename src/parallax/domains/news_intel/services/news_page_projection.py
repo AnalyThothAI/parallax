@@ -4,7 +4,7 @@ import hashlib
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from parallax.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION
+from parallax.domains.news_intel._constants import NEWS_ITEM_BRIEF_SCHEMA_VERSION, NEWS_PAGE_PROJECTION_VERSION
 
 _RESOLVED_TOKEN_STATUSES = frozenset({"exact_address", "known_symbol", "unique_by_context"})
 _IGNORED_TOKEN_STATUSES = frozenset({"non_crypto", "nil"})
@@ -176,6 +176,9 @@ def _compact_agent_brief(agent_brief: Mapping[str, Any] | None) -> dict[str, Any
     if agent_brief is None:
         return {"status": "pending"}
     brief_json = _json_object(agent_brief.get("brief_json") if isinstance(agent_brief, Mapping) else None)
+    stale_payload = _stale_agent_brief(agent_brief, brief_json=brief_json)
+    if stale_payload is not None:
+        return stale_payload
     bull_view = _json_object(brief_json.get("bull_view"))
     bear_view = _json_object(brief_json.get("bear_view"))
     payload = _compact_mapping(
@@ -183,9 +186,16 @@ def _compact_agent_brief(agent_brief: Mapping[str, Any] | None) -> dict[str, Any
             "status": agent_brief.get("status") or brief_json.get("status") or "pending",
             "direction": agent_brief.get("direction") or brief_json.get("direction"),
             "decision_class": agent_brief.get("decision_class") or brief_json.get("decision_class"),
+            "novelty_status": brief_json.get("novelty_status"),
+            "confirmation_state": brief_json.get("confirmation_state"),
             "title_zh": brief_json.get("title_zh"),
             "summary_zh": brief_json.get("summary_zh"),
             "market_read_zh": brief_json.get("market_read_zh"),
+            "source_consensus_zh": brief_json.get("source_consensus_zh"),
+            "retrieval_notes_zh": brief_json.get("retrieval_notes_zh"),
+            "retrieval_evidence_refs": _json_list(brief_json.get("retrieval_evidence_refs")),
+            "research_todos_zh": _json_list(brief_json.get("research_todos_zh")),
+            "used_tool_call_ids": _json_list(brief_json.get("used_tool_call_ids")),
             "bull_strength": bull_view.get("strength"),
             "bear_strength": bear_view.get("strength"),
             "data_gap_count": len(_json_list(brief_json.get("data_gaps"))),
@@ -201,6 +211,21 @@ def _compact_agent_brief(agent_brief: Mapping[str, Any] | None) -> dict[str, Any
         }
     )
     return payload or {"status": "pending"}
+
+
+def _stale_agent_brief(agent_brief: Mapping[str, Any], *, brief_json: Mapping[str, Any]) -> dict[str, Any] | None:
+    schema_version = str(agent_brief.get("schema_version") or brief_json.get("schema_version") or "")
+    if schema_version == NEWS_ITEM_BRIEF_SCHEMA_VERSION:
+        return None
+    return _compact_mapping(
+        {
+            "status": "stale",
+            "stale_schema_version": schema_version,
+            "required_schema_version": NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+            "computed_at_ms": _optional_int(agent_brief.get("computed_at_ms")),
+            "agent_run_id": agent_brief.get("agent_run_id"),
+        }
+    )
 
 
 def _agent_affected_assets(value: Any) -> list[dict[str, Any]]:

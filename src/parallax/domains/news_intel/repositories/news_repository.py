@@ -3,13 +3,14 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import time
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from parallax.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION
+from parallax.domains.news_intel._constants import NEWS_ITEM_BRIEF_SCHEMA_VERSION, NEWS_PAGE_PROJECTION_VERSION
 from parallax.domains.news_intel.services.news_canonical_identity import (
     CANONICAL_POLICY_VERSION,
     PROVIDER_GLOBAL_ARTICLE_ID_TYPES,
@@ -19,6 +20,7 @@ from parallax.domains.news_intel.services.news_canonical_identity import (
 )
 from parallax.domains.news_intel.services.news_url_identity import url_identity_kind
 from parallax.domains.news_intel.types import NewsSourceConfig
+from parallax.domains.news_intel.types.news_item_brief import NewsContextTargetRef
 from parallax.domains.news_intel.types.source_classification import normalize_string_tuple
 from parallax.domains.news_intel.types.source_quality_policy import window_ms_for_label
 from parallax.platform.db.json_safety import postgres_safe_json
@@ -58,6 +60,7 @@ _URL_USERINFO_RE = re.compile(r"([a-z][a-z0-9+.-]*://)[^/@\s]+@", re.IGNORECASE)
 _CHECK_QUOTED_VALUE_RE = re.compile(r"'((?:''|[^'])*)'(?:\s*::\s*[A-Za-z_][A-Za-z0-9_]*)?")
 _PUBLICATION_METADATA_FIELDS = {"computed_at_ms", "updated_at_ms", "projected_at_ms", "payload_hash"}
 _NEWS_PAGE_SIGNAL_SQL = "LOWER(signal_json -> 'display_signal' ->> 'direction') = %s"
+_NEWS_ARCHIVE_MATCH_MODES = ("title", "token", "fact", "source_title")
 
 
 class NewsRepository:
@@ -1441,6 +1444,55 @@ class NewsRepository:
         ).fetchone()
         return dict(row) if row is not None else None
 
+    def list_current_brief_ids_outside_schema(
+        self,
+        *,
+        required_schema_version: str = NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+        limit: int = 5000,
+    ) -> list[str]:
+        rows = self.conn.execute(
+            """
+            SELECT news_item_id
+              FROM news_item_agent_briefs
+             WHERE COALESCE(NULLIF(schema_version, ''), NULLIF(brief_json ->> 'schema_version', ''), '')
+                   <> %s
+             ORDER BY updated_at_ms ASC, news_item_id ASC
+             LIMIT %s
+            """,
+            (str(required_schema_version), max(1, int(limit))),
+        ).fetchall()
+        return [str(row["news_item_id"]) for row in rows]
+
+    def clear_current_briefs_outside_schema(
+        self,
+        *,
+        required_schema_version: str = NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+        news_item_ids: Sequence[str] | None = None,
+        commit: bool = True,
+    ) -> list[str]:
+        target_ids = [str(news_item_id) for news_item_id in dict.fromkeys(news_item_ids or []) if str(news_item_id)]
+        if news_item_ids is not None and not target_ids:
+            return []
+        if target_ids:
+            row_filter = "AND news_item_id = ANY(%s::text[])"
+            params: tuple[Any, ...] = (str(required_schema_version), target_ids)
+        else:
+            row_filter = ""
+            params = (str(required_schema_version),)
+        rows = self.conn.execute(
+            f"""
+            DELETE FROM news_item_agent_briefs
+             WHERE COALESCE(NULLIF(schema_version, ''), NULLIF(brief_json ->> 'schema_version', ''), '')
+                   <> %s
+               {row_filter}
+             RETURNING news_item_id
+            """,
+            params,
+        ).fetchall()
+        if commit:
+            self.conn.commit()
+        return [str(row["news_item_id"]) for row in rows]
+
     def list_page_source_items(self, *, limit: int, cursor: str | None = None) -> list[dict[str, Any]]:
         return self.list_news_page_rows(limit=limit, cursor=cursor)
 
@@ -2494,6 +2546,658 @@ class NewsRepository:
             "token_mentions": token_mentions,
             "fact_candidates": fact_candidates,
         }
+
+    def get_news_observation_history(self, *, news_item_id: str, limit: int = 25) -> dict[str, Any]:
+        bounded_limit = _bounded_int(limit, default=25, minimum=1, maximum=25)
+        row = self.conn.execute(
+            """
+            WITH observed_edges AS (
+              SELECT
+                edges.news_item_id,
+                edges.source_id,
+                sources.source_domain,
+                sources.source_name,
+                sources.source_role,
+                sources.trust_tier,
+                edges.match_type,
+                edges.match_confidence,
+                edges.first_seen_at_ms,
+                edges.last_seen_at_ms
+              FROM news_item_observation_edges AS edges
+              JOIN news_sources AS sources ON sources.source_id = edges.source_id
+              WHERE edges.news_item_id = %s
+              ORDER BY edges.first_seen_at_ms ASC, edges.source_id ASC
+            ),
+            limited_edges AS (
+              SELECT *
+                FROM observed_edges
+               ORDER BY first_seen_at_ms ASC, source_id ASC
+               LIMIT %s
+            ),
+            edge_summary AS (
+              SELECT
+                COUNT(*)::int AS observation_count,
+                COUNT(DISTINCT source_id)::int AS source_count,
+                COUNT(DISTINCT source_domain)::int AS source_domain_count,
+                COALESCE(array_agg(DISTINCT source_id ORDER BY source_id), ARRAY[]::text[]) AS source_ids,
+                COALESCE(array_agg(DISTINCT source_domain ORDER BY source_domain), ARRAY[]::text[]) AS source_domains,
+                MIN(first_seen_at_ms)::bigint AS first_observed_at_ms,
+                MAX(last_seen_at_ms)::bigint AS last_observed_at_ms
+              FROM observed_edges
+            ),
+            limited_payload AS (
+              SELECT COALESCE(
+                jsonb_agg(
+                  jsonb_build_object(
+                    'news_item_id', news_item_id,
+                    'source_id', source_id,
+                    'source_domain', source_domain,
+                    'source_name', source_name,
+                    'source_role', source_role,
+                    'trust_tier', trust_tier,
+                    'match_reason', match_type,
+                    'matching_basis', match_type,
+                    'match_confidence', match_confidence,
+                    'first_observed_at_ms', first_seen_at_ms,
+                    'last_observed_at_ms', last_seen_at_ms,
+                    'result_basis', 'observation_history',
+                    'evidence_ref', 'news_item_observation_edges:' || news_item_id || ':' || source_id
+                  )
+                  ORDER BY first_seen_at_ms ASC, source_id ASC
+                ),
+                '[]'::jsonb
+              ) AS observed_sources
+              FROM limited_edges
+            )
+            SELECT
+              items.news_item_id,
+              items.title,
+              items.summary,
+              items.published_at_ms,
+              items.content_class,
+              items.source_domain,
+              items.canonical_url,
+              COALESCE(edge_summary.source_count, 0)::int AS source_count,
+              COALESCE(edge_summary.source_domain_count, 0)::int AS source_domain_count,
+              COALESCE(edge_summary.observation_count, 0)::int AS observation_count,
+              COALESCE(edge_summary.observation_count, 0)::int AS duplicate_count,
+              COALESCE(edge_summary.source_ids, ARRAY[]::text[]) AS source_ids,
+              COALESCE(edge_summary.source_domains, ARRAY[]::text[]) AS source_domains,
+              edge_summary.first_observed_at_ms,
+              edge_summary.last_observed_at_ms,
+              COALESCE(limited_payload.observed_sources, '[]'::jsonb) AS observed_sources,
+              COALESCE(edge_summary.observation_count, 0) > %s AS truncated
+            FROM news_items AS items
+            LEFT JOIN edge_summary ON true
+            LEFT JOIN limited_payload ON true
+            WHERE items.news_item_id = %s
+            """,
+            (str(news_item_id), bounded_limit, bounded_limit, str(news_item_id)),
+        ).fetchone()
+        if row is None:
+            return {}
+        payload = dict(row)
+        source_count = int(payload.get("source_count") or 0)
+        source_domain_count = int(payload.get("source_domain_count") or 0)
+        independent = source_domain_count > 1
+        same_domain_notes: list[str] = []
+        if source_count > 1 and not independent:
+            same_domain_notes.append("Multiple observed source ids share one source domain.")
+        return {
+            "news_item_id": payload.get("news_item_id"),
+            "title": _compact_text(payload.get("title"), max_length=180),
+            "summary": _compact_text(payload.get("summary"), max_length=320),
+            "published_at_ms": payload.get("published_at_ms"),
+            "content_class": payload.get("content_class"),
+            "source_domain": payload.get("source_domain"),
+            "canonical_url": _public_url(payload.get("canonical_url")),
+            "public_url": _public_url(payload.get("canonical_url")),
+            "source_count": source_count,
+            "source_domain_count": source_domain_count,
+            "observation_count": int(payload.get("observation_count") or 0),
+            "duplicate_count": int(payload.get("duplicate_count") or 0),
+            "source_ids": _string_list(payload.get("source_ids")),
+            "source_domains": _string_list(payload.get("source_domains")),
+            "independent_source_confirmed": independent,
+            "independence_class": "independent_domains" if independent else "same_domain_only",
+            "same_domain_notes": same_domain_notes,
+            "first_observed_at_ms": payload.get("first_observed_at_ms"),
+            "last_observed_at_ms": payload.get("last_observed_at_ms"),
+            "observed_sources": _json_list(payload.get("observed_sources")),
+            "truncated": bool(payload.get("truncated")),
+            "result_basis": "observation_history",
+            "evidence_ref": f"news_item_observation_edges:{news_item_id}",
+            "evidence_refs": [f"news_item_observation_edges:{news_item_id}"],
+        }
+
+    def search_news_archive(
+        self,
+        *,
+        current_news_item_id: str,
+        query_terms: Sequence[str],
+        symbols: Sequence[str],
+        window_hours: int,
+        match_modes: Sequence[str],
+        limit: int,
+        now_ms: int | None = None,
+    ) -> list[dict[str, Any]]:
+        terms = _bounded_strings(query_terms, max_items=5, max_length=64)
+        symbol_terms = _bounded_strings(symbols, max_items=5, max_length=32, uppercase=True)
+        modes = _bounded_archive_match_modes(match_modes)
+        bounded_limit = _bounded_int(limit, default=8, minimum=1, maximum=8)
+        bounded_window_hours = _bounded_int(window_hours, default=168, minimum=1, maximum=168)
+        current_ms = _now_ms(now_ms)
+        window_start_ms = current_ms - bounded_window_hours * 60 * 60 * 1000
+        rows = self.conn.execute(
+            """
+            WITH search_terms AS (
+              SELECT term
+                FROM unnest(%s::text[]) AS terms(term)
+               WHERE term <> ''
+            ),
+            search_symbols AS (
+              SELECT symbol
+                FROM unnest(%s::text[]) AS symbols(symbol)
+               WHERE symbol <> ''
+            ),
+            title_branch AS (
+              SELECT
+                items.news_item_id,
+                terms.term AS matched_term,
+                ''::text AS matched_symbol,
+                'title'::text AS match_mode,
+                'term_match'::text AS result_basis,
+                'title_match'::text AS match_reason,
+                'title'::text AS matching_basis,
+                'medium'::text AS match_confidence
+              FROM search_terms AS terms
+              JOIN news_items AS items ON items.title ILIKE '%%' || terms.term || '%%'
+              WHERE %s::boolean
+                AND items.news_item_id <> %s
+                AND items.published_at_ms >= %s
+                AND items.published_at_ms <= %s
+            ),
+            token_branch AS (
+              SELECT
+                items.news_item_id,
+                ''::text AS matched_term,
+                symbols.symbol AS matched_symbol,
+                'token'::text AS match_mode,
+                'symbol_match'::text AS result_basis,
+                'token_symbol_match'::text AS match_reason,
+                'symbol_heuristic'::text AS matching_basis,
+                'heuristic'::text AS match_confidence
+              FROM news_token_mentions AS mentions
+              JOIN search_symbols AS symbols
+                ON upper(COALESCE(mentions.display_symbol, mentions.observed_symbol, '')) = symbols.symbol
+              JOIN news_items AS items ON items.news_item_id = mentions.news_item_id
+              WHERE %s::boolean
+                AND items.news_item_id <> %s
+                AND items.published_at_ms >= %s
+                AND items.published_at_ms <= %s
+            ),
+            fact_branch AS (
+              SELECT
+                items.news_item_id,
+                terms.term AS matched_term,
+                ''::text AS matched_symbol,
+                'fact'::text AS match_mode,
+                'similar_news'::text AS result_basis,
+                'fact_claim_match'::text AS match_reason,
+                'fact'::text AS matching_basis,
+                'medium'::text AS match_confidence
+              FROM news_fact_candidates AS facts
+              JOIN search_terms AS terms ON facts.claim ILIKE '%%' || terms.term || '%%'
+              JOIN news_items AS items ON items.news_item_id = facts.news_item_id
+              WHERE %s::boolean
+                AND facts.validation_status <> 'rejected'
+                AND items.news_item_id <> %s
+                AND items.published_at_ms >= %s
+                AND items.published_at_ms <= %s
+            ),
+            source_title_branch AS (
+              SELECT
+                items.news_item_id,
+                terms.term AS matched_term,
+                ''::text AS matched_symbol,
+                'source_title'::text AS match_mode,
+                'term_match'::text AS result_basis,
+                'source_title_match'::text AS match_reason,
+                'source_title'::text AS matching_basis,
+                'weak'::text AS match_confidence
+              FROM search_terms AS terms
+              JOIN news_sources AS sources ON sources.source_name ILIKE '%%' || terms.term || '%%'
+              JOIN news_items AS items ON items.source_id = sources.source_id
+              WHERE %s::boolean
+                AND items.news_item_id <> %s
+                AND items.published_at_ms >= %s
+                AND items.published_at_ms <= %s
+            ),
+            branch_matches AS (
+              SELECT * FROM title_branch
+              UNION ALL
+              SELECT * FROM token_branch
+              UNION ALL
+              SELECT * FROM fact_branch
+              UNION ALL
+              SELECT * FROM source_title_branch
+            ),
+            match_summary AS (
+              SELECT
+                news_item_id,
+                COALESCE(
+                  array_agg(DISTINCT matched_term ORDER BY matched_term)
+                    FILTER (WHERE matched_term <> ''),
+                  ARRAY[]::text[]
+                ) AS matched_terms,
+                COALESCE(
+                  array_agg(DISTINCT matched_symbol ORDER BY matched_symbol)
+                    FILTER (WHERE matched_symbol <> ''),
+                  ARRAY[]::text[]
+                ) AS symbols,
+                COALESCE(array_agg(DISTINCT match_mode ORDER BY match_mode), ARRAY[]::text[]) AS match_modes,
+                (array_agg(result_basis ORDER BY
+                  CASE result_basis WHEN 'symbol_match' THEN 0 WHEN 'term_match' THEN 1 ELSE 2 END,
+                  result_basis
+                ))[1] AS result_basis,
+                (array_agg(match_reason ORDER BY match_reason))[1] AS match_reason,
+                (array_agg(matching_basis ORDER BY
+                  CASE matching_basis WHEN 'symbol_heuristic' THEN 0 WHEN 'title' THEN 1 ELSE 2 END,
+                  matching_basis
+                ))[1] AS matching_basis,
+                (array_agg(match_confidence ORDER BY
+                  CASE match_confidence WHEN 'medium' THEN 0 WHEN 'heuristic' THEN 1 ELSE 2 END,
+                  match_confidence
+                ))[1] AS match_confidence
+              FROM branch_matches
+              GROUP BY news_item_id
+            ),
+            ranked_rows AS (
+              SELECT
+                items.news_item_id,
+                items.title,
+                items.summary,
+                items.published_at_ms,
+                items.canonical_url,
+                sources.source_domain,
+                sources.source_name,
+                sources.source_role,
+                sources.trust_tier,
+                match_summary.matched_terms,
+                match_summary.symbols,
+                match_summary.match_modes,
+                match_summary.match_reason,
+                match_summary.matching_basis,
+                match_summary.match_confidence,
+                match_summary.result_basis,
+                current_brief.status AS brief_status,
+                current_brief.brief_json ->> 'novelty_status' AS novelty_status,
+                current_brief.brief_json ->> 'confirmation_state' AS confirmation_state,
+                current_brief.brief_json ->> 'source_consensus_zh' AS source_consensus_zh,
+                COUNT(*) OVER ()::int AS total_count
+              FROM match_summary
+              JOIN news_items AS items ON items.news_item_id = match_summary.news_item_id
+              JOIN news_sources AS sources ON sources.source_id = items.source_id
+              LEFT JOIN news_item_agent_briefs AS current_brief ON current_brief.news_item_id = items.news_item_id
+              ORDER BY items.published_at_ms DESC, items.news_item_id ASC
+              LIMIT %s
+            )
+            SELECT *
+              FROM ranked_rows
+             ORDER BY published_at_ms DESC, news_item_id ASC
+            """,
+            (
+                terms,
+                symbol_terms,
+                "title" in modes,
+                str(current_news_item_id),
+                window_start_ms,
+                current_ms,
+                "token" in modes,
+                str(current_news_item_id),
+                window_start_ms,
+                current_ms,
+                "fact" in modes,
+                str(current_news_item_id),
+                window_start_ms,
+                current_ms,
+                "source_title" in modes,
+                str(current_news_item_id),
+                window_start_ms,
+                current_ms,
+                bounded_limit + 1,
+            ),
+        ).fetchall()
+        truncated = len(rows) > bounded_limit
+        return [_archive_search_row(row, truncated=truncated) for row in rows[:bounded_limit]]
+
+    def get_source_quality_context_for_item(self, *, news_item_id: str) -> dict[str, Any]:
+        row = self.conn.execute(
+            """
+            WITH item_sources AS (
+              SELECT DISTINCT edges.source_id
+                FROM news_item_observation_edges AS edges
+               WHERE edges.news_item_id = %s
+            ),
+            latest_quality AS (
+              SELECT DISTINCT ON (quality.source_id)
+                quality.source_id,
+                quality."window",
+                quality.computed_at_ms,
+                quality.items_fetched,
+                quality.duplicate_rate,
+                quality.quality_score,
+                quality.diagnostics_json
+              FROM news_source_quality_rows AS quality
+              JOIN item_sources ON item_sources.source_id = quality.source_id
+              ORDER BY
+                quality.source_id ASC,
+                quality.computed_at_ms DESC,
+                CASE quality."window"
+                  WHEN '24h' THEN 0
+                  WHEN '4h' THEN 1
+                  WHEN '1h' THEN 2
+                  WHEN '7d' THEN 3
+                  ELSE 4
+                END,
+                quality."window" ASC
+            )
+            SELECT
+              %s::text AS news_item_id,
+              sources.source_domain,
+              sources.source_name,
+              sources.source_role,
+              sources.trust_tier,
+              sources.source_quality_status,
+              latest_quality."window",
+              latest_quality.computed_at_ms,
+              latest_quality.items_fetched,
+              latest_quality.duplicate_rate,
+              latest_quality.quality_score,
+              latest_quality.diagnostics_json
+            FROM item_sources
+            JOIN news_sources AS sources ON sources.source_id = item_sources.source_id
+            LEFT JOIN latest_quality ON latest_quality.source_id = sources.source_id
+            ORDER BY
+              latest_quality.computed_at_ms DESC NULLS LAST,
+              sources.source_id ASC
+            LIMIT 1
+            """,
+            (str(news_item_id), str(news_item_id)),
+        ).fetchone()
+        if row is None:
+            return {}
+        payload = dict(row)
+        diagnostics = _json_dict(payload.get("diagnostics_json"))
+        return {
+            "news_item_id": payload.get("news_item_id"),
+            "source_domain": payload.get("source_domain"),
+            "source_name": payload.get("source_name"),
+            "source_role": payload.get("source_role"),
+            "trust_tier": payload.get("trust_tier"),
+            "window": payload.get("window"),
+            "computed_at_ms": payload.get("computed_at_ms"),
+            "items_fetched": int(payload.get("items_fetched") or 0),
+            "duplicate_rate": payload.get("duplicate_rate"),
+            "quality_score": payload.get("quality_score"),
+            "diagnostics_json": diagnostics,
+            "source_quality_status": payload.get("source_quality_status"),
+            "source_health": str(
+                diagnostics.get("health")
+                or diagnostics.get("status")
+                or payload.get("source_quality_status")
+                or "unknown"
+            ),
+            "result_basis": "source_quality",
+            "evidence_ref": f"news_source_quality_rows:{news_item_id}",
+            "evidence_refs": [f"news_source_quality_rows:{news_item_id}"],
+        }
+
+    def get_target_news_context(
+        self,
+        *,
+        current_news_item_id: str,
+        target_refs: Sequence[NewsContextTargetRef | Mapping[str, Any]],
+        symbol_fallbacks: Sequence[str],
+        window_hours: int,
+        limit: int,
+        now_ms: int | None = None,
+    ) -> dict[str, Any]:
+        normalized_refs = _normalize_target_refs(target_refs)
+        resolved_symbols = {
+            ref.get("display_symbol", "").upper() for ref in normalized_refs if ref.get("display_symbol")
+        }
+        fallback_symbols = [
+            symbol
+            for symbol in _bounded_strings(symbol_fallbacks, max_items=3, max_length=32, uppercase=True)
+            if symbol not in resolved_symbols
+        ]
+        bounded_limit = _bounded_int(limit, default=12, minimum=1, maximum=12)
+        bounded_window_hours = _bounded_int(window_hours, default=72, minimum=1, maximum=168)
+        current_ms = _now_ms(now_ms)
+        window_start_ms = current_ms - bounded_window_hours * 60 * 60 * 1000
+        target_types = [ref["target_type"] for ref in normalized_refs]
+        target_ids = [ref["target_id"] for ref in normalized_refs]
+        target_symbols = [ref.get("display_symbol", "") for ref in normalized_refs]
+        rows = self.conn.execute(
+            """
+            WITH exact_refs(target_type, target_id, display_symbol) AS (
+              SELECT *
+                FROM unnest(%s::text[], %s::text[], %s::text[])
+                  AS refs(target_type, target_id, display_symbol)
+            ),
+            fallback_symbols AS (
+              SELECT symbol
+                FROM unnest(%s::text[]) AS symbols(symbol)
+               WHERE symbol <> ''
+            ),
+            exact_ref_matches AS (
+              SELECT
+                items.news_item_id,
+                refs.target_type,
+                refs.target_id,
+                COALESCE(
+                  NULLIF(refs.display_symbol, ''),
+                  mentions.display_symbol,
+                  mentions.observed_symbol,
+                  ''
+                ) AS display_symbol,
+                'exact_target'::text AS matching_basis,
+                mentions.resolution_status AS match_reason,
+                mentions.confidence::double precision AS match_confidence,
+                2::int AS rank_weight
+              FROM news_token_mentions AS mentions
+              JOIN exact_refs AS refs
+                ON mentions.target_type = refs.target_type
+               AND mentions.target_id = refs.target_id
+              JOIN news_items AS items ON items.news_item_id = mentions.news_item_id
+              WHERE items.news_item_id <> %s
+                AND items.published_at_ms >= %s
+                AND items.published_at_ms <= %s
+            ),
+            symbol_fallback_matches AS (
+              SELECT
+                items.news_item_id,
+                ''::text AS target_type,
+                ''::text AS target_id,
+                symbols.symbol AS display_symbol,
+                'symbol_heuristic'::text AS matching_basis,
+                'symbol_fallback_match'::text AS match_reason,
+                MAX(mentions.confidence)::double precision AS match_confidence,
+                1::int AS rank_weight
+              FROM news_token_mentions AS mentions
+              JOIN fallback_symbols AS symbols
+                ON upper(COALESCE(mentions.display_symbol, mentions.observed_symbol, '')) = symbols.symbol
+              JOIN news_items AS items ON items.news_item_id = mentions.news_item_id
+              WHERE NOT EXISTS (
+                SELECT 1
+                  FROM exact_ref_matches AS exact_matches
+                 WHERE exact_matches.news_item_id = items.news_item_id
+              )
+                AND items.news_item_id <> %s
+                AND items.published_at_ms >= %s
+                AND items.published_at_ms <= %s
+              GROUP BY items.news_item_id, symbols.symbol
+            ),
+            matched_rows AS (
+              SELECT * FROM exact_ref_matches
+              UNION ALL
+              SELECT * FROM symbol_fallback_matches
+            ),
+            deduped_matches AS (
+              SELECT DISTINCT ON (news_item_id, matching_basis, display_symbol)
+                news_item_id,
+                target_type,
+                target_id,
+                display_symbol,
+                matching_basis,
+                match_reason,
+                match_confidence,
+                rank_weight
+              FROM matched_rows
+              ORDER BY news_item_id, matching_basis, display_symbol, match_confidence DESC NULLS LAST
+            ),
+            enriched_matches AS (
+              SELECT
+                matches.news_item_id,
+                matches.target_type,
+                matches.target_id,
+                matches.display_symbol,
+                items.title,
+                items.summary,
+                items.published_at_ms,
+                sources.source_domain,
+                sources.source_name,
+                sources.source_role,
+                sources.trust_tier,
+                matches.matching_basis,
+                matches.match_reason,
+                matches.match_confidence,
+                current_brief.status AS brief_status,
+                current_brief.brief_json ->> 'novelty_status' AS novelty_status,
+                current_brief.brief_json ->> 'confirmation_state' AS confirmation_state,
+                current_brief.brief_json ->> 'source_consensus_zh' AS source_consensus_zh,
+                current_brief.brief_json ->> 'summary_zh' AS summary_zh,
+                current_brief.brief_json ->> 'market_read_zh' AS market_read_zh,
+                matches.rank_weight
+              FROM deduped_matches AS matches
+              JOIN news_items AS items ON items.news_item_id = matches.news_item_id
+              JOIN news_sources AS sources ON sources.source_id = items.source_id
+              LEFT JOIN news_item_agent_briefs AS current_brief ON current_brief.news_item_id = items.news_item_id
+            ),
+            context_counts AS (
+              SELECT
+                COUNT(*)::int AS total_count,
+                COUNT(*) FILTER (WHERE matching_basis = 'exact_target')::int AS exact_count,
+                COUNT(*) FILTER (WHERE matching_basis = 'symbol_heuristic')::int AS heuristic_count,
+                COUNT(DISTINCT source_domain)::int AS source_domain_count,
+                COUNT(*) FILTER (WHERE COALESCE(match_confidence, 0) >= 0.8)::int AS high_score_count
+              FROM enriched_matches
+            )
+            SELECT enriched_matches.*,
+                   context_counts.total_count,
+                   context_counts.exact_count,
+                   context_counts.heuristic_count,
+                   context_counts.source_domain_count,
+                   context_counts.high_score_count
+              FROM enriched_matches
+              CROSS JOIN context_counts
+             ORDER BY rank_weight DESC, match_confidence DESC NULLS LAST, published_at_ms DESC, news_item_id ASC
+             LIMIT %s
+            """,
+            (
+                target_types,
+                target_ids,
+                target_symbols,
+                fallback_symbols,
+                str(current_news_item_id),
+                window_start_ms,
+                current_ms,
+                str(current_news_item_id),
+                window_start_ms,
+                current_ms,
+                bounded_limit + 1,
+            ),
+        ).fetchall()
+        if not rows:
+            return _empty_target_news_context()
+        truncated = len(rows) > bounded_limit
+        top_items = [_target_context_row(row) for row in rows[:bounded_limit]]
+        latest_items = sorted(
+            top_items,
+            key=lambda item: (-int(item.get("published_at_ms") or 0), str(item.get("news_item_id") or "")),
+        )
+        first = rows[0]
+        matching_basis = list(
+            dict.fromkeys(str(item.get("matching_basis") or "") for item in top_items if item.get("matching_basis"))
+        )
+        return {
+            "counts": {
+                "total": int(first.get("total_count") or 0),
+                "exact_target": int(first.get("exact_count") or 0),
+                "symbol_heuristic": int(first.get("heuristic_count") or 0),
+            },
+            "top_items": top_items,
+            "latest_items": latest_items[:bounded_limit],
+            "source_domain_count": int(first.get("source_domain_count") or 0),
+            "high_score_count": int(first.get("high_score_count") or 0),
+            "matching_basis": matching_basis,
+            "truncated": truncated,
+            "result_basis": matching_basis[0] if matching_basis else "exact_target",
+            "evidence_refs": [str(item["evidence_ref"]) for item in top_items if item.get("evidence_ref")],
+        }
+
+    def get_fact_context(
+        self,
+        *,
+        news_item_id: str,
+        include_rejected: bool = False,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        bounded_limit = _bounded_int(limit, default=20, minimum=1, maximum=20)
+        rows = self.conn.execute(
+            """
+            SELECT
+              facts.news_item_id,
+              facts.fact_candidate_id,
+              facts.event_type,
+              facts.claim,
+              facts.realis,
+              facts.validation_status,
+              facts.affected_targets_json AS affected_targets,
+              facts.evidence_quote,
+              'fact_candidate'::text AS result_basis,
+              'news_fact_candidates:' || facts.fact_candidate_id AS evidence_ref
+            FROM news_fact_candidates AS facts
+            WHERE facts.news_item_id = %s
+              AND (%s::boolean OR facts.validation_status <> 'rejected')
+            ORDER BY
+              CASE facts.validation_status
+                WHEN 'accepted' THEN 0
+                WHEN 'attention' THEN 1
+                ELSE 2
+              END,
+              facts.updated_at_ms DESC,
+              facts.fact_candidate_id ASC
+            LIMIT %s
+            """,
+            (str(news_item_id), bool(include_rejected), bounded_limit),
+        ).fetchall()
+        return [
+            {
+                "news_item_id": row["news_item_id"],
+                "fact_candidate_id": row["fact_candidate_id"],
+                "event_type": row["event_type"],
+                "claim": _compact_text(row["claim"], max_length=360),
+                "realis": row["realis"],
+                "validation_status": row["validation_status"],
+                "affected_targets": _json_list(row["affected_targets"]),
+                "evidence_quote": _compact_text(row["evidence_quote"], max_length=240),
+                "result_basis": row["result_basis"],
+                "evidence_ref": row["evidence_ref"],
+            }
+            for row in rows
+        ]
 
     def get_news_fact_detail(self, *, fact_candidate_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
@@ -4134,13 +4838,23 @@ def _public_agent_brief_payload(value: Any) -> dict[str, Any]:
     brief_json = _json_dict(payload.get("brief_json"))
     if not payload:
         return {"status": "pending", "brief_json": {}}
+    stale_payload = _stale_agent_brief_payload(payload, brief_json=brief_json)
+    if stale_payload is not None:
+        return stale_payload
     allowed = (
         "status",
         "direction",
         "decision_class",
+        "novelty_status",
+        "confirmation_state",
         "title_zh",
         "summary_zh",
         "market_read_zh",
+        "source_consensus_zh",
+        "retrieval_notes_zh",
+        "retrieval_evidence_refs",
+        "research_todos_zh",
+        "used_tool_call_ids",
         "impact_zh",
         "watch_items_zh",
         "confidence",
@@ -4152,11 +4866,46 @@ def _public_agent_brief_payload(value: Any) -> dict[str, Any]:
     public_payload = {key: payload.get(key) for key in allowed if key in payload}
     public_payload["status"] = str(public_payload.get("status") or "pending")
     public_payload["brief_json"] = brief_json
-    if "title_zh" not in public_payload and brief_json.get("title_zh"):
-        public_payload["title_zh"] = brief_json.get("title_zh")
+    for field in (
+        "novelty_status",
+        "confirmation_state",
+        "title_zh",
+        "summary_zh",
+        "market_read_zh",
+        "source_consensus_zh",
+        "retrieval_notes_zh",
+        "retrieval_evidence_refs",
+        "research_todos_zh",
+        "used_tool_call_ids",
+    ):
+        if field not in public_payload and brief_json.get(field) is not None:
+            public_payload[field] = brief_json.get(field)
     if "affected_assets" not in public_payload and brief_json.get("affected_assets"):
         public_payload["affected_assets"] = _json_list(brief_json.get("affected_assets"))
     return public_payload
+
+
+def _stale_agent_brief_payload(
+    payload: Mapping[str, Any],
+    *,
+    brief_json: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    schema_version = str(payload.get("schema_version") or brief_json.get("schema_version") or "")
+    if not schema_version and str(payload.get("status") or brief_json.get("status") or "") == "pending":
+        return None
+    if schema_version == NEWS_ITEM_BRIEF_SCHEMA_VERSION:
+        return None
+    return {
+        key: value
+        for key, value in {
+            "status": "stale",
+            "stale_schema_version": schema_version,
+            "required_schema_version": NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+            "computed_at_ms": payload.get("computed_at_ms"),
+            "agent_run_id": payload.get("agent_run_id"),
+        }.items()
+        if value is not None
+    }
 
 
 def _public_agent_run_payload(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -4210,6 +4959,171 @@ def _json_list(value: Any) -> list[Any]:
     if isinstance(value, tuple):
         return list(value)
     return []
+
+
+def _string_list(value: Any) -> list[str]:
+    if isinstance(value, list | tuple):
+        return [str(item) for item in value if str(item)]
+    return []
+
+
+def _bounded_int(value: Any, *, default: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = int(default)
+    return max(int(minimum), min(int(maximum), parsed))
+
+
+def _bounded_strings(
+    values: Sequence[Any],
+    *,
+    max_items: int,
+    max_length: int,
+    uppercase: bool = False,
+) -> list[str]:
+    result: list[str] = []
+    for value in values or ():
+        text = str(value or "").strip()
+        if not text:
+            continue
+        text = text[:max_length]
+        if uppercase:
+            text = text.upper()
+        if text in result:
+            continue
+        result.append(text)
+        if len(result) >= max_items:
+            break
+    return result
+
+
+def _bounded_archive_match_modes(values: Sequence[Any]) -> set[str]:
+    modes: list[str] = []
+    for value in values or ():
+        mode = str(value or "").strip().lower()
+        if mode not in _NEWS_ARCHIVE_MATCH_MODES or mode in modes:
+            continue
+        modes.append(mode)
+    if not modes:
+        modes = list(_NEWS_ARCHIVE_MATCH_MODES)
+    return set(modes)
+
+
+def _now_ms(value: int | None) -> int:
+    if value is not None:
+        return max(0, int(value))
+    return int(time.time() * 1000)
+
+
+def _compact_text(value: Any, *, max_length: int) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= max_length:
+        return text
+    return text[: max(0, max_length - 3)].rstrip() + "..."
+
+
+def _normalize_target_refs(refs: Sequence[NewsContextTargetRef | Mapping[str, Any]]) -> list[dict[str, str]]:
+    normalized: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for ref in refs or ():
+        if isinstance(ref, NewsContextTargetRef):
+            payload = ref.model_dump()
+        elif isinstance(ref, Mapping):
+            payload = dict(ref)
+        else:
+            continue
+        target_type = str(payload.get("target_type") or "").strip()[:80]
+        target_id = str(payload.get("target_id") or "").strip()[:160]
+        if not target_type or not target_id or (target_type, target_id) in seen:
+            continue
+        seen.add((target_type, target_id))
+        normalized.append(
+            {
+                "target_type": target_type,
+                "target_id": target_id,
+                "display_symbol": str(payload.get("display_symbol") or "").strip()[:64].upper(),
+            }
+        )
+        if len(normalized) >= 5:
+            break
+    return normalized
+
+
+def _brief_field(row: Mapping[str, Any], field: str) -> str:
+    return str(row.get(field) or "")
+
+
+def _archive_search_row(row: Mapping[str, Any], *, truncated: bool) -> dict[str, Any]:
+    return {
+        "news_item_id": row.get("news_item_id"),
+        "title": _compact_text(row.get("title"), max_length=180),
+        "summary": _compact_text(row.get("summary"), max_length=360),
+        "published_at_ms": row.get("published_at_ms"),
+        "canonical_url": _public_url(row.get("canonical_url")),
+        "source_domain": row.get("source_domain"),
+        "source_name": row.get("source_name"),
+        "source_role": row.get("source_role"),
+        "trust_tier": row.get("trust_tier"),
+        "matched_terms": _string_list(row.get("matched_terms")),
+        "symbols": _string_list(row.get("symbols")),
+        "match_modes": _string_list(row.get("match_modes")),
+        "match_reason": row.get("match_reason"),
+        "matching_basis": row.get("matching_basis"),
+        "match_confidence": row.get("match_confidence"),
+        "brief_status": _brief_field(row, "brief_status"),
+        "novelty_status": _brief_field(row, "novelty_status"),
+        "confirmation_state": _brief_field(row, "confirmation_state"),
+        "source_consensus_zh": _brief_field(row, "source_consensus_zh"),
+        "result_basis": row.get("result_basis"),
+        "evidence_ref": f"news_items:{row.get('news_item_id')}",
+        "evidence_refs": [f"news_items:{row.get('news_item_id')}"],
+        "truncated": truncated,
+    }
+
+
+def _target_context_row(row: Mapping[str, Any]) -> dict[str, Any]:
+    evidence_ref = (
+        f"news_token_mentions:{row.get('news_item_id')}:{row.get('matching_basis')}:{row.get('display_symbol')}"
+    )
+    return {
+        "news_item_id": row.get("news_item_id"),
+        "target_type": row.get("target_type") or "",
+        "target_id": row.get("target_id") or "",
+        "display_symbol": row.get("display_symbol") or "",
+        "title": _compact_text(row.get("title"), max_length=180),
+        "summary": _compact_text(row.get("summary"), max_length=320),
+        "published_at_ms": row.get("published_at_ms"),
+        "source_domain": row.get("source_domain"),
+        "source_name": row.get("source_name"),
+        "source_role": row.get("source_role"),
+        "trust_tier": row.get("trust_tier"),
+        "matching_basis": row.get("matching_basis"),
+        "match_reason": row.get("match_reason"),
+        "match_confidence": row.get("match_confidence"),
+        "brief_status": _brief_field(row, "brief_status"),
+        "novelty_status": _brief_field(row, "novelty_status"),
+        "confirmation_state": _brief_field(row, "confirmation_state"),
+        "source_consensus_zh": _brief_field(row, "source_consensus_zh"),
+        "summary_zh": _brief_field(row, "summary_zh"),
+        "market_read_zh": _brief_field(row, "market_read_zh"),
+        "result_basis": row.get("matching_basis"),
+        "evidence_ref": evidence_ref,
+    }
+
+
+def _empty_target_news_context() -> dict[str, Any]:
+    return {
+        "counts": {"total": 0, "exact_target": 0, "symbol_heuristic": 0},
+        "top_items": [],
+        "latest_items": [],
+        "source_domain_count": 0,
+        "high_score_count": 0,
+        "matching_basis": [],
+        "truncated": False,
+        "result_basis": "",
+        "evidence_refs": [],
+    }
 
 
 def _first_int(*values: int | None) -> int:
@@ -4324,6 +5238,7 @@ def _provider_capability_tags(*, row: Mapping[str, Any]) -> list[str]:
     if trust_tier in {"official", "high"}:
         tags.append("high_trust")
     return list(dict.fromkeys(tags))
+
 
 def _json(value: Any) -> Jsonb:
     return Jsonb(value, dumps=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True))

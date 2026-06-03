@@ -21,16 +21,29 @@ from parallax.domains.news_intel.services.news_item_agent_policy import (
     news_item_agent_brief_eligibility,
 )
 from parallax.domains.news_intel.services.news_item_brief_input import (
-    build_news_item_brief_input_packet,
+    build_news_item_brief_base_packet,
+    news_item_brief_synthesis_material_hash,
+    news_item_brief_synthesis_material_payload,
 )
 from parallax.domains.news_intel.services.news_item_brief_validation import (
     validate_news_item_brief_output,
 )
+from parallax.domains.news_intel.services.news_item_research_executor import (
+    NewsResearchPlanExecutionResult,
+    execute_news_research_plan,
+)
+from parallax.domains.news_intel.services.news_item_research_policy import (
+    classify_news_item_research_policy,
+)
 from parallax.domains.news_intel.types.news_item_brief import (
     NEWS_ITEM_BRIEF_LANE,
+    NEWS_ITEM_RESEARCH_POLICY_VERSION,
+    NEWS_ITEM_RESEARCH_TOOL_CATALOG_VERSION,
     NewsItemBriefAgentConfig,
-    NewsItemBriefInputPacket,
+    NewsItemBriefBasePacket,
+    NewsItemBriefSynthesisPacket,
     default_news_item_brief_agent_config,
+    news_item_brief_base_material_identity,
 )
 from parallax.platform.agent_execution import (
     AgentCapacityReservation,
@@ -150,7 +163,24 @@ class NewsItemBriefWorker(WorkerBase):
                     skipped += 1
                     continue
                 try:
-                    packet = _packet_from_candidate(candidate, agent_config=agent_config)
+                    base_packet = _base_packet_from_candidate(candidate, agent_config=agent_config)
+                    if _current_brief_base_is_fresh(candidate, base_packet=base_packet, agent_config=agent_config):
+                        await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
+                        skipped += 1
+                        continue
+                    research_decision = classify_news_item_research_policy(base_packet)
+                    research_execution = await asyncio.to_thread(
+                        self._execute_research_plan,
+                        base_packet=base_packet,
+                        plan=research_decision.research_plan,
+                        now_ms=now,
+                    )
+                    packet = _synthesis_packet_from_parts(
+                        base_packet=base_packet,
+                        research_plan=research_decision.research_plan,
+                        tool_results=research_execution.tool_results,
+                        agent_config=agent_config,
+                    )
                     if _current_brief_is_fresh(candidate, packet=packet, agent_config=agent_config):
                         await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
                         skipped += 1
@@ -162,6 +192,7 @@ class NewsItemBriefWorker(WorkerBase):
                         agent_config=agent_config,
                         now_ms=now,
                         reservation=reservation,
+                        research_execution=research_execution,
                     )
                 except Exception as exc:
                     notes["failed"] += 1
@@ -198,11 +229,13 @@ class NewsItemBriefWorker(WorkerBase):
         self,
         *,
         candidate: Mapping[str, Any],
-        packet: NewsItemBriefInputPacket,
+        packet: NewsItemBriefSynthesisPacket,
         agent_config: NewsItemBriefAgentConfig,
         now_ms: int,
         reservation: AgentCapacityReservation,
+        research_execution: NewsResearchPlanExecutionResult,
     ) -> _CandidateOutcome:
+        del candidate, now_ms
         if self.provider is None:
             raise RuntimeError("news item brief provider is not configured")
         run_id = self.run_id_factory()
@@ -223,6 +256,7 @@ class NewsItemBriefWorker(WorkerBase):
                     request_audit=request_audit,
                     error=exc,
                     started_at_ms=started_at_ms,
+                    research_execution=research_execution,
                 )
             return await self._record_provider_failure(
                 run_id=run_id,
@@ -231,11 +265,21 @@ class NewsItemBriefWorker(WorkerBase):
                 request_audit=request_audit,
                 error=exc,
                 started_at_ms=started_at_ms,
+                research_execution=research_execution,
             )
 
         payload = result.get("payload") if isinstance(result, Mapping) else None
         audit = _audit_dict(result.get("agent_run_audit") if isinstance(result, Mapping) else None) or request_audit
-        validation = validate_news_item_brief_output(payload=payload, packet=packet, audit=audit)
+        request_context = _request_json(
+            packet=packet,
+            audit=request_audit,
+            research_execution=research_execution,
+        )
+        validation = validate_news_item_brief_output(
+            payload=payload,
+            packet=packet.base_packet,
+            audit={**audit, "request_json": request_context},
+        )
         finished_at_ms = self.clock_ms()
         if not validation.publishable:
             await asyncio.to_thread(
@@ -250,7 +294,7 @@ class NewsItemBriefWorker(WorkerBase):
                 outcome="failed",
                 error_class="domain_validation_failed",
                 error="news item brief validation failed",
-                request_json=_request_json(packet=packet, audit=request_audit),
+                request_json=request_context,
                 response_json=payload if isinstance(payload, Mapping) else {"payload": payload},
                 validation_errors=validation.errors,
                 execution_started=True,
@@ -280,7 +324,7 @@ class NewsItemBriefWorker(WorkerBase):
             outcome=str(validation.status),
             error_class=None,
             error=None,
-            request_json=_request_json(packet=packet, audit=request_audit),
+            request_json=request_context,
             response_json=payload_dict,
             validation_errors=[],
             execution_started=True,
@@ -301,11 +345,12 @@ class NewsItemBriefWorker(WorkerBase):
         self,
         *,
         run_id: str,
-        packet: NewsItemBriefInputPacket,
+        packet: NewsItemBriefSynthesisPacket,
         agent_config: NewsItemBriefAgentConfig,
         request_audit: Mapping[str, Any],
         error: Exception,
         started_at_ms: int,
+        research_execution: NewsResearchPlanExecutionResult,
         execution_started: bool | None = None,
     ) -> _CandidateOutcome:
         if self.provider is None:
@@ -327,7 +372,11 @@ class NewsItemBriefWorker(WorkerBase):
             outcome="failed",
             error_class=_provider_error_class(error),
             error=str(error),
-            request_json=_request_json(packet=packet, audit=request_audit),
+            request_json=_request_json(
+                packet=packet,
+                audit=request_audit,
+                research_execution=research_execution,
+            ),
             response_json=None,
             validation_errors=[],
             execution_started=resolved_execution_started,
@@ -347,13 +396,14 @@ class NewsItemBriefWorker(WorkerBase):
         self,
         *,
         run_id: str,
-        packet: NewsItemBriefInputPacket,
+        packet: NewsItemBriefSynthesisPacket,
         agent_config: NewsItemBriefAgentConfig,
         request_audit: Mapping[str, Any],
         error: Exception,
         started_at_ms: int,
+        research_execution: NewsResearchPlanExecutionResult,
     ) -> _CandidateOutcome:
-        del run_id, packet, agent_config, request_audit, started_at_ms
+        del run_id, packet, agent_config, request_audit, started_at_ms, research_execution
         outcome = _backpressure_outcome_for_reason(getattr(error, "error_class", None))
         return _CandidateOutcome(
             notes={"backpressure": 1, outcome: 1},
@@ -398,12 +448,36 @@ class NewsItemBriefWorker(WorkerBase):
         with self._repository_session() as repos:
             return cast(list[dict[str, Any]], repos.news.load_items_for_brief_targets(news_item_ids=news_item_ids))
 
+    def _execute_research_plan(
+        self,
+        *,
+        base_packet: NewsItemBriefBasePacket,
+        plan: Any,
+        now_ms: int,
+    ) -> NewsResearchPlanExecutionResult:
+        if plan.status == "skip" or not plan.tool_calls:
+            return NewsResearchPlanExecutionResult(
+                status="skipped",
+                tool_results=[],
+                error_codes=[],
+                material_chars=0,
+                skipped_call_count=len(plan.tool_calls),
+                executed_call_count=0,
+            )
+        with self._repository_session() as repos:
+            return execute_news_research_plan(
+                repos.news,
+                plan,
+                base_packet=base_packet,
+                now_ms=now_ms,
+            )
+
     def _complete_claimed_target(
         self,
         target: Mapping[str, Any],
         *,
         outcome: _CandidateOutcome,
-        packet: NewsItemBriefInputPacket,
+        packet: NewsItemBriefSynthesisPacket,
         agent_config: NewsItemBriefAgentConfig,
         now_ms: int,
     ) -> None:
@@ -486,7 +560,7 @@ class NewsItemBriefWorker(WorkerBase):
         target: Mapping[str, Any],
         *,
         outcome: _CandidateOutcome,
-        packet: NewsItemBriefInputPacket,
+        packet: NewsItemBriefSynthesisPacket,
         now_ms: int,
         terminal_attempt_count: int | None = None,
     ) -> int:
@@ -506,7 +580,7 @@ class NewsItemBriefWorker(WorkerBase):
         self,
         *,
         run_id: str,
-        packet: NewsItemBriefInputPacket,
+        packet: NewsItemBriefSynthesisPacket,
         agent_config: NewsItemBriefAgentConfig,
         audit: Mapping[str, Any],
         started_at_ms: int,
@@ -526,7 +600,7 @@ class NewsItemBriefWorker(WorkerBase):
         with self._repository_session() as repos:
             repos.news.insert_news_item_agent_run(
                 run_id=run_id,
-                news_item_id=packet.news_item.news_item_id,
+                news_item_id=packet.base_packet.news_item.news_item_id,
                 provider=str(audit.get("provider") or self.provider.provider),
                 model=str(audit.get("model") or agent_config.model),
                 backend=str(audit.get("backend") or "litellm_sdk"),
@@ -561,14 +635,14 @@ class NewsItemBriefWorker(WorkerBase):
         self,
         *,
         run_id: str,
-        packet: NewsItemBriefInputPacket,
+        packet: NewsItemBriefSynthesisPacket,
         agent_config: NewsItemBriefAgentConfig,
         payload: Mapping[str, Any],
         computed_at_ms: int,
     ) -> None:
         with self._repository_session() as repos, repos.conn.transaction():
             repos.news.upsert_news_item_agent_brief(
-                news_item_id=packet.news_item.news_item_id,
+                news_item_id=packet.base_packet.news_item.news_item_id,
                 agent_run_id=run_id,
                 status=str(payload["status"]),
                 direction=str(payload["direction"]),
@@ -586,7 +660,7 @@ class NewsItemBriefWorker(WorkerBase):
             )
             enqueue_page_reprojection(
                 repos,
-                news_item_ids=[packet.news_item.news_item_id],
+                news_item_ids=[packet.base_packet.news_item.news_item_id],
                 reason="news_item_brief_updated",
                 now_ms=int(computed_at_ms),
                 commit=False,
@@ -596,7 +670,7 @@ class NewsItemBriefWorker(WorkerBase):
         self,
         *,
         run_id: str,
-        packet: NewsItemBriefInputPacket,
+        packet: NewsItemBriefSynthesisPacket,
         agent_config: NewsItemBriefAgentConfig,
         errors: list[dict[str, str]],
         computed_at_ms: int,
@@ -613,7 +687,7 @@ class NewsItemBriefWorker(WorkerBase):
         self,
         *,
         run_id: str,
-        packet: NewsItemBriefInputPacket,
+        packet: NewsItemBriefSynthesisPacket,
         agent_config: NewsItemBriefAgentConfig,
         errors: list[dict[str, str]],
         terminal_reason: str,
@@ -674,12 +748,12 @@ class _CandidateOutcome:
         self.terminal_errors = list(terminal_errors or [])
 
 
-def _packet_from_candidate(
+def _base_packet_from_candidate(
     candidate: Mapping[str, Any],
     *,
     agent_config: NewsItemBriefAgentConfig,
-) -> NewsItemBriefInputPacket:
-    return build_news_item_brief_input_packet(
+) -> NewsItemBriefBasePacket:
+    return build_news_item_brief_base_packet(
         item=_dict(candidate.get("item") or candidate),
         token_mentions=_list_of_dicts(candidate.get("token_mentions")),
         fact_candidates=_list_of_dicts(candidate.get("fact_candidates")),
@@ -687,10 +761,69 @@ def _packet_from_candidate(
     )
 
 
+def _synthesis_packet_from_candidate(
+    candidate: Mapping[str, Any],
+    *,
+    agent_config: NewsItemBriefAgentConfig,
+    news_repo: Any,
+    now_ms: int,
+) -> NewsItemBriefSynthesisPacket:
+    base_packet = _base_packet_from_candidate(candidate, agent_config=agent_config)
+    decision = classify_news_item_research_policy(base_packet)
+    if decision.research_plan.status == "skip" or not decision.research_plan.tool_calls:
+        execution = NewsResearchPlanExecutionResult(
+            status="skipped",
+            tool_results=[],
+            error_codes=[],
+            material_chars=0,
+            skipped_call_count=len(decision.research_plan.tool_calls),
+            executed_call_count=0,
+        )
+    else:
+        execution = execute_news_research_plan(
+            news_repo,
+            decision.research_plan,
+            base_packet=base_packet,
+            now_ms=now_ms,
+        )
+    return _synthesis_packet_from_parts(
+        base_packet=base_packet,
+        research_plan=decision.research_plan,
+        tool_results=execution.tool_results,
+        agent_config=agent_config,
+    )
+
+
+def _synthesis_packet_from_parts(
+    *,
+    base_packet: NewsItemBriefBasePacket,
+    research_plan: Any,
+    tool_results: list[Any],
+    agent_config: NewsItemBriefAgentConfig,
+) -> NewsItemBriefSynthesisPacket:
+    seed = {
+        "base_input_hash": base_packet.input_hash,
+        "research_plan": research_plan.model_dump(mode="json"),
+        "tool_result_hashes": [str(getattr(result, "result_hash", "")) for result in tool_results],
+        "prompt_version": agent_config.prompt_version,
+        "schema_version": agent_config.schema_version,
+    }
+    digest = json_sha256(seed).removeprefix("sha256:")[:16]
+    packet = NewsItemBriefSynthesisPacket(
+        packet_id=f"news-item-brief-synthesis:{base_packet.news_item.news_item_id}:{digest}",
+        base_packet=base_packet,
+        research_plan=research_plan,
+        tool_results=tool_results,
+        prompt_version=agent_config.prompt_version,
+        schema_version=agent_config.schema_version,
+    )
+    return packet.model_copy(update={"input_hash": news_item_brief_synthesis_material_hash(packet)})
+
+
 def _current_brief_is_fresh(
     candidate: Mapping[str, Any],
     *,
-    packet: NewsItemBriefInputPacket,
+    packet: NewsItemBriefSynthesisPacket,
     agent_config: NewsItemBriefAgentConfig,
 ) -> bool:
     current = _optional_dict(candidate.get("current_brief"))
@@ -711,6 +844,41 @@ def _current_brief_is_fresh(
         return False
     return str(current.get("validator_version") or "") == agent_config.validator_version
 
+
+def _current_brief_base_is_fresh(
+    candidate: Mapping[str, Any],
+    *,
+    base_packet: NewsItemBriefBasePacket,
+    agent_config: NewsItemBriefAgentConfig,
+) -> bool:
+    current = _optional_dict(candidate.get("current_brief"))
+    if current is None or str(current.get("status") or "") == "failed":
+        return False
+    if str(current.get("artifact_version_hash") or "") != agent_config.artifact_version_hash:
+        return False
+    if str(current.get("prompt_version") or "") != agent_config.prompt_version:
+        return False
+    if str(current.get("schema_version") or "") != agent_config.schema_version:
+        return False
+    if str(current.get("validator_version") or "") != agent_config.validator_version:
+        return False
+
+    latest_run = _optional_dict(candidate.get("latest_run"))
+    request_json = _dict(latest_run.get("request_json") if latest_run is not None else None)
+    research_hashes = _dict(request_json.get("research_hashes"))
+    research_plan = _dict(request_json.get("research_plan"))
+    if str(research_hashes.get("base_input_hash") or "") != base_packet.input_hash:
+        return False
+    if str(research_plan.get("policy_version") or "") != NEWS_ITEM_RESEARCH_POLICY_VERSION:
+        return False
+    if str(research_plan.get("tool_catalog_version") or "") != NEWS_ITEM_RESEARCH_TOOL_CATALOG_VERSION:
+        return False
+    synthesis_input_hash = str(
+        research_hashes.get("synthesis_input_hash") or request_json.get("synthesis_input_hash") or ""
+    )
+    return bool(synthesis_input_hash) and str(current.get("input_hash") or "") == synthesis_input_hash
+
+
 def _target_ids(rows: Iterable[Mapping[str, Any]]) -> list[str]:
     return item_brief_news_item_ids(rows)
 
@@ -729,9 +897,26 @@ def _backpressure_outcome_for_reason(reason: Any) -> str:
     return "backpressure_capacity_denied"
 
 
-def _request_json(*, packet: NewsItemBriefInputPacket, audit: Mapping[str, Any]) -> dict[str, Any]:
+def _request_json(
+    *,
+    packet: NewsItemBriefSynthesisPacket,
+    audit: Mapping[str, Any],
+    research_execution: NewsResearchPlanExecutionResult,
+) -> dict[str, Any]:
+    synthesis_payload = news_item_brief_synthesis_material_payload(packet)
+    research_packet = _dict(synthesis_payload.get("research_packet"))
     return {
-        "packet": packet.model_dump(mode="json"),
+        "base_packet": news_item_brief_base_material_identity(packet.base_packet),
+        "research_plan": packet.research_plan.model_dump(mode="json"),
+        "tool_results": [result.model_dump(mode="json") for result in packet.tool_results],
+        "research_execution": research_execution.model_dump(mode="json"),
+        "research_hashes": {
+            "base_input_hash": packet.base_packet.input_hash,
+            "research_packet_hash": str(research_packet.get("research_packet_hash") or ""),
+            "synthesis_input_hash": packet.input_hash,
+        },
+        "synthesis_input_hash": packet.input_hash,
+        "synthesis_packet_id": packet.packet_id,
         "audit": dict(audit),
     }
 
@@ -748,8 +933,16 @@ def _failed_brief(
         "status": "failed",
         "direction": "neutral",
         "decision_class": "discard",
+        "novelty_status": "unclear",
+        "confirmation_state": "unclear",
+        "title_zh": "",
         "summary_zh": "",
         "market_read_zh": "",
+        "source_consensus_zh": "",
+        "retrieval_notes_zh": "摘要生成失败，未形成可发布检索结论。",
+        "retrieval_evidence_refs": [],
+        "research_todos_zh": [],
+        "used_tool_call_ids": [],
         "bull_view": {"strength": "absent", "thesis_zh": "", "evidence_refs": []},
         "bear_view": {"strength": "absent", "thesis_zh": "", "evidence_refs": []},
         "affected_assets": [],

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Protocol
 
-from parallax.domains.news_intel.types.news_item_brief import NewsItemBriefInputPacket
+from parallax.domains.news_intel.types.news_item_brief import NewsItemBriefSynthesisPacket
 from parallax.domains.news_intel.types.source_provider import (
     NewsProviderFetchResult,
     NewsSourceHttpCache,
@@ -63,13 +63,13 @@ class NewsItemBriefProvider(Protocol):
 
     def try_reserve_execution(self, lane: str, *, rate_units: int = 1) -> AgentCapacityReservation: ...
 
-    def request_audit(self, *, run_id: str, packet: NewsItemBriefInputPacket) -> dict[str, Any]: ...
+    def request_audit(self, *, run_id: str, packet: NewsItemBriefSynthesisPacket) -> dict[str, Any]: ...
 
     async def brief_item(
         self,
         *,
         run_id: str,
-        packet: NewsItemBriefInputPacket,
+        packet: NewsItemBriefSynthesisPacket,
         reservation: AgentCapacityReservation | None = None,
     ) -> dict[str, Any]: ...
 
