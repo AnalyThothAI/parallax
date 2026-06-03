@@ -240,6 +240,8 @@ It must not hold a DB session while calling the synthesis model stage.
 
 Builds the v2 synthesizer prompt from sections.
 
+The assembler is the canonical v2 synthesizer prompt source. During incremental implementation, the active markdown prompt must stay aligned with the currently wired packet until `NewsItemBriefStage` accepts `NewsItemBriefSynthesisPacket`; the stage switch and prompt switch happen in the same hard-cut change so runtime prompt text and runtime payload never belong to different generations.
+
 Required sections:
 
 - identity and role;

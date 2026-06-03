@@ -73,9 +73,9 @@ The plan is calibrated against the live PostgreSQL store observed on 2026-06-03 
   - Build synthesizer prompt text from sections.
   - Include the research packet contract and evidence boundary.
 
-- Modify `src/parallax/domains/news_intel/prompts/news_item_brief.md`
-  - Convert to synthesizer prompt.
-  - State that only base packet and research packet may be used.
+- Keep `src/parallax/domains/news_intel/prompts/news_item_brief.md` on the current packet contract until the synthesis packet stage is wired.
+  - Task 2 creates the canonical v2 synthesizer builder but must not switch the active markdown prompt early.
+  - Task 5 switches the stage to the builder and `NewsItemBriefSynthesisPacket` in one hard cut.
 
 ### Tool registry and executor
 
@@ -272,11 +272,11 @@ The plan is calibrated against the live PostgreSQL store observed on 2026-06-03 
   git commit -m "feat: add news research harness contracts"
   ```
 
-### Task 2: Add runtime prompt assembly and synthesizer prompt
+### Task 2: Add runtime prompt assembly and synthesizer prompt builder
 
 **Files:**
 - Create: `src/parallax/domains/news_intel/services/news_item_brief_prompt_assembly.py`
-- Modify: `src/parallax/domains/news_intel/prompts/news_item_brief.md`
+- Read/guard: `src/parallax/domains/news_intel/prompts/news_item_brief.md`
 - Test: `tests/unit/domains/news_intel/test_news_item_brief_prompt_assembly.py`
 
 - [ ] **Step 1: Write failing prompt assembly tests**
@@ -298,6 +298,13 @@ The plan is calibrated against the live PostgreSQL store observed on 2026-06-03 
       assert "symbol_heuristic" in prompt
       assert "market_subject_heuristic" in prompt
       assert "attention facts" in prompt
+
+
+  def test_active_markdown_prompt_remains_on_current_packet_until_stage_migration() -> None:
+      prompt = ACTIVE_PROMPT_PATH.read_text(encoding="utf-8")
+
+      assert "use only base_packet and research_packet" not in prompt
+      assert "News Item Brief agent" in prompt
   ```
 
 - [ ] **Step 2: Run failing tests**
@@ -321,6 +328,8 @@ The plan is calibrated against the live PostgreSQL store observed on 2026-06-03 
 
   The synthesizer prompt must say: use only base packet and research packet; output only `NewsItemBriefPayload` v2. It must explicitly forbid upgrading heuristic matches into exact confirmation, treating same-domain source lanes as independent confirmation, or treating `attention` facts as accepted facts.
 
+  Do not update the active markdown prompt in this task. Current runtime still sends `NewsItemBriefInputPacket`; changing the active markdown before the stage accepts `NewsItemBriefSynthesisPacket` creates a prompt/payload generation mismatch. The active prompt migration happens in Task 5.
+
 - [ ] **Step 4: Run tests**
 
   ```bash
@@ -332,8 +341,8 @@ The plan is calibrated against the live PostgreSQL store observed on 2026-06-03 
 - [ ] **Step 5: Commit**
 
   ```bash
-  git add src/parallax/domains/news_intel/services/news_item_brief_prompt_assembly.py src/parallax/domains/news_intel/prompts/news_item_brief.md tests/unit/domains/news_intel/test_news_item_brief_prompt_assembly.py
-  git commit -m "feat: assemble news research harness prompts"
+  git add src/parallax/domains/news_intel/services/news_item_brief_prompt_assembly.py tests/unit/domains/news_intel/test_news_item_brief_prompt_assembly.py
+  git commit -m "feat: assemble news research harness prompt builder"
   ```
 
 ### Task 3: Add News research tool registry and executor
@@ -561,7 +570,9 @@ The plan is calibrated against the live PostgreSQL store observed on 2026-06-03 
 ### Task 5: Update the News item brief client for synthesis packets
 
 **Files:**
+- Modify: `src/parallax/domains/news_intel/services/news_item_brief_stage.py`
 - Modify: `src/parallax/integrations/model_execution/news_item_brief_agent_client.py`
+- Modify or retire active loading of: `src/parallax/domains/news_intel/prompts/news_item_brief.md`
 - Test: `tests/unit/integrations/model_execution/test_news_item_brief_agent_client.py`
 
 - [ ] **Step 1: Write failing client tests**
@@ -597,6 +608,7 @@ The plan is calibrated against the live PostgreSQL store observed on 2026-06-03 
 
 - [ ] **Step 3: Implement client methods**
 
+  - Update `build_news_item_brief_stage(...)` to accept `NewsItemBriefSynthesisPacket`, set stage name `news_item_brief_synthesis`, use `build_news_item_brief_synthesizer_prompt()`, and send the synthesis packet material payload.
   - `brief_item(...)` builds synthesizer stage with synthesis packet.
   - Keep reservation lane `news.item_brief`; P0 still has one model call.
   - `request_audit(...)` uses the synthesis stage.
@@ -614,7 +626,7 @@ The plan is calibrated against the live PostgreSQL store observed on 2026-06-03 
 - [ ] **Step 5: Commit**
 
   ```bash
-  git add src/parallax/integrations/model_execution/news_item_brief_agent_client.py tests/unit/integrations/model_execution/test_news_item_brief_agent_client.py
+  git add src/parallax/domains/news_intel/services/news_item_brief_stage.py src/parallax/integrations/model_execution/news_item_brief_agent_client.py tests/unit/integrations/model_execution/test_news_item_brief_agent_client.py
   git commit -m "feat: pass news research packet to brief client"
   ```
 
