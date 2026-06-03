@@ -259,6 +259,8 @@ def test_project_group_outputs_factor_snapshot_not_score_contract():
     assert projected is not None
     assert projected["factor_snapshot_json"]["schema_version"] == "token_factor_snapshot_v3_social_attention"
     assert projected["factor_snapshot_json"]["subject"]["chain"] == "56"
+    assert projected["chain_id"] == "56"
+    assert projected["address"] == "0x1"
     assert projected["factor_snapshot_json"]["gates"]["eligible_for_high_alert"] is False
     assert projected["factor_version"] == "token_factor_snapshot_v3_social_attention"
     assert DROPPED_CURRENT_ROW_COLUMNS.isdisjoint(projected)
@@ -270,6 +272,7 @@ def test_project_group_populates_v3_data_health_from_top_level_snapshot():
     row["target_id"] = "cex_token:BTC"
     row["cex_base_symbol"] = "BTC"
     row["cex_token_status"] = "canonical"
+    row["pricefeed_provider"] = "binance"
     row["native_market_id"] = "BTC-USDT"
     row["market_volume_24h_usd"] = 123_000_000.0
     row["market_open_interest_usd"] = 45_000_000.0
@@ -277,6 +280,8 @@ def test_project_group_populates_v3_data_health_from_top_level_snapshot():
     projected = _project_group([row], now_ms=1_777_800_060_000, window="1h", scope="all")
 
     assert projected is not None
+    assert projected["provider"] == "binance"
+    assert projected["native_market_id"] == "BTC-USDT"
     snapshot = projected["factor_snapshot_json"]
     assert projected["data_health_json"] == {
         "factor_snapshot": "ready",
@@ -1081,6 +1086,90 @@ def test_capture_tier_rank_set_fingerprint_includes_live_market_key() -> None:
             rows=[{**asset_row, "address": "0xDEF"}],
         )
     )
+
+
+def test_capture_tier_rank_set_fingerprint_uses_factor_snapshot_live_market_key() -> None:
+    cex_row = {
+        "target_type": "CexToken",
+        "target_id": "cex-token:btc",
+        "rank": 1,
+        "rank_score": 88,
+        "lane": "resolved",
+        "quality_status": "ready",
+        "degraded_reasons_json": [],
+        "payload_hash": "row-hash",
+        "generation_id": "gen-1",
+        "factor_snapshot_json": {
+            "subject": {
+                "provider": "binance",
+                "native_market_id": "BTCUSDT",
+            }
+        },
+    }
+    asset_row = {
+        "target_type": "Asset",
+        "target_id": "asset-1",
+        "rank": 1,
+        "rank_score": 88,
+        "lane": "resolved",
+        "quality_status": "ready",
+        "degraded_reasons_json": [],
+        "payload_hash": "row-hash",
+        "generation_id": "gen-1",
+        "factor_snapshot_json": {
+            "subject": {
+                "chain_id": "eip155:1",
+                "address": "0xABC",
+            }
+        },
+    }
+
+    assert token_capture_tier_rank_set_payload_hash(reason="repair", rows=[cex_row]) == (
+        token_capture_tier_rank_set_payload_hash(
+            reason="repair",
+            rows=[{**cex_row, "provider": "binance", "native_market_id": "BTCUSDT", "factor_snapshot_json": {}}],
+        )
+    )
+    assert token_capture_tier_rank_set_payload_hash(reason="repair", rows=[asset_row]) == (
+        token_capture_tier_rank_set_payload_hash(
+            reason="repair",
+            rows=[{**asset_row, "chain_id": "eip155:1", "address": "0xABC", "factor_snapshot_json": {}}],
+        )
+    )
+
+
+def test_projection_enqueues_capture_tier_when_live_market_key_changes() -> None:
+    now_ms = 1_777_800_060_000
+    previous = {
+        "target_type": "CexToken",
+        "target_id": "cex-token:btc",
+        "rank": 1,
+        "rank_score": 88,
+        "lane": "resolved",
+        "quality_status": "ready",
+        "degraded_reasons_json": [],
+        "source_max_received_at_ms": now_ms - 1_000,
+        "payload_hash": "row-hash",
+        "generation_id": "gen-1",
+        "factor_snapshot_json": {"subject": {"provider": "binance", "native_market_id": "BTCUSDT"}},
+    }
+    row = {
+        **previous,
+        "factor_snapshot_json": {"subject": {"provider": "binance", "native_market_id": "ETHUSDT"}},
+    }
+    repos = type("Repos", (), {"token_capture_tier_dirty_targets": FakeCaptureTierDirtyTargets()})()
+
+    TokenRadarProjection(repos=repos)._enqueue_token_capture_tier_for_rank_changes(
+        window="24h",
+        scope="all",
+        rows=[row],
+        exited_rows=[],
+        previous_by_key={("resolved", "CexToken", "cex-token:btc"): previous},
+        computed_at_ms=now_ms,
+    )
+
+    assert len(repos.token_capture_tier_dirty_targets.enqueued) == 1
+    assert repos.token_capture_tier_dirty_targets.enqueued[0]["rows"] == [row]
 
 
 def test_projection_enqueues_pulse_trigger_for_matched_realtime_rank_changes() -> None:

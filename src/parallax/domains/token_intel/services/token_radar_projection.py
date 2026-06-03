@@ -1452,9 +1452,11 @@ def _capture_tier_rank_set_changed(
 
 
 def _capture_tier_rank_payload(row: Mapping[str, Any]) -> tuple[Any, ...]:
+    capture_target = _capture_tier_target_key(row)
     return (
         str(row.get("target_type") or row.get("target_type_key") or ""),
         str(row.get("target_id") or row.get("identity_id") or ""),
+        capture_target,
         str(row.get("lane") or ""),
         row.get("rank"),
         row.get("rank_score", row.get("score")),
@@ -1469,6 +1471,75 @@ def _capture_tier_relevant_row(row: Mapping[str, Any]) -> bool:
     return str(row.get("target_type") or row.get("target_type_key") or "") in {"Asset", "CexToken"} and bool(
         str(row.get("target_id") or row.get("identity_id") or "").strip()
     )
+
+
+def _capture_tier_fields_from_target(target: Mapping[str, Any]) -> dict[str, str | None]:
+    return _capture_tier_fields_from_subject(target_type=target.get("target_type"), subject=target)
+
+
+def _capture_tier_fields_from_subject(*, target_type: Any, subject: Any) -> dict[str, str | None]:
+    subject_map = _dict(subject)
+    if str(target_type or "") == "Asset":
+        return {
+            "chain_id": _optional_text(
+                subject_map.get("chain_id") or subject_map.get("chain") or subject_map.get("asset_chain_id")
+            ),
+            "address": _optional_text(
+                subject_map.get("address") or subject_map.get("asset_address") or subject_map.get("token_address")
+            ),
+            "provider": None,
+            "native_market_id": None,
+        }
+    if str(target_type or "") == "CexToken":
+        return {
+            "chain_id": None,
+            "address": None,
+            "provider": _optional_text(subject_map.get("provider") or subject_map.get("pricefeed_provider")),
+            "native_market_id": _optional_text(subject_map.get("native_market_id")),
+        }
+    return {"chain_id": None, "address": None, "provider": None, "native_market_id": None}
+
+
+def _capture_tier_target_key(row: Mapping[str, Any]) -> tuple[str, str]:
+    target_type = str(row.get("target_type") or row.get("target_type_key") or "").strip()
+    subject = _rank_subject(row)
+    if target_type == "Asset":
+        chain_id = _optional_text(
+            row.get("chain_id")
+            or row.get("asset_chain_id")
+            or row.get("chain")
+            or subject.get("chain_id")
+            or subject.get("chain")
+            or subject.get("asset_chain_id")
+        )
+        address = _optional_text(
+            row.get("address") or row.get("asset_address") or row.get("token_address") or subject.get("address")
+        )
+        if chain_id and address:
+            normalized_address = address.lower() if address.startswith(("0x", "0X")) else address
+            return ("chain_token", f"{chain_id}:{normalized_address}")
+        return ("", "")
+    if target_type == "CexToken":
+        provider = (_optional_text(row.get("provider") or subject.get("provider")) or "").lower()
+        native_market_id = (
+            _optional_text(row.get("native_market_id") or subject.get("native_market_id")) or ""
+        ).upper()
+        if provider and native_market_id:
+            return ("cex_symbol", f"{provider}:{native_market_id}")
+    return ("", "")
+
+
+def _rank_subject(row: Mapping[str, Any]) -> Mapping[str, Any]:
+    snapshot = _json_ready(row.get("factor_snapshot_json"))
+    if not isinstance(snapshot, Mapping):
+        return {}
+    subject = snapshot.get("subject")
+    return subject if isinstance(subject, Mapping) else {}
+
+
+def _optional_text(value: Any) -> str | None:
+    text = str(value or "").strip()
+    return text or None
 
 
 def _transaction_context(conn: Any) -> AbstractContextManager[Any]:
@@ -1563,6 +1634,7 @@ def _project_group(
         "target_type": target_type,
         "target_id": target_id,
         "pricefeed_id": latest.get("pricefeed_id"),
+        **_capture_tier_fields_from_target(target),
         "intent_json": {
             "intent_id": latest["intent_id"],
             "display_symbol": _real_symbol(latest.get("display_symbol")),
@@ -2186,6 +2258,7 @@ def _row_from_target_feature(row: dict[str, Any], *, venue: str = TOKEN_RADAR_DE
     target_id = row.get("target_id")
     subject = factor_snapshot.get("subject") if isinstance(factor_snapshot, dict) else {}
     data_health = factor_snapshot.get("data_health") if isinstance(factor_snapshot, dict) else {}
+    capture_fields = _capture_tier_fields_from_subject(target_type=target_type, subject=subject)
     return {
         "row_id": _stable_id(
             "token-radar-row",
@@ -2208,6 +2281,7 @@ def _row_from_target_feature(row: dict[str, Any], *, venue: str = TOKEN_RADAR_DE
         "target_type": target_type,
         "target_id": target_id,
         "pricefeed_id": row.get("pricefeed_id"),
+        **capture_fields,
         "intent_json": {
             "intent_id": intent_id,
             "display_symbol": (subject or {}).get("symbol") if isinstance(subject, dict) else None,

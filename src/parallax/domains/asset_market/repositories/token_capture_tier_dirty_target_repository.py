@@ -233,22 +233,41 @@ def _rank_row_payload(row: Mapping[str, Any], *, exited: bool) -> dict[str, Any]
 
 
 def _capture_rank_target(row: Mapping[str, Any], *, source_target_type: str) -> tuple[str, str]:
+    subject = _rank_subject(row)
     if source_target_type == "Asset":
-        chain_id = str(row.get("chain_id") or row.get("asset_chain_id") or row.get("chain") or "").strip()
-        address = str(row.get("address") or row.get("asset_address") or row.get("token_address") or "").strip()
+        chain_id = str(
+            row.get("chain_id")
+            or row.get("asset_chain_id")
+            or row.get("chain")
+            or subject.get("chain_id")
+            or subject.get("chain")
+            or subject.get("asset_chain_id")
+            or ""
+        ).strip()
+        address = str(
+            row.get("address") or row.get("asset_address") or row.get("token_address") or subject.get("address") or ""
+        ).strip()
         if chain_id and address:
             normalized_address = address.lower() if address.startswith(("0x", "0X")) else address
             return "chain_token", f"{chain_id}:{normalized_address}"
         return "", ""
 
     if source_target_type == "CexToken":
-        provider = str(row.get("provider") or "").strip().lower()
-        native_market_id = str(row.get("native_market_id") or "").strip().upper()
+        provider = str(row.get("provider") or subject.get("provider") or "").strip().lower()
+        native_market_id = str(row.get("native_market_id") or subject.get("native_market_id") or "").strip().upper()
         if provider and native_market_id:
             return "cex_symbol", f"{provider}:{native_market_id}"
         return "", ""
 
     return "", ""
+
+
+def _rank_subject(row: Mapping[str, Any]) -> Mapping[str, Any]:
+    snapshot = _json_ready(row.get("factor_snapshot_json"))
+    if not isinstance(snapshot, Mapping):
+        return {}
+    subject = snapshot.get("subject")
+    return subject if isinstance(subject, Mapping) else {}
 
 
 def _rank_payload_sort_key(row: Mapping[str, Any]) -> tuple[str, str, str, str, str, str]:
