@@ -41,8 +41,9 @@ def test_no_planner_prompt_builder_is_exported() -> None:
     assert not hasattr(prompt_assembly, "build_news_item_brief_planner_prompt")
 
 
-def test_active_markdown_prompt_remains_on_current_packet_until_stage_migration() -> None:
+def test_active_markdown_prompt_is_not_the_synthesizer_runtime_source() -> None:
     prompt = ACTIVE_PROMPT_PATH.read_text(encoding="utf-8")
 
+    assert prompt != build_news_item_brief_synthesizer_prompt()
     assert "use only base_packet and research_packet" not in prompt
     assert "News Item Brief agent" in prompt
