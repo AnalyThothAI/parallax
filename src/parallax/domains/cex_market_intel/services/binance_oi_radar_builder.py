@@ -35,6 +35,7 @@ def build_binance_oi_radar_rows(
         ticker = tickers.get(symbol)
         premium = premiums.get(symbol)
         open_interest_usd = _attr(latest_oi, "open_interest_value")
+        latest_observed_at_ms = _attr(latest_oi, "observed_at_ms")
         change_pct = _change_pct(_attr(previous_oi, "open_interest_value"), open_interest_usd)
         funding_rate = _attr(premium, "last_funding_rate")
         volume_24h_usd = _attr(ticker, "quote_volume_24h")
@@ -59,7 +60,8 @@ def build_binance_oi_radar_rows(
                 "mark_price": _attr(premium, "mark_price") or _attr(ticker, "last_price"),
                 "score": score_payload["score"],
                 "score_components": score_payload["components"],
-                "observed_at_ms": _attr(latest_oi, "observed_at_ms") or now_ms,
+                "observed_at_ms": latest_observed_at_ms if latest_observed_at_ms is not None else now_ms,
+                "observed_at_source": "provider" if latest_observed_at_ms is not None else "computed",
             }
         )
 

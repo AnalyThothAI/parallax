@@ -33,6 +33,7 @@ def test_build_binance_oi_radar_rows_scores_and_ranks_binance_universe():
     assert rows["rows"][0]["open_interest_change_pct_1h"] == 10.0
     assert rows["rows"][0]["funding_rate"] == 0.0001
     assert rows["rows"][0]["score"] > 0
+    assert rows["rows"][0]["observed_at_source"] == "provider"
 
 
 def test_build_binance_oi_radar_rows_accepts_tuple_provider_sequences():
@@ -54,6 +55,26 @@ def test_build_binance_oi_radar_rows_accepts_tuple_provider_sequences():
     assert row["volume_24h_usd"] == 10_000_000.0
     assert row["funding_rate"] == 0.0001
     assert row["mark_price"] == 101.0
+
+
+def test_build_binance_oi_radar_rows_marks_now_ms_fallback_observed_timestamp_as_computed():
+    rows = build_binance_oi_radar_rows(
+        universe=[
+            {
+                "pricefeed_id": "pricefeed:cex:binance:swap:BTCUSDT",
+                "native_market_id": "BTCUSDT",
+                "base_symbol": "BTC",
+            }
+        ],
+        client=_NoObservedAtClient(),
+        now_ms=1_778_000_000_000,
+        period="5m",
+        limit=10,
+    )
+
+    row = rows["rows"][0]
+    assert row["observed_at_ms"] == 1_778_000_000_000
+    assert row["observed_at_source"] == "computed"
 
 
 class _Client:
@@ -88,3 +109,14 @@ class _TupleClient(_Client):
 
     def list_funding_premium(self, symbol=None):
         return tuple(super().list_funding_premium(symbol=symbol))
+
+
+class _NoObservedAtClient(_Client):
+    def list_open_interest_history(self, symbol, period, limit):
+        assert symbol == "BTCUSDT"
+        assert period == "5m"
+        assert limit == 2
+        return [
+            CexOpenInterestPoint(symbol=symbol, open_interest_value=1000.0, observed_at_ms=None),
+            CexOpenInterestPoint(symbol=symbol, open_interest_value=1100.0, observed_at_ms=None),
+        ]

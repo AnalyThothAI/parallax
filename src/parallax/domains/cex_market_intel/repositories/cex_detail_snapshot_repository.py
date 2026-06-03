@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections.abc import Mapping
 from decimal import Decimal
 from typing import Any
@@ -181,15 +182,14 @@ def _detail_payload_hash(snapshot: Mapping[str, Any]) -> str:
             snapshot.get("degraded_reasons") or snapshot.get("degraded_reasons_json")
         ),
         "source_refs": _source_refs_for_hash(snapshot),
-        "observed_at_ms": snapshot.get("observed_at_ms"),
+        "observed_at_ms": _provider_observed_at_ms(snapshot),
     }
     return _stable_payload_hash(payload)
 
 
 def _source_refs_for_hash(snapshot: Mapping[str, Any]) -> list[dict[str, Any]]:
     refs = _list_payload(snapshot.get("source_refs") or snapshot.get("source_refs_json"))
-    computed_at_ms = _int_or_none(snapshot.get("computed_at_ms"))
-    provider_observed_at_ms = _int_or_none(snapshot.get("observed_at_ms"))
+    provider_observed_at_ms = _provider_observed_at_ms(snapshot)
     source_refs: list[dict[str, Any]] = []
     for ref in refs:
         if not isinstance(ref, Mapping):
@@ -199,10 +199,8 @@ def _source_refs_for_hash(snapshot: Mapping[str, Any]) -> list[dict[str, Any]]:
             key_text = str(key)
             if key_text in _HASH_METADATA_FIELDS:
                 continue
-            if key_text == "observed_at_ms":
-                ref_observed_at_ms = _int_or_none(value)
-                if provider_observed_at_ms is None and ref_observed_at_ms == computed_at_ms:
-                    continue
+            if key_text == "observed_at_ms" and provider_observed_at_ms is None:
+                continue
             ref_payload[key_text] = value
         source_refs.append(ref_payload)
     return source_refs
@@ -220,11 +218,45 @@ def _json_ready(value: Any) -> Any:
         return [_json_ready(inner) for inner in value]
     if isinstance(value, set | frozenset):
         return sorted(_json_ready(inner) for inner in value)
+    if isinstance(value, bool):
+        return value
     if isinstance(value, Decimal):
-        return str(value.normalize())
+        return _canonical_number(value)
+    if isinstance(value, int | float):
+        return _canonical_number(value)
     if hasattr(value, "isoformat"):
         return value.isoformat()
     return value
+
+
+def _provider_observed_at_ms(snapshot: Mapping[str, Any]) -> int | None:
+    observed_at_ms = _int_or_none(snapshot.get("observed_at_ms"))
+    if observed_at_ms is None:
+        return None
+    source = str(snapshot.get("observed_at_source") or "").strip().lower()
+    if source == "provider":
+        return observed_at_ms
+    if source == "computed":
+        return None
+    computed_at_ms = _int_or_none(snapshot.get("computed_at_ms"))
+    if computed_at_ms is not None and observed_at_ms == computed_at_ms:
+        return None
+    return observed_at_ms
+
+
+def _canonical_number(value: int | float | Decimal) -> str:
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            return str(value)
+        number = Decimal(str(value))
+    else:
+        number = Decimal(value)
+    text = format(number.normalize(), "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    if text == "-0":
+        return "0"
+    return text or "0"
 
 
 def _list_payload(value: Any) -> list[Any]:

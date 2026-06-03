@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import importlib
+from decimal import Decimal
+
 from parallax.domains.cex_market_intel.repositories.cex_detail_snapshot_repository import (
     CexDetailSnapshotRepository,
     _detail_payload_hash,
@@ -13,11 +16,87 @@ def test_detail_payload_hash_ignores_computed_at_and_computed_source_ref_timesta
     assert _detail_payload_hash(first) == _detail_payload_hash(second)
 
 
+def test_detail_payload_hash_ignores_computed_fallback_observed_timestamps():
+    first = _snapshot(
+        computed_at_ms=1_778_000_000_000,
+        observed_at_ms=1_778_000_000_000,
+        observed_at_source="computed",
+    )
+    second = _snapshot(
+        computed_at_ms=1_778_000_999_999,
+        observed_at_ms=1_778_000_999_999,
+        observed_at_source="computed",
+    )
+
+    assert _detail_payload_hash(first) == _detail_payload_hash(second)
+
+
 def test_detail_payload_hash_keeps_provider_observed_market_freshness():
-    first = _snapshot(computed_at_ms=1_778_000_000_000, observed_at_ms=1_778_000_000_123)
-    second = _snapshot(computed_at_ms=1_778_000_000_000, observed_at_ms=1_778_000_000_456)
+    first = _snapshot(
+        computed_at_ms=1_778_000_000_000,
+        observed_at_ms=1_778_000_000_123,
+        observed_at_source="provider",
+    )
+    second = _snapshot(
+        computed_at_ms=1_778_000_000_000,
+        observed_at_ms=1_778_000_000_456,
+        observed_at_source="provider",
+    )
 
     assert _detail_payload_hash(first) != _detail_payload_hash(second)
+
+
+def test_detail_payload_hash_canonicalizes_decimal_and_float_numbers():
+    decimal_snapshot = _snapshot(
+        computed_at_ms=1_778_000_000_000,
+        price_usd=Decimal("72000.0"),
+        mark_price=Decimal("72001.0"),
+        funding_rate=Decimal("0.000100"),
+        volume_24h_usd=Decimal("1000000.0"),
+        open_interest_usd=Decimal("2000000.0"),
+        level_price=Decimal("73000.0"),
+        level_size=Decimal("2000000.0"),
+    )
+    float_snapshot = _snapshot(
+        computed_at_ms=1_778_000_000_000,
+        price_usd=72000.0,
+        mark_price=72001.0,
+        funding_rate=0.0001,
+        volume_24h_usd=1_000_000.0,
+        open_interest_usd=2_000_000.0,
+        level_price=73_000.0,
+        level_size=2_000_000.0,
+    )
+
+    assert _detail_payload_hash(decimal_snapshot) == _detail_payload_hash(float_snapshot)
+
+
+def test_migration_and_runtime_detail_hash_use_same_numeric_canonicalization():
+    migration = importlib.import_module(
+        "parallax.platform.db.alembic.versions.20260603_0142_cex_detail_payload_hash_hard_cut"
+    )
+    db_snapshot = _snapshot(
+        computed_at_ms=1_778_000_000_000,
+        price_usd=Decimal("72000.0"),
+        mark_price=Decimal("72001.0"),
+        funding_rate=Decimal("0.000100"),
+        volume_24h_usd=Decimal("1000000.0"),
+        open_interest_usd=Decimal("2000000.0"),
+        level_price=Decimal("73000.0"),
+        level_size=Decimal("2000000.0"),
+    )
+    runtime_snapshot = _snapshot(
+        computed_at_ms=1_778_000_000_000,
+        price_usd=72000.0,
+        mark_price=72001.0,
+        funding_rate=0.0001,
+        volume_24h_usd=1_000_000.0,
+        open_interest_usd=2_000_000.0,
+        level_price=73_000.0,
+        level_size=2_000_000.0,
+    )
+
+    assert migration.cex_detail_snapshot_payload_hash(db_snapshot) == _detail_payload_hash(runtime_snapshot)
 
 
 def test_upsert_many_returns_changed_rowcount_and_gates_on_payload_hash():
@@ -52,9 +131,21 @@ def test_computed_at_change_only_does_not_update_detail_serving_row():
     assert second_written == 0
 
 
-def _snapshot(*, computed_at_ms: int, observed_at_ms: int | None = None) -> dict:
+def _snapshot(
+    *,
+    computed_at_ms: int,
+    observed_at_ms: int | None = None,
+    observed_at_source: str | None = None,
+    price_usd=72_000.0,
+    mark_price=72_001.0,
+    funding_rate=0.0001,
+    volume_24h_usd=1_000_000.0,
+    open_interest_usd=2_000_000.0,
+    level_price=73_000.0,
+    level_size=2_000_000.0,
+) -> dict:
     source_observed_at_ms = observed_at_ms or computed_at_ms
-    return {
+    snapshot = {
         "snapshot_id": "cex-detail:binance:BTCUSDT",
         "target_type": "CexToken",
         "target_id": "cex_token:BTC",
@@ -65,11 +156,11 @@ def _snapshot(*, computed_at_ms: int, observed_at_ms: int | None = None) -> dict
         "status": "ready",
         "baseline_status": "ready",
         "coinglass_status": "ready",
-        "price_usd": 72_000.0,
-        "mark_price": 72_001.0,
-        "funding_rate": 0.0001,
-        "volume_24h_usd": 1_000_000.0,
-        "open_interest_usd": 2_000_000.0,
+        "price_usd": price_usd,
+        "mark_price": mark_price,
+        "funding_rate": funding_rate,
+        "volume_24h_usd": volume_24h_usd,
+        "open_interest_usd": open_interest_usd,
         "oi_change_pct_1h": 10.0,
         "oi_change_pct_4h": 12.0,
         "oi_change_pct_24h": 25.0,
@@ -78,7 +169,7 @@ def _snapshot(*, computed_at_ms: int, observed_at_ms: int | None = None) -> dict
         "cvd_delta_24h": 500.0,
         "long_short_ratio": 1.2,
         "top_trader_position_ratio": 1.4,
-        "level_bands": [{"kind": "resistance", "price": 73_000.0, "size": 2_000_000.0}],
+        "level_bands": [{"kind": "resistance", "price": level_price, "size": level_size}],
         "degraded_reasons": [],
         "source_refs": [
             {
@@ -93,6 +184,9 @@ def _snapshot(*, computed_at_ms: int, observed_at_ms: int | None = None) -> dict
         "observed_at_ms": observed_at_ms,
         "computed_at_ms": computed_at_ms,
     }
+    if observed_at_source:
+        snapshot["observed_at_source"] = observed_at_source
+    return snapshot
 
 
 class _RecordingCursor:
