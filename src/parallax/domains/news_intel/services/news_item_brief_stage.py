@@ -27,7 +27,7 @@ def build_news_item_brief_stage(*, packet: NewsItemBriefSynthesisPacket, run_id:
     news_item_id = packet.base_packet.news_item.news_item_id
     input_payload = _news_item_brief_synthesis_material_payload(packet)
     research_packet_hash = input_payload["research_packet"]["research_packet_hash"]
-    synthesis_input_hash = packet.input_hash or json_sha256(input_payload)
+    synthesis_input_hash = json_sha256(input_payload)
     return AgentStageSpec(
         lane=NEWS_ITEM_BRIEF_LANE,
         stage="news_item_brief_synthesis",
