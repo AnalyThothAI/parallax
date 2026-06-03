@@ -910,7 +910,7 @@ def test_projection_enqueues_capture_tier_for_default_venue_rank_set_changes() -
         "target_type": "Asset",
         "target_id": "asset-1",
         "rank": 1,
-        "rank_score": 88,
+        "rank_score": 88.0,
         "lane": "resolved",
         "quality_status": "ready",
         "degraded_reasons_json": [],
@@ -958,6 +958,7 @@ def test_projection_skips_capture_tier_when_only_source_watermark_artifacts_chan
     }
     row = {
         **previous,
+        "rank_score": 88,
         "source_max_received_at_ms": now_ms - 1_000,
         "payload_hash": "row-hash-watermark-only",
         "generation_id": "gen-watermark-only",

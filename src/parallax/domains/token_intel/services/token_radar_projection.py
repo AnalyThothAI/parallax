@@ -4,6 +4,7 @@ import hashlib
 import time
 from collections.abc import Mapping, Sequence
 from contextlib import AbstractContextManager
+from decimal import Decimal
 from typing import Any, cast
 
 from parallax.domains.narrative_intel.interfaces import NARRATIVE_SCHEMA_VERSION
@@ -1460,7 +1461,7 @@ def _capture_tier_rank_payload(row: Mapping[str, Any]) -> tuple[Any, ...]:
         _capture_tier_row_payload_hash(row),
         str(row.get("lane") or ""),
         row.get("rank"),
-        row.get("rank_score", row.get("score")),
+        _capture_tier_rank_score_payload(row.get("rank_score", row.get("score"))),
         str(row.get("decision") or ""),
         str(row.get("quality_status") or ""),
         _json_ready(row.get("degraded_reasons_json") or []),
@@ -1545,7 +1546,7 @@ def _capture_tier_row_payload_hash(row: Mapping[str, Any]) -> str:
             "capture_target": _capture_tier_target_key(row),
             "lane": str(row.get("lane") or ""),
             "rank": row.get("rank"),
-            "rank_score": row.get("rank_score", row.get("score")),
+            "rank_score": _capture_tier_rank_score_payload(row.get("rank_score", row.get("score"))),
             "decision": row.get("decision"),
             "quality_status": row.get("quality_status"),
             "degraded_reasons_json": _json_ready(row.get("degraded_reasons_json") or []),
@@ -1564,6 +1565,16 @@ def _rank_subject(row: Mapping[str, Any]) -> Mapping[str, Any]:
         return {}
     subject = snapshot.get("subject")
     return subject if isinstance(subject, Mapping) else {}
+
+
+def _capture_tier_rank_score_payload(value: Any) -> str | None:
+    if value is None or str(value).strip() == "":
+        return None
+    try:
+        normalized = Decimal(str(value)).normalize()
+    except Exception:
+        return str(value)
+    return format(normalized, "f")
 
 
 def _optional_text(value: Any) -> str | None:
