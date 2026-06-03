@@ -150,7 +150,7 @@ class MacroSyncService:
                 run_payload = _sync_run_payload(
                     sync_run_id=sync_run_id,
                     window=window,
-                    status=str(import_summary.get("status") or "ok"),
+                    status=_sync_success_status(import_summary.get("status")),
                     import_run_id=cast("str | None", import_summary.get("import_run_id")),
                     observations_count=int(import_summary.get("observations_count") or 0),
                     imported_observation_count=int(import_summary.get("imported_observation_count") or 0),
@@ -169,6 +169,12 @@ class MacroSyncService:
                     settings=self.settings,
                     error_code=None,
                     error_message=None,
+                )
+                repos.macro_intel.update_macro_sync_state(
+                    source_name=str(window["source_name"]),
+                    bundle_name=str(window["bundle_name"]),
+                    max_observed_at=_sync_state_observed_at(import_summary, window),
+                    now_ms=completed_at_ms,
                 )
                 repos.macro_intel.record_macro_sync_run(run_payload)
                 completed = repos.macro_intel.complete_macro_sync_window(
@@ -515,6 +521,25 @@ def _to_date(value: object) -> date | None:
         return normalize_macro_date(value)
     except ValueError:
         return None
+
+
+def _sync_state_observed_at(import_summary: Mapping[str, Any], window: Mapping[str, Any]) -> date | None:
+    for candidate in (
+        import_summary.get("max_seen_observed_at"),
+        import_summary.get("max_observed_at"),
+        window.get("window_end"),
+    ):
+        observed_at = _to_date(candidate)
+        if observed_at is not None:
+            return observed_at
+    return None
+
+
+def _sync_success_status(status: object) -> str:
+    raw_status = str(status or "ok").strip().lower()
+    if raw_status in {"ok", "partial"}:
+        return raw_status
+    return "partial"
 
 
 def _date_from_ms(now_ms: int) -> date:

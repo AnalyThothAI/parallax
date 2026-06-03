@@ -204,6 +204,9 @@ NEWS_ITEM_PROCESS_CLAIM_HARD_CUT_MIGRATION = Path(
 NARRATIVE_ZERO_WRITE_HASHES_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260603_0144_narrative_zero_write_hashes.py"
 )
+MACRO_SYNC_STATE_HARD_CUT_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260603_0145_macro_sync_state_hard_cut.py"
+)
 NEWS_REPOSITORY = Path("src/parallax/domains/news_intel/repositories/news_repository.py")
 TOKEN_PULSE_EQUITY_CPU_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260529_0124_token_pulse_equity_cpu_hard_cut.py"
@@ -1012,6 +1015,30 @@ def test_macro_sync_worker_migration_adds_control_plane_tables() -> None:
         assert f"DROP TABLE IF EXISTS {protected_table}" not in downgrade_text
 
 
+def test_macro_sync_state_hard_cut_migration_adds_seeded_control_state() -> None:
+    text = MACRO_SYNC_STATE_HARD_CUT_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+    table = _extract_sql_statement(text, "CREATE TABLE IF NOT EXISTS macro_sync_state")
+
+    assert 'revision = "20260603_0145"' in text
+    assert 'down_revision = "20260603_0144"' in text
+    assert "source_name TEXT NOT NULL" in table
+    assert "bundle_name TEXT NOT NULL" in table
+    assert "max_observed_at DATE" in table
+    assert "updated_at_ms BIGINT NOT NULL" in table
+    assert "PRIMARY KEY(source_name, bundle_name)" in table
+    assert "INSERT INTO macro_sync_state" in text
+    assert "FROM macro_sync_runs" in text
+    assert "status IN ('ok', 'partial')" in normalized_text
+    assert "GROUP BY source_name, bundle_name" in text
+    assert "COALESCE(max_seen_observed_at, max_observed_at, requested_end)" in normalized_text
+    assert "SELECT 'macrodata-cli', 'macro-core', MAX(observed_at)" in normalized_text
+    assert "FROM macro_observations" in text
+    assert "NOT EXISTS" in text
+    assert "ON CONFLICT(source_name, bundle_name) DO UPDATE" in text
+    assert "DROP TABLE IF EXISTS macro_sync_state" in text
+
+
 def test_runtime_performance_hard_cut_revision_chain() -> None:
     migrations = (
         (RUNTIME_RANK_SOURCE_EDGES_MIGRATION, "20260526_0106", "20260526_0105"),
@@ -1041,6 +1068,7 @@ def test_runtime_performance_hard_cut_revision_chain() -> None:
         (CEX_DETAIL_PAYLOAD_HASH_MIGRATION, "20260603_0142", "20260601_0141"),
         (NEWS_ITEM_PROCESS_CLAIM_HARD_CUT_MIGRATION, "20260603_0143", "20260603_0142"),
         (NARRATIVE_ZERO_WRITE_HASHES_MIGRATION, "20260603_0144", "20260603_0143"),
+        (MACRO_SYNC_STATE_HARD_CUT_MIGRATION, "20260603_0145", "20260603_0144"),
     )
 
     for migration, revision, down_revision in migrations:
