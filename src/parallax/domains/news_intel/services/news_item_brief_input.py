@@ -31,6 +31,7 @@ MAX_PROVIDER_TOKEN_IMPACTS = 12
 MAX_PROVIDER_AGGREGATION_VALUES = 12
 PROVIDER_SUMMARY_MAX_CHARS = 600
 DEFAULT_BASE_MATERIAL_BUDGET_CHARS = 12_000
+RESOLVED_TOKEN_STATUSES = frozenset({"exact_address", "known_symbol", "unique_by_context"})
 
 
 def build_news_item_brief_input_packet(
@@ -104,7 +105,11 @@ def build_news_item_brief_base_packet(
         truncation_reasons.append("token_lanes_budget")
     if original_fact_count > len(fact_lanes):
         truncation_reasons.append("fact_lanes_budget")
-    if any(not (_str(row.get("target_type")) and _str(row.get("target_id"))) for row in token_mentions):
+    if any(
+        not _is_resolved_token_status(row.get("resolution_status"))
+        or not (_str(row.get("target_type")) and _str(row.get("target_id")))
+        for row in token_mentions
+    ):
         truncation_reasons.append("unresolved_mentions_excluded")
 
     material_budget = max(0, int(material_budget_chars))
@@ -328,6 +333,9 @@ def _allowed_context_targets(token_lanes: Sequence[NewsItemBriefTokenLane]) -> l
     refs: list[NewsContextTargetRef] = []
     seen: set[tuple[str, str]] = set()
     for lane in token_lanes:
+        resolution_status = _bounded(lane.resolution_status, 64)
+        if not _is_resolved_token_status(resolution_status):
+            continue
         target_type = _str(lane.target_type)
         target_id = _str(lane.target_id)
         if not target_type or not target_id:
@@ -341,12 +349,16 @@ def _allowed_context_targets(token_lanes: Sequence[NewsItemBriefTokenLane]) -> l
                 target_type=target_type,
                 target_id=target_id,
                 display_symbol=_bounded(lane.display_symbol or lane.observed_symbol, 64),
-                resolution_status=_bounded(lane.resolution_status, 64),
+                resolution_status=resolution_status,
                 confidence=lane.confidence,
                 target_scope=_target_scope(target_type),
             )
         )
     return refs
+
+
+def _is_resolved_token_status(value: Any) -> bool:
+    return _str(value).lower() in RESOLVED_TOKEN_STATUSES
 
 
 def _target_scope(target_type: str) -> str:

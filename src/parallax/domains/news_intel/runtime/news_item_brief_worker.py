@@ -37,6 +37,7 @@ from parallax.domains.news_intel.services.news_item_research_policy import (
 )
 from parallax.domains.news_intel.types.news_item_brief import (
     NEWS_ITEM_BRIEF_LANE,
+    NEWS_ITEM_RESEARCH_POLICY_VERSION,
     NEWS_ITEM_RESEARCH_TOOL_CATALOG_VERSION,
     NewsItemBriefAgentConfig,
     NewsItemBriefBasePacket,
@@ -866,6 +867,8 @@ def _current_brief_base_is_fresh(
     research_hashes = _dict(request_json.get("research_hashes"))
     research_plan = _dict(request_json.get("research_plan"))
     if str(research_hashes.get("base_input_hash") or "") != base_packet.input_hash:
+        return False
+    if str(research_plan.get("policy_version") or "") != NEWS_ITEM_RESEARCH_POLICY_VERSION:
         return False
     if str(research_plan.get("tool_catalog_version") or "") != NEWS_ITEM_RESEARCH_TOOL_CATALOG_VERSION:
         return False

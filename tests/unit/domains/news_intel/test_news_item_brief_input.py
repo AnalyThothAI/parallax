@@ -261,6 +261,8 @@ def test_base_packet_exposes_allowed_context_targets_from_resolved_mentions() ->
                 "observed_symbol": "XYZ-CL",
                 "display_symbol": "XYZ-CL",
                 "resolution_status": "unknown_attention",
+                "target_type": "CexToken",
+                "target_id": "cex_token:XYZ-CL",
             },
         ],
         fact_candidates=[],

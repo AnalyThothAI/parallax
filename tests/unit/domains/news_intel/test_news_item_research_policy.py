@@ -66,7 +66,7 @@ def test_policy_resolved_target_selects_target_context_and_bounded_archive() -> 
     assert by_name["get_target_news_context"].input["target_refs"] == [
         {"target_type": "CexToken", "target_id": "cex_token:SOL"}
     ]
-    assert by_name["get_target_news_context"].input["symbol_fallbacks"] == ["SOL"]
+    assert by_name["get_target_news_context"].input["symbol_fallbacks"] == []
     assert by_name["search_news_archive"].input["window_hours"] == 168
     assert by_name["search_news_archive"].input["limit"] == 8
     assert "SOL" in by_name["search_news_archive"].input["symbols"]

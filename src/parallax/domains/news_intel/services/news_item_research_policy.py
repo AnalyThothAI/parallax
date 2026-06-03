@@ -100,13 +100,12 @@ def classify_news_item_research_policy(base_packet: NewsItemBriefBasePacket) -> 
 
     if has_targets:
         target_refs = _target_refs(base_packet.allowed_context_targets)
-        symbol_fallbacks = _symbol_fallbacks(base_packet)
         _append_call(
             calls,
             tool_name="get_target_news_context",
             input_payload={
                 "target_refs": target_refs,
-                "symbol_fallbacks": symbol_fallbacks,
+                "symbol_fallbacks": [],
                 "window_hours": TARGET_CONTEXT_WINDOW_HOURS,
                 "limit": TARGET_CONTEXT_LIMIT,
             },

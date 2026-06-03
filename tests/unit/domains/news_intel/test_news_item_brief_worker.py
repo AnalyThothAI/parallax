@@ -44,6 +44,10 @@ def test_worker_skips_fresh_current_even_when_source_updated_is_noisy() -> None:
     asyncio.run(_test_worker_skips_fresh_current_even_when_source_updated_is_noisy())
 
 
+def test_worker_reprocesses_current_when_research_policy_version_is_stale() -> None:
+    asyncio.run(_test_worker_reprocesses_current_when_research_policy_version_is_stale())
+
+
 def test_worker_reprocesses_failed_current_even_when_input_hash_matches() -> None:
     asyncio.run(_test_worker_reprocesses_failed_current_even_when_input_hash_matches())
 
@@ -206,6 +210,41 @@ async def _test_worker_skips_fresh_current_even_when_source_updated_is_noisy() -
     assert db.news.briefs == []
     assert len(db.dirty.done) == 1
     assert result.skipped == 1
+
+
+async def _test_worker_reprocesses_current_when_research_policy_version_is_stale() -> None:
+    candidate = _candidate()
+    provider = FakeBriefProvider(payload=_ready_payload())
+    db = FakeDB([candidate])
+    provider.db = db
+    packet = provider.packet_for_candidate(candidate)
+    agent_config = provider.agent_config()
+    db.news.tool_calls.clear()
+    stale_synthesis_hash = "sha256:stale-synthesis"
+    latest_run = _latest_run_for_packet(packet)
+    latest_run["request_json"]["research_plan"]["policy_version"] = "news_item_research_policy_old"
+    latest_run["request_json"]["research_hashes"]["synthesis_input_hash"] = stale_synthesis_hash
+    latest_run["request_json"]["synthesis_input_hash"] = stale_synthesis_hash
+    candidate["current_brief"] = {
+        "news_item_id": candidate["item"]["news_item_id"],
+        "status": "ready",
+        "input_hash": stale_synthesis_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
+        "prompt_version": packet.prompt_version,
+        "schema_version": packet.schema_version,
+        "validator_version": agent_config.validator_version,
+        "computed_at_ms": NOW_MS - 60_000,
+        "brief_json": _ready_payload(),
+    }
+    candidate["latest_run"] = latest_run
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.execution_calls == 1
+    assert db.news.tool_calls
+    assert db.news.runs[0]["input_hash"] != stale_synthesis_hash
+    assert result.processed == 1
 
 
 async def _test_worker_reprocesses_failed_current_even_when_input_hash_matches() -> None:
