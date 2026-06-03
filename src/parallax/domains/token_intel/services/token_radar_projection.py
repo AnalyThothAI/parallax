@@ -1460,10 +1460,9 @@ def _capture_tier_rank_payload(row: Mapping[str, Any]) -> tuple[Any, ...]:
         str(row.get("lane") or ""),
         row.get("rank"),
         row.get("rank_score", row.get("score")),
+        str(row.get("decision") or ""),
         str(row.get("quality_status") or ""),
         _json_ready(row.get("degraded_reasons_json") or []),
-        str(row.get("payload_hash") or ""),
-        str(row.get("generation_id") or row.get("current_generation_id") or ""),
     )
 
 

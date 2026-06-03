@@ -941,7 +941,7 @@ def test_projection_enqueues_capture_tier_for_default_venue_rank_set_changes() -
     ]
 
 
-def test_projection_skips_capture_tier_when_only_source_watermark_changed() -> None:
+def test_projection_skips_capture_tier_when_only_source_watermark_artifacts_changed() -> None:
     now_ms = 1_777_800_060_000
     previous = {
         "target_type": "Asset",
@@ -955,7 +955,12 @@ def test_projection_skips_capture_tier_when_only_source_watermark_changed() -> N
         "payload_hash": "row-hash",
         "generation_id": "gen-1",
     }
-    row = {**previous, "source_max_received_at_ms": now_ms - 1_000}
+    row = {
+        **previous,
+        "source_max_received_at_ms": now_ms - 1_000,
+        "payload_hash": "row-hash-watermark-only",
+        "generation_id": "gen-watermark-only",
+    }
     repos = type("Repos", (), {"token_capture_tier_dirty_targets": FakeCaptureTierDirtyTargets()})()
 
     TokenRadarProjection(repos=repos)._enqueue_token_capture_tier_for_rank_changes(
@@ -1058,7 +1063,14 @@ def test_capture_tier_rank_set_fingerprint_ignores_source_watermark_metadata() -
     assert token_capture_tier_rank_set_payload_hash(reason="repair", rows=[row]) == (
         token_capture_tier_rank_set_payload_hash(
             reason="repair",
-            rows=[{**row, "source_max_received_at_ms": 1_777_800_030_000}],
+            rows=[
+                {
+                    **row,
+                    "source_max_received_at_ms": 1_777_800_030_000,
+                    "payload_hash": "row-hash-watermark-only",
+                    "generation_id": "gen-watermark-only",
+                }
+            ],
         )
     )
 

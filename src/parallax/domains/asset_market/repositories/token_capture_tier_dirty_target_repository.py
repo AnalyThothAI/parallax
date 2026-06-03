@@ -216,7 +216,7 @@ def _rank_row_payload(row: Mapping[str, Any], *, exited: bool) -> dict[str, Any]
     source_target_type = str(row.get("target_type") or row.get("target_type_key") or "").strip()
     source_target_id = str(row.get("target_id") or row.get("identity_id") or "").strip()
     capture_target_type, capture_target_id = _capture_rank_target(row, source_target_type=source_target_type)
-    return {
+    payload = {
         "source_target_type": source_target_type,
         "source_target_id": source_target_id,
         "capture_target_type": capture_target_type,
@@ -224,12 +224,13 @@ def _rank_row_payload(row: Mapping[str, Any], *, exited: bool) -> dict[str, Any]
         "lane": str(row.get("lane") or ""),
         "rank": row.get("rank"),
         "rank_score": row.get("rank_score", row.get("score")),
+        "decision": row.get("decision"),
         "quality_status": row.get("quality_status"),
         "degraded_reasons_json": _json_ready(row.get("degraded_reasons_json") or []),
-        "payload_hash": row.get("payload_hash"),
-        "generation_id": row.get("generation_id") or row.get("current_generation_id"),
         "exited": bool(exited),
     }
+    payload["tier_payload_hash"] = _rank_tier_payload_hash(payload)
+    return payload
 
 
 def _capture_rank_target(row: Mapping[str, Any], *, source_target_type: str) -> tuple[str, str]:
@@ -275,6 +276,11 @@ def _rank_subject(row: Mapping[str, Any]) -> Mapping[str, Any]:
         return {}
     subject = snapshot.get("subject")
     return subject if isinstance(subject, Mapping) else {}
+
+
+def _rank_tier_payload_hash(payload: Mapping[str, Any]) -> str:
+    encoded = json.dumps(_json_ready(dict(payload)), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def _cex_pricefeed_target(value: Any) -> tuple[str | None, str | None]:
