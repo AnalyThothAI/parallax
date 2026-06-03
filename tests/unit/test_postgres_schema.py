@@ -201,6 +201,9 @@ CEX_DETAIL_PAYLOAD_HASH_MIGRATION = Path(
 NEWS_ITEM_PROCESS_CLAIM_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260603_0143_news_item_process_claim_hard_cut.py"
 )
+NARRATIVE_ZERO_WRITE_HASHES_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260603_0144_narrative_zero_write_hashes.py"
+)
 NEWS_REPOSITORY = Path("src/parallax/domains/news_intel/repositories/news_repository.py")
 TOKEN_PULSE_EQUITY_CPU_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260529_0124_token_pulse_equity_cpu_hard_cut.py"
@@ -1037,6 +1040,7 @@ def test_runtime_performance_hard_cut_revision_chain() -> None:
         (DROP_RETIRED_PRODUCT_MIGRATION, "20260529_0125", "20260529_0124"),
         (CEX_DETAIL_PAYLOAD_HASH_MIGRATION, "20260603_0142", "20260601_0141"),
         (NEWS_ITEM_PROCESS_CLAIM_HARD_CUT_MIGRATION, "20260603_0143", "20260603_0142"),
+        (NARRATIVE_ZERO_WRITE_HASHES_MIGRATION, "20260603_0144", "20260603_0143"),
     )
 
     for migration, revision, down_revision in migrations:

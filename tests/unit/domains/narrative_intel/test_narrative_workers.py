@@ -7,7 +7,7 @@ import pytest
 
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
-from parallax.domains.narrative_intel.repositories.narrative_repository import NarrativeRepository
+from parallax.domains.narrative_intel.repositories.narrative_repository import NarrativeRepository, digest_payload_hash
 from parallax.domains.narrative_intel.runtime.mention_semantics_worker import (
     MentionSemanticsWorker,
 )
@@ -1397,6 +1397,91 @@ def test_token_discussion_digest_worker_writes_status_digest_without_ready_snaps
     asyncio.run(scenario())
 
 
+def test_token_discussion_digest_worker_skips_unchanged_status_digest():
+    async def scenario():
+        source_event_ids = [f"event-{index}" for index in range(1, 8)]
+        context = {
+            "target_type": "chain_token",
+            "target_id": "solana:So111",
+            "window": "1h",
+            "scope": "matched",
+            "source_fingerprint": "source-current",
+            "source_event_ids": source_event_ids,
+            "mentions": [
+                {"event_id": f"event-{index}", "author_handle": f"author-{index}", "status": "queued"}
+                for index in range(1, 8)
+            ],
+            "semantic_rows": [
+                {"event_id": f"event-{index}", "author_handle": f"author-{index}", "status": "queued"}
+                for index in range(1, 8)
+            ],
+            "source_event_count": 7,
+            "semantic_row_count": 7,
+            "missing_semantic_count": 0,
+            "pending_semantic_count": 7,
+            "retryable_semantic_count": 0,
+            "terminal_unavailable_count": 0,
+            "labeled_event_count": 0,
+            "independent_author_count": 7,
+            "allowed_refs": [],
+        }
+        current_digest = {
+            "target_type": "chain_token",
+            "target_id": "solana:So111",
+            "window": "1h",
+            "scope": "matched",
+            "schema_version": NARRATIVE_SCHEMA_VERSION,
+            "model_version": "deterministic:pending",
+            "status": "pending",
+            "epoch_policy_version": "token-narrative-epoch-v1",
+            "source_fingerprint": "source-current",
+            "source_event_ids": source_event_ids,
+            "dominant_narratives": [],
+            "bull_view": {"summary_zh": None, "strength": None, "evidence_refs": []},
+            "bear_view": {"summary_zh": None, "strength": None, "evidence_refs": []},
+            "stance_mix": {},
+            "attention_valence_mix": {},
+            "propagation_read": {},
+            "reflexivity_read": {
+                "loop_state": "unknown",
+                "attention_leads_price": None,
+                "price_leads_attention": None,
+                "primary_reflexive_driver": "unknown",
+                "crowd_memory": None,
+                "late_risk": None,
+                "evidence_refs": [],
+            },
+            "watch_triggers": [],
+            "invalidation_conditions": [],
+            "source_event_count": 7,
+            "labeled_event_count": 0,
+            "independent_author_count": 7,
+            "semantic_coverage": 0.0,
+            "evidence_refs": [],
+            "refresh_reason": "initial_ready",
+            "data_gaps": [{"reason": "semantic_labeling_pending"}],
+        }
+        current_digest["payload_hash"] = digest_payload_hash(current_digest, now_ms=10_000)
+        repo = FakeDigestRepository(context=context, current_digest=current_digest)
+        db = FakeDB(repo)
+        worker = TokenDiscussionDigestWorker(
+            name="token_discussion_digest",
+            settings=fake_digest_settings(),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=UnexpectedDigestProvider(),
+        )
+
+        result = await worker.run_once(now_ms=10_000)
+
+        assert result.notes["pending"] == 1
+        assert result.notes["rows_written"] == 0
+        assert repo.replaced_digests == []
+        assert db.discussion_digest_dirty_targets.reschedule_calls
+
+    asyncio.run(scenario())
+
+
 def test_token_discussion_digest_worker_counts_terminal_semantic_unavailable():
     async def scenario():
         repo = FakeDigestRepository(
@@ -2162,12 +2247,22 @@ class FakeNarrativeRepository:
 
 
 class FakeDigestRepository:
-    def __init__(self, *, context=None, contexts=None, targets=None, current_ready_digest=None, market_context=None):
+    def __init__(
+        self,
+        *,
+        context=None,
+        contexts=None,
+        targets=None,
+        current_ready_digest=None,
+        current_digest=None,
+        market_context=None,
+    ):
         self.recorded_runs = []
         self.context = context
         self.contexts = dict(contexts or {})
         self.targets = list(targets) if targets is not None else None
         self.current_ready_digest = current_ready_digest
+        self.current_digest = current_digest
         self.market_context = dict(market_context or {})
         self.replaced_digests = []
         self.digest_scans = []
@@ -2256,6 +2351,9 @@ class FakeDigestRepository:
     def current_ready_digest_for_target(self, *, target_type, target_id, window, scope, schema_version):
         return self.current_ready_digest
 
+    def current_digest_for_target(self, *, target_type, target_id, window, scope, schema_version):
+        return self.current_digest
+
     def market_context_for_admission(self, admission, *, current_ready_digest):
         return self.market_context
 
@@ -2265,7 +2363,7 @@ class FakeDigestRepository:
 
     def replace_current_digest(self, digest, *, now_ms):
         self.replaced_digests.append(digest)
-        return digest
+        return {**digest, "rows_written": 1}
 
     def mark_admissions_digest_scanned(self, admission_ids, *, next_due_at_ms, now_ms):
         self.digest_scans.append(

@@ -15,7 +15,7 @@ from parallax.domains.narrative_intel._constants import (
     NARRATIVE_SCHEMA_VERSION,
 )
 from parallax.domains.narrative_intel.providers import NarrativeIntelProvider
-from parallax.domains.narrative_intel.repositories.narrative_repository import deterministic_run_id
+from parallax.domains.narrative_intel.repositories.narrative_repository import deterministic_run_id, digest_payload_hash
 from parallax.domains.narrative_intel.services.discussion_digest_service import (
     DEFAULT_MAX_MENTIONS_PER_DIGEST,
     DiscussionDigestService,
@@ -199,12 +199,19 @@ class TokenDiscussionDigestWorker(WorkerBase):
                             status=status_decision.status_if_not_refresh,
                             model_version=f"deterministic:{status_decision.status_if_not_refresh}",
                         )
-                        await asyncio.to_thread(
-                            self._replace_digest_sync,
-                            digest=digest.model_dump(mode="json"),
+                        digest_payload = digest.model_dump(mode="json")
+                        current_digest = await asyncio.to_thread(self._current_digest_sync, target=target)
+                        if not _current_digest_payload_matches(
+                            current_digest,
+                            digest_payload,
                             now_ms=resolved_now_ms,
-                        )
-                        rows_written += 1
+                        ):
+                            write_result = await asyncio.to_thread(
+                                self._replace_digest_sync,
+                                digest=digest_payload,
+                                now_ms=resolved_now_ms,
+                            )
+                            rows_written += int(write_result.get("rows_written") or 0)
                         counts[status_decision.status_if_not_refresh] += 1
                     else:
                         deferred_epoch_policy += 1
@@ -231,12 +238,19 @@ class TokenDiscussionDigestWorker(WorkerBase):
                             status=status_decision.status_if_not_refresh,
                             model_version=f"deterministic:{status_decision.status_if_not_refresh}",
                         )
-                        await asyncio.to_thread(
-                            self._replace_digest_sync,
-                            digest=digest.model_dump(mode="json"),
+                        digest_payload = digest.model_dump(mode="json")
+                        current_digest = await asyncio.to_thread(self._current_digest_sync, target=target)
+                        if not _current_digest_payload_matches(
+                            current_digest,
+                            digest_payload,
                             now_ms=resolved_now_ms,
-                        )
-                        rows_written += 1
+                        ):
+                            write_result = await asyncio.to_thread(
+                                self._replace_digest_sync,
+                                digest=digest_payload,
+                                now_ms=resolved_now_ms,
+                            )
+                            rows_written += int(write_result.get("rows_written") or 0)
                         await asyncio.to_thread(
                             self._reschedule_digest_claim_sync,
                             target=target,
@@ -499,13 +513,13 @@ class TokenDiscussionDigestWorker(WorkerBase):
                 }
                 digest_payload = ready_digest.model_dump(mode="json")
                 digest_payload["model_run_id"] = run_id
-                await asyncio.to_thread(
+                ready_write_result = await asyncio.to_thread(
                     self._record_ready_digest_sync,
                     run=run,
                     digest=digest_payload,
                     now_ms=finished_at_ms,
                 )
-                rows_written += 2
+                rows_written += 1 + int(ready_write_result.get("rows_written") or 0)
                 await asyncio.to_thread(
                     self._reschedule_digest_claim_sync,
                     target=target,
@@ -592,6 +606,17 @@ class TokenDiscussionDigestWorker(WorkerBase):
             )
             return dict(digest) if digest else None
 
+    def _current_digest_sync(self, *, target: dict[str, Any]) -> dict[str, Any] | None:
+        with self._repository_session() as repos:
+            digest = repos.narratives.current_digest_for_target(
+                target_type=str(target["target_type"]),
+                target_id=str(target["target_id"]),
+                window=str(target["window"]),
+                scope=str(target["scope"]),
+                schema_version=NARRATIVE_SCHEMA_VERSION,
+            )
+            return dict(digest) if digest else None
+
     def _market_context_sync(
         self,
         *,
@@ -604,14 +629,18 @@ class TokenDiscussionDigestWorker(WorkerBase):
                 return {}
             return dict(method(admission, current_ready_digest=current_ready_digest) or {})
 
-    def _replace_digest_sync(self, *, digest: dict[str, Any], now_ms: int) -> None:
+    def _replace_digest_sync(self, *, digest: dict[str, Any], now_ms: int) -> dict[str, Any]:
         with self._repository_session() as repos:
-            repos.narratives.replace_current_digest(digest, now_ms=now_ms)
+            result = dict(repos.narratives.replace_current_digest(digest, now_ms=now_ms))
+            result.setdefault("rows_written", 1)
+            return result
 
-    def _record_ready_digest_sync(self, *, run: dict[str, Any], digest: dict[str, Any], now_ms: int) -> None:
+    def _record_ready_digest_sync(self, *, run: dict[str, Any], digest: dict[str, Any], now_ms: int) -> dict[str, Any]:
         with self._repository_session() as repos:
             repos.narratives.record_narrative_model_run(run, commit=True)
-            repos.narratives.replace_current_digest(digest, now_ms=now_ms)
+            result = dict(repos.narratives.replace_current_digest(digest, now_ms=now_ms))
+            result.setdefault("rows_written", 1)
+            return result
 
     def _record_failed_run_sync(self, *, run: dict[str, Any]) -> None:
         with self._repository_session() as repos:
@@ -676,6 +705,16 @@ class TokenDiscussionDigestWorker(WorkerBase):
             statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
         ) as repos:
             yield repos
+
+
+def _current_digest_payload_matches(
+    current_digest: dict[str, Any] | None,
+    digest_payload: dict[str, Any],
+    *,
+    now_ms: int,
+) -> bool:
+    current_hash = str((current_digest or {}).get("payload_hash") or "")
+    return bool(current_hash and current_hash == digest_payload_hash(digest_payload, now_ms=now_ms))
 
 
 def _try_reserve_provider_execution(provider: Any, lane: str, *, rate_units: int = 1) -> AgentCapacityReservation:
