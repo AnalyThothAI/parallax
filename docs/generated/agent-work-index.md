@@ -8,8 +8,8 @@ This index makes the planning lane visible to coding agents. Active files are wo
 
 | Lane | Active | Completed |
 |------|--------|-----------|
-| `specs` | 93 | 35 |
-| `plans` | 146 | 35 |
+| `specs` | 94 | 36 |
+| `plans` | 147 | 36 |
 
 ## Lifecycle Flags
 
@@ -115,6 +115,7 @@ This index makes the planning lane visible to coding agents. Active files are wo
 | `specs` | `active` | Approved for planning | - | `docs/superpowers/specs/active/2026-05-31-token-profile-image-mirror-kiss-root-fix-cn.md` |
 | `specs` | `active` | Draft | - | `docs/superpowers/specs/active/2026-06-01-news-intel-kiss-simplification-cn.md` |
 | `specs` | `active` | Approved | - | `docs/superpowers/specs/active/2026-06-01-rates-workbench-clarity-redesign.md` |
+| `specs` | `active` | Draft | - | `docs/superpowers/specs/active/2026-06-03-news-agent-context-tools-hard-cut-cn.md` |
 | `specs` | `completed` | unspecified | `missing-status` | `docs/superpowers/specs/completed/2026-05-04-closed-loop-social-event-harness-cn-evaluation.md` |
 | `specs` | `completed` | unspecified | `missing-status` | `docs/superpowers/specs/completed/2026-05-04-closed-loop-social-event-harness-design.md` |
 | `specs` | `completed` | unspecified | `missing-status` | `docs/superpowers/specs/completed/2026-05-04-market-observation-timing-production-spec-cn.md` |
@@ -148,6 +149,7 @@ This index makes the planning lane visible to coding agents. Active files are wo
 | `specs` | `completed` | unspecified | `missing-status` | `docs/superpowers/specs/completed/2026-05-22-shadcn-sidebar-navigation-cn.md` |
 | `specs` | `completed` | Draft | - | `docs/superpowers/specs/completed/2026-05-26-runtime-performance-architecture-root-fix-cn.md` |
 | `specs` | `completed` | Draft | - | `docs/superpowers/specs/completed/2026-05-27-macro-sync-worker-hard-cut-cn.md` |
+| `specs` | `completed` | Completed | - | `docs/superpowers/specs/completed/2026-06-03-news-intel-hard-cut-residual-root-fix-cn.md` |
 | `specs` | `completed` | unspecified | `missing-status` | `docs/superpowers/specs/completed/token-radar-social-heat-research.md` |
 | `specs` | `completed` | unspecified | `missing-status` | `docs/superpowers/specs/completed/token-radar-social-heat-spec.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-08-signal-lab-pulse-agent-concrete-cn.md` |
@@ -296,6 +298,7 @@ This index makes the planning lane visible to coding agents. Active files are wo
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-06-01-news-intel-kiss-simplification-cn.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-06-01-rates-workbench-clarity-redesign-verification.md` |
 | `plans` | `active` | Draft | - | `docs/superpowers/plans/active/2026-06-01-rates-workbench-clarity-redesign.md` |
+| `plans` | `active` | Draft | - | `docs/superpowers/plans/active/2026-06-03-news-agent-context-tools-hard-cut-cn.md` |
 | `plans` | `completed` | unspecified | `missing-status` | `docs/superpowers/plans/completed/2026-05-04-market-observation-timing-production-plan-cn.md` |
 | `plans` | `completed` | unspecified | `missing-status` | `docs/superpowers/plans/completed/2026-05-05-production-notifications-phase1-phase2.md` |
 | `plans` | `completed` | unspecified | `missing-status` | `docs/superpowers/plans/completed/2026-05-05-responsive-token-radar-cockpit.md` |
@@ -331,3 +334,4 @@ This index makes the planning lane visible to coding agents. Active files are wo
 | `plans` | `completed` | unspecified | `missing-status` | `docs/superpowers/plans/completed/2026-05-27-next-runtime-lifecycle-hard-cut-plan-cn.md` |
 | `plans` | `completed` | unspecified | `missing-status` | `docs/superpowers/plans/completed/2026-05-27-runtime-db-performance-hard-cut-plan-cn.md` |
 | `plans` | `completed` | unspecified | `missing-status` | `docs/superpowers/plans/completed/2026-05-27-runtime-db-performance-hard-cut-verification-cn.md` |
+| `plans` | `completed` | ** Completed | - | `docs/superpowers/plans/completed/2026-06-03-news-intel-hard-cut-residual-root-fix-cn.md` |
