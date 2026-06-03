@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import parallax.domains.news_intel.services.news_item_brief_prompt_assembly as prompt_assembly
 from parallax.domains.news_intel.services.news_item_brief_prompt_assembly import (
     build_news_item_brief_synthesizer_prompt,
+)
+
+ACTIVE_PROMPT_PATH = (
+    Path(__file__).resolve().parents[4] / "src/parallax/domains/news_intel/prompts/news_item_brief.md"
 )
 
 
@@ -33,3 +39,10 @@ def test_synthesizer_prompt_forbids_runtime_tools_and_external_data() -> None:
 def test_no_planner_prompt_builder_is_exported() -> None:
     assert prompt_assembly.__all__ == ["build_news_item_brief_synthesizer_prompt"]
     assert not hasattr(prompt_assembly, "build_news_item_brief_planner_prompt")
+
+
+def test_active_markdown_prompt_remains_on_current_packet_until_stage_migration() -> None:
+    prompt = ACTIVE_PROMPT_PATH.read_text(encoding="utf-8")
+
+    assert "use only base_packet and research_packet" not in prompt
+    assert "News Item Brief agent" in prompt
