@@ -125,44 +125,6 @@ def test_packet_truncates_token_and_fact_lanes_after_stable_sort() -> None:
     assert packet.input_hash == repeat.input_hash
 
 
-def test_packet_includes_bounded_context_items_and_evidence_refs() -> None:
-    context_items = [
-        {
-            "context_item_id": f"context-{index:02d}",
-            "context_type": "comment",
-            "author": f"author-{index}",
-            "canonical_url": f"https://example.com/context/{index}",
-            "body_text": "c" * 800,
-            "published_at_ms": 1_779_000_000_000 + index,
-            "engagement_json": {"likes": index, "empty": None},
-        }
-        for index in range(10)
-    ]
-
-    packet = build_news_item_brief_input_packet(
-        item={
-            "news_item_id": "item-context",
-            "title": "Context item",
-            "summary": "Context summary",
-            "published_at_ms": 1_779_000_000_000,
-            "content_hash": "sha256:context-item",
-        },
-        token_mentions=[],
-        fact_candidates=[],
-        context_items=context_items,
-        agent_config=_agent_config(),
-    )
-
-    assert [row.context_item_id for row in packet.context_items] == [
-        f"context-{index:02d}" for index in range(9, 1, -1)
-    ]
-    assert all(len(row.body_excerpt) == 500 for row in packet.context_items)
-    assert packet.context_items[0].engagement == {"likes": 9}
-    assert "context:context-09" in packet.evidence_refs
-    assert "context:context-01" not in packet.evidence_refs
-    assert packet.input_hash == json_sha256(news_item_brief_material_input_payload(packet))
-
-
 def test_packet_includes_bounded_provider_signal_evidence() -> None:
     packet = build_news_item_brief_input_packet(
         item={
@@ -214,46 +176,12 @@ def test_packet_includes_bounded_provider_signal_evidence() -> None:
     assert packet.input_hash == json_sha256(news_item_brief_material_input_payload(packet))
 
 
-def test_packet_context_items_are_deterministic_for_reversed_input() -> None:
-    context_items = [
-        {
-            "context_item_id": f"context-{index:02d}",
-            "context_type": "comment",
-            "body_text": f"Context body {index}",
-            "published_at_ms": 1_779_000_000_000 + index,
-        }
-        for index in range(10)
-    ]
-    payload = {
-        "item": {
-            "news_item_id": "item-context",
-            "title": "Context item",
-            "published_at_ms": 1_779_000_000_000,
-            "content_hash": "sha256:context-item",
-        },
-        "token_mentions": [],
-        "fact_candidates": [],
-        "agent_config": _agent_config(),
-    }
-
-    packet = build_news_item_brief_input_packet(**payload, context_items=context_items)
-    repeat = build_news_item_brief_input_packet(**payload, context_items=list(reversed(context_items)))
-
-    assert [row.context_item_id for row in packet.context_items] == [
-        f"context-{index:02d}" for index in range(9, 1, -1)
-    ]
-    assert [row.context_item_id for row in repeat.context_items] == [
-        row.context_item_id for row in packet.context_items
-    ]
-    assert packet.packet_id == repeat.packet_id
-    assert packet.input_hash == repeat.input_hash
-
-
-def test_packet_can_read_context_items_from_item_payload_for_existing_call_sites() -> None:
+def test_packet_ignores_legacy_context_items_from_item_payload() -> None:
     packet = build_news_item_brief_input_packet(
         item={
             "news_item_id": "item-context",
             "title": "Context item",
+            "summary": "Legacy context should not enter the agent packet.",
             "context_items": [
                 {
                     "context_item_id": "context-from-item",
@@ -268,9 +196,10 @@ def test_packet_can_read_context_items_from_item_payload_for_existing_call_sites
         agent_config=_agent_config(),
     )
 
-    assert packet.context_items[0].context_item_id == "context-from-item"
-    assert packet.context_items[0].context_type == "reply"
-    assert "context:context-from-item" in packet.evidence_refs
+    payload = news_item_brief_material_input_payload(packet)
+    assert "context_items" not in payload
+    assert "context_items" not in packet.model_dump_json()
+    assert all(not ref.startswith("context:") for ref in packet.evidence_refs)
 
 
 def test_packet_hash_ignores_fetched_at_ms() -> None:

@@ -32,7 +32,6 @@ def test_news_item_agent_brief_requires_processed_item_state() -> None:
         item=_item(lifecycle_status="raw"),
         token_mentions=[{"resolution_status": "known_symbol"}],
         fact_candidates=[],
-        context_items=[],
         now_ms=NOW_MS,
     )
 
@@ -45,7 +44,6 @@ def test_news_item_agent_brief_requires_classification() -> None:
         item=_item(content_classification_json={}),
         token_mentions=[{"resolution_status": "known_symbol"}],
         fact_candidates=[],
-        context_items=[],
         now_ms=NOW_MS,
     )
 
@@ -59,7 +57,6 @@ def test_news_item_agent_brief_requires_provider_score_at_or_above_analysis_floo
         item=_item(),
         token_mentions=[{"resolution_status": "known_symbol"}],
         fact_candidates=[],
-        context_items=[],
         now_ms=NOW_MS,
     )
 
@@ -72,7 +69,6 @@ def test_news_item_agent_brief_rejects_below_threshold_provider_scores() -> None
         item=_item(provider_signal_json={"source": "provider", "status": "ready", "score": 79}),
         token_mentions=[{"resolution_status": "known_symbol"}],
         fact_candidates=[],
-        context_items=[],
         now_ms=NOW_MS,
     )
 
@@ -85,14 +81,12 @@ def test_news_item_agent_brief_rejects_non_provider_or_missing_score() -> None:
         item=_item(provider_signal_json={"source": "manual", "status": "ready", "score": 100}),
         token_mentions=[{"resolution_status": "known_symbol"}],
         fact_candidates=[],
-        context_items=[],
         now_ms=NOW_MS,
     )
     missing_score = news_item_agent_brief_eligibility(
         item=_item(provider_signal_json={"source": "provider", "status": "ready"}),
         token_mentions=[{"resolution_status": "known_symbol"}],
         fact_candidates=[],
-        context_items=[],
         now_ms=NOW_MS,
     )
 
@@ -107,7 +101,6 @@ def test_news_item_agent_brief_requires_processed_market_context() -> None:
         item=_item(),
         token_mentions=[],
         fact_candidates=[],
-        context_items=[],
         now_ms=NOW_MS,
     )
 
@@ -121,21 +114,18 @@ def test_news_item_agent_brief_requires_fresh_published_at() -> None:
         item=_item(published_at_ms=None),
         token_mentions=[{"resolution_status": "known_symbol"}],
         fact_candidates=[],
-        context_items=[],
         now_ms=NOW_MS,
     )
     too_old = news_item_agent_brief_eligibility(
         item=_item(published_at_ms=NOW_MS - NEWS_ITEM_AGENT_BRIEF_MAX_PUBLISHED_AGE_MS - 1),
         token_mentions=[{"resolution_status": "known_symbol"}],
         fact_candidates=[],
-        context_items=[],
         now_ms=NOW_MS,
     )
     future = news_item_agent_brief_eligibility(
         item=_item(published_at_ms=NOW_MS + 1),
         token_mentions=[{"resolution_status": "known_symbol"}],
         fact_candidates=[],
-        context_items=[],
         now_ms=NOW_MS,
     )
 
@@ -152,10 +142,8 @@ def test_news_item_agent_brief_priority_keeps_higher_provider_scores_first() -> 
         item=_item(provider_signal_json={"source": "provider", "score": 95}),
         token_mentions=[{"resolution_status": "known_symbol"}],
         fact_candidates=[],
-        context_items=[],
     ) < news_item_agent_brief_priority(
         item=_item(provider_signal_json={"source": "provider", "score": 72}),
         token_mentions=[{"resolution_status": "known_symbol"}],
         fact_candidates=[],
-        context_items=[],
     )

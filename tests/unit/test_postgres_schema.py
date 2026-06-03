@@ -195,6 +195,9 @@ NEWS_REBUILD_BRIEF_BACKLOG_HARD_CUT_MIGRATION = Path(
 NEWS_PUBLIC_URL_IDENTITY_INDEX_SCOPE_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260531_0133_news_public_url_identity_index_scope.py"
 )
+NEWS_CONTEXT_AND_FILTER_HARD_CUT_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260603_0142_news_context_and_filter_hard_cut.py"
+)
 TOKEN_PULSE_EQUITY_CPU_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260529_0124_token_pulse_equity_cpu_hard_cut.py"
 )
@@ -1403,7 +1406,6 @@ def test_news_realtime_postgres_hotpath_migration_cleans_legacy_news_runtime_deb
         "ANALYZE news_projection_dirty_targets",
         "ANALYZE news_items",
         "ANALYZE news_page_rows",
-        "ANALYZE news_context_items",
     ):
         assert statement in text
 
@@ -1434,17 +1436,11 @@ def test_news_realtime_postgres_hotpath_migration_adds_concurrent_hotpath_indexe
         "ON news_projection_dirty_targets( projection_name, due_at_ms, leased_until_ms, priority, "
         'updated_at_ms, target_kind, target_id, "window" )' in normalized_text
     )
-    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_context_items_source_effective_time" in text
-    assert (
-        "ON news_context_items( source_id, (COALESCE(published_at_ms, created_at_ms)), parent_news_item_id )"
-        in normalized_text
-    )
 
     for index_name in (
         "ix_news_items_unprocessed_claim",
         "ix_news_page_rows_news_item",
         "ix_news_projection_dirty_projection_due",
-        "ix_news_context_items_source_effective_time",
     ):
         assert f"DROP INDEX CONCURRENTLY IF EXISTS {index_name}" in downgrade_text
 
@@ -1746,6 +1742,42 @@ def test_news_public_url_identity_index_scope_excludes_generic_public_urls() -> 
     assert "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS ux_news_items_public_canonical_url" in text
     assert "canonical_url ~* '^https?://'" in normalized_text
     assert "canonical_item_key = ('canonical-url:' || canonical_url)" in normalized_text
+
+
+def test_news_context_and_filter_hard_cut_drops_retired_schema() -> None:
+    assert NEWS_CONTEXT_AND_FILTER_HARD_CUT_MIGRATION.exists(), (
+        f"{NEWS_CONTEXT_AND_FILTER_HARD_CUT_MIGRATION} missing; add a forward-only hard-cut migration"
+    )
+    text = NEWS_CONTEXT_AND_FILTER_HARD_CUT_MIGRATION.read_text()
+    upgrade_text = text.split("def downgrade() -> None:", maxsplit=1)[0]
+    downgrade_text = text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+    for statement in (
+        'revision = "20260603_0142"',
+        'down_revision = "20260601_0141"',
+        "DROP INDEX IF EXISTS ix_news_context_items_source_effective_time",
+        "DROP INDEX IF EXISTS idx_news_context_items_source_effective_time",
+        "DROP INDEX IF EXISTS news_context_items_source_published_idx",
+        "DROP INDEX IF EXISTS news_context_items_parent_published_idx",
+        "DROP TABLE IF EXISTS news_context_items",
+        "ALTER TABLE news_sources DROP COLUMN IF EXISTS context_policy_json",
+        "DROP INDEX IF EXISTS idx_news_page_rows_provider_type_time",
+        "DROP INDEX IF EXISTS idx_news_page_rows_source_role_time",
+        "DROP INDEX IF EXISTS idx_news_page_rows_trust_tier_time",
+        "DROP INDEX IF EXISTS idx_news_page_rows_content_class_time",
+        "DROP INDEX IF EXISTS idx_news_page_rows_decision_class_time",
+        "DROP INDEX IF EXISTS idx_news_page_rows_coverage_tags_gin",
+        "DROP INDEX IF EXISTS idx_news_page_rows_content_tags_gin",
+        "ANALYZE news_sources",
+    ):
+        assert statement in text
+
+    assert "CREATE TABLE" not in upgrade_text
+    assert "CREATE INDEX" not in upgrade_text
+    assert "ADD COLUMN" not in upgrade_text
+    assert "CREATE TABLE" not in downgrade_text
+    assert "context_policy_json" not in downgrade_text
+    assert "news_context_items" not in downgrade_text
 
 
 def test_asset_migration_adds_identity_resolution_tables() -> None:

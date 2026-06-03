@@ -26,7 +26,6 @@ class NewsSourceConfig:
     asset_universe: tuple[str, ...] = ()
     authority_scope: dict[str, Any] = field(default_factory=dict)
     fetch_policy: dict[str, Any] = field(default_factory=dict)
-    context_policy: dict[str, Any] = field(default_factory=dict)
     cost_policy: dict[str, Any] = field(default_factory=dict)
 
 

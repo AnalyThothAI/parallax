@@ -647,7 +647,6 @@ class NewsSourceSettings(BaseModel):
     asset_universe: tuple[str, ...] = ()
     authority_scope: dict[str, Any] = Field(default_factory=dict)
     fetch_policy: dict[str, Any] = Field(default_factory=dict)
-    context_policy: dict[str, Any] = Field(default_factory=dict)
     cost_policy: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("source_id", "feed_url", "source_domain", "source_name", mode="before")

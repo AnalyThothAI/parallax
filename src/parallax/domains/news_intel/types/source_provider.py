@@ -57,23 +57,9 @@ class NewsProviderObservation:
 
 
 @dataclass(frozen=True, slots=True)
-class NewsProviderContextObservation:
-    context_item_id: str
-    parent_source_item_key: str
-    context_type: str
-    author: str | None
-    canonical_url: str | None
-    body_text: str
-    published_at_ms: int | None
-    engagement: dict[str, Any] | None
-    raw_payload: dict[str, Any]
-
-
-@dataclass(frozen=True, slots=True)
 class NewsProviderFetchResult:
     status_code: int
     observations: list[NewsProviderObservation]
-    context_observations: list[NewsProviderContextObservation] = field(default_factory=list)
     etag: str | None = None
     last_modified: str | None = None
     next_cursor: dict[str, Any] = field(default_factory=dict)
@@ -82,7 +68,6 @@ class NewsProviderFetchResult:
 
 
 __all__ = [
-    "NewsProviderContextObservation",
     "NewsProviderFetchResult",
     "NewsProviderObservation",
     "NewsSourceHttpCache",

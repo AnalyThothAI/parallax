@@ -85,8 +85,6 @@ news_intel:
         domains: ["coindesk.com"]
       fetch_policy:
         max_items: 50
-      context_policy:
-        fetch_discussion: false
       cost_policy:
         class: free
       enabled: true

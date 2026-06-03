@@ -28,7 +28,7 @@ def test_source_quality_score_is_deterministic() -> None:
         "brief_ready_rate": 0.5,
         "duplicate_rate": 0.2,
         "normalized_freshness": 0.9,
-        "useful_fact_or_context_rate": 0.6,
+        "useful_fact_rate": 0.6,
     }
 
     row = build_source_quality_row(
@@ -65,7 +65,6 @@ def test_build_source_quality_rows_derives_metrics_from_aggregate_inputs() -> No
                 "accepted_fact_count": 2,
                 "fact_count": 4,
                 "ready_brief_count": 2,
-                "context_item_count": 1,
                 "useful_item_count": 2,
                 "latest_item_published_at_ms": NOW_MS - 6 * 60 * 60 * 1000,
                 "median_lag_ms": 3_000,
@@ -97,7 +96,6 @@ def test_build_source_quality_rows_derives_metrics_from_aggregate_inputs() -> No
                 "counts": {
                     "accepted_fact_count": 2,
                     "attention_fact_count": 1,
-                    "context_item_count": 1,
                     "fact_count": 4,
                     "fetch_run_count": 4,
                     "fetch_success_count": 3,
@@ -121,7 +119,7 @@ def test_build_source_quality_rows_derives_metrics_from_aggregate_inputs() -> No
                     "normalized_freshness": 0.75,
                     "process_success_rate": 0.8,
                     "resolved_token_rate": 0.75,
-                    "useful_fact_or_context_rate": 0.4,
+                    "useful_fact_rate": 0.4,
                 },
                 "status": "watch",
                 "window_ms": DAY_MS,
@@ -157,7 +155,6 @@ def test_useful_item_count_is_not_double_counted_by_projection() -> None:
                 "accepted_fact_count": 1,
                 "attention_fact_count": 0,
                 "ready_brief_count": 0,
-                "context_item_count": 1,
                 "useful_item_count": 1,
                 "latest_item_published_at_ms": NOW_MS,
             }
@@ -167,7 +164,7 @@ def test_useful_item_count_is_not_double_counted_by_projection() -> None:
         computed_at_ms=NOW_MS,
     )
 
-    assert rows[0]["diagnostics_json"]["metrics"]["useful_fact_or_context_rate"] == 0.5
+    assert rows[0]["diagnostics_json"]["metrics"]["useful_fact_rate"] == 0.5
 
 
 def test_source_quality_projection_worker_builds_rows_for_configured_windows() -> None:
@@ -238,11 +235,8 @@ def test_source_status_payload_uses_plain_quality_diagnostics() -> None:
             "managed_by_config": True,
             "refresh_interval_seconds": 300,
             "item_count": 4,
-            "context_policy_json": {"enabled": True},
-            "context_item_count": 2,
             "latest_item_published_at_ms": NOW_MS - 40_000,
             "latest_item_fetched_at_ms": NOW_MS - 30_000,
-            "latest_context_seen_at_ms": NOW_MS - 20_000,
             "latest_fetch_run_json": {
                 "status": "failed",
                 "started_at_ms": NOW_MS - 10_000,
@@ -275,7 +269,7 @@ def test_source_status_payload_uses_plain_quality_diagnostics() -> None:
                 "median_lag_ms": 500,
                 "quality_score": 82.5,
                 "diagnostics_json": {
-                    "counts": {"fetch_run_count": 4, "context_item_count": 2},
+                    "counts": {"fetch_run_count": 4},
                     "status": "healthy",
                 },
                 "projection_version": SOURCE_QUALITY_PROJECTION_VERSION,
@@ -285,12 +279,10 @@ def test_source_status_payload_uses_plain_quality_diagnostics() -> None:
 
     assert payload["coverage_tags"] == ["crypto_market"]
     assert payload["quality"]["diagnostics_json"]["status"] == "healthy"
-    assert payload["latest_quality_counts"] == {"fetch_run_count": 4, "context_item_count": 2}
+    assert payload["latest_quality_counts"] == {"fetch_run_count": 4}
     assert payload["latest_item_published_at_ms"] == NOW_MS - 40_000
     assert payload["latest_item_fetched_at_ms"] == NOW_MS - 30_000
-    assert payload["latest_context_seen_at_ms"] == NOW_MS - 20_000
-    assert payload["context_item_count"] == 2
-    assert payload["last_seen_at_ms"] == NOW_MS - 20_000
+    assert payload["last_seen_at_ms"] == NOW_MS - 30_000
     assert payload["latest_fetch_run"] == {
         "status": "failed",
         "started_at_ms": NOW_MS - 10_000,
@@ -308,12 +300,11 @@ def test_source_status_payload_uses_plain_quality_diagnostics() -> None:
         "last_error": "upstream timeout",
         "consecutive_failures": 1,
         "last_success_at_ms": NOW_MS - 50_000,
-        "last_seen_at_ms": NOW_MS - 20_000,
+        "last_seen_at_ms": NOW_MS - 30_000,
     }
     assert payload["provider_capability_tags"] == [
         "poll_primary_items",
         "http_cache",
-        "context_items",
         "high_trust",
     ]
     json.dumps(payload)
@@ -344,7 +335,6 @@ def test_source_status_payload_redacts_secret_error_fragments() -> None:
             "managed_by_config": True,
             "refresh_interval_seconds": 300,
             "item_count": 0,
-            "context_item_count": 0,
             "next_fetch_after_ms": 0,
             "consecutive_failures": 1,
             "last_error": secret_error,
@@ -392,7 +382,6 @@ def test_source_status_payload_marks_disabled_and_api_backed_capabilities() -> N
             "managed_by_config": True,
             "refresh_interval_seconds": 300,
             "item_count": 0,
-            "context_item_count": 0,
             "next_fetch_after_ms": 0,
             "consecutive_failures": 0,
             "last_error": "disabled by config",
@@ -451,7 +440,7 @@ def test_replace_source_quality_rows_updates_source_status_freshness() -> None:
     assert conn.commits == 1
 
 
-def test_source_quality_repository_query_uses_narrow_item_and_context_hotpaths() -> None:
+def test_source_quality_repository_query_uses_narrow_item_and_fact_hotpaths() -> None:
     conn = CapturingQualityConnection()
     repo = NewsRepository(conn)
 
@@ -465,11 +454,9 @@ def test_source_quality_repository_query_uses_narrow_item_and_context_hotpaths()
         "SELECT items.news_item_id, items.source_id, items.published_at_ms, items.fetched_at_ms, "
         "items.lifecycle_status FROM source_rows AS sources JOIN news_items AS items"
     ) in normalized_query
-    assert "ON context_items.source_id = items.source_id" in normalized_query
-    assert (
-        "AND COALESCE(context_items.published_at_ms, context_items.created_at_ms) >= %s "
-        "AND COALESCE(context_items.published_at_ms, context_items.created_at_ms) <= %s"
-    ) in normalized_query
+    assert "JOIN news_fact_candidates AS facts ON facts.news_item_id = items.news_item_id" in normalized_query
+    assert "news_context_items" not in normalized_query
+    assert "context_items" not in normalized_query
 
 
 def test_source_status_query_uses_preaggregated_source_hotpaths() -> None:
@@ -551,7 +538,6 @@ class FakeSourceQualityRepository:
                 "accepted_fact_count": 1,
                 "fact_count": 1,
                 "ready_brief_count": 1,
-                "context_item_count": 0,
                 "useful_item_count": 1,
                 "latest_item_published_at_ms": now_ms,
                 "median_lag_ms": 0,

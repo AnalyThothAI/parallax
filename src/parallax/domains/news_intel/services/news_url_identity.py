@@ -38,6 +38,9 @@ _SOCIAL_STATUS_HOSTS = {
     "www.x.com",
 }
 _PREVIEW_SEGMENTS = {"preview", "preview_article", "preview-article"}
+_FEED_INDEX_SEGMENTS = {"atom", "feed", "feeds", "rss"}
+_FEED_INDEX_FILENAMES = {"atom.xml", "feed.xml", "index.xml", "rss.xml"}
+_GENERIC_INDEX_FILENAMES = {"index", "index.html"}
 
 
 def url_identity_kind(canonical_url: str) -> str:
@@ -47,7 +50,10 @@ def url_identity_kind(canonical_url: str) -> str:
     if not raw_url:
         return "unknown"
 
-    split = urlsplit(raw_url)
+    try:
+        split = urlsplit(raw_url)
+    except ValueError:
+        return "unknown"
     if split.scheme.lower() not in {"http", "https"} or not split.netloc:
         return "unknown"
 
@@ -95,12 +101,37 @@ def hard_public_url_identity_key(canonical_url: str) -> str:
         return social_status_key
 
     lower_segments = _path_segments(split.path or "")
-    if _is_preview_path(lower_segments) or _is_generic_announcement_path(lower_segments):
+    if _is_identity_blocked_path(lower_segments):
         return ""
 
     if not is_article_identity(normalized_url):
         return ""
     return f"canonical-url:{normalized_url}"
+
+
+def qualified_content_identity_url_allowed(canonical_url: str, *, kind: str | None = None) -> bool:
+    """True when URL shape is safe for global qualified-content identity."""
+
+    raw_url = str(canonical_url or "").strip()
+    if not raw_url:
+        return True
+
+    normalized_url = canonicalize_url(raw_url)
+    if not normalized_url:
+        return False
+
+    try:
+        split = urlsplit(normalized_url)
+    except ValueError:
+        return False
+    if split.scheme.lower() not in {"http", "https"} or not split.netloc:
+        return False
+
+    lower_segments = _path_segments(split.path or "")
+    if _is_identity_blocked_path(lower_segments):
+        return False
+
+    return (kind or url_identity_kind(normalized_url)) == "article"
 
 
 def _is_live_page(lower_segments: list[str]) -> bool:
@@ -135,9 +166,29 @@ def _is_preview_path(lower_segments: list[str]) -> bool:
     return any(segment in _PREVIEW_SEGMENTS or segment.startswith("preview") for segment in lower_segments)
 
 
+def _is_feed_index_path(lower_segments: list[str]) -> bool:
+    content_segments = _strip_locale_prefix(lower_segments)
+    if not content_segments:
+        return False
+    last_segment = content_segments[-1]
+    if last_segment in _FEED_INDEX_FILENAMES:
+        return True
+    if len(content_segments) <= 2 and last_segment in _FEED_INDEX_SEGMENTS:
+        return True
+    return len(content_segments) <= 2 and last_segment in _GENERIC_INDEX_FILENAMES
+
+
 def _is_generic_announcement_path(lower_segments: list[str]) -> bool:
     content_segments = _strip_locale_prefix(lower_segments)
     return content_segments in (["support", "announcement"], ["support", "announcements"])
+
+
+def _is_identity_blocked_path(lower_segments: list[str]) -> bool:
+    return (
+        _is_preview_path(lower_segments)
+        or _is_generic_announcement_path(lower_segments)
+        or _is_feed_index_path(lower_segments)
+    )
 
 
 def _social_status_identity_key(hostname: str, path: str) -> str:

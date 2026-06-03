@@ -138,18 +138,6 @@ class NewsItemBriefFactLane(BaseModel):
     evidence_quote: str = Field(default="", max_length=500)
 
 
-class NewsItemBriefContextItem(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    context_item_id: str = Field(min_length=1, max_length=160)
-    context_type: str = Field(default="", max_length=64)
-    author: str | None = Field(default=None, max_length=255)
-    canonical_url: str | None = Field(default=None, max_length=2000)
-    body_excerpt: str = Field(default="", max_length=500)
-    published_at_ms: int | None = Field(default=None, ge=0)
-    engagement: dict[str, object] = Field(default_factory=dict)
-
-
 class NewsItemBriefProviderTokenImpact(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -211,7 +199,6 @@ class NewsItemBriefInputPacket(BaseModel):
     news_item: NewsItemBriefNewsItem
     token_lanes: list[NewsItemBriefTokenLane] = Field(default_factory=list, max_length=50)
     fact_lanes: list[NewsItemBriefFactLane] = Field(default_factory=list, max_length=50)
-    context_items: list[NewsItemBriefContextItem] = Field(default_factory=list, max_length=8)
     provider_signal_evidence: NewsItemBriefProviderSignalEvidence | None = None
     evidence_refs: list[Annotated[str, Field(min_length=1, max_length=160)]] = Field(
         default_factory=list,
@@ -258,7 +245,6 @@ __all__ = [
     "NewsItemBriefAgentConfig",
     "NewsItemBriefAssetResolutionStatus",
     "NewsItemBriefConstraints",
-    "NewsItemBriefContextItem",
     "NewsItemBriefDecision",
     "NewsItemBriefDirection",
     "NewsItemBriefFactLane",

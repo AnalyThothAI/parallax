@@ -133,7 +133,6 @@ class NewsItemProcessWorker(WorkerBase):
                         item=processed_item,
                         token_mentions=mention_payloads,
                         fact_candidates=candidate_payloads,
-                        context_items=[],
                         now_ms=now,
                     )
                     if eligibility.eligible:
@@ -145,7 +144,6 @@ class NewsItemProcessWorker(WorkerBase):
                                     item=processed_item,
                                     token_mentions=mention_payloads,
                                     fact_candidates=candidate_payloads,
-                                    context_items=[],
                                 )
                             },
                             reason="news_item_processed",

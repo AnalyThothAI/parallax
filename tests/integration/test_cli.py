@@ -205,6 +205,8 @@ class CliTests(unittest.TestCase):
                 "0",
                 "--execute",
             ],
+            ["ops", "cleanup-news-intel-hard-cut"],
+            ["ops", "cleanup-news-intel-hard-cut", "--execute"],
         ]
 
         parsed = [parser.parse_args(command) for command in commands]
@@ -264,6 +266,10 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[27].ops_command, "enqueue-token-radar-dirty-targets")
         self.assertEqual(parsed[27].source, "market-current")
         self.assertTrue(parsed[27].execute)
+        self.assertEqual(parsed[28].ops_command, "cleanup-news-intel-hard-cut")
+        self.assertFalse(parsed[28].execute)
+        self.assertEqual(parsed[29].ops_command, "cleanup-news-intel-hard-cut")
+        self.assertTrue(parsed[29].execute)
 
     def test_cli_ops_mirror_token_images_has_no_source_limit_option(self):
         parser = build_parser()
@@ -846,6 +852,49 @@ def test_cli_ops_factor_diagnostics_reads_latest_token_radar_current_rows(monkey
     }
     assert payload["ok"] is True
     assert payload["data"]["row_count"] == 1
+
+
+def test_cli_ops_cleanup_news_intel_hard_cut_dispatches_to_service(monkeypatch, tmp_path):
+    from parallax.app.surfaces.cli.commands import ops as ops_module
+
+    calls = []
+
+    class FakeRepos:
+        conn = object()
+
+    @contextmanager
+    def fake_repositories(_settings):
+        yield FakeRepos()
+
+    def fake_cleanup(repos, *, execute, now_ms):
+        calls.append({"repos_type": type(repos).__name__, "execute": execute, "now_ms": now_ms})
+        return {"execute": execute, "now_ms": now_ms}
+
+    write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
+    monkeypatch.setattr(ops_module, "cleanup_news_intel_hard_cut", fake_cleanup)
+    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_000_000)
+
+    dry_stdout = io.StringIO()
+    dry_code = main(["ops", "cleanup-news-intel-hard-cut"], stdout=dry_stdout)
+    execute_stdout = io.StringIO()
+    execute_code = main(["ops", "cleanup-news-intel-hard-cut", "--execute"], stdout=execute_stdout)
+
+    assert dry_code == 0
+    assert execute_code == 0
+    assert json.loads(dry_stdout.getvalue()) == {
+        "ok": True,
+        "data": {"execute": False, "now_ms": 1_700_000_000_000},
+    }
+    assert json.loads(execute_stdout.getvalue()) == {
+        "ok": True,
+        "data": {"execute": True, "now_ms": 1_700_000_000_000},
+    }
+    assert calls == [
+        {"repos_type": "FakeRepos", "execute": False, "now_ms": 1_700_000_000_000},
+        {"repos_type": "FakeRepos", "execute": True, "now_ms": 1_700_000_000_000},
+    ]
 
 
 def test_cli_ops_settle_token_factors_dispatches_to_service_with_hidden_now_ms(monkeypatch, tmp_path):

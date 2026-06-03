@@ -7,7 +7,6 @@ from typing import Any
 from parallax.domains.news_intel.types.news_item_brief import (
     NewsItemBriefAgentConfig,
     NewsItemBriefConstraints,
-    NewsItemBriefContextItem,
     NewsItemBriefFactLane,
     NewsItemBriefInputPacket,
     NewsItemBriefNewsItem,
@@ -21,8 +20,6 @@ from parallax.platform.agent_hashing import json_sha256
 BODY_EXCERPT_MAX_CHARS = 2000
 MAX_TOKEN_LANES = 50
 MAX_FACT_LANES = 50
-MAX_CONTEXT_ITEMS = 8
-CONTEXT_BODY_EXCERPT_MAX_CHARS = 500
 MAX_PROVIDER_TOKEN_IMPACTS = 12
 MAX_PROVIDER_AGGREGATION_VALUES = 12
 PROVIDER_SUMMARY_MAX_CHARS = 600
@@ -34,7 +31,6 @@ def build_news_item_brief_input_packet(
     token_mentions: Sequence[Mapping[str, Any]],
     fact_candidates: Sequence[Mapping[str, Any]],
     agent_config: NewsItemBriefAgentConfig,
-    context_items: Sequence[Mapping[str, Any]] = (),
 ) -> NewsItemBriefInputPacket:
     news_item = NewsItemBriefNewsItem(
         news_item_id=_str(item.get("news_item_id")),
@@ -53,20 +49,17 @@ def build_news_item_brief_input_packet(
     )
     token_lanes = [_token_lane(row) for row in sorted(token_mentions, key=_mention_sort_key)[:MAX_TOKEN_LANES]]
     fact_lanes = [_fact_lane(row) for row in sorted(fact_candidates, key=_fact_sort_key)[:MAX_FACT_LANES]]
-    context_item_lanes = _context_items(context_items or _json_list(item.get("context_items")))
     provider_signal_evidence = _provider_signal_evidence(item)
     evidence_refs = _evidence_refs(
         news_item=news_item,
         token_lanes=token_lanes,
         fact_lanes=fact_lanes,
-        context_items=context_item_lanes,
         provider_signal_evidence=provider_signal_evidence,
     )
     packet_id = _packet_id(
         news_item=news_item,
         token_lanes=token_lanes,
         fact_lanes=fact_lanes,
-        context_items=context_item_lanes,
         provider_signal_evidence=provider_signal_evidence,
         agent_config=agent_config,
     )
@@ -75,7 +68,6 @@ def build_news_item_brief_input_packet(
         news_item=news_item,
         token_lanes=token_lanes,
         fact_lanes=fact_lanes,
-        context_items=context_item_lanes,
         provider_signal_evidence=provider_signal_evidence,
         evidence_refs=evidence_refs,
         constraints=NewsItemBriefConstraints(),
@@ -125,36 +117,6 @@ def _fact_lane(row: Mapping[str, Any]) -> NewsItemBriefFactLane:
         rejection_reasons=[_bounded(value, 120) for value in _json_list(row.get("rejection_reasons_json"))[:12]],
         evidence_quote=_bounded(row.get("evidence_quote"), 500),
     )
-
-
-def _context_items(rows: Sequence[Any]) -> list[NewsItemBriefContextItem]:
-    context_items: list[NewsItemBriefContextItem] = []
-    for row in sorted(rows, key=_context_item_sort_key)[:MAX_CONTEXT_ITEMS]:
-        payload = _json_object(row)
-        context_item_id = _str(payload.get("context_item_id"))
-        if not context_item_id:
-            continue
-        context_items.append(
-            NewsItemBriefContextItem(
-                context_item_id=context_item_id,
-                context_type=_bounded(payload.get("context_type"), 64),
-                author=_optional_bounded(payload.get("author"), 255),
-                canonical_url=_optional_bounded(payload.get("canonical_url"), 2000),
-                body_excerpt=_bounded(
-                    payload.get("body_text"),
-                    CONTEXT_BODY_EXCERPT_MAX_CHARS,
-                ),
-                published_at_ms=_optional_int(payload.get("published_at_ms")),
-                engagement=_json_object(payload.get("engagement_json")),
-            )
-        )
-    return context_items
-
-
-def _context_item_sort_key(row: Any) -> tuple[int, int, str]:
-    payload = _json_object(row)
-    published_at_ms = _optional_int(payload.get("published_at_ms"))
-    return (published_at_ms is None, -(published_at_ms or 0), _str(payload.get("context_item_id")))
 
 
 def _provider_signal_evidence(item: Mapping[str, Any]) -> NewsItemBriefProviderSignalEvidence | None:
@@ -216,7 +178,6 @@ def _evidence_refs(
     news_item: NewsItemBriefNewsItem,
     token_lanes: list[NewsItemBriefTokenLane],
     fact_lanes: list[NewsItemBriefFactLane],
-    context_items: list[NewsItemBriefContextItem],
     provider_signal_evidence: NewsItemBriefProviderSignalEvidence | None,
 ) -> list[str]:
     refs: list[str] = []
@@ -228,7 +189,6 @@ def _evidence_refs(
         refs.append("item:body_excerpt")
     refs.extend(f"fact:{row.fact_candidate_id}" for row in fact_lanes if row.fact_candidate_id)
     refs.extend(f"token:{row.mention_id}" for row in token_lanes if row.mention_id)
-    refs.extend(f"context:{row.context_item_id}" for row in context_items if row.context_item_id)
     if provider_signal_evidence is not None:
         refs.append("provider:signal")
         refs.extend(f"provider:token:{row.symbol}" for row in provider_signal_evidence.token_impacts if row.symbol)
@@ -240,7 +200,6 @@ def _packet_id(
     news_item: NewsItemBriefNewsItem,
     token_lanes: list[NewsItemBriefTokenLane],
     fact_lanes: list[NewsItemBriefFactLane],
-    context_items: list[NewsItemBriefContextItem],
     provider_signal_evidence: NewsItemBriefProviderSignalEvidence | None,
     agent_config: NewsItemBriefAgentConfig,
 ) -> str:
@@ -250,7 +209,6 @@ def _packet_id(
             "content_hash": news_item.content_hash,
             "tokens": [row.mention_id for row in token_lanes],
             "facts": [row.fact_candidate_id for row in fact_lanes],
-            "context_items": [row.context_item_id for row in context_items],
             "provider_signal_evidence": provider_signal_evidence.model_dump(mode="json")
             if provider_signal_evidence is not None
             else None,

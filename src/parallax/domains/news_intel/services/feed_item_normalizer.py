@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import calendar
 import json
+import re
 import time
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any, cast
+from urllib.parse import urlsplit
 
 from parallax.domains.news_intel.services.text_normalization import canonicalize_url, clean_news_text
 from parallax.domains.news_intel.types import NormalizedNewsItem
+
+_OPENNEWS_FALLBACK_INVALID_RE = re.compile(r"[\s\x00-\x1f\x7f]")
 
 
 def normalize_feed_entry(
@@ -19,9 +23,15 @@ def normalize_feed_entry(
     link = _first_text(entry, "link", "href")
     canonical_url = canonicalize_url(link)
     title = clean_news_text(entry.get("title"), max_chars=500)
-    if not title or not canonical_url:
+    if not title:
         return None
-    source_item_key = _first_text(entry, "source_item_key", "id", "guid", "link") or canonical_url
+    if not canonical_url:
+        canonical_url = _opennews_fallback_url(link, entry)
+    if not canonical_url:
+        return None
+    source_item_key = (
+        _first_text(entry, "source_item_key", "provider_article_id", "id", "guid", "link") or canonical_url
+    )
     summary = clean_news_text(_first_value(entry, "summary", "description", "subtitle"))
     body_text = clean_news_text(_content_value(entry))
     if not body_text:
@@ -59,6 +69,44 @@ def _content_value(entry: Mapping[str, Any]) -> Any:
             return first.get("value") or first.get("content")
         return first
     return entry.get("content") or entry.get("body") or entry.get("summary")
+
+
+def _opennews_fallback_url(link: object, entry: Mapping[str, Any]) -> str:
+    explicit_provider_article_id = _first_text(entry, "provider_article_id")
+    provider_article_key = _first_text(entry, "provider_article_key")
+    provider_article_key_id = _opennews_provider_article_key_id(provider_article_key)
+    has_opennews_marker = (
+        bool(explicit_provider_article_id)
+        or bool(provider_article_key_id)
+        or bool(_first_text(entry, "opennews_method"))
+    )
+    if not has_opennews_marker:
+        return ""
+    raw = str(link or "").strip()
+    if _OPENNEWS_FALLBACK_INVALID_RE.search(raw):
+        return ""
+    try:
+        split = urlsplit(raw)
+    except ValueError:
+        return ""
+    if split.scheme.lower() != "opennews" or (split.netloc or "").lower() != "item":
+        return ""
+    item_id = str(split.path or "").strip("/")
+    if not item_id:
+        return ""
+    if explicit_provider_article_id and item_id != explicit_provider_article_id:
+        return ""
+    if provider_article_key_id and item_id != provider_article_key_id:
+        return ""
+    return f"opennews://item/{item_id}"
+
+
+def _opennews_provider_article_key_id(provider_article_key: str) -> str:
+    prefix = "opennews:"
+    normalized = str(provider_article_key or "").strip()
+    if not normalized.lower().startswith(prefix):
+        return ""
+    return normalized[len(prefix) :].strip()
 
 
 def _entry_time_ms(entry: Mapping[str, Any], *, fetched_at_ms: int) -> int:

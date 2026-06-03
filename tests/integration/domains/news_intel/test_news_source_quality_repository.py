@@ -22,7 +22,6 @@ def test_source_quality_repository_aggregates_and_replaces_rows(tmp_path) -> Non
             source_name="CoinDesk",
             source_role="specialist_media",
             trust_tier="high",
-            context_policy={"enabled": True},
             now_ms=NOW_MS - 10_000,
         )
         fetch_run_id = repo.start_fetch_run(source_id="coindesk", started_at_ms=NOW_MS - 9_000)
@@ -154,18 +153,6 @@ def test_source_quality_repository_aggregates_and_replaces_rows(tmp_path) -> Non
             created_at_ms=NOW_MS - 1_800,
             updated_at_ms=NOW_MS - 1_800,
         )
-        repo.upsert_news_context_item(
-            context_item_id="ctx-1",
-            source_id="coindesk",
-            parent_news_item_id=news_item_id,
-            context_type="reply",
-            author="analyst",
-            canonical_url="https://example.test/reply",
-            body_text="Useful context",
-            published_at_ms=NOW_MS - 1_000,
-            created_at_ms=NOW_MS - 1_000,
-        )
-
         aggregate_inputs = repo.list_source_quality_inputs_for_targets(
             source_windows=[("coindesk", "24h")],
             now_ms=NOW_MS,
@@ -192,7 +179,6 @@ def test_source_quality_repository_aggregates_and_replaces_rows(tmp_path) -> Non
     assert aggregate_inputs[0]["resolved_mention_count"] == 1
     assert aggregate_inputs[0]["accepted_fact_count"] == 1
     assert aggregate_inputs[0]["ready_brief_count"] == 1
-    assert aggregate_inputs[0]["context_parent_item_count"] == 1
     assert aggregate_inputs[0]["useful_item_count"] == 1
     assert stored is not None
     assert stored["window"] == "24h"
@@ -201,9 +187,7 @@ def test_source_quality_repository_aggregates_and_replaces_rows(tmp_path) -> Non
     assert source["source_quality_status"] == stored["diagnostics_json"]["status"]
     assert source_status["latest_item_published_at_ms"] == NOW_MS - 60_000
     assert source_status["latest_item_fetched_at_ms"] == NOW_MS - 7_000
-    assert source_status["context_item_count"] == 1
-    assert source_status["latest_context_seen_at_ms"] == NOW_MS - 1_000
-    assert source_status["last_seen_at_ms"] == NOW_MS - 1_000
+    assert source_status["last_seen_at_ms"] == NOW_MS - 7_000
     assert source_status["latest_fetch_run"] == {
         "status": "success",
         "started_at_ms": NOW_MS - 9_000,
@@ -216,12 +200,10 @@ def test_source_quality_repository_aggregates_and_replaces_rows(tmp_path) -> Non
         "error": None,
     }
     assert source_status["latest_quality_counts"]["fetch_run_count"] == 1
-    assert source_status["latest_quality_counts"]["context_item_count"] == 1
     assert source_status["provider_health"]["status"] == stored["diagnostics_json"]["status"]
-    assert source_status["provider_health"]["last_seen_at_ms"] == NOW_MS - 1_000
+    assert source_status["provider_health"]["last_seen_at_ms"] == NOW_MS - 7_000
     assert source_status["provider_capability_tags"] == [
         "poll_primary_items",
         "http_cache",
-        "context_items",
         "high_trust",
     ]

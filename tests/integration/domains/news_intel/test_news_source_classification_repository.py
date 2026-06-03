@@ -48,7 +48,6 @@ def test_reconcile_configured_sources_persists_classification_and_disables_remov
                     asset_universe=("eth",),
                     authority_scope={"project": "ethereum"},
                     fetch_policy={"kind": "releases"},
-                    context_policy={"thread_depth": 2},
                     cost_policy={"budget": "low"},
                 ),
                 {
@@ -63,7 +62,6 @@ def test_reconcile_configured_sources_persists_classification_and_disables_remov
                     "asset_universe": ["eth"],
                     "authority_scope": {"community": "ethfinance"},
                     "fetch_policy": {"kind": "poll"},
-                    "context_policy": {"include_comments": True},
                     "cost_policy": {"budget": "free"},
                 },
             ],
@@ -88,7 +86,6 @@ def test_reconcile_configured_sources_persists_classification_and_disables_remov
     assert stored["configured-source"]["asset_universe_json"] == ["eth"]
     assert stored["configured-source"]["authority_scope_json"] == {"project": "ethereum"}
     assert stored["configured-source"]["fetch_policy_json"] == {"kind": "releases"}
-    assert stored["configured-source"]["context_policy_json"] == {"thread_depth": 2}
     assert stored["configured-source"]["cost_policy_json"] == {"budget": "low"}
     assert stored["configured-source"]["source_quality_status"] == "verified"
     assert stored["community-source"]["coverage_tags_json"] == ["ethereum", "community"]

@@ -180,7 +180,6 @@ def test_news_source_settings_accepts_classification_fields_and_normalizes_tuple
         asset_universe=[" eth ", "ethereum", ""],
         authority_scope={"project": "ethereum"},
         fetch_policy={"interval": "release"},
-        context_policy={"include_threads": True},
         cost_policy={"tier": "free"},
     )
 
@@ -188,8 +187,19 @@ def test_news_source_settings_accepts_classification_fields_and_normalizes_tuple
     assert source.asset_universe == ("eth", "ethereum")
     assert source.authority_scope == {"project": "ethereum"}
     assert source.fetch_policy == {"interval": "release"}
-    assert source.context_policy == {"include_threads": True}
     assert source.cost_policy == {"tier": "free"}
+
+
+def test_news_source_settings_rejects_retired_context_policy() -> None:
+    with pytest.raises(ValidationError):
+        NewsSourceSettings(
+            source_id="github-eth",
+            provider_type="github",
+            feed_url="https://api.github.com/repos/ethereum/go-ethereum/releases",
+            source_domain="github.com",
+            source_name="go-ethereum releases",
+            context_policy={"include_threads": True},
+        )
 
 
 def test_news_intel_accepts_opennews_credentials_without_using_environment_shadow_config() -> None:

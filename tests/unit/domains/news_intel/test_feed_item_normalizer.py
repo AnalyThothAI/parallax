@@ -3,6 +3,8 @@ from __future__ import annotations
 import time
 from datetime import datetime
 
+import pytest
+
 from parallax.domains.news_intel.services.feed_item_normalizer import normalize_feed_entry
 
 
@@ -79,6 +81,89 @@ def test_normalize_feed_entry_prefers_explicit_source_item_key_over_provider_id(
     assert item.source_item_key == "source-key-2367422"
 
 
+@pytest.mark.parametrize(
+    "marker",
+    (
+        {"provider_article_id": "2367422"},
+        {"provider_article_key": "opennews:2367422"},
+        {"opennews_method": "websocket"},
+    ),
+)
+def test_normalize_feed_entry_preserves_opennews_fallback_url_with_opennews_marker(
+    marker: dict[str, str],
+) -> None:
+    item = normalize_feed_entry(
+        "6551.io",
+        {
+            **marker,
+            "link": "opennews://item/2367422",
+            "title": "OpenNews fallback token alert",
+        },
+        fetched_at_ms=1_779_000_060_000,
+    )
+
+    assert item is not None
+    assert item.canonical_url == "opennews://item/2367422"
+    assert item.title == "OpenNews fallback token alert"
+
+
+def test_normalize_feed_entry_rejects_generic_opennews_fallback_url_with_only_rss_id() -> None:
+    item = normalize_feed_entry(
+        "example.com",
+        {
+            "id": "rss-guid-2367422",
+            "guid": "rss-guid-2367422",
+            "link": "opennews://item/2367422",
+            "title": "Generic RSS item should not use OpenNews fallback",
+        },
+        fetched_at_ms=1_779_000_060_000,
+    )
+
+    assert item is None
+
+
+def test_normalize_feed_entry_rejects_opennews_fallback_url_when_provider_id_mismatches_path() -> None:
+    item = normalize_feed_entry(
+        "6551.io",
+        {
+            "provider_article_id": "2367422",
+            "link": "opennews://item/2367423",
+            "title": "OpenNews fallback mismatch",
+        },
+        fetched_at_ms=1_779_000_060_000,
+    )
+
+    assert item is None
+
+
+def test_normalize_feed_entry_rejects_opennews_fallback_url_when_provider_key_mismatches_path() -> None:
+    item = normalize_feed_entry(
+        "6551.io",
+        {
+            "provider_article_key": "opennews:2367422",
+            "link": "opennews://item/2367423",
+            "title": "OpenNews fallback key mismatch",
+        },
+        fetched_at_ms=1_779_000_060_000,
+    )
+
+    assert item is None
+
+
+def test_normalize_feed_entry_rejects_opennews_fallback_url_with_whitespace_item_id() -> None:
+    item = normalize_feed_entry(
+        "6551.io",
+        {
+            "provider_article_id": "2367422",
+            "link": "opennews://item/2367 422",
+            "title": "OpenNews fallback whitespace path",
+        },
+        fetched_at_ms=1_779_000_060_000,
+    )
+
+    assert item is None
+
+
 def test_normalize_feed_entry_uses_provider_iso_timestamp_when_present() -> None:
     item = normalize_feed_entry(
         "6551.io",
@@ -98,3 +183,29 @@ def test_normalize_feed_entry_uses_provider_iso_timestamp_when_present() -> None
 def test_normalize_feed_entry_rejects_entries_without_title_or_url() -> None:
     assert normalize_feed_entry("example.com", {"title": "No URL"}, fetched_at_ms=1) is None
     assert normalize_feed_entry("example.com", {"link": "https://example.com/a"}, fetched_at_ms=1) is None
+
+
+def test_normalize_feed_entry_rejects_invalid_url_without_raising() -> None:
+    item = normalize_feed_entry(
+        "example.com",
+        {
+            "link": "www.example.com/story",
+            "title": "Malformed URL should not fail the run",
+        },
+        fetched_at_ms=1,
+    )
+
+    assert item is None
+
+
+def test_normalize_feed_entry_rejects_whitespace_malformed_url_without_raising() -> None:
+    item = normalize_feed_entry(
+        "example.com",
+        {
+            "link": "https://exa mple.com/news",
+            "title": "Whitespace malformed URL should not fail the run",
+        },
+        fetched_at_ms=1,
+    )
+
+    assert item is None

@@ -121,7 +121,6 @@ class FakeNewsRepo:
                 "attention_fact_count": 0,
                 "accepted_fact_count": 1,
                 "ready_brief_count": 1,
-                "context_item_count": 0,
                 "useful_item_count": 1,
                 "latest_item_published_at_ms": now_ms - 1_000,
                 "median_lag_ms": 100,

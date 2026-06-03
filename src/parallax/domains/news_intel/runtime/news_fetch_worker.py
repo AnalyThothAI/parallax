@@ -23,7 +23,6 @@ from parallax.domains.news_intel.services.news_provider_contract import (
 from parallax.domains.news_intel.services.text_normalization import content_hash, title_fingerprint
 from parallax.domains.news_intel.types.source_classification import PROVIDER_TYPES
 from parallax.domains.news_intel.types.source_provider import (
-    NewsProviderContextObservation,
     NewsProviderObservation,
     NewsSourceHttpCache,
     NewsSourceSnapshot,
@@ -193,7 +192,6 @@ class NewsFetchWorker(WorkerBase):
                         source=source,
                         fetch_run_id=fetch_run_id,
                         observations=feed_result.observations,
-                        context_observations=feed_result.context_observations,
                         fetched_at_ms=now_ms,
                     )
                     repos.news.update_source_http_cache(
@@ -244,14 +242,12 @@ class NewsFetchWorker(WorkerBase):
         source: Mapping[str, Any],
         fetch_run_id: str,
         observations: list[NewsProviderObservation],
-        context_observations: list[NewsProviderContextObservation],
         fetched_at_ms: int,
     ) -> dict[str, int]:
         counts = {"fetched": 0, "inserted": 0, "updated": 0, "duplicate": 0}
         dirty_news_item_ids: list[str] = []
         repository = repos.news
         source_id = str(source["source_id"])
-        parent_ids_by_source_key: dict[str, str] = {}
         for observation in observations:
             counts["fetched"] += 1
             provider = repository.upsert_provider_item(
@@ -267,7 +263,6 @@ class NewsFetchWorker(WorkerBase):
             item_content_hash = content_hash(
                 observation.title,
                 observation.summary,
-                observation.canonical_url,
                 body_text=observation.body_text,
             )
             item_title_fingerprint = title_fingerprint(observation.title)
@@ -281,6 +276,9 @@ class NewsFetchWorker(WorkerBase):
                 canonical_url=observation.canonical_url,
                 content_hash=item_content_hash,
                 title_fingerprint=item_title_fingerprint,
+                title=observation.title,
+                summary=observation.summary,
+                body_text=observation.body_text,
                 published_at_ms=item_published_at_ms,
             )
             news = repository.upsert_canonical_news_item(
@@ -304,8 +302,6 @@ class NewsFetchWorker(WorkerBase):
                 commit=False,
             )
             news_item_id = str(news.get("news_item_id") or "")
-            if news_item_id:
-                parent_ids_by_source_key[observation.source_item_key] = news_item_id
             status = str(news.get("status") or provider.get("status") or "duplicate")
             if status in counts:
                 counts[status] += 1
@@ -319,58 +315,7 @@ class NewsFetchWorker(WorkerBase):
             now_ms=fetched_at_ms,
             commit=False,
         )
-        context_parent_ids = self._persist_context_observations(
-            repository,
-            source_id=source_id,
-            parent_ids_by_source_key=parent_ids_by_source_key,
-            context_observations=context_observations,
-            fetched_at_ms=fetched_at_ms,
-        )
-        if context_parent_ids:
-            repository.mark_news_items_for_reprocessing(
-                news_item_ids=context_parent_ids,
-                now_ms=fetched_at_ms,
-                commit=False,
-            )
-            enqueue_page_reprojection(
-                repos,
-                news_item_ids=context_parent_ids,
-                reason="news_context_written",
-                now_ms=fetched_at_ms,
-                commit=False,
-            )
         return counts
-
-    def _persist_context_observations(
-        self,
-        repository: Any,
-        *,
-        source_id: str,
-        parent_ids_by_source_key: Mapping[str, str],
-        context_observations: list[NewsProviderContextObservation],
-        fetched_at_ms: int,
-    ) -> list[str]:
-        dirty_parent_ids: list[str] = []
-        for context in context_observations:
-            parent_news_item_id = parent_ids_by_source_key.get(context.parent_source_item_key)
-            repository.upsert_news_context_item(
-                context_item_id=context.context_item_id,
-                source_id=source_id,
-                parent_news_item_id=parent_news_item_id,
-                provider_item_id=None,
-                context_type=context.context_type,
-                author=context.author,
-                canonical_url=context.canonical_url,
-                body_text=context.body_text,
-                published_at_ms=context.published_at_ms,
-                engagement_json=context.engagement or {},
-                raw_payload_json=context.raw_payload,
-                created_at_ms=fetched_at_ms,
-                commit=False,
-            )
-            if parent_news_item_id:
-                dirty_parent_ids.append(parent_news_item_id)
-        return list(dict.fromkeys(dirty_parent_ids))
 
     def _mark_source_failed(self, *, source_id: str, fetch_run_id: str, now_ms: int, error: Exception) -> None:
         if not fetch_run_id:
