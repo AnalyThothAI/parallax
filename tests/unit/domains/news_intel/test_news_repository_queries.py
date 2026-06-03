@@ -219,6 +219,41 @@ def test_target_context_exact_refs_use_index_led_mentions_branches() -> None:
     assert "display_symbol" in sql
 
 
+def test_research_queries_match_index_support_expressions() -> None:
+    archive_conn = CapturingConnection()
+    repo = NewsRepository(archive_conn)
+
+    repo.search_news_archive(
+        current_news_item_id="news-current",
+        query_terms=["ETF"],
+        symbols=["SOL"],
+        window_hours=168,
+        match_modes=["token", "fact"],
+        limit=8,
+        now_ms=1_779_000_000_000,
+    )
+
+    archive_sql = archive_conn.sql.lower()
+    assert "upper(coalesce(mentions.display_symbol, mentions.observed_symbol, '')) = symbols.symbol" in archive_sql
+    assert "facts.claim ilike '%%' || terms.term || '%%'" in archive_sql
+    assert "facts.validation_status <> 'rejected'" in archive_sql
+
+    target_conn = CapturingConnection()
+    repo = NewsRepository(target_conn)
+    repo.get_target_news_context(
+        current_news_item_id="news-current",
+        target_refs=[{"target_type": "cex_token", "target_id": "binance:SOL", "display_symbol": "SOL"}],
+        symbol_fallbacks=["ARB"],
+        window_hours=72,
+        limit=12,
+        now_ms=1_779_000_000_000,
+    )
+
+    target_sql = target_conn.sql.lower()
+    fallback_branch = target_sql[target_sql.index("symbol_fallback_matches") : target_sql.index("matched_rows")]
+    assert "upper(coalesce(mentions.display_symbol, mentions.observed_symbol, '')) = symbols.symbol" in fallback_branch
+
+
 def test_source_quality_context_is_targeted_to_item_sources() -> None:
     conn = CapturingConnection()
     repo = NewsRepository(conn)

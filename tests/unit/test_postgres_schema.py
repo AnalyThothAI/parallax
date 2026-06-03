@@ -198,6 +198,9 @@ NEWS_PUBLIC_URL_IDENTITY_INDEX_SCOPE_MIGRATION = Path(
 NEWS_CONTEXT_AND_FILTER_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260603_0142_news_context_and_filter_hard_cut.py"
 )
+NEWS_RESEARCH_INDEX_SUPPORT_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260603_0143_news_research_index_support.py"
+)
 TOKEN_PULSE_EQUITY_CPU_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260529_0124_token_pulse_equity_cpu_hard_cut.py"
 )
@@ -1778,6 +1781,42 @@ def test_news_context_and_filter_hard_cut_drops_retired_schema() -> None:
     assert "CREATE TABLE" not in downgrade_text
     assert "context_policy_json" not in downgrade_text
     assert "news_context_items" not in downgrade_text
+
+
+def test_news_research_index_support_adds_concurrent_search_indexes() -> None:
+    assert NEWS_RESEARCH_INDEX_SUPPORT_MIGRATION.exists(), (
+        f"{NEWS_RESEARCH_INDEX_SUPPORT_MIGRATION} missing; add index support for News research reads"
+    )
+    text = NEWS_RESEARCH_INDEX_SUPPORT_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+    downgrade_text = text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+    for statement in (
+        'revision = "20260603_0143"',
+        'down_revision = "20260603_0142"',
+        "CREATE EXTENSION IF NOT EXISTS pg_trgm",
+        "with op.get_context().autocommit_block():",
+        "SET lock_timeout = '5s'",
+        "SET statement_timeout = '30min'",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_news_token_mentions_symbol_upper_item",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_news_fact_candidates_claim_trgm_valid",
+        "DROP INDEX CONCURRENTLY IF EXISTS idx_news_fact_candidates_claim_trgm_valid",
+        "DROP INDEX CONCURRENTLY IF EXISTS idx_news_token_mentions_symbol_upper_item",
+    ):
+        assert statement in text
+
+    assert (
+        "ON news_token_mentions ( upper(COALESCE(display_symbol, observed_symbol, '')), news_item_id )"
+        in normalized_text
+    )
+    assert (
+        "ON news_fact_candidates USING GIN (claim gin_trgm_ops) WHERE validation_status <> 'rejected'"
+        in normalized_text
+    )
+    assert "RESET lock_timeout" in text
+    assert "RESET statement_timeout" in text
+    assert "DROP INDEX CONCURRENTLY IF EXISTS idx_news_fact_candidates_claim_trgm_valid" in downgrade_text
+    assert "DROP INDEX CONCURRENTLY IF EXISTS idx_news_token_mentions_symbol_upper_item" in downgrade_text
 
 
 def test_asset_migration_adds_identity_resolution_tables() -> None:
