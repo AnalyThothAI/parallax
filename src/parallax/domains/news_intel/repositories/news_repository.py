@@ -60,6 +60,7 @@ _URL_USERINFO_RE = re.compile(r"([a-z][a-z0-9+.-]*://)[^/@\s]+@", re.IGNORECASE)
 _CHECK_QUOTED_VALUE_RE = re.compile(r"'((?:''|[^'])*)'(?:\s*::\s*[A-Za-z_][A-Za-z0-9_]*)?")
 _PUBLICATION_METADATA_FIELDS = {"computed_at_ms", "updated_at_ms", "projected_at_ms", "payload_hash"}
 _NEWS_PAGE_SIGNAL_SQL = "LOWER(signal_json -> 'display_signal' ->> 'direction') = %s"
+_NEWS_ARCHIVE_MATCH_MODES = ("title", "token", "fact", "source_title")
 
 
 class NewsRepository:
@@ -2447,7 +2448,7 @@ class NewsRepository:
     ) -> list[dict[str, Any]]:
         terms = _bounded_strings(query_terms, max_items=5, max_length=64)
         symbol_terms = _bounded_strings(symbols, max_items=5, max_length=32, uppercase=True)
-        modes = {str(mode or "").strip().lower() for mode in match_modes}
+        modes = _bounded_archive_match_modes(match_modes)
         bounded_limit = _bounded_int(limit, default=8, minimum=1, maximum=8)
         bounded_window_hours = _bounded_int(window_hours, default=168, minimum=1, maximum=168)
         current_ms = _now_ms(now_ms)
@@ -2464,19 +2465,6 @@ class NewsRepository:
                 FROM unnest(%s::text[]) AS symbols(symbol)
                WHERE symbol <> ''
             ),
-            recent_items AS (
-              SELECT
-                items.news_item_id,
-                items.source_id,
-                items.title,
-                items.summary,
-                items.published_at_ms,
-                items.canonical_url
-              FROM news_items AS items
-              WHERE items.news_item_id <> %s
-                AND items.published_at_ms >= %s
-                AND items.published_at_ms <= %s
-            ),
             title_branch AS (
               SELECT
                 items.news_item_id,
@@ -2487,9 +2475,12 @@ class NewsRepository:
                 'title_match'::text AS match_reason,
                 'title'::text AS matching_basis,
                 'medium'::text AS match_confidence
-              FROM recent_items AS items
-              JOIN search_terms AS terms ON lower(items.title) LIKE '%%' || lower(terms.term) || '%%'
+              FROM search_terms AS terms
+              JOIN news_items AS items ON items.title ILIKE '%%' || terms.term || '%%'
               WHERE %s::boolean
+                AND items.news_item_id <> %s
+                AND items.published_at_ms >= %s
+                AND items.published_at_ms <= %s
             ),
             token_branch AS (
               SELECT
@@ -2501,11 +2492,14 @@ class NewsRepository:
                 'token_symbol_match'::text AS match_reason,
                 'symbol_heuristic'::text AS matching_basis,
                 'heuristic'::text AS match_confidence
-              FROM recent_items AS items
-              JOIN news_token_mentions AS mentions ON mentions.news_item_id = items.news_item_id
+              FROM news_token_mentions AS mentions
               JOIN search_symbols AS symbols
                 ON upper(COALESCE(mentions.display_symbol, mentions.observed_symbol, '')) = symbols.symbol
+              JOIN news_items AS items ON items.news_item_id = mentions.news_item_id
               WHERE %s::boolean
+                AND items.news_item_id <> %s
+                AND items.published_at_ms >= %s
+                AND items.published_at_ms <= %s
             ),
             fact_branch AS (
               SELECT
@@ -2517,11 +2511,14 @@ class NewsRepository:
                 'fact_claim_match'::text AS match_reason,
                 'fact'::text AS matching_basis,
                 'medium'::text AS match_confidence
-              FROM recent_items AS items
-              JOIN news_fact_candidates AS facts ON facts.news_item_id = items.news_item_id
-              JOIN search_terms AS terms ON lower(facts.claim) LIKE '%%' || lower(terms.term) || '%%'
+              FROM news_fact_candidates AS facts
+              JOIN search_terms AS terms ON facts.claim ILIKE '%%' || terms.term || '%%'
+              JOIN news_items AS items ON items.news_item_id = facts.news_item_id
               WHERE %s::boolean
                 AND facts.validation_status <> 'rejected'
+                AND items.news_item_id <> %s
+                AND items.published_at_ms >= %s
+                AND items.published_at_ms <= %s
             ),
             source_title_branch AS (
               SELECT
@@ -2533,10 +2530,13 @@ class NewsRepository:
                 'source_title_match'::text AS match_reason,
                 'source_title'::text AS matching_basis,
                 'weak'::text AS match_confidence
-              FROM recent_items AS items
-              JOIN news_sources AS sources ON sources.source_id = items.source_id
-              JOIN search_terms AS terms ON lower(sources.source_name) LIKE '%%' || lower(terms.term) || '%%'
+              FROM search_terms AS terms
+              JOIN news_sources AS sources ON sources.source_name ILIKE '%%' || terms.term || '%%'
+              JOIN news_items AS items ON items.source_id = sources.source_id
               WHERE %s::boolean
+                AND items.news_item_id <> %s
+                AND items.published_at_ms >= %s
+                AND items.published_at_ms <= %s
             ),
             branch_matches AS (
               SELECT * FROM title_branch
@@ -2614,13 +2614,22 @@ class NewsRepository:
             (
                 terms,
                 symbol_terms,
+                "title" in modes,
                 str(current_news_item_id),
                 window_start_ms,
                 current_ms,
-                "title" in modes,
                 "token" in modes,
+                str(current_news_item_id),
+                window_start_ms,
+                current_ms,
                 "fact" in modes,
+                str(current_news_item_id),
+                window_start_ms,
+                current_ms,
                 "source_title" in modes,
+                str(current_news_item_id),
+                window_start_ms,
+                current_ms,
                 bounded_limit + 1,
             ),
         ).fetchall()
@@ -2751,18 +2760,6 @@ class NewsRepository:
                 FROM unnest(%s::text[]) AS symbols(symbol)
                WHERE symbol <> ''
             ),
-            recent_items AS (
-              SELECT
-                items.news_item_id,
-                items.source_id,
-                items.title,
-                items.summary,
-                items.published_at_ms
-              FROM news_items AS items
-              WHERE items.news_item_id <> %s
-                AND items.published_at_ms >= %s
-                AND items.published_at_ms <= %s
-            ),
             exact_ref_matches AS (
               SELECT
                 items.news_item_id,
@@ -2778,11 +2775,14 @@ class NewsRepository:
                 mentions.resolution_status AS match_reason,
                 mentions.confidence::double precision AS match_confidence,
                 2::int AS rank_weight
-              FROM recent_items AS items
-              JOIN news_token_mentions AS mentions ON mentions.news_item_id = items.news_item_id
+              FROM news_token_mentions AS mentions
               JOIN exact_refs AS refs
                 ON mentions.target_type = refs.target_type
                AND mentions.target_id = refs.target_id
+              JOIN news_items AS items ON items.news_item_id = mentions.news_item_id
+              WHERE items.news_item_id <> %s
+                AND items.published_at_ms >= %s
+                AND items.published_at_ms <= %s
             ),
             symbol_fallback_matches AS (
               SELECT
@@ -2794,15 +2794,18 @@ class NewsRepository:
                 'symbol_fallback_match'::text AS match_reason,
                 MAX(mentions.confidence)::double precision AS match_confidence,
                 1::int AS rank_weight
-              FROM recent_items AS items
-              JOIN news_token_mentions AS mentions ON mentions.news_item_id = items.news_item_id
+              FROM news_token_mentions AS mentions
               JOIN fallback_symbols AS symbols
                 ON upper(COALESCE(mentions.display_symbol, mentions.observed_symbol, '')) = symbols.symbol
+              JOIN news_items AS items ON items.news_item_id = mentions.news_item_id
               WHERE NOT EXISTS (
                 SELECT 1
                   FROM exact_ref_matches AS exact_matches
                  WHERE exact_matches.news_item_id = items.news_item_id
               )
+                AND items.news_item_id <> %s
+                AND items.published_at_ms >= %s
+                AND items.published_at_ms <= %s
               GROUP BY items.news_item_id, symbols.symbol
             ),
             matched_rows AS (
@@ -2879,11 +2882,14 @@ class NewsRepository:
                 str(current_news_item_id),
                 window_start_ms,
                 current_ms,
+                str(current_news_item_id),
+                window_start_ms,
+                current_ms,
                 bounded_limit + 1,
             ),
         ).fetchall()
         if not rows:
-            return {}
+            return _empty_target_news_context()
         truncated = len(rows) > bounded_limit
         top_items = [_target_context_row(row) for row in rows[:bounded_limit]]
         latest_items = sorted(
@@ -4720,6 +4726,18 @@ def _bounded_strings(
     return result
 
 
+def _bounded_archive_match_modes(values: Sequence[Any]) -> set[str]:
+    modes: list[str] = []
+    for value in values or ():
+        mode = str(value or "").strip().lower()
+        if mode not in _NEWS_ARCHIVE_MATCH_MODES or mode in modes:
+            continue
+        modes.append(mode)
+    if not modes:
+        modes = list(_NEWS_ARCHIVE_MATCH_MODES)
+    return set(modes)
+
+
 def _now_ms(value: int | None) -> int:
     if value is not None:
         return max(0, int(value))
@@ -4820,6 +4838,20 @@ def _target_context_row(row: Mapping[str, Any]) -> dict[str, Any]:
         "market_read_zh": _brief_field(row, "market_read_zh"),
         "result_basis": row.get("matching_basis"),
         "evidence_ref": evidence_ref,
+    }
+
+
+def _empty_target_news_context() -> dict[str, Any]:
+    return {
+        "counts": {"total": 0, "exact_target": 0, "symbol_heuristic": 0},
+        "top_items": [],
+        "latest_items": [],
+        "source_domain_count": 0,
+        "high_score_count": 0,
+        "matching_basis": [],
+        "truncated": False,
+        "result_basis": "",
+        "evidence_refs": [],
     }
 
 

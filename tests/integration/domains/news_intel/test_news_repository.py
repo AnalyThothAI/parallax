@@ -3776,6 +3776,39 @@ def test_research_target_context_returns_exact_aggregate_and_heuristic_fallback_
     assert all("raw_payload_json" not in row for row in context["top_items"])
 
 
+def test_research_target_context_empty_result_returns_zero_count_envelope(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        current_id = _insert_source_provider_and_item(repo, source_item_key="target-empty", title="Current SOL")
+
+        context = repo.get_target_news_context(
+            current_news_item_id=current_id,
+            target_refs=[
+                NewsContextTargetRef(target_type="cex_token", target_id="binance:SOL", display_symbol="SOL")
+            ],
+            symbol_fallbacks=["ARB"],
+            window_hours=72,
+            limit=12,
+            now_ms=NOW_MS,
+        )
+    finally:
+        conn.close()
+
+    assert context == {
+        "counts": {"total": 0, "exact_target": 0, "symbol_heuristic": 0},
+        "top_items": [],
+        "latest_items": [],
+        "source_domain_count": 0,
+        "high_score_count": 0,
+        "matching_basis": [],
+        "truncated": False,
+        "result_basis": "",
+        "evidence_refs": [],
+    }
+
+
 def test_research_source_quality_context_returns_targeted_source_health(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:

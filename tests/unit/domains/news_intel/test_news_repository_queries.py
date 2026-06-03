@@ -139,6 +139,17 @@ def test_archive_search_uses_bounded_union_branches_and_excludes_current_item() 
     assert "fact_branch" in sql
     assert "source_title_branch" in sql
     assert sql.count("union all") >= 3
+    assert "recent_items as" not in sql
+    assert "lower(items.title) like" not in sql
+    assert "items.title ilike" in sql
+    token_branch = sql[sql.index("token_branch") : sql.index("fact_branch")]
+    fact_branch = sql[sql.index("fact_branch") : sql.index("source_title_branch")]
+    assert token_branch.index("from news_token_mentions as mentions") < token_branch.index(
+        "join news_items as items"
+    )
+    assert fact_branch.index("from news_fact_candidates as facts") < fact_branch.index(
+        "join news_items as items"
+    )
     assert "items.news_item_id <> %s" in sql
     assert "body_text" not in sql
     assert "raw_payload_json" not in sql
@@ -147,7 +158,25 @@ def test_archive_search_uses_bounded_union_branches_and_excludes_current_item() 
     assert "news-current" in _flatten_params(conn.params)
 
 
-def test_target_context_exact_refs_use_resolved_target_columns_and_prefilter_fallbacks() -> None:
+def test_archive_search_defaults_empty_match_modes_to_all_allowed_branches() -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    repo.search_news_archive(
+        current_news_item_id="news-current",
+        query_terms=["ETF"],
+        symbols=["SOL"],
+        window_hours=168,
+        match_modes=[],
+        limit=8,
+        now_ms=1_779_000_000_000,
+    )
+
+    params = _flatten_params(conn.params)
+    assert [params[index] for index in (2, 6, 10, 14)] == [True, True, True, True]
+
+
+def test_target_context_exact_refs_use_index_led_mentions_branches() -> None:
     conn = CapturingConnection()
     repo = NewsRepository(conn)
 
@@ -160,14 +189,32 @@ def test_target_context_exact_refs_use_resolved_target_columns_and_prefilter_fal
         now_ms=1_779_000_000_000,
     )
 
-    assert rows == {}
+    assert rows == {
+        "counts": {"total": 0, "exact_target": 0, "symbol_heuristic": 0},
+        "top_items": [],
+        "latest_items": [],
+        "source_domain_count": 0,
+        "high_score_count": 0,
+        "matching_basis": [],
+        "truncated": False,
+        "result_basis": "",
+        "evidence_refs": [],
+    }
     sql = conn.sql.lower()
+    assert "recent_items as" not in sql
     assert "mentions.target_type" in sql
     assert "mentions.target_id" in sql
     assert "exact_ref_matches" in sql
-    assert "recent_items" in sql
     assert "symbol_fallback_matches" in sql
-    assert sql.index("recent_items") < sql.index("symbol_fallback_matches")
+    exact_branch = sql[sql.index("exact_ref_matches") : sql.index("symbol_fallback_matches")]
+    assert exact_branch.index("from news_token_mentions as mentions") < exact_branch.index("join exact_refs")
+    assert exact_branch.index("join exact_refs") < exact_branch.index("join news_items as items")
+    fallback_branch = sql[sql.index("symbol_fallback_matches") : sql.index("matched_rows")]
+    assert fallback_branch.index("from news_token_mentions as mentions") < fallback_branch.index(
+        "join fallback_symbols"
+    )
+    assert fallback_branch.index("join fallback_symbols") < fallback_branch.index("join news_items as items")
+    assert fallback_branch.index("items.published_at_ms >=") > fallback_branch.index("join news_items as items")
     assert "'symbol_heuristic'" in sql
     assert "display_symbol" in sql
 
