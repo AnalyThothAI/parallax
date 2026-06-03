@@ -179,6 +179,7 @@ CONTROL_PLANE_TABLES: dict[str, set[Path]] = {
     "token_profile_current_dirty_targets": {
         SRC / "domains/asset_market/repositories/token_profile_current_dirty_target_repository.py",
         SRC / "platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py",
+        SRC / "platform/db/alembic/versions/20260531_0136_okx_symbol_candidate_profile_icons.py",
     },
     "token_image_source_dirty_targets": {
         SRC / "domains/asset_market/repositories/token_image_source_dirty_target_repository.py",
@@ -205,6 +206,9 @@ CONTROL_PLANE_TABLES: dict[str, set[Path]] = {
         SRC / "platform/db/alembic/versions/20260529_0123_news_public_url_hard_identity.py",
         SRC / "platform/db/alembic/versions/20260531_0131_news_story_projection_hard_cut.py",
         SRC / "platform/db/alembic/versions/20260531_0132_news_rebuild_brief_backlog_hard_cut.py",
+        SRC / "platform/db/alembic/versions/20260531_0137_news_dirty_projection_hard_cut.py",
+        SRC / "platform/db/alembic/versions/20260601_0139_news_item_brief_lightweight_contract.py",
+        SRC / "platform/db/alembic/versions/20260601_0140_news_item_brief_requeue_nonready.py",
     },
     "market_tick_current_dirty_targets": {
         SRC / "domains/asset_market/repositories/market_tick_current_dirty_target_repository.py",
@@ -252,9 +256,6 @@ def test_all_long_running_workers_inherit_worker_base(worker_key: str, qualified
 
 @pytest.mark.architecture
 def test_long_running_workers_do_not_override_worker_base_run_without_allowlist() -> None:
-    allowlist = {
-        "live_price_gateway",
-    }
     violations: list[str] = []
     for worker_key, qualified_name in MANIFEST_WORKER_CLASSES.items():
         try:
@@ -265,8 +266,6 @@ def test_long_running_workers_do_not_override_worker_base_run_without_allowlist(
             if _is_stubbed_task_worker(qualified_name):
                 continue
             raise
-        if worker_key in allowlist:
-            continue
         if "run" in worker_class.__dict__:
             violations.append(f"{worker_key} overrides run()")
 
@@ -827,6 +826,8 @@ def test_resolution_refresh_dirty_lookup_queue_is_control_plane() -> None:
 @pytest.mark.parametrize("table_name", sorted(CONTROL_PLANE_TABLES))
 def test_dirty_target_control_plane_sql_is_repository_owned(table_name: str) -> None:
     allowlist = CONTROL_PLANE_TABLES[table_name]
+    migration_allowlist = {path for path in allowlist if "alembic/versions" in path.as_posix()}
+    runtime_allowlist = allowlist - migration_allowlist
     write_pattern = re.compile(
         rf"\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+{re.escape(table_name)}\b",
         re.IGNORECASE,
@@ -834,12 +835,19 @@ def test_dirty_target_control_plane_sql_is_repository_owned(table_name: str) -> 
     violations = [
         f"{_rel(path)} writes control-plane table {table_name}"
         for path in SRC.rglob("*.py")
-        if path not in allowlist
+        if path not in runtime_allowlist
         and "alembic/versions" not in path.as_posix()
         and write_pattern.search(path.read_text())
     ]
+    migration_violations = [
+        f"{_rel(path)} writes control-plane table {table_name}"
+        for path in (SRC / "platform/db/alembic/versions").glob("*.py")
+        if path not in migration_allowlist and write_pattern.search(path.read_text())
+    ]
 
+    assert all(table_name in path.read_text() for path in migration_allowlist)
     assert violations == []
+    assert migration_violations == []
 
 
 @pytest.mark.architecture
