@@ -164,6 +164,73 @@ def test_normalize_feed_entry_rejects_opennews_fallback_url_with_whitespace_item
     assert item is None
 
 
+def test_opennews_homepage_link_uses_provider_fallback_url() -> None:
+    item = normalize_feed_entry(
+        "6551.io",
+        {
+            "provider_article_id": "2514613",
+            "provider_article_key": "opennews:2514613",
+            "opennews_method": "news.rest",
+            "link": "https://tass.ru/",
+            "title": "TASS: FOUR TU-214 AIRCRAFT ARE PLANNED TO BE DELIVERED IN 2026",
+            "published_at_ms": 1_780_542_000_000,
+        },
+        fetched_at_ms=1_780_542_000_000,
+    )
+
+    assert item is not None
+    assert item.canonical_url == "opennews://item/2514613"
+    assert item.raw_payload["link"] == "https://tass.ru/"
+
+
+def test_opennews_article_link_keeps_public_url() -> None:
+    url = "https://financefeeds.com/bessent-urges-lawmakers-to-pass-crypto-clarity-act-this-summer"
+    item = normalize_feed_entry(
+        "6551.io",
+        {
+            "provider_article_id": "2511056",
+            "provider_article_key": "opennews:2511056",
+            "opennews_method": "news.rest",
+            "link": url,
+            "title": "Bessent Urges Lawmakers to Pass Crypto Clarity Act This Summer",
+        },
+        fetched_at_ms=1_780_542_000_000,
+    )
+
+    assert item is not None
+    assert item.canonical_url == url
+
+
+def test_opennews_blocked_public_link_can_fallback_from_provider_key_without_raw_opennews_url() -> None:
+    item = normalize_feed_entry(
+        "6551.io",
+        {
+            "provider_article_key": "opennews:2514614",
+            "opennews_method": "news.rest",
+            "link": "https://www.coindesk.com/markets",
+            "title": "COINDESK: Market board refresh",
+        },
+        fetched_at_ms=1_780_542_000_000,
+    )
+
+    assert item is not None
+    assert item.canonical_url == "opennews://item/2514614"
+
+
+def test_blocked_public_link_with_provider_article_id_only_does_not_create_opennews_fallback() -> None:
+    item = normalize_feed_entry(
+        "example.com",
+        {
+            "provider_article_id": "rss-local-1",
+            "link": "https://www.coindesk.com/markets",
+            "title": "Generic feed market index item",
+        },
+        fetched_at_ms=1_780_542_000_000,
+    )
+
+    assert item is None
+
+
 def test_normalize_feed_entry_uses_provider_iso_timestamp_when_present() -> None:
     item = normalize_feed_entry(
         "6551.io",

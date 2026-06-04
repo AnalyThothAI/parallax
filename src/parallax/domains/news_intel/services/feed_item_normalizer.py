@@ -9,7 +9,8 @@ from datetime import UTC, datetime
 from typing import Any, cast
 from urllib.parse import urlsplit
 
-from parallax.domains.news_intel.services.text_normalization import canonicalize_url, clean_news_text
+from parallax.domains.news_intel.services.news_url_identity import public_url_identity_policy
+from parallax.domains.news_intel.services.text_normalization import clean_news_text
 from parallax.domains.news_intel.types import NormalizedNewsItem
 
 _OPENNEWS_FALLBACK_INVALID_RE = re.compile(r"[\s\x00-\x1f\x7f]")
@@ -21,12 +22,10 @@ def normalize_feed_entry(
     fetched_at_ms: int,
 ) -> NormalizedNewsItem | None:
     link = _first_text(entry, "link", "href")
-    canonical_url = canonicalize_url(link)
+    canonical_url = _canonical_news_url_or_fallback(link, entry)
     title = clean_news_text(entry.get("title"), max_chars=500)
     if not title:
         return None
-    if not canonical_url:
-        canonical_url = _opennews_fallback_url(link, entry)
     if not canonical_url:
         return None
     source_item_key = (
@@ -71,6 +70,24 @@ def _content_value(entry: Mapping[str, Any]) -> Any:
     return entry.get("content") or entry.get("body") or entry.get("summary")
 
 
+def _canonical_news_url_or_fallback(link: object, entry: Mapping[str, Any]) -> str:
+    public_policy = public_url_identity_policy(link)
+    if public_policy.allowed:
+        return public_policy.normalized_url
+
+    fallback_url = _opennews_fallback_url(link, entry)
+    if fallback_url:
+        return fallback_url
+    if _is_opennews_item_url(link):
+        return ""
+
+    fallback_url = _opennews_provider_fallback_url(entry)
+    if fallback_url:
+        return fallback_url
+
+    return ""
+
+
 def _opennews_fallback_url(link: object, entry: Mapping[str, Any]) -> str:
     explicit_provider_article_id = _first_text(entry, "provider_article_id")
     provider_article_key = _first_text(entry, "provider_article_key")
@@ -99,6 +116,36 @@ def _opennews_fallback_url(link: object, entry: Mapping[str, Any]) -> str:
     if provider_article_key_id and item_id != provider_article_key_id:
         return ""
     return f"opennews://item/{item_id}"
+
+
+def _is_opennews_item_url(link: object) -> bool:
+    raw = str(link or "").strip()
+    if not raw:
+        return False
+    try:
+        split = urlsplit(raw)
+    except ValueError:
+        return raw.lower().startswith("opennews://item/")
+    return split.scheme.lower() == "opennews" and (split.netloc or "").lower() == "item"
+
+
+def _opennews_provider_fallback_url(entry: Mapping[str, Any]) -> str:
+    provider_article_key = _first_text(entry, "provider_article_key")
+    explicit_provider_article_id = _first_text(entry, "provider_article_id")
+    provider_article_key_id = _opennews_provider_article_key_id(provider_article_key)
+    opennews_method = _first_text(entry, "opennews_method")
+    if not (provider_article_key_id or opennews_method):
+        return ""
+    item_id = explicit_provider_article_id or provider_article_key_id or _first_text(entry, "id")
+    if (
+        explicit_provider_article_id
+        and provider_article_key_id
+        and explicit_provider_article_id != provider_article_key_id
+    ):
+        return ""
+    if not item_id or _OPENNEWS_FALLBACK_INVALID_RE.search(item_id):
+        return ""
+    return f"opennews://item/{item_id.strip()}"
 
 
 def _opennews_provider_article_key_id(provider_article_key: str) -> str:

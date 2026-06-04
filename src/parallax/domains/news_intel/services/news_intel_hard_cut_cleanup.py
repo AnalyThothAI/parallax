@@ -62,11 +62,10 @@ def cleanup_news_intel_hard_cut(repos: Any, *, execute: bool, now_ms: int) -> di
         return result
 
     with conn.transaction():
-        active_state = _active_news_state(conn, now_ms=now)
-        lock_state = _try_news_advisory_locks(conn)
-        result["active_state"] = active_state
-        result["advisory_locks"] = lock_state
-        blockers = _active_blockers(active_state=active_state, advisory_locks=lock_state)
+        guard_state = news_intel_hard_cut_runtime_guard(conn, now_ms=now)
+        result["active_state"] = guard_state["active_state"]
+        result["advisory_locks"] = guard_state["advisory_locks"]
+        blockers = guard_state["blockers"]
         if blockers:
             raise NewsIntelHardCutCleanupAbort(json.dumps({"blockers": blockers}, sort_keys=True))
         result["deleted_notifications"] = _delete_news_notifications(conn)
@@ -220,8 +219,20 @@ def _active_blockers(*, active_state: dict[str, Any], advisory_locks: dict[str, 
     return blockers
 
 
+def news_intel_hard_cut_runtime_guard(conn: Any, *, now_ms: int) -> dict[str, Any]:
+    active_state = _active_news_state(conn, now_ms=int(now_ms))
+    advisory_locks = _try_news_advisory_locks(conn)
+    blockers = _active_blockers(active_state=active_state, advisory_locks=advisory_locks)
+    return {
+        "active_state": active_state,
+        "advisory_locks": advisory_locks,
+        "blockers": blockers,
+    }
+
+
 __all__ = [
     "NEWS_WORKER_ADVISORY_LOCK_KEYS",
     "NewsIntelHardCutCleanupAbort",
     "cleanup_news_intel_hard_cut",
+    "news_intel_hard_cut_runtime_guard",
 ]

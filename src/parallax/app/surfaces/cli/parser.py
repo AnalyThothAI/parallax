@@ -195,6 +195,14 @@ def build_parser() -> argparse.ArgumentParser:
     rebuild_news_canonical_items_mode = rebuild_news_canonical_items.add_mutually_exclusive_group(required=True)
     rebuild_news_canonical_items_mode.add_argument("--dry-run", action="store_true")
     rebuild_news_canonical_items_mode.add_argument("--execute", action="store_true")
+    repair_news_duplicates_hard_cut = ops_subcommands.add_parser(
+        "repair-news-duplicates-hard-cut",
+        help="repair historical News duplicate rows under the current hard-cut identity policy",
+    )
+    repair_news_duplicates_hard_cut.add_argument("--limit", type=_positive_int, default=20000)
+    repair_news_duplicates_hard_cut_mode = repair_news_duplicates_hard_cut.add_mutually_exclusive_group(required=True)
+    repair_news_duplicates_hard_cut_mode.add_argument("--dry-run", action="store_true")
+    repair_news_duplicates_hard_cut_mode.add_argument("--execute", action="store_true")
     sync_binance_universe = ops_subcommands.add_parser(
         "sync-binance-usdt-perp-universe",
         help="sync Binance USD-M USDT perpetual contracts into the CEX registry",

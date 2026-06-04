@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 from parallax.domains.news_intel.services.text_normalization import canonicalize_url
@@ -79,59 +80,69 @@ def url_identity_kind(canonical_url: str) -> str:
     return "unknown"
 
 
-def is_article_identity(canonical_url: str, *, kind: str | None = None) -> bool:
-    """True only when URL can participate in hard URL dedup by itself."""
+@dataclass(frozen=True, slots=True)
+class PublicUrlIdentityPolicy:
+    normalized_url: str
+    identity_key: str
+    identity_kind: str
+    blocked_reason: str
 
-    return (kind or url_identity_kind(canonical_url)) == "article"
+    @property
+    def allowed(self) -> bool:
+        return bool(self.identity_key)
 
 
-def hard_public_url_identity_key(canonical_url: str) -> str:
-    """Return a trusted hard public URL key, or an empty string for generic URLs."""
+def public_url_identity_policy(canonical_url: object) -> PublicUrlIdentityPolicy:
+    """Return the single public URL admission policy for hard URL identity."""
 
     normalized_url = canonicalize_url(canonical_url)
     if not normalized_url:
-        return ""
+        return PublicUrlIdentityPolicy("", "", "unknown", "not_public_url")
 
     split = urlsplit(normalized_url)
     if split.scheme.lower() not in {"http", "https"} or not split.netloc:
-        return ""
+        return PublicUrlIdentityPolicy(normalized_url, "", "unknown", "not_public_url")
 
     social_status_key = _social_status_identity_key(split.hostname or "", split.path or "")
     if social_status_key:
-        return social_status_key
+        return PublicUrlIdentityPolicy(normalized_url, social_status_key, "article", "")
 
     lower_segments = _path_segments(split.path or "")
-    if _is_identity_blocked_path(lower_segments):
-        return ""
+    if _is_preview_path(lower_segments):
+        return PublicUrlIdentityPolicy(normalized_url, "", url_identity_kind(normalized_url), "preview")
+    if _is_generic_announcement_path(lower_segments):
+        return PublicUrlIdentityPolicy(
+            normalized_url,
+            "",
+            url_identity_kind(normalized_url),
+            "generic_announcement",
+        )
+    if _is_feed_index_path(lower_segments):
+        return PublicUrlIdentityPolicy(normalized_url, "", url_identity_kind(normalized_url), "feed_index")
 
-    if not is_article_identity(normalized_url):
-        return ""
-    return f"canonical-url:{normalized_url}"
+    identity_kind = url_identity_kind(normalized_url)
+    if identity_kind in {"homepage", "aggregator", "live_page"}:
+        return PublicUrlIdentityPolicy(normalized_url, "", identity_kind, identity_kind)
+    return PublicUrlIdentityPolicy(normalized_url, f"canonical-url:{normalized_url}", identity_kind, "")
 
 
-def qualified_content_identity_url_allowed(canonical_url: str, *, kind: str | None = None) -> bool:
+def hard_public_url_identity_key(canonical_url: object) -> str:
+    """Return a trusted hard public URL key, or an empty string for generic URLs."""
+
+    return public_url_identity_policy(canonical_url).identity_key
+
+
+def qualified_content_identity_url_allowed(canonical_url: object, *, kind: str | None = None) -> bool:
     """True when URL shape is safe for global qualified-content identity."""
 
     raw_url = str(canonical_url or "").strip()
     if not raw_url:
         return True
 
-    normalized_url = canonicalize_url(raw_url)
-    if not normalized_url:
+    policy = public_url_identity_policy(raw_url)
+    if kind and policy.identity_kind != kind:
         return False
-
-    try:
-        split = urlsplit(normalized_url)
-    except ValueError:
-        return False
-    if split.scheme.lower() not in {"http", "https"} or not split.netloc:
-        return False
-
-    lower_segments = _path_segments(split.path or "")
-    if _is_identity_blocked_path(lower_segments):
-        return False
-
-    return (kind or url_identity_kind(normalized_url)) == "article"
+    return policy.allowed
 
 
 def _is_live_page(lower_segments: list[str]) -> bool:
@@ -181,14 +192,6 @@ def _is_feed_index_path(lower_segments: list[str]) -> bool:
 def _is_generic_announcement_path(lower_segments: list[str]) -> bool:
     content_segments = _strip_locale_prefix(lower_segments)
     return content_segments in (["support", "announcement"], ["support", "announcements"])
-
-
-def _is_identity_blocked_path(lower_segments: list[str]) -> bool:
-    return (
-        _is_preview_path(lower_segments)
-        or _is_generic_announcement_path(lower_segments)
-        or _is_feed_index_path(lower_segments)
-    )
 
 
 def _social_status_identity_key(hostname: str, path: str) -> str:

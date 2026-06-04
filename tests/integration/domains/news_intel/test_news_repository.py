@@ -452,12 +452,8 @@ def test_explicit_rss_provider_article_key_is_not_global_identity(tmp_path) -> N
         stored_provider = conn.execute(
             "SELECT provider_article_id, provider_article_key FROM news_provider_items"
         ).fetchone()
-        edge = conn.execute(
-            "SELECT provider_article_key, match_type FROM news_item_observation_edges"
-        ).fetchone()
-        stored_news = conn.execute(
-            "SELECT canonical_item_key, provider_article_keys_json FROM news_items"
-        ).fetchone()
+        edge = conn.execute("SELECT provider_article_key, match_type FROM news_item_observation_edges").fetchone()
+        stored_news = conn.execute("SELECT canonical_item_key, provider_article_keys_json FROM news_items").fetchone()
     finally:
         conn.close()
 
@@ -541,9 +537,7 @@ def test_old_rss_provider_article_key_is_cleared_on_upsert(tmp_path) -> None:
               FROM news_provider_items
             """
         ).fetchone()
-        edge = conn.execute(
-            "SELECT provider_article_key, match_type FROM news_item_observation_edges"
-        ).fetchone()
+        edge = conn.execute("SELECT provider_article_key, match_type FROM news_item_observation_edges").fetchone()
         stored_news = conn.execute(
             "SELECT provider_article_keys_json FROM news_items WHERE news_item_id = %s",
             (news["news_item_id"],),
@@ -770,6 +764,501 @@ def test_opennews_article_id_collapses_across_sources_into_observation_edges(tmp
             "news_item_id": stored_news["news_item_id"],
             "source_id": "opennews-news",
             "provider_article_key": "opennews:2367422",
+            "match_type": "same_canonical_url",
+            "match_confidence": "strong",
+        },
+    ]
+
+
+def test_live_public_url_is_blocked_but_material_duplicate_collapses_opennews_observations(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        repo.upsert_source(
+            source_id="opennews-news",
+            provider_type="opennews",
+            feed_url="opennews://news",
+            source_domain="6551.io",
+            source_name="OpenNews News",
+            refresh_interval_seconds=60,
+            now_ms=NOW_MS,
+        )
+        canonical_url = (
+            "https://www.coindesk.com/tech/2026/06/03/"
+            "live-markets-bitcoin-crashes-to-usd62-000-as-billions-of-longs-get-liquidated"
+        )
+        news_ids: list[str] = []
+        for index, provider_article_id in enumerate(("2514740", "2514744")):
+            fetch_run_id = repo.start_fetch_run(
+                source_id="opennews-news",
+                started_at_ms=NOW_MS + index,
+            )
+            provider = repo.upsert_provider_item(
+                source_id="opennews-news",
+                fetch_run_id=fetch_run_id,
+                source_item_key=provider_article_id,
+                canonical_url=canonical_url,
+                payload_hash=f"payload-{provider_article_id}",
+                raw_payload_json={
+                    "id": provider_article_id,
+                    "link": canonical_url,
+                    "text": "Live Markets: Bitcoin crashes to $62,000 as billions of longs get liquidated",
+                    "aiRating": {"status": "done"},
+                },
+                fetched_at_ms=NOW_MS + index,
+                provider_article_id=provider_article_id,
+            )
+            news = repo.upsert_canonical_news_item(
+                provider_item_id=provider["provider_item_id"],
+                canonical_url=canonical_url,
+                title="Live Markets: Bitcoin crashes to $62,000 as billions of longs get liquidated",
+                summary="",
+                body_text="Live Markets: Bitcoin crashes to $62,000 as billions of longs get liquidated",
+                language="en",
+                published_at_ms=NOW_MS - 60_000 + index,
+                fetched_at_ms=NOW_MS + index,
+                content_hash="content-live-btc-liquidated",
+                title_fingerprint="live markets bitcoin crashes to 62 000 as billions of longs get liquidated",
+                now_ms=NOW_MS + index,
+            )
+            news_ids.append(str(news["news_item_id"]))
+
+        stored_news = conn.execute(
+            "SELECT * FROM news_items WHERE canonical_item_key = %s",
+            ("provider:opennews:2514740",),
+        ).fetchone()
+        item_count = conn.execute("SELECT COUNT(*) AS count FROM news_items").fetchone()["count"]
+        edges = conn.execute(
+            """
+            SELECT news_item_id, provider_article_key, match_type, match_confidence
+              FROM news_item_observation_edges
+             ORDER BY provider_article_key
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert news_ids == [stored_news["news_item_id"], stored_news["news_item_id"]]
+    assert item_count == 1
+    assert stored_news["canonical_item_key"] == "provider:opennews:2514740"
+    assert stored_news["dedup_key_kind"] == "provider_article_id"
+    assert stored_news["url_identity_kind"] == "live_page"
+    assert stored_news["duplicate_observation_count"] == 2
+    assert [dict(row) for row in edges] == [
+        {
+            "news_item_id": stored_news["news_item_id"],
+            "provider_article_key": "opennews:2514740",
+            "match_type": "same_provider_article_id",
+            "match_confidence": "strong",
+        },
+        {
+            "news_item_id": stored_news["news_item_id"],
+            "provider_article_key": "opennews:2514744",
+            "match_type": "same_material_title",
+            "match_confidence": "strong",
+        },
+    ]
+
+
+def test_opennews_missing_link_material_duplicate_attaches_to_existing_public_url_item(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        repo.upsert_source(
+            source_id="opennews-news",
+            provider_type="opennews",
+            feed_url="opennews://news",
+            source_domain="6551.io",
+            source_name="OpenNews News",
+            refresh_interval_seconds=60,
+            now_ms=NOW_MS,
+        )
+        canonical_url = (
+            "https://www.coindesk.com/tech/2026/06/03/bitcoin-crashes-to-usd62-000-as-billions-of-longs-get-liquidated"
+        )
+        public_provider = repo.upsert_provider_item(
+            source_id="opennews-news",
+            fetch_run_id=repo.start_fetch_run(source_id="opennews-news", started_at_ms=NOW_MS),
+            source_item_key="2514740",
+            canonical_url=canonical_url,
+            payload_hash="payload-public",
+            raw_payload_json={"id": "2514740", "link": canonical_url},
+            fetched_at_ms=NOW_MS,
+            provider_article_id="2514740",
+        )
+        public_news = repo.upsert_canonical_news_item(
+            provider_item_id=public_provider["provider_item_id"],
+            canonical_url=canonical_url,
+            title="Bitcoin crashes to $62,000 as billions of longs get liquidated",
+            summary="",
+            body_text="Bitcoin crashes to $62,000 as billions of longs get liquidated",
+            language="en",
+            published_at_ms=NOW_MS,
+            fetched_at_ms=NOW_MS,
+            content_hash="hash-public",
+            title_fingerprint="bitcoin crashes to 62 000 as billions of longs get liquidated",
+            now_ms=NOW_MS,
+            provider_token_impacts=[{"symbol": "BTC", "signal": "short", "score": 85}],
+        )
+        fallback_provider = repo.upsert_provider_item(
+            source_id="opennews-news",
+            fetch_run_id=repo.start_fetch_run(source_id="opennews-news", started_at_ms=NOW_MS + 1),
+            source_item_key="2514742",
+            canonical_url="opennews://item/2514742",
+            payload_hash="payload-fallback",
+            raw_payload_json={"id": "2514742", "link": ""},
+            fetched_at_ms=NOW_MS + 1,
+            provider_article_id="2514742",
+        )
+        fallback_news = repo.upsert_canonical_news_item(
+            provider_item_id=fallback_provider["provider_item_id"],
+            canonical_url="opennews://item/2514742",
+            title="COINDESK: Bitcoin crashes to $62,000 as billions of longs get liquidated",
+            summary="",
+            body_text="COINDESK: Bitcoin crashes to $62,000 as billions of longs get liquidated",
+            language="en",
+            published_at_ms=NOW_MS + 1,
+            fetched_at_ms=NOW_MS + 1,
+            content_hash="hash-fallback",
+            title_fingerprint="coindesk bitcoin crashes to 62 000 as billions of longs get liquidated",
+            now_ms=NOW_MS + 1,
+            provider_token_impacts=[{"symbol": "BTC", "signal": "short", "score": 85}],
+        )
+        edges = conn.execute(
+            """
+            SELECT provider_article_key, news_item_id, match_type
+              FROM news_item_observation_edges
+             ORDER BY provider_article_key
+            """
+        ).fetchall()
+        item_count = conn.execute("SELECT COUNT(*) AS count FROM news_items").fetchone()["count"]
+        stored = conn.execute(
+            "SELECT * FROM news_items WHERE news_item_id = %s",
+            (public_news["news_item_id"],),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert fallback_news["news_item_id"] == public_news["news_item_id"]
+    assert item_count == 1
+    assert stored["duplicate_observation_count"] == 2
+    assert [dict(row) for row in edges] == [
+        {
+            "provider_article_key": "opennews:2514740",
+            "news_item_id": public_news["news_item_id"],
+            "match_type": "same_canonical_url",
+        },
+        {
+            "provider_article_key": "opennews:2514742",
+            "news_item_id": public_news["news_item_id"],
+            "match_type": "same_material_title",
+        },
+    ]
+
+
+def test_opennews_public_url_later_remaps_existing_material_duplicate_item(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        repo.upsert_source(
+            source_id="opennews-news",
+            provider_type="opennews",
+            feed_url="opennews://news",
+            source_domain="6551.io",
+            source_name="OpenNews News",
+            refresh_interval_seconds=60,
+            now_ms=NOW_MS,
+        )
+        fallback_provider = repo.upsert_provider_item(
+            source_id="opennews-news",
+            fetch_run_id=repo.start_fetch_run(source_id="opennews-news", started_at_ms=NOW_MS),
+            source_item_key="2514742",
+            canonical_url="opennews://item/2514742",
+            payload_hash="payload-fallback",
+            raw_payload_json={"id": "2514742", "link": ""},
+            fetched_at_ms=NOW_MS,
+            provider_article_id="2514742",
+        )
+        fallback_news = repo.upsert_canonical_news_item(
+            provider_item_id=fallback_provider["provider_item_id"],
+            canonical_url="opennews://item/2514742",
+            title="COINDESK: Bitcoin crashes to $62,000 as billions of longs get liquidated",
+            summary="",
+            body_text="COINDESK: Bitcoin crashes to $62,000 as billions of longs get liquidated",
+            language="en",
+            published_at_ms=NOW_MS,
+            fetched_at_ms=NOW_MS,
+            content_hash="hash-fallback",
+            title_fingerprint="coindesk bitcoin crashes to 62 000 as billions of longs get liquidated",
+            now_ms=NOW_MS,
+            provider_token_impacts=[{"symbol": "BTC", "signal": "short", "score": 85}],
+        )
+        fallback_run = _insert_agent_run(
+            repo,
+            news_item_id=fallback_news["news_item_id"],
+            run_id="run-material-fallback",
+        )
+        repo.upsert_news_item_agent_brief(
+            news_item_id=fallback_news["news_item_id"],
+            agent_run_id=fallback_run["run_id"],
+            status="ready",
+            direction="bearish",
+            decision_class="driver",
+            brief_json={"summary_zh": "BTC 多头清算推动短线风险。"},
+            input_hash="input-brief-1",
+            artifact_version_hash="artifact-brief-1",
+            prompt_version=NEWS_ITEM_BRIEF_PROMPT_VERSION,
+            schema_version=NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+            validator_version=NEWS_ITEM_BRIEF_VALIDATOR_VERSION,
+            computed_at_ms=NOW_MS + 10,
+            created_at_ms=NOW_MS + 10,
+            updated_at_ms=NOW_MS + 10,
+        )
+        repositories_for_connection(conn).news_projection_dirty_targets.enqueue_targets(
+            [
+                {
+                    "projection_name": "brief_input",
+                    "target_kind": "news_item",
+                    "target_id": fallback_news["news_item_id"],
+                    "source_watermark_ms": NOW_MS,
+                    "priority": 5,
+                    "due_at_ms": NOW_MS + 20,
+                },
+                {
+                    "projection_name": "page",
+                    "target_kind": "news_item",
+                    "target_id": fallback_news["news_item_id"],
+                    "source_watermark_ms": NOW_MS,
+                    "priority": 10,
+                    "due_at_ms": NOW_MS + 30,
+                },
+            ],
+            reason="test_material_fallback_item",
+            now_ms=NOW_MS + 2,
+        )
+        canonical_url = (
+            "https://www.coindesk.com/tech/2026/06/03/bitcoin-crashes-to-usd62-000-as-billions-of-longs-get-liquidated"
+        )
+        public_provider = repo.upsert_provider_item(
+            source_id="opennews-news",
+            fetch_run_id=repo.start_fetch_run(source_id="opennews-news", started_at_ms=NOW_MS + 1),
+            source_item_key="2514740",
+            canonical_url=canonical_url,
+            payload_hash="payload-public",
+            raw_payload_json={"id": "2514740", "link": canonical_url},
+            fetched_at_ms=NOW_MS + 1,
+            provider_article_id="2514740",
+        )
+        public_news = repo.upsert_canonical_news_item(
+            provider_item_id=public_provider["provider_item_id"],
+            canonical_url=canonical_url,
+            title="Bitcoin crashes to $62,000 as billions of longs get liquidated",
+            summary="",
+            body_text="Bitcoin crashes to $62,000 as billions of longs get liquidated",
+            language="en",
+            published_at_ms=NOW_MS + 1,
+            fetched_at_ms=NOW_MS + 1,
+            content_hash="hash-public",
+            title_fingerprint="bitcoin crashes to 62 000 as billions of longs get liquidated",
+            now_ms=NOW_MS + 1,
+            provider_token_impacts=[{"symbol": "BTC", "signal": "short", "score": 85}],
+        )
+        edges = conn.execute(
+            """
+            SELECT provider_article_key, news_item_id, match_type
+              FROM news_item_observation_edges
+             ORDER BY provider_article_key
+            """
+        ).fetchall()
+        item_count = conn.execute("SELECT COUNT(*) AS count FROM news_items").fetchone()["count"]
+        stored_public = conn.execute(
+            "SELECT * FROM news_items WHERE news_item_id = %s",
+            (public_news["news_item_id"],),
+        ).fetchone()
+        agent_runs = conn.execute(
+            """
+            SELECT run_id, news_item_id, trace_metadata_json
+              FROM news_item_agent_runs
+             ORDER BY run_id
+            """
+        ).fetchall()
+        current_brief = conn.execute(
+            """
+            SELECT news_item_id, agent_run_id, brief_json, computed_at_ms
+              FROM news_item_agent_briefs
+             WHERE news_item_id = %s
+            """,
+            (public_news["news_item_id"],),
+        ).fetchone()
+        old_brief_count = conn.execute(
+            "SELECT COUNT(*) AS count FROM news_item_agent_briefs WHERE news_item_id = %s",
+            (fallback_news["news_item_id"],),
+        ).fetchone()["count"]
+        dirty_targets = conn.execute(
+            """
+            SELECT projection_name, target_id, dirty_reason, priority, due_at_ms,
+                   leased_until_ms, lease_owner, attempt_count
+              FROM news_projection_dirty_targets
+             ORDER BY projection_name
+            """
+        ).fetchall()
+        old_dirty_target_count = conn.execute(
+            "SELECT COUNT(*) AS count FROM news_projection_dirty_targets WHERE target_id = %s",
+            (fallback_news["news_item_id"],),
+        ).fetchone()["count"]
+    finally:
+        conn.close()
+
+    assert public_news["news_item_id"] != fallback_news["news_item_id"]
+    assert item_count == 1
+    assert stored_public["canonical_item_key"].startswith("canonical-url:")
+    assert stored_public["dedup_key_kind"] == "canonical_url"
+    assert stored_public["url_identity_kind"] == "article"
+    assert stored_public["canonical_url"] == canonical_url
+    assert stored_public["duplicate_observation_count"] == 2
+    assert stored_public["provider_article_keys_json"] == ["opennews:2514740", "opennews:2514742"]
+    assert [dict(row) for row in edges] == [
+        {
+            "provider_article_key": "opennews:2514740",
+            "news_item_id": public_news["news_item_id"],
+            "match_type": "same_canonical_url",
+        },
+        {
+            "provider_article_key": "opennews:2514742",
+            "news_item_id": public_news["news_item_id"],
+            "match_type": "same_material_title",
+        },
+    ]
+    assert [dict(row) for row in agent_runs] == [
+        {
+            "run_id": "run-material-fallback",
+            "news_item_id": public_news["news_item_id"],
+            "trace_metadata_json": {
+                "attempt": 1,
+                "news_item_remap_reason": "canonical_news_item_merge",
+                "remapped_from_news_item_id": fallback_news["news_item_id"],
+                "remapped_to_news_item_id": public_news["news_item_id"],
+                "remapped_at_ms": NOW_MS + 1,
+            },
+        }
+    ]
+    assert dict(current_brief) == {
+        "news_item_id": public_news["news_item_id"],
+        "agent_run_id": "run-material-fallback",
+        "brief_json": {"summary_zh": "BTC 多头清算推动短线风险。"},
+        "computed_at_ms": NOW_MS + 10,
+    }
+    assert old_brief_count == 0
+    assert [dict(row) for row in dirty_targets] == [
+        {
+            "projection_name": "brief_input",
+            "target_id": public_news["news_item_id"],
+            "dirty_reason": "canonical_news_item_merge",
+            "priority": 5,
+            "due_at_ms": NOW_MS + 20,
+            "leased_until_ms": None,
+            "lease_owner": None,
+            "attempt_count": 0,
+        },
+        {
+            "projection_name": "page",
+            "target_id": public_news["news_item_id"],
+            "dirty_reason": "canonical_news_item_merge",
+            "priority": 10,
+            "due_at_ms": NOW_MS + 30,
+            "leased_until_ms": None,
+            "lease_owner": None,
+            "attempt_count": 0,
+        },
+    ]
+    assert old_dirty_target_count == 0
+
+
+def test_single_segment_public_url_collapses_opennews_observations_with_different_provider_ids(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        repo.upsert_source(
+            source_id="opennews-news",
+            provider_type="opennews",
+            feed_url="opennews://news",
+            source_domain="6551.io",
+            source_name="OpenNews News",
+            refresh_interval_seconds=60,
+            now_ms=NOW_MS,
+        )
+        canonical_url = "https://financefeeds.com/bessent-urges-lawmakers-to-pass-crypto-clarity-act-this-summer"
+        news_ids: list[str] = []
+        for index, provider_article_id in enumerate(("2511056", "2511057")):
+            fetch_run_id = repo.start_fetch_run(
+                source_id="opennews-news",
+                started_at_ms=NOW_MS + index,
+            )
+            provider = repo.upsert_provider_item(
+                source_id="opennews-news",
+                fetch_run_id=fetch_run_id,
+                source_item_key=provider_article_id,
+                canonical_url=canonical_url,
+                payload_hash=f"payload-{provider_article_id}",
+                raw_payload_json={
+                    "id": provider_article_id,
+                    "link": canonical_url,
+                    "text": "Bessent Urges Lawmakers to Pass Crypto Clarity Act This Summer",
+                    "aiRating": {"status": "done"},
+                },
+                fetched_at_ms=NOW_MS + index,
+                provider_article_id=provider_article_id,
+            )
+            news = repo.upsert_canonical_news_item(
+                provider_item_id=provider["provider_item_id"],
+                canonical_url=canonical_url,
+                title="Bessent Urges Lawmakers to Pass Crypto Clarity Act This Summer",
+                summary="",
+                body_text="Bessent Urges Lawmakers to Pass Crypto Clarity Act This Summer",
+                language="en",
+                published_at_ms=NOW_MS - 60_000 + index,
+                fetched_at_ms=NOW_MS + index,
+                content_hash="content-bessent-clarity-act",
+                title_fingerprint="bessent urges lawmakers to pass crypto clarity act this summer",
+                now_ms=NOW_MS + index,
+            )
+            news_ids.append(str(news["news_item_id"]))
+
+        stored_news = conn.execute(
+            "SELECT * FROM news_items WHERE canonical_item_key = %s",
+            (f"canonical-url:{canonical_url}",),
+        ).fetchone()
+        item_count = conn.execute("SELECT COUNT(*) AS count FROM news_items").fetchone()["count"]
+        edges = conn.execute(
+            """
+            SELECT news_item_id, provider_article_key, match_type, match_confidence
+              FROM news_item_observation_edges
+             ORDER BY provider_article_key
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert news_ids == [stored_news["news_item_id"], stored_news["news_item_id"]]
+    assert item_count == 1
+    assert stored_news["canonical_item_key"] == f"canonical-url:{canonical_url}"
+    assert stored_news["dedup_key_kind"] == "canonical_url"
+    assert stored_news["url_identity_kind"] == "unknown"
+    assert stored_news["duplicate_observation_count"] == 2
+    assert [dict(row) for row in edges] == [
+        {
+            "news_item_id": stored_news["news_item_id"],
+            "provider_article_key": "opennews:2511056",
+            "match_type": "same_canonical_url",
+            "match_confidence": "strong",
+        },
+        {
+            "news_item_id": stored_news["news_item_id"],
+            "provider_article_key": "opennews:2511057",
             "match_type": "same_canonical_url",
             "match_confidence": "strong",
         },
@@ -1732,6 +2221,45 @@ def test_identity_promotion_reselects_old_representative_when_edges_remain(tmp_p
             now_ms=NOW_MS + 1,
         )
         repo.mark_item_processed(news_item_id=first_news["news_item_id"], processed_at_ms=NOW_MS + 100)
+        old_run = _insert_agent_run(repo, news_item_id=first_news["news_item_id"], run_id="run-surviving-old")
+        repo.upsert_news_item_agent_brief(
+            news_item_id=first_news["news_item_id"],
+            agent_run_id=old_run["run_id"],
+            status="ready",
+            direction="neutral",
+            decision_class="context",
+            brief_json={"summary_zh": "旧聚合仍有待处理观察，不能迁到新 item。"},
+            input_hash="input-surviving-old",
+            artifact_version_hash="artifact-brief-1",
+            prompt_version=NEWS_ITEM_BRIEF_PROMPT_VERSION,
+            schema_version=NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+            validator_version=NEWS_ITEM_BRIEF_VALIDATOR_VERSION,
+            computed_at_ms=NOW_MS + 110,
+            created_at_ms=NOW_MS + 110,
+            updated_at_ms=NOW_MS + 110,
+        )
+        repositories_for_connection(conn).news_projection_dirty_targets.enqueue_targets(
+            [
+                {
+                    "projection_name": "brief_input",
+                    "target_kind": "news_item",
+                    "target_id": first_news["news_item_id"],
+                    "source_watermark_ms": NOW_MS,
+                    "priority": 7,
+                    "due_at_ms": NOW_MS + 120,
+                },
+                {
+                    "projection_name": "page",
+                    "target_kind": "news_item",
+                    "target_id": first_news["news_item_id"],
+                    "source_watermark_ms": NOW_MS,
+                    "priority": 11,
+                    "due_at_ms": NOW_MS + 130,
+                },
+            ],
+            reason="test_surviving_old_item",
+            now_ms=NOW_MS + 115,
+        )
         conn.execute(
             """
             INSERT INTO news_item_entities (
@@ -1793,6 +2321,42 @@ def test_identity_promotion_reselects_old_representative_when_edges_remain(tmp_p
             """,
             (promoted_news["news_item_id"],),
         ).fetchall()
+        old_agent_runs = conn.execute(
+            """
+            SELECT run_id, news_item_id
+              FROM news_item_agent_runs
+             WHERE run_id = 'run-surviving-old'
+            """
+        ).fetchall()
+        new_agent_run_count = conn.execute(
+            "SELECT COUNT(*) AS count FROM news_item_agent_runs WHERE news_item_id = %s",
+            (promoted_news["news_item_id"],),
+        ).fetchone()["count"]
+        old_brief = conn.execute(
+            """
+            SELECT news_item_id, agent_run_id, brief_json
+              FROM news_item_agent_briefs
+             WHERE news_item_id = %s
+            """,
+            (first_news["news_item_id"],),
+        ).fetchone()
+        new_brief_count = conn.execute(
+            "SELECT COUNT(*) AS count FROM news_item_agent_briefs WHERE news_item_id = %s",
+            (promoted_news["news_item_id"],),
+        ).fetchone()["count"]
+        old_dirty_targets = conn.execute(
+            """
+            SELECT projection_name, target_id, dirty_reason, priority, due_at_ms
+              FROM news_projection_dirty_targets
+             WHERE target_id = %s
+             ORDER BY projection_name
+            """,
+            (first_news["news_item_id"],),
+        ).fetchall()
+        new_dirty_target_count = conn.execute(
+            "SELECT COUNT(*) AS count FROM news_projection_dirty_targets WHERE target_id = %s",
+            (promoted_news["news_item_id"],),
+        ).fetchone()["count"]
     finally:
         conn.close()
 
@@ -1828,6 +2392,33 @@ def test_identity_promotion_reselects_old_representative_when_edges_remain(tmp_p
             "provider_article_key": "opennews:2367422",
         }
     ]
+    assert [dict(row) for row in old_agent_runs] == [
+        {"run_id": "run-surviving-old", "news_item_id": first_news["news_item_id"]}
+    ]
+    assert new_agent_run_count == 0
+    assert dict(old_brief) == {
+        "news_item_id": first_news["news_item_id"],
+        "agent_run_id": "run-surviving-old",
+        "brief_json": {"summary_zh": "旧聚合仍有待处理观察，不能迁到新 item。"},
+    }
+    assert new_brief_count == 0
+    assert [dict(row) for row in old_dirty_targets] == [
+        {
+            "projection_name": "brief_input",
+            "target_id": first_news["news_item_id"],
+            "dirty_reason": "test_surviving_old_item",
+            "priority": 7,
+            "due_at_ms": NOW_MS + 120,
+        },
+        {
+            "projection_name": "page",
+            "target_id": first_news["news_item_id"],
+            "dirty_reason": "test_surviving_old_item",
+            "priority": 11,
+            "due_at_ms": NOW_MS + 130,
+        },
+    ]
+    assert new_dirty_target_count == 0
 
 
 def test_fetch_run_deletion_does_not_delete_provider_or_news_facts(tmp_path) -> None:
@@ -3763,54 +4354,37 @@ def test_news_dedup_diagnostics_reports_material_risk_without_repair_actions(tmp
     try:
         migrate(conn)
         repo = NewsRepository(conn)
-        repo.upsert_source(
+        _insert_legacy_canonical_source(
+            conn,
             source_id="opennews-listing",
             provider_type="opennews",
-            feed_url="opennews://listing",
             source_domain="6551.io",
-            source_name="OpenNews Listing",
-            refresh_interval_seconds=60,
-            now_ms=NOW_MS,
         )
-        fetch_run_id = repo.start_fetch_run(source_id="opennews-listing", started_at_ms=NOW_MS)
-
-        for source_item_key, canonical_url, content_hash, now_ms in (
-            (
-                "2305268",
-                "https://news.6551.io/preview/Coinbase-Axelar-AXL",
-                "hash-lower",
-                NOW_MS,
-            ),
-            (
-                "2305269",
-                "https://news.6551.io/preview/coinbase-axelar-axl",
-                "hash-upper",
-                NOW_MS + 1,
-            ),
-        ):
-            provider = repo.upsert_provider_item(
-                source_id="opennews-listing",
-                fetch_run_id=fetch_run_id,
-                source_item_key=source_item_key,
-                canonical_url=canonical_url,
-                payload_hash=f"payload-{source_item_key}",
-                raw_payload_json={"id": source_item_key, "title": "Coinbase Axelar AXL"},
-                fetched_at_ms=now_ms,
-            )
-            repo.upsert_canonical_news_item(
-                provider_item_id=provider["provider_item_id"],
-                canonical_url=canonical_url,
-                title="Coinbase Axelar AXL is now available to New York residents",
-                summary="Coinbase enables AXL for New York residents.",
-                body_text="Coinbase enables AXL for New York residents.",
-                language="en",
-                published_at_ms=NOW_MS - 60_000,
-                fetched_at_ms=now_ms,
-                content_hash=content_hash,
-                title_fingerprint="coinbase axelar axl is now available to new york residents",
-                now_ms=now_ms,
-                provider_signal={"source": "provider", "status": "ready", "score": 80},
-            )
+        _insert_historical_news_item(
+            conn,
+            source_id="opennews-listing",
+            source_domain="6551.io",
+            suffix="2305268",
+            canonical_url="https://news.6551.io/preview/Coinbase-Axelar-AXL",
+            title="Coinbase Axelar AXL is now available to New York residents",
+            content_hash="hash-lower",
+            published_at_ms=NOW_MS - 60_000,
+            fetched_at_ms=NOW_MS,
+            provider_signal={"source": "provider", "status": "ready", "score": 80},
+        )
+        _insert_historical_news_item(
+            conn,
+            source_id="opennews-listing",
+            source_domain="6551.io",
+            suffix="2305269",
+            canonical_url="https://news.6551.io/preview/coinbase-axelar-axl",
+            title="Coinbase Axelar AXL is now available to New York residents",
+            content_hash="hash-upper",
+            published_at_ms=NOW_MS - 59_000,
+            fetched_at_ms=NOW_MS + 1,
+            provider_signal={"source": "provider", "status": "ready", "score": 80},
+        )
+        conn.commit()
 
         diagnostics = repo.news_dedup_diagnostics(
             window_ms=8 * 3_600_000,
@@ -3825,6 +4399,150 @@ def test_news_dedup_diagnostics_reports_material_risk_without_repair_actions(tmp
     assert diagnostics["case_insensitive_url_duplicate_groups"]["ge_threshold_duplicate_rows"] == 1
     assert "repair_groups" not in diagnostics
     assert "would_merge" not in diagnostics
+
+
+def test_news_dedup_diagnostics_reports_current_policy_duplicate_gates(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        _insert_legacy_canonical_source(
+            conn,
+            source_id="opennews-diagnostics",
+            provider_type="opennews",
+            source_domain="6551.io",
+        )
+        hard_url = "https://www.coindesk.com/markets/2026/06/03/btc-liquidations-hard-url"
+        hard_a = _insert_historical_news_item(
+            conn,
+            source_id="opennews-diagnostics",
+            source_domain="6551.io",
+            suffix="hard-a",
+            canonical_url=hard_url,
+            title="Bitcoin liquidation first unmatched headline for hard url",
+            content_hash="hash-hard-a",
+            token_impacts=[{"symbol": "BTC"}],
+            with_edge=True,
+        )
+        hard_b = _insert_historical_news_item(
+            conn,
+            source_id="opennews-diagnostics",
+            source_domain="6551.io",
+            suffix="hard-b",
+            canonical_url=hard_url,
+            title="Ethereum treasury second unrelated headline for hard url",
+            content_hash="hash-hard-b",
+            token_impacts=[{"symbol": "ETH"}],
+            with_edge=True,
+        )
+        generic = _insert_historical_news_item(
+            conn,
+            source_id="opennews-diagnostics",
+            source_domain="6551.io",
+            suffix="generic",
+            canonical_url="https://www.coindesk.com/news/index.html",
+            title="Generic public index URL must not be visible",
+            content_hash="hash-generic",
+            token_impacts=[{"symbol": "BTC"}],
+            with_edge=True,
+        )
+        material_title = "Ethereum treasury company adds more ETH after financing round"
+        material_a = _insert_historical_news_item(
+            conn,
+            source_id="opennews-diagnostics",
+            source_domain="6551.io",
+            suffix="material-a",
+            canonical_url="opennews://item/material-a",
+            title=material_title,
+            content_hash="hash-material-a",
+            token_impacts=[{"symbol": "ETH"}],
+            with_edge=True,
+        )
+        material_b = _insert_historical_news_item(
+            conn,
+            source_id="opennews-diagnostics",
+            source_domain="6551.io",
+            suffix="material-b",
+            canonical_url="opennews://item/material-b",
+            title=f"COINDESK: {material_title}",
+            content_hash="hash-material-b",
+            published_at_ms=NOW_MS + 1_000,
+            fetched_at_ms=NOW_MS + 1_000,
+            token_impacts=[{"symbol": "ETH"}],
+            with_edge=True,
+        )
+        stale_item = _insert_historical_news_item(
+            conn,
+            source_id="opennews-diagnostics",
+            source_domain="6551.io",
+            suffix="stale-no-edge",
+            canonical_url="opennews://item/stale-no-edge",
+            title="Stale duplicate item without observation edge",
+            content_hash="hash-stale",
+            with_edge=False,
+        )
+        _insert_agent_run(repo, news_item_id=stale_item, run_id="run-stale-no-edge")
+        repo.upsert_news_item_agent_brief(
+            news_item_id=stale_item,
+            agent_run_id="run-stale-no-edge",
+            status="ready",
+            direction="neutral",
+            decision_class="context",
+            brief_json={"summary_zh": "stale"},
+            input_hash="input-stale",
+            artifact_version_hash="artifact-brief-1",
+            prompt_version=NEWS_ITEM_BRIEF_PROMPT_VERSION,
+            schema_version=NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+            validator_version=NEWS_ITEM_BRIEF_VALIDATOR_VERSION,
+            computed_at_ms=NOW_MS,
+            created_at_ms=NOW_MS,
+            updated_at_ms=NOW_MS,
+        )
+        conn.execute(
+            """
+            INSERT INTO news_projection_dirty_targets(
+              projection_name, target_kind, target_id, "window", dirty_reason, payload_hash,
+              source_watermark_ms, priority, due_at_ms, first_dirty_at_ms, updated_at_ms
+            )
+            VALUES ('brief_input', 'news_item', %s, '', 'test_stale_duplicate', '', %s, 5, %s, %s, %s)
+            """,
+            (stale_item, NOW_MS, NOW_MS, NOW_MS, NOW_MS),
+        )
+        repo.replace_page_rows_for_items(
+            news_item_ids=[hard_a, hard_b, generic, material_a, material_b],
+            rows=[
+                _page_row("row-hard-a", hard_a, source_id="opennews-diagnostics"),
+                _page_row("row-hard-b", hard_b, source_id="opennews-diagnostics"),
+                _page_row("row-generic", generic, source_id="opennews-diagnostics"),
+                _page_row("row-material-a", material_a, source_id="opennews-diagnostics"),
+                _page_row("row-material-b", material_b, source_id="opennews-diagnostics"),
+            ],
+        )
+        conn.commit()
+
+        diagnostics = repo.news_dedup_diagnostics(
+            window_ms=8 * 3_600_000,
+            score_threshold=80,
+            now_ms=NOW_MS + 2_000,
+        )
+    finally:
+        conn.close()
+
+    assert diagnostics["hard_public_url_visible_duplicate_excess"] == 1
+    assert diagnostics["generic_public_url_visible_rows"] == 1
+    assert diagnostics["material_title_visible_duplicate_excess"] == 1
+    assert diagnostics["fact_layer_material_duplicate_excess"] == 1
+    assert diagnostics["stale_duplicate_brief_rows"] == 1
+    assert diagnostics["stale_duplicate_dirty_targets"] == 1
+    assert diagnostics["top_material_title_duplicate_groups"] == [
+        {
+            "source_id": "opennews-diagnostics",
+            "title_fingerprint": "ethereum treasury company adds more eth after financing round",
+            "row_count": 2,
+            "duplicate_rows": 1,
+            "news_item_ids": [material_a, material_b],
+        }
+    ]
 
 
 def _insert_source_provider_and_item(
@@ -3997,6 +4715,113 @@ def _insert_legacy_canonical_provider_and_item(
             fetched_at_ms,
         ),
     )
+
+
+def _insert_historical_news_item(
+    conn,
+    *,
+    source_id: str,
+    source_domain: str,
+    suffix: str,
+    canonical_url: str,
+    title: str,
+    content_hash: str,
+    published_at_ms: int = NOW_MS,
+    fetched_at_ms: int = NOW_MS,
+    provider_signal: dict[str, object] | None = None,
+    token_impacts: list[dict[str, object]] | None = None,
+    with_edge: bool = False,
+) -> str:
+    provider_item_id = f"provider-item-historical-{suffix}"
+    news_item_id = f"news-item-historical-{suffix}"
+    provider_article_key = f"opennews:{suffix}"
+    conn.execute(
+        """
+        INSERT INTO news_provider_items (
+          provider_item_id, source_id, source_item_key, canonical_url, payload_hash,
+          raw_payload_json, fetched_at_ms, provider_article_id, provider_article_key
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """,
+        (
+            provider_item_id,
+            source_id,
+            f"historical-{suffix}",
+            canonical_url,
+            f"payload-historical-{suffix}",
+            Jsonb({"id": suffix, "title": title, "link": canonical_url}),
+            int(fetched_at_ms),
+            suffix,
+            provider_article_key,
+        ),
+    )
+    conn.execute(
+        """
+        INSERT INTO news_items (
+          news_item_id, provider_item_id, source_id, source_domain, canonical_url,
+          title, summary, body_text, language, published_at_ms, fetched_at_ms,
+          content_hash, title_fingerprint, provider_signal_json, provider_token_impacts_json,
+          canonical_item_key, dedup_key_kind, dedup_key_confidence, url_identity_kind,
+          canonical_policy_version, created_at_ms, updated_at_ms
+        )
+        VALUES (
+          %s, %s, %s, %s, %s,
+          %s, 'Summary', %s, 'en', %s, %s,
+          %s, %s, %s, %s,
+          %s, 'provider_article_id', 'strong', %s,
+          'news_canonical_item_v1', %s, %s
+        )
+        """,
+        (
+            news_item_id,
+            provider_item_id,
+            source_id,
+            source_domain,
+            canonical_url,
+            title,
+            title,
+            int(published_at_ms),
+            int(fetched_at_ms),
+            content_hash,
+            title.lower().replace(":", "").replace(",", "").replace("$", "").replace("-", " "),
+            Jsonb(provider_signal or {"source": "provider", "status": "ready", "score": 80}),
+            Jsonb(token_impacts or []),
+            f"provider:opennews:{suffix}",
+            "article" if canonical_url.startswith(("http://", "https://")) else "unknown",
+            int(published_at_ms),
+            int(fetched_at_ms),
+        ),
+    )
+    if with_edge:
+        conn.execute(
+            """
+            INSERT INTO news_item_observation_edges (
+              provider_item_id, news_item_id, source_id, provider_article_key, match_type,
+              match_confidence, policy_version, evidence_json, first_seen_at_ms, last_seen_at_ms
+            )
+            VALUES (%s, %s, %s, %s, 'same_provider_article_id', 'strong', %s, %s, %s, %s)
+            """,
+            (
+                provider_item_id,
+                news_item_id,
+                source_id,
+                provider_article_key,
+                "news_canonical_item_v1",
+                Jsonb(
+                    {
+                        "provider_article_key": provider_article_key,
+                        "item_payload": {
+                            "canonical_url": canonical_url,
+                            "title": title,
+                            "provider_token_impacts_json": token_impacts or [],
+                        },
+                    }
+                ),
+                int(published_at_ms),
+                int(fetched_at_ms),
+            ),
+        )
+    return news_item_id
 
 
 def _page_row(

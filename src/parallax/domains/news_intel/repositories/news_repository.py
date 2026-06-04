@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import uuid
+from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
@@ -17,7 +18,13 @@ from parallax.domains.news_intel.services.news_canonical_identity import (
     canonical_identity_for_observation,
     provider_global_article_key,
 )
-from parallax.domains.news_intel.services.news_url_identity import url_identity_kind
+from parallax.domains.news_intel.services.news_material_identity import (
+    material_title_fingerprint,
+    material_title_is_eligible,
+    provider_symbol_set,
+    symbol_sets_compatible,
+)
+from parallax.domains.news_intel.services.news_url_identity import public_url_identity_policy, url_identity_kind
 from parallax.domains.news_intel.types import NewsSourceConfig
 from parallax.domains.news_intel.types.source_classification import normalize_string_tuple
 from parallax.domains.news_intel.types.source_quality_policy import window_ms_for_label
@@ -58,6 +65,7 @@ _URL_USERINFO_RE = re.compile(r"([a-z][a-z0-9+.-]*://)[^/@\s]+@", re.IGNORECASE)
 _CHECK_QUOTED_VALUE_RE = re.compile(r"'((?:''|[^'])*)'(?:\s*::\s*[A-Za-z_][A-Za-z0-9_]*)?")
 _PUBLICATION_METADATA_FIELDS = {"computed_at_ms", "updated_at_ms", "projected_at_ms", "payload_hash"}
 _NEWS_PAGE_SIGNAL_SQL = "LOWER(signal_json -> 'display_signal' ->> 'direction') = %s"
+_MATERIAL_MATCH_WINDOW_MS = 600_000
 
 
 class NewsRepository:
@@ -726,6 +734,26 @@ class NewsRepository:
         provider_payload_status: str | None = None,
         commit: bool = True,
     ) -> dict[str, Any]:
+        if commit and bool(getattr(self.conn, "autocommit", False)):
+            with self.conn.transaction():
+                return self.upsert_canonical_news_item(
+                    provider_item_id=provider_item_id,
+                    canonical_identity=canonical_identity,
+                    canonical_url=canonical_url,
+                    title=title,
+                    summary=summary,
+                    body_text=body_text,
+                    language=language,
+                    published_at_ms=published_at_ms,
+                    fetched_at_ms=fetched_at_ms,
+                    content_hash=content_hash,
+                    title_fingerprint=title_fingerprint,
+                    now_ms=now_ms,
+                    provider_signal=provider_signal,
+                    provider_token_impacts=provider_token_impacts,
+                    provider_payload_status=provider_payload_status,
+                    commit=False,
+                )
         item_published_at_ms = int(published_at_ms if published_at_ms is not None else fetched_at_ms)
         provider_signal_payload = dict(provider_signal or {})
         provider_token_impacts_payload = [dict(item) for item in provider_token_impacts or []]
@@ -763,6 +791,14 @@ class NewsRepository:
         provider_article_key = provider_global_article_key(
             provider_type=str(observation["provider_type"] or ""),
             provider_article_id=str(observation["provider_article_id"] or ""),
+        )
+        identity = self._material_duplicate_identity_for_observation(
+            identity=identity,
+            provider_type=str(observation["provider_type"] or ""),
+            source_id=observation_source_id,
+            title=str(title),
+            published_at_ms=item_published_at_ms,
+            provider_token_impacts=provider_token_impacts_payload,
         )
         observation_payload_status = str(observation["provider_payload_status"] or "").strip().lower()
         incoming_payload_status = str(provider_payload_status or "").strip().lower()
@@ -1116,6 +1152,17 @@ class NewsRepository:
                 now_ms=now_ms,
                 remap_reason="hard_canonical_url" if hard_url_identity else "ready_content_hash",
             )
+        material_remapped_old_item_ids: list[str] = []
+        if hard_url_identity:
+            material_remapped_old_item_ids = self._remap_material_duplicate_edges_to_news_item(
+                source_id=observation_source_id,
+                news_item_id=str(row["news_item_id"]),
+                canonical_item_key=identity.canonical_item_key,
+                title=str(title),
+                published_at_ms=item_published_at_ms,
+                provider_token_impacts=provider_token_impacts_payload,
+                now_ms=now_ms,
+            )
         row = self._refresh_news_item_observation_summary(news_item_id=str(row["news_item_id"]), now_ms=now_ms)
         aggregate_changed = existing is not None and _news_item_aggregate_changed(existing, row)
         edge_changed = (
@@ -1125,6 +1172,7 @@ class NewsRepository:
                 edge_payload,
             )
             or bool(provider_article_remapped_old_item_ids)
+            or bool(material_remapped_old_item_ids)
         )
         remapped_edge = previous_edge_news_item_id is not None
         affected_news_item_ids = [str(row["news_item_id"])]
@@ -1132,7 +1180,11 @@ class NewsRepository:
             dict.fromkeys(
                 [
                     item_id
-                    for item_id in [previous_edge_news_item_id, *provider_article_remapped_old_item_ids]
+                    for item_id in [
+                        previous_edge_news_item_id,
+                        *provider_article_remapped_old_item_ids,
+                        *material_remapped_old_item_ids,
+                    ]
                     if item_id
                 ]
             )
@@ -1141,8 +1193,27 @@ class NewsRepository:
             remapped_edge = True
         for old_news_item_id in old_news_item_ids:
             affected_news_item_ids.append(old_news_item_id)
+            if not self._lock_news_item_for_edge_remap_cleanup(news_item_id=old_news_item_id):
+                continue
             self._refresh_news_item_observation_summary(
                 news_item_id=old_news_item_id,
+                now_ms=now_ms,
+            )
+            if self._news_item_has_observation_edges(news_item_id=old_news_item_id):
+                self._reselect_news_item_representative_from_edges(
+                    news_item_id=old_news_item_id,
+                    now_ms=now_ms,
+                )
+                self._clear_item_scoped_derived_facts(news_item_id=old_news_item_id)
+                continue
+            self._remap_item_scoped_agent_outputs_to_news_item(
+                old_news_item_ids=[old_news_item_id],
+                news_item_id=str(row["news_item_id"]),
+                now_ms=now_ms,
+            )
+            self._remap_projection_dirty_targets_to_news_item(
+                old_news_item_ids=[old_news_item_id],
+                news_item_id=str(row["news_item_id"]),
                 now_ms=now_ms,
             )
             deleted_old_item = self._delete_zero_edge_news_item(news_item_id=old_news_item_id)
@@ -1167,6 +1238,245 @@ class NewsRepository:
             "status": status,
             "affected_news_item_ids": list(dict.fromkeys(affected_news_item_ids)),
         }
+
+    def _material_duplicate_identity_for_observation(
+        self,
+        *,
+        identity: CanonicalIdentity,
+        provider_type: str,
+        source_id: str,
+        title: str,
+        published_at_ms: int,
+        provider_token_impacts: Sequence[Mapping[str, Any]],
+    ) -> CanonicalIdentity:
+        if str(provider_type or "").strip().lower() != "opennews":
+            return identity
+        material_fingerprint = material_title_fingerprint(title)
+        if not material_title_is_eligible(material_fingerprint):
+            return identity
+
+        material_window_bucket_ms = _material_window_bucket_ms_for_published_at(published_at_ms)
+        material_symbol_key = _material_symbol_key_for_impacts(provider_token_impacts)
+        material_evidence = {
+            "material_title_fingerprint": material_fingerprint,
+            "material_window_bucket_ms": material_window_bucket_ms,
+            "material_symbol_key": material_symbol_key,
+            "material_match_window_ms": _MATERIAL_MATCH_WINDOW_MS,
+        }
+        self._lock_material_duplicate_candidate_window(
+            source_id=source_id,
+            material_fingerprint=material_fingerprint,
+            published_at_ms=published_at_ms,
+        )
+        candidates = self._material_duplicate_candidate_rows(
+            source_id=source_id,
+            published_at_ms=published_at_ms,
+            canonical_item_key=identity.canonical_item_key,
+        )
+        enriched_identity = _canonical_identity_with_evidence(identity, material_evidence)
+        if identity.dedup_key_kind == "canonical_url":
+            return enriched_identity
+
+        incoming_symbols = provider_symbol_set(provider_token_impacts)
+        for candidate in candidates:
+            if material_title_fingerprint(candidate["title"]) != material_fingerprint:
+                continue
+            existing_symbols = provider_symbol_set(candidate["provider_token_impacts_json"])
+            if not symbol_sets_compatible(incoming_symbols, existing_symbols):
+                continue
+            return CanonicalIdentity(
+                canonical_item_key=str(candidate["canonical_item_key"]),
+                news_item_id=str(candidate["news_item_id"]),
+                dedup_key_kind=str(candidate["dedup_key_kind"] or enriched_identity.dedup_key_kind),
+                dedup_key_confidence=str(candidate["dedup_key_confidence"] or enriched_identity.dedup_key_confidence),
+                url_identity_kind=str(candidate["url_identity_kind"] or enriched_identity.url_identity_kind),
+                match_type="same_material_title",
+                match_confidence="strong",
+                evidence={
+                    **dict(enriched_identity.evidence),
+                    "material_existing_news_item_id": str(candidate["news_item_id"]),
+                    "material_existing_canonical_item_key": str(candidate["canonical_item_key"]),
+                },
+            )
+        return enriched_identity
+
+    def _lock_material_duplicate_candidate_window(
+        self,
+        *,
+        source_id: str,
+        material_fingerprint: str,
+        published_at_ms: int,
+    ) -> None:
+        for material_window_bucket_ms in _material_window_bucket_ms_values_for_match_window(published_at_ms):
+            lock_key = json.dumps(
+                [
+                    "news-material-duplicate-v2",
+                    str(source_id),
+                    str(material_fingerprint),
+                    int(material_window_bucket_ms),
+                ],
+                separators=(",", ":"),
+            )
+            self.conn.execute(
+                """
+                SELECT pg_advisory_xact_lock(
+                  ('x' || substr(md5(%s), 1, 16))::bit(64)::bigint
+                )
+                """,
+                (lock_key,),
+            )
+
+    def _material_duplicate_candidate_rows(
+        self,
+        *,
+        source_id: str,
+        published_at_ms: int,
+        canonical_item_key: str,
+    ) -> list[Any]:
+        return list(
+            self.conn.execute(
+                """
+                WITH ranked_edges AS (
+                  SELECT items.news_item_id,
+                         items.canonical_item_key,
+                         items.dedup_key_kind,
+                         items.dedup_key_confidence,
+                         items.url_identity_kind,
+                         items.title,
+                         items.provider_token_impacts_json,
+                         items.published_at_ms,
+                         provider_items.provider_payload_status,
+                         ROW_NUMBER() OVER (
+                           PARTITION BY items.news_item_id
+                           ORDER BY
+                             CASE WHEN provider_items.provider_payload_status = 'ready' THEN 0 ELSE 1 END,
+                             edges.provider_article_key ASC,
+                             provider_items.payload_hash ASC,
+                             edges.provider_item_id ASC
+                         ) AS edge_rank
+                    FROM news_items AS items
+                    JOIN news_item_observation_edges AS edges
+                      ON edges.news_item_id = items.news_item_id
+                    JOIN news_provider_items AS provider_items
+                      ON provider_items.provider_item_id = edges.provider_item_id
+                   WHERE items.source_id = %s
+                     AND items.published_at_ms BETWEEN %s AND %s
+                     AND items.canonical_item_key <> %s
+                )
+                SELECT news_item_id,
+                       canonical_item_key,
+                       dedup_key_kind,
+                       dedup_key_confidence,
+                       url_identity_kind,
+                       title,
+                       provider_token_impacts_json,
+                       published_at_ms,
+                       provider_payload_status
+                  FROM ranked_edges
+                 WHERE edge_rank = 1
+                 ORDER BY
+                   CASE WHEN dedup_key_kind = 'canonical_url' THEN 0 ELSE 1 END,
+                   CASE WHEN provider_payload_status = 'ready' THEN 0 ELSE 1 END,
+                   published_at_ms DESC,
+                   news_item_id ASC
+                """,
+                (
+                    str(source_id),
+                    int(published_at_ms) - _MATERIAL_MATCH_WINDOW_MS,
+                    int(published_at_ms) + _MATERIAL_MATCH_WINDOW_MS,
+                    str(canonical_item_key),
+                ),
+            ).fetchall()
+        )
+
+    def _remap_material_duplicate_edges_to_news_item(
+        self,
+        *,
+        source_id: str,
+        news_item_id: str,
+        canonical_item_key: str,
+        title: str,
+        published_at_ms: int,
+        provider_token_impacts: Sequence[Mapping[str, Any]],
+        now_ms: int,
+    ) -> list[str]:
+        material_fingerprint = material_title_fingerprint(title)
+        if not material_title_is_eligible(material_fingerprint):
+            return []
+        material_window_bucket_ms = _material_window_bucket_ms_for_published_at(published_at_ms)
+        material_symbol_key = _material_symbol_key_for_impacts(provider_token_impacts)
+        self._lock_material_duplicate_candidate_window(
+            source_id=source_id,
+            material_fingerprint=material_fingerprint,
+            published_at_ms=published_at_ms,
+        )
+
+        incoming_symbols = provider_symbol_set(provider_token_impacts)
+        old_news_item_ids: list[str] = []
+        for candidate in self._material_duplicate_candidate_rows(
+            source_id=source_id,
+            published_at_ms=published_at_ms,
+            canonical_item_key=canonical_item_key,
+        ):
+            candidate_news_item_id = str(candidate["news_item_id"])
+            if candidate_news_item_id == str(news_item_id):
+                continue
+            if material_title_fingerprint(candidate["title"]) != material_fingerprint:
+                continue
+            existing_symbols = provider_symbol_set(candidate["provider_token_impacts_json"])
+            if not symbol_sets_compatible(incoming_symbols, existing_symbols):
+                continue
+            old_news_item_ids.append(candidate_news_item_id)
+
+        old_news_item_ids = list(dict.fromkeys(old_news_item_ids))
+        if not old_news_item_ids:
+            return []
+
+        placeholders = ", ".join(["%s"] * len(old_news_item_ids))
+        rows = self.conn.execute(
+            f"""
+            WITH remapped AS (
+              SELECT provider_item_id, news_item_id AS old_news_item_id
+                FROM news_item_observation_edges
+               WHERE news_item_id IN ({placeholders})
+                 AND news_item_id <> %s
+            ),
+            updated AS (
+              UPDATE news_item_observation_edges AS edges
+                 SET news_item_id = %s,
+                     match_type = 'same_material_title',
+                     match_confidence = 'strong',
+                     policy_version = %s,
+                     evidence_json = edges.evidence_json || jsonb_build_object(
+                       'material_remap_reason', 'hard_canonical_url',
+                       'material_title_fingerprint', %s::text,
+                       'material_window_bucket_ms', %s::bigint,
+                       'material_symbol_key', %s::text,
+                       'material_remapped_to_news_item_id', %s::text,
+                       'material_remapped_at_ms', %s::bigint
+                     ),
+                     last_seen_at_ms = %s
+                FROM remapped
+               WHERE edges.provider_item_id = remapped.provider_item_id
+               RETURNING remapped.old_news_item_id
+            )
+            SELECT DISTINCT old_news_item_id
+              FROM updated
+            """,
+            (
+                *old_news_item_ids,
+                str(news_item_id),
+                str(news_item_id),
+                CANONICAL_POLICY_VERSION,
+                material_fingerprint,
+                int(material_window_bucket_ms),
+                material_symbol_key,
+                str(news_item_id),
+                int(now_ms),
+                int(now_ms),
+            ),
+        ).fetchall()
+        return [str(row["old_news_item_id"]) for row in rows]
 
     def _remap_provider_article_edges_to_news_item(
         self,
@@ -1273,6 +1583,225 @@ class NewsRepository:
             (news_item_id,),
         ).fetchone()
         return row is not None
+
+    def _lock_news_item_for_edge_remap_cleanup(self, *, news_item_id: str) -> bool:
+        row = self.conn.execute(
+            """
+            SELECT news_item_id
+              FROM news_items
+             WHERE news_item_id = %s
+             FOR UPDATE
+            """,
+            (news_item_id,),
+        ).fetchone()
+        return row is not None
+
+    def _news_item_has_observation_edges(self, *, news_item_id: str) -> bool:
+        row = self.conn.execute(
+            """
+            SELECT EXISTS (
+              SELECT 1
+                FROM news_item_observation_edges AS edges
+               WHERE edges.news_item_id = %s
+            ) AS has_edges
+            """,
+            (news_item_id,),
+        ).fetchone()
+        return bool(row and row["has_edges"])
+
+    def _remap_item_scoped_agent_outputs_to_news_item(
+        self,
+        *,
+        old_news_item_ids: Sequence[str],
+        news_item_id: str,
+        now_ms: int,
+    ) -> None:
+        old_ids = _distinct_old_news_item_ids(old_news_item_ids, news_item_id=news_item_id)
+        if not old_ids:
+            return
+        placeholders = ", ".join(["%s"] * len(old_ids))
+        self.conn.execute(
+            f"""
+            UPDATE news_item_agent_runs AS runs
+               SET news_item_id = %s,
+                   trace_metadata_json = COALESCE(runs.trace_metadata_json, '{{}}'::jsonb)
+                     || jsonb_build_object(
+                       'news_item_remap_reason', 'canonical_news_item_merge',
+                       'remapped_from_news_item_id', runs.news_item_id,
+                       'remapped_to_news_item_id', %s::text,
+                       'remapped_at_ms', %s::bigint
+                     )
+             WHERE runs.news_item_id IN ({placeholders})
+               AND runs.news_item_id <> %s
+            """,
+            (str(news_item_id), str(news_item_id), int(now_ms), *old_ids, str(news_item_id)),
+        )
+        self.conn.execute(
+            f"""
+            WITH candidate AS (
+              SELECT briefs.*
+                FROM news_item_agent_briefs AS briefs
+               WHERE briefs.news_item_id = %s
+                  OR briefs.news_item_id IN ({placeholders})
+               ORDER BY
+                 briefs.computed_at_ms DESC,
+                 briefs.updated_at_ms DESC,
+                 CASE WHEN briefs.news_item_id = %s THEN 0 ELSE 1 END,
+                 briefs.agent_run_id ASC
+               LIMIT 1
+            ),
+            upserted AS (
+              INSERT INTO news_item_agent_briefs (
+                news_item_id, agent_run_id, status, direction, decision_class, brief_json,
+                input_hash, artifact_version_hash, prompt_version, schema_version,
+                validator_version, computed_at_ms, created_at_ms, updated_at_ms
+              )
+              SELECT
+                %s,
+                agent_run_id,
+                status,
+                direction,
+                decision_class,
+                brief_json,
+                input_hash,
+                artifact_version_hash,
+                prompt_version,
+                schema_version,
+                validator_version,
+                computed_at_ms,
+                created_at_ms,
+                GREATEST(updated_at_ms, %s::bigint)
+              FROM candidate
+              ON CONFLICT (news_item_id) DO UPDATE SET
+                agent_run_id = EXCLUDED.agent_run_id,
+                status = EXCLUDED.status,
+                direction = EXCLUDED.direction,
+                decision_class = EXCLUDED.decision_class,
+                brief_json = EXCLUDED.brief_json,
+                input_hash = EXCLUDED.input_hash,
+                artifact_version_hash = EXCLUDED.artifact_version_hash,
+                prompt_version = EXCLUDED.prompt_version,
+                schema_version = EXCLUDED.schema_version,
+                validator_version = EXCLUDED.validator_version,
+                computed_at_ms = EXCLUDED.computed_at_ms,
+                updated_at_ms = EXCLUDED.updated_at_ms
+              RETURNING news_item_id
+            )
+            DELETE FROM news_item_agent_briefs AS briefs
+             WHERE briefs.news_item_id IN ({placeholders})
+            """,
+            (
+                str(news_item_id),
+                *old_ids,
+                str(news_item_id),
+                str(news_item_id),
+                int(now_ms),
+                *old_ids,
+            ),
+        )
+
+    def _remap_projection_dirty_targets_to_news_item(
+        self,
+        *,
+        old_news_item_ids: Sequence[str],
+        news_item_id: str,
+        now_ms: int,
+    ) -> None:
+        old_ids = _distinct_old_news_item_ids(old_news_item_ids, news_item_id=news_item_id)
+        if not old_ids:
+            return
+        placeholders = ", ".join(["%s"] * len(old_ids))
+        self.conn.execute(
+            f"""
+            WITH moved AS (
+              SELECT
+                targets.projection_name,
+                targets.target_kind,
+                targets."window",
+                md5(
+                  'canonical_news_item_merge:' || %s::text || ':' ||
+                  targets.projection_name || ':' ||
+                  targets.target_kind || ':' ||
+                  targets."window" || ':' ||
+                  string_agg(targets.payload_hash, '|' ORDER BY targets.payload_hash)
+                ) AS payload_hash,
+                MAX(targets.source_watermark_ms)::bigint AS source_watermark_ms,
+                MIN(targets.priority)::integer AS priority,
+                MIN(targets.due_at_ms)::bigint AS due_at_ms,
+                MIN(targets.first_dirty_at_ms)::bigint AS first_dirty_at_ms
+              FROM news_projection_dirty_targets AS targets
+              WHERE targets.target_kind = 'news_item'
+                AND targets.target_id IN ({placeholders})
+              GROUP BY targets.projection_name, targets.target_kind, targets."window"
+            ),
+            upserted AS (
+              INSERT INTO news_projection_dirty_targets(
+                projection_name,
+                target_kind,
+                target_id,
+                "window",
+                dirty_reason,
+                payload_hash,
+                source_watermark_ms,
+                priority,
+                due_at_ms,
+                leased_until_ms,
+                lease_owner,
+                attempt_count,
+                last_error,
+                first_dirty_at_ms,
+                updated_at_ms
+              )
+              SELECT
+                moved.projection_name,
+                moved.target_kind,
+                %s,
+                moved."window",
+                'canonical_news_item_merge',
+                moved.payload_hash,
+                moved.source_watermark_ms,
+                moved.priority,
+                moved.due_at_ms,
+                NULL,
+                NULL,
+                0,
+                NULL,
+                LEAST(moved.first_dirty_at_ms, %s::bigint),
+                %s
+              FROM moved
+              ON CONFLICT(projection_name, target_kind, target_id, "window") DO UPDATE SET
+                dirty_reason = EXCLUDED.dirty_reason,
+                payload_hash = EXCLUDED.payload_hash,
+                source_watermark_ms = GREATEST(
+                  news_projection_dirty_targets.source_watermark_ms,
+                  EXCLUDED.source_watermark_ms
+                ),
+                priority = LEAST(news_projection_dirty_targets.priority, EXCLUDED.priority),
+                due_at_ms = LEAST(news_projection_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
+                leased_until_ms = NULL,
+                lease_owner = NULL,
+                attempt_count = 0,
+                last_error = NULL,
+                first_dirty_at_ms = LEAST(
+                  news_projection_dirty_targets.first_dirty_at_ms,
+                  EXCLUDED.first_dirty_at_ms
+                ),
+                updated_at_ms = EXCLUDED.updated_at_ms
+              RETURNING projection_name, target_kind, target_id, "window"
+            )
+            DELETE FROM news_projection_dirty_targets AS targets
+             WHERE targets.target_kind = 'news_item'
+               AND targets.target_id IN ({placeholders})
+            """,
+            (
+                str(news_item_id),
+                *old_ids,
+                str(news_item_id),
+                int(now_ms),
+                int(now_ms),
+                *old_ids,
+            ),
+        )
 
     def _clear_item_scoped_derived_facts(self, *, news_item_id: str) -> None:
         self.conn.execute("DELETE FROM news_fact_candidates WHERE news_item_id = %s", (news_item_id,))
@@ -1883,6 +2412,28 @@ class NewsRepository:
         )
         if commit:
             self.conn.commit()
+
+    def servable_news_item_ids(self, news_item_ids: Sequence[str]) -> list[str]:
+        target_ids = list(dict.fromkeys(str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)))
+        if not target_ids:
+            return []
+        rows = self.conn.execute(
+            """
+            SELECT items.news_item_id
+              FROM unnest(%s::text[]) WITH ORDINALITY AS target_ids(news_item_id, ordinal)
+              JOIN news_items AS items ON items.news_item_id = target_ids.news_item_id
+             WHERE EXISTS (
+                     SELECT 1
+                       FROM news_item_observation_edges AS edges
+                       JOIN news_sources AS edge_sources ON edge_sources.source_id = edges.source_id
+                      WHERE edges.news_item_id = items.news_item_id
+                        AND edge_sources.enabled = true
+                   )
+             ORDER BY target_ids.ordinal ASC
+            """,
+            (target_ids,),
+        ).fetchall()
+        return [str(row["news_item_id"]) for row in rows]
 
     def load_items_for_page_projection(self, *, news_item_ids: Sequence[str]) -> list[dict[str, Any]]:
         target_ids = list(dict.fromkeys(str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)))
@@ -2930,6 +3481,10 @@ class NewsRepository:
                 "score_threshold": max(0, int(score_threshold)),
             },
         ).fetchone()
+        current_policy = self._news_dedup_current_policy_diagnostics(
+            window_ms=max(0, int(window_ms)),
+            now_ms=resolved_now_ms,
+        )
         if row is None:
             return {
                 "raw_observation_count": 0,
@@ -2946,6 +3501,7 @@ class NewsRepository:
                 "historical_high_score_items": {},
                 "brief_input_risk": {},
                 "source_sync_diagnostics": [],
+                **current_policy,
             }
         return {
             "raw_observation_count": int(row["raw_observation_count"] or 0),
@@ -2964,6 +3520,117 @@ class NewsRepository:
             "historical_high_score_items": _json_dict(row["historical_high_score_items"]),
             "brief_input_risk": _json_dict(row["brief_input_risk"]),
             "source_sync_diagnostics": _json_list(row["source_sync_diagnostics"]),
+            **current_policy,
+        }
+
+    def _news_dedup_current_policy_diagnostics(self, *, window_ms: int, now_ms: int) -> dict[str, Any]:
+        visible_rows = self.conn.execute(
+            """
+            SELECT rows.row_id,
+                   rows.news_item_id,
+                   items.source_id,
+                   lower(trim(sources.provider_type)) AS provider_type,
+                   items.canonical_url,
+                   items.title,
+                   items.published_at_ms,
+                   items.fetched_at_ms,
+                   items.created_at_ms,
+                   items.provider_token_impacts_json
+              FROM news_page_rows AS rows
+              JOIN news_items AS items ON items.news_item_id = rows.news_item_id
+              JOIN news_sources AS sources ON sources.source_id = items.source_id
+             WHERE EXISTS (
+                     SELECT 1
+                       FROM news_item_observation_edges AS edges
+                       JOIN news_sources AS edge_sources ON edge_sources.source_id = edges.source_id
+                      WHERE edges.news_item_id = rows.news_item_id
+                        AND edge_sources.enabled = true
+                   )
+             ORDER BY rows.news_item_id ASC, rows.row_id ASC
+            """
+        ).fetchall()
+        fact_rows = self.conn.execute(
+            """
+            WITH params AS (
+              SELECT
+                CASE
+                  WHEN %(now_ms)s::bigint > 0 THEN %(now_ms)s::bigint
+                  ELSE (extract(epoch FROM clock_timestamp()) * 1000)::bigint
+                END AS now_ms,
+                GREATEST(%(window_ms)s::bigint, 0) AS window_ms
+            )
+            SELECT items.news_item_id,
+                   items.source_id,
+                   lower(trim(sources.provider_type)) AS provider_type,
+                   items.canonical_url,
+                   items.title,
+                   items.published_at_ms,
+                   items.fetched_at_ms,
+                   items.created_at_ms,
+                   items.provider_token_impacts_json
+              FROM news_items AS items
+              JOIN news_sources AS sources ON sources.source_id = items.source_id
+              CROSS JOIN params
+             WHERE COALESCE(NULLIF(items.created_at_ms, 0), items.fetched_at_ms, 0)
+                   >= params.now_ms - params.window_ms
+             ORDER BY items.source_id ASC, items.published_at_ms ASC, items.news_item_id ASC
+            """,
+            {"now_ms": int(now_ms), "window_ms": max(0, int(window_ms))},
+        ).fetchall()
+        stale_brief_row = self.conn.execute(
+            """
+            SELECT COUNT(*)::int AS row_count
+              FROM news_item_agent_briefs AS briefs
+              LEFT JOIN news_items AS items ON items.news_item_id = briefs.news_item_id
+             WHERE items.news_item_id IS NULL
+                OR NOT EXISTS (
+                     SELECT 1
+                       FROM news_item_observation_edges AS edges
+                      WHERE edges.news_item_id = briefs.news_item_id
+                   )
+            """
+        ).fetchone()
+        stale_dirty_row = self.conn.execute(
+            """
+            SELECT COUNT(*)::int AS row_count
+              FROM news_projection_dirty_targets AS targets
+              LEFT JOIN news_items AS items ON items.news_item_id = targets.target_id
+             WHERE targets.target_kind = 'news_item'
+               AND targets.projection_name IN ('brief_input', 'page')
+               AND (
+                 items.news_item_id IS NULL
+                 OR NOT EXISTS (
+                      SELECT 1
+                        FROM news_item_observation_edges AS edges
+                       WHERE edges.news_item_id = targets.target_id
+                    )
+               )
+            """
+        ).fetchone()
+
+        hard_public_groups: dict[str, set[str]] = defaultdict(set)
+        generic_public_url_visible_rows = 0
+        for row in visible_rows:
+            policy = public_url_identity_policy(row["canonical_url"])
+            if policy.allowed:
+                hard_public_groups[policy.identity_key].add(str(row["news_item_id"]))
+            elif policy.normalized_url.startswith(("http://", "https://")):
+                generic_public_url_visible_rows += 1
+
+        visible_material_groups = _current_policy_material_duplicate_groups(visible_rows)
+        fact_material_groups = _current_policy_material_duplicate_groups(fact_rows)
+        return {
+            "hard_public_url_visible_duplicate_excess": sum(
+                max(0, len(news_item_ids) - 1) for news_item_ids in hard_public_groups.values()
+            ),
+            "generic_public_url_visible_rows": int(generic_public_url_visible_rows),
+            "material_title_visible_duplicate_excess": sum(
+                int(group["duplicate_rows"]) for group in visible_material_groups
+            ),
+            "fact_layer_material_duplicate_excess": sum(int(group["duplicate_rows"]) for group in fact_material_groups),
+            "stale_duplicate_brief_rows": int(stale_brief_row["row_count"] if stale_brief_row else 0),
+            "stale_duplicate_dirty_targets": int(stale_dirty_row["row_count"] if stale_dirty_row else 0),
+            "top_material_title_duplicate_groups": fact_material_groups[:20],
         }
 
     def _page_row_summary_by_news_item_id(self, news_item_ids: Sequence[str]) -> dict[str, dict[str, Any]]:
@@ -3709,6 +4376,110 @@ def _numeric_payload_ms(value: Any) -> int | None:
     return int(raw)
 
 
+def _canonical_identity_with_evidence(
+    identity: CanonicalIdentity,
+    evidence: Mapping[str, Any],
+) -> CanonicalIdentity:
+    return CanonicalIdentity(
+        canonical_item_key=identity.canonical_item_key,
+        news_item_id=identity.news_item_id,
+        dedup_key_kind=identity.dedup_key_kind,
+        dedup_key_confidence=identity.dedup_key_confidence,
+        url_identity_kind=identity.url_identity_kind,
+        match_type=identity.match_type,
+        match_confidence=identity.match_confidence,
+        evidence={**dict(identity.evidence), **dict(evidence)},
+    )
+
+
+def _material_window_bucket_ms_for_published_at(published_at_ms: int) -> int:
+    value = int(published_at_ms)
+    return value - (value % _MATERIAL_MATCH_WINDOW_MS)
+
+
+def _material_window_bucket_ms_values_for_match_window(published_at_ms: int) -> tuple[int, ...]:
+    start_ms = _material_window_bucket_ms_for_published_at(int(published_at_ms) - _MATERIAL_MATCH_WINDOW_MS)
+    end_ms = _material_window_bucket_ms_for_published_at(int(published_at_ms) + _MATERIAL_MATCH_WINDOW_MS)
+    return tuple(range(start_ms, end_ms + _MATERIAL_MATCH_WINDOW_MS, _MATERIAL_MATCH_WINDOW_MS))
+
+
+def _material_symbol_key_for_impacts(provider_token_impacts: object) -> str:
+    return ",".join(sorted(provider_symbol_set(provider_token_impacts)))
+
+
+def _current_policy_material_duplicate_groups(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    keyed_rows: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        if str(row.get("provider_type") or "").strip().lower() != "opennews":
+            continue
+        fingerprint = material_title_fingerprint(row.get("title"))
+        if not material_title_is_eligible(fingerprint):
+            continue
+        payload = dict(row)
+        payload["material_title_fingerprint"] = fingerprint
+        payload["material_symbols"] = provider_symbol_set(row.get("provider_token_impacts_json"))
+        keyed_rows[(str(row.get("source_id") or ""), fingerprint)].append(payload)
+
+    groups: list[dict[str, Any]] = []
+    for (source_id, fingerprint), source_rows in sorted(keyed_rows.items()):
+        clusters: list[list[dict[str, Any]]] = []
+        for row in sorted(
+            source_rows,
+            key=lambda value: (int(value.get("published_at_ms") or 0), str(value.get("news_item_id") or "")),
+        ):
+            cluster = _current_policy_matching_material_cluster(clusters, row)
+            if cluster is None:
+                clusters.append([row])
+            else:
+                cluster.append(row)
+        for cluster in clusters:
+            candidate_ids = [str(row.get("news_item_id") or "") for row in cluster]
+            news_item_ids = list(dict.fromkeys(news_item_id for news_item_id in candidate_ids if news_item_id))
+            if len(news_item_ids) <= 1:
+                continue
+            groups.append(
+                {
+                    "source_id": source_id,
+                    "title_fingerprint": fingerprint,
+                    "row_count": len(news_item_ids),
+                    "duplicate_rows": len(news_item_ids) - 1,
+                    "news_item_ids": news_item_ids,
+                }
+            )
+    return sorted(
+        groups,
+        key=lambda group: (
+            -int(group["duplicate_rows"]),
+            str(group["source_id"]),
+            str(group["title_fingerprint"]),
+        ),
+    )
+
+
+def _current_policy_matching_material_cluster(
+    clusters: Sequence[list[dict[str, Any]]],
+    row: Mapping[str, Any],
+) -> list[dict[str, Any]] | None:
+    row_published_at = int(row.get("published_at_ms") or 0)
+    row_symbols = set(row.get("material_symbols") or set())
+    for cluster in clusters:
+        if any(
+            abs(row_published_at - int(candidate.get("published_at_ms") or 0)) <= _MATERIAL_MATCH_WINDOW_MS
+            and symbol_sets_compatible(row_symbols, set(candidate.get("material_symbols") or set()))
+            for candidate in cluster
+        ):
+            return cluster
+    return None
+
+
+def _distinct_old_news_item_ids(old_news_item_ids: Sequence[str], *, news_item_id: str) -> list[str]:
+    return [
+        item_id
+        for item_id in dict.fromkeys(str(item_id) for item_id in old_news_item_ids if str(item_id or "").strip())
+        if item_id != str(news_item_id)
+    ]
+
+
 def _representative_payload_should_replace(existing: Mapping[str, Any], incoming: Mapping[str, Any]) -> bool:
     existing_ready = _representative_payload_ready(existing)
     incoming_ready = _representative_payload_ready(incoming)
@@ -4138,6 +4909,7 @@ def _provider_capability_tags(*, row: Mapping[str, Any]) -> list[str]:
     if trust_tier in {"official", "high"}:
         tags.append("high_trust")
     return list(dict.fromkeys(tags))
+
 
 def _json(value: Any) -> Jsonb:
     return Jsonb(value, dumps=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True))

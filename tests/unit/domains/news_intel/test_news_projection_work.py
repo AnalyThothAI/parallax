@@ -21,12 +21,13 @@ class FakeDirtyTargets:
         self.claim_rows: list[dict[str, object]] = []
 
     def enqueue_targets(self, targets, *, reason, now_ms, due_at_ms=None, commit=True):
-        self.enqueued.extend(dict(target) for target in targets)
+        rows = [dict(target) for target in targets]
+        self.enqueued.extend(rows)
         self.reason = reason
         self.now_ms = now_ms
         self.due_at_ms = due_at_ms
         self.commit = commit
-        return len(self.enqueued)
+        return len(rows)
 
     def claim_due(self, **kwargs):
         self.claim_calls.append(dict(kwargs))
@@ -34,8 +35,22 @@ class FakeDirtyTargets:
 
 
 class FakeRepos:
-    def __init__(self) -> None:
+    def __init__(self, *, servable_news_item_ids: list[str] | None = None) -> None:
         self.news_projection_dirty_targets = FakeDirtyTargets()
+        self.news = FakeNews(servable_news_item_ids=servable_news_item_ids)
+
+
+class FakeNews:
+    def __init__(self, *, servable_news_item_ids: list[str] | None = None) -> None:
+        self.servable_ids = servable_news_item_ids
+        self.servable_calls: list[list[str]] = []
+
+    def servable_news_item_ids(self, news_item_ids):
+        ids = [str(news_item_id) for news_item_id in news_item_ids]
+        self.servable_calls.append(ids)
+        if self.servable_ids is None:
+            return ids
+        return [news_item_id for news_item_id in ids if news_item_id in set(self.servable_ids)]
 
 
 def test_enqueue_page_reprojection_hides_page_projection_name() -> None:
@@ -71,6 +86,36 @@ def test_enqueue_item_brief_work_sets_priority_by_item_id() -> None:
     assert repos.news_projection_dirty_targets.enqueued == [
         {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-1", "priority": 7},
         {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-2"},
+    ]
+
+
+def test_enqueue_news_item_work_filters_non_servable_duplicate_ids() -> None:
+    repos = FakeRepos(servable_news_item_ids=["news-survivor"])
+
+    page_count = enqueue_page_reprojection(
+        repos,
+        news_item_ids=["news-survivor", "news-deleted"],
+        reason="canonical_news_item_merge",
+        now_ms=NOW_MS,
+        commit=False,
+    )
+    brief_count = enqueue_item_brief_work(
+        repos,
+        news_item_ids=["news-survivor", "news-deleted"],
+        reason="canonical_news_item_merge",
+        now_ms=NOW_MS,
+        commit=False,
+    )
+
+    assert page_count == 1
+    assert brief_count == 1
+    assert repos.news.servable_calls == [
+        ["news-survivor", "news-deleted"],
+        ["news-survivor", "news-deleted"],
+    ]
+    assert repos.news_projection_dirty_targets.enqueued == [
+        {"projection_name": "page", "target_kind": "news_item", "target_id": "news-survivor"},
+        {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-survivor"},
     ]
 
 

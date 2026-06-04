@@ -33,13 +33,13 @@ forced into a resolved asset.
 - `news_items` carries item content classification (`content_class`,
   `content_tags_json`, and `content_classification_json`). This describes what
   happened in the item and is independent of who published it.
-- Public `http://` and `https://` canonical URLs are the global hard identity
-  for `news_items`, regardless of provider, source role, category, or
-  `url_identity_kind`. Provider observations with the same public canonical URL
-  collapse into one `news_items` row and remain visible through
-  `news_item_observation_edges`; `url_identity_kind` is diagnostic context, not
-  a storage dedup gate. Content hash and provider article id are fallbacks only
-  when no public canonical URL is available.
+- Public `http://` and `https://` URLs admitted by
+  `public_url_identity_policy` are the hard identity for `news_items`.
+  Homepage, aggregator, live page, feed, preview, and generic announcement URLs
+  are provider/raw evidence only and must not become serving canonical URLs.
+  `url_identity_kind` is diagnostic context, not a storage dedup gate. OpenNews
+  missing-link observations may attach to an existing canonical item only
+  through bounded deterministic material identity.
 - `news_item_agent_runs` is the append-only audit ledger for single-item
   agent brief attempts. `news_item_agent_briefs` is the current item-scoped
   brief read model. `NewsItemBriefWorker` is the only runtime writer for both.
