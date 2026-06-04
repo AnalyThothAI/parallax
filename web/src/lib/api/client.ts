@@ -5,6 +5,7 @@ import type {
   NewsAgentDataGap,
   NewsAgentEvidenceRef,
   NewsAgentRunSummary,
+  NewsResearchToolResult,
   NewsFactLane,
   NewsItemDetail,
   NewsRowsData,
@@ -214,6 +215,10 @@ function normalizeNewsDetail(row: NewsItemDetail): NewsItemDetail {
       ? normalizeAgentBrief(payload.agent_brief, undefined, payload.agent_brief_computed_at_ms)
       : undefined,
     agent_run: normalizeAgentRun(payload.agent_run),
+    provider_item: objectOrNull(payload.provider_item),
+    fetch_run: objectOrNull(payload.fetch_run),
+    observation_edges: recordArray(payload.observation_edges),
+    provider_observations: recordArray(payload.provider_observations),
   });
 }
 
@@ -323,9 +328,32 @@ function normalizeAgentBrief(
     status,
     direction: stringOrNull(payload.direction ?? briefJson?.direction),
     decision_class: stringOrNull(payload.decision_class ?? briefJson?.decision_class),
+    novelty_status: stringOrNull(payload.novelty_status ?? briefJson?.novelty_status),
+    confirmation_state: stringOrNull(
+      payload.confirmation_state ?? briefJson?.confirmation_state,
+    ),
     title_zh: stringOrNull(payload.title_zh ?? briefJson?.title_zh),
     summary_zh: stringOrNull(payload.summary_zh ?? briefJson?.summary_zh),
     market_read_zh: stringOrNull(payload.market_read_zh ?? briefJson?.market_read_zh),
+    source_consensus_zh: stringOrNull(
+      payload.source_consensus_zh ?? briefJson?.source_consensus_zh,
+    ),
+    retrieval_notes_zh: stringOrNull(
+      payload.retrieval_notes_zh ?? briefJson?.retrieval_notes_zh,
+    ),
+    retrieval_evidence_refs: normalizeEvidenceRefs(
+      payload.retrieval_evidence_refs ?? briefJson?.retrieval_evidence_refs,
+    ),
+    research_todos_zh: stringArray(payload.research_todos_zh ?? briefJson?.research_todos_zh),
+    used_tool_call_ids: stringArray(
+      payload.used_tool_call_ids ?? briefJson?.used_tool_call_ids,
+    ),
+    affected_assets: arrayOrEmpty(payload.affected_assets ?? briefJson?.affected_assets),
+    impact_zh: stringOrNull(payload.impact_zh ?? briefJson?.impact_zh),
+    watch_items_zh: stringOrNull(payload.watch_items_zh ?? briefJson?.watch_items_zh),
+    confidence:
+      numberOrNull(payload.confidence ?? briefJson?.confidence) ??
+      stringOrNull(payload.confidence ?? briefJson?.confidence),
     bull_strength: stringOrNull(payload.bull_strength ?? bullView?.strength),
     bear_strength: stringOrNull(payload.bear_strength ?? bearView?.strength),
     data_gap_count: numberOrNull(payload.data_gap_count) ?? dataGaps.length,
@@ -387,26 +415,94 @@ function normalizeAgentBriefView(raw: unknown) {
 function normalizeAgentRun(raw: unknown): NewsAgentRunSummary | null {
   const payload = objectOrNull(raw);
   if (!payload) return null;
+  const requestJson = objectOrNull(payload.request_json);
+  const responseJson = objectOrNull(payload.response_json);
   return {
     ...(payload as NewsAgentRunSummary),
     run_id: stringOrNull(payload.run_id),
+    backend: stringOrNull(payload.backend),
     status: stringOrNull(payload.status),
     outcome: stringOrNull(payload.outcome),
+    provider: stringOrNull(payload.provider),
     model: stringOrNull(payload.model),
+    lane: stringOrNull(payload.lane),
+    workflow_name: stringOrNull(payload.workflow_name),
+    agent_name: stringOrNull(payload.agent_name),
+    execution_trace_id: stringOrNull(payload.execution_trace_id),
+    artifact_version_hash: stringOrNull(payload.artifact_version_hash),
     prompt_version: stringOrNull(payload.prompt_version),
     schema_version: stringOrNull(payload.schema_version),
+    validator_version: stringOrNull(payload.validator_version),
+    guardrail_version: stringOrNull(payload.guardrail_version),
+    input_hash: stringOrNull(payload.input_hash),
+    output_hash: stringOrNull(payload.output_hash),
     started_at_ms: numberOrNull(payload.started_at_ms),
     finished_at_ms: numberOrNull(payload.finished_at_ms),
+    latency_ms: numberOrNull(payload.latency_ms),
     execution_started:
       typeof payload.execution_started === "boolean" ? payload.execution_started : null,
     error_class: stringOrNull(payload.error_class),
     error: stringOrNull(payload.error),
     error_message: stringOrNull(payload.error_message ?? payload.error),
+    request_json: requestJson,
+    response_json: responseJson,
+    validation_errors_json: arrayOrEmpty(payload.validation_errors_json),
+    usage_json: objectOrNull(payload.usage_json) ?? {},
+    trace_metadata_json: objectOrNull(payload.trace_metadata_json) ?? {},
+    research_plan: objectOrNull(payload.research_plan ?? requestJson?.research_plan),
+    tool_results: normalizeToolResults(payload.tool_results ?? requestJson?.tool_results),
+    research_execution: objectOrNull(
+      payload.research_execution ?? requestJson?.research_execution,
+    ),
+    research_hashes: objectOrNull(payload.research_hashes ?? requestJson?.research_hashes),
+    base_packet: objectOrNull(payload.base_packet ?? requestJson?.base_packet),
   };
+}
+
+function normalizeToolResults(raw: unknown): NewsResearchToolResult[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw.flatMap<NewsResearchToolResult>((result) => {
+    const payload = objectOrNull(result);
+    if (!payload) {
+      return [];
+    }
+    return [
+      {
+        ...(payload as NewsResearchToolResult),
+        tool_call_id: stringOrNull(payload.tool_call_id),
+        tool_name: stringOrNull(payload.tool_name),
+        schema_version: stringOrNull(payload.schema_version),
+        query_version: stringOrNull(payload.query_version),
+        input: objectOrNull(payload.input),
+        source_tables: stringArray(payload.source_tables),
+        rows: arrayOrEmpty(payload.rows),
+        row_count: numberOrNull(payload.row_count),
+        truncated: booleanOrNull(payload.truncated),
+        skipped_reason: stringOrNull(payload.skipped_reason),
+        result_hash: stringOrNull(payload.result_hash),
+        generated_at_ms: numberOrNull(payload.generated_at_ms),
+        latency_ms: numberOrNull(payload.latency_ms),
+        redaction_notes: stringArray(payload.redaction_notes),
+        evidence_refs: normalizeEvidenceRefs(payload.evidence_refs),
+      },
+    ];
+  });
 }
 
 function arrayOrEmpty(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
+}
+
+function recordArray(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((entry) => {
+    const record = objectOrNull(entry);
+    return record ? [record] : [];
+  });
 }
 
 function objectOrNull(value: unknown): Record<string, unknown> | null {

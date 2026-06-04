@@ -76,7 +76,7 @@ def test_homepage_url_uses_weak_fallback_when_content_is_unqualified() -> None:
     assert identity.match_type == "weak_title_time_source"
 
 
-def test_live_url_uses_weak_fallback_when_content_is_unqualified() -> None:
+def test_live_url_uses_public_url_identity_even_when_content_is_unqualified() -> None:
     service = _service()
     canonical_url = "https://www.nytimes.com/live/2026/05/28/business/crypto-market-news"
 
@@ -94,16 +94,40 @@ def test_live_url_uses_weak_fallback_when_content_is_unqualified() -> None:
     )
 
     assert identity.url_identity_kind == "live_page"
-    assert identity.dedup_key_kind == "weak_title_time_source"
-    assert identity.dedup_key_confidence == "weak"
-    assert identity.match_type == "weak_title_time_source"
+    assert identity.canonical_item_key == f"canonical-url:{canonical_url}"
+    assert identity.dedup_key_kind == "canonical_url"
+    assert identity.dedup_key_confidence == "strong"
+    assert identity.match_type == "same_canonical_url"
+
+
+def test_single_segment_slug_uses_public_url_identity() -> None:
+    service = _service()
+    canonical_url = "https://financefeeds.com/bessent-urges-lawmakers-to-pass-crypto-clarity-act-this-summer"
+
+    identity = service.canonical_identity_for_observation(
+        provider_type="opennews",
+        source_id="opennews-news",
+        provider_article_id="2511056",
+        canonical_url=canonical_url,
+        content_hash="hash-financefeeds",
+        title_fingerprint="bessent urges lawmakers to pass crypto clarity act this summer",
+        title="Bessent Urges Lawmakers to Pass Crypto Clarity Act This Summer",
+        summary="",
+        body_text="",
+        published_at_ms=1_714_004_321_000,
+    )
+
+    assert identity.url_identity_kind == "unknown"
+    assert identity.canonical_item_key == f"canonical-url:{canonical_url}"
+    assert identity.dedup_key_kind == "canonical_url"
+    assert identity.dedup_key_confidence == "strong"
+    assert identity.match_type == "same_canonical_url"
 
 
 @pytest.mark.parametrize(
     ("canonical_url", "expected_url_kind"),
     (
         ("https://tass.ru/", "homepage"),
-        ("https://www.nytimes.com/live/2026/05/28/business/crypto-market-news", "live_page"),
         ("https://www.coindesk.com/markets", "aggregator"),
         ("https://www.binance.com/en/support/announcement", "article"),
         ("https://example.com/feed", "unknown"),

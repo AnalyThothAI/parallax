@@ -104,7 +104,8 @@ def hard_public_url_identity_key(canonical_url: str) -> str:
     if _is_identity_blocked_path(lower_segments):
         return ""
 
-    if not is_article_identity(normalized_url):
+    identity_kind = url_identity_kind(normalized_url)
+    if identity_kind in {"homepage", "aggregator"}:
         return ""
     return f"canonical-url:{normalized_url}"
 

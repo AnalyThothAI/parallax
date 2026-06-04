@@ -33,6 +33,7 @@ def test_nyt_live_url_is_live_page_not_article_identity() -> None:
 
     assert service.url_identity_kind(canonical_url) == "live_page"
     assert service.is_article_identity(canonical_url) is False
+    assert service.hard_public_url_identity_key(canonical_url) == f"canonical-url:{canonical_url}"
 
 
 def test_opennews_fallback_url_is_unknown() -> None:
@@ -80,6 +81,14 @@ def test_article_url_gets_canonical_hard_public_identity() -> None:
     service = _service()
     canonical_url = "https://www.binance.com/en/support/announcement/binance-will-list-example-abc123"
 
+    assert service.hard_public_url_identity_key(canonical_url) == f"canonical-url:{canonical_url}"
+
+
+def test_single_segment_slug_gets_canonical_hard_public_identity() -> None:
+    service = _service()
+    canonical_url = "https://financefeeds.com/bessent-urges-lawmakers-to-pass-crypto-clarity-act-this-summer"
+
+    assert service.url_identity_kind(canonical_url) == "unknown"
     assert service.hard_public_url_identity_key(canonical_url) == f"canonical-url:{canonical_url}"
 
 

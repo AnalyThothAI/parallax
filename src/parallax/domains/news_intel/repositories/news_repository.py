@@ -2416,17 +2416,31 @@ class NewsRepository:
               LEFT JOIN LATERAL (
                 SELECT jsonb_build_object(
                          'run_id', runs.run_id,
+                         'backend', runs.backend,
                          'status', runs.status,
                          'outcome', runs.outcome,
                          'execution_started', runs.execution_started,
                          'model', runs.model,
                          'provider', runs.provider,
                          'lane', runs.lane,
+                         'workflow_name', runs.workflow_name,
+                         'agent_name', runs.agent_name,
                          'execution_trace_id', runs.execution_trace_id,
+                         'artifact_version_hash', runs.artifact_version_hash,
+                         'prompt_version', runs.prompt_version,
+                         'schema_version', runs.schema_version,
+                         'validator_version', runs.validator_version,
+                         'guardrail_version', runs.guardrail_version,
+                         'input_hash', runs.input_hash,
+                         'output_hash', runs.output_hash,
                          'error_class', runs.error_class,
                          'error', runs.error,
+                         'request_json', runs.request_json,
+                         'response_json', runs.response_json,
+                         'validation_errors_json', runs.validation_errors_json,
                          'usage_json', runs.usage_json,
                          'trace_metadata_json', runs.trace_metadata_json,
+                         'latency_ms', runs.latency_ms,
                          'started_at_ms', runs.started_at_ms,
                          'finished_at_ms', runs.finished_at_ms
                        ) AS agent_run
@@ -4910,20 +4924,45 @@ def _stale_agent_brief_payload(
 
 def _public_agent_run_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     allowed = (
+        "run_id",
+        "backend",
         "status",
         "outcome",
         "execution_started",
         "model",
         "provider",
         "lane",
+        "workflow_name",
+        "agent_name",
+        "execution_trace_id",
+        "artifact_version_hash",
+        "prompt_version",
+        "schema_version",
+        "validator_version",
+        "guardrail_version",
+        "input_hash",
+        "output_hash",
         "error_class",
         "error",
+        "request_json",
+        "response_json",
+        "validation_errors_json",
+        "usage_json",
+        "trace_metadata_json",
+        "latency_ms",
         "started_at_ms",
         "finished_at_ms",
     )
     payload = {key: row.get(key) for key in allowed if key in row}
     if "error" in payload:
         payload["error"] = _compact_error(payload.get("error"))
+    request_json = _json_dict(payload.get("request_json"))
+    if request_json:
+        payload["research_plan"] = _json_dict(request_json.get("research_plan"))
+        payload["tool_results"] = _json_list(request_json.get("tool_results"))
+        payload["research_execution"] = _json_dict(request_json.get("research_execution"))
+        payload["research_hashes"] = _json_dict(request_json.get("research_hashes"))
+        payload["base_packet"] = _json_dict(request_json.get("base_packet"))
     return payload
 
 

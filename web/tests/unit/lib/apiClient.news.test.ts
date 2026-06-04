@@ -217,6 +217,26 @@ describe("news API client normalization", () => {
               execution_started: true,
               error_class: "ProviderError",
               error: "provider timeout",
+              usage_json: { input_tokens: 12, output_tokens: 3 },
+              request_json: {
+                research_plan: {
+                  status: "selected",
+                  tool_calls: [{ tool_call_id: "call-001", tool_name: "get_observation_history" }],
+                },
+                tool_results: [
+                  {
+                    tool_call_id: "call-001",
+                    tool_name: "get_observation_history",
+                    source_tables: ["news_items"],
+                    rows: [{ source_domain_count: 1 }],
+                    row_count: 1,
+                    truncated: false,
+                    result_hash: "sha256:tool",
+                  },
+                ],
+                research_execution: { status: "ok" },
+              },
+              response_json: { summary_zh: "失败前输出" },
             },
           },
         }),
@@ -232,6 +252,15 @@ describe("news API client normalization", () => {
     expect(item.agent_run?.error_class).toBe("ProviderError");
     expect(item.agent_run?.error).toBe("provider timeout");
     expect(item.agent_run?.error_message).toBe("provider timeout");
+    expect(item.agent_run?.usage_json?.input_tokens).toBe(12);
+    expect(item.agent_run?.research_plan?.status).toBe("selected");
+    expect(item.agent_run?.tool_results?.[0]).toMatchObject({
+      tool_call_id: "call-001",
+      tool_name: "get_observation_history",
+      row_count: 1,
+      truncated: false,
+    });
+    expect(item.agent_run?.response_json?.summary_zh).toBe("失败前输出");
   });
 
   it("does not reconstruct detail lanes from retired token and fact aliases", async () => {

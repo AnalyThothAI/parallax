@@ -771,6 +771,185 @@ def test_opennews_article_id_collapses_across_sources_into_observation_edges(tmp
     ]
 
 
+def test_live_public_url_collapses_opennews_observations_with_different_provider_ids(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        repo.upsert_source(
+            source_id="opennews-news",
+            provider_type="opennews",
+            feed_url="opennews://news",
+            source_domain="6551.io",
+            source_name="OpenNews News",
+            refresh_interval_seconds=60,
+            now_ms=NOW_MS,
+        )
+        canonical_url = (
+            "https://www.coindesk.com/tech/2026/06/03/"
+            "live-markets-bitcoin-crashes-to-usd62-000-as-billions-of-longs-get-liquidated"
+        )
+        news_ids: list[str] = []
+        for index, provider_article_id in enumerate(("2514740", "2514744")):
+            fetch_run_id = repo.start_fetch_run(
+                source_id="opennews-news",
+                started_at_ms=NOW_MS + index,
+            )
+            provider = repo.upsert_provider_item(
+                source_id="opennews-news",
+                fetch_run_id=fetch_run_id,
+                source_item_key=provider_article_id,
+                canonical_url=canonical_url,
+                payload_hash=f"payload-{provider_article_id}",
+                raw_payload_json={
+                    "id": provider_article_id,
+                    "link": canonical_url,
+                    "text": "Live Markets: Bitcoin crashes to $62,000 as billions of longs get liquidated",
+                    "aiRating": {"status": "done"},
+                },
+                fetched_at_ms=NOW_MS + index,
+                provider_article_id=provider_article_id,
+            )
+            news = repo.upsert_canonical_news_item(
+                provider_item_id=provider["provider_item_id"],
+                canonical_url=canonical_url,
+                title="Live Markets: Bitcoin crashes to $62,000 as billions of longs get liquidated",
+                summary="",
+                body_text="Live Markets: Bitcoin crashes to $62,000 as billions of longs get liquidated",
+                language="en",
+                published_at_ms=NOW_MS - 60_000 + index,
+                fetched_at_ms=NOW_MS + index,
+                content_hash="content-live-btc-liquidated",
+                title_fingerprint="live markets bitcoin crashes to 62 000 as billions of longs get liquidated",
+                now_ms=NOW_MS + index,
+            )
+            news_ids.append(str(news["news_item_id"]))
+
+        stored_news = conn.execute(
+            "SELECT * FROM news_items WHERE canonical_item_key = %s",
+            (f"canonical-url:{canonical_url}",),
+        ).fetchone()
+        item_count = conn.execute("SELECT COUNT(*) AS count FROM news_items").fetchone()["count"]
+        edges = conn.execute(
+            """
+            SELECT news_item_id, provider_article_key, match_type, match_confidence
+              FROM news_item_observation_edges
+             ORDER BY provider_article_key
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert news_ids == [stored_news["news_item_id"], stored_news["news_item_id"]]
+    assert item_count == 1
+    assert stored_news["canonical_item_key"] == f"canonical-url:{canonical_url}"
+    assert stored_news["dedup_key_kind"] == "canonical_url"
+    assert stored_news["url_identity_kind"] == "live_page"
+    assert stored_news["duplicate_observation_count"] == 2
+    assert [dict(row) for row in edges] == [
+        {
+            "news_item_id": stored_news["news_item_id"],
+            "provider_article_key": "opennews:2514740",
+            "match_type": "same_canonical_url",
+            "match_confidence": "strong",
+        },
+        {
+            "news_item_id": stored_news["news_item_id"],
+            "provider_article_key": "opennews:2514744",
+            "match_type": "same_canonical_url",
+            "match_confidence": "strong",
+        },
+    ]
+
+
+def test_single_segment_public_url_collapses_opennews_observations_with_different_provider_ids(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        repo.upsert_source(
+            source_id="opennews-news",
+            provider_type="opennews",
+            feed_url="opennews://news",
+            source_domain="6551.io",
+            source_name="OpenNews News",
+            refresh_interval_seconds=60,
+            now_ms=NOW_MS,
+        )
+        canonical_url = "https://financefeeds.com/bessent-urges-lawmakers-to-pass-crypto-clarity-act-this-summer"
+        news_ids: list[str] = []
+        for index, provider_article_id in enumerate(("2511056", "2511057")):
+            fetch_run_id = repo.start_fetch_run(
+                source_id="opennews-news",
+                started_at_ms=NOW_MS + index,
+            )
+            provider = repo.upsert_provider_item(
+                source_id="opennews-news",
+                fetch_run_id=fetch_run_id,
+                source_item_key=provider_article_id,
+                canonical_url=canonical_url,
+                payload_hash=f"payload-{provider_article_id}",
+                raw_payload_json={
+                    "id": provider_article_id,
+                    "link": canonical_url,
+                    "text": "Bessent Urges Lawmakers to Pass Crypto Clarity Act This Summer",
+                    "aiRating": {"status": "done"},
+                },
+                fetched_at_ms=NOW_MS + index,
+                provider_article_id=provider_article_id,
+            )
+            news = repo.upsert_canonical_news_item(
+                provider_item_id=provider["provider_item_id"],
+                canonical_url=canonical_url,
+                title="Bessent Urges Lawmakers to Pass Crypto Clarity Act This Summer",
+                summary="",
+                body_text="Bessent Urges Lawmakers to Pass Crypto Clarity Act This Summer",
+                language="en",
+                published_at_ms=NOW_MS - 60_000 + index,
+                fetched_at_ms=NOW_MS + index,
+                content_hash="content-bessent-clarity-act",
+                title_fingerprint="bessent urges lawmakers to pass crypto clarity act this summer",
+                now_ms=NOW_MS + index,
+            )
+            news_ids.append(str(news["news_item_id"]))
+
+        stored_news = conn.execute(
+            "SELECT * FROM news_items WHERE canonical_item_key = %s",
+            (f"canonical-url:{canonical_url}",),
+        ).fetchone()
+        item_count = conn.execute("SELECT COUNT(*) AS count FROM news_items").fetchone()["count"]
+        edges = conn.execute(
+            """
+            SELECT news_item_id, provider_article_key, match_type, match_confidence
+              FROM news_item_observation_edges
+             ORDER BY provider_article_key
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert news_ids == [stored_news["news_item_id"], stored_news["news_item_id"]]
+    assert item_count == 1
+    assert stored_news["canonical_item_key"] == f"canonical-url:{canonical_url}"
+    assert stored_news["dedup_key_kind"] == "canonical_url"
+    assert stored_news["url_identity_kind"] == "unknown"
+    assert stored_news["duplicate_observation_count"] == 2
+    assert [dict(row) for row in edges] == [
+        {
+            "news_item_id": stored_news["news_item_id"],
+            "provider_article_key": "opennews:2511056",
+            "match_type": "same_canonical_url",
+            "match_confidence": "strong",
+        },
+        {
+            "news_item_id": stored_news["news_item_id"],
+            "provider_article_key": "opennews:2511057",
+            "match_type": "same_canonical_url",
+            "match_confidence": "strong",
+        },
+    ]
+
+
 def test_opennews_provider_global_ids_do_not_collapse_by_exact_content_hash(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
@@ -3896,20 +4075,22 @@ def test_get_news_item_detail_hydrates_agent_brief_and_latest_run_summary(tmp_pa
     assert "agent_run_id" not in detail["agent_brief"]
     assert "input_hash" not in detail["agent_brief"]
     assert "artifact_version_hash" not in detail["agent_brief"]
-    assert detail["agent_run"] == {
-        "status": "completed",
-        "outcome": "ready",
-        "execution_started": True,
-        "model": "gpt-5-mini",
-        "provider": "litellm",
-        "lane": NEWS_ITEM_BRIEF_LANE,
-        "error_class": None,
-        "error": None,
-        "started_at_ms": NOW_MS + 90,
-        "finished_at_ms": NOW_MS + 100,
-    }
-    assert "request_json" not in detail["agent_run"]
-    assert "response_json" not in detail["agent_run"]
+    agent_run = detail["agent_run"]
+    assert agent_run["run_id"] == "run-detail-1"
+    assert agent_run["status"] == "completed"
+    assert agent_run["outcome"] == "ready"
+    assert agent_run["execution_started"] is True
+    assert agent_run["model"] == "gpt-5-mini"
+    assert agent_run["provider"] == "litellm"
+    assert agent_run["lane"] == NEWS_ITEM_BRIEF_LANE
+    assert agent_run["latency_ms"] == 10
+    assert agent_run["usage_json"] == {"input_tokens": 10, "output_tokens": 5}
+    assert agent_run["request_json"]["research_plan"]["status"] == "selected"
+    assert agent_run["tool_results"][0]["tool_name"] == "get_observation_history"
+    assert agent_run["research_execution"]["status"] == "ok"
+    assert agent_run["research_hashes"]["synthesis_input_hash"] == "sha256:synthesis-detail"
+    assert agent_run["base_packet"]["news_item_id"] == news_item_id
+    assert agent_run["response_json"]["summary_zh"] == "raw provider response is visible in detail"
 
 
 def test_get_news_item_detail_reads_current_projected_signal_and_lanes(tmp_path) -> None:
@@ -5079,8 +5260,28 @@ def _insert_agent_run(repo: NewsRepository, *, news_item_id: str, run_id: str) -
         execution_started=True,
         status="completed",
         outcome="ready",
-        request_json={"redacted": True},
-        response_json={"summary_zh": "raw provider response should not be in detail"},
+        request_json={
+            "base_packet": {"news_item_id": news_item_id},
+            "research_plan": {
+                "status": "selected",
+                "tool_calls": [{"tool_call_id": "call-001", "tool_name": "get_observation_history"}],
+            },
+            "tool_results": [
+                {
+                    "tool_call_id": "call-001",
+                    "tool_name": "get_observation_history",
+                    "source_tables": ["news_items", "news_item_observation_edges"],
+                    "row_count": 1,
+                    "rows": [{"source_domain_count": 1}],
+                    "truncated": False,
+                    "result_hash": "sha256:tool-detail",
+                    "evidence_refs": ["observation_history:news"],
+                }
+            ],
+            "research_execution": {"status": "ok"},
+            "research_hashes": {"synthesis_input_hash": "sha256:synthesis-detail"},
+        },
+        response_json={"summary_zh": "raw provider response is visible in detail"},
         validation_errors_json=[],
         trace_metadata_json={"attempt": 1},
         usage_json={"input_tokens": 10, "output_tokens": 5},

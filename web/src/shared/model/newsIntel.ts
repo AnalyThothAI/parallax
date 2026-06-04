@@ -91,9 +91,27 @@ export type NewsAgentBrief = {
   status: NewsAgentBriefStatus;
   direction?: "bullish" | "bearish" | "mixed" | "neutral" | string | null;
   decision_class?: "driver" | "watch" | "context" | "discard" | string | null;
+  novelty_status?: "new" | "repeat" | "update" | "duplicate" | "unclear" | string | null;
+  confirmation_state?:
+    | "single_source"
+    | "multi_source_confirmed"
+    | "provider_only"
+    | "conflicting"
+    | "unclear"
+    | string
+    | null;
   title_zh?: string | null;
   summary_zh?: string | null;
   market_read_zh?: string | null;
+  source_consensus_zh?: string | null;
+  retrieval_notes_zh?: string | null;
+  retrieval_evidence_refs?: NewsAgentEvidenceRef[];
+  research_todos_zh?: string[];
+  used_tool_call_ids?: string[];
+  affected_assets?: unknown[];
+  impact_zh?: string | null;
+  watch_items_zh?: string | null;
+  confidence?: string | number | null;
   bull_strength?: string | null;
   bear_strength?: string | null;
   data_gap_count?: number | null;
@@ -114,19 +132,59 @@ export type NewsAgentBrief = {
   evidence_refs?: NewsAgentEvidenceRef[];
 };
 
+export type NewsResearchToolResult = {
+  tool_call_id?: string | null;
+  tool_name?: string | null;
+  schema_version?: string | null;
+  query_version?: string | null;
+  input?: Record<string, unknown> | null;
+  source_tables?: string[];
+  rows?: unknown[];
+  row_count?: number | null;
+  truncated?: boolean | null;
+  skipped_reason?: string | null;
+  result_hash?: string | null;
+  generated_at_ms?: number | null;
+  latency_ms?: number | null;
+  redaction_notes?: string[];
+  evidence_refs?: NewsAgentEvidenceRef[];
+};
+
 export type NewsAgentRunSummary = {
   run_id?: string | null;
+  backend?: string | null;
   status?: string | null;
   outcome?: string | null;
+  provider?: string | null;
   model?: string | null;
+  lane?: string | null;
+  workflow_name?: string | null;
+  agent_name?: string | null;
+  execution_trace_id?: string | null;
+  artifact_version_hash?: string | null;
   prompt_version?: string | null;
   schema_version?: string | null;
+  validator_version?: string | null;
+  guardrail_version?: string | null;
+  input_hash?: string | null;
+  output_hash?: string | null;
   started_at_ms?: number | null;
   finished_at_ms?: number | null;
+  latency_ms?: number | null;
   execution_started?: boolean | null;
   error_class?: string | null;
   error?: string | null;
   error_message?: string | null;
+  request_json?: Record<string, unknown> | null;
+  response_json?: Record<string, unknown> | null;
+  validation_errors_json?: unknown[];
+  usage_json?: Record<string, unknown>;
+  trace_metadata_json?: Record<string, unknown>;
+  research_plan?: Record<string, unknown> | null;
+  tool_results?: NewsResearchToolResult[];
+  research_execution?: Record<string, unknown> | null;
+  research_hashes?: Record<string, unknown> | null;
+  base_packet?: Record<string, unknown> | null;
 };
 
 export type NewsRow = {
@@ -137,6 +195,11 @@ export type NewsRow = {
   headline: string;
   title?: string | null;
   summary?: string | null;
+  body_text?: string | null;
+  language?: string | null;
+  published_at_ms?: number | null;
+  fetched_at_ms?: number | null;
+  duplicate_observation_count?: number | null;
   source_domain?: string | null;
   provider_type?: string | null;
   source_role?: string | null;
@@ -176,6 +239,10 @@ export type NewsItemDetail = NewsRow & {
   token_mentions?: unknown[];
   fact_candidates?: NewsFactLane[];
   agent_run?: NewsAgentRunSummary | null;
+  provider_item?: Record<string, unknown> | null;
+  fetch_run?: Record<string, unknown> | null;
+  observation_edges?: Record<string, unknown>[];
+  provider_observations?: Record<string, unknown>[];
 };
 
 export type NewsRowsData = {

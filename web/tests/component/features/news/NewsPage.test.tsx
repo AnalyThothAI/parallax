@@ -133,7 +133,11 @@ describe("NewsPage", () => {
       }),
     );
     await screen.findByText("Evidence page");
-    expect(screen.getByText("Provider aiRating")).toBeInTheDocument();
+    expect(screen.getByText("Original article")).toBeInTheDocument();
+    expect(screen.getByText("OpenNews source content.")).toBeInTheDocument();
+    expect(screen.getByText("Research tools")).toBeInTheDocument();
+    expect(screen.getAllByText("get_observation_history").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Provider aiRating").length).toBeGreaterThan(0);
     expect(screen.getByText("Token impacts")).toBeInTheDocument();
     expect(screen.getByText("Execution gaps")).toBeInTheDocument();
     expect(screen.getByText("Price reaction")).toBeInTheDocument();
@@ -234,6 +238,7 @@ function newsSignalEnvelope(displaySignal: NewsSignalSummary): NewsSignalEnvelop
 const providerDetail: NewsItemDetail = {
   ...providerRow,
   content: "OpenNews source content.",
+  body_text: "OpenNews source content.",
   source: {
     provider_type: "opennews",
     source_domain: "6551.io",
@@ -241,6 +246,35 @@ const providerDetail: NewsItemDetail = {
     source_quality_status: "healthy",
   },
   agent_brief: {
-    status: "pending",
+    status: "ready",
+    summary_zh: "ETF 资金流持续增强。",
+    market_read_zh: "AI reads this as a liquidity signal worth watching.",
+    confirmation_state: "single_source",
+    novelty_status: "new",
+  },
+  agent_run: {
+    run_id: "run-news-1",
+    status: "completed",
+    outcome: "ready",
+    model: "deepseek-v4-flash",
+    provider: "litellm",
+    latency_ms: 1200,
+    usage_json: { input_tokens: 100, output_tokens: 20 },
+    research_plan: {
+      status: "selected",
+      tool_calls: [{ tool_call_id: "call-001", tool_name: "get_observation_history" }],
+    },
+    tool_results: [
+      {
+        tool_call_id: "call-001",
+        tool_name: "get_observation_history",
+        source_tables: ["news_items", "news_item_observation_edges"],
+        row_count: 1,
+        rows: [{ source_domain_count: 1 }],
+        truncated: false,
+        result_hash: "sha256:tool-news-1",
+      },
+    ],
+    response_json: { summary_zh: "ETF 资金流持续增强。" },
   },
 };

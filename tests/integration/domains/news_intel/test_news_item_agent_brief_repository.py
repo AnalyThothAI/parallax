@@ -329,10 +329,17 @@ def test_agent_run_and_current_brief_round_trip_gateway_audit_metadata(tmp_path)
             status="ready",
             direction="bullish",
             decision_class="driver",
+            novelty_status="new",
+            confirmation_state="single_source",
             summary_zh="ETF filing lifts SOL attention.",
             market_read_zh=(
                 "SOL ETF filing adds regulatory narrative attention, while approval timing remains uncertain."
             ),
+            source_consensus_zh="Single-source report; no independent confirmation yet.",
+            retrieval_notes_zh="Repository context was checked and no conflicting source was found.",
+            retrieval_evidence_refs=["tool:call-001"],
+            research_todos_zh=["Watch for official filing URL."],
+            used_tool_call_ids=["call-001"],
             bull_view={
                 "strength": "moderate",
                 "thesis_zh": "Regulatory narrative could pull forward approval positioning.",
