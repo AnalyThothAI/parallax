@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from typing import Any
+from unittest.mock import patch
 
 from parallax.domains.news_intel.repositories.news_repository import NewsRepository
 from parallax.domains.news_intel.types.news_item_brief import NewsContextTargetRef
@@ -265,27 +267,109 @@ def test_source_quality_context_is_targeted_to_item_sources() -> None:
     assert "independent_source_confirmed" not in sql
 
 
+def test_material_duplicate_lock_covers_candidate_window_without_symbol_partition() -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    repo._lock_material_duplicate_candidate_window(
+        source_id="opennews-news",
+        material_fingerprint="bitcoin crashes as billions of longs get liquidated",
+        published_at_ms=1_200_000,
+    )
+
+    lock_keys = [
+        json.loads(params[0])
+        for sql, params in conn.statements
+        if "pg_advisory_xact_lock" in sql and isinstance(params, tuple)
+    ]
+    assert lock_keys == [
+        [
+            "news-material-duplicate-v2",
+            "opennews-news",
+            "bitcoin crashes as billions of longs get liquidated",
+            600_000,
+        ],
+        [
+            "news-material-duplicate-v2",
+            "opennews-news",
+            "bitcoin crashes as billions of longs get liquidated",
+            1_200_000,
+        ],
+        [
+            "news-material-duplicate-v2",
+            "opennews-news",
+            "bitcoin crashes as billions of longs get liquidated",
+            1_800_000,
+        ],
+    ]
+
+
+def test_edge_remap_cleanup_locks_old_news_item_row_before_delete() -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    assert repo._lock_news_item_for_edge_remap_cleanup(news_item_id="news-old") is True
+
+    assert "FROM news_items" in conn.sql
+    assert "WHERE news_item_id = %s" in conn.sql
+    assert "FOR UPDATE" in conn.sql
+    assert conn.params == ("news-old",)
+
+
+def test_upsert_canonical_news_item_wraps_autocommit_connection_in_transaction() -> None:
+    conn = TransactionRecordingConnection()
+    repo = NewsRepository(conn)
+    original = repo.upsert_canonical_news_item
+
+    with patch.object(repo, "upsert_canonical_news_item", return_value={"news_item_id": "news-1"}) as inner_call:
+        result = original(
+            provider_item_id="provider-1",
+            canonical_url="https://example.com/news/1",
+            title="Headline",
+            fetched_at_ms=1,
+            content_hash="content-1",
+            title_fingerprint="headline",
+            now_ms=2,
+            commit=True,
+        )
+
+    assert result == {"news_item_id": "news-1"}
+    assert conn.events == ["begin", "commit"]
+    assert inner_call.call_args.kwargs["commit"] is False
+    assert inner_call.call_args.kwargs["provider_item_id"] == "provider-1"
+
+
 class CapturingConnection:
     def __init__(self) -> None:
         self.sql = ""
         self.params: object = None
         self.commit_count = 0
+        self.statements: list[tuple[str, object]] = []
 
     def execute(self, sql: str, params: object = None) -> CapturingCursor:
         self.sql = sql
         self.params = params
-        return CapturingCursor()
+        self.statements.append((sql, params))
+        row = (
+            {"news_item_id": "news-old", "has_edges": False}
+            if "FROM news_items" in sql and "FOR UPDATE" in sql
+            else None
+        )
+        return CapturingCursor(row=row)
 
     def commit(self) -> None:
         self.commit_count += 1
 
 
 class CapturingCursor:
+    def __init__(self, *, row: dict[str, Any] | None = None) -> None:
+        self.row = row
+
     def fetchall(self) -> list[dict[str, Any]]:
         return []
 
     def fetchone(self) -> dict[str, Any] | None:
-        return None
+        return self.row
 
 
 def _flatten_params(params: object) -> list[object]:
@@ -297,3 +381,24 @@ def _flatten_params(params: object) -> list[object]:
             flattened.extend(_flatten_params(item))
         return flattened
     return [params]
+
+
+class TransactionRecordingConnection:
+    autocommit = True
+
+    def __init__(self) -> None:
+        self.events: list[str] = []
+
+    def transaction(self) -> TransactionRecorder:
+        return TransactionRecorder(self.events)
+
+
+class TransactionRecorder:
+    def __init__(self, events: list[str]) -> None:
+        self.events = events
+
+    def __enter__(self) -> None:
+        self.events.append("begin")
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        self.events.append("rollback" if exc_type else "commit")

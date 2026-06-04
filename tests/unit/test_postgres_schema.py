@@ -206,6 +206,9 @@ NEWS_RESEARCH_INDEX_SUPPORT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260603_0147_news_research_index_support.py"
 )
 NEWS_REPOSITORY = Path("src/parallax/domains/news_intel/repositories/news_repository.py")
+NEWS_MATERIAL_DUPLICATE_HARD_CUT_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260604_0148_news_material_duplicate_hard_cut.py"
+)
 TOKEN_PULSE_EQUITY_CPU_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260529_0124_token_pulse_equity_cpu_hard_cut.py"
 )
@@ -1908,6 +1911,24 @@ def test_news_research_index_support_adds_concurrent_search_indexes() -> None:
     assert "RESET statement_timeout" in text
     assert "DROP INDEX CONCURRENTLY IF EXISTS idx_news_fact_candidates_claim_trgm_valid" in downgrade_text
     assert "DROP INDEX CONCURRENTLY IF EXISTS idx_news_token_mentions_symbol_upper_item" in downgrade_text
+
+
+def test_news_observation_edges_allow_same_material_title_match_type() -> None:
+    assert NEWS_MATERIAL_DUPLICATE_HARD_CUT_MIGRATION.exists(), (
+        f"{NEWS_MATERIAL_DUPLICATE_HARD_CUT_MIGRATION} missing; add material duplicate hard-cut migration"
+    )
+    text = NEWS_MATERIAL_DUPLICATE_HARD_CUT_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    assert 'revision = "20260604_0148"' in text
+    assert 'down_revision = "20260603_0147"' in text
+    assert "news_item_observation_edges_match_type_check" in text
+    assert "same_material_title" in text
+    assert "same_content_hash" in text
+    assert "same_qualified_content" not in text
+    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_items_source_published_material_lookup" in text
+    assert "ON news_items(source_id, published_at_ms DESC, news_item_id)" in normalized_text
+    assert "with op.get_context().autocommit_block():" in text
 
 
 def test_asset_migration_adds_identity_resolution_tables() -> None:

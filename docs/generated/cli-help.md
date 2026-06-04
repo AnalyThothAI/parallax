@@ -52,10 +52,10 @@ options:
 
 ```
 usage: parallax ops [-h]
-                    {backfill-account-quality,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,projection-status,worker-status,queue-inspect,queue-resolve,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,cleanup-news-brief-input,rebuild-news-canonical-items,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors} ...
+                    {backfill-account-quality,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,projection-status,worker-status,queue-inspect,queue-resolve,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,cleanup-news-brief-input,cleanup-news-intel-hard-cut,rebuild-news-canonical-items,repair-news-duplicates-hard-cut,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors} ...
 
 positional arguments:
-  {backfill-account-quality,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,projection-status,worker-status,queue-inspect,queue-resolve,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,cleanup-news-brief-input,rebuild-news-canonical-items,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors}
+  {backfill-account-quality,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,projection-status,worker-status,queue-inspect,queue-resolve,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,cleanup-news-brief-input,cleanup-news-intel-hard-cut,rebuild-news-canonical-items,repair-news-duplicates-hard-cut,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors}
     backfill-account-quality
                         backfill account token-call stats and quality
                         snapshots
@@ -82,9 +82,15 @@ positional arguments:
     cleanup-news-brief-input
                         delete stale News brief_input dirty targets that no
                         longer pass the brief policy
+    cleanup-news-intel-hard-cut
+                        dry-run or execute the News Intel hard-cut data
+                        cleanup
     rebuild-news-canonical-items
                         enqueue a bounded rebuild of News canonical item
                         derived projections
+    repair-news-duplicates-hard-cut
+                        repair historical News duplicate rows under the
+                        current hard-cut identity policy
     sync-binance-usdt-perp-universe
                         sync Binance USD-M USDT perpetual contracts into the
                         CEX registry

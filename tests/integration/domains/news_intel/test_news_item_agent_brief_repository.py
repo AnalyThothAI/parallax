@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from parallax.app.runtime.repository_session import repositories_for_connection
 from parallax.domains.news_intel._constants import (
     NEWS_ITEM_BRIEF_GUARDRAIL_VERSION,
     NEWS_ITEM_BRIEF_PROMPT_VERSION,
@@ -9,6 +10,7 @@ from parallax.domains.news_intel._constants import (
     NEWS_ITEM_BRIEF_VALIDATOR_VERSION,
 )
 from parallax.domains.news_intel.repositories.news_repository import NewsRepository
+from parallax.domains.news_intel.runtime.news_projection_work import enqueue_item_brief_work
 from parallax.domains.news_intel.services.news_item_brief_input import (
     build_news_item_brief_input_packet,
 )
@@ -317,6 +319,64 @@ def test_brief_target_material_watermark_ignores_refetch_updated_at(tmp_path) ->
         conn.close()
 
     assert second["source_updated_at_ms"] == first["source_updated_at_ms"]
+
+
+def test_material_duplicate_observation_reuses_current_brief_target(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repos = repositories_for_connection(conn)
+        repo = repos.news
+        _upsert_opennews_source(repo)
+        coindesk_url = (
+            "https://www.coindesk.com/markets/2026/06/03/"
+            "bitcoin-crashes-to-usd62-000-as-billions-of-longs-get-liquidated"
+        )
+        title = "Bitcoin crashes to $62,000 as billions of longs get liquidated"
+        fallback_news = _upsert_opennews_observation(
+            repo,
+            article_id="2514742",
+            canonical_url="opennews://item/2514742",
+            title=f"COINDESK: {title}",
+            now_ms=NOW_MS,
+            processed=True,
+        )
+        public_news = _upsert_opennews_observation(
+            repo,
+            article_id="2514740",
+            canonical_url=coindesk_url,
+            title=title,
+            now_ms=NOW_MS + 1,
+            processed=True,
+        )
+        affected_ids = [str(item_id) for item_id in public_news["affected_news_item_ids"]]
+
+        enqueue_item_brief_work(
+            repos,
+            news_item_ids=affected_ids,
+            reason="canonical_news_item_merge",
+            now_ms=NOW_MS + 2,
+            commit=True,
+        )
+        targets = conn.execute(
+            """
+            SELECT projection_name, target_id
+              FROM news_projection_dirty_targets
+             WHERE projection_name = 'brief_input'
+             ORDER BY target_id
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert str(fallback_news["news_item_id"]) != str(public_news["news_item_id"])
+    assert affected_ids == [str(public_news["news_item_id"]), str(fallback_news["news_item_id"])]
+    assert [dict(row) for row in targets] == [
+        {
+            "projection_name": "brief_input",
+            "target_id": str(public_news["news_item_id"]),
+        }
+    ]
 
 
 def test_agent_run_and_current_brief_round_trip_gateway_audit_metadata(tmp_path) -> None:
@@ -687,3 +747,53 @@ def _insert_source_provider_and_item(
     if processed:
         repo.mark_item_processed(news_item_id=str(news["news_item_id"]), processed_at_ms=now_ms)
     return str(news["news_item_id"])
+
+
+def _upsert_opennews_source(repo: NewsRepository) -> None:
+    repo.upsert_source(
+        source_id="opennews-news",
+        provider_type="opennews",
+        feed_url="opennews://news",
+        source_domain="6551.io",
+        source_name="OpenNews News",
+        refresh_interval_seconds=60,
+        now_ms=NOW_MS,
+    )
+
+
+def _upsert_opennews_observation(
+    repo: NewsRepository,
+    *,
+    article_id: str,
+    canonical_url: str,
+    title: str,
+    now_ms: int,
+    processed: bool,
+) -> dict[str, object]:
+    provider = repo.upsert_provider_item(
+        source_id="opennews-news",
+        fetch_run_id=repo.start_fetch_run(source_id="opennews-news", started_at_ms=now_ms),
+        source_item_key=article_id,
+        canonical_url=canonical_url,
+        payload_hash=f"payload-{article_id}",
+        raw_payload_json={"id": article_id, "link": canonical_url, "text": title},
+        fetched_at_ms=now_ms,
+        provider_article_id=article_id,
+    )
+    news = repo.upsert_canonical_news_item(
+        provider_item_id=provider["provider_item_id"],
+        canonical_url=canonical_url,
+        title=title,
+        summary="",
+        body_text=title,
+        language="en",
+        published_at_ms=now_ms,
+        fetched_at_ms=now_ms,
+        content_hash=f"content-{article_id}",
+        title_fingerprint=title.lower().replace(":", "").replace(",", "").replace("$", "").replace("-", " "),
+        now_ms=now_ms,
+        provider_token_impacts=[{"symbol": "BTC", "signal": "short", "score": 85}],
+    )
+    if processed:
+        repo.mark_item_processed(news_item_id=str(news["news_item_id"]), processed_at_ms=now_ms)
+    return news

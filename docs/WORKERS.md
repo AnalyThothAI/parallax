@@ -189,11 +189,14 @@ notification_delivery
 News runtime provider support is intentionally smaller than the source
 classification vocabulary. The supported provider types are `rss`, `atom`,
 `json_feed`, `cryptopanic`, and `opennews`. OpenNews is REST-only inside
-`news_fetch`: bounded `/open/news_search` pages catch up by source cursor and
-merge partial/ready article fragments into the same `news_provider_items` /
-`news_items` facts by provider article id. Short-lived OpenNews WebSocket
-subscribe cycles, hybrid fetch mode, and WebSocket policy keys are rejected
-rather than kept as compatibility paths.
+`news_fetch`: bounded `/open/news_search` pages catch up by source cursor,
+persist provider observations, and merge article facts through deterministic
+canonical identity. Public URLs admitted by `public_url_identity_policy` are
+hard item identity; generic/homepage/live/feed/preview URLs remain raw/provider
+evidence. OpenNews missing-link observations may attach through bounded
+material title identity before falling back to provider article id. Short-lived
+OpenNews WebSocket subscribe cycles, hybrid fetch mode, and WebSocket policy
+keys are rejected rather than kept as compatibility paths.
 `/api/news/sources/status` reports:
 
 - `provider_capabilities.supported_provider_types`
@@ -212,7 +215,10 @@ curl -sS -H "Authorization: Bearer $GMGN_API_TOKEN" \
 
 Only report config paths and booleans from `parallax config`; never
 copy provider credentials, cookies, tokens, proxy URLs, or API keys into logs or
-docs. Staged provider waves are:
+docs. `parallax ops repair-news-duplicates-hard-cut` is a guarded ops repair for
+historical duplicate facts and derived rows; it is not a runtime worker path and
+must be run only after the News worker/lease/advisory-lock guard passes.
+Staged provider waves are:
 
 1. Enable `cryptopanic` when credentials exist, as aggregator/specialist media.
 2. Enable `opennews` when `news_intel.opennews.api_token` exists and explicit

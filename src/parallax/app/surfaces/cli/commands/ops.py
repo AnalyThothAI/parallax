@@ -57,6 +57,10 @@ from parallax.domains.narrative_intel.runtime.narrative_admission_worker import 
 from parallax.domains.narrative_intel.runtime.token_discussion_digest_worker import (
     TokenDiscussionDigestWorker,
 )
+from parallax.domains.news_intel.services.news_duplicate_hard_cut_repair import (
+    NewsDuplicateHardCutRepairAbort,
+    repair_news_duplicates_hard_cut,
+)
 from parallax.domains.news_intel.services.news_intel_hard_cut_cleanup import (
     NewsIntelHardCutCleanupAbort,
     cleanup_news_intel_hard_cut,
@@ -246,6 +250,18 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
                 execute=bool(args.execute),
                 now_ms=_now_ms(),
             )
+            return 0, {"ok": True, "data": data}
+
+        if args.ops_command == "repair-news-duplicates-hard-cut":
+            try:
+                data = repair_news_duplicates_hard_cut(
+                    repos,
+                    limit=args.limit,
+                    execute=bool(args.execute),
+                    now_ms=_now_ms(),
+                )
+            except NewsDuplicateHardCutRepairAbort as exc:
+                return 1, {"ok": False, "error": str(exc)}
             return 0, {"ok": True, "data": data}
 
         if args.ops_command == "queue-inspect":

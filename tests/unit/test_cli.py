@@ -160,6 +160,9 @@ def test_ops_news_dedup_commands_are_registered_without_compatibility_flags() ->
     )
     rebuild_dry_run = parser.parse_args(["ops", "rebuild-news-canonical-items", "--limit", "25", "--dry-run"])
     rebuild_execute = parser.parse_args(["ops", "rebuild-news-canonical-items", "--limit", "25", "--execute"])
+    repair_default = parser.parse_args(["ops", "repair-news-duplicates-hard-cut", "--dry-run"])
+    repair_dry_run = parser.parse_args(["ops", "repair-news-duplicates-hard-cut", "--limit", "25", "--dry-run"])
+    repair_execute = parser.parse_args(["ops", "repair-news-duplicates-hard-cut", "--limit", "25", "--execute"])
 
     assert diagnostics.ops_command == "news-dedup-diagnostics"
     assert diagnostics.window_hours == 8.0
@@ -176,12 +179,28 @@ def test_ops_news_dedup_commands_are_registered_without_compatibility_flags() ->
     assert rebuild_dry_run.dry_run is True
     assert rebuild_dry_run.execute is False
     assert rebuild_execute.execute is True
+    assert repair_default.limit == 20000
+    assert repair_default.dry_run is True
+    assert repair_dry_run.ops_command == "repair-news-duplicates-hard-cut"
+    assert repair_dry_run.limit == 25
+    assert repair_dry_run.dry_run is True
+    assert repair_dry_run.execute is False
+    assert repair_execute.execute is True
     assert not hasattr(diagnostics, "include_legacy")
     assert not hasattr(rebuild_execute, "legacy_id")
     assert not hasattr(rebuild_execute, "raw_item_id")
+    assert not hasattr(repair_execute, "legacy_id")
+    assert not hasattr(repair_execute, "raw_item_id")
+    assert not hasattr(repair_execute, "include_legacy")
 
     with pytest.raises(SystemExit):
         parser.parse_args(["ops", "rebuild-news-canonical-items"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ops", "repair-news-duplicates-hard-cut"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ops", "repair-news-duplicates-hard-cut", "--limit", "25", "--legacy-id", "old"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ops", "repair-news-duplicates-hard-cut", "--limit", "25", "--dry-run", "--execute"])
     with pytest.raises(SystemExit):
         parser.parse_args(["ops", "cleanup-news-brief-input"])
 

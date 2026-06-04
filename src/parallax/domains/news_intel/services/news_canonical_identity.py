@@ -4,6 +4,7 @@ import hashlib
 from dataclasses import dataclass
 from typing import Any
 
+from parallax.domains.news_intel.services.news_material_identity import material_title_fingerprint
 from parallax.domains.news_intel.services.news_url_identity import (
     hard_public_url_identity_key,
     qualified_content_identity_url_allowed,
@@ -68,6 +69,7 @@ def canonical_identity_for_observation(
     )
     content_title = title if str(title or "").strip() else normalized_title
     qualified_hash = qualified_content_hash(content_title, summary, body_text)
+    material_fingerprint = material_title_fingerprint(content_title)
 
     public_url_identity_key = hard_public_url_identity_key(normalized_url)
     if public_url_identity_key:
@@ -88,6 +90,7 @@ def canonical_identity_for_observation(
                 "provider_article_key": article_key or None,
                 "content_hash": normalized_content_hash or None,
                 "qualified_content_hash": qualified_hash or None,
+                "material_title_fingerprint": material_fingerprint,
             },
         )
 
@@ -108,6 +111,7 @@ def canonical_identity_for_observation(
                 "url_identity_kind": url_kind,
                 "content_hash": normalized_content_hash or None,
                 "qualified_content_hash": qualified_hash or None,
+                "material_title_fingerprint": material_fingerprint,
             },
         )
 
@@ -117,11 +121,12 @@ def canonical_identity_for_observation(
             dedup_key_kind="content_hash",
             dedup_key_confidence="strong",
             url_identity_kind=url_kind,
-            match_type="same_qualified_content",
+            match_type="same_content_hash",
             match_confidence="strong",
             evidence={
                 "content_hash": normalized_content_hash or None,
                 "qualified_content_hash": qualified_hash,
+                "material_title_fingerprint": material_fingerprint,
                 "canonical_url": normalized_url,
                 "url_identity_kind": url_kind,
                 "source_id": normalized_source_id,
@@ -150,6 +155,7 @@ def canonical_identity_for_observation(
             "provider_article_key": article_key or None,
             "content_hash": normalized_content_hash or None,
             "qualified_content_hash": qualified_hash or None,
+            "material_title_fingerprint": material_fingerprint,
         },
     )
 

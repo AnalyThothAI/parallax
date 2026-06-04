@@ -19,9 +19,9 @@ def enqueue_page_reprojection(
     commit: bool = True,
 ) -> int:
     watermarks = dict(source_watermark_ms_by_news_item_id or {})
+    valid_news_item_ids = _servable_news_item_ids(repos, news_item_ids)
     targets = [
-        _news_item_target(PAGE_PROJECTION, news_item_id, watermarks=watermarks)
-        for news_item_id in _unique(news_item_ids)
+        _news_item_target(PAGE_PROJECTION, news_item_id, watermarks=watermarks) for news_item_id in valid_news_item_ids
     ]
     return _enqueue(repos, targets, reason=reason, now_ms=now_ms, commit=commit)
 
@@ -39,7 +39,7 @@ def enqueue_item_brief_work(
     priorities = dict(priority_by_news_item_id or {})
     watermarks = dict(source_watermark_ms_by_news_item_id or {})
     targets: list[dict[str, Any]] = []
-    for news_item_id in _unique(news_item_ids):
+    for news_item_id in _servable_news_item_ids(repos, news_item_ids):
         target = _news_item_target(ITEM_BRIEF_INPUT, news_item_id, watermarks=watermarks)
         if news_item_id in priorities:
             target["priority"] = int(priorities[news_item_id])
@@ -212,6 +212,17 @@ def _enqueue(repos: Any, targets: list[dict[str, Any]], *, reason: str, now_ms: 
             commit=commit,
         )
     )
+
+
+def _servable_news_item_ids(repos: Any, news_item_ids: Iterable[str]) -> list[str]:
+    item_ids = _unique(news_item_ids)
+    if not item_ids:
+        return []
+    news_repo = getattr(repos, "news", None)
+    servable = getattr(news_repo, "servable_news_item_ids", None)
+    if not callable(servable):
+        return item_ids
+    return list(servable(item_ids))
 
 
 def _news_item_target(
