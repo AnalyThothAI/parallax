@@ -208,8 +208,6 @@ class CliTests(unittest.TestCase):
             ["ops", "cleanup-news-intel-hard-cut"],
             ["ops", "cleanup-news-intel-hard-cut", "--execute"],
             ["ops", "enqueue-token-capture-tier-rank-set", "--execute"],
-            ["ops", "cleanup-news-item-brief-schema-hard-cut", "--dry-run"],
-            ["ops", "cleanup-news-item-brief-schema-hard-cut", "--execute"],
         ]
 
         parsed = [parser.parse_args(command) for command in commands]
@@ -276,10 +274,6 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[30].ops_command, "enqueue-token-capture-tier-rank-set")
         self.assertEqual(parsed[30].window, "24h")
         self.assertTrue(parsed[30].execute)
-        self.assertEqual(parsed[31].ops_command, "cleanup-news-item-brief-schema-hard-cut")
-        self.assertTrue(parsed[31].dry_run)
-        self.assertEqual(parsed[32].ops_command, "cleanup-news-item-brief-schema-hard-cut")
-        self.assertTrue(parsed[32].execute)
 
     def test_cli_ops_mirror_token_images_has_no_source_limit_option(self):
         parser = build_parser()
