@@ -6,6 +6,9 @@ from collections.abc import Iterable, Mapping
 from contextlib import nullcontext
 from typing import Any
 
+from parallax.domains.news_intel.services.news_item_agent_policy import (
+    NEWS_ITEM_AGENT_BRIEF_MIN_ADMITTED_PROVIDER_SCORE,
+)
 from parallax.platform.db.json_safety import postgres_safe_json
 from parallax.platform.db.queue_terminal import terminalize_source_row
 
@@ -450,6 +453,10 @@ class NewsProjectionDirtyTargetRepository:
             "now_ms": int(now_ms),
             "window_ms": max(0, int(window_ms)),
             "score_threshold": max(0, int(score_threshold)),
+            "admitted_score_floor": min(
+                max(0, int(score_threshold)),
+                int(NEWS_ITEM_AGENT_BRIEF_MIN_ADMITTED_PROVIDER_SCORE),
+            ),
         }
         rows = self.conn.execute(
             _cleanup_stale_brief_input_targets_sql(execute=execute),
@@ -480,12 +487,32 @@ def _cleanup_stale_brief_input_targets_sql(*, execute: bool) -> str:
         targets."window" AS target_window,
         CASE
           WHEN items.news_item_id IS NULL THEN 'missing_news_item'
+          WHEN COALESCE(lower(items.lifecycle_status), '') <> 'processed'
+            THEN 'item_not_processed'
+          WHEN COALESCE(items.content_classification_json, '{}'::jsonb) = '{}'::jsonb
+            THEN 'classification_missing'
+          WHEN COALESCE(lower(items.analysis_admission_status), '') <> 'admitted'
+            THEN 'analysis_not_admitted'
           WHEN COALESCE(lower(items.provider_signal_json ->> 'source'), '') <> 'provider'
             THEN 'source_not_provider_signal'
-          WHEN NOT (
-            COALESCE(items.provider_signal_json ->> 'score', '') ~ '^-?[0-9]+$'
-            AND (items.provider_signal_json ->> 'score')::integer >= %(score_threshold)s
-          )
+          WHEN NOT (COALESCE(items.provider_signal_json ->> 'score', '') ~ '^-?[0-9]+$')
+            THEN 'below_score_threshold'
+          WHEN (items.provider_signal_json ->> 'score')::integer < %(admitted_score_floor)s
+            THEN 'below_score_threshold'
+          WHEN (items.provider_signal_json ->> 'score')::integer < %(score_threshold)s
+            AND NOT EXISTS (
+              SELECT 1
+                FROM jsonb_array_elements_text(
+                       CASE
+                         WHEN jsonb_typeof(items.analysis_admission_json #> '{basis,crypto_evidence}') = 'array'
+                           THEN items.analysis_admission_json #> '{basis,crypto_evidence}'
+                         ELSE '[]'::jsonb
+                       END
+                     ) AS evidence(value)
+               WHERE evidence.value = 'text:crypto_subject'
+                  OR evidence.value LIKE 'accepted_fact:%%'
+                  OR evidence.value LIKE 'resolved_crypto_target:%%'
+            )
             THEN 'below_score_threshold'
           WHEN items.published_at_ms > %(now_ms)s THEN 'published_in_future'
           WHEN items.published_at_ms < (%(now_ms)s - %(window_ms)s) THEN 'published_too_old'

@@ -737,12 +737,26 @@ def test_cleanup_stale_brief_input_targets_deletes_only_currently_ineligible_bri
             provider_item_id="provider-fresh-low",
             published_at_ms=now - 60_000,
             provider_score=79,
+            crypto_evidence=[],
+        )
+        _insert_news_item_for_brief_cleanup(
+            conn,
+            news_item_id="news-fresh-low-explicit",
+            provider_item_id="provider-fresh-low-explicit",
+            published_at_ms=now - 60_000,
+            provider_score=79,
+            crypto_evidence=["text:crypto_subject"],
         )
         repo.enqueue_targets(
             [
                 {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-fresh-high"},
                 {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-old-high"},
                 {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-fresh-low"},
+                {
+                    "projection_name": "brief_input",
+                    "target_kind": "news_item",
+                    "target_id": "news-fresh-low-explicit",
+                },
                 {"projection_name": "page", "target_kind": "news_item", "target_id": "news-old-high"},
             ],
             reason="unit",
@@ -779,6 +793,7 @@ def test_cleanup_stale_brief_input_targets_deletes_only_currently_ineligible_bri
     assert execute["reasons"] == {"below_score_threshold": 1, "published_too_old": 1}
     assert [dict(row) for row in remaining] == [
         {"projection_name": "brief_input", "target_id": "news-fresh-high"},
+        {"projection_name": "brief_input", "target_id": "news-fresh-low-explicit"},
         {"projection_name": "page", "target_id": "news-old-high"},
     ]
 
@@ -843,6 +858,7 @@ def _insert_news_item_for_brief_cleanup(
     provider_item_id: str,
     published_at_ms: int,
     provider_score: int,
+    crypto_evidence: list[str] | None = None,
 ) -> None:
     now = 1_779_000_000_000
     conn.execute(
@@ -881,12 +897,14 @@ def _insert_news_item_for_brief_cleanup(
         INSERT INTO news_items (
           news_item_id, provider_item_id, source_id, source_domain, canonical_url,
           title, summary, body_text, language, published_at_ms, fetched_at_ms,
-          content_hash, title_fingerprint, provider_signal_json, created_at_ms, updated_at_ms
+          content_hash, title_fingerprint, lifecycle_status, content_classification_json,
+          analysis_admission_status, analysis_admission_json, provider_signal_json,
+          created_at_ms, updated_at_ms
         )
         VALUES (
           %s, %s, 'source-opennews', '6551.io', %s,
           %s, 'Summary', 'Body', 'en', %s, %s,
-          %s, %s, %s, %s, %s
+          %s, %s, 'processed', %s, 'admitted', %s, %s, %s, %s
         )
         """,
         (
@@ -898,6 +916,17 @@ def _insert_news_item_for_brief_cleanup(
             now,
             f"content-{news_item_id}",
             f"title {news_item_id}",
+            Jsonb({"policy_version": "news_content_classification_v1"}),
+            Jsonb(
+                {
+                    "status": "admitted",
+                    "basis": {
+                        "crypto_evidence": crypto_evidence
+                        if crypto_evidence is not None
+                        else ["resolved_crypto_target:cex:BTC"],
+                    },
+                }
+            ),
             Jsonb({"source": "provider", "status": "ready", "score": provider_score}),
             now,
             now,

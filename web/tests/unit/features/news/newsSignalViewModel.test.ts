@@ -1,4 +1,5 @@
 import {
+  newsAgentReviewBadge,
   newsDisplayTokenLanes,
   newsSignalLabel,
   newsSignalScoreLabel,
@@ -43,6 +44,22 @@ describe("newsSignalViewModel", () => {
     expect(newsSignalTone({ direction: "bearish" })).toBe("is-short");
     expect(tokenImpactTone({ provider_signal: "long" })).toBe("is-long");
     expect(tokenImpactTone({ provider_signal: "short" })).toBe("is-short");
+  });
+
+  it("does not label policy-ineligible rows as waiting for agent", () => {
+    expect(
+      newsAgentReviewBadge({
+        agent_status: "not_required",
+        agent_brief: { status: "not_required", eligibility_reason: "below_score_threshold" },
+        agent_brief_status: null,
+        signal: {
+          display_signal: { source: "provider", status: "ready", direction: "neutral" },
+          provider_signal: null,
+          agent_signal: { status: "not_required" },
+          alert_eligibility: { agent_status: "not_required" },
+        },
+      }),
+    ).toEqual({ label: "AGENT SKIP", tone: "is-blocked" });
   });
 
   it("merges provider token impacts onto resolved token lanes for display only", () => {

@@ -5,6 +5,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from parallax.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION
+from parallax.domains.news_intel.services.news_item_agent_policy import news_item_agent_brief_eligibility
 
 _RESOLVED_TOKEN_STATUSES = frozenset({"exact_address", "known_symbol", "unique_by_context"})
 _IGNORED_TOKEN_STATUSES = frozenset({"non_crypto", "nil"})
@@ -38,7 +39,13 @@ def build_news_page_row(
     token_lanes = [_merge_provider_impact(_token_lane(row), impacts_by_symbol) for row in token_mentions]
     fact_lanes = [_fact_lane(row) for row in fact_candidates]
     source_payload = _source_payload(item)
-    agent_payload = _compact_agent_brief(agent_brief)
+    agent_payload = _compact_agent_brief(
+        agent_brief,
+        item=item,
+        token_mentions=token_mentions,
+        fact_candidates=fact_candidates,
+        computed_at_ms=computed_at_ms,
+    )
     agent_status = str(agent_payload.get("status") or "pending")
     content_tags = _json_list(item.get("content_tags_json"))
     content_classification = _json_object(item.get("content_classification_json"))
@@ -245,9 +252,21 @@ def _analysis_admission_payload(
     return payload
 
 
-def _compact_agent_brief(agent_brief: Mapping[str, Any] | None) -> dict[str, Any]:
+def _compact_agent_brief(
+    agent_brief: Mapping[str, Any] | None,
+    *,
+    item: Mapping[str, Any],
+    token_mentions: Sequence[Mapping[str, Any]],
+    fact_candidates: Sequence[Mapping[str, Any]],
+    computed_at_ms: int,
+) -> dict[str, Any]:
     if agent_brief is None:
-        return {"status": "pending"}
+        return _missing_agent_brief_state(
+            item=item,
+            token_mentions=token_mentions,
+            fact_candidates=fact_candidates,
+            computed_at_ms=computed_at_ms,
+        )
     brief_json = _json_object(agent_brief.get("brief_json") if isinstance(agent_brief, Mapping) else None)
     bull_view = _json_object(brief_json.get("bull_view"))
     bear_view = _json_object(brief_json.get("bear_view"))
@@ -274,7 +293,31 @@ def _compact_agent_brief(agent_brief: Mapping[str, Any] | None) -> dict[str, Any
             "affected_assets": _agent_affected_assets(brief_json.get("affected_assets")),
         }
     )
-    return payload or {"status": "pending"}
+    return payload or _missing_agent_brief_state(
+        item=item,
+        token_mentions=token_mentions,
+        fact_candidates=fact_candidates,
+        computed_at_ms=computed_at_ms,
+    )
+
+
+def _missing_agent_brief_state(
+    *,
+    item: Mapping[str, Any],
+    token_mentions: Sequence[Mapping[str, Any]],
+    fact_candidates: Sequence[Mapping[str, Any]],
+    computed_at_ms: int,
+) -> dict[str, str]:
+    eligibility = news_item_agent_brief_eligibility(
+        item=item,
+        token_mentions=token_mentions,
+        fact_candidates=fact_candidates,
+        now_ms=int(computed_at_ms),
+    )
+    return {
+        "status": "pending" if eligibility.eligible else "not_required",
+        "eligibility_reason": eligibility.reason,
+    }
 
 
 def _agent_affected_assets(value: Any) -> list[dict[str, Any]]:
@@ -428,7 +471,10 @@ def _external_push_readiness(
 ) -> tuple[bool, str | None]:
     if analysis_admission_status != "admitted":
         return False, "analysis_not_admitted"
-    if str(agent_signal.get("status") or "") != "ready":
+    agent_status = str(agent_signal.get("status") or "")
+    if agent_status == "not_required":
+        return False, str(agent_signal.get("eligibility_reason") or "agent_not_required")
+    if agent_status != "ready":
         return False, "agent_brief_not_ready"
     if not _agent_publishable_summary(agent_signal):
         return False, "agent_brief_missing_summary"

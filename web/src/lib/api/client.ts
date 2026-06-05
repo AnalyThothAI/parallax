@@ -334,6 +334,7 @@ function normalizeAgentBrief(
     ),
     title_zh: stringOrNull(payload.title_zh ?? briefJson?.title_zh),
     summary_zh: stringOrNull(payload.summary_zh ?? briefJson?.summary_zh),
+    eligibility_reason: stringOrNull(payload.eligibility_reason ?? briefJson?.eligibility_reason),
     market_read_zh: stringOrNull(payload.market_read_zh ?? briefJson?.market_read_zh),
     source_consensus_zh: stringOrNull(
       payload.source_consensus_zh ?? briefJson?.source_consensus_zh,

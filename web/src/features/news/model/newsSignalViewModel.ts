@@ -40,6 +40,9 @@ export const newsAgentReviewBadge = (
   if (status === "insufficient") {
     return { label: "AGENT INSUFF", tone: "is-blocked" };
   }
+  if (status === "not_required" || status === "skipped") {
+    return { label: "AGENT SKIP", tone: "is-blocked" };
+  }
   if (status === "failed") {
     return { label: "AGENT FAILED", tone: "is-failed" };
   }

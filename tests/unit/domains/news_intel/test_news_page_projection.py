@@ -520,6 +520,8 @@ def test_non_admitted_provider_score_does_not_set_in_app_eligible() -> None:
             "source_domain": "example.test",
             "canonical_url": "https://example.test/spacex",
             "published_at_ms": 1000,
+            "lifecycle_status": "processed",
+            "content_classification_json": {"policy_version": "news_content_classification_v1"},
             "analysis_admission_status": "page_only",
             "analysis_admission_reason": "private_company_equity_context",
             "analysis_admission_json": {
@@ -544,7 +546,10 @@ def test_non_admitted_provider_score_does_not_set_in_app_eligible() -> None:
 
     assert row["signal"]["provider_signal"]["score"] == 95
     assert row["signal"]["alert_eligibility"]["in_app_eligible"] is False
+    assert row["signal"]["alert_eligibility"]["agent_status"] == "not_required"
     assert row["analysis_admission_status"] == "page_only"
+    assert row["agent_status"] == "not_required"
+    assert row["agent_brief"] == {"status": "not_required", "eligibility_reason": "analysis_not_admitted"}
 
 
 def test_admitted_ready_brief_sets_external_push_ready() -> None:
@@ -613,7 +618,7 @@ def test_story_payload_includes_member_count_and_domains() -> None:
     assert row["story"]["source_domains"] == ["bloomberg.com", "wsj.com"]
 
 
-def test_build_news_page_row_uses_pending_agent_brief_when_missing() -> None:
+def test_build_news_page_row_uses_pending_agent_brief_when_agent_work_is_eligible() -> None:
     row = build_news_page_row(
         item={
             "news_item_id": "news-1",
@@ -622,6 +627,18 @@ def test_build_news_page_row_uses_pending_agent_brief_when_missing() -> None:
             "source_domain": "example.test",
             "canonical_url": "https://example.test/a",
             "published_at_ms": 1000,
+            "lifecycle_status": "processed",
+            "content_classification_json": {"policy_version": "news_content_classification_v1"},
+            "analysis_admission_status": "admitted",
+            "analysis_admission_json": {
+                "status": "admitted",
+                "basis": {"crypto_evidence": ["resolved_crypto_target:cex:SOL"]},
+            },
+            "provider_signal_json": {
+                "source": "provider",
+                "status": "ready",
+                "score": 80,
+            },
         },
         token_mentions=[],
         fact_candidates=[],
@@ -630,4 +647,38 @@ def test_build_news_page_row_uses_pending_agent_brief_when_missing() -> None:
 
     assert row["agent_status"] == "pending"
     assert row["agent_brief_computed_at_ms"] is None
-    assert row["agent_brief"] == {"status": "pending"}
+    assert row["agent_brief"] == {"status": "pending", "eligibility_reason": "eligible"}
+
+
+def test_build_news_page_row_marks_low_score_items_as_agent_not_required() -> None:
+    row = build_news_page_row(
+        item={
+            "news_item_id": "news-1",
+            "title": "SOL ETF filing",
+            "summary": "",
+            "source_domain": "example.test",
+            "canonical_url": "https://example.test/a",
+            "published_at_ms": 1000,
+            "lifecycle_status": "processed",
+            "content_classification_json": {"policy_version": "news_content_classification_v1"},
+            "analysis_admission_status": "admitted",
+            "analysis_admission_json": {
+                "status": "admitted",
+                "basis": {"crypto_evidence": ["provider_score:55"]},
+            },
+            "provider_signal_json": {
+                "source": "provider",
+                "status": "ready",
+                "score": 55,
+            },
+        },
+        token_mentions=[],
+        fact_candidates=[],
+        computed_at_ms=4000,
+    )
+
+    assert row["agent_status"] == "not_required"
+    assert row["agent_brief_computed_at_ms"] is None
+    assert row["agent_brief"] == {"status": "not_required", "eligibility_reason": "below_score_threshold"}
+    assert row["signal"]["alert_eligibility"]["agent_status"] == "not_required"
+    assert row["signal"]["alert_eligibility"]["external_push_block_reason"] == "below_score_threshold"

@@ -57,6 +57,7 @@ export type NewsAgentBriefStatus =
   | "ready"
   | "insufficient"
   | "pending"
+  | "not_required"
   | "failed"
   | "stale"
   | "disabled"
@@ -102,6 +103,7 @@ export type NewsAgentBrief = {
     | null;
   title_zh?: string | null;
   summary_zh?: string | null;
+  eligibility_reason?: string | null;
   market_read_zh?: string | null;
   source_consensus_zh?: string | null;
   retrieval_notes_zh?: string | null;
