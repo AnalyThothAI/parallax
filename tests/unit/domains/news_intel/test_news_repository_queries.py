@@ -47,7 +47,13 @@ def test_unprocessed_item_loader_selects_provider_article_keys_for_story_identit
     conn = CapturingConnection()
     repo = NewsRepository(conn)
 
-    rows = repo.list_unprocessed_items(limit=10, now_ms=1_000, commit=False)
+    rows = repo.claim_unprocessed_items(
+        limit=10,
+        lease_owner="worker",
+        lease_ms=120_000,
+        now_ms=1_000,
+        commit=False,
+    )
 
     assert rows == []
     assert "claimed.provider_article_keys_json" in conn.sql

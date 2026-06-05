@@ -24,6 +24,7 @@ class WorkerFactoryContext:
     hub: PublicWebSocketHub
     collector: WorkerBase
     collector_enabled: bool
+    collector_start_requested: bool
     wake_bus: Any
 
 
@@ -47,6 +48,7 @@ def construct_workers(
     collector: WorkerBase,
     collector_enabled: bool,
     wake_bus: Any,
+    collector_start_requested: bool = True,
 ) -> dict[str, WorkerBase]:
     ctx = WorkerFactoryContext(
         settings=settings,
@@ -56,20 +58,13 @@ def construct_workers(
         hub=hub,
         collector=collector,
         collector_enabled=collector_enabled,
+        collector_start_requested=collector_start_requested,
         wake_bus=wake_bus,
     )
     specs = worker_factory_specs()
     _validate_factory_specs(specs)
     manifest_worker_names = worker_names()
-    constructed: dict[str, WorkerBase] = {
-        name: _DisabledWorker(
-            name=name,
-            settings=_worker_settings(settings, name, enabled=False),
-            db=db,
-            telemetry=telemetry,
-        )
-        for name in manifest_worker_names
-    }
+    constructed: dict[str, WorkerBase] = {}
     populated: set[str] = set()
     for spec in specs:
         workers = spec.factory(ctx)
@@ -83,12 +78,114 @@ def construct_workers(
                 raise TypeError(f"worker:{name}:expected WorkerBase, got {type(worker).__name__}")
             constructed[name] = worker
             populated.add(name)
+    for name in manifest_worker_names:
+        if name not in constructed:
+            constructed[name] = _missing_worker_sentinel(ctx, name)
     return constructed
 
 
-class _DisabledWorker(WorkerBase):
+class _SentinelWorker(WorkerBase):
+    def __init__(
+        self,
+        *,
+        name: str,
+        settings: Any,
+        db: Any,
+        telemetry: Any,
+        effective_status: str,
+        unavailable_reason: str | None = None,
+    ) -> None:
+        super().__init__(name=name, settings=settings, db=db, telemetry=telemetry)
+        self._effective_status = effective_status
+        self._unavailable_reason = unavailable_reason
+
     async def run_once(self) -> WorkerResult:
-        return WorkerResult(skipped=1, notes={"reason": "disabled"})
+        return WorkerResult(skipped=1, notes={"reason": self.effective_status})
+
+
+class DisabledWorker(_SentinelWorker):
+    def __init__(self, *, name: str, settings: Any, db: Any, telemetry: Any) -> None:
+        super().__init__(
+            name=name,
+            settings=settings,
+            db=db,
+            telemetry=telemetry,
+            effective_status="disabled",
+        )
+
+
+class IntentionallyNotStartedWorker(_SentinelWorker):
+    def __init__(self, *, name: str, settings: Any, db: Any, telemetry: Any) -> None:
+        super().__init__(
+            name=name,
+            settings=settings,
+            db=db,
+            telemetry=telemetry,
+            effective_status="intentionally_not_started",
+        )
+
+
+class UnavailableWorker(_SentinelWorker):
+    def __init__(self, *, name: str, settings: Any, db: Any, telemetry: Any, reason: str) -> None:
+        super().__init__(
+            name=name,
+            settings=settings,
+            db=db,
+            telemetry=telemetry,
+            effective_status="unavailable",
+            unavailable_reason=_redacted_reason(reason),
+        )
+
+
+def _missing_worker_sentinel(ctx: WorkerFactoryContext, name: str) -> WorkerBase:
+    if not _worker_config_enabled(ctx.settings, name):
+        return disabled_worker(ctx, name)
+    return unavailable_worker(ctx, name, "factory_not_constructed")
+
+
+def disabled_worker(ctx: WorkerFactoryContext, name: str) -> WorkerBase:
+    return DisabledWorker(
+        name=name,
+        settings=_worker_settings(ctx.settings, name, enabled=False),
+        db=ctx.db,
+        telemetry=ctx.telemetry,
+    )
+
+
+def intentionally_not_started_worker(ctx: WorkerFactoryContext, name: str) -> WorkerBase:
+    return IntentionallyNotStartedWorker(
+        name=name,
+        settings=_worker_settings(ctx.settings, name, enabled=False),
+        db=ctx.db,
+        telemetry=ctx.telemetry,
+    )
+
+
+def unavailable_worker(ctx: WorkerFactoryContext, name: str, reason: str) -> WorkerBase:
+    return UnavailableWorker(
+        name=name,
+        settings=_worker_settings(ctx.settings, name, enabled=True),
+        db=ctx.db,
+        telemetry=ctx.telemetry,
+        reason=reason,
+    )
+
+
+def _worker_config_enabled(settings: Settings, name: str) -> bool:
+    config = getattr(settings.workers, name, None)
+    return bool(getattr(config, "enabled", True))
+
+
+def _redacted_reason(reason: str) -> str:
+    value = str(reason or "").strip().lower()
+    allowed = []
+    for char in value:
+        if char.isalnum() or char == "_":
+            allowed.append(char)
+        elif char in {"-", ".", " "}:
+            allowed.append("_")
+    redacted = "".join(allowed).strip("_")
+    return redacted or "unavailable"
 
 
 def _worker_settings(settings: Settings, name: str, *, enabled: bool) -> Any:
@@ -200,4 +297,15 @@ def _validate_factory_specs(specs: tuple[WorkerFactorySpec, ...]) -> None:
         raise ValueError(f"worker_factory_ownership_mismatch:missing={missing}:extra={extra}")
 
 
-__all__ = ["WorkerFactoryContext", "WorkerFactorySpec", "construct_workers", "worker_factory_specs"]
+__all__ = [
+    "DisabledWorker",
+    "IntentionallyNotStartedWorker",
+    "UnavailableWorker",
+    "WorkerFactoryContext",
+    "WorkerFactorySpec",
+    "construct_workers",
+    "disabled_worker",
+    "intentionally_not_started_worker",
+    "unavailable_worker",
+    "worker_factory_specs",
+]

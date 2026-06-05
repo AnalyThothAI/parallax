@@ -30,6 +30,7 @@ def test_scheduler_bootstrap_partitions_missing_history_into_bounded_windows() -
         (date(2026, 3, 24), date(2026, 4, 23)),
     ]
     assert all((item["window_end"] - item["window_start"]).days <= 30 for item in bootstrap_windows)
+    assert repo.sync_state_reads == [{"source_name": "macrodata-cli", "bundle_name": "macro-core"}]
     assert repo.provider_calls == []
 
 
@@ -64,6 +65,7 @@ def test_scheduler_gap_and_steady_state_enqueues_due_windows() -> None:
         date(2026, 5, 20),
         date(2026, 5, 27),
     )
+    assert repo.sync_state_reads == [{"source_name": "macrodata-cli", "bundle_name": "macro-core"}]
     assert repo.provider_calls == []
 
 
@@ -130,8 +132,10 @@ class FakeMacroIntelRepository:
         self._max_observed_at = max_observed_at
         self.enqueued: list[dict[str, object]] = []
         self.provider_calls: list[object] = []
+        self.sync_state_reads: list[dict[str, object]] = []
 
-    def macro_observations_max_observed_at(self) -> date | None:
+    def macro_sync_state_max_observed_at(self, *, source_name: str, bundle_name: str) -> date | None:
+        self.sync_state_reads.append({"source_name": source_name, "bundle_name": bundle_name})
         return self._max_observed_at
 
     def enqueue_macro_sync_window(self, **kwargs: object) -> str:

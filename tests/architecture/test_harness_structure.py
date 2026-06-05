@@ -14,6 +14,7 @@ SUPERPOWERS = DOCS / "superpowers"
 
 EXPECTED_GOVERNANCE = {
     "ARCHITECTURE.md",
+    "AGENT_EXECUTION.md",
     "CONTRACTS.md",
     "SETUP.md",
     "WORKFLOW.md",

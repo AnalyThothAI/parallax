@@ -20,6 +20,7 @@ def test_build_cex_detail_snapshot_keeps_non_hourly_oi_delta_out_of_1h_slot() ->
             "volume_24h_usd": 10_000_000.0,
             "funding_rate": 0.0001,
             "observed_at_ms": 1_778_000_000_000,
+            "observed_at_source": "computed",
         },
         computed_at_ms=1_778_000_000_000,
         period="5m",
@@ -31,6 +32,7 @@ def test_build_cex_detail_snapshot_keeps_non_hourly_oi_delta_out_of_1h_slot() ->
     assert snapshot["baseline_status"] == "ready"
     assert snapshot["coinglass_status"] == "unavailable"
     assert snapshot["oi_change_pct_1h"] is None
+    assert snapshot["observed_at_source"] == "computed"
     assert "oi_change_period_5m_not_1h" in snapshot["degraded_reasons"]
     assert "metric:cex:open_interest_usd:BTCUSDT" in [ref["ref_id"] for ref in snapshot["source_refs"]]
 

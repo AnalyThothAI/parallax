@@ -182,8 +182,15 @@ class FakeRankSources:
         self.populate_calls.append({"requests": list(requests), "projected_at_ms": projected_at_ms, "commit": commit})
         return len(self.populate_calls[-1]["requests"])
 
-    def populate_edges_for_targets(self, targets, *, projected_at_ms, commit):
-        self.populate_calls.append({"targets": list(targets), "projected_at_ms": projected_at_ms, "commit": commit})
+    def populate_edges_for_targets(self, targets, *, projected_at_ms, analysis_since_ms, commit):
+        self.populate_calls.append(
+            {
+                "targets": list(targets),
+                "projected_at_ms": projected_at_ms,
+                "analysis_since_ms": analysis_since_ms,
+                "commit": commit,
+            }
+        )
         return len(self.populate_calls[-1]["targets"])
 
     def affected_targets_for_event_ids(self, requests):

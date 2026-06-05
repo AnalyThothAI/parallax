@@ -5,7 +5,7 @@ from __future__ import annotations
 from alembic import op
 
 revision = "20260604_0148"
-down_revision = "20260603_0142"
+down_revision = "20260603_0147"
 branch_labels = None
 depends_on = None
 

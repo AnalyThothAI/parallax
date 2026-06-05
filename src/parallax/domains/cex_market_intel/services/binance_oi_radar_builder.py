@@ -1,21 +1,23 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
+from parallax.domains.cex_market_intel.providers import CexFundingPremium, CexOiMarketProvider, CexOiTicker24h
 from parallax.domains.cex_market_intel.scoring.oi_radar_scoring import score_oi_radar_row
 
 
 def build_binance_oi_radar_rows(
     *,
     universe: list[dict[str, Any]],
-    client: Any,
+    client: CexOiMarketProvider,
     now_ms: int,
     period: str = "5m",
     limit: int = 500,
 ) -> dict[str, Any]:
     selected = universe[: max(1, int(limit))]
-    tickers = _by_symbol(client.ticker_24hr())
-    premiums = _by_symbol(client.premium_index())
+    tickers = _tickers_by_symbol(client.list_24h_tickers())
+    premiums = _premiums_by_symbol(client.list_funding_premium())
     rows: list[dict[str, Any]] = []
     failed_symbols: list[str] = []
 
@@ -24,7 +26,7 @@ def build_binance_oi_radar_rows(
         if not symbol:
             continue
         try:
-            history = list(client.open_interest_hist(symbol=symbol, period=period, limit=2))
+            history = list(client.list_open_interest_history(symbol, period, 2))
         except Exception:
             failed_symbols.append(symbol)
             continue
@@ -33,6 +35,7 @@ def build_binance_oi_radar_rows(
         ticker = tickers.get(symbol)
         premium = premiums.get(symbol)
         open_interest_usd = _attr(latest_oi, "open_interest_value")
+        latest_observed_at_ms = _attr(latest_oi, "observed_at_ms")
         change_pct = _change_pct(_attr(previous_oi, "open_interest_value"), open_interest_usd)
         funding_rate = _attr(premium, "last_funding_rate")
         volume_24h_usd = _attr(ticker, "quote_volume_24h")
@@ -57,7 +60,8 @@ def build_binance_oi_radar_rows(
                 "mark_price": _attr(premium, "mark_price") or _attr(ticker, "last_price"),
                 "score": score_payload["score"],
                 "score_components": score_payload["components"],
-                "observed_at_ms": _attr(latest_oi, "time_ms") or now_ms,
+                "observed_at_ms": latest_observed_at_ms if latest_observed_at_ms is not None else now_ms,
+                "observed_at_source": "provider" if latest_observed_at_ms is not None else "computed",
             }
         )
 
@@ -73,9 +77,16 @@ def build_binance_oi_radar_rows(
     }
 
 
-def _by_symbol(payload: Any) -> dict[str, Any]:
-    rows = payload if isinstance(payload, list) else [payload]
-    return {str(getattr(row, "symbol", "")).upper(): row for row in rows if getattr(row, "symbol", None)}
+def _tickers_by_symbol(rows: Sequence[CexOiTicker24h]) -> dict[str, CexOiTicker24h]:
+    return {symbol: row for row in rows if (symbol := _symbol(row.symbol))}
+
+
+def _premiums_by_symbol(rows: Sequence[CexFundingPremium]) -> dict[str, CexFundingPremium]:
+    return {symbol: row for row in rows if (symbol := _symbol(row.symbol))}
+
+
+def _symbol(value: Any) -> str:
+    return str(value or "").strip().upper()
 
 
 def _attr(value: Any, name: str) -> Any:

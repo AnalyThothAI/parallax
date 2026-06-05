@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Iterable, Mapping
+from decimal import Decimal
 from typing import Any
 
 
@@ -8,8 +11,38 @@ class TokenCaptureTierDirtyTargetRepository:
     def __init__(self, conn: Any) -> None:
         self.conn = conn
 
-    def enqueue_global(self, *, reason: str, now_ms: int, commit: bool = True) -> dict[str, int]:
-        self.conn.execute(
+    def enqueue_rank_set(
+        self,
+        *,
+        reason: str,
+        rows: Iterable[Mapping[str, Any]],
+        exited_rows: Iterable[Mapping[str, Any]] = (),
+        now_ms: int,
+        source_watermark_ms: int | None = None,
+        commit: bool = True,
+    ) -> dict[str, int | str]:
+        row_records = list(rows)
+        exited_records = list(exited_rows)
+        payload_hash = token_capture_tier_rank_set_payload_hash(
+            reason=reason,
+            rows=row_records,
+            exited_rows=exited_records,
+        )
+        max_watermark_ms = max(
+            [
+                int(source_watermark_ms or 0),
+                *[
+                    int(row.get("source_max_received_at_ms") or row.get("source_watermark_ms") or 0)
+                    for row in row_records
+                ],
+                *[
+                    int(row.get("source_max_received_at_ms") or row.get("source_watermark_ms") or 0)
+                    for row in exited_records
+                ],
+            ],
+            default=0,
+        )
+        cursor = self.conn.execute(
             """
             INSERT INTO token_capture_tier_dirty_targets(
               work_name,
@@ -31,7 +64,7 @@ class TokenCaptureTierDirtyTargetRepository:
               'global',
               %(reason)s,
               %(payload_hash)s,
-              %(now_ms)s,
+              %(source_watermark_ms)s,
               50,
               %(now_ms)s,
               NULL,
@@ -55,16 +88,19 @@ class TokenCaptureTierDirtyTargetRepository:
               last_error = NULL,
               first_dirty_at_ms = token_capture_tier_dirty_targets.first_dirty_at_ms,
               updated_at_ms = EXCLUDED.updated_at_ms
+            WHERE token_capture_tier_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
             """,
             {
                 "reason": str(reason),
-                "payload_hash": f"capture-tier:{reason}:{int(now_ms)}",
+                "payload_hash": payload_hash,
                 "now_ms": int(now_ms),
+                "source_watermark_ms": int(max_watermark_ms),
             },
         )
         if commit:
             self.conn.commit()
-        return {"targets": 1}
+        changed = int(getattr(cursor, "rowcount", 0) or 0)
+        return {"targets": changed, "payload_hash": payload_hash}
 
     def claim_due(
         self,
@@ -159,3 +195,147 @@ def _claim_params(records: list[Mapping[str, Any]]) -> dict[str, list[Any]]:
         "lease_owners": [str(record["lease_owner"]) for record in records],
         "attempt_counts": [int(record["attempt_count"]) for record in records],
     }
+
+
+def token_capture_tier_rank_set_payload_hash(
+    *,
+    reason: str,
+    rows: Iterable[Mapping[str, Any]],
+    exited_rows: Iterable[Mapping[str, Any]] = (),
+) -> str:
+    payload = {
+        "reason": str(reason),
+        "rows": sorted([_rank_row_payload(row, exited=False) for row in rows], key=_rank_payload_sort_key),
+        "exited_rows": sorted([_rank_row_payload(row, exited=True) for row in exited_rows], key=_rank_payload_sort_key),
+    }
+    encoded = json.dumps(_json_ready(payload), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _rank_row_payload(row: Mapping[str, Any], *, exited: bool) -> dict[str, Any]:
+    source_target_type = str(row.get("target_type") or row.get("target_type_key") or "").strip()
+    source_target_id = str(row.get("target_id") or row.get("identity_id") or "").strip()
+    capture_target_type, capture_target_id = _capture_rank_target(row, source_target_type=source_target_type)
+    payload = {
+        "source_target_type": source_target_type,
+        "source_target_id": source_target_id,
+        "capture_target_type": capture_target_type,
+        "capture_target_id": capture_target_id,
+        "lane": str(row.get("lane") or ""),
+        "rank": row.get("rank"),
+        "rank_score": _rank_score_payload(row.get("rank_score", row.get("score"))),
+        "decision": row.get("decision"),
+        "quality_status": row.get("quality_status"),
+        "degraded_reasons_json": _json_ready(row.get("degraded_reasons_json") or []),
+        "exited": bool(exited),
+    }
+    payload["row_payload_hash"] = _rank_row_product_payload_hash(row, rank_payload=payload)
+    return payload
+
+
+def _capture_rank_target(row: Mapping[str, Any], *, source_target_type: str) -> tuple[str, str]:
+    subject = _rank_subject(row)
+    if source_target_type == "Asset":
+        chain_id = str(
+            row.get("chain_id")
+            or row.get("asset_chain_id")
+            or row.get("chain")
+            or subject.get("chain_id")
+            or subject.get("chain")
+            or subject.get("asset_chain_id")
+            or ""
+        ).strip()
+        address = str(
+            row.get("address") or row.get("asset_address") or row.get("token_address") or subject.get("address") or ""
+        ).strip()
+        if chain_id and address:
+            normalized_address = address.lower() if address.startswith(("0x", "0X")) else address
+            return "chain_token", f"{chain_id}:{normalized_address}"
+        return "", ""
+
+    if source_target_type == "CexToken":
+        pricefeed_provider, pricefeed_market_id = _cex_pricefeed_target(
+            row.get("pricefeed_id") or subject.get("pricefeed_id")
+        )
+        provider = str(row.get("provider") or subject.get("provider") or pricefeed_provider or "").strip().lower()
+        native_market_id = (
+            str(row.get("native_market_id") or subject.get("native_market_id") or pricefeed_market_id or "")
+            .strip()
+            .upper()
+        )
+        if provider and native_market_id:
+            return "cex_symbol", f"{provider}:{native_market_id}"
+        return "", ""
+
+    return "", ""
+
+
+def _rank_subject(row: Mapping[str, Any]) -> Mapping[str, Any]:
+    snapshot = _json_ready(row.get("factor_snapshot_json"))
+    if not isinstance(snapshot, Mapping):
+        return {}
+    subject = snapshot.get("subject")
+    return subject if isinstance(subject, Mapping) else {}
+
+
+def _rank_row_product_payload_hash(row: Mapping[str, Any], *, rank_payload: Mapping[str, Any]) -> str:
+    payload = {
+        **dict(rank_payload),
+        "pricefeed_id": row.get("pricefeed_id"),
+        "factor_snapshot_json": _stable_factor_snapshot(row.get("factor_snapshot_json")),
+        "source_event_ids_json": _json_ready(row.get("source_event_ids_json") or []),
+        "data_health_json": _json_ready(row.get("data_health_json") or {}),
+        "resolution_json": _json_ready(row.get("resolution_json") or {}),
+    }
+    encoded = json.dumps(_json_ready(payload), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _rank_score_payload(value: Any) -> str | None:
+    if value is None or str(value).strip() == "":
+        return None
+    try:
+        normalized = Decimal(str(value)).normalize()
+    except Exception:
+        return str(value)
+    return format(normalized, "f")
+
+
+def _stable_factor_snapshot(value: Any) -> Any:
+    snapshot = _json_ready(value)
+    if not isinstance(snapshot, Mapping):
+        return snapshot
+    stable = dict(snapshot)
+    provenance = stable.get("provenance")
+    if isinstance(provenance, Mapping):
+        stable["provenance"] = {key: item for key, item in provenance.items() if str(key) != "computed_at_ms"}
+    return stable
+
+
+def _cex_pricefeed_target(value: Any) -> tuple[str | None, str | None]:
+    parts = str(value or "").strip().split(":")
+    if len(parts) < 5 or parts[0] != "pricefeed" or parts[1] != "cex":
+        return None, None
+    return parts[2].strip().lower() or None, parts[-1].strip().upper() or None
+
+
+def _rank_payload_sort_key(row: Mapping[str, Any]) -> tuple[str, str, str, str, str, str]:
+    return (
+        str(row.get("source_target_type") or ""),
+        str(row.get("source_target_id") or ""),
+        str(row.get("capture_target_type") or ""),
+        str(row.get("capture_target_id") or ""),
+        str(row.get("lane") or ""),
+        str(row.get("exited") or ""),
+    )
+
+
+def _json_ready(value: Any) -> Any:
+    raw = getattr(value, "obj", value)
+    if isinstance(raw, Decimal):
+        return str(raw)
+    if isinstance(raw, Mapping):
+        return {str(key): _json_ready(item) for key, item in raw.items()}
+    if isinstance(raw, list | tuple | set):
+        return [_json_ready(item) for item in raw]
+    return raw

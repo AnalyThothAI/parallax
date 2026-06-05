@@ -212,6 +212,27 @@ def test_worker_run_once_returns_worker_result_processed_count() -> None:
     assert db.session_names == ["token_capture_tier"]
 
 
+def test_worker_run_once_reports_zero_rows_written_when_projection_unchanged() -> None:
+    db = FakeDB(
+        FakeRepos(
+            [
+                asset_target("asset-hot", chain_id="sol", address="hot", score=3),
+                cex_target("cex-eth", provider="binance", native_market_id="ETHUSDT", score=2),
+            ],
+            unchanged_upserts=True,
+        )
+    )
+    worker = TokenCaptureTierWorker(db=db, telemetry=object(), batch_size=5, ws_limit=1, poll_limit=1)
+
+    result = asyncio.run(worker.run_once(now_ms=1_800_000_000_000))
+
+    assert result.processed == 0
+    assert result.skipped == 0
+    assert result.notes["claimed"] == 1
+    assert result.notes["rows_written"] == 0
+    assert db.repos.token_capture_tier_dirty_targets.done_count == 1
+
+
 def test_worker_exposes_single_writer_advisory_lock_key() -> None:
     worker = TokenCaptureTierWorker(db=FakeDB(FakeRepos([])), telemetry=object())
 
@@ -329,9 +350,13 @@ class FakeRepos:
         rows: list[dict[str, object]],
         *,
         existing_tiers: list[dict[str, object]] | None = None,
+        unchanged_upserts: bool = False,
     ) -> None:
         self.registry = FakeRegistry(rows)
-        self.token_capture_tiers = FakeTokenCaptureTiers(existing_tiers=existing_tiers or [])
+        self.token_capture_tiers = FakeTokenCaptureTiers(
+            existing_tiers=existing_tiers or [],
+            unchanged_upserts=unchanged_upserts,
+        )
         self.token_capture_tier_dirty_targets = FakeCaptureDirtyTargets()
         self.conn = FakeConn()
 
@@ -352,14 +377,21 @@ class FakeRegistry:
 
 
 class FakeTokenCaptureTiers:
-    def __init__(self, *, existing_tiers: list[dict[str, object]] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        existing_tiers: list[dict[str, object]] | None = None,
+        unchanged_upserts: bool = False,
+    ) -> None:
         self.upserts: list[dict[str, object]] = []
         self.demotion_calls: list[dict[str, object]] = []
         self.demoted: list[tuple[str, str]] = []
         self._existing: list[dict[str, object]] = list(existing_tiers or [])
+        self.unchanged_upserts = bool(unchanged_upserts)
 
-    def upsert_tier(self, **kwargs) -> None:
+    def upsert_tier(self, **kwargs) -> bool:
         self.upserts.append(kwargs)
+        return not self.unchanged_upserts
 
     def demote_hot_rows_outside_rank_set(
         self,
@@ -384,6 +416,9 @@ class FakeTokenCaptureTiers:
 
 
 class FakeCaptureDirtyTargets:
+    def __init__(self) -> None:
+        self.done_count = 0
+
     def claim_due(self, **kwargs):
         return [
             {
@@ -399,6 +434,7 @@ class FakeCaptureDirtyTargets:
         return 0
 
     def mark_done(self, claims, **kwargs):
+        self.done_count += len(claims)
         return len(claims)
 
 

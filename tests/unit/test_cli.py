@@ -120,6 +120,34 @@ def test_ops_enqueue_token_radar_dirty_targets_parser_accepts_source_since_limit
         parser.parse_args(["ops", "enqueue-token-radar-dirty-targets", "--source", "events"])
 
 
+def test_ops_enqueue_token_capture_tier_rank_set_parser_requires_mode() -> None:
+    parser = build_parser()
+
+    dry_run = parser.parse_args(["ops", "enqueue-token-capture-tier-rank-set", "--dry-run"])
+    execute = parser.parse_args(
+        [
+            "ops",
+            "enqueue-token-capture-tier-rank-set",
+            "--window",
+            "1h",
+            "--limit",
+            "25",
+            "--execute",
+        ]
+    )
+
+    assert dry_run.ops_command == "enqueue-token-capture-tier-rank-set"
+    assert dry_run.window == "24h"
+    assert dry_run.limit == 500
+    assert dry_run.dry_run is True
+    assert execute.window == "1h"
+    assert execute.limit == 25
+    assert execute.execute is True
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ops", "enqueue-token-capture-tier-rank-set"])
+
+
 def test_ops_news_dedup_commands_are_registered_without_compatibility_flags() -> None:
     parser = build_parser()
 
@@ -175,3 +203,21 @@ def test_ops_news_dedup_commands_are_registered_without_compatibility_flags() ->
         parser.parse_args(["ops", "repair-news-duplicates-hard-cut", "--limit", "25", "--dry-run", "--execute"])
     with pytest.raises(SystemExit):
         parser.parse_args(["ops", "cleanup-news-brief-input"])
+
+
+def test_ops_cleanup_news_item_brief_schema_hard_cut_requires_exactly_one_mode() -> None:
+    parser = build_parser()
+
+    dry_run = parser.parse_args(["ops", "cleanup-news-item-brief-schema-hard-cut", "--dry-run"])
+    execute = parser.parse_args(["ops", "cleanup-news-item-brief-schema-hard-cut", "--execute"])
+
+    assert dry_run.ops_command == "cleanup-news-item-brief-schema-hard-cut"
+    assert dry_run.dry_run is True
+    assert dry_run.execute is False
+    assert execute.execute is True
+    assert execute.dry_run is False
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ops", "cleanup-news-item-brief-schema-hard-cut"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ops", "cleanup-news-item-brief-schema-hard-cut", "--dry-run", "--execute"])

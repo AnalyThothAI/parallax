@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from parallax.domains.cex_market_intel.providers import CoinglassDerivativesProvider
+
 
 def enrich_rows_with_coinglass(
     rows: list[dict[str, Any]],
     *,
-    client: Any | None,
+    client: CoinglassDerivativesProvider | None,
     now_ms: int,
     limit: int,
     level_limit: int = 6,
@@ -25,7 +27,7 @@ def enrich_rows_with_coinglass(
 def enrich_row_with_coinglass(
     *,
     row: dict[str, Any],
-    client: Any,
+    client: CoinglassDerivativesProvider,
     now_ms: int,
     level_limit: int = 6,
 ) -> dict[str, Any]:

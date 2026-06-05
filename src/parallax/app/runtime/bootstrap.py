@@ -183,6 +183,7 @@ def _assemble_runtime(
         collector=collector,
         collector_enabled=worker_collector_enabled,
         wake_bus=wake_bus,
+        collector_start_requested=start_collector,
     )
     scheduler = WorkerScheduler(workers=runtime_workers, db=db)
     runtime = Runtime(

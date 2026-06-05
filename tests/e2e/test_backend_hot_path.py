@@ -11,8 +11,6 @@ from fastapi.testclient import TestClient
 
 from parallax.app.runtime.app import create_app
 from parallax.app.runtime.worker_factories.notifications import _notification_rule_engine
-from parallax.app.runtime.worker_manifest import require_worker_manifest
-from parallax.app.runtime.worker_space import WorkerSpaceContract, contract_from_manifest
 from parallax.domains.asset_market.repositories.token_profile_current_repository import (
     TokenProfileCurrentRepository,
 )
@@ -52,10 +50,6 @@ from tests.support.hot_path_runtime import (
 from tests.support.provider_fixtures import load_provider_fixture
 
 
-def _worker_contract(worker_name: str) -> WorkerSpaceContract:
-    return contract_from_manifest(require_worker_manifest(worker_name))
-
-
 @pytest.mark.e2e
 def test_complete_backend_hot_path_without_notify_dependency(
     tmp_path,
@@ -85,6 +79,11 @@ def test_complete_backend_hot_path_without_notify_dependency(
         )
 
         wake = RecordingWakeEmitter()
+        backfill_now_ms = _wall_now_ms()
+        backfill_window_ms = max(
+            30 * 24 * 60 * 60 * 1000,
+            abs(backfill_now_ms - FIXED_NOW_MS) + 60_000,
+        )
         backfill_result = asyncio.run(
             EventAnchorBackfillWorker(
                 pool_bundle=runtime.db,
@@ -96,9 +95,8 @@ def test_complete_backend_hot_path_without_notify_dependency(
                 batch_size=10,
                 concurrency=2,
                 min_age_ms=0,
-                max_anchor_lag_ms=30 * 24 * 60 * 60 * 1000,
-                clock=_wall_now_ms,
-                worker_space_contract=_worker_contract("event_anchor_backfill"),
+                max_anchor_lag_ms=backfill_window_ms,
+                clock=lambda: backfill_now_ms,
             ).run_once()
         )
         assert backfill_result.processed == 1
@@ -112,7 +110,6 @@ def test_complete_backend_hot_path_without_notify_dependency(
                 db=runtime.db,
                 telemetry=runtime.telemetry,
                 wake_bus=None,
-                worker_space_contract=_worker_contract("token_radar_projection"),
             ).run_once(now_ms=FIXED_NOW_MS + 2_000)
         )
         assert radar_result.notes["rows_written"] >= 1

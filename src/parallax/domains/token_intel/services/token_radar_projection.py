@@ -4,6 +4,7 @@ import hashlib
 import time
 from collections.abc import Mapping, Sequence
 from contextlib import AbstractContextManager
+from decimal import Decimal
 from typing import Any, cast
 
 from parallax.domains.narrative_intel.interfaces import NARRATIVE_SCHEMA_VERSION
@@ -49,6 +50,7 @@ PROJECTION_VERSION = TOKEN_RADAR_PROJECTION_VERSION
 STALE_RUNNING_PROJECTION_MS = 10 * 60 * 1000
 STALE_RUNNING_CLEANUP_INTERVAL_MS = STALE_RUNNING_PROJECTION_MS
 MAX_ANALYSIS_LOOKBACK_MS = 48 * 60 * 60 * 1000
+RANK_SOURCE_REPAIR_SAFETY_MARGIN_MS = 5 * 60 * 1000
 DEX_DECISION_FLOORS = {
     "holders": 100,
     "liquidity_usd": 25_000.0,
@@ -191,6 +193,10 @@ class TokenRadarProjection:
                     self.repos.token_radar_rank_sources.populate_edges_for_targets(
                         edge_refresh_claims,
                         projected_at_ms=computed_at_ms,
+                        analysis_since_ms=_rank_source_repair_analysis_since_ms(
+                            computed_at_ms=computed_at_ms,
+                            work_items=source_work_items,
+                        ),
                         commit=False,
                     )
                 except Exception as exc:
@@ -789,6 +795,14 @@ class TokenRadarProjection:
             previous_by_key=previous_by_key,
             computed_at_ms=computed_at_ms,
         )
+        self._enqueue_token_capture_tier_for_rank_changes(
+            window=window,
+            scope=scope,
+            rows=rows,
+            exited_rows=exited_rows,
+            previous_by_key=previous_by_key,
+            computed_at_ms=computed_at_ms,
+        )
 
     def _enqueue_pulse_triggers_for_rank_changes(
         self,
@@ -937,6 +951,43 @@ class TokenRadarProjection:
         for reason, reason_targets in grouped.items():
             repo.enqueue_targets(reason_targets, reason=reason, now_ms=computed_at_ms, commit=False)
 
+    def _enqueue_token_capture_tier_for_rank_changes(
+        self,
+        *,
+        window: str,
+        scope: str,
+        rows: list[dict[str, Any]],
+        exited_rows: list[dict[str, Any]],
+        previous_by_key: dict[tuple[str, str, str], dict[str, Any]],
+        computed_at_ms: int,
+    ) -> None:
+        tier_rows = [row for row in rows if _capture_tier_relevant_row(row)]
+        tier_exited_rows = [row for row in exited_rows if _capture_tier_relevant_row(row)]
+        if not _capture_tier_rank_set_changed(
+            rows=tier_rows,
+            exited_rows=tier_exited_rows,
+            previous_by_key=previous_by_key,
+        ):
+            return
+        repo = getattr(self.repos, "token_capture_tier_dirty_targets", None)
+        if repo is None:
+            raise RuntimeError("token_capture_tier_dirty_targets repository is required for Token Radar capture tiers")
+        source_watermark_ms = max(
+            [
+                *[int(row.get("source_max_received_at_ms") or 0) for row in tier_rows],
+                *[int(row.get("source_max_received_at_ms") or 0) for row in tier_exited_rows],
+            ],
+            default=int(computed_at_ms),
+        )
+        repo.enqueue_rank_set(
+            reason=f"token_radar_capture_tier_rank_set:{window}:{scope}",
+            rows=tier_rows,
+            exited_rows=tier_exited_rows,
+            source_watermark_ms=source_watermark_ms,
+            now_ms=computed_at_ms,
+            commit=False,
+        )
+
     @staticmethod
     def _group_rows(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         grouped: dict[str, list[dict[str, Any]]] = {}
@@ -971,6 +1022,20 @@ def _analysis_since_ms(*, computed_at_ms: int, window_ms: int) -> int:
     score_since_ms = computed_at_ms - window_ms
     baseline_since_ms = score_since_ms - BASELINE_SLOT_COUNT * window_ms
     return max(baseline_since_ms, computed_at_ms - MAX_ANALYSIS_LOOKBACK_MS)
+
+
+def _rank_source_repair_analysis_since_ms(
+    *,
+    computed_at_ms: int,
+    work_items: tuple[tuple[str, str, str], ...],
+) -> int:
+    window_names = [str(item[0]) for item in work_items if item]
+    max_window_ms = max((WINDOW_MS.get(window, WINDOW_MS["24h"]) for window in window_names), default=WINDOW_MS["24h"])
+    return max(
+        0,
+        _analysis_since_ms(computed_at_ms=int(computed_at_ms), window_ms=max_window_ms)
+        - RANK_SOURCE_REPAIR_SAFETY_MARGIN_MS,
+    )
 
 
 def _resolve_work_items(
@@ -1370,6 +1435,160 @@ def _narrative_admission_reason(
     return "token_radar_changed"
 
 
+def _capture_tier_rank_set_changed(
+    *,
+    rows: Sequence[Mapping[str, Any]],
+    exited_rows: Sequence[Mapping[str, Any]],
+    previous_by_key: Mapping[tuple[str, str, str], Mapping[str, Any]],
+) -> bool:
+    if exited_rows:
+        return True
+    for row in rows:
+        previous = previous_by_key.get(_current_key(row))
+        if previous is None:
+            return True
+        if _capture_tier_rank_payload(row) != _capture_tier_rank_payload(previous):
+            return True
+    return False
+
+
+def _capture_tier_rank_payload(row: Mapping[str, Any]) -> tuple[Any, ...]:
+    capture_target = _capture_tier_target_key(row)
+    return (
+        str(row.get("target_type") or row.get("target_type_key") or ""),
+        str(row.get("target_id") or row.get("identity_id") or ""),
+        capture_target,
+        _capture_tier_row_payload_hash(row),
+        str(row.get("lane") or ""),
+        row.get("rank"),
+        _capture_tier_rank_score_payload(row.get("rank_score", row.get("score"))),
+        str(row.get("decision") or ""),
+        str(row.get("quality_status") or ""),
+        _json_ready(row.get("degraded_reasons_json") or []),
+    )
+
+
+def _capture_tier_relevant_row(row: Mapping[str, Any]) -> bool:
+    return str(row.get("target_type") or row.get("target_type_key") or "") in {"Asset", "CexToken"} and bool(
+        str(row.get("target_id") or row.get("identity_id") or "").strip()
+    )
+
+
+def _capture_tier_fields_from_target(target: Mapping[str, Any]) -> dict[str, str | None]:
+    return _capture_tier_fields_from_subject(target_type=target.get("target_type"), subject=target)
+
+
+def _capture_tier_fields_from_subject(*, target_type: Any, subject: Any) -> dict[str, str | None]:
+    subject_map = _dict(subject)
+    if str(target_type or "") == "Asset":
+        return {
+            "chain_id": _optional_text(
+                subject_map.get("chain_id") or subject_map.get("chain") or subject_map.get("asset_chain_id")
+            ),
+            "address": _optional_text(
+                subject_map.get("address") or subject_map.get("asset_address") or subject_map.get("token_address")
+            ),
+            "provider": None,
+            "native_market_id": None,
+        }
+    if str(target_type or "") == "CexToken":
+        pricefeed_provider, pricefeed_market_id = _cex_pricefeed_target(subject_map.get("pricefeed_id"))
+        return {
+            "chain_id": None,
+            "address": None,
+            "provider": _optional_text(
+                subject_map.get("provider") or subject_map.get("pricefeed_provider") or pricefeed_provider
+            ),
+            "native_market_id": _optional_text(subject_map.get("native_market_id") or pricefeed_market_id),
+        }
+    return {"chain_id": None, "address": None, "provider": None, "native_market_id": None}
+
+
+def _capture_tier_target_key(row: Mapping[str, Any]) -> tuple[str, str]:
+    target_type = str(row.get("target_type") or row.get("target_type_key") or "").strip()
+    subject = _rank_subject(row)
+    if target_type == "Asset":
+        chain_id = _optional_text(
+            row.get("chain_id")
+            or row.get("asset_chain_id")
+            or row.get("chain")
+            or subject.get("chain_id")
+            or subject.get("chain")
+            or subject.get("asset_chain_id")
+        )
+        address = _optional_text(
+            row.get("address") or row.get("asset_address") or row.get("token_address") or subject.get("address")
+        )
+        if chain_id and address:
+            normalized_address = address.lower() if address.startswith(("0x", "0X")) else address
+            return ("chain_token", f"{chain_id}:{normalized_address}")
+        return ("", "")
+    if target_type == "CexToken":
+        pricefeed_provider, pricefeed_market_id = _cex_pricefeed_target(
+            row.get("pricefeed_id") or subject.get("pricefeed_id")
+        )
+        provider = (
+            _optional_text(row.get("provider") or subject.get("provider") or pricefeed_provider) or ""
+        ).lower()
+        native_market_id = (
+            _optional_text(row.get("native_market_id") or subject.get("native_market_id") or pricefeed_market_id) or ""
+        ).upper()
+        if provider and native_market_id:
+            return ("cex_symbol", f"{provider}:{native_market_id}")
+    return ("", "")
+
+
+def _capture_tier_row_payload_hash(row: Mapping[str, Any]) -> str:
+    return stable_token_radar_payload_hash(
+        {
+            "target_type": str(row.get("target_type") or row.get("target_type_key") or ""),
+            "target_id": str(row.get("target_id") or row.get("identity_id") or ""),
+            "capture_target": _capture_tier_target_key(row),
+            "lane": str(row.get("lane") or ""),
+            "rank": row.get("rank"),
+            "rank_score": _capture_tier_rank_score_payload(row.get("rank_score", row.get("score"))),
+            "decision": row.get("decision"),
+            "quality_status": row.get("quality_status"),
+            "degraded_reasons_json": _json_ready(row.get("degraded_reasons_json") or []),
+            "pricefeed_id": row.get("pricefeed_id"),
+            "factor_snapshot_json": row.get("factor_snapshot_json"),
+            "source_event_ids_json": _json_ready(row.get("source_event_ids_json") or []),
+            "data_health_json": _json_ready(row.get("data_health_json") or {}),
+            "resolution_json": _json_ready(row.get("resolution_json") or {}),
+        }
+    )
+
+
+def _rank_subject(row: Mapping[str, Any]) -> Mapping[str, Any]:
+    snapshot = _json_ready(row.get("factor_snapshot_json"))
+    if not isinstance(snapshot, Mapping):
+        return {}
+    subject = snapshot.get("subject")
+    return subject if isinstance(subject, Mapping) else {}
+
+
+def _capture_tier_rank_score_payload(value: Any) -> str | None:
+    if value is None or str(value).strip() == "":
+        return None
+    try:
+        normalized = Decimal(str(value)).normalize()
+    except Exception:
+        return str(value)
+    return format(normalized, "f")
+
+
+def _optional_text(value: Any) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
+def _cex_pricefeed_target(value: Any) -> tuple[str | None, str | None]:
+    parts = str(value or "").strip().split(":")
+    if len(parts) < 5 or parts[0] != "pricefeed" or parts[1] != "cex":
+        return None, None
+    return parts[2].strip().lower() or None, parts[-1].strip().upper() or None
+
+
 def _transaction_context(conn: Any) -> AbstractContextManager[Any]:
     transaction = getattr(conn, "transaction", None)
     if transaction is None:
@@ -1462,6 +1681,7 @@ def _project_group(
         "target_type": target_type,
         "target_id": target_id,
         "pricefeed_id": latest.get("pricefeed_id"),
+        **_capture_tier_fields_from_target(target),
         "intent_json": {
             "intent_id": latest["intent_id"],
             "display_symbol": _real_symbol(latest.get("display_symbol")),
@@ -2085,6 +2305,12 @@ def _row_from_target_feature(row: dict[str, Any], *, venue: str = TOKEN_RADAR_DE
     target_id = row.get("target_id")
     subject = factor_snapshot.get("subject") if isinstance(factor_snapshot, dict) else {}
     data_health = factor_snapshot.get("data_health") if isinstance(factor_snapshot, dict) else {}
+    subject_map = _dict(subject)
+    subject_with_pricefeed = {
+        **subject_map,
+        "pricefeed_id": row.get("pricefeed_id") or subject_map.get("pricefeed_id"),
+    }
+    capture_fields = _capture_tier_fields_from_subject(target_type=target_type, subject=subject_with_pricefeed)
     return {
         "row_id": _stable_id(
             "token-radar-row",
@@ -2107,6 +2333,7 @@ def _row_from_target_feature(row: dict[str, Any], *, venue: str = TOKEN_RADAR_DE
         "target_type": target_type,
         "target_id": target_id,
         "pricefeed_id": row.get("pricefeed_id"),
+        **capture_fields,
         "intent_json": {
             "intent_id": intent_id,
             "display_symbol": (subject or {}).get("symbol") if isinstance(subject, dict) else None,

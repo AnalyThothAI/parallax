@@ -8,8 +8,6 @@ from typing import Any
 from psycopg.types.json import Jsonb
 
 from parallax.app.runtime.repository_session import repositories_for_connection
-from parallax.app.runtime.worker_manifest import require_worker_manifest
-from parallax.app.runtime.worker_space import WorkerSpaceContract, contract_from_manifest
 from parallax.domains.asset_market.repositories.registry_repository import RegistryRepository
 from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from parallax.domains.pulse_lab.runtime.pulse_candidate_worker import (
@@ -32,10 +30,6 @@ EVENT_MS = FIXED_NOW_MS - 10 * 60 * 1000
 ASSET_ADDRESS = "0x2222222222222222222222222222222222222222"
 
 
-def _worker_contract(worker_name: str) -> WorkerSpaceContract:
-    return contract_from_manifest(require_worker_manifest(worker_name))
-
-
 def test_token_radar_projection_worker_does_not_scan_recent_facts_when_no_dirty_or_due_work(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
@@ -56,7 +50,6 @@ def test_token_radar_projection_worker_does_not_scan_recent_facts_when_no_dirty_
             settings=_radar_settings(cold_interval_seconds=60),
             db=_DB(conn),
             telemetry=object(),
-            worker_space_contract=_worker_contract("token_radar_projection"),
         )
 
         result = asyncio.run(worker.run_once(now_ms=FIXED_NOW_MS))
@@ -90,7 +83,6 @@ def test_pulse_candidate_worker_catches_up_from_persisted_token_radar_without_wa
             settings=_radar_settings(),
             db=_DB(conn),
             telemetry=object(),
-            worker_space_contract=_worker_contract("token_radar_projection"),
         )
         empty_due_result = asyncio.run(radar_worker.run_once(now_ms=FIXED_NOW_MS))
         repair_enqueued = _enqueue_token_radar_repair(conn)

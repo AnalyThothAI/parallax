@@ -17,7 +17,9 @@ CONTROL_METHODS = (
     "fail_macro_sync_window",
     "latest_macro_sync_run",
     "macro_sync_queue_summary",
-    "macro_observations_max_observed_at",
+    "macro_sync_state_max_observed_at",
+    "update_macro_sync_state",
+    "rebuild_macro_sync_state",
     "enqueue_macro_projection_dirty_targets_for_changes",
 )
 
@@ -87,6 +89,47 @@ def test_queue_control_methods_do_not_scan_macro_observations() -> None:
 
         assert "FROM macro_observations" not in source
         assert "JOIN macro_observations" not in source
+
+
+def test_macro_sync_state_lookup_uses_control_state_not_observation_scan() -> None:
+    source = inspect.getsource(MacroIntelRepository.macro_sync_state_max_observed_at)
+
+    assert "FROM macro_sync_state" in source
+    assert "source_name = %s" in source
+    assert "bundle_name = %s" in source
+    assert "FROM macro_observations" not in source
+
+
+def test_update_macro_sync_state_is_monotonic_and_zero_write_when_not_advanced() -> None:
+    source = inspect.getsource(MacroIntelRepository.update_macro_sync_state)
+    normalized_source = " ".join(source.split())
+
+    assert "INSERT INTO macro_sync_state" in source
+    assert "ON CONFLICT(source_name, bundle_name) DO UPDATE" in source
+    assert "EXCLUDED.max_observed_at > macro_sync_state.max_observed_at" in normalized_source
+    assert "WHERE macro_sync_state.max_observed_at IS NULL OR EXCLUDED.max_observed_at >" in normalized_source
+
+
+def test_rebuild_macro_sync_state_is_named_source_bundle_repair_only() -> None:
+    source = inspect.getsource(MacroIntelRepository.rebuild_macro_sync_state)
+    normalized_source = " ".join(source.split())
+
+    assert "FROM macro_sync_runs" in source
+    assert "WHERE source_name = %s" in source
+    assert "AND bundle_name = %s" in source
+    assert "status IN ('ok', 'partial')" in source
+    assert "COALESCE(max_seen_observed_at, max_observed_at, requested_end)" in normalized_source
+    assert "FROM macro_observations" in source
+    assert 'str(source_name) == "macrodata-cli"' in source
+    assert 'str(bundle_name) == "macro-core"' in source
+    assert "ORDER BY observed_at DESC" in source
+    assert "LIMIT 1" in source
+    assert "macrodata-cli" in source
+    assert "macro-core" in source
+    assert "INSERT INTO macro_sync_state" in source
+    assert "ON CONFLICT(source_name, bundle_name) DO UPDATE" in source
+    assert "source_name" in normalized_source
+    assert "bundle_name" in normalized_source
 
 
 def test_enqueue_macro_sync_window_coalesces_by_identity_and_returns_id() -> None:

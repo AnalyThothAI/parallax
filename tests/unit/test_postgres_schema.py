@@ -190,6 +190,22 @@ NEWS_PUBLIC_URL_IDENTITY_INDEX_SCOPE_MIGRATION = Path(
 NEWS_CONTEXT_AND_FILTER_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260603_0142_news_context_and_filter_hard_cut.py"
 )
+CEX_DETAIL_PAYLOAD_HASH_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260603_0143_cex_detail_payload_hash_hard_cut.py"
+)
+NEWS_ITEM_PROCESS_CLAIM_HARD_CUT_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260603_0144_news_item_process_claim_hard_cut.py"
+)
+NARRATIVE_ZERO_WRITE_HASHES_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260603_0145_narrative_zero_write_hashes.py"
+)
+MACRO_SYNC_STATE_HARD_CUT_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260603_0146_macro_sync_state_hard_cut.py"
+)
+NEWS_RESEARCH_INDEX_SUPPORT_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260603_0147_news_research_index_support.py"
+)
+NEWS_REPOSITORY = Path("src/parallax/domains/news_intel/repositories/news_repository.py")
 NEWS_MATERIAL_DUPLICATE_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260604_0148_news_material_duplicate_hard_cut.py"
 )
@@ -522,6 +538,20 @@ def test_macro_workerspace_root_fix_migration_hard_cuts_dates_and_counts() -> No
         maxsplit=1,
     )[0]
     assert "| `current_payload_hash` | `TEXT` | True | `None` |" in cex_publication_state
+
+
+def test_cex_detail_payload_hash_hard_cut_migration_backfills_not_null() -> None:
+    text = _migration_text(CEX_DETAIL_PAYLOAD_HASH_MIGRATION)
+    normalized_text = " ".join(text.split())
+
+    assert 'revision = "20260603_0143"' in text
+    assert 'down_revision = "20260603_0142"' in text
+    assert "ALTER TABLE cex_detail_snapshots ADD COLUMN IF NOT EXISTS payload_hash TEXT" in text
+    assert "cex_detail_snapshot_payload_hash(" in text
+    assert "WHERE payload_hash IS NULL OR payload_hash = ''" in normalized_text
+    assert "computed_at_ms" in text
+    assert "_source_refs_for_hash" in text
+    assert "ALTER TABLE cex_detail_snapshots ALTER COLUMN payload_hash SET NOT NULL" in text
 
 
 def test_token_radar_current_row_runtime_insert_contract_matches_hard_cut_schema() -> None:
@@ -987,6 +1017,30 @@ def test_macro_sync_worker_migration_adds_control_plane_tables() -> None:
         assert f"DROP TABLE IF EXISTS {protected_table}" not in downgrade_text
 
 
+def test_macro_sync_state_hard_cut_migration_adds_seeded_control_state() -> None:
+    text = MACRO_SYNC_STATE_HARD_CUT_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+    table = _extract_sql_statement(text, "CREATE TABLE IF NOT EXISTS macro_sync_state")
+
+    assert 'revision = "20260603_0146"' in text
+    assert 'down_revision = "20260603_0145"' in text
+    assert "source_name TEXT NOT NULL" in table
+    assert "bundle_name TEXT NOT NULL" in table
+    assert "max_observed_at DATE" in table
+    assert "updated_at_ms BIGINT NOT NULL" in table
+    assert "PRIMARY KEY(source_name, bundle_name)" in table
+    assert "INSERT INTO macro_sync_state" in text
+    assert "FROM macro_sync_runs" in text
+    assert "status IN ('ok', 'partial')" in normalized_text
+    assert "GROUP BY source_name, bundle_name" in text
+    assert "COALESCE(max_seen_observed_at, max_observed_at, requested_end)" in normalized_text
+    assert "SELECT 'macrodata-cli', 'macro-core', MAX(observed_at)" in normalized_text
+    assert "FROM macro_observations" in text
+    assert "NOT EXISTS" in text
+    assert "ON CONFLICT(source_name, bundle_name) DO UPDATE" in text
+    assert "DROP TABLE IF EXISTS macro_sync_state" in text
+
+
 def test_runtime_performance_hard_cut_revision_chain() -> None:
     migrations = (
         (RUNTIME_RANK_SOURCE_EDGES_MIGRATION, "20260526_0106", "20260526_0105"),
@@ -1013,6 +1067,12 @@ def test_runtime_performance_hard_cut_revision_chain() -> None:
         (NEWS_PUBLIC_URL_HARD_IDENTITY_MIGRATION, "20260529_0123", "20260528_0122"),
         (TOKEN_PULSE_EQUITY_CPU_HARD_CUT_MIGRATION, "20260529_0124", "20260529_0123"),
         (DROP_RETIRED_PRODUCT_MIGRATION, "20260529_0125", "20260529_0124"),
+        (NEWS_CONTEXT_AND_FILTER_HARD_CUT_MIGRATION, "20260603_0142", "20260601_0141"),
+        (CEX_DETAIL_PAYLOAD_HASH_MIGRATION, "20260603_0143", "20260603_0142"),
+        (NEWS_ITEM_PROCESS_CLAIM_HARD_CUT_MIGRATION, "20260603_0144", "20260603_0143"),
+        (NARRATIVE_ZERO_WRITE_HASHES_MIGRATION, "20260603_0145", "20260603_0144"),
+        (MACRO_SYNC_STATE_HARD_CUT_MIGRATION, "20260603_0146", "20260603_0145"),
+        (NEWS_RESEARCH_INDEX_SUPPORT_MIGRATION, "20260603_0147", "20260603_0146"),
     )
 
     for migration, revision, down_revision in migrations:
@@ -1441,6 +1501,50 @@ def test_news_realtime_postgres_hotpath_migration_adds_concurrent_hotpath_indexe
         assert f"DROP INDEX CONCURRENTLY IF EXISTS {index_name}" in downgrade_text
 
 
+def test_news_item_process_claim_hard_cut_migration_replaces_legacy_claim_states() -> None:
+    text = NEWS_ITEM_PROCESS_CLAIM_HARD_CUT_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+    upgrade_text, downgrade_text = text.split("def downgrade() -> None:", maxsplit=1)
+
+    assert 'revision = "20260603_0144"' in text
+    assert 'down_revision = "20260603_0143"' in text
+    assert "processing_lease_owner TEXT" in text
+    assert "processing_leased_until_ms BIGINT" in text
+    assert "processing_next_due_at_ms BIGINT NOT NULL DEFAULT 0" in text
+    assert "processing_terminal_error TEXT" in text
+    assert "DROP INDEX CONCURRENTLY IF EXISTS ix_news_items_unprocessed_claim" in text
+    assert "DROP CONSTRAINT IF EXISTS news_items_lifecycle_status_check" in text
+    assert "lifecycle_status = 'process_retryable'" in text
+    assert "lifecycle_status = 'process_terminal_failed'" in text
+    assert "ix_news_items_processing_lease_expiry" in text
+    assert "'processing'," in text
+    assert "WHERE lifecycle_status = 'process_failed'" in normalized_text
+    assert (
+        "WHERE lifecycle_status = 'processed' AND COALESCE(content_classification_json::text, '{}') = '{}'"
+        in normalized_text
+    )
+    assert "SET lifecycle_status = 'raw'" in normalized_text
+    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_items_unprocessed_claim" in text
+    assert (
+        "ON news_items(lifecycle_status, processing_next_due_at_ms, published_at_ms, news_item_id)" in normalized_text
+    )
+    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_items_processing_lease_expiry" in normalized_text
+    assert "ON news_items(processing_leased_until_ms, news_item_id)" in normalized_text
+    assert "WHERE lifecycle_status = 'processing'" in normalized_text
+    assert "WHERE lifecycle_status = 'raw'" in normalized_text
+    assert "OR lifecycle_status = 'process_retryable'" in normalized_text
+    assert "AND processing_leased_until_ms <= %s" in NEWS_REPOSITORY.read_text()
+    assert "COALESCE(processing_leased_until_ms, 0) <= %s" not in NEWS_REPOSITORY.read_text()
+    assert "DROP INDEX CONCURRENTLY IF EXISTS ix_news_items_unprocessed_claim" in downgrade_text
+    assert "DROP INDEX CONCURRENTLY IF EXISTS ix_news_items_processing_lease_expiry" in downgrade_text
+    assert upgrade_text.index("op.execute(_DROP_LEGACY_LIFECYCLE_CHECK_SQL)") < upgrade_text.index(
+        "SET lifecycle_status = 'process_retryable'"
+    )
+    assert downgrade_text.index("DROP CONSTRAINT IF EXISTS news_items_lifecycle_status_check") < downgrade_text.index(
+        "SET lifecycle_status = CASE"
+    )
+
+
 def test_news_source_status_hotpath_migration_adds_source_first_indexes() -> None:
     text = NEWS_SOURCE_STATUS_HOTPATH_MIGRATION.read_text()
     normalized_text = " ".join(text.split())
@@ -1776,6 +1880,42 @@ def test_news_context_and_filter_hard_cut_drops_retired_schema() -> None:
     assert "news_context_items" not in downgrade_text
 
 
+def test_news_research_index_support_adds_concurrent_search_indexes() -> None:
+    assert NEWS_RESEARCH_INDEX_SUPPORT_MIGRATION.exists(), (
+        f"{NEWS_RESEARCH_INDEX_SUPPORT_MIGRATION} missing; add index support for News research reads"
+    )
+    text = NEWS_RESEARCH_INDEX_SUPPORT_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+    downgrade_text = text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+    for statement in (
+        'revision = "20260603_0147"',
+        'down_revision = "20260603_0146"',
+        "CREATE EXTENSION IF NOT EXISTS pg_trgm",
+        "with op.get_context().autocommit_block():",
+        "SET lock_timeout = '5s'",
+        "SET statement_timeout = '30min'",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_news_token_mentions_symbol_upper_item",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_news_fact_candidates_claim_trgm_valid",
+        "DROP INDEX CONCURRENTLY IF EXISTS idx_news_fact_candidates_claim_trgm_valid",
+        "DROP INDEX CONCURRENTLY IF EXISTS idx_news_token_mentions_symbol_upper_item",
+    ):
+        assert statement in text
+
+    assert (
+        "ON news_token_mentions ( upper(COALESCE(display_symbol, observed_symbol, '')), news_item_id )"
+        in normalized_text
+    )
+    assert (
+        "ON news_fact_candidates USING GIN (claim gin_trgm_ops) WHERE validation_status <> 'rejected'"
+        in normalized_text
+    )
+    assert "RESET lock_timeout" in text
+    assert "RESET statement_timeout" in text
+    assert "DROP INDEX CONCURRENTLY IF EXISTS idx_news_fact_candidates_claim_trgm_valid" in downgrade_text
+    assert "DROP INDEX CONCURRENTLY IF EXISTS idx_news_token_mentions_symbol_upper_item" in downgrade_text
+
+
 def test_news_observation_edges_allow_same_material_title_match_type() -> None:
     assert NEWS_MATERIAL_DUPLICATE_HARD_CUT_MIGRATION.exists(), (
         f"{NEWS_MATERIAL_DUPLICATE_HARD_CUT_MIGRATION} missing; add material duplicate hard-cut migration"
@@ -1784,7 +1924,7 @@ def test_news_observation_edges_allow_same_material_title_match_type() -> None:
     normalized_text = " ".join(text.split())
 
     assert 'revision = "20260604_0148"' in text
-    assert 'down_revision = "20260603_0142"' in text
+    assert 'down_revision = "20260603_0147"' in text
     assert "news_item_observation_edges_match_type_check" in text
     assert "same_material_title" in text
     assert "same_content_hash" in text

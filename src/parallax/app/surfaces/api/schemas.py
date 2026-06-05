@@ -28,6 +28,11 @@ class WorkerLaneStatusData(ApiSchema):
     lane: str
     enabled_workers: int = 0
     running_workers: int = 0
+    stopped_workers: int = 0
+    disabled_workers: int = 0
+    intentionally_not_started_workers: int = 0
+    unavailable_workers: int = 0
+    degraded_workers: int = 0
     failed_workers: int = 0
     soft_timed_out_workers: int = 0
     hard_timed_out_workers: int = 0
@@ -53,6 +58,8 @@ class StatusData(ApiSchema):
 class WorkerStatusData(ApiSchema):
     enabled: bool
     running: bool
+    effective_status: str = "disabled"
+    unavailable_reason: str | None = None
     last_started_at_ms: int | None = None
     last_finished_at_ms: int | None = None
     last_result: JsonObject | None = None

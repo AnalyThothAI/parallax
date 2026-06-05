@@ -392,6 +392,8 @@ def test_news_item_process_worker_extracts_mentions_candidates_and_wakes() -> No
         "title": "Coinbase lists $BTC for trading",
         "summary": "Trading starts today",
         "body_text": "",
+        "processing_attempts": 1,
+        "processing_lease_owner": "news_item_process",
     }
     db = FakeItemProcessDB(FakeItemProcessRepository([item]))
     wake_bus = FakeItemProcessWakeBus()
@@ -409,7 +411,15 @@ def test_news_item_process_worker_extracts_mentions_candidates_and_wakes() -> No
     assert result.processed == 1
     assert result.failed == 0
     assert db.max_open_sessions == 1
-    assert db.repo.list_calls == [{"limit": 10, "now_ms": NOW_MS}]
+    assert db.repo.release_calls == [NOW_MS]
+    assert db.repo.claim_calls == [
+        {
+            "limit": 10,
+            "lease_owner": "news_item_process",
+            "lease_ms": 120_000,
+            "now_ms": NOW_MS,
+        }
+    ]
     assert db.repo.entities["news-1"][0].entity_type == "symbol"
     assert db.repo.mentions["news-1"][0].resolution_status == "known_symbol"
     assert db.repo.fact_candidates["news-1"][0].validation_status == "accepted"
@@ -428,9 +438,21 @@ def test_news_item_process_worker_extracts_mentions_candidates_and_wakes() -> No
     assert db.repo.analysis_story_updates[0]["news_item_id"] == "news-1"
     assert db.repo.analysis_story_updates[0]["admission"].status == "admitted"
     assert db.repo.analysis_story_updates[0]["story_identity"].story_key
-    assert db.repo.processed_items == [{"news_item_id": "news-1", "processed_at_ms": NOW_MS}]
-    assert db.repo.failed_items == []
+    assert db.repo.processed_items == [
+        {
+            "news_item_id": "news-1",
+            "processed_at_ms": NOW_MS,
+            "lease_owner": "news_item_process",
+            "processing_attempts": 1,
+        }
+    ]
+    assert db.repo.retryable_items == []
+    assert db.repo.terminal_failed_items == []
     assert wake_bus.notifications == [{"count": 1}]
+    assert "direct_commit" not in db.conn.events
+    assert "tx:release_expired_processing_items" in db.conn.events
+    assert "tx:claim_unprocessed_items" in db.conn.events
+    assert "tx:mark_item_processed" in db.conn.events
 
 
 def test_news_item_process_worker_passes_authority_scope_to_fact_candidates() -> None:
@@ -443,6 +465,8 @@ def test_news_item_process_worker_passes_authority_scope_to_fact_candidates() ->
         "title": "Coinbase lists $BTC for trading",
         "summary": "Trading starts today",
         "body_text": "",
+        "processing_attempts": 1,
+        "processing_lease_owner": "news_item_process",
     }
     db = FakeItemProcessDB(FakeItemProcessRepository([item]))
     worker = NewsItemProcessWorker(
@@ -485,6 +509,8 @@ def test_news_item_process_provider_only_non_crypto_row_enqueues_page_not_brief(
             "score": 92,
         },
         "provider_token_impacts_json": [{"symbol": "SPCX", "score": 92, "signal": "long", "grade": "A"}],
+        "processing_attempts": 1,
+        "processing_lease_owner": "news_item_process",
     }
     db = FakeItemProcessDB(FakeItemProcessRepository([item]))
     worker = NewsItemProcessWorker(
@@ -580,8 +606,320 @@ def test_news_item_process_admitted_crypto_row_enqueues_page_and_brief_with_stor
     ]
 
 
+def test_news_item_process_worker_marks_retryable_failure_with_next_due_at_ms() -> None:
+    item = {
+        "news_item_id": "news-1",
+        "source_id": "source-1",
+        "source_role": "official_exchange",
+        "source_domain": "coinbase.com",
+        "authority_scope_json": {},
+        "title": "Coinbase lists $BTC for trading",
+        "summary": "Trading starts today",
+        "body_text": "",
+        "processing_attempts": 1,
+        "processing_lease_owner": "news_item_process",
+    }
+    db = FakeItemProcessDB(FakeItemProcessRepository([item]))
+    worker = NewsItemProcessWorker(
+        name="news_item_process",
+        settings=SimpleNamespace(
+            batch_size=10,
+            statement_timeout_seconds=30,
+            retry_delay_ms=45_000,
+            max_attempts=3,
+            lease_ms=120_000,
+        ),
+        db=db,
+        telemetry=object(),
+        identity_lookup=ExplodingIdentityLookup(RuntimeError("extract failed")),
+        wake_bus=FakeItemProcessWakeBus(),
+        clock_ms=lambda: NOW_MS,
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.processed == 0
+    assert result.failed == 1
+    assert db.repo.release_calls == [NOW_MS]
+    assert db.repo.claim_calls == [
+        {
+            "limit": 10,
+            "lease_owner": "news_item_process",
+            "lease_ms": 120_000,
+            "now_ms": NOW_MS,
+        }
+    ]
+    assert db.repo.retryable_items == [
+        {
+            "news_item_id": "news-1",
+            "error": "extract failed",
+            "next_due_at_ms": NOW_MS + 45_000,
+            "now_ms": NOW_MS,
+            "lease_owner": "news_item_process",
+            "processing_attempts": 1,
+        }
+    ]
+    assert db.repo.terminal_failed_items == []
+
+
+def test_news_item_process_worker_uses_failure_time_for_retry_delay() -> None:
+    item = {
+        "news_item_id": "news-1",
+        "source_id": "source-1",
+        "source_role": "official_exchange",
+        "source_domain": "coinbase.com",
+        "authority_scope_json": {},
+        "title": "Coinbase lists $BTC for trading",
+        "summary": "Trading starts today",
+        "body_text": "",
+        "processing_attempts": 1,
+        "processing_lease_owner": "news_item_process",
+    }
+    failure_time_ms = NOW_MS + 120_000
+    db = FakeItemProcessDB(FakeItemProcessRepository([item]))
+    worker = NewsItemProcessWorker(
+        name="news_item_process",
+        settings=SimpleNamespace(
+            batch_size=10,
+            statement_timeout_seconds=30,
+            retry_delay_ms=45_000,
+            max_attempts=3,
+            lease_ms=120_000,
+        ),
+        db=db,
+        telemetry=object(),
+        identity_lookup=ExplodingIdentityLookup(RuntimeError("slow failure")),
+        wake_bus=FakeItemProcessWakeBus(),
+        clock_ms=lambda: failure_time_ms,
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.failed == 1
+    assert db.repo.retryable_items == [
+        {
+            "news_item_id": "news-1",
+            "error": "slow failure",
+            "next_due_at_ms": failure_time_ms + 45_000,
+            "now_ms": failure_time_ms,
+            "lease_owner": "news_item_process",
+            "processing_attempts": 1,
+        }
+    ]
+
+
+def test_news_item_process_worker_marks_terminal_failure_on_last_allowed_attempt() -> None:
+    item = {
+        "news_item_id": "news-1",
+        "source_id": "source-1",
+        "source_role": "official_exchange",
+        "source_domain": "coinbase.com",
+        "authority_scope_json": {},
+        "title": "Coinbase lists $BTC for trading",
+        "summary": "Trading starts today",
+        "body_text": "",
+        "processing_attempts": 3,
+        "processing_lease_owner": "news_item_process",
+    }
+    db = FakeItemProcessDB(FakeItemProcessRepository([item]))
+    worker = NewsItemProcessWorker(
+        name="news_item_process",
+        settings=SimpleNamespace(
+            batch_size=10,
+            statement_timeout_seconds=30,
+            retry_delay_ms=45_000,
+            max_attempts=3,
+            lease_ms=120_000,
+        ),
+        db=db,
+        telemetry=object(),
+        identity_lookup=ExplodingIdentityLookup(RuntimeError("final failure")),
+        wake_bus=FakeItemProcessWakeBus(),
+        clock_ms=lambda: NOW_MS,
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.processed == 0
+    assert result.failed == 1
+    assert db.repo.retryable_items == []
+    assert db.repo.terminal_failed_items == [
+        {
+            "news_item_id": "news-1",
+            "error": "final failure",
+            "now_ms": NOW_MS,
+            "lease_owner": "news_item_process",
+            "processing_attempts": 3,
+        }
+    ]
+
+
+def test_news_item_process_worker_releases_expired_processing_before_skipping_empty_claim() -> None:
+    db = FakeItemProcessDB(FakeItemProcessRepository([]))
+    worker = NewsItemProcessWorker(
+        name="news_item_process",
+        settings=SimpleNamespace(
+            batch_size=10,
+            statement_timeout_seconds=30,
+            retry_delay_ms=45_000,
+            max_attempts=3,
+            lease_ms=120_000,
+        ),
+        db=db,
+        telemetry=object(),
+        identity_lookup=FakeItemProcessLookup(db),
+        wake_bus=FakeItemProcessWakeBus(),
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.skipped == 1
+    assert result.notes == {"reason": "no_unprocessed_items"}
+    assert db.repo.release_calls == [NOW_MS]
+    assert db.repo.claim_calls == [
+        {
+            "limit": 10,
+            "lease_owner": "news_item_process",
+            "lease_ms": 120_000,
+            "now_ms": NOW_MS,
+        }
+    ]
+    assert "direct_commit" not in db.conn.events
+    assert db.conn.events == [
+        "begin",
+        "tx:release_expired_processing_items",
+        "tx:claim_unprocessed_items",
+        "commit",
+    ]
+
+
+def test_news_item_process_worker_treats_stale_processed_claim_as_no_op() -> None:
+    item = {
+        "news_item_id": "news-1",
+        "source_id": "source-1",
+        "source_role": "official_exchange",
+        "source_domain": "coinbase.com",
+        "authority_scope_json": {},
+        "title": "Coinbase lists $BTC for trading",
+        "summary": "Trading starts today",
+        "body_text": "",
+        "processing_attempts": 2,
+        "processing_lease_owner": "news_item_process",
+    }
+    db = FakeItemProcessDB(FakeItemProcessRepository([item], processed_rowcount=0))
+    wake_bus = FakeItemProcessWakeBus()
+    worker = NewsItemProcessWorker(
+        name="news_item_process",
+        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        db=db,
+        telemetry=object(),
+        identity_lookup=FakeItemProcessLookup(db),
+        wake_bus=wake_bus,
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.processed == 0
+    assert result.failed == 0
+    assert result.notes == {"claimed": 1, "stale_claims": 1}
+    assert db.repo.processed_items == [
+        {
+            "news_item_id": "news-1",
+            "processed_at_ms": NOW_MS,
+            "lease_owner": "news_item_process",
+            "processing_attempts": 2,
+        }
+    ]
+    assert wake_bus.notifications == []
+
+
+def test_news_item_process_worker_treats_stale_retryable_claim_as_no_op() -> None:
+    item = {
+        "news_item_id": "news-1",
+        "source_id": "source-1",
+        "source_role": "official_exchange",
+        "source_domain": "coinbase.com",
+        "authority_scope_json": {},
+        "title": "Coinbase lists $BTC for trading",
+        "summary": "Trading starts today",
+        "body_text": "",
+        "processing_attempts": 2,
+        "processing_lease_owner": "news_item_process",
+    }
+    db = FakeItemProcessDB(FakeItemProcessRepository([item], retryable_rowcount=0))
+    worker = NewsItemProcessWorker(
+        name="news_item_process",
+        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        db=db,
+        telemetry=object(),
+        identity_lookup=ExplodingIdentityLookup(RuntimeError("late retry")),
+        wake_bus=FakeItemProcessWakeBus(),
+        clock_ms=lambda: NOW_MS,
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.processed == 0
+    assert result.failed == 0
+    assert result.notes == {"claimed": 1, "stale_claims": 1}
+    assert db.repo.retryable_items == [
+        {
+            "news_item_id": "news-1",
+            "error": "late retry",
+            "next_due_at_ms": NOW_MS + 60_000,
+            "now_ms": NOW_MS,
+            "lease_owner": "news_item_process",
+            "processing_attempts": 2,
+        }
+    ]
+
+
+def test_news_item_process_worker_treats_stale_terminal_claim_as_no_op() -> None:
+    item = {
+        "news_item_id": "news-1",
+        "source_id": "source-1",
+        "source_role": "official_exchange",
+        "source_domain": "coinbase.com",
+        "authority_scope_json": {},
+        "title": "Coinbase lists $BTC for trading",
+        "summary": "Trading starts today",
+        "body_text": "",
+        "processing_attempts": 3,
+        "processing_lease_owner": "news_item_process",
+    }
+    db = FakeItemProcessDB(FakeItemProcessRepository([item], terminal_rowcount=0))
+    worker = NewsItemProcessWorker(
+        name="news_item_process",
+        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30, max_attempts=3),
+        db=db,
+        telemetry=object(),
+        identity_lookup=ExplodingIdentityLookup(RuntimeError("late terminal")),
+        wake_bus=FakeItemProcessWakeBus(),
+        clock_ms=lambda: NOW_MS,
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.processed == 0
+    assert result.failed == 0
+    assert result.notes == {"claimed": 1, "stale_claims": 1}
+    assert db.repo.terminal_failed_items == [
+        {
+            "news_item_id": "news-1",
+            "error": "late terminal",
+            "now_ms": NOW_MS,
+            "lease_owner": "news_item_process",
+            "processing_attempts": 3,
+        }
+    ]
+
+
 def test_news_item_process_rejects_unsupported_analysis_admission_shape_before_persistence() -> None:
-    item = _crypto_process_item()
+    item = {
+        **_crypto_process_item(),
+        "processing_attempts": 1,
+        "processing_lease_owner": "news_item_process",
+    }
     db = FakeItemProcessDB(FakeItemProcessRepository([item]))
     worker = NewsItemProcessWorker(
         name="news_item_process",
@@ -590,6 +928,7 @@ def test_news_item_process_rejects_unsupported_analysis_admission_shape_before_p
         telemetry=object(),
         identity_lookup=FakeItemProcessLookup(db),
         wake_bus=FakeItemProcessWakeBus(),
+        clock_ms=lambda: NOW_MS,
     )
 
     with patch(
@@ -601,12 +940,16 @@ def test_news_item_process_rejects_unsupported_analysis_admission_shape_before_p
     assert result.processed == 0
     assert result.failed == 1
     assert db.repo.analysis_story_updates == []
-    assert db.repo.failed_items[0]["news_item_id"] == "news-zec"
-    assert "analysis admission payload" in str(db.repo.failed_items[0]["error"])
+    assert db.repo.retryable_items[0]["news_item_id"] == "news-zec"
+    assert "analysis admission payload" in str(db.repo.retryable_items[0]["error"])
 
 
 def test_news_item_process_rejects_unsupported_story_identity_shape_before_persistence() -> None:
-    item = _crypto_process_item()
+    item = {
+        **_crypto_process_item(),
+        "processing_attempts": 1,
+        "processing_lease_owner": "news_item_process",
+    }
     db = FakeItemProcessDB(FakeItemProcessRepository([item]))
     worker = NewsItemProcessWorker(
         name="news_item_process",
@@ -615,6 +958,7 @@ def test_news_item_process_rejects_unsupported_story_identity_shape_before_persi
         telemetry=object(),
         identity_lookup=FakeItemProcessLookup(db),
         wake_bus=FakeItemProcessWakeBus(),
+        clock_ms=lambda: NOW_MS,
     )
 
     with patch(
@@ -626,8 +970,8 @@ def test_news_item_process_rejects_unsupported_story_identity_shape_before_persi
     assert result.processed == 0
     assert result.failed == 1
     assert db.repo.analysis_story_updates == []
-    assert db.repo.failed_items[0]["news_item_id"] == "news-zec"
-    assert "story identity payload" in str(db.repo.failed_items[0]["error"])
+    assert db.repo.retryable_items[0]["news_item_id"] == "news-zec"
+    assert "story identity payload" in str(db.repo.retryable_items[0]["error"])
 
 
 def test_news_page_projection_worker_replaces_rows_without_emitting_wake() -> None:
@@ -939,6 +1283,7 @@ class FakeItemProcessDB:
     def __init__(self, repo: FakeItemProcessRepository) -> None:
         self.repo = repo
         self.conn = FakeConn()
+        self.repo.conn = self.conn
         self.dirty = FakeProjectionDirtyTargetRepository()
         self.open_sessions = 0
         self.max_open_sessions = 0
@@ -988,16 +1333,28 @@ class FakeProjectionDB:
 class FakeConn:
     def __init__(self) -> None:
         self.events: list[str] = []
+        self._transaction_depth = 0
 
     def record(self, event: str) -> None:
-        self.events.append(event)
+        prefix = "tx" if self._transaction_depth else "autocommit"
+        self.events.append(f"{prefix}:{event}")
 
     def commit(self) -> None:
-        return None
+        self.events.append("direct_commit")
 
     @contextmanager
     def transaction(self):
-        yield
+        self.events.append("begin")
+        self._transaction_depth += 1
+        try:
+            yield
+        except Exception:
+            self.events.append("rollback")
+            raise
+        else:
+            self.events.append("commit")
+        finally:
+            self._transaction_depth -= 1
 
 
 class FakeProjectionDirtyTargetRepository:
@@ -1171,28 +1528,62 @@ class FakeNewsRepository:
 
 
 class FakeItemProcessRepository:
-    def __init__(self, items: list[dict[str, object]]) -> None:
+    def __init__(
+        self,
+        items: list[dict[str, object]],
+        *,
+        processed_rowcount: int = 1,
+        retryable_rowcount: int = 1,
+        terminal_rowcount: int = 1,
+    ) -> None:
         self.items = items
-        self.list_calls: list[dict[str, int]] = []
+        self.conn: FakeConn | None = None
+        self.claim_calls: list[dict[str, int | str]] = []
+        self.release_calls: list[int] = []
         self.entities: dict[str, list[object]] = {}
         self.mentions: dict[str, list[object]] = {}
         self.fact_candidates: dict[str, list[object]] = {}
         self.content_classifications: list[dict[str, object]] = []
         self.analysis_story_updates: list[dict[str, object]] = []
         self.processed_items: list[dict[str, int | str]] = []
-        self.failed_items: list[dict[str, int | str]] = []
+        self.retryable_items: list[dict[str, int | str]] = []
+        self.terminal_failed_items: list[dict[str, int | str]] = []
+        self.processed_rowcount = processed_rowcount
+        self.retryable_rowcount = retryable_rowcount
+        self.terminal_rowcount = terminal_rowcount
 
-    def list_unprocessed_items(self, *, limit: int, now_ms: int):
-        self.list_calls.append({"limit": limit, "now_ms": now_ms})
+    def release_expired_processing_items(self, *, now_ms: int, commit: bool = True) -> int:
+        assert self.conn is not None
+        self.conn.record("release_expired_processing_items")
+        self.release_calls.append(now_ms)
+        return 0
+
+    def claim_unprocessed_items(self, *, limit: int, lease_owner: str, lease_ms: int, now_ms: int, commit: bool = True):
+        assert self.conn is not None
+        self.conn.record("claim_unprocessed_items")
+        self.claim_calls.append(
+            {
+                "limit": limit,
+                "lease_owner": lease_owner,
+                "lease_ms": lease_ms,
+                "now_ms": now_ms,
+            }
+        )
         return self.items[:limit]
 
     def replace_item_entities(self, news_item_id: str, entities: list[object], *, commit: bool = True) -> None:
+        assert self.conn is not None
+        self.conn.record("replace_item_entities")
         self.entities[news_item_id] = entities
 
     def replace_token_mentions(self, news_item_id: str, mentions: list[object], *, commit: bool = True) -> None:
+        assert self.conn is not None
+        self.conn.record("replace_token_mentions")
         self.mentions[news_item_id] = mentions
 
     def replace_fact_candidates(self, news_item_id: str, candidates: list[object], *, commit: bool = True) -> None:
+        assert self.conn is not None
+        self.conn.record("replace_fact_candidates")
         self.fact_candidates[news_item_id] = candidates
 
     def update_item_content_classification(
@@ -1205,6 +1596,8 @@ class FakeItemProcessRepository:
         now_ms: int,
         commit: bool = True,
     ) -> None:
+        assert self.conn is not None
+        self.conn.record("update_item_content_classification")
         self.content_classifications.append(
             {
                 "news_item_id": news_item_id,
@@ -1234,11 +1627,85 @@ class FakeItemProcessRepository:
             }
         )
 
-    def mark_item_processed(self, news_item_id: str, processed_at_ms: int, *, commit: bool = True) -> None:
-        self.processed_items.append({"news_item_id": news_item_id, "processed_at_ms": processed_at_ms})
+    def mark_item_processed(
+        self,
+        news_item_id: str,
+        processed_at_ms: int,
+        *,
+        lease_owner: str,
+        processing_attempts: int,
+        commit: bool = True,
+    ) -> int:
+        assert self.conn is not None
+        self.conn.record("mark_item_processed")
+        self.processed_items.append(
+            {
+                "news_item_id": news_item_id,
+                "processed_at_ms": processed_at_ms,
+                "lease_owner": lease_owner,
+                "processing_attempts": processing_attempts,
+            }
+        )
+        return self.processed_rowcount
 
-    def mark_item_process_failed(self, news_item_id: str, error: str, now_ms: int) -> None:
-        self.failed_items.append({"news_item_id": news_item_id, "error": error, "now_ms": now_ms})
+    def mark_item_process_retryable(
+        self,
+        news_item_id: str,
+        error: str,
+        next_due_at_ms: int,
+        now_ms: int,
+        *,
+        lease_owner: str,
+        processing_attempts: int,
+        commit: bool = True,
+    ) -> int:
+        assert self.conn is not None
+        self.conn.record("mark_item_process_retryable")
+        self.retryable_items.append(
+            {
+                "news_item_id": news_item_id,
+                "error": error,
+                "next_due_at_ms": next_due_at_ms,
+                "now_ms": now_ms,
+                "lease_owner": lease_owner,
+                "processing_attempts": processing_attempts,
+            }
+        )
+        return self.retryable_rowcount
+
+    def mark_item_process_terminal_failed(
+        self,
+        news_item_id: str,
+        error: str,
+        now_ms: int,
+        *,
+        lease_owner: str,
+        processing_attempts: int,
+        commit: bool = True,
+    ) -> int:
+        assert self.conn is not None
+        self.conn.record("mark_item_process_terminal_failed")
+        self.terminal_failed_items.append(
+            {
+                "news_item_id": news_item_id,
+                "error": error,
+                "now_ms": now_ms,
+                "lease_owner": lease_owner,
+                "processing_attempts": processing_attempts,
+            }
+        )
+        return self.terminal_rowcount
+
+
+class ExplodingIdentityLookup:
+    def __init__(self, error: Exception) -> None:
+        self.error = error
+
+    def resolve_address(self, *, chain_id: str | None, address: str):
+        raise AssertionError("address lookup should not be called for this fixture")
+
+    def resolve_symbol(self, *, symbol: str):
+        raise self.error
 
 
 class FakePageProjectionRepository:

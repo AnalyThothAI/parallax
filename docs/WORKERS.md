@@ -331,29 +331,24 @@ not a read model.
   WebSocket updates. It does not call upstream price providers and never
   writes market facts.
 
-## WorkerSpace Runtime Boundary
+## Worker Manifest Runtime Boundary
 
-Workers with provider IO and durable claims use `RuntimeWorkerContext`, which
-wraps `WorkerSpace` from the manifest contract. The context makes the intended
-order explicit:
+Worker manifests declare the durable contract: inputs, owned fact/control
+tables, read-model identities, provider IO, wakes, and advisory locks. Runtime
+code must follow those declarations directly; there is no partial runtime
+contract object or constructor-time contract injection.
+
+Claim-driven workers keep the order explicit in their own `run_once` flow:
 
 ```text
-claim_session -> payload_session -> provider_io -> persist_session/transaction_session
+claim due control rows -> load bounded payload -> provider IO outside DB session -> persist terminal/result rows
 ```
 
-`claim_session` and `payload_session` may open worker DB sessions to claim
-leased rows and load the smallest required packet. `provider_io` must run
-outside all worker sessions and transactions. `persist_session` opens a fresh
-worker session for non-transactional terminal work; `transaction_session` opens
-a fresh worker transaction for terminal writes, projection writes, and wake
-emission. The guard tracks both session depth and transaction depth; provider
-IO inside either boundary is a runtime error.
-
-Current enforced workers include `token_radar_projection` and
-`event_anchor_backfill`. These workers must be
-constructed with an explicit manifest-derived WorkerSpace contract. There is
-no runtime fallback identity: a missing manifest contract is a construction
-bug, not an alternate execution mode.
+Provider IO must happen outside DB sessions and transactions. Projection and
+terminal writes use fresh worker sessions or transactions owned by the worker
+that owns the manifest entry. Architecture tests verify manifest identities,
+dirty-target ownership, provider-IO classification, and the absence of hidden
+worker lifecycle allowlists.
 
 ## Wake Channels
 

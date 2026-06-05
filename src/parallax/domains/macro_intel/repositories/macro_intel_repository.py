@@ -653,14 +653,102 @@ class MacroIntelRepository:
         ).fetchone()
         return dict(row or {})
 
-    def macro_observations_max_observed_at(self) -> date | None:
+    def macro_sync_state_max_observed_at(self, *, source_name: str, bundle_name: str) -> date | None:
         row = self.conn.execute(
             """
-            SELECT MAX(observed_at) AS max_observed_at
-            FROM macro_observations
-            """
+            SELECT max_observed_at
+            FROM macro_sync_state
+            WHERE source_name = %s
+              AND bundle_name = %s
+            """,
+            (str(source_name), str(bundle_name)),
         ).fetchone()
-        return dict(row or {}).get("max_observed_at")
+        max_observed_at = dict(row or {}).get("max_observed_at")
+        return normalize_macro_date(max_observed_at) if max_observed_at is not None else None
+
+    def update_macro_sync_state(
+        self,
+        *,
+        source_name: str,
+        bundle_name: str,
+        max_observed_at: date | None,
+        now_ms: int,
+    ) -> int:
+        if max_observed_at is None:
+            return 0
+        cursor = self.conn.execute(
+            """
+            INSERT INTO macro_sync_state(source_name, bundle_name, max_observed_at, updated_at_ms)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT(source_name, bundle_name) DO UPDATE SET
+              max_observed_at = EXCLUDED.max_observed_at,
+              updated_at_ms = EXCLUDED.updated_at_ms
+            WHERE macro_sync_state.max_observed_at IS NULL
+               OR EXCLUDED.max_observed_at > macro_sync_state.max_observed_at
+            """,
+            (
+                str(source_name),
+                str(bundle_name),
+                normalize_macro_date(max_observed_at),
+                int(now_ms),
+            ),
+        )
+        return int(getattr(cursor, "rowcount", 0) or 0)
+
+    def rebuild_macro_sync_state(self, *, source_name: str, bundle_name: str, now_ms: int) -> dict[str, Any]:
+        row = self.conn.execute(
+            """
+            SELECT MAX(COALESCE(max_seen_observed_at, max_observed_at, requested_end)) AS max_observed_at
+            FROM macro_sync_runs
+            WHERE source_name = %s
+              AND bundle_name = %s
+              AND status IN ('ok', 'partial')
+            """,
+            (str(source_name), str(bundle_name)),
+        ).fetchone()
+        max_observed_at = dict(row or {}).get("max_observed_at")
+        if max_observed_at is None and str(source_name) == "macrodata-cli" and str(bundle_name) == "macro-core":
+            row = self.conn.execute(
+                """
+                SELECT observed_at AS max_observed_at
+                FROM macro_observations
+                ORDER BY observed_at DESC
+                LIMIT 1
+                """
+            ).fetchone()
+            max_observed_at = dict(row or {}).get("max_observed_at")
+        if max_observed_at is None:
+            cursor = self.conn.execute(
+                """
+                DELETE FROM macro_sync_state
+                WHERE source_name = %s
+                  AND bundle_name = %s
+                """,
+                (str(source_name), str(bundle_name)),
+            )
+            return {"max_observed_at": None, "rows_written": int(getattr(cursor, "rowcount", 0) or 0)}
+
+        normalized_max_observed_at = normalize_macro_date(max_observed_at)
+        cursor = self.conn.execute(
+            """
+            INSERT INTO macro_sync_state(source_name, bundle_name, max_observed_at, updated_at_ms)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT(source_name, bundle_name) DO UPDATE SET
+              max_observed_at = EXCLUDED.max_observed_at,
+              updated_at_ms = EXCLUDED.updated_at_ms
+            WHERE macro_sync_state.max_observed_at IS DISTINCT FROM EXCLUDED.max_observed_at
+            """,
+            (
+                str(source_name),
+                str(bundle_name),
+                normalized_max_observed_at,
+                int(now_ms),
+            ),
+        )
+        return {
+            "max_observed_at": normalized_max_observed_at,
+            "rows_written": int(getattr(cursor, "rowcount", 0) or 0),
+        }
 
     def enqueue_macro_projection_dirty_target(
         self,

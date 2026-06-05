@@ -130,6 +130,55 @@ def test_publish_board_skips_serving_row_writes_when_payload_is_unchanged():
     assert "current_published_at_ms = excluded.current_published_at_ms" not in all_sql
 
 
+def test_board_payload_hash_ignores_detail_only_payload_fields():
+    row = {
+        "rank": 1,
+        "target_id": "binance:BTCUSDT",
+        "pricefeed_id": "pf-btc",
+        "native_market_id": "BTCUSDT",
+        "base_symbol": "BTC",
+        "quote_symbol": "USDT",
+        "open_interest_usd": 1100.0,
+        "open_interest_change_pct_1h": 10.0,
+        "volume_24h_usd": 10_000_000.0,
+        "funding_rate": 0.0001,
+        "mark_price": 101.0,
+        "score": 91.5,
+        "score_components": {"oi": 1},
+        "observed_at_ms": 1_778_000_000_001,
+    }
+
+    first_hash = _board_payload_hash(
+        rows=[{**row, "detail_payload_hash": "sha256:detail-v1"}],
+        period="5m",
+        source_frontier_ms=1_778_000_000_001,
+    )
+    second_hash = _board_payload_hash(
+        rows=[{**row, "detail_payload_hash": "sha256:detail-v2"}],
+        period="5m",
+        source_frontier_ms=1_778_000_000_001,
+    )
+
+    assert first_hash == second_hash
+
+
+def test_publish_board_with_result_reports_changed_empty_board_decision():
+    conn = _RecordingConn(state={"current_payload_hash": "sha256:old"})
+
+    result = CexOiRadarRepository(conn).publish_board_with_result(
+        rows=[],
+        computed_at_ms=1_778_000_000_123,
+        period="5m",
+        status="success",
+        notes={},
+    )
+
+    assert result.board_changed is True
+    assert result.board_rows_written == 0
+    all_sql = "\n".join(conn.sql_calls)
+    assert "DELETE FROM cex_oi_radar_rows" in all_sql
+
+
 def test_skipped_publish_preserves_existing_current_rows():
     conn = _RecordingConn()
 

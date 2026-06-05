@@ -133,6 +133,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     enqueue_token_radar_dirty_targets_mode.add_argument("--dry-run", action="store_true")
     enqueue_token_radar_dirty_targets_mode.add_argument("--execute", action="store_true")
+    enqueue_token_capture_tier_rank_set = ops_subcommands.add_parser(
+        "enqueue-token-capture-tier-rank-set",
+        help="enqueue Token Capture Tier repair from current Token Radar rank set",
+    )
+    enqueue_token_capture_tier_rank_set.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="24h")
+    enqueue_token_capture_tier_rank_set.add_argument("--limit", type=int, default=500)
+    enqueue_token_capture_tier_rank_set_mode = enqueue_token_capture_tier_rank_set.add_mutually_exclusive_group(
+        required=True
+    )
+    enqueue_token_capture_tier_rank_set_mode.add_argument("--dry-run", action="store_true")
+    enqueue_token_capture_tier_rank_set_mode.add_argument("--execute", action="store_true")
     ops_subcommands.add_parser("projection-status", help="print projection offsets and latest runs")
     ops_subcommands.add_parser("worker-status", help="print canonical worker runtime status")
     queue_inspect = ops_subcommands.add_parser("queue-inspect", help="inspect worker queue terminal evidence")
@@ -182,6 +193,13 @@ def build_parser() -> argparse.ArgumentParser:
     cleanup_news_brief_input_mode = cleanup_news_brief_input.add_mutually_exclusive_group(required=True)
     cleanup_news_brief_input_mode.add_argument("--dry-run", action="store_true")
     cleanup_news_brief_input_mode.add_argument("--execute", action="store_true")
+    cleanup_news_item_brief_schema = ops_subcommands.add_parser(
+        "cleanup-news-item-brief-schema-hard-cut",
+        help="clear stale News item current briefs outside the required hard-cut schema",
+    )
+    cleanup_news_item_brief_schema_mode = cleanup_news_item_brief_schema.add_mutually_exclusive_group(required=True)
+    cleanup_news_item_brief_schema_mode.add_argument("--dry-run", action="store_true")
+    cleanup_news_item_brief_schema_mode.add_argument("--execute", action="store_true")
     cleanup_news_intel_hard_cut = ops_subcommands.add_parser(
         "cleanup-news-intel-hard-cut",
         help="dry-run or execute the News Intel hard-cut artifact-only cleanup",

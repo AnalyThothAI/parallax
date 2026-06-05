@@ -9,6 +9,7 @@ from typing import Any, cast
 
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
+from parallax.domains.cex_market_intel.providers import CexOiMarketProvider, CoinglassDerivativesProvider
 from parallax.domains.cex_market_intel.services.binance_oi_radar_builder import (
     build_binance_oi_radar_rows,
 )
@@ -24,14 +25,14 @@ class CexOiRadarBoardWorker(WorkerBase):
     def __init__(
         self,
         *,
-        cex_market: Any,
-        coinglass: Any | None = None,
+        oi_market: CexOiMarketProvider | None,
+        coinglass_derivatives: CoinglassDerivativesProvider | None = None,
         clock_ms: Callable[[], int] | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
-        self.cex_market = cex_market
-        self.coinglass = coinglass
+        self.oi_market = oi_market
+        self.coinglass_derivatives = coinglass_derivatives
         self.clock_ms = clock_ms or _now_ms
         self._local_run_lock = Lock()
 
@@ -57,7 +58,7 @@ class CexOiRadarBoardWorker(WorkerBase):
             self._local_run_lock.release()
 
     def _run_once_sync_locked(self, *, now_ms: int | None = None) -> WorkerResult:
-        if self.cex_market is None:
+        if self.oi_market is None:
             return WorkerResult(
                 skipped=1,
                 notes={
@@ -100,14 +101,14 @@ class CexOiRadarBoardWorker(WorkerBase):
         try:
             built = build_binance_oi_radar_rows(
                 universe=universe,
-                client=self.cex_market,
+                client=self.oi_market,
                 now_ms=now,
                 period=period,
                 limit=limit,
             )
             rows = enrich_rows_with_coinglass(
                 list(built["rows"]),
-                client=self.coinglass,
+                client=self.coinglass_derivatives,
                 now_ms=now,
                 limit=int(getattr(self.settings, "coinglass_enrichment_limit", 0)),
                 level_limit=int(getattr(self.settings, "coinglass_level_limit", 6)),
@@ -133,20 +134,20 @@ class CexOiRadarBoardWorker(WorkerBase):
                     },
                 )
             status = "success" if int(built["failed"]) == 0 else "partial"
+            snapshots = [
+                build_cex_detail_snapshot(row=row, computed_at_ms=now, period=period)
+                for row in rows
+                if row.get("native_market_id")
+            ]
             with self._repository_session() as repos:
-                snapshots = [
-                    build_cex_detail_snapshot(row=row, computed_at_ms=now, period=period)
-                    for row in rows
-                    if row.get("native_market_id")
-                ]
-                detail_written = repos.cex_detail_snapshots.upsert_many(snapshots) if snapshots else 0
-                notes = {"failed_symbols": built["failed_symbols"][:20], "detail_snapshot_count": detail_written}
-                written = repos.cex_oi_radar.publish_board(
+                publication = self._publish_board_and_detail(
+                    repos,
                     rows=rows,
+                    snapshots=snapshots,
                     computed_at_ms=now,
                     period=period,
                     status=status,
-                    notes=notes,
+                    notes={"failed_symbols": built["failed_symbols"][:20], "detail_snapshot_count": len(snapshots)},
                 )
             return WorkerResult(
                 processed=len(rows),
@@ -158,7 +159,9 @@ class CexOiRadarBoardWorker(WorkerBase):
                     "queue_depth": 0,
                     "source_rows_scanned": len(universe),
                     "targets_loaded": len(universe),
-                    "rows_written": int(written) + int(detail_written),
+                    **publication,
+                    "rows_written": int(publication["board_rows_written"])
+                    + int(publication["detail_rows_written"]),
                 },
             )
         except Exception as exc:
@@ -181,6 +184,38 @@ class CexOiRadarBoardWorker(WorkerBase):
 
     def _batch_size(self) -> int:
         return max(1, int(getattr(self.settings, "batch_size", 100)))
+
+    def _publish_board_and_detail(
+        self,
+        repos: Any,
+        *,
+        rows: list[dict[str, Any]],
+        snapshots: list[dict[str, Any]],
+        computed_at_ms: int,
+        period: str,
+        status: str,
+        notes: dict[str, Any],
+    ) -> dict[str, Any]:
+        with repos.transaction():
+            board_result = repos.cex_oi_radar.publish_board_with_result(
+                rows=rows,
+                computed_at_ms=computed_at_ms,
+                period=period,
+                status=status,
+                notes=notes,
+                commit=False,
+            )
+            board_changed = bool(board_result.board_changed)
+            board_rows_written = int(board_result.board_rows_written)
+            detail_rows_written = (
+                int(repos.cex_detail_snapshots.upsert_many(snapshots, commit=False)) if snapshots else 0
+            )
+        return {
+            "board_changed": board_changed,
+            "board_rows_written": board_rows_written,
+            "detail_changed_count": detail_rows_written,
+            "detail_rows_written": detail_rows_written,
+        }
 
 
 def _now_ms() -> int:

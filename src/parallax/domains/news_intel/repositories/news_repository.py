@@ -11,7 +11,7 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from parallax.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION
+from parallax.domains.news_intel._constants import NEWS_ITEM_BRIEF_SCHEMA_VERSION, NEWS_PAGE_PROJECTION_VERSION
 from parallax.domains.news_intel.services.news_analysis_admission import NewsAnalysisAdmission
 from parallax.domains.news_intel.services.news_canonical_identity import (
     CANONICAL_POLICY_VERSION,
@@ -1983,6 +1983,55 @@ class NewsRepository:
         ).fetchone()
         return dict(row) if row is not None else None
 
+    def list_current_brief_ids_outside_schema(
+        self,
+        *,
+        required_schema_version: str = NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+        limit: int = 5000,
+    ) -> list[str]:
+        rows = self.conn.execute(
+            """
+            SELECT news_item_id
+              FROM news_item_agent_briefs
+             WHERE COALESCE(NULLIF(schema_version, ''), NULLIF(brief_json ->> 'schema_version', ''), '')
+                   <> %s
+             ORDER BY updated_at_ms ASC, news_item_id ASC
+             LIMIT %s
+            """,
+            (str(required_schema_version), max(1, int(limit))),
+        ).fetchall()
+        return [str(row["news_item_id"]) for row in rows]
+
+    def clear_current_briefs_outside_schema(
+        self,
+        *,
+        required_schema_version: str = NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+        news_item_ids: Sequence[str] | None = None,
+        commit: bool = True,
+    ) -> list[str]:
+        target_ids = [str(news_item_id) for news_item_id in dict.fromkeys(news_item_ids or []) if str(news_item_id)]
+        if news_item_ids is not None and not target_ids:
+            return []
+        if target_ids:
+            row_filter = "AND news_item_id = ANY(%s::text[])"
+            params: tuple[Any, ...] = (str(required_schema_version), target_ids)
+        else:
+            row_filter = ""
+            params = (str(required_schema_version),)
+        rows = self.conn.execute(
+            f"""
+            DELETE FROM news_item_agent_briefs
+             WHERE COALESCE(NULLIF(schema_version, ''), NULLIF(brief_json ->> 'schema_version', ''), '')
+                   <> %s
+               {row_filter}
+             RETURNING news_item_id
+            """,
+            params,
+        ).fetchall()
+        if commit:
+            self.conn.commit()
+        return [str(row["news_item_id"]) for row in rows]
+
     def list_page_source_items(self, *, limit: int, cursor: str | None = None) -> list[dict[str, Any]]:
         return self.list_news_page_rows(limit=limit, cursor=cursor)
 
@@ -2169,24 +2218,45 @@ class NewsRepository:
             payloads.append(payload)
         return payloads
 
-    def list_unprocessed_items(self, *, limit: int, now_ms: int, commit: bool = True) -> list[dict[str, Any]]:
+    def claim_unprocessed_items(
+        self,
+        *,
+        limit: int,
+        lease_owner: str,
+        lease_ms: int,
+        now_ms: int,
+        commit: bool = True,
+    ) -> list[dict[str, Any]]:
+        lease_deadline = int(now_ms) + max(1, int(lease_ms))
         rows = self.conn.execute(
             """
             WITH picked AS (
-              SELECT news_item_id
+              SELECT news_item_id,
+                     CASE
+                       WHEN lifecycle_status = 'process_retryable' THEN 0
+                       ELSE 1
+                     END AS claim_priority
                 FROM news_items
-               WHERE lifecycle_status IN ('raw', 'process_failed')
+               WHERE lifecycle_status = 'raw'
                   OR (
-                    lifecycle_status = 'processed'
-                    AND content_classification_json = '{}'::jsonb
+                    lifecycle_status = 'process_retryable'
+                    AND processing_next_due_at_ms <= %s
                   )
-               ORDER BY published_at_ms ASC, news_item_id ASC
+               ORDER BY claim_priority ASC,
+                        processing_next_due_at_ms ASC,
+                        published_at_ms ASC,
+                        news_item_id ASC
                LIMIT %s
                FOR UPDATE SKIP LOCKED
             ),
             claimed AS (
               UPDATE news_items AS items
-                 SET processing_attempts = processing_attempts + 1,
+                 SET lifecycle_status = 'processing',
+                     processing_lease_owner = %s,
+                     processing_leased_until_ms = %s,
+                     processing_attempts = processing_attempts + 1,
+                     processing_error = NULL,
+                     processing_terminal_error = NULL,
                      updated_at_ms = %s
                 FROM picked
                WHERE items.news_item_id = picked.news_item_id
@@ -2207,7 +2277,11 @@ class NewsRepository:
                    claimed.title_fingerprint,
                    claimed.lifecycle_status,
                    claimed.processing_attempts,
+                   claimed.processing_lease_owner,
+                   claimed.processing_leased_until_ms,
+                   claimed.processing_next_due_at_ms,
                    claimed.processing_error,
+                   claimed.processing_terminal_error,
                    claimed.processed_at_ms,
                    claimed.content_class,
                    claimed.content_tags_json,
@@ -2224,9 +2298,20 @@ class NewsRepository:
                    sources.coverage_tags_json,
                    sources.authority_scope_json
               FROM claimed
+              JOIN picked ON picked.news_item_id = claimed.news_item_id
               JOIN news_sources AS sources ON sources.source_id = claimed.source_id
+             ORDER BY picked.claim_priority ASC,
+                      claimed.processing_next_due_at_ms ASC,
+                      claimed.published_at_ms ASC,
+                      claimed.news_item_id ASC
             """,
-            (max(0, int(limit)), int(now_ms)),
+            (
+                int(now_ms),
+                max(0, int(limit)),
+                str(lease_owner),
+                lease_deadline,
+                int(now_ms),
+            ),
         ).fetchall()
         if commit:
             self.conn.commit()
@@ -2351,20 +2436,61 @@ class NewsRepository:
         if commit:
             self.conn.commit()
 
-    def mark_item_processed(self, *, news_item_id: str, processed_at_ms: int, commit: bool = True) -> None:
-        self.conn.execute(
-            """
-            UPDATE news_items
-               SET lifecycle_status = 'processed',
-                   processing_error = NULL,
-                   processed_at_ms = %s,
-                   updated_at_ms = %s
-             WHERE news_item_id = %s
-            """,
-            (int(processed_at_ms), int(processed_at_ms), news_item_id),
-        )
+    def mark_item_processed(
+        self,
+        *,
+        news_item_id: str,
+        processed_at_ms: int,
+        lease_owner: str | None = None,
+        processing_attempts: int | None = None,
+        commit: bool = True,
+    ) -> int:
+        if (lease_owner is None) != (processing_attempts is None):
+            raise ValueError("lease_owner and processing_attempts must be provided together")
+        if lease_owner is None:
+            cursor = self.conn.execute(
+                """
+                UPDATE news_items
+                   SET lifecycle_status = 'processed',
+                       processing_lease_owner = NULL,
+                       processing_leased_until_ms = NULL,
+                       processing_next_due_at_ms = 0,
+                       processing_error = NULL,
+                       processing_terminal_error = NULL,
+                       processed_at_ms = %s,
+                       updated_at_ms = %s
+                 WHERE news_item_id = %s
+                """,
+                (int(processed_at_ms), int(processed_at_ms), news_item_id),
+            )
+        else:
+            cursor = self.conn.execute(
+                """
+                UPDATE news_items
+                   SET lifecycle_status = 'processed',
+                       processing_lease_owner = NULL,
+                       processing_leased_until_ms = NULL,
+                       processing_next_due_at_ms = 0,
+                       processing_error = NULL,
+                       processing_terminal_error = NULL,
+                       processed_at_ms = %s,
+                       updated_at_ms = %s
+                 WHERE news_item_id = %s
+                   AND lifecycle_status = 'processing'
+                   AND processing_lease_owner = %s
+                   AND processing_attempts = %s
+                """,
+                (
+                    int(processed_at_ms),
+                    int(processed_at_ms),
+                    news_item_id,
+                    str(lease_owner),
+                    int(processing_attempts),
+                ),
+            )
         if commit:
             self.conn.commit()
+        return int(getattr(cursor, "rowcount", 0) or 0)
 
     def mark_news_items_for_reprocessing(
         self,
@@ -2459,26 +2585,135 @@ class NewsRepository:
         if commit:
             self.conn.commit()
 
-    def mark_item_process_failed(
+    def mark_item_process_retryable(
+        self,
+        *,
+        news_item_id: str,
+        error: str,
+        next_due_at_ms: int,
+        now_ms: int,
+        lease_owner: str | None = None,
+        processing_attempts: int | None = None,
+        commit: bool = True,
+    ) -> int:
+        if (lease_owner is None) != (processing_attempts is None):
+            raise ValueError("lease_owner and processing_attempts must be provided together")
+        if lease_owner is None:
+            cursor = self.conn.execute(
+                """
+                UPDATE news_items
+                   SET lifecycle_status = 'process_retryable',
+                       processing_lease_owner = NULL,
+                       processing_leased_until_ms = NULL,
+                       processing_next_due_at_ms = %s,
+                       processing_error = %s,
+                       processing_terminal_error = NULL,
+                       updated_at_ms = %s
+                 WHERE news_item_id = %s
+                """,
+                (int(next_due_at_ms), _compact_error(error), int(now_ms), news_item_id),
+            )
+        else:
+            cursor = self.conn.execute(
+                """
+                UPDATE news_items
+                   SET lifecycle_status = 'process_retryable',
+                       processing_lease_owner = NULL,
+                       processing_leased_until_ms = NULL,
+                       processing_next_due_at_ms = %s,
+                       processing_error = %s,
+                       processing_terminal_error = NULL,
+                       updated_at_ms = %s
+                 WHERE news_item_id = %s
+                   AND lifecycle_status = 'processing'
+                   AND processing_lease_owner = %s
+                   AND processing_attempts = %s
+                """,
+                (
+                    int(next_due_at_ms),
+                    _compact_error(error),
+                    int(now_ms),
+                    news_item_id,
+                    str(lease_owner),
+                    int(processing_attempts),
+                ),
+            )
+        if commit:
+            self.conn.commit()
+        return int(getattr(cursor, "rowcount", 0) or 0)
+
+    def mark_item_process_terminal_failed(
         self,
         *,
         news_item_id: str,
         error: str,
         now_ms: int,
+        lease_owner: str | None = None,
+        processing_attempts: int | None = None,
         commit: bool = True,
-    ) -> None:
-        self.conn.execute(
+    ) -> int:
+        if (lease_owner is None) != (processing_attempts is None):
+            raise ValueError("lease_owner and processing_attempts must be provided together")
+        if lease_owner is None:
+            cursor = self.conn.execute(
+                """
+                UPDATE news_items
+                   SET lifecycle_status = 'process_terminal_failed',
+                       processing_lease_owner = NULL,
+                       processing_leased_until_ms = NULL,
+                       processing_next_due_at_ms = 0,
+                       processing_error = NULL,
+                       processing_terminal_error = %s,
+                       updated_at_ms = %s
+                 WHERE news_item_id = %s
+                """,
+                (_compact_error(error), int(now_ms), news_item_id),
+            )
+        else:
+            cursor = self.conn.execute(
+                """
+                UPDATE news_items
+                   SET lifecycle_status = 'process_terminal_failed',
+                       processing_lease_owner = NULL,
+                       processing_leased_until_ms = NULL,
+                       processing_next_due_at_ms = 0,
+                       processing_error = NULL,
+                       processing_terminal_error = %s,
+                       updated_at_ms = %s
+                 WHERE news_item_id = %s
+                   AND lifecycle_status = 'processing'
+                   AND processing_lease_owner = %s
+                   AND processing_attempts = %s
+                """,
+                (
+                    _compact_error(error),
+                    int(now_ms),
+                    news_item_id,
+                    str(lease_owner),
+                    int(processing_attempts),
+                ),
+            )
+        if commit:
+            self.conn.commit()
+        return int(getattr(cursor, "rowcount", 0) or 0)
+
+    def release_expired_processing_items(self, *, now_ms: int, commit: bool = True) -> int:
+        cursor = self.conn.execute(
             """
             UPDATE news_items
-               SET lifecycle_status = 'process_failed',
-                   processing_error = %s,
+               SET lifecycle_status = 'process_retryable',
+                   processing_lease_owner = NULL,
+                   processing_leased_until_ms = NULL,
+                   processing_next_due_at_ms = %s,
                    updated_at_ms = %s
-             WHERE news_item_id = %s
+             WHERE lifecycle_status = 'processing'
+               AND processing_leased_until_ms <= %s
             """,
-            (_compact_error(error), int(now_ms), news_item_id),
+            (int(now_ms), int(now_ms), int(now_ms)),
         )
         if commit:
             self.conn.commit()
+        return int(getattr(cursor, "rowcount", 0) or 0)
 
     def servable_news_item_ids(self, news_item_ids: Sequence[str]) -> list[str]:
         target_ids = list(dict.fromkeys(str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)))
@@ -2914,17 +3149,31 @@ class NewsRepository:
               LEFT JOIN LATERAL (
                 SELECT jsonb_build_object(
                          'run_id', runs.run_id,
+                         'backend', runs.backend,
                          'status', runs.status,
                          'outcome', runs.outcome,
                          'execution_started', runs.execution_started,
                          'model', runs.model,
                          'provider', runs.provider,
                          'lane', runs.lane,
+                         'workflow_name', runs.workflow_name,
+                         'agent_name', runs.agent_name,
                          'execution_trace_id', runs.execution_trace_id,
+                         'artifact_version_hash', runs.artifact_version_hash,
+                         'prompt_version', runs.prompt_version,
+                         'schema_version', runs.schema_version,
+                         'validator_version', runs.validator_version,
+                         'guardrail_version', runs.guardrail_version,
+                         'input_hash', runs.input_hash,
+                         'output_hash', runs.output_hash,
                          'error_class', runs.error_class,
                          'error', runs.error,
+                         'request_json', runs.request_json,
+                         'response_json', runs.response_json,
+                         'validation_errors_json', runs.validation_errors_json,
                          'usage_json', runs.usage_json,
                          'trace_metadata_json', runs.trace_metadata_json,
+                         'latency_ms', runs.latency_ms,
                          'started_at_ms', runs.started_at_ms,
                          'finished_at_ms', runs.finished_at_ms
                        ) AS agent_run
@@ -5211,14 +5460,30 @@ def _public_agent_brief_payload(value: Any) -> dict[str, Any]:
 
 def _public_agent_run_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     allowed = (
+        "run_id",
+        "backend",
         "status",
         "outcome",
         "execution_started",
         "model",
         "provider",
         "lane",
+        "workflow_name",
+        "agent_name",
+        "execution_trace_id",
+        "artifact_version_hash",
+        "prompt_version",
+        "schema_version",
+        "validator_version",
+        "guardrail_version",
+        "input_hash",
+        "output_hash",
         "error_class",
         "error",
+        "validation_errors_json",
+        "usage_json",
+        "trace_metadata_json",
+        "latency_ms",
         "started_at_ms",
         "finished_at_ms",
     )
@@ -5260,6 +5525,19 @@ def _json_list(value: Any) -> list[Any]:
     if isinstance(value, tuple):
         return list(value)
     return []
+
+
+def _string_list(value: Any) -> list[str]:
+    if isinstance(value, list | tuple):
+        return [str(item) for item in value if str(item)]
+    return []
+
+
+def _compact_text(value: Any, *, max_length: int) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= max_length:
+        return text
+    return text[: max(0, max_length - 3)].rstrip() + "..."
 
 
 def _first_int(*values: int | None) -> int:

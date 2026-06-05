@@ -9,6 +9,7 @@ from parallax.app.runtime.bootstrap import _assemble_runtime
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_factories import WorkerFactorySpec, construct_workers
 from parallax.app.runtime.worker_result import WorkerResult
+from parallax.app.runtime.worker_scheduler import WorkerScheduler
 from parallax.domains.asset_market.runtime.event_anchor_backfill_worker import EventAnchorBackfillWorker
 from parallax.domains.asset_market.runtime.live_price_gateway import LivePriceGateway
 from parallax.domains.asset_market.runtime.market_tick_current_projection_worker import (
@@ -119,8 +120,88 @@ def test_bootstrap_wires_live_price_gateway_as_db_only_worker_without_price_prov
     assert isinstance(workers["live_price_gateway"], LivePriceGateway)
     assert not isinstance(workers["market_tick_stream"], MarketTickStreamWorker)
     assert not isinstance(workers["market_tick_poll"], MarketTickPollWorker)
+    assert workers["market_tick_stream"].status_payload()["effective_status"] == "unavailable"
+    assert workers["market_tick_stream"].status_payload()["unavailable_reason"] == (
+        "missing_asset_market_stream_provider"
+    )
+    assert workers["market_tick_poll"].status_payload()["effective_status"] == "unavailable"
+    assert workers["market_tick_poll"].status_payload()["unavailable_reason"] == (
+        "missing_asset_market_quote_provider"
+    )
+    reasons = WorkerScheduler(workers=workers, db=db).unhealthy_reasons()
+    assert "worker:market_tick_stream:unavailable:missing_asset_market_stream_provider" in reasons
+    assert "worker:market_tick_poll:unavailable:missing_asset_market_quote_provider" in reasons
     assert isinstance(workers["event_anchor_backfill"], EventAnchorBackfillWorker)
     assert isinstance(workers["market_tick_current_projection"], MarketTickCurrentProjectionWorker)
+
+
+def test_enabled_worker_without_required_provider_surfaces_unavailable() -> None:
+    db = FakeDB()
+
+    workers = construct_workers(
+        settings=_settings(cex_oi_radar_board_enabled=True),
+        db=db,
+        telemetry=object(),
+        providers=FakeProviders(cex_market=None),
+        hub=SimpleNamespace(publish=lambda payload: None),
+        collector=SimpleNamespace(),
+        collector_enabled=False,
+        wake_bus=db.wake,
+    )
+
+    status = workers["cex_oi_radar_board"].status_payload()
+    assert status["enabled"] is True
+    assert status["effective_status"] == "unavailable"
+    assert status["unavailable_reason"] == "missing_cex_oi_market_provider"
+    assert "secret" not in status["unavailable_reason"]
+    assert (
+        "worker:cex_oi_radar_board:unavailable:missing_cex_oi_market_provider"
+        in WorkerScheduler(workers=workers, db=db).unhealthy_reasons()
+    )
+
+
+def test_worker_disabled_by_config_surfaces_disabled_and_is_readiness_ignored() -> None:
+    db = FakeDB()
+
+    workers = construct_workers(
+        settings=_settings(cex_oi_radar_board_enabled=False),
+        db=db,
+        telemetry=object(),
+        providers=FakeProviders(cex_market=None),
+        hub=SimpleNamespace(publish=lambda payload: None),
+        collector=SimpleNamespace(),
+        collector_enabled=False,
+        wake_bus=db.wake,
+    )
+
+    status = workers["cex_oi_radar_board"].status_payload()
+    assert status["enabled"] is False
+    assert status["effective_status"] == "disabled"
+    assert status["unavailable_reason"] is None
+    assert not any(
+        "cex_oi_radar_board" in reason for reason in WorkerScheduler(workers=workers, db=db).unhealthy_reasons()
+    )
+
+
+def test_start_collector_false_surfaces_intentional_not_started_status() -> None:
+    db = FakeDB()
+
+    runtime = _assemble_runtime(
+        settings=_settings(collector_enabled=True),
+        db=db,
+        telemetry=object(),
+        providers=FakeProviders(upstream_client_factory=lambda on_frame: FakeUpstreamClient(on_frame=on_frame)),
+        start_collector=False,
+        llm_gateway=None,
+    )
+
+    status = runtime.workers["collector"].status_payload()
+    assert runtime.start_collector is False
+    assert runtime.collector.upstream_client is None
+    assert status["enabled"] is False
+    assert status["effective_status"] == "intentionally_not_started"
+    assert status["unavailable_reason"] is None
+    assert not any("collector:unavailable" in reason for reason in runtime.scheduler.unhealthy_reasons())
 
 
 def test_worker_factory_preserves_enabled_collector_injection() -> None:
@@ -188,6 +269,30 @@ def test_worker_factory_wires_notification_workers_with_shared_local_wake_waiter
     assert workers["notification_rule"].delivery_wake is workers["notification_delivery"].wake_waiter
 
 
+def test_notification_delivery_without_enabled_channel_is_disabled_not_unavailable() -> None:
+    db = FakeDB()
+
+    workers = construct_workers(
+        settings=_settings(notifications_enabled=True, notification_log_channel_enabled=False),
+        db=db,
+        telemetry=object(),
+        providers=FakeProviders(),
+        hub=SimpleNamespace(publish=lambda payload: None),
+        collector=FakeCollector(name="collector", settings=SimpleNamespace(enabled=False), db=db, telemetry=object()),
+        collector_enabled=False,
+        wake_bus=db.wake,
+    )
+
+    assert isinstance(workers["notification_rule"], NotificationWorker)
+    assert not isinstance(workers["notification_delivery"], NotificationDeliveryWorker)
+    status = workers["notification_delivery"].status_payload()
+    assert status["effective_status"] == "disabled"
+    assert status["unavailable_reason"] is None
+    assert not any(
+        "notification_delivery" in reason for reason in WorkerScheduler(workers=workers, db=db).unhealthy_reasons()
+    )
+
+
 def test_worker_factory_wires_news_fetch_by_default() -> None:
     db = FakeDB()
     providers = FakeProviders()
@@ -224,11 +329,7 @@ def test_worker_factory_wires_news_fetch_by_default() -> None:
     assert workers["news_page_projection"].settings.advisory_lock_key == 2026051904
     assert isinstance(workers["news_source_quality_projection"], NewsSourceQualityProjectionWorker)
     assert workers["news_source_quality_projection"].wake_bus is db.wake
-    assert workers["news_source_quality_projection"].wake_waiter.channels == (
-        "news_item_written",
-        "news_item_processed",
-        "news_item_brief_updated",
-    )
+    assert workers["news_source_quality_projection"].wake_waiter.channels == ("news_item_written",)
     assert workers["news_source_quality_projection"].settings.advisory_lock_key == 2026052201
     assert isinstance(workers["macro_view_projection"], MacroViewProjectionWorker)
     assert isinstance(workers["macro_sync"], MacroSyncWorker)
@@ -356,6 +457,35 @@ def test_worker_factory_hard_gates_narrative_bulk_queue_producers() -> None:
     assert not isinstance(workers["token_discussion_digest"], TokenDiscussionDigestWorker)
 
 
+def test_narrative_bulk_siblings_disabled_by_worker_gate_are_not_provider_unavailable() -> None:
+    db = FakeDB()
+
+    workers = construct_workers(
+        settings=_settings(
+            narrative_intel_configured=True,
+            narrative_admission_enabled=True,
+            mention_semantics_enabled=False,
+            token_discussion_digest_enabled=True,
+        ),
+        db=db,
+        telemetry=object(),
+        providers=FakeProviders(),
+        hub=SimpleNamespace(publish=lambda payload: None),
+        collector=FakeCollector(name="collector", settings=SimpleNamespace(enabled=False), db=db, telemetry=object()),
+        collector_enabled=False,
+        wake_bus=db.wake,
+    )
+
+    assert workers["narrative_admission"].status_payload()["effective_status"] == "disabled"
+    assert workers["narrative_admission"].status_payload()["unavailable_reason"] is None
+    assert workers["mention_semantics"].status_payload()["effective_status"] == "disabled"
+    assert workers["token_discussion_digest"].status_payload()["effective_status"] == "disabled"
+    assert not any(
+        "missing_narrative_intel_provider" in reason
+        for reason in WorkerScheduler(workers=workers, db=db).unhealthy_reasons()
+    )
+
+
 def test_worker_factory_wires_news_item_brief_when_configured() -> None:
     db = FakeDB()
     providers = FakeProviders(brief_provider=object())
@@ -411,6 +541,7 @@ def _settings(
     *,
     collector_enabled: bool = False,
     notifications_enabled: bool = False,
+    notification_log_channel_enabled: bool = True,
     narrative_intel_configured: bool = False,
     news_item_brief_configured: bool = False,
     macro_view_projection_enabled: bool = True,
@@ -419,6 +550,9 @@ def _settings(
     narrative_admission_enabled: bool = True,
     mention_semantics_enabled: bool = True,
     token_discussion_digest_enabled: bool = True,
+    cex_oi_radar_board_enabled: bool = False,
+    market_tick_stream_enabled: bool = True,
+    market_tick_poll_enabled: bool = True,
 ) -> Settings:
     llm = {"api_key": "secret"} if narrative_intel_configured else {}
     agent_lanes = {}
@@ -433,7 +567,7 @@ def _settings(
             "enabled": notifications_enabled,
             "channels": {
                 "log": {
-                    "enabled": True,
+                    "enabled": notification_log_channel_enabled,
                     "provider": "log",
                     "min_severity": "info",
                 }
@@ -445,8 +579,8 @@ def _settings(
                 "lanes": agent_lanes,
             },
             "collector": {"enabled": collector_enabled},
-            "market_tick_stream": {"enabled": True},
-            "market_tick_poll": {"enabled": True},
+            "market_tick_stream": {"enabled": market_tick_stream_enabled},
+            "market_tick_poll": {"enabled": market_tick_poll_enabled},
             "market_tick_current_projection": {"enabled": True},
             "event_anchor_backfill": {"enabled": True},
             "token_capture_tier": {"enabled": True},
@@ -456,6 +590,7 @@ def _settings(
             "token_image_mirror": {"enabled": True},
             "token_profile_current": {"enabled": True},
             "token_radar_projection": {"enabled": token_radar_projection_enabled},
+            "cex_oi_radar_board": {"enabled": cex_oi_radar_board_enabled},
             "macro_view_projection": {"enabled": macro_view_projection_enabled},
             "narrative_admission": {"enabled": narrative_admission_enabled},
             "mention_semantics": {"enabled": mention_semantics_enabled},

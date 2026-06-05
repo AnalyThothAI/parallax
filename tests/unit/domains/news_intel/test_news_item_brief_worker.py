@@ -160,7 +160,7 @@ async def _test_worker_reprocesses_failed_current_even_when_input_hash_matches()
 
 
 async def _test_worker_skips_claimed_target_below_current_provider_score_floor() -> None:
-    candidate = _candidate(provider_score=79)
+    candidate = _candidate(provider_score=64)
     db = FakeDB([candidate])
     provider = FakeBriefProvider(payload=_ready_payload())
     worker = _worker(db=db, provider=provider)
@@ -500,6 +500,15 @@ def _candidate(*, provider_score: int = 88) -> dict[str, Any]:
             "lifecycle_status": "processed",
             "content_class": "crypto_market",
             "content_classification_json": {"policy_version": "news_content_classification_v1"},
+            "analysis_admission_status": "admitted",
+            "analysis_admission_reason": "crypto_native_evidence",
+            "analysis_admission_json": {
+                "status": "admitted",
+                "reason": "crypto_native_evidence",
+                "basis": {"crypto_evidence": ["resolved_crypto_target:cex:SOL"]},
+                "version": "news_analysis_admission_v1",
+            },
+            "analysis_admission_version": "news_analysis_admission_v1",
             "source_domain": "example.com",
             "source_name": "Example",
             "source_role": "observed_source",

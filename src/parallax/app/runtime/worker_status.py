@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -15,6 +16,11 @@ class WorkerLaneStatus:
     lane: str
     enabled_workers: int
     running_workers: int
+    stopped_workers: int
+    disabled_workers: int
+    intentionally_not_started_workers: int
+    unavailable_workers: int
+    degraded_workers: int
     failed_workers: int
     soft_timed_out_workers: int
     hard_timed_out_workers: int
@@ -59,7 +65,12 @@ def manifest_worker_statuses(payload: dict[str, dict[str, Any]]) -> dict[str, di
         workers.setdefault(name, empty_worker_status())
     for status in workers.values():
         for key, value in empty_worker_status().items():
+            if key == "effective_status":
+                continue
             status.setdefault(key, value)
+        status["effective_status"] = _worker_effective_status(status)
+        if status.get("unavailable_reason") is not None:
+            status["unavailable_reason"] = str(status["unavailable_reason"])
     return workers
 
 
@@ -67,6 +78,8 @@ def empty_worker_status() -> dict[str, Any]:
     return {
         "enabled": False,
         "running": False,
+        "effective_status": "disabled",
+        "unavailable_reason": None,
         "last_started_at_ms": None,
         "last_finished_at_ms": None,
         "last_result": None,
@@ -93,8 +106,15 @@ def worker_lane_statuses(workers: dict[str, dict[str, Any]]) -> dict[str, dict[s
             WorkerLaneStatus(
                 lane=lane_name,
                 enabled_workers=sum(1 for status in statuses if status.get("enabled")),
-                running_workers=sum(1 for status in statuses if status.get("running")),
-                failed_workers=sum(1 for status in statuses if _worker_failed(status)),
+                running_workers=sum(1 for status in statuses if _worker_effective_status(status) == "running"),
+                stopped_workers=sum(1 for status in statuses if _worker_effective_status(status) == "stopped"),
+                disabled_workers=sum(1 for status in statuses if _worker_effective_status(status) == "disabled"),
+                intentionally_not_started_workers=sum(
+                    1 for status in statuses if _worker_effective_status(status) == "intentionally_not_started"
+                ),
+                unavailable_workers=sum(1 for status in statuses if _worker_effective_status(status) == "unavailable"),
+                degraded_workers=sum(1 for status in statuses if _worker_effective_status(status) == "degraded"),
+                failed_workers=sum(1 for status in statuses if _worker_effective_status(status) == "failed"),
                 soft_timed_out_workers=sum(
                     1 for status in statuses if status.get("active_run_once_soft_timed_out_at_ms") is not None
                 ),
@@ -110,11 +130,65 @@ def worker_lane_statuses(workers: dict[str, dict[str, Any]]) -> dict[str, dict[s
     return lanes
 
 
+def effective_worker_status(status: Mapping[str, Any]) -> str:
+    return _worker_effective_status(dict(status))
+
+
+def _worker_effective_status(status: dict[str, Any]) -> str:
+    explicit = status.get("effective_status")
+    if isinstance(explicit, str) and explicit in {
+        "disabled",
+        "intentionally_not_started",
+        "unavailable",
+        "degraded",
+        "running",
+        "stopped",
+        "failed",
+    }:
+        return explicit
+    if not status.get("enabled"):
+        return "disabled"
+    if _worker_failed(status):
+        return "failed"
+    if _worker_degraded(status):
+        return "degraded"
+    if status.get("running"):
+        return "running"
+    return "stopped"
+
+
 def _worker_failed(status: dict[str, Any]) -> bool:
     if status.get("last_error"):
         return True
     result = status.get("last_result")
-    return isinstance(result, dict) and result.get("ok") is False
+    if not isinstance(result, dict):
+        return False
+    if result.get("ok") is False:
+        return True
+    return _positive_result_count(result, "failed") or _positive_result_count(result, "dead")
+
+
+def _positive_result_count(result: dict[str, Any], key: str) -> bool:
+    try:
+        return int(result.get(key) or 0) > 0
+    except (TypeError, ValueError):
+        return False
+
+
+def _worker_degraded(status: dict[str, Any]) -> bool:
+    result = status.get("last_result")
+    if not isinstance(result, dict):
+        return False
+    if result.get("degraded") is True:
+        return True
+    if str(result.get("status") or "").strip().lower() == "degraded":
+        return True
+    notes = result.get("notes")
+    if not isinstance(notes, dict):
+        return False
+    if notes.get("degraded") is True:
+        return True
+    return str(notes.get("status") or "").strip().lower() == "degraded"
 
 
 def _max_int(values: object) -> int | None:

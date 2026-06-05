@@ -4,7 +4,7 @@ import asyncio
 from typing import Any
 
 from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_factories import WorkerFactoryContext
+from parallax.app.runtime.worker_factories import WorkerFactoryContext, disabled_worker
 from parallax.app.runtime.worker_manifest import manifest_names_for_factory
 from parallax.domains.account_quality.read_models.account_alert_service import AccountAlertService
 from parallax.domains.notifications.runtime.notification_delivery import NotificationDeliveryWorker
@@ -19,8 +19,20 @@ def construct_notification_workers(ctx: WorkerFactoryContext) -> dict[str, Worke
     workers = ctx.settings.workers
     constructed: dict[str, WorkerBase] = {}
     delivery_wake = _LocalWakeWaiter()
+    notifications_enabled = bool(ctx.settings.notifications.enabled)
+    delivery_channels_enabled = any(
+        channel.enabled and (channel.provider == "log" or channel.url)
+        for channel in ctx.settings.notifications.channels.values()
+    )
 
-    if ctx.settings.notifications.enabled and workers.notification_rule.enabled:
+    if not notifications_enabled:
+        return {
+            name: disabled_worker(ctx, name)
+            for name in ("notification_rule", "notification_delivery")
+            if getattr(workers, name).enabled
+        }
+
+    if workers.notification_rule.enabled:
         constructed["notification_rule"] = NotificationWorker(
             name="notification_rule",
             settings=workers.notification_rule,
@@ -32,14 +44,7 @@ def construct_notification_workers(ctx: WorkerFactoryContext) -> dict[str, Worke
             delivery_max_attempts=workers.notification_delivery.max_attempts,
             delivery_wake=delivery_wake,
         )
-    if (
-        ctx.settings.notifications.enabled
-        and workers.notification_delivery.enabled
-        and any(
-            channel.enabled and (channel.provider == "log" or channel.url)
-            for channel in ctx.settings.notifications.channels.values()
-        )
-    ):
+    if workers.notification_delivery.enabled and delivery_channels_enabled:
         constructed["notification_delivery"] = NotificationDeliveryWorker(
             name="notification_delivery",
             settings=workers.notification_delivery,
@@ -48,6 +53,8 @@ def construct_notification_workers(ctx: WorkerFactoryContext) -> dict[str, Worke
             channels=ctx.settings.notifications.channels,
             wake_waiter=delivery_wake,
         )
+    elif workers.notification_delivery.enabled:
+        constructed["notification_delivery"] = disabled_worker(ctx, "notification_delivery")
 
     return constructed
 

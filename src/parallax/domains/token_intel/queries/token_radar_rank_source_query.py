@@ -123,6 +123,7 @@ class TokenRadarRankSourceQuery:
         targets: Sequence[Mapping[str, Any]],
         *,
         projected_at_ms: int,
+        analysis_since_ms: int,
         commit: bool = True,
     ) -> int:
         target_payloads = _target_payloads(targets)
@@ -137,7 +138,9 @@ class TokenRadarRankSourceQuery:
                     TOKEN_RADAR_PROJECTION_VERSION,
                     int(projected_at_ms),
                     TOKEN_RADAR_RESOLVER_POLICY_VERSION,
+                    int(analysis_since_ms),
                     TOKEN_RADAR_PROJECTION_VERSION,
+                    int(analysis_since_ms),
                 ),
             ).fetchone()
             changed += int((row or {}).get("upserted_count") or 0)
@@ -795,6 +798,7 @@ raw_edges AS (
     AND token_intent_resolutions.resolver_policy_version = %s
     AND token_intent_resolutions.target_type IN ('Asset', 'CexToken')
     AND token_intent_resolutions.target_id IS NOT NULL
+    AND events.received_at_ms >= %s
 ),
 fresh_edges AS (
   SELECT DISTINCT ON (projection_version, target_type_key, identity_id, source_kind, source_id)
@@ -860,6 +864,7 @@ deleted AS (
     AND stale_edges.source_kind = 'event'
     AND stale_edges.target_type_key = requested.target_type_key
     AND stale_edges.identity_id = requested.identity_id
+    AND stale_edges.event_received_at_ms >= %s
     AND NOT EXISTS (
       SELECT 1
       FROM fresh_edges fresh

@@ -109,6 +109,14 @@ def test_sync_service_import_success_writes_facts_completes_window_and_wakes_pro
     assert repo.observations[0]["series_key"] == "nyfed:SOFR"
     assert repo.import_runs[0]["bundle_name"] == "macro-core"
     assert repo.sync_runs[0]["import_run_id"] == repo.import_runs[0]["run_id"]
+    assert repo.sync_state_updates == [
+        {
+            "source_name": "macrodata-cli",
+            "bundle_name": "macro-core",
+            "max_observed_at": date(2026, 5, 27),
+            "now_ms": NOW_MS,
+        }
+    ]
     assert repo.completed_windows == [
         {
             "sync_window_id": "window-1",
@@ -158,8 +166,18 @@ def test_sync_service_empty_import_does_not_enqueue_projection_dirty_target() ->
     result = service.run_claimed_window_once(lease_owner="macro_sync")
 
     assert result is not None
+    assert result.status == "partial"
     assert result.imported_observation_count == 0
+    assert repo.sync_runs[0]["status"] == "partial"
     assert repo.enqueued_dirty_targets == []
+    assert repo.sync_state_updates == [
+        {
+            "source_name": "macrodata-cli",
+            "bundle_name": "macro-core",
+            "max_observed_at": date(2026, 5, 27),
+            "now_ms": NOW_MS,
+        }
+    ]
 
 
 def test_sync_service_noop_overlap_records_seen_and_does_not_wake_or_dirty() -> None:
@@ -185,6 +203,14 @@ def test_sync_service_noop_overlap_records_seen_and_does_not_wake_or_dirty() -> 
     assert result.imported_observation_count == 0
     assert repo.sync_runs[0]["seen_observation_count"] == 1
     assert repo.enqueued_dirty_targets == []
+    assert repo.sync_state_updates == [
+        {
+            "source_name": "macrodata-cli",
+            "bundle_name": "macro-core",
+            "max_observed_at": date(2026, 5, 27),
+            "now_ms": NOW_MS,
+        }
+    ]
     assert wake_bus.notifications == []
 
 
@@ -235,6 +261,7 @@ def test_sync_service_stale_completion_rolls_back_facts_and_does_not_wake() -> N
     assert repo.observations == []
     assert repo.import_runs == []
     assert repo.sync_runs == []
+    assert repo.sync_state_updates == []
     assert wake_bus.notifications == []
     assert "transaction-rollback" in events
 
@@ -259,6 +286,7 @@ def test_sync_service_provider_failure_records_retry_without_fabricating_facts()
     assert repo.observations == []
     assert repo.import_runs == []
     assert repo.sync_runs[0]["status"] == "retryable_error"
+    assert repo.sync_state_updates == []
     assert repo.retry_windows[0]["error_code"] == "provider_down"
 
 
@@ -628,6 +656,7 @@ class FakeTransaction:
         self.observations = list(self.repos.macro_intel.observations)
         self.import_runs = list(self.repos.macro_intel.import_runs)
         self.sync_runs = list(self.repos.macro_intel.sync_runs)
+        self.sync_state_updates = list(self.repos.macro_intel.sync_state_updates)
         self.completed_windows = list(self.repos.macro_intel.completed_windows)
         self.retry_windows = list(self.repos.macro_intel.retry_windows)
         self.failed_windows = list(self.repos.macro_intel.failed_windows)
@@ -649,6 +678,7 @@ class FakeTransaction:
             self.repos.macro_intel.observations = self.observations
             self.repos.macro_intel.import_runs = self.import_runs
             self.repos.macro_intel.sync_runs = self.sync_runs
+            self.repos.macro_intel.sync_state_updates = self.sync_state_updates
             self.repos.macro_intel.completed_windows = self.completed_windows
             self.repos.macro_intel.retry_windows = self.retry_windows
             self.repos.macro_intel.failed_windows = self.failed_windows
@@ -676,6 +706,7 @@ class FakeMacroIntelRepository:
         self.observations: list[dict[str, object]] = []
         self.import_runs: list[dict[str, object]] = []
         self.sync_runs: list[dict[str, object]] = []
+        self.sync_state_updates: list[dict[str, object]] = []
         self.completed_windows: list[dict[str, object]] = []
         self.retry_windows: list[dict[str, object]] = []
         self.failed_windows: list[dict[str, object]] = []
@@ -723,6 +754,10 @@ class FakeMacroIntelRepository:
 
     def record_macro_sync_run(self, run: dict[str, object]) -> None:
         self.sync_runs.append(run)
+
+    def update_macro_sync_state(self, **kwargs: object) -> int:
+        self.sync_state_updates.append(dict(kwargs))
+        return 1
 
     def complete_macro_sync_window(self, **kwargs: object) -> bool:
         if self.complete_result:

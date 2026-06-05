@@ -76,7 +76,7 @@ def test_homepage_url_uses_weak_fallback_when_content_is_unqualified() -> None:
     assert identity.match_type == "weak_title_time_source"
 
 
-def test_live_url_uses_weak_fallback_when_content_is_unqualified() -> None:
+def test_live_url_uses_public_url_identity_even_when_content_is_unqualified() -> None:
     service = _service()
     canonical_url = "https://www.nytimes.com/live/2026/05/28/business/crypto-market-news"
     published_at_ms = 1_714_004_321_000

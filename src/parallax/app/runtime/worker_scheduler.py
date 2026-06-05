@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from parallax.app.runtime.worker_manifest import worker_start_priority
+from parallax.app.runtime.worker_status import effective_worker_status
 
 _START_PRIORITY = worker_start_priority()
 
@@ -31,7 +32,7 @@ class WorkerScheduler:
         try:
             for name in self._ordered_worker_names():
                 worker = self.workers[name]
-                if not _worker_enabled(worker):
+                if not _worker_startable(worker):
                     continue
                 concurrency = _worker_concurrency(name, worker)
                 for index in range(concurrency):
@@ -88,12 +89,21 @@ class WorkerScheduler:
     def unhealthy_reasons(self) -> list[str]:
         reasons: list[str] = []
         for name, worker in self.workers.items():
-            if not _worker_enabled(worker):
+            effective_status = worker_effective_status(worker)
+            if effective_status in {"disabled", "intentionally_not_started"}:
+                continue
+            if effective_status == "unavailable":
+                reasons.append(f"worker:{name}:unavailable:{_worker_unavailable_reason(worker)}")
                 continue
             task_items = _worker_task_items(self.tasks, name)
             if not task_items:
+                failure_reason = _worker_failure_reason(name, worker, effective_status)
+                if failure_reason is not None:
+                    reasons.append(failure_reason)
+                    continue
                 reasons.append(f"worker:{name}:stopped")
                 continue
+            task_failure_emitted = False
             for task_key, task in task_items:
                 if task.cancelled():
                     reasons.append(f"worker:{task_key}:stopped")
@@ -102,15 +112,13 @@ class WorkerScheduler:
                     exc = task.exception()
                     if exc is not None:
                         reasons.append(f"worker:{task_key}:errored:{exc}")
+                        task_failure_emitted = True
                     else:
                         reasons.append(f"worker:{task_key}:stopped")
                     continue
-            last_error = getattr(worker, "last_error", None)
-            if _worker_hard_timed_out(worker):
-                reasons.append(f"worker:{name}:hard_timeout")
-                continue
-            if last_error:
-                reasons.append(f"worker:{name}:errored:{last_error}")
+            failure_reason = _worker_failure_reason(name, worker, effective_status)
+            if failure_reason is not None and not task_failure_emitted:
+                reasons.append(failure_reason)
         return reasons
 
     def _ordered_worker_names(self) -> list[str]:
@@ -139,6 +147,59 @@ class WorkerScheduler:
 def _worker_enabled(worker: Any) -> bool:
     settings = getattr(worker, "settings", None)
     return bool(getattr(settings, "enabled", True))
+
+
+def _worker_startable(worker: Any) -> bool:
+    return worker_effective_status(worker) not in {"disabled", "intentionally_not_started", "unavailable"}
+
+
+def worker_effective_status(worker: Any) -> str:
+    explicit = getattr(worker, "effective_status", None)
+    if isinstance(explicit, str) and explicit:
+        return explicit
+    payload = _worker_status_payload(worker)
+    if payload:
+        return effective_worker_status(payload)
+    if not _worker_enabled(worker):
+        return "disabled"
+    if getattr(worker, "last_error", None):
+        return "failed"
+    if bool(getattr(worker, "running", False)):
+        return "running"
+    return "stopped"
+
+
+def _worker_unavailable_reason(worker: Any) -> str:
+    reason = getattr(worker, "unavailable_reason", None)
+    if isinstance(reason, str) and reason:
+        return reason
+    payload = _worker_status_payload(worker)
+    payload_reason = payload.get("unavailable_reason")
+    if isinstance(payload_reason, str) and payload_reason:
+        return payload_reason
+    return "unavailable"
+
+
+def _worker_failure_reason(name: str, worker: Any, effective_status: str) -> str | None:
+    last_error = getattr(worker, "last_error", None)
+    if _worker_hard_timed_out(worker):
+        return f"worker:{name}:hard_timeout"
+    if last_error:
+        return f"worker:{name}:errored:{last_error}"
+    if effective_status == "failed":
+        return f"worker:{name}:failed"
+    return None
+
+
+def _worker_status_payload(worker: Any) -> dict[str, Any]:
+    status_payload = getattr(worker, "status_payload", None)
+    if not callable(status_payload):
+        return {}
+    try:
+        payload = status_payload()
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def _worker_concurrency(name: str, worker: Any) -> int:

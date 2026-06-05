@@ -329,7 +329,7 @@ def test_process_worker_enqueues_page_and_brief_dirty_in_same_transaction_after_
     result = worker.run_once_sync(now_ms=NOW_MS)
 
     assert result.processed == 1
-    assert repos.news.write_commits == [False, False, False, False, False]
+    assert repos.news.write_commits == [False, False, False, False, False, False]
     assert repos.dirty.enqueued == [
         {
             "rows": [{"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"}],
@@ -351,10 +351,12 @@ def test_process_worker_enqueues_page_and_brief_dirty_in_same_transaction_after_
             "commit": False,
         }
     ]
+    assert "direct_commit" not in repos.conn.events
+    assert "tx:release_expired_processing_items" in repos.conn.events
+    assert "tx:claim_unprocessed_items" in repos.conn.events
     assert "tx:replace_item_entities" in repos.conn.events
     assert "tx:dirty:news_item_processed" in repos.conn.events
     assert "autocommit:dirty:news_item_processed" not in repos.conn.events
-    assert "direct_commit" not in repos.conn.events
 
 
 def test_ops_projection_repair_enqueues_provider_signal_brief_input_dirty_target() -> None:
@@ -549,8 +551,27 @@ def _page_payload(news_item_id: str) -> dict[str, Any]:
             "canonical_url": f"https://example.com/{news_item_id}",
             "published_at_ms": 1000,
             "lifecycle_status": "processed",
+            "analysis_admission_status": "admitted",
+            "analysis_admission_reason": "crypto_native_evidence",
+            "analysis_admission_json": {
+                "status": "admitted",
+                "reason": "crypto_native_evidence",
+                "basis": {"crypto_evidence": ["text:crypto_subject"]},
+                "version": "news_analysis_admission_v1",
+            },
+            "analysis_admission_version": "news_analysis_admission_v1",
+            "story_key": f"news-story:{news_item_id}",
+            "story_identity_json": {
+                "story_key": f"news-story:{news_item_id}",
+                "confidence": "strong",
+                "basis": {"method": "unit_fixture"},
+                "version": "news_story_identity_v1",
+            },
+            "story_identity_version": "news_story_identity_v1",
         },
         "current_brief": None,
+        "story": None,
+        "member_items": [],
         "token_mentions": [],
         "fact_candidates": [],
     }
@@ -583,6 +604,15 @@ class FakeOpsProjectionConn:
                         "lifecycle_status": "processed",
                         "content_class": "crypto_market",
                         "content_classification_json": {"policy_version": "news_content_classification_v1"},
+                        "analysis_admission_status": "admitted",
+                        "analysis_admission_reason": "crypto_native_evidence",
+                        "analysis_admission_json": {
+                            "status": "admitted",
+                            "reason": "crypto_native_evidence",
+                            "basis": {"crypto_evidence": ["resolved_crypto_target:cex:BTC"]},
+                            "version": "news_analysis_admission_v1",
+                        },
+                        "analysis_admission_version": "news_analysis_admission_v1",
                         "provider_type": "opennews",
                         "provider_signal_json": {
                             "source": "provider",
@@ -626,7 +656,11 @@ class FakePageNewsRepository:
 
     def load_items_for_page_projection(self, *, news_item_ids: list[str]) -> list[dict[str, Any]]:
         self.loaded_ids = list(news_item_ids)
-        return list(self.payloads)
+        return _payloads_in_requested_order(self.payloads, news_item_ids)
+
+    def load_story_projection_payloads_for_items(self, *, news_item_ids: list[str]) -> list[dict[str, Any]]:
+        self.loaded_ids = list(news_item_ids)
+        return _payloads_in_requested_order(self.payloads, news_item_ids)
 
     def replace_page_rows_for_items(
         self,
@@ -644,6 +678,23 @@ class FakePageNewsRepository:
                 "commit": commit,
             }
         )
+
+    def replace_page_rows_for_story_targets(
+        self,
+        *,
+        news_item_ids: list[str],
+        story_keys: list[str],
+        rows: list[dict[str, Any]],
+        commit: bool,
+    ) -> dict[str, int]:
+        del story_keys
+        self.replace_page_rows_for_items(news_item_ids=news_item_ids, rows=rows, commit=commit)
+        return {"deleted": max(0, len(news_item_ids) - len(rows)), "unchanged": 0}
+
+
+def _payloads_in_requested_order(payloads: list[dict[str, Any]], news_item_ids: list[str]) -> list[dict[str, Any]]:
+    payload_by_id = {str((payload.get("item") or payload).get("news_item_id") or ""): payload for payload in payloads}
+    return [payload_by_id[news_item_id] for news_item_id in news_item_ids if news_item_id in payload_by_id]
 
 
 class FakeDirtyRepository:
@@ -855,7 +906,21 @@ class FakeProcessRepos:
         self.news_projection_dirty_targets = self.dirty
         self.write_commits: list[bool] = []
 
-    def list_unprocessed_items(self, *, limit: int, now_ms: int) -> list[dict[str, Any]]:
+    def release_expired_processing_items(self, *, now_ms: int, commit: bool = True) -> int:
+        self.conn.record("release_expired_processing_items")
+        return 0
+
+    def claim_unprocessed_items(
+        self,
+        *,
+        limit: int,
+        lease_owner: str,
+        lease_ms: int,
+        now_ms: int,
+        commit: bool = True,
+    ) -> list[dict[str, Any]]:
+        del lease_ms, commit
+        self.conn.record("claim_unprocessed_items")
         return [
             {
                 "news_item_id": "news-1",
@@ -867,6 +932,8 @@ class FakeProcessRepos:
                 "summary": "",
                 "body_text": "",
                 "published_at_ms": NOW_MS - 1_000,
+                "processing_attempts": 1,
+                "processing_lease_owner": lease_owner,
                 "provider_signal_json": {
                     "source": "provider",
                     "provider": "opennews",
@@ -892,11 +959,28 @@ class FakeProcessRepos:
         self.conn.record("update_item_content_classification")
         self.write_commits.append(payload["commit"])
 
-    def mark_item_processed(self, *, news_item_id: str, processed_at_ms: int, commit: bool = True) -> None:
+    def update_item_analysis_and_story_identity(self, **payload: Any) -> None:
+        self.conn.record("update_item_analysis_and_story_identity")
+        self.write_commits.append(payload["commit"])
+
+    def mark_item_processed(
+        self,
+        *,
+        news_item_id: str,
+        processed_at_ms: int,
+        lease_owner: str,
+        processing_attempts: int,
+        commit: bool = True,
+    ) -> int:
+        del lease_owner, processing_attempts
         self.conn.record("mark_item_processed")
         self.write_commits.append(commit)
+        return 1
 
-    def mark_item_process_failed(self, **payload: Any) -> None:
+    def mark_item_process_retryable(self, **payload: Any) -> int:
+        raise AssertionError("process should not fail")
+
+    def mark_item_process_terminal_failed(self, **payload: Any) -> int:
         raise AssertionError("process should not fail")
 
 
