@@ -36,7 +36,7 @@ def extract_news_entities(
         TextSurface("summary", summary),
         TextSurface("body", body_text),
     ]
-    return [
+    return _dedupe_by_repository_identity([
         NewsEntity(
             entity_id=_stable_id(
                 "news-entity",
@@ -61,7 +61,26 @@ def extract_news_entities(
             created_at_ms=int(now_ms),
         )
         for entity in extract_entities_from_surfaces(surfaces)
-    ]
+    ])
+
+
+def _dedupe_by_repository_identity(entities: list[NewsEntity]) -> list[NewsEntity]:
+    deduped: list[NewsEntity] = []
+    seen: set[tuple[str, str, str, str, int, int]] = set()
+    for entity in entities:
+        key = (
+            entity.news_item_id,
+            entity.entity_type,
+            entity.normalized_value,
+            entity.chain or "",
+            int(entity.span_start),
+            int(entity.span_end),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(entity)
+    return deduped
 
 
 def _stable_id(*parts: str) -> str:

@@ -135,8 +135,10 @@ describe("NewsPage", () => {
     await screen.findByText("Evidence page");
     expect(screen.getByText("Original article")).toBeInTheDocument();
     expect(screen.getByText("OpenNews source content.")).toBeInTheDocument();
-    expect(screen.getByText("Research tools")).toBeInTheDocument();
-    expect(screen.getAllByText("get_observation_history").length).toBeGreaterThan(0);
+    expect(screen.getByText("Agent gate")).toBeInTheDocument();
+    expect(screen.getAllByText("eligible").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Research tools")).not.toBeInTheDocument();
+    expect(screen.queryByText("Legacy agent audit")).not.toBeInTheDocument();
     expect(screen.getAllByText("Provider aiRating").length).toBeGreaterThan(0);
     expect(screen.getByText("Token impacts")).toBeInTheDocument();
     expect(screen.getByText("Execution gaps")).toBeInTheDocument();
@@ -232,6 +234,13 @@ function newsSignalEnvelope(displaySignal: NewsSignalSummary): NewsSignalEnvelop
       provider_status: displaySignal.status,
       provider_score: displaySignal.score,
     },
+    agent_requirement: {
+      status: "required",
+      reason: "eligible",
+      priority: 18,
+      basis: { provider_score: displaySignal.score },
+      version: "news_item_agent_requirement_v1",
+    },
   };
 }
 
@@ -251,7 +260,15 @@ const providerDetail: NewsItemDetail = {
     market_read_zh: "AI reads this as a liquidity signal worth watching.",
     confirmation_state: "single_source",
     novelty_status: "new",
+    requirement_status: "required",
+    requirement_reason: "eligible",
+    eligibility_reason: "eligible",
   },
+  agent_requirement_status: "required",
+  agent_requirement_reason: "eligible",
+  agent_requirement_priority: 18,
+  analysis_admission_status: "admitted",
+  analysis_admission_reason: "crypto_native_evidence",
   agent_run: {
     run_id: "run-news-1",
     status: "completed",
@@ -260,21 +277,6 @@ const providerDetail: NewsItemDetail = {
     provider: "litellm",
     latency_ms: 1200,
     usage_json: { input_tokens: 100, output_tokens: 20 },
-    research_plan: {
-      status: "selected",
-      tool_calls: [{ tool_call_id: "call-001", tool_name: "get_observation_history" }],
-    },
-    tool_results: [
-      {
-        tool_call_id: "call-001",
-        tool_name: "get_observation_history",
-        source_tables: ["news_items", "news_item_observation_edges"],
-        row_count: 1,
-        rows: [{ source_domain_count: 1 }],
-        truncated: false,
-        result_hash: "sha256:tool-news-1",
-      },
-    ],
     response_json: { summary_zh: "ETF 资金流持续增强。" },
   },
 };

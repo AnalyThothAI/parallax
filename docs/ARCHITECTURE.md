@@ -147,8 +147,9 @@ are wrong too.
    read models must declare their single writer in the owning module's
    ARCHITECTURE.md. `token_profile_current` is written only by
    `TokenProfileCurrentWorker`; it may expose token logos only from ready
-   `news_items.content_class`, `news_items.content_tags_json`, and
-   `news_items.content_classification_json` are written by
+   `news_items.content_class`, `news_items.content_tags_json`,
+   `news_items.content_classification_json`, `analysis_admission_*`,
+   `story_identity_json`, and `agent_requirement_*` are written by
    `NewsItemProcessWorker` as item-level material facts;
    `news_item_agent_runs` and `news_item_agent_briefs` are written only by
    `NewsItemBriefWorker`; `news_page_rows` is written only by

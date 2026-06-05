@@ -1,4 +1,5 @@
 import json
+import math
 import time
 from dataclasses import replace
 from decimal import Decimal
@@ -172,6 +173,26 @@ def test_api_json_response_encodes_decimal_payloads():
     response = _json({"ok": True, "data": {"price": Decimal("1.23")}})
 
     assert json.loads(response.body) == {"ok": True, "data": {"price": 1.23}}
+
+
+def test_api_json_response_replaces_non_finite_float_payloads_with_null():
+    response = _json(
+        {
+            "ok": True,
+            "data": {
+                "score": math.nan,
+                "nested": [{"value": math.inf}, {"value": -math.inf}, {"value": 1.0}],
+            },
+        }
+    )
+
+    assert json.loads(response.body) == {
+        "ok": True,
+        "data": {
+            "score": None,
+            "nested": [{"value": None}, {"value": None}, {"value": 1.0}],
+        },
+    }
 
 
 def test_token_images_serves_ready_local_file_without_auth(tmp_path):

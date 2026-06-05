@@ -5,7 +5,6 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from parallax.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION
-from parallax.domains.news_intel.services.news_item_agent_policy import news_item_agent_brief_eligibility
 
 _RESOLVED_TOKEN_STATUSES = frozenset({"exact_address", "known_symbol", "unique_by_context"})
 _IGNORED_TOKEN_STATUSES = frozenset({"non_crypto", "nil"})
@@ -42,9 +41,6 @@ def build_news_page_row(
     agent_payload = _compact_agent_brief(
         agent_brief,
         item=item,
-        token_mentions=token_mentions,
-        fact_candidates=fact_candidates,
-        computed_at_ms=computed_at_ms,
     )
     agent_status = str(agent_payload.get("status") or "pending")
     content_tags = _json_list(item.get("content_tags_json"))
@@ -64,6 +60,7 @@ def build_news_page_row(
         "token_lanes": token_lanes,
         "fact_lanes": fact_lanes,
         "signal": _page_signal(
+            item=item,
             provider_signal=provider_signal,
             agent_signal=agent_payload,
             analysis_admission_status=analysis_admission_status,
@@ -256,17 +253,9 @@ def _compact_agent_brief(
     agent_brief: Mapping[str, Any] | None,
     *,
     item: Mapping[str, Any],
-    token_mentions: Sequence[Mapping[str, Any]],
-    fact_candidates: Sequence[Mapping[str, Any]],
-    computed_at_ms: int,
 ) -> dict[str, Any]:
     if agent_brief is None:
-        return _missing_agent_brief_state(
-            item=item,
-            token_mentions=token_mentions,
-            fact_candidates=fact_candidates,
-            computed_at_ms=computed_at_ms,
-        )
+        return _missing_agent_brief_state(item=item)
     brief_json = _json_object(agent_brief.get("brief_json") if isinstance(agent_brief, Mapping) else None)
     bull_view = _json_object(brief_json.get("bull_view"))
     bear_view = _json_object(brief_json.get("bear_view"))
@@ -293,30 +282,20 @@ def _compact_agent_brief(
             "affected_assets": _agent_affected_assets(brief_json.get("affected_assets")),
         }
     )
-    return payload or _missing_agent_brief_state(
-        item=item,
-        token_mentions=token_mentions,
-        fact_candidates=fact_candidates,
-        computed_at_ms=computed_at_ms,
-    )
+    return payload or _missing_agent_brief_state(item=item)
 
 
 def _missing_agent_brief_state(
     *,
     item: Mapping[str, Any],
-    token_mentions: Sequence[Mapping[str, Any]],
-    fact_candidates: Sequence[Mapping[str, Any]],
-    computed_at_ms: int,
 ) -> dict[str, str]:
-    eligibility = news_item_agent_brief_eligibility(
-        item=item,
-        token_mentions=token_mentions,
-        fact_candidates=fact_candidates,
-        now_ms=int(computed_at_ms),
-    )
+    requirement_status = str(item.get("agent_requirement_status") or "").strip().lower()
+    requirement_reason = str(item.get("agent_requirement_reason") or "").strip() or "item_not_processed"
     return {
-        "status": "pending" if eligibility.eligible else "not_required",
-        "eligibility_reason": eligibility.reason,
+        "status": "pending" if requirement_status == "required" else "not_required",
+        "eligibility_reason": "eligible" if requirement_status == "required" else requirement_reason,
+        "requirement_status": requirement_status or "not_required",
+        "requirement_reason": "eligible" if requirement_status == "required" else requirement_reason,
     }
 
 
@@ -345,11 +324,13 @@ def _agent_affected_assets(value: Any) -> list[dict[str, Any]]:
 
 def _page_signal(
     *,
+    item: Mapping[str, Any],
     provider_signal: Mapping[str, Any],
     agent_signal: Mapping[str, Any],
     analysis_admission_status: str,
 ) -> dict[str, Any]:
     provider_payload = _provider_signal_payload(provider_signal)
+    agent_requirement = _agent_requirement_signal(item)
     provider_score = _optional_int_or_none(provider_payload.get("score")) if provider_payload else None
     if str(agent_signal.get("status") or "") == "ready":
         direction = str(agent_signal.get("direction") or "neutral")
@@ -367,6 +348,7 @@ def _page_signal(
             },
             provider_signal=provider_payload,
             agent_signal=agent_signal,
+            agent_requirement=agent_requirement,
             analysis_admission_status=analysis_admission_status,
         )
     if provider_payload:
@@ -374,6 +356,7 @@ def _page_signal(
             provider_payload,
             provider_signal=provider_payload,
             agent_signal=agent_signal,
+            agent_requirement=agent_requirement,
             analysis_admission_status=analysis_admission_status,
         )
     return _signal_with_independent_state(
@@ -386,6 +369,7 @@ def _page_signal(
         },
         provider_signal=None,
         agent_signal=agent_signal,
+        agent_requirement=agent_requirement,
         analysis_admission_status=analysis_admission_status,
     )
 
@@ -416,6 +400,7 @@ def _signal_with_independent_state(
     *,
     provider_signal: Mapping[str, Any] | None,
     agent_signal: Mapping[str, Any],
+    agent_requirement: Mapping[str, Any],
     analysis_admission_status: str,
 ) -> dict[str, Any]:
     agent_status = str(agent_signal.get("status") or "pending")
@@ -433,6 +418,7 @@ def _signal_with_independent_state(
         "display_signal": _compact_mapping(signal),
         "provider_signal": dict(provider_signal) if provider_signal else None,
         "agent_signal": dict(agent_signal),
+        "agent_requirement": dict(agent_requirement),
         "alert_eligibility": _compact_mapping(
             {
                 "agent_status": agent_status,
@@ -446,6 +432,22 @@ def _signal_with_independent_state(
             }
         ),
     }
+
+
+def _agent_requirement_signal(item: Mapping[str, Any]) -> dict[str, Any]:
+    requirement_json = _json_object(item.get("agent_requirement_json"))
+    basis = _json_object(requirement_json.get("basis"))
+    return _compact_mapping(
+        {
+            "status": item.get("agent_requirement_status") or requirement_json.get("status") or "not_required",
+            "reason": item.get("agent_requirement_reason") or requirement_json.get("reason") or "item_not_processed",
+            "priority": _optional_int_or_none(
+                item.get("agent_requirement_priority") or requirement_json.get("priority")
+            ),
+            "version": item.get("agent_requirement_version") or requirement_json.get("version"),
+            "basis": basis,
+        }
+    )
 
 
 def _alert_eligible(

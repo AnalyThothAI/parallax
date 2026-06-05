@@ -4,6 +4,7 @@ import type {
   NewsAgentBrief,
   NewsAgentDataGap,
   NewsAgentEvidenceRef,
+  NewsAgentRequirement,
   NewsAgentRunSummary,
   NewsResearchToolResult,
   NewsFactLane,
@@ -146,6 +147,14 @@ function normalizeNewsRow<T extends NewsRow>(row: T): T {
     content_class: stringOrNull(payload.content_class),
     content_tags: contentTags,
     content_classification: contentClassification ?? {},
+    analysis_admission_status: stringOrNull(payload.analysis_admission_status),
+    analysis_admission_reason: stringOrNull(payload.analysis_admission_reason),
+    processing_terminal_error: stringOrNull(payload.processing_terminal_error),
+    agent_requirement_status: stringOrNull(payload.agent_requirement_status),
+    agent_requirement_reason: stringOrNull(payload.agent_requirement_reason),
+    agent_requirement_priority: numberOrNull(payload.agent_requirement_priority),
+    agent_requirement_json: normalizeAgentRequirement(payload.agent_requirement_json),
+    agent_requirement_version: stringOrNull(payload.agent_requirement_version),
     headline: stringOrNull(payload.headline) ?? "Untitled news item",
     latest_at_ms: numberOrNull(payload.latest_at_ms),
     provider_type: source?.provider_type ?? null,
@@ -228,6 +237,7 @@ function normalizeNewsSignal(raw: unknown): NewsSignalEnvelope {
   const providerPayload = objectOrNull(payload.provider_signal);
   const agentPayload = objectOrNull(payload.agent_signal) ?? {};
   const alertPayload = objectOrNull(payload.alert_eligibility) ?? {};
+  const requirement = normalizeAgentRequirement(payload.agent_requirement);
   return {
     display_signal: normalizeNewsSignalSummary(displayPayload),
     provider_signal: providerPayload ? normalizeNewsSignalSummary(providerPayload) : null,
@@ -242,6 +252,20 @@ function normalizeNewsSignal(raw: unknown): NewsSignalEnvelope {
       provider_status: stringOrNull(alertPayload.provider_status),
       provider_score: numberOrNull(alertPayload.provider_score),
     },
+    agent_requirement: requirement,
+  };
+}
+
+function normalizeAgentRequirement(raw: unknown): NewsAgentRequirement | null {
+  const payload = objectOrNull(raw);
+  if (!payload) return null;
+  const basis = objectOrNull(payload.basis);
+  return {
+    status: stringOrNull(payload.status),
+    reason: stringOrNull(payload.reason),
+    priority: numberOrNull(payload.priority),
+    basis,
+    version: stringOrNull(payload.version),
   };
 }
 
@@ -335,6 +359,8 @@ function normalizeAgentBrief(
     title_zh: stringOrNull(payload.title_zh ?? briefJson?.title_zh),
     summary_zh: stringOrNull(payload.summary_zh ?? briefJson?.summary_zh),
     eligibility_reason: stringOrNull(payload.eligibility_reason ?? briefJson?.eligibility_reason),
+    requirement_status: stringOrNull(payload.requirement_status ?? briefJson?.requirement_status),
+    requirement_reason: stringOrNull(payload.requirement_reason ?? briefJson?.requirement_reason),
     market_read_zh: stringOrNull(payload.market_read_zh ?? briefJson?.market_read_zh),
     source_consensus_zh: stringOrNull(
       payload.source_consensus_zh ?? briefJson?.source_consensus_zh,
@@ -450,13 +476,13 @@ function normalizeAgentRun(raw: unknown): NewsAgentRunSummary | null {
     validation_errors_json: arrayOrEmpty(payload.validation_errors_json),
     usage_json: objectOrNull(payload.usage_json) ?? {},
     trace_metadata_json: objectOrNull(payload.trace_metadata_json) ?? {},
-    research_plan: objectOrNull(payload.research_plan ?? requestJson?.research_plan),
-    tool_results: normalizeToolResults(payload.tool_results ?? requestJson?.tool_results),
+    research_plan: objectOrNull(payload.research_plan),
+    tool_results: normalizeToolResults(payload.tool_results),
     research_execution: objectOrNull(
-      payload.research_execution ?? requestJson?.research_execution,
+      payload.research_execution,
     ),
-    research_hashes: objectOrNull(payload.research_hashes ?? requestJson?.research_hashes),
-    base_packet: objectOrNull(payload.base_packet ?? requestJson?.base_packet),
+    research_hashes: objectOrNull(payload.research_hashes),
+    base_packet: objectOrNull(payload.base_packet),
   };
 }
 

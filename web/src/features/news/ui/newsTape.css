@@ -129,6 +129,15 @@
     white-space: nowrap;
   }
 
+  .news-tape-review-reason {
+    overflow: hidden;
+    min-width: 48px;
+    max-width: 180px;
+    color: var(--dim);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .news-tape-signal {
     justify-items: center;
     gap: 2px;

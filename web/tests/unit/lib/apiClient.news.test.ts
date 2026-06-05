@@ -58,6 +58,16 @@ describe("news API client normalization", () => {
                   coverage_tags: ["opennews", "6551news"],
                   source_quality_status: "healthy",
                 },
+                agent_requirement_status: "required",
+                agent_requirement_reason: "eligible",
+                agent_requirement_priority: 18,
+                agent_requirement_json: {
+                  status: "required",
+                  reason: "eligible",
+                  priority: 18,
+                  basis: { provider_score: 82 },
+                  version: "news_item_agent_requirement_v1",
+                },
               },
             ],
             next_cursor: null,
@@ -88,6 +98,9 @@ describe("news API client normalization", () => {
     expect(rows.items[0].token_impacts?.[0].provider_score).toBe(82);
     expect(rows.items[0].source?.provider_type).toBe("opennews");
     expect(rows.items[0].provider_type).toBe("opennews");
+    expect(rows.items[0].signal.agent_requirement?.reason).toBe("eligible");
+    expect(rows.items[0].agent_requirement_reason).toBe("eligible");
+    expect(rows.items[0].agent_requirement_priority).toBe(18);
   });
 
   it("keeps agent brief optional when the hard-cut row omits it", async () => {
@@ -218,24 +231,7 @@ describe("news API client normalization", () => {
               error_class: "ProviderError",
               error: "provider timeout",
               usage_json: { input_tokens: 12, output_tokens: 3 },
-              request_json: {
-                research_plan: {
-                  status: "selected",
-                  tool_calls: [{ tool_call_id: "call-001", tool_name: "get_observation_history" }],
-                },
-                tool_results: [
-                  {
-                    tool_call_id: "call-001",
-                    tool_name: "get_observation_history",
-                    source_tables: ["news_items"],
-                    rows: [{ source_domain_count: 1 }],
-                    row_count: 1,
-                    truncated: false,
-                    result_hash: "sha256:tool",
-                  },
-                ],
-                research_execution: { status: "ok" },
-              },
+              request_json: { packet: { news_item_id: "news-failed" } },
               response_json: { summary_zh: "失败前输出" },
             },
           },
@@ -253,13 +249,8 @@ describe("news API client normalization", () => {
     expect(item.agent_run?.error).toBe("provider timeout");
     expect(item.agent_run?.error_message).toBe("provider timeout");
     expect(item.agent_run?.usage_json?.input_tokens).toBe(12);
-    expect(item.agent_run?.research_plan?.status).toBe("selected");
-    expect(item.agent_run?.tool_results?.[0]).toMatchObject({
-      tool_call_id: "call-001",
-      tool_name: "get_observation_history",
-      row_count: 1,
-      truncated: false,
-    });
+    expect(item.agent_run?.research_plan).toBeNull();
+    expect(item.agent_run?.tool_results).toEqual([]);
     expect(item.agent_run?.response_json?.summary_zh).toBe("失败前输出");
   });
 
@@ -297,6 +288,13 @@ function newsSignalEnvelope(displaySignal: Record<string, unknown>) {
       external_push_ready: false,
       agent_status: "pending",
       provider_score: displaySignal.score,
+    },
+    agent_requirement: {
+      status: "required",
+      reason: "eligible",
+      priority: 20,
+      basis: { provider_score: displaySignal.score },
+      version: "news_item_agent_requirement_v1",
     },
   };
 }

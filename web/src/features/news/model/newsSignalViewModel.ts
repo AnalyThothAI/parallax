@@ -20,39 +20,58 @@ export const newsSignalScoreLabel = (signal: Pick<NewsSignalSummary, "score" | "
 
 export type NewsAgentReviewBadge = {
   label: string;
+  detail?: string | null;
   tone: "is-ready" | "is-waiting" | "is-blocked" | "is-failed";
+  title: string;
 };
 
 export const newsAgentReviewBadge = (
   row: Pick<NewsRow, "agent_brief" | "agent_brief_status" | "agent_status" | "signal">,
 ): NewsAgentReviewBadge => {
   const eligibility = row.signal.alert_eligibility;
+  const requirement = row.signal.agent_requirement;
   const status = String(
     eligibility?.agent_status ?? row.agent_brief?.status ?? row.agent_status ?? row.agent_brief_status ?? "pending",
   ).toLowerCase();
+  const reason =
+    row.agent_brief?.eligibility_reason ??
+    row.agent_brief?.requirement_reason ??
+    requirement?.reason ??
+    eligibility?.external_push_block_reason ??
+    null;
+  const badge = (
+    label: string,
+    tone: NewsAgentReviewBadge["tone"],
+    detail: string | null = reason,
+  ): NewsAgentReviewBadge => ({
+    label,
+    detail,
+    tone,
+    title: [label, detail].filter(Boolean).join(" · "),
+  });
 
   if (eligibility?.external_push_ready === true) {
-    return { label: "AGENT READY", tone: "is-ready" };
+    return badge("AGENT READY", "is-ready", null);
   }
   if (status === "ready") {
-    return { label: "AGENT HOLD", tone: "is-blocked" };
+    return badge("AGENT HOLD", "is-blocked", eligibility?.external_push_block_reason ?? reason);
   }
   if (status === "insufficient") {
-    return { label: "AGENT INSUFF", tone: "is-blocked" };
+    return badge("AGENT INSUFF", "is-blocked");
   }
   if (status === "not_required" || status === "skipped") {
-    return { label: "AGENT SKIP", tone: "is-blocked" };
+    return badge("AGENT SKIP", "is-blocked");
   }
   if (status === "failed") {
-    return { label: "AGENT FAILED", tone: "is-failed" };
+    return badge("AGENT FAILED", "is-failed", reason);
   }
   if (status === "disabled") {
-    return { label: "AGENT OFF", tone: "is-failed" };
+    return badge("AGENT OFF", "is-failed", reason);
   }
   if (status === "stale") {
-    return { label: "AGENT STALE", tone: "is-waiting" };
+    return badge("AGENT STALE", "is-waiting", reason);
   }
-  return { label: "AGENT WAIT", tone: "is-waiting" };
+  return badge("AGENT WAIT", "is-waiting", reason);
 };
 
 export const tokenImpactLabel = (

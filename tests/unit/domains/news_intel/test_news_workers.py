@@ -438,6 +438,8 @@ def test_news_item_process_worker_extracts_mentions_candidates_and_wakes() -> No
     assert db.repo.analysis_story_updates[0]["news_item_id"] == "news-1"
     assert db.repo.analysis_story_updates[0]["admission"].status == "admitted"
     assert db.repo.analysis_story_updates[0]["story_identity"].story_key
+    assert db.repo.agent_requirement_updates[0]["requirement"]["status"] == "not_required"
+    assert db.repo.agent_requirement_updates[0]["requirement"]["reason"] == "source_not_provider_signal"
     assert db.repo.processed_items == [
         {
             "news_item_id": "news-1",
@@ -528,6 +530,8 @@ def test_news_item_process_provider_only_non_crypto_row_enqueues_page_not_brief(
     assert db.repo.entities["news-spacex"] == []
     assert db.repo.mentions["news-spacex"] == []
     assert db.repo.analysis_story_updates[0]["admission"].status in {"page_only", "research_context"}
+    assert db.repo.agent_requirement_updates[0]["requirement"]["status"] == "not_required"
+    assert db.repo.agent_requirement_updates[0]["requirement"]["reason"] == "analysis_not_admitted"
     assert db.dirty.enqueued == [
         {
             "rows": [{"projection_name": "page", "target_kind": "news_item", "target_id": "news-spacex"}],
@@ -562,9 +566,9 @@ def test_news_item_process_admitted_crypto_row_enqueues_page_and_brief_with_stor
             "provider": "opennews",
             "status": "ready",
             "direction": "bullish",
-            "score": 72,
+            "score": 90,
         },
-        "provider_token_impacts_json": [{"symbol": "ZEC", "score": 72, "signal": "long", "grade": "B"}],
+        "provider_token_impacts_json": [{"symbol": "ZEC", "score": 90, "signal": "long", "grade": "A"}],
     }
     db = FakeItemProcessDB(FakeItemProcessRepository([item]))
     worker = NewsItemProcessWorker(
@@ -583,6 +587,8 @@ def test_news_item_process_admitted_crypto_row_enqueues_page_and_brief_with_stor
     assert db.repo.mentions["news-zec"][0].observed_symbol == "ZEC"
     assert db.repo.analysis_story_updates[0]["admission"].status == "admitted"
     assert db.repo.analysis_story_updates[0]["story_identity"].story_key == "news-story:opennews-article:2367422"
+    assert db.repo.agent_requirement_updates[0]["requirement"]["status"] == "required"
+    assert db.repo.agent_requirement_updates[0]["requirement"]["reason"] == "eligible"
     assert db.dirty.enqueued == [
         {
             "rows": [{"projection_name": "page", "target_kind": "news_item", "target_id": "news-zec"}],
@@ -596,7 +602,7 @@ def test_news_item_process_admitted_crypto_row_enqueues_page_and_brief_with_stor
                     "projection_name": "brief_input",
                     "target_kind": "news_item",
                     "target_id": "news-zec",
-                    "priority": 128,
+                    "priority": 10,
                 }
             ],
             "reason": "news_item_processed",
@@ -1545,6 +1551,7 @@ class FakeItemProcessRepository:
         self.fact_candidates: dict[str, list[object]] = {}
         self.content_classifications: list[dict[str, object]] = []
         self.analysis_story_updates: list[dict[str, object]] = []
+        self.agent_requirement_updates: list[dict[str, object]] = []
         self.processed_items: list[dict[str, int | str]] = []
         self.retryable_items: list[dict[str, int | str]] = []
         self.terminal_failed_items: list[dict[str, int | str]] = []
@@ -1622,6 +1629,25 @@ class FakeItemProcessRepository:
                 "news_item_id": news_item_id,
                 "admission": admission,
                 "story_identity": story_identity,
+                "now_ms": now_ms,
+                "commit": commit,
+            }
+        )
+
+    def update_item_agent_requirement(
+        self,
+        *,
+        news_item_id: str,
+        requirement: dict[str, object],
+        now_ms: int,
+        commit: bool = True,
+    ) -> None:
+        assert self.conn is not None
+        self.conn.record("update_item_agent_requirement")
+        self.agent_requirement_updates.append(
+            {
+                "news_item_id": news_item_id,
+                "requirement": requirement,
                 "now_ms": now_ms,
                 "commit": commit,
             }

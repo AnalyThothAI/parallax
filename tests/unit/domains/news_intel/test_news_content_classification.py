@@ -39,3 +39,15 @@ def test_security_hack_priority_beats_crypto_market_terms() -> None:
 
     assert result.content_class == "security_hack"
     assert "security_incident" in result.content_tags
+
+
+def test_classifies_zec_market_security_headline_as_crypto_market() -> None:
+    result = classify_news_item_content(
+        headline="ZEC plunged 50% following the counterfeiting vulnerability",
+        summary="",
+        source_domain="6551.io",
+        fact_event_types=[],
+    )
+
+    assert result.content_class == "crypto_market"
+    assert "crypto_market" in result.content_tags

@@ -186,10 +186,8 @@ def build_parser() -> argparse.ArgumentParser:
     news_dedup_diagnostics.add_argument("--score-threshold", type=int, default=80)
     cleanup_news_brief_input = ops_subcommands.add_parser(
         "cleanup-news-brief-input",
-        help="delete stale News brief_input dirty targets that no longer pass the brief policy",
+        help="delete stale News brief_input dirty targets whose persisted agent requirement is not required",
     )
-    cleanup_news_brief_input.add_argument("--window-hours", type=float, default=8.0)
-    cleanup_news_brief_input.add_argument("--score-threshold", type=int, default=80)
     cleanup_news_brief_input_mode = cleanup_news_brief_input.add_mutually_exclusive_group(required=True)
     cleanup_news_brief_input_mode.add_argument("--dry-run", action="store_true")
     cleanup_news_brief_input_mode.add_argument("--execute", action="store_true")

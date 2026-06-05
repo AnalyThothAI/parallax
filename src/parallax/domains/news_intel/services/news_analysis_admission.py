@@ -34,7 +34,7 @@ _COLLISION_REASON_FRAGMENTS = (
 )
 _CRYPTO_SUBJECT_RE = re.compile(
     r"\b(?:bitcoin|btc|ethereum|eth|crypto|blockchain|tokeni[sz]ed|tokeni[sz]ation|stablecoin|"
-    r"defi|dex|cex|coinbase|binance|kraken|okx|bybit|zcash|orchard)\b",
+    r"defi|dex|cex|coinbase|binance|kraken|okx|bybit|zec|zcash|orchard)\b",
     re.IGNORECASE,
 )
 _NON_CRYPTO_SUBJECT_RE = re.compile(

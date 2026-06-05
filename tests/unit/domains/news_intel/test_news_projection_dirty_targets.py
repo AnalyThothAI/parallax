@@ -329,7 +329,7 @@ def test_process_worker_enqueues_page_and_brief_dirty_in_same_transaction_after_
     result = worker.run_once_sync(now_ms=NOW_MS)
 
     assert result.processed == 1
-    assert repos.news.write_commits == [False, False, False, False, False, False]
+    assert repos.news.write_commits == [False, False, False, False, False, False, False]
     assert repos.dirty.enqueued == [
         {
             "rows": [{"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"}],
@@ -355,6 +355,7 @@ def test_process_worker_enqueues_page_and_brief_dirty_in_same_transaction_after_
     assert "tx:release_expired_processing_items" in repos.conn.events
     assert "tx:claim_unprocessed_items" in repos.conn.events
     assert "tx:replace_item_entities" in repos.conn.events
+    assert "tx:update_item_agent_requirement" in repos.conn.events
     assert "tx:dirty:news_item_processed" in repos.conn.events
     assert "autocommit:dirty:news_item_processed" not in repos.conn.events
 
@@ -620,6 +621,17 @@ class FakeOpsProjectionConn:
                             "status": "ready",
                             "score": 95,
                         },
+                        "agent_requirement_status": "required",
+                        "agent_requirement_reason": "eligible",
+                        "agent_requirement_priority": 5,
+                        "agent_requirement_json": {
+                            "status": "required",
+                            "reason": "eligible",
+                            "priority": 5,
+                            "basis": {"provider_score": 95},
+                            "version": "news_item_agent_requirement_v1",
+                        },
+                        "agent_requirement_version": "news_item_agent_requirement_v1",
                         "token_mentions_json": [{"resolution_status": "known_symbol", "display_symbol": "BTC"}],
                         "fact_candidates_json": [],
                     }
@@ -961,6 +973,12 @@ class FakeProcessRepos:
 
     def update_item_analysis_and_story_identity(self, **payload: Any) -> None:
         self.conn.record("update_item_analysis_and_story_identity")
+        self.write_commits.append(payload["commit"])
+
+    def update_item_agent_requirement(self, **payload: Any) -> None:
+        self.conn.record("update_item_agent_requirement")
+        assert payload["requirement"]["status"] == "required"
+        assert payload["requirement"]["reason"] == "eligible"
         self.write_commits.append(payload["commit"])
 
     def mark_item_processed(

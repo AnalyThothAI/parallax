@@ -143,6 +143,23 @@ def test_coinbase_btc_mortgage_score_70_is_admitted_with_crypto_subject() -> Non
     assert "provider_score:70" in admission.basis["provider_evidence"]
 
 
+def test_zec_cashtag_market_move_is_admitted_without_provider_score_override() -> None:
+    admission = _decide(
+        item=_item(
+            title="ZEC plunged 50% following the counterfeiting vulnerability",
+            summary="A wallet withdrew 37,316 $ZEC from Binance.",
+            content_class="crypto_market",
+            provider_signal_json={"source": "provider", "score": 85},
+            provider_token_impacts_json=[{"symbol": "ZEC", "market_type": "cex", "score": 85}],
+        ),
+        token_mentions=[_mention("ZEC", target_id="cex_token:ZEC", resolution_status="unique_by_context")],
+    )
+
+    assert admission.status == "admitted"
+    assert admission.reason == "crypto_native_evidence"
+    assert "resolved_crypto_target:cex_token:ZEC" in admission.basis["crypto_evidence"]
+
+
 def test_common_word_symbols_do_not_create_crypto_admission() -> None:
     admission = _decide(
         item=_item(

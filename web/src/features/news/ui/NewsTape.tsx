@@ -58,6 +58,11 @@ export function NewsTape({ rows, onOpen }: NewsTapeProps) {
                   <span className={`news-tape-review ${reviewBadge.tone}`}>
                     {reviewBadge.label}
                   </span>
+                  {reviewBadge.detail ? (
+                    <span className="news-tape-review-reason" title={reviewBadge.title}>
+                      {reviewBadge.detail}
+                    </span>
+                  ) : null}
                   <span className="news-tape-summary-text">
                     {displaySignal.summary_zh || row.summary || "No summary available."}
                   </span>

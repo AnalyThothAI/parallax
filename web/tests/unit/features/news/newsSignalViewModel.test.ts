@@ -57,9 +57,19 @@ describe("newsSignalViewModel", () => {
           provider_signal: null,
           agent_signal: { status: "not_required" },
           alert_eligibility: { agent_status: "not_required" },
+          agent_requirement: {
+            status: "not_required",
+            reason: "below_score_threshold",
+            priority: 45,
+          },
         },
       }),
-    ).toEqual({ label: "AGENT SKIP", tone: "is-blocked" });
+    ).toEqual({
+      label: "AGENT SKIP",
+      detail: "below_score_threshold",
+      tone: "is-blocked",
+      title: "AGENT SKIP · below_score_threshold",
+    });
   });
 
   it("merges provider token impacts onto resolved token lanes for display only", () => {

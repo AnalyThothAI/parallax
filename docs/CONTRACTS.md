@@ -184,13 +184,18 @@ News Intel contract:
   `source_quality_status`), item content classification (`content_class`,
   `content_tags`, `content_classification`), analysis admission fields
   (`analysis_admission_status`, `analysis_admission_reason`,
-  `analysis_admission`), compact `agent_brief`, and provider/source metadata.
+  `analysis_admission`), item-level agent requirement fields
+  (`agent_requirement_status`, `agent_requirement_reason`,
+  `agent_requirement_priority`, `agent_requirement_json`,
+  `agent_requirement_version`), compact `agent_brief`, and provider/source
+  metadata.
   `analysis_admission_status` separates page visibility from crypto analysis:
   non-admitted rows may appear in the News tape as context, but they must not
   become crypto high-signal notification candidates. `signal` is an explicit
   envelope: `signal.display_signal` is the row-level display choice,
   `signal.provider_signal` is provider-native signal evidence,
-  `signal.agent_signal` is the current compact agent signal, and
+  `signal.agent_signal` is the current compact agent signal,
+  `signal.agent_requirement` is the persisted item-level brief gate, and
   `signal.alert_eligibility.in_app_eligible` can be true for in-app high-signal
   output only for admitted rows. `signal.alert_eligibility.external_push_ready`
   requires a ready, publishable current brief, and
@@ -219,11 +224,12 @@ News Intel contract:
   behavior. Provider tokens are not exposed through this status route.
 - `/api/news/items/{news_item_id}` returns deterministic extraction facts plus
   canonical signal/token-impact facts, story membership, analysis admission,
-  the full current item brief when one exists, and a sanitized latest run
-  summary. If only retired brief artifacts exist, the current brief is absent or
-  pending; retired agent fields and old research-tool payloads are never
-  exposed through the public item-detail contract. The route excludes raw
-  provider request/response payloads from the public item-detail contract.
+  persisted agent requirement, the full current item brief when one exists, and
+  a sanitized latest run summary. If only retired brief artifacts exist, the
+  current brief is absent or pending; retired agent fields and old research-tool
+  payloads are never exposed through the public item-detail contract. The route
+  excludes raw provider request/response payloads from the public item-detail
+  contract.
 - `news_high_signal` notifications read admitted story-level `news_page_rows`
   only. In-app dedup and entity identity prefer `news_story:{story_key}`;
   fallback item identity is used only when no story key exists. External pushes
@@ -231,7 +237,12 @@ News Intel contract:
 - The frontend item URL is `/news/items/:newsItemId`; `/news/:newsItemId` is
   not a compatibility route.
 - Missing or unavailable brief state is represented as
-  `agent_brief.status = pending | disabled | failed | stale | insufficient`;
+  `agent_brief.status = pending | not_required | disabled | failed | stale |
+  insufficient`; `not_required` must carry an explicit
+  `eligibility_reason`/`requirement_reason` such as `analysis_not_admitted` or
+  `below_score_threshold`.
+  `pending` means the persisted requirement is `required` and no fresh current
+  brief is available yet.
   `failed` is reserved for schema/provider/unreadable-output failure, not for
   thin evidence or missing `evidence_refs`; sparse but parseable news should
   still return a standard brief with optional `data_gaps`, and a missing brief

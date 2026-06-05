@@ -372,15 +372,18 @@ def test_page_signal_envelope_separates_provider_agent_display_and_alert() -> No
             "published_at_ms": 1_000,
             "analysis_admission_status": "admitted",
             "analysis_admission_reason": "crypto_subject",
-            "provider_signal_json": {
-                "source": "provider",
-                "provider": "opennews",
-                "status": "ready",
-                "direction": "bullish",
-                "score": 90,
-                "method": "opennews.aiRating",
+                "provider_signal_json": {
+                    "source": "provider",
+                    "provider": "opennews",
+                    "status": "ready",
+                    "direction": "bullish",
+                    "score": 90,
+                    "method": "opennews.aiRating",
+                },
+                "agent_requirement_status": "required",
+                "agent_requirement_reason": "eligible",
+                "agent_requirement_priority": 10,
             },
-        },
         token_mentions=[],
         fact_candidates=[],
         agent_brief={
@@ -393,10 +396,17 @@ def test_page_signal_envelope_separates_provider_agent_display_and_alert() -> No
         computed_at_ms=3_000,
     )
 
-    assert set(row["signal"]) == {"display_signal", "provider_signal", "agent_signal", "alert_eligibility"}
+    assert set(row["signal"]) == {
+        "display_signal",
+        "provider_signal",
+        "agent_signal",
+        "alert_eligibility",
+        "agent_requirement",
+    }
     assert row["signal"]["display_signal"]["source"] == "agent"
     assert row["signal"]["provider_signal"]["provider"] == "opennews"
     assert row["signal"]["agent_signal"]["status"] == "ready"
+    assert row["signal"]["agent_requirement"]["reason"] == "eligible"
     assert row["signal"]["alert_eligibility"]["external_push_ready"] is True
 
 
@@ -538,6 +548,9 @@ def test_non_admitted_provider_score_does_not_set_in_app_eligible() -> None:
                 "grade": "A",
             },
             "provider_token_impacts_json": [{"symbol": "SPCX", "score": 95, "signal": "long"}],
+            "agent_requirement_status": "not_required",
+            "agent_requirement_reason": "analysis_not_admitted",
+            "agent_requirement_priority": 5,
         },
         token_mentions=[],
         fact_candidates=[],
@@ -549,7 +562,12 @@ def test_non_admitted_provider_score_does_not_set_in_app_eligible() -> None:
     assert row["signal"]["alert_eligibility"]["agent_status"] == "not_required"
     assert row["analysis_admission_status"] == "page_only"
     assert row["agent_status"] == "not_required"
-    assert row["agent_brief"] == {"status": "not_required", "eligibility_reason": "analysis_not_admitted"}
+    assert row["agent_brief"] == {
+        "status": "not_required",
+        "eligibility_reason": "analysis_not_admitted",
+        "requirement_status": "not_required",
+        "requirement_reason": "analysis_not_admitted",
+    }
 
 
 def test_admitted_ready_brief_sets_external_push_ready() -> None:
@@ -639,6 +657,9 @@ def test_build_news_page_row_uses_pending_agent_brief_when_agent_work_is_eligibl
                 "status": "ready",
                 "score": 80,
             },
+            "agent_requirement_status": "required",
+            "agent_requirement_reason": "eligible",
+            "agent_requirement_priority": 20,
         },
         token_mentions=[],
         fact_candidates=[],
@@ -647,7 +668,12 @@ def test_build_news_page_row_uses_pending_agent_brief_when_agent_work_is_eligibl
 
     assert row["agent_status"] == "pending"
     assert row["agent_brief_computed_at_ms"] is None
-    assert row["agent_brief"] == {"status": "pending", "eligibility_reason": "eligible"}
+    assert row["agent_brief"] == {
+        "status": "pending",
+        "eligibility_reason": "eligible",
+        "requirement_status": "required",
+        "requirement_reason": "eligible",
+    }
 
 
 def test_build_news_page_row_marks_low_score_items_as_agent_not_required() -> None:
@@ -671,6 +697,9 @@ def test_build_news_page_row_marks_low_score_items_as_agent_not_required() -> No
                 "status": "ready",
                 "score": 55,
             },
+            "agent_requirement_status": "not_required",
+            "agent_requirement_reason": "below_score_threshold",
+            "agent_requirement_priority": 45,
         },
         token_mentions=[],
         fact_candidates=[],
@@ -679,6 +708,11 @@ def test_build_news_page_row_marks_low_score_items_as_agent_not_required() -> No
 
     assert row["agent_status"] == "not_required"
     assert row["agent_brief_computed_at_ms"] is None
-    assert row["agent_brief"] == {"status": "not_required", "eligibility_reason": "below_score_threshold"}
+    assert row["agent_brief"] == {
+        "status": "not_required",
+        "eligibility_reason": "below_score_threshold",
+        "requirement_status": "not_required",
+        "requirement_reason": "below_score_threshold",
+    }
     assert row["signal"]["alert_eligibility"]["agent_status"] == "not_required"
     assert row["signal"]["alert_eligibility"]["external_push_block_reason"] == "below_score_threshold"

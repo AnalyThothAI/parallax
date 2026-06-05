@@ -21,8 +21,8 @@ from parallax.domains.news_intel.services.news_content_classification import cla
 from parallax.domains.news_intel.services.news_entity_extraction import extract_news_entities
 from parallax.domains.news_intel.services.news_fact_candidates import build_fact_candidates
 from parallax.domains.news_intel.services.news_item_agent_policy import (
-    news_item_agent_brief_eligibility,
-    news_item_agent_brief_priority,
+    agent_requirement_payload,
+    decide_news_item_agent_requirement,
 )
 from parallax.domains.news_intel.services.news_story_identity import NewsStoryIdentity, build_news_story_identity
 from parallax.domains.news_intel.services.news_token_mentions import build_news_token_mentions
@@ -135,6 +135,20 @@ class NewsItemProcessWorker(WorkerBase):
                         "story_identity_version": story_identity_payload["version"],
                     }
                 )
+                requirement = decide_news_item_agent_requirement(
+                    item=processed_item,
+                    now_ms=now,
+                )
+                requirement_payload = agent_requirement_payload(requirement)
+                processed_item.update(
+                    {
+                        "agent_requirement_status": requirement_payload["status"],
+                        "agent_requirement_reason": requirement_payload["reason"],
+                        "agent_requirement_priority": requirement_payload["priority"],
+                        "agent_requirement_json": requirement_payload,
+                        "agent_requirement_version": requirement_payload["version"],
+                    }
+                )
                 with self._repository_session() as repos, repos.conn.transaction():
                     repos.news.replace_item_entities(news_item_id=news_item_id, entities=entities, commit=False)
                     repos.news.replace_token_mentions(news_item_id=news_item_id, mentions=mentions, commit=False)
@@ -158,6 +172,12 @@ class NewsItemProcessWorker(WorkerBase):
                         now_ms=now,
                         commit=False,
                     )
+                    repos.news.update_item_agent_requirement(
+                        news_item_id=news_item_id,
+                        requirement=requirement_payload,
+                        now_ms=now,
+                        commit=False,
+                    )
                     marked = repos.news.mark_item_processed(
                         news_item_id=news_item_id,
                         processed_at_ms=now,
@@ -174,23 +194,11 @@ class NewsItemProcessWorker(WorkerBase):
                         now_ms=now,
                         commit=False,
                     )
-                    eligibility = news_item_agent_brief_eligibility(
-                        item=processed_item,
-                        token_mentions=mention_payloads,
-                        fact_candidates=candidate_payloads,
-                        now_ms=now,
-                    )
-                    if eligibility.eligible:
+                    if requirement.required:
                         enqueue_item_brief_work(
                             repos,
                             news_item_ids=[news_item_id],
-                            priority_by_news_item_id={
-                                news_item_id: news_item_agent_brief_priority(
-                                    item=processed_item,
-                                    token_mentions=mention_payloads,
-                                    fact_candidates=candidate_payloads,
-                                )
-                            },
+                            priority_by_news_item_id={news_item_id: int(requirement.priority)},
                             reason="news_item_processed",
                             now_ms=now,
                             commit=False,

@@ -17,9 +17,6 @@ from parallax.domains.news_intel.runtime.news_projection_work import (
     queue_item_brief_depth,
     terminalize_work,
 )
-from parallax.domains.news_intel.services.news_item_agent_policy import (
-    news_item_agent_brief_eligibility,
-)
 from parallax.domains.news_intel.services.news_item_brief_input import (
     build_news_item_brief_input_packet,
 )
@@ -125,7 +122,7 @@ class NewsItemBriefWorker(WorkerBase):
                 "backpressure": 0,
                 "validation_failed": 0,
                 "missing_target": 0,
-                "policy_skipped": 0,
+                "requirement_skipped": 0,
             }
             skipped = 0
             current_updates = 0
@@ -138,14 +135,8 @@ class NewsItemBriefWorker(WorkerBase):
                     await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
                     skipped += 1
                     continue
-                eligibility = news_item_agent_brief_eligibility(
-                    item=_dict(candidate.get("item") or candidate),
-                    token_mentions=_list_of_dicts(candidate.get("token_mentions")),
-                    fact_candidates=_list_of_dicts(candidate.get("fact_candidates")),
-                    now_ms=now,
-                )
-                if not eligibility.eligible:
-                    notes["policy_skipped"] += 1
+                if not _candidate_requires_agent(candidate):
+                    notes["requirement_skipped"] += 1
                     await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
                     skipped += 1
                     continue
@@ -685,6 +676,11 @@ def _packet_from_candidate(
         fact_candidates=_list_of_dicts(candidate.get("fact_candidates")),
         agent_config=agent_config,
     )
+
+
+def _candidate_requires_agent(candidate: Mapping[str, Any]) -> bool:
+    item = _dict(candidate.get("item") or candidate)
+    return str(item.get("agent_requirement_status") or "").strip().lower() == "required"
 
 
 def _current_brief_is_fresh(

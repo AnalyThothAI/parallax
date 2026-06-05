@@ -45,6 +45,11 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
   const brief = item.agent_brief ?? null;
   const run = item.agent_run ?? null;
   const toolResults = run?.tool_results ?? [];
+  const requirement = item.signal.agent_requirement ?? item.agent_requirement_json ?? null;
+  const requirementStatus =
+    item.agent_requirement_status ?? requirement?.status ?? brief?.requirement_status ?? null;
+  const requirementReason =
+    item.agent_requirement_reason ?? requirement?.reason ?? brief?.requirement_reason ?? brief?.eligibility_reason ?? null;
   const displayTitle = brief?.title_zh || displaySignal.title_zh || item.headline;
   const sourceDomains = sourceDomainList(item);
 
@@ -81,9 +86,9 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
           detail={run?.latency_ms == null ? run?.model : `${formatDuration(run.latency_ms)} · ${run.model || ""}`}
         />
         <EvidenceMetric
-          label="Tools"
-          value={String(toolResults.length)}
-          detail={toolResults.length ? toolResults.map((tool) => tool.tool_name).filter(Boolean).join(", ") : "no calls"}
+          label="Agent gate"
+          value={requirementStatus || item.agent_status || "unknown"}
+          detail={requirementReason || "reason missing"}
         />
       </section>
 
@@ -91,12 +96,14 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
         <main className="news-evidence-main">
           <OriginalArticle item={item} />
           <AiInterpretation brief={brief} displayDirection={displaySignal.direction} />
-          <ResearchTrail run={run} toolResults={toolResults} />
+          {hasLegacyAgentAudit(run, toolResults) ? (
+            <LegacyAgentAudit run={run} toolResults={toolResults} />
+          ) : null}
           <RawJson brief={brief} run={run} />
         </main>
         <aside className="news-evidence-side" aria-label="news evidence metadata">
           <ProviderSignalEvidence item={item} tokenImpacts={tokenImpacts} />
-          <AgentBriefState brief={brief} run={run} />
+          <AgentBriefState item={item} brief={brief} run={run} />
           <TokenIdentityEvidence tokens={tokenIdentities} />
           <FactEvidence facts={facts} />
           <ObservationEvidence item={item} />
@@ -168,7 +175,10 @@ function OriginalArticle({ item }: { item: NewsItemDetail }) {
         <FieldRow label="Canonical URL" value={item.canonical_url} />
         <FieldRow label="Language" value={item.language} />
         <FieldRow label="Content class" value={item.content_class} />
+        <FieldRow label="Analysis admission" value={item.analysis_admission_status} />
+        <FieldRow label="Admission reason" value={item.analysis_admission_reason} />
         <FieldRow label="Lifecycle" value={newsLifecycleLabel(item.lifecycle_status)} />
+        <FieldRow label="Processing error" value={item.processing_terminal_error} />
       </dl>
     </section>
   );
@@ -208,7 +218,7 @@ function AiInterpretation({
   );
 }
 
-function ResearchTrail({
+function LegacyAgentAudit({
   run,
   toolResults,
 }: {
@@ -217,7 +227,7 @@ function ResearchTrail({
 }) {
   return (
     <section className="news-evidence-section">
-      <SectionHeading icon={Database} title="Research tools" tag={`${toolResults.length} calls`} />
+      <SectionHeading icon={Database} title="Legacy agent audit" tag={`${toolResults.length} calls`} />
       <dl className="news-evidence-definition-grid">
         <FieldRow label="Run" value={run?.run_id} />
         <FieldRow label="Model" value={run?.model} />
@@ -234,7 +244,7 @@ function ResearchTrail({
           ))}
         </div>
       ) : (
-        <p className="news-evidence-muted">No research tool results are attached to this run.</p>
+        <p className="news-evidence-muted">No legacy tool results are attached to this run.</p>
       )}
       <JsonDetails title="Research execution JSON" value={run?.research_execution ?? {}} />
       <JsonDetails title="Research hashes JSON" value={run?.research_hashes ?? {}} />
@@ -271,6 +281,20 @@ function ToolResultCard({ tool }: { tool: NewsResearchToolResult }) {
   );
 }
 
+function hasLegacyAgentAudit(
+  run: NewsItemDetail["agent_run"] | null | undefined,
+  toolResults: NewsResearchToolResult[],
+): boolean {
+  if (toolResults.length > 0) return true;
+  return Boolean(
+    run &&
+      (hasObjectKeys(run.research_plan) ||
+        hasObjectKeys(run.research_execution) ||
+        hasObjectKeys(run.research_hashes) ||
+        hasObjectKeys(run.base_packet)),
+  );
+}
+
 function RawJson({
   brief,
   run,
@@ -287,6 +311,10 @@ function RawJson({
       <JsonDetails title="Validation errors JSON" value={run?.validation_errors_json ?? []} />
     </section>
   );
+}
+
+function hasObjectKeys(value: Record<string, unknown> | null | undefined): boolean {
+  return Boolean(value && Object.keys(value).length > 0);
 }
 
 function ProviderSignalEvidence({
@@ -401,17 +429,34 @@ function FactEvidence({ facts }: { facts: NewsFactLane[] }) {
 }
 
 function AgentBriefState({
+  item,
   brief,
   run,
 }: {
+  item: NewsItemDetail;
   brief?: NewsAgentBrief | null;
   run?: NewsItemDetail["agent_run"] | null;
 }) {
+  const requirement = item.signal.agent_requirement ?? item.agent_requirement_json ?? null;
+  const requirementStatus =
+    item.agent_requirement_status ?? requirement?.status ?? brief?.requirement_status ?? null;
+  const requirementReason =
+    item.agent_requirement_reason ?? requirement?.reason ?? brief?.requirement_reason ?? brief?.eligibility_reason ?? null;
   return (
     <section className="news-evidence-section">
       <SectionHeading icon={Activity} title="Agent state" tag={brief?.status || "absent"} />
       <dl className="news-evidence-definition-list">
+        <FieldRow label="Requirement" value={requirementStatus} />
+        <FieldRow label="Requirement reason" value={requirementReason} />
+        <FieldRow label="Requirement priority" value={item.agent_requirement_priority ?? requirement?.priority} />
         <FieldRow label="Status" value={brief?.status || run?.status || "absent"} />
+        <FieldRow label="Eligibility reason" value={brief?.eligibility_reason} />
+        <FieldRow label="Admission" value={item.analysis_admission_status} />
+        <FieldRow label="Admission reason" value={item.analysis_admission_reason} />
+        <FieldRow
+          label="Push block"
+          value={item.signal.alert_eligibility?.external_push_block_reason}
+        />
         <FieldRow label="Outcome" value={run?.outcome} />
         <FieldRow label="Run" value={run?.run_id} />
         <FieldRow label="Lane" value={run?.lane} />

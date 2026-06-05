@@ -56,7 +56,14 @@ _RULES: tuple[tuple[str, str, re.Pattern[str]], ...] = (
         "text:market_structure",
         re.compile(r"\b(?:liquidation|open interest|funding rate|volatility|options?|market maker)\b", re.I),
     ),
-    ("crypto_market", "text:crypto_market", re.compile(r"\b(?:bitcoin|ethereum|crypto|token|altcoin|solana)\b", re.I)),
+    (
+        "crypto_market",
+        "text:crypto_market",
+        re.compile(
+            r"\b(?:bitcoin|btc|ethereum|eth|crypto|token|altcoin|solana|zec|zcash|orchard|cex|dex|binance)\b",
+            re.I,
+        ),
+    ),
 )
 
 _FACT_EVENT_CLASS_BY_TYPE = {

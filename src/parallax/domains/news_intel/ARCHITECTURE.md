@@ -25,22 +25,25 @@ forced into a resolved asset.
   analysis eligibility. Its `signal_json` is an explicit envelope:
   `display_signal` is the product display choice, `provider_signal` preserves
   provider-native evidence, `agent_signal` preserves compact current-brief
-  state, and `alert_eligibility` is an object whose `in_app_eligible` field can
-  be true for high-signal candidates only after the item/story is `admitted`.
-  External phone pushes require `external_push_ready` plus a ready, publishable
-  current brief; `external_push_block_reason` records why a row is not
-  publishable.
+  state, `agent_requirement` copies the persisted item-level agent gate, and
+  `alert_eligibility` is an object whose `in_app_eligible` field can be true
+  for high-signal candidates only after the item/story is `admitted`. External
+  phone pushes require `external_push_ready` plus a ready, publishable current
+  brief; `external_push_block_reason` records why a row is not publishable.
 - `news_sources` carries source classification (`provider_type`,
   `source_role`, `trust_tier`, `coverage_tags`) and source policy JSON. The
   page read model copies the compact classification fields into `source_json`
   so `/api/news` can filter without calling providers.
 - `news_items` carries item content classification (`content_class`,
   `content_tags_json`, and `content_classification_json`), analysis admission
-  (`analysis_admission_*`), and deterministic story identity (`story_key`,
+  (`analysis_admission_*`), persisted single-item agent requirement
+  (`agent_requirement_status`, `agent_requirement_reason`,
+  `agent_requirement_priority`, `agent_requirement_json`,
+  `agent_requirement_version`), and deterministic story identity (`story_key`,
   `story_identity_json`). These describe what happened, whether it is eligible
-  for crypto analysis, and how it groups for the current serving projection.
-  Story identity is rebuildable state over facts, not a separate material truth
-  table.
+  for crypto analysis, whether a single-item brief agent is required, and how
+  it groups for the current serving projection. Story identity is rebuildable
+  state over facts, not a separate material truth table.
 - Public `http://` and `https://` URLs admitted by
   `public_url_identity_policy` are the hard identity for `news_items`.
   Homepage, aggregator, live page, feed, preview, and generic announcement URLs
@@ -68,7 +71,7 @@ news_fetch -> news_item_process(admission + story identity)
 Optional enhancement:
 
 ```text
-news_item_process(admitted only) -> news_item_brief -> news_page_projection
+news_item_process(agent_requirement_status=required) -> news_item_brief -> news_page_projection
 ```
 
 Operational projection:
@@ -81,9 +84,9 @@ news_fetch/source refresh -> news_source_quality_projection
 | Stage | Responsibility |
 |-------|----------------|
 | Fetch | Reconcile configured sources into `news_sources`, fetch due feeds, persist provider items and normalized news items, then enqueue semantic page/source-refresh work. It does not create agent brief work. |
-| Item processing | Read raw `news_items`, extract entities and token mentions deterministically, classify item content, write attention-safe observations and fact candidates, compute analysis admission, compute deterministic story identity, and admit optional item-brief work only for admitted crypto-analysis rows after processed-state policy passes. |
-| Item brief | Build bounded item/token/fact packets, reserve `news.item_brief`, execute through the shared `AgentExecutionGateway`, shape-validate the standard brief output, write the run ledger, upsert the current brief, and dirty page rows. Evidence refs and sparse source context are audit/quality metadata, not publication gates. |
-| Page projection | Claim item-scoped dirty targets, expand them to bounded story groups, and rebuild story-shaped News page rows from news facts, admission, story identity, provider-native signal, and the current item brief. |
+| Item processing | Read raw `news_items`, extract entities and token mentions deterministically, classify item content, write attention-safe observations and fact candidates, compute analysis admission, compute deterministic story identity, compute and persist `agent_requirement_*`, and enqueue optional item-brief work only when `agent_requirement_status = required`. |
+| Item brief | Read persisted `agent_requirement_*`; only required items may execute. Build bounded item/token/fact packets, reserve `news.item_brief`, execute through the shared `AgentExecutionGateway`, shape-validate the standard brief output, write the run ledger, upsert the current brief, and dirty page rows. Evidence refs and sparse source context are audit/quality metadata, not publication gates. |
+| Page projection | Claim item-scoped dirty targets, expand them to bounded story groups, and rebuild story-shaped News page rows from news facts, admission, story identity, provider-native signal, persisted agent requirement, and the current item brief. It does not recompute agent requirement policy. |
 | Source quality projection | Own source-quality windows, expand source refresh intents into configured source/window work, rebuild source quality rows, and dirty page rows only when compact source quality status changes. It is an operational projection, not item hot-path fanout. |
 | API/UI | Read-only surfaces over projected `news_page_rows`, with explicit source/content/decision filters and source status diagnostics. Raw `news_items` are worker inputs, not public fallback rows. |
 
@@ -122,5 +125,9 @@ alongside configured provider types and source hygiene warnings.
 - Provider token impacts and provider scores are evidence, not crypto identity
   and not analysis admission by themselves. A bare ticker/common word must not
   create a crypto driver/watch row without admitted crypto-native evidence.
+- `NewsItemProcessWorker` is the only runtime writer for item-level
+  `agent_requirement_*`. Brief input repair, page projection, API, and UI must
+  read this persisted requirement and must not rerun an equivalent score,
+  admission, or freshness policy.
 - Retired News research tools are not runtime surfaces. Cleanup may keep their
   names only as purge markers for deleting old agent artifacts.

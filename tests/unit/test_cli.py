@@ -155,9 +155,7 @@ def test_ops_news_dedup_commands_are_registered_without_compatibility_flags() ->
     diagnostics_custom = parser.parse_args(
         ["ops", "news-dedup-diagnostics", "--window-hours", "4", "--score-threshold", "90"]
     )
-    cleanup = parser.parse_args(
-        ["ops", "cleanup-news-brief-input", "--window-hours", "4", "--score-threshold", "90", "--dry-run"]
-    )
+    cleanup = parser.parse_args(["ops", "cleanup-news-brief-input", "--dry-run"])
     rebuild_dry_run = parser.parse_args(["ops", "rebuild-news-canonical-items", "--limit", "25", "--dry-run"])
     rebuild_execute = parser.parse_args(["ops", "rebuild-news-canonical-items", "--limit", "25", "--execute"])
     repair_default = parser.parse_args(["ops", "repair-news-duplicates-hard-cut", "--dry-run"])
@@ -170,8 +168,6 @@ def test_ops_news_dedup_commands_are_registered_without_compatibility_flags() ->
     assert diagnostics_custom.window_hours == 4.0
     assert diagnostics_custom.score_threshold == 90
     assert cleanup.ops_command == "cleanup-news-brief-input"
-    assert cleanup.window_hours == 4.0
-    assert cleanup.score_threshold == 90
     assert cleanup.dry_run is True
     assert cleanup.execute is False
     assert rebuild_dry_run.ops_command == "rebuild-news-canonical-items"

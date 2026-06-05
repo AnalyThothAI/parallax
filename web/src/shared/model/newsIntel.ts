@@ -9,6 +9,14 @@ export type NewsAlertEligibility = {
   provider_score?: number | null;
 };
 
+export type NewsAgentRequirement = {
+  status?: "required" | "not_required" | string | null;
+  reason?: string | null;
+  priority?: number | null;
+  basis?: Record<string, unknown> | null;
+  version?: string | null;
+};
+
 export type NewsSignalSummary = {
   source: "provider" | "agent" | "partial" | string;
   provider?: string | null;
@@ -29,6 +37,7 @@ export type NewsSignalEnvelope = {
   provider_signal: NewsSignalSummary | null;
   agent_signal: Record<string, unknown>;
   alert_eligibility: NewsAlertEligibility;
+  agent_requirement?: NewsAgentRequirement | null;
 };
 
 export type NewsTokenLane = {
@@ -104,6 +113,8 @@ export type NewsAgentBrief = {
   title_zh?: string | null;
   summary_zh?: string | null;
   eligibility_reason?: string | null;
+  requirement_status?: string | null;
+  requirement_reason?: string | null;
   market_read_zh?: string | null;
   source_consensus_zh?: string | null;
   retrieval_notes_zh?: string | null;
@@ -201,6 +212,7 @@ export type NewsRow = {
   language?: string | null;
   published_at_ms?: number | null;
   fetched_at_ms?: number | null;
+  processing_terminal_error?: string | null;
   duplicate_observation_count?: number | null;
   source_domain?: string | null;
   provider_type?: string | null;
@@ -213,6 +225,13 @@ export type NewsRow = {
   content_class?: string | null;
   content_tags?: string[];
   content_classification?: Record<string, unknown>;
+  analysis_admission_status?: string | null;
+  analysis_admission_reason?: string | null;
+  agent_requirement_status?: string | null;
+  agent_requirement_reason?: string | null;
+  agent_requirement_priority?: number | null;
+  agent_requirement_json?: NewsAgentRequirement | null;
+  agent_requirement_version?: string | null;
   signal: NewsSignalEnvelope;
   token_impacts?: NewsTokenLane[];
   token_lanes: NewsTokenLane[];

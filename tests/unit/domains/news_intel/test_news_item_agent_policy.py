@@ -3,7 +3,7 @@ from __future__ import annotations
 from parallax.domains.news_intel.services.news_item_agent_policy import (
     NEWS_ITEM_AGENT_BRIEF_MAX_PUBLISHED_AGE_MS,
     NEWS_ITEM_AGENT_BRIEF_MIN_PROVIDER_SCORE,
-    news_item_agent_brief_eligibility,
+    decide_news_item_agent_requirement,
     news_item_agent_brief_priority,
 )
 
@@ -33,19 +33,18 @@ def _item(**overrides):
 
 
 def test_news_item_agent_brief_requires_processed_item_state() -> None:
-    result = news_item_agent_brief_eligibility(
+    result = decide_news_item_agent_requirement(
         item=_item(lifecycle_status="raw"),
-        token_mentions=[{"resolution_status": "known_symbol"}],
-        fact_candidates=[],
         now_ms=NOW_MS,
     )
 
-    assert result.eligible is False
+    assert result.required is False
+    assert result.status == "not_required"
     assert result.reason == "item_not_processed"
 
 
 def test_news_item_agent_brief_rejects_provider_score_without_analysis_admission() -> None:
-    result = news_item_agent_brief_eligibility(
+    result = decide_news_item_agent_requirement(
         item=_item(
             analysis_admission_status="page_only",
             analysis_admission_json={
@@ -54,74 +53,64 @@ def test_news_item_agent_brief_rejects_provider_score_without_analysis_admission
             },
             provider_signal_json={"source": "provider", "status": "ready", "score": 95},
         ),
-        token_mentions=[],
-        fact_candidates=[],
         now_ms=NOW_MS,
     )
 
-    assert result.eligible is False
+    assert result.required is False
+    assert result.status == "not_required"
     assert result.reason == "analysis_not_admitted"
 
 
 def test_news_item_agent_brief_requires_classification() -> None:
-    result = news_item_agent_brief_eligibility(
+    result = decide_news_item_agent_requirement(
         item=_item(content_classification_json={}),
-        token_mentions=[{"resolution_status": "known_symbol"}],
-        fact_candidates=[],
         now_ms=NOW_MS,
     )
 
-    assert result.eligible is False
+    assert result.required is False
     assert result.reason == "classification_missing"
 
 
 def test_news_item_agent_brief_requires_provider_score_at_or_above_analysis_floor() -> None:
     assert NEWS_ITEM_AGENT_BRIEF_MIN_PROVIDER_SCORE == 80
-    result = news_item_agent_brief_eligibility(
+    result = decide_news_item_agent_requirement(
         item=_item(),
-        token_mentions=[{"resolution_status": "known_symbol"}],
-        fact_candidates=[],
         now_ms=NOW_MS,
     )
 
-    assert result.eligible is True
+    assert result.required is True
+    assert result.status == "required"
     assert result.reason == "eligible"
 
 
 def test_news_item_agent_brief_rejects_below_threshold_provider_scores() -> None:
-    result = news_item_agent_brief_eligibility(
+    result = decide_news_item_agent_requirement(
         item=_item(provider_signal_json={"source": "provider", "status": "ready", "score": 64}),
-        token_mentions=[],
-        fact_candidates=[],
         now_ms=NOW_MS,
     )
 
-    assert result.eligible is False
+    assert result.required is False
     assert result.reason == "below_score_threshold"
 
 
 def test_news_item_agent_brief_rejects_non_provider_or_missing_score() -> None:
-    non_provider = news_item_agent_brief_eligibility(
+    non_provider = decide_news_item_agent_requirement(
         item=_item(provider_signal_json={"source": "manual", "status": "ready", "score": 100}),
-        token_mentions=[{"resolution_status": "known_symbol"}],
-        fact_candidates=[],
         now_ms=NOW_MS,
     )
-    missing_score = news_item_agent_brief_eligibility(
+    missing_score = decide_news_item_agent_requirement(
         item=_item(provider_signal_json={"source": "provider", "status": "ready"}),
-        token_mentions=[{"resolution_status": "known_symbol"}],
-        fact_candidates=[],
         now_ms=NOW_MS,
     )
 
-    assert non_provider.eligible is False
+    assert non_provider.required is False
     assert non_provider.reason == "source_not_provider_signal"
-    assert missing_score.eligible is False
-    assert missing_score.reason == "below_score_threshold"
+    assert missing_score.required is False
+    assert missing_score.reason == "missing_provider_score"
 
 
-def test_news_item_agent_brief_accepts_admitted_low_provider_score_with_explicit_crypto_evidence() -> None:
-    result = news_item_agent_brief_eligibility(
+def test_news_item_agent_brief_rejects_admitted_low_provider_score_even_with_explicit_crypto_evidence() -> None:
+    result = decide_news_item_agent_requirement(
         item=_item(
             provider_signal_json={"source": "provider", "status": "ready", "score": 72},
             analysis_admission_json={
@@ -129,60 +118,57 @@ def test_news_item_agent_brief_accepts_admitted_low_provider_score_with_explicit
                 "basis": {"crypto_evidence": ["text:crypto_subject"]},
             },
         ),
-        token_mentions=[],
-        fact_candidates=[],
         now_ms=NOW_MS,
     )
 
-    assert result.eligible is True
-    assert result.reason == "eligible"
+    assert result.required is False
+    assert result.reason == "below_score_threshold"
     assert news_item_agent_brief_priority(
         item=_item(provider_signal_json={"source": "provider", "score": 95}),
-        token_mentions=[{"resolution_status": "known_symbol"}],
-        fact_candidates=[],
     ) < news_item_agent_brief_priority(
         item=_item(provider_signal_json={"source": "provider", "score": 72}),
-        token_mentions=[],
-        fact_candidates=[],
     )
+
+
+def test_decide_news_item_agent_requirement_returns_persistable_contract() -> None:
+    result = decide_news_item_agent_requirement(
+        item=_item(provider_signal_json={"source": "provider", "status": "ready", "score": 90}),
+        now_ms=NOW_MS,
+    )
+
+    assert result.status == "required"
+    assert result.reason == "eligible"
+    assert result.priority == 10
+    assert result.basis["provider_score"] == 90
+    assert result.basis["analysis_admission_status"] == "admitted"
 
 
 def test_news_item_agent_brief_requires_fresh_published_at() -> None:
     assert NEWS_ITEM_AGENT_BRIEF_MAX_PUBLISHED_AGE_MS == 8 * 3_600_000
-    missing_published = news_item_agent_brief_eligibility(
+    missing_published = decide_news_item_agent_requirement(
         item=_item(published_at_ms=None),
-        token_mentions=[{"resolution_status": "known_symbol"}],
-        fact_candidates=[],
         now_ms=NOW_MS,
     )
-    too_old = news_item_agent_brief_eligibility(
+    too_old = decide_news_item_agent_requirement(
         item=_item(published_at_ms=NOW_MS - NEWS_ITEM_AGENT_BRIEF_MAX_PUBLISHED_AGE_MS - 1),
-        token_mentions=[{"resolution_status": "known_symbol"}],
-        fact_candidates=[],
         now_ms=NOW_MS,
     )
-    future = news_item_agent_brief_eligibility(
+    future = decide_news_item_agent_requirement(
         item=_item(published_at_ms=NOW_MS + 1),
-        token_mentions=[{"resolution_status": "known_symbol"}],
-        fact_candidates=[],
         now_ms=NOW_MS,
     )
 
-    assert missing_published.eligible is False
+    assert missing_published.required is False
     assert missing_published.reason == "published_at_missing"
-    assert too_old.eligible is False
+    assert too_old.required is False
     assert too_old.reason == "published_too_old"
-    assert future.eligible is False
+    assert future.required is False
     assert future.reason == "published_in_future"
 
 
 def test_news_item_agent_brief_priority_keeps_higher_provider_scores_first() -> None:
     assert news_item_agent_brief_priority(
         item=_item(provider_signal_json={"source": "provider", "score": 95}),
-        token_mentions=[{"resolution_status": "known_symbol"}],
-        fact_candidates=[],
     ) < news_item_agent_brief_priority(
         item=_item(provider_signal_json={"source": "provider", "score": 72}),
-        token_mentions=[{"resolution_status": "known_symbol"}],
-        fact_candidates=[],
     )

@@ -2585,6 +2585,39 @@ class NewsRepository:
         if commit:
             self.conn.commit()
 
+    def update_item_agent_requirement(
+        self,
+        *,
+        news_item_id: str,
+        requirement: Mapping[str, Any],
+        now_ms: int,
+        commit: bool = True,
+    ) -> None:
+        payload = _json_dict(requirement)
+        self.conn.execute(
+            """
+            UPDATE news_items
+               SET agent_requirement_status = %s,
+                   agent_requirement_reason = %s,
+                   agent_requirement_priority = %s,
+                   agent_requirement_json = %s,
+                   agent_requirement_version = %s,
+                   updated_at_ms = %s
+             WHERE news_item_id = %s
+            """,
+            (
+                str(payload.get("status") or "not_required"),
+                str(payload.get("reason") or "item_not_processed"),
+                int(payload.get("priority") or 100),
+                _json(payload),
+                str(payload.get("version") or ""),
+                int(now_ms),
+                str(news_item_id),
+            ),
+        )
+        if commit:
+            self.conn.commit()
+
     def mark_item_process_retryable(
         self,
         *,
@@ -5332,12 +5365,22 @@ def _public_news_item_payload(row: Mapping[str, Any]) -> dict[str, Any]:
         "content_class",
         "processed_at_ms",
         "processing_error",
+        "processing_terminal_error",
+        "agent_requirement_status",
+        "agent_requirement_reason",
+        "agent_requirement_priority",
+        "agent_requirement_json",
+        "agent_requirement_version",
         "created_at_ms",
         "updated_at_ms",
         "duplicate_observation_count",
     )
     payload = {key: row.get(key) for key in allowed if key in row}
     payload["canonical_url"] = _public_url(payload.get("canonical_url"))
+    if "processing_error" in payload:
+        payload["processing_error"] = _compact_error(payload.get("processing_error"))
+    if "processing_terminal_error" in payload:
+        payload["processing_terminal_error"] = _compact_error(payload.get("processing_terminal_error"))
     return payload
 
 
@@ -5411,6 +5454,15 @@ def _public_fetch_run_payload(row: Mapping[str, Any]) -> dict[str, Any]:
 def _public_agent_brief_payload(value: Any) -> dict[str, Any]:
     payload = _json_dict(value)
     if not is_current_news_item_brief_contract(payload):
+        status = str(payload.get("status") or "").strip()
+        if status in {"pending", "not_required", "skipped"}:
+            return {
+                "status": status,
+                "eligibility_reason": payload.get("eligibility_reason"),
+                "requirement_status": payload.get("requirement_status"),
+                "requirement_reason": payload.get("requirement_reason"),
+                "brief_json": {},
+            }
         return {"status": "pending", "brief_json": {}}
     brief_json = _json_dict(payload.get("brief_json"))
     public_fields = (
@@ -5427,6 +5479,9 @@ def _public_agent_brief_payload(value: Any) -> dict[str, Any]:
         "invalidation_conditions",
         "data_gaps",
         "evidence_refs",
+        "eligibility_reason",
+        "requirement_status",
+        "requirement_reason",
         "prompt_version",
         "schema_version",
         "validator_version",
