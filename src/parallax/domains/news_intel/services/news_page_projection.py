@@ -16,9 +16,20 @@ def build_news_page_row(
     token_mentions: list[dict[str, Any]],
     fact_candidates: list[dict[str, Any]],
     agent_brief: dict[str, Any] | None = None,
+    story: dict[str, Any] | None = None,
     computed_at_ms: int,
 ) -> dict[str, Any]:
     news_item_id = str(item["news_item_id"])
+    story_payload = _story_payload(story=story, item=item, news_item_id=news_item_id)
+    story_key = str(story_payload.get("story_key") or item.get("story_key") or "")
+    representative_news_item_id = str(story_payload.get("representative_news_item_id") or news_item_id)
+    analysis_admission_status = str(item.get("analysis_admission_status") or "needs_review")
+    analysis_admission_reason = str(item.get("analysis_admission_reason") or "")
+    analysis_admission = _analysis_admission_payload(
+        item=item,
+        status=analysis_admission_status,
+        reason=analysis_admission_reason,
+    )
     provider_signal = _json_object(item.get("provider_signal_json"))
     token_impacts = _provider_token_impacts(item.get("provider_token_impacts_json"))
     impacts_by_symbol = {
@@ -32,8 +43,11 @@ def build_news_page_row(
     content_tags = _json_list(item.get("content_tags_json"))
     content_classification = _json_object(item.get("content_classification_json"))
     return {
-        "row_id": _stable_id("news-page-row", NEWS_PAGE_PROJECTION_VERSION, news_item_id),
+        "row_id": _stable_id("news-page-row", NEWS_PAGE_PROJECTION_VERSION, story_key or news_item_id),
         "news_item_id": news_item_id,
+        "representative_news_item_id": representative_news_item_id,
+        "story_key": story_key,
+        "story": story_payload,
         "latest_at_ms": int(item.get("published_at_ms") or computed_at_ms),
         "lifecycle_status": _lifecycle(item=item, token_lanes=token_lanes, fact_lanes=fact_lanes),
         "headline": str(item.get("title") or ""),
@@ -42,7 +56,11 @@ def build_news_page_row(
         "canonical_url": _public_url(item.get("canonical_url")),
         "token_lanes": token_lanes,
         "fact_lanes": fact_lanes,
-        "signal": _page_signal(provider_signal=provider_signal, agent_signal=agent_payload),
+        "signal": _page_signal(
+            provider_signal=provider_signal,
+            agent_signal=agent_payload,
+            analysis_admission_status=analysis_admission_status,
+        ),
         "token_impacts": token_impacts,
         "content_class": item.get("content_class"),
         "content_tags": content_tags,
@@ -51,6 +69,13 @@ def build_news_page_row(
         "agent_brief": agent_payload,
         "agent_status": agent_status,
         "agent_brief_computed_at_ms": agent_payload.get("computed_at_ms"),
+        "analysis_admission_status": analysis_admission_status,
+        "analysis_admission_reason": analysis_admission_reason,
+        "analysis_admission": analysis_admission,
+        "duplicate_count": int(story_payload.get("member_count") or 1) if story_payload else 1,
+        "source_ids_json": _json_list(story_payload.get("source_ids")) if story_payload else [],
+        "source_domains_json": _json_list(story_payload.get("source_domains")) if story_payload else [],
+        "provider_article_keys_json": _json_list(story_payload.get("provider_article_keys")) if story_payload else [],
         "computed_at_ms": int(computed_at_ms),
         "projection_version": NEWS_PAGE_PROJECTION_VERSION,
     }
@@ -172,6 +197,54 @@ def _source_payload(item: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+def _story_payload(*, story: Mapping[str, Any] | None, item: Mapping[str, Any], news_item_id: str) -> dict[str, Any]:
+    story_key = str((story or {}).get("story_key") or item.get("story_key") or "").strip()
+    if not story and not story_key:
+        return {}
+    source_domains = _json_list((story or {}).get("source_domains"))
+    if not source_domains:
+        source_domains = _json_list(item.get("source_domains_json"))
+    if not source_domains and item.get("source_domain"):
+        source_domains = [str(item.get("source_domain"))]
+    member_news_item_ids = _json_list((story or {}).get("member_news_item_ids"))
+    if not member_news_item_ids:
+        member_news_item_ids = [news_item_id]
+    payload = {
+        **dict(story or {}),
+        "story_key": story_key,
+        "representative_news_item_id": str((story or {}).get("representative_news_item_id") or news_item_id),
+        "member_news_item_ids": [str(member_id) for member_id in member_news_item_ids],
+        "member_count": int((story or {}).get("member_count") or len(member_news_item_ids) or 1),
+        "source_domains": [str(domain) for domain in source_domains if str(domain)],
+    }
+    source_ids = [str(source_id) for source_id in _json_list((story or {}).get("source_ids")) if str(source_id)]
+    if source_ids:
+        payload["source_ids"] = source_ids
+    provider_article_keys = [
+        str(provider_key)
+        for provider_key in _json_list((story or {}).get("provider_article_keys"))
+        if str(provider_key)
+    ]
+    if provider_article_keys:
+        payload["provider_article_keys"] = provider_article_keys
+    return _compact_mapping(payload)
+
+
+def _analysis_admission_payload(
+    *,
+    item: Mapping[str, Any],
+    status: str,
+    reason: str,
+) -> dict[str, Any]:
+    payload = _json_object(item.get("analysis_admission_json"))
+    if not payload:
+        payload = {"status": status, "reason": reason}
+    else:
+        payload.setdefault("status", status)
+        payload.setdefault("reason", reason)
+    return payload
+
+
 def _compact_agent_brief(agent_brief: Mapping[str, Any] | None) -> dict[str, Any]:
     if agent_brief is None:
         return {"status": "pending"}
@@ -193,6 +266,7 @@ def _compact_agent_brief(agent_brief: Mapping[str, Any] | None) -> dict[str, Any
             "agent_run_id": agent_brief.get("agent_run_id"),
             "schema_version": agent_brief.get("schema_version") or brief_json.get("schema_version"),
             "prompt_version": agent_brief.get("prompt_version") or brief_json.get("prompt_version"),
+            "validator_version": agent_brief.get("validator_version") or brief_json.get("validator_version"),
             "artifact_version_hash": agent_brief.get("artifact_version_hash"),
             "input_hash": agent_brief.get("input_hash"),
             "bull_view": bull_view or None,
@@ -230,6 +304,7 @@ def _page_signal(
     *,
     provider_signal: Mapping[str, Any],
     agent_signal: Mapping[str, Any],
+    analysis_admission_status: str,
 ) -> dict[str, Any]:
     provider_payload = _provider_signal_payload(provider_signal)
     provider_score = _optional_int_or_none(provider_payload.get("score")) if provider_payload else None
@@ -249,12 +324,14 @@ def _page_signal(
             },
             provider_signal=provider_payload,
             agent_signal=agent_signal,
+            analysis_admission_status=analysis_admission_status,
         )
     if provider_payload:
         return _signal_with_independent_state(
             provider_payload,
             provider_signal=provider_payload,
             agent_signal=agent_signal,
+            analysis_admission_status=analysis_admission_status,
         )
     return _signal_with_independent_state(
         {
@@ -266,6 +343,7 @@ def _page_signal(
         },
         provider_signal=None,
         agent_signal=agent_signal,
+        analysis_admission_status=analysis_admission_status,
     )
 
 
@@ -295,11 +373,19 @@ def _signal_with_independent_state(
     *,
     provider_signal: Mapping[str, Any] | None,
     agent_signal: Mapping[str, Any],
+    analysis_admission_status: str,
 ) -> dict[str, Any]:
     agent_status = str(agent_signal.get("status") or "pending")
     provider_score = _optional_int_or_none(provider_signal.get("score")) if provider_signal else None
-    in_app_eligible = _alert_eligible(agent_signal=agent_signal, provider_score=provider_score)
-    external_push_ready, external_push_block_reason = _external_push_readiness(agent_signal)
+    in_app_eligible = _alert_eligible(
+        agent_signal=agent_signal,
+        provider_score=provider_score,
+        analysis_admission_status=analysis_admission_status,
+    )
+    external_push_ready, external_push_block_reason = _external_push_readiness(
+        agent_signal,
+        analysis_admission_status=analysis_admission_status,
+    )
     return {
         "display_signal": _compact_mapping(signal),
         "provider_signal": dict(provider_signal) if provider_signal else None,
@@ -319,7 +405,14 @@ def _signal_with_independent_state(
     }
 
 
-def _alert_eligible(*, agent_signal: Mapping[str, Any], provider_score: int | None) -> bool:
+def _alert_eligible(
+    *,
+    agent_signal: Mapping[str, Any],
+    provider_score: int | None,
+    analysis_admission_status: str,
+) -> bool:
+    if analysis_admission_status != "admitted":
+        return False
     if str(agent_signal.get("status") or "") == "ready" and str(agent_signal.get("decision_class") or "") in {
         "driver",
         "watch",
@@ -328,7 +421,13 @@ def _alert_eligible(*, agent_signal: Mapping[str, Any], provider_score: int | No
     return provider_score is not None and provider_score >= 70
 
 
-def _external_push_readiness(agent_signal: Mapping[str, Any]) -> tuple[bool, str | None]:
+def _external_push_readiness(
+    agent_signal: Mapping[str, Any],
+    *,
+    analysis_admission_status: str,
+) -> tuple[bool, str | None]:
+    if analysis_admission_status != "admitted":
+        return False, "analysis_not_admitted"
     if str(agent_signal.get("status") or "") != "ready":
         return False, "agent_brief_not_ready"
     if not _agent_publishable_summary(agent_signal):

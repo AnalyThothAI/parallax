@@ -184,9 +184,12 @@ def build_parser() -> argparse.ArgumentParser:
     cleanup_news_brief_input_mode.add_argument("--execute", action="store_true")
     cleanup_news_intel_hard_cut = ops_subcommands.add_parser(
         "cleanup-news-intel-hard-cut",
-        help="dry-run or execute the News Intel hard-cut data cleanup",
+        help="dry-run or execute the News Intel hard-cut artifact-only cleanup",
     )
-    cleanup_news_intel_hard_cut.add_argument("--execute", action="store_true")
+    cleanup_news_intel_hard_cut_mode = cleanup_news_intel_hard_cut.add_mutually_exclusive_group(required=False)
+    cleanup_news_intel_hard_cut_mode.add_argument("--dry-run", action="store_true")
+    cleanup_news_intel_hard_cut_mode.add_argument("--execute", action="store_true")
+    cleanup_news_intel_hard_cut.add_argument("--current-artifact-version-hash", default=None)
     rebuild_news_canonical_items = ops_subcommands.add_parser(
         "rebuild-news-canonical-items",
         help="enqueue a bounded rebuild of News canonical item derived projections",

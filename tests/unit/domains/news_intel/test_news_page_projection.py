@@ -38,7 +38,12 @@ def test_build_news_page_row_includes_token_and_fact_lanes() -> None:
     assert row["token_lanes"][0]["lane"] == "attention"
     assert row["token_lanes"][0]["reason_codes"] == ["SYMBOL_NOT_IN_REGISTRY"]
     assert row["fact_lanes"][0]["status"] == "attention"
-    assert "story" not in row
+    assert row["representative_news_item_id"] == "news-1"
+    assert row["story_key"] == ""
+    assert row["story"] == {}
+    assert row["analysis_admission_status"] == "needs_review"
+    assert row["analysis_admission_reason"] == ""
+    assert row["analysis_admission"] == {"status": "needs_review", "reason": ""}
     assert "story_id" not in row
     assert row["source"] == {
         "source_id": "example-rss",
@@ -159,6 +164,78 @@ def test_build_news_page_row_uses_stable_row_id() -> None:
     assert first["row_id"] != "news-1"
 
 
+def test_story_row_id_uses_story_key() -> None:
+    story = {
+        "story_key": "news-story:subject:jpmorgan-citi-tokenized-deposit:t412000",
+        "member_news_item_ids": ["news-jpm", "news-citi"],
+        "member_count": 2,
+        "source_domains": ["bloomberg.com", "reuters.com"],
+    }
+
+    first = build_news_page_row(
+        item={
+            "news_item_id": "news-jpm",
+            "story_key": story["story_key"],
+            "title": "JPMorgan and Citi test tokenized deposits",
+            "summary": "",
+            "source_domain": "bloomberg.com",
+            "canonical_url": "https://bloomberg.test/jpm-citi",
+            "published_at_ms": 1000,
+            "analysis_admission_status": "admitted",
+            "analysis_admission_reason": "tokenized_deposit_subject",
+            "analysis_admission_json": {
+                "status": "admitted",
+                "reason": "tokenized_deposit_subject",
+                "basis": {"subject": "tokenized_deposit"},
+            },
+        },
+        token_mentions=[],
+        fact_candidates=[],
+        story=story,
+        computed_at_ms=2000,
+    )
+    second = build_news_page_row(
+        item={
+            "news_item_id": "news-citi",
+            "story_key": story["story_key"],
+            "title": "Citi joins JPMorgan tokenized deposit trial",
+            "summary": "",
+            "source_domain": "reuters.com",
+            "canonical_url": "https://reuters.test/jpm-citi",
+            "published_at_ms": 1001,
+            "analysis_admission_status": "admitted",
+            "analysis_admission_reason": "tokenized_deposit_subject",
+            "analysis_admission_json": {
+                "status": "admitted",
+                "reason": "tokenized_deposit_subject",
+                "basis": {"subject": "tokenized_deposit"},
+            },
+        },
+        token_mentions=[],
+        fact_candidates=[],
+        story=story,
+        computed_at_ms=3000,
+    )
+    fallback = build_news_page_row(
+        item={
+            "news_item_id": "news-jpm",
+            "title": "JPMorgan and Citi test tokenized deposits",
+            "summary": "",
+            "source_domain": "bloomberg.com",
+            "canonical_url": "https://bloomberg.test/jpm-citi",
+            "published_at_ms": 1000,
+        },
+        token_mentions=[],
+        fact_candidates=[],
+        computed_at_ms=2000,
+    )
+
+    assert first["row_id"] == second["row_id"]
+    assert first["row_id"] != fallback["row_id"]
+    assert first["representative_news_item_id"] == "news-jpm"
+    assert first["story_key"] == story["story_key"]
+
+
 def test_build_news_page_row_marks_attention_for_unknown_token_without_facts() -> None:
     row = build_news_page_row(
         item={
@@ -220,6 +297,8 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
             "source_domain": "example.test",
             "canonical_url": "https://example.test/a",
             "published_at_ms": 1000,
+            "analysis_admission_status": "admitted",
+            "analysis_admission_reason": "crypto_subject",
         },
         token_mentions=[],
         fact_candidates=[],
@@ -291,6 +370,8 @@ def test_page_signal_envelope_separates_provider_agent_display_and_alert() -> No
             "source_domain": "6551.io",
             "canonical_url": "https://example.com/news-1",
             "published_at_ms": 1_000,
+            "analysis_admission_status": "admitted",
+            "analysis_admission_reason": "crypto_subject",
             "provider_signal_json": {
                 "source": "provider",
                 "provider": "opennews",
@@ -328,6 +409,8 @@ def test_build_news_page_row_preserves_provider_signal_without_masking_ready_age
             "source_domain": "example.test",
             "canonical_url": "https://example.test/a",
             "published_at_ms": 1000,
+            "analysis_admission_status": "admitted",
+            "analysis_admission_reason": "crypto_subject",
             "provider_signal_json": {
                 "source": "provider",
                 "provider": "opennews",
@@ -423,9 +506,111 @@ def test_build_news_page_row_keeps_provider_candidate_separate_from_external_pus
     )
 
     eligibility = row["signal"]["alert_eligibility"]
-    assert eligibility["in_app_eligible"] is True
+    assert eligibility["in_app_eligible"] is False
     assert eligibility["external_push_ready"] is False
-    assert eligibility["external_push_block_reason"] == "agent_brief_not_ready"
+    assert eligibility["external_push_block_reason"] == "analysis_not_admitted"
+
+
+def test_non_admitted_provider_score_does_not_set_in_app_eligible() -> None:
+    row = build_news_page_row(
+        item={
+            "news_item_id": "news-spacex",
+            "title": "SpaceX shares trade at higher valuation",
+            "summary": "",
+            "source_domain": "example.test",
+            "canonical_url": "https://example.test/spacex",
+            "published_at_ms": 1000,
+            "analysis_admission_status": "page_only",
+            "analysis_admission_reason": "private_company_equity_context",
+            "analysis_admission_json": {
+                "status": "page_only",
+                "reason": "private_company_equity_context",
+                "basis": {"provider_score_is_evidence_only": True},
+            },
+            "provider_signal_json": {
+                "source": "provider",
+                "provider": "opennews",
+                "status": "ready",
+                "direction": "bullish",
+                "score": 95,
+                "grade": "A",
+            },
+            "provider_token_impacts_json": [{"symbol": "SPCX", "score": 95, "signal": "long"}],
+        },
+        token_mentions=[],
+        fact_candidates=[],
+        computed_at_ms=2000,
+    )
+
+    assert row["signal"]["provider_signal"]["score"] == 95
+    assert row["signal"]["alert_eligibility"]["in_app_eligible"] is False
+    assert row["analysis_admission_status"] == "page_only"
+
+
+def test_admitted_ready_brief_sets_external_push_ready() -> None:
+    row = build_news_page_row(
+        item={
+            "news_item_id": "news-zec",
+            "title": "Zcash discloses Orchard bug fix",
+            "summary": "",
+            "source_domain": "electriccoin.co",
+            "canonical_url": "https://electriccoin.test/orchard",
+            "published_at_ms": 1000,
+            "analysis_admission_status": "admitted",
+            "analysis_admission_reason": "crypto_security_event",
+            "analysis_admission_json": {
+                "status": "admitted",
+                "reason": "crypto_security_event",
+                "basis": {"subject": "zcash_orchard"},
+            },
+        },
+        token_mentions=[],
+        fact_candidates=[],
+        agent_brief={
+            "status": "ready",
+            "direction": "bearish",
+            "decision_class": "driver",
+            "brief_json": {"summary_zh": "Zcash security event needs follow-up."},
+            "computed_at_ms": 1500,
+        },
+        computed_at_ms=2000,
+    )
+
+    assert row["signal"]["alert_eligibility"]["in_app_eligible"] is True
+    assert row["signal"]["alert_eligibility"]["external_push_ready"] is True
+
+
+def test_story_payload_includes_member_count_and_domains() -> None:
+    story = {
+        "story_key": "news-story:subject:spacex-valuation:t412000",
+        "representative_news_item_id": "news-spacex-a",
+        "member_news_item_ids": ["news-spacex-a", "news-spacex-b"],
+        "member_count": 2,
+        "source_domains": ["bloomberg.com", "wsj.com"],
+        "provider_article_keys": ["opennews:100", "opennews:101"],
+    }
+
+    row = build_news_page_row(
+        item={
+            "news_item_id": "news-spacex-a",
+            "story_key": story["story_key"],
+            "title": "SpaceX tender offer values company higher",
+            "summary": "",
+            "source_domain": "bloomberg.com",
+            "canonical_url": "https://bloomberg.test/spacex",
+            "published_at_ms": 1000,
+            "analysis_admission_status": "page_only",
+            "analysis_admission_reason": "private_company_equity_context",
+        },
+        token_mentions=[],
+        fact_candidates=[],
+        story=story,
+        computed_at_ms=2000,
+    )
+
+    assert row["story"] == story
+    assert row["story"]["member_count"] == 2
+    assert row["story"]["source_domains"] == ["bloomberg.com", "wsj.com"]
 
 
 def test_build_news_page_row_uses_pending_agent_brief_when_missing() -> None:

@@ -6,11 +6,13 @@ import re
 import uuid
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import asdict
 from typing import Any
 
 from psycopg.types.json import Jsonb
 
 from parallax.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION
+from parallax.domains.news_intel.services.news_analysis_admission import NewsAnalysisAdmission
 from parallax.domains.news_intel.services.news_canonical_identity import (
     CANONICAL_POLICY_VERSION,
     PROVIDER_GLOBAL_ARTICLE_ID_TYPES,
@@ -18,12 +20,17 @@ from parallax.domains.news_intel.services.news_canonical_identity import (
     canonical_identity_for_observation,
     provider_global_article_key,
 )
+from parallax.domains.news_intel.services.news_item_brief_contract import (
+    current_news_item_brief_sql_predicate,
+    is_current_news_item_brief_contract,
+)
 from parallax.domains.news_intel.services.news_material_identity import (
     material_title_fingerprint,
     material_title_is_eligible,
     provider_symbol_set,
     symbol_sets_compatible,
 )
+from parallax.domains.news_intel.services.news_story_identity import NewsStoryIdentity
 from parallax.domains.news_intel.services.news_url_identity import public_url_identity_policy, url_identity_kind
 from parallax.domains.news_intel.types import NewsSourceConfig
 from parallax.domains.news_intel.types.source_classification import normalize_string_tuple
@@ -66,6 +73,9 @@ _CHECK_QUOTED_VALUE_RE = re.compile(r"'((?:''|[^'])*)'(?:\s*::\s*[A-Za-z_][A-Za-
 _PUBLICATION_METADATA_FIELDS = {"computed_at_ms", "updated_at_ms", "projected_at_ms", "payload_hash"}
 _NEWS_PAGE_SIGNAL_SQL = "LOWER(signal_json -> 'display_signal' ->> 'direction') = %s"
 _MATERIAL_MATCH_WINDOW_MS = 600_000
+_STORY_PROJECTION_WINDOW_MS = 72 * 60 * 60 * 1000
+_CURRENT_NEWS_ITEM_BRIEF_CURRENT_BRIEF_SQL = current_news_item_brief_sql_predicate("current_brief")
+_CURRENT_NEWS_ITEM_BRIEF_BRIEFS_SQL = current_news_item_brief_sql_predicate("briefs")
 
 
 class NewsRepository:
@@ -1641,8 +1651,11 @@ class NewsRepository:
             WITH candidate AS (
               SELECT briefs.*
                 FROM news_item_agent_briefs AS briefs
-               WHERE briefs.news_item_id = %s
+               WHERE (
+                     briefs.news_item_id = %s
                   OR briefs.news_item_id IN ({placeholders})
+               )
+                 AND {_CURRENT_NEWS_ITEM_BRIEF_BRIEFS_SQL}
                ORDER BY
                  briefs.computed_at_ms DESC,
                  briefs.updated_at_ms DESC,
@@ -2003,6 +2016,9 @@ class NewsRepository:
             SELECT
               row_id,
               news_item_id,
+              representative_news_item_id,
+              story_key,
+              story_json AS story,
               latest_at_ms,
               headline,
               summary,
@@ -2019,10 +2035,14 @@ class NewsRepository:
               agent_brief_json AS agent_brief,
               agent_status,
               agent_brief_computed_at_ms,
+              analysis_admission_status,
+              analysis_admission_reason,
+              analysis_admission_json AS analysis_admission,
               computed_at_ms,
               projection_version
             FROM news_page_rows
             WHERE projection_version = %s
+              AND analysis_admission_status = 'admitted'
               AND COALESCE((signal_json -> 'alert_eligibility' ->> 'in_app_eligible')::boolean, false) = true
               AND COALESCE(NULLIF(signal_json -> 'alert_eligibility' ->> 'provider_score', '')::int, -1) >= %s
               AND EXISTS (
@@ -2079,6 +2099,9 @@ class NewsRepository:
             SELECT
               row_id,
               news_item_id,
+              representative_news_item_id,
+              story_key,
+              story_json AS story,
               latest_at_ms,
               lifecycle_status,
               headline,
@@ -2099,6 +2122,9 @@ class NewsRepository:
               agent_brief_json AS agent_brief,
               agent_status,
               agent_brief_computed_at_ms,
+              analysis_admission_status,
+              analysis_admission_reason,
+              analysis_admission_json AS analysis_admission,
               computed_at_ms,
               projection_version
             FROM news_page_rows
@@ -2188,12 +2214,14 @@ class NewsRepository:
                    claimed.content_classification_json,
                    claimed.provider_signal_json,
                    claimed.provider_token_impacts_json,
+                   claimed.provider_article_keys_json,
                    claimed.created_at_ms,
                    claimed.updated_at_ms,
                    sources.provider_type,
                    sources.source_role,
                    sources.trust_tier,
                    sources.source_name,
+                   sources.coverage_tags_json,
                    sources.authority_scope_json
               FROM claimed
               JOIN news_sources AS sources ON sources.source_id = claimed.source_id
@@ -2392,6 +2420,45 @@ class NewsRepository:
         if commit:
             self.conn.commit()
 
+    def update_item_analysis_and_story_identity(
+        self,
+        *,
+        news_item_id: str,
+        admission: NewsAnalysisAdmission | Mapping[str, object],
+        story_identity: NewsStoryIdentity | Mapping[str, object],
+        now_ms: int,
+        commit: bool = True,
+    ) -> None:
+        admission_payload = _analysis_admission_payload(admission)
+        story_identity_payload = _story_identity_payload(story_identity)
+        self.conn.execute(
+            """
+            UPDATE news_items
+               SET analysis_admission_status = %s,
+                   analysis_admission_reason = %s,
+                   analysis_admission_json = %s,
+                   analysis_admission_version = %s,
+                   story_key = %s,
+                   story_identity_json = %s,
+                   story_identity_version = %s,
+                   updated_at_ms = %s
+             WHERE news_item_id = %s
+            """,
+            (
+                str(admission_payload.get("status") or ""),
+                str(admission_payload.get("reason") or ""),
+                _json(admission_payload),
+                str(admission_payload.get("version") or ""),
+                str(story_identity_payload.get("story_key") or ""),
+                _json(story_identity_payload),
+                str(story_identity_payload.get("version") or ""),
+                int(now_ms),
+                str(news_item_id),
+            ),
+        )
+        if commit:
+            self.conn.commit()
+
     def mark_item_process_failed(
         self,
         *,
@@ -2440,7 +2507,7 @@ class NewsRepository:
         if not target_ids:
             return []
         rows = self.conn.execute(
-            """
+            f"""
             WITH target_items AS (
               SELECT items.*
                 FROM news_items AS items
@@ -2508,7 +2575,7 @@ class NewsRepository:
                      edge_sources.trust_tier,
                      edge_sources.coverage_tags_json,
                      edge_sources.source_quality_status,
-                     COALESCE(edges.evidence_json -> 'item_payload', '{}'::jsonb) AS item_payload
+                     COALESCE(edges.evidence_json -> 'item_payload', '{{}}'::jsonb) AS item_payload
                 FROM news_item_observation_edges AS edges
                 JOIN news_sources AS edge_sources ON edge_sources.source_id = edges.source_id
                 JOIN news_provider_items AS provider_items ON provider_items.provider_item_id = edges.provider_item_id
@@ -2516,7 +2583,7 @@ class NewsRepository:
                  AND edge_sources.enabled = true
                ORDER BY
                  CASE WHEN provider_items.provider_payload_status = 'ready' THEN 0 ELSE 1 END,
-                 CASE WHEN edges.evidence_json #>> '{item_payload,url_identity_kind}' = 'article' THEN 0 ELSE 1 END,
+                 CASE WHEN edges.evidence_json #>> '{{item_payload,url_identity_kind}}' = 'article' THEN 0 ELSE 1 END,
                  edges.provider_article_key ASC,
                  edge_sources.source_id ASC,
                  provider_items.payload_hash ASC,
@@ -2542,7 +2609,9 @@ class NewsRepository:
                WHERE edges.news_item_id = items.news_item_id
                  AND edge_sources.enabled = true
             ) AS edge_summary ON true
-            LEFT JOIN news_item_agent_briefs AS current_brief ON current_brief.news_item_id = items.news_item_id
+            LEFT JOIN news_item_agent_briefs AS current_brief
+              ON current_brief.news_item_id = items.news_item_id
+             AND {_CURRENT_NEWS_ITEM_BRIEF_CURRENT_BRIEF_SQL}
             LEFT JOIN LATERAL (
               SELECT COALESCE(jsonb_agg(to_jsonb(mentions.*) ORDER BY mentions.mention_id), '[]'::jsonb)
                 AS token_mentions
@@ -2569,12 +2638,124 @@ class NewsRepository:
             for row in rows
         ]
 
+    def load_story_projection_payloads_for_items(self, *, news_item_ids: Sequence[str]) -> list[dict[str, Any]]:
+        target_ids = list(dict.fromkeys(str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)))
+        if not target_ids:
+            return []
+        story_scope_rows = self.conn.execute(
+            """
+            WITH target_items AS (
+              SELECT news_item_id, story_key, published_at_ms
+                FROM news_items
+               WHERE news_item_id = ANY(%s::text[])
+            ),
+            story_bounds AS (
+              SELECT story_key,
+                     MIN(published_at_ms) - %s::bigint AS lower_bound_ms,
+                     MAX(published_at_ms) + %s::bigint AS upper_bound_ms,
+                     MIN(array_position(%s::text[], news_item_id)) AS first_target_ordinal
+                FROM target_items
+               WHERE story_key <> ''
+               GROUP BY story_key
+            ),
+            story_members AS (
+              SELECT items.news_item_id,
+                     items.story_key,
+                     story_bounds.first_target_ordinal,
+                     items.published_at_ms,
+                     false AS fallback_item
+                FROM story_bounds
+                JOIN news_items AS items ON items.story_key = story_bounds.story_key
+               WHERE items.published_at_ms BETWEEN story_bounds.lower_bound_ms AND story_bounds.upper_bound_ms
+                 AND EXISTS (
+                   SELECT 1
+                     FROM news_item_observation_edges AS edges
+                     JOIN news_sources AS sources ON sources.source_id = edges.source_id
+                    WHERE edges.news_item_id = items.news_item_id
+                      AND sources.enabled = true
+                 )
+            ),
+            fallback_items AS (
+              SELECT target_items.news_item_id,
+                     ''::text AS story_key,
+                     array_position(%s::text[], target_items.news_item_id) AS first_target_ordinal,
+                     target_items.published_at_ms,
+                     true AS fallback_item
+                FROM target_items
+               WHERE target_items.story_key = ''
+                 AND EXISTS (
+                   SELECT 1
+                     FROM news_item_observation_edges AS edges
+                     JOIN news_sources AS sources ON sources.source_id = edges.source_id
+                    WHERE edges.news_item_id = target_items.news_item_id
+                      AND sources.enabled = true
+                 )
+            )
+            SELECT *
+              FROM (
+                SELECT * FROM story_members
+                UNION ALL
+                SELECT * FROM fallback_items
+              ) AS scoped_items
+             ORDER BY first_target_ordinal ASC NULLS LAST,
+                      fallback_item ASC,
+                      story_key ASC,
+                      published_at_ms DESC,
+                      news_item_id DESC
+            """,
+            (
+                target_ids,
+                _STORY_PROJECTION_WINDOW_MS,
+                _STORY_PROJECTION_WINDOW_MS,
+                target_ids,
+                target_ids,
+            ),
+        ).fetchall()
+        scoped_item_ids = [str(row["news_item_id"]) for row in story_scope_rows]
+        item_payloads = self.load_items_for_page_projection(news_item_ids=scoped_item_ids)
+        item_payloads_by_id = {str(payload["item"]["news_item_id"]): payload for payload in item_payloads}
+        grouped_ids: dict[str, list[str]] = {}
+        fallback_group_keys: dict[str, str] = {}
+        group_order: list[str] = []
+        for row in story_scope_rows:
+            news_item_id = str(row["news_item_id"])
+            if news_item_id not in item_payloads_by_id:
+                continue
+            story_key = str(row["story_key"] or "")
+            group_key = story_key or f"item:{news_item_id}"
+            if group_key not in grouped_ids:
+                grouped_ids[group_key] = []
+                group_order.append(group_key)
+                if not story_key:
+                    fallback_group_keys[group_key] = news_item_id
+            grouped_ids[group_key].append(news_item_id)
+
+        payloads: list[dict[str, Any]] = []
+        for group_key in group_order:
+            member_payloads = [item_payloads_by_id[item_id] for item_id in grouped_ids[group_key]]
+            if not member_payloads:
+                continue
+            representative = member_payloads[0]
+            story_key = "" if group_key in fallback_group_keys else group_key
+            story = _story_projection_payload(story_key=story_key, member_payloads=member_payloads)
+            payloads.append(
+                {
+                    "item": representative["item"],
+                    "current_brief": representative.get("current_brief"),
+                    "token_mentions": representative.get("token_mentions") or [],
+                    "fact_candidates": representative.get("fact_candidates") or [],
+                    "story": story if story_key else None,
+                    "member_items": [payload["item"] for payload in member_payloads],
+                }
+            )
+        return payloads
+
     def load_items_for_brief_targets(self, *, news_item_ids: Sequence[str]) -> list[dict[str, Any]]:
         target_ids = [str(item_id) for item_id in dict.fromkeys(news_item_ids) if str(item_id)]
         if not target_ids:
             return []
         rows = self.conn.execute(
-            """
+            f"""
             WITH target_ids(news_item_id, ordinal) AS (
               SELECT news_item_id, ordinal
                 FROM unnest(%s::text[]) WITH ORDINALITY AS ids(news_item_id, ordinal)
@@ -2632,7 +2813,9 @@ class NewsRepository:
             FROM candidates
             JOIN news_items AS items ON items.news_item_id = candidates.news_item_id
             JOIN news_sources AS sources ON sources.source_id = items.source_id
-            LEFT JOIN news_item_agent_briefs AS current_brief ON current_brief.news_item_id = items.news_item_id
+            LEFT JOIN news_item_agent_briefs AS current_brief
+              ON current_brief.news_item_id = items.news_item_id
+             AND {_CURRENT_NEWS_ITEM_BRIEF_CURRENT_BRIEF_SQL}
             LEFT JOIN LATERAL (
               SELECT COUNT(*)::int AS duplicate_count,
                      COALESCE(jsonb_agg(DISTINCT edges.source_id ORDER BY edges.source_id), '[]'::jsonb)
@@ -2690,7 +2873,7 @@ class NewsRepository:
 
     def get_news_item_detail(self, *, news_item_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
-            """
+            f"""
             SELECT to_jsonb(items.*) AS item,
                    to_jsonb(sources.*) AS source,
                    to_jsonb(provider_items.*) AS provider_item,
@@ -2725,7 +2908,9 @@ class NewsRepository:
               JOIN news_sources AS sources ON sources.source_id = items.source_id
               JOIN news_provider_items AS provider_items ON provider_items.provider_item_id = items.provider_item_id
               LEFT JOIN news_fetch_runs AS fetch_runs ON fetch_runs.fetch_run_id = provider_items.fetch_run_id
-              LEFT JOIN news_item_agent_briefs AS current_brief ON current_brief.news_item_id = items.news_item_id
+              LEFT JOIN news_item_agent_briefs AS current_brief
+                ON current_brief.news_item_id = items.news_item_id
+               AND {_CURRENT_NEWS_ITEM_BRIEF_CURRENT_BRIEF_SQL}
               LEFT JOIN LATERAL (
                 SELECT jsonb_build_object(
                          'run_id', runs.run_id,
@@ -2763,6 +2948,9 @@ class NewsRepository:
             """
             SELECT
               row_id,
+              representative_news_item_id,
+              story_key,
+              story_json AS story,
               latest_at_ms,
               lifecycle_status,
               token_lanes_json AS token_lanes,
@@ -2776,6 +2964,9 @@ class NewsRepository:
               agent_brief_json AS page_agent_brief,
               agent_status,
               agent_brief_computed_at_ms,
+              analysis_admission_status,
+              analysis_admission_reason,
+              analysis_admission_json AS analysis_admission,
               computed_at_ms,
               projection_version
             FROM news_page_rows
@@ -2829,6 +3020,22 @@ class NewsRepository:
         public_item = _public_news_item_payload(item_payload)
         return {
             **public_item,
+            "representative_news_item_id": str(
+                projected.get("representative_news_item_id") or item_payload.get("news_item_id") or ""
+            ),
+            "story_key": str(projected.get("story_key") or item_payload.get("story_key") or ""),
+            "story": _json_dict(projected.get("story") or item_payload.get("story_identity_json")),
+            "analysis_admission_status": str(
+                projected.get("analysis_admission_status")
+                or item_payload.get("analysis_admission_status")
+                or "needs_review"
+            ),
+            "analysis_admission_reason": str(
+                projected.get("analysis_admission_reason") or item_payload.get("analysis_admission_reason") or ""
+            ),
+            "analysis_admission": _json_dict(
+                projected.get("analysis_admission") or item_payload.get("analysis_admission_json") or {}
+            ),
             "content_class": projected.get("content_class") or item_payload.get("content_class"),
             "content_tags": _json_list(projected.get("content_tags")),
             "content_classification": _json_dict(projected.get("content_classification")),
@@ -2910,7 +3117,7 @@ class NewsRepository:
         source_filter = list(dict.fromkeys(str(source_id) for source_id in (source_ids or []) if str(source_id)))
         source_filter_param = source_filter or None
         rows = self.conn.execute(
-            """
+            f"""
             WITH source_rows AS (
               SELECT source_id
                 FROM news_sources
@@ -2987,7 +3194,9 @@ class NewsRepository:
                        WHERE briefs.status = 'ready'
                      )::int AS ready_brief_count
                 FROM window_items AS items
-                JOIN news_item_agent_briefs AS briefs ON briefs.news_item_id = items.news_item_id
+                JOIN news_item_agent_briefs AS briefs
+                  ON briefs.news_item_id = items.news_item_id
+                 AND {_CURRENT_NEWS_ITEM_BRIEF_BRIEFS_SQL}
                GROUP BY items.source_id
             ),
             useful_item_agg AS (
@@ -3712,26 +3921,33 @@ class NewsRepository:
             returned = self.conn.execute(
                 """
                 INSERT INTO news_page_rows (
-                  row_id, news_item_id, latest_at_ms, lifecycle_status,
+                  row_id, news_item_id, representative_news_item_id, story_key, story_json,
+                  latest_at_ms, lifecycle_status,
                   headline, summary, source_domain, canonical_url, token_lanes_json,
                   fact_lanes_json, content_class, content_tags_json, content_classification_json,
                   source_json, signal_json, token_impacts_json, agent_brief_json,
                   agent_status, agent_brief_computed_at_ms, computed_at_ms, projection_version,
                   canonical_item_key, duplicate_count, source_ids_json, source_domains_json,
-                  provider_article_keys_json, payload_hash
+                  provider_article_keys_json, analysis_admission_status, analysis_admission_reason,
+                  analysis_admission_json, payload_hash
                 )
                 VALUES (
-                  %(row_id)s, %(news_item_id)s, %(latest_at_ms)s, %(lifecycle_status)s,
+                  %(row_id)s, %(news_item_id)s, %(representative_news_item_id)s, %(story_key)s, %(story_json)s,
+                  %(latest_at_ms)s, %(lifecycle_status)s,
                   %(headline)s, %(summary)s, %(source_domain)s, %(canonical_url)s, %(token_lanes_json)s,
                   %(fact_lanes_json)s, %(content_class)s, %(content_tags_json)s, %(content_classification_json)s,
                   %(source_json)s, %(signal_json)s, %(token_impacts_json)s,
                   %(agent_brief_json)s, %(agent_status)s, %(agent_brief_computed_at_ms)s,
                   %(computed_at_ms)s, %(projection_version)s, %(canonical_item_key)s,
                   %(duplicate_count)s, %(source_ids_json)s, %(source_domains_json)s,
-                  %(provider_article_keys_json)s, %(payload_hash)s
+                  %(provider_article_keys_json)s, %(analysis_admission_status)s,
+                  %(analysis_admission_reason)s, %(analysis_admission_json)s, %(payload_hash)s
                 )
                 ON CONFLICT (row_id) DO UPDATE SET
                   news_item_id = EXCLUDED.news_item_id,
+                  representative_news_item_id = EXCLUDED.representative_news_item_id,
+                  story_key = EXCLUDED.story_key,
+                  story_json = EXCLUDED.story_json,
                   latest_at_ms = EXCLUDED.latest_at_ms,
                   lifecycle_status = EXCLUDED.lifecycle_status,
                   headline = EXCLUDED.headline,
@@ -3756,6 +3972,9 @@ class NewsRepository:
                   source_ids_json = EXCLUDED.source_ids_json,
                   source_domains_json = EXCLUDED.source_domains_json,
                   provider_article_keys_json = EXCLUDED.provider_article_keys_json,
+                  analysis_admission_status = EXCLUDED.analysis_admission_status,
+                  analysis_admission_reason = EXCLUDED.analysis_admission_reason,
+                  analysis_admission_json = EXCLUDED.analysis_admission_json,
                   payload_hash = EXCLUDED.payload_hash
                 WHERE news_page_rows.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
                 RETURNING (xmax = 0) AS inserted
@@ -3771,6 +3990,105 @@ class NewsRepository:
         if commit:
             self.conn.commit()
         return {"inserted": inserted, "updated": updated, "unchanged": unchanged, "deleted": deleted}
+
+    def replace_page_rows_for_story_targets(
+        self,
+        *,
+        news_item_ids: Sequence[str],
+        story_keys: Sequence[str],
+        rows: Sequence[Mapping[str, Any]],
+        commit: bool = True,
+    ) -> dict[str, int]:
+        row_payloads = [_page_row_payload(row) for row in rows]
+        claimed_member_ids = list(
+            dict.fromkeys(str(news_item_id) for news_item_id in news_item_ids if str(news_item_id))
+        )
+        scoped_story_keys = list(
+            dict.fromkeys(
+                [
+                    *(str(story_key) for story_key in story_keys if str(story_key)),
+                    *(
+                        str(payload.get("story_key") or "")
+                        for payload in row_payloads
+                        if str(payload.get("story_key") or "")
+                    ),
+                ]
+            )
+        )
+        if claimed_member_ids:
+            story_key_rows = self.conn.execute(
+                """
+                SELECT DISTINCT story_key
+                  FROM news_items
+                 WHERE news_item_id = ANY(%s::text[])
+                   AND story_key <> ''
+                """,
+                (claimed_member_ids,),
+            ).fetchall()
+            scoped_story_keys = list(
+                dict.fromkeys([*scoped_story_keys, *(str(row["story_key"]) for row in story_key_rows)])
+            )
+        scoped_member_ids = list(claimed_member_ids)
+        if scoped_story_keys:
+            member_rows = self.conn.execute(
+                """
+                SELECT news_item_id
+                  FROM news_items
+                 WHERE story_key = ANY(%s::text[])
+                """,
+                (scoped_story_keys,),
+            ).fetchall()
+            scoped_member_ids = list(
+                dict.fromkeys([*scoped_member_ids, *(str(row["news_item_id"]) for row in member_rows)])
+            )
+        incoming_row_ids = list(dict.fromkeys(str(payload["row_id"]) for payload in row_payloads))
+        deleted = 0
+        if scoped_story_keys or scoped_member_ids:
+            incoming_filter = "AND NOT (row_id = ANY(%s::text[]))" if incoming_row_ids else ""
+            delete_params = (
+                (
+                    NEWS_PAGE_PROJECTION_VERSION,
+                    scoped_story_keys,
+                    scoped_story_keys,
+                    scoped_member_ids,
+                    scoped_member_ids,
+                    claimed_member_ids,
+                    claimed_member_ids,
+                    incoming_row_ids,
+                )
+                if incoming_row_ids
+                else (
+                    NEWS_PAGE_PROJECTION_VERSION,
+                    scoped_story_keys,
+                    scoped_story_keys,
+                    scoped_member_ids,
+                    scoped_member_ids,
+                    claimed_member_ids,
+                    claimed_member_ids,
+                )
+            )
+            cursor = self.conn.execute(
+                f"""
+                DELETE FROM news_page_rows
+                 WHERE projection_version = %s
+                   AND (
+                     (%s::text[] <> '{{}}'::text[] AND story_key = ANY(%s::text[]))
+                     OR (%s::text[] <> '{{}}'::text[] AND news_item_id = ANY(%s::text[]))
+                     OR (
+                       %s::text[] <> '{{}}'::text[]
+                       AND COALESCE(story_json -> 'member_news_item_ids', '[]'::jsonb) ?| %s::text[]
+                     )
+                   )
+                   {incoming_filter}
+                """,
+                delete_params,
+            )
+            deleted = int(getattr(cursor, "rowcount", 0) or 0)
+        result = self.replace_page_rows_for_items(news_item_ids=[], rows=row_payloads, commit=False)
+        result["deleted"] = int(result.get("deleted", 0)) + deleted
+        if commit:
+            self.conn.commit()
+        return result
 
     def delete_page_rows_for_sources(
         self,
@@ -3911,6 +4229,11 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     payload["summary"] = str(payload.get("summary") or "")
     payload["token_lanes_json"] = _json(payload.get("token_lanes_json") or payload.get("token_lanes") or [])
     payload["fact_lanes_json"] = _json(payload.get("fact_lanes_json") or payload.get("fact_lanes") or [])
+    payload["representative_news_item_id"] = str(
+        payload.get("representative_news_item_id") or payload.get("news_item_id") or ""
+    )
+    payload["story_key"] = str(payload.get("story_key") or "")
+    payload["story_json"] = _json(payload.get("story_json") or payload.get("story") or {})
     payload["token_impacts_json"] = _json(payload.get("token_impacts_json") or payload.get("token_impacts") or [])
     payload["content_class"] = str(payload.get("content_class") or "low_signal")
     payload["content_tags_json"] = _json(payload.get("content_tags_json") or payload.get("content_tags") or [])
@@ -3927,15 +4250,74 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     payload["agent_brief_computed_at_ms"] = (
         int(payload["agent_brief_computed_at_ms"]) if payload.get("agent_brief_computed_at_ms") is not None else None
     )
+    payload["analysis_admission_status"] = str(payload.get("analysis_admission_status") or "needs_review")
+    payload["analysis_admission_reason"] = str(payload.get("analysis_admission_reason") or "")
+    payload["analysis_admission_json"] = _json(
+        payload.get("analysis_admission_json")
+        or payload.get("analysis_admission")
+        or {
+            "status": payload["analysis_admission_status"],
+            "reason": payload["analysis_admission_reason"],
+        }
+    )
     return payload
+
+
+def _story_projection_payload(*, story_key: str, member_payloads: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    member_items = [_json_dict(payload.get("item")) for payload in member_payloads]
+    member_news_item_ids = [str(item.get("news_item_id") or "") for item in member_items if item.get("news_item_id")]
+    source_ids = sorted(
+        {
+            str(source_id)
+            for item in member_items
+            for source_id in _json_list(item.get("source_ids_json")) or [item.get("source_id")]
+            if str(source_id or "")
+        }
+    )
+    source_domains = sorted(
+        {
+            str(source_domain)
+            for item in member_items
+            for source_domain in _json_list(item.get("source_domains_json")) or [item.get("source_domain")]
+            if str(source_domain or "")
+        }
+    )
+    provider_article_keys = sorted(
+        {
+            str(provider_key)
+            for item in member_items
+            for provider_key in _json_list(item.get("provider_article_keys_json"))
+            if str(provider_key or "")
+        }
+    )
+    latest_at_ms = max((int(item.get("published_at_ms") or 0) for item in member_items), default=0)
+    earliest_at_ms = min((int(item.get("published_at_ms") or 0) for item in member_items), default=0)
+    representative_news_item_id = member_news_item_ids[0] if member_news_item_ids else ""
+    story_identity = _json_dict(member_items[0].get("story_identity_json")) if member_items else {}
+    return {
+        "story_key": story_key,
+        "representative_news_item_id": representative_news_item_id,
+        "member_news_item_ids": member_news_item_ids,
+        "member_count": len(member_news_item_ids),
+        "source_ids": source_ids,
+        "source_domains": source_domains,
+        "provider_article_keys": provider_article_keys,
+        "latest_at_ms": latest_at_ms,
+        "earliest_at_ms": earliest_at_ms,
+        "story_identity": story_identity,
+    }
 
 
 def _apply_page_row_summary(payload: dict[str, Any], summary: Mapping[str, Any]) -> None:
     payload["canonical_item_key"] = str(payload.get("canonical_item_key") or summary.get("canonical_item_key") or "")
     payload["duplicate_count"] = int(payload.get("duplicate_count") or summary.get("duplicate_observation_count") or 1)
-    payload["source_ids_json"] = _json(summary.get("source_ids_json") or [])
-    payload["source_domains_json"] = _json(summary.get("source_domains_json") or [])
-    payload["provider_article_keys_json"] = _json(summary.get("provider_article_keys_json") or [])
+    payload["source_ids_json"] = _json(payload.get("source_ids_json") or summary.get("source_ids_json") or [])
+    payload["source_domains_json"] = _json(
+        payload.get("source_domains_json") or summary.get("source_domains_json") or []
+    )
+    payload["provider_article_keys_json"] = _json(
+        payload.get("provider_article_keys_json") or summary.get("provider_article_keys_json") or []
+    )
 
 
 def _detail_agent_brief(value: Any) -> dict[str, Any]:
@@ -4601,6 +4983,69 @@ def _object_payload(value: Any) -> dict[str, Any]:
     return {name: getattr(value, name) for name in getattr(value, "__slots__", ()) if hasattr(value, name)}
 
 
+def _analysis_admission_payload(value: NewsAnalysisAdmission | Mapping[str, object]) -> dict[str, object]:
+    payload = _strict_current_dataclass_or_mapping_payload(
+        value,
+        expected_type=NewsAnalysisAdmission,
+        label="analysis admission payload",
+        required_fields=("status", "reason", "basis", "version"),
+    )
+    return {
+        "status": _required_payload_text(payload, "status", label="analysis admission payload"),
+        "reason": _required_payload_text(payload, "reason", label="analysis admission payload"),
+        "basis": _required_payload_mapping(payload, "basis", label="analysis admission payload"),
+        "version": _required_payload_text(payload, "version", label="analysis admission payload"),
+    }
+
+
+def _story_identity_payload(value: NewsStoryIdentity | Mapping[str, object]) -> dict[str, object]:
+    payload = _strict_current_dataclass_or_mapping_payload(
+        value,
+        expected_type=NewsStoryIdentity,
+        label="story identity payload",
+        required_fields=("story_key", "confidence", "basis", "version"),
+    )
+    return {
+        "story_key": _required_payload_text(payload, "story_key", label="story identity payload"),
+        "confidence": _required_payload_text(payload, "confidence", label="story identity payload"),
+        "basis": _required_payload_mapping(payload, "basis", label="story identity payload"),
+        "version": _required_payload_text(payload, "version", label="story identity payload"),
+    }
+
+
+def _strict_current_dataclass_or_mapping_payload(
+    value: NewsAnalysisAdmission | NewsStoryIdentity | Mapping[str, object],
+    *,
+    expected_type: type[NewsAnalysisAdmission] | type[NewsStoryIdentity],
+    label: str,
+    required_fields: tuple[str, ...],
+) -> dict[str, object]:
+    if isinstance(value, Mapping):
+        payload = dict(value)
+    elif isinstance(value, expected_type):
+        payload = asdict(value)
+    else:
+        raise ValueError(f"unsupported {label} shape")
+    missing = [field for field in required_fields if field not in payload]
+    if missing:
+        raise ValueError(f"unsupported {label} shape: missing {', '.join(missing)}")
+    return payload
+
+
+def _required_payload_text(payload: Mapping[str, object], field: str, *, label: str) -> str:
+    value = str(payload.get(field) or "").strip()
+    if not value:
+        raise ValueError(f"unsupported {label} shape: blank {field}")
+    return value
+
+
+def _required_payload_mapping(payload: Mapping[str, object], field: str, *, label: str) -> dict[str, object]:
+    value = payload.get(field)
+    if not isinstance(value, Mapping):
+        raise ValueError(f"unsupported {label} shape: {field} must be mapping")
+    return dict(value)
+
+
 def _public_observation_edge_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     allowed = (
         "news_item_id",
@@ -4716,31 +5161,51 @@ def _public_fetch_run_payload(row: Mapping[str, Any]) -> dict[str, Any]:
 
 def _public_agent_brief_payload(value: Any) -> dict[str, Any]:
     payload = _json_dict(value)
-    brief_json = _json_dict(payload.get("brief_json"))
-    if not payload:
+    if not is_current_news_item_brief_contract(payload):
         return {"status": "pending", "brief_json": {}}
-    allowed = (
+    brief_json = _json_dict(payload.get("brief_json"))
+    public_fields = (
         "status",
         "direction",
         "decision_class",
         "title_zh",
         "summary_zh",
         "market_read_zh",
-        "impact_zh",
-        "watch_items_zh",
-        "confidence",
+        "bull_view",
+        "bear_view",
+        "affected_assets",
+        "watch_triggers",
+        "invalidation_conditions",
+        "data_gaps",
+        "evidence_refs",
         "prompt_version",
         "schema_version",
+        "validator_version",
         "computed_at_ms",
-        "affected_assets",
     )
-    public_payload = {key: payload.get(key) for key in allowed if key in payload}
+    brief_fields = (
+        "title_zh",
+        "summary_zh",
+        "market_read_zh",
+        "bull_view",
+        "bear_view",
+        "affected_assets",
+        "watch_triggers",
+        "invalidation_conditions",
+        "data_gaps",
+        "evidence_refs",
+    )
+    public_payload = {key: payload.get(key) for key in public_fields if key in payload}
     public_payload["status"] = str(public_payload.get("status") or "pending")
-    public_payload["brief_json"] = brief_json
-    if "title_zh" not in public_payload and brief_json.get("title_zh"):
-        public_payload["title_zh"] = brief_json.get("title_zh")
-    if "affected_assets" not in public_payload and brief_json.get("affected_assets"):
-        public_payload["affected_assets"] = _json_list(brief_json.get("affected_assets"))
+    public_brief_json = {key: brief_json.get(key) for key in brief_fields if key in brief_json}
+    public_payload["brief_json"] = public_brief_json
+    for key, field_value in public_brief_json.items():
+        if key not in public_payload:
+            public_payload[key] = field_value
+    if "affected_assets" in public_payload:
+        public_payload["affected_assets"] = _json_list(public_payload.get("affected_assets"))
+    if "affected_assets" in public_brief_json:
+        public_brief_json["affected_assets"] = _json_list(public_brief_json.get("affected_assets"))
     return public_payload
 
 
@@ -4912,6 +5377,8 @@ def _provider_capability_tags(*, row: Mapping[str, Any]) -> list[str]:
 
 
 def _json(value: Any) -> Jsonb:
+    if isinstance(value, Jsonb):
+        return value
     return Jsonb(value, dumps=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True))
 
 

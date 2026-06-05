@@ -38,7 +38,10 @@ class NewsPageProjectionWorker(WorkerBase):
         claimed: list[dict[str, Any]] = []
         rows: list[dict[str, Any]] = []
         deleted = 0
+        unchanged = 0
         marked_error = 0
+        story_groups_projected = 0
+        story_member_items = 0
 
         with self._repository_session() as repos, _transaction(repos.conn):
             claimed = claim_page_projection_work(
@@ -50,26 +53,45 @@ class NewsPageProjectionWorker(WorkerBase):
                 commit=False,
             )
             if not claimed:
-                return WorkerResult(processed=0, notes=_notes(claimed=0, projected=0, deleted=0, marked_error=0))
+                return WorkerResult(
+                    processed=0,
+                    notes=_notes(
+                        claimed=0,
+                        projected=0,
+                        deleted=0,
+                        unchanged=0,
+                        marked_error=0,
+                        story_groups_projected=0,
+                        story_member_items=0,
+                    ),
+                )
 
             claimed_ids = page_news_item_ids(claimed)
             try:
                 with _transaction(repos.conn):
-                    payloads = repos.news.load_items_for_page_projection(news_item_ids=claimed_ids)
-                    rows_by_item_id: dict[str, dict[str, Any]] = {}
+                    payloads = repos.news.load_story_projection_payloads_for_items(news_item_ids=claimed_ids)
+                    story_keys: list[str] = []
+                    member_item_ids: list[str] = []
                     for payload in payloads:
-                        item, token_mentions, fact_candidates, current_brief = _projection_parts(payload)
-                        news_item_id = str(item["news_item_id"])
-                        rows_by_item_id[news_item_id] = build_news_page_row(
-                            item=item,
-                            token_mentions=token_mentions,
-                            fact_candidates=fact_candidates,
-                            agent_brief=current_brief,
-                            computed_at_ms=now,
+                        item, token_mentions, fact_candidates, current_brief, story, member_items = _projection_parts(
+                            payload
                         )
-                    rows = [
-                        rows_by_item_id[news_item_id] for news_item_id in claimed_ids if news_item_id in rows_by_item_id
-                    ]
+                        rows.append(
+                            build_news_page_row(
+                                item=item,
+                                token_mentions=token_mentions,
+                                fact_candidates=fact_candidates,
+                                agent_brief=current_brief,
+                                story=story,
+                                computed_at_ms=now,
+                            )
+                        )
+                        story_key = str((story or {}).get("story_key") or item.get("story_key") or "")
+                        if story_key:
+                            story_keys.append(story_key)
+                            story_groups_projected += 1
+                        member_item_ids.extend(_member_news_item_ids(member_items=member_items, story=story, item=item))
+                    story_member_items = len(set(member_item_ids))
             except Exception as exc:
                 marked_error = mark_work_error(
                     repos,
@@ -81,13 +103,27 @@ class NewsPageProjectionWorker(WorkerBase):
                 )
                 return WorkerResult(
                     failed=len(claimed),
-                    notes=_notes(claimed=len(claimed), projected=0, deleted=0, marked_error=marked_error),
+                    notes=_notes(
+                        claimed=len(claimed),
+                        projected=0,
+                        deleted=0,
+                        unchanged=0,
+                        marked_error=marked_error,
+                        story_groups_projected=0,
+                        story_member_items=0,
+                    ),
                 )
 
             try:
                 with _transaction(repos.conn):
-                    repos.news.replace_page_rows_for_items(news_item_ids=claimed_ids, rows=rows, commit=False)
-                    deleted = len(set(claimed_ids) - {str(row["news_item_id"]) for row in rows})
+                    replacement = repos.news.replace_page_rows_for_story_targets(
+                        news_item_ids=claimed_ids,
+                        story_keys=story_keys,
+                        rows=rows,
+                        commit=False,
+                    )
+                    deleted = int(replacement.get("deleted", 0))
+                    unchanged = int(replacement.get("unchanged", 0))
             except Exception as exc:
                 marked_error = mark_work_error(
                     repos,
@@ -99,14 +135,30 @@ class NewsPageProjectionWorker(WorkerBase):
                 )
                 return WorkerResult(
                     failed=len(claimed),
-                    notes=_notes(claimed=len(claimed), projected=len(rows), deleted=0, marked_error=marked_error),
+                    notes=_notes(
+                        claimed=len(claimed),
+                        projected=len(rows),
+                        deleted=0,
+                        unchanged=0,
+                        marked_error=marked_error,
+                        story_groups_projected=story_groups_projected,
+                        story_member_items=story_member_items,
+                    ),
                 )
 
             mark_work_done(repos, claimed, now_ms=now, commit=False)
 
         return WorkerResult(
             processed=len(page_news_item_ids(claimed)),
-            notes=_notes(claimed=len(claimed), projected=len(rows), deleted=deleted, marked_error=marked_error),
+            notes=_notes(
+                claimed=len(claimed),
+                projected=len(rows),
+                deleted=deleted,
+                unchanged=unchanged,
+                marked_error=marked_error,
+                story_groups_projected=story_groups_projected,
+                story_member_items=story_member_items,
+            ),
         )
 
     def _repository_session(self) -> Any:
@@ -127,23 +179,59 @@ class NewsPageProjectionWorker(WorkerBase):
 
 def _projection_parts(
     payload: Mapping[str, Any],
-) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]], dict[str, Any] | None]:
+) -> tuple[
+    dict[str, Any],
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+    list[dict[str, Any]],
+]:
     item = dict(payload.get("item") or payload)
     current_brief = payload.get("current_brief")
+    story = payload.get("story")
     return (
         item,
         [dict(row) for row in payload.get("token_mentions") or []],
         [dict(row) for row in payload.get("fact_candidates") or []],
         dict(current_brief) if current_brief is not None else None,
+        dict(story) if story is not None else None,
+        [dict(row) for row in payload.get("member_items") or []],
     )
 
 
-def _notes(*, claimed: int, projected: int, deleted: int, marked_error: int) -> dict[str, int | str]:
+def _member_news_item_ids(
+    *,
+    member_items: list[dict[str, Any]],
+    story: Mapping[str, Any] | None,
+    item: Mapping[str, Any],
+) -> list[str]:
+    member_ids = [str(row.get("news_item_id") or "") for row in member_items if str(row.get("news_item_id") or "")]
+    if not member_ids and story:
+        member_ids = [str(member_id) for member_id in story.get("member_news_item_ids") or [] if str(member_id)]
+    if not member_ids:
+        member_ids = [str(item["news_item_id"])]
+    return member_ids
+
+
+def _notes(
+    *,
+    claimed: int,
+    projected: int,
+    deleted: int,
+    unchanged: int,
+    marked_error: int,
+    story_groups_projected: int,
+    story_member_items: int,
+) -> dict[str, int | str]:
     return {
         "projection_version": NEWS_PAGE_PROJECTION_VERSION,
         "claimed": int(claimed),
+        "story_groups_projected": int(story_groups_projected),
+        "story_member_items": int(story_member_items),
         "projected": int(projected),
         "deleted": int(deleted),
+        "unchanged": int(unchanged),
         "marked_error": int(marked_error),
     }
 

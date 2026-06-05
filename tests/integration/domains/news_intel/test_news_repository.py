@@ -17,6 +17,7 @@ from parallax.domains.news_intel._constants import (
 )
 from parallax.domains.news_intel.repositories.news_repository import NewsRepository, news_page_cursor
 from parallax.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
+from parallax.domains.news_intel.services.news_page_projection import build_news_page_row
 from parallax.domains.news_intel.types.news_item_brief import (
     NEWS_ITEM_BRIEF_AGENT_NAME,
     NEWS_ITEM_BRIEF_LANE,
@@ -133,7 +134,9 @@ def test_source_fetch_provider_and_news_item_round_trip(tmp_path) -> None:
     assert rows[0]["headline"] == "SOL ETF filing"
     assert rows[0]["latest_at_ms"] == NOW_MS - 60_000
     assert rows[0]["canonical_url"] == "https://www.coindesk.com/news/sol-etf"
-    assert "story" not in rows[0]
+    assert rows[0]["story"] == {}
+    assert rows[0]["story_key"] == ""
+    assert rows[0]["analysis_admission_status"] == "needs_review"
     assert "story_id" not in rows[0]
     assert rows[0]["source"] == {
         "source_id": "coindesk-rss",
@@ -2662,6 +2665,289 @@ def test_replace_page_rows_for_items_keeps_unchanged_row_without_delete_reinsert
     assert unchanged == inserted
 
 
+def test_story_projection_groups_jpm_citi_variants_into_one_page_row(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    story_key = "news-story:subject:jpmorgan-citi-tokenized-deposit:t412000"
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        jpm_id = _insert_source_provider_and_item(
+            repo,
+            source_id="bloomberg-rss",
+            source_domain="bloomberg.com",
+            source_item_key="jpm-tokenized-deposit",
+            title="JPMorgan and Citi test tokenized deposit network",
+        )
+        citi_id = _insert_source_provider_and_item(
+            repo,
+            source_id="reuters-rss",
+            source_domain="reuters.com",
+            source_item_key="citi-tokenized-deposit",
+            title="Citi joins JPMorgan tokenized deposit pilot",
+        )
+        _set_analysis_story(repo, jpm_id, status="admitted", story_key=story_key)
+        _set_analysis_story(repo, citi_id, status="admitted", story_key=story_key)
+
+        payloads = repo.load_story_projection_payloads_for_items(news_item_ids=[jpm_id, citi_id])
+        rows = [_story_row_from_payload(payload, computed_at_ms=NOW_MS + 10) for payload in payloads]
+        result = repo.replace_page_rows_for_story_targets(
+            news_item_ids=[jpm_id, citi_id],
+            story_keys=[story_key],
+            rows=rows,
+        )
+        stored_rows = conn.execute(
+            """
+            SELECT row_id, news_item_id, representative_news_item_id, story_key,
+                   story_json, analysis_admission_status
+              FROM news_page_rows
+             ORDER BY row_id
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert len(payloads) == 1
+    assert payloads[0]["story"]["story_key"] == story_key
+    assert payloads[0]["story"]["member_count"] == 2
+    assert payloads[0]["story"]["source_domains"] == ["bloomberg.com", "reuters.com"]
+    assert result == {"inserted": 1, "updated": 0, "unchanged": 0, "deleted": 0}
+    assert len(stored_rows) == 1
+    assert stored_rows[0]["story_key"] == story_key
+    assert stored_rows[0]["representative_news_item_id"] == stored_rows[0]["news_item_id"]
+    assert stored_rows[0]["story_json"]["member_count"] == 2
+    assert stored_rows[0]["analysis_admission_status"] == "admitted"
+
+
+def test_story_projection_groups_spacex_variants_but_marks_page_only(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    story_key = "news-story:subject:spacex-valuation:t412000"
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        first_id = _insert_source_provider_and_item(
+            repo,
+            source_id="bloomberg-rss",
+            source_domain="bloomberg.com",
+            source_item_key="spacex-valuation-a",
+            title="SpaceX tender offer values company above prior round",
+            provider_signal={"source": "provider", "provider": "opennews", "status": "ready", "score": 95},
+            provider_token_impacts=[{"symbol": "SPCX", "score": 95, "signal": "long"}],
+        )
+        second_id = _insert_source_provider_and_item(
+            repo,
+            source_id="wsj-rss",
+            source_domain="wsj.com",
+            source_item_key="spacex-valuation-b",
+            title="SpaceX shares trade at higher valuation in private sale",
+            provider_signal={"source": "provider", "provider": "opennews", "status": "ready", "score": 92},
+            provider_token_impacts=[{"symbol": "SPCX", "score": 92, "signal": "long"}],
+        )
+        _set_analysis_story(repo, first_id, status="page_only", story_key=story_key)
+        _set_analysis_story(repo, second_id, status="page_only", story_key=story_key)
+
+        payload = repo.load_story_projection_payloads_for_items(news_item_ids=[first_id, second_id])[0]
+        row = _story_row_from_payload(payload, computed_at_ms=NOW_MS + 10)
+        repo.replace_page_rows_for_story_targets(
+            news_item_ids=[first_id, second_id],
+            story_keys=[story_key],
+            rows=[row],
+        )
+        stored = conn.execute(
+            """
+            SELECT story_key, story_json, analysis_admission_status, signal_json
+              FROM news_page_rows
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row["analysis_admission_status"] == "page_only"
+    assert row["signal"]["provider_signal"]["score"] >= 90
+    assert row["signal"]["alert_eligibility"]["in_app_eligible"] is False
+    assert stored["story_key"] == story_key
+    assert stored["story_json"]["member_count"] == 2
+    assert stored["analysis_admission_status"] == "page_only"
+    assert stored["signal_json"]["alert_eligibility"]["in_app_eligible"] is False
+
+
+def test_replace_page_rows_for_story_targets_deletes_old_member_rows(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    story_key = "news-story:subject:spacex-valuation:t412000"
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        first_id = _insert_source_provider_and_item(repo, source_item_key="spacex-a", title="SpaceX valuation A")
+        second_id = _insert_source_provider_and_item(repo, source_item_key="spacex-b", title="SpaceX valuation B")
+        _set_analysis_story(repo, first_id, status="page_only", story_key=story_key)
+        _set_analysis_story(repo, second_id, status="page_only", story_key=story_key)
+        repo.replace_page_rows_for_items(
+            news_item_ids=[first_id, second_id],
+            rows=[
+                _page_row("old-item-row-a", first_id, source_id="source-1"),
+                _page_row("old-item-row-b", second_id, source_id="source-1"),
+            ],
+        )
+
+        payload = repo.load_story_projection_payloads_for_items(news_item_ids=[first_id, second_id])[0]
+        story_row = _story_row_from_payload(payload, computed_at_ms=NOW_MS + 10)
+        result = repo.replace_page_rows_for_story_targets(
+            news_item_ids=[first_id, second_id],
+            story_keys=[story_key],
+            rows=[story_row],
+        )
+        remaining = conn.execute("SELECT row_id, story_key FROM news_page_rows ORDER BY row_id").fetchall()
+    finally:
+        conn.close()
+
+    assert result["deleted"] == 2
+    assert [(row["row_id"], row["story_key"]) for row in remaining] == [(story_row["row_id"], story_key)]
+
+
+def test_replace_page_rows_for_story_targets_deletes_story_row_for_claimed_non_representative_without_payload(
+    tmp_path,
+) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    story_key = "news-story:subject:jpmorgan-citi-tokenized-deposit:t412000"
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        representative_id = _insert_source_provider_and_item(
+            repo,
+            source_item_key="jpm-citi-representative",
+            title="JPMorgan and Citi test tokenized deposit network",
+        )
+        member_id = _insert_source_provider_and_item(
+            repo,
+            source_item_key="jpm-citi-member",
+            title="Citi joins JPMorgan tokenized deposit pilot",
+        )
+        _set_analysis_story(repo, representative_id, status="admitted", story_key=story_key)
+        _set_analysis_story(repo, member_id, status="admitted", story_key=story_key)
+        payload = repo.load_story_projection_payloads_for_items(news_item_ids=[representative_id, member_id])[0]
+        story_row = _story_row_from_payload(payload, computed_at_ms=NOW_MS)
+        repo.replace_page_rows_for_story_targets(
+            news_item_ids=[representative_id, member_id],
+            story_keys=[story_key],
+            rows=[story_row],
+        )
+
+        result = repo.replace_page_rows_for_story_targets(
+            news_item_ids=[member_id],
+            story_keys=[],
+            rows=[],
+        )
+        remaining = conn.execute("SELECT row_id FROM news_page_rows").fetchall()
+    finally:
+        conn.close()
+
+    assert result == {"inserted": 0, "updated": 0, "unchanged": 0, "deleted": 1}
+    assert remaining == []
+
+
+def test_replace_page_rows_for_story_targets_deletes_story_row_for_missing_claimed_member_in_story_json(
+    tmp_path,
+) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    stale_story_key = "news-story:subject:spacex-valuation:t412000"
+    unrelated_story_key = "news-story:subject:jpmorgan-citi-tokenized-deposit:t412000"
+    missing_member_id = "news-missing-member"
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        stale_representative_id = _insert_source_provider_and_item(
+            repo,
+            source_item_key="spacex-representative",
+            title="SpaceX tender offer values company higher",
+        )
+        unrelated_representative_id = _insert_source_provider_and_item(
+            repo,
+            source_item_key="jpm-representative",
+            title="JPMorgan and Citi test tokenized deposit network",
+        )
+        _set_analysis_story(repo, stale_representative_id, status="page_only", story_key=stale_story_key)
+        _set_analysis_story(repo, unrelated_representative_id, status="admitted", story_key=unrelated_story_key)
+        stale_row = {
+            **_page_row("row-stale-story", stale_representative_id, source_id="source-1"),
+            "representative_news_item_id": stale_representative_id,
+            "story_key": stale_story_key,
+            "story": {
+                "story_key": stale_story_key,
+                "representative_news_item_id": stale_representative_id,
+                "member_news_item_ids": [stale_representative_id, missing_member_id],
+                "member_count": 2,
+                "source_domains": ["example.com"],
+            },
+            "analysis_admission_status": "page_only",
+            "analysis_admission_reason": "private_company_equity_context",
+            "analysis_admission": {"status": "page_only", "reason": "private_company_equity_context"},
+        }
+        unrelated_row = {
+            **_page_row("row-unrelated-story", unrelated_representative_id, source_id="source-1"),
+            "representative_news_item_id": unrelated_representative_id,
+            "story_key": unrelated_story_key,
+            "story": {
+                "story_key": unrelated_story_key,
+                "representative_news_item_id": unrelated_representative_id,
+                "member_news_item_ids": [unrelated_representative_id],
+                "member_count": 1,
+                "source_domains": ["example.com"],
+            },
+            "analysis_admission_status": "admitted",
+            "analysis_admission_reason": "tokenized_deposit_subject",
+            "analysis_admission": {"status": "admitted", "reason": "tokenized_deposit_subject"},
+        }
+        repo.replace_page_rows_for_story_targets(
+            news_item_ids=[stale_representative_id, unrelated_representative_id],
+            story_keys=[stale_story_key, unrelated_story_key],
+            rows=[stale_row, unrelated_row],
+        )
+
+        result = repo.replace_page_rows_for_story_targets(
+            news_item_ids=[missing_member_id],
+            story_keys=[],
+            rows=[],
+        )
+        remaining = conn.execute("SELECT row_id, story_key FROM news_page_rows ORDER BY row_id").fetchall()
+    finally:
+        conn.close()
+
+    assert result == {"inserted": 0, "updated": 0, "unchanged": 0, "deleted": 1}
+    assert [(row["row_id"], row["story_key"]) for row in remaining] == [("row-unrelated-story", unrelated_story_key)]
+
+
+def test_page_row_payload_hash_skips_unchanged_story_row(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    story_key = "news-story:subject:jpmorgan-citi-tokenized-deposit:t412000"
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo, source_item_key="jpm-citi", title="JPM Citi deposits")
+        _set_analysis_story(repo, news_item_id, status="admitted", story_key=story_key)
+        payload = repo.load_story_projection_payloads_for_items(news_item_ids=[news_item_id])[0]
+        row = _story_row_from_payload(payload, computed_at_ms=NOW_MS)
+
+        first = repo.replace_page_rows_for_story_targets(
+            news_item_ids=[news_item_id],
+            story_keys=[story_key],
+            rows=[row],
+            commit=True,
+        )
+        inserted = conn.execute("SELECT ctid, xmin, computed_at_ms, payload_hash FROM news_page_rows").fetchone()
+        second = repo.replace_page_rows_for_story_targets(
+            news_item_ids=[news_item_id],
+            story_keys=[story_key],
+            rows=[{**row, "computed_at_ms": NOW_MS + 1}],
+            commit=True,
+        )
+        unchanged = conn.execute("SELECT ctid, xmin, computed_at_ms, payload_hash FROM news_page_rows").fetchone()
+    finally:
+        conn.close()
+
+    assert first == {"inserted": 1, "updated": 0, "unchanged": 0, "deleted": 0}
+    assert second == {"inserted": 0, "updated": 0, "unchanged": 1, "deleted": 0}
+    assert unchanged == inserted
+
+
 def test_replace_source_quality_rows_skips_unchanged_payload_hash(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
@@ -3111,21 +3397,30 @@ def test_news_item_agent_brief_migration_backfills_pending_page_rows(tmp_path) -
               '[]'::jsonb, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb, %s, %s
             )
             """,
-            ("row-old-default", news_item_id, NOW_MS, NOW_MS, NEWS_PAGE_PROJECTION_VERSION),
+            ("row-old-default", news_item_id, NOW_MS, NOW_MS, "news_page_rows_v3"),
         )
         conn.commit()
         command.upgrade(config, "head")
 
         repo = NewsRepository(conn)
+        stored = conn.execute(
+            """
+            SELECT agent_status, agent_brief_computed_at_ms, agent_brief_json, projection_version
+              FROM news_page_rows
+             WHERE row_id = 'row-old-default'
+            """
+        ).fetchone()
         rows = repo.list_news_page_rows(limit=10)
     finally:
         conn.close()
 
-    assert rows[0]["agent_status"] == "pending"
-    assert rows[0]["agent_brief_computed_at_ms"] is None
-    assert "agent_brief_json" not in rows[0]
-    assert rows[0]["agent_brief"]["status"] == "pending"
-    assert rows[0]["signal"]["status"] == "partial"
+    assert dict(stored) == {
+        "agent_status": "pending",
+        "agent_brief_computed_at_ms": None,
+        "agent_brief_json": {"status": "pending"},
+        "projection_version": "news_page_rows_v3",
+    }
+    assert rows == []
 
 
 def test_canonical_dedup_migration_backfills_identity_and_observation_edges(tmp_path) -> None:
@@ -3428,26 +3723,16 @@ def test_page_projection_rebuilds_and_lists_agent_brief_columns_when_brief_updat
 
         candidates = repo.load_items_for_page_projection(news_item_ids=[news_item_id])
         row = candidates[0]
+        projected_row = build_news_page_row(
+            item=row["item"],
+            token_mentions=row["token_mentions"],
+            fact_candidates=row["fact_candidates"],
+            agent_brief=row["current_brief"],
+            computed_at_ms=NOW_MS + 200,
+        )
         repo.replace_page_rows_for_items(
             news_item_ids=[news_item_id],
-            rows=[
-                {
-                    **_page_row(
-                        "row-1",
-                        news_item_id,
-                        source_id="source-1",
-                        projection_version=NEWS_PAGE_PROJECTION_VERSION,
-                        computed_at_ms=NOW_MS + 200,
-                    ),
-                    "agent_brief_json": {
-                        "status": "ready",
-                        "summary_zh": "SOL ETF 申请提升关注。",
-                        "agent_run_id": "run-brief-1",
-                    },
-                    "agent_status": "ready",
-                    "agent_brief_computed_at_ms": NOW_MS + 100,
-                }
-            ],
+            rows=[projected_row],
         )
         rows = repo.list_news_page_rows(limit=10)
     finally:
@@ -3455,6 +3740,7 @@ def test_page_projection_rebuilds_and_lists_agent_brief_columns_when_brief_updat
 
     assert [candidate["item"]["news_item_id"] for candidate in candidates] == [news_item_id]
     assert row["current_brief"]["agent_run_id"] == "run-brief-1"
+    assert projected_row["agent_brief"]["validator_version"] == NEWS_ITEM_BRIEF_VALIDATOR_VERSION
     assert rows[0]["agent_status"] == "ready"
     assert rows[0]["agent_brief_computed_at_ms"] == NOW_MS + 100
     assert "agent_brief_status" not in rows[0]
@@ -3463,6 +3749,38 @@ def test_page_projection_rebuilds_and_lists_agent_brief_columns_when_brief_updat
     assert "agent_run_id" not in rows[0]["agent_brief"]
     assert "input_hash" not in rows[0]["agent_brief"]
     assert "artifact_version_hash" not in rows[0]["agent_brief"]
+
+
+def test_load_items_for_page_projection_ignores_non_current_brief(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo)
+        run = _insert_agent_run(repo, news_item_id=news_item_id, run_id="run-old-brief")
+        repo.upsert_news_item_agent_brief(
+            news_item_id=news_item_id,
+            agent_run_id=run["run_id"],
+            status="ready",
+            direction="bullish",
+            decision_class="driver",
+            brief_json={"summary_zh": "旧简报不应作为当前简报。"},
+            input_hash="input-old-brief",
+            artifact_version_hash="artifact-old-brief",
+            prompt_version="news-item-brief-v2",
+            schema_version="news_item_brief_v1",
+            validator_version="news_item_brief_validator_v2",
+            computed_at_ms=NOW_MS + 100,
+            created_at_ms=NOW_MS + 100,
+            updated_at_ms=NOW_MS + 100,
+        )
+
+        candidates = repo.load_items_for_page_projection(news_item_ids=[news_item_id])
+    finally:
+        conn.close()
+
+    assert [candidate["item"]["news_item_id"] for candidate in candidates] == [news_item_id]
+    assert candidates[0]["current_brief"] is None
 
 
 def test_news_high_signal_candidates_do_not_require_ready_agent_status(tmp_path) -> None:
@@ -3487,6 +3805,13 @@ def test_news_high_signal_candidates_do_not_require_ready_agent_status(tmp_path)
                         },
                     },
                     "token_impacts_json": [{"symbol": "BTC", "score": 90}],
+                    "analysis_admission_status": "admitted",
+                    "analysis_admission_reason": "crypto_native_subject",
+                    "analysis_admission": {
+                        "status": "admitted",
+                        "reason": "crypto_native_subject",
+                        "basis": {"subject": "btc"},
+                    },
                     "agent_status": "insufficient",
                     "agent_brief_json": {
                         "status": "insufficient",
@@ -3563,6 +3888,13 @@ def test_news_high_signal_candidates_hide_stale_disabled_projected_source_before
                         },
                     },
                     "token_impacts": [{"symbol": "BTC", "score": 90}],
+                    "analysis_admission_status": "admitted",
+                    "analysis_admission_reason": "crypto_native_subject",
+                    "analysis_admission": {
+                        "status": "admitted",
+                        "reason": "crypto_native_subject",
+                        "basis": {"subject": "btc"},
+                    },
                 }
             ],
         )
@@ -3591,6 +3923,11 @@ def test_news_high_signal_candidates_filter_to_current_projection_version(tmp_pa
             source_item_key="stale-candidate",
             title="Stale candidate",
         )
+        page_only_item_id = _insert_source_provider_and_item(
+            repo,
+            source_item_key="page-only-candidate",
+            title="Page only provider high candidate",
+        )
         ready_signal = {
             "direction": "bullish",
             "alert_eligibility": {
@@ -3601,12 +3938,28 @@ def test_news_high_signal_candidates_filter_to_current_projection_version(tmp_pa
             },
         }
         repo.replace_page_rows_for_items(
-            news_item_ids=[current_item_id, stale_item_id],
+            news_item_ids=[current_item_id, stale_item_id, page_only_item_id],
             rows=[
                 {
                     **_page_row("row-current-candidate", current_item_id, source_id="source-1"),
+                    "representative_news_item_id": current_item_id,
+                    "story_key": "news-story:subject:btc-admitted:t412000",
+                    "story": {
+                        "story_key": "news-story:subject:btc-admitted:t412000",
+                        "representative_news_item_id": current_item_id,
+                        "member_news_item_ids": [current_item_id],
+                        "member_count": 1,
+                        "source_domains": ["example.com"],
+                    },
                     "signal_json": ready_signal,
                     "token_impacts_json": [{"symbol": "BTC", "score": 91}],
+                    "analysis_admission_status": "admitted",
+                    "analysis_admission_reason": "crypto_native_subject",
+                    "analysis_admission": {
+                        "status": "admitted",
+                        "reason": "crypto_native_subject",
+                        "basis": {"subject": "btc"},
+                    },
                 },
                 {
                     **_page_row(
@@ -3617,6 +3970,25 @@ def test_news_high_signal_candidates_filter_to_current_projection_version(tmp_pa
                     ),
                     "signal_json": ready_signal,
                     "token_impacts_json": [{"symbol": "ETH", "score": 91}],
+                    "analysis_admission_status": "admitted",
+                    "analysis_admission_reason": "crypto_native_subject",
+                    "analysis_admission": {
+                        "status": "admitted",
+                        "reason": "crypto_native_subject",
+                        "basis": {"subject": "eth"},
+                    },
+                },
+                {
+                    **_page_row("row-page-only-candidate", page_only_item_id, source_id="source-1"),
+                    "signal_json": ready_signal,
+                    "token_impacts_json": [{"symbol": "SPCX", "score": 91}],
+                    "analysis_admission_status": "page_only",
+                    "analysis_admission_reason": "provider_score_without_crypto_admission",
+                    "analysis_admission": {
+                        "status": "page_only",
+                        "reason": "provider_score_without_crypto_admission",
+                        "basis": {"provider_score": 91},
+                    },
                 },
             ],
         )
@@ -3626,6 +3998,12 @@ def test_news_high_signal_candidates_filter_to_current_projection_version(tmp_pa
         conn.close()
 
     assert [row["row_id"] for row in rows] == ["row-current-candidate"]
+    assert rows[0]["representative_news_item_id"] == current_item_id
+    assert rows[0]["story_key"] == "news-story:subject:btc-admitted:t412000"
+    assert rows[0]["story"]["member_news_item_ids"] == [current_item_id]
+    assert rows[0]["analysis_admission_status"] == "admitted"
+    assert rows[0]["analysis_admission_reason"] == "crypto_native_subject"
+    assert rows[0]["analysis_admission"]["basis"] == {"subject": "btc"}
 
 
 def test_list_news_page_rows_uses_composite_cursor(tmp_path) -> None:
@@ -4061,6 +4439,53 @@ def test_get_news_item_detail_reads_current_projected_signal_and_lanes(tmp_path)
     assert detail["fact_lanes"] == [{"status": "accepted", "event_type": "macro"}]
     assert detail["content_tags"] == ["macro"]
     assert detail["content_classification"] == {"policy_version": "projected"}
+
+
+def test_news_item_detail_returns_story_and_admission_fields(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo, source_item_key="detail-story")
+        story_key = "news-story:subject:btc-detail:t412000"
+        story = {
+            "story_key": story_key,
+            "representative_news_item_id": news_item_id,
+            "member_news_item_ids": [news_item_id],
+            "member_count": 1,
+            "source_domains": ["example.com"],
+        }
+        admission = {
+            "status": "admitted",
+            "reason": "crypto_native_subject",
+            "basis": {"subject": "btc"},
+        }
+        repo.replace_page_rows_for_items(
+            news_item_ids=[news_item_id],
+            rows=[
+                {
+                    **_page_row("row-detail-story", news_item_id, source_id="source-1"),
+                    "representative_news_item_id": news_item_id,
+                    "story_key": story_key,
+                    "story": story,
+                    "analysis_admission_status": "admitted",
+                    "analysis_admission_reason": "crypto_native_subject",
+                    "analysis_admission": admission,
+                }
+            ],
+        )
+
+        detail = repo.get_news_item_detail(news_item_id=news_item_id)
+    finally:
+        conn.close()
+
+    assert detail is not None
+    assert detail["representative_news_item_id"] == news_item_id
+    assert detail["story_key"] == story_key
+    assert detail["story"] == story
+    assert detail["analysis_admission_status"] == "admitted"
+    assert detail["analysis_admission_reason"] == "crypto_native_subject"
+    assert detail["analysis_admission"] == admission
 
 
 def test_get_news_item_detail_exposes_canonical_observation_evidence(tmp_path) -> None:
@@ -4549,14 +4974,17 @@ def _insert_source_provider_and_item(
     repo: NewsRepository,
     *,
     source_id: str = "source-1",
+    source_domain: str = "example.com",
     source_item_key: str = "guid-1",
     title: str = "Title",
+    provider_signal: dict[str, object] | None = None,
+    provider_token_impacts: list[dict[str, object]] | None = None,
 ) -> str:
     repo.upsert_source(
         source_id=source_id,
         provider_type="rss",
         feed_url=f"https://{source_id}.example.com/rss.xml",
-        source_domain="example.com",
+        source_domain=source_domain,
         source_name="Example",
         refresh_interval_seconds=300,
         now_ms=NOW_MS,
@@ -4566,14 +4994,14 @@ def _insert_source_provider_and_item(
         source_id=source_id,
         fetch_run_id=fetch_run_id,
         source_item_key=source_item_key,
-        canonical_url=f"https://example.com/news/{source_item_key}",
+        canonical_url=f"https://{source_domain}/news/{source_item_key}",
         payload_hash=f"hash-{source_item_key}",
         raw_payload_json={"title": title},
         fetched_at_ms=NOW_MS,
     )
     news = repo.upsert_canonical_news_item(
         provider_item_id=provider["provider_item_id"],
-        canonical_url=f"https://example.com/news/{source_item_key}",
+        canonical_url=f"https://{source_domain}/news/{source_item_key}",
         title=title,
         summary="Summary",
         body_text="Body",
@@ -4583,8 +5011,46 @@ def _insert_source_provider_and_item(
         content_hash=f"content-{source_item_key}",
         title_fingerprint=title.lower(),
         now_ms=NOW_MS,
+        provider_signal=provider_signal,
+        provider_token_impacts=provider_token_impacts,
     )
     return str(news["news_item_id"])
+
+
+def _set_analysis_story(
+    repo: NewsRepository,
+    news_item_id: str,
+    *,
+    status: str,
+    story_key: str,
+) -> None:
+    repo.update_item_analysis_and_story_identity(
+        news_item_id=news_item_id,
+        admission={
+            "status": status,
+            "reason": "test_story_projection",
+            "basis": {"test": True},
+            "version": "test_news_analysis_admission_v1",
+        },
+        story_identity={
+            "story_key": story_key,
+            "confidence": "strong",
+            "basis": {"test": True},
+            "version": "test_news_story_identity_v1",
+        },
+        now_ms=NOW_MS,
+    )
+
+
+def _story_row_from_payload(payload: dict[str, object], *, computed_at_ms: int) -> dict[str, object]:
+    return build_news_page_row(
+        item=dict(payload["item"]),
+        token_mentions=[dict(row) for row in payload.get("token_mentions") or []],
+        fact_candidates=[dict(row) for row in payload.get("fact_candidates") or []],
+        agent_brief=dict(payload["current_brief"]) if payload.get("current_brief") is not None else None,
+        story=dict(payload["story"]) if payload.get("story") is not None else None,
+        computed_at_ms=computed_at_ms,
+    )
 
 
 def _insert_legacy_source_provider_and_item(conn) -> str:

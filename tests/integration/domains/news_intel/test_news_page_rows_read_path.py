@@ -46,6 +46,49 @@ def test_list_news_page_rows_reads_only_projected_rows_after_hard_cut(tmp_path) 
     assert [row["row_id"] for row in rows] == ["row-projected"]
 
 
+def test_list_news_page_rows_exposes_story_and_admission_fields(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    story_key = "news-story:subject:jpmorgan-citi-tokenized-deposit:t412000"
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo, source_item_key="projected-story", title="Projected")
+        row = {
+            **_page_row("row-projected-story", news_item_id),
+            "representative_news_item_id": news_item_id,
+            "story_key": story_key,
+            "story": {
+                "story_key": story_key,
+                "representative_news_item_id": news_item_id,
+                "member_news_item_ids": [news_item_id],
+                "member_count": 1,
+                "source_domains": ["example.com"],
+            },
+            "analysis_admission_status": "admitted",
+            "analysis_admission_reason": "tokenized_deposit_subject",
+            "analysis_admission": {
+                "status": "admitted",
+                "reason": "tokenized_deposit_subject",
+                "basis": {"subject": "tokenized_deposit"},
+            },
+        }
+        repo.replace_page_rows_for_story_targets(
+            news_item_ids=[news_item_id],
+            story_keys=[story_key],
+            rows=[row],
+        )
+
+        rows = repo.list_news_page_rows(limit=10)
+    finally:
+        conn.close()
+
+    assert rows[0]["representative_news_item_id"] == news_item_id
+    assert rows[0]["story_key"] == story_key
+    assert rows[0]["story"]["member_count"] == 1
+    assert rows[0]["analysis_admission_status"] == "admitted"
+    assert rows[0]["analysis_admission"]["basis"] == {"subject": "tokenized_deposit"}
+
+
 def test_news_page_rows_filter_indexes_cover_normal_ui_filters(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:

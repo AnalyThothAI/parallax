@@ -4,6 +4,8 @@ import json
 from typing import Any
 from unittest.mock import patch
 
+import pytest
+
 from parallax.domains.news_intel.repositories.news_repository import NewsRepository
 
 
@@ -39,6 +41,158 @@ def test_brief_target_loader_includes_provider_duplicate_aggregation() -> None:
     assert "edge_sources.enabled = true" in conn.sql
     assert "story_member_rows" not in conn.sql
     assert "news_story_groups AS stories" not in conn.sql
+
+
+def test_unprocessed_item_loader_selects_provider_article_keys_for_story_identity() -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    rows = repo.list_unprocessed_items(limit=10, now_ms=1_000, commit=False)
+
+    assert rows == []
+    assert "claimed.provider_article_keys_json" in conn.sql
+    assert "sources.provider_type" in conn.sql
+
+
+def test_update_item_analysis_and_story_identity_rejects_unsupported_payload_shape() -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    try:
+        repo.update_item_analysis_and_story_identity(
+            news_item_id="news-1",
+            admission=object(),
+            story_identity={
+                "story_key": "news-story:opennews-article:2367422",
+                "confidence": "strong",
+                "basis": {},
+                "version": "news_story_identity_v1",
+            },
+            now_ms=1_000,
+            commit=False,
+        )
+    except ValueError as exc:
+        assert "analysis admission payload" in str(exc)
+    else:
+        raise AssertionError("expected unsupported admission payload shape to raise")
+
+    assert conn.statements == []
+
+
+def test_update_item_analysis_and_story_identity_rejects_unsupported_story_identity_shape() -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    with pytest.raises(ValueError, match="story identity payload"):
+        repo.update_item_analysis_and_story_identity(
+            news_item_id="news-1",
+            admission=_valid_admission_payload(),
+            story_identity=object(),
+            now_ms=1_000,
+            commit=False,
+        )
+
+    assert conn.statements == []
+
+
+@pytest.mark.parametrize(
+    ("admission", "story_identity", "match"),
+    [
+        (
+            {"status": "", "reason": "crypto_native_evidence", "basis": {}, "version": "news_analysis_admission_v1"},
+            {
+                "story_key": "news-story:opennews-article:2367422",
+                "confidence": "strong",
+                "basis": {"method": "opennews_article_key"},
+                "version": "news_story_identity_v1",
+            },
+            "blank status",
+        ),
+        (
+            {
+                "status": "admitted",
+                "reason": "crypto_native_evidence",
+                "basis": {"crypto_evidence": ["resolved_crypto_target:cex:BTC"]},
+                "version": "news_analysis_admission_v1",
+            },
+            {"story_key": "", "confidence": "strong", "basis": {}, "version": "news_story_identity_v1"},
+            "blank story_key",
+        ),
+    ],
+)
+def test_update_item_analysis_and_story_identity_rejects_blank_required_fields(
+    admission: dict[str, object],
+    story_identity: dict[str, object],
+    match: str,
+) -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    with pytest.raises(ValueError, match=match):
+        repo.update_item_analysis_and_story_identity(
+            news_item_id="news-1",
+            admission=admission,
+            story_identity=story_identity,
+            now_ms=1_000,
+            commit=False,
+        )
+
+    assert conn.statements == []
+
+
+@pytest.mark.parametrize(
+    ("admission", "story_identity", "match"),
+    [
+        (
+            {
+                "status": "admitted",
+                "reason": "crypto_native_evidence",
+                "basis": ["crypto_evidence"],
+                "version": "news_analysis_admission_v1",
+            },
+            {
+                "story_key": "news-story:opennews-article:2367422",
+                "confidence": "strong",
+                "basis": {"method": "opennews_article_key"},
+                "version": "news_story_identity_v1",
+            },
+            "analysis admission payload.*basis must be mapping",
+        ),
+        (
+            {
+                "status": "admitted",
+                "reason": "crypto_native_evidence",
+                "basis": {"crypto_evidence": ["resolved_crypto_target:cex:BTC"]},
+                "version": "news_analysis_admission_v1",
+            },
+            {
+                "story_key": "news-story:opennews-article:2367422",
+                "confidence": "strong",
+                "basis": ["opennews_article_key"],
+                "version": "news_story_identity_v1",
+            },
+            "story identity payload.*basis must be mapping",
+        ),
+    ],
+)
+def test_update_item_analysis_and_story_identity_rejects_non_mapping_basis(
+    admission: dict[str, object],
+    story_identity: dict[str, object],
+    match: str,
+) -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    with pytest.raises(ValueError, match=match):
+        repo.update_item_analysis_and_story_identity(
+            news_item_id="news-1",
+            admission=admission,
+            story_identity=story_identity,
+            now_ms=1_000,
+            commit=False,
+        )
+
+    assert conn.statements == []
 
 
 def test_material_duplicate_lock_covers_candidate_window_without_symbol_partition() -> None:
@@ -124,6 +278,24 @@ class CapturingConnection:
         self.params = params
         self.statements.append((sql, params))
         return CapturingCursor()
+
+
+def _valid_admission_payload() -> dict[str, object]:
+    return {
+        "status": "admitted",
+        "reason": "crypto_native_evidence",
+        "basis": {"crypto_evidence": ["resolved_crypto_target:cex:BTC"]},
+        "version": "news_analysis_admission_v1",
+    }
+
+
+def _valid_story_identity_payload() -> dict[str, object]:
+    return {
+        "story_key": "news-story:opennews-article:2367422",
+        "confidence": "strong",
+        "basis": {"method": "opennews_article_key"},
+        "version": "news_story_identity_v1",
+    }
 
 
 class CapturingCursor:

@@ -10,6 +10,8 @@ from parallax.app.surfaces.api.exceptions import (
     api_unauthorized_response,
 )
 from parallax.app.surfaces.api.http import create_api_router
+from parallax.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION
+from parallax.domains.news_intel.repositories.news_repository import _public_agent_brief_payload
 
 
 def test_news_api_lists_provider_signal_news_rows_without_postgres() -> None:
@@ -47,6 +49,15 @@ def test_news_api_lists_provider_signal_news_rows_without_postgres() -> None:
                 {
                     "row_id": "row-1",
                     "news_item_id": "news-1",
+                    "representative_news_item_id": "news-1",
+                    "story_key": "news-story:subject:sol-etf:t412000",
+                    "story": {
+                        "story_key": "news-story:subject:sol-etf:t412000",
+                        "representative_news_item_id": "news-1",
+                        "member_news_item_ids": ["news-1"],
+                        "member_count": 1,
+                        "source_domains": ["example.com"],
+                    },
                     "latest_at_ms": 3_000,
                     "lifecycle_status": "raw",
                     "headline": "SOL ETF approved",
@@ -56,18 +67,41 @@ def test_news_api_lists_provider_signal_news_rows_without_postgres() -> None:
                     "token_lanes": [{"symbol": "BTC", "provider_score": 82, "provider_signal": "long"}],
                     "fact_lanes": [],
                     "signal": {
-                        "source": "provider",
-                        "provider": "opennews",
-                        "status": "ready",
-                        "direction": "bullish",
-                        "label_zh": "利好",
-                        "score": 82,
-                        "grade": "A",
+                        "display_signal": {
+                            "source": "provider",
+                            "provider": "opennews",
+                            "status": "ready",
+                            "direction": "bullish",
+                            "label_zh": "利好",
+                            "score": 82,
+                            "grade": "A",
+                        },
+                        "provider_signal": {
+                            "source": "provider",
+                            "provider": "opennews",
+                            "status": "ready",
+                            "direction": "bullish",
+                            "score": 82,
+                        },
+                        "agent_signal": {"status": "pending"},
+                        "alert_eligibility": {
+                            "in_app_eligible": True,
+                            "external_push_ready": False,
+                            "provider_score": 82,
+                            "decision_class": "driver",
+                        },
                     },
                     "token_impacts": [{"symbol": "BTC", "score": 82, "signal": "long"}],
                     "source": {"source_id": "opennews-realtime", "provider_type": "opennews"},
+                    "analysis_admission_status": "admitted",
+                    "analysis_admission_reason": "crypto_native_subject",
+                    "analysis_admission": {
+                        "status": "admitted",
+                        "reason": "crypto_native_subject",
+                        "basis": {"subject": "sol_etf"},
+                    },
                     "computed_at_ms": 3_100,
-                    "projection_version": "news_page_v1",
+                    "projection_version": NEWS_PAGE_PROJECTION_VERSION,
                 }
             ],
             "next_cursor": "3000:row-1",
@@ -180,10 +214,77 @@ def test_news_api_source_status_includes_provider_diagnostics_without_postgres()
     }
 
 
+def test_news_item_detail_hides_retired_brief_fields() -> None:
+    news = FakeNewsRepository()
+    news.item_detail = {
+        "news_item_id": "news-1",
+        "representative_news_item_id": "news-1",
+        "story_key": "news-story:subject:btc-detail:t412000",
+        "story": {
+            "story_key": "news-story:subject:btc-detail:t412000",
+            "representative_news_item_id": "news-1",
+            "member_news_item_ids": ["news-1"],
+            "member_count": 1,
+            "source_domains": ["example.com"],
+        },
+        "analysis_admission_status": "admitted",
+        "analysis_admission_reason": "crypto_native_subject",
+        "analysis_admission": {
+            "status": "admitted",
+            "reason": "crypto_native_subject",
+            "basis": {"subject": "btc"},
+        },
+        "agent_brief": {
+            "status": "ready",
+            "direction": "bullish",
+            "decision_class": "driver",
+            "brief_json": {
+                "summary_zh": "旧简报",
+                "retrieval_notes_zh": "retired",
+                "source_consensus_zh": "retired",
+            },
+            "confirmation_state": "confirmed",
+            "novelty_status": "new",
+            "used_tool_call_ids": ["tool-1"],
+            "impact_zh": "retired",
+            "watch_items_zh": ["retired"],
+            "confidence": 0.9,
+            "prompt_version": "news-item-brief-v2",
+            "schema_version": "news_item_brief_v1",
+            "validator_version": "news_item_brief_validator_v2",
+            "computed_at_ms": 123,
+        },
+    }
+    app = _app(news)
+
+    with TestClient(app) as client:
+        response = client.get("/api/news/items/news-1", headers={"Authorization": "Bearer secret"})
+
+    assert response.status_code == 200
+    agent_brief = response.json()["data"]["agent_brief"]
+    assert agent_brief == {"status": "pending", "brief_json": {}}
+    assert "retrieval_notes_zh" not in agent_brief
+    assert "source_consensus_zh" not in agent_brief
+    assert "confirmation_state" not in agent_brief
+    assert "novelty_status" not in agent_brief
+    assert "used_tool_call_ids" not in agent_brief
+    assert "impact_zh" not in agent_brief
+    assert "watch_items_zh" not in agent_brief
+    assert "confidence" not in agent_brief
+    data = response.json()["data"]
+    assert data["representative_news_item_id"] == "news-1"
+    assert data["story_key"] == "news-story:subject:btc-detail:t412000"
+    assert data["story"]["member_count"] == 1
+    assert data["analysis_admission_status"] == "admitted"
+    assert data["analysis_admission_reason"] == "crypto_native_subject"
+    assert data["analysis_admission"]["basis"] == {"subject": "btc"}
+
+
 class FakeNewsRepository:
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
         self.source_status_rows: list[dict[str, object]] = []
+        self.item_detail: dict[str, object] | None = None
 
     def list_news_page_rows(
         self,
@@ -209,6 +310,15 @@ class FakeNewsRepository:
             {
                 "row_id": "row-1",
                 "news_item_id": "news-1",
+                "representative_news_item_id": "news-1",
+                "story_key": "news-story:subject:sol-etf:t412000",
+                "story": {
+                    "story_key": "news-story:subject:sol-etf:t412000",
+                    "representative_news_item_id": "news-1",
+                    "member_news_item_ids": ["news-1"],
+                    "member_count": 1,
+                    "source_domains": ["example.com"],
+                },
                 "latest_at_ms": 3_000,
                 "lifecycle_status": "raw",
                 "headline": "SOL ETF approved",
@@ -218,22 +328,49 @@ class FakeNewsRepository:
                 "token_lanes": [{"symbol": "BTC", "provider_score": 82, "provider_signal": "long"}],
                 "fact_lanes": [],
                 "signal": {
-                    "source": "provider",
-                    "provider": "opennews",
-                    "status": "ready",
-                    "direction": "bullish",
-                    "label_zh": "利好",
-                    "score": 82,
-                    "grade": "A",
+                    "display_signal": {
+                        "source": "provider",
+                        "provider": "opennews",
+                        "status": "ready",
+                        "direction": "bullish",
+                        "label_zh": "利好",
+                        "score": 82,
+                        "grade": "A",
+                    },
+                    "provider_signal": {
+                        "source": "provider",
+                        "provider": "opennews",
+                        "status": "ready",
+                        "direction": "bullish",
+                        "score": 82,
+                    },
+                    "agent_signal": {"status": "pending"},
+                    "alert_eligibility": {
+                        "in_app_eligible": True,
+                        "external_push_ready": False,
+                        "provider_score": 82,
+                        "decision_class": "driver",
+                    },
                 },
                 "token_impacts": [{"symbol": "BTC", "score": 82, "signal": "long"}],
                 "source": {"source_id": "opennews-realtime", "provider_type": "opennews"},
+                "analysis_admission_status": "admitted",
+                "analysis_admission_reason": "crypto_native_subject",
+                "analysis_admission": {
+                    "status": "admitted",
+                    "reason": "crypto_native_subject",
+                    "basis": {"subject": "sol_etf"},
+                },
                 "computed_at_ms": 3_100,
-                "projection_version": "news_page_v1",
+                "projection_version": NEWS_PAGE_PROJECTION_VERSION,
             }
         ]
 
     def get_news_item_detail(self, *, news_item_id: str):
+        if self.item_detail is not None:
+            item_detail = dict(self.item_detail)
+            item_detail["agent_brief"] = _public_agent_brief_payload(item_detail.get("agent_brief"))
+            return item_detail
         return {"news_item_id": news_item_id}
 
     def get_news_fact_detail(self, *, fact_candidate_id: str):

@@ -38,6 +38,7 @@ NEWS_INTEL_CANONICAL_DEDUP_MIGRATION = (
 NEWS_REALTIME_POSTGRES_HOTPATH_MIGRATION = (
     SRC / "platform/db/alembic/versions/20260528_0118_news_realtime_postgres_hotpath_hard_cut.py"
 )
+NEWS_INTEL_HARD_CUT_CLEANUP = SRC / "domains/news_intel/services/news_intel_hard_cut_cleanup.py"
 
 ZERO_HARD_TIMEOUT_ALLOWLIST = {"collector"}
 
@@ -126,16 +127,19 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
     "news_page_rows": {
         SRC / "domains/news_intel/repositories/news_repository.py",
         SRC / "domains/news_intel/runtime/news_page_projection_worker.py",
+        NEWS_INTEL_HARD_CUT_CLEANUP,
         SRC / "platform/db/alembic/versions/20260519_0064_news_intel_kappa_cqrs.py",
     },
     "news_item_agent_runs": {
         SRC / "domains/news_intel/repositories/news_repository.py",
         SRC / "domains/news_intel/runtime/news_item_brief_worker.py",
+        NEWS_INTEL_HARD_CUT_CLEANUP,
         SRC / "platform/db/alembic/versions/20260520_0068_news_item_agent_brief.py",
     },
     "news_item_agent_briefs": {
         SRC / "domains/news_intel/repositories/news_repository.py",
         SRC / "domains/news_intel/runtime/news_item_brief_worker.py",
+        NEWS_INTEL_HARD_CUT_CLEANUP,
         SRC / "platform/db/alembic/versions/20260520_0068_news_item_agent_brief.py",
     },
     "news_source_quality_rows": {
@@ -197,7 +201,9 @@ CONTROL_PLANE_TABLES: dict[str, set[Path]] = {
         SRC / "platform/db/alembic/versions/20260514_0045_watchlist_handle_intel.py",
     },
     "news_projection_dirty_targets": {
+        SRC / "domains/news_intel/repositories/news_repository.py",
         SRC / "domains/news_intel/repositories/news_projection_dirty_target_repository.py",
+        NEWS_INTEL_HARD_CUT_CLEANUP,
         SRC / "platform/db/alembic/versions/20260524_0094_projection_dirty_targets_hard_cut.py",
         SRC / "platform/db/alembic/versions/20260525_0097_agent_brief_dirty_targets.py",
         NEWS_INTEL_CANONICAL_DEDUP_MIGRATION,
@@ -353,11 +359,19 @@ def test_worker_manifest_forbids_semantic_read_model_aliases() -> None:
 def test_news_page_projection_manifest_uses_row_id_identity() -> None:
     manifests = {manifest.name: manifest for manifest in all_worker_manifests()}
     manifest = manifests["news_page_projection"]
+    forbidden_identity_terms = {"generation_id", "run_id", "attempt_id", "timestamp", "uuid"}
 
     assert manifest.ordering_keys == ("row_id", "news_item_id")
     assert manifest.current_read_model_identities == (("news_page_rows", ("row_id",)),)
     assert "page_id" not in manifest.ordering_keys
     assert all("page_id" not in identity for _, identity in manifest.current_read_model_identities)
+    assert all(
+        term not in identity
+        for _table, identity_columns in manifest.current_read_model_identities
+        for identity in identity_columns
+        for term in forbidden_identity_terms
+    )
+    assert "semantic news page reprojection work" in manifest.input_contract
 
 
 @pytest.mark.architecture

@@ -64,6 +64,19 @@ class FakeNews:
         return self.rows
 
 
+def _admitted_news_row(row: dict) -> dict:
+    return {
+        "analysis_admission_status": "admitted",
+        "analysis_admission_reason": "test_crypto_subject",
+        "analysis_admission": {
+            "status": "admitted",
+            "reason": "test_crypto_subject",
+            "basis": {"test": True},
+        },
+        **row,
+    }
+
+
 def engine(*, events=None, alerts=None, pulse=None, news=None, notifications=None):
     return NotificationRuleEngine(
         settings=Settings(
@@ -347,9 +360,7 @@ def test_signal_pulse_signature_changes_on_stable_dimension_shifts():
 
     signatures = {
         "base": _only_pulse_notification(base).payload["in_app_signature"],
-        "score_band": _only_pulse_notification({**base, "score_band": "high_conviction"}).payload[
-            "in_app_signature"
-        ],
+        "score_band": _only_pulse_notification({**base, "score_band": "high_conviction"}).payload["in_app_signature"],
         "gate": _only_pulse_notification(gate_changed).payload["in_app_signature"],
         "route": _only_pulse_notification(route_changed).payload["in_app_signature"],
         "narrative_archetype": _only_pulse_notification(archetype_changed).payload["in_app_signature"],
@@ -875,40 +886,42 @@ def test_signal_pulse_notifications_follow_candidate_pages():
 def test_news_high_signal_uses_ready_agent_brief_for_display_and_builds_push_signatures():
     news = FakeNews(
         [
-            {
-                "news_item_id": "news-1",
-                "latest_at_ms": NOW_MS - 5_000,
-                "agent_brief_computed_at_ms": NOW_MS - 1_000,
-                "headline": "Major listing catalyst",
-                "source_domain": "example.test",
-                "canonical_url": "https://example.test/news-1",
-                "duplicate_count": 3,
-                "projection_version": "news-page-v1",
-                "signal": {
-                    "direction": "bullish",
-                    "alert_eligibility": {
-                        "in_app_eligible": True,
-                        "external_push_ready": True,
-                        "external_push_basis": "agent_brief",
-                        "provider_score": 85,
-                        "decision_class": "driver",
+            _admitted_news_row(
+                {
+                    "news_item_id": "news-1",
+                    "latest_at_ms": NOW_MS - 5_000,
+                    "agent_brief_computed_at_ms": NOW_MS - 1_000,
+                    "headline": "Major listing catalyst",
+                    "source_domain": "example.test",
+                    "canonical_url": "https://example.test/news-1",
+                    "duplicate_count": 3,
+                    "projection_version": "news-page-v1",
+                    "signal": {
+                        "direction": "bullish",
+                        "alert_eligibility": {
+                            "in_app_eligible": True,
+                            "external_push_ready": True,
+                            "external_push_basis": "agent_brief",
+                            "provider_score": 85,
+                            "decision_class": "driver",
+                        },
                     },
-                },
-                "token_impacts": [{"symbol": "BOV"}],
-                "agent_brief": {
-                    "status": "ready",
-                    "direction": "bullish",
-                    "decision_class": "driver",
-                    "title_zh": "AI 标题：重大上所催化",
-                    "summary_zh": "高分新闻已由 agent 归纳。",
-                    "brief_json": {
+                    "token_impacts": [{"symbol": "BOV"}],
+                    "agent_brief": {
+                        "status": "ready",
+                        "direction": "bullish",
+                        "decision_class": "driver",
                         "title_zh": "AI 标题：重大上所催化",
                         "summary_zh": "高分新闻已由 agent 归纳。",
-                        "watch_triggers": ["成交量确认"],
-                        "affected_assets": [{"symbol": "BOV"}],
+                        "brief_json": {
+                            "title_zh": "AI 标题：重大上所催化",
+                            "summary_zh": "高分新闻已由 agent 归纳。",
+                            "watch_triggers": ["成交量确认"],
+                            "affected_assets": [{"symbol": "BOV"}],
+                        },
                     },
-                },
-            }
+                }
+            )
         ]
     )
     notifications = NotificationsConfig(
@@ -924,7 +937,8 @@ def test_news_high_signal_uses_ready_agent_brief_for_display_and_builds_push_sig
     )
 
     candidates = [
-        item for item in engine(news=news, notifications=notifications).evaluate(now_ms=NOW_MS)
+        item
+        for item in engine(news=news, notifications=notifications).evaluate(now_ms=NOW_MS)
         if item.rule_id == "news_high_signal"
     ]
 
@@ -945,7 +959,7 @@ def test_news_high_signal_uses_ready_agent_brief_for_display_and_builds_push_sig
     assert candidate.occurrence_at_ms == NOW_MS - 5_000
 
 
-def test_news_high_signal_keeps_provider_score_in_app_until_agent_brief_is_ready():
+def test_news_high_signal_skips_page_only_provider_score():
     news = FakeNews(
         [
             {
@@ -955,6 +969,13 @@ def test_news_high_signal_keeps_provider_score_in_app_until_agent_brief_is_ready
                 "source_domain": "example.test",
                 "canonical_url": "https://example.test/high",
                 "duplicate_count": 1,
+                "analysis_admission_status": "page_only",
+                "analysis_admission_reason": "provider_score_without_crypto_admission",
+                "analysis_admission": {
+                    "status": "page_only",
+                    "reason": "provider_score_without_crypto_admission",
+                    "basis": {"provider_score": 90},
+                },
                 "content_class": "low_signal",
                 "content_tags": ["low_context"],
                 "signal": {
@@ -994,52 +1015,45 @@ def test_news_high_signal_keeps_provider_score_in_app_until_agent_brief_is_ready
     )
 
     candidates = [
-        item for item in engine(news=news, notifications=notifications).evaluate(now_ms=NOW_MS)
+        item
+        for item in engine(news=news, notifications=notifications).evaluate(now_ms=NOW_MS)
         if item.rule_id == "news_high_signal"
     ]
 
-    assert len(candidates) == 1
-    candidate = candidates[0]
-    assert candidate.severity == "critical"
-    assert candidate.channels == ("in_app",)
-    assert candidate.title == "Provider high signal should alert"
-    assert "Score: 90" in candidate.body
-    assert "证据不足" not in candidate.body
-    assert candidate.payload["provider_score"] == 90
-    assert candidate.payload["decision_class"] == "context"
-    assert candidate.payload["external_push_eligible"] is False
-    assert candidate.payload["external_push_suppression_reason"] == "agent_brief_not_ready"
+    assert candidates == []
 
 
 def test_news_high_signal_uses_projection_external_push_readiness() -> None:
     news = FakeNews(
         [
-            {
-                "news_item_id": "news-ready-without-publishable-brief",
-                "latest_at_ms": NOW_MS - 5_000,
-                "agent_brief_computed_at_ms": NOW_MS - 1_000,
-                "headline": "Ready status without publishable agent text",
-                "source_domain": "example.test",
-                "canonical_url": "https://example.test/ready-empty",
-                "signal": {
-                    "direction": "bullish",
-                    "alert_eligibility": {
-                        "in_app_eligible": True,
-                        "external_push_ready": False,
-                        "external_push_block_reason": "agent_brief_missing_summary",
-                        "provider_score": 90,
-                        "decision_class": "driver",
+            _admitted_news_row(
+                {
+                    "news_item_id": "news-ready-without-publishable-brief",
+                    "latest_at_ms": NOW_MS - 5_000,
+                    "agent_brief_computed_at_ms": NOW_MS - 1_000,
+                    "headline": "Ready status without publishable agent text",
+                    "source_domain": "example.test",
+                    "canonical_url": "https://example.test/ready-empty",
+                    "signal": {
+                        "direction": "bullish",
+                        "alert_eligibility": {
+                            "in_app_eligible": True,
+                            "external_push_ready": False,
+                            "external_push_block_reason": "agent_brief_missing_summary",
+                            "provider_score": 90,
+                            "decision_class": "driver",
+                        },
                     },
-                },
-                "token_impacts": [{"symbol": "BTC", "score": 90}],
-                "agent_brief": {
-                    "status": "ready",
-                    "direction": "bullish",
-                    "decision_class": "driver",
-                    "title_zh": "AI 标题但缺少正文",
-                    "brief_json": {"title_zh": "AI 标题但缺少正文"},
-                },
-            }
+                    "token_impacts": [{"symbol": "BTC", "score": 90}],
+                    "agent_brief": {
+                        "status": "ready",
+                        "direction": "bullish",
+                        "decision_class": "driver",
+                        "title_zh": "AI 标题但缺少正文",
+                        "brief_json": {"title_zh": "AI 标题但缺少正文"},
+                    },
+                }
+            )
         ]
     )
     notifications = NotificationsConfig(
@@ -1055,7 +1069,8 @@ def test_news_high_signal_uses_projection_external_push_readiness() -> None:
     )
 
     candidates = [
-        item for item in engine(news=news, notifications=notifications).evaluate(now_ms=NOW_MS)
+        item
+        for item in engine(news=news, notifications=notifications).evaluate(now_ms=NOW_MS)
         if item.rule_id == "news_high_signal"
     ]
 
@@ -1069,80 +1084,81 @@ def test_news_high_signal_uses_projection_external_push_readiness() -> None:
 def test_news_high_signal_skips_stale_source_items_even_when_agent_finished_now():
     news = FakeNews(
         [
-            {
-                "news_item_id": "news-old",
-                "latest_at_ms": NOW_MS - 7 * 60 * 60_000,
-                "agent_brief_computed_at_ms": NOW_MS - 1_000,
-                "headline": "Old high signal",
-                "source_domain": "example.test",
-                "canonical_url": "https://example.test/old",
-                "signal": {
-                    "direction": "bullish",
-                    "alert_eligibility": {
-                        "in_app_eligible": True,
-                        "external_push_ready": True,
-                        "external_push_basis": "agent_brief",
-                        "provider_score": 90,
-                        "decision_class": "driver",
+            _admitted_news_row(
+                {
+                    "news_item_id": "news-old",
+                    "latest_at_ms": NOW_MS - 7 * 60 * 60_000,
+                    "agent_brief_computed_at_ms": NOW_MS - 1_000,
+                    "headline": "Old high signal",
+                    "source_domain": "example.test",
+                    "canonical_url": "https://example.test/old",
+                    "signal": {
+                        "direction": "bullish",
+                        "alert_eligibility": {
+                            "in_app_eligible": True,
+                            "external_push_ready": True,
+                            "external_push_basis": "agent_brief",
+                            "provider_score": 90,
+                            "decision_class": "driver",
+                        },
                     },
-                },
-                "token_impacts": [{"symbol": "OLD", "score": 90}],
-                "agent_brief": {
-                    "status": "ready",
-                    "direction": "bullish",
-                    "decision_class": "driver",
-                    "title_zh": "旧新闻不应推送",
-                    "summary_zh": "agent 刚完成，但源新闻已经过期。",
-                    "brief_json": {
+                    "token_impacts": [{"symbol": "OLD", "score": 90}],
+                    "agent_brief": {
+                        "status": "ready",
+                        "direction": "bullish",
+                        "decision_class": "driver",
                         "title_zh": "旧新闻不应推送",
                         "summary_zh": "agent 刚完成，但源新闻已经过期。",
-                        "affected_assets": [{"symbol": "OLD"}],
+                        "brief_json": {
+                            "title_zh": "旧新闻不应推送",
+                            "summary_zh": "agent 刚完成，但源新闻已经过期。",
+                            "affected_assets": [{"symbol": "OLD"}],
+                        },
                     },
-                },
-            }
+                }
+            )
         ]
     )
 
-    candidates = [
-        item for item in engine(news=news).evaluate(now_ms=NOW_MS)
-        if item.rule_id == "news_high_signal"
-    ]
+    candidates = [item for item in engine(news=news).evaluate(now_ms=NOW_MS) if item.rule_id == "news_high_signal"]
 
     assert candidates == []
 
 
 def test_news_high_signal_semantic_dedup_ignores_projection_and_summary_churn():
-    base_row = {
-        "news_item_id": "news-1",
-        "latest_at_ms": NOW_MS - 5_000,
-        "agent_brief_computed_at_ms": NOW_MS - 1_000,
-        "headline": "Major listing catalyst",
-        "source_domain": "example.test",
-        "canonical_url": "https://example.test/news-1",
-        "duplicate_count": 3,
-        "signal": {
-            "direction": "bullish",
-            "alert_eligibility": {
-                "in_app_eligible": True,
-                "external_push_ready": True,
-                "external_push_basis": "agent_brief",
-                "provider_score": 90,
+    base_row = _admitted_news_row(
+        {
+            "news_item_id": "news-1",
+            "latest_at_ms": NOW_MS - 5_000,
+            "agent_brief_computed_at_ms": NOW_MS - 1_000,
+            "headline": "Major listing catalyst",
+            "source_domain": "example.test",
+            "canonical_url": "https://example.test/news-1",
+            "duplicate_count": 3,
+            "signal": {
+                "direction": "bullish",
+                "alert_eligibility": {
+                    "in_app_eligible": True,
+                    "external_push_ready": True,
+                    "external_push_basis": "agent_brief",
+                    "provider_score": 90,
+                    "decision_class": "driver",
+                },
+            },
+            "token_impacts": [{"symbol": "BOV"}],
+            "agent_brief": {
+                "status": "ready",
+                "direction": "bullish",
                 "decision_class": "driver",
-            },
-        },
-        "token_impacts": [{"symbol": "BOV"}],
-        "agent_brief": {
-            "status": "ready",
-            "direction": "bullish",
-            "decision_class": "driver",
-            "summary_zh": "第一版中文摘要。",
-            "brief_json": {
                 "summary_zh": "第一版中文摘要。",
-                "watch_triggers": ["成交量确认"],
-                "affected_assets": [{"symbol": "BOV"}],
+                "brief_json": {
+                    "summary_zh": "第一版中文摘要。",
+                    "watch_triggers": ["成交量确认"],
+                    "affected_assets": [{"symbol": "BOV"}],
+                },
             },
-        },
-    }
+        }
+    )
     revised_row = {
         **base_row,
         "news_item_id": "news-2",
@@ -1158,46 +1174,196 @@ def test_news_high_signal_semantic_dedup_ignores_projection_and_summary_churn():
     }
 
     candidates = [
-        item for item in engine(news=FakeNews([base_row, revised_row])).evaluate(now_ms=NOW_MS)
+        item
+        for item in engine(news=FakeNews([base_row, revised_row])).evaluate(now_ms=NOW_MS)
         if item.rule_id == "news_high_signal"
     ]
 
     assert len(candidates) == 1
 
 
-def test_news_high_signal_external_push_signature_uses_asset_cooldown_not_item_identity():
-    base_row = {
-        "news_item_id": "news-1",
-        "latest_at_ms": NOW_MS - 5_000,
-        "agent_brief_computed_at_ms": NOW_MS - 1_000,
-        "headline": "Iran disruption lifts oil risk",
-        "source_domain": "example.test",
-        "canonical_url": "https://example.test/news-1",
-        "duplicate_count": 1,
-        "content_tags": ["iran"],
-        "signal": {
-            "direction": "bullish",
-            "alert_eligibility": {
-                "in_app_eligible": True,
-                "external_push_ready": True,
-                "external_push_basis": "agent_brief",
-                "provider_score": 90,
-                "decision_class": "driver",
+def test_jpm_citi_story_variants_emit_one_candidate():
+    story_key = "news-story:subject:jpmorgan-citi-tokenized-deposit:t412000"
+    jpm_row = _admitted_news_row(
+        {
+            "row_id": "row-jpm-story",
+            "news_item_id": "news-jpm",
+            "representative_news_item_id": "news-jpm",
+            "story_key": story_key,
+            "story": {
+                "story_key": story_key,
+                "representative_news_item_id": "news-jpm",
+                "member_news_item_ids": ["news-jpm", "news-citi"],
+                "member_count": 2,
+                "source_domains": ["bloomberg.com", "reuters.com"],
             },
-        },
-        "token_impacts": [{"symbol": "CL", "score": 90}, {"symbol": "BTC", "score": 25}],
+            "latest_at_ms": NOW_MS - 5_000,
+            "headline": "JPMorgan tests tokenized deposit network",
+            "source_domain": "bloomberg.com",
+            "canonical_url": "https://bloomberg.example/jpm-tokenized-deposits",
+            "content_class": "crypto_market",
+            "content_tags": ["tokenized_deposits", "jpmorgan"],
+            "signal": {
+                "direction": "bullish",
+                "alert_eligibility": {
+                    "in_app_eligible": True,
+                    "external_push_ready": False,
+                    "external_push_block_reason": "agent_brief_not_ready",
+                    "provider_score": 91,
+                    "decision_class": "driver",
+                },
+            },
+            "token_impacts": [{"symbol": "BTC", "score": 91}],
+            "agent_brief": {"status": "pending"},
+        }
+    )
+    citi_row = _admitted_news_row(
+        {
+            **jpm_row,
+            "row_id": "row-citi-story",
+            "news_item_id": "news-citi",
+            "headline": "Citi joins tokenized deposit pilot with JPMorgan",
+            "source_domain": "reuters.com",
+            "canonical_url": "https://reuters.example/citi-tokenized-deposits",
+            "content_tags": ["tokenized_deposits", "citi"],
+            "token_impacts": [{"symbol": "ETH", "score": 90}],
+        }
+    )
+
+    candidates = [
+        item
+        for item in engine(news=FakeNews([jpm_row, citi_row])).evaluate(now_ms=NOW_MS)
+        if item.rule_id == "news_high_signal"
+    ]
+
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate.entity_type == "news_story"
+    assert candidate.entity_key == f"news_story:{story_key}"
+    assert candidate.source_id == "row-jpm-story"
+    assert candidate.payload["story_key"] == story_key
+    assert candidate.payload["story"]["member_count"] == 2
+    assert candidate.payload["analysis_admission_status"] == "admitted"
+    assert candidate.payload["analysis_admission_reason"] == "test_crypto_subject"
+    assert candidate.payload["analysis_admission"]["basis"] == {"test": True}
+    assert candidate.payload["decision_class"] == "driver"
+    assert candidate.payload["direction"] == "bullish"
+    assert candidate.payload["affected_assets"] == []
+
+
+def test_news_high_signal_external_push_signature_keeps_distinct_stories_push_eligible():
+    base_row = _admitted_news_row(
+        {
+            "row_id": "row-story-a",
+            "news_item_id": "news-story-a",
+            "story_key": "news-story:subject:oil-supply-a:t412000",
+            "story": {"story_key": "news-story:subject:oil-supply-a:t412000", "member_count": 1},
+            "latest_at_ms": NOW_MS - 5_000,
+            "agent_brief_computed_at_ms": NOW_MS - 1_000,
+            "headline": "Oil supply shock story A",
+            "source_domain": "example.test",
+            "canonical_url": "https://example.test/news-story-a",
+            "content_tags": ["oil"],
+            "signal": {
+                "direction": "bullish",
+                "alert_eligibility": {
+                    "in_app_eligible": True,
+                    "external_push_ready": True,
+                    "external_push_basis": "agent_brief",
+                    "provider_score": 90,
+                    "decision_class": "driver",
+                },
+            },
+            "token_impacts": [{"symbol": "CL", "score": 90}],
+            "agent_brief": {
+                "status": "ready",
+                "direction": "bullish",
+                "decision_class": "driver",
+                "summary_zh": "第一条独立故事。",
+                "brief_json": {
+                    "summary_zh": "第一条独立故事。",
+                    "affected_assets": [{"symbol": "CL"}],
+                },
+            },
+        }
+    )
+    second_story = {
+        **base_row,
+        "row_id": "row-story-b",
+        "news_item_id": "news-story-b",
+        "story_key": "news-story:subject:oil-supply-b:t412000",
+        "story": {"story_key": "news-story:subject:oil-supply-b:t412000", "member_count": 1},
+        "headline": "Oil supply shock story B",
+        "canonical_url": "https://example.test/news-story-b",
         "agent_brief": {
-            "status": "ready",
-            "direction": "bullish",
-            "decision_class": "driver",
-            "summary_zh": "第一条同主题新闻。",
+            **base_row["agent_brief"],
+            "summary_zh": "第二条独立故事。",
             "brief_json": {
-                "summary_zh": "第一条同主题新闻。",
-                "watch_triggers": ["原油冲击"],
+                "summary_zh": "第二条独立故事。",
                 "affected_assets": [{"symbol": "CL"}],
             },
         },
     }
+    notifications = NotificationsConfig(
+        rules={
+            "news_high_signal": {
+                "enabled": True,
+                "channels": ["in_app", "pushdeer"],
+                "combined_score_min": 85,
+                "external_score_min": 85,
+                "cooldown_seconds": 3600,
+            }
+        }
+    )
+
+    candidates = [
+        item
+        for item in engine(news=FakeNews([base_row, second_story]), notifications=notifications).evaluate(now_ms=NOW_MS)
+        if item.rule_id == "news_high_signal"
+    ]
+
+    assert len(candidates) == 2
+    assert candidates[0].payload["external_push_signature"] != candidates[1].payload["external_push_signature"]
+    assert candidates[0].channels == ("in_app", "pushdeer")
+    assert candidates[1].channels == ("in_app", "pushdeer")
+    assert candidates[1].payload["external_push_suppression_reason"] is None
+
+
+def test_news_high_signal_external_push_signature_uses_asset_cooldown_not_item_identity():
+    base_row = _admitted_news_row(
+        {
+            "news_item_id": "news-1",
+            "latest_at_ms": NOW_MS - 5_000,
+            "agent_brief_computed_at_ms": NOW_MS - 1_000,
+            "headline": "Iran disruption lifts oil risk",
+            "source_domain": "example.test",
+            "canonical_url": "https://example.test/news-1",
+            "duplicate_count": 1,
+            "content_tags": ["iran"],
+            "signal": {
+                "direction": "bullish",
+                "alert_eligibility": {
+                    "in_app_eligible": True,
+                    "external_push_ready": True,
+                    "external_push_basis": "agent_brief",
+                    "provider_score": 90,
+                    "decision_class": "driver",
+                },
+            },
+            "token_impacts": [{"symbol": "CL", "score": 90}, {"symbol": "BTC", "score": 25}],
+            "agent_brief": {
+                "status": "ready",
+                "direction": "bullish",
+                "decision_class": "driver",
+                "summary_zh": "第一条同主题新闻。",
+                "brief_json": {
+                    "summary_zh": "第一条同主题新闻。",
+                    "watch_triggers": ["原油冲击"],
+                    "affected_assets": [{"symbol": "CL"}],
+                },
+            },
+        }
+    )
     same_topic_row = {
         **base_row,
         "news_item_id": "news-2",

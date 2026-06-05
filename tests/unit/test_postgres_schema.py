@@ -193,6 +193,9 @@ NEWS_CONTEXT_AND_FILTER_HARD_CUT_MIGRATION = Path(
 NEWS_MATERIAL_DUPLICATE_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260604_0148_news_material_duplicate_hard_cut.py"
 )
+NEWS_ANALYSIS_STORY_HARD_CUT_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260605_0149_news_analysis_story_hard_cut.py"
+)
 TOKEN_PULSE_EQUITY_CPU_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260529_0124_token_pulse_equity_cpu_hard_cut.py"
 )
@@ -1789,6 +1792,57 @@ def test_news_observation_edges_allow_same_material_title_match_type() -> None:
     assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_items_source_published_material_lookup" in text
     assert "ON news_items(source_id, published_at_ms DESC, news_item_id)" in normalized_text
     assert "with op.get_context().autocommit_block():" in text
+
+
+def test_news_analysis_story_hard_cut_adds_columns_and_indexes_without_story_tables() -> None:
+    assert NEWS_ANALYSIS_STORY_HARD_CUT_MIGRATION.exists(), (
+        f"{NEWS_ANALYSIS_STORY_HARD_CUT_MIGRATION} missing; add admission/story hard-cut migration"
+    )
+    text = NEWS_ANALYSIS_STORY_HARD_CUT_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+    upgrade_text = text.split("def downgrade() -> None:", maxsplit=1)[0]
+    downgrade_text = text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+    for statement in (
+        'revision = "20260605_0149"',
+        'down_revision = "20260604_0148"',
+        "ALTER TABLE news_items",
+        "ADD COLUMN IF NOT EXISTS analysis_admission_status TEXT NOT NULL DEFAULT 'needs_review'",
+        "ADD COLUMN IF NOT EXISTS analysis_admission_reason TEXT NOT NULL DEFAULT ''",
+        "ADD COLUMN IF NOT EXISTS analysis_admission_json JSONB NOT NULL DEFAULT '{}'::jsonb",
+        "ADD COLUMN IF NOT EXISTS analysis_admission_version TEXT NOT NULL DEFAULT ''",
+        "ADD COLUMN IF NOT EXISTS story_key TEXT NOT NULL DEFAULT ''",
+        "ADD COLUMN IF NOT EXISTS story_identity_json JSONB NOT NULL DEFAULT '{}'::jsonb",
+        "ADD COLUMN IF NOT EXISTS story_identity_version TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE news_page_rows",
+        "ADD COLUMN IF NOT EXISTS representative_news_item_id TEXT",
+        "ADD COLUMN IF NOT EXISTS story_key TEXT NOT NULL DEFAULT ''",
+        "ADD COLUMN IF NOT EXISTS story_json JSONB NOT NULL DEFAULT '{}'::jsonb",
+        "ADD COLUMN IF NOT EXISTS analysis_admission_status TEXT NOT NULL DEFAULT 'needs_review'",
+        "ADD COLUMN IF NOT EXISTS analysis_admission_reason TEXT NOT NULL DEFAULT ''",
+        "ADD COLUMN IF NOT EXISTS analysis_admission_json JSONB NOT NULL DEFAULT '{}'::jsonb",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_items_story_key_published",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_items_analysis_admission_published",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_page_rows_story_key",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_page_rows_analysis_admission",
+        "ANALYZE news_items",
+        "ANALYZE news_page_rows",
+    ):
+        assert statement in text
+
+    assert "with op.get_context().autocommit_block():" in text
+    assert text.count("CREATE INDEX CONCURRENTLY IF NOT EXISTS") >= 4
+    assert "ON news_items(story_key, published_at_ms DESC, news_item_id)" in normalized_text
+    assert "ON news_items(analysis_admission_status, published_at_ms DESC, news_item_id)" in normalized_text
+    assert "ON news_page_rows(story_key, latest_at_ms DESC, row_id DESC)" in normalized_text
+    assert "ON news_page_rows(analysis_admission_status, latest_at_ms DESC, row_id DESC)" in normalized_text
+    assert "WHERE story_key <> ''" in text
+    assert "CREATE TABLE IF NOT EXISTS news_story_groups" not in upgrade_text
+    assert "CREATE TABLE IF NOT EXISTS news_story_members" not in upgrade_text
+    assert "DROP TABLE IF EXISTS news_story_groups" not in text
+    assert "DROP TABLE IF EXISTS news_story_members" not in text
+    assert "RuntimeError" in downgrade_text
+    assert "not safely reversible" in downgrade_text
 
 
 def test_asset_migration_adds_identity_resolution_tables() -> None:

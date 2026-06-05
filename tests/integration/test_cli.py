@@ -866,8 +866,15 @@ def test_cli_ops_cleanup_news_intel_hard_cut_dispatches_to_service(monkeypatch, 
     def fake_repositories(_settings):
         yield FakeRepos()
 
-    def fake_cleanup(repos, *, execute, now_ms):
-        calls.append({"repos_type": type(repos).__name__, "execute": execute, "now_ms": now_ms})
+    def fake_cleanup(repos, *, execute, now_ms, current_artifact_version_hash=None):
+        calls.append(
+            {
+                "repos_type": type(repos).__name__,
+                "execute": execute,
+                "now_ms": now_ms,
+                "current_artifact_version_hash": current_artifact_version_hash,
+            }
+        )
         return {"execute": execute, "now_ms": now_ms}
 
     write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db")
@@ -892,8 +899,18 @@ def test_cli_ops_cleanup_news_intel_hard_cut_dispatches_to_service(monkeypatch, 
         "data": {"execute": True, "now_ms": 1_700_000_000_000},
     }
     assert calls == [
-        {"repos_type": "FakeRepos", "execute": False, "now_ms": 1_700_000_000_000},
-        {"repos_type": "FakeRepos", "execute": True, "now_ms": 1_700_000_000_000},
+        {
+            "repos_type": "FakeRepos",
+            "execute": False,
+            "now_ms": 1_700_000_000_000,
+            "current_artifact_version_hash": None,
+        },
+        {
+            "repos_type": "FakeRepos",
+            "execute": True,
+            "now_ms": 1_700_000_000_000,
+            "current_artifact_version_hash": None,
+        },
     ]
 
 

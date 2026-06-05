@@ -225,6 +225,7 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
                     repos,
                     execute=bool(args.execute),
                     now_ms=_now_ms(),
+                    current_artifact_version_hash=args.current_artifact_version_hash,
                 )
             except NewsIntelHardCutCleanupAbort as exc:
                 return 1, {"ok": False, "error": str(exc)}

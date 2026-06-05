@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from parallax.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker, _source_fetch_since_ms
 from parallax.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
@@ -424,6 +425,9 @@ def test_news_item_process_worker_extracts_mentions_candidates_and_wakes() -> No
             "now_ms": NOW_MS,
         }
     ]
+    assert db.repo.analysis_story_updates[0]["news_item_id"] == "news-1"
+    assert db.repo.analysis_story_updates[0]["admission"].status == "admitted"
+    assert db.repo.analysis_story_updates[0]["story_identity"].story_key
     assert db.repo.processed_items == [{"news_item_id": "news-1", "processed_at_ms": NOW_MS}]
     assert db.repo.failed_items == []
     assert wake_bus.notifications == [{"count": 1}]
@@ -459,16 +463,18 @@ def test_news_item_process_worker_passes_authority_scope_to_fact_candidates() ->
     assert "event_type_out_of_authority_scope" in candidate.rejection_reasons
 
 
-def test_news_item_process_uses_opennews_provider_tokens_and_enqueues_brief_input() -> None:
+def test_news_item_process_provider_only_non_crypto_row_enqueues_page_not_brief() -> None:
     item = {
-        "news_item_id": "news-1",
+        "news_item_id": "news-spacex",
         "source_id": "opennews-realtime",
         "provider_type": "opennews",
         "source_role": "observed_source",
         "source_domain": "6551.io",
+        "source_name": "OpenNews",
+        "coverage_tags_json": ["equities"],
         "authority_scope_json": {},
-        "title": "BTC headline",
-        "summary": "",
+        "title": "SpaceX share sale values company above $350 billion",
+        "summary": "Samsung chip demand and private company valuation remain in focus.",
         "body_text": "",
         "published_at_ms": NOW_MS - 1_000,
         "provider_signal_json": {
@@ -476,9 +482,9 @@ def test_news_item_process_uses_opennews_provider_tokens_and_enqueues_brief_inpu
             "provider": "opennews",
             "status": "ready",
             "direction": "bullish",
-            "score": 82,
+            "score": 92,
         },
-        "provider_token_impacts_json": [{"symbol": "BTC", "score": 82, "signal": "long", "grade": "A"}],
+        "provider_token_impacts_json": [{"symbol": "SPCX", "score": 92, "signal": "long", "grade": "A"}],
     }
     db = FakeItemProcessDB(FakeItemProcessRepository([item]))
     worker = NewsItemProcessWorker(
@@ -493,24 +499,135 @@ def test_news_item_process_uses_opennews_provider_tokens_and_enqueues_brief_inpu
     result = worker.run_once_sync(now_ms=NOW_MS)
 
     assert result.processed == 1
-    assert db.repo.entities["news-1"][0].normalized_value == "BTC"
-    assert db.repo.mentions["news-1"][0].observed_symbol == "BTC"
+    assert db.repo.entities["news-spacex"] == []
+    assert db.repo.mentions["news-spacex"] == []
+    assert db.repo.analysis_story_updates[0]["admission"].status in {"page_only", "research_context"}
     assert db.dirty.enqueued == [
         {
-            "rows": [{"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"}],
+            "rows": [{"projection_name": "page", "target_kind": "news_item", "target_id": "news-spacex"}],
+            "reason": "news_item_processed",
+            "now_ms": NOW_MS,
+            "commit": False,
+        },
+    ]
+
+
+def test_news_item_process_admitted_crypto_row_enqueues_page_and_brief_with_story_key() -> None:
+    item = {
+        "news_item_id": "news-zec",
+        "source_id": "opennews-realtime",
+        "provider_type": "opennews",
+        "provider_article_keys_json": ["opennews:2367422"],
+        "source_role": "official_exchange",
+        "source_domain": "coinbase.com",
+        "source_name": "Coinbase",
+        "coverage_tags_json": ["crypto"],
+        "authority_scope_json": {
+            "event_types": ["exchange_listing"],
+            "domains": ["coinbase.com"],
+            "targets": [{"target_type": "CexToken", "target_id": "cex:ZEC"}],
+        },
+        "title": "Coinbase lists $ZEC for trading",
+        "summary": "Zcash trading starts today on Coinbase.",
+        "body_text": "",
+        "published_at_ms": NOW_MS - 1_000,
+        "provider_signal_json": {
+            "source": "provider",
+            "provider": "opennews",
+            "status": "ready",
+            "direction": "bullish",
+            "score": 72,
+        },
+        "provider_token_impacts_json": [{"symbol": "ZEC", "score": 72, "signal": "long", "grade": "B"}],
+    }
+    db = FakeItemProcessDB(FakeItemProcessRepository([item]))
+    worker = NewsItemProcessWorker(
+        name="news_item_process",
+        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        db=db,
+        telemetry=object(),
+        identity_lookup=FakeItemProcessLookup(db),
+        wake_bus=FakeItemProcessWakeBus(),
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.processed == 1
+    assert db.repo.entities["news-zec"][0].normalized_value == "ZEC"
+    assert db.repo.mentions["news-zec"][0].observed_symbol == "ZEC"
+    assert db.repo.analysis_story_updates[0]["admission"].status == "admitted"
+    assert db.repo.analysis_story_updates[0]["story_identity"].story_key == "news-story:opennews-article:2367422"
+    assert db.dirty.enqueued == [
+        {
+            "rows": [{"projection_name": "page", "target_kind": "news_item", "target_id": "news-zec"}],
             "reason": "news_item_processed",
             "now_ms": NOW_MS,
             "commit": False,
         },
         {
             "rows": [
-                {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-1", "priority": 18}
+                {
+                    "projection_name": "brief_input",
+                    "target_kind": "news_item",
+                    "target_id": "news-zec",
+                    "priority": 128,
+                }
             ],
             "reason": "news_item_processed",
             "now_ms": NOW_MS,
             "commit": False,
         },
     ]
+
+
+def test_news_item_process_rejects_unsupported_analysis_admission_shape_before_persistence() -> None:
+    item = _crypto_process_item()
+    db = FakeItemProcessDB(FakeItemProcessRepository([item]))
+    worker = NewsItemProcessWorker(
+        name="news_item_process",
+        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        db=db,
+        telemetry=object(),
+        identity_lookup=FakeItemProcessLookup(db),
+        wake_bus=FakeItemProcessWakeBus(),
+    )
+
+    with patch(
+        "parallax.domains.news_intel.runtime.news_item_process_worker.decide_news_analysis_admission",
+        return_value=object(),
+    ):
+        result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.processed == 0
+    assert result.failed == 1
+    assert db.repo.analysis_story_updates == []
+    assert db.repo.failed_items[0]["news_item_id"] == "news-zec"
+    assert "analysis admission payload" in str(db.repo.failed_items[0]["error"])
+
+
+def test_news_item_process_rejects_unsupported_story_identity_shape_before_persistence() -> None:
+    item = _crypto_process_item()
+    db = FakeItemProcessDB(FakeItemProcessRepository([item]))
+    worker = NewsItemProcessWorker(
+        name="news_item_process",
+        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        db=db,
+        telemetry=object(),
+        identity_lookup=FakeItemProcessLookup(db),
+        wake_bus=FakeItemProcessWakeBus(),
+    )
+
+    with patch(
+        "parallax.domains.news_intel.runtime.news_item_process_worker.build_news_story_identity",
+        return_value=object(),
+    ):
+        result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.processed == 0
+    assert result.failed == 1
+    assert db.repo.analysis_story_updates == []
+    assert db.repo.failed_items[0]["news_item_id"] == "news-zec"
+    assert "story identity payload" in str(db.repo.failed_items[0]["error"])
 
 
 def test_news_page_projection_worker_replaces_rows_without_emitting_wake() -> None:
@@ -530,12 +647,167 @@ def test_news_page_projection_worker_replaces_rows_without_emitting_wake() -> No
 
     assert result.processed == 1
     assert db.sessions == ["news_page_projection"]
-    assert repo.replaced_news_item_ids == ["news-1"]
-    assert repo.replaced_rows[0]["news_item_id"] == "news-1"
-    assert repo.replaced_rows[0]["lifecycle_status"] == "attention"
-    assert repo.replaced_rows[0]["agent_status"] == "ready"
-    assert repo.replaced_rows[0]["agent_brief"]["agent_run_id"] == "run-1"
+    assert repo.story_load_news_item_ids == ["news-1"]
+    assert repo.replaced_story_news_item_ids == ["news-1"]
+    assert repo.replaced_story_keys == []
+    assert repo.replaced_story_rows[0]["news_item_id"] == "news-1"
+    assert repo.replaced_story_rows[0]["lifecycle_status"] == "attention"
+    assert repo.replaced_story_rows[0]["agent_status"] == "ready"
+    assert repo.replaced_story_rows[0]["agent_brief"]["agent_run_id"] == "run-1"
     assert wake_bus.notifications == []
+
+
+def test_news_page_projection_worker_projects_same_story_once() -> None:
+    story_key = "news-story:subject:jpmorgan-citi-tokenized-deposit:t412000"
+    repo = FakePageProjectionRepository(
+        story_payloads=[
+            _page_projection_payload(
+                item={
+                    "news_item_id": "news-1",
+                    "story_key": story_key,
+                    "title": "JPMorgan and Citi test tokenized deposits",
+                    "analysis_admission_status": "admitted",
+                    "analysis_admission_reason": "tokenized_deposit_subject",
+                },
+                story={
+                    "story_key": story_key,
+                    "representative_news_item_id": "news-1",
+                    "member_news_item_ids": ["news-1", "news-2"],
+                    "member_count": 2,
+                    "source_domains": ["bloomberg.com", "reuters.com"],
+                },
+                member_items=[{"news_item_id": "news-1"}, {"news_item_id": "news-2"}],
+            )
+        ]
+    )
+    db = FakeProjectionDB(
+        "news_page_projection",
+        repo,
+        claimed=[
+            _claimed_page_target("news-1"),
+            _claimed_page_target("news-2"),
+        ],
+    )
+    worker = NewsPageProjectionWorker(
+        name="news_page_projection",
+        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        db=db,
+        telemetry=object(),
+        clock_ms=lambda: NOW_MS,
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.processed == 2
+    assert repo.story_load_news_item_ids == ["news-1", "news-2"]
+    assert repo.replaced_story_keys == [story_key]
+    assert len(repo.replaced_story_rows) == 1
+    assert repo.replaced_story_rows[0]["story_key"] == story_key
+    assert result.notes["story_groups_projected"] == 1
+    assert result.notes["story_member_items"] == 2
+    assert result.notes["projected"] == 1
+
+
+def test_news_page_projection_worker_reports_deleted_story_member_rows() -> None:
+    story_key = "news-story:subject:spacex-valuation:t412000"
+    repo = FakePageProjectionRepository(
+        story_payloads=[
+            _page_projection_payload(
+                item={
+                    "news_item_id": "news-1",
+                    "story_key": story_key,
+                    "title": "SpaceX tender offer values company higher",
+                    "analysis_admission_status": "page_only",
+                    "analysis_admission_reason": "private_company_equity_context",
+                },
+                story={
+                    "story_key": story_key,
+                    "representative_news_item_id": "news-1",
+                    "member_news_item_ids": ["news-1", "news-2"],
+                    "member_count": 2,
+                    "source_domains": ["bloomberg.com", "wsj.com"],
+                },
+                member_items=[{"news_item_id": "news-1"}, {"news_item_id": "news-2"}],
+            )
+        ],
+        replace_result={"inserted": 1, "updated": 0, "unchanged": 0, "deleted": 2},
+    )
+    db = FakeProjectionDB("news_page_projection", repo, claimed=[_claimed_page_target("news-1")])
+    worker = NewsPageProjectionWorker(
+        name="news_page_projection",
+        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        db=db,
+        telemetry=object(),
+        clock_ms=lambda: NOW_MS,
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert repo.replaced_story_keys == [story_key]
+    assert result.notes["deleted"] == 2
+    assert result.notes["projected"] == 1
+
+
+def test_news_page_projection_worker_reports_unchanged_story_projection() -> None:
+    story_key = "news-story:subject:jpmorgan-citi-tokenized-deposit:t412000"
+    repo = FakePageProjectionRepository(
+        story_payloads=[
+            _page_projection_payload(
+                item={
+                    "news_item_id": "news-1",
+                    "story_key": story_key,
+                    "title": "JPMorgan and Citi test tokenized deposits",
+                    "analysis_admission_status": "admitted",
+                    "analysis_admission_reason": "tokenized_deposit_subject",
+                },
+                story={
+                    "story_key": story_key,
+                    "representative_news_item_id": "news-1",
+                    "member_news_item_ids": ["news-1", "news-2"],
+                    "member_count": 2,
+                    "source_domains": ["bloomberg.com", "reuters.com"],
+                },
+                member_items=[{"news_item_id": "news-1"}, {"news_item_id": "news-2"}],
+            )
+        ],
+        replace_result={"inserted": 0, "updated": 0, "unchanged": 1, "deleted": 0},
+    )
+    db = FakeProjectionDB("news_page_projection", repo, claimed=[_claimed_page_target("news-1")])
+    worker = NewsPageProjectionWorker(
+        name="news_page_projection",
+        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        db=db,
+        telemetry=object(),
+        clock_ms=lambda: NOW_MS,
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.notes["unchanged"] == 1
+    assert result.notes["projected"] == 1
+
+
+def test_news_page_projection_worker_replaces_story_targets_when_payloads_empty() -> None:
+    repo = FakePageProjectionRepository(
+        story_payloads=[],
+        replace_result={"inserted": 0, "updated": 0, "unchanged": 0, "deleted": 1},
+    )
+    db = FakeProjectionDB("news_page_projection", repo, claimed=[_claimed_page_target("news-non-representative")])
+    worker = NewsPageProjectionWorker(
+        name="news_page_projection",
+        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        db=db,
+        telemetry=object(),
+        clock_ms=lambda: NOW_MS,
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert repo.story_load_news_item_ids == ["news-non-representative"]
+    assert repo.replaced_story_news_item_ids == ["news-non-representative"]
+    assert repo.replaced_story_keys == []
+    assert repo.replaced_story_rows == []
+    assert result.notes["deleted"] == 1
 
 
 def _worker(
@@ -554,6 +826,92 @@ def _worker(
         news_settings=SimpleNamespace(sources=tuple(sources)),
         wake_bus=wake_bus,
     )
+
+
+def _crypto_process_item() -> dict[str, object]:
+    return {
+        "news_item_id": "news-zec",
+        "source_id": "opennews-realtime",
+        "provider_type": "opennews",
+        "provider_article_keys_json": ["opennews:2367422"],
+        "source_role": "official_exchange",
+        "source_domain": "coinbase.com",
+        "source_name": "Coinbase",
+        "coverage_tags_json": ["crypto"],
+        "authority_scope_json": {
+            "event_types": ["exchange_listing"],
+            "domains": ["coinbase.com"],
+            "targets": [{"target_type": "CexToken", "target_id": "cex:ZEC"}],
+        },
+        "title": "Coinbase lists $ZEC for trading",
+        "summary": "Zcash trading starts today on Coinbase.",
+        "body_text": "",
+        "published_at_ms": NOW_MS - 1_000,
+        "provider_signal_json": {
+            "source": "provider",
+            "provider": "opennews",
+            "status": "ready",
+            "direction": "bullish",
+            "score": 72,
+        },
+        "provider_token_impacts_json": [{"symbol": "ZEC", "score": 72, "signal": "long", "grade": "B"}],
+    }
+
+
+def _claimed_page_target(news_item_id: str) -> dict[str, object]:
+    return {
+        "projection_name": "page",
+        "target_kind": "news_item",
+        "target_id": news_item_id,
+        "window": "",
+        "payload_hash": f"hash-{news_item_id}",
+        "lease_owner": "news_page_projection",
+        "attempt_count": 1,
+    }
+
+
+def _page_projection_payload(
+    *,
+    item: dict[str, object] | None = None,
+    story: dict[str, object] | None = None,
+    member_items: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
+    payload_item = {
+        "news_item_id": "news-1",
+        "title": "Coinbase lists NEWX",
+        "summary": "",
+        "source_id": "example-rss",
+        "source_domain": "example.test",
+        "canonical_url": "https://example.test/a",
+        "published_at_ms": 1000,
+        "lifecycle_status": "processed",
+    }
+    payload_item.update(item or {})
+    return {
+        "item": payload_item,
+        "token_mentions": [
+            {
+                "resolution_status": "unknown_attention",
+                "display_symbol": "NEWX",
+                "target_id": None,
+            }
+        ],
+        "fact_candidates": [],
+        "current_brief": {
+            "agent_run_id": "run-1",
+            "status": "ready",
+            "direction": "bullish",
+            "decision_class": "watch",
+            "brief_json": {"summary_zh": "测试摘要", "bull_view": {"strength": "moderate"}},
+            "input_hash": "input-1",
+            "artifact_version_hash": "artifact-1",
+            "prompt_version": "prompt-v1",
+            "schema_version": "schema-v1",
+            "computed_at_ms": NOW_MS - 1,
+        },
+        "story": story,
+        "member_items": member_items or [dict(payload_item)],
+    }
 
 
 class FakeDB:
@@ -599,12 +957,11 @@ class FakeItemProcessDB:
 
 
 class FakeProjectionDB:
-    def __init__(self, expected_name: str, repo: object) -> None:
+    def __init__(self, expected_name: str, repo: object, claimed: list[dict[str, object]] | None = None) -> None:
         self.expected_name = expected_name
         self.repo = repo
         self.conn = FakeConn()
-        claimed = []
-        if expected_name == "news_page_projection":
+        if claimed is None and expected_name == "news_page_projection":
             claimed = [
                 {
                     "projection_name": "page",
@@ -616,6 +973,7 @@ class FakeProjectionDB:
                     "attempt_count": 1,
                 }
             ]
+        claimed = claimed or []
         self.dirty = FakeProjectionDirtyTargetRepository(claimed)
         self.sessions: list[str] = []
 
@@ -820,6 +1178,7 @@ class FakeItemProcessRepository:
         self.mentions: dict[str, list[object]] = {}
         self.fact_candidates: dict[str, list[object]] = {}
         self.content_classifications: list[dict[str, object]] = []
+        self.analysis_story_updates: list[dict[str, object]] = []
         self.processed_items: list[dict[str, int | str]] = []
         self.failed_items: list[dict[str, int | str]] = []
 
@@ -856,6 +1215,25 @@ class FakeItemProcessRepository:
             }
         )
 
+    def update_item_analysis_and_story_identity(
+        self,
+        *,
+        news_item_id: str,
+        admission: object,
+        story_identity: object,
+        now_ms: int,
+        commit: bool = True,
+    ) -> None:
+        self.analysis_story_updates.append(
+            {
+                "news_item_id": news_item_id,
+                "admission": admission,
+                "story_identity": story_identity,
+                "now_ms": now_ms,
+                "commit": commit,
+            }
+        )
+
     def mark_item_processed(self, news_item_id: str, processed_at_ms: int, *, commit: bool = True) -> None:
         self.processed_items.append({"news_item_id": news_item_id, "processed_at_ms": processed_at_ms})
 
@@ -864,47 +1242,37 @@ class FakeItemProcessRepository:
 
 
 class FakePageProjectionRepository:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        story_payloads: list[dict[str, object]] | None = None,
+        replace_result: dict[str, int] | None = None,
+    ) -> None:
         self.replaced_news_item_ids: list[str] = []
         self.replaced_rows: list[dict[str, object]] = []
+        self.story_payloads = [_page_projection_payload()] if story_payloads is None else story_payloads
+        self.story_load_news_item_ids: list[str] = []
+        self.replaced_story_news_item_ids: list[str] = []
+        self.replaced_story_keys: list[str] = []
+        self.replaced_story_rows: list[dict[str, object]] = []
+        self.replace_result = replace_result
 
     def load_items_for_page_projection(self, *, news_item_ids):
         assert list(news_item_ids) == ["news-1"]
-        return [
-            {
-                "item": {
-                    "news_item_id": "news-1",
-                    "title": "Coinbase lists NEWX",
-                    "summary": "",
-                    "source_id": "example-rss",
-                    "source_domain": "example.test",
-                    "canonical_url": "https://example.test/a",
-                    "published_at_ms": 1000,
-                    "lifecycle_status": "processed",
-                },
-                "token_mentions": [
-                    {
-                        "resolution_status": "unknown_attention",
-                        "display_symbol": "NEWX",
-                        "target_id": None,
-                    }
-                ],
-                "fact_candidates": [],
-                "current_brief": {
-                    "agent_run_id": "run-1",
-                    "status": "ready",
-                    "direction": "bullish",
-                    "decision_class": "watch",
-                    "brief_json": {"summary_zh": "测试摘要", "bull_view": {"strength": "moderate"}},
-                    "input_hash": "input-1",
-                    "artifact_version_hash": "artifact-1",
-                    "prompt_version": "prompt-v1",
-                    "schema_version": "schema-v1",
-                    "computed_at_ms": NOW_MS - 1,
-                },
-            }
-        ]
+        return self.story_payloads
+
+    def load_story_projection_payloads_for_items(self, *, news_item_ids):
+        self.story_load_news_item_ids = list(news_item_ids)
+        return self.story_payloads
 
     def replace_page_rows_for_items(self, *, news_item_ids, rows, commit: bool = True):
         self.replaced_news_item_ids = list(news_item_ids)
         self.replaced_rows = [dict(row) for row in rows]
+
+    def replace_page_rows_for_story_targets(self, *, news_item_ids, story_keys, rows, commit: bool = True):
+        self.replaced_story_news_item_ids = list(news_item_ids)
+        self.replaced_story_keys = list(story_keys)
+        self.replaced_story_rows = [dict(row) for row in rows]
+        if self.replace_result is not None:
+            return dict(self.replace_result)
+        return {"inserted": len(rows), "updated": 0, "unchanged": 0, "deleted": 0}

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import time
 from collections.abc import Callable, Mapping
@@ -14,13 +13,18 @@ from parallax.domains.news_intel.runtime.news_projection_work import (
     enqueue_item_brief_work,
     enqueue_page_reprojection,
 )
+from parallax.domains.news_intel.services.news_analysis_admission import (
+    NewsAnalysisAdmission,
+    decide_news_analysis_admission,
+)
 from parallax.domains.news_intel.services.news_content_classification import classify_news_item_content
-from parallax.domains.news_intel.services.news_entity_extraction import NewsEntity, extract_news_entities
+from parallax.domains.news_intel.services.news_entity_extraction import extract_news_entities
 from parallax.domains.news_intel.services.news_fact_candidates import build_fact_candidates
 from parallax.domains.news_intel.services.news_item_agent_policy import (
     news_item_agent_brief_eligibility,
     news_item_agent_brief_priority,
 )
+from parallax.domains.news_intel.services.news_story_identity import NewsStoryIdentity, build_news_story_identity
 from parallax.domains.news_intel.services.news_token_mentions import build_news_token_mentions
 from parallax.domains.token_intel.interfaces import TokenIdentityLookup
 
@@ -58,21 +62,13 @@ class NewsItemProcessWorker(WorkerBase):
             item_payload = dict(item)
             news_item_id = _required_text(item_payload, "news_item_id")
             try:
-                provider_impacts = _json_list(item_payload.get("provider_token_impacts_json"))
-                if provider_impacts:
-                    entities = _entities_from_provider_impacts(
-                        news_item_id=news_item_id,
-                        impacts=provider_impacts,
-                        now_ms=now,
-                    )
-                else:
-                    entities = extract_news_entities(
-                        news_item_id=news_item_id,
-                        title=_text(item_payload, "title"),
-                        summary=_text(item_payload, "summary"),
-                        body_text=_text(item_payload, "body_text"),
-                        now_ms=now,
-                    )
+                entities = extract_news_entities(
+                    news_item_id=news_item_id,
+                    title=_text(item_payload, "title"),
+                    summary=_text(item_payload, "summary"),
+                    body_text=_text(item_payload, "body_text"),
+                    now_ms=now,
+                )
                 mentions = build_news_token_mentions(
                     news_item_id=news_item_id,
                     entities=entities,
@@ -96,6 +92,39 @@ class NewsItemProcessWorker(WorkerBase):
                     source_domain=_text(item_payload, "source_domain"),
                     fact_event_types=[candidate.event_type for candidate in candidates],
                 )
+                processed_item = {
+                    **item_payload,
+                    "lifecycle_status": "processed",
+                    "content_class": classification.content_class,
+                    "content_tags_json": classification.content_tags,
+                    "content_classification_json": classification.classification_payload,
+                }
+                mention_payloads = [_object_payload(mention) for mention in mentions]
+                candidate_payloads = [_object_payload(candidate) for candidate in candidates]
+                admission = decide_news_analysis_admission(
+                    item=processed_item,
+                    token_mentions=mention_payloads,
+                    fact_candidates=candidate_payloads,
+                )
+                admission_payload = _analysis_admission_payload(admission)
+                story_identity = build_news_story_identity(
+                    item=processed_item,
+                    token_mentions=mention_payloads,
+                    fact_candidates=candidate_payloads,
+                    admission=admission_payload,
+                )
+                story_identity_payload = _story_identity_payload(story_identity)
+                processed_item.update(
+                    {
+                        "analysis_admission_status": admission_payload["status"],
+                        "analysis_admission_reason": admission_payload["reason"],
+                        "analysis_admission_json": admission_payload,
+                        "analysis_admission_version": admission_payload["version"],
+                        "story_key": story_identity_payload["story_key"],
+                        "story_identity_json": story_identity_payload,
+                        "story_identity_version": story_identity_payload["version"],
+                    }
+                )
                 with self._repository_session() as repos, repos.conn.transaction():
                     repos.news.replace_item_entities(news_item_id=news_item_id, entities=entities, commit=False)
                     repos.news.replace_token_mentions(news_item_id=news_item_id, mentions=mentions, commit=False)
@@ -112,16 +141,14 @@ class NewsItemProcessWorker(WorkerBase):
                         now_ms=now,
                         commit=False,
                     )
+                    repos.news.update_item_analysis_and_story_identity(
+                        news_item_id=news_item_id,
+                        admission=admission,
+                        story_identity=story_identity,
+                        now_ms=now,
+                        commit=False,
+                    )
                     repos.news.mark_item_processed(news_item_id=news_item_id, processed_at_ms=now, commit=False)
-                    processed_item = {
-                        **item_payload,
-                        "lifecycle_status": "processed",
-                        "content_class": classification.content_class,
-                        "content_tags_json": classification.content_tags,
-                        "content_classification_json": classification.classification_payload,
-                    }
-                    mention_payloads = [_object_payload(mention) for mention in mentions]
-                    candidate_payloads = [_object_payload(candidate) for candidate in candidates]
                     enqueue_page_reprojection(
                         repos,
                         news_item_ids=[news_item_id],
@@ -180,40 +207,6 @@ class NewsItemProcessWorker(WorkerBase):
         return max(1, int(getattr(self.settings, "batch_size", 10)))
 
 
-def _entities_from_provider_impacts(
-    *,
-    news_item_id: str,
-    impacts: list[Any],
-    now_ms: int,
-) -> list[NewsEntity]:
-    entities: list[NewsEntity] = []
-    seen: set[str] = set()
-    for impact in impacts:
-        if not isinstance(impact, Mapping):
-            continue
-        symbol = str(impact.get("symbol") or "").strip().upper()
-        if not symbol or symbol in seen:
-            continue
-        seen.add(symbol)
-        entities.append(
-            NewsEntity(
-                entity_id=_stable_id("news-provider-entity", news_item_id, symbol),
-                news_item_id=news_item_id,
-                entity_type="symbol",
-                raw_value=symbol,
-                normalized_value=symbol,
-                chain=None,
-                span_start=0,
-                span_end=len(symbol),
-                text_surface="provider_token_impacts",
-                confidence=1.0,
-                extraction_policy_version="opennews_provider_impacts_v1",
-                created_at_ms=int(now_ms),
-            )
-        )
-    return entities
-
-
 def _required_text(item: Mapping[str, Any], key: str) -> str:
     value = _text(item, key)
     if not value:
@@ -238,19 +231,6 @@ def _json_dict(value: object) -> dict[str, Any]:
     return {}
 
 
-def _json_list(value: object) -> list[Any]:
-    if isinstance(value, list):
-        return value
-    if isinstance(value, str) and value.strip():
-        try:
-            parsed = json.loads(value)
-        except json.JSONDecodeError:
-            return []
-        if isinstance(parsed, list):
-            return parsed
-    return []
-
-
 def _object_payload(value: Any) -> dict[str, Any]:
     if isinstance(value, Mapping):
         return dict(value)
@@ -262,12 +242,71 @@ def _object_payload(value: Any) -> dict[str, Any]:
     return dict(getattr(value, "__dict__", {}) or {})
 
 
+def _analysis_admission_payload(value: NewsAnalysisAdmission | Mapping[str, object]) -> dict[str, object]:
+    payload = _strict_current_payload(
+        value,
+        expected_type=NewsAnalysisAdmission,
+        label="analysis admission payload",
+        required_fields=("status", "reason", "basis", "version"),
+    )
+    return {
+        "status": _required_payload_text(payload, "status", label="analysis admission payload"),
+        "reason": _required_payload_text(payload, "reason", label="analysis admission payload"),
+        "basis": _required_payload_mapping(payload, "basis", label="analysis admission payload"),
+        "version": _required_payload_text(payload, "version", label="analysis admission payload"),
+    }
+
+
+def _story_identity_payload(value: NewsStoryIdentity | Mapping[str, object]) -> dict[str, object]:
+    payload = _strict_current_payload(
+        value,
+        expected_type=NewsStoryIdentity,
+        label="story identity payload",
+        required_fields=("story_key", "confidence", "basis", "version"),
+    )
+    return {
+        "story_key": _required_payload_text(payload, "story_key", label="story identity payload"),
+        "confidence": _required_payload_text(payload, "confidence", label="story identity payload"),
+        "basis": _required_payload_mapping(payload, "basis", label="story identity payload"),
+        "version": _required_payload_text(payload, "version", label="story identity payload"),
+    }
+
+
+def _strict_current_payload(
+    value: NewsAnalysisAdmission | NewsStoryIdentity | Mapping[str, object],
+    *,
+    expected_type: type[NewsAnalysisAdmission] | type[NewsStoryIdentity],
+    label: str,
+    required_fields: tuple[str, ...],
+) -> dict[str, object]:
+    if isinstance(value, Mapping):
+        payload = dict(value)
+    elif isinstance(value, expected_type):
+        payload = dict(asdict(value))
+    else:
+        raise ValueError(f"unsupported {label} shape")
+    missing = [field for field in required_fields if field not in payload]
+    if missing:
+        raise ValueError(f"unsupported {label} shape: missing {', '.join(missing)}")
+    return payload
+
+
+def _required_payload_text(payload: Mapping[str, object], field: str, *, label: str) -> str:
+    value = str(payload.get(field) or "").strip()
+    if not value:
+        raise ValueError(f"unsupported {label} shape: blank {field}")
+    return value
+
+
+def _required_payload_mapping(payload: Mapping[str, object], field: str, *, label: str) -> dict[str, object]:
+    value = payload.get(field)
+    if not isinstance(value, Mapping):
+        raise ValueError(f"unsupported {label} shape: {field} must be mapping")
+    return dict(value)
+
+
 def _now_ms() -> int:
     return int(time.time() * 1000)
-
-
-def _stable_id(*parts: str) -> str:
-    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
 
 
 __all__ = ["NewsItemProcessWorker"]

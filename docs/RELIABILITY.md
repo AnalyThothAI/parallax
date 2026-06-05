@@ -223,10 +223,17 @@ Projection worker idle paths must be proportional to due dirty targets, not
 to fact-table size. News projection workers claim durable dirty targets
 (`news_projection_dirty_targets`) and then load payloads by explicit target ids
 only. Runtime projection workers must not discover stale work by scanning
-material facts or read models, including missing-story scans, page-projection
-staleness scans, or source-quality all-source/window scans. Broad coverage
-discovery is allowed only in manual ops repair commands that enqueue dirty
-targets and do not write read-model rows. Normal worker idle paths must be
+fact tables. News page projection row identity is stable by
+`NEWS_PAGE_PROJECTION_VERSION` plus `story_key` when one exists, otherwise the
+item id. Dirty target wakeup remains item-scoped for durable queue simplicity,
+but the worker expands claimed items into a bounded story group before writing
+one current `news_page_rows` row. Unchanged story rows keep the existing
+`payload_hash IS DISTINCT FROM` zero-serving-write path. Runtime projection
+workers must not discover stale work by scanning material facts or read models,
+including missing-story scans, page-projection staleness scans, or
+source-quality all-source/window scans. Broad coverage discovery is allowed
+only in manual ops repair commands that enqueue dirty targets and do not write
+read-model rows. Normal worker idle paths must be
 proportional to queue depth, not to the size of `events`, `token_intents`,
 `token_intent_resolutions`, or market tick fact tables.
 News source-quality runtime follows the same rule: the worker processes durable

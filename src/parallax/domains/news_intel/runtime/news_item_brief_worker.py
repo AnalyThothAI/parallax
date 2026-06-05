@@ -711,6 +711,7 @@ def _current_brief_is_fresh(
         return False
     return str(current.get("validator_version") or "") == agent_config.validator_version
 
+
 def _target_ids(rows: Iterable[Mapping[str, Any]]) -> list[str]:
     return item_brief_news_item_ids(rows)
 

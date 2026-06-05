@@ -22,7 +22,8 @@ def test_enqueue_projection_dirty_targets_dry_run_reports_counts_without_writes(
     )
 
     assert result["execute"] is False
-    assert result["news"]["news_item_targets"] == 3
+    assert result["news"]["news_item_ids"] == 3
+    assert result["news"]["news_item_targets"] == 4
     assert result["news"]["source_quality_targets"] == 2
     assert repos.news_dirty.enqueued == []
     assert repos.conn.transactions == 0
@@ -54,6 +55,12 @@ def test_enqueue_projection_dirty_targets_execute_enqueues_only_dirty_targets() 
             "target_kind": "news_item",
             "target_id": "news-2",
             "source_watermark_ms": NOW_MS - 2_000,
+        },
+        {
+            "projection_name": "page",
+            "target_kind": "news_item",
+            "target_id": "news-3",
+            "source_watermark_ms": NOW_MS - 3_000,
         },
     ]
     assert repos.news_dirty.enqueued[1]["rows"] == [
@@ -112,6 +119,41 @@ def test_enqueue_projection_dirty_targets_execute_requires_bounded_brief_repair(
         raise AssertionError("expected unbounded brief_input repair to fail")
 
 
+def test_enqueue_projection_dirty_targets_page_repair_can_run_unbounded_for_page_only_rows() -> None:
+    repos = FakeRepos()
+
+    result = enqueue_projection_dirty_targets(
+        repos,
+        domain="news",
+        execute=True,
+        now_ms=NOW_MS,
+        projection="page",
+    )
+
+    assert result["projection"] == "page"
+    assert result["news"]["news_item_targets"] == 3
+    assert repos.news_dirty.enqueued[0]["rows"] == [
+        {
+            "projection_name": "page",
+            "target_kind": "news_item",
+            "target_id": "news-1",
+            "source_watermark_ms": NOW_MS - 1_000,
+        },
+        {
+            "projection_name": "page",
+            "target_kind": "news_item",
+            "target_id": "news-2",
+            "source_watermark_ms": NOW_MS - 2_000,
+        },
+        {
+            "projection_name": "page",
+            "target_kind": "news_item",
+            "target_id": "news-3",
+            "source_watermark_ms": NOW_MS - 3_000,
+        },
+    ]
+
+
 def test_enqueue_projection_dirty_targets_can_scope_brief_input_repair() -> None:
     repos = FakeRepos()
 
@@ -157,8 +199,25 @@ class FakeConn:
                         "published_at_ms": NOW_MS - 1_000,
                         "source_watermark_ms": NOW_MS - 1_000,
                         "lifecycle_status": "processed",
+                        "content_class": "other",
                         "content_classification_json": {},
+                        "analysis_admission_status": "page_only",
+                        "analysis_admission_reason": "provider_evidence_only",
+                        "analysis_admission_json": {
+                            "status": "page_only",
+                            "basis": {"provider_evidence": ["provider_score:95"]},
+                        },
+                        "analysis_admission_version": "news_analysis_admission_v1",
+                        "story_key": "news-story:item:news-1",
+                        "story_identity_json": {"story_key": "news-story:item:news-1"},
+                        "story_identity_version": "news_story_identity_v1",
                         "provider_type": "rss",
+                        "source_domain": "example.com",
+                        "source_name": "Example",
+                        "source_role": "observed_source",
+                        "coverage_tags_json": [],
+                        "trust_tier": "standard",
+                        "authority_scope_json": {},
                         "provider_signal_json": {},
                         "token_mentions_json": [],
                         "fact_candidates_json": [],
@@ -168,10 +227,55 @@ class FakeConn:
                         "published_at_ms": NOW_MS - 2_000,
                         "source_watermark_ms": NOW_MS - 2_000,
                         "lifecycle_status": "processed",
+                        "content_class": "exchange_listing",
                         "content_classification_json": {"policy_version": "news_content_classification_v1"},
+                        "analysis_admission_status": "admitted",
+                        "analysis_admission_reason": "crypto_native_evidence",
+                        "analysis_admission_json": {
+                            "status": "admitted",
+                            "basis": {"crypto_evidence": ["resolved_crypto_target:cex:BTC"]},
+                        },
+                        "analysis_admission_version": "news_analysis_admission_v1",
+                        "story_key": "news-story:item:news-2",
+                        "story_identity_json": {"story_key": "news-story:item:news-2"},
+                        "story_identity_version": "news_story_identity_v1",
                         "provider_type": "opennews",
+                        "source_domain": "6551.io",
+                        "source_name": "OpenNews",
+                        "source_role": "observed_source",
+                        "coverage_tags_json": ["crypto"],
+                        "trust_tier": "standard",
+                        "authority_scope_json": {},
                         "provider_signal_json": {"source": "provider", "provider": "opennews", "score": 88},
                         "token_mentions_json": [{"resolution_status": "known_symbol", "display_symbol": "BTC"}],
+                        "fact_candidates_json": [],
+                    },
+                    {
+                        "news_item_id": "news-3",
+                        "published_at_ms": NOW_MS - 3_000,
+                        "source_watermark_ms": NOW_MS - 3_000,
+                        "lifecycle_status": "processed",
+                        "content_class": "other",
+                        "content_classification_json": {"policy_version": "news_content_classification_v1"},
+                        "analysis_admission_status": "page_only",
+                        "analysis_admission_reason": "provider_evidence_only",
+                        "analysis_admission_json": {
+                            "status": "page_only",
+                            "basis": {"provider_evidence": ["provider_score:92"]},
+                        },
+                        "analysis_admission_version": "news_analysis_admission_v1",
+                        "story_key": "news-story:item:news-3",
+                        "story_identity_json": {"story_key": "news-story:item:news-3"},
+                        "story_identity_version": "news_story_identity_v1",
+                        "provider_type": "opennews",
+                        "source_domain": "6551.io",
+                        "source_name": "OpenNews",
+                        "source_role": "observed_source",
+                        "coverage_tags_json": ["equities"],
+                        "trust_tier": "standard",
+                        "authority_scope_json": {},
+                        "provider_signal_json": {"source": "provider", "provider": "opennews", "score": 92},
+                        "token_mentions_json": [],
                         "fact_candidates_json": [],
                     },
                 ]

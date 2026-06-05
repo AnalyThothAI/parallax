@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -12,7 +13,23 @@ ALLOWED_DIRTY_STRING_FILES = {
     "src/parallax/app/runtime/projection_dirty_targets.py",
 }
 
+ALLOWED_RETIRED_TOOL_MARKER_FILES = {
+    "src/parallax/domains/news_intel/services/news_intel_hard_cut_cleanup.py",
+}
+
 RAW_PROJECTION_STRINGS = {"brief_input", "page", "source_quality"}
+RETIRED_RESEARCH_TOOL_TOKENS = {
+    "get_target_news_context",
+    "search_news_archive",
+    "get_observation_history",
+}
+HARD_CUT_CLEANUP_DELETE_TABLES = {
+    "news_item_agent_briefs",
+    "news_item_agent_runs",
+    "news_page_rows",
+    "news_projection_dirty_targets",
+    "notifications",
+}
 
 
 def _read(path: str) -> str:
@@ -151,3 +168,42 @@ def test_news_page_projection_outputs_semantic_fields_only() -> None:
     }
     offenders = sorted(token for token in forbidden if token in source)
     assert offenders == []
+
+
+def test_news_runtime_has_no_retired_research_tool_path() -> None:
+    offenders: list[str] = []
+    for path in SRC.rglob("*.py"):
+        rel = _rel(path)
+        if rel in ALLOWED_RETIRED_TOOL_MARKER_FILES:
+            continue
+        text = path.read_text(encoding="utf-8")
+        offenders.extend(
+            f"{rel} contains retired News research tool token {token}"
+            for token in RETIRED_RESEARCH_TOOL_TOKENS
+            if token in text
+        )
+
+    assert offenders == []
+
+
+def test_news_hard_cut_cleanup_is_delete_only_for_retired_artifacts() -> None:
+    source = _read("src/parallax/domains/news_intel/services/news_intel_hard_cut_cleanup.py")
+    forbidden_write_ops = sorted(
+        match.group(0)
+        for match in re.finditer(
+            r"\b(?:INSERT\s+INTO|UPDATE\s+[A-Za-z_][A-Za-z0-9_]*|TRUNCATE\s+TABLE|DROP\s+TABLE)\b",
+            source,
+            re.IGNORECASE,
+        )
+    )
+    delete_tables = {
+        match.group(1)
+        for match in re.finditer(
+            r"\bDELETE\s+FROM\s+([A-Za-z_][A-Za-z0-9_]*)\b",
+            source,
+            re.IGNORECASE,
+        )
+    }
+
+    assert forbidden_write_ops == []
+    assert delete_tables == HARD_CUT_CLEANUP_DELETE_TABLES

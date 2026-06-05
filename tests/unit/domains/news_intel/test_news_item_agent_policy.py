@@ -17,6 +17,11 @@ def _item(**overrides):
         "lifecycle_status": "processed",
         "content_class": "exchange_listing",
         "content_classification_json": {"policy_version": "news_content_classification_v1"},
+        "analysis_admission_status": "admitted",
+        "analysis_admission_json": {
+            "status": "admitted",
+            "basis": {"crypto_evidence": ["resolved_crypto_target:cex:BTC"]},
+        },
         "provider_signal_json": {
             "source": "provider",
             "status": "ready",
@@ -37,6 +42,25 @@ def test_news_item_agent_brief_requires_processed_item_state() -> None:
 
     assert result.eligible is False
     assert result.reason == "item_not_processed"
+
+
+def test_news_item_agent_brief_rejects_provider_score_without_analysis_admission() -> None:
+    result = news_item_agent_brief_eligibility(
+        item=_item(
+            analysis_admission_status="page_only",
+            analysis_admission_json={
+                "status": "page_only",
+                "basis": {"provider_evidence": ["provider_score:95"]},
+            },
+            provider_signal_json={"source": "provider", "status": "ready", "score": 95},
+        ),
+        token_mentions=[],
+        fact_candidates=[],
+        now_ms=NOW_MS,
+    )
+
+    assert result.eligible is False
+    assert result.reason == "analysis_not_admitted"
 
 
 def test_news_item_agent_brief_requires_classification() -> None:
@@ -66,8 +90,8 @@ def test_news_item_agent_brief_requires_provider_score_at_or_above_analysis_floo
 
 def test_news_item_agent_brief_rejects_below_threshold_provider_scores() -> None:
     result = news_item_agent_brief_eligibility(
-        item=_item(provider_signal_json={"source": "provider", "status": "ready", "score": 79}),
-        token_mentions=[{"resolution_status": "known_symbol"}],
+        item=_item(provider_signal_json={"source": "provider", "status": "ready", "score": 64}),
+        token_mentions=[],
         fact_candidates=[],
         now_ms=NOW_MS,
     )
@@ -96,16 +120,31 @@ def test_news_item_agent_brief_rejects_non_provider_or_missing_score() -> None:
     assert missing_score.reason == "below_score_threshold"
 
 
-def test_news_item_agent_brief_requires_processed_market_context() -> None:
+def test_news_item_agent_brief_accepts_admitted_low_provider_score_with_explicit_crypto_evidence() -> None:
     result = news_item_agent_brief_eligibility(
-        item=_item(),
+        item=_item(
+            provider_signal_json={"source": "provider", "status": "ready", "score": 72},
+            analysis_admission_json={
+                "status": "admitted",
+                "basis": {"crypto_evidence": ["text:crypto_subject"]},
+            },
+        ),
         token_mentions=[],
         fact_candidates=[],
         now_ms=NOW_MS,
     )
 
-    assert result.eligible is False
-    assert result.reason == "no_processed_market_context"
+    assert result.eligible is True
+    assert result.reason == "eligible"
+    assert news_item_agent_brief_priority(
+        item=_item(provider_signal_json={"source": "provider", "score": 95}),
+        token_mentions=[{"resolution_status": "known_symbol"}],
+        fact_candidates=[],
+    ) < news_item_agent_brief_priority(
+        item=_item(provider_signal_json={"source": "provider", "score": 72}),
+        token_mentions=[],
+        fact_candidates=[],
+    )
 
 
 def test_news_item_agent_brief_requires_fresh_published_at() -> None:

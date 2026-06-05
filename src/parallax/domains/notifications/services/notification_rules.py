@@ -291,9 +291,12 @@ class NotificationRuleEngine:
         seen_semantic_signatures: set[str] = set()
         seen_external_push_signatures: set[str] = set()
         for row in rows:
-            news_item_id = str(row.get("news_item_id") or "")
+            if str(row.get("analysis_admission_status") or "") != "admitted":
+                continue
+            news_item_id = str(row.get("news_item_id") or row.get("representative_news_item_id") or "")
             if not news_item_id:
                 continue
+            story_key = str(row.get("story_key") or "")
             source_latest_at_ms = _int(row.get("latest_at_ms"))
             if source_latest_at_ms and source_latest_at_ms < now_ms - NEWS_HIGH_SIGNAL_RECENCY_WINDOW_MS:
                 continue
@@ -308,6 +311,10 @@ class NotificationRuleEngine:
                 ready_agent_brief=ready_agent_brief,
             )
             decision_class = str(eligibility.get("decision_class") or ready_agent_brief.get("decision_class") or "")
+            direction = str(
+                agent_brief.get("direction") or display_signal.get("direction") or signal.get("direction") or ""
+            )
+            affected_assets = _list(_news_agent_affected_assets(agent_brief))
             occurrence_at_ms = _int(row.get("latest_at_ms") or row.get("agent_brief_computed_at_ms") or now_ms)
             semantic_signature = _news_semantic_signature(row, agent_brief=ready_agent_brief)
             if semantic_signature in seen_semantic_signatures:
@@ -334,10 +341,12 @@ class NotificationRuleEngine:
             if external_push_eligible and external_push_signature:
                 seen_external_push_signatures.add(external_push_signature)
             channels = rule.channels if external_push_eligible else tuple(c for c in rule.channels if c == "in_app")
-            source_id = news_item_id
+            source_id = str(row.get("row_id") or news_item_id)
             summary = _news_agent_summary(ready_agent_brief)
             title = _news_display_title(row, agent_brief=ready_agent_brief)
             body = _news_body(row, provider_score=provider_score, summary=summary)
+            entity_type = "news_story" if story_key else "news_item"
+            entity_key = f"news_story:{story_key}" if story_key else f"news_item:{news_item_id}"
             candidates.append(
                 NotificationCandidate(
                     dedup_key=f"{NEWS_HIGH_SIGNAL_RULE_ID}:{semantic_signature}",
@@ -345,17 +354,24 @@ class NotificationRuleEngine:
                     severity="high" if provider_score < external_min_score else "critical",
                     title=title,
                     body=body,
-                    entity_type="news_item",
-                    entity_key=f"news_item:{news_item_id}",
+                    entity_type=entity_type,
+                    entity_key=entity_key,
                     symbol=_news_primary_symbol(row),
                     source_table="news_page_rows",
                     source_id=source_id,
                     occurrence_at_ms=occurrence_at_ms,
                     payload={
                         "news_item_id": news_item_id,
+                        "representative_news_item_id": row.get("representative_news_item_id") or news_item_id,
+                        "story_key": story_key,
+                        "story": _dict(row.get("story")),
+                        "analysis_admission_status": row.get("analysis_admission_status"),
+                        "analysis_admission_reason": row.get("analysis_admission_reason"),
+                        "analysis_admission": _dict(row.get("analysis_admission")),
                         "provider_score": provider_score,
                         "decision_class": decision_class,
-                        "direction": agent_brief.get("direction") or display_signal.get("direction"),
+                        "direction": direction,
+                        "affected_assets": affected_assets,
                         "semantic_signature": semantic_signature,
                         "display_title": title,
                         "external_push_signature": external_push_signature,
@@ -817,16 +833,22 @@ def _news_semantic_signature(row: dict[str, Any], *, agent_brief: dict[str, Any]
     signal = _dict(row.get("signal"))
     display_signal = _news_display_signal(row)
     eligibility = _dict(signal.get("alert_eligibility"))
-    return _stable_hash(
-        {
-            "asset_bucket": _news_external_asset_bucket(row),
-            "decision_class": agent_brief.get("decision_class") or eligibility.get("decision_class"),
-            "direction": agent_brief.get("direction") or display_signal.get("direction"),
-            "content_class": row.get("content_class"),
-            "content_tags": _safe_signature_list(row.get("content_tags")),
-            "affected_assets": _news_affected_asset_symbols(_news_agent_affected_assets(agent_brief)),
-        }
-    )
+    story_key = str(row.get("story_key") or "")
+    signature: dict[str, Any] = {
+        "story_key": story_key or None,
+        "decision_class": agent_brief.get("decision_class") or eligibility.get("decision_class"),
+        "direction": agent_brief.get("direction") or display_signal.get("direction") or signal.get("direction"),
+        "affected_assets": _news_affected_asset_symbols(_news_agent_affected_assets(agent_brief)),
+    }
+    if not story_key:
+        signature.update(
+            {
+                "asset_bucket": _news_external_asset_bucket(row),
+                "content_class": row.get("content_class"),
+                "content_tags": _safe_signature_list(row.get("content_tags")),
+            }
+        )
+    return _stable_hash(signature)
 
 
 def _news_external_push_signature(
@@ -838,14 +860,16 @@ def _news_external_push_signature(
 ) -> str:
     display_signal = _news_display_signal(row)
     agent_brief = _ready_news_agent_brief(_dict(row.get("agent_brief")))
-    return _stable_hash(
-        {
-            "asset_bucket": _news_external_asset_bucket(row),
-            "direction": agent_brief.get("direction") or display_signal.get("direction"),
-            "provider_score_band": provider_score // 5,
-            "cooldown_bucket": _cooldown_bucket(occurrence_at_ms, cooldown_seconds),
-        }
-    )
+    signature = {
+        "asset_bucket": _news_external_asset_bucket(row),
+        "direction": agent_brief.get("direction") or display_signal.get("direction"),
+        "provider_score_band": provider_score // 5,
+        "cooldown_bucket": _cooldown_bucket(occurrence_at_ms, cooldown_seconds),
+    }
+    story_key = str(row.get("story_key") or "")
+    if story_key:
+        signature["story_key"] = story_key
+    return _stable_hash(signature)
 
 
 def _news_external_asset_bucket(row: dict[str, Any]) -> str:
