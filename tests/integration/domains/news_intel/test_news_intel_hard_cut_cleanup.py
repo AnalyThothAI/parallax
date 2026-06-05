@@ -133,6 +133,45 @@ def test_news_intel_hard_cut_cleanup_execute_deletes_retired_artifacts_and_prese
         conn.close()
 
 
+def test_news_intel_hard_cut_cleanup_preserves_pending_page_rows_without_agent_contract(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        _seed_cleanup_state(conn)
+        pending_item_id = _seed_news_item(repo, slug="current-pending", offset=8)
+        repo.replace_page_rows_for_items(
+            news_item_ids=[pending_item_id],
+            rows=[
+                _page_row(
+                    "row-current-pending",
+                    pending_item_id,
+                    projection_version=NEWS_PAGE_PROJECTION_VERSION,
+                    agent_brief={"status": "pending"},
+                )
+            ],
+        )
+
+        dry_run = cleanup_news_intel_hard_cut(
+            _repos(conn),
+            execute=False,
+            now_ms=NOW_MS,
+            current_artifact_version_hash=CURRENT_ARTIFACT_HASH,
+        )
+        assert dry_run["retired_page_rows"] == 4
+
+        cleanup_news_intel_hard_cut(
+            _repos(conn),
+            execute=True,
+            now_ms=NOW_MS,
+            current_artifact_version_hash=CURRENT_ARTIFACT_HASH,
+        )
+
+        assert _ids(conn, "news_page_rows", "row_id") == ["row-current-clean", "row-current-pending"]
+    finally:
+        conn.close()
+
+
 def test_news_intel_hard_cut_cleanup_rejects_running_fetch_without_deleting(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:

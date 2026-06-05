@@ -375,7 +375,8 @@ def _retired_page_agent_contract_sql() -> str:
     schema = _sql_literal(CURRENT_NEWS_ITEM_BRIEF_CONTRACT["schema_version"])
     validator = _sql_literal(CURRENT_NEWS_ITEM_BRIEF_CONTRACT["validator_version"])
     return (
-        "((NOT (agent_brief_json ? 'prompt_version'))"
+        "((COALESCE(agent_brief_json ->> 'status', agent_status, '') <> 'pending') AND ("
+        "(NOT (agent_brief_json ? 'prompt_version'))"
         " OR (agent_brief_json ? 'prompt_version' "
         f"AND agent_brief_json ->> 'prompt_version' <> {prompt})"
         " OR (NOT (agent_brief_json ? 'schema_version'))"
@@ -383,7 +384,7 @@ def _retired_page_agent_contract_sql() -> str:
         f"AND agent_brief_json ->> 'schema_version' <> {schema})"
         " OR (NOT (agent_brief_json ? 'validator_version'))"
         " OR (agent_brief_json ? 'validator_version' "
-        f"AND agent_brief_json ->> 'validator_version' <> {validator}))"
+        f"AND agent_brief_json ->> 'validator_version' <> {validator})))"
     )
 
 
