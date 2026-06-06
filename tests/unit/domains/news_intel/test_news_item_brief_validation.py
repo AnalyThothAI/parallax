@@ -860,6 +860,55 @@ def test_validation_allows_btc_proxy_when_provider_token_impact_sources_symbol()
     assert result.errors == []
 
 
+@pytest.mark.parametrize("label", ["Market Token", "Provider Token", "Impact Token", "Source Token"])
+def test_validation_rejects_source_word_label_laundered_by_real_provider_symbol(label: str) -> None:
+    packet = _provider_btc_packet()
+    payload = _ready_payload(
+        direction="mixed",
+        decision_class="driver",
+        event_type="provider_signal",
+        market_domains=["crypto"],
+        bull_view={
+            "strength": "moderate",
+            "thesis_zh": "provider token impact 明确给出 BTC。",
+            "evidence_refs": ["provider:token:BTC"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "来源没有支持伪造展示标签。",
+            "evidence_refs": ["item:summary"],
+        },
+        transmission_paths=[
+            {
+                "market_domain": "crypto",
+                "channel": "provider_token_impact",
+                "direction": "mixed",
+                "strength": "moderate",
+                "explanation_zh": "provider token impact 明确给出 BTC，但未支持伪造展示标签。",
+                "evidence_refs": ["provider:token:BTC"],
+            }
+        ],
+        affected_entities=[
+            {
+                "label": label,
+                "symbol": "BTC",
+                "entity_type": "crypto_asset",
+                "market_domain": "crypto",
+                "impact_direction": "mixed",
+                "reason_zh": "模型把普通来源词与真实 BTC 符号拼成伪造资产标签。",
+                "evidence_refs": ["provider:token:BTC"],
+            }
+        ],
+        evidence_refs=["item:summary", "provider:token:BTC"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is False
+    assert result.status == "failed"
+    assert {"code": "unsupported_entity", "message": label} in result.errors
+
+
 @pytest.mark.parametrize("label", ["WLFI Token", "WLFI代币"])
 def test_validation_allows_provider_token_label_with_generic_descriptor(label: str) -> None:
     packet = _provider_wlfi_packet()
@@ -1052,6 +1101,54 @@ def test_validation_allows_provider_cl_proxy_when_provider_sources_cl() -> None:
     assert result.publishable is True
     assert result.status == "ready"
     assert result.errors == []
+
+
+def test_validation_rejects_commodity_provider_symbol_as_crypto_entity() -> None:
+    packet = _provider_cl_packet()
+    payload = _ready_payload(
+        direction="mixed",
+        decision_class="driver",
+        event_type="provider_signal",
+        market_domains=["crypto"],
+        bull_view={
+            "strength": "moderate",
+            "thesis_zh": "provider token impact 明确给出 CL commodity，不支持 crypto 资产。",
+            "evidence_refs": ["provider:token:CL"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "provider impact 的 market_type 是 commodity。",
+            "evidence_refs": ["item:summary"],
+        },
+        transmission_paths=[
+            {
+                "market_domain": "crypto",
+                "channel": "provider_token_impact",
+                "direction": "mixed",
+                "strength": "moderate",
+                "explanation_zh": "payload 试图把 commodity provider symbol 当作 crypto 资产。",
+                "evidence_refs": ["provider:token:CL"],
+            }
+        ],
+        affected_entities=[
+            {
+                "label": "CL Token",
+                "symbol": "CL",
+                "entity_type": "crypto_asset",
+                "market_domain": "crypto",
+                "impact_direction": "mixed",
+                "reason_zh": "模型把 commodity provider impact 泛化为 crypto token。",
+                "evidence_refs": ["provider:token:CL"],
+            }
+        ],
+        evidence_refs=["item:summary", "provider:token:CL"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is False
+    assert result.status == "failed"
+    assert {"code": "unsupported_entity", "message": "CL Token"} in result.errors
 
 
 def test_validation_allows_oil_proxy_when_packet_sources_crude_risk() -> None:

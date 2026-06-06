@@ -326,9 +326,11 @@ def validate_affected_entity_support(
     if target_id_keys and not target_id_keys & source_keys:
         return EntitySupportDecision(supported=False, reason="unsupported_target_id")
 
-    source_domains = _source_backed_domains(packet, source_keys=source_keys)
+    source_domains = _source_backed_domains(packet)
     candidate_domains = _entity_candidate_domains(entity=entity, payload=payload)
     if label_name_keys and not _label_name_supported_by_source_or_proxy(
+        entity=entity,
+        packet=packet,
         label_name_values=label_name_values,
         label_name_keys=label_name_keys,
         source_keys=source_keys,
@@ -349,7 +351,7 @@ def validate_affected_entity_support(
     return EntitySupportDecision(supported=False, reason="unsupported")
 
 
-def _source_backed_domains(packet: NewsItemBriefInputPacket, *, source_keys: set[str] | None = None) -> set[str]:
+def _source_backed_domains(packet: NewsItemBriefInputPacket) -> set[str]:
     domains = {_norm(domain) for domain in packet.market_scope if _norm(domain) != "crypto"}
     domains.update(_norm(entity.market_domain) for entity in packet.entity_lanes)
     for fact in packet.fact_lanes:
@@ -358,10 +360,8 @@ def _source_backed_domains(packet: NewsItemBriefInputPacket, *, source_keys: set
     if packet.provider_signal_evidence is not None:
         for impact in packet.provider_signal_evidence.token_impacts:
             domains.update(_provider_impact_domains(impact.market_type))
-            if impact.symbol:
-                domains.add("crypto")
-    source_keys = source_backed_entity_keys(packet) if source_keys is None else source_keys
-    if source_keys & _domain_proxy_keys("crypto"):
+    proxy_source_keys = _domain_proxy_source_keys(packet, domain="crypto")
+    if proxy_source_keys & _domain_proxy_keys("crypto"):
         domains.add("crypto")
     return {domain for domain in domains if domain in _KNOWN_DOMAINS}
 
@@ -413,6 +413,8 @@ def _contains_unbacked_synthetic_placeholder(
 
 def _label_name_supported_by_source_or_proxy(
     *,
+    entity: Mapping[str, Any],
+    packet: NewsItemBriefInputPacket,
     label_name_values: tuple[str, ...],
     label_name_keys: set[str],
     source_keys: set[str],
@@ -429,6 +431,8 @@ def _label_name_supported_by_source_or_proxy(
     return any(
         _display_label_supported_by_source_descriptor(
             label,
+            entity=entity,
+            packet=packet,
             source_keys=source_keys,
             source_domains=source_domains,
             candidate_domains=candidate_domains,
@@ -459,6 +463,8 @@ def _domain_proxy_supports_keys(domain: str, keys: set[str], *, source_keys: set
 def _display_label_supported_by_source_descriptor(
     label: str,
     *,
+    entity: Mapping[str, Any],
+    packet: NewsItemBriefInputPacket,
     source_keys: set[str],
     source_domains: set[str],
     candidate_domains: set[str],
@@ -469,6 +475,9 @@ def _display_label_supported_by_source_descriptor(
 
     descriptor_keys = _generic_descriptor_keys(candidate_domains)
     base_keys = _source_descriptor_base_keys(
+        label=label,
+        entity=entity,
+        packet=packet,
         source_keys=source_keys,
         source_domains=source_domains,
         candidate_domains=candidate_domains,
@@ -484,18 +493,121 @@ def _display_label_supported_by_source_descriptor(
 
 def _source_descriptor_base_keys(
     *,
+    label: str,
+    entity: Mapping[str, Any],
+    packet: NewsItemBriefInputPacket,
     source_keys: set[str],
     source_domains: set[str],
     candidate_domains: set[str],
 ) -> set[str]:
-    base_keys = set(source_keys)
+    descriptor_keys = _generic_descriptor_keys(candidate_domains)
+    entity_keys = _entity_descriptor_candidate_keys(entity) - descriptor_keys
+    entity_specific_source_keys = _entity_specific_descriptor_source_keys(
+        packet,
+        candidate_domains=candidate_domains,
+    )
+    base_keys = entity_keys & entity_specific_source_keys
+    normalized_label = _norm(label)
     for domain in candidate_domains:
         if domain not in source_domains:
             continue
         for proxy_keys in _domain_proxy_key_groups(domain):
-            if source_keys & proxy_keys:
+            if source_keys & proxy_keys and (
+                entity_keys & proxy_keys or _label_contains_any_key(normalized_label, proxy_keys)
+            ):
                 base_keys.update(proxy_keys)
     return base_keys
+
+
+def _entity_descriptor_candidate_keys(entity: Mapping[str, Any]) -> set[str]:
+    keys: set[str] = set()
+    keys.update(_text_keys(entity.get("label")))
+    keys.update(_text_keys(entity.get("name")))
+    keys.update(_string_keys(entity.get("symbol")))
+    return keys
+
+
+def _entity_specific_descriptor_source_keys(
+    packet: NewsItemBriefInputPacket,
+    *,
+    candidate_domains: set[str],
+) -> set[str]:
+    keys: set[str] = set()
+    for entity in packet.entity_lanes:
+        entity_domains = _entity_lane_domains(entity)
+        if _domains_allow_descriptor_source(entity_domains, candidate_domains):
+            keys.update(
+                _string_keys(
+                    entity.observed_label,
+                    entity.display_symbol,
+                    entity.display_name,
+                    entity.target_id,
+                )
+            )
+        for target in entity.candidate_targets:
+            target_domains = _domains_in_mapping(target) or entity_domains
+            if _domains_allow_descriptor_source(target_domains, candidate_domains):
+                keys.update(_mapping_value_keys(target))
+    for fact in packet.fact_lanes:
+        for target in fact.affected_targets:
+            target_domains = _domains_in_mapping(target)
+            if _domains_allow_descriptor_source(target_domains, candidate_domains):
+                keys.update(_mapping_value_keys(target))
+    if packet.provider_signal_evidence is not None:
+        for impact in packet.provider_signal_evidence.token_impacts:
+            impact_domains = _provider_impact_domains(impact.market_type)
+            if impact_domains & candidate_domains:
+                keys.update(_string_keys(impact.symbol))
+    return keys
+
+
+def _domain_proxy_source_keys(packet: NewsItemBriefInputPacket, *, domain: str) -> set[str]:
+    keys: set[str] = set()
+    keys.update(_text_keys(packet.news_item.title))
+    keys.update(_text_keys(packet.news_item.summary))
+    keys.update(_text_keys(packet.news_item.body_excerpt))
+    keys.update(_translated_source_entity_keys(packet))
+    for entity in packet.entity_lanes:
+        keys.update(
+            _string_keys(
+                entity.entity_id,
+                entity.observed_label,
+                entity.display_symbol,
+                entity.display_name,
+                entity.target_id,
+            )
+        )
+        for target in entity.candidate_targets:
+            keys.update(_mapping_value_keys(target))
+    for fact in packet.fact_lanes:
+        keys.update(_text_keys(fact.claim))
+        keys.update(_text_keys(fact.evidence_quote))
+        for target in fact.affected_targets:
+            keys.update(_mapping_value_keys(target))
+    if packet.provider_signal_evidence is not None:
+        provider = packet.provider_signal_evidence
+        keys.update(_text_keys(provider.summary_zh))
+        keys.update(_text_keys(provider.summary_en))
+        for impact in provider.token_impacts:
+            if domain in _provider_impact_domains(impact.market_type):
+                keys.update(_string_keys(impact.symbol))
+    return keys
+
+
+def _entity_lane_domains(entity: Any) -> set[str]:
+    domains = {
+        _norm(getattr(entity, "market_domain", "")),
+        _ENTITY_TYPE_DOMAINS.get(_norm(getattr(entity, "entity_type", "")), ""),
+    }
+    return {domain for domain in domains if domain in _KNOWN_DOMAINS}
+
+
+def _domains_allow_descriptor_source(source_domains: set[str], candidate_domains: set[str]) -> bool:
+    return not source_domains or bool(source_domains & candidate_domains)
+
+
+def _label_contains_any_key(label: str, keys: set[str]) -> bool:
+    return any(_key_spans(label, key) for key in keys)
 
 
 def _generic_descriptor_keys(candidate_domains: set[str]) -> set[str]:
