@@ -37,8 +37,8 @@ def test_worker_skips_claimed_target_below_current_provider_score_floor() -> Non
     asyncio.run(_test_worker_skips_claimed_target_below_current_provider_score_floor())
 
 
-def test_worker_skips_claimed_target_older_than_brief_window() -> None:
-    asyncio.run(_test_worker_skips_claimed_target_older_than_brief_window())
+def test_worker_processes_high_score_target_older_than_brief_window() -> None:
+    asyncio.run(_test_worker_processes_high_score_target_older_than_brief_window())
 
 
 def test_worker_policy_skip_exact_duplicate_does_not_call_model() -> None:
@@ -181,7 +181,7 @@ async def _test_worker_skips_claimed_target_below_current_provider_score_floor()
     assert result.notes["policy_skipped"] == 1
 
 
-async def _test_worker_skips_claimed_target_older_than_brief_window() -> None:
+async def _test_worker_processes_high_score_target_older_than_brief_window() -> None:
     candidate = _candidate(provider_score=95)
     candidate["item"]["published_at_ms"] = NOW_MS - (8 * 3_600_000) - 1
     db = FakeDB([candidate])
@@ -191,14 +191,13 @@ async def _test_worker_skips_claimed_target_older_than_brief_window() -> None:
     result = await worker.run_once()
 
     assert provider.reserve_calls == [NEWS_ITEM_BRIEF_LANE]
-    assert provider.request_audit_calls == []
-    assert provider.execution_calls == 0
-    assert db.news.runs == []
-    assert db.news.briefs == []
+    assert provider.execution_calls == 1
+    assert db.news.runs[0]["status"] == "completed"
+    assert db.news.runs[0]["outcome"] == "ready"
+    assert db.news.briefs[0]["status"] == "ready"
     assert len(db.dirty.done) == 1
-    assert result.processed == 0
-    assert result.skipped == 1
-    assert result.notes["policy_skipped"] == 1
+    assert result.processed == 1
+    assert result.skipped == 0
 
 
 async def _test_worker_policy_skip_exact_duplicate_does_not_call_model() -> None:

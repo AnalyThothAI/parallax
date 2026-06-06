@@ -63,7 +63,6 @@ def decide_news_item_agent_admission(
     fact_candidates: Sequence[Mapping[str, Any]],
     context: NewsItemAgentAdmissionContext,
     now_ms: int,
-    max_published_age_ms: int = 8 * 3_600_000,
     min_provider_score: int = NEWS_ITEM_AGENT_MIN_PROVIDER_SCORE,
 ) -> NewsItemAgentAdmission:
     news_item_id = str(item.get("news_item_id") or "")
@@ -78,7 +77,6 @@ def decide_news_item_agent_admission(
     base = _base_gate(
         item=item,
         now_ms=now_ms,
-        max_published_age_ms=max_published_age_ms,
         min_provider_score=min_provider_score,
         basis=base_basis,
     )
@@ -151,7 +149,6 @@ def _base_gate(
     *,
     item: Mapping[str, Any],
     now_ms: int,
-    max_published_age_ms: int,
     min_provider_score: int,
     basis: dict[str, Any],
 ) -> NewsItemAgentAdmission | None:
@@ -177,8 +174,6 @@ def _base_gate(
     age_ms = int(now_ms) - int(published_at_ms)
     if age_ms < 0:
         return _skip("needs_review", "published_in_future", news_item_id, basis)
-    if age_ms > max(0, int(max_published_age_ms)):
-        return _skip("needs_review", "published_too_old", news_item_id, basis)
     return None
 
 

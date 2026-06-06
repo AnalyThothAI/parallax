@@ -40,6 +40,26 @@ def test_high_score_us_equity_page_only_item_is_eligible() -> None:
     assert admission.reason == "eligible"
 
 
+def test_high_score_old_item_is_not_filtered_by_agent_age_gate() -> None:
+    admission = decide_news_item_agent_admission(
+        item=_item(
+            published_at_ms=NOW_MS - 24 * 3_600_000,
+            title="Oil prices rise after Gulf shipping disruption",
+            analysis_admission_status="page_only",
+            analysis_admission_reason="non_crypto_subject",
+        ),
+        entities=[{"entity_id": "entity-wti", "raw_value": "WTI crude", "entity_type": "commodity"}],
+        token_mentions=[],
+        fact_candidates=[],
+        context=NewsItemAgentAdmissionContext.empty(),
+        now_ms=NOW_MS,
+    )
+
+    assert admission.eligible is True
+    assert admission.status == "eligible"
+    assert admission.reason == "eligible"
+
+
 def test_exact_duplicate_uses_representative_and_skips_agent() -> None:
     admission = decide_news_item_agent_admission(
         item=_item(provider_article_keys_json=["opennews:123"]),
