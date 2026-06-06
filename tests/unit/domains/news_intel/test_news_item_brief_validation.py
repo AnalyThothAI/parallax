@@ -301,6 +301,68 @@ def test_validation_rejects_unsupported_entities() -> None:
     assert {"code": "unsupported_entity", "message": "XYZ"} in result.errors
 
 
+@pytest.mark.parametrize("symbol", ["asset", "listing", "crypto"])
+def test_validation_rejects_invented_entities_named_after_generic_classification_keys(symbol: str) -> None:
+    packet = _crypto_packet()
+    payload = _ready_payload(
+        affected_entities=[
+            {
+                "label": f"Invented {symbol}",
+                "symbol": symbol,
+                "name": f"Invented {symbol}",
+                "entity_type": "crypto_asset",
+                "market_domain": "crypto",
+                "resolution_status": "unknown",
+                "target_type": "asset",
+                "target_id": f"invented:{symbol}",
+                "impact_direction": "bullish",
+                "reason_zh": "模型输出了 generic 分类词，不是来源支撑的真实实体。",
+                "evidence_refs": ["item:summary"],
+            }
+        ],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is False
+    assert result.status == "failed"
+    assert {"code": "unsupported_entity", "message": f"Invented {symbol}"} in result.errors
+
+
+def test_validation_rejects_commodity_proxy_when_packet_does_not_source_commodity_domain() -> None:
+    packet = _crypto_packet()
+    payload = _ready_payload(
+        market_domains=["commodity"],
+        transmission_paths=[
+            {
+                "market_domain": "commodity",
+                "channel": "supply_risk",
+                "direction": "bullish",
+                "strength": "moderate",
+                "explanation_zh": "payload 自称 commodity 传导，但 packet 没有 commodity 来源支撑。",
+                "evidence_refs": ["item:summary"],
+            }
+        ],
+        affected_entities=[
+            {
+                "label": "WTI原油期货",
+                "symbol": "CL",
+                "entity_type": "commodity",
+                "market_domain": "commodity",
+                "impact_direction": "bullish",
+                "reason_zh": "payload 自行引入了 commodity proxy。",
+                "evidence_refs": ["item:summary"],
+            }
+        ],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is False
+    assert result.status == "failed"
+    assert {"code": "unsupported_entity", "message": "WTI原油期货"} in result.errors
+
+
 @pytest.mark.parametrize(
     "phrase",
     [

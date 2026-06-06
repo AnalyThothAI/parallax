@@ -6,6 +6,9 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from parallax.domains.news_intel.services.news_item_brief_entity_support import (
+    validate_affected_entity_support,
+)
 from parallax.domains.news_intel.types.news_item_brief import (
     NewsItemBriefInputPacket,
     NewsItemBriefPayload,
@@ -101,18 +104,12 @@ def _ready_evidence_errors(payload: dict[str, Any], *, packet: NewsItemBriefInpu
 
 
 def _unsupported_entity_errors(payload: dict[str, Any], *, packet: NewsItemBriefInputPacket) -> list[dict[str, str]]:
-    supported = _source_backed_entity_labels(packet)
     errors: list[dict[str, str]] = []
     for entity in payload.get("affected_entities") or []:
         if not isinstance(entity, Mapping):
             continue
-        labels = {
-            _norm(entity.get("label")),
-            _norm(entity.get("symbol")),
-            _norm(entity.get("name")),
-            _norm(entity.get("target_id")),
-        }
-        if any(label and label in supported for label in labels):
+        decision = validate_affected_entity_support(entity, packet=packet, payload=payload)
+        if decision.supported:
             continue
         errors.append(_error("unsupported_entity", str(entity.get("label") or entity.get("symbol") or "unknown")))
     return errors
@@ -123,31 +120,6 @@ def _trading_instruction_errors(payload: dict[str, Any]) -> list[dict[str, str]]
         if any(pattern.search(text) for pattern in _TRADING_INSTRUCTION_PATTERNS):
             return [_error("trading_instruction", "output contains prescriptive trading or execution language")]
     return []
-
-
-def _source_backed_entity_labels(packet: NewsItemBriefInputPacket) -> set[str]:
-    labels: set[str] = set()
-    text_fields = [
-        packet.news_item.title,
-        packet.news_item.summary,
-        packet.news_item.body_excerpt,
-    ]
-    labels.update(_norm(token) for field in text_fields for token in re.findall(r"[A-Za-z0-9]{2,20}", field or ""))
-    for entity in packet.entity_lanes:
-        labels.update(
-            {
-                _norm(entity.entity_id),
-                _norm(entity.observed_label),
-                _norm(entity.display_symbol),
-                _norm(entity.display_name),
-                _norm(entity.target_id),
-            }
-        )
-    for fact in packet.fact_lanes:
-        labels.update(_norm(token) for token in re.findall(r"[A-Za-z0-9]{2,20}", fact.claim or ""))
-        for target in fact.affected_targets:
-            labels.update(_norm(value) for value in target.values() if isinstance(value, str))
-    return {label for label in labels if label}
 
 
 def _evidence_refs_in_payload(value: Any) -> set[str]:
@@ -243,10 +215,6 @@ def _error(code: str, message: str) -> dict[str, str]:
 def _validation_message(exc: ValidationError) -> str:
     messages = [str(error.get("loc", "")) + ": " + str(error.get("msg", "")) for error in exc.errors()]
     return "; ".join(messages)
-
-
-def _norm(value: Any) -> str:
-    return str(value or "").strip().lower()
 
 
 __all__ = ["NewsItemBriefValidationResult", "validate_news_item_brief_output"]
