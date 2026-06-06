@@ -60,6 +60,8 @@ def test_news_item_brief_client_executes_strict_payload_with_caller_reservation(
         "payload": gateway.payload.model_dump(mode="json"),
         "agent_run_audit": {"status": "done", "lane": NEWS_ITEM_BRIEF_LANE},
     }
+    assert "affected_entities" in result["payload"]
+    assert "affected_assets" not in result["payload"]
 
 
 class FakeGateway:
@@ -72,9 +74,21 @@ class FakeGateway:
             status="ready",
             direction="neutral",
             decision_class="context",
+            event_type="macro_context",
             title_zh="中性新闻摘要",
             summary_zh="摘要",
             market_read_zh="市场解读",
+            market_domains=["macro_rates"],
+            affected_entities=[
+                {
+                    "label": "Federal Reserve",
+                    "entity_type": "regulator",
+                    "market_domain": "macro_rates",
+                    "impact_direction": "neutral",
+                    "reason_zh": "摘要提到监管或央行背景。",
+                    "evidence_refs": ["item:title"],
+                }
+            ],
         )
 
     def try_reserve(self, lane: str, *, rate_units: int = 1) -> object:
@@ -122,6 +136,11 @@ def _packet() -> NewsItemBriefInputPacket:
             title="Fed says crypto supervision remains active",
             summary="A short source summary.",
         ),
+        entity_lanes=[],
+        market_scope=["crypto", "macro_rates"],
+        agent_admission={"status": "eligible", "reason": "provider_score_high"},
+        similarity={},
+        material_delta={},
         prompt_version=NEWS_ITEM_BRIEF_PROMPT_VERSION,
         schema_version=NEWS_ITEM_BRIEF_SCHEMA_VERSION,
         input_hash="input-hash",

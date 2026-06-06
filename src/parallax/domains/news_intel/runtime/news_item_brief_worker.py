@@ -4,6 +4,7 @@ import asyncio
 import time
 import uuid
 from collections.abc import Callable, Iterable, Mapping
+from dataclasses import asdict, is_dataclass
 from typing import Any, cast
 
 from parallax.app.runtime.worker_base import WorkerBase
@@ -17,8 +18,10 @@ from parallax.domains.news_intel.runtime.news_projection_work import (
     queue_item_brief_depth,
     terminalize_work,
 )
-from parallax.domains.news_intel.services.news_item_agent_policy import (
-    news_item_agent_brief_eligibility,
+from parallax.domains.news_intel.services.news_item_agent_admission import (
+    NewsItemAgentAdmission,
+    NewsItemAgentAdmissionContext,
+    decide_news_item_agent_admission,
 )
 from parallax.domains.news_intel.services.news_item_brief_input import (
     build_news_item_brief_input_packet,
@@ -100,7 +103,7 @@ class NewsItemBriefWorker(WorkerBase):
             if not claimed:
                 return WorkerResult(skipped=1, notes={"reason": "no_due_brief_targets", "claimed": 0})
             try:
-                candidates = await asyncio.to_thread(self._load_candidates, claimed=claimed)
+                candidates = await asyncio.to_thread(self._load_candidates, claimed=claimed, now_ms=now)
             except Exception as exc:
                 await asyncio.to_thread(
                     self._mark_targets_error,
@@ -138,18 +141,23 @@ class NewsItemBriefWorker(WorkerBase):
                     await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
                     skipped += 1
                     continue
-                eligibility = news_item_agent_brief_eligibility(
-                    item=_dict(candidate.get("item") or candidate),
-                    token_mentions=_list_of_dicts(candidate.get("token_mentions")),
-                    fact_candidates=_list_of_dicts(candidate.get("fact_candidates")),
+                admission = _admission_from_candidate(
+                    candidate,
                     now_ms=now,
                 )
-                if not eligibility.eligible:
+                if not admission.eligible:
                     notes["policy_skipped"] += 1
-                    await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
+                    await asyncio.to_thread(
+                        self._complete_policy_skip,
+                        target,
+                        candidate=candidate,
+                        admission=admission,
+                        now_ms=now,
+                    )
                     skipped += 1
                     continue
                 try:
+                    candidate = _candidate_with_agent_admission(candidate, admission)
                     packet = _packet_from_candidate(candidate, agent_config=agent_config)
                     if _current_brief_is_fresh(candidate, packet=packet, agent_config=agent_config):
                         await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
@@ -391,12 +399,74 @@ class NewsItemBriefWorker(WorkerBase):
         with self._repository_session() as repos:
             return queue_item_brief_depth(repos, now_ms=resolved_now_ms)
 
-    def _load_candidates(self, *, claimed: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    def _load_candidates(self, *, claimed: Iterable[Mapping[str, Any]], now_ms: int) -> list[dict[str, Any]]:
         news_item_ids = _target_ids(claimed)
         if not news_item_ids:
             return []
         with self._repository_session() as repos:
-            return cast(list[dict[str, Any]], repos.news.load_items_for_brief_targets(news_item_ids=news_item_ids))
+            candidates = cast(
+                list[dict[str, Any]],
+                repos.news.load_items_for_brief_targets(news_item_ids=news_item_ids),
+            )
+            load_contexts = getattr(repos.news, "load_agent_admission_contexts", None)
+            if not callable(load_contexts):
+                return candidates
+            contexts = cast(
+                list[dict[str, Any]],
+                load_contexts(news_item_ids=news_item_ids, now_ms=int(now_ms)),
+            )
+        contexts_by_id = {
+            str(context.get("item", {}).get("news_item_id") or ""): context
+            for context in contexts
+            if isinstance(context.get("item"), Mapping)
+        }
+        merged: list[dict[str, Any]] = []
+        for candidate in candidates:
+            news_item_id = str(candidate.get("item", {}).get("news_item_id") or "")
+            context = contexts_by_id.get(news_item_id, {})
+            if context:
+                merged_candidate = {
+                    **candidate,
+                    "entities": _list_of_dicts(context.get("entities")) or _list_of_dicts(candidate.get("entities")),
+                    "token_mentions": _list_of_dicts(context.get("token_mentions"))
+                    or _list_of_dicts(candidate.get("token_mentions")),
+                    "fact_candidates": _list_of_dicts(context.get("fact_candidates"))
+                    or _list_of_dicts(candidate.get("fact_candidates")),
+                    "current_brief": context.get("current_brief") or candidate.get("current_brief"),
+                    "agent_admission_context": context,
+                }
+            else:
+                merged_candidate = dict(candidate)
+            merged.append(merged_candidate)
+        return merged
+
+    def _complete_policy_skip(
+        self,
+        target: Mapping[str, Any],
+        *,
+        candidate: Mapping[str, Any],
+        admission: NewsItemAgentAdmission,
+        now_ms: int,
+    ) -> None:
+        item = _dict(candidate.get("item") or candidate)
+        news_item_id = str(item.get("news_item_id") or target.get("target_id") or "")
+        if not news_item_id:
+            return
+        with self._repository_session() as repos, repos.conn.transaction():
+            repos.news.update_item_agent_admission(
+                news_item_id=news_item_id,
+                admission=admission,
+                now_ms=int(now_ms),
+                commit=False,
+            )
+            enqueue_page_reprojection(
+                repos,
+                news_item_ids=[news_item_id],
+                reason="news_item_agent_admission_updated",
+                now_ms=int(now_ms),
+                commit=False,
+            )
+            mark_work_done(repos, [target], now_ms=int(now_ms), commit=False)
 
     def _complete_claimed_target(
         self,
@@ -681,6 +751,7 @@ def _packet_from_candidate(
 ) -> NewsItemBriefInputPacket:
     return build_news_item_brief_input_packet(
         item=_dict(candidate.get("item") or candidate),
+        entities=_list_of_dicts(candidate.get("entities")),
         token_mentions=_list_of_dicts(candidate.get("token_mentions")),
         fact_candidates=_list_of_dicts(candidate.get("fact_candidates")),
         agent_config=agent_config,
@@ -710,6 +781,45 @@ def _current_brief_is_fresh(
     if str(current.get("schema_version") or "") != agent_config.schema_version:
         return False
     return str(current.get("validator_version") or "") == agent_config.validator_version
+
+
+def _admission_from_candidate(candidate: Mapping[str, Any], *, now_ms: int) -> NewsItemAgentAdmission:
+    context = _dict(candidate.get("agent_admission_context"))
+    if not context:
+        context = {
+            "item": _dict(candidate.get("item") or candidate),
+            "current_brief": candidate.get("current_brief"),
+            "exact_duplicate_candidates": [],
+            "story_candidates": [],
+        }
+    return decide_news_item_agent_admission(
+        item=_dict(candidate.get("item") or candidate),
+        entities=_list_of_dicts(candidate.get("entities")),
+        token_mentions=_list_of_dicts(candidate.get("token_mentions")),
+        fact_candidates=_list_of_dicts(candidate.get("fact_candidates")),
+        context=NewsItemAgentAdmissionContext.from_repository_context(context),
+        now_ms=now_ms,
+    )
+
+
+def _candidate_with_agent_admission(
+    candidate: Mapping[str, Any],
+    admission: NewsItemAgentAdmission,
+) -> dict[str, Any]:
+    result = dict(candidate)
+    item = _dict(result.get("item") or result)
+    admission_payload = _object_payload(admission)
+    item["agent_admission_status"] = admission.status
+    item["agent_admission_reason"] = admission.reason
+    item["agent_admission_json"] = admission_payload
+    item["agent_representative_news_item_id"] = admission.representative_news_item_id
+    basis = _dict(admission_payload.get("basis"))
+    if "similarity" in basis:
+        item["similarity_json"] = basis["similarity"]
+    if "material_delta" in basis:
+        item["material_delta_json"] = basis["material_delta"]
+    result["item"] = item
+    return result
 
 
 def _target_ids(rows: Iterable[Mapping[str, Any]]) -> list[str]:
@@ -743,17 +853,21 @@ def _failed_brief(
     terminal: bool = False,
     terminal_reason: str = "",
 ) -> dict[str, Any]:
+    del terminal, terminal_reason
     reason = "; ".join(str(error.get("message") or error.get("code") or "")[:120] for error in errors[:3])
     suffix = f"原因：{reason}" if reason else "已记录失败原因。"
     payload: dict[str, Any] = {
         "status": "failed",
         "direction": "neutral",
         "decision_class": "discard",
+        "event_type": None,
         "summary_zh": "",
         "market_read_zh": "",
+        "market_domains": [],
+        "transmission_paths": [],
         "bull_view": {"strength": "absent", "thesis_zh": "", "evidence_refs": []},
         "bear_view": {"strength": "absent", "thesis_zh": "", "evidence_refs": []},
-        "affected_assets": [],
+        "affected_entities": [],
         "watch_triggers": [],
         "invalidation_conditions": [],
         "data_gaps": [
@@ -764,9 +878,6 @@ def _failed_brief(
         ],
         "evidence_refs": [],
     }
-    if terminal:
-        payload["terminal"] = True
-        payload["terminal_reason"] = terminal_reason
     return payload
 
 
@@ -834,10 +945,19 @@ def _optional_dict(value: Any) -> dict[str, Any] | None:
 def _dict(value: Any) -> dict[str, Any]:
     if isinstance(value, Mapping):
         return dict(value)
+    if is_dataclass(value):
+        return dict(asdict(value))
     dump = getattr(value, "model_dump", None)
     if dump is not None:
         return dict(dump(mode="json"))
+    slots = getattr(value, "__slots__", ())
+    if slots:
+        return {name: getattr(value, name) for name in slots if hasattr(value, name)}
     return {}
+
+
+def _object_payload(value: Any) -> dict[str, Any]:
+    return _dict(value)
 
 
 def _list_of_dicts(value: Any) -> list[dict[str, Any]]:

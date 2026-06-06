@@ -20,8 +20,11 @@ from parallax.domains.news_intel.services.news_analysis_admission import (
 from parallax.domains.news_intel.services.news_content_classification import classify_news_item_content
 from parallax.domains.news_intel.services.news_entity_extraction import extract_news_entities
 from parallax.domains.news_intel.services.news_fact_candidates import build_fact_candidates
+from parallax.domains.news_intel.services.news_item_agent_admission import (
+    NewsItemAgentAdmissionContext,
+    decide_news_item_agent_admission,
+)
 from parallax.domains.news_intel.services.news_item_agent_policy import (
-    news_item_agent_brief_eligibility,
     news_item_agent_brief_priority,
 )
 from parallax.domains.news_intel.services.news_story_identity import NewsStoryIdentity, build_news_story_identity
@@ -174,21 +177,35 @@ class NewsItemProcessWorker(WorkerBase):
                         now_ms=now,
                         commit=False,
                     )
-                    eligibility = news_item_agent_brief_eligibility(
-                        item=processed_item,
-                        token_mentions=mention_payloads,
-                        fact_candidates=candidate_payloads,
+                    context_payload = _agent_admission_context(
+                        repos.news.load_agent_admission_contexts(news_item_ids=[news_item_id], now_ms=now),
+                        fallback_item=processed_item,
+                        fallback_entities=[_object_payload(entity) for entity in entities],
+                        fallback_token_mentions=mention_payloads,
+                        fallback_fact_candidates=candidate_payloads,
+                    )
+                    agent_admission = decide_news_item_agent_admission(
+                        item=_json_dict(context_payload.get("item")) or processed_item,
+                        entities=_list_of_dicts(context_payload.get("entities")),
+                        token_mentions=_list_of_dicts(context_payload.get("token_mentions")) or mention_payloads,
+                        fact_candidates=_list_of_dicts(context_payload.get("fact_candidates")) or candidate_payloads,
+                        context=NewsItemAgentAdmissionContext.from_repository_context(context_payload),
                         now_ms=now,
                     )
-                    if eligibility.eligible:
+                    repos.news.update_item_agent_admission(
+                        news_item_id=news_item_id,
+                        admission=agent_admission,
+                        now_ms=now,
+                        commit=False,
+                    )
+                    if agent_admission.eligible:
+                        representative_news_item_id = agent_admission.representative_news_item_id or news_item_id
                         enqueue_item_brief_work(
                             repos,
-                            news_item_ids=[news_item_id],
+                            news_item_ids=[representative_news_item_id],
                             priority_by_news_item_id={
-                                news_item_id: news_item_agent_brief_priority(
-                                    item=processed_item,
-                                    token_mentions=mention_payloads,
-                                    fact_candidates=candidate_payloads,
+                                representative_news_item_id: news_item_agent_brief_priority(
+                                    item=_json_dict(context_payload.get("item")) or processed_item
                                 )
                             },
                             reason="news_item_processed",
@@ -305,6 +322,30 @@ def _json_list(value: object) -> list[Any]:
         if isinstance(parsed, list):
             return parsed
     return []
+
+
+def _list_of_dicts(value: object) -> list[dict[str, Any]]:
+    return [dict(row) for row in _json_list(value) if isinstance(row, Mapping)]
+
+
+def _agent_admission_context(
+    rows: object,
+    *,
+    fallback_item: Mapping[str, Any],
+    fallback_entities: list[dict[str, Any]],
+    fallback_token_mentions: list[dict[str, Any]],
+    fallback_fact_candidates: list[dict[str, Any]],
+) -> dict[str, Any]:
+    row = next((dict(candidate) for candidate in _json_list(rows) if isinstance(candidate, Mapping)), None)
+    if row is None:
+        row = {}
+    row.setdefault("item", dict(fallback_item))
+    row.setdefault("entities", list(fallback_entities))
+    row.setdefault("token_mentions", list(fallback_token_mentions))
+    row.setdefault("fact_candidates", list(fallback_fact_candidates))
+    row.setdefault("exact_duplicate_candidates", [])
+    row.setdefault("story_candidates", [])
+    return row
 
 
 def _processing_attempts(item: Mapping[str, Any]) -> int:

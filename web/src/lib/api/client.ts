@@ -348,7 +348,11 @@ function normalizeAgentBrief(
     used_tool_call_ids: stringArray(
       payload.used_tool_call_ids ?? briefJson?.used_tool_call_ids,
     ),
-    affected_assets: arrayOrEmpty(payload.affected_assets ?? briefJson?.affected_assets),
+    market_domains: arrayOrEmpty(payload.market_domains ?? briefJson?.market_domains),
+    transmission_paths: arrayOrEmpty(
+      payload.transmission_paths ?? briefJson?.transmission_paths,
+    ),
+    affected_entities: arrayOrEmpty(payload.affected_entities ?? briefJson?.affected_entities),
     impact_zh: stringOrNull(payload.impact_zh ?? briefJson?.impact_zh),
     watch_items_zh: stringOrNull(payload.watch_items_zh ?? briefJson?.watch_items_zh),
     confidence:

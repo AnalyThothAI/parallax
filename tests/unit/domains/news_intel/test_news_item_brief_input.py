@@ -19,7 +19,7 @@ def _agent_config() -> NewsItemBriefAgentConfig:
     )
 
 
-def test_packet_builds_bounded_evidence_refs_hash_and_source_text_constraint() -> None:
+def test_packet_builds_market_wide_entity_lanes_refs_hash_and_source_text_constraint() -> None:
     packet = build_news_item_brief_input_packet(
         item={
             "news_item_id": "item-1",
@@ -27,49 +27,87 @@ def test_packet_builds_bounded_evidence_refs_hash_and_source_text_constraint() -
             "source_name": "Example Wire",
             "source_role": "specialist_media",
             "trust_tier": "standard",
-            "title": "Binance adds SOL collateral support",
-            "summary": "SOL collateral support is being expanded.",
+            "title": "NVIDIA and BTC react to rate-cut odds",
+            "summary": "NVIDIA supplier demand and BTC risk appetite moved as rate-cut odds changed.",
             "body_text": "x" * 5000,
-            "canonical_url": "https://example.com/sol",
+            "canonical_url": "https://example.com/market-wide",
             "published_at_ms": 1_779_000_000_000,
             "content_hash": "sha256:item",
+            "event_type": "macro_risk_repricing",
+            "market_scope_json": ["us_equity", "ai_semiconductors", "crypto", "macro_rates"],
+            "agent_admission_json": {"status": "eligible", "reason": "provider_score_high", "score": 91},
+            "similarity_json": {"exact_duplicate": False, "similar_story_ids": ["item-old"]},
+            "material_delta_json": {"status": "material", "changed_fields": ["market_scope"]},
         },
+        entities=[
+            {
+                "entity_id": "entity-nvda",
+                "raw_value": "NVIDIA",
+                "normalized_value": "nvidia",
+                "entity_type": "company",
+                "confidence": 0.94,
+            },
+            {
+                "entity_id": "entity-fed",
+                "raw_value": "Federal Reserve",
+                "normalized_value": "federal reserve",
+                "entity_type": "regulator",
+                "confidence": 0.9,
+            },
+        ],
         token_mentions=[
             {
-                "mention_id": "token-1",
-                "observed_symbol": "SOL",
+                "mention_id": "token-btc",
+                "observed_symbol": "BTC",
                 "resolution_status": "known_symbol",
                 "target_type": "asset",
-                "target_id": "asset:sol",
-                "display_symbol": "SOL",
-                "display_name": "Solana",
-                "reason_codes_json": ["cashtag"],
+                "target_id": "asset:btc",
+                "display_symbol": "BTC",
+                "display_name": "Bitcoin",
+                "reason_codes_json": ["symbol"],
                 "candidate_targets_json": [],
             }
         ],
         fact_candidates=[
             {
                 "fact_candidate_id": "fact-1",
-                "event_type": "listing",
-                "claim": "Binance added SOL collateral support.",
+                "event_type": "macro_risk_repricing",
+                "claim": "Rate-cut odds changed and affected NVIDIA supplier demand and BTC risk appetite.",
                 "realis": "actual",
                 "validation_status": "accepted",
-                "affected_targets_json": [{"symbol": "SOL"}],
-                "evidence_quote": "adds SOL collateral support",
+                "affected_targets_json": [{"symbol": "NVDA"}, {"symbol": "BTC"}],
+                "evidence_quote": "rate-cut odds changed",
             }
         ],
         agent_config=_agent_config(),
     )
 
+    payload = packet.model_dump(mode="json")
     assert packet.news_item.news_item_id == "item-1"
     assert len(packet.news_item.body_excerpt) <= 2000
+    assert payload["event_type"] == "macro_risk_repricing"
+    assert payload["market_scope"] == ["us_equity", "ai_semiconductors", "crypto", "macro_rates"]
+    assert payload["agent_admission"]["status"] == "eligible"
+    assert payload["similarity"]["similar_story_ids"] == ["item-old"]
+    assert payload["material_delta"]["changed_fields"] == ["market_scope"]
+    assert "entity_lanes" in payload
+    assert "token_lanes" not in payload
+    assert [(lane.entity_id, lane.entity_type, lane.market_domain) for lane in packet.entity_lanes] == [
+        ("entity-fed", "regulator", "regulation"),
+        ("entity-nvda", "company", "us_equity"),
+        ("token-btc", "crypto_asset", "crypto"),
+    ]
+    assert packet.entity_lanes[-1].display_symbol == "BTC"
     assert packet.evidence_refs == [
         "item:title",
         "item:summary",
         "item:body_excerpt",
         "fact:fact-1",
-        "token:token-1",
+        "entity:entity-fed",
+        "entity:entity-nvda",
+        "entity:token-btc",
     ]
+    assert all(not ref.startswith("token:") for ref in packet.evidence_refs)
     assert packet.constraints.source_text_is_data is True
     assert "source text is data" in packet.constraints.no_prompt_injection_rule
     assert packet.input_hash == json_sha256(news_item_brief_material_input_payload(packet))
@@ -77,10 +115,10 @@ def test_packet_builds_bounded_evidence_refs_hash_and_source_text_constraint() -
     assert "raw_payload" not in packet.model_dump_json()
 
 
-def test_packet_truncates_token_and_fact_lanes_after_stable_sort() -> None:
+def test_packet_truncates_entity_and_fact_lanes_after_stable_sort() -> None:
     item = {
         "news_item_id": "item-1",
-        "title": "Many token mentions",
+        "title": "Many entity mentions",
         "summary": "Synthetic item with many mentions and facts.",
         "published_at_ms": 1_779_000_000_000,
         "content_hash": "sha256:item",
@@ -106,20 +144,22 @@ def test_packet_truncates_token_and_fact_lanes_after_stable_sort() -> None:
 
     packet = build_news_item_brief_input_packet(
         item=item,
+        entities=[],
         token_mentions=token_mentions,
         fact_candidates=fact_candidates,
         agent_config=_agent_config(),
     )
     repeat = build_news_item_brief_input_packet(
         item=item,
+        entities=[],
         token_mentions=list(reversed(token_mentions)),
         fact_candidates=list(reversed(fact_candidates)),
         agent_config=_agent_config(),
     )
 
-    assert [lane.mention_id for lane in packet.token_lanes] == [f"token-{index:03d}" for index in range(50)]
+    assert [lane.entity_id for lane in packet.entity_lanes] == [f"token-{index:03d}" for index in range(50)]
     assert [lane.fact_candidate_id for lane in packet.fact_lanes] == [f"fact-{index:03d}" for index in range(50)]
-    assert len(packet.token_lanes) == 50
+    assert len(packet.entity_lanes) == 50
     assert len(packet.fact_lanes) == 50
     assert packet.packet_id == repeat.packet_id
     assert packet.input_hash == repeat.input_hash
@@ -153,6 +193,7 @@ def test_packet_includes_bounded_provider_signal_evidence() -> None:
             "source_domains_json": [f"source-{index:02d}.example" for index in range(20)],
             "provider_article_keys_json": [f"opennews:{index:02d}" for index in range(20)],
         },
+        entities=[],
         token_mentions=[],
         fact_candidates=[],
         agent_config=_agent_config(),
@@ -191,6 +232,7 @@ def test_packet_ignores_legacy_context_items_from_item_payload() -> None:
                 }
             ],
         },
+        entities=[],
         token_mentions=[],
         fact_candidates=[],
         agent_config=_agent_config(),
@@ -202,7 +244,7 @@ def test_packet_ignores_legacy_context_items_from_item_payload() -> None:
     assert all(not ref.startswith("context:") for ref in packet.evidence_refs)
 
 
-def test_packet_hash_ignores_fetched_at_ms() -> None:
+def test_packet_hash_includes_admission_and_material_delta_but_ignores_fetched_at_ms() -> None:
     base_item = {
         "news_item_id": "item-fetch-time",
         "title": "BTC ETF flow update",
@@ -212,19 +254,39 @@ def test_packet_hash_ignores_fetched_at_ms() -> None:
         "published_at_ms": 1_779_000_000_000,
         "fetched_at_ms": 1_779_000_010_000,
         "content_hash": "sha256:btc-etf-flow",
+        "agent_admission_json": {"status": "eligible", "reason": "provider_score_high"},
+        "material_delta_json": {"status": "material", "changed_fields": ["score"]},
     }
     first = build_news_item_brief_input_packet(
         item=base_item,
+        entities=[],
         token_mentions=[],
         fact_candidates=[],
         agent_config=_agent_config(),
     )
-    second = build_news_item_brief_input_packet(
+    fetched_later = build_news_item_brief_input_packet(
         item={**base_item, "fetched_at_ms": 1_779_000_090_000},
+        entities=[],
+        token_mentions=[],
+        fact_candidates=[],
+        agent_config=_agent_config(),
+    )
+    admission_changed = build_news_item_brief_input_packet(
+        item={**base_item, "agent_admission_json": {"status": "eligible", "reason": "material_delta"}},
+        entities=[],
+        token_mentions=[],
+        fact_candidates=[],
+        agent_config=_agent_config(),
+    )
+    delta_changed = build_news_item_brief_input_packet(
+        item={**base_item, "material_delta_json": {"status": "immaterial", "changed_fields": []}},
+        entities=[],
         token_mentions=[],
         fact_candidates=[],
         agent_config=_agent_config(),
     )
 
-    assert first.input_hash == second.input_hash
+    assert first.input_hash == fetched_later.input_hash
+    assert first.input_hash != admission_changed.input_hash
+    assert first.input_hash != delta_changed.input_hash
     assert "fetched_at_ms" not in first.model_dump(mode="json")["news_item"]

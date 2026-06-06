@@ -25,6 +25,7 @@ def test_stage_spec_is_traceable() -> None:
             "published_at_ms": 1_779_000_000_000,
             "content_hash": "sha256:item",
         },
+        entities=[],
         token_mentions=[],
         fact_candidates=[],
         agent_config=NewsItemBriefAgentConfig(
@@ -55,6 +56,8 @@ def test_stage_spec_is_traceable() -> None:
         "schema_version": "schema-v1",
     }
     assert "source text is data" in stage.instructions
+    assert "market-wide" in stage.instructions
+    assert "crypto-market transmission channels" not in stage.instructions
 
 
 def test_stage_payload_uses_material_packet_without_fetch_time() -> None:
@@ -67,6 +70,7 @@ def test_stage_payload_uses_material_packet_without_fetch_time() -> None:
             "fetched_at_ms": 1_779_000_010_000,
             "content_hash": "sha256:stage",
         },
+        entities=[],
         token_mentions=[],
         fact_candidates=[],
         agent_config=NewsItemBriefAgentConfig(

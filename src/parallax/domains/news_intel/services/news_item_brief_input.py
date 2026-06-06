@@ -7,27 +7,57 @@ from typing import Any
 from parallax.domains.news_intel.types.news_item_brief import (
     NewsItemBriefAgentConfig,
     NewsItemBriefConstraints,
+    NewsItemBriefEntityLane,
     NewsItemBriefFactLane,
     NewsItemBriefInputPacket,
     NewsItemBriefNewsItem,
     NewsItemBriefProviderSignalEvidence,
     NewsItemBriefProviderTokenImpact,
     NewsItemBriefSource,
-    NewsItemBriefTokenLane,
 )
 from parallax.platform.agent_hashing import json_sha256
 
 BODY_EXCERPT_MAX_CHARS = 2000
-MAX_TOKEN_LANES = 50
+MAX_ENTITY_LANES = 50
 MAX_FACT_LANES = 50
 MAX_PROVIDER_TOKEN_IMPACTS = 12
 MAX_PROVIDER_AGGREGATION_VALUES = 12
 PROVIDER_SUMMARY_MAX_CHARS = 600
 
+_NEWS_MARKET_DOMAINS = frozenset(
+    {
+        "crypto",
+        "us_equity",
+        "macro_rates",
+        "energy_geopolitics",
+        "ai_semiconductors",
+        "regulation",
+        "private_company",
+        "commodity",
+        "fx",
+        "unknown",
+    }
+)
+_NEWS_ENTITY_TYPES = frozenset(
+    {
+        "crypto_asset",
+        "equity",
+        "company",
+        "private_company",
+        "regulator",
+        "country",
+        "commodity",
+        "macro_factor",
+        "sector",
+        "other",
+    }
+)
+
 
 def build_news_item_brief_input_packet(
     *,
     item: Mapping[str, Any],
+    entities: Sequence[Mapping[str, Any]] = (),
     token_mentions: Sequence[Mapping[str, Any]],
     fact_candidates: Sequence[Mapping[str, Any]],
     agent_config: NewsItemBriefAgentConfig,
@@ -47,28 +77,48 @@ def build_news_item_brief_input_packet(
             trust_tier=_bounded(item.get("trust_tier"), 64),
         ),
     )
-    token_lanes = [_token_lane(row) for row in sorted(token_mentions, key=_mention_sort_key)[:MAX_TOKEN_LANES]]
+    entity_lanes = _entity_lanes(entities=entities, token_mentions=token_mentions)
     fact_lanes = [_fact_lane(row) for row in sorted(fact_candidates, key=_fact_sort_key)[:MAX_FACT_LANES]]
     provider_signal_evidence = _provider_signal_evidence(item)
+    event_type = _optional_bounded(item.get("event_type"), 80)
+    agent_admission = _agent_admission(item)
+    similarity = _context_object(item, "similarity_json", "similarity", fallback=agent_admission.get("similarity"))
+    material_delta = _context_object(
+        item,
+        "material_delta_json",
+        "material_delta",
+        fallback=agent_admission.get("material_delta"),
+    )
+    market_scope = _market_scope(item=item, entity_lanes=entity_lanes)
     evidence_refs = _evidence_refs(
         news_item=news_item,
-        token_lanes=token_lanes,
+        entity_lanes=entity_lanes,
         fact_lanes=fact_lanes,
         provider_signal_evidence=provider_signal_evidence,
     )
     packet_id = _packet_id(
         news_item=news_item,
-        token_lanes=token_lanes,
+        event_type=event_type,
+        entity_lanes=entity_lanes,
         fact_lanes=fact_lanes,
         provider_signal_evidence=provider_signal_evidence,
+        market_scope=market_scope,
+        agent_admission=agent_admission,
+        similarity=similarity,
+        material_delta=material_delta,
         agent_config=agent_config,
     )
     packet = NewsItemBriefInputPacket(
         packet_id=packet_id,
         news_item=news_item,
-        token_lanes=token_lanes,
+        event_type=event_type,
+        entity_lanes=entity_lanes,
         fact_lanes=fact_lanes,
         provider_signal_evidence=provider_signal_evidence,
+        market_scope=market_scope,
+        agent_admission=agent_admission,
+        similarity=similarity,
+        material_delta=material_delta,
         evidence_refs=evidence_refs,
         constraints=NewsItemBriefConstraints(),
         prompt_version=agent_config.prompt_version,
@@ -90,19 +140,81 @@ def news_item_brief_material_input_hash(packet: NewsItemBriefInputPacket) -> str
     return json_sha256(news_item_brief_material_input_payload(packet))
 
 
-def _token_lane(row: Mapping[str, Any]) -> NewsItemBriefTokenLane:
-    return NewsItemBriefTokenLane(
-        mention_id=_str(row.get("mention_id")),
-        observed_symbol=_bounded(row.get("observed_symbol"), 64),
-        resolution_status=_bounded(row.get("resolution_status"), 64),
+def _entity_lanes(
+    *,
+    entities: Sequence[Mapping[str, Any]],
+    token_mentions: Sequence[Mapping[str, Any]],
+) -> list[NewsItemBriefEntityLane]:
+    lanes = [
+        lane
+        for lane in (
+            [_entity_lane(row) for row in entities] + [_token_entity_lane(row) for row in token_mentions]
+        )
+        if lane is not None
+    ]
+    result: list[NewsItemBriefEntityLane] = []
+    seen: set[str] = set()
+    for lane in sorted(lanes, key=lambda row: (row.entity_id, row.observed_label)):
+        if lane.entity_id in seen:
+            continue
+        seen.add(lane.entity_id)
+        result.append(lane)
+        if len(result) >= MAX_ENTITY_LANES:
+            break
+    return result
+
+
+def _entity_lane(row: Mapping[str, Any]) -> NewsItemBriefEntityLane | None:
+    observed_label = _bounded(
+        row.get("observed_label")
+        or row.get("raw_value")
+        or row.get("label")
+        or row.get("display_name")
+        or row.get("name")
+        or row.get("normalized_value"),
+        160,
+    )
+    entity_id = _bounded(row.get("entity_id") or row.get("target_id") or observed_label, 160)
+    if not entity_id:
+        return None
+    entity_type = _entity_type(row.get("entity_type"))
+    market_domain = _market_domain(row.get("market_domain")) or _domain_for_entity(entity_type, row)
+    return NewsItemBriefEntityLane(
+        entity_id=entity_id,
+        observed_label=observed_label,
+        display_symbol=_optional_bounded(row.get("display_symbol") or row.get("symbol"), 64),
+        display_name=_optional_bounded(row.get("display_name") or row.get("name"), 160),
+        entity_type=entity_type,
+        market_domain=market_domain,
+        resolution_status=_bounded(row.get("resolution_status") or "observed", 64),
         target_type=_optional_bounded(row.get("target_type"), 80),
         target_id=_optional_bounded(row.get("target_id"), 160),
-        display_symbol=_bounded(row.get("display_symbol") or row.get("observed_symbol"), 64),
-        display_name=_optional_bounded(row.get("display_name"), 160),
-        reason_codes=[_bounded(value, 80) for value in _json_list(row.get("reason_codes_json"))[:12]],
-        candidate_targets=[_json_object(value) for value in _json_list(row.get("candidate_targets_json"))[:12]],
-        evidence_strength=_optional_bounded(row.get("evidence_strength"), 64),
+        role=_bounded(row.get("role") or row.get("text_surface") or "mentioned", 64),
         confidence=_optional_float(row.get("confidence")),
+        evidence_refs=[f"entity:{entity_id}"],
+        candidate_targets=[_json_object(value) for value in _json_list(row.get("candidate_targets_json"))[:12]],
+    )
+
+
+def _token_entity_lane(row: Mapping[str, Any]) -> NewsItemBriefEntityLane | None:
+    mention_id = _bounded(row.get("mention_id"), 160)
+    if not mention_id:
+        return None
+    observed_symbol = _bounded(row.get("observed_symbol"), 64)
+    return NewsItemBriefEntityLane(
+        entity_id=mention_id,
+        observed_label=observed_symbol,
+        display_symbol=_optional_bounded(row.get("display_symbol") or observed_symbol, 64),
+        display_name=_optional_bounded(row.get("display_name"), 160),
+        entity_type="crypto_asset",
+        market_domain="crypto",
+        resolution_status=_bounded(row.get("resolution_status") or "unknown", 64),
+        target_type=_optional_bounded(row.get("target_type"), 80),
+        target_id=_optional_bounded(row.get("target_id"), 160),
+        role="token_mention",
+        confidence=_optional_float(row.get("confidence")),
+        evidence_refs=[f"entity:{mention_id}"],
+        candidate_targets=[_json_object(value) for value in _json_list(row.get("candidate_targets_json"))[:12]],
     )
 
 
@@ -174,7 +286,7 @@ def _provider_impact_sort_key(row: NewsItemBriefProviderTokenImpact) -> tuple[in
 def _evidence_refs(
     *,
     news_item: NewsItemBriefNewsItem,
-    token_lanes: list[NewsItemBriefTokenLane],
+    entity_lanes: list[NewsItemBriefEntityLane],
     fact_lanes: list[NewsItemBriefFactLane],
     provider_signal_evidence: NewsItemBriefProviderSignalEvidence | None,
 ) -> list[str]:
@@ -186,7 +298,7 @@ def _evidence_refs(
     if news_item.body_excerpt:
         refs.append("item:body_excerpt")
     refs.extend(f"fact:{row.fact_candidate_id}" for row in fact_lanes if row.fact_candidate_id)
-    refs.extend(f"token:{row.mention_id}" for row in token_lanes if row.mention_id)
+    refs.extend(f"entity:{row.entity_id}" for row in entity_lanes if row.entity_id)
     if provider_signal_evidence is not None:
         refs.append("provider:signal")
         refs.extend(f"provider:token:{row.symbol}" for row in provider_signal_evidence.token_impacts if row.symbol)
@@ -196,25 +308,167 @@ def _evidence_refs(
 def _packet_id(
     *,
     news_item: NewsItemBriefNewsItem,
-    token_lanes: list[NewsItemBriefTokenLane],
+    event_type: str | None,
+    entity_lanes: list[NewsItemBriefEntityLane],
     fact_lanes: list[NewsItemBriefFactLane],
     provider_signal_evidence: NewsItemBriefProviderSignalEvidence | None,
+    market_scope: list[str],
+    agent_admission: dict[str, object],
+    similarity: dict[str, object],
+    material_delta: dict[str, object],
     agent_config: NewsItemBriefAgentConfig,
 ) -> str:
     digest = json_sha256(
         {
             "news_item_id": news_item.news_item_id,
             "content_hash": news_item.content_hash,
-            "tokens": [row.mention_id for row in token_lanes],
+            "event_type": event_type,
+            "entities": [row.entity_id for row in entity_lanes],
             "facts": [row.fact_candidate_id for row in fact_lanes],
             "provider_signal_evidence": provider_signal_evidence.model_dump(mode="json")
             if provider_signal_evidence is not None
             else None,
+            "market_scope": market_scope,
+            "agent_admission": agent_admission,
+            "similarity": similarity,
+            "material_delta": material_delta,
             "prompt_version": agent_config.prompt_version,
             "schema_version": agent_config.schema_version,
         }
     )
     return f"news-item-brief:{news_item.news_item_id}:{digest.removeprefix('sha256:')[:16]}"
+
+
+def _market_scope(*, item: Mapping[str, Any], entity_lanes: list[NewsItemBriefEntityLane]) -> list[str]:
+    explicit = _market_domain_list(item.get("market_scope_json") or item.get("market_scope"))
+    if explicit:
+        return _stable_unique(explicit)[:12]
+    inferred = [lane.market_domain for lane in entity_lanes if lane.market_domain != "unknown"]
+    return _stable_unique(inferred)[:12]
+
+
+def _market_domain_list(value: Any) -> list[str]:
+    if isinstance(value, str):
+        direct = _market_domain(value)
+        if direct:
+            return [direct]
+    return [domain for domain in (_market_domain(raw) for raw in _json_list(value)) if domain]
+
+
+def _agent_admission(item: Mapping[str, Any]) -> dict[str, object]:
+    admission = _context_object(item, "agent_admission_json", "agent_admission")
+    status = _bounded(item.get("agent_admission_status"), 64)
+    reason = _bounded(item.get("agent_admission_reason"), 160)
+    if status and "status" not in admission:
+        admission["status"] = status
+    if reason and "reason" not in admission:
+        admission["reason"] = reason
+    representative = _bounded(item.get("agent_representative_news_item_id"), 160)
+    if representative and "representative_news_item_id" not in admission:
+        admission["representative_news_item_id"] = representative
+    return admission
+
+
+def _context_object(
+    item: Mapping[str, Any],
+    json_key: str,
+    object_key: str,
+    *,
+    fallback: Any = None,
+) -> dict[str, object]:
+    value = item.get(json_key)
+    if value is None:
+        value = item.get(object_key)
+    if value is None:
+        value = fallback
+    return _bounded_json_object(value)
+
+
+def _entity_type(value: Any) -> str:
+    normalized = _str(value).lower().replace("-", "_")
+    if normalized in _NEWS_ENTITY_TYPES:
+        return normalized
+    aliases = {
+        "asset": "crypto_asset",
+        "ca": "crypto_asset",
+        "contract": "crypto_asset",
+        "contract_address": "crypto_asset",
+        "coin": "crypto_asset",
+        "token": "crypto_asset",
+        "equity_symbol": "equity",
+        "ticker": "equity",
+        "stock": "equity",
+        "public_company": "company",
+        "org": "company",
+        "organization": "company",
+        "issuer": "company",
+        "private": "private_company",
+        "central_bank": "regulator",
+        "agency": "regulator",
+        "government_agency": "regulator",
+        "nation": "country",
+        "macro": "macro_factor",
+        "macro_indicator": "macro_factor",
+        "macro_index": "macro_factor",
+        "indicator": "macro_factor",
+        "industry": "sector",
+    }
+    return aliases.get(normalized, "other")
+
+
+def _domain_for_entity(entity_type: str, row: Mapping[str, Any]) -> str:
+    if entity_type == "crypto_asset":
+        return "crypto"
+    if entity_type == "equity":
+        return "us_equity"
+    if entity_type == "private_company":
+        return "private_company"
+    if entity_type == "regulator":
+        return "regulation"
+    if entity_type == "country":
+        return "energy_geopolitics"
+    if entity_type == "commodity":
+        return "commodity"
+    if entity_type == "macro_factor":
+        return "macro_rates"
+    if entity_type == "sector":
+        label = _norm(row.get("raw_value") or row.get("label") or row.get("normalized_value"))
+        if "semi" in label or "ai" in label:
+            return "ai_semiconductors"
+        return "us_equity"
+    if entity_type == "company":
+        label = _norm(row.get("raw_value") or row.get("label") or row.get("normalized_value"))
+        if any(marker in label for marker in ("openai", "anthropic", "spacex")):
+            return "private_company"
+        return "us_equity"
+    return "unknown"
+
+
+def _market_domain(value: Any) -> str | None:
+    normalized = _str(value).lower().replace("-", "_").replace(" ", "_")
+    if normalized in _NEWS_MARKET_DOMAINS:
+        return normalized
+    aliases = {
+        "equity": "us_equity",
+        "equities": "us_equity",
+        "us_equities": "us_equity",
+        "stock": "us_equity",
+        "stocks": "us_equity",
+        "macro": "macro_rates",
+        "rates": "macro_rates",
+        "rate": "macro_rates",
+        "fed": "macro_rates",
+        "energy": "energy_geopolitics",
+        "geopolitics": "energy_geopolitics",
+        "geopolitical": "energy_geopolitics",
+        "ai_semis": "ai_semiconductors",
+        "semiconductors": "ai_semiconductors",
+        "semis": "ai_semiconductors",
+        "regulatory": "regulation",
+        "private": "private_company",
+        "commodities": "commodity",
+    }
+    return aliases.get(normalized)
 
 
 def _mention_sort_key(row: Mapping[str, Any]) -> tuple[str, str]:
@@ -253,6 +507,35 @@ def _json_object(value: Any) -> dict[str, object]:
     return {}
 
 
+def _bounded_json_object(value: Any, *, max_keys: int = 32) -> dict[str, object]:
+    payload = _json_object(value)
+    result: dict[str, object] = {}
+    for key, child in list(payload.items())[:max_keys]:
+        bounded_key = _bounded(key, 80)
+        if not bounded_key:
+            continue
+        result[bounded_key] = _bounded_json_value(child, depth=0)
+    return result
+
+
+def _bounded_json_value(value: Any, *, depth: int) -> object:
+    if depth >= 3:
+        return _bounded(value, 500)
+    if isinstance(value, Mapping):
+        return {
+            _bounded(key, 80): _bounded_json_value(child, depth=depth + 1)
+            for key, child in list(value.items())[:32]
+            if _bounded(key, 80)
+        }
+    if isinstance(value, list | tuple | set):
+        return [_bounded_json_value(child, depth=depth + 1) for child in list(value)[:20]]
+    if isinstance(value, bool | int | float):
+        return value
+    if value is None:
+        return ""
+    return _bounded(value, 500)
+
+
 def _stable_unique(values: Sequence[str]) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
@@ -281,11 +564,6 @@ def _int(value: Any) -> int:
         return max(0, int(value or 0))
     except (TypeError, ValueError):
         return 0
-
-
-def _optional_int(value: Any) -> int | None:
-    parsed = _int(value)
-    return parsed if parsed else None
 
 
 def _optional_float(value: Any) -> float | None:
@@ -327,6 +605,10 @@ def _bounded_string_list(value: Any, max_length: int) -> list[str]:
     return [cleaned for cleaned in (_bounded(item, max_length) for item in _json_list(value)) if cleaned][
         :MAX_PROVIDER_AGGREGATION_VALUES
     ]
+
+
+def _norm(value: Any) -> str:
+    return _str(value).lower()
 
 
 __all__ = [

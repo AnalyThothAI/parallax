@@ -41,6 +41,10 @@ def test_worker_skips_claimed_target_older_than_brief_window() -> None:
     asyncio.run(_test_worker_skips_claimed_target_older_than_brief_window())
 
 
+def test_worker_policy_skip_exact_duplicate_does_not_call_model() -> None:
+    asyncio.run(_test_worker_policy_skip_exact_duplicate_does_not_call_model())
+
+
 async def _test_worker_writes_ready_brief_and_emits_wake() -> None:
     db = FakeDB([_candidate()])
     provider = FakeBriefProvider(payload=_ready_payload())
@@ -142,8 +146,7 @@ async def _test_worker_reprocesses_failed_current_even_when_input_hash_matches()
         "computed_at_ms": NOW_MS - 60_000,
         "brief_json": {
             "status": "failed",
-            "terminal": True,
-            "terminal_reason": "domain_validation_failed",
+            "data_gaps": [{"description_zh": "终止失败已记录。", "severity": "high"}],
         },
     }
     db = FakeDB([candidate])
@@ -193,6 +196,37 @@ async def _test_worker_skips_claimed_target_older_than_brief_window() -> None:
     assert db.news.runs == []
     assert db.news.briefs == []
     assert len(db.dirty.done) == 1
+    assert result.processed == 0
+    assert result.skipped == 1
+    assert result.notes["policy_skipped"] == 1
+
+
+async def _test_worker_policy_skip_exact_duplicate_does_not_call_model() -> None:
+    candidate = _candidate(provider_score=95)
+    candidate["item"]["provider_article_keys_json"] = ["opennews:123"]
+    candidate["exact_duplicate_candidates"] = [
+        {
+            "news_item_id": "news-rep",
+            "provider_article_keys": ["opennews:123"],
+            "published_at_ms": NOW_MS - 2_000,
+            "lifecycle_status": "processed",
+            "agent_admission_status": "eligible",
+        }
+    ]
+    db = FakeDB([candidate])
+    provider = FakeBriefProvider(payload=_ready_payload())
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.reserve_calls == [NEWS_ITEM_BRIEF_LANE]
+    assert provider.request_audit_calls == []
+    assert provider.execution_calls == 0
+    assert db.news.runs == []
+    assert db.news.briefs == []
+    assert db.news.agent_admission_updates[0]["admission"].status == "exact_duplicate"
+    assert db.dirty.done[0]["target_id"] == "news-item-1"
+    assert db.dirty.enqueued[0]["rows"][0]["projection_name"] == "page"
     assert result.processed == 0
     assert result.skipped == 1
     assert result.notes["policy_skipped"] == 1
@@ -434,8 +468,8 @@ async def _test_worker_terminalizes_after_max_attempts_without_permanent_dirty_f
     assert db.dirty.terminalized[0]["terminal_attempt_count"] == 3
     assert db.dirty.done == []
     assert db.news.briefs[0]["status"] == "failed"
-    assert db.news.briefs[0]["brief_json"]["terminal"] is True
-    assert db.news.briefs[0]["brief_json"]["terminal_reason"] == "RuntimeError"
+    assert "terminal" not in db.news.briefs[0]["brief_json"]
+    assert db.news.briefs[0]["brief_json"]["data_gaps"][0]["severity"] == "high"
     assert result.failed == 1
 
 
@@ -556,18 +590,33 @@ def _ready_payload() -> dict[str, Any]:
         "status": "ready",
         "direction": "bullish",
         "decision_class": "driver",
+        "event_type": "etf_filing",
         "summary_zh": "SOL ETF filing boosts attention.",
         "market_read_zh": "SOL ETF 申请强化监管叙事，但审批时间仍不确定。",
+        "market_domains": ["crypto"],
+        "transmission_paths": [
+            {
+                "market_domain": "crypto",
+                "channel": "regulatory_attention",
+                "direction": "bullish",
+                "strength": "moderate",
+                "explanation_zh": "ETF 申请提升监管叙事关注度。",
+                "evidence_refs": ["item:summary"],
+            }
+        ],
         "bull_view": {
             "strength": "moderate",
             "thesis_zh": "ETF 申请可能带来持续关注。",
             "evidence_refs": ["item:summary"],
         },
         "bear_view": {"strength": "absent", "thesis_zh": "", "evidence_refs": []},
-        "affected_assets": [
+        "affected_entities": [
             {
+                "label": "SOL",
                 "symbol": "SOL",
                 "name": "Solana",
+                "entity_type": "crypto_asset",
+                "market_domain": "crypto",
                 "resolution_status": "unknown",
                 "target_type": None,
                 "target_id": None,
@@ -643,10 +692,17 @@ class FakeBriefProvider:
         }
 
     def packet_for_candidate(self, candidate: dict[str, Any]) -> Any:
-        from parallax.domains.news_intel.runtime.news_item_brief_worker import _packet_from_candidate
+        from parallax.domains.news_intel.runtime.news_item_brief_worker import (
+            _admission_from_candidate,
+            _candidate_with_agent_admission,
+            _packet_from_candidate,
+        )
 
         return _packet_from_candidate(
-            candidate,
+            _candidate_with_agent_admission(
+                candidate,
+                _admission_from_candidate(candidate, now_ms=NOW_MS),
+            ),
             agent_config=self.agent_config(),
         )
 
@@ -746,11 +802,41 @@ class FakeNewsRepository:
         self.runs: list[dict[str, Any]] = []
         self.briefs: list[dict[str, Any]] = []
         self.loaded_target_ids: list[list[str]] = []
+        self.loaded_admission_target_ids: list[list[str]] = []
+        self.agent_admission_updates: list[dict[str, Any]] = []
 
     def load_items_for_brief_targets(self, *, news_item_ids: list[str]) -> list[dict[str, Any]]:
         self.loaded_target_ids.append(list(news_item_ids))
         by_id = {str(candidate["item"]["news_item_id"]): candidate for candidate in self.candidates}
         return [by_id[item_id] for item_id in news_item_ids if item_id in by_id]
+
+    def load_agent_admission_contexts(self, *, news_item_ids: list[str], now_ms: int) -> list[dict[str, Any]]:
+        del now_ms
+        self.loaded_admission_target_ids.append(list(news_item_ids))
+        by_id = {str(candidate["item"]["news_item_id"]): candidate for candidate in self.candidates}
+        contexts: list[dict[str, Any]] = []
+        for item_id in news_item_ids:
+            candidate = by_id.get(item_id)
+            if candidate is None:
+                continue
+            contexts.append(
+                {
+                    "item": dict(candidate["item"]),
+                    "entities": [dict(row) for row in candidate.get("entities", [])],
+                    "token_mentions": [dict(row) for row in candidate.get("token_mentions", [])],
+                    "fact_candidates": [dict(row) for row in candidate.get("fact_candidates", [])],
+                    "current_brief": candidate.get("current_brief"),
+                    "exact_duplicate_candidates": [
+                        dict(row) for row in candidate.get("exact_duplicate_candidates", [])
+                    ],
+                    "story_candidates": [dict(row) for row in candidate.get("story_candidates", [])],
+                }
+            )
+        return contexts
+
+    def update_item_agent_admission(self, **payload: Any) -> int:
+        self.agent_admission_updates.append(dict(payload))
+        return 1
 
     def insert_news_item_agent_run(self, **payload: Any) -> dict[str, Any]:
         self.runs.append(dict(payload))

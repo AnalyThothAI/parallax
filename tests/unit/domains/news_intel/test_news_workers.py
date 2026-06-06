@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from contextlib import contextmanager
+from dataclasses import asdict, is_dataclass
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -487,7 +489,7 @@ def test_news_item_process_worker_passes_authority_scope_to_fact_candidates() ->
     assert "event_type_out_of_authority_scope" in candidate.rejection_reasons
 
 
-def test_news_item_process_provider_only_non_crypto_row_enqueues_page_not_brief() -> None:
+def test_news_item_process_provider_only_non_crypto_row_enqueues_page_and_brief() -> None:
     item = {
         "news_item_id": "news-spacex",
         "source_id": "opennews-realtime",
@@ -528,9 +530,23 @@ def test_news_item_process_provider_only_non_crypto_row_enqueues_page_not_brief(
     assert db.repo.entities["news-spacex"] == []
     assert db.repo.mentions["news-spacex"] == []
     assert db.repo.analysis_story_updates[0]["admission"].status in {"page_only", "research_context"}
+    assert db.repo.agent_admission_updates[0]["admission"].status == "eligible"
     assert db.dirty.enqueued == [
         {
             "rows": [{"projection_name": "page", "target_kind": "news_item", "target_id": "news-spacex"}],
+            "reason": "news_item_processed",
+            "now_ms": NOW_MS,
+            "commit": False,
+        },
+        {
+            "rows": [
+                {
+                    "projection_name": "brief_input",
+                    "target_kind": "news_item",
+                    "target_id": "news-spacex",
+                    "priority": 8,
+                }
+            ],
             "reason": "news_item_processed",
             "now_ms": NOW_MS,
             "commit": False,
@@ -562,9 +578,9 @@ def test_news_item_process_admitted_crypto_row_enqueues_page_and_brief_with_stor
             "provider": "opennews",
             "status": "ready",
             "direction": "bullish",
-            "score": 72,
+            "score": 88,
         },
-        "provider_token_impacts_json": [{"symbol": "ZEC", "score": 72, "signal": "long", "grade": "B"}],
+        "provider_token_impacts_json": [{"symbol": "ZEC", "score": 88, "signal": "long", "grade": "A"}],
     }
     db = FakeItemProcessDB(FakeItemProcessRepository([item]))
     worker = NewsItemProcessWorker(
@@ -582,6 +598,7 @@ def test_news_item_process_admitted_crypto_row_enqueues_page_and_brief_with_stor
     assert db.repo.entities["news-zec"][0].normalized_value == "ZEC"
     assert db.repo.mentions["news-zec"][0].observed_symbol == "ZEC"
     assert db.repo.analysis_story_updates[0]["admission"].status == "admitted"
+    assert db.repo.agent_admission_updates[0]["admission"].status == "eligible"
     assert db.repo.analysis_story_updates[0]["story_identity"].story_key == "news-story:opennews-article:2367422"
     assert db.dirty.enqueued == [
         {
@@ -596,7 +613,7 @@ def test_news_item_process_admitted_crypto_row_enqueues_page_and_brief_with_stor
                     "projection_name": "brief_input",
                     "target_kind": "news_item",
                     "target_id": "news-zec",
-                    "priority": 128,
+                    "priority": 12,
                 }
             ],
             "reason": "news_item_processed",
@@ -1196,9 +1213,9 @@ def _crypto_process_item() -> dict[str, object]:
             "provider": "opennews",
             "status": "ready",
             "direction": "bullish",
-            "score": 72,
+            "score": 88,
         },
-        "provider_token_impacts_json": [{"symbol": "ZEC", "score": 72, "signal": "long", "grade": "B"}],
+        "provider_token_impacts_json": [{"symbol": "ZEC", "score": 88, "signal": "long", "grade": "A"}],
     }
 
 
@@ -1545,6 +1562,7 @@ class FakeItemProcessRepository:
         self.fact_candidates: dict[str, list[object]] = {}
         self.content_classifications: list[dict[str, object]] = []
         self.analysis_story_updates: list[dict[str, object]] = []
+        self.agent_admission_updates: list[dict[str, object]] = []
         self.processed_items: list[dict[str, int | str]] = []
         self.retryable_items: list[dict[str, int | str]] = []
         self.terminal_failed_items: list[dict[str, int | str]] = []
@@ -1648,6 +1666,67 @@ class FakeItemProcessRepository:
         )
         return self.processed_rowcount
 
+    def load_agent_admission_contexts(self, *, news_item_ids: list[str], now_ms: int) -> list[dict[str, object]]:
+        contexts: list[dict[str, object]] = []
+        for news_item_id in news_item_ids:
+            item = next((dict(row) for row in self.items if row.get("news_item_id") == news_item_id), None)
+            if item is None:
+                continue
+            classification = next(
+                (
+                    row
+                    for row in reversed(self.content_classifications)
+                    if row.get("news_item_id") == news_item_id
+                ),
+                {},
+            )
+            story_update = next(
+                (
+                    row
+                    for row in reversed(self.analysis_story_updates)
+                    if row.get("news_item_id") == news_item_id
+                ),
+                {},
+            )
+            admission = story_update.get("admission")
+            story_identity = story_update.get("story_identity")
+            item.update(
+                {
+                    "lifecycle_status": "processed",
+                    "content_class": classification.get("content_class") or item.get("content_class") or "",
+                    "content_classification_json": classification.get("classification_payload") or {},
+                    "analysis_admission_status": getattr(admission, "status", ""),
+                    "analysis_admission_reason": getattr(admission, "reason", ""),
+                    "analysis_admission_json": getattr(admission, "__dict__", {}),
+                    "story_key": getattr(story_identity, "story_key", item.get("story_key", "")),
+                }
+            )
+            contexts.append(
+                {
+                    "item": item,
+                    "entities": [_object_payload(row) for row in self.entities.get(news_item_id, [])],
+                    "token_mentions": [_object_payload(row) for row in self.mentions.get(news_item_id, [])],
+                    "fact_candidates": [_object_payload(row) for row in self.fact_candidates.get(news_item_id, [])],
+                    "current_brief": None,
+                    "exact_duplicate_candidates": [],
+                    "story_candidates": [],
+                }
+            )
+        return contexts
+
+    def update_item_agent_admission(
+        self,
+        *,
+        news_item_id: str,
+        admission: object,
+        now_ms: int,
+        commit: bool = True,
+    ) -> int:
+        self.agent_admission_updates.append(
+            {"news_item_id": news_item_id, "admission": admission, "now_ms": now_ms, "commit": commit}
+        )
+        return 1
+
     def mark_item_process_retryable(
         self,
         news_item_id: str,
@@ -1695,6 +1774,17 @@ class FakeItemProcessRepository:
             }
         )
         return self.terminal_rowcount
+
+
+def _object_payload(value: object) -> dict[str, object]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    if is_dataclass(value):
+        return dict(asdict(value))
+    dump = getattr(value, "model_dump", None)
+    if dump is not None:
+        return dict(dump(mode="json"))
+    return dict(getattr(value, "__dict__", {}) or {})
 
 
 class ExplodingIdentityLookup:

@@ -329,7 +329,7 @@ def test_process_worker_enqueues_page_and_brief_dirty_in_same_transaction_after_
     result = worker.run_once_sync(now_ms=NOW_MS)
 
     assert result.processed == 1
-    assert repos.news.write_commits == [False, False, False, False, False, False]
+    assert repos.news.write_commits == [False, False, False, False, False, False, False]
     assert repos.dirty.enqueued == [
         {
             "rows": [{"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"}],
@@ -975,6 +975,15 @@ class FakeProcessRepos:
         del lease_owner, processing_attempts
         self.conn.record("mark_item_processed")
         self.write_commits.append(commit)
+        return 1
+
+    def load_agent_admission_contexts(self, *, news_item_ids: list[str], now_ms: int) -> list[dict[str, Any]]:
+        del news_item_ids, now_ms
+        return []
+
+    def update_item_agent_admission(self, **payload: Any) -> int:
+        self.conn.record("update_item_agent_admission")
+        self.write_commits.append(payload["commit"])
         return 1
 
     def mark_item_process_retryable(self, **payload: Any) -> int:

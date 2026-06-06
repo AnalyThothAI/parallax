@@ -310,11 +310,25 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
             "brief_json": {
                 "summary_zh": "SOL ETF 申请提升关注。",
                 "market_read_zh": "叙事催化增强。",
+                "event_type": "etf_filing",
+                "market_domains": ["crypto"],
+                "transmission_paths": [
+                    {
+                        "market_domain": "crypto",
+                        "channel": "regulatory_attention",
+                        "direction": "bullish",
+                        "strength": "moderate",
+                        "explanation_zh": "ETF 申请提升监管叙事。",
+                    }
+                ],
                 "bull_view": {"strength": "strong", "thesis_zh": "新增需求预期"},
                 "bear_view": {"strength": "weak", "thesis_zh": "审批仍不确定"},
-                "affected_assets": [
+                "affected_entities": [
                     {
+                        "label": "SOL",
                         "symbol": "SOL",
+                        "entity_type": "crypto_asset",
+                        "market_domain": "crypto",
                         "target_id": "asset:sol",
                         "impact_direction": "bullish",
                         "reason_zh": "ETF 申请直接影响 SOL。",
@@ -337,6 +351,8 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
         "status": "ready",
         "direction": "bullish",
         "decision_class": "driver",
+        "event_type": "etf_filing",
+        "market_domains": ["crypto"],
         "summary_zh": "SOL ETF 申请提升关注。",
         "market_read_zh": "叙事催化增强。",
         "bull_strength": "strong",
@@ -350,12 +366,24 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
         "input_hash": "input-1",
         "bull_view": {"strength": "strong", "thesis_zh": "新增需求预期"},
         "bear_view": {"strength": "weak", "thesis_zh": "审批仍不确定"},
-        "affected_assets": [
+        "affected_entities": [
             {
+                "label": "SOL",
                 "symbol": "SOL",
+                "entity_type": "crypto_asset",
+                "market_domain": "crypto",
                 "target_id": "asset:sol",
                 "impact_direction": "bullish",
                 "reason_zh": "ETF 申请直接影响 SOL。",
+            }
+        ],
+        "transmission_paths": [
+            {
+                "market_domain": "crypto",
+                "channel": "regulatory_attention",
+                "direction": "bullish",
+                "strength": "moderate",
+                "explanation_zh": "ETF 申请提升监管叙事。",
             }
         ],
     }
