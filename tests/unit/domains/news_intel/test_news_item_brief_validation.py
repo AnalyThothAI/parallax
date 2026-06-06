@@ -1151,6 +1151,102 @@ def test_validation_rejects_commodity_provider_symbol_as_crypto_entity() -> None
     assert {"code": "unsupported_entity", "message": "CL Token"} in result.errors
 
 
+def test_validation_rejects_exact_commodity_provider_symbol_as_crypto_entity() -> None:
+    packet = _provider_cl_packet()
+    payload = _ready_payload(
+        direction="mixed",
+        decision_class="driver",
+        event_type="provider_signal",
+        market_domains=["crypto"],
+        bull_view={
+            "strength": "moderate",
+            "thesis_zh": "provider token impact 明确给出 CL commodity，不支持 crypto 资产。",
+            "evidence_refs": ["provider:token:CL"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "provider impact 的 market_type 是 commodity。",
+            "evidence_refs": ["item:summary"],
+        },
+        transmission_paths=[
+            {
+                "market_domain": "crypto",
+                "channel": "provider_token_impact",
+                "direction": "mixed",
+                "strength": "moderate",
+                "explanation_zh": "payload 试图把 commodity provider symbol 当作 crypto 资产。",
+                "evidence_refs": ["provider:token:CL"],
+            }
+        ],
+        affected_entities=[
+            {
+                "label": "CL",
+                "symbol": "CL",
+                "entity_type": "crypto_asset",
+                "market_domain": "crypto",
+                "impact_direction": "mixed",
+                "reason_zh": "模型把 commodity provider impact 泛化为 crypto token。",
+                "evidence_refs": ["provider:token:CL"],
+            }
+        ],
+        evidence_refs=["item:summary", "provider:token:CL"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is False
+    assert result.status == "failed"
+    assert {"code": "unsupported_entity", "message": "CL"} in result.errors
+
+
+def test_validation_rejects_commodity_provider_symbol_as_crypto_entity_with_mixed_payload_domains() -> None:
+    packet = _provider_cl_packet()
+    payload = _ready_payload(
+        direction="mixed",
+        decision_class="driver",
+        event_type="provider_signal",
+        market_domains=["crypto", "commodity"],
+        bull_view={
+            "strength": "moderate",
+            "thesis_zh": "provider token impact 明确给出 CL commodity，不支持 crypto 资产。",
+            "evidence_refs": ["provider:token:CL"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "provider impact 的 market_type 是 commodity。",
+            "evidence_refs": ["item:summary"],
+        },
+        transmission_paths=[
+            {
+                "market_domain": "commodity",
+                "channel": "provider_commodity_impact",
+                "direction": "mixed",
+                "strength": "moderate",
+                "explanation_zh": "commodity provider symbol 不能给 crypto affected entity 背书。",
+                "evidence_refs": ["provider:token:CL"],
+            }
+        ],
+        affected_entities=[
+            {
+                "label": "CL Token",
+                "symbol": "CL",
+                "entity_type": "crypto_asset",
+                "market_domain": "crypto",
+                "impact_direction": "mixed",
+                "reason_zh": "模型把 commodity provider impact 泛化为 crypto token。",
+                "evidence_refs": ["provider:token:CL"],
+            }
+        ],
+        evidence_refs=["item:summary", "provider:token:CL"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is False
+    assert result.status == "failed"
+    assert {"code": "unsupported_entity", "message": "CL Token"} in result.errors
+
+
 def test_validation_allows_oil_proxy_when_packet_sources_crude_risk() -> None:
     packet = _energy_geopolitics_packet()
     payload = _ready_payload(

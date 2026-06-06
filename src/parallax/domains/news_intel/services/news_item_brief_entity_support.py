@@ -270,41 +270,112 @@ class EntitySupportDecision:
     reason: str
 
 
+@dataclass(frozen=True, slots=True)
+class _SourceBackedEntityKeySupport:
+    text_keys: set[str]
+    structured_keys_by_domain: dict[str, set[str]]
+    domainless_structured_keys: set[str]
+
+    @property
+    def all_keys(self) -> set[str]:
+        keys = set(self.text_keys)
+        keys.update(self.domainless_structured_keys)
+        for domain_keys in self.structured_keys_by_domain.values():
+            keys.update(domain_keys)
+        return {key for key in keys if key}
+
+
 def source_backed_entity_keys(packet: NewsItemBriefInputPacket) -> set[str]:
+    return _source_backed_entity_key_support(packet).all_keys
+
+
+def _source_backed_entity_key_support(packet: NewsItemBriefInputPacket) -> _SourceBackedEntityKeySupport:
     labels: set[str] = set()
     labels.update(_text_keys(packet.news_item.title))
     labels.update(_text_keys(packet.news_item.summary))
     labels.update(_text_keys(packet.news_item.body_excerpt))
     labels.update(_translated_source_entity_keys(packet))
+    structured_by_domain: dict[str, set[str]] = {}
+    domainless_structured_keys: set[str] = set()
 
     for entity in packet.entity_lanes:
-        labels.update(
+        _add_structured_source_keys(
+            structured_by_domain,
+            domainless_structured_keys,
             _string_keys(
                 entity.entity_id,
                 entity.observed_label,
                 entity.display_symbol,
                 entity.display_name,
                 entity.target_id,
-            )
+            ),
+            domains=_entity_lane_domains(entity),
         )
         for target in entity.candidate_targets:
-            labels.update(_mapping_value_keys(target))
+            target_domains = _domains_in_mapping(target) or _entity_lane_domains(entity)
+            _add_structured_source_keys(
+                structured_by_domain,
+                domainless_structured_keys,
+                _mapping_value_keys(target),
+                domains=target_domains,
+            )
 
     for fact in packet.fact_lanes:
         labels.update(_text_keys(fact.claim))
         labels.update(_text_keys(fact.evidence_quote))
         for target in fact.affected_targets:
-            labels.update(_mapping_value_keys(target))
+            _add_structured_source_keys(
+                structured_by_domain,
+                domainless_structured_keys,
+                _mapping_value_keys(target),
+                domains=_domains_in_mapping(target),
+            )
 
     if packet.provider_signal_evidence is not None:
         provider = packet.provider_signal_evidence
-        labels.update(_string_keys(provider.provider))
         labels.update(_text_keys(provider.summary_zh))
         labels.update(_text_keys(provider.summary_en))
+        _add_structured_source_keys(
+            structured_by_domain,
+            domainless_structured_keys,
+            _string_keys(provider.provider),
+            domains=set(),
+        )
         for impact in provider.token_impacts:
-            labels.update(_string_keys(impact.symbol))
+            _add_structured_source_keys(
+                structured_by_domain,
+                domainless_structured_keys,
+                _string_keys(impact.symbol),
+                domains=_provider_impact_domains(impact.market_type),
+            )
 
-    return {label for label in labels if label}
+    return _SourceBackedEntityKeySupport(
+        text_keys={label for label in labels if label},
+        structured_keys_by_domain={
+            domain: {label for label in domain_labels if label}
+            for domain, domain_labels in structured_by_domain.items()
+            if domain in _KNOWN_DOMAINS
+        },
+        domainless_structured_keys={label for label in domainless_structured_keys if label},
+    )
+
+
+def _add_structured_source_keys(
+    structured_by_domain: dict[str, set[str]],
+    domainless_structured_keys: set[str],
+    keys: set[str],
+    *,
+    domains: set[str],
+) -> None:
+    clean_keys = {key for key in keys if key}
+    if not clean_keys:
+        return
+    clean_domains = {domain for domain in domains if domain in _KNOWN_DOMAINS}
+    if not clean_domains:
+        domainless_structured_keys.update(clean_keys)
+        return
+    for domain in clean_domains:
+        structured_by_domain.setdefault(domain, set()).update(clean_keys)
 
 
 def validate_affected_entity_support(
@@ -313,7 +384,8 @@ def validate_affected_entity_support(
     packet: NewsItemBriefInputPacket,
     payload: Mapping[str, Any],
 ) -> EntitySupportDecision:
-    source_keys = source_backed_entity_keys(packet)
+    source_key_support = _source_backed_entity_key_support(packet)
+    source_keys = source_key_support.all_keys
     label_name_values = _entity_label_name_values(entity)
     label_name_keys = _entity_label_name_keys(entity)
     symbol_keys = _entity_symbol_keys(entity)
@@ -323,23 +395,28 @@ def validate_affected_entity_support(
         return EntitySupportDecision(supported=False, reason="missing_label")
     if _contains_unbacked_synthetic_placeholder(entity, source_keys=source_keys):
         return EntitySupportDecision(supported=False, reason="synthetic_placeholder")
-    if target_id_keys and not target_id_keys & source_keys:
-        return EntitySupportDecision(supported=False, reason="unsupported_target_id")
 
     source_domains = _source_backed_domains(packet)
     candidate_domains = _entity_candidate_domains(entity=entity, payload=payload)
+    if target_id_keys and not _source_supports_keys(
+        target_id_keys,
+        source_key_support=source_key_support,
+        candidate_domains=candidate_domains,
+    ):
+        return EntitySupportDecision(supported=False, reason="unsupported_target_id")
+
     if label_name_keys and not _label_name_supported_by_source_or_proxy(
         entity=entity,
         packet=packet,
         label_name_values=label_name_values,
         label_name_keys=label_name_keys,
-        source_keys=source_keys,
+        source_key_support=source_key_support,
         source_domains=source_domains,
         candidate_domains=candidate_domains,
     ):
         return EntitySupportDecision(supported=False, reason="unsupported_label")
 
-    if entity_keys & source_keys:
+    if _source_supports_keys(entity_keys, source_key_support=source_key_support, candidate_domains=candidate_domains):
         return EntitySupportDecision(supported=True, reason="packet_key")
 
     for domain in candidate_domains:
@@ -367,12 +444,21 @@ def _source_backed_domains(packet: NewsItemBriefInputPacket) -> set[str]:
 
 
 def _entity_candidate_domains(*, entity: Mapping[str, Any], payload: Mapping[str, Any]) -> set[str]:
-    domains = {_norm(entity.get("market_domain"))}
-    domains.add(_ENTITY_TYPE_DOMAINS.get(_norm(entity.get("entity_type")), ""))
+    domains = _entity_own_domains(entity)
+    if domains:
+        return domains
     domains.update(_norm(domain) for domain in payload.get("market_domains") or [] if isinstance(domain, str))
     for path in payload.get("transmission_paths") or []:
         if isinstance(path, Mapping):
             domains.add(_norm(path.get("market_domain")))
+    return {domain for domain in domains if domain in _KNOWN_DOMAINS}
+
+
+def _entity_own_domains(entity: Mapping[str, Any]) -> set[str]:
+    domains = {
+        _norm(entity.get("market_domain")),
+        _ENTITY_TYPE_DOMAINS.get(_norm(entity.get("entity_type")), ""),
+    }
     return {domain for domain in domains if domain in _KNOWN_DOMAINS}
 
 
@@ -417,13 +503,13 @@ def _label_name_supported_by_source_or_proxy(
     packet: NewsItemBriefInputPacket,
     label_name_values: tuple[str, ...],
     label_name_keys: set[str],
-    source_keys: set[str],
+    source_key_support: _SourceBackedEntityKeySupport,
     source_domains: set[str],
     candidate_domains: set[str],
 ) -> bool:
     if _keys_supported_by_source_or_proxy(
         label_name_keys,
-        source_keys=source_keys,
+        source_key_support=source_key_support,
         source_domains=source_domains,
         candidate_domains=candidate_domains,
     ):
@@ -433,7 +519,7 @@ def _label_name_supported_by_source_or_proxy(
             label,
             entity=entity,
             packet=packet,
-            source_keys=source_keys,
+            source_keys=source_key_support.all_keys,
             source_domains=source_domains,
             candidate_domains=candidate_domains,
         )
@@ -444,16 +530,28 @@ def _label_name_supported_by_source_or_proxy(
 def _keys_supported_by_source_or_proxy(
     keys: set[str],
     *,
-    source_keys: set[str],
+    source_key_support: _SourceBackedEntityKeySupport,
     source_domains: set[str],
     candidate_domains: set[str],
 ) -> bool:
-    if keys & source_keys:
+    if _source_supports_keys(keys, source_key_support=source_key_support, candidate_domains=candidate_domains):
         return True
+    source_keys = source_key_support.all_keys
     return any(
         domain in source_domains and _domain_proxy_supports_keys(domain, keys, source_keys=source_keys)
         for domain in candidate_domains
     )
+
+
+def _source_supports_keys(
+    keys: set[str],
+    *,
+    source_key_support: _SourceBackedEntityKeySupport,
+    candidate_domains: set[str],
+) -> bool:
+    if keys & source_key_support.text_keys:
+        return True
+    return any(keys & source_key_support.structured_keys_by_domain.get(domain, set()) for domain in candidate_domains)
 
 
 def _domain_proxy_supports_keys(domain: str, keys: set[str], *, source_keys: set[str]) -> bool:
