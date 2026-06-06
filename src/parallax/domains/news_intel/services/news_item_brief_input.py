@@ -495,6 +495,8 @@ def _market_domain(value: Any) -> str | None:
         "regulatory": "regulation",
         "private": "private_company",
         "commodities": "commodity",
+        "cex": "crypto",
+        "dex": "crypto",
     }
     return aliases.get(normalized)
 

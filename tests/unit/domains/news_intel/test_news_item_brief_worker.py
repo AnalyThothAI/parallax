@@ -633,7 +633,7 @@ def _energy_candidate(*, provider_score: int = 90) -> dict[str, Any]:
             "provider_token_impacts_json": [
                 {
                     "symbol": "BTC",
-                    "market_type": "crypto",
+                    "market_type": "cex",
                     "score": 40,
                     "direction": "mixed",
                     "signal": "proxy",

@@ -139,6 +139,37 @@ def test_packet_uses_agent_admission_basis_market_scope_without_item_scope_field
     assert packet.market_scope == ["energy_geopolitics", "commodity", "crypto"]
 
 
+def test_packet_uses_provider_cex_token_impact_as_crypto_scope_without_item_scope_field() -> None:
+    packet = build_news_item_brief_input_packet(
+        item={
+            "news_item_id": "item-energy-btc",
+            "title": "Gulf flare-up raises crude supply risk",
+            "summary": "The event raised WTI crude supply concerns.",
+            "body_text": "No item market scope field is present on this production-shaped item.",
+            "published_at_ms": 1_779_000_000_000,
+            "content_hash": "sha256:energy-btc",
+            "agent_admission_json": {
+                "status": "eligible",
+                "reason": "eligible",
+                "basis": {"market_scope": ["energy_geopolitics", "commodity"]},
+            },
+            "provider_signal_json": {"source": "provider", "provider": "opennews", "status": "ready"},
+            "provider_token_impacts_json": [
+                {"symbol": "BTC", "market_type": "cex", "score": 40, "signal": "proxy", "grade": "C"}
+            ],
+        },
+        entities=[{"entity_id": "entity-wti", "raw_value": "WTI crude futures", "entity_type": "commodity"}],
+        token_mentions=[],
+        fact_candidates=[],
+        agent_config=_agent_config(),
+    )
+
+    assert packet.provider_signal_evidence is not None
+    assert packet.provider_signal_evidence.token_impacts[0].market_type == "cex"
+    assert "provider:token:BTC" in packet.evidence_refs
+    assert packet.market_scope == ["energy_geopolitics", "commodity", "crypto"]
+
+
 def test_packet_truncates_entity_and_fact_lanes_after_stable_sort() -> None:
     item = {
         "news_item_id": "item-1",
