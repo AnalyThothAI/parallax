@@ -21,6 +21,10 @@ def test_worker_writes_ready_brief_and_emits_wake() -> None:
     asyncio.run(_test_worker_writes_ready_brief_and_emits_wake())
 
 
+def test_worker_publishes_market_wide_proxy_brief_without_domain_validation_failure() -> None:
+    asyncio.run(_test_worker_publishes_market_wide_proxy_brief_without_domain_validation_failure())
+
+
 def test_worker_processes_provider_signal_target_with_llm_context() -> None:
     asyncio.run(_test_worker_processes_provider_signal_target_with_llm_context())
 
@@ -67,6 +71,25 @@ async def _test_worker_writes_ready_brief_and_emits_wake() -> None:
     assert result.failed == 0
     assert result.notes["ready"] == 1
     assert result.notes["claimed"] == 1
+
+
+async def _test_worker_publishes_market_wide_proxy_brief_without_domain_validation_failure() -> None:
+    db = FakeDB([_energy_candidate(provider_score=90)])
+    provider = FakeBriefProvider(payload=_energy_ready_payload())
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.reserve_calls == [NEWS_ITEM_BRIEF_LANE]
+    assert provider.execution_calls == 1
+    assert provider.seen_packets[0].market_scope == ["energy_geopolitics", "commodity", "crypto"]
+    assert result.processed == 1
+    assert result.failed == 0
+    assert db.news.runs[0]["status"] == "completed"
+    assert db.news.runs[0]["outcome"] == "ready"
+    assert db.news.runs[0]["validation_errors_json"] == []
+    assert db.news.briefs[0]["status"] == "ready"
+    assert db.news.briefs[0]["brief_json"]["event_type"] == "geopolitical_supply"
 
 
 async def _test_worker_processes_provider_signal_target_with_llm_context() -> None:
@@ -572,6 +595,77 @@ def _candidate(*, provider_score: int = 88) -> dict[str, Any]:
     }
 
 
+def _energy_candidate(*, provider_score: int = 90) -> dict[str, Any]:
+    candidate = _candidate(provider_score=provider_score)
+    candidate["item"].update(
+        {
+            "title": "U.S. attacks Iranian sites after Iran launches drones",
+            "summary": "Gulf flare-up raised WTI crude supply concerns and risk assets.",
+            "body_text": (
+                "U.S. attacks on Iranian sites after Iran launched drones raised Gulf supply concerns, "
+                "supported WTI crude futures risk premium, and pressured broader risk assets."
+            ),
+            "canonical_url": "https://example.com/gulf-energy-risk",
+            "content_hash": "content-hash-energy-1",
+            "content_class": "energy_geopolitics",
+            "content_classification_json": {
+                "policy_version": "news_content_classification_v1",
+                "content_class": "energy_geopolitics",
+            },
+            "analysis_admission_status": "page_only",
+            "analysis_admission_reason": "market_wide_energy_context",
+            "analysis_admission_json": {
+                "status": "page_only",
+                "reason": "market_wide_energy_context",
+                "basis": {"market_scope": ["energy_geopolitics", "commodity", "crypto"]},
+                "version": "news_analysis_admission_v1",
+            },
+            "event_type": "geopolitical_supply",
+            "market_scope_json": ["energy_geopolitics", "commodity", "crypto"],
+            "provider_signal_json": {
+                "source": "provider",
+                "provider": "opennews",
+                "status": "ready",
+                "direction": "mixed",
+                "score": provider_score,
+                "grade": "A",
+                "summary_en": "Gulf flare-up lifted crude supply risk and weighed on risk sentiment.",
+            },
+        }
+    )
+    candidate["entities"] = [
+        {
+            "entity_id": "entity-iran",
+            "raw_value": "Iran",
+            "normalized_value": "iran",
+            "entity_type": "country",
+            "confidence": 0.96,
+        },
+        {
+            "entity_id": "entity-us",
+            "raw_value": "U.S.",
+            "normalized_value": "united states",
+            "entity_type": "country",
+            "confidence": 0.94,
+        },
+    ]
+    candidate["token_mentions"] = []
+    candidate["fact_candidates"] = [
+        {
+            "fact_candidate_id": "fact-gulf-supply",
+            "event_type": "geopolitical_supply",
+            "claim": "The Gulf flare-up raised WTI crude futures supply concerns and risk-asset pressure.",
+            "realis": "actual",
+            "validation_status": "accepted",
+            "affected_targets_json": [
+                {"label": "WTI crude futures", "symbol": "CL", "market_domain": "commodity"}
+            ],
+            "evidence_quote": "raised Gulf supply concerns and supported WTI crude futures risk premium",
+        }
+    ]
+    return candidate
+
+
 def _dirty_target(*, attempt_count: int = 1) -> dict[str, Any]:
     return {
         "projection_name": "brief_input",
@@ -632,6 +726,90 @@ def _ready_payload() -> dict[str, Any]:
     if "title_zh" in NewsItemBriefPayload.model_fields:
         payload["title_zh"] = "SOL ETF 申请"
     return payload
+
+
+def _energy_ready_payload() -> dict[str, Any]:
+    return {
+        "status": "ready",
+        "direction": "mixed",
+        "decision_class": "driver",
+        "event_type": "geopolitical_supply",
+        "title_zh": "海湾冲突升级抬高原油供应风险",
+        "summary_zh": "美国袭击伊朗相关地点、伊朗发射无人机后，海湾局势升温推高 WTI 原油供应担忧。",
+        "market_read_zh": (
+            "这是一条跨市场驱动：直接传导在能源和大宗商品风险溢价，"
+            "对 BTC 只体现为风险情绪代理，而不是来源直接点名的加密资产事件。"
+        ),
+        "market_domains": ["energy_geopolitics", "commodity", "crypto"],
+        "transmission_paths": [
+            {
+                "market_domain": "energy_geopolitics",
+                "channel": "military_escalation",
+                "direction": "mixed",
+                "strength": "moderate",
+                "explanation_zh": "美国与伊朗相关军事升级提高海湾供应链和政策不确定性。",
+                "evidence_refs": ["item:title", "entity:entity-iran"],
+            },
+            {
+                "market_domain": "commodity",
+                "channel": "crude_supply_risk",
+                "direction": "bullish",
+                "strength": "moderate",
+                "explanation_zh": "报道直接提到海湾供应担忧和 WTI 原油期货风险溢价。",
+                "evidence_refs": ["fact:fact-gulf-supply"],
+            },
+            {
+                "market_domain": "crypto",
+                "channel": "risk_sentiment_proxy",
+                "direction": "mixed",
+                "strength": "weak",
+                "explanation_zh": "风险资产压力可通过情绪渠道影响 BTC，但新闻没有直接点名 BTC。",
+                "evidence_refs": ["item:summary"],
+            },
+        ],
+        "bull_view": {
+            "strength": "moderate",
+            "thesis_zh": "WTI 原油期货的供给风险溢价上升，能源冲击可能继续牵动跨市场波动。",
+            "evidence_refs": ["fact:fact-gulf-supply"],
+        },
+        "bear_view": {
+            "strength": "weak",
+            "thesis_zh": "报道尚未证明实际供应中断，BTC 影响仍是风险情绪代理而非直接基本面变化。",
+            "evidence_refs": ["item:summary"],
+        },
+        "affected_entities": [
+            {
+                "label": "WTI crude futures",
+                "symbol": "CL",
+                "name": "WTI crude futures",
+                "entity_type": "commodity",
+                "market_domain": "commodity",
+                "resolution_status": "observed",
+                "target_type": None,
+                "target_id": None,
+                "impact_direction": "bullish",
+                "reason_zh": "候选事实直接把 WTI 原油期货列为受海湾供应风险影响的商品。",
+                "evidence_refs": ["fact:fact-gulf-supply"],
+            },
+            {
+                "label": "Bitcoin",
+                "symbol": "BTC",
+                "name": "Bitcoin",
+                "entity_type": "crypto_asset",
+                "market_domain": "crypto",
+                "resolution_status": "unknown",
+                "target_type": None,
+                "target_id": None,
+                "impact_direction": "mixed",
+                "reason_zh": "BTC 只作为风险资产情绪代理，来源文本支持风险资产压力但没有直接点名 BTC。",
+                "evidence_refs": ["item:summary"],
+            },
+        ],
+        "watch_triggers": ["后续海湾航运、WTI 价格和风险资产波动是否继续扩大"],
+        "invalidation_conditions": ["军事升级降温或原油供应风险被后续报道证伪"],
+        "data_gaps": [],
+        "evidence_refs": ["item:title", "item:summary", "item:body_excerpt", "fact:fact-gulf-supply"],
+    }
 
 
 class FakeBriefProvider:
