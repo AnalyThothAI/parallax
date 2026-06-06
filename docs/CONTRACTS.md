@@ -182,30 +182,30 @@ News Intel contract:
   `story`), provider token impact rows (`token_impacts`), compact source
   metadata (`provider_type`, `source_role`, `trust_tier`, `coverage_tags`,
   `source_quality_status`), item content classification (`content_class`,
-  `content_tags`, `content_classification`), analysis admission fields
+  `content_tags`, `content_classification`), legacy analysis admission fields
   (`analysis_admission_status`, `analysis_admission_reason`,
-  `analysis_admission`), item-level agent requirement fields
-  (`agent_requirement_status`, `agent_requirement_reason`,
-  `agent_requirement_priority`, `agent_requirement_json`,
-  `agent_requirement_version`), compact `agent_brief`, and provider/source
-  metadata.
-  `analysis_admission_status` separates page visibility from crypto analysis:
-  non-admitted rows may appear in the News tape as context, but they must not
-  become crypto high-signal notification candidates. `signal` is an explicit
-  envelope: `signal.display_signal` is the row-level display choice,
-  `signal.provider_signal` is provider-native signal evidence,
-  `signal.agent_signal` is the current compact agent signal,
-  `signal.agent_requirement` is the persisted item-level brief gate, and
+  `analysis_admission`), market-wide agent admission fields
+  (`agent_admission_status`, `agent_admission_reason`, `agent_admission`),
+  compact `agent_brief`, and provider/source metadata. `analysis_admission_*`
+  remains crypto-analysis/push diagnostic context and is not the News Item
+  Brief gate. `agent_admission_*` records whether the high-score market item
+  was eligible, skipped as an exact duplicate, or covered by a similar story.
+  `signal` is an explicit envelope: `signal.display_signal` is the row-level
+  display choice, `signal.provider_signal` is provider-native signal evidence,
+  `signal.agent_signal` is the current compact agent signal, and
   `signal.alert_eligibility.in_app_eligible` can be true for in-app high-signal
-  output only for admitted rows. `signal.alert_eligibility.external_push_ready`
-  requires a ready, publishable current brief, and
+  output only when current signal policy passes.
+  `signal.alert_eligibility.external_push_ready` requires a ready, publishable
+  current brief, and
   `external_push_block_reason` explains blocked push delivery. PushDeer
   delivery must not treat provider score alone as a publishable agent brief. A
   ready compact brief may still include
-  `summary_zh`, `market_read_zh`, bull/bear strengths, evidence/data-gap
-  metadata, run id, prompt/schema versions, and hashes when available, but
-  OpenNews provider rows can carry provider signal and token impact facts
-  without requiring an agent brief. OpenNews ingestion is REST-only through
+  `summary_zh`, `market_read_zh`, `event_type`, `market_domains`,
+  `affected_entities`, `transmission_paths`, bull/bear strengths,
+  evidence/data-gap metadata, run id, prompt/schema versions, and hashes when
+  available, but OpenNews provider rows can carry provider signal and token
+  impact facts without requiring an agent brief. OpenNews ingestion is
+  REST-only through
   `/open/news_search`; the client merges partial/ready article fragments by
   provider article id so delayed `aiRating.score`, direction, grade, and
   `coins[]` impact scores update the same material facts.
@@ -223,13 +223,13 @@ News Intel contract:
   source policy keys hard-fail configuration instead of becoming compatibility
   behavior. Provider tokens are not exposed through this status route.
 - `/api/news/items/{news_item_id}` returns deterministic extraction facts plus
-  canonical signal/token-impact facts, story membership, analysis admission,
-  persisted agent requirement, the full current item brief when one exists, and
-  a sanitized latest run summary. If only retired brief artifacts exist, the
-  current brief is absent or pending; retired agent fields and old research-tool
-  payloads are never exposed through the public item-detail contract. The route
-  excludes raw provider request/response payloads from the public item-detail
-  contract.
+  canonical signal/token-impact facts, story membership, legacy analysis
+  diagnostics, market-wide agent admission, the full current item brief when
+  one exists, and a sanitized latest run summary. If only retired brief
+  artifacts exist, the current brief is absent or pending; retired agent fields
+  and old research-tool payloads are never exposed through the public
+  item-detail contract. The route excludes raw
+  provider request/response payloads from the public item-detail contract.
 - `news_high_signal` notifications read admitted story-level `news_page_rows`
   only. In-app dedup and entity identity prefer `news_story:{story_key}`;
   fallback item identity is used only when no story key exists. External pushes
@@ -237,12 +237,7 @@ News Intel contract:
 - The frontend item URL is `/news/items/:newsItemId`; `/news/:newsItemId` is
   not a compatibility route.
 - Missing or unavailable brief state is represented as
-  `agent_brief.status = pending | not_required | disabled | failed | stale |
-  insufficient`; `not_required` must carry an explicit
-  `eligibility_reason`/`requirement_reason` such as `analysis_not_admitted` or
-  `below_score_threshold`.
-  `pending` means the persisted requirement is `required` and no fresh current
-  brief is available yet.
+  `agent_brief.status = pending | disabled | failed | stale | insufficient`;
   `failed` is reserved for schema/provider/unreadable-output failure, not for
   thin evidence or missing `evidence_refs`; sparse but parseable news should
   still return a standard brief with optional `data_gaps`, and a missing brief

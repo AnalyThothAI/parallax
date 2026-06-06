@@ -161,6 +161,24 @@ def test_ops_news_dedup_commands_are_registered_without_compatibility_flags() ->
     repair_default = parser.parse_args(["ops", "repair-news-duplicates-hard-cut", "--dry-run"])
     repair_dry_run = parser.parse_args(["ops", "repair-news-duplicates-hard-cut", "--limit", "25", "--dry-run"])
     repair_execute = parser.parse_args(["ops", "repair-news-duplicates-hard-cut", "--limit", "25", "--execute"])
+    admission_repair_default = parser.parse_args(
+        ["ops", "repair-news-agent-market-admission", "--since-ms", "1000", "--until-ms", "2000"]
+    )
+    admission_repair_execute = parser.parse_args(
+        [
+            "ops",
+            "repair-news-agent-market-admission",
+            "--since-ms",
+            "1000",
+            "--until-ms",
+            "2000",
+            "--min-provider-score",
+            "90",
+            "--limit",
+            "25",
+            "--execute",
+        ]
+    )
 
     assert diagnostics.ops_command == "news-dedup-diagnostics"
     assert diagnostics.window_hours == 8.0
@@ -182,12 +200,25 @@ def test_ops_news_dedup_commands_are_registered_without_compatibility_flags() ->
     assert repair_dry_run.dry_run is True
     assert repair_dry_run.execute is False
     assert repair_execute.execute is True
+    assert admission_repair_default.ops_command == "repair-news-agent-market-admission"
+    assert admission_repair_default.since_ms == 1000
+    assert admission_repair_default.until_ms == 2000
+    assert admission_repair_default.min_provider_score == 80
+    assert admission_repair_default.limit == 500
+    assert admission_repair_default.dry_run is True
+    assert admission_repair_default.execute is False
+    assert admission_repair_execute.min_provider_score == 90
+    assert admission_repair_execute.limit == 25
+    assert admission_repair_execute.execute is True
+    assert admission_repair_execute.dry_run is False
     assert not hasattr(diagnostics, "include_legacy")
     assert not hasattr(rebuild_execute, "legacy_id")
     assert not hasattr(rebuild_execute, "raw_item_id")
     assert not hasattr(repair_execute, "legacy_id")
     assert not hasattr(repair_execute, "raw_item_id")
     assert not hasattr(repair_execute, "include_legacy")
+    assert not hasattr(admission_repair_execute, "analysis_admission_status")
+    assert not hasattr(admission_repair_execute, "legacy_id")
 
     with pytest.raises(SystemExit):
         parser.parse_args(["ops", "rebuild-news-canonical-items"])
@@ -197,6 +228,36 @@ def test_ops_news_dedup_commands_are_registered_without_compatibility_flags() ->
         parser.parse_args(["ops", "repair-news-duplicates-hard-cut", "--limit", "25", "--legacy-id", "old"])
     with pytest.raises(SystemExit):
         parser.parse_args(["ops", "repair-news-duplicates-hard-cut", "--limit", "25", "--dry-run", "--execute"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ops", "repair-news-agent-market-admission", "--until-ms", "2000"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ops", "repair-news-agent-market-admission", "--since-ms", "1000"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            [
+                "ops",
+                "repair-news-agent-market-admission",
+                "--since-ms",
+                "1000",
+                "--until-ms",
+                "2000",
+                "--legacy-id",
+                "old",
+            ]
+        )
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            [
+                "ops",
+                "repair-news-agent-market-admission",
+                "--since-ms",
+                "1000",
+                "--until-ms",
+                "2000",
+                "--dry-run",
+                "--execute",
+            ]
+        )
     with pytest.raises(SystemExit):
         parser.parse_args(["ops", "cleanup-news-brief-input"])
 

@@ -723,9 +723,6 @@ def test_cleanup_stale_brief_input_targets_deletes_only_currently_ineligible_bri
             provider_item_id="provider-fresh-high",
             published_at_ms=now - 60_000,
             provider_score=95,
-            agent_requirement_status="required",
-            agent_requirement_reason="eligible",
-            agent_requirement_priority=5,
         )
         _insert_news_item_for_brief_cleanup(
             conn,
@@ -733,8 +730,6 @@ def test_cleanup_stale_brief_input_targets_deletes_only_currently_ineligible_bri
             provider_item_id="provider-old-high",
             published_at_ms=now - (8 * 3_600_000) - 1,
             provider_score=95,
-            agent_requirement_status="not_required",
-            agent_requirement_reason="published_too_old",
         )
         _insert_news_item_for_brief_cleanup(
             conn,
@@ -742,24 +737,12 @@ def test_cleanup_stale_brief_input_targets_deletes_only_currently_ineligible_bri
             provider_item_id="provider-fresh-low",
             published_at_ms=now - 60_000,
             provider_score=79,
-            agent_requirement_status="not_required",
-            agent_requirement_reason="below_score_threshold",
-        )
-        _insert_news_item_for_brief_cleanup(
-            conn,
-            news_item_id="news-page-only",
-            provider_item_id="provider-page-only",
-            published_at_ms=now - 60_000,
-            provider_score=95,
-            agent_requirement_status="not_required",
-            agent_requirement_reason="analysis_not_admitted",
         )
         repo.enqueue_targets(
             [
                 {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-fresh-high"},
                 {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-old-high"},
                 {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-fresh-low"},
-                {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-page-only"},
                 {"projection_name": "page", "target_kind": "news_item", "target_id": "news-old-high"},
             ],
             reason="unit",
@@ -768,10 +751,14 @@ def test_cleanup_stale_brief_input_targets_deletes_only_currently_ineligible_bri
 
         dry_run = repo.cleanup_stale_brief_input_targets(
             now_ms=now,
+            window_ms=8 * 3_600_000,
+            score_threshold=80,
             execute=False,
         )
         execute = repo.cleanup_stale_brief_input_targets(
             now_ms=now,
+            window_ms=8 * 3_600_000,
+            score_threshold=80,
             execute=True,
         )
         remaining = conn.execute(
@@ -784,12 +771,12 @@ def test_cleanup_stale_brief_input_targets_deletes_only_currently_ineligible_bri
     finally:
         conn.close()
 
-    assert dry_run["candidate_count"] == 3
+    assert dry_run["candidate_count"] == 2
     assert dry_run["deleted_count"] == 0
-    assert dry_run["reasons"] == {"analysis_not_admitted": 1, "below_score_threshold": 1, "published_too_old": 1}
-    assert execute["candidate_count"] == 3
-    assert execute["deleted_count"] == 3
-    assert execute["reasons"] == {"analysis_not_admitted": 1, "below_score_threshold": 1, "published_too_old": 1}
+    assert dry_run["reasons"] == {"below_score_threshold": 1, "published_too_old": 1}
+    assert execute["candidate_count"] == 2
+    assert execute["deleted_count"] == 2
+    assert execute["reasons"] == {"below_score_threshold": 1, "published_too_old": 1}
     assert [dict(row) for row in remaining] == [
         {"projection_name": "brief_input", "target_id": "news-fresh-high"},
         {"projection_name": "page", "target_id": "news-old-high"},
@@ -856,10 +843,6 @@ def _insert_news_item_for_brief_cleanup(
     provider_item_id: str,
     published_at_ms: int,
     provider_score: int,
-    crypto_evidence: list[str] | None = None,
-    agent_requirement_status: str = "required",
-    agent_requirement_reason: str = "eligible",
-    agent_requirement_priority: int = 10,
 ) -> None:
     now = 1_779_000_000_000
     conn.execute(
@@ -898,18 +881,12 @@ def _insert_news_item_for_brief_cleanup(
         INSERT INTO news_items (
           news_item_id, provider_item_id, source_id, source_domain, canonical_url,
           title, summary, body_text, language, published_at_ms, fetched_at_ms,
-          content_hash, title_fingerprint, lifecycle_status, content_classification_json,
-          analysis_admission_status, analysis_admission_json, provider_signal_json,
-          agent_requirement_status, agent_requirement_reason, agent_requirement_priority,
-          agent_requirement_json, agent_requirement_version,
-          created_at_ms, updated_at_ms
+          content_hash, title_fingerprint, provider_signal_json, created_at_ms, updated_at_ms
         )
         VALUES (
           %s, %s, 'source-opennews', '6551.io', %s,
           %s, 'Summary', 'Body', 'en', %s, %s,
-          %s, %s, 'processed', %s, 'admitted', %s, %s,
-          %s, %s, %s, %s, 'news_item_agent_requirement_v1',
-          %s, %s
+          %s, %s, %s, %s, %s
         )
         """,
         (
@@ -921,30 +898,7 @@ def _insert_news_item_for_brief_cleanup(
             now,
             f"content-{news_item_id}",
             f"title {news_item_id}",
-            Jsonb({"policy_version": "news_content_classification_v1"}),
-            Jsonb(
-                {
-                    "status": "admitted",
-                    "basis": {
-                        "crypto_evidence": crypto_evidence
-                        if crypto_evidence is not None
-                        else ["resolved_crypto_target:cex:BTC"],
-                    },
-                }
-            ),
             Jsonb({"source": "provider", "status": "ready", "score": provider_score}),
-            agent_requirement_status,
-            agent_requirement_reason,
-            agent_requirement_priority,
-            Jsonb(
-                {
-                    "status": agent_requirement_status,
-                    "reason": agent_requirement_reason,
-                    "priority": agent_requirement_priority,
-                    "basis": {"provider_score": provider_score},
-                    "version": "news_item_agent_requirement_v1",
-                }
-            ),
             now,
             now,
         ),

@@ -23,7 +23,7 @@ def test_enqueue_projection_dirty_targets_dry_run_reports_counts_without_writes(
 
     assert result["execute"] is False
     assert result["news"]["news_item_ids"] == 3
-    assert result["news"]["news_item_targets"] == 4
+    assert result["news"]["news_item_targets"] == 5
     assert result["news"]["source_quality_targets"] == 2
     assert repos.news_dirty.enqueued == []
     assert repos.conn.transactions == 0
@@ -70,6 +70,13 @@ def test_enqueue_projection_dirty_targets_execute_enqueues_only_dirty_targets() 
             "target_id": "news-2",
             "source_watermark_ms": NOW_MS - 2_000,
             "priority": 12,
+        },
+        {
+            "projection_name": "brief_input",
+            "target_kind": "news_item",
+            "target_id": "news-3",
+            "source_watermark_ms": NOW_MS - 3_000,
+            "priority": 8,
         },
     ]
     assert repos.news_dirty.enqueued[2]["rows"] == [
@@ -167,7 +174,7 @@ def test_enqueue_projection_dirty_targets_can_scope_brief_input_repair() -> None
     )
 
     assert result["projection"] == "brief_input"
-    assert result["news"]["news_item_targets"] == 1
+    assert result["news"]["news_item_targets"] == 2
     assert repos.news_dirty.enqueued[0]["rows"] == [
         {
             "projection_name": "brief_input",
@@ -175,6 +182,13 @@ def test_enqueue_projection_dirty_targets_can_scope_brief_input_repair() -> None
             "target_id": "news-2",
             "source_watermark_ms": NOW_MS - 2_000,
             "priority": 12,
+        },
+        {
+            "projection_name": "brief_input",
+            "target_kind": "news_item",
+            "target_id": "news-3",
+            "source_watermark_ms": NOW_MS - 3_000,
+            "priority": 8,
         },
     ]
 

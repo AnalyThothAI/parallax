@@ -38,10 +38,7 @@ def build_news_page_row(
     token_lanes = [_merge_provider_impact(_token_lane(row), impacts_by_symbol) for row in token_mentions]
     fact_lanes = [_fact_lane(row) for row in fact_candidates]
     source_payload = _source_payload(item)
-    agent_payload = _compact_agent_brief(
-        agent_brief,
-        item=item,
-    )
+    agent_payload = _compact_agent_brief(agent_brief)
     agent_status = str(agent_payload.get("status") or "pending")
     content_tags = _json_list(item.get("content_tags_json"))
     content_classification = _json_object(item.get("content_classification_json"))
@@ -60,7 +57,6 @@ def build_news_page_row(
         "token_lanes": token_lanes,
         "fact_lanes": fact_lanes,
         "signal": _page_signal(
-            item=item,
             provider_signal=provider_signal,
             agent_signal=agent_payload,
             analysis_admission_status=analysis_admission_status,
@@ -249,13 +245,9 @@ def _analysis_admission_payload(
     return payload
 
 
-def _compact_agent_brief(
-    agent_brief: Mapping[str, Any] | None,
-    *,
-    item: Mapping[str, Any],
-) -> dict[str, Any]:
+def _compact_agent_brief(agent_brief: Mapping[str, Any] | None) -> dict[str, Any]:
     if agent_brief is None:
-        return _missing_agent_brief_state(item=item)
+        return {"status": "pending"}
     brief_json = _json_object(agent_brief.get("brief_json") if isinstance(agent_brief, Mapping) else None)
     bull_view = _json_object(brief_json.get("bull_view"))
     bear_view = _json_object(brief_json.get("bear_view"))
@@ -264,6 +256,8 @@ def _compact_agent_brief(
             "status": agent_brief.get("status") or brief_json.get("status") or "pending",
             "direction": agent_brief.get("direction") or brief_json.get("direction"),
             "decision_class": agent_brief.get("decision_class") or brief_json.get("decision_class"),
+            "event_type": brief_json.get("event_type"),
+            "market_domains": _json_list(brief_json.get("market_domains")),
             "title_zh": brief_json.get("title_zh"),
             "summary_zh": brief_json.get("summary_zh"),
             "market_read_zh": brief_json.get("market_read_zh"),
@@ -279,58 +273,69 @@ def _compact_agent_brief(
             "input_hash": agent_brief.get("input_hash"),
             "bull_view": bull_view or None,
             "bear_view": bear_view or None,
-            "affected_assets": _agent_affected_assets(brief_json.get("affected_assets")),
+            "affected_entities": _agent_affected_entities(brief_json.get("affected_entities")),
+            "transmission_paths": _agent_transmission_paths(brief_json.get("transmission_paths")),
         }
     )
-    return payload or _missing_agent_brief_state(item=item)
+    return payload or {"status": "pending"}
 
 
-def _missing_agent_brief_state(
-    *,
-    item: Mapping[str, Any],
-) -> dict[str, str]:
-    requirement_status = str(item.get("agent_requirement_status") or "").strip().lower()
-    requirement_reason = str(item.get("agent_requirement_reason") or "").strip() or "item_not_processed"
-    return {
-        "status": "pending" if requirement_status == "required" else "not_required",
-        "eligibility_reason": "eligible" if requirement_status == "required" else requirement_reason,
-        "requirement_status": requirement_status or "not_required",
-        "requirement_reason": "eligible" if requirement_status == "required" else requirement_reason,
-    }
-
-
-def _agent_affected_assets(value: Any) -> list[dict[str, Any]]:
-    assets: list[dict[str, Any]] = []
-    for asset in _json_list(value):
-        if not isinstance(asset, Mapping):
+def _agent_affected_entities(value: Any) -> list[dict[str, Any]]:
+    entities: list[dict[str, Any]] = []
+    for entity in _json_list(value):
+        if not isinstance(entity, Mapping):
             continue
-        symbol = str(asset.get("symbol") or asset.get("asset") or "").strip().upper()
-        if not symbol:
+        label = str(entity.get("label") or entity.get("symbol") or entity.get("name") or "").strip()
+        if not label:
             continue
-        assets.append(
+        entities.append(
             _compact_mapping(
                 {
-                    "symbol": symbol,
-                    "target_id": asset.get("target_id"),
-                    "target_type": asset.get("target_type"),
-                    "resolution_status": asset.get("resolution_status"),
-                    "impact_direction": asset.get("impact_direction"),
-                    "reason_zh": asset.get("reason_zh"),
+                    "label": label,
+                    "symbol": entity.get("symbol"),
+                    "name": entity.get("name"),
+                    "entity_type": entity.get("entity_type"),
+                    "market_domain": entity.get("market_domain"),
+                    "target_id": entity.get("target_id"),
+                    "target_type": entity.get("target_type"),
+                    "resolution_status": entity.get("resolution_status"),
+                    "impact_direction": entity.get("impact_direction"),
+                    "reason_zh": entity.get("reason_zh"),
                 }
             )
         )
-    return assets[:12]
+    return entities[:12]
+
+
+def _agent_transmission_paths(value: Any) -> list[dict[str, Any]]:
+    paths: list[dict[str, Any]] = []
+    for path in _json_list(value):
+        if not isinstance(path, Mapping):
+            continue
+        channel = str(path.get("channel") or "").strip()
+        if not channel:
+            continue
+        paths.append(
+            _compact_mapping(
+                {
+                    "market_domain": path.get("market_domain"),
+                    "channel": channel,
+                    "direction": path.get("direction"),
+                    "strength": path.get("strength"),
+                    "explanation_zh": path.get("explanation_zh"),
+                }
+            )
+        )
+    return paths[:12]
 
 
 def _page_signal(
     *,
-    item: Mapping[str, Any],
     provider_signal: Mapping[str, Any],
     agent_signal: Mapping[str, Any],
     analysis_admission_status: str,
 ) -> dict[str, Any]:
     provider_payload = _provider_signal_payload(provider_signal)
-    agent_requirement = _agent_requirement_signal(item)
     provider_score = _optional_int_or_none(provider_payload.get("score")) if provider_payload else None
     if str(agent_signal.get("status") or "") == "ready":
         direction = str(agent_signal.get("direction") or "neutral")
@@ -348,7 +353,6 @@ def _page_signal(
             },
             provider_signal=provider_payload,
             agent_signal=agent_signal,
-            agent_requirement=agent_requirement,
             analysis_admission_status=analysis_admission_status,
         )
     if provider_payload:
@@ -356,7 +360,6 @@ def _page_signal(
             provider_payload,
             provider_signal=provider_payload,
             agent_signal=agent_signal,
-            agent_requirement=agent_requirement,
             analysis_admission_status=analysis_admission_status,
         )
     return _signal_with_independent_state(
@@ -369,7 +372,6 @@ def _page_signal(
         },
         provider_signal=None,
         agent_signal=agent_signal,
-        agent_requirement=agent_requirement,
         analysis_admission_status=analysis_admission_status,
     )
 
@@ -400,7 +402,6 @@ def _signal_with_independent_state(
     *,
     provider_signal: Mapping[str, Any] | None,
     agent_signal: Mapping[str, Any],
-    agent_requirement: Mapping[str, Any],
     analysis_admission_status: str,
 ) -> dict[str, Any]:
     agent_status = str(agent_signal.get("status") or "pending")
@@ -418,7 +419,6 @@ def _signal_with_independent_state(
         "display_signal": _compact_mapping(signal),
         "provider_signal": dict(provider_signal) if provider_signal else None,
         "agent_signal": dict(agent_signal),
-        "agent_requirement": dict(agent_requirement),
         "alert_eligibility": _compact_mapping(
             {
                 "agent_status": agent_status,
@@ -432,22 +432,6 @@ def _signal_with_independent_state(
             }
         ),
     }
-
-
-def _agent_requirement_signal(item: Mapping[str, Any]) -> dict[str, Any]:
-    requirement_json = _json_object(item.get("agent_requirement_json"))
-    basis = _json_object(requirement_json.get("basis"))
-    return _compact_mapping(
-        {
-            "status": item.get("agent_requirement_status") or requirement_json.get("status") or "not_required",
-            "reason": item.get("agent_requirement_reason") or requirement_json.get("reason") or "item_not_processed",
-            "priority": _optional_int_or_none(
-                item.get("agent_requirement_priority") or requirement_json.get("priority")
-            ),
-            "version": item.get("agent_requirement_version") or requirement_json.get("version"),
-            "basis": basis,
-        }
-    )
 
 
 def _alert_eligible(
@@ -473,10 +457,7 @@ def _external_push_readiness(
 ) -> tuple[bool, str | None]:
     if analysis_admission_status != "admitted":
         return False, "analysis_not_admitted"
-    agent_status = str(agent_signal.get("status") or "")
-    if agent_status == "not_required":
-        return False, str(agent_signal.get("eligibility_reason") or "agent_not_required")
-    if agent_status != "ready":
+    if str(agent_signal.get("status") or "") != "ready":
         return False, "agent_brief_not_ready"
     if not _agent_publishable_summary(agent_signal):
         return False, "agent_brief_missing_summary"

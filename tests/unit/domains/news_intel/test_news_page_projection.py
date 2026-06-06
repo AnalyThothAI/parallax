@@ -310,11 +310,25 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
             "brief_json": {
                 "summary_zh": "SOL ETF 申请提升关注。",
                 "market_read_zh": "叙事催化增强。",
+                "event_type": "etf_filing",
+                "market_domains": ["crypto"],
+                "transmission_paths": [
+                    {
+                        "market_domain": "crypto",
+                        "channel": "regulatory_attention",
+                        "direction": "bullish",
+                        "strength": "moderate",
+                        "explanation_zh": "ETF 申请提升监管叙事。",
+                    }
+                ],
                 "bull_view": {"strength": "strong", "thesis_zh": "新增需求预期"},
                 "bear_view": {"strength": "weak", "thesis_zh": "审批仍不确定"},
-                "affected_assets": [
+                "affected_entities": [
                     {
+                        "label": "SOL",
                         "symbol": "SOL",
+                        "entity_type": "crypto_asset",
+                        "market_domain": "crypto",
                         "target_id": "asset:sol",
                         "impact_direction": "bullish",
                         "reason_zh": "ETF 申请直接影响 SOL。",
@@ -337,6 +351,8 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
         "status": "ready",
         "direction": "bullish",
         "decision_class": "driver",
+        "event_type": "etf_filing",
+        "market_domains": ["crypto"],
         "summary_zh": "SOL ETF 申请提升关注。",
         "market_read_zh": "叙事催化增强。",
         "bull_strength": "strong",
@@ -350,12 +366,24 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
         "input_hash": "input-1",
         "bull_view": {"strength": "strong", "thesis_zh": "新增需求预期"},
         "bear_view": {"strength": "weak", "thesis_zh": "审批仍不确定"},
-        "affected_assets": [
+        "affected_entities": [
             {
+                "label": "SOL",
                 "symbol": "SOL",
+                "entity_type": "crypto_asset",
+                "market_domain": "crypto",
                 "target_id": "asset:sol",
                 "impact_direction": "bullish",
                 "reason_zh": "ETF 申请直接影响 SOL。",
+            }
+        ],
+        "transmission_paths": [
+            {
+                "market_domain": "crypto",
+                "channel": "regulatory_attention",
+                "direction": "bullish",
+                "strength": "moderate",
+                "explanation_zh": "ETF 申请提升监管叙事。",
             }
         ],
     }
@@ -372,18 +400,15 @@ def test_page_signal_envelope_separates_provider_agent_display_and_alert() -> No
             "published_at_ms": 1_000,
             "analysis_admission_status": "admitted",
             "analysis_admission_reason": "crypto_subject",
-                "provider_signal_json": {
-                    "source": "provider",
-                    "provider": "opennews",
-                    "status": "ready",
-                    "direction": "bullish",
-                    "score": 90,
-                    "method": "opennews.aiRating",
-                },
-                "agent_requirement_status": "required",
-                "agent_requirement_reason": "eligible",
-                "agent_requirement_priority": 10,
+            "provider_signal_json": {
+                "source": "provider",
+                "provider": "opennews",
+                "status": "ready",
+                "direction": "bullish",
+                "score": 90,
+                "method": "opennews.aiRating",
             },
+        },
         token_mentions=[],
         fact_candidates=[],
         agent_brief={
@@ -396,17 +421,10 @@ def test_page_signal_envelope_separates_provider_agent_display_and_alert() -> No
         computed_at_ms=3_000,
     )
 
-    assert set(row["signal"]) == {
-        "display_signal",
-        "provider_signal",
-        "agent_signal",
-        "alert_eligibility",
-        "agent_requirement",
-    }
+    assert set(row["signal"]) == {"display_signal", "provider_signal", "agent_signal", "alert_eligibility"}
     assert row["signal"]["display_signal"]["source"] == "agent"
     assert row["signal"]["provider_signal"]["provider"] == "opennews"
     assert row["signal"]["agent_signal"]["status"] == "ready"
-    assert row["signal"]["agent_requirement"]["reason"] == "eligible"
     assert row["signal"]["alert_eligibility"]["external_push_ready"] is True
 
 
@@ -530,8 +548,6 @@ def test_non_admitted_provider_score_does_not_set_in_app_eligible() -> None:
             "source_domain": "example.test",
             "canonical_url": "https://example.test/spacex",
             "published_at_ms": 1000,
-            "lifecycle_status": "processed",
-            "content_classification_json": {"policy_version": "news_content_classification_v1"},
             "analysis_admission_status": "page_only",
             "analysis_admission_reason": "private_company_equity_context",
             "analysis_admission_json": {
@@ -548,9 +564,6 @@ def test_non_admitted_provider_score_does_not_set_in_app_eligible() -> None:
                 "grade": "A",
             },
             "provider_token_impacts_json": [{"symbol": "SPCX", "score": 95, "signal": "long"}],
-            "agent_requirement_status": "not_required",
-            "agent_requirement_reason": "analysis_not_admitted",
-            "agent_requirement_priority": 5,
         },
         token_mentions=[],
         fact_candidates=[],
@@ -559,15 +572,7 @@ def test_non_admitted_provider_score_does_not_set_in_app_eligible() -> None:
 
     assert row["signal"]["provider_signal"]["score"] == 95
     assert row["signal"]["alert_eligibility"]["in_app_eligible"] is False
-    assert row["signal"]["alert_eligibility"]["agent_status"] == "not_required"
     assert row["analysis_admission_status"] == "page_only"
-    assert row["agent_status"] == "not_required"
-    assert row["agent_brief"] == {
-        "status": "not_required",
-        "eligibility_reason": "analysis_not_admitted",
-        "requirement_status": "not_required",
-        "requirement_reason": "analysis_not_admitted",
-    }
 
 
 def test_admitted_ready_brief_sets_external_push_ready() -> None:
@@ -636,7 +641,7 @@ def test_story_payload_includes_member_count_and_domains() -> None:
     assert row["story"]["source_domains"] == ["bloomberg.com", "wsj.com"]
 
 
-def test_build_news_page_row_uses_pending_agent_brief_when_agent_work_is_eligible() -> None:
+def test_build_news_page_row_uses_pending_agent_brief_when_missing() -> None:
     row = build_news_page_row(
         item={
             "news_item_id": "news-1",
@@ -645,21 +650,6 @@ def test_build_news_page_row_uses_pending_agent_brief_when_agent_work_is_eligibl
             "source_domain": "example.test",
             "canonical_url": "https://example.test/a",
             "published_at_ms": 1000,
-            "lifecycle_status": "processed",
-            "content_classification_json": {"policy_version": "news_content_classification_v1"},
-            "analysis_admission_status": "admitted",
-            "analysis_admission_json": {
-                "status": "admitted",
-                "basis": {"crypto_evidence": ["resolved_crypto_target:cex:SOL"]},
-            },
-            "provider_signal_json": {
-                "source": "provider",
-                "status": "ready",
-                "score": 80,
-            },
-            "agent_requirement_status": "required",
-            "agent_requirement_reason": "eligible",
-            "agent_requirement_priority": 20,
         },
         token_mentions=[],
         fact_candidates=[],
@@ -668,51 +658,4 @@ def test_build_news_page_row_uses_pending_agent_brief_when_agent_work_is_eligibl
 
     assert row["agent_status"] == "pending"
     assert row["agent_brief_computed_at_ms"] is None
-    assert row["agent_brief"] == {
-        "status": "pending",
-        "eligibility_reason": "eligible",
-        "requirement_status": "required",
-        "requirement_reason": "eligible",
-    }
-
-
-def test_build_news_page_row_marks_low_score_items_as_agent_not_required() -> None:
-    row = build_news_page_row(
-        item={
-            "news_item_id": "news-1",
-            "title": "SOL ETF filing",
-            "summary": "",
-            "source_domain": "example.test",
-            "canonical_url": "https://example.test/a",
-            "published_at_ms": 1000,
-            "lifecycle_status": "processed",
-            "content_classification_json": {"policy_version": "news_content_classification_v1"},
-            "analysis_admission_status": "admitted",
-            "analysis_admission_json": {
-                "status": "admitted",
-                "basis": {"crypto_evidence": ["provider_score:55"]},
-            },
-            "provider_signal_json": {
-                "source": "provider",
-                "status": "ready",
-                "score": 55,
-            },
-            "agent_requirement_status": "not_required",
-            "agent_requirement_reason": "below_score_threshold",
-            "agent_requirement_priority": 45,
-        },
-        token_mentions=[],
-        fact_candidates=[],
-        computed_at_ms=4000,
-    )
-
-    assert row["agent_status"] == "not_required"
-    assert row["agent_brief_computed_at_ms"] is None
-    assert row["agent_brief"] == {
-        "status": "not_required",
-        "eligibility_reason": "below_score_threshold",
-        "requirement_status": "not_required",
-        "requirement_reason": "below_score_threshold",
-    }
-    assert row["signal"]["alert_eligibility"]["agent_status"] == "not_required"
-    assert row["signal"]["alert_eligibility"]["external_push_block_reason"] == "below_score_threshold"
+    assert row["agent_brief"] == {"status": "pending"}

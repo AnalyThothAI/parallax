@@ -7,13 +7,25 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from parallax.domains.news_intel.types.news_item_brief import (
-    DataGap,
     NewsItemBriefInputPacket,
     NewsItemBriefPayload,
 )
 from parallax.platform.agent_hashing import json_sha256
 
 _ACTION_AUDIT_KEYS = frozenset({"tool_calls", "tools", "handoffs"})
+_TRADING_INSTRUCTION_PATTERNS = (
+    re.compile(r"(?:建议|推荐|可以|应当|应该|适合).{0,16}(?:买入|卖出|开仓|平仓|做多|做空|加仓|减仓|止损|止盈|杠杆)"),
+    re.compile(r"(?:买入|卖出|开仓|平仓|做多|做空).{0,12}(?:止损|止盈|杠杆|仓位)"),
+    re.compile(r"\b(?:long|short|buy|sell)\s+(?:this|it)\b", re.I),
+    re.compile(r"\b(?:long|short|buy|sell)\s+[A-Z0-9]{2,10}\b"),
+    re.compile(r"\b(?:open|close)\s+(?:a\s+)?(?:long|short|position|trade|order)\b", re.I),
+    re.compile(r"\bposition\s+size\b", re.I),
+    re.compile(r"\btarget\s+price\b", re.I),
+    re.compile(r"\bstop[-\s]?loss\b", re.I),
+    re.compile(r"\btake[-\s]?profit\b", re.I),
+    re.compile(r"\b(?:use\s+a\s+)?\d+x\s+leverage(?:\s+order)?\b", re.I),
+    re.compile(r"\bleverage\s+order\b", re.I),
+)
 
 
 class NewsItemBriefValidationResult(BaseModel):
@@ -40,7 +52,10 @@ def validate_news_item_brief_output(
     errors: list[dict[str, str]] = []
     payload_dict = parsed.model_dump(mode="json")
     errors.extend(_unexpected_action_errors(audit))
-    payload_dict = _drop_unsupported_assets(payload_dict, packet=packet)
+    errors.extend(_evidence_ref_errors(payload_dict, packet=packet))
+    errors.extend(_ready_evidence_errors(payload_dict, packet=packet))
+    errors.extend(_unsupported_entity_errors(payload_dict, packet=packet))
+    errors.extend(_trading_instruction_errors(payload_dict))
     try:
         normalized = NewsItemBriefPayload.model_validate(payload_dict)
     except ValidationError as exc:
@@ -67,39 +82,50 @@ def _unexpected_action_errors(audit: Any) -> list[dict[str, str]]:
     return _dedupe_errors(errors)
 
 
-def _drop_unsupported_assets(payload: dict[str, Any], *, packet: NewsItemBriefInputPacket) -> dict[str, Any]:
-    supported = _source_backed_asset_labels(packet)
-    kept_assets: list[dict[str, Any]] = []
-    dropped_symbols: list[str] = []
-    for asset in payload.get("affected_assets") or []:
+def _evidence_ref_errors(payload: dict[str, Any], *, packet: NewsItemBriefInputPacket) -> list[dict[str, str]]:
+    allowed = set(packet.evidence_refs)
+    return [
+        _error("unknown_evidence_ref", ref)
+        for ref in sorted(_evidence_refs_in_payload(payload))
+        if ref not in allowed
+    ]
+
+
+def _ready_evidence_errors(payload: dict[str, Any], *, packet: NewsItemBriefInputPacket) -> list[dict[str, str]]:
+    if payload.get("status") != "ready":
+        return []
+    allowed = set(packet.evidence_refs)
+    if any(ref in allowed for ref in _evidence_refs_in_payload(payload)):
+        return []
+    return [_error("missing_ready_evidence_ref", "ready output requires at least one valid evidence ref")]
+
+
+def _unsupported_entity_errors(payload: dict[str, Any], *, packet: NewsItemBriefInputPacket) -> list[dict[str, str]]:
+    supported = _source_backed_entity_labels(packet)
+    errors: list[dict[str, str]] = []
+    for entity in payload.get("affected_entities") or []:
+        if not isinstance(entity, Mapping):
+            continue
         labels = {
-            _norm(asset.get("symbol")),
-            _norm(asset.get("name")),
-            _norm(asset.get("target_id")),
+            _norm(entity.get("label")),
+            _norm(entity.get("symbol")),
+            _norm(entity.get("name")),
+            _norm(entity.get("target_id")),
         }
         if any(label and label in supported for label in labels):
-            kept_assets.append(asset)
             continue
-        dropped_symbols.append(str(asset.get("symbol") or asset.get("name") or "unknown"))
-    if not dropped_symbols:
-        return payload
-    normalized = dict(payload)
-    normalized["affected_assets"] = kept_assets
-    gaps = list(normalized.get("data_gaps") or [])
-    gaps.extend(
-        [
-            DataGap(
-                description_zh=f"模型提到的资产 {symbol} 未在输入 token、fact 或新闻文本中找到来源支撑。",
-                severity="medium",
-            ).model_dump(mode="json")
-            for symbol in sorted(set(dropped_symbols))
-        ]
-    )
-    normalized["data_gaps"] = gaps[:12]
-    return normalized
+        errors.append(_error("unsupported_entity", str(entity.get("label") or entity.get("symbol") or "unknown")))
+    return errors
 
 
-def _source_backed_asset_labels(packet: NewsItemBriefInputPacket) -> set[str]:
+def _trading_instruction_errors(payload: dict[str, Any]) -> list[dict[str, str]]:
+    for text in _strings_in_payload(payload):
+        if any(pattern.search(text) for pattern in _TRADING_INSTRUCTION_PATTERNS):
+            return [_error("trading_instruction", "output contains prescriptive trading or execution language")]
+    return []
+
+
+def _source_backed_entity_labels(packet: NewsItemBriefInputPacket) -> set[str]:
     labels: set[str] = set()
     text_fields = [
         packet.news_item.title,
@@ -107,13 +133,14 @@ def _source_backed_asset_labels(packet: NewsItemBriefInputPacket) -> set[str]:
         packet.news_item.body_excerpt,
     ]
     labels.update(_norm(token) for field in text_fields for token in re.findall(r"[A-Za-z0-9]{2,20}", field or ""))
-    for token in packet.token_lanes:
+    for entity in packet.entity_lanes:
         labels.update(
             {
-                _norm(token.observed_symbol),
-                _norm(token.display_symbol),
-                _norm(token.display_name),
-                _norm(token.target_id),
+                _norm(entity.entity_id),
+                _norm(entity.observed_label),
+                _norm(entity.display_symbol),
+                _norm(entity.display_name),
+                _norm(entity.target_id),
             }
         )
     for fact in packet.fact_lanes:
@@ -121,6 +148,36 @@ def _source_backed_asset_labels(packet: NewsItemBriefInputPacket) -> set[str]:
         for target in fact.affected_targets:
             labels.update(_norm(value) for value in target.values() if isinstance(value, str))
     return {label for label in labels if label}
+
+
+def _evidence_refs_in_payload(value: Any) -> set[str]:
+    refs: set[str] = set()
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            if key == "evidence_refs" and isinstance(child, list):
+                refs.update(str(ref) for ref in child if str(ref or ""))
+            else:
+                refs.update(_evidence_refs_in_payload(child))
+    elif isinstance(value, list):
+        for child in value:
+            refs.update(_evidence_refs_in_payload(child))
+    return refs
+
+
+def _strings_in_payload(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, Mapping):
+        texts: list[str] = []
+        for child in value.values():
+            texts.extend(_strings_in_payload(child))
+        return texts
+    if isinstance(value, list):
+        texts: list[str] = []
+        for child in value:
+            texts.extend(_strings_in_payload(child))
+        return texts
+    return []
 
 
 def _walk_mapping_items(value: Any) -> list[tuple[str, Any]]:

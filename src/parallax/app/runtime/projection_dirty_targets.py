@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from contextlib import nullcontext
 from typing import Any
@@ -8,6 +9,13 @@ from parallax.domains.news_intel.runtime.news_projection_work import (
     enqueue_item_brief_work,
     enqueue_page_reprojection,
     enqueue_source_quality_refresh,
+)
+from parallax.domains.news_intel.services.news_item_agent_admission import (
+    NewsItemAgentAdmissionContext,
+    decide_news_item_agent_admission,
+)
+from parallax.domains.news_intel.services.news_item_agent_policy import (
+    news_item_agent_brief_priority,
 )
 
 DOMAIN_CHOICES = ("all", "news")
@@ -84,10 +92,16 @@ def _enqueue_news_targets(
         else []
     )
     page_rows = [row for row in news_item_rows if "page" in news_item_projections]
+    admission_contexts_by_id = (
+        _agent_admission_contexts_by_id(repos, news_item_rows, now_ms=now_ms)
+        if "brief_input" in news_item_projections
+        else {}
+    )
     brief_rows = [
         row
         for row in news_item_rows
-        if "brief_input" in news_item_projections and _row_brief_eligible(row, now_ms=now_ms)
+        if "brief_input" in news_item_projections
+        and _row_brief_eligible(row, context=admission_contexts_by_id.get(str(row["news_item_id"])), now_ms=now_ms)
     ]
     watermarks = {str(row["news_item_id"]): int(row["source_watermark_ms"] or 0) for row in news_item_rows}
     enqueued_pages = (
@@ -144,16 +158,21 @@ def _selected_projections(requested: str, available: tuple[str, ...]) -> tuple[s
     return ()
 
 
-def _row_brief_eligible(row: Mapping[str, Any], *, now_ms: int) -> bool:
-    del now_ms
-    return str(row.get("agent_requirement_status") or "").strip().lower() == "required"
+def _row_brief_eligible(row: Mapping[str, Any], *, context: Mapping[str, Any] | None, now_ms: int) -> bool:
+    if context is None:
+        return False
+    return decide_news_item_agent_admission(
+        item=_json_dict(context.get("item")) or row,
+        entities=_json_list(context.get("entities")),
+        token_mentions=_json_list(context.get("token_mentions")) or _json_list(row.get("token_mentions_json")),
+        fact_candidates=_json_list(context.get("fact_candidates")) or _json_list(row.get("fact_candidates_json")),
+        context=NewsItemAgentAdmissionContext.from_repository_context(context),
+        now_ms=now_ms,
+    ).eligible
 
 
 def _news_item_brief_priority(row: Mapping[str, Any]) -> int:
-    try:
-        return max(0, int(row.get("agent_requirement_priority")))
-    except (TypeError, ValueError):
-        return 100
+    return news_item_agent_brief_priority(item=row)
 
 
 def _fetch_ids(conn: Any, sql: str, column: str) -> list[str]:
@@ -184,26 +203,91 @@ def _fetch_news_item_rows(conn: Any, *, since_ms: int | None) -> list[dict[str, 
                items.story_identity_version,
                items.provider_signal_json,
                items.provider_token_impacts_json,
-               items.agent_requirement_status,
-               items.agent_requirement_reason,
-               items.agent_requirement_priority,
-               items.agent_requirement_json,
-               items.agent_requirement_version,
                sources.provider_type,
                sources.source_domain,
                sources.source_name,
                sources.source_role,
+               sources.enabled AS source_enabled,
                sources.coverage_tags_json,
                sources.trust_tier,
-               sources.authority_scope_json
+               sources.authority_scope_json,
+               COALESCE(mentions.token_mentions_json, '[]'::jsonb) AS token_mentions_json,
+               COALESCE(facts.fact_candidates_json, '[]'::jsonb) AS fact_candidates_json
           FROM news_items AS items
           JOIN news_sources AS sources ON sources.source_id = items.source_id
+          LEFT JOIN LATERAL (
+            SELECT jsonb_agg(to_jsonb(mentions.*) ORDER BY mentions.mention_id) AS token_mentions_json
+              FROM news_token_mentions AS mentions
+             WHERE mentions.news_item_id = items.news_item_id
+          ) AS mentions ON true
+          LEFT JOIN LATERAL (
+            SELECT jsonb_agg(to_jsonb(facts.*) ORDER BY facts.fact_candidate_id) AS fact_candidates_json
+              FROM news_fact_candidates AS facts
+             WHERE facts.news_item_id = items.news_item_id
+          ) AS facts ON true
          {where_clause}
          ORDER BY items.news_item_id ASC
         """,
         params,
     ).fetchall()
     return [dict(row) for row in rows if row["news_item_id"] is not None]
+
+
+def _json_list(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, list):
+        return [dict(row) for row in value if isinstance(row, Mapping)]
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+        if isinstance(parsed, list):
+            return [dict(row) for row in parsed if isinstance(row, Mapping)]
+    return []
+
+
+def _agent_admission_contexts_by_id(
+    repos: Any,
+    rows: list[Mapping[str, Any]],
+    *,
+    now_ms: int,
+) -> dict[str, dict[str, Any]]:
+    news_item_ids = [str(row["news_item_id"]) for row in rows if row.get("news_item_id")]
+    if not news_item_ids:
+        return {}
+    load_contexts = getattr(getattr(repos, "news", None), "load_agent_admission_contexts", None)
+    if callable(load_contexts):
+        contexts = load_contexts(news_item_ids=news_item_ids, now_ms=now_ms)
+        return {
+            str(_json_dict(context.get("item")).get("news_item_id")): dict(context)
+            for context in contexts
+            if _json_dict(context.get("item")).get("news_item_id")
+        }
+    return {
+        str(row["news_item_id"]): {
+            "item": dict(row),
+            "entities": [],
+            "token_mentions": _json_list(row.get("token_mentions_json")),
+            "fact_candidates": _json_list(row.get("fact_candidates_json")),
+            "current_brief": None,
+            "exact_duplicate_candidates": [],
+            "story_candidates": [],
+        }
+        for row in rows
+        if row.get("news_item_id")
+    }
+
+
+def _json_dict(value: Any) -> dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return dict(parsed) if isinstance(parsed, Mapping) else {}
+    return {}
 
 
 def _transaction(conn: Any) -> Any:

@@ -355,7 +355,6 @@ def test_process_worker_enqueues_page_and_brief_dirty_in_same_transaction_after_
     assert "tx:release_expired_processing_items" in repos.conn.events
     assert "tx:claim_unprocessed_items" in repos.conn.events
     assert "tx:replace_item_entities" in repos.conn.events
-    assert "tx:update_item_agent_requirement" in repos.conn.events
     assert "tx:dirty:news_item_processed" in repos.conn.events
     assert "autocommit:dirty:news_item_processed" not in repos.conn.events
 
@@ -621,17 +620,6 @@ class FakeOpsProjectionConn:
                             "status": "ready",
                             "score": 95,
                         },
-                        "agent_requirement_status": "required",
-                        "agent_requirement_reason": "eligible",
-                        "agent_requirement_priority": 5,
-                        "agent_requirement_json": {
-                            "status": "required",
-                            "reason": "eligible",
-                            "priority": 5,
-                            "basis": {"provider_score": 95},
-                            "version": "news_item_agent_requirement_v1",
-                        },
-                        "agent_requirement_version": "news_item_agent_requirement_v1",
                         "token_mentions_json": [{"resolution_status": "known_symbol", "display_symbol": "BTC"}],
                         "fact_candidates_json": [],
                     }
@@ -975,12 +963,6 @@ class FakeProcessRepos:
         self.conn.record("update_item_analysis_and_story_identity")
         self.write_commits.append(payload["commit"])
 
-    def update_item_agent_requirement(self, **payload: Any) -> None:
-        self.conn.record("update_item_agent_requirement")
-        assert payload["requirement"]["status"] == "required"
-        assert payload["requirement"]["reason"] == "eligible"
-        self.write_commits.append(payload["commit"])
-
     def mark_item_processed(
         self,
         *,
@@ -993,6 +975,15 @@ class FakeProcessRepos:
         del lease_owner, processing_attempts
         self.conn.record("mark_item_processed")
         self.write_commits.append(commit)
+        return 1
+
+    def load_agent_admission_contexts(self, *, news_item_ids: list[str], now_ms: int) -> list[dict[str, Any]]:
+        del news_item_ids, now_ms
+        return []
+
+    def update_item_agent_admission(self, **payload: Any) -> int:
+        self.conn.record("update_item_agent_admission")
+        self.write_commits.append(payload["commit"])
         return 1
 
     def mark_item_process_retryable(self, **payload: Any) -> int:

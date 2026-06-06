@@ -133,6 +133,36 @@ def test_news_item_brief_input_has_no_provider_signal_field_aliases() -> None:
     assert offenders == []
 
 
+def test_news_item_agent_policy_does_not_gate_on_legacy_analysis_admission() -> None:
+    policy_source = _read("src/parallax/domains/news_intel/services/news_item_agent_policy.py")
+    brief_worker_source = _read("src/parallax/domains/news_intel/runtime/news_item_brief_worker.py")
+    forbidden = {
+        "analysis_admission_status",
+        "analysis_not_admitted",
+        "provider_score_without_crypto_admission",
+        "crypto_admission_basis",
+    }
+    assert sorted(token for token in forbidden if token in policy_source) == []
+    assert sorted(token for token in forbidden if token in brief_worker_source) == []
+
+
+def test_news_item_brief_prompt_uses_market_wide_schema_without_affected_assets() -> None:
+    prompt = _read("src/parallax/domains/news_intel/prompts/news_item_brief.md")
+    required = {
+        "market-wide",
+        "`market_domains[]`",
+        "`transmission_paths[]`",
+        "`affected_entities[].reason_zh`",
+    }
+    forbidden = {
+        "affected_assets",
+        "crypto-market transmission",
+        "crypto only",
+    }
+    assert sorted(token for token in required if token not in prompt) == []
+    assert sorted(token for token in forbidden if token in prompt) == []
+
+
 def test_news_page_row_payload_has_no_retired_public_field_aliases() -> None:
     source = _function_source(
         "src/parallax/domains/news_intel/repositories/news_repository.py",

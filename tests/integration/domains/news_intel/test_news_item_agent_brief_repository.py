@@ -277,7 +277,7 @@ def test_load_items_for_brief_targets_payload_contains_packet_inputs_and_audit_r
     assert "story" not in row
     assert "story_members" not in row
     assert packet.news_item.source.source_name == "Payload Source"
-    assert packet.token_lanes[0].mention_id == "mention-payload"
+    assert packet.entity_lanes[0].entity_id == "mention-payload"
 
 
 def test_brief_target_material_watermark_ignores_refetch_updated_at(tmp_path) -> None:
@@ -393,6 +393,18 @@ def test_agent_run_and_current_brief_round_trip_gateway_audit_metadata(tmp_path)
             market_read_zh=(
                 "SOL ETF filing adds regulatory narrative attention, while approval timing remains uncertain."
             ),
+            event_type="etf_fund_flow",
+            market_domains=["crypto", "regulation"],
+            transmission_paths=[
+                {
+                    "market_domain": "regulation",
+                    "channel": "regulatory_overhang",
+                    "direction": "bullish",
+                    "strength": "moderate",
+                    "explanation_zh": "ETF filing adds source-backed regulatory narrative attention.",
+                    "evidence_refs": ["item:summary"],
+                }
+            ],
             bull_view={
                 "strength": "moderate",
                 "thesis_zh": "Regulatory narrative could pull forward approval positioning.",
@@ -403,10 +415,13 @@ def test_agent_run_and_current_brief_round_trip_gateway_audit_metadata(tmp_path)
                 "thesis_zh": "Approval timing is uncertain and may already be priced.",
                 "evidence_refs": ["item:summary"],
             },
-            affected_assets=[
+            affected_entities=[
                 {
+                    "label": "SOL",
+                    "entity_type": "crypto_asset",
                     "symbol": "SOL",
                     "name": "Solana",
+                    "market_domain": "crypto",
                     "resolution_status": "known_symbol",
                     "target_type": "asset",
                     "target_id": "asset:sol",
