@@ -89,7 +89,12 @@ def build_news_item_brief_input_packet(
         "material_delta",
         fallback=agent_admission.get("material_delta"),
     )
-    market_scope = _market_scope(item=item, entity_lanes=entity_lanes)
+    market_scope = _market_scope(
+        item=item,
+        agent_admission=agent_admission,
+        provider_signal_evidence=provider_signal_evidence,
+        entity_lanes=entity_lanes,
+    )
     evidence_refs = _evidence_refs(
         news_item=news_item,
         entity_lanes=entity_lanes,
@@ -339,12 +344,35 @@ def _packet_id(
     return f"news-item-brief:{news_item.news_item_id}:{digest.removeprefix('sha256:')[:16]}"
 
 
-def _market_scope(*, item: Mapping[str, Any], entity_lanes: list[NewsItemBriefEntityLane]) -> list[str]:
+def _market_scope(
+    *,
+    item: Mapping[str, Any],
+    agent_admission: Mapping[str, object],
+    provider_signal_evidence: NewsItemBriefProviderSignalEvidence | None,
+    entity_lanes: list[NewsItemBriefEntityLane],
+) -> list[str]:
     explicit = _market_domain_list(item.get("market_scope_json") or item.get("market_scope"))
     if explicit:
         return _stable_unique(explicit)[:12]
+    admitted = _agent_admission_market_scope(agent_admission)
+    provider_domains = _provider_market_scope(provider_signal_evidence)
     inferred = [lane.market_domain for lane in entity_lanes if lane.market_domain != "unknown"]
-    return _stable_unique(inferred)[:12]
+    return _stable_unique([*admitted, *provider_domains, *inferred])[:12]
+
+
+def _agent_admission_market_scope(agent_admission: Mapping[str, object]) -> list[str]:
+    basis = _json_object(agent_admission.get("basis"))
+    return _market_domain_list(basis.get("market_scope"))
+
+
+def _provider_market_scope(provider_signal_evidence: NewsItemBriefProviderSignalEvidence | None) -> list[str]:
+    if provider_signal_evidence is None:
+        return []
+    return [
+        domain
+        for domain in (_market_domain(impact.market_type) for impact in provider_signal_evidence.token_impacts)
+        if domain
+    ]
 
 
 def _market_domain_list(value: Any) -> list[str]:

@@ -621,7 +621,6 @@ def _energy_candidate(*, provider_score: int = 90) -> dict[str, Any]:
                 "version": "news_analysis_admission_v1",
             },
             "event_type": "geopolitical_supply",
-            "market_scope_json": ["energy_geopolitics", "commodity", "crypto"],
             "provider_signal_json": {
                 "source": "provider",
                 "provider": "opennews",
@@ -631,6 +630,16 @@ def _energy_candidate(*, provider_score: int = 90) -> dict[str, Any]:
                 "grade": "A",
                 "summary_en": "Gulf flare-up lifted crude supply risk and weighed on risk sentiment.",
             },
+            "provider_token_impacts_json": [
+                {
+                    "symbol": "BTC",
+                    "market_type": "crypto",
+                    "score": 40,
+                    "direction": "mixed",
+                    "signal": "proxy",
+                    "grade": "C",
+                }
+            ],
         }
     )
     candidate["entities"] = [
@@ -647,6 +656,13 @@ def _energy_candidate(*, provider_score: int = 90) -> dict[str, Any]:
             "normalized_value": "united states",
             "entity_type": "country",
             "confidence": 0.94,
+        },
+        {
+            "entity_id": "entity-wti",
+            "raw_value": "WTI crude futures",
+            "normalized_value": "wti crude futures",
+            "entity_type": "commodity",
+            "confidence": 0.92,
         },
     ]
     candidate["token_mentions"] = []
@@ -801,14 +817,20 @@ def _energy_ready_payload() -> dict[str, Any]:
                 "target_type": None,
                 "target_id": None,
                 "impact_direction": "mixed",
-                "reason_zh": "BTC 只作为风险资产情绪代理，来源文本支持风险资产压力但没有直接点名 BTC。",
-                "evidence_refs": ["item:summary"],
+                "reason_zh": "BTC 只作为风险资产情绪代理，provider 影响证据给出 crypto 代理范围。",
+                "evidence_refs": ["item:summary", "provider:token:BTC"],
             },
         ],
         "watch_triggers": ["后续海湾航运、WTI 价格和风险资产波动是否继续扩大"],
         "invalidation_conditions": ["军事升级降温或原油供应风险被后续报道证伪"],
         "data_gaps": [],
-        "evidence_refs": ["item:title", "item:summary", "item:body_excerpt", "fact:fact-gulf-supply"],
+        "evidence_refs": [
+            "item:title",
+            "item:summary",
+            "item:body_excerpt",
+            "fact:fact-gulf-supply",
+            "provider:token:BTC",
+        ],
     }
 
 

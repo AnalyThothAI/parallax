@@ -115,6 +115,30 @@ def test_packet_builds_market_wide_entity_lanes_refs_hash_and_source_text_constr
     assert "raw_payload" not in packet.model_dump_json()
 
 
+def test_packet_uses_agent_admission_basis_market_scope_without_item_scope_field() -> None:
+    packet = build_news_item_brief_input_packet(
+        item={
+            "news_item_id": "item-energy",
+            "title": "Gulf flare-up raises crude supply risk",
+            "summary": "The event raised WTI crude supply concerns.",
+            "body_text": "No item market scope field is present on this production-shaped item.",
+            "published_at_ms": 1_779_000_000_000,
+            "content_hash": "sha256:energy",
+            "agent_admission_json": {
+                "status": "eligible",
+                "reason": "eligible",
+                "basis": {"market_scope": ["energy_geopolitics", "commodity", "crypto"]},
+            },
+        },
+        entities=[{"entity_id": "entity-iran", "raw_value": "Iran", "entity_type": "country"}],
+        token_mentions=[],
+        fact_candidates=[],
+        agent_config=_agent_config(),
+    )
+
+    assert packet.market_scope == ["energy_geopolitics", "commodity", "crypto"]
+
+
 def test_packet_truncates_entity_and_fact_lanes_after_stable_sort() -> None:
     item = {
         "news_item_id": "item-1",
