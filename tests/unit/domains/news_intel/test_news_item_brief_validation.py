@@ -1407,6 +1407,56 @@ def test_validation_allows_oil_proxy_when_packet_sources_crude_risk() -> None:
     assert result.errors == []
 
 
+@pytest.mark.parametrize("label", ["原油期货", "WTI原油期货"])
+def test_validation_allows_oil_proxy_target_id_when_packet_sources_crude_risk(label: str) -> None:
+    packet = _energy_geopolitics_packet()
+    payload = _ready_payload(
+        direction="mixed",
+        decision_class="driver",
+        event_type="geopolitical_supply",
+        market_domains=["commodity"],
+        bull_view={
+            "strength": "moderate",
+            "thesis_zh": "来源明确提到 crude/oil 供应风险。",
+            "evidence_refs": ["fact:fact-hormuz"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "报道未证明供应已经中断。",
+            "evidence_refs": ["item:summary"],
+        },
+        transmission_paths=[
+            {
+                "market_domain": "commodity",
+                "channel": "shipping_supply_risk",
+                "direction": "bullish",
+                "strength": "moderate",
+                "explanation_zh": "霍尔木兹扰动抬高原油供应风险。",
+                "evidence_refs": ["fact:fact-hormuz"],
+            }
+        ],
+        affected_entities=[
+            {
+                "label": label,
+                "symbol": "CL",
+                "target_id": "CL",
+                "entity_type": "commodity",
+                "market_domain": "commodity",
+                "impact_direction": "bullish",
+                "reason_zh": "来源明确提到 crude/oil 供应风险。",
+                "evidence_refs": ["fact:fact-hormuz"],
+            }
+        ],
+        evidence_refs=["item:summary", "fact:fact-hormuz"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
+
+
 @pytest.mark.parametrize(
     "phrase",
     [

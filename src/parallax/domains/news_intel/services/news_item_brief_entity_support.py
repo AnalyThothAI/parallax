@@ -400,9 +400,10 @@ def validate_affected_entity_support(
 
     source_domains = _source_backed_domains(packet)
     candidate_domains = _entity_candidate_domains(entity=entity, payload=payload)
-    if target_id_keys and not _source_supports_keys(
+    if target_id_keys and not _keys_supported_by_source_or_proxy(
         target_id_keys,
         source_key_support=source_key_support,
+        source_domains=source_domains,
         candidate_domains=candidate_domains,
     ):
         return EntitySupportDecision(supported=False, reason="unsupported_target_id")
