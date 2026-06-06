@@ -4,6 +4,7 @@ from parallax.domains.news_intel.services.news_item_brief_input import (
     build_news_item_brief_input_packet,
     news_item_brief_material_input_payload,
 )
+from parallax.domains.news_intel.services.news_market_scope import infer_news_market_scope
 from parallax.domains.news_intel.types.news_item_brief import NewsItemBriefAgentConfig
 from parallax.platform.agent_hashing import json_sha256
 
@@ -168,6 +169,22 @@ def test_packet_uses_provider_cex_token_impact_as_crypto_scope_without_item_scop
     assert packet.provider_signal_evidence.token_impacts[0].market_type == "cex"
     assert "provider:token:BTC" in packet.evidence_refs
     assert packet.market_scope == ["energy_geopolitics", "commodity", "crypto"]
+
+
+def test_scope_inference_marks_wti_crude_text_as_commodity() -> None:
+    scope = infer_news_market_scope(
+        item={
+            "title": "WTI crude rises as Gulf oil supply risk grows",
+            "summary": "Crude and oil shipping risk lifted futures volatility.",
+        },
+        entities=[],
+        token_mentions=[],
+        fact_candidates=[],
+    )
+
+    assert "energy_geopolitics" in scope.domains
+    assert "commodity" in scope.domains
+    assert "text:commodity" in scope.basis["commodity"]
 
 
 def test_packet_truncates_entity_and_fact_lanes_after_stable_sort() -> None:

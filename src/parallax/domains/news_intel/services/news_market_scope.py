@@ -31,7 +31,7 @@ _PRIVATE_RE = re.compile(r"\b(?:private company|spacex|openai|anthropic|tender o
 _MACRO_RATES_RE = re.compile(r"\b(?:fed|federal reserve|rates?|inflation|cpi|treasury yields?|dollar)\b", re.I)
 _ENERGY_GEO_RE = re.compile(r"\b(?:oil|crude|iran|hormuz|sanctions?|geopolitic|shipping risk)\b", re.I)
 _REGULATION_RE = re.compile(r"\b(?:sec|cftc|regulator|regulation|lawsuit|probe|approval)\b", re.I)
-_COMMODITY_RE = re.compile(r"\b(?:gold|copper|wheat|commodity|commodities)\b", re.I)
+_COMMODITY_RE = re.compile(r"\b(?:gold|copper|wheat|commodity|commodities|oil|crude|wti)\b", re.I)
 _FX_RE = re.compile(r"\b(?:fx|foreign exchange|yen|euro|usd|currency)\b", re.I)
 
 

@@ -265,6 +265,54 @@ def _us_energy_firms_provider_only_packet():
     )
 
 
+def _crypto_market_scope_only_packet():
+    return build_news_item_brief_input_packet(
+        item={
+            "news_item_id": "item-crypto-market-scope-only",
+            "title": "Broad crypto market update without asset-specific support",
+            "summary": "The report discusses crypto market conditions without naming a specific token.",
+            "body_text": (
+                "No provider token impact, fact target, entity lane, or asset-specific source text is present."
+            ),
+            "published_at_ms": 1_779_000_000_000,
+            "content_hash": "sha256:crypto-market-scope-only",
+            "market_scope_json": ["crypto"],
+            "agent_admission_json": {"status": "eligible", "reason": "market_wide_driver"},
+        },
+        entities=[],
+        token_mentions=[],
+        fact_candidates=[],
+        agent_config=_agent_config(),
+    )
+
+
+def _provider_btc_packet():
+    return build_news_item_brief_input_packet(
+        item={
+            "news_item_id": "item-provider-btc",
+            "title": "Provider flags market impact",
+            "summary": "The source text does not name the affected crypto asset directly.",
+            "body_text": "Provider evidence supplies the token-specific impact.",
+            "published_at_ms": 1_779_000_000_000,
+            "content_hash": "sha256:provider-btc",
+            "provider_signal_json": {
+                "source": "provider",
+                "provider": "opennews",
+                "status": "ready",
+                "direction": "mixed",
+            },
+            "provider_token_impacts_json": [
+                {"symbol": "BTC", "market_type": "cex", "score": 80, "signal": "proxy", "grade": "B"}
+            ],
+            "agent_admission_json": {"status": "eligible", "reason": "provider_score_high"},
+        },
+        entities=[],
+        token_mentions=[],
+        fact_candidates=[],
+        agent_config=_agent_config(),
+    )
+
+
 def _ready_payload(**overrides: Any) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "status": "ready",
@@ -398,6 +446,104 @@ def test_validation_rejects_unsupported_entities() -> None:
     assert {"code": "unsupported_entity", "message": "XYZ"} in result.errors
 
 
+def test_validation_rejects_fake_label_laundered_by_source_backed_symbol() -> None:
+    packet = _energy_geopolitics_packet()
+    payload = _ready_payload(
+        direction="mixed",
+        decision_class="driver",
+        event_type="geopolitical_supply",
+        market_domains=["energy_geopolitics", "commodity"],
+        transmission_paths=[
+            {
+                "market_domain": "commodity",
+                "channel": "shipping_supply_risk",
+                "direction": "bullish",
+                "strength": "moderate",
+                "explanation_zh": "霍尔木兹扰动抬高原油供应风险。",
+                "evidence_refs": ["fact:fact-hormuz"],
+            }
+        ],
+        bull_view={
+            "strength": "moderate",
+            "thesis_zh": "霍尔木兹扰动抬高原油供应风险。",
+            "evidence_refs": ["fact:fact-hormuz"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "来源没有支持新占位实体。",
+            "evidence_refs": ["item:summary"],
+        },
+        affected_entities=[
+            {
+                "label": "ABC crude proxy",
+                "symbol": "CL",
+                "entity_type": "commodity",
+                "market_domain": "commodity",
+                "impact_direction": "bullish",
+                "reason_zh": "模型把真实 CL 符号附加到来源中没有的占位实体。",
+                "evidence_refs": ["fact:fact-hormuz"],
+            }
+        ],
+        evidence_refs=["item:summary", "fact:fact-hormuz"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is False
+    assert result.status == "failed"
+    assert {"code": "unsupported_entity", "message": "ABC crude proxy"} in result.errors
+
+
+def test_validation_rejects_fake_target_id_laundered_by_source_backed_symbol() -> None:
+    packet = _energy_geopolitics_packet()
+    payload = _ready_payload(
+        direction="mixed",
+        decision_class="driver",
+        event_type="geopolitical_supply",
+        market_domains=["energy_geopolitics", "commodity", "crypto"],
+        transmission_paths=[
+            {
+                "market_domain": "crypto",
+                "channel": "risk_asset_sensitivity",
+                "direction": "mixed",
+                "strength": "weak",
+                "explanation_zh": "来源支持 Bitcoin 作为风险资产敏感目标。",
+                "evidence_refs": ["fact:fact-hormuz"],
+            }
+        ],
+        bull_view={
+            "strength": "moderate",
+            "thesis_zh": "来源支持 Bitcoin 作为风险资产敏感目标。",
+            "evidence_refs": ["fact:fact-hormuz"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "来源没有支持模型给出的 target_id。",
+            "evidence_refs": ["item:summary"],
+        },
+        affected_entities=[
+            {
+                "label": "Bitcoin",
+                "symbol": "BTC",
+                "entity_type": "crypto_asset",
+                "market_domain": "crypto",
+                "target_type": "asset",
+                "target_id": "asset:xyz",
+                "impact_direction": "mixed",
+                "reason_zh": "模型把来源支撑的 BTC 符号绑定到来源中没有的 target_id。",
+                "evidence_refs": ["fact:fact-hormuz"],
+            }
+        ],
+        evidence_refs=["item:summary", "fact:fact-hormuz"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is False
+    assert result.status == "failed"
+    assert {"code": "unsupported_entity", "message": "Bitcoin"} in result.errors
+
+
 @pytest.mark.parametrize("symbol", ["asset", "listing", "crypto"])
 def test_validation_rejects_invented_entities_named_after_generic_classification_keys(symbol: str) -> None:
     packet = _crypto_packet()
@@ -458,6 +604,102 @@ def test_validation_rejects_commodity_proxy_when_packet_does_not_source_commodit
     assert result.publishable is False
     assert result.status == "failed"
     assert {"code": "unsupported_entity", "message": "WTI原油期货"} in result.errors
+
+
+def test_validation_rejects_btc_proxy_when_only_crypto_market_scope_is_source_backed() -> None:
+    packet = _crypto_market_scope_only_packet()
+    payload = _ready_payload(
+        direction="mixed",
+        decision_class="driver",
+        event_type="market_update",
+        market_domains=["crypto"],
+        bull_view={
+            "strength": "weak",
+            "thesis_zh": "来源只有 broad crypto market scope。",
+            "evidence_refs": ["item:summary"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "来源没有 BTC 或 Bitcoin 证据。",
+            "evidence_refs": ["item:summary"],
+        },
+        transmission_paths=[
+            {
+                "market_domain": "crypto",
+                "channel": "market_beta",
+                "direction": "mixed",
+                "strength": "weak",
+                "explanation_zh": "市场范围是 crypto，但来源没有 BTC 或 Bitcoin 证据。",
+                "evidence_refs": ["item:summary"],
+            }
+        ],
+        affected_entities=[
+            {
+                "label": "Bitcoin",
+                "symbol": "BTC",
+                "entity_type": "crypto_asset",
+                "market_domain": "crypto",
+                "impact_direction": "mixed",
+                "reason_zh": "模型仅凭 crypto market_scope 插入了 BTC。",
+                "evidence_refs": ["item:summary"],
+            }
+        ],
+        evidence_refs=["item:summary"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is False
+    assert result.status == "failed"
+    assert {"code": "unsupported_entity", "message": "Bitcoin"} in result.errors
+
+
+def test_validation_allows_btc_proxy_when_provider_token_impact_sources_symbol() -> None:
+    packet = _provider_btc_packet()
+    payload = _ready_payload(
+        direction="mixed",
+        decision_class="driver",
+        event_type="provider_signal",
+        market_domains=["crypto"],
+        bull_view={
+            "strength": "moderate",
+            "thesis_zh": "provider token impact 明确给出 BTC。",
+            "evidence_refs": ["provider:token:BTC"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "provider token impact 仍需后续市场反应确认。",
+            "evidence_refs": ["item:summary"],
+        },
+        transmission_paths=[
+            {
+                "market_domain": "crypto",
+                "channel": "provider_token_impact",
+                "direction": "mixed",
+                "strength": "moderate",
+                "explanation_zh": "provider token impact 明确给出 BTC。",
+                "evidence_refs": ["provider:token:BTC"],
+            }
+        ],
+        affected_entities=[
+            {
+                "label": "Bitcoin",
+                "symbol": "BTC",
+                "entity_type": "crypto_asset",
+                "market_domain": "crypto",
+                "impact_direction": "mixed",
+                "reason_zh": "provider token impact 明确给出 BTC。",
+                "evidence_refs": ["provider:token:BTC"],
+            }
+        ],
+        evidence_refs=["item:summary", "provider:token:BTC"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
 
 
 @pytest.mark.parametrize(

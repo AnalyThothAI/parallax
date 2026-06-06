@@ -9,7 +9,7 @@ from parallax.domains.news_intel.types.news_item_brief import NewsItemBriefInput
 
 _ASCII_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{1,31}")
 _SYNTHETIC_PLACEHOLDER_RE = re.compile(
-    r"(?<![a-z0-9])(?:xyz[-_]?[a-z0-9]{1,12}|abc[-_][a-z0-9]{1,12}|test[-_]?[a-z0-9]{0,12})(?![a-z0-9])",
+    r"(?<![a-z0-9])(?:xyz|abc|test)(?:[-_ ]?[a-z0-9]{0,12})?(?![a-z0-9])",
     re.I,
 )
 _US_ENERGY_SECTOR_SOURCE_RE = re.compile(
@@ -238,32 +238,54 @@ def validate_affected_entity_support(
     packet: NewsItemBriefInputPacket,
     payload: Mapping[str, Any],
 ) -> EntitySupportDecision:
-    labels = _entity_labels(entity)
-    if not labels:
+    source_keys = source_backed_entity_keys(packet)
+    label_name_keys = _entity_label_name_keys(entity)
+    symbol_keys = _entity_symbol_keys(entity)
+    target_id_keys = _entity_target_id_keys(entity)
+    entity_keys = label_name_keys | symbol_keys | target_id_keys
+    if not entity_keys:
         return EntitySupportDecision(supported=False, reason="missing_label")
-    if _contains_synthetic_placeholder(labels):
+    if _contains_unbacked_synthetic_placeholder(entity, source_keys=source_keys):
         return EntitySupportDecision(supported=False, reason="synthetic_placeholder")
-    if labels & source_backed_entity_keys(packet):
+    if target_id_keys and not target_id_keys & source_keys:
+        return EntitySupportDecision(supported=False, reason="unsupported_target_id")
+
+    source_domains = _source_backed_domains(packet, source_keys=source_keys)
+    candidate_domains = _entity_candidate_domains(entity=entity, payload=payload)
+    if label_name_keys and not _keys_supported_by_source_or_proxy(
+        label_name_keys,
+        source_keys=source_keys,
+        source_domains=source_domains,
+        candidate_domains=candidate_domains,
+    ):
+        return EntitySupportDecision(supported=False, reason="unsupported_label")
+
+    if entity_keys & source_keys:
         return EntitySupportDecision(supported=True, reason="packet_key")
 
-    source_domains = _source_backed_domains(packet)
-    for domain in _entity_candidate_domains(entity=entity, payload=payload):
+    for domain in candidate_domains:
         if domain not in source_domains:
             continue
-        if labels & _domain_proxy_keys(domain):
+        if _domain_proxy_supports_keys(domain, entity_keys, source_keys=source_keys):
             return EntitySupportDecision(supported=True, reason=f"domain_proxy:{domain}")
 
     return EntitySupportDecision(supported=False, reason="unsupported")
 
 
-def _source_backed_domains(packet: NewsItemBriefInputPacket) -> set[str]:
-    domains = {_norm(domain) for domain in packet.market_scope}
+def _source_backed_domains(packet: NewsItemBriefInputPacket, *, source_keys: set[str] | None = None) -> set[str]:
+    domains = {_norm(domain) for domain in packet.market_scope if _norm(domain) != "crypto"}
     domains.update(_norm(entity.market_domain) for entity in packet.entity_lanes)
     for fact in packet.fact_lanes:
         for target in fact.affected_targets:
             domains.update(_domains_in_mapping(target))
     if packet.provider_signal_evidence is not None:
-        domains.update(_norm(impact.market_type) for impact in packet.provider_signal_evidence.token_impacts)
+        for impact in packet.provider_signal_evidence.token_impacts:
+            domains.update(_provider_impact_domains(impact.market_type))
+            if impact.symbol:
+                domains.add("crypto")
+    source_keys = source_backed_entity_keys(packet) if source_keys is None else source_keys
+    if source_keys & _domain_proxy_keys("crypto"):
+        domains.add("crypto")
     return {domain for domain in domains if domain in _KNOWN_DOMAINS}
 
 
@@ -277,18 +299,59 @@ def _entity_candidate_domains(*, entity: Mapping[str, Any], payload: Mapping[str
     return {domain for domain in domains if domain in _KNOWN_DOMAINS}
 
 
-def _entity_labels(entity: Mapping[str, Any]) -> set[str]:
-    labels = _string_keys(
-        entity.get("label"),
-        entity.get("symbol"),
-        entity.get("name"),
-        entity.get("target_id"),
+def _entity_label_name_keys(entity: Mapping[str, Any]) -> set[str]:
+    return _string_keys(entity.get("label"), entity.get("name"))
+
+
+def _entity_symbol_keys(entity: Mapping[str, Any]) -> set[str]:
+    return _string_keys(entity.get("symbol"))
+
+
+def _entity_target_id_keys(entity: Mapping[str, Any]) -> set[str]:
+    return _string_keys(entity.get("target_id"))
+
+
+def _contains_unbacked_synthetic_placeholder(
+    entity: Mapping[str, Any],
+    *,
+    source_keys: set[str],
+) -> bool:
+    for value in (entity.get("label"), entity.get("name")):
+        if not _SYNTHETIC_PLACEHOLDER_RE.search(str(value or "")):
+            continue
+        if _string_keys(value) & source_keys:
+            continue
+        return True
+    return False
+
+
+def _keys_supported_by_source_or_proxy(
+    keys: set[str],
+    *,
+    source_keys: set[str],
+    source_domains: set[str],
+    candidate_domains: set[str],
+) -> bool:
+    if keys & source_keys:
+        return True
+    return any(
+        domain in source_domains and _domain_proxy_supports_keys(domain, keys, source_keys=source_keys)
+        for domain in candidate_domains
     )
-    return {label for label in labels if label}
 
 
-def _contains_synthetic_placeholder(labels: set[str]) -> bool:
-    return any(_SYNTHETIC_PLACEHOLDER_RE.search(label) for label in labels)
+def _domain_proxy_supports_keys(domain: str, keys: set[str], *, source_keys: set[str]) -> bool:
+    proxy_keys = _domain_proxy_keys(domain)
+    if not keys & proxy_keys:
+        return False
+    return domain != "crypto" or bool(source_keys & proxy_keys)
+
+
+def _provider_impact_domains(market_type: Any) -> set[str]:
+    market = _norm(market_type).replace("-", "_").replace(" ", "_")
+    if market in {"cex", "dex", "spot", "perp", "perpetual", "crypto"}:
+        return {"crypto"}
+    return {market}
 
 
 def _domain_proxy_keys(domain: str) -> set[str]:
