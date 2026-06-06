@@ -206,6 +206,8 @@ class FakeConn:
 
     def execute(self, sql: str, _params: dict[str, Any] | None = None) -> FakeCursor:
         if "FROM news_items" in sql:
+            assert "items.agent_admission_status" in sql
+            assert "items.agent_admission_json" in sql
             return FakeCursor(
                 [
                     {
@@ -222,6 +224,16 @@ class FakeConn:
                             "basis": {"provider_evidence": ["provider_score:95"]},
                         },
                         "analysis_admission_version": "news_analysis_admission_v1",
+                        "agent_admission_status": "score_below_threshold",
+                        "agent_admission_reason": "below_score_threshold",
+                        "agent_admission_json": {
+                            "status": "score_below_threshold",
+                            "reason": "below_score_threshold",
+                            "version": "news_item_agent_admission_market_v2",
+                        },
+                        "agent_admission_version": "news_item_agent_admission_market_v2",
+                        "agent_representative_news_item_id": "news-1",
+                        "agent_admission_computed_at_ms": NOW_MS - 900,
                         "story_key": "news-story:item:news-1",
                         "story_identity_json": {"story_key": "news-story:item:news-1"},
                         "story_identity_version": "news_story_identity_v1",
@@ -250,6 +262,16 @@ class FakeConn:
                             "basis": {"crypto_evidence": ["resolved_crypto_target:cex:BTC"]},
                         },
                         "analysis_admission_version": "news_analysis_admission_v1",
+                        "agent_admission_status": "eligible",
+                        "agent_admission_reason": "crypto_native_evidence",
+                        "agent_admission_json": {
+                            "status": "eligible",
+                            "reason": "crypto_native_evidence",
+                            "version": "news_item_agent_admission_market_v2",
+                        },
+                        "agent_admission_version": "news_item_agent_admission_market_v2",
+                        "agent_representative_news_item_id": "news-2",
+                        "agent_admission_computed_at_ms": NOW_MS - 1_900,
                         "story_key": "news-story:item:news-2",
                         "story_identity_json": {"story_key": "news-story:item:news-2"},
                         "story_identity_version": "news_story_identity_v1",
@@ -278,6 +300,16 @@ class FakeConn:
                             "basis": {"provider_evidence": ["provider_score:92"]},
                         },
                         "analysis_admission_version": "news_analysis_admission_v1",
+                        "agent_admission_status": "eligible",
+                        "agent_admission_reason": "provider_score_high",
+                        "agent_admission_json": {
+                            "status": "eligible",
+                            "reason": "provider_score_high",
+                            "version": "news_item_agent_admission_market_v2",
+                        },
+                        "agent_admission_version": "news_item_agent_admission_market_v2",
+                        "agent_representative_news_item_id": "news-3",
+                        "agent_admission_computed_at_ms": NOW_MS - 2_900,
                         "story_key": "news-story:item:news-3",
                         "story_identity_json": {"story_key": "news-story:item:news-3"},
                         "story_identity_version": "news_story_identity_v1",

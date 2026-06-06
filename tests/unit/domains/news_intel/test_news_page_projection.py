@@ -118,6 +118,42 @@ def test_build_news_page_row_copies_item_level_content_classification() -> None:
     }
 
 
+def test_build_news_page_row_copies_item_level_agent_admission() -> None:
+    row = build_news_page_row(
+        item={
+            "news_item_id": "news-1",
+            "title": "Fed liquidity update lifts futures",
+            "summary": "Macro desks repriced risk assets.",
+            "source_domain": "example.test",
+            "canonical_url": "https://example.test/fed-liquidity",
+            "published_at_ms": 1000,
+            "agent_admission_status": "eligible",
+            "agent_admission_reason": "provider_score_high",
+            "agent_admission_json": {
+                "status": "eligible",
+                "reason": "provider_score_high",
+                "version": "news_item_agent_admission_market_v2",
+                "basis": {"market_scope": ["macro"]},
+            },
+            "agent_representative_news_item_id": "news-1",
+        },
+        token_mentions=[],
+        fact_candidates=[],
+        computed_at_ms=2000,
+    )
+
+    assert row["agent_admission_status"] == "eligible"
+    assert row["agent_admission_reason"] == "provider_score_high"
+    assert row["agent_admission"] == {
+        "status": "eligible",
+        "reason": "provider_score_high",
+        "version": "news_item_agent_admission_market_v2",
+        "basis": {"market_scope": ["macro"]},
+        "representative_news_item_id": "news-1",
+    }
+    assert row["agent_representative_news_item_id"] == "news-1"
+
+
 def test_page_source_status_defaults_unknown_when_source_quality_missing() -> None:
     row = build_news_page_row(
         item={

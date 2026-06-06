@@ -30,6 +30,19 @@ def build_news_page_row(
         status=analysis_admission_status,
         reason=analysis_admission_reason,
     )
+    agent_admission_status = str(item.get("agent_admission_status") or "needs_review")
+    agent_admission_reason = str(item.get("agent_admission_reason") or "")
+    agent_admission = _agent_admission_payload(
+        item=item,
+        status=agent_admission_status,
+        reason=agent_admission_reason,
+    )
+    agent_representative_news_item_id = str(
+        item.get("agent_representative_news_item_id")
+        or agent_admission.get("representative_news_item_id")
+        or representative_news_item_id
+        or ""
+    )
     provider_signal = _json_object(item.get("provider_signal_json"))
     token_impacts = _provider_token_impacts(item.get("provider_token_impacts_json"))
     impacts_by_symbol = {
@@ -72,6 +85,10 @@ def build_news_page_row(
         "analysis_admission_status": analysis_admission_status,
         "analysis_admission_reason": analysis_admission_reason,
         "analysis_admission": analysis_admission,
+        "agent_admission_status": agent_admission_status,
+        "agent_admission_reason": agent_admission_reason,
+        "agent_admission": agent_admission,
+        "agent_representative_news_item_id": agent_representative_news_item_id,
         "duplicate_count": int(story_payload.get("member_count") or 1) if story_payload else 1,
         "source_ids_json": _json_list(story_payload.get("source_ids")) if story_payload else [],
         "source_domains_json": _json_list(story_payload.get("source_domains")) if story_payload else [],
@@ -242,6 +259,23 @@ def _analysis_admission_payload(
     else:
         payload.setdefault("status", status)
         payload.setdefault("reason", reason)
+    return payload
+
+
+def _agent_admission_payload(
+    *,
+    item: Mapping[str, Any],
+    status: str,
+    reason: str,
+) -> dict[str, Any]:
+    payload = _json_object(item.get("agent_admission_json"))
+    if not payload:
+        payload = {"status": status, "reason": reason}
+    else:
+        payload.setdefault("status", status)
+        payload.setdefault("reason", reason)
+    if item.get("agent_representative_news_item_id"):
+        payload.setdefault("representative_news_item_id", str(item.get("agent_representative_news_item_id")))
     return payload
 
 
