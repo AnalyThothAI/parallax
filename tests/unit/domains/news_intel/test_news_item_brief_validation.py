@@ -108,6 +108,66 @@ def _equity_macro_packet():
     )
 
 
+def _energy_geopolitics_packet():
+    return build_news_item_brief_input_packet(
+        item={
+            "news_item_id": "item-hormuz",
+            "title": "Iran warning shots near Strait of Hormuz lift oil risk for U.S. markets",
+            "summary": (
+                "Warning shots near the Strait of Hormuz increased concern over Gulf shipping, crude supply, "
+                "and United States market sensitivity."
+            ),
+            "body_text": (
+                "The report described military activity around the Strait of Hormuz, a key oil shipping route, "
+                "and noted broader U.S. risk-asset sensitivity."
+            ),
+            "published_at_ms": 1_779_000_000_000,
+            "content_hash": "sha256:hormuz",
+            "market_scope_json": ["energy_geopolitics", "commodity", "crypto"],
+            "agent_admission_json": {"status": "eligible", "reason": "eligible"},
+        },
+        entities=[
+            {
+                "entity_id": "entity-iran",
+                "raw_value": "Iran",
+                "normalized_value": "iran",
+                "entity_type": "country",
+                "confidence": 0.96,
+            },
+            {
+                "entity_id": "entity-hormuz",
+                "raw_value": "Strait of Hormuz",
+                "normalized_value": "strait of hormuz",
+                "entity_type": "macro_factor",
+                "confidence": 0.91,
+            },
+            {
+                "entity_id": "entity-us",
+                "raw_value": "U.S.",
+                "normalized_value": "united states",
+                "entity_type": "country",
+                "confidence": 0.94,
+            },
+        ],
+        token_mentions=[],
+        fact_candidates=[
+            {
+                "fact_candidate_id": "fact-hormuz",
+                "event_type": "geopolitical_supply",
+                "claim": "Warning shots near the Strait of Hormuz increased crude supply risk.",
+                "realis": "actual",
+                "validation_status": "accepted",
+                "affected_targets_json": [
+                    {"label": "WTI crude", "market_domain": "commodity"},
+                    {"label": "Bitcoin", "market_domain": "crypto"},
+                ],
+                "evidence_quote": "Strait of Hormuz increased concern over Gulf shipping and crude supply",
+            }
+        ],
+        agent_config=_agent_config(),
+    )
+
+
 def _ready_payload(**overrides: Any) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "status": "ready",
@@ -347,6 +407,139 @@ def test_valid_equity_and_macro_payload_is_publishable() -> None:
     assert result.publishable is True
     assert result.status == "ready"
     assert result.errors == []
+
+
+def test_validation_allows_source_backed_market_wide_proxy_entities() -> None:
+    packet = _energy_geopolitics_packet()
+    payload = _ready_payload(
+        direction="mixed",
+        decision_class="driver",
+        event_type="geopolitical_supply",
+        title_zh="霍尔木兹海峡扰动抬高原油供应风险",
+        summary_zh="伊朗相关警告射击提升了市场对海湾航运和原油供应的担忧。",
+        market_read_zh="霍尔木兹海峡扰动通过原油供应风险、通胀预期和风险资产情绪传导到跨市场定价。",
+        market_domains=["energy_geopolitics", "commodity", "crypto"],
+        transmission_paths=[
+            {
+                "market_domain": "commodity",
+                "channel": "shipping_supply_risk",
+                "direction": "bullish",
+                "strength": "moderate",
+                "explanation_zh": "海湾航运风险提升原油供应风险溢价。",
+                "evidence_refs": ["fact:fact-hormuz"],
+            },
+            {
+                "market_domain": "crypto",
+                "channel": "risk_asset_sensitivity",
+                "direction": "mixed",
+                "strength": "weak",
+                "explanation_zh": "能源冲击可能影响风险资产情绪和美元流动性预期。",
+                "evidence_refs": ["fact:fact-hormuz"],
+            },
+        ],
+        bull_view={
+            "strength": "moderate",
+            "thesis_zh": "霍尔木兹海峡扰动抬高原油供给风险和通胀尾部风险。",
+            "evidence_refs": ["fact:fact-hormuz"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "报道未证明供应已经中断，影响可能停留在风险溢价。",
+            "evidence_refs": ["item:summary"],
+        },
+        affected_entities=[
+            {
+                "label": "WTI原油期货",
+                "symbol": "CL",
+                "entity_type": "commodity",
+                "market_domain": "commodity",
+                "impact_direction": "bullish",
+                "reason_zh": "fact lane 将原油供应风险列为受影响目标。",
+                "evidence_refs": ["fact:fact-hormuz"],
+            },
+            {
+                "label": "比特币",
+                "symbol": "BTC",
+                "entity_type": "crypto_asset",
+                "market_domain": "crypto",
+                "impact_direction": "mixed",
+                "reason_zh": "fact lane 将 Bitcoin 列为风险资产敏感目标。",
+                "evidence_refs": ["fact:fact-hormuz"],
+            },
+            {
+                "label": "美国",
+                "entity_type": "country",
+                "market_domain": "energy_geopolitics",
+                "impact_direction": "mixed",
+                "reason_zh": "霍尔木兹风险通过能源价格和通胀预期影响美国市场。",
+                "evidence_refs": ["fact:fact-hormuz"],
+            },
+        ],
+        watch_triggers=["后续航运中断证据、油价和风险资产波动是否扩大"],
+        invalidation_conditions=["相关军事活动降级或航运风险被证伪"],
+        data_gaps=[],
+        evidence_refs=["item:summary", "fact:fact-hormuz"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
+
+
+def test_validation_rejects_invented_synthetic_market_proxy_ticker() -> None:
+    packet = _energy_geopolitics_packet()
+    payload = _ready_payload(
+        direction="mixed",
+        decision_class="driver",
+        event_type="geopolitical_supply",
+        title_zh="霍尔木兹海峡扰动抬高原油供应风险",
+        summary_zh="伊朗相关警告射击提升了市场对海湾航运和原油供应的担忧。",
+        market_read_zh="霍尔木兹海峡扰动通过原油供应风险和风险资产情绪传导到跨市场定价。",
+        market_domains=["energy_geopolitics", "commodity"],
+        transmission_paths=[
+            {
+                "market_domain": "commodity",
+                "channel": "shipping_supply_risk",
+                "direction": "bullish",
+                "strength": "moderate",
+                "explanation_zh": "海湾航运风险提升原油供应风险溢价。",
+                "evidence_refs": ["fact:fact-hormuz"],
+            }
+        ],
+        bull_view={
+            "strength": "moderate",
+            "thesis_zh": "霍尔木兹海峡扰动抬高原油供给风险。",
+            "evidence_refs": ["fact:fact-hormuz"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "报道未证明供应已经中断。",
+            "evidence_refs": ["item:summary"],
+        },
+        affected_entities=[
+            {
+                "label": "XYZ-CL原油衍生品",
+                "symbol": "XYZ-CL",
+                "entity_type": "commodity",
+                "market_domain": "commodity",
+                "impact_direction": "bullish",
+                "reason_zh": "模型输出了输入中没有来源支撑的合成代理标的。",
+                "evidence_refs": ["fact:fact-hormuz"],
+            }
+        ],
+        watch_triggers=["后续航运中断证据和油价波动是否扩大"],
+        invalidation_conditions=["相关军事活动降级或航运风险被证伪"],
+        data_gaps=[],
+        evidence_refs=["item:summary", "fact:fact-hormuz"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is False
+    assert result.status == "failed"
+    assert result.errors == [{"code": "unsupported_entity", "message": "XYZ-CL原油衍生品"}]
 
 
 def test_validation_rejects_unexpected_tool_or_handoff_audit() -> None:
