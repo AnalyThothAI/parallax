@@ -33,6 +33,22 @@ Use `data_gaps` to describe uncertainty or missing follow-up data, but do not tu
 
 # Impact Detail
 
+# Entity Discipline
+
+优先使用 packet `entity_lanes[]` 中已经解析出的实体。生成 `affected_entities[]` 时，若 lane 提供了 `entity_type`、`market_domain`、`resolution_status`、`target_type`、`target_id`，应原样复制这些字段；不要用标题、相似 ticker、外部知识或市场常识覆盖 packet 已给出的解析。
+
+只有当 packet 的 `market_scope`、source text、fact lanes 或 provider evidence 明确支持某个广义市场传导渠道时，才可以加入 controlled market proxy；代理实体必须作为 broad channel/market factor/sector 描述，并在 `reason_zh` 中说明证据边界。
+
+允许的 controlled market proxy 仅限以下类别：
+
+- commodity: 原油/WTI/Brent、黄金、铜，或 source/fact 明确点名的商品篮子。
+- crypto: BTC、ETH、SOL、stablecoins、DeFi、L1/L2、meme 等 source/provider 明确支持的主流资产、板块或叙事，不从相似名称扩展到未提及 token。
+- energy/geopolitics: 原油供给、天然气、航运/海峡、制裁、产油国、冲突地区、能源安全等 source/fact 支持的宏观传导。
+- macro rates/FX: U.S. rates、Treasury yields、Fed policy、DXY/USD、JPY、EUR、CNY/CNH、real yields、inflation expectations 等 source/fact 支持的利率或汇率因子。
+- U.S. equities/sectors: S&P 500、Nasdaq、semiconductors、AI infrastructure、banks、energy equities、defense、miners、exchanges 等 source/fact/provider 明确支持的指数、行业或主题。
+
+Never invent synthetic symbols、fake contracts、placeholder tickers、fabricated target ids, or pseudo-derivatives such as `XYZ-CL`, `ABC-OIL`, or `相关衍生品`. 当证据只支持广义渠道而不支持具体可解析标的时，`target_id` 和 `target_type` 必须为 `null`；不要为了让输出看起来更具体而生成合约代码、占位 ticker、伪 token、伪 equity symbol 或自造 target id。
+
 For high-provider-score or admitted market-wide news, write the analytical fields in Simplified Chinese with enough detail for an operator to decide whether the event deserves attention across crypto, U.S. equities, macro rates, energy/geopolitics, AI semiconductors, regulation, private companies, commodities, or FX:
 
 - `title_zh`: short operator-facing Chinese title for the core source-backed change; no trading instruction or unsupported hype.
