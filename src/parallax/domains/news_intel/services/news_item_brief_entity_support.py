@@ -12,6 +12,11 @@ _SYNTHETIC_PLACEHOLDER_RE = re.compile(
     r"(?<![a-z0-9])(?:xyz[-_]?[a-z0-9]{1,12}|abc[-_][a-z0-9]{1,12}|test[-_]?[a-z0-9]{0,12})(?![a-z0-9])",
     re.I,
 )
+_US_ENERGY_SECTOR_SOURCE_RE = re.compile(
+    r"(?<![a-z0-9])(?:u\.?\s*s\.?|united states|american)\s+energy\s+"
+    r"(?:firms?|companies|producers|sector|equities|stocks?)(?![a-z0-9])",
+    re.I,
+)
 _KNOWN_DOMAINS = frozenset(
     {
         "crypto",
@@ -154,6 +159,34 @@ _DOMAIN_PROXY_ALIASES: dict[str, tuple[str, ...]] = {
         "FX",
     ),
 }
+_US_ENERGY_SECTOR_TRANSLATION_ALIASES = (
+    "美国能源企业",
+    "美国能源公司",
+    "美国能源生产商",
+    "美国能源板块",
+    "美国能源股",
+    "美国能源股票",
+    "U.S. Energy Firms",
+    "US Energy Firms",
+    "American Energy Firms",
+    "U.S. Energy Companies",
+    "US Energy Companies",
+    "American Energy Companies",
+    "U.S. Energy Producers",
+    "US Energy Producers",
+    "American Energy Producers",
+    "U.S. Energy Sector",
+    "US Energy Sector",
+    "American Energy Sector",
+    "U.S. Energy Equities",
+    "US Energy Equities",
+    "American Energy Equities",
+    "U.S. Energy Equities (sector proxy)",
+    "US Energy Equities (sector proxy)",
+    "U.S. Energy Stocks",
+    "US Energy Stocks",
+    "American Energy Stocks",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,6 +200,7 @@ def source_backed_entity_keys(packet: NewsItemBriefInputPacket) -> set[str]:
     labels.update(_text_keys(packet.news_item.title))
     labels.update(_text_keys(packet.news_item.summary))
     labels.update(_text_keys(packet.news_item.body_excerpt))
+    labels.update(_translated_source_entity_keys(packet))
 
     for entity in packet.entity_lanes:
         labels.update(
@@ -262,6 +296,49 @@ def _domain_proxy_keys(domain: str) -> set[str]:
     for alias in _DOMAIN_PROXY_ALIASES.get(domain, ()):
         aliases.update(_string_keys(alias))
     return aliases
+
+
+def _translated_source_entity_keys(packet: NewsItemBriefInputPacket) -> set[str]:
+    if not _US_ENERGY_SECTOR_SOURCE_RE.search(_translated_entity_trigger_text(packet)):
+        return set()
+    labels: set[str] = set()
+    for alias in _US_ENERGY_SECTOR_TRANSLATION_ALIASES:
+        labels.update(_string_keys(alias))
+    return labels
+
+
+def _translated_entity_trigger_text(packet: NewsItemBriefInputPacket) -> str:
+    texts = [
+        packet.news_item.title,
+        packet.news_item.summary,
+        packet.news_item.body_excerpt,
+    ]
+    for fact in packet.fact_lanes:
+        texts.extend((fact.claim, fact.evidence_quote))
+        for target in fact.affected_targets:
+            texts.extend(_mapping_string_values(target))
+    if packet.provider_signal_evidence is not None:
+        provider = packet.provider_signal_evidence
+        texts.extend((provider.summary_zh, provider.summary_en))
+    return " ".join(text for text in texts if text)
+
+
+def _mapping_string_values(value: Mapping[str, Any]) -> list[str]:
+    labels: list[str] = []
+    for key, child in value.items():
+        if str(key).strip().lower() in _GENERIC_MAPPING_VALUE_KEYS:
+            continue
+        if isinstance(child, str):
+            labels.append(child)
+        elif isinstance(child, Mapping):
+            labels.extend(_mapping_string_values(child))
+        elif isinstance(child, list):
+            for item in child:
+                if isinstance(item, str):
+                    labels.append(item)
+                elif isinstance(item, Mapping):
+                    labels.extend(_mapping_string_values(item))
+    return labels
 
 
 def _domains_in_mapping(value: Mapping[str, Any]) -> set[str]:

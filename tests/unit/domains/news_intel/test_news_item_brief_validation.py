@@ -168,6 +168,103 @@ def _energy_geopolitics_packet():
     )
 
 
+def _us_energy_firms_hormuz_packet():
+    return build_news_item_brief_input_packet(
+        item={
+            "news_item_id": "item-hormuz-us-energy-firms",
+            "title": (
+                "Rosneft Chief Says US Energy Firms Gain From Strait Of Hormuz Closure Amid Global Oil "
+                "Disruption"
+            ),
+            "summary": "The report links a potential Hormuz closure to global oil disruption.",
+            "body_text": (
+                "Rosneft's chief said US Energy Firms would gain from a Strait of Hormuz closure as global oil "
+                "flows face disruption."
+            ),
+            "published_at_ms": 1_779_000_000_000,
+            "content_hash": "sha256:hormuz-us-energy-firms",
+            "market_scope_json": ["energy_geopolitics", "commodity", "us_equity"],
+            "agent_admission_json": {"status": "eligible", "reason": "eligible"},
+        },
+        entities=[],
+        token_mentions=[],
+        fact_candidates=[
+            {
+                "fact_candidate_id": "fact-hormuz-us-energy-firms",
+                "event_type": "geopolitical_supply",
+                "claim": "US Energy Firms could gain from a Strait of Hormuz closure.",
+                "realis": "actual",
+                "validation_status": "accepted",
+                "affected_targets_json": [
+                    {"label": "US Energy Firms", "market_domain": "us_equity"},
+                    {"label": "WTI crude", "market_domain": "commodity"},
+                    {"label": "Bitcoin", "market_domain": "crypto"},
+                ],
+                "evidence_quote": "US Energy Firms would gain from a Strait of Hormuz closure",
+            }
+        ],
+        agent_config=_agent_config(),
+    )
+
+
+def _us_energy_firms_fact_only_packet():
+    return build_news_item_brief_input_packet(
+        item={
+            "news_item_id": "item-hormuz-us-energy-firms-fact-only",
+            "title": "Strait of Hormuz closure risk adds to global oil disruption debate",
+            "summary": "The report discusses Hormuz closure risk and global oil disruption.",
+            "body_text": "The source text describes shipping disruption scenarios around the Strait of Hormuz.",
+            "published_at_ms": 1_779_000_000_000,
+            "content_hash": "sha256:hormuz-us-energy-firms-fact-only",
+            "market_scope_json": ["energy_geopolitics", "commodity", "us_equity"],
+            "agent_admission_json": {"status": "eligible", "reason": "eligible"},
+        },
+        entities=[],
+        token_mentions=[],
+        fact_candidates=[
+            {
+                "fact_candidate_id": "fact-hormuz-us-energy-firms-fact-only",
+                "event_type": "geopolitical_supply",
+                "claim": "US Energy Firms could gain from a Strait of Hormuz closure.",
+                "realis": "actual",
+                "validation_status": "accepted",
+                "affected_targets_json": [
+                    {"label": "US Energy Firms", "market_domain": "us_equity"},
+                    {"label": "WTI crude", "market_domain": "commodity"},
+                ],
+                "evidence_quote": "US Energy Firms would gain from a Strait of Hormuz closure",
+            }
+        ],
+        agent_config=_agent_config(),
+    )
+
+
+def _us_energy_firms_provider_only_packet():
+    return build_news_item_brief_input_packet(
+        item={
+            "news_item_id": "item-hormuz-us-energy-firms-provider-only",
+            "title": "Strait of Hormuz closure risk adds to global oil disruption debate",
+            "summary": "The report discusses Hormuz closure risk and global oil disruption.",
+            "body_text": "The source text describes shipping disruption scenarios around the Strait of Hormuz.",
+            "published_at_ms": 1_779_000_000_000,
+            "content_hash": "sha256:hormuz-us-energy-firms-provider-only",
+            "market_scope_json": ["energy_geopolitics", "commodity", "us_equity"],
+            "provider_signal_json": {
+                "source": "provider",
+                "provider": "opennews",
+                "status": "partial",
+                "direction": "bullish",
+                "summary_en": "Provider summary says US Energy Firms could gain from a Hormuz closure.",
+            },
+            "agent_admission_json": {"status": "eligible", "reason": "eligible"},
+        },
+        entities=[],
+        token_mentions=[],
+        fact_candidates=[],
+        agent_config=_agent_config(),
+    )
+
+
 def _ready_payload(**overrides: Any) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "status": "ready",
@@ -548,6 +645,234 @@ def test_validation_allows_source_backed_market_wide_proxy_entities() -> None:
     assert result.publishable is True
     assert result.status == "ready"
     assert result.errors == []
+
+
+def test_validation_allows_source_backed_translated_us_energy_sector_label() -> None:
+    packet = _us_energy_firms_hormuz_packet()
+    payload = _ready_payload(
+        direction="mixed",
+        decision_class="driver",
+        event_type="geopolitical_supply",
+        title_zh="霍尔木兹关闭情境下美国能源企业或受益",
+        summary_zh="来源明确称 US Energy Firms 可能从霍尔木兹海峡关闭和全球原油扰动中受益。",
+        market_read_zh="受益方来自来源文本直接点名的美国能源企业，传导仍取决于实际航运中断和油价反应。",
+        market_domains=["energy_geopolitics", "commodity", "us_equity"],
+        transmission_paths=[
+            {
+                "market_domain": "energy_geopolitics",
+                "channel": "shipping_disruption",
+                "direction": "mixed",
+                "strength": "moderate",
+                "explanation_zh": "来源将霍尔木兹关闭与全球原油扰动联系起来。",
+                "evidence_refs": ["item:title"],
+            },
+            {
+                "market_domain": "us_equity",
+                "channel": "energy_sector_relative_benefit",
+                "direction": "bullish",
+                "strength": "moderate",
+                "explanation_zh": "来源文本明确称 US Energy Firms 可能受益。",
+                "evidence_refs": ["item:body_excerpt"],
+            },
+        ],
+        bull_view={
+            "strength": "moderate",
+            "thesis_zh": "如果霍尔木兹关闭推高能源供给风险，美国能源企业可能获得相对受益叙事。",
+            "evidence_refs": ["item:title", "item:body_excerpt"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "报道仍是情境表述，未证明航运已经中断或企业盈利已经改变。",
+            "evidence_refs": ["item:body_excerpt"],
+        },
+        affected_entities=[
+            {
+                "label": "美国能源企业",
+                "entity_type": "sector",
+                "market_domain": "energy_geopolitics",
+                "impact_direction": "bullish",
+                "reason_zh": "来源文本明确提到 US Energy Firms。",
+                "evidence_refs": ["item:title"],
+            },
+            {
+                "label": "U.S. Energy Equities (sector proxy)",
+                "entity_type": "sector",
+                "market_domain": "us_equity",
+                "impact_direction": "bullish",
+                "reason_zh": "来源文本明确提到 US Energy Firms。",
+                "evidence_refs": ["item:body_excerpt"],
+            },
+        ],
+        watch_triggers=["是否出现实际霍尔木兹航运关闭、油价跳升或美国能源股相对强势"],
+        invalidation_conditions=["航运扰动降级，或来源观点被后续事实证伪"],
+        data_gaps=[],
+        evidence_refs=["item:title", "item:body_excerpt"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
+
+
+def test_validation_allows_translated_us_energy_sector_label_from_fact_evidence() -> None:
+    packet = _us_energy_firms_fact_only_packet()
+    payload = _ready_payload(
+        direction="mixed",
+        decision_class="driver",
+        event_type="geopolitical_supply",
+        title_zh="霍尔木兹关闭情境下美国能源企业或受益",
+        summary_zh="fact evidence 明确称 US Energy Firms 可能从霍尔木兹关闭中受益。",
+        market_read_zh="受益方来自 fact lane 直接点名的美国能源企业，传导仍取决于实际航运中断和油价反应。",
+        market_domains=["energy_geopolitics", "commodity", "us_equity"],
+        transmission_paths=[
+            {
+                "market_domain": "us_equity",
+                "channel": "energy_sector_relative_benefit",
+                "direction": "bullish",
+                "strength": "moderate",
+                "explanation_zh": "fact lane 明确称 US Energy Firms 可能受益。",
+                "evidence_refs": ["fact:fact-hormuz-us-energy-firms-fact-only"],
+            }
+        ],
+        bull_view={
+            "strength": "moderate",
+            "thesis_zh": "如果霍尔木兹关闭推高能源供给风险，美国能源企业可能获得相对受益叙事。",
+            "evidence_refs": ["fact:fact-hormuz-us-energy-firms-fact-only"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "报道仍是情境表述，未证明航运已经中断或企业盈利已经改变。",
+            "evidence_refs": ["item:summary"],
+        },
+        affected_entities=[
+            {
+                "label": "美国能源企业",
+                "entity_type": "sector",
+                "market_domain": "energy_geopolitics",
+                "impact_direction": "bullish",
+                "reason_zh": "fact lane 明确提到 US Energy Firms。",
+                "evidence_refs": ["fact:fact-hormuz-us-energy-firms-fact-only"],
+            }
+        ],
+        watch_triggers=["是否出现实际霍尔木兹航运关闭、油价跳升或美国能源股相对强势"],
+        invalidation_conditions=["航运扰动降级，或 fact evidence 被后续事实证伪"],
+        data_gaps=[],
+        evidence_refs=["item:summary", "fact:fact-hormuz-us-energy-firms-fact-only"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
+
+
+def test_validation_allows_translated_us_energy_sector_label_from_provider_summary() -> None:
+    packet = _us_energy_firms_provider_only_packet()
+    payload = _ready_payload(
+        direction="mixed",
+        decision_class="driver",
+        event_type="geopolitical_supply",
+        title_zh="霍尔木兹关闭情境下美国能源企业或受益",
+        summary_zh="provider summary 明确称 US Energy Firms 可能从霍尔木兹关闭中受益。",
+        market_read_zh="受益方来自 provider summary 直接点名的美国能源企业，传导仍取决于实际航运中断和油价反应。",
+        market_domains=["energy_geopolitics", "commodity", "us_equity"],
+        transmission_paths=[
+            {
+                "market_domain": "us_equity",
+                "channel": "energy_sector_relative_benefit",
+                "direction": "bullish",
+                "strength": "moderate",
+                "explanation_zh": "provider summary 明确称 US Energy Firms 可能受益。",
+                "evidence_refs": ["provider:signal"],
+            }
+        ],
+        bull_view={
+            "strength": "moderate",
+            "thesis_zh": "如果霍尔木兹关闭推高能源供给风险，美国能源企业可能获得相对受益叙事。",
+            "evidence_refs": ["provider:signal"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "报道仍是情境表述，未证明航运已经中断或企业盈利已经改变。",
+            "evidence_refs": ["item:summary"],
+        },
+        affected_entities=[
+            {
+                "label": "美国能源企业",
+                "entity_type": "sector",
+                "market_domain": "energy_geopolitics",
+                "impact_direction": "bullish",
+                "reason_zh": "provider summary 明确提到 US Energy Firms。",
+                "evidence_refs": ["provider:signal"],
+            }
+        ],
+        watch_triggers=["是否出现实际霍尔木兹航运关闭、油价跳升或美国能源股相对强势"],
+        invalidation_conditions=["航运扰动降级，或 provider signal 被后续事实证伪"],
+        data_gaps=[],
+        evidence_refs=["item:summary", "provider:signal"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
+
+
+def test_validation_rejects_translated_us_energy_sector_label_without_explicit_source_text() -> None:
+    packet = _energy_geopolitics_packet()
+    payload = _ready_payload(
+        direction="mixed",
+        decision_class="driver",
+        event_type="geopolitical_supply",
+        title_zh="霍尔木兹海峡扰动抬高原油供应风险",
+        summary_zh="报道提到霍尔木兹、原油供应和美国市场敏感性，但没有点名美国能源企业。",
+        market_read_zh="霍尔木兹扰动可能影响原油供应风险和风险资产情绪，但来源未明确支持美国能源企业标签。",
+        market_domains=["energy_geopolitics", "commodity"],
+        transmission_paths=[
+            {
+                "market_domain": "commodity",
+                "channel": "shipping_supply_risk",
+                "direction": "bullish",
+                "strength": "moderate",
+                "explanation_zh": "海湾航运风险提升原油供应风险溢价。",
+                "evidence_refs": ["fact:fact-hormuz"],
+            }
+        ],
+        bull_view={
+            "strength": "moderate",
+            "thesis_zh": "霍尔木兹海峡扰动抬高原油供给风险。",
+            "evidence_refs": ["fact:fact-hormuz"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "报道未证明供应已经中断。",
+            "evidence_refs": ["item:summary"],
+        },
+        affected_entities=[
+            {
+                "label": "美国能源企业",
+                "entity_type": "sector",
+                "market_domain": "energy_geopolitics",
+                "impact_direction": "bullish",
+                "reason_zh": "模型将原油地缘政治新闻泛化为美国能源企业受益。",
+                "evidence_refs": ["fact:fact-hormuz"],
+            }
+        ],
+        watch_triggers=["后续航运中断证据和油价波动是否扩大"],
+        invalidation_conditions=["相关军事活动降级或航运风险被证伪"],
+        data_gaps=[],
+        evidence_refs=["item:summary", "fact:fact-hormuz"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is False
+    assert result.status == "failed"
+    assert result.errors == [{"code": "unsupported_entity", "message": "美国能源企业"}]
 
 
 def test_validation_rejects_invented_synthetic_market_proxy_ticker() -> None:
