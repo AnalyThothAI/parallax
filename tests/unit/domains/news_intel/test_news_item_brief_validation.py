@@ -313,6 +313,116 @@ def _provider_btc_packet():
     )
 
 
+def _provider_cl_packet():
+    return build_news_item_brief_input_packet(
+        item={
+            "news_item_id": "item-provider-cl",
+            "title": "Provider flags commodity impact",
+            "summary": "The source text does not name the affected commodity directly.",
+            "body_text": "Provider evidence supplies the commodity-specific impact.",
+            "published_at_ms": 1_779_000_000_000,
+            "content_hash": "sha256:provider-cl",
+            "provider_signal_json": {
+                "source": "provider",
+                "provider": "opennews",
+                "status": "ready",
+                "direction": "mixed",
+            },
+            "provider_token_impacts_json": [
+                {"symbol": "CL", "market_type": "commodity", "score": 80, "signal": "proxy", "grade": "B"}
+            ],
+            "agent_admission_json": {"status": "eligible", "reason": "provider_score_high"},
+        },
+        entities=[],
+        token_mentions=[],
+        fact_candidates=[],
+        agent_config=_agent_config(),
+    )
+
+
+def _provider_wlfi_packet():
+    return build_news_item_brief_input_packet(
+        item={
+            "news_item_id": "item-provider-wlfi",
+            "title": "Provider flags token impact",
+            "summary": "The source text does not name the affected crypto asset directly.",
+            "body_text": "Provider evidence supplies the token-specific impact.",
+            "published_at_ms": 1_779_000_000_000,
+            "content_hash": "sha256:provider-wlfi",
+            "provider_signal_json": {
+                "source": "provider",
+                "provider": "opennews",
+                "status": "ready",
+                "direction": "mixed",
+            },
+            "provider_token_impacts_json": [
+                {"symbol": "WLFI", "market_type": "cex", "score": 82, "signal": "proxy", "grade": "B"}
+            ],
+            "agent_admission_json": {"status": "eligible", "reason": "provider_score_high"},
+        },
+        entities=[],
+        token_mentions=[],
+        fact_candidates=[],
+        agent_config=_agent_config(),
+    )
+
+
+def _gold_commodity_packet():
+    return build_news_item_brief_input_packet(
+        item={
+            "news_item_id": "item-gold",
+            "title": "Gold futures rise as haven demand improves",
+            "summary": "Gold climbed after investors moved into precious metals.",
+            "body_text": "The commodity report focused on bullion and COMEX gold contracts.",
+            "published_at_ms": 1_779_000_000_000,
+            "content_hash": "sha256:gold",
+            "market_scope_json": ["commodity"],
+            "agent_admission_json": {"status": "eligible", "reason": "market_wide_driver"},
+        },
+        entities=[],
+        token_mentions=[],
+        fact_candidates=[
+            {
+                "fact_candidate_id": "fact-gold",
+                "event_type": "commodity_move",
+                "claim": "Gold futures rose on haven demand.",
+                "realis": "actual",
+                "validation_status": "accepted",
+                "affected_targets_json": [{"label": "Gold", "market_domain": "commodity"}],
+                "evidence_quote": "Gold climbed after investors moved into precious metals",
+            }
+        ],
+        agent_config=_agent_config(),
+    )
+
+
+def _htx_packet():
+    return build_news_item_brief_input_packet(
+        item={
+            "news_item_id": "item-htx",
+            "title": "HTX lists new spot pair",
+            "summary": "HTX said the spot market would open for eligible users.",
+            "body_text": "The exchange notice came from HTX and described spot trading support.",
+            "published_at_ms": 1_779_000_000_000,
+            "content_hash": "sha256:htx",
+            "market_scope_json": ["crypto"],
+            "agent_admission_json": {"status": "eligible", "reason": "provider_score_high"},
+        },
+        entities=[
+            {
+                "entity_id": "entity-htx",
+                "raw_value": "HTX",
+                "normalized_value": "htx",
+                "entity_type": "company",
+                "confidence": 0.96,
+            }
+        ],
+        token_mentions=[],
+        fact_candidates=[],
+        agent_config=_agent_config(),
+    )
+
+
 def _ready_payload(**overrides: Any) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "status": "ready",
@@ -606,6 +716,54 @@ def test_validation_rejects_commodity_proxy_when_packet_does_not_source_commodit
     assert {"code": "unsupported_entity", "message": "WTI原油期货"} in result.errors
 
 
+def test_validation_rejects_oil_proxy_when_packet_only_sources_gold_commodity() -> None:
+    packet = _gold_commodity_packet()
+    payload = _ready_payload(
+        direction="bullish",
+        decision_class="driver",
+        event_type="commodity_move",
+        market_domains=["commodity"],
+        transmission_paths=[
+            {
+                "market_domain": "commodity",
+                "channel": "haven_demand",
+                "direction": "bullish",
+                "strength": "moderate",
+                "explanation_zh": "来源只支持黄金商品走势。",
+                "evidence_refs": ["fact:fact-gold"],
+            }
+        ],
+        bull_view={
+            "strength": "moderate",
+            "thesis_zh": "来源只支持黄金商品走势。",
+            "evidence_refs": ["fact:fact-gold"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "来源没有支持 WTI 或 CL。",
+            "evidence_refs": ["item:summary"],
+        },
+        affected_entities=[
+            {
+                "label": "WTI原油期货",
+                "symbol": "CL",
+                "entity_type": "commodity",
+                "market_domain": "commodity",
+                "impact_direction": "bullish",
+                "reason_zh": "模型把黄金商品范围泛化成原油代理。",
+                "evidence_refs": ["fact:fact-gold"],
+            }
+        ],
+        evidence_refs=["item:summary", "fact:fact-gold"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is False
+    assert result.status == "failed"
+    assert {"code": "unsupported_entity", "message": "WTI原油期货"} in result.errors
+
+
 def test_validation_rejects_btc_proxy_when_only_crypto_market_scope_is_source_backed() -> None:
     packet = _crypto_market_scope_only_packet()
     payload = _ready_payload(
@@ -693,6 +851,248 @@ def test_validation_allows_btc_proxy_when_provider_token_impact_sources_symbol()
             }
         ],
         evidence_refs=["item:summary", "provider:token:BTC"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
+
+
+@pytest.mark.parametrize("label", ["WLFI Token", "WLFI代币"])
+def test_validation_allows_provider_token_label_with_generic_descriptor(label: str) -> None:
+    packet = _provider_wlfi_packet()
+    payload = _ready_payload(
+        direction="mixed",
+        decision_class="driver",
+        event_type="provider_signal",
+        market_domains=["crypto"],
+        bull_view={
+            "strength": "moderate",
+            "thesis_zh": "provider token impact 明确给出 WLFI。",
+            "evidence_refs": ["provider:token:WLFI"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "provider token impact 仍需后续市场反应确认。",
+            "evidence_refs": ["item:summary"],
+        },
+        transmission_paths=[
+            {
+                "market_domain": "crypto",
+                "channel": "provider_token_impact",
+                "direction": "mixed",
+                "strength": "moderate",
+                "explanation_zh": "provider token impact 明确给出 WLFI。",
+                "evidence_refs": ["provider:token:WLFI"],
+            }
+        ],
+        affected_entities=[
+            {
+                "label": label,
+                "symbol": "WLFI",
+                "entity_type": "crypto_asset",
+                "market_domain": "crypto",
+                "impact_direction": "mixed",
+                "reason_zh": "provider token impact 明确给出 WLFI。",
+                "evidence_refs": ["provider:token:WLFI"],
+            }
+        ],
+        evidence_refs=["item:summary", "provider:token:WLFI"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
+
+
+def test_validation_allows_source_backed_exchange_label_with_generic_descriptor() -> None:
+    packet = _htx_packet()
+    payload = _ready_payload(
+        direction="mixed",
+        decision_class="driver",
+        event_type="listing",
+        market_domains=["crypto"],
+        bull_view={
+            "strength": "moderate",
+            "thesis_zh": "来源直接提到 HTX。",
+            "evidence_refs": ["entity:entity-htx"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "公告没有提供成交深度或持续需求证据。",
+            "evidence_refs": ["item:summary"],
+        },
+        transmission_paths=[
+            {
+                "market_domain": "crypto",
+                "channel": "exchange_listing",
+                "direction": "mixed",
+                "strength": "moderate",
+                "explanation_zh": "来源直接提到 HTX 交易入口。",
+                "evidence_refs": ["entity:entity-htx"],
+            }
+        ],
+        affected_entities=[
+            {
+                "label": "HTX交易所",
+                "symbol": "HTX",
+                "entity_type": "company",
+                "market_domain": "crypto",
+                "impact_direction": "mixed",
+                "reason_zh": "entity lane 直接提到 HTX。",
+                "evidence_refs": ["entity:entity-htx"],
+            }
+        ],
+        evidence_refs=["item:summary", "entity:entity-htx"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
+
+
+@pytest.mark.parametrize("label", ["Bitcoin Token", "比特币现货"])
+def test_validation_allows_provider_btc_label_with_generic_descriptor(label: str) -> None:
+    packet = _provider_btc_packet()
+    payload = _ready_payload(
+        direction="mixed",
+        decision_class="driver",
+        event_type="provider_signal",
+        market_domains=["crypto"],
+        bull_view={
+            "strength": "moderate",
+            "thesis_zh": "provider token impact 明确给出 BTC。",
+            "evidence_refs": ["provider:token:BTC"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "provider token impact 仍需后续市场反应确认。",
+            "evidence_refs": ["item:summary"],
+        },
+        transmission_paths=[
+            {
+                "market_domain": "crypto",
+                "channel": "provider_token_impact",
+                "direction": "mixed",
+                "strength": "moderate",
+                "explanation_zh": "provider token impact 明确给出 BTC。",
+                "evidence_refs": ["provider:token:BTC"],
+            }
+        ],
+        affected_entities=[
+            {
+                "label": label,
+                "symbol": "BTC",
+                "entity_type": "crypto_asset",
+                "market_domain": "crypto",
+                "impact_direction": "mixed",
+                "reason_zh": "provider token impact 明确给出 BTC。",
+                "evidence_refs": ["provider:token:BTC"],
+            }
+        ],
+        evidence_refs=["item:summary", "provider:token:BTC"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
+
+
+def test_validation_allows_provider_cl_proxy_when_provider_sources_cl() -> None:
+    packet = _provider_cl_packet()
+    payload = _ready_payload(
+        direction="mixed",
+        decision_class="driver",
+        event_type="provider_signal",
+        market_domains=["commodity"],
+        bull_view={
+            "strength": "moderate",
+            "thesis_zh": "provider token impact 明确给出 CL。",
+            "evidence_refs": ["provider:token:CL"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "provider token impact 仍需后续市场反应确认。",
+            "evidence_refs": ["item:summary"],
+        },
+        transmission_paths=[
+            {
+                "market_domain": "commodity",
+                "channel": "provider_commodity_impact",
+                "direction": "mixed",
+                "strength": "moderate",
+                "explanation_zh": "provider token impact 明确给出 CL。",
+                "evidence_refs": ["provider:token:CL"],
+            }
+        ],
+        affected_entities=[
+            {
+                "label": "WTI crude futures",
+                "symbol": "CL",
+                "entity_type": "commodity",
+                "market_domain": "commodity",
+                "impact_direction": "mixed",
+                "reason_zh": "provider token impact 明确给出 CL。",
+                "evidence_refs": ["provider:token:CL"],
+            }
+        ],
+        evidence_refs=["item:summary", "provider:token:CL"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
+
+
+def test_validation_allows_oil_proxy_when_packet_sources_crude_risk() -> None:
+    packet = _energy_geopolitics_packet()
+    payload = _ready_payload(
+        direction="mixed",
+        decision_class="driver",
+        event_type="geopolitical_supply",
+        market_domains=["commodity"],
+        bull_view={
+            "strength": "moderate",
+            "thesis_zh": "来源明确提到 crude supply risk。",
+            "evidence_refs": ["fact:fact-hormuz"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "报道未证明供应已经中断。",
+            "evidence_refs": ["item:summary"],
+        },
+        transmission_paths=[
+            {
+                "market_domain": "commodity",
+                "channel": "shipping_supply_risk",
+                "direction": "bullish",
+                "strength": "moderate",
+                "explanation_zh": "霍尔木兹扰动抬高原油供应风险。",
+                "evidence_refs": ["fact:fact-hormuz"],
+            }
+        ],
+        affected_entities=[
+            {
+                "label": "WTI原油期货",
+                "symbol": "CL",
+                "entity_type": "commodity",
+                "market_domain": "commodity",
+                "impact_direction": "bullish",
+                "reason_zh": "来源明确提到 crude supply risk。",
+                "evidence_refs": ["fact:fact-hormuz"],
+            }
+        ],
+        evidence_refs=["item:summary", "fact:fact-hormuz"],
     )
 
     result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})

@@ -58,105 +58,180 @@ _GENERIC_MAPPING_VALUE_KEYS = frozenset(
         "validation_status",
     }
 )
-_DOMAIN_PROXY_ALIASES: dict[str, tuple[str, ...]] = {
+_DOMAIN_PROXY_ALIAS_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
     "commodity": (
-        "WTI",
-        "CL",
-        "crude",
-        "crude oil",
-        "oil",
-        "WTI crude",
-        "WTI oil",
-        "WTI原油",
-        "WTI原油期货",
-        "原油",
-        "原油期货",
-        "Brent",
-        "布伦特原油",
+        (
+            "WTI",
+            "CL",
+            "crude",
+            "crude oil",
+            "oil",
+            "WTI crude",
+            "WTI oil",
+            "WTI原油",
+            "WTI原油期货",
+            "原油",
+            "原油期货",
+            "Brent",
+            "布伦特原油",
+        ),
     ),
     "energy_geopolitics": (
-        "U.S.",
-        "US",
-        "USA",
-        "United States",
-        "美国",
-        "Iran",
-        "伊朗",
-        "Israel",
-        "以色列",
-        "Gulf",
-        "Strait of Hormuz",
-        "Hormuz",
-        "霍尔木兹",
-        "霍尔木兹海峡",
-        "Middle East",
-        "中东",
-        "geopolitical risk",
-        "中东地缘政治风险",
+        ("U.S.", "US", "USA", "United States", "美国"),
+        ("Iran", "伊朗"),
+        ("Israel", "以色列"),
+        (
+            "Gulf",
+            "Strait of Hormuz",
+            "Hormuz",
+            "霍尔木兹",
+            "霍尔木兹海峡",
+            "Middle East",
+            "中东",
+            "geopolitical risk",
+            "中东地缘政治风险",
+        ),
     ),
     "crypto": (
-        "BTC",
-        "Bitcoin",
-        "比特币",
+        ("BTC", "Bitcoin", "比特币"),
     ),
     "macro_rates": (
-        "Treasury yields",
-        "US Treasury",
-        "UST",
-        "10Y",
-        "Fed",
-        "CPI",
-        "inflation",
-        "rates",
-        "DXY",
-        "USD",
-        "美债收益率",
-        "美国国债",
-        "利率",
-        "通胀",
-        "美元",
-        "美元指数",
+        ("Treasury yields", "US Treasury", "UST", "10Y", "美债收益率", "美国国债"),
+        ("Fed", "CPI", "inflation", "rates", "利率", "通胀"),
+        ("DXY", "USD", "美元", "美元指数"),
     ),
     "us_equity": (
-        "SPX",
-        "S&P 500",
-        "S&P500",
-        "SP500",
-        "Nasdaq",
-        "NDX",
-        "QQQ",
-        "Dow",
-        "美股",
-        "标普500",
-        "纳斯达克",
+        ("SPX", "S&P 500", "S&P500", "SP500", "标普500"),
+        ("Nasdaq", "NDX", "QQQ", "纳斯达克"),
+        ("Dow",),
+        ("美股",),
     ),
     "ai_semiconductors": (
-        "NVIDIA",
-        "NVDA",
-        "AI semiconductor",
-        "AI semiconductors",
-        "semiconductor",
-        "semiconductors",
-        "AI半导体",
-        "半导体",
+        (
+            "NVIDIA",
+            "NVDA",
+            "AI semiconductor",
+            "AI semiconductors",
+            "semiconductor",
+            "semiconductors",
+            "AI半导体",
+            "半导体",
+        ),
     ),
     "regulation": (
-        "SEC",
-        "CFTC",
-        "regulator",
-        "regulators",
-        "regulation",
-        "监管",
-        "监管机构",
+        ("SEC",),
+        ("CFTC",),
+        ("regulator", "regulators", "regulation", "监管", "监管机构"),
     ),
     "fx": (
-        "USD",
-        "DXY",
-        "EURUSD",
-        "美元",
-        "美元指数",
+        ("USD", "DXY", "美元", "美元指数"),
+        ("EURUSD",),
+        ("外汇", "FX"),
+    ),
+}
+_GENERIC_DESCRIPTOR_ALIASES_BY_DOMAIN: dict[str, tuple[str, ...]] = {
+    "crypto": (
+        "token",
+        "coin",
+        "spot",
+        "perp",
+        "perpetual",
+        "contract",
+        "exchange",
+        "代币",
+        "币",
+        "现货",
+        "永续",
+        "合约",
+        "交易所",
+    ),
+    "commodity": (
+        "future",
+        "futures",
+        "contract",
+        "commodity",
+        "期货",
+        "合约",
+        "商品",
+    ),
+    "us_equity": (
+        "stock",
+        "stocks",
+        "equity",
+        "equities",
+        "share",
+        "shares",
+        "sector",
+        "company",
+        "companies",
+        "firm",
+        "firms",
+        "index",
+        "etf",
+        "fund",
+        "股票",
+        "股",
+        "权益",
+        "板块",
+        "公司",
+        "企业",
+        "指数",
+        "基金",
+    ),
+    "energy_geopolitics": (
+        "country",
+        "region",
+        "risk",
+        "sector",
+        "国家",
+        "地区",
+        "风险",
+        "板块",
+    ),
+    "macro_rates": (
+        "rate",
+        "rates",
+        "yield",
+        "yields",
+        "index",
+        "factor",
+        "利率",
+        "收益率",
+        "指数",
+        "因子",
+    ),
+    "ai_semiconductors": (
+        "stock",
+        "stocks",
+        "equity",
+        "equities",
+        "sector",
+        "company",
+        "companies",
+        "股票",
+        "股",
+        "板块",
+        "公司",
+        "企业",
+    ),
+    "regulation": (
+        "regulator",
+        "regulators",
+        "agency",
+        "agencies",
+        "监管",
+        "监管机构",
+        "机构",
+    ),
+    "fx": (
+        "spot",
+        "index",
+        "currency",
+        "currencies",
+        "现货",
+        "指数",
+        "货币",
         "外汇",
-        "FX",
     ),
 }
 _US_ENERGY_SECTOR_TRANSLATION_ALIASES = (
@@ -239,6 +314,7 @@ def validate_affected_entity_support(
     payload: Mapping[str, Any],
 ) -> EntitySupportDecision:
     source_keys = source_backed_entity_keys(packet)
+    label_name_values = _entity_label_name_values(entity)
     label_name_keys = _entity_label_name_keys(entity)
     symbol_keys = _entity_symbol_keys(entity)
     target_id_keys = _entity_target_id_keys(entity)
@@ -252,8 +328,9 @@ def validate_affected_entity_support(
 
     source_domains = _source_backed_domains(packet, source_keys=source_keys)
     candidate_domains = _entity_candidate_domains(entity=entity, payload=payload)
-    if label_name_keys and not _keys_supported_by_source_or_proxy(
-        label_name_keys,
+    if label_name_keys and not _label_name_supported_by_source_or_proxy(
+        label_name_values=label_name_values,
+        label_name_keys=label_name_keys,
         source_keys=source_keys,
         source_domains=source_domains,
         candidate_domains=candidate_domains,
@@ -299,6 +376,15 @@ def _entity_candidate_domains(*, entity: Mapping[str, Any], payload: Mapping[str
     return {domain for domain in domains if domain in _KNOWN_DOMAINS}
 
 
+def _entity_label_name_values(entity: Mapping[str, Any]) -> tuple[str, ...]:
+    labels: list[str] = []
+    for value in (entity.get("label"), entity.get("name")):
+        label = str(value or "").strip()
+        if label:
+            labels.append(label)
+    return tuple(labels)
+
+
 def _entity_label_name_keys(entity: Mapping[str, Any]) -> set[str]:
     return _string_keys(entity.get("label"), entity.get("name"))
 
@@ -325,6 +411,32 @@ def _contains_unbacked_synthetic_placeholder(
     return False
 
 
+def _label_name_supported_by_source_or_proxy(
+    *,
+    label_name_values: tuple[str, ...],
+    label_name_keys: set[str],
+    source_keys: set[str],
+    source_domains: set[str],
+    candidate_domains: set[str],
+) -> bool:
+    if _keys_supported_by_source_or_proxy(
+        label_name_keys,
+        source_keys=source_keys,
+        source_domains=source_domains,
+        candidate_domains=candidate_domains,
+    ):
+        return True
+    return any(
+        _display_label_supported_by_source_descriptor(
+            label,
+            source_keys=source_keys,
+            source_domains=source_domains,
+            candidate_domains=candidate_domains,
+        )
+        for label in label_name_values
+    )
+
+
 def _keys_supported_by_source_or_proxy(
     keys: set[str],
     *,
@@ -341,10 +453,107 @@ def _keys_supported_by_source_or_proxy(
 
 
 def _domain_proxy_supports_keys(domain: str, keys: set[str], *, source_keys: set[str]) -> bool:
-    proxy_keys = _domain_proxy_keys(domain)
-    if not keys & proxy_keys:
+    return any(keys & proxy_keys and source_keys & proxy_keys for proxy_keys in _domain_proxy_key_groups(domain))
+
+
+def _display_label_supported_by_source_descriptor(
+    label: str,
+    *,
+    source_keys: set[str],
+    source_domains: set[str],
+    candidate_domains: set[str],
+) -> bool:
+    normalized = _norm(label)
+    if not normalized:
         return False
-    return domain != "crypto" or bool(source_keys & proxy_keys)
+
+    descriptor_keys = _generic_descriptor_keys(candidate_domains)
+    base_keys = _source_descriptor_base_keys(
+        source_keys=source_keys,
+        source_domains=source_domains,
+        candidate_domains=candidate_domains,
+    )
+    base_keys = {key for key in base_keys if key and key not in descriptor_keys}
+    for base_key in sorted(base_keys, key=len, reverse=True):
+        for start, end in _key_spans(normalized, base_key):
+            remaining = f"{normalized[:start]} {normalized[end:]}"
+            if _only_generic_descriptor_text(remaining, descriptor_keys):
+                return True
+    return False
+
+
+def _source_descriptor_base_keys(
+    *,
+    source_keys: set[str],
+    source_domains: set[str],
+    candidate_domains: set[str],
+) -> set[str]:
+    base_keys = set(source_keys)
+    for domain in candidate_domains:
+        if domain not in source_domains:
+            continue
+        for proxy_keys in _domain_proxy_key_groups(domain):
+            if source_keys & proxy_keys:
+                base_keys.update(proxy_keys)
+    return base_keys
+
+
+def _generic_descriptor_keys(candidate_domains: set[str]) -> set[str]:
+    keys: set[str] = set()
+    for domain in candidate_domains:
+        for descriptor in _GENERIC_DESCRIPTOR_ALIASES_BY_DOMAIN.get(domain, ()):
+            keys.update(_string_keys(descriptor))
+    return keys
+
+
+def _key_spans(text: str, key: str) -> list[tuple[int, int]]:
+    spans: list[tuple[int, int]] = []
+    if not key:
+        return spans
+    start = text.find(key)
+    while start >= 0:
+        end = start + len(key)
+        if _key_span_has_boundaries(text, start, end, key):
+            spans.append((start, end))
+        start = text.find(key, start + 1)
+    return spans
+
+
+def _key_span_has_boundaries(text: str, start: int, end: int, key: str) -> bool:
+    if not key.isascii() or not key.replace(" ", "").replace("-", "").replace(".", "").isalnum():
+        return True
+    before = text[start - 1] if start > 0 else ""
+    after = text[end] if end < len(text) else ""
+    return not _is_ascii_alnum(before) and not _is_ascii_alnum(after)
+
+
+def _is_ascii_alnum(value: str) -> bool:
+    return bool(value) and value.isascii() and value.isalnum()
+
+
+def _only_generic_descriptor_text(text: str, descriptor_keys: set[str]) -> bool:
+    compact = _compact_label_residue(text)
+    if not compact:
+        return True
+    for descriptor in sorted(descriptor_keys, key=len, reverse=True):
+        compact = compact.replace(_compact_label_residue(descriptor), "")
+        if not compact:
+            return True
+    return not compact
+
+
+def _compact_label_residue(text: str) -> str:
+    return re.sub(r"[\s._:/()（）\[\],，&+|'-]+", "", _norm(text))
+
+
+def _domain_proxy_key_groups(domain: str) -> tuple[set[str], ...]:
+    groups: list[set[str]] = []
+    for aliases in _DOMAIN_PROXY_ALIAS_GROUPS.get(domain, ()):
+        keys: set[str] = set()
+        for alias in aliases:
+            keys.update(_string_keys(alias))
+        groups.append(keys)
+    return tuple(groups)
 
 
 def _provider_impact_domains(market_type: Any) -> set[str]:
@@ -356,8 +565,8 @@ def _provider_impact_domains(market_type: Any) -> set[str]:
 
 def _domain_proxy_keys(domain: str) -> set[str]:
     aliases: set[str] = set()
-    for alias in _DOMAIN_PROXY_ALIASES.get(domain, ()):
-        aliases.update(_string_keys(alias))
+    for keys in _domain_proxy_key_groups(domain):
+        aliases.update(keys)
     return aliases
 
 
