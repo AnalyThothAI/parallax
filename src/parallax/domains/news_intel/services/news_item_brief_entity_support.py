@@ -395,6 +395,8 @@ def validate_affected_entity_support(
         return EntitySupportDecision(supported=False, reason="missing_label")
     if _contains_unbacked_synthetic_placeholder(entity, source_keys=source_keys):
         return EntitySupportDecision(supported=False, reason="synthetic_placeholder")
+    if _has_unsupported_entity_domain_conflict(entity):
+        return EntitySupportDecision(supported=False, reason="unsupported_domain_conflict")
 
     source_domains = _source_backed_domains(packet)
     candidate_domains = _entity_candidate_domains(entity=entity, payload=payload)
@@ -444,22 +446,26 @@ def _source_backed_domains(packet: NewsItemBriefInputPacket) -> set[str]:
 
 
 def _entity_candidate_domains(*, entity: Mapping[str, Any], payload: Mapping[str, Any]) -> set[str]:
-    domains = _entity_own_domains(entity)
-    if domains:
-        return domains
-    domains.update(_norm(domain) for domain in payload.get("market_domains") or [] if isinstance(domain, str))
-    for path in payload.get("transmission_paths") or []:
-        if isinstance(path, Mapping):
-            domains.add(_norm(path.get("market_domain")))
-    return {domain for domain in domains if domain in _KNOWN_DOMAINS}
+    del payload
+    return _entity_own_domains(entity)
 
 
 def _entity_own_domains(entity: Mapping[str, Any]) -> set[str]:
-    domains = {
-        _norm(entity.get("market_domain")),
-        _ENTITY_TYPE_DOMAINS.get(_norm(entity.get("entity_type")), ""),
-    }
-    return {domain for domain in domains if domain in _KNOWN_DOMAINS}
+    explicit_domain = _norm(entity.get("market_domain"))
+    if explicit_domain in _KNOWN_DOMAINS:
+        return {explicit_domain}
+
+    type_domain = _ENTITY_TYPE_DOMAINS.get(_norm(entity.get("entity_type")), "")
+    if type_domain in _KNOWN_DOMAINS:
+        return {type_domain}
+    return set()
+
+
+def _has_unsupported_entity_domain_conflict(entity: Mapping[str, Any]) -> bool:
+    explicit_domain = _norm(entity.get("market_domain"))
+    if explicit_domain not in _KNOWN_DOMAINS:
+        return False
+    return _norm(entity.get("entity_type")) == "crypto_asset" and explicit_domain != "crypto"
 
 
 def _entity_label_name_values(entity: Mapping[str, Any]) -> tuple[str, ...]:
@@ -520,6 +526,7 @@ def _label_name_supported_by_source_or_proxy(
             entity=entity,
             packet=packet,
             source_keys=source_key_support.all_keys,
+            source_text_keys=source_key_support.text_keys,
             source_domains=source_domains,
             candidate_domains=candidate_domains,
         )
@@ -564,6 +571,7 @@ def _display_label_supported_by_source_descriptor(
     entity: Mapping[str, Any],
     packet: NewsItemBriefInputPacket,
     source_keys: set[str],
+    source_text_keys: set[str],
     source_domains: set[str],
     candidate_domains: set[str],
 ) -> bool:
@@ -577,6 +585,7 @@ def _display_label_supported_by_source_descriptor(
         entity=entity,
         packet=packet,
         source_keys=source_keys,
+        source_text_keys=source_text_keys,
         source_domains=source_domains,
         candidate_domains=candidate_domains,
     )
@@ -595,6 +604,7 @@ def _source_descriptor_base_keys(
     entity: Mapping[str, Any],
     packet: NewsItemBriefInputPacket,
     source_keys: set[str],
+    source_text_keys: set[str],
     source_domains: set[str],
     candidate_domains: set[str],
 ) -> set[str]:
@@ -605,6 +615,7 @@ def _source_descriptor_base_keys(
         candidate_domains=candidate_domains,
     )
     base_keys = entity_keys & entity_specific_source_keys
+    base_keys.update(_entity_symbol_keys(entity) & source_text_keys)
     normalized_label = _norm(label)
     for domain in candidate_domains:
         if domain not in source_domains:

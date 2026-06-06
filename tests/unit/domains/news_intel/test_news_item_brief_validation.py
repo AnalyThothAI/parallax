@@ -1247,6 +1247,118 @@ def test_validation_rejects_commodity_provider_symbol_as_crypto_entity_with_mixe
     assert {"code": "unsupported_entity", "message": "CL Token"} in result.errors
 
 
+@pytest.mark.parametrize("label", ["CL", "CL Token"])
+def test_validation_rejects_commodity_provider_symbol_without_entity_domain_or_type(label: str) -> None:
+    packet = _provider_cl_packet()
+    payload = _ready_payload(
+        direction="mixed",
+        decision_class="driver",
+        event_type="provider_signal",
+        market_domains=["crypto", "commodity"],
+        bull_view={
+            "strength": "moderate",
+            "thesis_zh": "provider token impact 明确给出 CL commodity，但 affected entity 没有自己的 domain/type。",
+            "evidence_refs": ["provider:token:CL"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "payload-level domains 不能替单个 affected entity 背书。",
+            "evidence_refs": ["item:summary"],
+        },
+        transmission_paths=[
+            {
+                "market_domain": "commodity",
+                "channel": "provider_commodity_impact",
+                "direction": "mixed",
+                "strength": "moderate",
+                "explanation_zh": "commodity provider symbol 不能给缺失 domain/type 的 affected entity 背书。",
+                "evidence_refs": ["provider:token:CL"],
+            },
+            {
+                "market_domain": "crypto",
+                "channel": "provider_token_impact",
+                "direction": "mixed",
+                "strength": "weak",
+                "explanation_zh": "混合 payload domain 也不能补齐单个 affected entity 的 own domain。",
+                "evidence_refs": ["provider:token:CL"],
+            },
+        ],
+        affected_entities=[
+            {
+                "label": label,
+                "symbol": "CL",
+                "impact_direction": "mixed",
+                "reason_zh": "模型省略 entity_type/market_domain 后借用了 payload-level domains。",
+                "evidence_refs": ["provider:token:CL"],
+            }
+        ],
+        evidence_refs=["item:summary", "provider:token:CL"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is False
+    assert result.status == "failed"
+    assert {"code": "unsupported_entity", "message": label} in result.errors
+
+
+@pytest.mark.parametrize("label", ["CL", "CL Token"])
+def test_validation_rejects_commodity_provider_symbol_with_conflicting_crypto_type(label: str) -> None:
+    packet = _provider_cl_packet()
+    payload = _ready_payload(
+        direction="mixed",
+        decision_class="driver",
+        event_type="provider_signal",
+        market_domains=["crypto", "commodity"],
+        bull_view={
+            "strength": "moderate",
+            "thesis_zh": "provider token impact 明确给出 CL commodity，但 affected entity type 是 crypto_asset。",
+            "evidence_refs": ["provider:token:CL"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "conflicting market_domain/entity_type 不能把 commodity CL 变成 crypto entity。",
+            "evidence_refs": ["item:summary"],
+        },
+        transmission_paths=[
+            {
+                "market_domain": "commodity",
+                "channel": "provider_commodity_impact",
+                "direction": "mixed",
+                "strength": "moderate",
+                "explanation_zh": "commodity provider symbol 不能背书 crypto typed affected entity。",
+                "evidence_refs": ["provider:token:CL"],
+            },
+            {
+                "market_domain": "crypto",
+                "channel": "provider_token_impact",
+                "direction": "mixed",
+                "strength": "weak",
+                "explanation_zh": "混合 payload domain 不能修复 conflicting entity own domain/type。",
+                "evidence_refs": ["provider:token:CL"],
+            },
+        ],
+        affected_entities=[
+            {
+                "label": label,
+                "symbol": "CL",
+                "entity_type": "crypto_asset",
+                "market_domain": "commodity",
+                "impact_direction": "mixed",
+                "reason_zh": "模型把 crypto type 与 commodity domain 冲突组合后借 provider CL 背书。",
+                "evidence_refs": ["provider:token:CL"],
+            }
+        ],
+        evidence_refs=["item:summary", "provider:token:CL"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is False
+    assert result.status == "failed"
+    assert {"code": "unsupported_entity", "message": label} in result.errors
+
+
 def test_validation_allows_oil_proxy_when_packet_sources_crude_risk() -> None:
     packet = _energy_geopolitics_packet()
     payload = _ready_payload(
