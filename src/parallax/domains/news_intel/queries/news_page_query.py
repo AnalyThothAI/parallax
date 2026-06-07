@@ -28,7 +28,7 @@ class NewsPageQuery:
             min_score=min_score,
             q=q,
         )
-        items = rows[:requested_limit]
+        items = [_public_news_row(row) for row in rows[:requested_limit]]
         next_cursor = news_page_cursor(items[-1]) if len(rows) > requested_limit and items else None
         return {"items": items, "next_cursor": next_cursor}
 
@@ -40,3 +40,9 @@ class NewsPageQuery:
 
     def source_status(self) -> list[dict[str, Any]]:
         return cast(list[dict[str, Any]], self.repository.list_source_status())
+
+
+def _public_news_row(row: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(row)
+    payload.pop("story", None)
+    return payload

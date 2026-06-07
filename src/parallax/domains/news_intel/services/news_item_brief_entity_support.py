@@ -73,7 +73,12 @@ _DOMAIN_PROXY_ALIAS_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
             "原油",
             "原油期货",
             "Brent",
+            "Brent crude",
+            "Brent oil",
+            "Brent原油",
+            "Brent原油期货",
             "布伦特原油",
+            "布伦特原油期货",
         ),
     ),
     "energy_geopolitics": (
@@ -91,9 +96,34 @@ _DOMAIN_PROXY_ALIAS_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
             "geopolitical risk",
             "中东地缘政治风险",
         ),
+        (
+            "shipping",
+            "shipping route",
+            "sea lane",
+            "ship",
+            "ships",
+            "vessel",
+            "vessels",
+            "maritime",
+            "maritime traffic",
+            "traffic",
+            "naval",
+            "naval overwatch",
+            "tanker",
+            "oil tanker",
+            "航运",
+            "海运",
+            "通行",
+            "运输",
+            "油轮",
+            "全球航运",
+            "油轮板块",
+        ),
     ),
     "crypto": (
         ("BTC", "Bitcoin", "比特币"),
+        ("ETH", "Ethereum", "以太坊"),
+        ("SOL", "Solana", "索拉纳"),
     ),
     "macro_rates": (
         ("Treasury yields", "US Treasury", "UST", "10Y", "美债收益率", "美国国债"),
@@ -183,10 +213,34 @@ _GENERIC_DESCRIPTOR_ALIASES_BY_DOMAIN: dict[str, tuple[str, ...]] = {
         "region",
         "risk",
         "sector",
+        "energy",
+        "geopolitical",
+        "geopolitics",
+        "geopolitical risk",
+        "shipping",
+        "ship",
+        "ships",
+        "maritime",
+        "tanker",
+        "traffic",
+        "naval",
         "国家",
         "地区",
         "风险",
         "板块",
+        "能源",
+        "地缘",
+        "地缘政治",
+        "能源地缘",
+        "航运",
+        "海运",
+        "海峡",
+        "油轮",
+        "通行",
+        "运输",
+        "安全",
+        "冲突",
+        "军事",
     ),
     "macro_rates": (
         "rate",
@@ -408,19 +462,24 @@ def validate_affected_entity_support(
     ):
         return EntitySupportDecision(supported=False, reason="unsupported_target_id")
 
-    if label_name_keys and not _label_name_supported_by_source_or_proxy(
-        entity=entity,
-        packet=packet,
-        label_name_values=label_name_values,
-        label_name_keys=label_name_keys,
-        source_key_support=source_key_support,
-        source_domains=source_domains,
-        candidate_domains=candidate_domains,
-    ):
-        return EntitySupportDecision(supported=False, reason="unsupported_label")
+    label_name_supported = False
+    if label_name_keys:
+        label_name_supported = _label_name_supported_by_source_or_proxy(
+            entity=entity,
+            packet=packet,
+            label_name_values=label_name_values,
+            label_name_keys=label_name_keys,
+            source_key_support=source_key_support,
+            source_domains=source_domains,
+            candidate_domains=candidate_domains,
+        )
+        if not label_name_supported:
+            return EntitySupportDecision(supported=False, reason="unsupported_label")
 
     if _source_supports_keys(entity_keys, source_key_support=source_key_support, candidate_domains=candidate_domains):
         return EntitySupportDecision(supported=True, reason="packet_key")
+    if label_name_supported and not (symbol_keys or target_id_keys):
+        return EntitySupportDecision(supported=True, reason="display_label")
 
     for domain in candidate_domains:
         if domain not in source_domains:

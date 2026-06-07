@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from parallax.domains.news_intel.repositories.news_repository import NewsRepository
+from parallax.domains.news_intel.services.news_item_brief_contract import CURRENT_NEWS_ITEM_BRIEF_CONTRACT
 from parallax.domains.news_intel.services.source_quality_projection import build_source_quality_rows
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
@@ -116,9 +117,9 @@ def test_source_quality_repository_aggregates_and_replaces_rows(tmp_path) -> Non
             agent_name="news_item_brief",
             lane="news.item_brief",
             artifact_version_hash="artifact-1",
-            prompt_version="prompt-v1",
-            schema_version="schema-v1",
-            validator_version="validator-v1",
+            prompt_version=CURRENT_NEWS_ITEM_BRIEF_CONTRACT["prompt_version"],
+            schema_version=CURRENT_NEWS_ITEM_BRIEF_CONTRACT["schema_version"],
+            validator_version=CURRENT_NEWS_ITEM_BRIEF_CONTRACT["validator_version"],
             guardrail_version="guard-v1",
             input_hash="input-1",
             output_hash="output-1",
@@ -146,9 +147,9 @@ def test_source_quality_repository_aggregates_and_replaces_rows(tmp_path) -> Non
             brief_json={"summary_zh": "测试"},
             input_hash="input-1",
             artifact_version_hash="artifact-1",
-            prompt_version="prompt-v1",
-            schema_version="schema-v1",
-            validator_version="validator-v1",
+            prompt_version=CURRENT_NEWS_ITEM_BRIEF_CONTRACT["prompt_version"],
+            schema_version=CURRENT_NEWS_ITEM_BRIEF_CONTRACT["schema_version"],
+            validator_version=CURRENT_NEWS_ITEM_BRIEF_CONTRACT["validator_version"],
             computed_at_ms=NOW_MS - 1_800,
             created_at_ms=NOW_MS - 1_800,
             updated_at_ms=NOW_MS - 1_800,

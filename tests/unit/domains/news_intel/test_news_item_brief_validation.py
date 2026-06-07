@@ -313,6 +313,33 @@ def _provider_btc_packet():
     )
 
 
+def _provider_crypto_symbol_packet(symbol: str):
+    return build_news_item_brief_input_packet(
+        item={
+            "news_item_id": f"item-provider-{symbol.lower()}",
+            "title": "Provider flags market impact",
+            "summary": "The source text does not name the affected crypto asset directly.",
+            "body_text": "Provider evidence supplies the token-specific impact.",
+            "published_at_ms": 1_779_000_000_000,
+            "content_hash": f"sha256:provider-{symbol.lower()}",
+            "provider_signal_json": {
+                "source": "provider",
+                "provider": "opennews",
+                "status": "ready",
+                "direction": "mixed",
+            },
+            "provider_token_impacts_json": [
+                {"symbol": symbol, "market_type": "cex", "score": 80, "signal": "proxy", "grade": "B"}
+            ],
+            "agent_admission_json": {"status": "eligible", "reason": "provider_signal"},
+        },
+        entities=[],
+        token_mentions=[],
+        fact_candidates=[],
+        agent_config=_agent_config(),
+    )
+
+
 def _provider_cl_packet(*, market_type: str = "commodity"):
     return build_news_item_brief_input_packet(
         item={
@@ -1055,6 +1082,54 @@ def test_validation_allows_provider_btc_label_with_generic_descriptor(label: str
     assert result.errors == []
 
 
+def test_validation_allows_provider_eth_to_support_chinese_asset_label() -> None:
+    packet = _provider_crypto_symbol_packet("ETH")
+    payload = _ready_payload(
+        direction="mixed",
+        decision_class="driver",
+        event_type="provider_signal",
+        market_domains=["crypto"],
+        bull_view={
+            "strength": "weak",
+            "thesis_zh": "provider market impact 明确给出 ETH。",
+            "evidence_refs": ["provider:impact:ETH"],
+        },
+        bear_view={
+            "strength": "moderate",
+            "thesis_zh": "provider market impact 明确给出 ETH。",
+            "evidence_refs": ["provider:impact:ETH"],
+        },
+        transmission_paths=[
+            {
+                "market_domain": "crypto",
+                "channel": "provider_market_impact",
+                "direction": "mixed",
+                "strength": "moderate",
+                "explanation_zh": "provider market impact 明确给出 ETH。",
+                "evidence_refs": ["provider:impact:ETH"],
+            }
+        ],
+        affected_entities=[
+            {
+                "label": "以太坊",
+                "symbol": "ETH",
+                "entity_type": "crypto_asset",
+                "market_domain": "crypto",
+                "impact_direction": "bearish",
+                "reason_zh": "provider market impact 明确给出 ETH。",
+                "evidence_refs": ["provider:impact:ETH"],
+            }
+        ],
+        evidence_refs=["item:summary", "provider:impact:ETH"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
+
+
 def test_validation_allows_provider_cl_proxy_when_provider_sources_cl() -> None:
     packet = _provider_cl_packet()
     payload = _ready_payload(
@@ -1683,6 +1758,135 @@ def test_validation_allows_source_backed_market_wide_proxy_entities() -> None:
         invalidation_conditions=["相关军事活动降级或航运风险被证伪"],
         data_gaps=[],
         evidence_refs=["item:summary", "fact:fact-hormuz"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
+
+
+def test_validation_allows_source_backed_translated_energy_geopolitics_proxy_labels() -> None:
+    packet = _energy_geopolitics_packet()
+    payload = _ready_payload(
+        direction="mixed",
+        decision_class="driver",
+        event_type="geopolitical_supply",
+        title_zh="霍尔木兹海峡扰动抬高能源地缘风险",
+        summary_zh="来源文本提到 Strait of Hormuz 和 Gulf shipping，支持能源地缘和航运代理标签。",
+        market_read_zh="霍尔木兹海峡扰动通过航运、油轮和能源安全风险传导到原油供给风险溢价。",
+        market_domains=["energy_geopolitics", "commodity"],
+        transmission_paths=[
+            {
+                "market_domain": "energy_geopolitics",
+                "channel": "shipping_supply_risk",
+                "direction": "mixed",
+                "strength": "moderate",
+                "explanation_zh": "来源文本提到 Strait of Hormuz 和 Gulf shipping。",
+                "evidence_refs": ["fact:fact-hormuz"],
+            }
+        ],
+        bull_view={
+            "strength": "moderate",
+            "thesis_zh": "霍尔木兹海峡扰动会抬高能源地缘和航运风险溢价。",
+            "evidence_refs": ["fact:fact-hormuz"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "来源没有证明航运已经中断。",
+            "evidence_refs": ["item:summary"],
+        },
+        affected_entities=[
+            {
+                "label": "霍尔木兹海峡/能源地缘",
+                "entity_type": "macro_factor",
+                "market_domain": "energy_geopolitics",
+                "impact_direction": "mixed",
+                "reason_zh": "source/fact 明确支持 Strait of Hormuz 地缘航运风险。",
+                "evidence_refs": ["fact:fact-hormuz"],
+            },
+            {
+                "label": "全球航运/油轮板块",
+                "entity_type": "sector",
+                "market_domain": "energy_geopolitics",
+                "impact_direction": "mixed",
+                "reason_zh": "source/fact 明确支持 Gulf shipping 和 oil shipping route。",
+                "evidence_refs": ["fact:fact-hormuz"],
+            },
+        ],
+        watch_triggers=["后续航运中断证据、油价和油轮运费是否扩大"],
+        invalidation_conditions=["相关军事活动降级或航运风险被证伪"],
+        data_gaps=[],
+        evidence_refs=["item:summary", "fact:fact-hormuz"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
+
+
+def test_validation_allows_ship_traffic_source_to_support_shipping_proxy_label() -> None:
+    packet = build_news_item_brief_input_packet(
+        item={
+            "news_item_id": "item-hormuz-ship-traffic",
+            "title": "Strait of Hormuz ship traffic stays open as U.S. provides naval overwatch",
+            "summary": "",
+            "body_text": "The report says Iranian drones threatened ships near the Strait of Hormuz.",
+            "published_at_ms": 1_779_000_000_000,
+            "content_hash": "sha256:hormuz-ship-traffic",
+            "market_scope_json": ["energy_geopolitics"],
+            "agent_admission_json": {"status": "eligible", "reason": "eligible"},
+        },
+        entities=[],
+        token_mentions=[],
+        fact_candidates=[],
+        agent_config=_agent_config(),
+    )
+    payload = _ready_payload(
+        direction="mixed",
+        decision_class="driver",
+        event_type="geopolitical_supply",
+        title_zh="霍尔木兹船运通行风险变化",
+        summary_zh="来源文本提到 Strait of Hormuz、ship traffic、ships 与 naval overwatch。",
+        market_read_zh="该新闻支撑航运和油轮通行风险这个广义能源地缘代理。",
+        market_domains=["energy_geopolitics"],
+        transmission_paths=[
+            {
+                "market_domain": "energy_geopolitics",
+                "channel": "ship_traffic",
+                "direction": "mixed",
+                "strength": "moderate",
+                "explanation_zh": "来源文本明确提到 ship traffic 和 naval overwatch。",
+                "evidence_refs": ["item:title"],
+            }
+        ],
+        bull_view={
+            "strength": "weak",
+            "thesis_zh": "来源文本支持船运通行风险缓和的方向。",
+            "evidence_refs": ["item:title"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "来源没有证明风险已经完全消失。",
+            "evidence_refs": ["item:body_excerpt"],
+        },
+        affected_entities=[
+            {
+                "label": "全球航运/油轮板块",
+                "entity_type": "sector",
+                "market_domain": "energy_geopolitics",
+                "impact_direction": "mixed",
+                "reason_zh": "source 明确支持 ship traffic 与 ships。",
+                "evidence_refs": ["item:title"],
+            },
+        ],
+        watch_triggers=["后续船运通行和战争险费率是否变化"],
+        invalidation_conditions=["海峡通行风险被证伪"],
+        data_gaps=[],
+        evidence_refs=["item:title", "item:body_excerpt"],
     )
 
     result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
