@@ -8,6 +8,8 @@ from parallax.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION
 
 _RESOLVED_TOKEN_STATUSES = frozenset({"exact_address", "known_symbol", "unique_by_context"})
 _IGNORED_TOKEN_STATUSES = frozenset({"non_crypto", "nil"})
+_AGENT_NOTIFICATION_ADMISSION_STATUSES = frozenset({"eligible", "eligible_refresh"})
+_NOTIFIABLE_DECISION_CLASSES = frozenset({"driver", "watch"})
 
 
 def build_news_page_row(
@@ -23,13 +25,7 @@ def build_news_page_row(
     story_payload = _story_payload(story=story, item=item, news_item_id=news_item_id)
     story_key = str(story_payload.get("story_key") or item.get("story_key") or "")
     representative_news_item_id = str(story_payload.get("representative_news_item_id") or news_item_id)
-    analysis_admission_status = str(item.get("analysis_admission_status") or "needs_review")
-    analysis_admission_reason = str(item.get("analysis_admission_reason") or "")
-    analysis_admission = _analysis_admission_payload(
-        item=item,
-        status=analysis_admission_status,
-        reason=analysis_admission_reason,
-    )
+    market_scope = _market_scope_payload(item)
     agent_admission_status = str(item.get("agent_admission_status") or "needs_review")
     agent_admission_reason = str(item.get("agent_admission_reason") or "")
     agent_admission = _agent_admission_payload(
@@ -76,7 +72,8 @@ def build_news_page_row(
         "signal": _page_signal(
             provider_signal=provider_signal,
             agent_signal=agent_payload,
-            analysis_admission_status=analysis_admission_status,
+            agent_admission_status=agent_admission_status,
+            market_scope=market_scope,
         ),
         "token_impacts": token_impacts,
         "content_class": item.get("content_class"),
@@ -86,9 +83,7 @@ def build_news_page_row(
         "agent_brief": agent_payload,
         "agent_status": agent_status,
         "agent_brief_computed_at_ms": agent_payload.get("computed_at_ms"),
-        "analysis_admission_status": analysis_admission_status,
-        "analysis_admission_reason": analysis_admission_reason,
-        "analysis_admission": analysis_admission,
+        "market_scope": market_scope,
         "agent_admission_status": agent_admission_status,
         "agent_admission_reason": agent_admission_reason,
         "agent_admission": agent_admission,
@@ -263,6 +258,10 @@ def _source_payload(item: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+def _market_scope_payload(item: Mapping[str, Any]) -> dict[str, Any]:
+    return _json_object(item.get("market_scope_json"))
+
+
 def _story_payload(*, story: Mapping[str, Any] | None, item: Mapping[str, Any], news_item_id: str) -> dict[str, Any]:
     story_key = str((story or {}).get("story_key") or item.get("story_key") or "").strip()
     if not story and not story_key:
@@ -294,21 +293,6 @@ def _story_payload(*, story: Mapping[str, Any] | None, item: Mapping[str, Any], 
     if provider_article_keys:
         payload["provider_article_keys"] = provider_article_keys
     return _compact_mapping(payload)
-
-
-def _analysis_admission_payload(
-    *,
-    item: Mapping[str, Any],
-    status: str,
-    reason: str,
-) -> dict[str, Any]:
-    payload = _json_object(item.get("analysis_admission_json"))
-    if not payload:
-        payload = {"status": status, "reason": reason}
-    else:
-        payload.setdefault("status", status)
-        payload.setdefault("reason", reason)
-    return payload
 
 
 def _agent_admission_payload(
@@ -411,7 +395,8 @@ def _page_signal(
     *,
     provider_signal: Mapping[str, Any],
     agent_signal: Mapping[str, Any],
-    analysis_admission_status: str,
+    agent_admission_status: str,
+    market_scope: Mapping[str, Any],
 ) -> dict[str, Any]:
     provider_payload = _provider_signal_payload(provider_signal)
     provider_score = _optional_int_or_none(provider_payload.get("score")) if provider_payload else None
@@ -431,14 +416,16 @@ def _page_signal(
             },
             provider_signal=provider_payload,
             agent_signal=agent_signal,
-            analysis_admission_status=analysis_admission_status,
+            agent_admission_status=agent_admission_status,
+            market_scope=market_scope,
         )
     if provider_payload:
         return _signal_with_independent_state(
             provider_payload,
             provider_signal=provider_payload,
             agent_signal=agent_signal,
-            analysis_admission_status=analysis_admission_status,
+            agent_admission_status=agent_admission_status,
+            market_scope=market_scope,
         )
     return _signal_with_independent_state(
         {
@@ -450,7 +437,8 @@ def _page_signal(
         },
         provider_signal=None,
         agent_signal=agent_signal,
-        analysis_admission_status=analysis_admission_status,
+        agent_admission_status=agent_admission_status,
+        market_scope=market_scope,
     )
 
 
@@ -480,19 +468,17 @@ def _signal_with_independent_state(
     *,
     provider_signal: Mapping[str, Any] | None,
     agent_signal: Mapping[str, Any],
-    analysis_admission_status: str,
+    agent_admission_status: str,
+    market_scope: Mapping[str, Any],
 ) -> dict[str, Any]:
     agent_status = str(agent_signal.get("status") or "pending")
     provider_score = _optional_int_or_none(provider_signal.get("score")) if provider_signal else None
     in_app_eligible = _alert_eligible(
         agent_signal=agent_signal,
         provider_score=provider_score,
-        analysis_admission_status=analysis_admission_status,
+        agent_admission_status=agent_admission_status,
     )
-    external_push_ready, external_push_block_reason = _external_push_readiness(
-        agent_signal,
-        analysis_admission_status=analysis_admission_status,
-    )
+    external_push_ready, external_push_block_reason = _external_push_readiness(agent_signal)
     return {
         "display_signal": _compact_mapping(signal),
         "provider_signal": dict(provider_signal) if provider_signal else None,
@@ -503,6 +489,7 @@ def _signal_with_independent_state(
                 "decision_class": agent_signal.get("decision_class"),
                 "provider_status": provider_signal.get("status") if provider_signal else None,
                 "provider_score": provider_score,
+                "market_scope": dict(market_scope) if market_scope else None,
                 "in_app_eligible": in_app_eligible,
                 "external_push_ready": external_push_ready,
                 "external_push_block_reason": external_push_block_reason,
@@ -516,27 +503,22 @@ def _alert_eligible(
     *,
     agent_signal: Mapping[str, Any],
     provider_score: int | None,
-    analysis_admission_status: str,
+    agent_admission_status: str,
 ) -> bool:
-    if analysis_admission_status != "admitted":
+    if agent_admission_status not in _AGENT_NOTIFICATION_ADMISSION_STATUSES:
         return False
-    if str(agent_signal.get("status") or "") == "ready" and str(agent_signal.get("decision_class") or "") in {
-        "driver",
-        "watch",
-    }:
-        return True
-    return provider_score is not None and provider_score >= 70
+    if provider_score is None or provider_score < 85:
+        return False
+    if str(agent_signal.get("status") or "") != "ready":
+        return False
+    return str(agent_signal.get("decision_class") or "") in _NOTIFIABLE_DECISION_CLASSES
 
 
-def _external_push_readiness(
-    agent_signal: Mapping[str, Any],
-    *,
-    analysis_admission_status: str,
-) -> tuple[bool, str | None]:
-    if analysis_admission_status != "admitted":
-        return False, "analysis_not_admitted"
+def _external_push_readiness(agent_signal: Mapping[str, Any]) -> tuple[bool, str | None]:
     if str(agent_signal.get("status") or "") != "ready":
         return False, "agent_brief_not_ready"
+    if str(agent_signal.get("decision_class") or "") not in _NOTIFIABLE_DECISION_CLASSES:
+        return False, "decision_not_notifiable"
     if not _agent_publishable_summary(agent_signal):
         return False, "agent_brief_missing_summary"
     return True, None

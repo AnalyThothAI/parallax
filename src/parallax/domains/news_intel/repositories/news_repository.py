@@ -2086,9 +2086,7 @@ class NewsRepository:
               agent_brief_json AS agent_brief,
               agent_status,
               agent_brief_computed_at_ms,
-              analysis_admission_status,
-              analysis_admission_reason,
-              analysis_admission_json AS analysis_admission,
+              market_scope_json AS market_scope,
               agent_admission_status,
               agent_admission_reason,
               agent_admission_json AS agent_admission,
@@ -2097,7 +2095,6 @@ class NewsRepository:
               projection_version
             FROM news_page_rows
             WHERE projection_version = %s
-              AND analysis_admission_status = 'admitted'
               AND COALESCE((signal_json -> 'alert_eligibility' ->> 'in_app_eligible')::boolean, false) = true
               AND COALESCE(NULLIF(signal_json -> 'alert_eligibility' ->> 'provider_score', '')::int, -1) >= %s
               AND EXISTS (
@@ -2177,9 +2174,7 @@ class NewsRepository:
               agent_brief_json AS agent_brief,
               agent_status,
               agent_brief_computed_at_ms,
-              analysis_admission_status,
-              analysis_admission_reason,
-              analysis_admission_json AS analysis_admission,
+              market_scope_json AS market_scope,
               agent_admission_status,
               agent_admission_reason,
               agent_admission_json AS agent_admission,
@@ -3433,9 +3428,7 @@ class NewsRepository:
               agent_brief_json AS page_agent_brief,
               agent_status,
               agent_brief_computed_at_ms,
-              analysis_admission_status,
-              analysis_admission_reason,
-              analysis_admission_json AS analysis_admission,
+              market_scope_json AS market_scope,
               agent_admission_status,
               agent_admission_reason,
               agent_admission_json AS agent_admission,
@@ -3498,17 +3491,7 @@ class NewsRepository:
             ),
             "story_key": str(projected.get("story_key") or item_payload.get("story_key") or ""),
             "story": _json_dict(projected.get("story") or item_payload.get("story_identity_json")),
-            "analysis_admission_status": str(
-                projected.get("analysis_admission_status")
-                or item_payload.get("analysis_admission_status")
-                or "needs_review"
-            ),
-            "analysis_admission_reason": str(
-                projected.get("analysis_admission_reason") or item_payload.get("analysis_admission_reason") or ""
-            ),
-            "analysis_admission": _json_dict(
-                projected.get("analysis_admission") or item_payload.get("analysis_admission_json") or {}
-            ),
+            "market_scope": _json_dict(projected.get("market_scope") or item_payload.get("market_scope_json") or {}),
             "agent_admission_status": str(
                 projected.get("agent_admission_status")
                 or item_payload.get("agent_admission_status")
@@ -4420,8 +4403,8 @@ class NewsRepository:
                   source_json, signal_json, token_impacts_json, agent_brief_json,
                   agent_status, agent_brief_computed_at_ms, computed_at_ms, projection_version,
                   canonical_item_key, duplicate_count, source_ids_json, source_domains_json,
-                  provider_article_keys_json, analysis_admission_status, analysis_admission_reason,
-                  analysis_admission_json, agent_admission_status, agent_admission_reason,
+                  provider_article_keys_json, market_scope_json,
+                  agent_admission_status, agent_admission_reason,
                   agent_admission_json, agent_representative_news_item_id, payload_hash
                 )
                 VALUES (
@@ -4434,8 +4417,7 @@ class NewsRepository:
                   %(agent_brief_json)s, %(agent_status)s, %(agent_brief_computed_at_ms)s,
                   %(computed_at_ms)s, %(projection_version)s, %(canonical_item_key)s,
                   %(duplicate_count)s, %(source_ids_json)s, %(source_domains_json)s,
-                  %(provider_article_keys_json)s, %(analysis_admission_status)s,
-                  %(analysis_admission_reason)s, %(analysis_admission_json)s,
+                  %(provider_article_keys_json)s, %(market_scope_json)s,
                   %(agent_admission_status)s, %(agent_admission_reason)s,
                   %(agent_admission_json)s, %(agent_representative_news_item_id)s, %(payload_hash)s
                 )
@@ -4469,9 +4451,7 @@ class NewsRepository:
                   source_ids_json = EXCLUDED.source_ids_json,
                   source_domains_json = EXCLUDED.source_domains_json,
                   provider_article_keys_json = EXCLUDED.provider_article_keys_json,
-                  analysis_admission_status = EXCLUDED.analysis_admission_status,
-                  analysis_admission_reason = EXCLUDED.analysis_admission_reason,
-                  analysis_admission_json = EXCLUDED.analysis_admission_json,
+                  market_scope_json = EXCLUDED.market_scope_json,
                   agent_admission_status = EXCLUDED.agent_admission_status,
                   agent_admission_reason = EXCLUDED.agent_admission_reason,
                   agent_admission_json = EXCLUDED.agent_admission_json,
@@ -4752,16 +4732,7 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     payload["agent_brief_computed_at_ms"] = (
         int(payload["agent_brief_computed_at_ms"]) if payload.get("agent_brief_computed_at_ms") is not None else None
     )
-    payload["analysis_admission_status"] = str(payload.get("analysis_admission_status") or "needs_review")
-    payload["analysis_admission_reason"] = str(payload.get("analysis_admission_reason") or "")
-    payload["analysis_admission_json"] = _json(
-        payload.get("analysis_admission_json")
-        or payload.get("analysis_admission")
-        or {
-            "status": payload["analysis_admission_status"],
-            "reason": payload["analysis_admission_reason"],
-        }
-    )
+    payload["market_scope_json"] = _json(payload.get("market_scope_json") or payload.get("market_scope") or {})
     payload["agent_admission_status"] = str(payload.get("agent_admission_status") or "needs_review")
     payload["agent_admission_reason"] = str(payload.get("agent_admission_reason") or "")
     payload["agent_admission_json"] = _json(

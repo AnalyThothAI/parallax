@@ -10,12 +10,12 @@ from tests.postgres_test_utils import reset_postgres_schema as migrate
 NOW_MS = 1_779_000_000_000
 
 
-def test_update_item_agent_admission_persists_without_touching_analysis_admission(tmp_path) -> None:
+def test_update_item_agent_admission_persists_without_touching_market_scope(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         repo = NewsRepository(conn)
-        news_item_id = _seed_processed_news_item(conn, analysis_admission_status="page_only")
+        news_item_id = _seed_processed_news_item(conn, primary_scope="us_equity")
 
         updated = repo.update_item_agent_admission(
             news_item_id=news_item_id,
@@ -32,7 +32,7 @@ def test_update_item_agent_admission_persists_without_touching_analysis_admissio
     assert row["agent_admission_reason"] == "provider_score_high"
     assert row["agent_admission"]["status"] == "eligible"
     assert row["agent_representative_news_item_id"] == news_item_id
-    assert row["analysis_admission_status"] == "page_only"
+    assert row["market_scope"]["primary"] == "us_equity"
 
 
 def test_page_row_persists_agent_admission_fields(tmp_path) -> None:
@@ -85,7 +85,7 @@ def test_load_agent_admission_contexts_returns_exact_duplicate_by_provider_artic
     }
 
 
-def _seed_processed_news_item(conn, *, analysis_admission_status: str = "admitted") -> str:
+def _seed_processed_news_item(conn, *, primary_scope: str = "crypto") -> str:
     conn.execute(
         """
         INSERT INTO news_sources (
@@ -119,24 +119,21 @@ def _seed_processed_news_item(conn, *, analysis_admission_status: str = "admitte
           news_item_id, provider_item_id, source_id, source_domain, canonical_url,
           title, summary, body_text, language, published_at_ms, fetched_at_ms,
           content_hash, title_fingerprint, provider_signal_json, lifecycle_status,
-          content_class, content_classification_json,
-          analysis_admission_status, analysis_admission_reason, analysis_admission_json,
-          analysis_admission_version, created_at_ms, updated_at_ms
+          content_class, content_classification_json, market_scope_json, created_at_ms, updated_at_ms
         )
         VALUES (
           'news-agent-admission', 'provider-agent-admission', 'source-agent-admission', 'example.com',
           'https://example.com/agent-admission', 'Agent admission', 'Summary', '', 'en', %s, %s,
           'content-agent-admission', 'agent admission',
           %s, 'processed', 'us_equity', '{"policy_version":"test"}'::jsonb,
-          %s, 'test_analysis_reason', %s, 'news_analysis_admission_v1', %s, %s
+          %s, %s, %s
         )
         """,
         (
             NOW_MS,
             NOW_MS,
             Jsonb({"source": "provider", "status": "ready", "score": 95}),
-            analysis_admission_status,
-            Jsonb({"status": analysis_admission_status, "reason": "test_analysis_reason"}),
+            Jsonb(_market_scope_fixture(primary=primary_scope)),
             NOW_MS,
             NOW_MS,
         ),
@@ -233,9 +230,7 @@ def _page_row_fixture(*, news_item_id: str, agent_admission_status: str) -> dict
         "source": {"source_id": "source-agent-admission"},
         "agent_brief": {"status": "pending"},
         "agent_status": "pending",
-        "analysis_admission_status": "page_only",
-        "analysis_admission_reason": "test_analysis_reason",
-        "analysis_admission": {"status": "page_only", "reason": "test_analysis_reason"},
+        "market_scope": _market_scope_fixture(primary="us_equity"),
         "agent_admission_status": agent_admission_status,
         "agent_admission_reason": "same_story_key_current_brief",
         "agent_admission": {
@@ -249,4 +244,15 @@ def _page_row_fixture(*, news_item_id: str, agent_admission_status: str) -> dict
         "agent_representative_news_item_id": "news-representative",
         "computed_at_ms": NOW_MS,
         "projection_version": NEWS_PAGE_PROJECTION_VERSION,
+    }
+
+
+def _market_scope_fixture(*, primary: str) -> dict[str, object]:
+    return {
+        "scope": [primary],
+        "primary": primary,
+        "status": "classified",
+        "reason": "market_scope_classified",
+        "basis": {"test": True},
+        "version": "news_market_scope_v1",
     }
