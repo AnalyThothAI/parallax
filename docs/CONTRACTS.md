@@ -185,22 +185,27 @@ News Intel contract:
   `story`), provider token impact rows (`token_impacts`), compact source
   metadata (`provider_type`, `source_role`, `trust_tier`, `coverage_tags`,
   `source_quality_status`), item content classification (`content_class`,
-  `content_tags`, `content_classification`), deterministic page/material
-  classification fields (`analysis_admission_status`,
-  `analysis_admission_reason`, `analysis_admission`), market-wide agent
-  admission fields
+  `content_tags`, `content_classification`), market-scope metadata
+  (`market_scope`), market-wide agent admission fields
   (`agent_admission_status`, `agent_admission_reason`, `agent_admission`,
   `agent_representative_news_item_id`), compact `agent_brief`, and
-  provider/source metadata. `analysis_admission_status` is not an item brief
-  gate; it is not an alert/push eligibility fallback.
+  provider/source metadata. `market_scope` describes likely market
+  transmission (`crypto`, `us_equity`, `macro_rates`, `commodities`, `fx`,
+  `ai_semiconductors`, `private_company`, `broad_risk`, or `unknown`); it is
+  metadata, not a rejection state. `NON_CRYPTO` identity classification remains
+  valid in token identity and Stocks Radar contexts, but it is not a News item
+  brief or notification gate.
   Score>=80 market news is agent-eligible unless deterministic duplicate,
   similar-story, source, score/time, or operational gates block it. `signal` is
   an explicit envelope: `signal.display_signal` is the row-level display choice,
   `signal.provider_signal` is provider-native signal evidence,
   `signal.agent_signal` is the current compact agent/admission signal, and
   `signal.alert_eligibility.in_app_eligible` can be true for in-app high-signal
-  output only for admitted rows. `signal.alert_eligibility.external_push_ready`
-  requires a ready, publishable current brief, and
+  output only when the current market-wide agent brief is ready with
+  `decision_class=driver|watch` and score/source/dedup gates pass.
+  `signal.alert_eligibility.external_push_ready` requires the same ready,
+  publishable current brief plus external channel, threshold, summary, and
+  cooldown checks, and
   `external_push_block_reason` explains blocked push delivery. PushDeer
   delivery must not treat provider score alone as a publishable agent brief. A
   ready compact brief may still include
@@ -225,16 +230,17 @@ News Intel contract:
   source policy keys hard-fail configuration instead of becoming compatibility
   behavior. Provider tokens are not exposed through this status route.
 - `/api/news/items/{news_item_id}` returns deterministic extraction facts plus
-  canonical signal/token-impact facts, story membership, analysis admission,
-  the full current item brief when one exists, and a sanitized latest run
-  summary. If only retired brief artifacts exist, the current brief is absent or
-  pending; retired agent fields and old research-tool payloads are never
-  exposed through the public item-detail contract. The route excludes raw
+  canonical signal/token-impact facts, story membership, market scope, current
+  agent admission, the full current item brief when one exists, and a sanitized
+  latest run summary. If only retired brief artifacts exist, the current brief
+  is absent or pending; retired agent fields and old research-tool payloads are
+  never exposed through the public item-detail contract. The route excludes raw
   provider request/response payloads from the public item-detail contract.
-- `news_high_signal` notifications read admitted story-level `news_page_rows`
-  only. In-app dedup and entity identity prefer `news_story:{story_key}`;
-  fallback item identity is used only when no story key exists. External pushes
-  continue to require a ready, publishable current brief.
+- `news_high_signal` notifications read story-level `news_page_rows` and use
+  the projected market-wide `signal.alert_eligibility` envelope. In-app dedup
+  and entity identity prefer `news_story:{story_key}`; fallback item identity is
+  used only when no story key exists. External pushes continue to require a
+  ready, publishable current brief.
 - The frontend item URL is `/news/items/:newsItemId`; `/news/:newsItemId` is
   not a compatibility route.
 - Missing or unavailable brief state is represented as

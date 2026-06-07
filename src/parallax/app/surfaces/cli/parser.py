@@ -193,13 +193,6 @@ def build_parser() -> argparse.ArgumentParser:
     cleanup_news_brief_input_mode = cleanup_news_brief_input.add_mutually_exclusive_group(required=True)
     cleanup_news_brief_input_mode.add_argument("--dry-run", action="store_true")
     cleanup_news_brief_input_mode.add_argument("--execute", action="store_true")
-    cleanup_news_item_brief_schema = ops_subcommands.add_parser(
-        "cleanup-news-item-brief-schema-hard-cut",
-        help="clear stale News item current briefs outside the required hard-cut schema",
-    )
-    cleanup_news_item_brief_schema_mode = cleanup_news_item_brief_schema.add_mutually_exclusive_group(required=True)
-    cleanup_news_item_brief_schema_mode.add_argument("--dry-run", action="store_true")
-    cleanup_news_item_brief_schema_mode.add_argument("--execute", action="store_true")
     cleanup_news_intel_hard_cut = ops_subcommands.add_parser(
         "cleanup-news-intel-hard-cut",
         help="dry-run or execute the News Intel hard-cut artifact-only cleanup",
