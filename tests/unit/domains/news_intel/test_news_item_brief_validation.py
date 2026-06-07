@@ -1770,6 +1770,92 @@ def test_validation_allows_non_crypto_market_instrument_target_id_from_packet_la
     assert result.errors == []
 
 
+def test_validation_allows_us_equity_provider_impact_even_when_provider_marks_cex() -> None:
+    packet = build_news_item_brief_input_packet(
+        item={
+            "news_item_id": "item-apple-aapl-provider",
+            "title": "Apple iPhone 18 Pro Display Upgrade Will Enhance Battery Life, Report Claims",
+            "summary": "",
+            "body_text": "Apple iPhone 18 Pro Display Upgrade Will Enhance Battery Life, Report Claims",
+            "published_at_ms": 1_779_000_000_000,
+            "content_hash": "sha256:apple-aapl-provider",
+            "market_scope_json": ["unknown", "crypto"],
+            "provider_signal_json": {
+                "source": "provider",
+                "provider": "opennews",
+                "status": "ready",
+                "direction": "bullish",
+            },
+            "provider_token_impacts_json": [
+                {
+                    "label": "AAPL",
+                    "symbol": "AAPL",
+                    "market_type": "cex",
+                    "score": 65,
+                    "signal": "long",
+                    "grade": "B+",
+                }
+            ],
+            "agent_admission_json": {"status": "eligible", "reason": "eligible"},
+        },
+        entities=[],
+        token_mentions=[],
+        fact_candidates=[],
+        agent_config=_agent_config(),
+    )
+    payload = _ready_payload(
+        direction="bullish",
+        decision_class="watch",
+        event_type="product_cycle",
+        title_zh="苹果屏幕升级传闻指向 AAPL 产品周期",
+        summary_zh="来源标题直接提到 Apple，provider impact 给出 AAPL。",
+        market_read_zh="这是美股公司产品周期信号，而不是 crypto token 信号。",
+        market_domains=["us_equity"],
+        transmission_paths=[
+            {
+                "market_domain": "us_equity",
+                "channel": "product_cycle",
+                "direction": "bullish",
+                "strength": "weak",
+                "explanation_zh": "Apple 与 AAPL 由确定性美股别名关联。",
+                "evidence_refs": ["item:title", "provider:impact:AAPL"],
+            }
+        ],
+        bull_view={
+            "strength": "weak",
+            "thesis_zh": "屏幕升级若兑现可能改善续航和产品卖点。",
+            "evidence_refs": ["item:title"],
+        },
+        bear_view={
+            "strength": "moderate",
+            "thesis_zh": "来源只是 report claims，缺少订单、销量或财务量化。",
+            "evidence_refs": ["item:title"],
+        },
+        affected_entities=[
+            {
+                "label": "Apple Inc.",
+                "symbol": "AAPL",
+                "name": "Apple",
+                "entity_type": "equity",
+                "market_domain": "us_equity",
+                "target_type": "stock",
+                "target_id": "AAPL",
+                "resolution_status": "listed",
+                "impact_direction": "bullish",
+                "reason_zh": "来源标题点名 Apple，provider impact 点名 AAPL。",
+                "evidence_refs": ["item:title", "provider:impact:AAPL"],
+            }
+        ],
+        evidence_refs=["item:title", "item:body_excerpt", "provider:impact:AAPL"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
+
+
 def test_validation_allows_private_company_from_compound_source_text() -> None:
     packet = build_news_item_brief_input_packet(
         item={

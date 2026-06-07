@@ -168,7 +168,13 @@ _DOMAIN_PROXY_ALIAS_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
         ("Nasdaq", "NDX", "QQQ", "纳斯达克"),
         ("Dow",),
         ("美股",),
+        ("AAPL", "Apple", "Apple Inc"),
+        ("MSFT", "Microsoft", "Microsoft Corp"),
+        ("GOOGL", "GOOG", "Alphabet", "Google", "Alphabet Inc"),
+        ("AMZN", "Amazon", "Amazon.com", "Amazon.com Inc"),
+        ("META", "Meta", "Meta Platforms"),
         ("TSLA", "Tesla", "Tesla Inc", "特斯拉"),
+        ("MSTR", "Strategy", "MicroStrategy", "MicroStrategy Inc"),
         ("ASML", "ASML Holding"),
         ("airline", "airlines", "aviation", "aircraft", "航空业", "航空板块"),
     ),
@@ -176,6 +182,11 @@ _DOMAIN_PROXY_ALIAS_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
         (
             "NVIDIA",
             "NVDA",
+            "AMD",
+            "AVGO",
+            "Broadcom",
+            "TSM",
+            "Taiwan Semiconductor",
             "AI semiconductor",
             "AI semiconductors",
             "semiconductor",
@@ -1016,8 +1027,17 @@ def _provider_impact_domains(market_type: Any, *labels: Any) -> set[str]:
     label_keys: set[str] = set()
     for label in labels:
         label_keys.update(_string_keys(label))
-    if label_keys & _domain_proxy_keys("commodity"):
-        return {"commodity"}
+    for domain in (
+        "commodity",
+        "us_equity",
+        "ai_semiconductors",
+        "private_company",
+        "energy_geopolitics",
+        "macro_rates",
+        "regulation",
+    ):
+        if label_keys & _domain_proxy_keys(domain):
+            return {domain}
     market = _norm(market_type).replace("-", "_").replace(" ", "_")
     if market in {"cex", "dex", "spot", "perp", "perpetual", "crypto"}:
         return {"crypto"}
