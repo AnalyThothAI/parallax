@@ -26,7 +26,7 @@ def test_news_api_lists_provider_signal_news_rows_without_postgres() -> None:
                 "cursor": "2000:row-old",
                 "signal": "bullish",
                 "min_score": "70",
-                "q": "btc",
+                "q": " btc ",
             },
             headers={"Authorization": "Bearer secret"},
         )
@@ -35,7 +35,7 @@ def test_news_api_lists_provider_signal_news_rows_without_postgres() -> None:
     assert news.calls == [
         {
             "cursor": "2000:row-old",
-            "limit": 1,
+            "limit": 2,
             "min_score": 70,
             "q": "btc",
             "signal": "bullish",
@@ -109,6 +109,79 @@ def test_news_api_lists_provider_signal_news_rows_without_postgres() -> None:
     }
 
 
+def test_news_api_returns_null_next_cursor_when_no_extra_row_without_postgres() -> None:
+    news = FakeNewsRepository()
+    app = _app(news)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/news",
+            params={"limit": 2, "q": "zec"},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 200
+    assert news.calls == [
+        {
+            "cursor": None,
+            "limit": 3,
+            "min_score": None,
+            "q": "zec",
+            "signal": None,
+            "status": None,
+        }
+    ]
+    data = response.json()["data"]
+    assert [row["row_id"] for row in data["items"]] == ["row-1", "row-2"]
+    assert data["next_cursor"] is None
+
+
+def test_news_api_paginates_zec_keyword_results_with_true_has_more_without_postgres() -> None:
+    news = FakeNewsRepository()
+    news.rows = [_news_row(row_id=f"row-{index}", latest_at_ms=10_000 - index) for index in range(1, 7)]
+    app = _app(news)
+
+    with TestClient(app) as client:
+        first = client.get(
+            "/api/news",
+            params={"limit": 5, "q": "zec"},
+            headers={"Authorization": "Bearer secret"},
+        )
+        cursor = first.json()["data"]["next_cursor"]
+        second = client.get(
+            "/api/news",
+            params={"limit": 5, "q": "zec", "cursor": cursor},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert news.calls == [
+        {
+            "cursor": None,
+            "limit": 6,
+            "min_score": None,
+            "q": "zec",
+            "signal": None,
+            "status": None,
+        },
+        {
+            "cursor": "9995:row-5",
+            "limit": 6,
+            "min_score": None,
+            "q": "zec",
+            "signal": None,
+            "status": None,
+        },
+    ]
+    first_data = first.json()["data"]
+    second_data = second.json()["data"]
+    assert [row["row_id"] for row in first_data["items"]] == ["row-1", "row-2", "row-3", "row-4", "row-5"]
+    assert first_data["next_cursor"] == "9995:row-5"
+    assert [row["row_id"] for row in second_data["items"]] == ["row-6"]
+    assert second_data["next_cursor"] is None
+
+
 def test_news_api_ignores_retired_source_classification_filters_without_postgres() -> None:
     news = FakeNewsRepository()
     app = _app(news)
@@ -135,7 +208,7 @@ def test_news_api_ignores_retired_source_classification_filters_without_postgres
     assert response.status_code == 200
     assert news.calls[-1] == {
         "cursor": None,
-        "limit": 100,
+        "limit": 101,
         "min_score": None,
         "q": None,
         "signal": None,
@@ -283,6 +356,7 @@ def test_news_item_detail_hides_retired_brief_fields() -> None:
 class FakeNewsRepository:
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
+        self.rows = [_news_row(row_id="row-1", latest_at_ms=3_000), _news_row(row_id="row-2", latest_at_ms=2_000)]
         self.source_status_rows: list[dict[str, object]] = []
         self.item_detail: dict[str, object] | None = None
 
@@ -306,65 +380,13 @@ class FakeNewsRepository:
                 "status": status,
             }
         )
-        return [
-            {
-                "row_id": "row-1",
-                "news_item_id": "news-1",
-                "representative_news_item_id": "news-1",
-                "story_key": "news-story:subject:sol-etf:t412000",
-                "story": {
-                    "story_key": "news-story:subject:sol-etf:t412000",
-                    "representative_news_item_id": "news-1",
-                    "member_news_item_ids": ["news-1"],
-                    "member_count": 1,
-                    "source_domains": ["example.com"],
-                },
-                "latest_at_ms": 3_000,
-                "lifecycle_status": "raw",
-                "headline": "SOL ETF approved",
-                "summary": "Issuer confirms launch.",
-                "source_domain": "example.com",
-                "canonical_url": "https://example.com/story",
-                "token_lanes": [{"symbol": "BTC", "provider_score": 82, "provider_signal": "long"}],
-                "fact_lanes": [],
-                "signal": {
-                    "display_signal": {
-                        "source": "provider",
-                        "provider": "opennews",
-                        "status": "ready",
-                        "direction": "bullish",
-                        "label_zh": "利好",
-                        "score": 82,
-                        "grade": "A",
-                    },
-                    "provider_signal": {
-                        "source": "provider",
-                        "provider": "opennews",
-                        "status": "ready",
-                        "direction": "bullish",
-                        "score": 82,
-                    },
-                    "agent_signal": {"status": "pending"},
-                    "alert_eligibility": {
-                        "in_app_eligible": True,
-                        "external_push_ready": False,
-                        "provider_score": 82,
-                        "decision_class": "driver",
-                    },
-                },
-                "token_impacts": [{"symbol": "BTC", "score": 82, "signal": "long"}],
-                "source": {"source_id": "opennews-realtime", "provider_type": "opennews"},
-                "analysis_admission_status": "admitted",
-                "analysis_admission_reason": "crypto_native_subject",
-                "analysis_admission": {
-                    "status": "admitted",
-                    "reason": "crypto_native_subject",
-                    "basis": {"subject": "sol_etf"},
-                },
-                "computed_at_ms": 3_100,
-                "projection_version": NEWS_PAGE_PROJECTION_VERSION,
-            }
-        ]
+        start = 0
+        if cursor:
+            for index, row in enumerate(self.rows):
+                if f"{int(row['latest_at_ms'])}:{row['row_id']}" == cursor:
+                    start = index + 1
+                    break
+        return self.rows[start : start + max(0, int(limit))]
 
     def get_news_item_detail(self, *, news_item_id: str):
         if self.item_detail is not None:
@@ -414,6 +436,66 @@ class FakeRuntime:
 class FakeNewsFeedClient:
     def supported_provider_types(self) -> tuple[str, ...]:
         return ("atom", "cryptopanic", "json_feed", "opennews", "rss")
+
+
+def _news_row(*, row_id: str, latest_at_ms: int) -> dict[str, object]:
+    return {
+        "row_id": row_id,
+        "news_item_id": "news-1",
+        "representative_news_item_id": "news-1",
+        "story_key": "news-story:subject:sol-etf:t412000",
+        "story": {
+            "story_key": "news-story:subject:sol-etf:t412000",
+            "representative_news_item_id": "news-1",
+            "member_news_item_ids": ["news-1"],
+            "member_count": 1,
+            "source_domains": ["example.com"],
+        },
+        "latest_at_ms": latest_at_ms,
+        "lifecycle_status": "raw",
+        "headline": "SOL ETF approved",
+        "summary": "Issuer confirms launch.",
+        "source_domain": "example.com",
+        "canonical_url": "https://example.com/story",
+        "token_lanes": [{"symbol": "BTC", "provider_score": 82, "provider_signal": "long"}],
+        "fact_lanes": [],
+        "signal": {
+            "display_signal": {
+                "source": "provider",
+                "provider": "opennews",
+                "status": "ready",
+                "direction": "bullish",
+                "label_zh": "利好",
+                "score": 82,
+                "grade": "A",
+            },
+            "provider_signal": {
+                "source": "provider",
+                "provider": "opennews",
+                "status": "ready",
+                "direction": "bullish",
+                "score": 82,
+            },
+            "agent_signal": {"status": "pending"},
+            "alert_eligibility": {
+                "in_app_eligible": True,
+                "external_push_ready": False,
+                "provider_score": 82,
+                "decision_class": "driver",
+            },
+        },
+        "token_impacts": [{"symbol": "BTC", "score": 82, "signal": "long"}],
+        "source": {"source_id": "opennews-realtime", "provider_type": "opennews"},
+        "analysis_admission_status": "admitted",
+        "analysis_admission_reason": "crypto_native_subject",
+        "analysis_admission": {
+            "status": "admitted",
+            "reason": "crypto_native_subject",
+            "basis": {"subject": "sol_etf"},
+        },
+        "computed_at_ms": 3_100,
+        "projection_version": NEWS_PAGE_PROJECTION_VERSION,
+    }
 
 
 def _app(news: FakeNewsRepository) -> FastAPI:

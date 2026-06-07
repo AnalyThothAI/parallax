@@ -108,6 +108,92 @@ describe("NewsPage", () => {
         signal: "bearish",
       }),
     );
+    expect(screen.getByTestId("location")).toHaveTextContent("/news?q=eth");
+  });
+
+  it("hydrates the news search input from the route query", async () => {
+    mockNewsRows();
+
+    renderNews(<NewsPage token="test-token" />, "/news?q=ethereum");
+
+    expect(await screen.findByLabelText("Search news")).toHaveValue("ethereum");
+    await waitFor(() =>
+      expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
+        ...defaultNewsFetchParams,
+        q: "ethereum",
+      }),
+    );
+  });
+
+  it("preserves intermediate spaces while typing multi-word news queries", async () => {
+    mockNewsRows();
+
+    renderNews(<NewsPage token="test-token" />);
+
+    const searchInput = await screen.findByLabelText("Search news");
+    fireEvent.change(searchInput, { target: { value: "ethereum" } });
+    await waitFor(() => expect(searchInput).toHaveValue("ethereum"));
+
+    fireEvent.change(searchInput, { target: { value: "ethereum " } });
+    await waitFor(() => expect(searchInput).toHaveValue("ethereum "));
+
+    fireEvent.change(searchInput, { target: { value: "ethereum e" } });
+    await waitFor(() =>
+      expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
+        ...defaultNewsFetchParams,
+        q: "ethereum e",
+      }),
+    );
+    expect(searchInput).toHaveValue("ethereum e");
+    expect(screen.getByTestId("location")).toHaveTextContent("/news?q=ethereum+e");
+  });
+
+  it("disables next pagination when the backend returns no next cursor", async () => {
+    mockNewsRows();
+
+    renderNews(<NewsPage token="test-token" />);
+
+    expect((await screen.findAllByText("BTC ETF flows expand")).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Next news page" })).toBeDisabled();
+  });
+
+  it("resets pagination to the first page when the news query changes", async () => {
+    fetchNewsRowsMock.mockImplementation(async (params) => {
+      const cursor = params?.cursor ?? null;
+      return {
+        items: [providerRow],
+        next_cursor: cursor ? null : "1779000000000:row-1",
+      };
+    });
+
+    renderNews(<NewsPage token="test-token" />);
+
+    expect((await screen.findAllByText("BTC ETF flows expand")).length).toBeGreaterThan(0);
+    await waitFor(() => expect(fetchNewsRowsMock).toHaveBeenLastCalledWith(defaultNewsFetchParams));
+
+    fireEvent.click(screen.getByRole("button", { name: "Next news page" }));
+    await waitFor(() =>
+      expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
+        ...defaultNewsFetchParams,
+        cursor: "1779000000000:row-1",
+      }),
+    );
+    await waitFor(() => expect(screen.getByText("Page 2 · 1/100")).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText("Search news"), { target: { value: "zec" } });
+    await waitFor(() =>
+      expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
+        ...defaultNewsFetchParams,
+        q: "zec",
+      }),
+    );
+    expect(fetchNewsRowsMock).not.toHaveBeenCalledWith({
+      ...defaultNewsFetchParams,
+      cursor: "1779000000000:row-1",
+      q: "zec",
+    });
+    await waitFor(() => expect(screen.getByText("Page 1 · 1/100")).toBeInTheDocument());
+    expect(screen.getByTestId("location")).toHaveTextContent("/news?q=zec");
   });
 
   it("routes the compact tape open action to the news item page", async () => {
@@ -153,12 +239,12 @@ describe("NewsPage", () => {
   });
 });
 
-function renderNews(children: ReactNode) {
+function renderNews(children: ReactNode, route = "/news") {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
-    <MemoryRouter initialEntries={["/news"]}>
+    <MemoryRouter initialEntries={[route]}>
       <QueryClientProvider client={queryClient}>
         {children}
         <LocationProbe />
@@ -169,7 +255,7 @@ function renderNews(children: ReactNode) {
 
 function LocationProbe() {
   const location = useLocation();
-  return <span data-testid="location">{location.pathname}</span>;
+  return <span data-testid="location">{`${location.pathname}${location.search}`}</span>;
 }
 
 function cssRuleBody(css: string, selector: string): string {

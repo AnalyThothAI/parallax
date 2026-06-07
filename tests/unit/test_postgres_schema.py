@@ -212,6 +212,12 @@ NEWS_MATERIAL_DUPLICATE_HARD_CUT_MIGRATION = Path(
 NEWS_ANALYSIS_STORY_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260605_0149_news_analysis_story_hard_cut.py"
 )
+NEWS_PAGE_SEARCH_DOCUMENT_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260605_0150_news_page_search_document.py"
+)
+NEWS_AGENT_MARKET_ADMISSION_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260606_0151_news_agent_market_admission_hard_cut.py"
+)
 TOKEN_PULSE_EQUITY_CPU_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260529_0124_token_pulse_equity_cpu_hard_cut.py"
 )
@@ -1914,6 +1920,63 @@ def test_news_research_index_support_adds_concurrent_search_indexes() -> None:
     assert "RESET statement_timeout" in text
     assert "DROP INDEX CONCURRENTLY IF EXISTS idx_news_fact_candidates_claim_trgm_valid" in downgrade_text
     assert "DROP INDEX CONCURRENTLY IF EXISTS idx_news_token_mentions_symbol_upper_item" in downgrade_text
+
+
+def test_news_page_search_document_migration_adds_search_text_and_index() -> None:
+    assert NEWS_PAGE_SEARCH_DOCUMENT_MIGRATION.exists(), (
+        f"{NEWS_PAGE_SEARCH_DOCUMENT_MIGRATION} missing; add search_text for News page search"
+    )
+    text = NEWS_PAGE_SEARCH_DOCUMENT_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+    downgrade_text = text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+    for statement in (
+        'revision = "20260605_0150"',
+        'down_revision = "20260605_0149"',
+        "ALTER TABLE news_page_rows",
+        "ADD COLUMN IF NOT EXISTS search_text TEXT NOT NULL DEFAULT ''",
+        "CREATE EXTENSION IF NOT EXISTS pg_trgm",
+        "with op.get_context().autocommit_block():",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_news_page_rows_search_text_trgm",
+        "DROP INDEX CONCURRENTLY IF EXISTS idx_news_page_rows_search_text_trgm",
+        "ALTER TABLE news_page_rows DROP COLUMN IF EXISTS search_text",
+    ):
+        assert statement in text
+
+    assert "ON news_page_rows USING GIN (search_text gin_trgm_ops) WHERE search_text <> ''" in normalized_text
+    assert "RESET lock_timeout" in text
+    assert "RESET statement_timeout" in text
+    assert "DROP INDEX CONCURRENTLY IF EXISTS idx_news_page_rows_search_text_trgm" in downgrade_text
+
+
+def test_news_agent_market_admission_migration_adds_agent_admission_columns_and_indexes() -> None:
+    assert NEWS_AGENT_MARKET_ADMISSION_MIGRATION.exists(), (
+        f"{NEWS_AGENT_MARKET_ADMISSION_MIGRATION} missing; add market-wide News agent admission storage"
+    )
+    text = NEWS_AGENT_MARKET_ADMISSION_MIGRATION.read_text()
+    downgrade_text = text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+    for statement in (
+        'revision = "20260606_0151"',
+        'down_revision = "20260605_0150"',
+        "ALTER TABLE news_items",
+        "ADD COLUMN IF NOT EXISTS agent_admission_status TEXT NOT NULL DEFAULT 'needs_review'",
+        "ADD COLUMN IF NOT EXISTS agent_admission_reason TEXT NOT NULL DEFAULT ''",
+        "ADD COLUMN IF NOT EXISTS agent_admission_json JSONB NOT NULL DEFAULT '{}'::jsonb",
+        "ADD COLUMN IF NOT EXISTS agent_admission_version TEXT NOT NULL DEFAULT ''",
+        "ADD COLUMN IF NOT EXISTS agent_representative_news_item_id TEXT NOT NULL DEFAULT ''",
+        "ADD COLUMN IF NOT EXISTS agent_admission_computed_at_ms BIGINT",
+        "ALTER TABLE news_page_rows",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_items_agent_admission_published",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_page_rows_agent_admission",
+        "DROP INDEX CONCURRENTLY IF EXISTS ix_news_page_rows_agent_admission",
+        "DROP INDEX CONCURRENTLY IF EXISTS ix_news_items_agent_admission_published",
+    ):
+        assert statement in text
+
+    assert "ALTER TABLE news_items DROP COLUMN IF EXISTS {column_name}" in downgrade_text
+    assert "ALTER TABLE news_page_rows DROP COLUMN IF EXISTS {column_name}" in downgrade_text
+    assert '"agent_admission_status"' in downgrade_text
 
 
 def test_news_observation_edges_allow_same_material_title_match_type() -> None:

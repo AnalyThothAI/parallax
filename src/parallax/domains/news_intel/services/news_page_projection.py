@@ -30,6 +30,17 @@ def build_news_page_row(
         status=analysis_admission_status,
         reason=analysis_admission_reason,
     )
+    agent_admission_status = str(item.get("agent_admission_status") or "needs_review")
+    agent_admission_reason = str(item.get("agent_admission_reason") or "")
+    agent_admission = _agent_admission_payload(
+        item=item,
+        status=agent_admission_status,
+        reason=agent_admission_reason,
+        representative_news_item_id=str(item.get("agent_representative_news_item_id") or representative_news_item_id),
+    )
+    agent_representative_news_item_id = str(
+        agent_admission.get("representative_news_item_id") or representative_news_item_id
+    )
     provider_signal = _json_object(item.get("provider_signal_json"))
     token_impacts = _provider_token_impacts(item.get("provider_token_impacts_json"))
     impacts_by_symbol = {
@@ -38,11 +49,17 @@ def build_news_page_row(
     token_lanes = [_merge_provider_impact(_token_lane(row), impacts_by_symbol) for row in token_mentions]
     fact_lanes = [_fact_lane(row) for row in fact_candidates]
     source_payload = _source_payload(item)
-    agent_payload = _compact_agent_brief(agent_brief)
+    agent_payload = _agent_signal_payload(
+        _compact_agent_brief(agent_brief),
+        admission_status=agent_admission_status,
+        admission_reason=agent_admission_reason,
+        representative_news_item_id=agent_representative_news_item_id,
+        admission=agent_admission,
+    )
     agent_status = str(agent_payload.get("status") or "pending")
     content_tags = _json_list(item.get("content_tags_json"))
     content_classification = _json_object(item.get("content_classification_json"))
-    return {
+    row = {
         "row_id": _stable_id("news-page-row", NEWS_PAGE_PROJECTION_VERSION, story_key or news_item_id),
         "news_item_id": news_item_id,
         "representative_news_item_id": representative_news_item_id,
@@ -72,6 +89,10 @@ def build_news_page_row(
         "analysis_admission_status": analysis_admission_status,
         "analysis_admission_reason": analysis_admission_reason,
         "analysis_admission": analysis_admission,
+        "agent_admission_status": agent_admission_status,
+        "agent_admission_reason": agent_admission_reason,
+        "agent_admission": agent_admission,
+        "agent_representative_news_item_id": agent_representative_news_item_id,
         "duplicate_count": int(story_payload.get("member_count") or 1) if story_payload else 1,
         "source_ids_json": _json_list(story_payload.get("source_ids")) if story_payload else [],
         "source_domains_json": _json_list(story_payload.get("source_domains")) if story_payload else [],
@@ -79,6 +100,51 @@ def build_news_page_row(
         "computed_at_ms": int(computed_at_ms),
         "projection_version": NEWS_PAGE_PROJECTION_VERSION,
     }
+    row["search_text"] = build_news_page_search_text(row)
+    return row
+
+
+def build_news_page_search_text(row: Mapping[str, Any]) -> str:
+    terms: list[str] = []
+
+    def add(value: Any) -> None:
+        if value is None:
+            return
+        text = " ".join(str(value).split())
+        if text:
+            terms.append(text)
+
+    add(row.get("headline"))
+    add(row.get("summary"))
+    add(row.get("source_domain"))
+
+    source = _json_object(row.get("source_json") or row.get("source"))
+    for field in (
+        "source_domain",
+        "provider_type",
+        "source_id",
+        "source_name",
+        "source_role",
+        "trust_tier",
+        "source_quality_status",
+    ):
+        add(source.get(field))
+    for source_id in _json_list(row.get("source_ids_json") or row.get("source_ids")):
+        add(source_id)
+    for source_domain in _json_list(row.get("source_domains_json") or row.get("source_domains")):
+        add(source_domain)
+
+    for lane_value in _json_list(row.get("token_lanes_json") or row.get("token_lanes")):
+        lane = _json_object(lane_value)
+        for field in ("symbol", "target_id", "resolution_status", "target_type", "display_name"):
+            add(lane.get(field))
+
+    for fact_value in _json_list(row.get("fact_lanes_json") or row.get("fact_lanes")):
+        fact = _json_object(fact_value)
+        for field in ("event_type", "status", "claim", "realis"):
+            add(fact.get(field))
+
+    return " ".join(terms)
 
 
 def _token_lane(row: dict[str, Any]) -> dict[str, Any]:
@@ -243,6 +309,47 @@ def _analysis_admission_payload(
         payload.setdefault("status", status)
         payload.setdefault("reason", reason)
     return payload
+
+
+def _agent_admission_payload(
+    *,
+    item: Mapping[str, Any],
+    status: str,
+    reason: str,
+    representative_news_item_id: str,
+) -> dict[str, Any]:
+    payload = _json_object(item.get("agent_admission_json"))
+    if not payload:
+        payload = {"status": status, "reason": reason}
+    payload["status"] = str(payload.get("status") or status or "needs_review")
+    payload["reason"] = str(payload.get("reason") or reason or "")
+    payload["representative_news_item_id"] = str(
+        payload.get("representative_news_item_id") or representative_news_item_id
+    )
+    return _compact_mapping(payload)
+
+
+def _agent_signal_payload(
+    agent_payload: Mapping[str, Any],
+    *,
+    admission_status: str,
+    admission_reason: str,
+    representative_news_item_id: str,
+    admission: Mapping[str, Any],
+) -> dict[str, Any]:
+    payload = dict(agent_payload)
+    if admission_status in {"exact_duplicate", "similar_story_covered", "similar_story_burst", "materially_superseded"}:
+        payload["status"] = admission_status
+    payload["agent_admission_status"] = admission_status
+    payload["agent_admission_reason"] = admission_reason
+    payload["representative_news_item_id"] = representative_news_item_id
+    similarity = _json_object(_json_object(admission.get("basis")).get("similar_story"))
+    if similarity:
+        payload["similarity"] = similarity
+    duplicate = _json_object(_json_object(admission.get("basis")).get("exact_duplicate"))
+    if duplicate:
+        payload["duplicate"] = duplicate
+    return _compact_mapping(payload)
 
 
 def _compact_agent_brief(agent_brief: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -447,8 +554,11 @@ def _direction_label(direction: str) -> str:
     return "中性"
 
 
-def _json_object(value: Mapping[str, Any] | None) -> dict[str, Any]:
+def _json_object(value: Any) -> dict[str, Any]:
+    value = _json_value(value)
     if value is None:
+        return {}
+    if not isinstance(value, Mapping):
         return {}
     return _compact_mapping(dict(value))
 
@@ -458,6 +568,7 @@ def _compact_mapping(value: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _json_list(value: Any) -> list[Any]:
+    value = _json_value(value)
     if value is None:
         return []
     if isinstance(value, list):
@@ -467,6 +578,10 @@ def _json_list(value: Any) -> list[Any]:
     if isinstance(value, Sequence) and not isinstance(value, str):
         return list(value)
     return []
+
+
+def _json_value(value: Any) -> Any:
+    return getattr(value, "obj", value)
 
 
 def _optional_int(value: Any) -> int | None:

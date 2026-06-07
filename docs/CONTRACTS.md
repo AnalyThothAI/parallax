@@ -175,22 +175,28 @@ News Intel contract:
   `signal=bullish|bearish|neutral`, `min_score`, `status`, and `q`.
   News rows default to the full projected tape regardless of whether token
   lanes are present. Signal filtering reads persisted `signal_json`, and
-  keyword search scans projected headline, summary, and token lanes.
+  keyword search scans the deterministic projected `search_text` document on
+  `news_page_rows`; it does not call Token Intel search, provider fetches,
+  extraction, raw `news_items`, or scattered JSON fallback predicates. See
+  `docs/NEWS_SEARCH.md` for the News search chain contract.
 - News rows are story-shaped. They expose deterministic fields (`headline`,
   `summary`, `source_domain`, `token_lanes`, `fact_lanes`, lifecycle
   metadata), story fields (`representative_news_item_id`, `story_key`,
   `story`), provider token impact rows (`token_impacts`), compact source
   metadata (`provider_type`, `source_role`, `trust_tier`, `coverage_tags`,
   `source_quality_status`), item content classification (`content_class`,
-  `content_tags`, `content_classification`), analysis admission fields
-  (`analysis_admission_status`, `analysis_admission_reason`,
-  `analysis_admission`), compact `agent_brief`, and provider/source metadata.
-  `analysis_admission_status` separates page visibility from crypto analysis:
-  non-admitted rows may appear in the News tape as context, but they must not
-  become crypto high-signal notification candidates. `signal` is an explicit
-  envelope: `signal.display_signal` is the row-level display choice,
+  `content_tags`, `content_classification`), legacy crypto analysis admission
+  fields (`analysis_admission_status`, `analysis_admission_reason`,
+  `analysis_admission`), market-wide agent admission fields
+  (`agent_admission_status`, `agent_admission_reason`, `agent_admission`,
+  `agent_representative_news_item_id`), compact `agent_brief`, and
+  provider/source metadata. `analysis_admission_status` is not an item brief
+  gate; it only separates page visibility from crypto alert/push eligibility.
+  Score>=80 market news is agent-eligible unless deterministic duplicate,
+  similar-story, source, score/time, or operational gates block it. `signal` is
+  an explicit envelope: `signal.display_signal` is the row-level display choice,
   `signal.provider_signal` is provider-native signal evidence,
-  `signal.agent_signal` is the current compact agent signal, and
+  `signal.agent_signal` is the current compact agent/admission signal, and
   `signal.alert_eligibility.in_app_eligible` can be true for in-app high-signal
   output only for admitted rows. `signal.alert_eligibility.external_push_ready`
   requires a ready, publishable current brief, and

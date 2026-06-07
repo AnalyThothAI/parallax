@@ -205,6 +205,7 @@
 | `source_refs_json` | `JSONB` | False | `'[]'::jsonb` |
 | `observed_at_ms` | `BIGINT` | True | `None` |
 | `computed_at_ms` | `BIGINT` | False | `None` |
+| `payload_hash` | `TEXT` | False | `None` |
 
 ## `cex_oi_radar_publication_state`
 
@@ -538,6 +539,15 @@
 | `min_changed_observed_at` | `DATE` | True | `None` |
 | `max_changed_observed_at` | `DATE` | True | `None` |
 
+## `macro_sync_state`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `source_name` | `TEXT` | False | `None` |
+| `bundle_name` | `TEXT` | False | `None` |
+| `max_observed_at` | `DATE` | True | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
+
 ## `macro_sync_windows`
 
 | Column | Type | Nullable | Default |
@@ -764,6 +774,7 @@
 | `source_event_count` | `BIGINT` | False | `0` |
 | `independent_author_count` | `BIGINT` | False | `0` |
 | `admission_generation` | `TEXT` | True | `None` |
+| `payload_hash` | `TEXT` | False | `None` |
 
 ## `narrative_model_runs`
 
@@ -955,6 +966,23 @@
 | `source_ids_json` | `JSONB` | False | `'[]'::jsonb` |
 | `source_domains_json` | `JSONB` | False | `'[]'::jsonb` |
 | `provider_article_keys_json` | `JSONB` | False | `'[]'::jsonb` |
+| `processing_lease_owner` | `TEXT` | True | `None` |
+| `processing_leased_until_ms` | `BIGINT` | True | `None` |
+| `processing_next_due_at_ms` | `BIGINT` | False | `0` |
+| `processing_terminal_error` | `TEXT` | True | `None` |
+| `analysis_admission_status` | `TEXT` | False | `'needs_review'::text` |
+| `analysis_admission_reason` | `TEXT` | False | `''::text` |
+| `analysis_admission_json` | `JSONB` | False | `'{}'::jsonb` |
+| `analysis_admission_version` | `TEXT` | False | `''::text` |
+| `story_key` | `TEXT` | False | `''::text` |
+| `story_identity_json` | `JSONB` | False | `'{}'::jsonb` |
+| `story_identity_version` | `TEXT` | False | `''::text` |
+| `agent_admission_status` | `TEXT` | False | `'needs_review'::text` |
+| `agent_admission_reason` | `TEXT` | False | `''::text` |
+| `agent_admission_json` | `JSONB` | False | `'{}'::jsonb` |
+| `agent_admission_version` | `TEXT` | False | `''::text` |
+| `agent_representative_news_item_id` | `TEXT` | False | `''::text` |
+| `agent_admission_computed_at_ms` | `BIGINT` | True | `None` |
 
 ## `news_page_rows`
 
@@ -987,6 +1015,17 @@
 | `source_ids_json` | `JSONB` | False | `'[]'::jsonb` |
 | `source_domains_json` | `JSONB` | False | `'[]'::jsonb` |
 | `provider_article_keys_json` | `JSONB` | False | `'[]'::jsonb` |
+| `representative_news_item_id` | `TEXT` | True | `None` |
+| `story_key` | `TEXT` | False | `''::text` |
+| `story_json` | `JSONB` | False | `'{}'::jsonb` |
+| `analysis_admission_status` | `TEXT` | False | `'needs_review'::text` |
+| `analysis_admission_reason` | `TEXT` | False | `''::text` |
+| `analysis_admission_json` | `JSONB` | False | `'{}'::jsonb` |
+| `search_text` | `TEXT` | False | `''::text` |
+| `agent_admission_status` | `TEXT` | False | `'needs_review'::text` |
+| `agent_admission_reason` | `TEXT` | False | `''::text` |
+| `agent_admission_json` | `JSONB` | False | `'{}'::jsonb` |
+| `agent_representative_news_item_id` | `TEXT` | False | `''::text` |
 
 ## `news_projection_dirty_targets`
 
@@ -1721,6 +1760,7 @@
 | `epoch_closed_at_ms` | `BIGINT` | True | `None` |
 | `display_current_until_ms` | `BIGINT` | True | `None` |
 | `refresh_reason` | `TEXT` | True | `None` |
+| `payload_hash` | `TEXT` | False | `None` |
 
 ## `token_evidence`
 

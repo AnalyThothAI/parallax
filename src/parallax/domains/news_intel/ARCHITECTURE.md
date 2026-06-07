@@ -21,8 +21,10 @@ forced into a resolved asset.
   row represents a stable `story_key` when deterministic story identity is
   available, or the single item when no story key exists. Its `story_json`
   carries compact member ids/counts and source/provider article key evidence.
-  Its `analysis_admission_status` separates broad page visibility from crypto
-  analysis eligibility. Its `signal_json` is an explicit envelope:
+  Its `analysis_admission_status` separates broad page visibility from legacy
+  crypto alert/push eligibility. Its `agent_admission_status` records the
+  market-wide item brief decision after deterministic duplicate/similar checks.
+  Its `signal_json` is an explicit envelope:
   `display_signal` is the product display choice, `provider_signal` preserves
   provider-native evidence, `agent_signal` preserves compact current-brief
   state, and `alert_eligibility` is an object whose `in_app_eligible` field can
@@ -35,10 +37,12 @@ forced into a resolved asset.
   page read model copies the compact classification fields into `source_json`
   so `/api/news` can filter without calling providers.
 - `news_items` carries item content classification (`content_class`,
-  `content_tags_json`, and `content_classification_json`), analysis admission
-  (`analysis_admission_*`), and deterministic story identity (`story_key`,
-  `story_identity_json`). These describe what happened, whether it is eligible
-  for crypto analysis, and how it groups for the current serving projection.
+  `content_tags_json`, and `content_classification_json`), legacy crypto
+  analysis admission (`analysis_admission_*`), market-wide agent admission
+  (`agent_admission_*`), and deterministic story identity (`story_key`,
+  `story_identity_json`). These describe what happened, whether an item is a
+  fresh representative agent target versus duplicate/similar covered, and how
+  it groups for the current serving projection.
   Story identity is rebuildable state over facts, not a separate material truth
   table.
 - Public `http://` and `https://` URLs admitted by
@@ -61,14 +65,14 @@ forced into a resolved asset.
 Required core:
 
 ```text
-news_fetch -> news_item_process(admission + story identity)
+news_fetch -> news_item_process(admission + story identity + agent admission)
   -> news_page_projection(story rows)
 ```
 
 Optional enhancement:
 
 ```text
-news_item_process(admitted only) -> news_item_brief -> news_page_projection
+news_item_process(agent eligible only) -> news_item_brief -> news_page_projection
 ```
 
 Operational projection:
@@ -81,7 +85,7 @@ news_fetch/source refresh -> news_source_quality_projection
 | Stage | Responsibility |
 |-------|----------------|
 | Fetch | Reconcile configured sources into `news_sources`, fetch due feeds, persist provider items and normalized news items, then enqueue semantic page/source-refresh work. It does not create agent brief work. |
-| Item processing | Read raw `news_items`, extract entities and token mentions deterministically, classify item content, write attention-safe observations and fact candidates, compute analysis admission, compute deterministic story identity, and admit optional item-brief work only for admitted crypto-analysis rows after processed-state policy passes. |
+| Item processing | Read raw `news_items`, extract entities and token mentions deterministically, classify item content, write attention-safe observations and fact candidates, compute legacy analysis admission, compute deterministic story identity, compute market-wide `agent_admission`, and enqueue optional item-brief work only for eligible/refresh representative targets. |
 | Item brief | Build bounded item/token/fact packets, reserve `news.item_brief`, execute through the shared `AgentExecutionGateway`, shape-validate the standard brief output, write the run ledger, upsert the current brief, and dirty page rows. Evidence refs and sparse source context are audit/quality metadata, not publication gates. |
 | Page projection | Claim item-scoped dirty targets, expand them to bounded story groups, and rebuild story-shaped News page rows from news facts, admission, story identity, provider-native signal, and the current item brief. |
 | Source quality projection | Own source-quality windows, expand source refresh intents into configured source/window work, rebuild source quality rows, and dirty page rows only when compact source quality status changes. It is an operational projection, not item hot-path fanout. |

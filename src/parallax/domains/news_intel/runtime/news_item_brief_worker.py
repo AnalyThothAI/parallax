@@ -17,8 +17,10 @@ from parallax.domains.news_intel.runtime.news_projection_work import (
     queue_item_brief_depth,
     terminalize_work,
 )
-from parallax.domains.news_intel.services.news_item_agent_policy import (
-    news_item_agent_brief_eligibility,
+from parallax.domains.news_intel.services.news_item_agent_admission import (
+    NewsItemAgentAdmission,
+    NewsItemAgentAdmissionContext,
+    decide_news_item_agent_admission,
 )
 from parallax.domains.news_intel.services.news_item_brief_input import (
     build_news_item_brief_input_packet,
@@ -138,13 +140,12 @@ class NewsItemBriefWorker(WorkerBase):
                     await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
                     skipped += 1
                     continue
-                eligibility = news_item_agent_brief_eligibility(
-                    item=_dict(candidate.get("item") or candidate),
-                    token_mentions=_list_of_dicts(candidate.get("token_mentions")),
-                    fact_candidates=_list_of_dicts(candidate.get("fact_candidates")),
+                agent_admission = await asyncio.to_thread(
+                    self._decide_and_persist_agent_admission,
+                    candidate,
                     now_ms=now,
                 )
-                if not eligibility.eligible:
+                if not agent_admission.eligible:
                     notes["policy_skipped"] += 1
                     await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
                     skipped += 1
@@ -397,6 +398,50 @@ class NewsItemBriefWorker(WorkerBase):
             return []
         with self._repository_session() as repos:
             return cast(list[dict[str, Any]], repos.news.load_items_for_brief_targets(news_item_ids=news_item_ids))
+
+    def _decide_and_persist_agent_admission(
+        self,
+        candidate: Mapping[str, Any],
+        *,
+        now_ms: int,
+    ) -> NewsItemAgentAdmission:
+        item = _dict(candidate.get("item") or candidate)
+        news_item_id = str(item.get("news_item_id") or "")
+        with self._repository_session() as repos, repos.conn.transaction():
+            contexts = repos.news.load_agent_admission_contexts(news_item_ids=[news_item_id], now_ms=now_ms)
+            context_payload = contexts[0] if contexts else {}
+            context_item = _dict(context_payload.get("item"))
+            if context_item:
+                item = {**context_item, **item}
+            token_mentions = _list_of_dicts(context_payload.get("token_mentions") or candidate.get("token_mentions"))
+            fact_candidates = _list_of_dicts(context_payload.get("fact_candidates") or candidate.get("fact_candidates"))
+            admission = decide_news_item_agent_admission(
+                item=item,
+                entities=_list_of_dicts(context_payload.get("entities")),
+                token_mentions=token_mentions,
+                fact_candidates=fact_candidates,
+                context=NewsItemAgentAdmissionContext(
+                    exact_duplicate=_dict(context_payload.get("exact_duplicate")),
+                    similar_story=_dict(context_payload.get("similar_story")),
+                    material_delta=_dict(context_payload.get("material_delta")),
+                ),
+                now_ms=now_ms,
+            )
+            repos.news.update_item_agent_admission(
+                news_item_id=news_item_id,
+                admission=admission,
+                now_ms=now_ms,
+                commit=False,
+            )
+            if not admission.eligible:
+                enqueue_page_reprojection(
+                    repos,
+                    news_item_ids=[news_item_id],
+                    reason="news_item_agent_admission_skipped",
+                    now_ms=now_ms,
+                    commit=False,
+                )
+            return admission
 
     def _complete_claimed_target(
         self,

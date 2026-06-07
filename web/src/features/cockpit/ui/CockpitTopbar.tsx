@@ -13,8 +13,10 @@ import "./CockpitTopbar.css";
 export type CockpitTopbarProps = {
   navigationTrigger?: ReactNode;
   search: {
+    ariaLabel?: string;
     inputRef: RefObject<HTMLInputElement | null>;
     onSubmitQuery: (query: string) => void;
+    placeholder?: string;
     showMainRouteButton?: boolean;
   };
   status: {
@@ -79,12 +81,12 @@ export function CockpitTopbar({
       >
         <Search aria-hidden />
         <label className="sr-only" htmlFor="global-search-input">
-          Global search
+          {search.ariaLabel ?? "global search"}
         </label>
         <input
-          aria-label="global search"
+          aria-label={search.ariaLabel ?? "global search"}
           id="global-search-input"
-          placeholder="搜索 token / @handle / CA"
+          placeholder={search.placeholder ?? "搜索 token / @handle / CA"}
           ref={search.inputRef}
           value={searchDraft}
           onChange={(event) => setSearchDraft(event.target.value)}

@@ -12,10 +12,11 @@ import {
 } from "@features/live/shell";
 import { useNotificationsController } from "@features/notifications";
 import type { LivePayload, ScopeKey, SignalPulseItem, TokenFlowItem, WindowKey } from "@lib/types";
+import { searchWithOptionalPrefix } from "@shared/routing/searchParams";
 import { useSocketSnapshot } from "@shared/socket/socketContext";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 export type ShellRouteContext = {
   configuredWatchlistHandles: string[];
@@ -46,6 +47,7 @@ export type ShellChromeData = {
 
 export function useShellChromeData(session: AppSession): ShellChromeData {
   const location = useLocation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const liveRoute = useLiveRouteState();
   const statusQuery = useCockpitStatusQuery({ token: session.token });
@@ -104,10 +106,30 @@ export function useShellChromeData(session: AppSession): ShellChromeData {
     if (event.key === "3") liveRoute.updateWindow("4h");
     if (event.key === "4") liveRoute.updateWindow("24h");
   };
+  const searchTargetsNews = shouldRouteTopbarSearchToNews(location.pathname);
+  const submitTopbarSearch = (searchText: string) => {
+    if (!searchTargetsNews) {
+      selection.submitEvidenceSearch(searchText);
+      return;
+    }
+    const query = searchText.trim();
+    const next = new URLSearchParams(location.search);
+    if (query) {
+      next.set("q", query);
+    } else {
+      next.delete("q");
+    }
+    navigate({
+      pathname: "/news",
+      search: searchWithOptionalPrefix(next),
+    });
+  };
   const topbarProps = {
     search: {
+      ariaLabel: searchTargetsNews ? "news search" : "global search",
       inputRef: searchInputRef,
-      onSubmitQuery: selection.submitEvidenceSearch,
+      onSubmitQuery: submitTopbarSearch,
+      placeholder: searchTargetsNews ? "搜索新闻 / 来源 / token" : "搜索 token / @handle / CA",
     },
     status: {
       socketStatus: socketSnapshot.status,
@@ -153,6 +175,11 @@ export function useShellChromeData(session: AppSession): ShellChromeData {
       },
     },
   };
+}
+
+export function shouldRouteTopbarSearchToNews(pathname: string): boolean {
+  const path = pathname.split("?")[0] ?? pathname;
+  return path === "/news" || path.startsWith("/news/");
 }
 
 export function shouldHandleLiveWindowHotkey(pathname: string, key: string): boolean {

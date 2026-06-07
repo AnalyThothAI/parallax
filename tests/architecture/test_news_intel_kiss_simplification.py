@@ -66,6 +66,14 @@ def test_news_fetch_has_no_agent_brief_admission_dependency() -> None:
     assert "NEWS_ITEM_AGENT_BRIEF_MAX_PUBLISHED_AGE_MS" not in source
 
 
+def test_news_item_agent_policy_does_not_gate_on_legacy_analysis_admission() -> None:
+    source = _read("src/parallax/domains/news_intel/services/news_item_agent_policy.py")
+    assert "analysis_admission_status" not in source
+    assert "analysis_not_admitted" not in source
+    assert "NEWS_ITEM_AGENT_BRIEF_MIN_ADMITTED_PROVIDER_SCORE" not in source
+    assert "_has_explicit_crypto_admission_basis" not in source
+
+
 def test_fetch_process_brief_constructors_do_not_accept_source_quality_windows() -> None:
     paths = [
         "src/parallax/domains/news_intel/runtime/news_fetch_worker.py",

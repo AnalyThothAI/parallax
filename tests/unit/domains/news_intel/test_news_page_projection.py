@@ -348,6 +348,9 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
         "prompt_version": "prompt-v1",
         "artifact_version_hash": "artifact-1",
         "input_hash": "input-1",
+        "agent_admission_status": "needs_review",
+        "agent_admission_reason": "",
+        "representative_news_item_id": "news-1",
         "bull_view": {"strength": "strong", "thesis_zh": "新增需求预期"},
         "bear_view": {"strength": "weak", "thesis_zh": "审批仍不确定"},
         "affected_assets": [
@@ -630,4 +633,9 @@ def test_build_news_page_row_uses_pending_agent_brief_when_missing() -> None:
 
     assert row["agent_status"] == "pending"
     assert row["agent_brief_computed_at_ms"] is None
-    assert row["agent_brief"] == {"status": "pending"}
+    assert row["agent_brief"] == {
+        "status": "pending",
+        "agent_admission_status": "needs_review",
+        "agent_admission_reason": "",
+        "representative_news_item_id": "news-1",
+    }

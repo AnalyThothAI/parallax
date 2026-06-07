@@ -20,8 +20,11 @@ from parallax.domains.news_intel.services.news_analysis_admission import (
 from parallax.domains.news_intel.services.news_content_classification import classify_news_item_content
 from parallax.domains.news_intel.services.news_entity_extraction import extract_news_entities
 from parallax.domains.news_intel.services.news_fact_candidates import build_fact_candidates
+from parallax.domains.news_intel.services.news_item_agent_admission import (
+    NewsItemAgentAdmissionContext,
+    decide_news_item_agent_admission,
+)
 from parallax.domains.news_intel.services.news_item_agent_policy import (
-    news_item_agent_brief_eligibility,
     news_item_agent_brief_priority,
 )
 from parallax.domains.news_intel.services.news_story_identity import NewsStoryIdentity, build_news_story_identity
@@ -158,6 +161,29 @@ class NewsItemProcessWorker(WorkerBase):
                         now_ms=now,
                         commit=False,
                     )
+                    admission_context_payloads = repos.news.load_agent_admission_contexts(
+                        news_item_ids=[news_item_id],
+                        now_ms=now,
+                    )
+                    admission_context_payload = admission_context_payloads[0] if admission_context_payloads else {}
+                    agent_admission = decide_news_item_agent_admission(
+                        item=processed_item,
+                        entities=_list_of_dicts(admission_context_payload.get("entities")),
+                        token_mentions=mention_payloads,
+                        fact_candidates=candidate_payloads,
+                        context=NewsItemAgentAdmissionContext(
+                            exact_duplicate=_json_dict(admission_context_payload.get("exact_duplicate")),
+                            similar_story=_json_dict(admission_context_payload.get("similar_story")),
+                            material_delta=_json_dict(admission_context_payload.get("material_delta")),
+                        ),
+                        now_ms=now,
+                    )
+                    repos.news.update_item_agent_admission(
+                        news_item_id=news_item_id,
+                        admission=agent_admission,
+                        now_ms=now,
+                        commit=False,
+                    )
                     marked = repos.news.mark_item_processed(
                         news_item_id=news_item_id,
                         processed_at_ms=now,
@@ -174,18 +200,13 @@ class NewsItemProcessWorker(WorkerBase):
                         now_ms=now,
                         commit=False,
                     )
-                    eligibility = news_item_agent_brief_eligibility(
-                        item=processed_item,
-                        token_mentions=mention_payloads,
-                        fact_candidates=candidate_payloads,
-                        now_ms=now,
-                    )
-                    if eligibility.eligible:
+                    if agent_admission.eligible:
+                        target_id = agent_admission.representative_news_item_id or news_item_id
                         enqueue_item_brief_work(
                             repos,
-                            news_item_ids=[news_item_id],
+                            news_item_ids=[target_id],
                             priority_by_news_item_id={
-                                news_item_id: news_item_agent_brief_priority(
+                                target_id: news_item_agent_brief_priority(
                                     item=processed_item,
                                     token_mentions=mention_payloads,
                                     fact_candidates=candidate_payloads,
@@ -305,6 +326,10 @@ def _json_list(value: object) -> list[Any]:
         if isinstance(parsed, list):
             return parsed
     return []
+
+
+def _list_of_dicts(value: object) -> list[dict[str, Any]]:
+    return [_json_dict(item) for item in _json_list(value)]
 
 
 def _processing_attempts(item: Mapping[str, Any]) -> int:

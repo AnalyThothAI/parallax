@@ -745,12 +745,47 @@ class FakeNewsRepository:
         self.candidates = candidates
         self.runs: list[dict[str, Any]] = []
         self.briefs: list[dict[str, Any]] = []
+        self.agent_admissions: list[dict[str, Any]] = []
         self.loaded_target_ids: list[list[str]] = []
 
     def load_items_for_brief_targets(self, *, news_item_ids: list[str]) -> list[dict[str, Any]]:
         self.loaded_target_ids.append(list(news_item_ids))
         by_id = {str(candidate["item"]["news_item_id"]): candidate for candidate in self.candidates}
         return [by_id[item_id] for item_id in news_item_ids if item_id in by_id]
+
+    def load_agent_admission_contexts(self, *, news_item_ids: list[str], now_ms: int) -> list[dict[str, Any]]:
+        del now_ms
+        by_id = {str(candidate["item"]["news_item_id"]): candidate for candidate in self.candidates}
+        result: list[dict[str, Any]] = []
+        for item_id in news_item_ids:
+            candidate = by_id.get(item_id)
+            if candidate is None:
+                continue
+            result.append(
+                {
+                    "item": dict(candidate.get("item") or {}),
+                    "entities": [],
+                    "token_mentions": list(candidate.get("token_mentions") or []),
+                    "fact_candidates": list(candidate.get("fact_candidates") or []),
+                    "exact_duplicate": dict(candidate.get("exact_duplicate") or {}),
+                    "similar_story": dict(candidate.get("similar_story") or {}),
+                    "material_delta": dict(candidate.get("material_delta") or {"has_delta": False}),
+                }
+            )
+        return result
+
+    def update_item_agent_admission(
+        self,
+        *,
+        news_item_id: str,
+        admission: Any,
+        now_ms: int,
+        commit: bool = True,
+    ) -> int:
+        self.agent_admissions.append(
+            {"news_item_id": news_item_id, "admission": admission, "now_ms": now_ms, "commit": commit}
+        )
+        return 1
 
     def insert_news_item_agent_run(self, **payload: Any) -> dict[str, Any]:
         self.runs.append(dict(payload))

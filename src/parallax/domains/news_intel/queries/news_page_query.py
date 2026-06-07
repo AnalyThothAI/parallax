@@ -19,16 +19,18 @@ class NewsPageQuery:
         min_score: int | None = None,
         q: str | None = None,
     ) -> dict[str, Any]:
+        requested_limit = max(1, int(limit))
         rows = self.repository.list_news_page_rows(
-            limit=max(1, int(limit)),
+            limit=requested_limit + 1,
             cursor=cursor,
             status=status,
             signal=signal,
             min_score=min_score,
             q=q,
         )
-        next_cursor = news_page_cursor(rows[-1]) if rows else None
-        return {"items": rows, "next_cursor": next_cursor}
+        items = rows[:requested_limit]
+        next_cursor = news_page_cursor(items[-1]) if len(rows) > requested_limit and items else None
+        return {"items": items, "next_cursor": next_cursor}
 
     def get_item(self, *, news_item_id: str) -> dict[str, Any] | None:
         return cast(dict[str, Any] | None, self.repository.get_news_item_detail(news_item_id=news_item_id))
