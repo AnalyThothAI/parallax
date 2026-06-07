@@ -1688,6 +1688,345 @@ def test_valid_equity_and_macro_payload_is_publishable() -> None:
     assert result.errors == []
 
 
+def test_validation_allows_non_crypto_market_instrument_target_id_from_packet_lane() -> None:
+    packet = build_news_item_brief_input_packet(
+        item={
+            "news_item_id": "item-asml-terafab",
+            "title": "Musk will attend ASML $ASML employee conference to discuss Terafab",
+            "summary": "",
+            "body_text": "Terafab is described as a SpaceX-Tesla joint venture to build chips.",
+            "published_at_ms": 1_779_000_000_000,
+            "content_hash": "sha256:asml-terafab",
+            "market_scope_json": ["us_equity", "private_company", "ai_semiconductors"],
+            "agent_admission_json": {"status": "eligible", "reason": "eligible"},
+        },
+        entities=[],
+        token_mentions=[
+            {
+                "mention_id": "mention-asml",
+                "observed_symbol": "ASML",
+                "resolution_status": "non_crypto",
+                "target_type": "MarketInstrument",
+                "target_id": "market_instrument:us_equity:ASML",
+                "display_symbol": "ASML",
+                "candidate_targets_json": [
+                    {"target_type": "MarketInstrument", "target_id": "market_instrument:us_equity:ASML"}
+                ],
+            }
+        ],
+        fact_candidates=[],
+        agent_config=_agent_config(),
+    )
+    payload = _ready_payload(
+        direction="bullish",
+        decision_class="driver",
+        event_type="partnership_meeting",
+        title_zh="ASML 会议讨论 Terafab",
+        summary_zh="来源文本直接提到 ASML 和 Terafab。",
+        market_read_zh="影响主要来自半导体设备需求预期。",
+        market_domains=["us_equity", "private_company", "ai_semiconductors"],
+        transmission_paths=[
+            {
+                "market_domain": "us_equity",
+                "channel": "equipment_demand",
+                "direction": "bullish",
+                "strength": "moderate",
+                "explanation_zh": "来源和 entity lane 明确支持 ASML。",
+                "evidence_refs": ["item:title", "entity:mention-asml"],
+            }
+        ],
+        bull_view={
+            "strength": "moderate",
+            "thesis_zh": "ASML 被来源和 packet lane 共同点名。",
+            "evidence_refs": ["item:title", "entity:mention-asml"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "来源没有披露订单规模。",
+            "evidence_refs": ["item:body_excerpt"],
+        },
+        affected_entities=[
+            {
+                "label": "ASML",
+                "symbol": "ASML",
+                "name": "ASML Holding N.V.",
+                "entity_type": "equity",
+                "market_domain": "us_equity",
+                "resolution_status": "non_crypto",
+                "target_type": "MarketInstrument",
+                "target_id": "market_instrument:us_equity:ASML",
+                "impact_direction": "bullish",
+                "reason_zh": "token lane 将 ASML 解析为非 crypto market instrument。",
+                "evidence_refs": ["entity:mention-asml"],
+            }
+        ],
+        evidence_refs=["item:title", "item:body_excerpt", "entity:mention-asml"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
+
+
+def test_validation_allows_private_company_from_compound_source_text() -> None:
+    packet = build_news_item_brief_input_packet(
+        item={
+            "news_item_id": "item-spacex-tesla",
+            "title": "Terafab is a SpaceX-Tesla joint venture for AI chips",
+            "summary": "",
+            "body_text": "The source text describes a SpaceX-Tesla joint venture.",
+            "published_at_ms": 1_779_000_000_000,
+            "content_hash": "sha256:spacex-tesla",
+            "market_scope_json": ["private_company", "us_equity"],
+            "agent_admission_json": {"status": "eligible", "reason": "eligible"},
+        },
+        entities=[],
+        token_mentions=[],
+        fact_candidates=[],
+        agent_config=_agent_config(),
+    )
+    payload = _ready_payload(
+        direction="bullish",
+        decision_class="driver",
+        event_type="partnership_meeting",
+        market_domains=["private_company"],
+        transmission_paths=[
+            {
+                "market_domain": "private_company",
+                "channel": "joint_venture",
+                "direction": "bullish",
+                "strength": "weak",
+                "explanation_zh": "来源文本明确写出 SpaceX-Tesla joint venture。",
+                "evidence_refs": ["item:title"],
+            }
+        ],
+        bull_view={
+            "strength": "weak",
+            "thesis_zh": "来源文本直接点名 SpaceX。",
+            "evidence_refs": ["item:title"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "来源没有披露商业落地细节。",
+            "evidence_refs": ["item:body_excerpt"],
+        },
+        affected_entities=[
+            {
+                "label": "SpaceX",
+                "name": "SpaceX",
+                "entity_type": "private_company",
+                "market_domain": "private_company",
+                "impact_direction": "bullish",
+                "reason_zh": "来源文本直接提到 SpaceX-Tesla joint venture。",
+                "evidence_refs": ["item:title"],
+            }
+        ],
+        evidence_refs=["item:title", "item:body_excerpt"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
+
+
+def test_validation_allows_source_backed_social_handle_label() -> None:
+    packet = build_news_item_brief_input_packet(
+        item={
+            "news_item_id": "item-usdai",
+            "title": "Congrats to @USDai_Official on closing a new record loan size",
+            "summary": "",
+            "body_text": "The source text directly mentions @USDai_Official.",
+            "published_at_ms": 1_779_000_000_000,
+            "content_hash": "sha256:usdai",
+            "market_scope_json": ["crypto"],
+            "agent_admission_json": {"status": "eligible", "reason": "eligible"},
+        },
+        entities=[
+            {
+                "entity_id": "entity-usdai",
+                "raw_value": "@USDai_Official",
+                "entity_type": "other",
+                "market_domain": "unknown",
+                "confidence": 0.94,
+            }
+        ],
+        token_mentions=[],
+        fact_candidates=[],
+        agent_config=_agent_config(),
+    )
+    payload = _ready_payload(
+        direction="bullish",
+        decision_class="watch",
+        event_type="project_financing",
+        market_domains=["crypto"],
+        transmission_paths=[
+            {
+                "market_domain": "crypto",
+                "channel": "project_attention",
+                "direction": "bullish",
+                "strength": "weak",
+                "explanation_zh": "来源文本直接点名该项目 handle。",
+                "evidence_refs": ["entity:entity-usdai"],
+            }
+        ],
+        bull_view={
+            "strength": "weak",
+            "thesis_zh": "项目 handle 和融资规模均来自来源文本。",
+            "evidence_refs": ["item:title", "entity:entity-usdai"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "来源未给出可交易 token 身份。",
+            "evidence_refs": ["item:body_excerpt"],
+        },
+        affected_entities=[
+            {
+                "label": "@USDai_Official",
+                "entity_type": "other",
+                "market_domain": "crypto",
+                "impact_direction": "bullish",
+                "reason_zh": "entity lane 和来源文本直接支持该 handle。",
+                "evidence_refs": ["entity:entity-usdai"],
+            }
+        ],
+        evidence_refs=["item:title", "item:body_excerpt", "entity:entity-usdai"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
+
+
+def test_validation_allows_translated_airline_sector_label_from_source_text() -> None:
+    packet = build_news_item_brief_input_packet(
+        item={
+            "news_item_id": "item-airlines",
+            "title": "Some airlines are delaying aircraft purchase options amid Iran war uncertainty",
+            "summary": "",
+            "body_text": "Airlines are delaying aircraft purchase options amid uncertainty.",
+            "published_at_ms": 1_779_000_000_000,
+            "content_hash": "sha256:airlines",
+            "market_scope_json": ["energy_geopolitics", "us_equity"],
+            "agent_admission_json": {"status": "eligible", "reason": "eligible"},
+        },
+        entities=[],
+        token_mentions=[],
+        fact_candidates=[],
+        agent_config=_agent_config(),
+    )
+    payload = _ready_payload(
+        direction="mixed",
+        decision_class="driver",
+        event_type="capex_delay",
+        market_domains=["energy_geopolitics", "us_equity"],
+        transmission_paths=[
+            {
+                "market_domain": "us_equity",
+                "channel": "airline_capex",
+                "direction": "bearish",
+                "strength": "moderate",
+                "explanation_zh": "来源文本明确提到 airlines 和 aircraft purchase options。",
+                "evidence_refs": ["item:title"],
+            }
+        ],
+        bull_view={
+            "strength": "weak",
+            "thesis_zh": "如果冲突缓和，航空资本开支可能恢复。",
+            "evidence_refs": ["item:title"],
+        },
+        bear_view={
+            "strength": "moderate",
+            "thesis_zh": "航空公司推迟购机选择权显示资本开支放缓。",
+            "evidence_refs": ["item:body_excerpt"],
+        },
+        affected_entities=[
+            {
+                "label": "航空业",
+                "entity_type": "sector",
+                "market_domain": "us_equity",
+                "impact_direction": "bearish",
+                "reason_zh": "来源文本明确提到 airlines 和 aircraft purchase options。",
+                "evidence_refs": ["item:title"],
+            }
+        ],
+        evidence_refs=["item:title", "item:body_excerpt"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
+
+
+def test_validation_allows_translated_japan_philippines_energy_cooperation_label() -> None:
+    packet = build_news_item_brief_input_packet(
+        item={
+            "news_item_id": "item-japan-philippines-oil-reserve",
+            "title": "Japan to label Philippines top priority for oil reserve support",
+            "summary": "",
+            "body_text": "Japan will make the Philippines a top priority for oil reserve support.",
+            "published_at_ms": 1_779_000_000_000,
+            "content_hash": "sha256:japan-philippines",
+            "market_scope_json": ["energy_geopolitics", "commodity"],
+            "agent_admission_json": {"status": "eligible", "reason": "eligible"},
+        },
+        entities=[],
+        token_mentions=[],
+        fact_candidates=[],
+        agent_config=_agent_config(),
+    )
+    payload = _ready_payload(
+        direction="bullish",
+        decision_class="watch",
+        event_type="energy_security_support",
+        market_domains=["energy_geopolitics", "commodity"],
+        transmission_paths=[
+            {
+                "market_domain": "energy_geopolitics",
+                "channel": "energy_security",
+                "direction": "bullish",
+                "strength": "weak",
+                "explanation_zh": "来源文本明确支持 Japan/Philippines/oil reserve support。",
+                "evidence_refs": ["item:title"],
+            }
+        ],
+        bull_view={
+            "strength": "weak",
+            "thesis_zh": "日本和菲律宾能源安全合作来自来源文本。",
+            "evidence_refs": ["item:title"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "来源没有披露储备规模。",
+            "evidence_refs": ["item:body_excerpt"],
+        },
+        affected_entities=[
+            {
+                "label": "日本-菲律宾能源合作",
+                "entity_type": "country",
+                "market_domain": "energy_geopolitics",
+                "impact_direction": "bullish",
+                "reason_zh": "来源文本明确提到 Japan、Philippines 和 oil reserve support。",
+                "evidence_refs": ["item:title"],
+            }
+        ],
+        evidence_refs=["item:title", "item:body_excerpt"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
+
+
 def test_validation_allows_source_backed_market_wide_proxy_entities() -> None:
     packet = _energy_geopolitics_packet()
     payload = _ready_payload(

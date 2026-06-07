@@ -206,21 +206,62 @@ def _token_entity_lane(row: Mapping[str, Any]) -> NewsItemBriefEntityLane | None
     if not mention_id:
         return None
     observed_symbol = _bounded(row.get("observed_symbol"), 64)
+    target_type = _optional_bounded(row.get("target_type"), 80)
+    target_id = _optional_bounded(row.get("target_id"), 160)
+    candidate_targets = [_json_object(value) for value in _json_list(row.get("candidate_targets_json"))[:12]]
+    market_domain = _token_mention_market_domain(
+        target_id=target_id,
+        target_type=target_type,
+        candidate_targets=candidate_targets,
+        resolution_status=row.get("resolution_status"),
+    )
     return NewsItemBriefEntityLane(
         entity_id=mention_id,
         observed_label=observed_symbol,
         display_symbol=_optional_bounded(row.get("display_symbol") or observed_symbol, 64),
         display_name=_optional_bounded(row.get("display_name"), 160),
-        entity_type="crypto_asset",
-        market_domain="crypto",
+        entity_type=_token_mention_entity_type(market_domain),
+        market_domain=market_domain,
         resolution_status=_bounded(row.get("resolution_status") or "unknown", 64),
-        target_type=_optional_bounded(row.get("target_type"), 80),
-        target_id=_optional_bounded(row.get("target_id"), 160),
+        target_type=target_type,
+        target_id=target_id,
         role="token_mention",
         confidence=_optional_float(row.get("confidence")),
         evidence_refs=[f"entity:{mention_id}"],
-        candidate_targets=[_json_object(value) for value in _json_list(row.get("candidate_targets_json"))[:12]],
+        candidate_targets=candidate_targets,
     )
+
+
+def _token_mention_market_domain(
+    *,
+    target_id: str | None,
+    target_type: str | None,
+    candidate_targets: Sequence[Mapping[str, object]],
+    resolution_status: Any,
+) -> str:
+    domains = _target_domains(target_id=target_id, target_type=target_type)
+    for target in candidate_targets:
+        domains.extend(_target_domains(target_id=target.get("target_id"), target_type=target.get("target_type")))
+    for domain in domains:
+        if domain != "unknown":
+            return domain
+    if _str(resolution_status).lower().replace("-", "_") == "non_crypto":
+        return "unknown"
+    return "crypto"
+
+
+def _token_mention_entity_type(market_domain: str) -> str:
+    if market_domain == "us_equity":
+        return "equity"
+    if market_domain == "private_company":
+        return "private_company"
+    if market_domain == "commodity":
+        return "commodity"
+    if market_domain == "fx":
+        return "macro_factor"
+    if market_domain == "crypto":
+        return "crypto_asset"
+    return "other"
 
 
 def _fact_lane(row: Mapping[str, Any]) -> NewsItemBriefFactLane:
@@ -501,6 +542,27 @@ def _market_domain(value: Any) -> str | None:
         "dex": "crypto",
     }
     return aliases.get(normalized)
+
+
+def _target_domains(*, target_id: Any, target_type: Any) -> list[str]:
+    target = _str(target_id).lower()
+    target_kind = _str(target_type).lower().replace("-", "_").replace(" ", "_")
+    domains: list[str] = []
+    if target.startswith("market_instrument:us_equity:"):
+        domains.append("us_equity")
+    elif target.startswith("market_instrument:commodity:"):
+        domains.append("commodity")
+    elif target.startswith("market_instrument:fx:"):
+        domains.append("fx")
+    elif target.startswith(("asset:", "cex_token:", "token:")):
+        domains.append("crypto")
+    if target_kind in {"marketinstrument", "market_instrument", "equity", "stock"}:
+        domains.append("us_equity")
+    elif target_kind in {"commodity", "commodity_futures", "futures_contract"}:
+        domains.append("commodity")
+    elif target_kind in {"cextoken", "cex_token", "asset", "token", "crypto_asset"}:
+        domains.append("crypto")
+    return _stable_unique(domain for domain in domains if domain in _NEWS_MARKET_DOMAINS)
 
 
 def _mention_sort_key(row: Mapping[str, Any]) -> tuple[str, str]:

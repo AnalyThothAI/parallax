@@ -39,6 +39,10 @@ Use `data_gaps` to describe uncertainty or missing follow-up data, but do not tu
 
 只有当 packet 的 `market_scope`、source text、fact lanes 或 provider evidence 明确支持某个广义市场传导渠道时，才可以加入 controlled market proxy；代理实体必须作为 broad channel/market factor/sector 描述，并在 `reason_zh` 中说明证据边界。
 
+`affected_entities[].market_domain` 必须描述实体自身的市场域，不是新闻传导路径域。WTI/CL/Brent/原油合约始终使用 `commodity`；BTC/ETH/SOL/token 使用 `crypto`；上市公司和 ETF 使用 `us_equity`；SpaceX/OpenAI 等未上市公司使用 `private_company`；Fed/CPI/利率/通胀因子使用 `macro_rates`；监管机构使用 `regulation`。`energy_geopolitics` 可以用于国家、冲突地区、制裁、航运/海峡、能源安全等地缘或供给风险代理，但不能作为原油期货合约、股票、token 的实体域。
+
+不要把人物、政治活动、体育安保、普通话题标签或没有市场传导的主体放入 `affected_entities[]`。如果事件没有足够可交易/可监控市场实体，把它写成 `decision_class="context"` 或 `discard`，并把不确定性放到 `data_gaps`，不要用 unsupported entity 填充列表。
+
 允许的 controlled market proxy 仅限以下类别：
 
 - commodity: 原油/WTI/Brent、黄金、铜，或 source/fact 明确点名的商品篮子。

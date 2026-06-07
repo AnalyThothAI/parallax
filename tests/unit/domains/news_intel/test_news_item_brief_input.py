@@ -171,6 +171,40 @@ def test_packet_uses_provider_cex_token_impact_as_crypto_scope_without_item_scop
     assert packet.market_scope == ["energy_geopolitics", "commodity", "crypto"]
 
 
+def test_packet_maps_non_crypto_market_instrument_token_mention_to_equity_lane() -> None:
+    packet = build_news_item_brief_input_packet(
+        item={
+            "news_item_id": "item-asml",
+            "title": "Musk will attend ASML $ASML employee conference",
+            "summary": "",
+            "body_text": "ASML considers the Terafab project a serious endeavor.",
+            "published_at_ms": 1_779_000_000_000,
+            "content_hash": "sha256:asml",
+            "agent_admission_json": {"status": "eligible", "reason": "eligible"},
+        },
+        entities=[],
+        token_mentions=[
+            {
+                "mention_id": "mention-asml",
+                "observed_symbol": "ASML",
+                "resolution_status": "non_crypto",
+                "target_type": "MarketInstrument",
+                "target_id": "market_instrument:us_equity:ASML",
+                "display_symbol": "ASML",
+                "candidate_targets_json": [
+                    {"target_type": "MarketInstrument", "target_id": "market_instrument:us_equity:ASML"}
+                ],
+            }
+        ],
+        fact_candidates=[],
+        agent_config=_agent_config(),
+    )
+
+    assert packet.entity_lanes[0].entity_type == "equity"
+    assert packet.entity_lanes[0].market_domain == "us_equity"
+    assert packet.market_scope == ["us_equity"]
+
+
 def test_scope_inference_marks_wti_crude_text_as_commodity() -> None:
     scope = infer_news_market_scope(
         item={

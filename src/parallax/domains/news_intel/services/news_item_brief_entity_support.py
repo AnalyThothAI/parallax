@@ -8,6 +8,7 @@ from typing import Any
 from parallax.domains.news_intel.types.news_item_brief import NewsItemBriefInputPacket
 
 _ASCII_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{1,31}")
+_CJK_TOKEN_RE = re.compile(r"[\u3400-\u9fff]{2,}")
 _SYNTHETIC_PLACEHOLDER_RE = re.compile(
     r"(?<![a-z0-9])(?:xyz|abc|test)(?:[-_ ]?[a-z0-9]{0,12})?(?![a-z0-9])",
     re.I,
@@ -25,6 +26,7 @@ _KNOWN_DOMAINS = frozenset(
         "energy_geopolitics",
         "ai_semiconductors",
         "regulation",
+        "private_company",
         "commodity",
         "fx",
     }
@@ -33,6 +35,7 @@ _ENTITY_TYPE_DOMAINS = {
     "crypto_asset": "crypto",
     "equity": "us_equity",
     "company": "us_equity",
+    "private_company": "private_company",
     "regulator": "regulation",
     "country": "energy_geopolitics",
     "commodity": "commodity",
@@ -80,11 +83,41 @@ _DOMAIN_PROXY_ALIAS_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
             "布伦特原油",
             "布伦特原油期货",
         ),
+        (
+            "Gold",
+            "XAU",
+            "GC",
+            "gold futures",
+            "COMEX gold",
+            "bullion",
+            "黄金",
+            "黄金期货",
+            "现货黄金",
+        ),
+        (
+            "Copper",
+            "HG",
+            "copper futures",
+            "COMEX copper",
+            "铜",
+            "铜期货",
+        ),
     ),
     "energy_geopolitics": (
         ("U.S.", "US", "USA", "United States", "美国"),
         ("Iran", "伊朗"),
         ("Israel", "以色列"),
+        ("Japan", "日本"),
+        ("Philippines", "菲律宾"),
+        (
+            "oil reserve support",
+            "oil reserve",
+            "reserve support",
+            "energy cooperation",
+            "能源合作",
+            "石油储备支持",
+            "日本-菲律宾能源合作",
+        ),
         (
             "Gulf",
             "Strait of Hormuz",
@@ -135,6 +168,9 @@ _DOMAIN_PROXY_ALIAS_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
         ("Nasdaq", "NDX", "QQQ", "纳斯达克"),
         ("Dow",),
         ("美股",),
+        ("TSLA", "Tesla", "Tesla Inc", "特斯拉"),
+        ("ASML", "ASML Holding"),
+        ("airline", "airlines", "aviation", "aircraft", "航空业", "航空板块"),
     ),
     "ai_semiconductors": (
         (
@@ -153,6 +189,11 @@ _DOMAIN_PROXY_ALIAS_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
         ("CFTC",),
         ("regulator", "regulators", "regulation", "监管", "监管机构"),
     ),
+    "private_company": (
+        ("SpaceX", "Starlink", "SpaceX-Tesla"),
+        ("OpenAI",),
+        ("Anthropic",),
+    ),
     "fx": (
         ("USD", "DXY", "美元", "美元指数"),
         ("EURUSD",),
@@ -168,12 +209,19 @@ _GENERIC_DESCRIPTOR_ALIASES_BY_DOMAIN: dict[str, tuple[str, ...]] = {
         "perpetual",
         "contract",
         "exchange",
+        "stablecoin",
+        "stablecoins",
+        "protocol",
+        "project",
         "代币",
         "币",
+        "稳定币",
         "现货",
         "永续",
         "合约",
         "交易所",
+        "协议",
+        "项目",
     ),
     "commodity": (
         "future",
@@ -207,6 +255,26 @@ _GENERIC_DESCRIPTOR_ALIASES_BY_DOMAIN: dict[str, tuple[str, ...]] = {
         "企业",
         "指数",
         "基金",
+        "airline",
+        "airlines",
+        "aviation",
+        "aircraft",
+        "航空",
+        "航空业",
+    ),
+    "private_company": (
+        "company",
+        "companies",
+        "firm",
+        "firms",
+        "project",
+        "platform",
+        "venture",
+        "公司",
+        "企业",
+        "项目",
+        "平台",
+        "合资",
     ),
     "energy_geopolitics": (
         "country",
@@ -315,6 +383,33 @@ _US_ENERGY_SECTOR_TRANSLATION_ALIASES = (
     "U.S. Energy Stocks",
     "US Energy Stocks",
     "American Energy Stocks",
+)
+_SOURCE_TRANSLATION_ALIAS_RULES: tuple[tuple[re.Pattern[str], tuple[str, ...]], ...] = (
+    (
+        re.compile(r"(?<![a-z0-9])tesla(?![a-z0-9])", re.I),
+        ("Tesla", "Tesla Inc", "TSLA", "特斯拉"),
+    ),
+    (
+        re.compile(r"(?<![a-z0-9])(?:airlines?|aviation|aircraft)(?![a-z0-9])", re.I),
+        ("airline", "airlines", "aviation", "aircraft", "航空业", "航空板块"),
+    ),
+    (
+        re.compile(
+            r"(?=.*(?<![a-z0-9])japan(?![a-z0-9]))"
+            r"(?=.*(?<![a-z0-9])philippines(?![a-z0-9]))"
+            r"(?=.*(?<![a-z0-9])oil(?:\s+reserve)?(?:\s+support)?(?![a-z0-9]))",
+            re.I | re.S,
+        ),
+        (
+            "Japan",
+            "Philippines",
+            "日本",
+            "菲律宾",
+            "oil reserve support",
+            "石油储备支持",
+            "日本-菲律宾能源合作",
+        ),
+    ),
 )
 
 
@@ -499,9 +594,11 @@ def _source_backed_domains(packet: NewsItemBriefInputPacket) -> set[str]:
     if packet.provider_signal_evidence is not None:
         for impact in packet.provider_signal_evidence.market_impacts:
             domains.update(_provider_impact_domains(impact.market_type, impact.label, impact.symbol))
-    proxy_source_keys = _domain_proxy_source_keys(packet, domain="crypto")
-    if proxy_source_keys & _domain_proxy_keys("crypto"):
-        domains.add("crypto")
+    for domain in _KNOWN_DOMAINS:
+        if domain == "crypto" or domain not in domains:
+            proxy_source_keys = _domain_proxy_source_keys(packet, domain=domain)
+            if proxy_source_keys & _domain_proxy_keys(domain):
+                domains.add(domain)
     return {domain for domain in domains if domain in _KNOWN_DOMAINS}
 
 
@@ -587,6 +684,7 @@ def _label_name_supported_by_source_or_proxy(
             packet=packet,
             source_keys=source_key_support.all_keys,
             source_text_keys=source_key_support.text_keys,
+            source_key_support=source_key_support,
             source_domains=source_domains,
             candidate_domains=candidate_domains,
         )
@@ -632,6 +730,7 @@ def _display_label_supported_by_source_descriptor(
     packet: NewsItemBriefInputPacket,
     source_keys: set[str],
     source_text_keys: set[str],
+    source_key_support: _SourceBackedEntityKeySupport,
     source_domains: set[str],
     candidate_domains: set[str],
 ) -> bool:
@@ -655,7 +754,74 @@ def _display_label_supported_by_source_descriptor(
             remaining = f"{normalized[:start]} {normalized[end:]}"
             if _only_generic_descriptor_text(remaining, descriptor_keys):
                 return True
-    return False
+    return _display_label_components_supported_by_source(
+        label,
+        descriptor_keys=descriptor_keys,
+        source_key_support=source_key_support,
+        source_domains=source_domains,
+        candidate_domains=candidate_domains,
+    )
+
+
+def _display_label_components_supported_by_source(
+    label: str,
+    *,
+    descriptor_keys: set[str],
+    source_key_support: _SourceBackedEntityKeySupport,
+    source_domains: set[str],
+    candidate_domains: set[str],
+) -> bool:
+    if not candidate_domains:
+        return False
+    component_keys = {
+        key
+        for key in _label_component_keys(label)
+        if key
+        and key not in descriptor_keys
+        and not _only_generic_descriptor_text(key, descriptor_keys)
+        and not _is_component_noise_key(key)
+    }
+    if not component_keys:
+        return False
+    return all(
+        _keys_supported_by_source_or_proxy(
+            {key},
+            source_key_support=source_key_support,
+            source_domains=source_domains,
+            candidate_domains=candidate_domains,
+        )
+        for key in component_keys
+    )
+
+
+def _label_component_keys(label: str) -> set[str]:
+    keys: set[str] = set()
+    for token in _ASCII_TOKEN_RE.findall(label):
+        keys.update(_string_keys(token))
+        for part in re.split(r"[._:/-]+", token):
+            if len(part) >= 2:
+                keys.update(_string_keys(part))
+    for token in _CJK_TOKEN_RE.findall(label):
+        keys.update(_string_keys(token))
+    return keys
+
+
+def _is_component_noise_key(key: str) -> bool:
+    return key in {
+        "inc",
+        "inc.",
+        "corp",
+        "corporation",
+        "ltd",
+        "limited",
+        "nv",
+        "n.v.",
+        "official",
+        "market",
+        "provider",
+        "impact",
+        "source",
+    }
 
 
 def _source_descriptor_base_keys(
@@ -768,6 +934,15 @@ def _entity_lane_domains(entity: Any) -> set[str]:
         _norm(getattr(entity, "market_domain", "")),
         _ENTITY_TYPE_DOMAINS.get(_norm(getattr(entity, "entity_type", "")), ""),
     }
+    domains.update(
+        _domains_from_target_fields(
+            getattr(entity, "target_id", None),
+            getattr(entity, "target_type", None),
+        )
+    )
+    for target in getattr(entity, "candidate_targets", ()) or ():
+        if isinstance(target, Mapping):
+            domains.update(_domains_in_mapping(target))
     return {domain for domain in domains if domain in _KNOWN_DOMAINS}
 
 
@@ -857,11 +1032,16 @@ def _domain_proxy_keys(domain: str) -> set[str]:
 
 
 def _translated_source_entity_keys(packet: NewsItemBriefInputPacket) -> set[str]:
-    if not _US_ENERGY_SECTOR_SOURCE_RE.search(_translated_entity_trigger_text(packet)):
-        return set()
+    trigger_text = _translated_entity_trigger_text(packet)
     labels: set[str] = set()
-    for alias in _US_ENERGY_SECTOR_TRANSLATION_ALIASES:
-        labels.update(_string_keys(alias))
+    if _US_ENERGY_SECTOR_SOURCE_RE.search(trigger_text):
+        for alias in _US_ENERGY_SECTOR_TRANSLATION_ALIASES:
+            labels.update(_string_keys(alias))
+    for pattern, aliases in _SOURCE_TRANSLATION_ALIAS_RULES:
+        if not pattern.search(trigger_text):
+            continue
+        for alias in aliases:
+            labels.update(_string_keys(alias))
     return labels
 
 
@@ -901,6 +1081,7 @@ def _mapping_string_values(value: Mapping[str, Any]) -> list[str]:
 
 def _domains_in_mapping(value: Mapping[str, Any]) -> set[str]:
     domains: set[str] = set()
+    domains.update(_domains_from_target_fields(value.get("target_id"), value.get("target_type")))
     for key, child in value.items():
         if key in {"market_domain", "market_type"}:
             domains.add(_norm(child))
@@ -910,6 +1091,27 @@ def _domains_in_mapping(value: Mapping[str, Any]) -> set[str]:
             for item in child:
                 if isinstance(item, Mapping):
                     domains.update(_domains_in_mapping(item))
+    return domains
+
+
+def _domains_from_target_fields(target_id: Any, target_type: Any) -> set[str]:
+    target = _norm(target_id)
+    target_kind = _norm(target_type).replace("-", "_").replace(" ", "_")
+    domains: set[str] = set()
+    if target.startswith("market_instrument:us_equity:"):
+        domains.add("us_equity")
+    elif target.startswith("market_instrument:fx:"):
+        domains.add("fx")
+    elif target.startswith("market_instrument:commodity:"):
+        domains.add("commodity")
+    elif target.startswith(("asset:", "cex_token:", "token:")):
+        domains.add("crypto")
+    if target_kind in {"marketinstrument", "market_instrument", "equity", "stock"}:
+        domains.add("us_equity")
+    if target_kind in {"cextoken", "cex_token", "asset", "token", "crypto_asset"}:
+        domains.add("crypto")
+    if target_kind in {"commodity", "commodity_futures", "futures_contract"}:
+        domains.add("commodity")
     return domains
 
 
@@ -934,7 +1136,11 @@ def _mapping_value_keys(value: Mapping[str, Any]) -> set[str]:
 def _text_keys(value: Any) -> set[str]:
     text = str(value or "")
     labels = _string_keys(text)
-    labels.update(_norm(token) for token in _ASCII_TOKEN_RE.findall(text))
+    for token in _ASCII_TOKEN_RE.findall(text):
+        labels.update(_string_keys(token))
+        for part in re.split(r"[._:/-]+", token):
+            if len(part) >= 2:
+                labels.update(_string_keys(part))
     return labels
 
 
@@ -944,11 +1150,16 @@ def _string_keys(*values: Any) -> set[str]:
         normalized = _norm(value)
         if not normalized:
             continue
-        labels.add(normalized)
-        labels.add(normalized.replace(" ", ""))
-        labels.add(normalized.replace("-", ""))
-        labels.add(normalized.replace("_", ""))
-        labels.add(normalized.replace(".", ""))
+        variants = {normalized}
+        stripped_marker = normalized.lstrip("$#@")
+        if stripped_marker and stripped_marker != normalized:
+            variants.add(stripped_marker)
+        for variant in variants:
+            labels.add(variant)
+            labels.add(variant.replace(" ", ""))
+            labels.add(variant.replace("-", ""))
+            labels.add(variant.replace("_", ""))
+            labels.add(variant.replace(".", ""))
     return labels
 
 

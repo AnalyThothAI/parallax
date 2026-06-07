@@ -2009,7 +2009,7 @@ def test_news_agent_market_admission_hard_cut_adds_columns_and_indexes() -> None
 
     for statement in (
         'revision = "20260606_0151"',
-        'down_revision = "20260605_0151"',
+        'down_revision = "20260605_0150"',
         "SET LOCAL lock_timeout = '5s'",
         "SET LOCAL statement_timeout = '30min'",
         "ALTER TABLE news_items",
