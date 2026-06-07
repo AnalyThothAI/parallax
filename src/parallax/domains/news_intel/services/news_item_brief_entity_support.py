@@ -346,7 +346,7 @@ def _source_backed_entity_key_support(packet: NewsItemBriefInputPacket) -> _Sour
                 structured_by_domain,
                 domainless_structured_keys,
                 _string_keys(impact.label, impact.symbol),
-                domains=_provider_impact_domains(impact.market_type),
+                domains=_provider_impact_domains(impact.market_type, impact.label, impact.symbol),
             )
 
     return _SourceBackedEntityKeySupport(
@@ -439,7 +439,7 @@ def _source_backed_domains(packet: NewsItemBriefInputPacket) -> set[str]:
             domains.update(_domains_in_mapping(target))
     if packet.provider_signal_evidence is not None:
         for impact in packet.provider_signal_evidence.market_impacts:
-            domains.update(_provider_impact_domains(impact.market_type))
+            domains.update(_provider_impact_domains(impact.market_type, impact.label, impact.symbol))
     proxy_source_keys = _domain_proxy_source_keys(packet, domain="crypto")
     if proxy_source_keys & _domain_proxy_keys("crypto"):
         domains.add("crypto")
@@ -665,7 +665,7 @@ def _entity_specific_descriptor_source_keys(
                 keys.update(_mapping_value_keys(target))
     if packet.provider_signal_evidence is not None:
         for impact in packet.provider_signal_evidence.market_impacts:
-            impact_domains = _provider_impact_domains(impact.market_type)
+            impact_domains = _provider_impact_domains(impact.market_type, impact.label, impact.symbol)
             if impact_domains & candidate_domains:
                 keys.update(_string_keys(impact.label, impact.symbol))
     return keys
@@ -699,7 +699,7 @@ def _domain_proxy_source_keys(packet: NewsItemBriefInputPacket, *, domain: str) 
         keys.update(_text_keys(provider.summary_zh))
         keys.update(_text_keys(provider.summary_en))
         for impact in provider.market_impacts:
-            if domain in _provider_impact_domains(impact.market_type):
+            if domain in _provider_impact_domains(impact.market_type, impact.label, impact.symbol):
                 keys.update(_string_keys(impact.label, impact.symbol))
     return keys
 
@@ -778,7 +778,12 @@ def _domain_proxy_key_groups(domain: str) -> tuple[set[str], ...]:
     return tuple(groups)
 
 
-def _provider_impact_domains(market_type: Any) -> set[str]:
+def _provider_impact_domains(market_type: Any, *labels: Any) -> set[str]:
+    label_keys: set[str] = set()
+    for label in labels:
+        label_keys.update(_string_keys(label))
+    if label_keys & _domain_proxy_keys("commodity"):
+        return {"commodity"}
     market = _norm(market_type).replace("-", "_").replace(" ", "_")
     if market in {"cex", "dex", "spot", "perp", "perpetual", "crypto"}:
         return {"crypto"}

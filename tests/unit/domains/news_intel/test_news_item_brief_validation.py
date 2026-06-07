@@ -313,7 +313,7 @@ def _provider_btc_packet():
     )
 
 
-def _provider_cl_packet():
+def _provider_cl_packet(*, market_type: str = "commodity"):
     return build_news_item_brief_input_packet(
         item={
             "news_item_id": "item-provider-cl",
@@ -329,7 +329,7 @@ def _provider_cl_packet():
                 "direction": "mixed",
             },
             "provider_token_impacts_json": [
-                {"symbol": "CL", "market_type": "commodity", "score": 80, "signal": "proxy", "grade": "B"}
+                {"symbol": "CL", "market_type": market_type, "score": 80, "signal": "proxy", "grade": "B"}
             ],
             "agent_admission_json": {"status": "eligible", "reason": "provider_score_high"},
         },
@@ -1090,6 +1090,54 @@ def test_validation_allows_provider_cl_proxy_when_provider_sources_cl() -> None:
                 "market_domain": "commodity",
                 "impact_direction": "mixed",
                 "reason_zh": "provider market impact 明确给出 CL。",
+                "evidence_refs": ["provider:impact:CL"],
+            }
+        ],
+        evidence_refs=["item:summary", "provider:impact:CL"],
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is True
+    assert result.status == "ready"
+    assert result.errors == []
+
+
+def test_validation_allows_provider_cl_proxy_when_provider_mislabels_market_type_as_cex() -> None:
+    packet = _provider_cl_packet(market_type="cex")
+    payload = _ready_payload(
+        direction="mixed",
+        decision_class="driver",
+        event_type="provider_signal",
+        market_domains=["commodity"],
+        bull_view={
+            "strength": "moderate",
+            "thesis_zh": "provider market impact 明确给出 CL。",
+            "evidence_refs": ["provider:impact:CL"],
+        },
+        bear_view={
+            "strength": "weak",
+            "thesis_zh": "报道未证明供应已经中断。",
+            "evidence_refs": ["item:summary"],
+        },
+        transmission_paths=[
+            {
+                "market_domain": "commodity",
+                "channel": "provider_commodity_impact",
+                "direction": "mixed",
+                "strength": "moderate",
+                "explanation_zh": "provider market impact 虽标为 cex，但 symbol=CL 确定性映射到原油。",
+                "evidence_refs": ["provider:impact:CL"],
+            }
+        ],
+        affected_entities=[
+            {
+                "label": "WTI原油",
+                "symbol": "CL",
+                "entity_type": "commodity",
+                "market_domain": "commodity",
+                "impact_direction": "mixed",
+                "reason_zh": "provider impact 的 CL 支撑 WTI 原油实体。",
                 "evidence_refs": ["provider:impact:CL"],
             }
         ],
