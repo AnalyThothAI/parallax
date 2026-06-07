@@ -12,7 +12,6 @@ from typing import Any
 from psycopg.types.json import Jsonb
 
 from parallax.domains.news_intel._constants import NEWS_ITEM_BRIEF_SCHEMA_VERSION, NEWS_PAGE_PROJECTION_VERSION
-from parallax.domains.news_intel.services.news_analysis_admission import NewsAnalysisAdmission
 from parallax.domains.news_intel.services.news_canonical_identity import (
     CANONICAL_POLICY_VERSION,
     PROVIDER_GLOBAL_ARTICLE_ID_TYPES,
@@ -25,6 +24,7 @@ from parallax.domains.news_intel.services.news_item_brief_contract import (
     current_news_item_brief_sql_predicate,
     is_current_news_item_brief_contract,
 )
+from parallax.domains.news_intel.services.news_market_scope import NewsMarketScope
 from parallax.domains.news_intel.services.news_material_identity import (
     material_title_fingerprint,
     material_title_is_eligible,
@@ -2556,24 +2556,21 @@ class NewsRepository:
         if commit:
             self.conn.commit()
 
-    def update_item_analysis_and_story_identity(
+    def update_item_market_scope_and_story_identity(
         self,
         *,
         news_item_id: str,
-        admission: NewsAnalysisAdmission | Mapping[str, object],
+        market_scope: NewsMarketScope | Mapping[str, object],
         story_identity: NewsStoryIdentity | Mapping[str, object],
         now_ms: int,
         commit: bool = True,
     ) -> None:
-        admission_payload = _analysis_admission_payload(admission)
+        market_scope_payload = _market_scope_payload(market_scope)
         story_identity_payload = _story_identity_payload(story_identity)
         self.conn.execute(
             """
             UPDATE news_items
-               SET analysis_admission_status = %s,
-                   analysis_admission_reason = %s,
-                   analysis_admission_json = %s,
-                   analysis_admission_version = %s,
+               SET market_scope_json = %s,
                    story_key = %s,
                    story_identity_json = %s,
                    story_identity_version = %s,
@@ -2581,10 +2578,7 @@ class NewsRepository:
              WHERE news_item_id = %s
             """,
             (
-                str(admission_payload.get("status") or ""),
-                str(admission_payload.get("reason") or ""),
-                _json(admission_payload),
-                str(admission_payload.get("version") or ""),
+                _json(market_scope_payload),
                 str(story_identity_payload.get("story_key") or ""),
                 _json(story_identity_payload),
                 str(story_identity_payload.get("version") or ""),
@@ -5507,18 +5501,20 @@ def _object_payload(value: Any) -> dict[str, Any]:
     return {name: getattr(value, name) for name in getattr(value, "__slots__", ()) if hasattr(value, name)}
 
 
-def _analysis_admission_payload(value: NewsAnalysisAdmission | Mapping[str, object]) -> dict[str, object]:
+def _market_scope_payload(value: NewsMarketScope | Mapping[str, object]) -> dict[str, object]:
     payload = _strict_current_dataclass_or_mapping_payload(
         value,
-        expected_type=NewsAnalysisAdmission,
-        label="analysis admission payload",
-        required_fields=("status", "reason", "basis", "version"),
+        expected_type=NewsMarketScope,
+        label="market scope payload",
+        required_fields=("scope", "primary", "status", "reason", "basis", "version"),
     )
     return {
-        "status": _required_payload_text(payload, "status", label="analysis admission payload"),
-        "reason": _required_payload_text(payload, "reason", label="analysis admission payload"),
-        "basis": _required_payload_mapping(payload, "basis", label="analysis admission payload"),
-        "version": _required_payload_text(payload, "version", label="analysis admission payload"),
+        "scope": _required_payload_list(payload, "scope", label="market scope payload"),
+        "primary": _required_payload_text(payload, "primary", label="market scope payload"),
+        "status": _required_payload_text(payload, "status", label="market scope payload"),
+        "reason": _required_payload_text(payload, "reason", label="market scope payload"),
+        "basis": _required_payload_mapping(payload, "basis", label="market scope payload"),
+        "version": _required_payload_text(payload, "version", label="market scope payload"),
     }
 
 
@@ -5559,22 +5555,32 @@ def _agent_admission_payload(value: NewsItemAgentAdmission | Mapping[str, object
 
 
 def _strict_current_dataclass_or_mapping_payload(
-    value: NewsAnalysisAdmission | NewsStoryIdentity | NewsItemAgentAdmission | Mapping[str, object],
+    value: NewsMarketScope | NewsStoryIdentity | NewsItemAgentAdmission | Mapping[str, object],
     *,
-    expected_type: type[NewsAnalysisAdmission] | type[NewsStoryIdentity] | type[NewsItemAgentAdmission],
+    expected_type: type[NewsMarketScope] | type[NewsStoryIdentity] | type[NewsItemAgentAdmission],
     label: str,
     required_fields: tuple[str, ...],
 ) -> dict[str, object]:
     if isinstance(value, Mapping):
         payload = dict(value)
     elif isinstance(value, expected_type):
-        payload = asdict(value)
+        to_payload = getattr(value, "to_payload", None)
+        payload = dict(to_payload() if to_payload is not None else asdict(value))
     else:
         raise ValueError(f"unsupported {label} shape")
     missing = [field for field in required_fields if field not in payload]
     if missing:
         raise ValueError(f"unsupported {label} shape: missing {', '.join(missing)}")
     return payload
+
+
+def _required_payload_list(payload: Mapping[str, object], field: str, *, label: str) -> list[object]:
+    value = payload.get(field)
+    if isinstance(value, str) or not isinstance(value, list | tuple):
+        raise ValueError(f"unsupported {label} shape: {field} must be list")
+    if not value:
+        raise ValueError(f"unsupported {label} shape: {field} must be non-empty")
+    return list(value)
 
 
 def _group_rows_by_news_item_id(rows: Sequence[Mapping[str, Any]]) -> dict[str, list[dict[str, Any]]]:

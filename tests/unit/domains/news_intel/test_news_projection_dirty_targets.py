@@ -329,7 +329,7 @@ def test_process_worker_enqueues_page_and_brief_dirty_in_same_transaction_after_
     result = worker.run_once_sync(now_ms=NOW_MS)
 
     assert result.processed == 1
-    assert repos.news.write_commits == [False, False, False, False, False, False]
+    assert repos.news.write_commits == [False, False, False, False, False, False, False]
     assert repos.dirty.enqueued == [
         {
             "rows": [{"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"}],
@@ -959,9 +959,27 @@ class FakeProcessRepos:
         self.conn.record("update_item_content_classification")
         self.write_commits.append(payload["commit"])
 
-    def update_item_analysis_and_story_identity(self, **payload: Any) -> None:
-        self.conn.record("update_item_analysis_and_story_identity")
+    def update_item_market_scope_and_story_identity(self, **payload: Any) -> None:
+        self.conn.record("update_item_market_scope_and_story_identity")
         self.write_commits.append(payload["commit"])
+
+    def load_agent_admission_contexts(self, *, news_item_ids: list[str], now_ms: int) -> list[dict[str, Any]]:
+        return [
+            {
+                "item": {"news_item_id": news_item_ids[0]},
+                "entities": [],
+                "token_mentions": [],
+                "fact_candidates": [],
+                "exact_duplicate": {},
+                "similar_story": {},
+                "material_delta": {"has_delta": False, "reasons": [], "evidence": {}},
+            }
+        ]
+
+    def update_item_agent_admission(self, **payload: Any) -> int:
+        self.conn.record("update_item_agent_admission")
+        self.write_commits.append(payload["commit"])
+        return 1
 
     def mark_item_processed(
         self,

@@ -5774,18 +5774,21 @@ def _set_analysis_story(
     status: str,
     story_key: str,
 ) -> None:
-    repo.update_item_analysis_and_story_identity(
+    primary_scope = "crypto" if status == "admitted" else "private_company"
+    repo.update_item_market_scope_and_story_identity(
         news_item_id=news_item_id,
-        admission={
-            "status": status,
-            "reason": "test_story_projection",
+        market_scope={
+            "scope": [primary_scope],
+            "primary": primary_scope,
+            "status": "classified",
+            "reason": f"{primary_scope}_context",
             "basis": {"test": True},
-            "version": "test_news_analysis_admission_v1",
+            "version": "test_news_market_scope_v1",
         },
         story_identity={
             "story_key": story_key,
             "confidence": "strong",
-            "basis": {"test": True},
+            "basis": {"test": True, "market_scope": [primary_scope], "market_scope_primary": primary_scope},
             "version": "test_news_story_identity_v1",
         },
         now_ms=NOW_MS,

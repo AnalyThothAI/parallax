@@ -435,9 +435,9 @@ def test_news_item_process_worker_extracts_mentions_candidates_and_wakes() -> No
             "now_ms": NOW_MS,
         }
     ]
-    assert db.repo.analysis_story_updates[0]["news_item_id"] == "news-1"
-    assert db.repo.analysis_story_updates[0]["admission"].status == "admitted"
-    assert db.repo.analysis_story_updates[0]["story_identity"].story_key
+    assert db.repo.market_scope_story_updates[0]["news_item_id"] == "news-1"
+    assert db.repo.market_scope_story_updates[0]["market_scope"].primary == "crypto"
+    assert db.repo.market_scope_story_updates[0]["story_identity"].story_key
     assert db.repo.processed_items == [
         {
             "news_item_id": "news-1",
@@ -527,7 +527,7 @@ def test_news_item_process_provider_only_non_crypto_high_score_row_enqueues_page
     assert result.processed == 1
     assert db.repo.entities["news-spacex"] == []
     assert db.repo.mentions["news-spacex"] == []
-    assert db.repo.analysis_story_updates[0]["admission"].status in {"page_only", "research_context"}
+    assert db.repo.market_scope_story_updates[0]["market_scope"].primary == "private_company"
     assert db.repo.agent_admission_updates[0]["admission"].status == "eligible"
     assert db.dirty.enqueued == [
         {
@@ -595,8 +595,8 @@ def test_news_item_process_admitted_crypto_row_enqueues_page_and_brief_with_stor
     assert result.processed == 1
     assert db.repo.entities["news-zec"][0].normalized_value == "ZEC"
     assert db.repo.mentions["news-zec"][0].observed_symbol == "ZEC"
-    assert db.repo.analysis_story_updates[0]["admission"].status == "admitted"
-    assert db.repo.analysis_story_updates[0]["story_identity"].story_key == "news-story:opennews-article:2367422"
+    assert db.repo.market_scope_story_updates[0]["market_scope"].primary == "crypto"
+    assert db.repo.market_scope_story_updates[0]["story_identity"].story_key == "news-story:opennews-article:2367422"
     assert db.repo.agent_admission_updates[0]["admission"].status == "score_below_threshold"
     assert db.dirty.enqueued == [
         {
@@ -916,7 +916,7 @@ def test_news_item_process_worker_treats_stale_terminal_claim_as_no_op() -> None
     ]
 
 
-def test_news_item_process_rejects_unsupported_analysis_admission_shape_before_persistence() -> None:
+def test_news_item_process_rejects_unsupported_market_scope_shape_before_persistence() -> None:
     item = {
         **_crypto_process_item(),
         "processing_attempts": 1,
@@ -934,16 +934,16 @@ def test_news_item_process_rejects_unsupported_analysis_admission_shape_before_p
     )
 
     with patch(
-        "parallax.domains.news_intel.runtime.news_item_process_worker.decide_news_analysis_admission",
+        "parallax.domains.news_intel.runtime.news_item_process_worker.classify_news_market_scope",
         return_value=object(),
     ):
         result = worker.run_once_sync(now_ms=NOW_MS)
 
     assert result.processed == 0
     assert result.failed == 1
-    assert db.repo.analysis_story_updates == []
+    assert db.repo.market_scope_story_updates == []
     assert db.repo.retryable_items[0]["news_item_id"] == "news-zec"
-    assert "analysis admission payload" in str(db.repo.retryable_items[0]["error"])
+    assert "market scope payload" in str(db.repo.retryable_items[0]["error"])
 
 
 def test_news_item_process_rejects_unsupported_story_identity_shape_before_persistence() -> None:
@@ -971,7 +971,7 @@ def test_news_item_process_rejects_unsupported_story_identity_shape_before_persi
 
     assert result.processed == 0
     assert result.failed == 1
-    assert db.repo.analysis_story_updates == []
+    assert db.repo.market_scope_story_updates == []
     assert db.repo.retryable_items[0]["news_item_id"] == "news-zec"
     assert "story identity payload" in str(db.repo.retryable_items[0]["error"])
 
@@ -1546,7 +1546,7 @@ class FakeItemProcessRepository:
         self.mentions: dict[str, list[object]] = {}
         self.fact_candidates: dict[str, list[object]] = {}
         self.content_classifications: list[dict[str, object]] = []
-        self.analysis_story_updates: list[dict[str, object]] = []
+        self.market_scope_story_updates: list[dict[str, object]] = []
         self.agent_admission_updates: list[dict[str, object]] = []
         self.processed_items: list[dict[str, int | str]] = []
         self.retryable_items: list[dict[str, int | str]] = []
@@ -1611,19 +1611,19 @@ class FakeItemProcessRepository:
             }
         )
 
-    def update_item_analysis_and_story_identity(
+    def update_item_market_scope_and_story_identity(
         self,
         *,
         news_item_id: str,
-        admission: object,
+        market_scope: object,
         story_identity: object,
         now_ms: int,
         commit: bool = True,
     ) -> None:
-        self.analysis_story_updates.append(
+        self.market_scope_story_updates.append(
             {
                 "news_item_id": news_item_id,
-                "admission": admission,
+                "market_scope": market_scope,
                 "story_identity": story_identity,
                 "now_ms": now_ms,
                 "commit": commit,

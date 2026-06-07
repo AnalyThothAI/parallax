@@ -13,10 +13,6 @@ from parallax.domains.news_intel.runtime.news_projection_work import (
     enqueue_item_brief_work,
     enqueue_page_reprojection,
 )
-from parallax.domains.news_intel.services.news_analysis_admission import (
-    NewsAnalysisAdmission,
-    decide_news_analysis_admission,
-)
 from parallax.domains.news_intel.services.news_content_classification import classify_news_item_content
 from parallax.domains.news_intel.services.news_entity_extraction import extract_news_entities
 from parallax.domains.news_intel.services.news_fact_candidates import build_fact_candidates
@@ -27,6 +23,7 @@ from parallax.domains.news_intel.services.news_item_agent_admission import (
 from parallax.domains.news_intel.services.news_item_agent_policy import (
     news_item_agent_brief_priority,
 )
+from parallax.domains.news_intel.services.news_market_scope import NewsMarketScope, classify_news_market_scope
 from parallax.domains.news_intel.services.news_story_identity import NewsStoryIdentity, build_news_story_identity
 from parallax.domains.news_intel.services.news_token_mentions import build_news_token_mentions
 from parallax.domains.token_intel.interfaces import TokenIdentityLookup
@@ -114,25 +111,22 @@ class NewsItemProcessWorker(WorkerBase):
                 }
                 mention_payloads = [_object_payload(mention) for mention in mentions]
                 candidate_payloads = [_object_payload(candidate) for candidate in candidates]
-                admission = decide_news_analysis_admission(
+                market_scope = classify_news_market_scope(
                     item=processed_item,
                     token_mentions=mention_payloads,
                     fact_candidates=candidate_payloads,
                 )
-                admission_payload = _analysis_admission_payload(admission)
+                market_scope_payload = _market_scope_payload(market_scope)
                 story_identity = build_news_story_identity(
                     item=processed_item,
                     token_mentions=mention_payloads,
                     fact_candidates=candidate_payloads,
-                    admission=admission_payload,
+                    market_scope=market_scope_payload,
                 )
                 story_identity_payload = _story_identity_payload(story_identity)
                 processed_item.update(
                     {
-                        "analysis_admission_status": admission_payload["status"],
-                        "analysis_admission_reason": admission_payload["reason"],
-                        "analysis_admission_json": admission_payload,
-                        "analysis_admission_version": admission_payload["version"],
+                        "market_scope_json": market_scope_payload,
                         "story_key": story_identity_payload["story_key"],
                         "story_identity_json": story_identity_payload,
                         "story_identity_version": story_identity_payload["version"],
@@ -154,9 +148,9 @@ class NewsItemProcessWorker(WorkerBase):
                         now_ms=now,
                         commit=False,
                     )
-                    repos.news.update_item_analysis_and_story_identity(
+                    repos.news.update_item_market_scope_and_story_identity(
                         news_item_id=news_item_id,
-                        admission=admission,
+                        market_scope=market_scope,
                         story_identity=story_identity,
                         now_ms=now,
                         commit=False,
@@ -358,18 +352,20 @@ def _object_payload(value: Any) -> dict[str, Any]:
     return dict(getattr(value, "__dict__", {}) or {})
 
 
-def _analysis_admission_payload(value: NewsAnalysisAdmission | Mapping[str, object]) -> dict[str, object]:
+def _market_scope_payload(value: NewsMarketScope | Mapping[str, object]) -> dict[str, object]:
     payload = _strict_current_payload(
         value,
-        expected_type=NewsAnalysisAdmission,
-        label="analysis admission payload",
-        required_fields=("status", "reason", "basis", "version"),
+        expected_type=NewsMarketScope,
+        label="market scope payload",
+        required_fields=("scope", "primary", "status", "reason", "basis", "version"),
     )
     return {
-        "status": _required_payload_text(payload, "status", label="analysis admission payload"),
-        "reason": _required_payload_text(payload, "reason", label="analysis admission payload"),
-        "basis": _required_payload_mapping(payload, "basis", label="analysis admission payload"),
-        "version": _required_payload_text(payload, "version", label="analysis admission payload"),
+        "scope": _required_payload_list(payload, "scope", label="market scope payload"),
+        "primary": _required_payload_text(payload, "primary", label="market scope payload"),
+        "status": _required_payload_text(payload, "status", label="market scope payload"),
+        "reason": _required_payload_text(payload, "reason", label="market scope payload"),
+        "basis": _required_payload_mapping(payload, "basis", label="market scope payload"),
+        "version": _required_payload_text(payload, "version", label="market scope payload"),
     }
 
 
@@ -389,16 +385,17 @@ def _story_identity_payload(value: NewsStoryIdentity | Mapping[str, object]) -> 
 
 
 def _strict_current_payload(
-    value: NewsAnalysisAdmission | NewsStoryIdentity | Mapping[str, object],
+    value: NewsMarketScope | NewsStoryIdentity | Mapping[str, object],
     *,
-    expected_type: type[NewsAnalysisAdmission] | type[NewsStoryIdentity],
+    expected_type: type[NewsMarketScope] | type[NewsStoryIdentity],
     label: str,
     required_fields: tuple[str, ...],
 ) -> dict[str, object]:
     if isinstance(value, Mapping):
         payload = dict(value)
     elif isinstance(value, expected_type):
-        payload = dict(asdict(value))
+        to_payload = getattr(value, "to_payload", None)
+        payload = dict(to_payload() if to_payload is not None else asdict(value))
     else:
         raise ValueError(f"unsupported {label} shape")
     missing = [field for field in required_fields if field not in payload]
@@ -419,6 +416,15 @@ def _required_payload_mapping(payload: Mapping[str, object], field: str, *, labe
     if not isinstance(value, Mapping):
         raise ValueError(f"unsupported {label} shape: {field} must be mapping")
     return dict(value)
+
+
+def _required_payload_list(payload: Mapping[str, object], field: str, *, label: str) -> list[object]:
+    value = payload.get(field)
+    if isinstance(value, str) or not isinstance(value, list | tuple):
+        raise ValueError(f"unsupported {label} shape: {field} must be list")
+    if not value:
+        raise ValueError(f"unsupported {label} shape: {field} must be non-empty")
+    return list(value)
 
 
 def _now_ms() -> int:
