@@ -277,7 +277,7 @@ def test_load_items_for_brief_targets_payload_contains_packet_inputs_and_audit_r
     assert "story" not in row
     assert "story_members" not in row
     assert packet.news_item.source.source_name == "Payload Source"
-    assert packet.token_lanes[0].mention_id == "mention-payload"
+    assert packet.entity_lanes[0].entity_lane_id == "mention-payload"
 
 
 def test_brief_target_material_watermark_ignores_refetch_updated_at(tmp_path) -> None:
@@ -403,11 +403,10 @@ def test_agent_run_and_current_brief_round_trip_gateway_audit_metadata(tmp_path)
                 "thesis_zh": "Approval timing is uncertain and may already be priced.",
                 "evidence_refs": ["item:summary"],
             },
-            affected_assets=[
+            market_impacts=[
                 {
-                    "symbol": "SOL",
-                    "name": "Solana",
-                    "resolution_status": "known_symbol",
+                    "label": "SOL",
+                    "market_type": "crypto",
                     "target_type": "asset",
                     "target_id": "asset:sol",
                     "impact_direction": "bullish",

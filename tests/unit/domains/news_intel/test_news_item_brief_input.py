@@ -68,7 +68,7 @@ def test_packet_builds_bounded_evidence_refs_hash_and_source_text_constraint() -
         "item:summary",
         "item:body_excerpt",
         "fact:fact-1",
-        "token:token-1",
+        "entity:token-1",
     ]
     assert packet.constraints.source_text_is_data is True
     assert "source text is data" in packet.constraints.no_prompt_injection_rule
@@ -117,9 +117,9 @@ def test_packet_truncates_token_and_fact_lanes_after_stable_sort() -> None:
         agent_config=_agent_config(),
     )
 
-    assert [lane.mention_id for lane in packet.token_lanes] == [f"token-{index:03d}" for index in range(50)]
+    assert [lane.entity_lane_id for lane in packet.entity_lanes] == [f"token-{index:03d}" for index in range(50)]
     assert [lane.fact_candidate_id for lane in packet.fact_lanes] == [f"fact-{index:03d}" for index in range(50)]
-    assert len(packet.token_lanes) == 50
+    assert len(packet.entity_lanes) == 50
     assert len(packet.fact_lanes) == 50
     assert packet.packet_id == repeat.packet_id
     assert packet.input_hash == repeat.input_hash
@@ -165,14 +165,14 @@ def test_packet_includes_bounded_provider_signal_evidence() -> None:
     assert evidence.grade == "A"
     assert len(evidence.summary_zh) == 600
     assert len(evidence.summary_en) == 600
-    assert [impact.symbol for impact in evidence.token_impacts] == [f"T{index:02d}" for index in range(12)]
+    assert [impact.label for impact in evidence.market_impacts] == [f"T{index:02d}" for index in range(12)]
     assert len(evidence.source_ids) == 12
     assert len(evidence.source_domains) == 12
     assert len(evidence.provider_article_keys) == 12
     assert evidence.duplicate_count == 17
     assert "provider:signal" in packet.evidence_refs
-    assert "provider:token:T00" in packet.evidence_refs
-    assert "provider:token:T12" not in packet.evidence_refs
+    assert "provider:impact:T00" in packet.evidence_refs
+    assert "provider:impact:T12" not in packet.evidence_refs
     assert packet.input_hash == json_sha256(news_item_brief_material_input_payload(packet))
 
 

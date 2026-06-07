@@ -378,33 +378,33 @@ def _compact_agent_brief(agent_brief: Mapping[str, Any] | None) -> dict[str, Any
             "input_hash": agent_brief.get("input_hash"),
             "bull_view": bull_view or None,
             "bear_view": bear_view or None,
-            "affected_assets": _agent_affected_assets(brief_json.get("affected_assets")),
+            "market_impacts": _agent_market_impacts(brief_json.get("market_impacts")),
         }
     )
     return payload or {"status": "pending"}
 
 
-def _agent_affected_assets(value: Any) -> list[dict[str, Any]]:
-    assets: list[dict[str, Any]] = []
-    for asset in _json_list(value):
-        if not isinstance(asset, Mapping):
+def _agent_market_impacts(value: Any) -> list[dict[str, Any]]:
+    impacts: list[dict[str, Any]] = []
+    for impact in _json_list(value):
+        if not isinstance(impact, Mapping):
             continue
-        symbol = str(asset.get("symbol") or asset.get("asset") or "").strip().upper()
-        if not symbol:
+        label = str(impact.get("label") or "").strip()
+        if not label:
             continue
-        assets.append(
+        impacts.append(
             _compact_mapping(
                 {
-                    "symbol": symbol,
-                    "target_id": asset.get("target_id"),
-                    "target_type": asset.get("target_type"),
-                    "resolution_status": asset.get("resolution_status"),
-                    "impact_direction": asset.get("impact_direction"),
-                    "reason_zh": asset.get("reason_zh"),
+                    "label": label,
+                    "market_type": impact.get("market_type"),
+                    "target_id": impact.get("target_id"),
+                    "target_type": impact.get("target_type"),
+                    "impact_direction": impact.get("impact_direction"),
+                    "reason_zh": impact.get("reason_zh"),
                 }
             )
         )
-    return assets[:12]
+    return impacts[:12]
 
 
 def _page_signal(

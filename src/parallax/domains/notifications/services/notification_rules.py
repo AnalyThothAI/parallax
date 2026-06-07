@@ -314,7 +314,7 @@ class NotificationRuleEngine:
             direction = str(
                 agent_brief.get("direction") or display_signal.get("direction") or signal.get("direction") or ""
             )
-            affected_assets = _list(_news_agent_affected_assets(agent_brief))
+            market_impacts = _list(_news_agent_market_impacts(agent_brief))
             occurrence_at_ms = _int(row.get("latest_at_ms") or row.get("agent_brief_computed_at_ms") or now_ms)
             semantic_signature = _news_semantic_signature(row, agent_brief=ready_agent_brief)
             if semantic_signature in seen_semantic_signatures:
@@ -371,7 +371,7 @@ class NotificationRuleEngine:
                         "provider_score": provider_score,
                         "decision_class": decision_class,
                         "direction": direction,
-                        "affected_assets": affected_assets,
+                        "market_impacts": market_impacts,
                         "semantic_signature": semantic_signature,
                         "display_title": title,
                         "external_push_signature": external_push_signature,
@@ -838,7 +838,7 @@ def _news_semantic_signature(row: dict[str, Any], *, agent_brief: dict[str, Any]
         "story_key": story_key or None,
         "decision_class": agent_brief.get("decision_class") or eligibility.get("decision_class"),
         "direction": agent_brief.get("direction") or display_signal.get("direction") or signal.get("direction"),
-        "affected_assets": _news_affected_asset_symbols(_news_agent_affected_assets(agent_brief)),
+        "market_impacts": _news_market_impact_labels(_news_agent_market_impacts(agent_brief)),
     }
     if not story_key:
         signature.update(
@@ -874,8 +874,8 @@ def _news_external_push_signature(
 
 def _news_external_asset_bucket(row: dict[str, Any]) -> str:
     symbols: list[str] = []
-    for symbol in _news_affected_asset_symbols(_news_agent_affected_assets(_dict(row.get("agent_brief")))):
-        normalized = _news_external_asset_symbol(symbol)
+    for label in _news_market_impact_labels(_news_agent_market_impacts(_dict(row.get("agent_brief")))):
+        normalized = _news_external_asset_symbol(label)
         if normalized and normalized not in symbols:
             symbols.append(normalized)
     for impact in _list(row.get("token_impacts")):
@@ -913,23 +913,23 @@ def _news_primary_symbol(row: dict[str, Any]) -> str | None:
             symbol = _symbol(impact.get("symbol") or impact.get("target_symbol"))
             if symbol:
                 return symbol
-    symbols = _news_affected_asset_symbols(_news_agent_affected_assets(_dict(row.get("agent_brief"))))
-    return symbols[0] if symbols else None
+    labels = _news_market_impact_labels(_news_agent_market_impacts(_dict(row.get("agent_brief"))))
+    return labels[0] if labels else None
 
 
-def _news_agent_affected_assets(agent_brief: dict[str, Any]) -> list[Any]:
+def _news_agent_market_impacts(agent_brief: dict[str, Any]) -> list[Any]:
     brief_json = _dict(agent_brief.get("brief_json"))
-    return _list(agent_brief.get("affected_assets")) or _list(brief_json.get("affected_assets"))
+    return _list(agent_brief.get("market_impacts")) or _list(brief_json.get("market_impacts"))
 
 
-def _news_affected_asset_symbols(value: Any) -> list[str]:
-    symbols: list[str] = []
+def _news_market_impact_labels(value: Any) -> list[str]:
+    labels: list[str] = []
     for item in _list(value):
         if isinstance(item, dict):
-            symbol = _symbol(item.get("symbol") or item.get("asset"))
-            if symbol and symbol not in symbols:
-                symbols.append(symbol)
-    return symbols[:12]
+            label = _symbol(item.get("label"))
+            if label and label not in labels:
+                labels.append(label)
+    return labels[:12]
 
 
 def _news_body(row: dict[str, Any], *, provider_score: int, summary: str) -> str:

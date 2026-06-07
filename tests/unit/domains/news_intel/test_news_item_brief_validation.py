@@ -68,29 +68,28 @@ def _ready_payload(**overrides: Any) -> dict[str, Any]:
         "bull_view": {
             "strength": "moderate",
             "thesis_zh": "上线永续合约可能扩大 ABC 的交易覆盖面。",
-            "evidence_refs": ["fact:fact-1", "token:token-1"],
+            "evidence_refs": ["fact:fact-1", "entity:token-1"],
         },
         "bear_view": {
             "strength": "weak",
             "thesis_zh": "公告没有提供成交深度或持续需求证据。",
             "evidence_refs": ["item:summary"],
         },
-        "affected_assets": [
+        "market_impacts": [
             {
-                "symbol": "ABC",
-                "name": "ABC Token",
-                "resolution_status": "known_symbol",
+                "label": "ABC",
+                "market_type": "crypto",
                 "target_type": "asset",
                 "target_id": "asset:abc",
                 "impact_direction": "bullish",
-                "reason_zh": "输入 token lane 直接提到 ABC。",
-                "evidence_refs": ["token:token-1"],
+                "reason_zh": "输入 entity lane 直接提到 ABC。",
+                "evidence_refs": ["entity:token-1"],
             }
         ],
         "watch_triggers": ["后续公告补充市场深度或交易量证据"],
         "invalidation_conditions": ["公告被撤回或 token 身份被证伪"],
         "data_gaps": [],
-        "evidence_refs": ["item:summary", "fact:fact-1", "token:token-1"],
+        "evidence_refs": ["item:summary", "fact:fact-1", "entity:token-1"],
     }
     payload.update(overrides)
     return payload
@@ -107,20 +106,19 @@ def test_valid_ready_payload_is_publishable_and_hashes_normalized_output() -> No
     assert result.output_hash == json_sha256(result.payload)
 
 
-def test_validation_caps_unsupported_asset_gaps_instead_of_blocking_publish() -> None:
+def test_validation_caps_unsupported_market_impact_gaps_instead_of_blocking_publish() -> None:
     packet = _packet()
     existing_gaps = [{"description_zh": f"已有数据缺口 {index}", "severity": "low"} for index in range(12)]
     payload = _ready_payload(
-        affected_assets=[
-            *_ready_payload()["affected_assets"],
+        market_impacts=[
+            *_ready_payload()["market_impacts"],
             {
-                "symbol": "XYZ",
-                "name": "Unsupported Token",
-                "resolution_status": "unknown",
+                "label": "XYZ",
+                "market_type": "crypto",
                 "target_type": "asset",
                 "target_id": "asset:xyz",
                 "impact_direction": "bullish",
-                "reason_zh": "模型输出了输入中没有来源支撑的资产。",
+                "reason_zh": "模型输出了输入中没有来源支撑的市场影响对象。",
                 "evidence_refs": ["item:summary"],
             },
         ],
@@ -133,7 +131,7 @@ def test_validation_caps_unsupported_asset_gaps_instead_of_blocking_publish() ->
     assert result.status == "ready"
     assert result.errors == []
     assert result.payload is not None
-    assert result.payload["affected_assets"] == _ready_payload()["affected_assets"]
+    assert result.payload["market_impacts"] == _ready_payload()["market_impacts"]
     assert len(result.payload["data_gaps"]) == 12
 
 
@@ -148,7 +146,7 @@ def test_valid_insufficient_payload_is_publishable_when_data_gaps_explain_missin
             "market_read_zh": "",
             "bull_view": {"strength": "absent", "thesis_zh": "", "evidence_refs": []},
             "bear_view": {"strength": "absent", "thesis_zh": "", "evidence_refs": []},
-            "affected_assets": [],
+            "market_impacts": [],
             "watch_triggers": [],
             "invalidation_conditions": [],
             "data_gaps": [{"description_zh": "缺少官方来源和成交反应证据。", "severity": "high"}],
@@ -333,7 +331,7 @@ def test_validation_allows_insufficient_without_data_gaps() -> None:
             "market_read_zh": "",
             "bull_view": {"strength": "absent", "thesis_zh": "", "evidence_refs": []},
             "bear_view": {"strength": "absent", "thesis_zh": "", "evidence_refs": []},
-            "affected_assets": [],
+            "market_impacts": [],
             "watch_triggers": [],
             "invalidation_conditions": [],
             "data_gaps": [],

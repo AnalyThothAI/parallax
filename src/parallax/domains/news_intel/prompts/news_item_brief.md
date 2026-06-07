@@ -15,7 +15,7 @@ Natural-language analytical fields must be Simplified Chinese:
 - `market_read_zh`
 - `bull_view.thesis_zh`
 - `bear_view.thesis_zh`
-- `affected_assets[].reason_zh`
+- `market_impacts[].reason_zh`
 - `watch_triggers[]`
 - `invalidation_conditions[]`
 - `data_gaps[].description_zh`
@@ -32,16 +32,16 @@ Use `data_gaps` to describe uncertainty or missing follow-up data, but do not tu
 
 # Impact Detail
 
-For provider score >=80 news, write the analytical fields in Simplified Chinese with enough detail for an operator to decide whether the event deserves attention:
+For provider score >=80 news, write the analytical fields in Simplified Chinese with enough detail for an operator to decide whether the event deserves attention across crypto, U.S. equities, macro/rates, commodities, FX, sectors, or broad market risk:
 
 - `title_zh`: short operator-facing Chinese title for the core source-backed change; no trading instruction or unsupported hype.
 - `summary_zh`: state what changed, who/what is involved, and the source-backed confidence boundary.
-- `market_read_zh`: explain likely crypto-market transmission channels such as listing access, regulatory overhang, liquidity, derivatives attention, protocol/user impact, or narrative spillover.
-- `affected_assets[].reason_zh`: describe the asset-specific impact and cite evidence; do not infer unrelated tokens from ticker similarity.
+- `market_read_zh`: explain likely market transmission channels such as policy/regulatory overhang, earnings or guidance, listing/access changes, liquidity, derivatives attention, rates sensitivity, sector spillover, protocol/user impact, or broad risk sentiment.
+- `market_impacts[].reason_zh`: describe each source-backed market impact object; use `label` for the asset, issuer, sector, macro variable, commodity, currency, or broad market bucket. Do not infer unrelated tickers or tokens from ticker similarity.
 - `bull_view` and `bear_view`: keep both sides source-backed, including why the opposite side may still matter.
 - `watch_triggers` and `invalidation_conditions`: use observable follow-ups only, not trading instructions.
 
-Treat provider scores and provider token impacts as inputs, not final truth. If the packet is thin, still summarize the source-backed change and put the uncertainty in `data_gaps`.
+Treat provider scores and provider market impacts as inputs, not final truth. If the packet is thin, still summarize the source-backed change and put the uncertainty in `data_gaps`.
 
 # Trading Boundary
 

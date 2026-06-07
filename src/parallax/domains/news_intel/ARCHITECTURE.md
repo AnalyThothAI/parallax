@@ -21,8 +21,8 @@ forced into a resolved asset.
   row represents a stable `story_key` when deterministic story identity is
   available, or the single item when no story key exists. Its `story_json`
   carries compact member ids/counts and source/provider article key evidence.
-  Its `analysis_admission_status` separates broad page visibility from legacy
-  crypto alert/push eligibility. Its `agent_admission_status` records the
+  Its `analysis_admission_status` records deterministic page/material
+  classification. Its `agent_admission_status` records the
   market-wide item brief decision after deterministic duplicate/similar checks.
   Its `signal_json` is an explicit envelope:
   `display_signal` is the product display choice, `provider_signal` preserves
@@ -37,8 +37,8 @@ forced into a resolved asset.
   page read model copies the compact classification fields into `source_json`
   so `/api/news` can filter without calling providers.
 - `news_items` carries item content classification (`content_class`,
-  `content_tags_json`, and `content_classification_json`), legacy crypto
-  analysis admission (`analysis_admission_*`), market-wide agent admission
+  `content_tags_json`, and `content_classification_json`), deterministic
+  page/material classification (`analysis_admission_*`), market-wide agent admission
   (`agent_admission_*`), and deterministic story identity (`story_key`,
   `story_identity_json`). These describe what happened, whether an item is a
   fresh representative agent target versus duplicate/similar covered, and how
@@ -85,8 +85,8 @@ news_fetch/source refresh -> news_source_quality_projection
 | Stage | Responsibility |
 |-------|----------------|
 | Fetch | Reconcile configured sources into `news_sources`, fetch due feeds, persist provider items and normalized news items, then enqueue semantic page/source-refresh work. It does not create agent brief work. |
-| Item processing | Read raw `news_items`, extract entities and token mentions deterministically, classify item content, write attention-safe observations and fact candidates, compute legacy analysis admission, compute deterministic story identity, compute market-wide `agent_admission`, and enqueue optional item-brief work only for eligible/refresh representative targets. |
-| Item brief | Build bounded item/token/fact packets, reserve `news.item_brief`, execute through the shared `AgentExecutionGateway`, shape-validate the standard brief output, write the run ledger, upsert the current brief, and dirty page rows. Evidence refs and sparse source context are audit/quality metadata, not publication gates. |
+| Item processing | Read raw `news_items`, extract entities and token mentions deterministically, classify item content, write attention-safe observations and fact candidates, compute deterministic page/material classification, compute deterministic story identity, compute market-wide `agent_admission`, and enqueue optional item-brief work only for eligible/refresh representative targets. |
+| Item brief | Build bounded item/entity/fact packets, reserve `news.item_brief`, execute through the shared `AgentExecutionGateway`, shape-validate the standard market-wide brief output, write the run ledger, upsert the current brief, and dirty page rows. Evidence refs and sparse source context are audit/quality metadata, not publication gates. |
 | Page projection | Claim item-scoped dirty targets, expand them to bounded story groups, and rebuild story-shaped News page rows from news facts, admission, story identity, provider-native signal, and the current item brief. |
 | Source quality projection | Own source-quality windows, expand source refresh intents into configured source/window work, rebuild source quality rows, and dirty page rows only when compact source quality status changes. It is an operational projection, not item hot-path fanout. |
 | API/UI | Read-only surfaces over projected `news_page_rows`, with explicit source/content/decision filters and source status diagnostics. Raw `news_items` are worker inputs, not public fallback rows. |

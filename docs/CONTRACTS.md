@@ -185,13 +185,14 @@ News Intel contract:
   `story`), provider token impact rows (`token_impacts`), compact source
   metadata (`provider_type`, `source_role`, `trust_tier`, `coverage_tags`,
   `source_quality_status`), item content classification (`content_class`,
-  `content_tags`, `content_classification`), legacy crypto analysis admission
-  fields (`analysis_admission_status`, `analysis_admission_reason`,
-  `analysis_admission`), market-wide agent admission fields
+  `content_tags`, `content_classification`), deterministic page/material
+  classification fields (`analysis_admission_status`,
+  `analysis_admission_reason`, `analysis_admission`), market-wide agent
+  admission fields
   (`agent_admission_status`, `agent_admission_reason`, `agent_admission`,
   `agent_representative_news_item_id`), compact `agent_brief`, and
   provider/source metadata. `analysis_admission_status` is not an item brief
-  gate; it only separates page visibility from crypto alert/push eligibility.
+  gate; it is not an alert/push eligibility fallback.
   Score>=80 market news is agent-eligible unless deterministic duplicate,
   similar-story, source, score/time, or operational gates block it. `signal` is
   an explicit envelope: `signal.display_signal` is the row-level display choice,

@@ -798,7 +798,7 @@ def _failed_brief(
         "market_read_zh": "",
         "bull_view": {"strength": "absent", "thesis_zh": "", "evidence_refs": []},
         "bear_view": {"strength": "absent", "thesis_zh": "", "evidence_refs": []},
-        "affected_assets": [],
+        "market_impacts": [],
         "watch_triggers": [],
         "invalidation_conditions": [],
         "data_gaps": [

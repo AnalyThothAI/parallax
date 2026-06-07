@@ -203,7 +203,7 @@ function AiInterpretation({
       <ListBlock title="Watch triggers" items={brief?.watch_triggers ?? []} />
       <ListBlock title="Invalidation" items={brief?.invalidation_conditions ?? []} />
       <ListBlock title="Research todos" items={brief?.research_todos_zh ?? []} />
-      <JsonDetails title="Affected assets JSON" value={brief?.affected_assets ?? []} />
+      <JsonDetails title="Market impacts JSON" value={brief?.market_impacts ?? []} />
     </section>
   );
 }

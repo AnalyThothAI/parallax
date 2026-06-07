@@ -108,7 +108,7 @@ export type NewsAgentBrief = {
   retrieval_evidence_refs?: NewsAgentEvidenceRef[];
   research_todos_zh?: string[];
   used_tool_call_ids?: string[];
-  affected_assets?: unknown[];
+  market_impacts?: unknown[];
   impact_zh?: string | null;
   watch_items_zh?: string | null;
   confidence?: string | number | null;

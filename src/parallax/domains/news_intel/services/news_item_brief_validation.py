@@ -40,7 +40,7 @@ def validate_news_item_brief_output(
     errors: list[dict[str, str]] = []
     payload_dict = parsed.model_dump(mode="json")
     errors.extend(_unexpected_action_errors(audit))
-    payload_dict = _drop_unsupported_assets(payload_dict, packet=packet)
+    payload_dict = _drop_unsupported_market_impacts(payload_dict, packet=packet)
     try:
         normalized = NewsItemBriefPayload.model_validate(payload_dict)
     except ValidationError as exc:
@@ -67,39 +67,38 @@ def _unexpected_action_errors(audit: Any) -> list[dict[str, str]]:
     return _dedupe_errors(errors)
 
 
-def _drop_unsupported_assets(payload: dict[str, Any], *, packet: NewsItemBriefInputPacket) -> dict[str, Any]:
-    supported = _source_backed_asset_labels(packet)
-    kept_assets: list[dict[str, Any]] = []
-    dropped_symbols: list[str] = []
-    for asset in payload.get("affected_assets") or []:
+def _drop_unsupported_market_impacts(payload: dict[str, Any], *, packet: NewsItemBriefInputPacket) -> dict[str, Any]:
+    supported = _source_backed_market_labels(packet)
+    kept_impacts: list[dict[str, Any]] = []
+    dropped_labels: list[str] = []
+    for impact in payload.get("market_impacts") or []:
         labels = {
-            _norm(asset.get("symbol")),
-            _norm(asset.get("name")),
-            _norm(asset.get("target_id")),
+            _norm(impact.get("label")),
+            _norm(impact.get("target_id")),
         }
         if any(label and label in supported for label in labels):
-            kept_assets.append(asset)
+            kept_impacts.append(impact)
             continue
-        dropped_symbols.append(str(asset.get("symbol") or asset.get("name") or "unknown"))
-    if not dropped_symbols:
+        dropped_labels.append(str(impact.get("label") or "unknown"))
+    if not dropped_labels:
         return payload
     normalized = dict(payload)
-    normalized["affected_assets"] = kept_assets
+    normalized["market_impacts"] = kept_impacts
     gaps = list(normalized.get("data_gaps") or [])
     gaps.extend(
         [
             DataGap(
-                description_zh=f"模型提到的资产 {symbol} 未在输入 token、fact 或新闻文本中找到来源支撑。",
+                description_zh=f"模型提到的市场影响对象 {label} 未在输入 entity、fact 或新闻文本中找到来源支撑。",
                 severity="medium",
             ).model_dump(mode="json")
-            for symbol in sorted(set(dropped_symbols))
+            for label in sorted(set(dropped_labels))
         ]
     )
     normalized["data_gaps"] = gaps[:12]
     return normalized
 
 
-def _source_backed_asset_labels(packet: NewsItemBriefInputPacket) -> set[str]:
+def _source_backed_market_labels(packet: NewsItemBriefInputPacket) -> set[str]:
     labels: set[str] = set()
     text_fields = [
         packet.news_item.title,
@@ -107,13 +106,13 @@ def _source_backed_asset_labels(packet: NewsItemBriefInputPacket) -> set[str]:
         packet.news_item.body_excerpt,
     ]
     labels.update(_norm(token) for field in text_fields for token in re.findall(r"[A-Za-z0-9]{2,20}", field or ""))
-    for token in packet.token_lanes:
+    for entity in packet.entity_lanes:
         labels.update(
             {
-                _norm(token.observed_symbol),
-                _norm(token.display_symbol),
-                _norm(token.display_name),
-                _norm(token.target_id),
+                _norm(entity.observed_text),
+                _norm(entity.display_label),
+                _norm(entity.display_name),
+                _norm(entity.target_id),
             }
         )
     for fact in packet.fact_lanes:

@@ -917,7 +917,7 @@ def test_news_high_signal_uses_ready_agent_brief_for_display_and_builds_push_sig
                             "title_zh": "AI 标题：重大上所催化",
                             "summary_zh": "高分新闻已由 agent 归纳。",
                             "watch_triggers": ["成交量确认"],
-                            "affected_assets": [{"symbol": "BOV"}],
+                            "market_impacts": [{"label": "BOV"}],
                         },
                     },
                 }
@@ -1112,7 +1112,7 @@ def test_news_high_signal_skips_stale_source_items_even_when_agent_finished_now(
                         "brief_json": {
                             "title_zh": "旧新闻不应推送",
                             "summary_zh": "agent 刚完成，但源新闻已经过期。",
-                            "affected_assets": [{"symbol": "OLD"}],
+                            "market_impacts": [{"label": "OLD"}],
                         },
                     },
                 }
@@ -1154,7 +1154,7 @@ def test_news_high_signal_semantic_dedup_ignores_projection_and_summary_churn():
                 "brief_json": {
                     "summary_zh": "第一版中文摘要。",
                     "watch_triggers": ["成交量确认"],
-                    "affected_assets": [{"symbol": "BOV"}],
+                    "market_impacts": [{"label": "BOV"}],
                 },
             },
         }
@@ -1248,7 +1248,7 @@ def test_jpm_citi_story_variants_emit_one_candidate():
     assert candidate.payload["analysis_admission"]["basis"] == {"test": True}
     assert candidate.payload["decision_class"] == "driver"
     assert candidate.payload["direction"] == "bullish"
-    assert candidate.payload["affected_assets"] == []
+    assert candidate.payload["market_impacts"] == []
 
 
 def test_news_high_signal_external_push_signature_keeps_distinct_stories_push_eligible():
@@ -1282,7 +1282,7 @@ def test_news_high_signal_external_push_signature_keeps_distinct_stories_push_el
                 "summary_zh": "第一条独立故事。",
                 "brief_json": {
                     "summary_zh": "第一条独立故事。",
-                    "affected_assets": [{"symbol": "CL"}],
+                    "market_impacts": [{"label": "CL"}],
                 },
             },
         }
@@ -1300,7 +1300,7 @@ def test_news_high_signal_external_push_signature_keeps_distinct_stories_push_el
             "summary_zh": "第二条独立故事。",
             "brief_json": {
                 "summary_zh": "第二条独立故事。",
-                "affected_assets": [{"symbol": "CL"}],
+                "market_impacts": [{"label": "CL"}],
             },
         },
     }
@@ -1359,7 +1359,7 @@ def test_news_high_signal_external_push_signature_uses_asset_cooldown_not_item_i
                 "brief_json": {
                     "summary_zh": "第一条同主题新闻。",
                     "watch_triggers": ["原油冲击"],
-                    "affected_assets": [{"symbol": "CL"}],
+                    "market_impacts": [{"label": "CL"}],
                 },
             },
         }
@@ -1376,7 +1376,7 @@ def test_news_high_signal_external_push_signature_uses_asset_cooldown_not_item_i
             "brief_json": {
                 "summary_zh": "第二条同主题新闻。",
                 "watch_triggers": ["航运风险"],
-                "affected_assets": [{"symbol": "CL"}],
+                "market_impacts": [{"label": "CL"}],
             },
         },
     }

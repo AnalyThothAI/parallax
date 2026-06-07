@@ -20,13 +20,14 @@ NewsItemBriefDirection = Literal["bullish", "bearish", "mixed", "neutral"]
 NewsItemBriefDecision = Literal["driver", "watch", "context", "discard"]
 NewsItemBriefSideStrength = Literal["absent", "weak", "moderate", "strong"]
 NewsItemBriefGapSeverity = Literal["low", "medium", "high"]
-NewsItemBriefAssetResolutionStatus = Literal[
+NewsItemBriefEntityResolutionStatus = Literal[
+    "exact",
     "exact_address",
     "known_symbol",
     "unique_by_context",
     "ambiguous",
     "unresolved",
-    "non_crypto",
+    "non_target",
     "nil",
     "unknown",
 ]
@@ -40,12 +41,11 @@ class NewsItemBriefSideView(BaseModel):
     evidence_refs: list[Annotated[str, Field(min_length=1, max_length=160)]] = Field(default_factory=list, max_length=8)
 
 
-class AffectedAsset(BaseModel):
+class MarketImpact(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    symbol: str = Field(min_length=1, max_length=32)
-    name: str | None = Field(default=None, max_length=120)
-    resolution_status: NewsItemBriefAssetResolutionStatus = "unknown"
+    label: str = Field(min_length=1, max_length=120)
+    market_type: str | None = Field(default=None, max_length=64)
     target_type: str | None = Field(default=None, max_length=80)
     target_id: str | None = Field(default=None, max_length=160)
     impact_direction: NewsItemBriefDirection = "neutral"
@@ -71,7 +71,7 @@ class NewsItemBriefPayload(BaseModel):
     market_read_zh: str = Field(default="", max_length=1200)
     bull_view: NewsItemBriefSideView = Field(default_factory=NewsItemBriefSideView)
     bear_view: NewsItemBriefSideView = Field(default_factory=NewsItemBriefSideView)
-    affected_assets: list[AffectedAsset] = Field(default_factory=list, max_length=12)
+    market_impacts: list[MarketImpact] = Field(default_factory=list, max_length=12)
     watch_triggers: list[Annotated[str, Field(min_length=1, max_length=240)]] = Field(
         default_factory=list,
         max_length=8,
@@ -109,15 +109,15 @@ class NewsItemBriefNewsItem(BaseModel):
     source: NewsItemBriefSource = Field(default_factory=NewsItemBriefSource)
 
 
-class NewsItemBriefTokenLane(BaseModel):
+class NewsItemBriefEntityLane(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    mention_id: str = Field(min_length=1, max_length=160)
-    observed_symbol: str = Field(default="", max_length=64)
-    resolution_status: str = Field(default="", max_length=64)
+    entity_lane_id: str = Field(min_length=1, max_length=160)
+    observed_text: str = Field(default="", max_length=120)
+    resolution_status: NewsItemBriefEntityResolutionStatus = "unknown"
     target_type: str | None = Field(default=None, max_length=80)
     target_id: str | None = Field(default=None, max_length=160)
-    display_symbol: str = Field(default="", max_length=64)
+    display_label: str = Field(default="", max_length=120)
     display_name: str | None = Field(default=None, max_length=160)
     reason_codes: list[str] = Field(default_factory=list, max_length=12)
     candidate_targets: list[dict[str, object]] = Field(default_factory=list, max_length=12)
@@ -138,10 +138,10 @@ class NewsItemBriefFactLane(BaseModel):
     evidence_quote: str = Field(default="", max_length=500)
 
 
-class NewsItemBriefProviderTokenImpact(BaseModel):
+class NewsItemBriefProviderMarketImpact(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    symbol: str = Field(min_length=1, max_length=32)
+    label: str = Field(min_length=1, max_length=120)
     market_type: str | None = Field(default=None, max_length=64)
     score: int | None = Field(default=None, ge=0, le=100)
     direction: NewsItemBriefDirection = "neutral"
@@ -162,7 +162,7 @@ class NewsItemBriefProviderSignalEvidence(BaseModel):
     summary_zh: str = Field(default="", max_length=600)
     summary_en: str = Field(default="", max_length=600)
     method: str = Field(default="", max_length=128)
-    token_impacts: list[NewsItemBriefProviderTokenImpact] = Field(default_factory=list, max_length=12)
+    market_impacts: list[NewsItemBriefProviderMarketImpact] = Field(default_factory=list, max_length=12)
     duplicate_count: int = Field(default=1, ge=1, le=1000)
     source_ids: list[Annotated[str, Field(min_length=1, max_length=160)]] = Field(default_factory=list, max_length=12)
     source_domains: list[Annotated[str, Field(min_length=1, max_length=255)]] = Field(
@@ -197,7 +197,7 @@ class NewsItemBriefInputPacket(BaseModel):
 
     packet_id: str = Field(min_length=1, max_length=160)
     news_item: NewsItemBriefNewsItem
-    token_lanes: list[NewsItemBriefTokenLane] = Field(default_factory=list, max_length=50)
+    entity_lanes: list[NewsItemBriefEntityLane] = Field(default_factory=list, max_length=50)
     fact_lanes: list[NewsItemBriefFactLane] = Field(default_factory=list, max_length=50)
     provider_signal_evidence: NewsItemBriefProviderSignalEvidence | None = None
     evidence_refs: list[Annotated[str, Field(min_length=1, max_length=160)]] = Field(
@@ -240,24 +240,24 @@ __all__ = [
     "NEWS_ITEM_BRIEF_AGENT_NAME",
     "NEWS_ITEM_BRIEF_LANE",
     "NEWS_ITEM_BRIEF_WORKFLOW_NAME",
-    "AffectedAsset",
     "DataGap",
+    "MarketImpact",
     "NewsItemBriefAgentConfig",
-    "NewsItemBriefAssetResolutionStatus",
     "NewsItemBriefConstraints",
     "NewsItemBriefDecision",
     "NewsItemBriefDirection",
+    "NewsItemBriefEntityLane",
+    "NewsItemBriefEntityResolutionStatus",
     "NewsItemBriefFactLane",
     "NewsItemBriefGapSeverity",
     "NewsItemBriefInputPacket",
     "NewsItemBriefNewsItem",
     "NewsItemBriefPayload",
+    "NewsItemBriefProviderMarketImpact",
     "NewsItemBriefProviderSignalEvidence",
-    "NewsItemBriefProviderTokenImpact",
     "NewsItemBriefSideStrength",
     "NewsItemBriefSideView",
     "NewsItemBriefSource",
     "NewsItemBriefStatus",
-    "NewsItemBriefTokenLane",
     "default_news_item_brief_agent_config",
 ]

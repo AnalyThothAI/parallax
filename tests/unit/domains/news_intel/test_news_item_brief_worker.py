@@ -86,7 +86,7 @@ async def _test_worker_processes_provider_signal_target_with_llm_context() -> No
     assert provider.reserve_rate_units == [1]
     assert provider.execution_calls == 1
     assert provider.seen_packets[0].provider_signal_evidence.score == 88
-    assert provider.seen_packets[0].provider_signal_evidence.token_impacts[0].symbol == "SOL"
+    assert provider.seen_packets[0].provider_signal_evidence.market_impacts[0].label == "SOL"
     assert db.news.runs[0]["status"] == "completed"
     assert db.news.briefs[0]["status"] == "ready"
     assert len(db.dirty.done) == 1
@@ -564,11 +564,10 @@ def _ready_payload() -> dict[str, Any]:
             "evidence_refs": ["item:summary"],
         },
         "bear_view": {"strength": "absent", "thesis_zh": "", "evidence_refs": []},
-        "affected_assets": [
+        "market_impacts": [
             {
-                "symbol": "SOL",
-                "name": "Solana",
-                "resolution_status": "unknown",
+                "label": "SOL",
+                "market_type": "crypto",
                 "target_type": None,
                 "target_id": None,
                 "impact_direction": "bullish",

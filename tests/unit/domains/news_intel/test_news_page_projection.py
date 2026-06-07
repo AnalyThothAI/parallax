@@ -312,9 +312,10 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
                 "market_read_zh": "叙事催化增强。",
                 "bull_view": {"strength": "strong", "thesis_zh": "新增需求预期"},
                 "bear_view": {"strength": "weak", "thesis_zh": "审批仍不确定"},
-                "affected_assets": [
+                "market_impacts": [
                     {
-                        "symbol": "SOL",
+                        "label": "SOL",
+                        "market_type": "crypto",
                         "target_id": "asset:sol",
                         "impact_direction": "bullish",
                         "reason_zh": "ETF 申请直接影响 SOL。",
@@ -353,9 +354,10 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
         "representative_news_item_id": "news-1",
         "bull_view": {"strength": "strong", "thesis_zh": "新增需求预期"},
         "bear_view": {"strength": "weak", "thesis_zh": "审批仍不确定"},
-        "affected_assets": [
+        "market_impacts": [
             {
-                "symbol": "SOL",
+                "label": "SOL",
+                "market_type": "crypto",
                 "target_id": "asset:sol",
                 "impact_direction": "bullish",
                 "reason_zh": "ETF 申请直接影响 SOL。",

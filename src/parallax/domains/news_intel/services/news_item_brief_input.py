@@ -7,20 +7,20 @@ from typing import Any
 from parallax.domains.news_intel.types.news_item_brief import (
     NewsItemBriefAgentConfig,
     NewsItemBriefConstraints,
+    NewsItemBriefEntityLane,
     NewsItemBriefFactLane,
     NewsItemBriefInputPacket,
     NewsItemBriefNewsItem,
+    NewsItemBriefProviderMarketImpact,
     NewsItemBriefProviderSignalEvidence,
-    NewsItemBriefProviderTokenImpact,
     NewsItemBriefSource,
-    NewsItemBriefTokenLane,
 )
 from parallax.platform.agent_hashing import json_sha256
 
 BODY_EXCERPT_MAX_CHARS = 2000
-MAX_TOKEN_LANES = 50
+MAX_ENTITY_LANES = 50
 MAX_FACT_LANES = 50
-MAX_PROVIDER_TOKEN_IMPACTS = 12
+MAX_PROVIDER_MARKET_IMPACTS = 12
 MAX_PROVIDER_AGGREGATION_VALUES = 12
 PROVIDER_SUMMARY_MAX_CHARS = 600
 
@@ -47,18 +47,18 @@ def build_news_item_brief_input_packet(
             trust_tier=_bounded(item.get("trust_tier"), 64),
         ),
     )
-    token_lanes = [_token_lane(row) for row in sorted(token_mentions, key=_mention_sort_key)[:MAX_TOKEN_LANES]]
+    entity_lanes = [_entity_lane(row) for row in sorted(token_mentions, key=_mention_sort_key)[:MAX_ENTITY_LANES]]
     fact_lanes = [_fact_lane(row) for row in sorted(fact_candidates, key=_fact_sort_key)[:MAX_FACT_LANES]]
     provider_signal_evidence = _provider_signal_evidence(item)
     evidence_refs = _evidence_refs(
         news_item=news_item,
-        token_lanes=token_lanes,
+        entity_lanes=entity_lanes,
         fact_lanes=fact_lanes,
         provider_signal_evidence=provider_signal_evidence,
     )
     packet_id = _packet_id(
         news_item=news_item,
-        token_lanes=token_lanes,
+        entity_lanes=entity_lanes,
         fact_lanes=fact_lanes,
         provider_signal_evidence=provider_signal_evidence,
         agent_config=agent_config,
@@ -66,7 +66,7 @@ def build_news_item_brief_input_packet(
     packet = NewsItemBriefInputPacket(
         packet_id=packet_id,
         news_item=news_item,
-        token_lanes=token_lanes,
+        entity_lanes=entity_lanes,
         fact_lanes=fact_lanes,
         provider_signal_evidence=provider_signal_evidence,
         evidence_refs=evidence_refs,
@@ -90,14 +90,14 @@ def news_item_brief_material_input_hash(packet: NewsItemBriefInputPacket) -> str
     return json_sha256(news_item_brief_material_input_payload(packet))
 
 
-def _token_lane(row: Mapping[str, Any]) -> NewsItemBriefTokenLane:
-    return NewsItemBriefTokenLane(
-        mention_id=_str(row.get("mention_id")),
-        observed_symbol=_bounded(row.get("observed_symbol"), 64),
-        resolution_status=_bounded(row.get("resolution_status"), 64),
+def _entity_lane(row: Mapping[str, Any]) -> NewsItemBriefEntityLane:
+    return NewsItemBriefEntityLane(
+        entity_lane_id=_str(row.get("mention_id")),
+        observed_text=_bounded(row.get("observed_symbol"), 120),
+        resolution_status=_entity_resolution_status(row.get("resolution_status")),
         target_type=_optional_bounded(row.get("target_type"), 80),
         target_id=_optional_bounded(row.get("target_id"), 160),
-        display_symbol=_bounded(row.get("display_symbol") or row.get("observed_symbol"), 64),
+        display_label=_bounded(row.get("display_symbol") or row.get("observed_symbol"), 120),
         display_name=_optional_bounded(row.get("display_name"), 160),
         reason_codes=[_bounded(value, 80) for value in _json_list(row.get("reason_codes_json"))[:12]],
         candidate_targets=[_json_object(value) for value in _json_list(row.get("candidate_targets_json"))[:12]],
@@ -123,7 +123,7 @@ def _provider_signal_evidence(item: Mapping[str, Any]) -> NewsItemBriefProviderS
     provider_signal = _json_object(item.get("provider_signal_json"))
     provider_impacts = [
         impact
-        for impact in (_provider_token_impact(row) for row in _json_list(item.get("provider_token_impacts_json")))
+        for impact in (_provider_market_impact(row) for row in _json_list(item.get("provider_token_impacts_json")))
         if impact is not None
     ]
     has_provider_signal = str(provider_signal.get("source") or "").strip().lower() == "provider"
@@ -140,7 +140,7 @@ def _provider_signal_evidence(item: Mapping[str, Any]) -> NewsItemBriefProviderS
         summary_zh=_bounded(provider_signal.get("summary_zh"), PROVIDER_SUMMARY_MAX_CHARS),
         summary_en=_bounded(provider_signal.get("summary_en"), PROVIDER_SUMMARY_MAX_CHARS),
         method=_bounded(provider_signal.get("method") or "provider.signal", 128),
-        token_impacts=sorted(provider_impacts, key=_provider_impact_sort_key)[:MAX_PROVIDER_TOKEN_IMPACTS],
+        market_impacts=sorted(provider_impacts, key=_provider_impact_sort_key)[:MAX_PROVIDER_MARKET_IMPACTS],
         duplicate_count=_bounded_count(item.get("duplicate_count")),
         source_ids=_bounded_string_list(item.get("source_ids_json"), 160),
         source_domains=_bounded_string_list(item.get("source_domains_json"), 255),
@@ -151,14 +151,14 @@ def _provider_signal_evidence(item: Mapping[str, Any]) -> NewsItemBriefProviderS
     )
 
 
-def _provider_token_impact(row: Any) -> NewsItemBriefProviderTokenImpact | None:
+def _provider_market_impact(row: Any) -> NewsItemBriefProviderMarketImpact | None:
     payload = _json_object(row)
-    symbol = _bounded(payload.get("symbol"), 32).upper()
-    if not symbol:
+    label = _bounded(payload.get("label") or payload.get("symbol") or payload.get("name"), 120).upper()
+    if not label:
         return None
     signal = _optional_bounded(payload.get("signal"), 32)
-    return NewsItemBriefProviderTokenImpact(
-        symbol=symbol,
+    return NewsItemBriefProviderMarketImpact(
+        label=label,
         market_type=_optional_bounded(payload.get("market_type"), 64),
         score=_optional_score(payload.get("score")),
         direction=_provider_direction(payload.get("direction") or signal),
@@ -167,14 +167,14 @@ def _provider_token_impact(row: Any) -> NewsItemBriefProviderTokenImpact | None:
     )
 
 
-def _provider_impact_sort_key(row: NewsItemBriefProviderTokenImpact) -> tuple[int, str]:
-    return (-(row.score if row.score is not None else -1), row.symbol)
+def _provider_impact_sort_key(row: NewsItemBriefProviderMarketImpact) -> tuple[int, str]:
+    return (-(row.score if row.score is not None else -1), row.label)
 
 
 def _evidence_refs(
     *,
     news_item: NewsItemBriefNewsItem,
-    token_lanes: list[NewsItemBriefTokenLane],
+    entity_lanes: list[NewsItemBriefEntityLane],
     fact_lanes: list[NewsItemBriefFactLane],
     provider_signal_evidence: NewsItemBriefProviderSignalEvidence | None,
 ) -> list[str]:
@@ -186,17 +186,17 @@ def _evidence_refs(
     if news_item.body_excerpt:
         refs.append("item:body_excerpt")
     refs.extend(f"fact:{row.fact_candidate_id}" for row in fact_lanes if row.fact_candidate_id)
-    refs.extend(f"token:{row.mention_id}" for row in token_lanes if row.mention_id)
+    refs.extend(f"entity:{row.entity_lane_id}" for row in entity_lanes if row.entity_lane_id)
     if provider_signal_evidence is not None:
         refs.append("provider:signal")
-        refs.extend(f"provider:token:{row.symbol}" for row in provider_signal_evidence.token_impacts if row.symbol)
+        refs.extend(f"provider:impact:{row.label}" for row in provider_signal_evidence.market_impacts if row.label)
     return _stable_unique(refs)
 
 
 def _packet_id(
     *,
     news_item: NewsItemBriefNewsItem,
-    token_lanes: list[NewsItemBriefTokenLane],
+    entity_lanes: list[NewsItemBriefEntityLane],
     fact_lanes: list[NewsItemBriefFactLane],
     provider_signal_evidence: NewsItemBriefProviderSignalEvidence | None,
     agent_config: NewsItemBriefAgentConfig,
@@ -205,7 +205,7 @@ def _packet_id(
         {
             "news_item_id": news_item.news_item_id,
             "content_hash": news_item.content_hash,
-            "tokens": [row.mention_id for row in token_lanes],
+            "entities": [row.entity_lane_id for row in entity_lanes],
             "facts": [row.fact_candidate_id for row in fact_lanes],
             "provider_signal_evidence": provider_signal_evidence.model_dump(mode="json")
             if provider_signal_evidence is not None
@@ -323,6 +323,25 @@ def _provider_direction(value: Any) -> str:
     return "neutral"
 
 
+def _entity_resolution_status(value: Any) -> str:
+    normalized = _str(value).lower()
+    if normalized == "non_crypto":
+        return "non_target"
+    if normalized in {
+        "exact",
+        "exact_address",
+        "known_symbol",
+        "unique_by_context",
+        "ambiguous",
+        "unresolved",
+        "non_target",
+        "nil",
+        "unknown",
+    }:
+        return normalized
+    return "unknown"
+
+
 def _bounded_string_list(value: Any, max_length: int) -> list[str]:
     return [cleaned for cleaned in (_bounded(item, max_length) for item in _json_list(value)) if cleaned][
         :MAX_PROVIDER_AGGREGATION_VALUES
@@ -331,6 +350,7 @@ def _bounded_string_list(value: Any, max_length: int) -> list[str]:
 
 __all__ = [
     "BODY_EXCERPT_MAX_CHARS",
+    "MAX_ENTITY_LANES",
     "build_news_item_brief_input_packet",
     "news_item_brief_material_input_hash",
     "news_item_brief_material_input_payload",

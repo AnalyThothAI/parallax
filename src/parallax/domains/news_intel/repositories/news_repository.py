@@ -5725,7 +5725,7 @@ def _public_agent_brief_payload(value: Any) -> dict[str, Any]:
         "market_read_zh",
         "bull_view",
         "bear_view",
-        "affected_assets",
+        "market_impacts",
         "watch_triggers",
         "invalidation_conditions",
         "data_gaps",
@@ -5741,7 +5741,7 @@ def _public_agent_brief_payload(value: Any) -> dict[str, Any]:
         "market_read_zh",
         "bull_view",
         "bear_view",
-        "affected_assets",
+        "market_impacts",
         "watch_triggers",
         "invalidation_conditions",
         "data_gaps",
@@ -5754,10 +5754,10 @@ def _public_agent_brief_payload(value: Any) -> dict[str, Any]:
     for key, field_value in public_brief_json.items():
         if key not in public_payload:
             public_payload[key] = field_value
-    if "affected_assets" in public_payload:
-        public_payload["affected_assets"] = _json_list(public_payload.get("affected_assets"))
-    if "affected_assets" in public_brief_json:
-        public_brief_json["affected_assets"] = _json_list(public_brief_json.get("affected_assets"))
+    if "market_impacts" in public_payload:
+        public_payload["market_impacts"] = _json_list(public_payload.get("market_impacts"))
+    if "market_impacts" in public_brief_json:
+        public_brief_json["market_impacts"] = _json_list(public_brief_json.get("market_impacts"))
     return public_payload
 
 

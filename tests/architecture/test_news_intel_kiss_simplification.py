@@ -74,6 +74,36 @@ def test_news_item_agent_policy_does_not_gate_on_legacy_analysis_admission() -> 
     assert "_has_explicit_crypto_admission_basis" not in source
 
 
+def test_news_item_brief_contract_has_no_legacy_crypto_only_surface() -> None:
+    paths = [
+        "src/parallax/domains/news_intel/types/news_item_brief.py",
+        "src/parallax/domains/news_intel/services/news_item_brief_input.py",
+        "src/parallax/domains/news_intel/services/news_item_brief_validation.py",
+        "src/parallax/domains/news_intel/services/news_page_projection.py",
+        "src/parallax/domains/news_intel/runtime/news_item_brief_worker.py",
+        "src/parallax/domains/news_intel/prompts/news_item_brief.md",
+        "src/parallax/domains/notifications/services/notification_rules.py",
+        "web/src/shared/model/newsIntel.ts",
+        "web/src/lib/api/client.ts",
+        "web/src/features/news/ui/NewsItemEvidencePage.tsx",
+    ]
+    forbidden = {
+        "affected_assets",
+        "NewsItemBriefTokenLane",
+        "NewsItemBriefProviderTokenImpact",
+        "NewsItemBriefAssetResolutionStatus",
+        "provider_signal_evidence.token_impacts",
+        "crypto-market transmission",
+    }
+    offenders = [
+        f"{path} contains {token}"
+        for path in paths
+        for token in forbidden
+        if token in _read(path)
+    ]
+    assert offenders == []
+
+
 def test_fetch_process_brief_constructors_do_not_accept_source_quality_windows() -> None:
     paths = [
         "src/parallax/domains/news_intel/runtime/news_fetch_worker.py",
