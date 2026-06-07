@@ -441,15 +441,11 @@ class NewsProjectionDirtyTargetRepository:
         self,
         *,
         now_ms: int,
-        window_ms: int,
-        score_threshold: int,
         execute: bool,
         commit: bool = True,
     ) -> dict[str, Any]:
         params = {
             "now_ms": int(now_ms),
-            "window_ms": max(0, int(window_ms)),
-            "score_threshold": max(0, int(score_threshold)),
         }
         rows = self.conn.execute(
             _cleanup_stale_brief_input_targets_sql(execute=execute),
@@ -462,8 +458,6 @@ class NewsProjectionDirtyTargetRepository:
         return {
             "execute": bool(execute),
             "now_ms": int(now_ms),
-            "window_ms": max(0, int(window_ms)),
-            "score_threshold": max(0, int(score_threshold)),
             "candidate_count": count,
             "deleted_count": count if execute else 0,
             "reasons": reasons,
@@ -480,15 +474,12 @@ def _cleanup_stale_brief_input_targets_sql(*, execute: bool) -> str:
         targets."window" AS target_window,
         CASE
           WHEN items.news_item_id IS NULL THEN 'missing_news_item'
-          WHEN COALESCE(lower(items.provider_signal_json ->> 'source'), '') <> 'provider'
-            THEN 'source_not_provider_signal'
-          WHEN NOT (
-            COALESCE(items.provider_signal_json ->> 'score', '') ~ '^-?[0-9]+$'
-            AND (items.provider_signal_json ->> 'score')::integer >= %(score_threshold)s
+          WHEN COALESCE(lower(items.agent_admission_status), '') IN (
+            'exact_duplicate',
+            'similar_story_covered',
+            'similar_story_burst'
           )
-            THEN 'below_score_threshold'
-          WHEN items.published_at_ms > %(now_ms)s THEN 'published_in_future'
-          WHEN items.published_at_ms < (%(now_ms)s - %(window_ms)s) THEN 'published_too_old'
+            THEN lower(items.agent_admission_status)
           ELSE 'eligible'
         END AS reason
       FROM news_projection_dirty_targets AS targets

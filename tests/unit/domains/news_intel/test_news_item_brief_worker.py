@@ -37,8 +37,8 @@ def test_worker_reprocesses_failed_current_even_when_input_hash_matches() -> Non
     asyncio.run(_test_worker_reprocesses_failed_current_even_when_input_hash_matches())
 
 
-def test_worker_skips_claimed_target_below_current_provider_score_floor() -> None:
-    asyncio.run(_test_worker_skips_claimed_target_below_current_provider_score_floor())
+def test_worker_processes_claimed_target_with_low_provider_score() -> None:
+    asyncio.run(_test_worker_processes_claimed_target_with_low_provider_score())
 
 
 def test_worker_processes_high_score_target_older_than_brief_window() -> None:
@@ -185,7 +185,7 @@ async def _test_worker_reprocesses_failed_current_even_when_input_hash_matches()
     assert result.processed == 1
 
 
-async def _test_worker_skips_claimed_target_below_current_provider_score_floor() -> None:
+async def _test_worker_processes_claimed_target_with_low_provider_score() -> None:
     candidate = _candidate(provider_score=64)
     db = FakeDB([candidate])
     provider = FakeBriefProvider(payload=_ready_payload())
@@ -194,14 +194,15 @@ async def _test_worker_skips_claimed_target_below_current_provider_score_floor()
     result = await worker.run_once()
 
     assert provider.reserve_calls == [NEWS_ITEM_BRIEF_LANE]
-    assert provider.request_audit_calls == []
-    assert provider.execution_calls == 0
-    assert db.news.runs == []
-    assert db.news.briefs == []
+    assert provider.request_audit_calls
+    assert provider.execution_calls == 1
+    assert db.news.runs[0]["status"] == "completed"
+    assert db.news.runs[0]["outcome"] == "ready"
+    assert db.news.briefs[0]["status"] == "ready"
     assert len(db.dirty.done) == 1
-    assert result.processed == 0
-    assert result.skipped == 1
-    assert result.notes["policy_skipped"] == 1
+    assert result.processed == 1
+    assert result.skipped == 0
+    assert result.notes["policy_skipped"] == 0
 
 
 async def _test_worker_processes_high_score_target_older_than_brief_window() -> None:

@@ -19,7 +19,6 @@ def repair_news_agent_market_admission(
     repos: Any,
     since_ms: int,
     until_ms: int,
-    min_provider_score: int = 80,
     limit: int = 500,
     dry_run: bool = True,
     now_ms: int | None = None,
@@ -28,7 +27,6 @@ def repair_news_agent_market_admission(
     candidates = repos.news.list_agent_admission_repair_candidates(
         since_ms=int(since_ms),
         until_ms=int(until_ms),
-        min_provider_score=int(min_provider_score),
         limit=int(limit),
     )
     counts_by_status: Counter[str] = Counter()
@@ -85,7 +83,6 @@ def repair_news_agent_market_admission(
     return {
         "mode": "dry_run" if dry_run else "execute",
         "window": {"since_ms": int(since_ms), "until_ms": int(until_ms)},
-        "min_provider_score": int(min_provider_score),
         "limit": int(limit),
         "evaluated": len(candidates),
         "would_enqueue": would_enqueue,

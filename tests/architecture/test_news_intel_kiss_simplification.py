@@ -164,17 +164,27 @@ def test_news_item_brief_input_has_no_provider_signal_field_aliases() -> None:
 
 
 def test_news_item_agent_policy_does_not_gate_on_legacy_analysis_admission() -> None:
+    admission_source = _read("src/parallax/domains/news_intel/services/news_item_agent_admission.py")
     policy_source = _read("src/parallax/domains/news_intel/services/news_item_agent_policy.py")
+    repair_source = _read("src/parallax/domains/news_intel/services/news_agent_admission_repair.py")
+    cli_parser_source = _read("src/parallax/app/surfaces/cli/parser.py")
     brief_worker_source = _read("src/parallax/domains/news_intel/runtime/news_item_brief_worker.py")
     forbidden = {
         "analysis_admission_status",
         "analysis_not_admitted",
+        "NEWS_ITEM_AGENT_MIN_PROVIDER_SCORE",
         "NEWS_ITEM_AGENT_BRIEF_MIN_ADMITTED_PROVIDER_SCORE",
         "_has_explicit_crypto_admission_basis",
         "provider_score_without_crypto_admission",
         "crypto_admission_basis",
+        "score_below_threshold",
+        "below_score_threshold",
+        "min_provider_score",
     }
+    assert sorted(token for token in forbidden if token in admission_source) == []
     assert sorted(token for token in forbidden if token in policy_source) == []
+    assert sorted(token for token in forbidden if token in repair_source) == []
+    assert sorted(token for token in forbidden if token in cli_parser_source) == []
     assert sorted(token for token in forbidden if token in brief_worker_source) == []
 
 

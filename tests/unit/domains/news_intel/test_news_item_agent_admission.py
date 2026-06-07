@@ -40,6 +40,27 @@ def test_high_score_us_equity_page_only_item_is_eligible() -> None:
     assert admission.reason == "eligible"
 
 
+def test_low_score_market_news_is_not_filtered_by_provider_score() -> None:
+    admission = decide_news_item_agent_admission(
+        item=_item(
+            title="Ford shares fall after supplier disruption",
+            provider_signal_json={"source": "provider", "status": "ready", "score": 42},
+            analysis_admission_status="page_only",
+            analysis_admission_reason="non_crypto_subject",
+        ),
+        entities=[{"entity_id": "entity-f", "raw_value": "Ford", "entity_type": "company", "symbol": "F"}],
+        token_mentions=[],
+        fact_candidates=[],
+        context=NewsItemAgentAdmissionContext.empty(),
+        now_ms=NOW_MS,
+    )
+
+    assert admission.eligible is True
+    assert admission.status == "eligible"
+    assert admission.reason == "eligible"
+    assert admission.basis["provider_score"] == 42
+
+
 def test_high_score_old_item_is_not_filtered_by_agent_age_gate() -> None:
     admission = decide_news_item_agent_admission(
         item=_item(

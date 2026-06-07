@@ -711,7 +711,7 @@ def test_terminalize_targets_deletes_hot_row_and_records_terminal_event(tmp_path
     assert row["final_reason_bucket"] == "domain_validation_failed"
 
 
-def test_cleanup_stale_brief_input_targets_deletes_only_currently_ineligible_brief_targets(tmp_path) -> None:
+def test_cleanup_stale_brief_input_targets_keeps_low_score_and_old_targets(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -723,6 +723,7 @@ def test_cleanup_stale_brief_input_targets_deletes_only_currently_ineligible_bri
             provider_item_id="provider-fresh-high",
             published_at_ms=now - 60_000,
             provider_score=95,
+            agent_admission_status="eligible",
         )
         _insert_news_item_for_brief_cleanup(
             conn,
@@ -730,6 +731,7 @@ def test_cleanup_stale_brief_input_targets_deletes_only_currently_ineligible_bri
             provider_item_id="provider-old-high",
             published_at_ms=now - (8 * 3_600_000) - 1,
             provider_score=95,
+            agent_admission_status="eligible",
         )
         _insert_news_item_for_brief_cleanup(
             conn,
@@ -737,12 +739,22 @@ def test_cleanup_stale_brief_input_targets_deletes_only_currently_ineligible_bri
             provider_item_id="provider-fresh-low",
             published_at_ms=now - 60_000,
             provider_score=79,
+            agent_admission_status="eligible",
+        )
+        _insert_news_item_for_brief_cleanup(
+            conn,
+            news_item_id="news-duplicate",
+            provider_item_id="provider-duplicate",
+            published_at_ms=now - 60_000,
+            provider_score=99,
+            agent_admission_status="exact_duplicate",
         )
         repo.enqueue_targets(
             [
                 {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-fresh-high"},
                 {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-old-high"},
                 {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-fresh-low"},
+                {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-duplicate"},
                 {"projection_name": "page", "target_kind": "news_item", "target_id": "news-old-high"},
             ],
             reason="unit",
@@ -751,14 +763,10 @@ def test_cleanup_stale_brief_input_targets_deletes_only_currently_ineligible_bri
 
         dry_run = repo.cleanup_stale_brief_input_targets(
             now_ms=now,
-            window_ms=8 * 3_600_000,
-            score_threshold=80,
             execute=False,
         )
         execute = repo.cleanup_stale_brief_input_targets(
             now_ms=now,
-            window_ms=8 * 3_600_000,
-            score_threshold=80,
             execute=True,
         )
         remaining = conn.execute(
@@ -771,14 +779,16 @@ def test_cleanup_stale_brief_input_targets_deletes_only_currently_ineligible_bri
     finally:
         conn.close()
 
-    assert dry_run["candidate_count"] == 2
+    assert dry_run["candidate_count"] == 1
     assert dry_run["deleted_count"] == 0
-    assert dry_run["reasons"] == {"below_score_threshold": 1, "published_too_old": 1}
-    assert execute["candidate_count"] == 2
-    assert execute["deleted_count"] == 2
-    assert execute["reasons"] == {"below_score_threshold": 1, "published_too_old": 1}
+    assert dry_run["reasons"] == {"exact_duplicate": 1}
+    assert execute["candidate_count"] == 1
+    assert execute["deleted_count"] == 1
+    assert execute["reasons"] == {"exact_duplicate": 1}
     assert [dict(row) for row in remaining] == [
         {"projection_name": "brief_input", "target_id": "news-fresh-high"},
+        {"projection_name": "brief_input", "target_id": "news-fresh-low"},
+        {"projection_name": "brief_input", "target_id": "news-old-high"},
         {"projection_name": "page", "target_id": "news-old-high"},
     ]
 
@@ -843,6 +853,7 @@ def _insert_news_item_for_brief_cleanup(
     provider_item_id: str,
     published_at_ms: int,
     provider_score: int,
+    agent_admission_status: str,
 ) -> None:
     now = 1_779_000_000_000
     conn.execute(
@@ -881,12 +892,17 @@ def _insert_news_item_for_brief_cleanup(
         INSERT INTO news_items (
           news_item_id, provider_item_id, source_id, source_domain, canonical_url,
           title, summary, body_text, language, published_at_ms, fetched_at_ms,
-          content_hash, title_fingerprint, provider_signal_json, created_at_ms, updated_at_ms
+          content_hash, title_fingerprint, provider_signal_json,
+          agent_admission_status, agent_admission_reason, agent_admission_json,
+          agent_admission_version, agent_representative_news_item_id,
+          agent_admission_computed_at_ms, created_at_ms, updated_at_ms
         )
         VALUES (
           %s, %s, 'source-opennews', '6551.io', %s,
           %s, 'Summary', 'Body', 'en', %s, %s,
-          %s, %s, %s, %s, %s
+          %s, %s, %s,
+          %s, %s, %s, 'news_item_agent_admission_market_v2', %s,
+          %s, %s, %s
         )
         """,
         (
@@ -899,6 +915,18 @@ def _insert_news_item_for_brief_cleanup(
             f"content-{news_item_id}",
             f"title {news_item_id}",
             Jsonb({"source": "provider", "status": "ready", "score": provider_score}),
+            agent_admission_status,
+            agent_admission_status,
+            Jsonb(
+                {
+                    "status": agent_admission_status,
+                    "reason": agent_admission_status,
+                    "version": "news_item_agent_admission_market_v2",
+                    "representative_news_item_id": news_item_id,
+                }
+            ),
+            news_item_id,
+            now,
             now,
             now,
         ),

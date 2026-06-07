@@ -221,7 +221,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     repair_news_agent_market_admission.add_argument("--since-ms", type=int, required=True)
     repair_news_agent_market_admission.add_argument("--until-ms", type=int, required=True)
-    repair_news_agent_market_admission.add_argument("--min-provider-score", type=int, default=80)
     repair_news_agent_market_admission.add_argument("--limit", type=_positive_int, default=500)
     repair_news_agent_market_admission_mode = repair_news_agent_market_admission.add_mutually_exclusive_group()
     repair_news_agent_market_admission_mode.add_argument("--dry-run", action="store_true", default=True)

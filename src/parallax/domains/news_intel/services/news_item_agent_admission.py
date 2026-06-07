@@ -10,8 +10,6 @@ from parallax.domains.news_intel.services.news_market_scope import infer_news_ma
 from parallax.domains.news_intel.services.news_material_delta import decide_news_material_delta
 from parallax.domains.news_intel.services.news_story_similarity import decide_news_story_similarity
 
-NEWS_ITEM_AGENT_MIN_PROVIDER_SCORE = 80
-
 NewsItemAgentAdmissionStatus = Literal[
     "eligible",
     "eligible_refresh",
@@ -19,7 +17,6 @@ NewsItemAgentAdmissionStatus = Literal[
     "similar_story_covered",
     "similar_story_burst",
     "materially_superseded",
-    "score_below_threshold",
     "source_suppressed",
     "operational_disabled",
     "needs_review",
@@ -63,7 +60,6 @@ def decide_news_item_agent_admission(
     fact_candidates: Sequence[Mapping[str, Any]],
     context: NewsItemAgentAdmissionContext,
     now_ms: int,
-    min_provider_score: int = NEWS_ITEM_AGENT_MIN_PROVIDER_SCORE,
 ) -> NewsItemAgentAdmission:
     news_item_id = str(item.get("news_item_id") or "")
     market_scope = infer_news_market_scope(
@@ -77,7 +73,6 @@ def decide_news_item_agent_admission(
     base = _base_gate(
         item=item,
         now_ms=now_ms,
-        min_provider_score=min_provider_score,
         basis=base_basis,
     )
     if base is not None:
@@ -149,7 +144,6 @@ def _base_gate(
     *,
     item: Mapping[str, Any],
     now_ms: int,
-    min_provider_score: int,
     basis: dict[str, Any],
 ) -> NewsItemAgentAdmission | None:
     news_item_id = str(item.get("news_item_id") or "")
@@ -161,12 +155,8 @@ def _base_gate(
         return _skip("source_suppressed", "source_suppressed", news_item_id, basis)
 
     provider_signal = _mapping(item.get("provider_signal_json"))
-    if str(provider_signal.get("source") or "").strip().lower() != "provider":
-        return _skip("needs_review", "source_not_provider_signal", news_item_id, basis)
-    score = _optional_int(provider_signal.get("score"))
-    basis["provider_score"] = score
-    if score is None or score < int(min_provider_score):
-        return _skip("score_below_threshold", "below_score_threshold", news_item_id, basis)
+    if provider_signal:
+        basis["provider_score"] = _optional_int(provider_signal.get("score"))
 
     published_at_ms = _optional_int(item.get("published_at_ms"))
     if published_at_ms is None:
@@ -279,7 +269,6 @@ def _optional_int(value: Any) -> int | None:
 
 
 __all__ = [
-    "NEWS_ITEM_AGENT_MIN_PROVIDER_SCORE",
     "NewsItemAgentAdmission",
     "NewsItemAgentAdmissionContext",
     "NewsItemAgentAdmissionStatus",

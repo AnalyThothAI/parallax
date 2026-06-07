@@ -172,8 +172,6 @@ def test_ops_news_dedup_commands_are_registered_without_compatibility_flags() ->
             "1000",
             "--until-ms",
             "2000",
-            "--min-provider-score",
-            "90",
             "--limit",
             "25",
             "--execute",
@@ -203,11 +201,9 @@ def test_ops_news_dedup_commands_are_registered_without_compatibility_flags() ->
     assert admission_repair_default.ops_command == "repair-news-agent-market-admission"
     assert admission_repair_default.since_ms == 1000
     assert admission_repair_default.until_ms == 2000
-    assert admission_repair_default.min_provider_score == 80
     assert admission_repair_default.limit == 500
     assert admission_repair_default.dry_run is True
     assert admission_repair_default.execute is False
-    assert admission_repair_execute.min_provider_score == 90
     assert admission_repair_execute.limit == 25
     assert admission_repair_execute.execute is True
     assert admission_repair_execute.dry_run is False
@@ -218,6 +214,7 @@ def test_ops_news_dedup_commands_are_registered_without_compatibility_flags() ->
     assert not hasattr(repair_execute, "raw_item_id")
     assert not hasattr(repair_execute, "include_legacy")
     assert not hasattr(admission_repair_execute, "analysis_admission_status")
+    assert not hasattr(admission_repair_execute, "min_provider_score")
     assert not hasattr(admission_repair_execute, "legacy_id")
 
     with pytest.raises(SystemExit):

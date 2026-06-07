@@ -3288,7 +3288,6 @@ class NewsRepository:
         *,
         since_ms: int,
         until_ms: int,
-        min_provider_score: int = 80,
         limit: int = 500,
     ) -> list[dict[str, Any]]:
         bounded_limit = max(0, min(int(limit), 500))
@@ -3298,7 +3297,11 @@ class NewsRepository:
             """
             WITH candidates AS (
               SELECT items.news_item_id,
-                     (items.provider_signal_json ->> 'score')::int AS provider_score,
+                     CASE
+                       WHEN COALESCE(items.provider_signal_json ->> 'score', '') ~ '^-?[0-9]+$'
+                       THEN (items.provider_signal_json ->> 'score')::int
+                       ELSE NULL
+                     END AS provider_score,
                      items.published_at_ms
                 FROM news_items AS items
                 JOIN news_sources AS sources ON sources.source_id = items.source_id
@@ -3306,13 +3309,6 @@ class NewsRepository:
                  AND sources.enabled = true
                  AND items.published_at_ms >= %s
                  AND items.published_at_ms <= %s
-                 AND COALESCE(items.provider_signal_json ->> 'source', '') = 'provider'
-                 AND COALESCE(items.provider_signal_json ->> 'score', '') ~ '^-?[0-9]+$'
-                 AND (items.provider_signal_json ->> 'score')::int >= %s
-                 AND (
-                   COALESCE(items.agent_admission_version, '') <> %s
-                   OR items.agent_admission_computed_at_ms IS NULL
-                 )
                  AND EXISTS (
                    SELECT 1
                      FROM news_item_observation_edges AS edges
@@ -3330,8 +3326,6 @@ class NewsRepository:
             (
                 int(since_ms),
                 int(until_ms),
-                int(min_provider_score),
-                NEWS_ITEM_AGENT_ADMISSION_VERSION,
                 bounded_limit,
             ),
         ).fetchall()
@@ -3348,7 +3342,13 @@ class NewsRepository:
             context = contexts_by_id.get(news_item_id)
             if context is None:
                 continue
-            candidates.append({**context, "provider_score": int(row["provider_score"])})
+            provider_score = row["provider_score"]
+            candidates.append(
+                {
+                    **context,
+                    "provider_score": int(provider_score) if provider_score is not None else None,
+                }
+            )
         return candidates
 
     def load_story_projection_payloads_for_items(self, *, news_item_ids: Sequence[str]) -> list[dict[str, Any]]:

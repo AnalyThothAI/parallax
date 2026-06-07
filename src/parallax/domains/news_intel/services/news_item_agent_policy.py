@@ -4,12 +4,6 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-from parallax.domains.news_intel.services.news_item_agent_admission import (
-    NEWS_ITEM_AGENT_MIN_PROVIDER_SCORE,
-)
-
-NEWS_ITEM_AGENT_BRIEF_MIN_PROVIDER_SCORE = NEWS_ITEM_AGENT_MIN_PROVIDER_SCORE
-
 
 def news_item_agent_brief_priority(
     *,
@@ -20,10 +14,7 @@ def news_item_agent_brief_priority(
         return 100
     score = _optional_int(provider_signal.get("score"))
     if score is not None:
-        base_priority = max(0, min(100, 100 - score))
-        if score < NEWS_ITEM_AGENT_BRIEF_MIN_PROVIDER_SCORE:
-            return base_priority + 100
-        return base_priority
+        return max(0, min(100, 100 - score))
     if str(provider_signal.get("status") or "").strip().lower() == "ready":
         return 25
     return 100
@@ -51,6 +42,5 @@ def _optional_int(value: Any) -> int | None:
 
 
 __all__ = [
-    "NEWS_ITEM_AGENT_BRIEF_MIN_PROVIDER_SCORE",
     "news_item_agent_brief_priority",
 ]

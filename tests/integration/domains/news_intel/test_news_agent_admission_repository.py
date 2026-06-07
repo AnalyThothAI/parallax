@@ -64,7 +64,7 @@ def test_page_row_persists_agent_admission_fields(tmp_path) -> None:
     assert listed[0]["agent_representative_news_item_id"] == "representative-page-row"
 
 
-def test_list_agent_admission_repair_candidates_includes_high_score_page_only_item(tmp_path) -> None:
+def test_list_agent_admission_repair_candidates_includes_page_only_items_without_score_gate(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -91,11 +91,15 @@ def test_list_agent_admission_repair_candidates_includes_high_score_page_only_it
 
     candidate_ids = [str(candidate["item"]["news_item_id"]) for candidate in candidates]
     assert page_only_id in candidate_ids
-    assert below_threshold_id not in candidate_ids
+    assert below_threshold_id in candidate_ids
     page_only_candidate = next(
         candidate for candidate in candidates if candidate["item"]["news_item_id"] == page_only_id
     )
+    low_score_candidate = next(
+        candidate for candidate in candidates if candidate["item"]["news_item_id"] == below_threshold_id
+    )
     assert page_only_candidate["provider_score"] == 88
+    assert low_score_candidate["provider_score"] == 79
     assert page_only_candidate["item"]["analysis_admission_status"] == "page_only"
 
 

@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-from parallax.domains.news_intel.services.news_item_agent_policy import (
-    NEWS_ITEM_AGENT_BRIEF_MIN_PROVIDER_SCORE,
-    news_item_agent_brief_priority,
-)
+from parallax.domains.news_intel.services.news_item_agent_policy import news_item_agent_brief_priority
 
 
 def _item(**overrides):
@@ -12,7 +9,7 @@ def _item(**overrides):
         "provider_signal_json": {
             "source": "provider",
             "status": "ready",
-            "score": NEWS_ITEM_AGENT_BRIEF_MIN_PROVIDER_SCORE,
+            "score": 80,
         },
     }
     item.update(overrides)
@@ -27,9 +24,9 @@ def test_news_item_agent_brief_priority_keeps_higher_provider_scores_first() -> 
     )
 
 
-def test_news_item_agent_brief_priority_pushes_below_floor_behind_ready_market_items() -> None:
+def test_news_item_agent_brief_priority_does_not_penalize_low_scores_beyond_sort_order() -> None:
     assert news_item_agent_brief_priority(
         item=_item(provider_signal_json={"source": "provider", "score": 79}),
-    ) > news_item_agent_brief_priority(
+    ) == news_item_agent_brief_priority(
         item=_item(provider_signal_json={"source": "provider", "score": 80}),
-    )
+    ) + 1
