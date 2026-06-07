@@ -14,11 +14,16 @@ from parallax.domains.news_intel.types.news_item_brief import (
     NewsItemBriefPayload,
 )
 from parallax.platform.agent_execution import AgentStageSpec
+from parallax.platform.agent_hashing import text_sha256
 
 
 @lru_cache(maxsize=1)
 def news_item_brief_instructions() -> str:
     return (Path(__file__).resolve().parents[1] / "prompts" / "news_item_brief.md").read_text(encoding="utf-8")
+
+
+def news_item_brief_prompt_text_hash() -> str:
+    return text_sha256(news_item_brief_instructions())
 
 
 def build_news_item_brief_stage(*, packet: NewsItemBriefInputPacket, run_id: str) -> AgentStageSpec:
@@ -44,4 +49,4 @@ def build_news_item_brief_stage(*, packet: NewsItemBriefInputPacket, run_id: str
     )
 
 
-__all__ = ["build_news_item_brief_stage", "news_item_brief_instructions"]
+__all__ = ["build_news_item_brief_stage", "news_item_brief_instructions", "news_item_brief_prompt_text_hash"]

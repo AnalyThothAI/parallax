@@ -14,6 +14,14 @@ from parallax.domains.news_intel.types.news_item_brief import (
 from parallax.platform.agent_hashing import json_sha256
 
 _ACTION_AUDIT_KEYS = frozenset({"tool_calls", "tools", "handoffs"})
+_PROVIDER_MARKET_IMPACT_SOURCE_KEYS = (
+    "label",
+    "target_id",
+    "symbol",
+    "ticker",
+    "display_symbol",
+    "observed_symbol",
+)
 
 
 class NewsItemBriefValidationResult(BaseModel):
@@ -119,7 +127,21 @@ def _source_backed_market_labels(packet: NewsItemBriefInputPacket) -> set[str]:
         labels.update(_norm(token) for token in re.findall(r"[A-Za-z0-9]{2,20}", fact.claim or ""))
         for target in fact.affected_targets:
             labels.update(_norm(value) for value in target.values() if isinstance(value, str))
+    if packet.provider_signal_evidence is not None:
+        for impact in packet.provider_signal_evidence.market_impacts:
+            labels.update(_source_values_from_provider_market_impact(impact))
     return {label for label in labels if label}
+
+
+def _source_values_from_provider_market_impact(value: Any) -> set[str]:
+    payload = value.model_dump(mode="json") if isinstance(value, BaseModel) else _as_dict(value)
+    labels: set[str] = set()
+    for key in _PROVIDER_MARKET_IMPACT_SOURCE_KEYS:
+        source_value = payload.get(key)
+        if source_value is None and not isinstance(value, Mapping):
+            source_value = getattr(value, key, None)
+        labels.add(_norm(source_value))
+    return labels
 
 
 def _walk_mapping_items(value: Any) -> list[tuple[str, Any]]:

@@ -30,6 +30,7 @@ from parallax.platform.agent_execution import (
 from parallax.platform.agent_hashing import (
     artifact_hash_for,
     json_sha256,
+    text_sha256,
     trace_id_for,
 )
 from parallax.platform.cancellation import cancellation_reason
@@ -142,6 +143,7 @@ class AgentExecutionGateway:
             schema_version=stage.schema_version,
             runtime_version=RUNTIME_VERSION,
             output_schema_hash=json_sha256(output_schema.json_schema()),
+            prompt_text_hash=text_sha256(stage.instructions),
         )
         trace_source = json_sha256(
             {

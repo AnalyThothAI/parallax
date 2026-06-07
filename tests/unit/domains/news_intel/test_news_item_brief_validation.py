@@ -57,6 +57,39 @@ def _packet():
     )
 
 
+def _provider_private_company_packet():
+    return build_news_item_brief_input_packet(
+        item={
+            "news_item_id": "item-provider-private-company",
+            "title": "Private share sale values rocket manufacturer above prior round",
+            "summary": "Provider evidence identifies the impacted private-company market label.",
+            "body_text": "The article text does not include the provider ticker label.",
+            "published_at_ms": 1_779_000_000_000,
+            "content_hash": "sha256:provider-private-company",
+            "provider_signal_json": {
+                "source": "provider",
+                "provider": "opennews",
+                "status": "ready",
+                "direction": "bullish",
+                "score": 92,
+            },
+            "provider_token_impacts_json": [
+                {"symbol": "SPCX", "market_type": "private_company", "score": 92, "signal": "long", "grade": "A"}
+            ],
+        },
+        token_mentions=[],
+        fact_candidates=[],
+        agent_config=NewsItemBriefAgentConfig(
+            model="gpt-5-mini",
+            artifact_version_hash="artifact-v1",
+            prompt_version="prompt-v1",
+            schema_version="schema-v1",
+            validator_version="validator-v1",
+            guardrail_version="guardrail-v1",
+        ),
+    )
+
+
 def _ready_payload(**overrides: Any) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "status": "ready",
@@ -133,6 +166,54 @@ def test_validation_caps_unsupported_market_impact_gaps_instead_of_blocking_publ
     assert result.payload is not None
     assert result.payload["market_impacts"] == _ready_payload()["market_impacts"]
     assert len(result.payload["data_gaps"]) == 12
+
+
+def test_validation_retains_provider_backed_private_company_market_impact_without_token_or_fact() -> None:
+    packet = _provider_private_company_packet()
+    provider_impact = {
+        "label": "SPCX",
+        "market_type": "private_company",
+        "target_type": "private_company",
+        "target_id": "private_company:spcx",
+        "impact_direction": "bullish",
+        "reason_zh": "OpenNews provider impact evidence identifies SPCX.",
+        "evidence_refs": ["provider:impact:SPCX"],
+    }
+
+    result = validate_news_item_brief_output(
+        payload=_ready_payload(market_impacts=[provider_impact], evidence_refs=["provider:impact:SPCX"]),
+        packet=packet,
+        audit={},
+    )
+
+    assert result.publishable is True
+    assert result.payload is not None
+    assert result.payload["market_impacts"] == [provider_impact]
+    assert all("SPCX" not in gap["description_zh"] for gap in result.payload["data_gaps"])
+
+
+def test_validation_drops_generic_provider_market_type_as_unsupported_market_label() -> None:
+    packet = _provider_private_company_packet()
+    generic_impact = {
+        "label": "private_company",
+        "market_type": "private_company",
+        "target_type": "private_company",
+        "target_id": None,
+        "impact_direction": "bullish",
+        "reason_zh": "Provider market_type is generic metadata, not a source-backed market object.",
+        "evidence_refs": ["provider:impact:SPCX"],
+    }
+
+    result = validate_news_item_brief_output(
+        payload=_ready_payload(market_impacts=[generic_impact], evidence_refs=["provider:impact:SPCX"]),
+        packet=packet,
+        audit={},
+    )
+
+    assert result.publishable is True
+    assert result.payload is not None
+    assert result.payload["market_impacts"] == []
+    assert any("private_company" in gap["description_zh"] for gap in result.payload["data_gaps"])
 
 
 def test_valid_insufficient_payload_is_publishable_when_data_gaps_explain_missing_evidence() -> None:

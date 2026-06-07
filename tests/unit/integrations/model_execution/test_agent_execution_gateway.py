@@ -7,6 +7,7 @@ import pytest
 from pydantic import BaseModel
 
 from parallax.integrations.model_execution.execution_gateway import AgentExecutionGateway
+from parallax.integrations.model_execution.output_schema import StrictJsonOutputSchema
 from parallax.platform.agent_execution import (
     AgentCapacityReservation,
     AgentExecutionCancelled,
@@ -17,7 +18,9 @@ from parallax.platform.agent_execution import (
     AgentRuntimeDefaultsPolicy,
     AgentRuntimePolicy,
     AgentStageSpec,
+    RUNTIME_VERSION,
 )
+from parallax.platform.agent_hashing import artifact_hash_for, json_sha256, text_sha256
 
 
 class Payload(BaseModel):
@@ -196,6 +199,30 @@ def _gateway(
         trace_include_sensitive_data=False,
         policy=policy or _policy(),
     )
+
+
+def test_request_audit_artifact_hash_includes_stage_instructions() -> None:
+    policy = _policy()
+    gateway = _gateway(policy=policy)
+    spec = _spec().model_copy(update={"instructions": "Return JSON with value alpha."})
+    changed = spec.model_copy(update={"instructions": "Return JSON with value beta."})
+    capability_profile = policy.capability_for_lane(spec.lane)
+    expected_hash = artifact_hash_for(
+        model=gateway.model_for_lane(spec.lane),
+        provider_family=capability_profile.provider_family.value,
+        request_options_hash=json_sha256(capability_profile.request_options),
+        prompt_version=spec.prompt_version,
+        schema_version=spec.schema_version,
+        runtime_version=RUNTIME_VERSION,
+        output_schema_hash=json_sha256(StrictJsonOutputSchema(spec.output_type).json_schema()),
+        prompt_text_hash=text_sha256(spec.instructions),
+    )
+
+    audit = gateway.request_audit(spec)
+    changed_audit = gateway.request_audit(changed)
+
+    assert audit.artifact_version_hash == expected_hash
+    assert audit.artifact_version_hash != changed_audit.artifact_version_hash
 
 
 def test_execute_returns_normalized_audit_using_json_object_client() -> None:

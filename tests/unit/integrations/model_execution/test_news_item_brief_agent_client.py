@@ -19,7 +19,7 @@ from parallax.integrations.model_execution.news_item_brief_agent_client import (
 )
 from parallax.integrations.model_execution.output_schema import StrictJsonOutputSchema
 from parallax.platform.agent_execution import RUNTIME_VERSION
-from parallax.platform.agent_hashing import artifact_hash_for, json_sha256
+from parallax.platform.agent_hashing import artifact_hash_for, json_sha256, text_sha256
 
 
 def test_news_item_brief_client_builds_stage_and_delegates_reservation() -> None:
@@ -40,6 +40,15 @@ def test_news_item_brief_client_builds_stage_and_delegates_reservation() -> None
     assert stage.agent_name == NEWS_ITEM_BRIEF_AGENT_NAME
     assert client.model == "gpt-news"
     assert stage.output_type is NewsItemBriefPayload
+    expected_artifact_hash = artifact_hash_for(
+        model=client.model,
+        prompt_version=stage.prompt_version,
+        schema_version=stage.schema_version,
+        runtime_version=RUNTIME_VERSION,
+        output_schema_hash=json_sha256(StrictJsonOutputSchema(stage.output_type).json_schema()),
+        prompt_text_hash=text_sha256(stage.instructions),
+    )
+    assert client.artifact_version_hash == expected_artifact_hash
 
 
 def test_news_item_brief_client_executes_strict_payload_with_caller_reservation() -> None:
@@ -95,6 +104,7 @@ class FakeGateway:
             schema_version=stage.schema_version,
             runtime_version=RUNTIME_VERSION,
             output_schema_hash=json_sha256(output_schema.json_schema()),
+            prompt_text_hash=text_sha256(stage.instructions),
         )
         return SimpleNamespace(
             model_dump=lambda mode="json": {
