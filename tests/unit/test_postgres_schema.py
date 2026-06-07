@@ -212,8 +212,8 @@ NEWS_MATERIAL_DUPLICATE_HARD_CUT_MIGRATION = Path(
 NEWS_ANALYSIS_STORY_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260605_0149_news_analysis_story_hard_cut.py"
 )
-NEWS_PAGE_SEARCH_DOCUMENT_DEPLOYED_BRIDGE_MIGRATION = Path(
-    "src/parallax/platform/db/alembic/versions/20260605_0151_news_page_search_document_deployed_bridge.py"
+NEWS_PAGE_SEARCH_DOCUMENT_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260606_0152_news_page_search_document.py"
 )
 NEWS_AGENT_MARKET_ADMISSION_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260606_0151_news_agent_market_admission_hard_cut.py"
@@ -1992,12 +1992,12 @@ def test_news_analysis_story_hard_cut_adds_columns_and_indexes_without_story_tab
 
 
 def test_news_agent_market_admission_hard_cut_adds_columns_and_indexes() -> None:
-    assert NEWS_PAGE_SEARCH_DOCUMENT_DEPLOYED_BRIDGE_MIGRATION.exists(), (
-        f"{NEWS_PAGE_SEARCH_DOCUMENT_DEPLOYED_BRIDGE_MIGRATION} missing; bridge deployed 20260605_0151 revision"
+    assert NEWS_PAGE_SEARCH_DOCUMENT_MIGRATION.exists(), (
+        f"{NEWS_PAGE_SEARCH_DOCUMENT_MIGRATION} missing; add News page search document migration"
     )
-    bridge_text = NEWS_PAGE_SEARCH_DOCUMENT_DEPLOYED_BRIDGE_MIGRATION.read_text()
-    assert 'revision = "20260605_0151"' in bridge_text
-    assert 'down_revision = "20260605_0150"' in bridge_text
+    search_text = NEWS_PAGE_SEARCH_DOCUMENT_MIGRATION.read_text()
+    assert 'revision = "20260606_0152"' in search_text
+    assert 'down_revision = "20260606_0151"' in search_text
 
     assert NEWS_AGENT_MARKET_ADMISSION_HARD_CUT_MIGRATION.exists(), (
         f"{NEWS_AGENT_MARKET_ADMISSION_HARD_CUT_MIGRATION} missing; add agent admission hard-cut migration"

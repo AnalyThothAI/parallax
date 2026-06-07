@@ -171,10 +171,11 @@ class NewsItemBriefFactLane(BaseModel):
     evidence_quote: str = Field(default="", max_length=500)
 
 
-class NewsItemBriefProviderTokenImpact(BaseModel):
+class NewsItemBriefProviderMarketImpact(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    symbol: str = Field(min_length=1, max_length=32)
+    label: str = Field(min_length=1, max_length=160)
+    symbol: str | None = Field(default=None, max_length=64)
     market_type: str | None = Field(default=None, max_length=64)
     score: int | None = Field(default=None, ge=0, le=100)
     direction: NewsItemBriefDirection = "neutral"
@@ -195,7 +196,7 @@ class NewsItemBriefProviderSignalEvidence(BaseModel):
     summary_zh: str = Field(default="", max_length=600)
     summary_en: str = Field(default="", max_length=600)
     method: str = Field(default="", max_length=128)
-    token_impacts: list[NewsItemBriefProviderTokenImpact] = Field(default_factory=list, max_length=12)
+    market_impacts: list[NewsItemBriefProviderMarketImpact] = Field(default_factory=list, max_length=12)
     duplicate_count: int = Field(default=1, ge=1, le=1000)
     source_ids: list[Annotated[str, Field(min_length=1, max_length=160)]] = Field(default_factory=list, max_length=12)
     source_domains: list[Annotated[str, Field(min_length=1, max_length=255)]] = Field(
@@ -291,8 +292,8 @@ __all__ = [
     "NewsItemBriefInputPacket",
     "NewsItemBriefNewsItem",
     "NewsItemBriefPayload",
+    "NewsItemBriefProviderMarketImpact",
     "NewsItemBriefProviderSignalEvidence",
-    "NewsItemBriefProviderTokenImpact",
     "NewsItemBriefSideStrength",
     "NewsItemBriefSideView",
     "NewsItemBriefSource",

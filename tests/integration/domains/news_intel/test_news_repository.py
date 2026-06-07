@@ -4279,6 +4279,187 @@ def test_list_news_page_rows_filters_by_query_text(tmp_path) -> None:
     assert [row["row_id"] for row in rows] == ["row-matching"]
 
 
+def test_list_news_page_rows_filters_by_source_search_text(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        matching_item_id = _insert_source_provider_and_item(
+            repo,
+            source_id="opennews-realtime",
+            source_domain="6551.io",
+            source_item_key="opennews-source",
+            title="Exchange listing update",
+        )
+        other_item_id = _insert_source_provider_and_item(
+            repo,
+            source_id="other-source",
+            source_domain="example.com",
+            source_item_key="other-source",
+            title="Protocol governance update",
+        )
+        repo.replace_page_rows_for_items(
+            news_item_ids=[matching_item_id, other_item_id],
+            rows=[
+                {
+                    **_page_row("row-opennews", matching_item_id, source_id="opennews-realtime"),
+                    "headline": "Exchange listing update",
+                    "summary": "Market structure note.",
+                    "source_domain": "6551.io",
+                    "source": {
+                        "source_id": "opennews-realtime",
+                        "provider_type": "opennews",
+                        "source_domain": "6551.io",
+                        "source_name": "OpenNews",
+                    },
+                    "source_json": {
+                        "source_id": "opennews-realtime",
+                        "provider_type": "opennews",
+                        "source_domain": "6551.io",
+                        "source_name": "OpenNews",
+                    },
+                },
+                {
+                    **_page_row("row-other-source", other_item_id, source_id="other-source"),
+                    "headline": "Protocol governance update",
+                    "summary": "Community vote note.",
+                    "source_domain": "example.com",
+                    "source": {
+                        "source_id": "other-source",
+                        "provider_type": "rss",
+                        "source_domain": "example.com",
+                        "source_name": "Example",
+                    },
+                    "source_json": {
+                        "source_id": "other-source",
+                        "provider_type": "rss",
+                        "source_domain": "example.com",
+                        "source_name": "Example",
+                    },
+                },
+            ],
+        )
+
+        domain_rows = repo.list_news_page_rows(limit=10, q="6551.io")
+        provider_rows = repo.list_news_page_rows(limit=10, q="opennews")
+    finally:
+        conn.close()
+
+    assert [row["row_id"] for row in domain_rows] == ["row-opennews"]
+    assert [row["row_id"] for row in provider_rows] == ["row-opennews"]
+
+
+def test_list_news_page_rows_searches_token_lane_symbols_without_json_noise(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        matching_item_id = _insert_source_provider_and_item(repo, source_item_key="zec-token", title="Privacy update")
+        other_item_id = _insert_source_provider_and_item(repo, source_item_key="other-token", title="Layer two update")
+        repo.replace_page_rows_for_items(
+            news_item_ids=[matching_item_id, other_item_id],
+            rows=[
+                {
+                    **_page_row("row-zec", matching_item_id, source_id="source-1"),
+                    "headline": "Privacy update",
+                    "summary": "Mining pool note.",
+                    "token_lanes": [
+                        {
+                            "lane": "resolved",
+                            "resolution_status": "known_symbol",
+                            "symbol": "ZEC",
+                            "target_id": "asset:zec",
+                            "reason_codes": ["json-noise-marker"],
+                        }
+                    ],
+                    "token_lanes_json": [
+                        {
+                            "lane": "resolved",
+                            "resolution_status": "known_symbol",
+                            "symbol": "ZEC",
+                            "target_id": "asset:zec",
+                            "reason_codes": ["json-noise-marker"],
+                        }
+                    ],
+                },
+                {
+                    **_page_row("row-other-token", other_item_id, source_id="source-1"),
+                    "headline": "Layer two update",
+                    "summary": "Bridge note.",
+                    "token_lanes": [
+                        {
+                            "lane": "resolved",
+                            "resolution_status": "known_symbol",
+                            "symbol": "ARB",
+                            "target_id": "asset:arb",
+                        }
+                    ],
+                    "token_lanes_json": [
+                        {
+                            "lane": "resolved",
+                            "resolution_status": "known_symbol",
+                            "symbol": "ARB",
+                            "target_id": "asset:arb",
+                        }
+                    ],
+                },
+            ],
+        )
+
+        symbol_rows = repo.list_news_page_rows(limit=10, q="zec")
+        json_noise_rows = repo.list_news_page_rows(limit=10, q="json-noise-marker")
+    finally:
+        conn.close()
+
+    assert [row["row_id"] for row in symbol_rows] == ["row-zec"]
+    assert json_noise_rows == []
+
+
+def test_build_news_page_row_populates_deterministic_search_text() -> None:
+    row = build_news_page_row(
+        item={
+            "news_item_id": "news-search-doc",
+            "title": "ZEC listing update",
+            "summary": "OpenNews reports an exchange listing.",
+            "source_domain": "6551.io",
+            "source_id": "opennews-realtime",
+            "provider_type": "opennews",
+            "source_name": "OpenNews",
+            "published_at_ms": NOW_MS,
+        },
+        token_mentions=[
+            {
+                "resolution_status": "known_symbol",
+                "display_symbol": "ZEC",
+                "target_id": "asset:zec",
+            }
+        ],
+        fact_candidates=[
+            {
+                "fact_candidate_id": "fact-1",
+                "event_type": "exchange_listing",
+                "claim": "ZEC listed on an exchange",
+                "validation_status": "accepted",
+            }
+        ],
+        computed_at_ms=NOW_MS + 100,
+    )
+
+    search_text = row["search_text"]
+
+    assert "ZEC listing update" in search_text
+    assert "OpenNews reports an exchange listing." in search_text
+    assert "6551.io" in search_text
+    assert "opennews-realtime" in search_text
+    assert "opennews" in search_text
+    assert "ZEC" in search_text
+    assert "asset:zec" in search_text
+    assert "known_symbol" in search_text
+    assert "exchange_listing" in search_text
+    assert "accepted" in search_text
+    assert "ZEC listed on an exchange" in search_text
+
+
 def test_page_projection_loader_includes_source_classification_changes(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:

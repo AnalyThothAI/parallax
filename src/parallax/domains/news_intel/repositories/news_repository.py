@@ -34,6 +34,7 @@ from parallax.domains.news_intel.services.news_material_identity import (
     provider_symbol_set,
     symbol_sets_compatible,
 )
+from parallax.domains.news_intel.services.news_page_projection import build_news_page_search_text
 from parallax.domains.news_intel.services.news_source_role_rank import source_role_rank_case_sql
 from parallax.domains.news_intel.services.news_story_identity import NewsStoryIdentity
 from parallax.domains.news_intel.services.news_url_identity import public_url_identity_policy, url_identity_kind
@@ -4665,13 +4666,14 @@ class NewsRepository:
         updated = 0
         unchanged = 0
         for payload in row_payloads:
+            payload["search_text"] = build_news_page_search_text(payload)
             payload["payload_hash"] = _stable_payload_hash(payload, exclude=_PUBLICATION_METADATA_FIELDS)
             returned = self.conn.execute(
                 """
                 INSERT INTO news_page_rows (
                   row_id, news_item_id, representative_news_item_id, story_key, story_json,
                   latest_at_ms, lifecycle_status,
-                  headline, summary, source_domain, canonical_url, token_lanes_json,
+                  headline, summary, source_domain, canonical_url, search_text, token_lanes_json,
                   fact_lanes_json, content_class, content_tags_json, content_classification_json,
                   source_json, signal_json, token_impacts_json, agent_brief_json,
                   agent_status, agent_brief_computed_at_ms, computed_at_ms, projection_version,
@@ -4683,7 +4685,8 @@ class NewsRepository:
                 VALUES (
                   %(row_id)s, %(news_item_id)s, %(representative_news_item_id)s, %(story_key)s, %(story_json)s,
                   %(latest_at_ms)s, %(lifecycle_status)s,
-                  %(headline)s, %(summary)s, %(source_domain)s, %(canonical_url)s, %(token_lanes_json)s,
+                  %(headline)s, %(summary)s, %(source_domain)s, %(canonical_url)s, %(search_text)s,
+                  %(token_lanes_json)s,
                   %(fact_lanes_json)s, %(content_class)s, %(content_tags_json)s, %(content_classification_json)s,
                   %(source_json)s, %(signal_json)s, %(token_impacts_json)s,
                   %(agent_brief_json)s, %(agent_status)s, %(agent_brief_computed_at_ms)s,
@@ -4705,6 +4708,7 @@ class NewsRepository:
                   summary = EXCLUDED.summary,
                   source_domain = EXCLUDED.source_domain,
                   canonical_url = EXCLUDED.canonical_url,
+                  search_text = EXCLUDED.search_text,
                   token_lanes_json = EXCLUDED.token_lanes_json,
                   fact_lanes_json = EXCLUDED.fact_lanes_json,
                   content_class = EXCLUDED.content_class,
@@ -4967,10 +4971,10 @@ def _news_page_row_filter_sql(
     if min_score is not None:
         filters.append("COALESCE(NULLIF(signal_json -> 'display_signal' ->> 'score', '')::int, -1) >= %s")
         filter_params.append(int(min_score))
-    if q:
-        filters.append("(headline ILIKE %s OR summary ILIKE %s OR token_lanes_json::text ILIKE %s)")
-        needle = f"%{str(q).strip()}%"
-        filter_params.extend([needle, needle, needle])
+    query_text = str(q).strip() if q is not None else ""
+    if query_text:
+        filters.append("search_text ILIKE %s")
+        filter_params.append(f"%{query_text}%")
     filter_sql = " AND " + " AND ".join(filters) if filters else ""
     return filter_sql, filter_params
 
@@ -4982,6 +4986,7 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     payload["headline"] = str(payload.get("headline") or "")
     payload["canonical_url"] = str(payload.get("canonical_url") or "")
     payload["summary"] = str(payload.get("summary") or "")
+    payload["search_text"] = str(payload.get("search_text") or "")
     payload["token_lanes_json"] = _json(payload.get("token_lanes_json") or payload.get("token_lanes") or [])
     payload["fact_lanes_json"] = _json(payload.get("fact_lanes_json") or payload.get("fact_lanes") or [])
     payload["representative_news_item_id"] = str(

@@ -341,11 +341,11 @@ def _source_backed_entity_key_support(packet: NewsItemBriefInputPacket) -> _Sour
             _string_keys(provider.provider),
             domains=set(),
         )
-        for impact in provider.token_impacts:
+        for impact in provider.market_impacts:
             _add_structured_source_keys(
                 structured_by_domain,
                 domainless_structured_keys,
-                _string_keys(impact.symbol),
+                _string_keys(impact.label, impact.symbol),
                 domains=_provider_impact_domains(impact.market_type),
             )
 
@@ -438,7 +438,7 @@ def _source_backed_domains(packet: NewsItemBriefInputPacket) -> set[str]:
         for target in fact.affected_targets:
             domains.update(_domains_in_mapping(target))
     if packet.provider_signal_evidence is not None:
-        for impact in packet.provider_signal_evidence.token_impacts:
+        for impact in packet.provider_signal_evidence.market_impacts:
             domains.update(_provider_impact_domains(impact.market_type))
     proxy_source_keys = _domain_proxy_source_keys(packet, domain="crypto")
     if proxy_source_keys & _domain_proxy_keys("crypto"):
@@ -664,10 +664,10 @@ def _entity_specific_descriptor_source_keys(
             if _domains_allow_descriptor_source(target_domains, candidate_domains):
                 keys.update(_mapping_value_keys(target))
     if packet.provider_signal_evidence is not None:
-        for impact in packet.provider_signal_evidence.token_impacts:
+        for impact in packet.provider_signal_evidence.market_impacts:
             impact_domains = _provider_impact_domains(impact.market_type)
             if impact_domains & candidate_domains:
-                keys.update(_string_keys(impact.symbol))
+                keys.update(_string_keys(impact.label, impact.symbol))
     return keys
 
 
@@ -698,9 +698,9 @@ def _domain_proxy_source_keys(packet: NewsItemBriefInputPacket, *, domain: str) 
         provider = packet.provider_signal_evidence
         keys.update(_text_keys(provider.summary_zh))
         keys.update(_text_keys(provider.summary_en))
-        for impact in provider.token_impacts:
+        for impact in provider.market_impacts:
             if domain in _provider_impact_domains(impact.market_type):
-                keys.update(_string_keys(impact.symbol))
+                keys.update(_string_keys(impact.label, impact.symbol))
     return keys
 
 

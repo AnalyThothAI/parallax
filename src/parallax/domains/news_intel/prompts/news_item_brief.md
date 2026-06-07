@@ -60,7 +60,7 @@ For high-provider-score or admitted market-wide news, write the analytical field
 - `bull_view` and `bear_view`: keep both sides source-backed, including why the opposite side may still matter.
 - `watch_triggers` and `invalidation_conditions`: use observable follow-ups only, not trading instructions.
 
-Treat provider scores, provider token impacts, and agent admission metadata as inputs, not final truth. If the packet is thin, still summarize the source-backed change and put the uncertainty in `data_gaps`.
+Treat provider scores, provider-native market impact evidence, and agent admission metadata as inputs, not final truth. If the packet is thin, still summarize the source-backed change and put the uncertainty in `data_gaps`.
 
 # Trading Boundary
 

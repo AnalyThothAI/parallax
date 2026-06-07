@@ -11,8 +11,8 @@ from parallax.domains.news_intel.types.news_item_brief import (
     NewsItemBriefFactLane,
     NewsItemBriefInputPacket,
     NewsItemBriefNewsItem,
+    NewsItemBriefProviderMarketImpact,
     NewsItemBriefProviderSignalEvidence,
-    NewsItemBriefProviderTokenImpact,
     NewsItemBriefSource,
 )
 from parallax.platform.agent_hashing import json_sha256
@@ -20,7 +20,7 @@ from parallax.platform.agent_hashing import json_sha256
 BODY_EXCERPT_MAX_CHARS = 2000
 MAX_ENTITY_LANES = 50
 MAX_FACT_LANES = 50
-MAX_PROVIDER_TOKEN_IMPACTS = 12
+MAX_PROVIDER_MARKET_IMPACTS = 12
 MAX_PROVIDER_AGGREGATION_VALUES = 12
 PROVIDER_SUMMARY_MAX_CHARS = 600
 
@@ -240,7 +240,7 @@ def _provider_signal_evidence(item: Mapping[str, Any]) -> NewsItemBriefProviderS
     provider_signal = _json_object(item.get("provider_signal_json"))
     provider_impacts = [
         impact
-        for impact in (_provider_token_impact(row) for row in _json_list(item.get("provider_token_impacts_json")))
+        for impact in (_provider_market_impact(row) for row in _json_list(item.get("provider_token_impacts_json")))
         if impact is not None
     ]
     has_provider_signal = str(provider_signal.get("source") or "").strip().lower() == "provider"
@@ -257,7 +257,7 @@ def _provider_signal_evidence(item: Mapping[str, Any]) -> NewsItemBriefProviderS
         summary_zh=_bounded(provider_signal.get("summary_zh"), PROVIDER_SUMMARY_MAX_CHARS),
         summary_en=_bounded(provider_signal.get("summary_en"), PROVIDER_SUMMARY_MAX_CHARS),
         method=_bounded(provider_signal.get("method") or "provider.signal", 128),
-        token_impacts=sorted(provider_impacts, key=_provider_impact_sort_key)[:MAX_PROVIDER_TOKEN_IMPACTS],
+        market_impacts=sorted(provider_impacts, key=_provider_impact_sort_key)[:MAX_PROVIDER_MARKET_IMPACTS],
         duplicate_count=_bounded_count(item.get("duplicate_count")),
         source_ids=_bounded_string_list(item.get("source_ids_json"), 160),
         source_domains=_bounded_string_list(item.get("source_domains_json"), 255),
@@ -268,14 +268,16 @@ def _provider_signal_evidence(item: Mapping[str, Any]) -> NewsItemBriefProviderS
     )
 
 
-def _provider_token_impact(row: Any) -> NewsItemBriefProviderTokenImpact | None:
+def _provider_market_impact(row: Any) -> NewsItemBriefProviderMarketImpact | None:
     payload = _json_object(row)
-    symbol = _bounded(payload.get("symbol"), 32).upper()
-    if not symbol:
+    label = _bounded(payload.get("label") or payload.get("symbol") or payload.get("name"), 160).upper()
+    if not label:
         return None
+    symbol = _optional_bounded(payload.get("symbol"), 64)
     signal = _optional_bounded(payload.get("signal"), 32)
-    return NewsItemBriefProviderTokenImpact(
-        symbol=symbol,
+    return NewsItemBriefProviderMarketImpact(
+        label=label,
+        symbol=symbol.upper() if symbol else None,
         market_type=_optional_bounded(payload.get("market_type"), 64),
         score=_optional_score(payload.get("score")),
         direction=_provider_direction(payload.get("direction") or signal),
@@ -284,8 +286,8 @@ def _provider_token_impact(row: Any) -> NewsItemBriefProviderTokenImpact | None:
     )
 
 
-def _provider_impact_sort_key(row: NewsItemBriefProviderTokenImpact) -> tuple[int, str]:
-    return (-(row.score if row.score is not None else -1), row.symbol)
+def _provider_impact_sort_key(row: NewsItemBriefProviderMarketImpact) -> tuple[int, str]:
+    return (-(row.score if row.score is not None else -1), row.label)
 
 
 def _evidence_refs(
@@ -306,7 +308,7 @@ def _evidence_refs(
     refs.extend(f"entity:{row.entity_id}" for row in entity_lanes if row.entity_id)
     if provider_signal_evidence is not None:
         refs.append("provider:signal")
-        refs.extend(f"provider:token:{row.symbol}" for row in provider_signal_evidence.token_impacts if row.symbol)
+        refs.extend(f"provider:impact:{row.label}" for row in provider_signal_evidence.market_impacts if row.label)
     return _stable_unique(refs)
 
 
@@ -370,7 +372,7 @@ def _provider_market_scope(provider_signal_evidence: NewsItemBriefProviderSignal
         return []
     return [
         domain
-        for domain in (_market_domain(impact.market_type) for impact in provider_signal_evidence.token_impacts)
+        for domain in (_market_domain(impact.market_type) for impact in provider_signal_evidence.market_impacts)
         if domain
     ]
 

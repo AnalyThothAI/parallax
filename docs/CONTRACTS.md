@@ -182,13 +182,14 @@ News Intel contract:
   `story`), provider token impact rows (`token_impacts`), compact source
   metadata (`provider_type`, `source_role`, `trust_tier`, `coverage_tags`,
   `source_quality_status`), item content classification (`content_class`,
-  `content_tags`, `content_classification`), legacy analysis admission fields
-  (`analysis_admission_status`, `analysis_admission_reason`,
-  `analysis_admission`), market-wide agent admission fields
+  `content_tags`, `content_classification`), deterministic page/material
+  classification fields (`analysis_admission_status`,
+  `analysis_admission_reason`, `analysis_admission`), market-wide agent
+  admission fields
   (`agent_admission_status`, `agent_admission_reason`, `agent_admission`),
   compact `agent_brief`, and provider/source metadata. `analysis_admission_*`
-  remains crypto-analysis/push diagnostic context and is not the News Item
-  Brief gate. `agent_admission_*` records whether the high-score market item
+  is not the News Item Brief gate or an alert/push fallback.
+  `agent_admission_*` records whether the high-score market item
   was eligible, skipped as an exact duplicate, or covered by a similar story.
   `signal` is an explicit envelope: `signal.display_signal` is the row-level
   display choice, `signal.provider_signal` is provider-native signal evidence,
@@ -223,8 +224,8 @@ News Intel contract:
   source policy keys hard-fail configuration instead of becoming compatibility
   behavior. Provider tokens are not exposed through this status route.
 - `/api/news/items/{news_item_id}` returns deterministic extraction facts plus
-  canonical signal/token-impact facts, story membership, legacy analysis
-  diagnostics, market-wide agent admission, the full current item brief when
+  canonical signal/token-impact facts, story membership, page/material
+  classification diagnostics, market-wide agent admission, the full current item brief when
   one exists, and a sanitized latest run summary. If only retired brief
   artifacts exist, the current brief is absent or pending; retired agent fields
   and old research-tool payloads are never exposed through the public

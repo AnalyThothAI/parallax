@@ -46,7 +46,7 @@ model.
 
 `NewsItemBriefWorker` remains the only runtime writer for
 `news_item_agent_runs` and `news_item_agent_briefs`. It rechecks deterministic
-market-wide agent admission after claiming work and does not use legacy
+market-wide agent admission after claiming work and does not use
 `analysis_admission_status` as the News Item Brief gate.
 
 ## Runtime Flow

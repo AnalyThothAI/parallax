@@ -272,7 +272,7 @@ def _crypto_market_scope_only_packet():
             "title": "Broad crypto market update without asset-specific support",
             "summary": "The report discusses crypto market conditions without naming a specific token.",
             "body_text": (
-                "No provider token impact, fact target, entity lane, or asset-specific source text is present."
+                "No provider market impact, fact target, entity lane, or asset-specific source text is present."
             ),
             "published_at_ms": 1_779_000_000_000,
             "content_hash": "sha256:crypto-market-scope-only",
@@ -344,7 +344,7 @@ def _provider_wlfi_packet():
     return build_news_item_brief_input_packet(
         item={
             "news_item_id": "item-provider-wlfi",
-            "title": "Provider flags token impact",
+            "title": "Provider flags market impact",
             "summary": "The source text does not name the affected crypto asset directly.",
             "body_text": "Provider evidence supplies the token-specific impact.",
             "published_at_ms": 1_779_000_000_000,
@@ -812,7 +812,7 @@ def test_validation_rejects_btc_proxy_when_only_crypto_market_scope_is_source_ba
     assert {"code": "unsupported_entity", "message": "Bitcoin"} in result.errors
 
 
-def test_validation_allows_btc_proxy_when_provider_token_impact_sources_symbol() -> None:
+def test_validation_allows_btc_proxy_when_provider_market_impact_sources_symbol() -> None:
     packet = _provider_btc_packet()
     payload = _ready_payload(
         direction="mixed",
@@ -821,22 +821,22 @@ def test_validation_allows_btc_proxy_when_provider_token_impact_sources_symbol()
         market_domains=["crypto"],
         bull_view={
             "strength": "moderate",
-            "thesis_zh": "provider token impact 明确给出 BTC。",
-            "evidence_refs": ["provider:token:BTC"],
+            "thesis_zh": "provider market impact 明确给出 BTC。",
+            "evidence_refs": ["provider:impact:BTC"],
         },
         bear_view={
             "strength": "weak",
-            "thesis_zh": "provider token impact 仍需后续市场反应确认。",
+            "thesis_zh": "provider market impact 仍需后续市场反应确认。",
             "evidence_refs": ["item:summary"],
         },
         transmission_paths=[
             {
                 "market_domain": "crypto",
-                "channel": "provider_token_impact",
+                "channel": "provider_market_impact",
                 "direction": "mixed",
                 "strength": "moderate",
-                "explanation_zh": "provider token impact 明确给出 BTC。",
-                "evidence_refs": ["provider:token:BTC"],
+                "explanation_zh": "provider market impact 明确给出 BTC。",
+                "evidence_refs": ["provider:impact:BTC"],
             }
         ],
         affected_entities=[
@@ -846,11 +846,11 @@ def test_validation_allows_btc_proxy_when_provider_token_impact_sources_symbol()
                 "entity_type": "crypto_asset",
                 "market_domain": "crypto",
                 "impact_direction": "mixed",
-                "reason_zh": "provider token impact 明确给出 BTC。",
-                "evidence_refs": ["provider:token:BTC"],
+                "reason_zh": "provider market impact 明确给出 BTC。",
+                "evidence_refs": ["provider:impact:BTC"],
             }
         ],
-        evidence_refs=["item:summary", "provider:token:BTC"],
+        evidence_refs=["item:summary", "provider:impact:BTC"],
     )
 
     result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
@@ -870,8 +870,8 @@ def test_validation_rejects_source_word_label_laundered_by_real_provider_symbol(
         market_domains=["crypto"],
         bull_view={
             "strength": "moderate",
-            "thesis_zh": "provider token impact 明确给出 BTC。",
-            "evidence_refs": ["provider:token:BTC"],
+            "thesis_zh": "provider market impact 明确给出 BTC。",
+            "evidence_refs": ["provider:impact:BTC"],
         },
         bear_view={
             "strength": "weak",
@@ -881,11 +881,11 @@ def test_validation_rejects_source_word_label_laundered_by_real_provider_symbol(
         transmission_paths=[
             {
                 "market_domain": "crypto",
-                "channel": "provider_token_impact",
+                "channel": "provider_market_impact",
                 "direction": "mixed",
                 "strength": "moderate",
-                "explanation_zh": "provider token impact 明确给出 BTC，但未支持伪造展示标签。",
-                "evidence_refs": ["provider:token:BTC"],
+                "explanation_zh": "provider market impact 明确给出 BTC，但未支持伪造展示标签。",
+                "evidence_refs": ["provider:impact:BTC"],
             }
         ],
         affected_entities=[
@@ -896,10 +896,10 @@ def test_validation_rejects_source_word_label_laundered_by_real_provider_symbol(
                 "market_domain": "crypto",
                 "impact_direction": "mixed",
                 "reason_zh": "模型把普通来源词与真实 BTC 符号拼成伪造资产标签。",
-                "evidence_refs": ["provider:token:BTC"],
+                "evidence_refs": ["provider:impact:BTC"],
             }
         ],
-        evidence_refs=["item:summary", "provider:token:BTC"],
+        evidence_refs=["item:summary", "provider:impact:BTC"],
     )
 
     result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
@@ -919,22 +919,22 @@ def test_validation_allows_provider_token_label_with_generic_descriptor(label: s
         market_domains=["crypto"],
         bull_view={
             "strength": "moderate",
-            "thesis_zh": "provider token impact 明确给出 WLFI。",
-            "evidence_refs": ["provider:token:WLFI"],
+            "thesis_zh": "provider market impact 明确给出 WLFI。",
+            "evidence_refs": ["provider:impact:WLFI"],
         },
         bear_view={
             "strength": "weak",
-            "thesis_zh": "provider token impact 仍需后续市场反应确认。",
+            "thesis_zh": "provider market impact 仍需后续市场反应确认。",
             "evidence_refs": ["item:summary"],
         },
         transmission_paths=[
             {
                 "market_domain": "crypto",
-                "channel": "provider_token_impact",
+                "channel": "provider_market_impact",
                 "direction": "mixed",
                 "strength": "moderate",
-                "explanation_zh": "provider token impact 明确给出 WLFI。",
-                "evidence_refs": ["provider:token:WLFI"],
+                "explanation_zh": "provider market impact 明确给出 WLFI。",
+                "evidence_refs": ["provider:impact:WLFI"],
             }
         ],
         affected_entities=[
@@ -944,11 +944,11 @@ def test_validation_allows_provider_token_label_with_generic_descriptor(label: s
                 "entity_type": "crypto_asset",
                 "market_domain": "crypto",
                 "impact_direction": "mixed",
-                "reason_zh": "provider token impact 明确给出 WLFI。",
-                "evidence_refs": ["provider:token:WLFI"],
+                "reason_zh": "provider market impact 明确给出 WLFI。",
+                "evidence_refs": ["provider:impact:WLFI"],
             }
         ],
-        evidence_refs=["item:summary", "provider:token:WLFI"],
+        evidence_refs=["item:summary", "provider:impact:WLFI"],
     )
 
     result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
@@ -1016,22 +1016,22 @@ def test_validation_allows_provider_btc_label_with_generic_descriptor(label: str
         market_domains=["crypto"],
         bull_view={
             "strength": "moderate",
-            "thesis_zh": "provider token impact 明确给出 BTC。",
-            "evidence_refs": ["provider:token:BTC"],
+            "thesis_zh": "provider market impact 明确给出 BTC。",
+            "evidence_refs": ["provider:impact:BTC"],
         },
         bear_view={
             "strength": "weak",
-            "thesis_zh": "provider token impact 仍需后续市场反应确认。",
+            "thesis_zh": "provider market impact 仍需后续市场反应确认。",
             "evidence_refs": ["item:summary"],
         },
         transmission_paths=[
             {
                 "market_domain": "crypto",
-                "channel": "provider_token_impact",
+                "channel": "provider_market_impact",
                 "direction": "mixed",
                 "strength": "moderate",
-                "explanation_zh": "provider token impact 明确给出 BTC。",
-                "evidence_refs": ["provider:token:BTC"],
+                "explanation_zh": "provider market impact 明确给出 BTC。",
+                "evidence_refs": ["provider:impact:BTC"],
             }
         ],
         affected_entities=[
@@ -1041,11 +1041,11 @@ def test_validation_allows_provider_btc_label_with_generic_descriptor(label: str
                 "entity_type": "crypto_asset",
                 "market_domain": "crypto",
                 "impact_direction": "mixed",
-                "reason_zh": "provider token impact 明确给出 BTC。",
-                "evidence_refs": ["provider:token:BTC"],
+                "reason_zh": "provider market impact 明确给出 BTC。",
+                "evidence_refs": ["provider:impact:BTC"],
             }
         ],
-        evidence_refs=["item:summary", "provider:token:BTC"],
+        evidence_refs=["item:summary", "provider:impact:BTC"],
     )
 
     result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
@@ -1064,12 +1064,12 @@ def test_validation_allows_provider_cl_proxy_when_provider_sources_cl() -> None:
         market_domains=["commodity"],
         bull_view={
             "strength": "moderate",
-            "thesis_zh": "provider token impact 明确给出 CL。",
-            "evidence_refs": ["provider:token:CL"],
+            "thesis_zh": "provider market impact 明确给出 CL。",
+            "evidence_refs": ["provider:impact:CL"],
         },
         bear_view={
             "strength": "weak",
-            "thesis_zh": "provider token impact 仍需后续市场反应确认。",
+            "thesis_zh": "provider market impact 仍需后续市场反应确认。",
             "evidence_refs": ["item:summary"],
         },
         transmission_paths=[
@@ -1078,8 +1078,8 @@ def test_validation_allows_provider_cl_proxy_when_provider_sources_cl() -> None:
                 "channel": "provider_commodity_impact",
                 "direction": "mixed",
                 "strength": "moderate",
-                "explanation_zh": "provider token impact 明确给出 CL。",
-                "evidence_refs": ["provider:token:CL"],
+                "explanation_zh": "provider market impact 明确给出 CL。",
+                "evidence_refs": ["provider:impact:CL"],
             }
         ],
         affected_entities=[
@@ -1089,11 +1089,11 @@ def test_validation_allows_provider_cl_proxy_when_provider_sources_cl() -> None:
                 "entity_type": "commodity",
                 "market_domain": "commodity",
                 "impact_direction": "mixed",
-                "reason_zh": "provider token impact 明确给出 CL。",
-                "evidence_refs": ["provider:token:CL"],
+                "reason_zh": "provider market impact 明确给出 CL。",
+                "evidence_refs": ["provider:impact:CL"],
             }
         ],
-        evidence_refs=["item:summary", "provider:token:CL"],
+        evidence_refs=["item:summary", "provider:impact:CL"],
     )
 
     result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
@@ -1112,8 +1112,8 @@ def test_validation_rejects_commodity_provider_symbol_as_crypto_entity() -> None
         market_domains=["crypto"],
         bull_view={
             "strength": "moderate",
-            "thesis_zh": "provider token impact 明确给出 CL commodity，不支持 crypto 资产。",
-            "evidence_refs": ["provider:token:CL"],
+            "thesis_zh": "provider market impact 明确给出 CL commodity，不支持 crypto 资产。",
+            "evidence_refs": ["provider:impact:CL"],
         },
         bear_view={
             "strength": "weak",
@@ -1123,11 +1123,11 @@ def test_validation_rejects_commodity_provider_symbol_as_crypto_entity() -> None
         transmission_paths=[
             {
                 "market_domain": "crypto",
-                "channel": "provider_token_impact",
+                "channel": "provider_market_impact",
                 "direction": "mixed",
                 "strength": "moderate",
                 "explanation_zh": "payload 试图把 commodity provider symbol 当作 crypto 资产。",
-                "evidence_refs": ["provider:token:CL"],
+                "evidence_refs": ["provider:impact:CL"],
             }
         ],
         affected_entities=[
@@ -1138,10 +1138,10 @@ def test_validation_rejects_commodity_provider_symbol_as_crypto_entity() -> None
                 "market_domain": "crypto",
                 "impact_direction": "mixed",
                 "reason_zh": "模型把 commodity provider impact 泛化为 crypto token。",
-                "evidence_refs": ["provider:token:CL"],
+                "evidence_refs": ["provider:impact:CL"],
             }
         ],
-        evidence_refs=["item:summary", "provider:token:CL"],
+        evidence_refs=["item:summary", "provider:impact:CL"],
     )
 
     result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
@@ -1160,8 +1160,8 @@ def test_validation_rejects_exact_commodity_provider_symbol_as_crypto_entity() -
         market_domains=["crypto"],
         bull_view={
             "strength": "moderate",
-            "thesis_zh": "provider token impact 明确给出 CL commodity，不支持 crypto 资产。",
-            "evidence_refs": ["provider:token:CL"],
+            "thesis_zh": "provider market impact 明确给出 CL commodity，不支持 crypto 资产。",
+            "evidence_refs": ["provider:impact:CL"],
         },
         bear_view={
             "strength": "weak",
@@ -1171,11 +1171,11 @@ def test_validation_rejects_exact_commodity_provider_symbol_as_crypto_entity() -
         transmission_paths=[
             {
                 "market_domain": "crypto",
-                "channel": "provider_token_impact",
+                "channel": "provider_market_impact",
                 "direction": "mixed",
                 "strength": "moderate",
                 "explanation_zh": "payload 试图把 commodity provider symbol 当作 crypto 资产。",
-                "evidence_refs": ["provider:token:CL"],
+                "evidence_refs": ["provider:impact:CL"],
             }
         ],
         affected_entities=[
@@ -1186,10 +1186,10 @@ def test_validation_rejects_exact_commodity_provider_symbol_as_crypto_entity() -
                 "market_domain": "crypto",
                 "impact_direction": "mixed",
                 "reason_zh": "模型把 commodity provider impact 泛化为 crypto token。",
-                "evidence_refs": ["provider:token:CL"],
+                "evidence_refs": ["provider:impact:CL"],
             }
         ],
-        evidence_refs=["item:summary", "provider:token:CL"],
+        evidence_refs=["item:summary", "provider:impact:CL"],
     )
 
     result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
@@ -1208,8 +1208,8 @@ def test_validation_rejects_commodity_provider_symbol_as_crypto_entity_with_mixe
         market_domains=["crypto", "commodity"],
         bull_view={
             "strength": "moderate",
-            "thesis_zh": "provider token impact 明确给出 CL commodity，不支持 crypto 资产。",
-            "evidence_refs": ["provider:token:CL"],
+            "thesis_zh": "provider market impact 明确给出 CL commodity，不支持 crypto 资产。",
+            "evidence_refs": ["provider:impact:CL"],
         },
         bear_view={
             "strength": "weak",
@@ -1223,7 +1223,7 @@ def test_validation_rejects_commodity_provider_symbol_as_crypto_entity_with_mixe
                 "direction": "mixed",
                 "strength": "moderate",
                 "explanation_zh": "commodity provider symbol 不能给 crypto affected entity 背书。",
-                "evidence_refs": ["provider:token:CL"],
+                "evidence_refs": ["provider:impact:CL"],
             }
         ],
         affected_entities=[
@@ -1234,10 +1234,10 @@ def test_validation_rejects_commodity_provider_symbol_as_crypto_entity_with_mixe
                 "market_domain": "crypto",
                 "impact_direction": "mixed",
                 "reason_zh": "模型把 commodity provider impact 泛化为 crypto token。",
-                "evidence_refs": ["provider:token:CL"],
+                "evidence_refs": ["provider:impact:CL"],
             }
         ],
-        evidence_refs=["item:summary", "provider:token:CL"],
+        evidence_refs=["item:summary", "provider:impact:CL"],
     )
 
     result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
@@ -1257,8 +1257,8 @@ def test_validation_rejects_commodity_provider_symbol_without_entity_domain_or_t
         market_domains=["crypto", "commodity"],
         bull_view={
             "strength": "moderate",
-            "thesis_zh": "provider token impact 明确给出 CL commodity，但 affected entity 没有自己的 domain/type。",
-            "evidence_refs": ["provider:token:CL"],
+            "thesis_zh": "provider market impact 明确给出 CL commodity，但 affected entity 没有自己的 domain/type。",
+            "evidence_refs": ["provider:impact:CL"],
         },
         bear_view={
             "strength": "weak",
@@ -1272,15 +1272,15 @@ def test_validation_rejects_commodity_provider_symbol_without_entity_domain_or_t
                 "direction": "mixed",
                 "strength": "moderate",
                 "explanation_zh": "commodity provider symbol 不能给缺失 domain/type 的 affected entity 背书。",
-                "evidence_refs": ["provider:token:CL"],
+                "evidence_refs": ["provider:impact:CL"],
             },
             {
                 "market_domain": "crypto",
-                "channel": "provider_token_impact",
+                "channel": "provider_market_impact",
                 "direction": "mixed",
                 "strength": "weak",
                 "explanation_zh": "混合 payload domain 也不能补齐单个 affected entity 的 own domain。",
-                "evidence_refs": ["provider:token:CL"],
+                "evidence_refs": ["provider:impact:CL"],
             },
         ],
         affected_entities=[
@@ -1289,10 +1289,10 @@ def test_validation_rejects_commodity_provider_symbol_without_entity_domain_or_t
                 "symbol": "CL",
                 "impact_direction": "mixed",
                 "reason_zh": "模型省略 entity_type/market_domain 后借用了 payload-level domains。",
-                "evidence_refs": ["provider:token:CL"],
+                "evidence_refs": ["provider:impact:CL"],
             }
         ],
-        evidence_refs=["item:summary", "provider:token:CL"],
+        evidence_refs=["item:summary", "provider:impact:CL"],
     )
 
     result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
@@ -1312,8 +1312,8 @@ def test_validation_rejects_commodity_provider_symbol_with_conflicting_crypto_ty
         market_domains=["crypto", "commodity"],
         bull_view={
             "strength": "moderate",
-            "thesis_zh": "provider token impact 明确给出 CL commodity，但 affected entity type 是 crypto_asset。",
-            "evidence_refs": ["provider:token:CL"],
+            "thesis_zh": "provider market impact 明确给出 CL commodity，但 affected entity type 是 crypto_asset。",
+            "evidence_refs": ["provider:impact:CL"],
         },
         bear_view={
             "strength": "weak",
@@ -1327,15 +1327,15 @@ def test_validation_rejects_commodity_provider_symbol_with_conflicting_crypto_ty
                 "direction": "mixed",
                 "strength": "moderate",
                 "explanation_zh": "commodity provider symbol 不能背书 crypto typed affected entity。",
-                "evidence_refs": ["provider:token:CL"],
+                "evidence_refs": ["provider:impact:CL"],
             },
             {
                 "market_domain": "crypto",
-                "channel": "provider_token_impact",
+                "channel": "provider_market_impact",
                 "direction": "mixed",
                 "strength": "weak",
                 "explanation_zh": "混合 payload domain 不能修复 conflicting entity own domain/type。",
-                "evidence_refs": ["provider:token:CL"],
+                "evidence_refs": ["provider:impact:CL"],
             },
         ],
         affected_entities=[
@@ -1346,10 +1346,10 @@ def test_validation_rejects_commodity_provider_symbol_with_conflicting_crypto_ty
                 "market_domain": "commodity",
                 "impact_direction": "mixed",
                 "reason_zh": "模型把 crypto type 与 commodity domain 冲突组合后借 provider CL 背书。",
-                "evidence_refs": ["provider:token:CL"],
+                "evidence_refs": ["provider:impact:CL"],
             }
         ],
-        evidence_refs=["item:summary", "provider:token:CL"],
+        evidence_refs=["item:summary", "provider:impact:CL"],
     )
 
     result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})

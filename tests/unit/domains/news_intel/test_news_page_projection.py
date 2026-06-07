@@ -572,7 +572,7 @@ def test_build_news_page_row_keeps_provider_candidate_separate_from_external_pus
     eligibility = row["signal"]["alert_eligibility"]
     assert eligibility["in_app_eligible"] is False
     assert eligibility["external_push_ready"] is False
-    assert eligibility["external_push_block_reason"] == "analysis_not_admitted"
+    assert eligibility["external_push_block_reason"] == "page_material_not_admitted"
 
 
 def test_non_admitted_provider_score_does_not_set_in_app_eligible() -> None:

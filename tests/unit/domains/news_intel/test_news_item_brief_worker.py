@@ -113,7 +113,7 @@ async def _test_worker_processes_provider_signal_target_with_llm_context() -> No
     assert provider.reserve_rate_units == [1]
     assert provider.execution_calls == 1
     assert provider.seen_packets[0].provider_signal_evidence.score == 88
-    assert provider.seen_packets[0].provider_signal_evidence.token_impacts[0].symbol == "SOL"
+    assert provider.seen_packets[0].provider_signal_evidence.market_impacts[0].label == "SOL"
     assert db.news.runs[0]["status"] == "completed"
     assert db.news.briefs[0]["status"] == "ready"
     assert len(db.dirty.done) == 1
@@ -818,7 +818,7 @@ def _energy_ready_payload() -> dict[str, Any]:
                 "target_id": None,
                 "impact_direction": "mixed",
                 "reason_zh": "BTC 只作为风险资产情绪代理，provider 影响证据给出 crypto 代理范围。",
-                "evidence_refs": ["item:summary", "provider:token:BTC"],
+                "evidence_refs": ["item:summary", "provider:impact:BTC"],
             },
         ],
         "watch_triggers": ["后续海湾航运、WTI 价格和风险资产波动是否继续扩大"],
@@ -829,7 +829,7 @@ def _energy_ready_payload() -> dict[str, Any]:
             "item:summary",
             "item:body_excerpt",
             "fact:fact-gulf-supply",
-            "provider:token:BTC",
+            "provider:impact:BTC",
         ],
     }
 

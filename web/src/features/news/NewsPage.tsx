@@ -2,8 +2,8 @@ import type { NewsRow } from "@shared/model/newsIntel";
 import { newsItemPath, newsPath } from "@shared/routing/paths";
 import * as PageState from "@shared/ui/PageState";
 import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import "./news.css";
 import { NewsItemEvidencePage } from "./ui/NewsItemEvidencePage";
@@ -18,6 +18,10 @@ type NewsPageProps = {
 const EMPTY_NEWS_ROWS: NewsRow[] = [];
 const DEFAULT_NEWS_MIN_SCORE = 80;
 type SignalFilter = "all" | "bullish" | "bearish" | "neutral";
+type NewsCursorState = {
+  searchQuery: string;
+  stack: Array<string | null>;
+};
 
 export function NewsPage({ token, newsItemId = null }: NewsPageProps) {
   if (newsItemId) return <NewsItemRoute newsItemId={newsItemId} token={token} />;
@@ -26,10 +30,15 @@ export function NewsPage({ token, newsItemId = null }: NewsPageProps) {
 
 function NewsQueueRoute({ token }: { token: string }) {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [signalFilter, setSignalFilter] = useState<SignalFilter>("all");
   const [minScore, setMinScore] = useState<number | null>(DEFAULT_NEWS_MIN_SCORE);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [cursorStack, setCursorStack] = useState<Array<string | null>>([null]);
+  const searchQuery = searchParams.get("q") ?? "";
+  const [cursorState, setCursorState] = useState<NewsCursorState>(() => ({
+    searchQuery,
+    stack: [null],
+  }));
+  const cursorStack = cursorState.searchQuery === searchQuery ? cursorState.stack : [null];
   const cursor = cursorStack[cursorStack.length - 1] ?? null;
   const query = useNewsPageWithToken(token, {
     cursor,
@@ -39,7 +48,25 @@ function NewsQueueRoute({ token }: { token: string }) {
     signal: signalFilter === "all" ? null : signalFilter,
   });
   const rows = query.data?.items ?? EMPTY_NEWS_ROWS;
-  const resetCursor = () => setCursorStack([null]);
+  const resetCursor = () => setCursorState({ searchQuery, stack: [null] });
+  const updateSearchQuery = (value: string) => {
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        if (value.trim()) {
+          next.set("q", value);
+        } else {
+          next.delete("q");
+        }
+        return next;
+      },
+      { replace: true },
+    );
+  };
+
+  useEffect(() => {
+    setCursorState((state) => (state.searchQuery === searchQuery ? state : { searchQuery, stack: [null] }));
+  }, [searchQuery]);
 
   return (
     <section className="radar-panel news-panel news-queue-shell" aria-label="News intel">
@@ -75,8 +102,7 @@ function NewsQueueRoute({ token }: { token: string }) {
                 aria-label="Search news"
                 value={searchQuery}
                 onChange={(event) => {
-                  setSearchQuery(event.target.value);
-                  resetCursor();
+                  updateSearchQuery(event.target.value);
                 }}
                 placeholder="headline, token, source"
               />
@@ -89,10 +115,18 @@ function NewsQueueRoute({ token }: { token: string }) {
             rowCount={rows.length}
             onNext={() => {
               const nextCursor = query.data?.next_cursor;
-              if (nextCursor) setCursorStack((stack) => [...stack, nextCursor]);
+              if (nextCursor) {
+                setCursorState((state) => {
+                  const stack = state.searchQuery === searchQuery ? state.stack : [null];
+                  return { searchQuery, stack: [...stack, nextCursor] };
+                });
+              }
             }}
             onPrevious={() =>
-              setCursorStack((stack) => (stack.length > 1 ? stack.slice(0, -1) : stack))
+              setCursorState((state) => {
+                const stack = state.searchQuery === searchQuery ? state.stack : [null];
+                return { searchQuery, stack: stack.length > 1 ? stack.slice(0, -1) : stack };
+              })
             }
           />
         </div>

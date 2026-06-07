@@ -55,6 +55,9 @@ Do not add new code under old `api/`, `store/`, or `components/` roots. Public f
   resolved targets, candidate mentions, or narrative clusters.
 - **News route.** `/news` is a provider-signal tape with filters, pagination,
   source-backed signal fields, and links into `/news/items/:newsItemId`.
+  On `/news` and `/news/items/:newsItemId`, topbar search is route-local:
+  submit navigates to `/news?q=<query>` and the page calls `/api/news` with
+  `q`; it must not call `/api/search/inspect` or reuse token resolver state.
   `/news/items/:newsItemId` is the item evidence page rendering provider
   `aiRating`, token impacts, token identity, fact candidates, source metadata,
   and persisted agent brief state directly from

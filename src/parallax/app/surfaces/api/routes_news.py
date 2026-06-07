@@ -32,7 +32,7 @@ def list_news(
             status=status or None,
             signal=_signal(signal),
             min_score=min_score,
-            q=q or None,
+            q=q.strip() or None,
         )
     return _json({"ok": True, "data": data})
 

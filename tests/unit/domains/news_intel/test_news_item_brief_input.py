@@ -166,8 +166,8 @@ def test_packet_uses_provider_cex_token_impact_as_crypto_scope_without_item_scop
     )
 
     assert packet.provider_signal_evidence is not None
-    assert packet.provider_signal_evidence.token_impacts[0].market_type == "cex"
-    assert "provider:token:BTC" in packet.evidence_refs
+    assert packet.provider_signal_evidence.market_impacts[0].market_type == "cex"
+    assert "provider:impact:BTC" in packet.evidence_refs
     assert packet.market_scope == ["energy_geopolitics", "commodity", "crypto"]
 
 
@@ -278,14 +278,14 @@ def test_packet_includes_bounded_provider_signal_evidence() -> None:
     assert evidence.grade == "A"
     assert len(evidence.summary_zh) == 600
     assert len(evidence.summary_en) == 600
-    assert [impact.symbol for impact in evidence.token_impacts] == [f"T{index:02d}" for index in range(12)]
+    assert [impact.label for impact in evidence.market_impacts] == [f"T{index:02d}" for index in range(12)]
     assert len(evidence.source_ids) == 12
     assert len(evidence.source_domains) == 12
     assert len(evidence.provider_article_keys) == 12
     assert evidence.duplicate_count == 17
     assert "provider:signal" in packet.evidence_refs
-    assert "provider:token:T00" in packet.evidence_refs
-    assert "provider:token:T12" not in packet.evidence_refs
+    assert "provider:impact:T00" in packet.evidence_refs
+    assert "provider:impact:T12" not in packet.evidence_refs
     assert packet.input_hash == json_sha256(news_item_brief_material_input_payload(packet))
 
 
