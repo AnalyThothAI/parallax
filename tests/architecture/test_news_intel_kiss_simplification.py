@@ -245,3 +245,36 @@ def test_news_hard_cut_cleanup_is_delete_only_for_retired_artifacts() -> None:
 
     assert forbidden_write_ops == []
     assert delete_tables == HARD_CUT_CLEANUP_DELETE_TABLES
+
+
+def test_news_runtime_product_paths_do_not_use_legacy_analysis_admission_gate() -> None:
+    paths = [
+        "src/parallax/domains/news_intel/services/news_page_projection.py",
+        "src/parallax/domains/news_intel/services/news_story_identity.py",
+        "src/parallax/domains/news_intel/runtime/news_item_process_worker.py",
+        "src/parallax/domains/news_intel/runtime/news_item_brief_worker.py",
+        "src/parallax/domains/news_intel/repositories/news_repository.py",
+        "src/parallax/domains/notifications/services/notification_rules.py",
+        "src/parallax/app/surfaces/api/schemas.py",
+        "src/parallax/app/surfaces/api/routes_news.py",
+        "web/src/shared/model/newsIntel.ts",
+        "web/src/lib/api/client.ts",
+        "web/src/features/news/model/newsSignalViewModel.ts",
+        "web/src/features/news/ui/NewsTape.tsx",
+        "web/src/features/news/ui/NewsItemEvidencePage.tsx",
+    ]
+    forbidden = {
+        "analysis_admission",
+        "non_crypto_subject",
+        "no_crypto_native_evidence",
+        "provider_evidence_only",
+        "analysis_not_admitted",
+        "page_material_not_admitted",
+    }
+    offenders = [
+        f"{path} contains {token}"
+        for path in paths
+        for token in forbidden
+        if token in _read(path)
+    ]
+    assert offenders == []

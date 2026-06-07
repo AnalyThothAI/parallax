@@ -1,3 +1,5 @@
+> Superseded on 2026-06-07 by `docs/superpowers/specs/active/2026-06-07-news-market-wide-notification-hard-cut-cn.md` and `docs/superpowers/plans/active/2026-06-07-news-market-wide-notification-hard-cut-plan-cn.md`. Do not use this file for current News agent, projection, notification, API, or storage behavior.
+
 # Spec — News Intel 硬切根修
 
 **Status**: Draft

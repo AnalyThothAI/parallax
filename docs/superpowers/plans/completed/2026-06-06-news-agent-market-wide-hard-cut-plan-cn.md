@@ -1,3 +1,5 @@
+> Superseded on 2026-06-07 by `docs/superpowers/specs/active/2026-06-07-news-market-wide-notification-hard-cut-cn.md` and `docs/superpowers/plans/active/2026-06-07-news-market-wide-notification-hard-cut-plan-cn.md`. Do not use this file for current News agent, projection, notification, API, or storage behavior.
+
 # News Agent Market-Wide Hard-Cut Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
