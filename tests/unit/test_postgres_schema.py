@@ -218,6 +218,9 @@ NEWS_PAGE_SEARCH_DOCUMENT_MIGRATION = Path(
 NEWS_AGENT_MARKET_ADMISSION_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260606_0151_news_agent_market_admission_hard_cut.py"
 )
+NEWS_MARKET_SCOPE_HARD_CUT_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260607_0152_news_market_scope_hard_cut.py"
+)
 TOKEN_PULSE_EQUITY_CPU_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260529_0124_token_pulse_equity_cpu_hard_cut.py"
 )
@@ -1079,6 +1082,7 @@ def test_runtime_performance_hard_cut_revision_chain() -> None:
         (NARRATIVE_ZERO_WRITE_HASHES_MIGRATION, "20260603_0145", "20260603_0144"),
         (MACRO_SYNC_STATE_HARD_CUT_MIGRATION, "20260603_0146", "20260603_0145"),
         (NEWS_RESEARCH_INDEX_SUPPORT_MIGRATION, "20260603_0147", "20260603_0146"),
+        (NEWS_MARKET_SCOPE_HARD_CUT_MIGRATION, "20260607_0152", "20260606_0151"),
     )
 
     for migration, revision, down_revision in migrations:
@@ -1977,6 +1981,28 @@ def test_news_agent_market_admission_migration_adds_agent_admission_columns_and_
     assert "ALTER TABLE news_items DROP COLUMN IF EXISTS {column_name}" in downgrade_text
     assert "ALTER TABLE news_page_rows DROP COLUMN IF EXISTS {column_name}" in downgrade_text
     assert '"agent_admission_status"' in downgrade_text
+
+
+def test_news_market_scope_hard_cut_drops_legacy_analysis_admission_columns() -> None:
+    text = NEWS_MARKET_SCOPE_HARD_CUT_MIGRATION.read_text(encoding="utf-8")
+    assert 'revision = "20260607_0152"' in text
+    assert 'down_revision = "20260606_0151"' in text
+    for table in ("news_items", "news_page_rows"):
+        assert (
+            f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS market_scope_json JSONB NOT NULL DEFAULT '{{}}'::jsonb"
+            in text
+        )
+    for table in ("news_items", "news_page_rows"):
+        for column_name in (
+            "analysis_admission_status",
+            "analysis_admission_reason",
+            "analysis_admission_json",
+            "analysis_admission_version",
+            "analysis_admission_computed_at_ms",
+        ):
+            assert f"ALTER TABLE {table} DROP COLUMN IF EXISTS {column_name}" in text
+    assert "DROP INDEX CONCURRENTLY IF EXISTS ix_news_items_analysis_admission_published" in text
+    assert "DROP INDEX CONCURRENTLY IF EXISTS ix_news_page_rows_analysis_admission" in text
 
 
 def test_news_observation_edges_allow_same_material_title_match_type() -> None:
