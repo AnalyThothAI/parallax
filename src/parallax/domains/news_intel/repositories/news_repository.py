@@ -2584,6 +2584,55 @@ class NewsRepository:
         if commit:
             self.conn.commit()
 
+    def update_item_market_scope_and_agent_admission(
+        self,
+        *,
+        news_item_id: str,
+        market_scope: NewsMarketScope | Mapping[str, object],
+        story_identity: NewsStoryIdentity | Mapping[str, object],
+        admission: NewsItemAgentAdmission | Mapping[str, object],
+        now_ms: int,
+        commit: bool = True,
+    ) -> int:
+        market_scope_payload = _market_scope_payload(market_scope)
+        story_identity_payload = _story_identity_payload(story_identity)
+        admission_payload = _agent_admission_payload(admission)
+        representative_news_item_id = str(admission_payload.get("representative_news_item_id") or news_item_id)
+        cursor = self.conn.execute(
+            """
+            UPDATE news_items
+               SET market_scope_json = %s,
+                   story_key = %s,
+                   story_identity_json = %s,
+                   story_identity_version = %s,
+                   agent_admission_status = %s,
+                   agent_admission_reason = %s,
+                   agent_admission_json = %s,
+                   agent_admission_version = %s,
+                   agent_representative_news_item_id = %s,
+                   agent_admission_computed_at_ms = %s,
+                   updated_at_ms = %s
+             WHERE news_item_id = %s
+            """,
+            (
+                _json(market_scope_payload),
+                str(story_identity_payload.get("story_key") or ""),
+                _json(story_identity_payload),
+                str(story_identity_payload.get("version") or ""),
+                str(admission_payload.get("status") or ""),
+                str(admission_payload.get("reason") or ""),
+                _json(admission_payload),
+                str(admission_payload.get("version") or ""),
+                representative_news_item_id,
+                int(now_ms),
+                int(now_ms),
+                str(news_item_id),
+            ),
+        )
+        if commit:
+            self.conn.commit()
+        return int(getattr(cursor, "rowcount", 0) or 0)
+
     def update_item_agent_admission(
         self,
         *,
@@ -2620,6 +2669,77 @@ class NewsRepository:
         if commit:
             self.conn.commit()
         return int(getattr(cursor, "rowcount", 0) or 0)
+
+    def list_news_market_signal_repair_candidates(self, *, since_ms: int, min_score: int) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            WITH scored_items AS (
+              SELECT items.*,
+                     sources.enabled AS source_enabled,
+                     sources.source_role,
+                     sources.trust_tier,
+                     sources.source_quality_status,
+                     sources.source_name,
+                     sources.provider_type,
+                     sources.source_domain,
+                     CASE
+                       WHEN items.provider_signal_json ->> 'score' ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                         THEN (items.provider_signal_json ->> 'score')::numeric
+                       ELSE NULL
+                     END AS provider_score
+                FROM news_items AS items
+                JOIN news_sources AS sources ON sources.source_id = items.source_id
+               WHERE items.published_at_ms >= %s
+                 AND items.lifecycle_status = 'processed'
+                 AND LOWER(COALESCE(items.provider_signal_json ->> 'source', '')) = 'provider'
+            )
+            SELECT scored_items.*,
+                   scored_items.published_at_ms AS source_watermark_ms,
+                   COALESCE(entities.entities_json, '[]'::jsonb) AS entities_json,
+                   COALESCE(mentions.token_mentions_json, '[]'::jsonb) AS token_mentions_json,
+                   COALESCE(facts.fact_candidates_json, '[]'::jsonb) AS fact_candidates_json
+              FROM scored_items
+              LEFT JOIN LATERAL (
+                SELECT jsonb_agg(to_jsonb(entities.*) ORDER BY entities.entity_id) AS entities_json
+                  FROM news_item_entities AS entities
+                 WHERE entities.news_item_id = scored_items.news_item_id
+              ) AS entities ON true
+              LEFT JOIN LATERAL (
+                SELECT jsonb_agg(to_jsonb(mentions.*) ORDER BY mentions.mention_id) AS token_mentions_json
+                  FROM news_token_mentions AS mentions
+                 WHERE mentions.news_item_id = scored_items.news_item_id
+              ) AS mentions ON true
+              LEFT JOIN LATERAL (
+                SELECT jsonb_agg(to_jsonb(facts.*) ORDER BY facts.fact_candidate_id) AS fact_candidates_json
+                  FROM news_fact_candidates AS facts
+                 WHERE facts.news_item_id = scored_items.news_item_id
+              ) AS facts ON true
+             WHERE scored_items.provider_score >= %s
+             ORDER BY scored_items.published_at_ms DESC, scored_items.news_item_id ASC
+            """,
+            (int(since_ms), int(min_score)),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def load_agent_admission_repair_contexts(
+        self,
+        *,
+        items: Sequence[Mapping[str, Any]],
+        now_ms: int,
+    ) -> dict[str, dict[str, Any]]:
+        del now_ms
+        contexts: dict[str, dict[str, Any]] = {}
+        for item in items:
+            item_payload = dict(item)
+            news_item_id = str(item_payload.get("news_item_id") or "")
+            if not news_item_id:
+                continue
+            contexts[news_item_id] = {
+                "exact_duplicate": self._agent_exact_duplicate_context(item_payload),
+                "similar_story": self._agent_similar_story_context(item_payload),
+                "material_delta": {"has_delta": False, "reasons": [], "evidence": {}},
+            }
+        return contexts
 
     def load_agent_admission_contexts(self, *, news_item_ids: Sequence[str], now_ms: int) -> list[dict[str, Any]]:
         del now_ms

@@ -250,6 +250,50 @@ def test_update_item_market_scope_and_story_identity_writes_current_fields_only(
     assert conn.params[5] == "news-1"
 
 
+def test_update_item_market_scope_and_agent_admission_writes_current_fields_only() -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    repo.update_item_market_scope_and_agent_admission(
+        news_item_id="news-1",
+        market_scope=_valid_market_scope_payload(),
+        story_identity=_valid_story_identity_payload(),
+        admission=_valid_agent_admission_payload(),
+        now_ms=1_000,
+        commit=False,
+    )
+
+    assert "market_scope_json = %s" in conn.sql
+    assert "story_key = %s" in conn.sql
+    assert "agent_admission_status = %s" in conn.sql
+    assert "agent_admission_reason = %s" in conn.sql
+    assert "agent_representative_news_item_id = %s" in conn.sql
+    assert "analysis_admission" not in conn.sql
+    assert conn.params[1] == "news-story:opennews-article:2367422"
+    assert conn.params[4] == "eligible"
+    assert conn.params[5] == "provider_score_high"
+    assert conn.params[8] == "news-1"
+    assert conn.params[11] == "news-1"
+
+
+def test_list_news_market_signal_repair_candidates_uses_current_market_scope_contract() -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    rows = repo.list_news_market_signal_repair_candidates(since_ms=1_000, min_score=80)
+
+    assert rows == []
+    assert "FROM news_items AS items" in conn.sql
+    assert "JOIN news_sources AS sources" in conn.sql
+    assert "items.provider_signal_json ->> 'score'" in conn.sql
+    assert "items.lifecycle_status = 'processed'" in conn.sql
+    assert "token_mentions_json" in conn.sql
+    assert "fact_candidates_json" in conn.sql
+    assert "entities_json" in conn.sql
+    assert "analysis_admission" not in conn.sql
+    assert conn.params == (1_000, 80)
+
+
 def test_material_duplicate_lock_covers_candidate_window_without_symbol_partition() -> None:
     conn = CapturingConnection()
     repo = NewsRepository(conn)
@@ -352,6 +396,17 @@ def _valid_story_identity_payload() -> dict[str, object]:
         "confidence": "strong",
         "basis": {"method": "opennews_article_key"},
         "version": "news_story_identity_v1",
+    }
+
+
+def _valid_agent_admission_payload() -> dict[str, object]:
+    return {
+        "eligible": True,
+        "status": "eligible",
+        "reason": "provider_score_high",
+        "representative_news_item_id": "news-1",
+        "basis": {"provider_signal": {"score": 95}},
+        "version": "news_item_agent_admission_v1",
     }
 
 

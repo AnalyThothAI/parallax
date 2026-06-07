@@ -221,3 +221,27 @@ def test_ops_cleanup_news_item_brief_schema_hard_cut_requires_exactly_one_mode()
         parser.parse_args(["ops", "cleanup-news-item-brief-schema-hard-cut"])
     with pytest.raises(SystemExit):
         parser.parse_args(["ops", "cleanup-news-item-brief-schema-hard-cut", "--dry-run", "--execute"])
+
+
+def test_ops_repair_news_market_signal_requires_mode() -> None:
+    parser = build_parser()
+
+    dry_run = parser.parse_args(
+        ["ops", "repair-news-market-signal", "--since-hours", "8", "--min-score", "80", "--dry-run"]
+    )
+    execute = parser.parse_args(
+        ["ops", "repair-news-market-signal", "--since-hours", "8", "--min-score", "80", "--execute"]
+    )
+
+    assert dry_run.ops_command == "repair-news-market-signal"
+    assert dry_run.since_hours == 8
+    assert dry_run.min_score == 80
+    assert dry_run.dry_run is True
+    assert dry_run.execute is False
+    assert execute.execute is True
+    assert execute.dry_run is False
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ops", "repair-news-market-signal"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ops", "repair-news-market-signal", "--dry-run", "--execute"])
