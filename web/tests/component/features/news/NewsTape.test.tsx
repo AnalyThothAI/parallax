@@ -42,6 +42,14 @@ describe("NewsTape", () => {
     expect(screen.getByText("Provider high score without enough agent evidence")).toBeInTheDocument();
     expect(screen.queryByText("Insufficient agent title")).not.toBeInTheDocument();
   });
+
+  it("does not show ready watch agents as held when push readiness is blocked", () => {
+    render(<NewsTape rows={[rowWithReadyWatchAgentPushBlocked]} onOpen={vi.fn()} />);
+
+    expect(screen.getByText("AGENT READY")).toBeInTheDocument();
+    expect(screen.queryByText("AGENT HOLD")).not.toBeInTheDocument();
+    expect(screen.getByText("Agent watch title")).toBeInTheDocument();
+  });
 });
 
 const rowWithBtcEth: NewsRow = {
@@ -134,6 +142,43 @@ const rowWithInsufficientAgentBrief: NewsRow = {
     decision_class: "context",
     title_zh: "Insufficient agent title",
     summary_zh: "证据不足。",
+  },
+};
+
+const rowWithReadyWatchAgentPushBlocked: NewsRow = {
+  ...rowWithBtcEth,
+  row_id: "row-3",
+  news_item_id: "news-3",
+  headline: "Ready watch item",
+  signal: newsSignalEnvelope({
+    source: "agent",
+    provider: "news_item_brief",
+    status: "ready",
+    direction: "bullish",
+    label_zh: "利好",
+    signal: "long",
+    score: 91,
+    grade: "A",
+    title_zh: "Provider title",
+    summary_zh: "Agent summary remains visible.",
+    method: "news_item_brief",
+  }, {
+    alert_eligibility: {
+      in_app_eligible: true,
+      external_push_ready: false,
+      external_push_block_reason: "cooldown",
+      agent_status: "ready",
+      decision_class: "watch",
+      provider_status: "ready",
+      provider_score: 91,
+    },
+  }),
+  agent_brief: {
+    status: "ready",
+    direction: "bullish",
+    decision_class: "watch",
+    title_zh: "Agent watch title",
+    summary_zh: "Agent summary.",
   },
 };
 

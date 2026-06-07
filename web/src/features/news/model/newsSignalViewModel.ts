@@ -27,14 +27,31 @@ export const newsAgentReviewBadge = (
   row: Pick<NewsRow, "agent_brief" | "agent_brief_status" | "agent_status" | "signal">,
 ): NewsAgentReviewBadge => {
   const eligibility = row.signal.alert_eligibility;
+  const agentSignal =
+    row.signal.agent_signal && typeof row.signal.agent_signal === "object"
+      ? row.signal.agent_signal
+      : {};
   const status = String(
-    eligibility?.agent_status ?? row.agent_brief?.status ?? row.agent_status ?? row.agent_brief_status ?? "pending",
+    row.agent_brief?.status ??
+      eligibility?.agent_status ??
+      row.agent_status ??
+      row.agent_brief_status ??
+      "pending",
+  ).toLowerCase();
+  const decisionClass = String(
+    row.agent_brief?.decision_class ??
+      eligibility?.decision_class ??
+      agentSignal.decision_class ??
+      "",
   ).toLowerCase();
 
-  if (eligibility?.external_push_ready === true) {
-    return { label: "AGENT READY", tone: "is-ready" };
-  }
   if (status === "ready") {
+    if (decisionClass === "driver" || decisionClass === "watch") {
+      return { label: "AGENT READY", tone: "is-ready" };
+    }
+    if (decisionClass === "context") {
+      return { label: "AGENT CONTEXT", tone: "is-waiting" };
+    }
     return { label: "AGENT HOLD", tone: "is-blocked" };
   }
   if (status === "insufficient") {

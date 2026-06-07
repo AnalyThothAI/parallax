@@ -5,6 +5,7 @@ import type {
   NewsAgentEvidenceRef,
   NewsFactLane,
   NewsItemDetail,
+  NewsMarketScope,
   NewsResearchToolResult,
   NewsTokenLane,
 } from "@shared/model/newsIntel";
@@ -47,6 +48,8 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
   const toolResults = run?.tool_results ?? [];
   const displayTitle = brief?.title_zh || displaySignal.title_zh || item.headline;
   const sourceDomains = sourceDomainList(item);
+  const marketScope = marketScopeForItem(item);
+  const eligibility = item.signal.alert_eligibility;
 
   return (
     <article className="news-evidence-page">
@@ -56,7 +59,7 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
             <span>Evidence page</span>
             <span className={newsSignalTone(displaySignal)}>{newsSignalLabel(displaySignal)}</span>
             <span>{brief?.decision_class || "decision pending"}</span>
-            <span>{brief?.confirmation_state || "confirmation pending"}</span>
+            <span>{eligibility.external_push_ready ? "push ready" : eligibility.external_push_block_reason || "push pending"}</span>
           </div>
           <h2>{displayTitle}</h2>
           <p>{brief?.summary_zh || displaySignal.summary_zh || item.summary || "No summary is present."}</p>
@@ -71,9 +74,19 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
           detail={providerSignal?.method || providerSignal?.provider || providerSignal?.source}
         />
         <EvidenceMetric
+          label="Market scope"
+          value={marketScopeLabel(marketScope)}
+          detail={marketScope?.reason || eligibility.agent_admission_status}
+        />
+        <EvidenceMetric
           label="Source set"
           value={`${sourceDomains.length || 1} domain${sourceDomains.length === 1 ? "" : "s"}`}
           detail={`duplicates ${displayScalar(item.duplicate_observation_count ?? providerObservationCount(item))}`}
+        />
+        <EvidenceMetric
+          label="Notification"
+          value={notificationStateLabel(eligibility.external_push_ready)}
+          detail={eligibility.external_push_block_reason || eligibility.external_push_basis}
         />
         <EvidenceMetric
           label="Agent run"
@@ -95,6 +108,7 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
           <RawJson brief={brief} run={run} />
         </main>
         <aside className="news-evidence-side" aria-label="news evidence metadata">
+          <MarketScopeEvidence item={item} />
           <ProviderSignalEvidence item={item} tokenImpacts={tokenImpacts} />
           <AgentBriefState brief={brief} run={run} />
           <TokenIdentityEvidence tokens={tokenIdentities} />
@@ -104,6 +118,38 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
         </aside>
       </div>
     </article>
+  );
+}
+
+function MarketScopeEvidence({ item }: { item: NewsItemDetail }) {
+  const scope = marketScopeForItem(item);
+  const eligibility = item.signal.alert_eligibility;
+  return (
+    <section className="news-evidence-section">
+      <SectionHeading icon={Activity} title="Market & notification" tag={marketScopeLabel(scope)} />
+      <dl className="news-evidence-definition-list">
+        <FieldRow label="Primary scope" value={scope?.primary} />
+        <FieldRow label="Scope set" value={scope?.scope ?? []} />
+        <FieldRow label="Scope reason" value={scope?.reason} />
+        <FieldRow
+          label="Agent admission"
+          value={item.agent_admission_status || eligibility.agent_admission_status}
+        />
+        <FieldRow
+          label="Admission reason"
+          value={item.agent_admission_reason || eligibility.agent_admission_reason}
+        />
+        <FieldRow
+          label="Representative"
+          value={item.agent_representative_news_item_id || item.agent_admission?.representative_news_item_id}
+        />
+        <FieldRow label="In-app eligible" value={eligibility.in_app_eligible} />
+        <FieldRow label="External push" value={notificationStateLabel(eligibility.external_push_ready)} />
+        <FieldRow label="Push block" value={eligibility.external_push_block_reason} />
+      </dl>
+      <JsonDetails title="Market scope JSON" value={scope ?? {}} />
+      <JsonDetails title="Agent admission JSON" value={item.agent_admission ?? {}} />
+    </section>
   );
 }
 
@@ -187,14 +233,9 @@ function AiInterpretation({
       <dl className="news-evidence-definition-grid">
         <FieldRow label="Direction" value={brief?.direction || displayDirection} />
         <FieldRow label="Decision" value={brief?.decision_class} />
-        <FieldRow label="Novelty" value={brief?.novelty_status} />
-        <FieldRow label="Confirmation" value={brief?.confirmation_state} />
-        <FieldRow label="Confidence" value={brief?.confidence} />
-        <FieldRow label="Used calls" value={(brief?.used_tool_call_ids ?? []).join(", ")} />
+        <FieldRow label="Evidence refs" value={(brief?.evidence_refs ?? []).map(evidenceRefLabel).join(", ")} />
       </dl>
       <NarrativeBlock label="Market read" text={brief?.market_read_zh} />
-      <NarrativeBlock label="Source consensus" text={brief?.source_consensus_zh} />
-      <NarrativeBlock label="Retrieval notes" text={brief?.retrieval_notes_zh} />
       <div className="news-evidence-view-grid">
         <ViewCard title="Bull view" strength={brief?.bull_strength} text={brief?.bull_view?.thesis_zh} />
         <ViewCard title="Bear view" strength={brief?.bear_strength} text={brief?.bear_view?.thesis_zh} />
@@ -581,6 +622,21 @@ function sourceDomainList(item: NewsItemDetail): string[] {
     item.source_domain,
     ...(item.observation_edges ?? []).map((edge) => edge.source_domain),
   ]);
+}
+
+function marketScopeForItem(item: NewsItemDetail): NewsMarketScope | null {
+  return item.market_scope ?? item.signal.alert_eligibility.market_scope ?? null;
+}
+
+function marketScopeLabel(scope?: NewsMarketScope | null): string {
+  if (!scope?.primary) return "scope pending";
+  return scope.primary.replace(/_/g, " ");
+}
+
+function notificationStateLabel(value?: boolean | null): string {
+  if (value === true) return "push ready";
+  if (value === false) return "push blocked";
+  return "push pending";
 }
 
 function providerObservationCount(item: NewsItemDetail): number {

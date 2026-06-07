@@ -1,3 +1,21 @@
+export type NewsMarketScope = {
+  scope?: string[];
+  primary?: string | null;
+  status?: string | null;
+  reason?: string | null;
+  basis?: Record<string, unknown>;
+  version?: string | null;
+};
+
+export type NewsAgentAdmission = {
+  eligible?: boolean | null;
+  status?: string | null;
+  reason?: string | null;
+  representative_news_item_id?: string | null;
+  basis?: Record<string, unknown>;
+  version?: string | null;
+};
+
 export type NewsAlertEligibility = {
   in_app_eligible?: boolean | null;
   external_push_ready?: boolean | null;
@@ -7,6 +25,9 @@ export type NewsAlertEligibility = {
   decision_class?: string | null;
   provider_status?: string | null;
   provider_score?: number | null;
+  market_scope?: NewsMarketScope | null;
+  agent_admission_status?: string | null;
+  agent_admission_reason?: string | null;
 };
 
 export type NewsSignalSummary = {
@@ -91,27 +112,11 @@ export type NewsAgentBrief = {
   status: NewsAgentBriefStatus;
   direction?: "bullish" | "bearish" | "mixed" | "neutral" | string | null;
   decision_class?: "driver" | "watch" | "context" | "discard" | string | null;
-  novelty_status?: "new" | "repeat" | "update" | "duplicate" | "unclear" | string | null;
-  confirmation_state?:
-    | "single_source"
-    | "multi_source_confirmed"
-    | "provider_only"
-    | "conflicting"
-    | "unclear"
-    | string
-    | null;
   title_zh?: string | null;
   summary_zh?: string | null;
   market_read_zh?: string | null;
-  source_consensus_zh?: string | null;
-  retrieval_notes_zh?: string | null;
-  retrieval_evidence_refs?: NewsAgentEvidenceRef[];
   research_todos_zh?: string[];
-  used_tool_call_ids?: string[];
   market_impacts?: unknown[];
-  impact_zh?: string | null;
-  watch_items_zh?: string | null;
-  confidence?: string | number | null;
   bull_strength?: string | null;
   bear_strength?: string | null;
   data_gap_count?: number | null;
@@ -122,7 +127,6 @@ export type NewsAgentBrief = {
   artifact_version_hash?: string | null;
   input_hash?: string | null;
   output_hash?: string | null;
-  model?: string | null;
   brief_json?: Record<string, unknown> | null;
   bull_view?: NewsAgentBriefView | null;
   bear_view?: NewsAgentBriefView | null;
@@ -219,6 +223,11 @@ export type NewsRow = {
   agent_brief_status?: NewsAgentBriefStatus | null;
   agent_status?: NewsAgentBriefStatus | null;
   agent_brief_computed_at_ms?: number | null;
+  market_scope?: NewsMarketScope | null;
+  agent_admission_status?: string | null;
+  agent_admission_reason?: string | null;
+  agent_admission?: NewsAgentAdmission | null;
+  agent_representative_news_item_id?: string | null;
 };
 
 export type NewsSourceSummary = {

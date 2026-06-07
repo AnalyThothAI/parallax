@@ -227,13 +227,269 @@ class StocksRadarData(ApiSchema):
     projection: JsonObject | None = None
 
 
+class NewsStory(ApiSchema):
+    story_key: str | None = None
+    representative_news_item_id: str | None = None
+    member_news_item_ids: list[str] = Field(default_factory=list)
+    member_count: int | None = None
+    source_domains: list[str] = Field(default_factory=list)
+
+
+class NewsMarketScope(ApiSchema):
+    scope: list[str] = Field(default_factory=list)
+    primary: str | None = None
+    status: str | None = None
+    reason: str | None = None
+    basis: JsonObject = Field(default_factory=dict)
+    version: str | None = None
+
+
+class NewsAgentAdmission(ApiSchema):
+    eligible: bool | None = None
+    status: str | None = None
+    reason: str | None = None
+    representative_news_item_id: str | None = None
+    basis: JsonObject = Field(default_factory=dict)
+    version: str | None = None
+
+
+class NewsAlertEligibility(ApiSchema):
+    in_app_eligible: bool | None = None
+    external_push_ready: bool | None = None
+    external_push_block_reason: str | None = None
+    external_push_basis: str | None = None
+    agent_status: str | None = None
+    decision_class: str | None = None
+    provider_status: str | None = None
+    provider_score: int | None = None
+    market_scope: NewsMarketScope | None = None
+    agent_admission_status: str | None = None
+    agent_admission_reason: str | None = None
+
+
+class NewsSignalSummary(ApiSchema):
+    source: str | None = None
+    provider: str | None = None
+    status: str | None = None
+    direction: str | None = None
+    label_zh: str | None = None
+    signal: str | None = None
+    score: int | None = None
+    grade: str | None = None
+    title_zh: str | None = None
+    summary_zh: str | None = None
+    summary_en: str | None = None
+    method: str | None = None
+
+
+class NewsSignalEnvelope(ApiSchema):
+    display_signal: NewsSignalSummary = Field(default_factory=NewsSignalSummary)
+    provider_signal: NewsSignalSummary | None = None
+    agent_signal: JsonObject = Field(default_factory=dict)
+    alert_eligibility: NewsAlertEligibility = Field(default_factory=NewsAlertEligibility)
+
+
+class NewsSourceSummary(ApiSchema):
+    source_id: str | None = None
+    source_name: str | None = None
+    source_domain: str | None = None
+    provider_type: str | None = None
+    source_role: str | None = None
+    trust_tier: str | None = None
+    coverage_tags: list[str] = Field(default_factory=list)
+    source_quality_status: str | None = None
+
+
+class NewsTokenLane(ApiSchema):
+    lane: str | None = None
+    resolution_status: str | None = None
+    symbol: str | None = None
+    target_type: str | None = None
+    target_id: str | None = None
+    provider_signal: str | None = None
+    provider_score: int | None = None
+    provider_grade: str | None = None
+    market_type: str | None = None
+    reason_codes: list[str] = Field(default_factory=list)
+    score: int | None = None
+    signal: str | None = None
+
+
+class NewsFactLane(ApiSchema):
+    claim: str | None = None
+    event_type: str | None = None
+    realis: str | None = None
+    status: str | None = None
+    affected_targets: list[Any] = Field(default_factory=list)
+    rejection_reasons: list[str] = Field(default_factory=list)
+
+
+class NewsAgentBrief(ApiSchema):
+    status: str | None = None
+    direction: str | None = None
+    decision_class: str | None = None
+    title_zh: str | None = None
+    summary_zh: str | None = None
+    market_read_zh: str | None = None
+    research_todos_zh: list[str] = Field(default_factory=list)
+    market_impacts: list[Any] = Field(default_factory=list)
+    bull_strength: str | None = None
+    bear_strength: str | None = None
+    data_gap_count: int | None = None
+    computed_at_ms: int | None = None
+    agent_run_id: str | None = None
+    schema_version: str | None = None
+    prompt_version: str | None = None
+    artifact_version_hash: str | None = None
+    input_hash: str | None = None
+    output_hash: str | None = None
+    brief_json: JsonObject = Field(default_factory=dict)
+    bull_view: JsonObject | None = None
+    bear_view: JsonObject | None = None
+    data_gaps: list[Any] = Field(default_factory=list)
+    watch_triggers: list[str] = Field(default_factory=list)
+    invalidation_conditions: list[str] = Field(default_factory=list)
+    evidence_refs: list[Any] = Field(default_factory=list)
+
+
+class NewsResearchToolResult(ApiSchema):
+    tool_call_id: str | None = None
+    tool_name: str | None = None
+    schema_version: str | None = None
+    query_version: str | None = None
+    input: JsonObject | None = None
+    source_tables: list[str] = Field(default_factory=list)
+    rows: list[Any] = Field(default_factory=list)
+    row_count: int | None = None
+    truncated: bool | None = None
+    skipped_reason: str | None = None
+    result_hash: str | None = None
+    generated_at_ms: int | None = None
+    latency_ms: int | None = None
+    redaction_notes: list[str] = Field(default_factory=list)
+    evidence_refs: list[Any] = Field(default_factory=list)
+
+
+class NewsAgentRunSummary(ApiSchema):
+    run_id: str | None = None
+    backend: str | None = None
+    status: str | None = None
+    outcome: str | None = None
+    provider: str | None = None
+    model: str | None = None
+    lane: str | None = None
+    workflow_name: str | None = None
+    agent_name: str | None = None
+    execution_trace_id: str | None = None
+    artifact_version_hash: str | None = None
+    prompt_version: str | None = None
+    schema_version: str | None = None
+    validator_version: str | None = None
+    guardrail_version: str | None = None
+    input_hash: str | None = None
+    output_hash: str | None = None
+    started_at_ms: int | None = None
+    finished_at_ms: int | None = None
+    latency_ms: int | None = None
+    execution_started: bool | None = None
+    error_class: str | None = None
+    error: str | None = None
+    error_message: str | None = None
+    request_json: JsonObject | None = None
+    response_json: JsonObject | None = None
+    validation_errors_json: list[Any] = Field(default_factory=list)
+    usage_json: JsonObject = Field(default_factory=dict)
+    trace_metadata_json: JsonObject = Field(default_factory=dict)
+    research_plan: JsonObject | None = None
+    tool_results: list[NewsResearchToolResult] = Field(default_factory=list)
+    research_execution: JsonObject | None = None
+    research_hashes: JsonObject | None = None
+    base_packet: JsonObject | None = None
+
+
+class NewsRow(ApiSchema):
+    row_id: str | None = None
+    news_item_id: str | None = None
+    representative_news_item_id: str | None = None
+    story_key: str | None = None
+    story: NewsStory | None = None
+    latest_at_ms: int | None = None
+    lifecycle_status: str | None = None
+    headline: str | None = None
+    title: str | None = None
+    summary: str | None = None
+    body_text: str | None = None
+    language: str | None = None
+    published_at_ms: int | None = None
+    fetched_at_ms: int | None = None
+    duplicate_count: int | None = None
+    duplicate_observation_count: int | None = None
+    source_ids: list[str] = Field(default_factory=list)
+    source_domains: list[str] = Field(default_factory=list)
+    source_domain: str | None = None
+    provider_type: str | None = None
+    source_role: str | None = None
+    trust_tier: str | None = None
+    coverage_tags: list[str] = Field(default_factory=list)
+    source_quality_status: str | None = None
+    source: NewsSourceSummary | None = None
+    canonical_url: str | None = None
+    content_class: str | None = None
+    content_tags: list[str] = Field(default_factory=list)
+    content_classification: JsonObject = Field(default_factory=dict)
+    signal: NewsSignalEnvelope = Field(default_factory=NewsSignalEnvelope)
+    token_impacts: list[NewsTokenLane] = Field(default_factory=list)
+    token_lanes: list[NewsTokenLane] = Field(default_factory=list)
+    fact_lanes: list[NewsFactLane] = Field(default_factory=list)
+    agent_brief: NewsAgentBrief | None = None
+    agent_brief_status: str | None = None
+    agent_status: str | None = None
+    agent_brief_computed_at_ms: int | None = None
+    market_scope: NewsMarketScope | None = None
+    agent_admission_status: str | None = None
+    agent_admission_reason: str | None = None
+    agent_admission: NewsAgentAdmission | None = None
+    agent_representative_news_item_id: str | None = None
+    computed_at_ms: int | None = None
+    projection_version: str | None = None
+
+
 class NewsData(ApiSchema):
-    items: list[JsonObject] = Field(default_factory=list)
+    items: list[NewsRow] = Field(default_factory=list)
     next_cursor: str | None = None
 
 
-class NewsObjectData(ApiSchema):
-    pass
+class NewsObjectData(NewsRow):
+    content: str | None = None
+    entities: list[Any] = Field(default_factory=list)
+    token_mentions: list[Any] = Field(default_factory=list)
+    fact_candidates: list[NewsFactLane] = Field(default_factory=list)
+    agent_run: NewsAgentRunSummary | None = None
+    provider_signal: NewsSignalSummary | None = None
+    provider_token_impacts: list[NewsTokenLane] = Field(default_factory=list)
+    provider_item: JsonObject | None = None
+    fetch_run: JsonObject | None = None
+    observation_edges: list[JsonObject] = Field(default_factory=list)
+    provider_observations: list[JsonObject] = Field(default_factory=list)
+    fact_candidate_id: str | None = None
+
+
+class NewsFactDetailData(ApiSchema):
+    fact_candidate_id: str | None = None
+    news_item_id: str | None = None
+    event_type: str | None = None
+    claim: str | None = None
+    realis: str | None = None
+    evidence_quote: str | None = None
+    validation_status: str | None = None
+    confidence: float | None = None
+    affected_targets_json: list[Any] = Field(default_factory=list)
+    rejection_reasons_json: list[str] = Field(default_factory=list)
+    headline: str | None = None
+    canonical_url: str | None = None
+    source_domain: str | None = None
+    created_at_ms: int | None = None
+    updated_at_ms: int | None = None
 
 
 class NewsSourceStatusData(ApiSchema):

@@ -335,8 +335,6 @@ const providerDetail: NewsItemDetail = {
     status: "ready",
     summary_zh: "ETF 资金流持续增强。",
     market_read_zh: "AI reads this as a liquidity signal worth watching.",
-    confirmation_state: "single_source",
-    novelty_status: "new",
   },
   agent_run: {
     run_id: "run-news-1",

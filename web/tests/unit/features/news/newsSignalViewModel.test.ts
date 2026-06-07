@@ -1,4 +1,5 @@
 import {
+  newsAgentReviewBadge,
   newsDisplayTokenLanes,
   newsSignalLabel,
   newsSignalScoreLabel,
@@ -8,6 +9,7 @@ import {
   tokenImpactTone,
   tokenMarketLabel,
 } from "@features/news/model/newsSignalViewModel";
+import type { NewsRow } from "@shared/model/newsIntel";
 import { describe, expect, it } from "vitest";
 
 describe("newsSignalViewModel", () => {
@@ -59,4 +61,45 @@ describe("newsSignalViewModel", () => {
       { symbol: "SOL", provider_score: 70, provider_grade: "B" },
     ]);
   });
+
+  it("marks ready watch and driver briefs ready independently of external push readiness", () => {
+    expect(
+      newsAgentReviewBadge(agentRow({ status: "ready", decisionClass: "watch" })),
+    ).toEqual({ label: "AGENT READY", tone: "is-ready" });
+    expect(
+      newsAgentReviewBadge(agentRow({ status: "ready", decisionClass: "driver" })),
+    ).toEqual({ label: "AGENT READY", tone: "is-ready" });
+  });
+
+  it("keeps ready context briefs separate from agent hold", () => {
+    expect(
+      newsAgentReviewBadge(agentRow({ status: "ready", decisionClass: "context" })),
+    ).toEqual({ label: "AGENT CONTEXT", tone: "is-waiting" });
+  });
 });
+
+function agentRow({
+  status,
+  decisionClass,
+}: {
+  status: string;
+  decisionClass: string;
+}): Pick<NewsRow, "agent_brief" | "agent_brief_status" | "agent_status" | "signal"> {
+  return {
+    agent_brief: {
+      status,
+      decision_class: decisionClass,
+    },
+    signal: {
+      display_signal: { source: "agent", status: "ready", direction: "neutral" },
+      provider_signal: null,
+      agent_signal: { status, decision_class: decisionClass },
+      alert_eligibility: {
+        external_push_ready: false,
+        external_push_block_reason: "cooldown",
+        agent_status: status,
+        decision_class: decisionClass,
+      },
+    },
+  };
+}

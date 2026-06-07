@@ -47,7 +47,10 @@ def get_news_item(request: Request, news_item_id: str) -> JSONResponse:
     return _json({"ok": True, "data": row})
 
 
-@router.get("/news/facts/{fact_candidate_id}", response_model=api_schemas.ApiEnvelope[api_schemas.NewsObjectData])
+@router.get(
+    "/news/facts/{fact_candidate_id}",
+    response_model=api_schemas.ApiEnvelope[api_schemas.NewsFactDetailData],
+)
 def get_news_fact(request: Request, fact_candidate_id: str) -> JSONResponse:
     runtime = _authenticated_runtime(request)
     with runtime.repositories() as repos:
