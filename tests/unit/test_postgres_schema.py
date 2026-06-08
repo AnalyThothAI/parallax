@@ -218,6 +218,9 @@ NEWS_PAGE_SEARCH_DOCUMENT_MIGRATION = Path(
 NEWS_AGENT_MARKET_ADMISSION_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260606_0151_news_agent_market_admission_hard_cut.py"
 )
+NEWS_MARKET_SCOPE_HARD_CUT_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260607_0152_news_market_scope_hard_cut.py"
+)
 TOKEN_PULSE_EQUITY_CPU_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260529_0124_token_pulse_equity_cpu_hard_cut.py"
 )
@@ -1079,6 +1082,7 @@ def test_runtime_performance_hard_cut_revision_chain() -> None:
         (NARRATIVE_ZERO_WRITE_HASHES_MIGRATION, "20260603_0145", "20260603_0144"),
         (MACRO_SYNC_STATE_HARD_CUT_MIGRATION, "20260603_0146", "20260603_0145"),
         (NEWS_RESEARCH_INDEX_SUPPORT_MIGRATION, "20260603_0147", "20260603_0146"),
+        (NEWS_MARKET_SCOPE_HARD_CUT_MIGRATION, "20260607_0152", "20260606_0152"),
     )
 
     for migration, revision, down_revision in migrations:
@@ -1920,6 +1924,91 @@ def test_news_research_index_support_adds_concurrent_search_indexes() -> None:
     assert "RESET statement_timeout" in text
     assert "DROP INDEX CONCURRENTLY IF EXISTS idx_news_fact_candidates_claim_trgm_valid" in downgrade_text
     assert "DROP INDEX CONCURRENTLY IF EXISTS idx_news_token_mentions_symbol_upper_item" in downgrade_text
+
+
+def test_news_page_search_document_migration_adds_search_text_and_index() -> None:
+    assert NEWS_PAGE_SEARCH_DOCUMENT_MIGRATION.exists(), (
+        f"{NEWS_PAGE_SEARCH_DOCUMENT_MIGRATION} missing; add search_text for News page search"
+    )
+    text = NEWS_PAGE_SEARCH_DOCUMENT_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+    downgrade_text = text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+    for statement in (
+        'revision = "20260606_0152"',
+        'down_revision = "20260606_0151"',
+        "ALTER TABLE news_page_rows",
+        "ADD COLUMN IF NOT EXISTS search_text TEXT NOT NULL DEFAULT ''",
+        "CREATE EXTENSION IF NOT EXISTS pg_trgm",
+        "with op.get_context().autocommit_block():",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_news_page_rows_search_text_trgm",
+        "DROP INDEX CONCURRENTLY IF EXISTS idx_news_page_rows_search_text_trgm",
+        "ALTER TABLE news_page_rows DROP COLUMN IF EXISTS search_text",
+    ):
+        assert statement in text
+
+    assert "ON news_page_rows USING GIN (search_text gin_trgm_ops) WHERE search_text <> ''" in normalized_text
+    assert "RESET lock_timeout" in text
+    assert "RESET statement_timeout" in text
+    assert "DROP INDEX CONCURRENTLY IF EXISTS idx_news_page_rows_search_text_trgm" in downgrade_text
+
+
+def test_news_agent_market_admission_migration_adds_agent_admission_columns_and_indexes() -> None:
+    assert NEWS_AGENT_MARKET_ADMISSION_HARD_CUT_MIGRATION.exists(), (
+        f"{NEWS_AGENT_MARKET_ADMISSION_HARD_CUT_MIGRATION} missing; add market-wide News agent admission storage"
+    )
+    text = NEWS_AGENT_MARKET_ADMISSION_HARD_CUT_MIGRATION.read_text()
+    downgrade_text = text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+    for statement in (
+        'revision = "20260606_0151"',
+        'down_revision = "20260605_0150"',
+        "ALTER TABLE news_items",
+        "ADD COLUMN IF NOT EXISTS agent_admission_status TEXT NOT NULL DEFAULT 'needs_review'",
+        "ADD COLUMN IF NOT EXISTS agent_admission_reason TEXT NOT NULL DEFAULT ''",
+        "ADD COLUMN IF NOT EXISTS agent_admission_json JSONB NOT NULL DEFAULT '{}'::jsonb",
+        "ADD COLUMN IF NOT EXISTS agent_admission_version TEXT NOT NULL DEFAULT ''",
+        "ADD COLUMN IF NOT EXISTS agent_representative_news_item_id TEXT NOT NULL DEFAULT ''",
+        "ADD COLUMN IF NOT EXISTS agent_admission_computed_at_ms BIGINT",
+        "ALTER TABLE news_page_rows",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_items_agent_admission_published",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_page_rows_agent_admission",
+    ):
+        assert statement in text
+
+    assert "raise RuntimeError" in downgrade_text
+    assert "not safely reversible" in downgrade_text
+
+
+def test_news_market_scope_hard_cut_drops_legacy_admission_gate_columns() -> None:
+    text = NEWS_MARKET_SCOPE_HARD_CUT_MIGRATION.read_text(encoding="utf-8")
+    assert 'revision = "20260607_0152"' in text
+    assert 'down_revision = "20260606_0152"' in text
+    for table in ("news_items", "news_page_rows"):
+        assert (
+            f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS market_scope_json JSONB NOT NULL DEFAULT '{{}}'::jsonb"
+            in text
+        )
+    for table in ("news_items", "news_page_rows"):
+        for column_name in (
+            "analysis_admission_status",
+            "analysis_admission_reason",
+            "analysis_admission_json",
+            "analysis_admission_version",
+            "analysis_admission_computed_at_ms",
+        ):
+            assert f"ALTER TABLE {table} DROP COLUMN IF EXISTS {column_name}" in text
+    for column_name in (
+        "agent_requirement_status",
+        "agent_requirement_reason",
+        "agent_requirement_priority",
+        "agent_requirement_json",
+        "agent_requirement_version",
+    ):
+        assert f"ALTER TABLE news_items DROP COLUMN IF EXISTS {column_name}" in text
+    assert "DROP INDEX CONCURRENTLY IF EXISTS ix_news_items_analysis_admission_published" in text
+    assert "DROP INDEX CONCURRENTLY IF EXISTS ix_news_page_rows_analysis_admission" in text
+    assert "DROP INDEX CONCURRENTLY IF EXISTS ix_news_items_agent_requirement_published" in text
 
 
 def test_news_observation_edges_allow_same_material_title_match_type() -> None:

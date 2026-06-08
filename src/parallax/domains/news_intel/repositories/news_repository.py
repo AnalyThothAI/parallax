@@ -16,7 +16,6 @@ from parallax.domains.news_intel._constants import (
     NEWS_ITEM_BRIEF_SCHEMA_VERSION,
     NEWS_PAGE_PROJECTION_VERSION,
 )
-from parallax.domains.news_intel.services.news_analysis_admission import NewsAnalysisAdmission
 from parallax.domains.news_intel.services.news_canonical_identity import (
     CANONICAL_POLICY_VERSION,
     PROVIDER_GLOBAL_ARTICLE_ID_TYPES,
@@ -24,21 +23,23 @@ from parallax.domains.news_intel.services.news_canonical_identity import (
     canonical_identity_for_observation,
     provider_global_article_key,
 )
-from parallax.domains.news_intel.services.news_item_brief_contract import (
+from parallax.domains.news_intel.types import NewsSourceConfig
+from parallax.domains.news_intel.types.news_item_agent_admission import NewsItemAgentAdmission
+from parallax.domains.news_intel.types.news_item_brief_contract import (
     current_news_item_brief_sql_predicate,
     is_current_news_item_brief_contract,
 )
-from parallax.domains.news_intel.services.news_material_identity import (
+from parallax.domains.news_intel.types.news_market_scope import NewsMarketScope
+from parallax.domains.news_intel.types.news_material_identity import (
     material_title_fingerprint,
     material_title_is_eligible,
     provider_symbol_set,
     symbol_sets_compatible,
 )
-from parallax.domains.news_intel.services.news_page_projection import build_news_page_search_text
-from parallax.domains.news_intel.services.news_source_role_rank import source_role_rank_case_sql
-from parallax.domains.news_intel.services.news_story_identity import NewsStoryIdentity
-from parallax.domains.news_intel.services.news_url_identity import public_url_identity_policy, url_identity_kind
-from parallax.domains.news_intel.types import NewsSourceConfig
+from parallax.domains.news_intel.types.news_page_projection import build_news_page_search_text
+from parallax.domains.news_intel.types.news_source_role_rank import source_role_rank_case_sql
+from parallax.domains.news_intel.types.news_story_identity import NewsStoryIdentity
+from parallax.domains.news_intel.types.news_url_identity import public_url_identity_policy, url_identity_kind
 from parallax.domains.news_intel.types.source_classification import normalize_string_tuple
 from parallax.domains.news_intel.types.source_quality_policy import window_ms_for_label
 from parallax.platform.db.json_safety import postgres_safe_json
@@ -81,9 +82,7 @@ _NEWS_PAGE_SIGNAL_SQL = "LOWER(signal_json -> 'display_signal' ->> 'direction') 
 _MATERIAL_MATCH_WINDOW_MS = 600_000
 _STORY_PROJECTION_WINDOW_MS = 72 * 60 * 60 * 1000
 _CURRENT_NEWS_ITEM_BRIEF_CURRENT_BRIEF_SQL = current_news_item_brief_sql_predicate("current_brief")
-_CURRENT_NEWS_ITEM_BRIEF_DUPLICATE_CURRENT_BRIEF_SQL = current_news_item_brief_sql_predicate(
-    "duplicate_current_brief"
-)
+_CURRENT_NEWS_ITEM_BRIEF_DUPLICATE_CURRENT_BRIEF_SQL = current_news_item_brief_sql_predicate("duplicate_current_brief")
 _CURRENT_NEWS_ITEM_BRIEF_STORY_CURRENT_BRIEF_SQL = current_news_item_brief_sql_predicate("story_current_brief")
 _CURRENT_NEWS_ITEM_BRIEF_BRIEFS_SQL = current_news_item_brief_sql_predicate("briefs")
 
@@ -2094,18 +2093,15 @@ class NewsRepository:
               agent_brief_json AS agent_brief,
               agent_status,
               agent_brief_computed_at_ms,
+              market_scope_json AS market_scope,
               agent_admission_status,
               agent_admission_reason,
               agent_admission_json AS agent_admission,
               agent_representative_news_item_id,
-              analysis_admission_status,
-              analysis_admission_reason,
-              analysis_admission_json AS analysis_admission,
               computed_at_ms,
               projection_version
             FROM news_page_rows
             WHERE projection_version = %s
-              AND analysis_admission_status = 'admitted'
               AND COALESCE((signal_json -> 'alert_eligibility' ->> 'in_app_eligible')::boolean, false) = true
               AND COALESCE(NULLIF(signal_json -> 'alert_eligibility' ->> 'provider_score', '')::int, -1) >= %s
               AND EXISTS (
@@ -2185,13 +2181,11 @@ class NewsRepository:
               agent_brief_json AS agent_brief,
               agent_status,
               agent_brief_computed_at_ms,
+              market_scope_json AS market_scope,
               agent_admission_status,
               agent_admission_reason,
               agent_admission_json AS agent_admission,
               agent_representative_news_item_id,
-              analysis_admission_status,
-              analysis_admission_reason,
-              analysis_admission_json AS analysis_admission,
               computed_at_ms,
               projection_version
             FROM news_page_rows
@@ -2482,6 +2476,8 @@ class NewsRepository:
                 (int(processed_at_ms), int(processed_at_ms), news_item_id),
             )
         else:
+            if processing_attempts is None:
+                raise ValueError("lease_owner and processing_attempts must be provided together")
             cursor = self.conn.execute(
                 """
                 UPDATE news_items
@@ -2564,24 +2560,21 @@ class NewsRepository:
         if commit:
             self.conn.commit()
 
-    def update_item_analysis_and_story_identity(
+    def update_item_market_scope_and_story_identity(
         self,
         *,
         news_item_id: str,
-        admission: NewsAnalysisAdmission | Mapping[str, object],
+        market_scope: NewsMarketScope | Mapping[str, object],
         story_identity: NewsStoryIdentity | Mapping[str, object],
         now_ms: int,
         commit: bool = True,
     ) -> None:
-        admission_payload = _analysis_admission_payload(admission)
+        market_scope_payload = _market_scope_payload(market_scope)
         story_identity_payload = _story_identity_payload(story_identity)
         self.conn.execute(
             """
             UPDATE news_items
-               SET analysis_admission_status = %s,
-                   analysis_admission_reason = %s,
-                   analysis_admission_json = %s,
-                   analysis_admission_version = %s,
+               SET market_scope_json = %s,
                    story_key = %s,
                    story_identity_json = %s,
                    story_identity_version = %s,
@@ -2589,10 +2582,7 @@ class NewsRepository:
              WHERE news_item_id = %s
             """,
             (
-                str(admission_payload.get("status") or ""),
-                str(admission_payload.get("reason") or ""),
-                _json(admission_payload),
-                str(admission_payload.get("version") or ""),
+                _json(market_scope_payload),
                 str(story_identity_payload.get("story_key") or ""),
                 _json(story_identity_payload),
                 str(story_identity_payload.get("version") or ""),
@@ -2602,6 +2592,55 @@ class NewsRepository:
         )
         if commit:
             self.conn.commit()
+
+    def update_item_market_scope_and_agent_admission(
+        self,
+        *,
+        news_item_id: str,
+        market_scope: NewsMarketScope | Mapping[str, object],
+        story_identity: NewsStoryIdentity | Mapping[str, object],
+        admission: NewsItemAgentAdmission | Mapping[str, object],
+        now_ms: int,
+        commit: bool = True,
+    ) -> int:
+        market_scope_payload = _market_scope_payload(market_scope)
+        story_identity_payload = _story_identity_payload(story_identity)
+        admission_payload = _agent_admission_payload(admission)
+        representative_news_item_id = str(admission_payload.get("representative_news_item_id") or news_item_id)
+        cursor = self.conn.execute(
+            """
+            UPDATE news_items
+               SET market_scope_json = %s,
+                   story_key = %s,
+                   story_identity_json = %s,
+                   story_identity_version = %s,
+                   agent_admission_status = %s,
+                   agent_admission_reason = %s,
+                   agent_admission_json = %s,
+                   agent_admission_version = %s,
+                   agent_representative_news_item_id = %s,
+                   agent_admission_computed_at_ms = %s,
+                   updated_at_ms = %s
+             WHERE news_item_id = %s
+            """,
+            (
+                _json(market_scope_payload),
+                str(story_identity_payload.get("story_key") or ""),
+                _json(story_identity_payload),
+                str(story_identity_payload.get("version") or ""),
+                str(admission_payload.get("status") or ""),
+                str(admission_payload.get("reason") or ""),
+                _json(admission_payload),
+                str(admission_payload.get("version") or ""),
+                representative_news_item_id,
+                int(now_ms),
+                int(now_ms),
+                str(news_item_id),
+            ),
+        )
+        if commit:
+            self.conn.commit()
+        return int(getattr(cursor, "rowcount", 0) or 0)
 
     def update_item_agent_admission(
         self,
@@ -2639,6 +2678,193 @@ class NewsRepository:
             self.conn.commit()
         return int(getattr(cursor, "rowcount", 0) or 0)
 
+    def list_news_market_signal_repair_candidates(self, *, since_ms: int, min_score: int) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            WITH scored_items AS (
+              SELECT items.*,
+                     sources.enabled AS source_enabled,
+                     sources.source_role,
+                     sources.trust_tier,
+                     sources.source_quality_status,
+                     sources.source_name,
+                     sources.provider_type,
+                     sources.source_domain,
+                     CASE
+                       WHEN items.provider_signal_json ->> 'score' ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                         THEN (items.provider_signal_json ->> 'score')::numeric
+                       ELSE NULL
+                     END AS provider_score
+                FROM news_items AS items
+                JOIN news_sources AS sources ON sources.source_id = items.source_id
+               WHERE items.published_at_ms >= %s
+                 AND items.lifecycle_status = 'processed'
+                 AND LOWER(COALESCE(items.provider_signal_json ->> 'source', '')) = 'provider'
+            )
+            SELECT scored_items.*,
+                   scored_items.published_at_ms AS source_watermark_ms,
+                   COALESCE(entities.entities_json, '[]'::jsonb) AS entities_json,
+                   COALESCE(mentions.token_mentions_json, '[]'::jsonb) AS token_mentions_json,
+                   COALESCE(facts.fact_candidates_json, '[]'::jsonb) AS fact_candidates_json
+              FROM scored_items
+              LEFT JOIN LATERAL (
+                SELECT jsonb_agg(to_jsonb(entities.*) ORDER BY entities.entity_id) AS entities_json
+                  FROM news_item_entities AS entities
+                 WHERE entities.news_item_id = scored_items.news_item_id
+              ) AS entities ON true
+              LEFT JOIN LATERAL (
+                SELECT jsonb_agg(to_jsonb(mentions.*) ORDER BY mentions.mention_id) AS token_mentions_json
+                  FROM news_token_mentions AS mentions
+                 WHERE mentions.news_item_id = scored_items.news_item_id
+              ) AS mentions ON true
+              LEFT JOIN LATERAL (
+                SELECT jsonb_agg(to_jsonb(facts.*) ORDER BY facts.fact_candidate_id) AS fact_candidates_json
+                  FROM news_fact_candidates AS facts
+                 WHERE facts.news_item_id = scored_items.news_item_id
+              ) AS facts ON true
+             WHERE scored_items.provider_score >= %s
+             ORDER BY scored_items.published_at_ms DESC, scored_items.news_item_id ASC
+            """,
+            (int(since_ms), int(min_score)),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def load_agent_admission_repair_contexts(
+        self,
+        *,
+        items: Sequence[Mapping[str, Any]],
+        now_ms: int,
+    ) -> dict[str, dict[str, Any]]:
+        del now_ms
+        contexts: dict[str, dict[str, Any]] = {}
+        for item in items:
+            item_payload = dict(item)
+            news_item_id = str(item_payload.get("news_item_id") or "")
+            if not news_item_id:
+                continue
+            contexts[news_item_id] = {
+                "exact_duplicate": self._agent_exact_duplicate_context(item_payload),
+                "similar_story": self._agent_similar_story_context(item_payload),
+                "material_delta": {"has_delta": False, "reasons": [], "evidence": {}},
+            }
+        return contexts
+
+    def _current_brief_for_item(self, news_item_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            f"""
+            SELECT *
+              FROM news_item_agent_briefs AS current_brief
+             WHERE current_brief.news_item_id = %s
+               AND {_CURRENT_NEWS_ITEM_BRIEF_CURRENT_BRIEF_SQL}
+             LIMIT 1
+            """,
+            (str(news_item_id),),
+        ).fetchone()
+        return dict(row) if row is not None else None
+
+    def _agent_exact_duplicate_context(self, item: Mapping[str, Any]) -> dict[str, Any]:
+        news_item_id = str(item.get("news_item_id") or "")
+        content_hash = str(item.get("content_hash") or "")
+        canonical_item_key = str(item.get("canonical_item_key") or "")
+        provider_article_keys = _json_list(item.get("provider_article_keys_json"))
+        row = self.conn.execute(
+            """
+            SELECT candidates.news_item_id,
+                   candidates.story_key,
+                   CASE
+                     WHEN %s <> '' AND candidates.content_hash = %s THEN 'same_content_hash'
+                     WHEN %s <> '' AND candidates.canonical_item_key = %s
+                      AND candidates.url_identity_kind = 'article' THEN 'same_article_url'
+                     WHEN EXISTS (
+                       SELECT 1
+                         FROM jsonb_array_elements_text(COALESCE(candidates.provider_article_keys_json, '[]'::jsonb))
+                              AS candidate_key(value)
+                         JOIN jsonb_array_elements_text(%s::jsonb) AS item_key(value)
+                           ON item_key.value = candidate_key.value
+                     ) THEN 'same_provider_article_id'
+                     ELSE ''
+                   END AS match_type
+              FROM news_items AS candidates
+             WHERE candidates.news_item_id <> %s
+               AND (
+                 (%s <> '' AND candidates.content_hash = %s)
+                 OR (%s <> '' AND candidates.canonical_item_key = %s AND candidates.url_identity_kind = 'article')
+                 OR EXISTS (
+                   SELECT 1
+                     FROM jsonb_array_elements_text(COALESCE(candidates.provider_article_keys_json, '[]'::jsonb))
+                          AS candidate_key(value)
+                     JOIN jsonb_array_elements_text(%s::jsonb) AS item_key(value)
+                       ON item_key.value = candidate_key.value
+                 )
+               )
+             ORDER BY candidates.published_at_ms ASC, candidates.news_item_id ASC
+             LIMIT 1
+            """,
+            (
+                content_hash,
+                content_hash,
+                canonical_item_key,
+                canonical_item_key,
+                _json(provider_article_keys),
+                news_item_id,
+                content_hash,
+                content_hash,
+                canonical_item_key,
+                canonical_item_key,
+                _json(provider_article_keys),
+            ),
+        ).fetchone()
+        if row is None:
+            return {}
+        return {
+            "exact_duplicate": True,
+            "match_type": str(row["match_type"] or "exact_duplicate"),
+            "matched_news_item_id": str(row["news_item_id"]),
+            "representative_news_item_id": str(row["news_item_id"]),
+            "matched_story_key": str(row["story_key"] or ""),
+        }
+
+    def _agent_similar_story_context(self, item: Mapping[str, Any]) -> dict[str, Any]:
+        story_key = str(item.get("story_key") or "")
+        news_item_id = str(item.get("news_item_id") or "")
+        if not story_key:
+            return {}
+        row = self.conn.execute(
+            f"""
+            SELECT candidates.news_item_id,
+                   candidates.story_key,
+                   current_brief.status AS brief_status,
+                   current_brief.input_hash AS brief_input_hash,
+                   candidates.published_at_ms,
+                   COALESCE(NULLIF(candidates.provider_signal_json ->> 'score', '')::int, -1) AS provider_score
+              FROM news_items AS candidates
+              JOIN news_sources AS sources ON sources.source_id = candidates.source_id
+              JOIN news_item_agent_briefs AS current_brief
+                ON current_brief.news_item_id = candidates.news_item_id
+               AND {_CURRENT_NEWS_ITEM_BRIEF_CURRENT_BRIEF_SQL}
+             WHERE candidates.news_item_id <> %s
+               AND candidates.story_key = %s
+               AND sources.enabled = true
+             ORDER BY
+               CASE WHEN current_brief.status IN ('ready', 'insufficient') THEN 0 ELSE 1 END,
+               provider_score DESC,
+               candidates.published_at_ms DESC,
+               candidates.news_item_id ASC
+             LIMIT 1
+            """,
+            (news_item_id, story_key),
+        ).fetchone()
+        if row is None:
+            return {}
+        return {
+            "similar_story": True,
+            "reason": "same_story_key_current_brief",
+            "story_key": story_key,
+            "representative_news_item_id": str(row["news_item_id"]),
+            "fresh_brief_status": str(row["brief_status"] or ""),
+            "last_brief_input_hash": str(row["brief_input_hash"] or ""),
+        }
+
     def mark_item_process_retryable(
         self,
         *,
@@ -2668,6 +2894,8 @@ class NewsRepository:
                 (int(next_due_at_ms), _compact_error(error), int(now_ms), news_item_id),
             )
         else:
+            if processing_attempts is None:
+                raise ValueError("lease_owner and processing_attempts must be provided together")
             cursor = self.conn.execute(
                 """
                 UPDATE news_items
@@ -2724,6 +2952,8 @@ class NewsRepository:
                 (_compact_error(error), int(now_ms), news_item_id),
             )
         else:
+            if processing_attempts is None:
+                raise ValueError("lease_owner and processing_attempts must be provided together")
             cursor = self.conn.execute(
                 """
                 UPDATE news_items
@@ -3045,7 +3275,6 @@ class NewsRepository:
                            'content_hash', duplicate_items.content_hash,
                            'provider_signal_json', duplicate_items.provider_signal_json,
                            'agent_admission_status', duplicate_items.agent_admission_status,
-                           'analysis_admission_status', duplicate_items.analysis_admission_status,
                            'current_brief',
                              CASE
                                WHEN duplicate_current_brief.news_item_id IS NULL THEN NULL
@@ -3176,7 +3405,6 @@ class NewsRepository:
                            'story_key', story_items.story_key,
                            'provider_signal_json', story_items.provider_signal_json,
                            'agent_admission_status', story_items.agent_admission_status,
-                           'analysis_admission_status', story_items.analysis_admission_status,
                            'current_brief',
                              CASE
                                WHEN story_current_brief.news_item_id IS NULL THEN NULL
@@ -3704,13 +3932,11 @@ class NewsRepository:
               agent_brief_json AS page_agent_brief,
               agent_status,
               agent_brief_computed_at_ms,
+              market_scope_json AS market_scope,
               agent_admission_status,
               agent_admission_reason,
               agent_admission_json AS agent_admission,
               agent_representative_news_item_id,
-              analysis_admission_status,
-              analysis_admission_reason,
-              analysis_admission_json AS analysis_admission,
               computed_at_ms,
               projection_version
             FROM news_page_rows
@@ -3769,22 +3995,24 @@ class NewsRepository:
             ),
             "story_key": str(projected.get("story_key") or item_payload.get("story_key") or ""),
             "story": _json_dict(projected.get("story") or item_payload.get("story_identity_json")),
-            "agent_admission_status": str(item_payload.get("agent_admission_status") or "needs_review"),
-            "agent_admission_reason": str(item_payload.get("agent_admission_reason") or ""),
-            "agent_admission": _agent_admission_public_payload(item_payload),
-            "agent_representative_news_item_id": str(item_payload.get("agent_representative_news_item_id") or ""),
+            "market_scope": _json_dict(projected.get("market_scope") or item_payload.get("market_scope_json") or {}),
+            "agent_admission_status": str(
+                projected.get("agent_admission_status") or item_payload.get("agent_admission_status") or "needs_review"
+            ),
+            "agent_admission_reason": str(
+                projected.get("agent_admission_reason") or item_payload.get("agent_admission_reason") or ""
+            ),
+            "agent_admission": _json_dict(
+                projected.get("agent_admission") or item_payload.get("agent_admission_json") or {}
+            ),
+            "agent_representative_news_item_id": str(
+                projected.get("agent_representative_news_item_id")
+                or item_payload.get("agent_representative_news_item_id")
+                or projected.get("representative_news_item_id")
+                or item_payload.get("news_item_id")
+                or ""
+            ),
             "agent_admission_computed_at_ms": item_payload.get("agent_admission_computed_at_ms"),
-            "analysis_admission_status": str(
-                projected.get("analysis_admission_status")
-                or item_payload.get("analysis_admission_status")
-                or "needs_review"
-            ),
-            "analysis_admission_reason": str(
-                projected.get("analysis_admission_reason") or item_payload.get("analysis_admission_reason") or ""
-            ),
-            "analysis_admission": _json_dict(
-                projected.get("analysis_admission") or item_payload.get("analysis_admission_json") or {}
-            ),
             "content_class": projected.get("content_class") or item_payload.get("content_class"),
             "content_tags": _json_list(projected.get("content_tags")),
             "content_classification": _json_dict(projected.get("content_classification")),
@@ -4678,8 +4906,8 @@ class NewsRepository:
                   source_json, signal_json, token_impacts_json, agent_brief_json,
                   agent_status, agent_brief_computed_at_ms, computed_at_ms, projection_version,
                   canonical_item_key, duplicate_count, source_ids_json, source_domains_json,
-                  provider_article_keys_json, analysis_admission_status, analysis_admission_reason,
-                  analysis_admission_json, agent_admission_status, agent_admission_reason,
+                  provider_article_keys_json, market_scope_json,
+                  agent_admission_status, agent_admission_reason,
                   agent_admission_json, agent_representative_news_item_id, payload_hash
                 )
                 VALUES (
@@ -4692,8 +4920,7 @@ class NewsRepository:
                   %(agent_brief_json)s, %(agent_status)s, %(agent_brief_computed_at_ms)s,
                   %(computed_at_ms)s, %(projection_version)s, %(canonical_item_key)s,
                   %(duplicate_count)s, %(source_ids_json)s, %(source_domains_json)s,
-                  %(provider_article_keys_json)s, %(analysis_admission_status)s,
-                  %(analysis_admission_reason)s, %(analysis_admission_json)s,
+                  %(provider_article_keys_json)s, %(market_scope_json)s,
                   %(agent_admission_status)s, %(agent_admission_reason)s,
                   %(agent_admission_json)s, %(agent_representative_news_item_id)s, %(payload_hash)s
                 )
@@ -4727,9 +4954,7 @@ class NewsRepository:
                   source_ids_json = EXCLUDED.source_ids_json,
                   source_domains_json = EXCLUDED.source_domains_json,
                   provider_article_keys_json = EXCLUDED.provider_article_keys_json,
-                  analysis_admission_status = EXCLUDED.analysis_admission_status,
-                  analysis_admission_reason = EXCLUDED.analysis_admission_reason,
-                  analysis_admission_json = EXCLUDED.analysis_admission_json,
+                  market_scope_json = EXCLUDED.market_scope_json,
                   agent_admission_status = EXCLUDED.agent_admission_status,
                   agent_admission_reason = EXCLUDED.agent_admission_reason,
                   agent_admission_json = EXCLUDED.agent_admission_json,
@@ -5010,16 +5235,7 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     payload["agent_brief_computed_at_ms"] = (
         int(payload["agent_brief_computed_at_ms"]) if payload.get("agent_brief_computed_at_ms") is not None else None
     )
-    payload["analysis_admission_status"] = str(payload.get("analysis_admission_status") or "needs_review")
-    payload["analysis_admission_reason"] = str(payload.get("analysis_admission_reason") or "")
-    payload["analysis_admission_json"] = _json(
-        payload.get("analysis_admission_json")
-        or payload.get("analysis_admission")
-        or {
-            "status": payload["analysis_admission_status"],
-            "reason": payload["analysis_admission_reason"],
-        }
-    )
+    payload["market_scope_json"] = _json(payload.get("market_scope_json") or payload.get("market_scope") or {})
     agent_admission = _agent_admission_payload(
         payload.get("agent_admission_json")
         or payload.get("agent_admission")
@@ -5035,9 +5251,7 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     agent_admission["reason"] = payload["agent_admission_reason"]
     payload["agent_admission_json"] = _json(agent_admission)
     payload["agent_representative_news_item_id"] = str(
-        payload.get("agent_representative_news_item_id")
-        or agent_admission.get("representative_news_item_id")
-        or ""
+        payload.get("agent_representative_news_item_id") or agent_admission.get("representative_news_item_id") or ""
     )
     return payload
 
@@ -5764,53 +5978,61 @@ def _object_payload(value: Any) -> dict[str, Any]:
     return {name: getattr(value, name) for name in getattr(value, "__slots__", ()) if hasattr(value, name)}
 
 
-def _agent_admission_payload(value: Any) -> dict[str, Any]:
+def _market_scope_payload(value: NewsMarketScope | Mapping[str, object]) -> dict[str, object]:
+    payload = _strict_current_dataclass_or_mapping_payload(
+        value,
+        expected_type=NewsMarketScope,
+        label="market scope payload",
+        required_fields=("scope", "primary", "status", "reason", "basis", "version"),
+    )
+    return {
+        "scope": _required_payload_list(payload, "scope", label="market scope payload"),
+        "primary": _required_payload_text(payload, "primary", label="market scope payload"),
+        "status": _required_payload_text(payload, "status", label="market scope payload"),
+        "reason": _required_payload_text(payload, "reason", label="market scope payload"),
+        "basis": _required_payload_mapping(payload, "basis", label="market scope payload"),
+        "version": _required_payload_text(payload, "version", label="market scope payload"),
+    }
+
+
+def _agent_admission_payload(value: NewsItemAgentAdmission | Mapping[str, object]) -> dict[str, object]:
     payload = _object_payload(value)
+    status = str(payload.get("status") or "needs_review")
+    reason = str(payload.get("reason") or "")
     representative_news_item_id = str(
         payload.get("representative_news_item_id")
         or payload.get("agent_representative_news_item_id")
         or payload.get("representative_item_id")
         or ""
     )
-    normalized = dict(payload)
-    normalized["status"] = str(normalized.get("status") or "needs_review")
-    normalized["reason"] = str(normalized.get("reason") or "")
-    normalized["version"] = str(normalized.get("version") or NEWS_ITEM_AGENT_ADMISSION_VERSION)
-    normalized["representative_news_item_id"] = representative_news_item_id
-    return normalized
+    basis = payload.get("basis")
+    eligible = bool(payload.get("eligible")) if "eligible" in payload else status in {"eligible", "eligible_refresh"}
+    return {
+        "eligible": eligible,
+        "status": status,
+        "reason": reason,
+        "representative_news_item_id": representative_news_item_id,
+        "basis": dict(basis) if isinstance(basis, Mapping) else {},
+        "version": str(payload.get("version") or NEWS_ITEM_AGENT_ADMISSION_VERSION),
+    }
 
 
 def _agent_admission_public_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     payload = _json_dict(row.get("agent_admission_json"))
-    status = str(row.get("agent_admission_status") or payload.get("status") or "needs_review")
-    reason = str(row.get("agent_admission_reason") or payload.get("reason") or "")
-    version = str(row.get("agent_admission_version") or payload.get("version") or "")
-    representative_news_item_id = str(
-        row.get("agent_representative_news_item_id") or payload.get("representative_news_item_id") or ""
+    normalized = _agent_admission_payload(
+        {
+            **payload,
+            "status": row.get("agent_admission_status") or payload.get("status") or "needs_review",
+            "reason": row.get("agent_admission_reason") or payload.get("reason") or "",
+            "version": row.get("agent_admission_version")
+            or payload.get("version")
+            or NEWS_ITEM_AGENT_ADMISSION_VERSION,
+            "representative_news_item_id": row.get("agent_representative_news_item_id")
+            or payload.get("representative_news_item_id")
+            or "",
+        }
     )
-    result = dict(payload)
-    result["status"] = status
-    result["reason"] = reason
-    if version:
-        result["version"] = version
-    if representative_news_item_id:
-        result["representative_news_item_id"] = representative_news_item_id
-    return result
-
-
-def _analysis_admission_payload(value: NewsAnalysisAdmission | Mapping[str, object]) -> dict[str, object]:
-    payload = _strict_current_dataclass_or_mapping_payload(
-        value,
-        expected_type=NewsAnalysisAdmission,
-        label="analysis admission payload",
-        required_fields=("status", "reason", "basis", "version"),
-    )
-    return {
-        "status": _required_payload_text(payload, "status", label="analysis admission payload"),
-        "reason": _required_payload_text(payload, "reason", label="analysis admission payload"),
-        "basis": _required_payload_mapping(payload, "basis", label="analysis admission payload"),
-        "version": _required_payload_text(payload, "version", label="analysis admission payload"),
-    }
+    return dict(normalized)
 
 
 def _story_identity_payload(value: NewsStoryIdentity | Mapping[str, object]) -> dict[str, object]:
@@ -5829,22 +6051,39 @@ def _story_identity_payload(value: NewsStoryIdentity | Mapping[str, object]) -> 
 
 
 def _strict_current_dataclass_or_mapping_payload(
-    value: NewsAnalysisAdmission | NewsStoryIdentity | Mapping[str, object],
+    value: NewsMarketScope | NewsStoryIdentity | NewsItemAgentAdmission | Mapping[str, object],
     *,
-    expected_type: type[NewsAnalysisAdmission] | type[NewsStoryIdentity],
+    expected_type: type[NewsMarketScope] | type[NewsStoryIdentity] | type[NewsItemAgentAdmission],
     label: str,
     required_fields: tuple[str, ...],
 ) -> dict[str, object]:
     if isinstance(value, Mapping):
         payload = dict(value)
     elif isinstance(value, expected_type):
-        payload = asdict(value)
+        to_payload = getattr(value, "to_payload", None)
+        payload = dict(to_payload() if to_payload is not None else asdict(value))
     else:
         raise ValueError(f"unsupported {label} shape")
     missing = [field for field in required_fields if field not in payload]
     if missing:
         raise ValueError(f"unsupported {label} shape: missing {', '.join(missing)}")
     return payload
+
+
+def _required_payload_list(payload: Mapping[str, object], field: str, *, label: str) -> list[object]:
+    value = payload.get(field)
+    if isinstance(value, str) or not isinstance(value, list | tuple):
+        raise ValueError(f"unsupported {label} shape: {field} must be list")
+    if not value:
+        raise ValueError(f"unsupported {label} shape: {field} must be non-empty")
+    return list(value)
+
+
+def _group_rows_by_news_item_id(rows: Sequence[Mapping[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        grouped[str(row.get("news_item_id") or "")].append(dict(row))
+    return grouped
 
 
 def _required_payload_text(payload: Mapping[str, object], field: str, *, label: str) -> str:

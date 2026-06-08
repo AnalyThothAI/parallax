@@ -43,7 +43,7 @@ def test_repair_news_agent_market_admission_dry_run_reports_new_policy_without_m
     assert result["updated"] == 0
     assert result["enqueued"] == 0
     assert result["counts_by_status"] == {"eligible": 1, "exact_duplicate": 1}
-    assert result["counts_by_previous_reason"] == {"non_crypto_subject": 2}
+    assert result["counts_by_previous_reason"] == {"stale_policy": 2}
     assert repos.news.updates == []
     assert repos.news_projection_dirty_targets.enqueue_calls == []
 
@@ -88,8 +88,24 @@ def _candidate(
         "published_at_ms": NOW_MS - 1_000,
         "content_classification_json": {"event_type": "company_update"},
         "provider_signal_json": {"source": "provider", "score": 91},
-        "analysis_admission_status": "page_only",
-        "analysis_admission_reason": "non_crypto_subject",
+        "market_scope_json": {
+            "scope": ["us_equity", "ai_semiconductors"],
+            "primary": "us_equity",
+            "status": "classified",
+            "reason": "us_equity_context",
+            "basis": {"scope_evidence": {"us_equity": ["unit_fixture"]}},
+            "version": "news_market_scope_v1",
+        },
+        "agent_admission_status": "needs_review",
+        "agent_admission_reason": "stale_policy",
+        "agent_admission_json": {
+            "eligible": False,
+            "status": "needs_review",
+            "reason": "stale_policy",
+            "representative_news_item_id": news_item_id,
+            "basis": {"market_scope": ["us_equity", "ai_semiconductors"]},
+            "version": "news_item_agent_admission_market_v2",
+        },
         "provider_article_keys": provider_article_keys or [f"provider:{news_item_id}"],
         "canonical_url": f"https://example.com/news/{news_item_id}",
         "url_identity_kind": "article",

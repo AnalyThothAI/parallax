@@ -5,9 +5,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-LATEST_MIGRATION = (
-    ROOT / "src/parallax/platform/db/alembic/versions/20260515_0046_event_anchor_capture_redesign.py"
-)
+LATEST_MIGRATION = ROOT / "src/parallax/platform/db/alembic/versions/20260515_0046_event_anchor_capture_redesign.py"
 ALEMBIC_VERSIONS = ROOT / "src/parallax/platform/db/alembic/versions"
 GENERATED_DOCS = ROOT / "docs/generated"
 SUPERPOWERS_DOCS = ROOT / "docs/superpowers"

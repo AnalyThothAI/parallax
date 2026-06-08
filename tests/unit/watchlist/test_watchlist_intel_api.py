@@ -104,9 +104,7 @@ class FakeWatchlistIntelRepository:
                 "last_source_event_at_ms": 1_000,
             },
             "resolved_token_clusters": [],
-            "candidate_mention_clusters": [
-                {"label": "$SOL", "count": 1, "query": "$SOL", "kind": "candidate_mention"}
-            ],
+            "candidate_mention_clusters": [{"label": "$SOL", "count": 1, "query": "$SOL", "kind": "candidate_mention"}],
             "narrative_clusters": [],
             "clusters_truncated": False,
             "risk_notes": ["candidate_mentions_unresolved"],

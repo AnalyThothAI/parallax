@@ -56,19 +56,6 @@ def test_token_resolutions_for_events_projects_symbol_and_event_price() -> None:
     }
 
 
-def test_signal_events_for_summary_limits_before_event_join() -> None:
-    conn = _FakeConn([])
-
-    rows = WatchlistIntelRepository(conn).signal_events_for_summary(handle="Toly", since_ms=0, limit=10)
-
-    assert rows == []
-    assert "WITH selected AS" in conn.sql
-    assert "normalized_handle = %s" in conn.sql
-    assert "LIMIT %s" in conn.sql.split("FROM selected se", maxsplit=1)[0]
-    assert "JOIN events e ON e.event_id = se.event_id" in conn.sql
-    assert "lower(coalesce" not in conn.sql
-
-
 class _FakeConn:
     def __init__(self, rows: list[dict[str, Any]]) -> None:
         self.rows = rows

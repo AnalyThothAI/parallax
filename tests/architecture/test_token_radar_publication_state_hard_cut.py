@@ -166,9 +166,7 @@ def test_token_radar_successful_publication_generation_ids_are_content_stable() 
     refresh_rank_set = _class_method(tree, "TokenRadarProjection", "refresh_rank_set")
     generation_writes = _generation_id_writes(refresh_rank_set)
     successful_generation_calls = [
-        _call_name(value)
-        for _node, value in generation_writes
-        if isinstance(value, ast.Call)
+        _call_name(value) for _node, value in generation_writes if isinstance(value, ast.Call)
     ]
     timestamp_names = {"computed_at_ms", "published_at_ms", "now_ms"}
     stable_generation_names = {

@@ -6,7 +6,7 @@ import json
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, cast
 
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
@@ -718,7 +718,7 @@ def _current_digest_payload_matches(
 
 
 def _try_reserve_provider_execution(provider: Any, lane: str, *, rate_units: int = 1) -> AgentCapacityReservation:
-    return provider.try_reserve_execution(lane, rate_units=rate_units)
+    return cast(AgentCapacityReservation, provider.try_reserve_execution(lane, rate_units=rate_units))
 
 
 async def _summarize_discussion(

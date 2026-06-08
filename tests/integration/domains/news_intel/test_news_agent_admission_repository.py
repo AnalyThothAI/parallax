@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from parallax.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION
+from parallax.domains.news_intel._constants import NEWS_MARKET_SCOPE_VERSION, NEWS_PAGE_PROJECTION_VERSION
 from parallax.domains.news_intel.repositories.news_repository import NewsRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
@@ -9,12 +9,12 @@ NOW_MS = 1_779_600_000_000
 AGENT_ADMISSION_VERSION = "news_item_agent_admission_market_v2"
 
 
-def test_update_item_agent_admission_persists_without_touching_analysis_admission(tmp_path) -> None:
+def test_update_item_agent_admission_persists_without_touching_market_scope(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         repo = NewsRepository(conn)
-        news_item_id = _seed_processed_news_item(repo, suffix="page-only", analysis_admission_status="page_only")
+        news_item_id = _seed_processed_news_item(repo, suffix="page-only", primary_scope="us_equity")
 
         updated = repo.update_item_agent_admission(
             news_item_id=news_item_id,
@@ -37,7 +37,7 @@ def test_update_item_agent_admission_persists_without_touching_analysis_admissio
     assert row["agent_admission_status"] == "eligible"
     assert row["agent_representative_news_item_id"] == news_item_id
     assert row["agent_admission_computed_at_ms"] == NOW_MS + 2_000
-    assert row["analysis_admission_status"] == "page_only"
+    assert row["market_scope"]["primary"] == "us_equity"
 
 
 def test_page_row_persists_agent_admission_fields(tmp_path) -> None:
@@ -45,7 +45,7 @@ def test_page_row_persists_agent_admission_fields(tmp_path) -> None:
     try:
         migrate(conn)
         repo = NewsRepository(conn)
-        news_item_id = _seed_processed_news_item(repo, suffix="page-row", analysis_admission_status="page_only")
+        news_item_id = _seed_processed_news_item(repo, suffix="page-row", primary_scope="us_equity")
         row = _page_row_fixture(
             news_item_id=news_item_id,
             agent_admission_status="similar_story_covered",
@@ -72,14 +72,14 @@ def test_list_agent_admission_repair_candidates_includes_page_only_items_without
         page_only_id = _seed_processed_news_item(
             repo,
             suffix="page-only-high-score",
-            analysis_admission_status="page_only",
             provider_score=88,
+            primary_scope="us_equity",
         )
         below_threshold_id = _seed_processed_news_item(
             repo,
             suffix="page-only-low-score",
-            analysis_admission_status="page_only",
             provider_score=79,
+            primary_scope="us_equity",
         )
 
         candidates = repo.list_agent_admission_repair_candidates(
@@ -100,7 +100,7 @@ def test_list_agent_admission_repair_candidates_includes_page_only_items_without
     )
     assert page_only_candidate["provider_score"] == 88
     assert low_score_candidate["provider_score"] == 79
-    assert page_only_candidate["item"]["analysis_admission_status"] == "page_only"
+    assert page_only_candidate["item"]["market_scope_json"]["primary"] == "us_equity"
 
 
 def test_load_agent_admission_contexts_exposes_duplicate_provider_article_keys(tmp_path) -> None:
@@ -232,7 +232,7 @@ def _seed_processed_news_item(
     repo: NewsRepository,
     *,
     suffix: str = "1",
-    analysis_admission_status: str = "page_only",
+    primary_scope: str = "crypto",
     provider_score: int = 88,
     source_enabled: bool = True,
     published_at_ms: int = NOW_MS,
@@ -286,14 +286,9 @@ def _seed_processed_news_item(
     )
     news_item_id = str(news["news_item_id"])
     repo.mark_item_processed(news_item_id=news_item_id, processed_at_ms=NOW_MS)
-    repo.update_item_analysis_and_story_identity(
+    repo.update_item_market_scope_and_story_identity(
         news_item_id=news_item_id,
-        admission={
-            "status": analysis_admission_status,
-            "reason": "test_agent_admission_storage",
-            "basis": {"provider_score": provider_score},
-            "version": "news_analysis_admission_v1",
-        },
+        market_scope=_market_scope_fixture(primary=primary_scope),
         story_identity={
             "story_key": story_key or f"story:{suffix}",
             "confidence": "weak",
@@ -344,9 +339,7 @@ def _page_row_fixture(
         "agent_brief_computed_at_ms": None,
         "computed_at_ms": NOW_MS,
         "projection_version": NEWS_PAGE_PROJECTION_VERSION,
-        "analysis_admission_status": "page_only",
-        "analysis_admission_reason": "test_agent_admission_storage",
-        "analysis_admission": {"status": "page_only", "reason": "test_agent_admission_storage"},
+        "market_scope": _market_scope_fixture(primary="us_equity"),
         "agent_admission_status": agent_admission_status,
         "agent_admission_reason": agent_admission_reason,
         "agent_admission": {
@@ -355,4 +348,15 @@ def _page_row_fixture(
             "version": AGENT_ADMISSION_VERSION,
         },
         "agent_representative_news_item_id": agent_representative_news_item_id or news_item_id,
+    }
+
+
+def _market_scope_fixture(*, primary: str = "crypto") -> dict[str, object]:
+    return {
+        "scope": [primary],
+        "primary": primary,
+        "status": "classified",
+        "reason": f"{primary}_context",
+        "basis": {"test": True},
+        "version": NEWS_MARKET_SCOPE_VERSION,
     }

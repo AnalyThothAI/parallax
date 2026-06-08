@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping, Sequence
-from contextlib import nullcontext
+from collections.abc import Callable, Mapping, Sequence
+from contextlib import AbstractContextManager, nullcontext
 from datetime import date
-from typing import Any, NotRequired, TypedDict
+from typing import Any, NotRequired, TypedDict, cast
 
 from psycopg.types.json import Jsonb
 
@@ -1402,9 +1402,7 @@ class MacroIntelRepository:
         return rows_written
 
     def _insert_observation_series_rows_chunk(self, rows: Sequence[Mapping[str, Any]]) -> int:
-        values_sql = ",".join(
-            ["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(rows)
-        )
+        values_sql = ",".join(["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(rows))
         params: list[Any] = []
         for row in rows:
             params.extend(
@@ -1915,7 +1913,7 @@ def _macro_projection_dirty_claims(claimed: Sequence[Mapping[str, Any]]) -> list
     ]
 
 
-def _macro_projection_dirty_claim_params(records: Sequence[Mapping[str, Any]]) -> dict[str, list[Any]]:
+def _macro_projection_dirty_claim_params(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     return {
         "projection_names": [record["projection_name"] for record in records],
         "projection_versions": [record["projection_version"] for record in records],
@@ -1978,11 +1976,11 @@ def _payload_hash(
     return hashlib.sha256(identity.encode()).hexdigest()
 
 
-def _transaction_context(conn: Any):
+def _transaction_context(conn: Any) -> AbstractContextManager[Any]:
     transaction = getattr(conn, "transaction", None)
     if transaction is None:
         return nullcontext()
-    return transaction()
+    return cast(Callable[[], AbstractContextManager[Any]], transaction)()
 
 
 def _count(row: Any) -> int:

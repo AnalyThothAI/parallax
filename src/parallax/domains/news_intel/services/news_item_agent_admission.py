@@ -2,54 +2,16 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any
 
-from parallax.domains.news_intel._constants import NEWS_ITEM_AGENT_ADMISSION_VERSION
-from parallax.domains.news_intel.services.news_market_scope import infer_news_market_scope
-from parallax.domains.news_intel.services.news_material_delta import decide_news_material_delta
+from parallax.domains.news_intel.services.news_market_scope import classify_news_market_scope
+from parallax.domains.news_intel.services.news_material_delta import NewsMaterialDelta, decide_news_material_delta
 from parallax.domains.news_intel.services.news_story_similarity import decide_news_story_similarity
-
-NewsItemAgentAdmissionStatus = Literal[
-    "eligible",
-    "eligible_refresh",
-    "exact_duplicate",
-    "similar_story_covered",
-    "similar_story_burst",
-    "materially_superseded",
-    "source_suppressed",
-    "operational_disabled",
-    "needs_review",
-]
-
-
-@dataclass(frozen=True, slots=True)
-class NewsItemAgentAdmission:
-    eligible: bool
-    status: NewsItemAgentAdmissionStatus
-    reason: str
-    representative_news_item_id: str
-    basis: dict[str, Any]
-    version: str = NEWS_ITEM_AGENT_ADMISSION_VERSION
-
-
-@dataclass(frozen=True, slots=True)
-class NewsItemAgentAdmissionContext:
-    current_brief: Mapping[str, Any] | None = None
-    exact_duplicate_candidates: Sequence[Mapping[str, Any]] = field(default_factory=tuple)
-    story_candidates: Sequence[Mapping[str, Any]] = field(default_factory=tuple)
-
-    @classmethod
-    def empty(cls) -> NewsItemAgentAdmissionContext:
-        return cls()
-
-    @classmethod
-    def from_repository_context(cls, context: Mapping[str, Any]) -> NewsItemAgentAdmissionContext:
-        return cls(
-            current_brief=_optional_mapping(context.get("current_brief")),
-            exact_duplicate_candidates=_list_of_mappings(context.get("exact_duplicate_candidates")),
-            story_candidates=_list_of_mappings(context.get("story_candidates")),
-        )
+from parallax.domains.news_intel.types.news_item_agent_admission import (
+    NewsItemAgentAdmission,
+    NewsItemAgentAdmissionContext,
+    NewsItemAgentAdmissionStatus,
+)
 
 
 def decide_news_item_agent_admission(
@@ -62,13 +24,16 @@ def decide_news_item_agent_admission(
     now_ms: int,
 ) -> NewsItemAgentAdmission:
     news_item_id = str(item.get("news_item_id") or "")
-    market_scope = infer_news_market_scope(
+    market_scope = classify_news_market_scope(
         item=item,
-        entities=entities,
         token_mentions=token_mentions,
         fact_candidates=fact_candidates,
     )
-    base_basis: dict[str, Any] = {"market_scope": market_scope.domains, "market_scope_basis": market_scope.basis}
+    base_basis: dict[str, Any] = {
+        "market_scope": list(market_scope.scope),
+        "market_scope_primary": market_scope.primary,
+        "market_scope_basis": market_scope.basis,
+    }
 
     base = _base_gate(
         item=item,
@@ -98,14 +63,19 @@ def decide_news_item_agent_admission(
             similarity.representative_news_item_id,
             context.story_candidates,
         )
-        delta = decide_news_material_delta(
-            item=item,
-            representative_item=representative,
-            entities=entities,
-            representative_entities=_list_of_mappings((representative or {}).get("entities")),
-            fact_candidates=fact_candidates,
-            representative_fact_candidates=_list_of_mappings((representative or {}).get("fact_candidates")),
-            current_brief=_optional_mapping((representative or {}).get("current_brief")) or context.current_brief,
+        material_delta = _mapping(context.material_delta)
+        delta = (
+            _material_delta_from_context(material_delta)
+            if material_delta
+            else decide_news_material_delta(
+                item=item,
+                representative_item=representative,
+                entities=entities,
+                representative_entities=_list_of_mappings((representative or {}).get("entities")),
+                fact_candidates=fact_candidates,
+                representative_fact_candidates=_list_of_mappings((representative or {}).get("fact_candidates")),
+                current_brief=_optional_mapping((representative or {}).get("current_brief")) or context.current_brief,
+            )
         )
         base_basis["material_delta"] = {
             "has_delta": delta.has_delta,
@@ -256,6 +226,28 @@ def _list_of_mappings(value: Any) -> list[dict[str, Any]]:
             return []
         if isinstance(parsed, list):
             return [dict(row) for row in parsed if isinstance(row, Mapping)]
+    return []
+
+
+def _material_delta_from_context(value: Mapping[str, Any]) -> NewsMaterialDelta:
+    return NewsMaterialDelta(
+        has_delta=bool(value.get("has_delta")),
+        reasons=[str(reason) for reason in _json_list(value.get("reasons"))],
+        evidence=_mapping(value.get("evidence")),
+    )
+
+
+def _json_list(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+        return parsed if isinstance(parsed, list) else []
     return []
 
 

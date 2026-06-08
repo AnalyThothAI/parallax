@@ -225,6 +225,16 @@ def build_parser() -> argparse.ArgumentParser:
     repair_news_agent_market_admission_mode = repair_news_agent_market_admission.add_mutually_exclusive_group()
     repair_news_agent_market_admission_mode.add_argument("--dry-run", action="store_true", default=True)
     repair_news_agent_market_admission_mode.add_argument("--execute", action=_ExecuteMode, default=False)
+
+    repair_news_market_signal = ops_subcommands.add_parser(
+        "repair-news-market-signal",
+        help="recompute market scope and enqueue News market-signal repair targets",
+    )
+    repair_news_market_signal.add_argument("--since-hours", type=float, default=8.0)
+    repair_news_market_signal.add_argument("--min-score", type=int, default=80)
+    repair_news_market_signal_mode = repair_news_market_signal.add_mutually_exclusive_group(required=True)
+    repair_news_market_signal_mode.add_argument("--dry-run", action="store_true")
+    repair_news_market_signal_mode.add_argument("--execute", action="store_true")
     sync_binance_universe = ops_subcommands.add_parser(
         "sync-binance-usdt-perp-universe",
         help="sync Binance USD-M USDT perpetual contracts into the CEX registry",

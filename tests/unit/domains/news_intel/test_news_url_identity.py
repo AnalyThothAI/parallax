@@ -8,9 +8,9 @@ import pytest
 
 def _service() -> Any:
     try:
-        return import_module("parallax.domains.news_intel.services.news_url_identity")
+        return import_module("parallax.domains.news_intel.types.news_url_identity")
     except ModuleNotFoundError as exc:
-        pytest.fail(f"news_url_identity service is required: {exc}")
+        pytest.fail(f"news_url_identity policy module is required: {exc}")
 
 
 def test_tass_root_url_is_homepage_not_article_identity() -> None:

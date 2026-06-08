@@ -38,7 +38,7 @@ NEWS_INTEL_CANONICAL_DEDUP_MIGRATION = (
 NEWS_REALTIME_POSTGRES_HOTPATH_MIGRATION = (
     SRC / "platform/db/alembic/versions/20260528_0118_news_realtime_postgres_hotpath_hard_cut.py"
 )
-NEWS_INTEL_HARD_CUT_CLEANUP = SRC / "domains/news_intel/services/news_intel_hard_cut_cleanup.py"
+NEWS_INTEL_HARD_CUT_CLEANUP = SRC / "domains/news_intel/repositories/news_intel_hard_cut_cleanup_repository.py"
 
 ZERO_HARD_TIMEOUT_ALLOWLIST = {"collector"}
 

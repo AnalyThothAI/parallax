@@ -88,6 +88,18 @@ class DataGap(BaseModel):
     severity: NewsItemBriefGapSeverity = "medium"
 
 
+class NewsItemBriefMarketImpact(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    label: str = Field(min_length=1, max_length=160)
+    market_type: NewsMarketDomain = "unknown"
+    target_type: str | None = Field(default=None, max_length=80)
+    target_id: str | None = Field(default=None, max_length=160)
+    impact_direction: NewsItemBriefDirection = "neutral"
+    reason_zh: str = Field(default="", max_length=360)
+    evidence_refs: list[Annotated[str, Field(min_length=1, max_length=160)]] = Field(default_factory=list, max_length=8)
+
+
 class NewsItemBriefPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -100,6 +112,7 @@ class NewsItemBriefPayload(BaseModel):
     market_read_zh: str = Field(default="", max_length=1200)
     market_domains: list[NewsMarketDomain] = Field(default_factory=list, max_length=12)
     transmission_paths: list[TransmissionPath] = Field(default_factory=list, max_length=12)
+    market_impacts: list[NewsItemBriefMarketImpact] = Field(default_factory=list, max_length=12)
     bull_view: NewsItemBriefSideView = Field(default_factory=NewsItemBriefSideView)
     bear_view: NewsItemBriefSideView = Field(default_factory=NewsItemBriefSideView)
     affected_entities: list[AffectedEntity] = Field(default_factory=list, max_length=12)
@@ -290,6 +303,7 @@ __all__ = [
     "NewsItemBriefFactLane",
     "NewsItemBriefGapSeverity",
     "NewsItemBriefInputPacket",
+    "NewsItemBriefMarketImpact",
     "NewsItemBriefNewsItem",
     "NewsItemBriefPayload",
     "NewsItemBriefProviderMarketImpact",

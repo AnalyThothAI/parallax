@@ -52,10 +52,10 @@ options:
 
 ```
 usage: parallax ops [-h]
-                    {backfill-account-quality,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,projection-status,worker-status,queue-inspect,queue-resolve,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,cleanup-news-brief-input,cleanup-news-intel-hard-cut,rebuild-news-canonical-items,repair-news-duplicates-hard-cut,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors} ...
+                    {backfill-account-quality,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,enqueue-token-capture-tier-rank-set,projection-status,worker-status,queue-inspect,queue-resolve,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,cleanup-news-brief-input,cleanup-news-intel-hard-cut,rebuild-news-canonical-items,repair-news-duplicates-hard-cut,repair-news-market-signal,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors} ...
 
 positional arguments:
-  {backfill-account-quality,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,projection-status,worker-status,queue-inspect,queue-resolve,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,cleanup-news-brief-input,cleanup-news-intel-hard-cut,rebuild-news-canonical-items,repair-news-duplicates-hard-cut,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors}
+  {backfill-account-quality,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,enqueue-token-capture-tier-rank-set,projection-status,worker-status,queue-inspect,queue-resolve,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,cleanup-news-brief-input,cleanup-news-intel-hard-cut,rebuild-news-canonical-items,repair-news-duplicates-hard-cut,repair-news-market-signal,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors}
     backfill-account-quality
                         backfill account token-call stats and quality
                         snapshots
@@ -64,6 +64,9 @@ positional arguments:
                         market_ticks
     enqueue-token-radar-dirty-targets
                         enqueue Token Radar dirty targets from persisted facts
+    enqueue-token-capture-tier-rank-set
+                        enqueue Token Capture Tier repair from current Token
+                        Radar rank set
     projection-status   print projection offsets and latest runs
     worker-status       print canonical worker runtime status
     queue-inspect       inspect worker queue terminal evidence
@@ -83,14 +86,17 @@ positional arguments:
                         delete stale News brief_input dirty targets that no
                         longer pass the brief policy
     cleanup-news-intel-hard-cut
-                        dry-run or execute the News Intel hard-cut data
-                        cleanup
+                        dry-run or execute the News Intel hard-cut artifact-
+                        only cleanup
     rebuild-news-canonical-items
                         enqueue a bounded rebuild of News canonical item
                         derived projections
     repair-news-duplicates-hard-cut
                         repair historical News duplicate rows under the
                         current hard-cut identity policy
+    repair-news-market-signal
+                        recompute market scope and enqueue News market-signal
+                        repair targets
     sync-binance-usdt-perp-universe
                         sync Binance USD-M USDT perpetual contracts into the
                         CEX registry

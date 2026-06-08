@@ -64,14 +64,22 @@ class FakeNews:
         return self.rows
 
 
-def _admitted_news_row(row: dict) -> dict:
+def _market_scoped_news_row(row: dict) -> dict:
     return {
-        "analysis_admission_status": "admitted",
-        "analysis_admission_reason": "test_crypto_subject",
-        "analysis_admission": {
-            "status": "admitted",
+        "market_scope": {
+            "scope": ["crypto"],
+            "primary": "crypto",
+            "status": "classified",
             "reason": "test_crypto_subject",
             "basis": {"test": True},
+            "version": "test_news_market_scope_v1",
+        },
+        "agent_admission_status": "eligible",
+        "agent_admission_reason": "test_agent_ready",
+        "agent_admission": {
+            "status": "eligible",
+            "reason": "test_agent_ready",
+            "representative_news_item_id": row.get("representative_news_item_id") or row.get("news_item_id") or "",
         },
         **row,
     }
@@ -886,7 +894,7 @@ def test_signal_pulse_notifications_follow_candidate_pages():
 def test_news_high_signal_uses_ready_agent_brief_for_display_and_builds_push_signatures():
     news = FakeNews(
         [
-            _admitted_news_row(
+            _market_scoped_news_row(
                 {
                     "news_item_id": "news-1",
                     "latest_at_ms": NOW_MS - 5_000,
@@ -959,44 +967,56 @@ def test_news_high_signal_uses_ready_agent_brief_for_display_and_builds_push_sig
     assert candidate.occurrence_at_ms == NOW_MS - 5_000
 
 
-def test_news_high_signal_skips_page_only_provider_score():
+def test_news_high_signal_allows_market_wide_ready_watch_candidate():
+    market_scope = {
+        "scope": ["us_equity"],
+        "primary": "us_equity",
+        "status": "classified",
+        "reason": "private_company_equity_context",
+        "basis": {"provider_score": 90},
+        "version": "test_news_market_scope_v1",
+    }
     news = FakeNews(
         [
             {
-                "news_item_id": "news-provider-high",
+                "news_item_id": "news-market-watch",
                 "latest_at_ms": NOW_MS - 5_000,
-                "headline": "Provider high signal should alert",
+                "headline": "SpaceX valuation reset lifts private-market risk appetite",
                 "source_domain": "example.test",
-                "canonical_url": "https://example.test/high",
+                "canonical_url": "https://example.test/spacex",
                 "duplicate_count": 1,
-                "analysis_admission_status": "page_only",
-                "analysis_admission_reason": "provider_score_without_crypto_admission",
-                "analysis_admission": {
-                    "status": "page_only",
-                    "reason": "provider_score_without_crypto_admission",
-                    "basis": {"provider_score": 90},
+                "market_scope": market_scope,
+                "agent_admission_status": "eligible",
+                "agent_admission_reason": "market_wide_watch",
+                "agent_admission": {
+                    "status": "eligible",
+                    "reason": "market_wide_watch",
+                    "representative_news_item_id": "news-market-watch",
                 },
                 "content_class": "low_signal",
-                "content_tags": ["low_context"],
+                "content_tags": ["private_markets"],
                 "signal": {
                     "direction": "bullish",
                     "alert_eligibility": {
                         "in_app_eligible": True,
-                        "external_push_ready": False,
-                        "external_push_block_reason": "agent_brief_not_ready",
+                        "external_push_ready": True,
+                        "external_push_basis": "agent_brief",
                         "provider_score": 90,
-                        "decision_class": "context",
+                        "decision_class": "watch",
+                        "market_scope": market_scope,
                     },
                 },
-                "token_impacts": [{"symbol": "BTC", "score": 90}],
+                "token_impacts": [{"symbol": "SPCX", "score": 90}],
                 "agent_brief": {
-                    "status": "insufficient",
-                    "direction": "neutral",
-                    "decision_class": "context",
-                    "summary_zh": "证据不足，不应作为通知准入 gate。",
+                    "status": "ready",
+                    "direction": "bullish",
+                    "decision_class": "watch",
+                    "title_zh": "SpaceX 估值重估",
+                    "summary_zh": "私人市场风险偏好改善，值得观察相关权益风险。",
                     "brief_json": {
-                        "summary_zh": "证据不足，不应作为通知准入 gate。",
-                        "data_gaps": [{"kind": "missing_detail"}],
+                        "title_zh": "SpaceX 估值重估",
+                        "summary_zh": "私人市场风险偏好改善，值得观察相关权益风险。",
+                        "market_impacts": [{"label": "SPCX", "market_type": "us_equity"}],
                     },
                 },
             }
@@ -1020,13 +1040,22 @@ def test_news_high_signal_skips_page_only_provider_score():
         if item.rule_id == "news_high_signal"
     ]
 
-    assert candidates == []
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate.channels == ("in_app", "pushdeer")
+    assert candidate.payload["market_scope"] == market_scope
+    assert candidate.payload["agent_admission_status"] == "eligible"
+    assert candidate.payload["agent_admission_reason"] == "market_wide_watch"
+    assert candidate.payload["agent_admission"]["representative_news_item_id"] == "news-market-watch"
+    assert "analysis_admission_status" not in candidate.payload
+    assert "analysis_admission_reason" not in candidate.payload
+    assert "analysis_admission" not in candidate.payload
 
 
 def test_news_high_signal_uses_projection_external_push_readiness() -> None:
     news = FakeNews(
         [
-            _admitted_news_row(
+            _market_scoped_news_row(
                 {
                     "news_item_id": "news-ready-without-publishable-brief",
                     "latest_at_ms": NOW_MS - 5_000,
@@ -1084,7 +1113,7 @@ def test_news_high_signal_uses_projection_external_push_readiness() -> None:
 def test_news_high_signal_skips_stale_source_items_even_when_agent_finished_now():
     news = FakeNews(
         [
-            _admitted_news_row(
+            _market_scoped_news_row(
                 {
                     "news_item_id": "news-old",
                     "latest_at_ms": NOW_MS - 7 * 60 * 60_000,
@@ -1126,7 +1155,7 @@ def test_news_high_signal_skips_stale_source_items_even_when_agent_finished_now(
 
 
 def test_news_high_signal_semantic_dedup_ignores_projection_and_summary_churn():
-    base_row = _admitted_news_row(
+    base_row = _market_scoped_news_row(
         {
             "news_item_id": "news-1",
             "latest_at_ms": NOW_MS - 5_000,
@@ -1184,7 +1213,7 @@ def test_news_high_signal_semantic_dedup_ignores_projection_and_summary_churn():
 
 def test_jpm_citi_story_variants_emit_one_candidate():
     story_key = "news-story:subject:jpmorgan-citi-tokenized-deposit:t412000"
-    jpm_row = _admitted_news_row(
+    jpm_row = _market_scoped_news_row(
         {
             "row_id": "row-jpm-story",
             "news_item_id": "news-jpm",
@@ -1217,7 +1246,7 @@ def test_jpm_citi_story_variants_emit_one_candidate():
             "agent_brief": {"status": "pending"},
         }
     )
-    citi_row = _admitted_news_row(
+    citi_row = _market_scoped_news_row(
         {
             **jpm_row,
             "row_id": "row-citi-story",
@@ -1243,16 +1272,17 @@ def test_jpm_citi_story_variants_emit_one_candidate():
     assert candidate.source_id == "row-jpm-story"
     assert candidate.payload["story_key"] == story_key
     assert candidate.payload["story"]["member_count"] == 2
-    assert candidate.payload["analysis_admission_status"] == "admitted"
-    assert candidate.payload["analysis_admission_reason"] == "test_crypto_subject"
-    assert candidate.payload["analysis_admission"]["basis"] == {"test": True}
+    assert candidate.payload["market_scope"]["primary"] == "crypto"
+    assert candidate.payload["agent_admission_status"] == "eligible"
+    assert candidate.payload["agent_admission_reason"] == "test_agent_ready"
+    assert candidate.payload["agent_admission"]["representative_news_item_id"] == "news-jpm"
     assert candidate.payload["decision_class"] == "driver"
     assert candidate.payload["direction"] == "bullish"
     assert candidate.payload["affected_entities"] == []
 
 
 def test_news_high_signal_external_push_signature_keeps_distinct_stories_push_eligible():
-    base_row = _admitted_news_row(
+    base_row = _market_scoped_news_row(
         {
             "row_id": "row-story-a",
             "news_item_id": "news-story-a",
@@ -1330,7 +1360,7 @@ def test_news_high_signal_external_push_signature_keeps_distinct_stories_push_el
 
 
 def test_news_high_signal_external_push_signature_uses_asset_cooldown_not_item_identity():
-    base_row = _admitted_news_row(
+    base_row = _market_scoped_news_row(
         {
             "news_item_id": "news-1",
             "latest_at_ms": NOW_MS - 5_000,

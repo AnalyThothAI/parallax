@@ -4,6 +4,7 @@ from typing import Any
 
 from parallax.domains.news_intel.services.news_item_brief_stage import (
     build_news_item_brief_stage,
+    news_item_brief_prompt_text_hash,
 )
 from parallax.domains.news_intel.types.news_item_brief import (
     NEWS_ITEM_BRIEF_PROMPT_VERSION,
@@ -43,6 +44,7 @@ class LiteLLMNewsItemBriefClient:
             schema_version=NEWS_ITEM_BRIEF_SCHEMA_VERSION,
             runtime_version=RUNTIME_VERSION,
             output_schema_hash=json_sha256(StrictJsonOutputSchema(NewsItemBriefPayload).json_schema()),
+            prompt_text_hash=news_item_brief_prompt_text_hash(),
         )
 
     def try_reserve_execution(self, lane: str, *, rate_units: int = 1) -> AgentCapacityReservation:

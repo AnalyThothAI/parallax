@@ -8,7 +8,7 @@ from parallax.domains.news_intel.services.news_intel_hard_cut_cleanup import (
     NewsIntelHardCutCleanupAbort,
     cleanup_news_intel_hard_cut,
 )
-from parallax.domains.news_intel.services.news_item_brief_contract import CURRENT_NEWS_ITEM_BRIEF_CONTRACT
+from parallax.domains.news_intel.types.news_item_brief_contract import CURRENT_NEWS_ITEM_BRIEF_CONTRACT
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 

@@ -25,8 +25,6 @@ def test_high_score_us_equity_page_only_item_is_eligible() -> None:
     admission = decide_news_item_agent_admission(
         item=_item(
             title="NVIDIA shares rise after AI chip demand update",
-            analysis_admission_status="page_only",
-            analysis_admission_reason="non_crypto_subject",
         ),
         entities=[{"entity_id": "entity-nvda", "raw_value": "NVIDIA", "entity_type": "company"}],
         token_mentions=[],
@@ -45,8 +43,6 @@ def test_low_score_market_news_is_not_filtered_by_provider_score() -> None:
         item=_item(
             title="Ford shares fall after supplier disruption",
             provider_signal_json={"source": "provider", "status": "ready", "score": 42},
-            analysis_admission_status="page_only",
-            analysis_admission_reason="non_crypto_subject",
         ),
         entities=[{"entity_id": "entity-f", "raw_value": "Ford", "entity_type": "company", "symbol": "F"}],
         token_mentions=[],
@@ -66,8 +62,6 @@ def test_high_score_old_item_is_not_filtered_by_agent_age_gate() -> None:
         item=_item(
             published_at_ms=NOW_MS - 24 * 3_600_000,
             title="Oil prices rise after Gulf shipping disruption",
-            analysis_admission_status="page_only",
-            analysis_admission_reason="non_crypto_subject",
         ),
         entities=[{"entity_id": "entity-wti", "raw_value": "WTI crude", "entity_type": "commodity"}],
         token_mentions=[],

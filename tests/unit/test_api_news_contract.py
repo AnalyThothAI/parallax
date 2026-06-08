@@ -10,7 +10,11 @@ from parallax.app.surfaces.api.exceptions import (
     api_unauthorized_response,
 )
 from parallax.app.surfaces.api.http import create_api_router
-from parallax.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION
+from parallax.domains.news_intel._constants import (
+    NEWS_ITEM_AGENT_ADMISSION_VERSION,
+    NEWS_MARKET_SCOPE_VERSION,
+    NEWS_PAGE_PROJECTION_VERSION,
+)
 from parallax.domains.news_intel.repositories.news_repository import _public_agent_brief_payload
 
 
@@ -89,17 +93,18 @@ def test_news_api_lists_provider_signal_news_rows_without_postgres() -> None:
                             "external_push_ready": False,
                             "provider_score": 82,
                             "decision_class": "driver",
+                            "market_scope": _market_scope(),
+                            "agent_admission_status": "eligible",
+                            "agent_admission_reason": "provider_score_high",
                         },
                     },
                     "token_impacts": [{"symbol": "BTC", "score": 82, "signal": "long"}],
                     "source": {"source_id": "opennews-realtime", "provider_type": "opennews"},
-                    "analysis_admission_status": "admitted",
-                    "analysis_admission_reason": "crypto_native_subject",
-                    "analysis_admission": {
-                        "status": "admitted",
-                        "reason": "crypto_native_subject",
-                        "basis": {"subject": "sol_etf"},
-                    },
+                    "market_scope": _market_scope(),
+                    "agent_admission_status": "eligible",
+                    "agent_admission_reason": "provider_score_high",
+                    "agent_admission": _agent_admission(),
+                    "agent_representative_news_item_id": "news-1",
                     "computed_at_ms": 3_100,
                     "projection_version": NEWS_PAGE_PROJECTION_VERSION,
                 }
@@ -107,6 +112,7 @@ def test_news_api_lists_provider_signal_news_rows_without_postgres() -> None:
             "next_cursor": "3000:row-1",
         },
     }
+    _assert_no_legacy_admission_fields(response.json()["data"]["items"][0])
 
 
 def test_news_api_returns_null_next_cursor_when_no_extra_row_without_postgres() -> None:
@@ -300,13 +306,11 @@ def test_news_item_detail_hides_retired_brief_fields() -> None:
             "member_count": 1,
             "source_domains": ["example.com"],
         },
-        "analysis_admission_status": "admitted",
-        "analysis_admission_reason": "crypto_native_subject",
-        "analysis_admission": {
-            "status": "admitted",
-            "reason": "crypto_native_subject",
-            "basis": {"subject": "btc"},
-        },
+        "market_scope": _market_scope(),
+        "agent_admission_status": "eligible",
+        "agent_admission_reason": "provider_score_high",
+        "agent_admission": _agent_admission(),
+        "agent_representative_news_item_id": "news-1",
         "agent_brief": {
             "status": "ready",
             "direction": "bullish",
@@ -348,9 +352,30 @@ def test_news_item_detail_hides_retired_brief_fields() -> None:
     assert data["representative_news_item_id"] == "news-1"
     assert data["story_key"] == "news-story:subject:btc-detail:t412000"
     assert data["story"]["member_count"] == 1
-    assert data["analysis_admission_status"] == "admitted"
-    assert data["analysis_admission_reason"] == "crypto_native_subject"
-    assert data["analysis_admission"]["basis"] == {"subject": "btc"}
+    assert data["market_scope"] == _market_scope()
+    assert data["agent_admission_status"] == "eligible"
+    assert data["agent_admission_reason"] == "provider_score_high"
+    assert data["agent_admission"] == _agent_admission()
+    assert data["agent_representative_news_item_id"] == "news-1"
+    _assert_no_legacy_admission_fields(data)
+
+
+def test_news_openapi_schema_exposes_market_scope_not_legacy_admission() -> None:
+    app = _app(FakeNewsRepository())
+
+    schema = app.openapi()
+    serialized = str(schema)
+    schemas = schema["components"]["schemas"]
+    row_props = schemas["NewsRow"]["properties"]
+    detail_props = schemas["NewsObjectData"]["properties"]
+    eligibility_props = schemas["NewsAlertEligibility"]["properties"]
+
+    assert {"market_scope", "agent_admission", "agent_admission_status"} <= set(row_props)
+    assert {"market_scope", "agent_admission", "agent_admission_status"} <= set(detail_props)
+    assert {"market_scope", "agent_admission_status", "agent_admission_reason"} <= set(eligibility_props)
+    assert "market_scope" in serialized
+    assert "agent_admission" in serialized
+    assert _legacy_admission_prefix() not in serialized
 
 
 class FakeNewsRepository:
@@ -482,20 +507,54 @@ def _news_row(*, row_id: str, latest_at_ms: int) -> dict[str, object]:
                 "external_push_ready": False,
                 "provider_score": 82,
                 "decision_class": "driver",
+                "market_scope": _market_scope(),
+                "agent_admission_status": "eligible",
+                "agent_admission_reason": "provider_score_high",
             },
         },
         "token_impacts": [{"symbol": "BTC", "score": 82, "signal": "long"}],
         "source": {"source_id": "opennews-realtime", "provider_type": "opennews"},
-        "analysis_admission_status": "admitted",
-        "analysis_admission_reason": "crypto_native_subject",
-        "analysis_admission": {
-            "status": "admitted",
-            "reason": "crypto_native_subject",
-            "basis": {"subject": "sol_etf"},
-        },
+        "market_scope": _market_scope(),
+        "agent_admission_status": "eligible",
+        "agent_admission_reason": "provider_score_high",
+        "agent_admission": _agent_admission(),
+        "agent_representative_news_item_id": "news-1",
         "computed_at_ms": 3_100,
         "projection_version": NEWS_PAGE_PROJECTION_VERSION,
     }
+
+
+def _market_scope() -> dict[str, object]:
+    return {
+        "scope": ["crypto"],
+        "primary": "crypto",
+        "status": "classified",
+        "reason": "market_scope_classified",
+        "basis": {"subject": "sol_etf"},
+        "version": NEWS_MARKET_SCOPE_VERSION,
+    }
+
+
+def _agent_admission() -> dict[str, object]:
+    return {
+        "eligible": True,
+        "status": "eligible",
+        "reason": "provider_score_high",
+        "representative_news_item_id": "news-1",
+        "basis": {"provider_score": 82},
+        "version": NEWS_ITEM_AGENT_ADMISSION_VERSION,
+    }
+
+
+def _legacy_admission_prefix() -> str:
+    return "analysis" + "_admission"
+
+
+def _assert_no_legacy_admission_fields(payload: dict[str, object]) -> None:
+    legacy_prefix = _legacy_admission_prefix()
+    assert legacy_prefix not in payload
+    assert f"{legacy_prefix}_status" not in payload
+    assert f"{legacy_prefix}_reason" not in payload
 
 
 def _app(news: FakeNewsRepository) -> FastAPI:

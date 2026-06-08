@@ -437,9 +437,9 @@ def test_news_item_process_worker_extracts_mentions_candidates_and_wakes() -> No
             "now_ms": NOW_MS,
         }
     ]
-    assert db.repo.analysis_story_updates[0]["news_item_id"] == "news-1"
-    assert db.repo.analysis_story_updates[0]["admission"].status == "admitted"
-    assert db.repo.analysis_story_updates[0]["story_identity"].story_key
+    assert db.repo.market_scope_story_updates[0]["news_item_id"] == "news-1"
+    assert db.repo.market_scope_story_updates[0]["market_scope"].primary == "crypto"
+    assert db.repo.market_scope_story_updates[0]["story_identity"].story_key
     assert db.repo.processed_items == [
         {
             "news_item_id": "news-1",
@@ -529,7 +529,7 @@ def test_news_item_process_provider_only_non_crypto_row_enqueues_page_and_brief(
     assert result.processed == 1
     assert db.repo.entities["news-spacex"] == []
     assert db.repo.mentions["news-spacex"] == []
-    assert db.repo.analysis_story_updates[0]["admission"].status in {"page_only", "research_context"}
+    assert db.repo.market_scope_story_updates[0]["market_scope"].primary == "private_company"
     assert db.repo.agent_admission_updates[0]["admission"].status == "eligible"
     assert db.dirty.enqueued == [
         {
@@ -597,9 +597,9 @@ def test_news_item_process_admitted_crypto_row_enqueues_page_and_brief_with_stor
     assert result.processed == 1
     assert db.repo.entities["news-zec"][0].normalized_value == "ZEC"
     assert db.repo.mentions["news-zec"][0].observed_symbol == "ZEC"
-    assert db.repo.analysis_story_updates[0]["admission"].status == "admitted"
+    assert db.repo.market_scope_story_updates[0]["market_scope"].primary == "crypto"
+    assert db.repo.market_scope_story_updates[0]["story_identity"].story_key == "news-story:opennews-article:2367422"
     assert db.repo.agent_admission_updates[0]["admission"].status == "eligible"
-    assert db.repo.analysis_story_updates[0]["story_identity"].story_key == "news-story:opennews-article:2367422"
     assert db.dirty.enqueued == [
         {
             "rows": [{"projection_name": "page", "target_kind": "news_item", "target_id": "news-zec"}],
@@ -931,7 +931,7 @@ def test_news_item_process_worker_treats_stale_terminal_claim_as_no_op() -> None
     ]
 
 
-def test_news_item_process_rejects_unsupported_analysis_admission_shape_before_persistence() -> None:
+def test_news_item_process_rejects_unsupported_market_scope_shape_before_persistence() -> None:
     item = {
         **_crypto_process_item(),
         "processing_attempts": 1,
@@ -949,16 +949,16 @@ def test_news_item_process_rejects_unsupported_analysis_admission_shape_before_p
     )
 
     with patch(
-        "parallax.domains.news_intel.runtime.news_item_process_worker.decide_news_analysis_admission",
+        "parallax.domains.news_intel.runtime.news_item_process_worker.classify_news_market_scope",
         return_value=object(),
     ):
         result = worker.run_once_sync(now_ms=NOW_MS)
 
     assert result.processed == 0
     assert result.failed == 1
-    assert db.repo.analysis_story_updates == []
+    assert db.repo.market_scope_story_updates == []
     assert db.repo.retryable_items[0]["news_item_id"] == "news-zec"
-    assert "analysis admission payload" in str(db.repo.retryable_items[0]["error"])
+    assert "market scope payload" in str(db.repo.retryable_items[0]["error"])
 
 
 def test_news_item_process_rejects_unsupported_story_identity_shape_before_persistence() -> None:
@@ -986,7 +986,7 @@ def test_news_item_process_rejects_unsupported_story_identity_shape_before_persi
 
     assert result.processed == 0
     assert result.failed == 1
-    assert db.repo.analysis_story_updates == []
+    assert db.repo.market_scope_story_updates == []
     assert db.repo.retryable_items[0]["news_item_id"] == "news-zec"
     assert "story identity payload" in str(db.repo.retryable_items[0]["error"])
 
@@ -1027,8 +1027,10 @@ def test_news_page_projection_worker_projects_same_story_once() -> None:
                     "news_item_id": "news-1",
                     "story_key": story_key,
                     "title": "JPMorgan and Citi test tokenized deposits",
-                    "analysis_admission_status": "admitted",
-                    "analysis_admission_reason": "tokenized_deposit_subject",
+                    "market_scope_json": _market_scope_fixture(primary="crypto", scope=["crypto"]),
+                    "agent_admission_status": "eligible",
+                    "agent_admission_reason": "eligible",
+                    "agent_admission_json": _agent_admission_fixture(news_item_id="news-1", market_scope=["crypto"]),
                 },
                 story={
                     "story_key": story_key,
@@ -1078,8 +1080,13 @@ def test_news_page_projection_worker_reports_deleted_story_member_rows() -> None
                     "news_item_id": "news-1",
                     "story_key": story_key,
                     "title": "SpaceX tender offer values company higher",
-                    "analysis_admission_status": "page_only",
-                    "analysis_admission_reason": "private_company_equity_context",
+                    "market_scope_json": _market_scope_fixture(primary="private_company", scope=["private_company"]),
+                    "agent_admission_status": "eligible",
+                    "agent_admission_reason": "eligible",
+                    "agent_admission_json": _agent_admission_fixture(
+                        news_item_id="news-1",
+                        market_scope=["private_company"],
+                    ),
                 },
                 story={
                     "story_key": story_key,
@@ -1118,8 +1125,10 @@ def test_news_page_projection_worker_reports_unchanged_story_projection() -> Non
                     "news_item_id": "news-1",
                     "story_key": story_key,
                     "title": "JPMorgan and Citi test tokenized deposits",
-                    "analysis_admission_status": "admitted",
-                    "analysis_admission_reason": "tokenized_deposit_subject",
+                    "market_scope_json": _market_scope_fixture(primary="crypto", scope=["crypto"]),
+                    "agent_admission_status": "eligible",
+                    "agent_admission_reason": "eligible",
+                    "agent_admission_json": _agent_admission_fixture(news_item_id="news-1", market_scope=["crypto"]),
                 },
                 story={
                     "story_key": story_key,
@@ -1228,6 +1237,28 @@ def _claimed_page_target(news_item_id: str) -> dict[str, object]:
         "payload_hash": f"hash-{news_item_id}",
         "lease_owner": "news_page_projection",
         "attempt_count": 1,
+    }
+
+
+def _market_scope_fixture(*, primary: str, scope: list[str]) -> dict[str, object]:
+    return {
+        "scope": list(scope),
+        "primary": primary,
+        "status": "classified",
+        "reason": f"{primary}_context",
+        "basis": {"scope_evidence": {primary: ["unit_fixture"]}},
+        "version": "news_market_scope_v1",
+    }
+
+
+def _agent_admission_fixture(*, news_item_id: str, market_scope: list[str]) -> dict[str, object]:
+    return {
+        "eligible": True,
+        "status": "eligible",
+        "reason": "eligible",
+        "representative_news_item_id": news_item_id,
+        "basis": {"market_scope": list(market_scope)},
+        "version": "news_item_agent_admission_market_v2",
     }
 
 
@@ -1561,7 +1592,7 @@ class FakeItemProcessRepository:
         self.mentions: dict[str, list[object]] = {}
         self.fact_candidates: dict[str, list[object]] = {}
         self.content_classifications: list[dict[str, object]] = []
-        self.analysis_story_updates: list[dict[str, object]] = []
+        self.market_scope_story_updates: list[dict[str, object]] = []
         self.agent_admission_updates: list[dict[str, object]] = []
         self.processed_items: list[dict[str, int | str]] = []
         self.retryable_items: list[dict[str, int | str]] = []
@@ -1626,19 +1657,19 @@ class FakeItemProcessRepository:
             }
         )
 
-    def update_item_analysis_and_story_identity(
+    def update_item_market_scope_and_story_identity(
         self,
         *,
         news_item_id: str,
-        admission: object,
+        market_scope: object,
         story_identity: object,
         now_ms: int,
         commit: bool = True,
     ) -> None:
-        self.analysis_story_updates.append(
+        self.market_scope_story_updates.append(
             {
                 "news_item_id": news_item_id,
-                "admission": admission,
+                "market_scope": market_scope,
                 "story_identity": story_identity,
                 "now_ms": now_ms,
                 "commit": commit,
@@ -1673,31 +1704,28 @@ class FakeItemProcessRepository:
             if item is None:
                 continue
             classification = next(
-                (
-                    row
-                    for row in reversed(self.content_classifications)
-                    if row.get("news_item_id") == news_item_id
-                ),
+                (row for row in reversed(self.content_classifications) if row.get("news_item_id") == news_item_id),
                 {},
             )
             story_update = next(
-                (
-                    row
-                    for row in reversed(self.analysis_story_updates)
-                    if row.get("news_item_id") == news_item_id
-                ),
+                (row for row in reversed(self.market_scope_story_updates) if row.get("news_item_id") == news_item_id),
                 {},
             )
-            admission = story_update.get("admission")
+            market_scope = story_update.get("market_scope")
             story_identity = story_update.get("story_identity")
             item.update(
                 {
                     "lifecycle_status": "processed",
                     "content_class": classification.get("content_class") or item.get("content_class") or "",
                     "content_classification_json": classification.get("classification_payload") or {},
-                    "analysis_admission_status": getattr(admission, "status", ""),
-                    "analysis_admission_reason": getattr(admission, "reason", ""),
-                    "analysis_admission_json": getattr(admission, "__dict__", {}),
+                    "market_scope_json": (
+                        market_scope.to_payload()
+                        if hasattr(market_scope, "to_payload")
+                        else getattr(market_scope, "__dict__", {})
+                    ),
+                    "agent_admission_status": item.get("agent_admission_status", ""),
+                    "agent_admission_reason": item.get("agent_admission_reason", ""),
+                    "agent_admission_json": item.get("agent_admission_json", {}),
                     "story_key": getattr(story_identity, "story_key", item.get("story_key", "")),
                 }
             )

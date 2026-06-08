@@ -29,10 +29,16 @@ Domains submit typed `AgentStageSpec` packets with Pydantic output types. Domain
 
 Some product agents may prepare bounded input evidence before submitting an
 `AgentStageSpec`. The News item brief lane builds one deterministic packet from
-the current news item, entity lanes, fact lanes, provider signal evidence,
-market scope, agent admission, similarity, and material-delta context. It does
-not run a News-local research tool loop or database retrieval tools at agent
-time.
+the current news item, token/entity evidence, fact lanes, provider signal
+evidence, market-scope metadata, and host-computed agent admission/similarity
+context. It does not run a News-local research tool loop or database retrieval
+tools at agent time.
+
+Prompt text is part of the execution artefact. The shared gateway hashes
+`AgentStageSpec.instructions`, and the News item brief client includes the
+current News prompt text hash in its artifact version hash. A prompt edit
+therefore changes request audit/freshness even when a version constant was not
+manually bumped.
 
 There is no shared runtime tool loop. The shared `AgentExecutionGateway` runs
 structured JSON model calls only. It does not receive `tools=`, execute domain

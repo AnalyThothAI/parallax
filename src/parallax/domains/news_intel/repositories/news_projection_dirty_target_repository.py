@@ -386,9 +386,8 @@ class NewsProjectionDirtyTargetRepository:
         records = _key_records(keys)
         if not records:
             return 0
-        transaction_factory = getattr(self.conn, "transaction", None) if commit else None
-        owns_transaction = callable(transaction_factory)
-        transaction = transaction_factory() if owns_transaction else nullcontext()
+        transaction_factory = getattr(self.conn, "transaction", None)
+        transaction = transaction_factory() if commit and callable(transaction_factory) else nullcontext()
         with transaction:
             deleted_records = self.delete_claimed_targets(records)
             for record in deleted_records:
@@ -409,7 +408,7 @@ class NewsProjectionDirtyTargetRepository:
                     payload_hash=str(semantic_payload_hash or record["payload_hash"]),
                     commit=False,
                 )
-        if commit and not owns_transaction:
+        if commit and transaction_factory is None:
             self.conn.commit()
         return len(deleted_records)
 

@@ -3,12 +3,10 @@ from __future__ import annotations
 import hashlib
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 from typing import Any
 
-from parallax.domains.news_intel.services.text_normalization import title_fingerprint
-
-NEWS_STORY_IDENTITY_VERSION = "news_story_identity_v1"
+from parallax.domains.news_intel.types.news_story_identity import NEWS_STORY_IDENTITY_VERSION, NewsStoryIdentity
+from parallax.domains.news_intel.types.text_normalization import title_fingerprint
 
 _HOUR_MS = 60 * 60 * 1000
 _STRONG_BUCKET_MS = 12 * _HOUR_MS
@@ -73,21 +71,14 @@ _SPACEX_VALUATION_TOKENS = frozenset({"sale", "share", "shares", "tender", "valu
 _TRUMP_IRAN_TALKS_TOKENS = frozenset({"negotiation", "negotiations", "talk", "talks"})
 
 
-@dataclass(frozen=True, slots=True)
-class NewsStoryIdentity:
-    story_key: str
-    confidence: str
-    basis: dict[str, Any]
-    version: str
-
-
 def build_news_story_identity(
     *,
     item: Mapping[str, Any],
     token_mentions: Sequence[Mapping[str, Any]],
     fact_candidates: Sequence[Mapping[str, Any]],
-    admission: Mapping[str, Any],
+    market_scope: Mapping[str, Any],
 ) -> NewsStoryIdentity:
+    market_scope_basis = _market_scope_basis(market_scope)
     provider_article_key = _opennews_article_key(item)
     if provider_article_key:
         return NewsStoryIdentity(
@@ -96,7 +87,7 @@ def build_news_story_identity(
             basis={
                 "method": "opennews_article_key",
                 "provider_article_key": provider_article_key,
-                "admission_status": _field(admission, "status", ""),
+                **market_scope_basis,
             },
             version=NEWS_STORY_IDENTITY_VERSION,
         )
@@ -130,7 +121,7 @@ def build_news_story_identity(
                 "bucket_offset_ms": _STRONG_BUCKET_MS // 2,
                 "bucket": bucket,
                 "normalized_title": normalized_title,
-                "admission_status": _field(admission, "status", ""),
+                **market_scope_basis,
             },
             version=NEWS_STORY_IDENTITY_VERSION,
         )
@@ -149,7 +140,7 @@ def build_news_story_identity(
                 "bucket_offset_ms": _MEDIUM_BUCKET_MS // 2,
                 "bucket": bucket,
                 "normalized_title": normalized_title,
-                "admission_status": _field(admission, "status", ""),
+                **market_scope_basis,
             },
             version=NEWS_STORY_IDENTITY_VERSION,
         )
@@ -161,7 +152,7 @@ def build_news_story_identity(
         basis={
             "method": "weak_item_level",
             "normalized_title": normalized_title,
-            "admission_status": _field(admission, "status", ""),
+            **market_scope_basis,
         },
         version=NEWS_STORY_IDENTITY_VERSION,
     )
@@ -267,6 +258,21 @@ def _field(obj: Mapping[str, Any] | None, name: str, default: Any = None) -> Any
     if obj is None:
         return default
     return obj.get(name, default)
+
+
+def _market_scope_basis(market_scope: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "market_scope": _market_scope_list(_field(market_scope, "scope", ())),
+        "market_scope_primary": str(_field(market_scope, "primary", "") or "").strip(),
+    }
+
+
+def _market_scope_list(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if isinstance(value, Sequence):
+        return [str(scope).strip() for scope in value if str(scope).strip()]
+    return []
 
 
 def _slug(value: str) -> str:

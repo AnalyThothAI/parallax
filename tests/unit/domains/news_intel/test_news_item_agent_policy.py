@@ -25,8 +25,12 @@ def test_news_item_agent_brief_priority_keeps_higher_provider_scores_first() -> 
 
 
 def test_news_item_agent_brief_priority_does_not_penalize_low_scores_beyond_sort_order() -> None:
-    assert news_item_agent_brief_priority(
-        item=_item(provider_signal_json={"source": "provider", "score": 79}),
-    ) == news_item_agent_brief_priority(
-        item=_item(provider_signal_json={"source": "provider", "score": 80}),
-    ) + 1
+    assert (
+        news_item_agent_brief_priority(
+            item=_item(provider_signal_json={"source": "provider", "score": 79}),
+        )
+        == news_item_agent_brief_priority(
+            item=_item(provider_signal_json={"source": "provider", "score": 80}),
+        )
+        + 1
+    )

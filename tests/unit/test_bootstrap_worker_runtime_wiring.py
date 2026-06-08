@@ -125,9 +125,7 @@ def test_bootstrap_wires_live_price_gateway_as_db_only_worker_without_price_prov
         "missing_asset_market_stream_provider"
     )
     assert workers["market_tick_poll"].status_payload()["effective_status"] == "unavailable"
-    assert workers["market_tick_poll"].status_payload()["unavailable_reason"] == (
-        "missing_asset_market_quote_provider"
-    )
+    assert workers["market_tick_poll"].status_payload()["unavailable_reason"] == ("missing_asset_market_quote_provider")
     reasons = WorkerScheduler(workers=workers, db=db).unhealthy_reasons()
     assert "worker:market_tick_stream:unavailable:missing_asset_market_stream_provider" in reasons
     assert "worker:market_tick_poll:unavailable:missing_asset_market_quote_provider" in reasons

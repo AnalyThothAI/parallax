@@ -136,7 +136,7 @@ def test_source_fetch_provider_and_news_item_round_trip(tmp_path) -> None:
     assert rows[0]["canonical_url"] == "https://www.coindesk.com/news/sol-etf"
     assert rows[0]["story"] == {}
     assert rows[0]["story_key"] == ""
-    assert rows[0]["analysis_admission_status"] == "needs_review"
+    assert rows[0]["market_scope"] == {}
     assert "story_id" not in rows[0]
     assert rows[0]["source"] == {
         "source_id": "coindesk-rss",
@@ -2685,8 +2685,8 @@ def test_story_projection_groups_jpm_citi_variants_into_one_page_row(tmp_path) -
             source_item_key="citi-tokenized-deposit",
             title="Citi joins JPMorgan tokenized deposit pilot",
         )
-        _set_analysis_story(repo, jpm_id, status="admitted", story_key=story_key)
-        _set_analysis_story(repo, citi_id, status="admitted", story_key=story_key)
+        _set_market_scope_story(repo, jpm_id, primary_scope="crypto", story_key=story_key)
+        _set_market_scope_story(repo, citi_id, primary_scope="crypto", story_key=story_key)
 
         payloads = repo.load_story_projection_payloads_for_items(news_item_ids=[jpm_id, citi_id])
         rows = [_story_row_from_payload(payload, computed_at_ms=NOW_MS + 10) for payload in payloads]
@@ -2698,7 +2698,7 @@ def test_story_projection_groups_jpm_citi_variants_into_one_page_row(tmp_path) -
         stored_rows = conn.execute(
             """
             SELECT row_id, news_item_id, representative_news_item_id, story_key,
-                   story_json, analysis_admission_status
+                   story_json, market_scope_json
               FROM news_page_rows
              ORDER BY row_id
             """
@@ -2715,10 +2715,10 @@ def test_story_projection_groups_jpm_citi_variants_into_one_page_row(tmp_path) -
     assert stored_rows[0]["story_key"] == story_key
     assert stored_rows[0]["representative_news_item_id"] == stored_rows[0]["news_item_id"]
     assert stored_rows[0]["story_json"]["member_count"] == 2
-    assert stored_rows[0]["analysis_admission_status"] == "admitted"
+    assert stored_rows[0]["market_scope_json"]["primary"] == "crypto"
 
 
-def test_story_projection_groups_spacex_variants_but_marks_page_only(tmp_path) -> None:
+def test_story_projection_groups_spacex_variants_with_private_company_scope(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     story_key = "news-story:subject:spacex-valuation:t412000"
     try:
@@ -2742,8 +2742,8 @@ def test_story_projection_groups_spacex_variants_but_marks_page_only(tmp_path) -
             provider_signal={"source": "provider", "provider": "opennews", "status": "ready", "score": 92},
             provider_token_impacts=[{"symbol": "SPCX", "score": 92, "signal": "long"}],
         )
-        _set_analysis_story(repo, first_id, status="page_only", story_key=story_key)
-        _set_analysis_story(repo, second_id, status="page_only", story_key=story_key)
+        _set_market_scope_story(repo, first_id, primary_scope="private_company", story_key=story_key)
+        _set_market_scope_story(repo, second_id, primary_scope="private_company", story_key=story_key)
 
         payload = repo.load_story_projection_payloads_for_items(news_item_ids=[first_id, second_id])[0]
         row = _story_row_from_payload(payload, computed_at_ms=NOW_MS + 10)
@@ -2754,19 +2754,19 @@ def test_story_projection_groups_spacex_variants_but_marks_page_only(tmp_path) -
         )
         stored = conn.execute(
             """
-            SELECT story_key, story_json, analysis_admission_status, signal_json
+            SELECT story_key, story_json, market_scope_json, signal_json
               FROM news_page_rows
             """
         ).fetchone()
     finally:
         conn.close()
 
-    assert row["analysis_admission_status"] == "page_only"
+    assert row["market_scope"]["primary"] == "private_company"
     assert row["signal"]["provider_signal"]["score"] >= 90
     assert row["signal"]["alert_eligibility"]["in_app_eligible"] is False
     assert stored["story_key"] == story_key
     assert stored["story_json"]["member_count"] == 2
-    assert stored["analysis_admission_status"] == "page_only"
+    assert stored["market_scope_json"]["primary"] == "private_company"
     assert stored["signal_json"]["alert_eligibility"]["in_app_eligible"] is False
 
 
@@ -2778,8 +2778,8 @@ def test_replace_page_rows_for_story_targets_deletes_old_member_rows(tmp_path) -
         repo = NewsRepository(conn)
         first_id = _insert_source_provider_and_item(repo, source_item_key="spacex-a", title="SpaceX valuation A")
         second_id = _insert_source_provider_and_item(repo, source_item_key="spacex-b", title="SpaceX valuation B")
-        _set_analysis_story(repo, first_id, status="page_only", story_key=story_key)
-        _set_analysis_story(repo, second_id, status="page_only", story_key=story_key)
+        _set_market_scope_story(repo, first_id, primary_scope="private_company", story_key=story_key)
+        _set_market_scope_story(repo, second_id, primary_scope="private_company", story_key=story_key)
         repo.replace_page_rows_for_items(
             news_item_ids=[first_id, second_id],
             rows=[
@@ -2821,8 +2821,8 @@ def test_replace_page_rows_for_story_targets_deletes_story_row_for_claimed_non_r
             source_item_key="jpm-citi-member",
             title="Citi joins JPMorgan tokenized deposit pilot",
         )
-        _set_analysis_story(repo, representative_id, status="admitted", story_key=story_key)
-        _set_analysis_story(repo, member_id, status="admitted", story_key=story_key)
+        _set_market_scope_story(repo, representative_id, primary_scope="crypto", story_key=story_key)
+        _set_market_scope_story(repo, member_id, primary_scope="crypto", story_key=story_key)
         payload = repo.load_story_projection_payloads_for_items(news_item_ids=[representative_id, member_id])[0]
         story_row = _story_row_from_payload(payload, computed_at_ms=NOW_MS)
         repo.replace_page_rows_for_story_targets(
@@ -2864,8 +2864,18 @@ def test_replace_page_rows_for_story_targets_deletes_story_row_for_missing_claim
             source_item_key="jpm-representative",
             title="JPMorgan and Citi test tokenized deposit network",
         )
-        _set_analysis_story(repo, stale_representative_id, status="page_only", story_key=stale_story_key)
-        _set_analysis_story(repo, unrelated_representative_id, status="admitted", story_key=unrelated_story_key)
+        _set_market_scope_story(
+            repo,
+            stale_representative_id,
+            primary_scope="private_company",
+            story_key=stale_story_key,
+        )
+        _set_market_scope_story(
+            repo,
+            unrelated_representative_id,
+            primary_scope="crypto",
+            story_key=unrelated_story_key,
+        )
         stale_row = {
             **_page_row("row-stale-story", stale_representative_id, source_id="source-1"),
             "representative_news_item_id": stale_representative_id,
@@ -2877,9 +2887,14 @@ def test_replace_page_rows_for_story_targets_deletes_story_row_for_missing_claim
                 "member_count": 2,
                 "source_domains": ["example.com"],
             },
-            "analysis_admission_status": "page_only",
-            "analysis_admission_reason": "private_company_equity_context",
-            "analysis_admission": {"status": "page_only", "reason": "private_company_equity_context"},
+            "market_scope": {
+                "scope": ["private_company"],
+                "primary": "private_company",
+                "status": "classified",
+                "reason": "private_company_equity_context",
+                "basis": {"test": True},
+                "version": "test_news_market_scope_v1",
+            },
         }
         unrelated_row = {
             **_page_row("row-unrelated-story", unrelated_representative_id, source_id="source-1"),
@@ -2892,9 +2907,14 @@ def test_replace_page_rows_for_story_targets_deletes_story_row_for_missing_claim
                 "member_count": 1,
                 "source_domains": ["example.com"],
             },
-            "analysis_admission_status": "admitted",
-            "analysis_admission_reason": "tokenized_deposit_subject",
-            "analysis_admission": {"status": "admitted", "reason": "tokenized_deposit_subject"},
+            "market_scope": {
+                "scope": ["crypto"],
+                "primary": "crypto",
+                "status": "classified",
+                "reason": "tokenized_deposit_subject",
+                "basis": {"test": True},
+                "version": "test_news_market_scope_v1",
+            },
         }
         repo.replace_page_rows_for_story_targets(
             news_item_ids=[stale_representative_id, unrelated_representative_id],
@@ -2922,7 +2942,7 @@ def test_page_row_payload_hash_skips_unchanged_story_row(tmp_path) -> None:
         migrate(conn)
         repo = NewsRepository(conn)
         news_item_id = _insert_source_provider_and_item(repo, source_item_key="jpm-citi", title="JPM Citi deposits")
-        _set_analysis_story(repo, news_item_id, status="admitted", story_key=story_key)
+        _set_market_scope_story(repo, news_item_id, primary_scope="crypto", story_key=story_key)
         payload = repo.load_story_projection_payloads_for_items(news_item_ids=[news_item_id])[0]
         row = _story_row_from_payload(payload, computed_at_ms=NOW_MS)
 
@@ -3985,13 +4005,15 @@ def test_news_high_signal_candidates_do_not_require_ready_agent_status(tmp_path)
                         },
                     },
                     "token_impacts_json": [{"symbol": "BTC", "score": 90}],
-                    "analysis_admission_status": "admitted",
-                    "analysis_admission_reason": "crypto_native_subject",
-                    "analysis_admission": {
-                        "status": "admitted",
+                    "market_scope": {
+                        "scope": ["crypto"],
+                        "primary": "crypto",
+                        "status": "classified",
                         "reason": "crypto_native_subject",
                         "basis": {"subject": "btc"},
+                        "version": "test_news_market_scope_v1",
                     },
+                    "agent_admission_status": "needs_review",
                     "agent_status": "insufficient",
                     "agent_brief_json": {
                         "status": "insufficient",
@@ -4008,6 +4030,7 @@ def test_news_high_signal_candidates_do_not_require_ready_agent_status(tmp_path)
 
     assert [row["news_item_id"] for row in rows] == [news_item_id]
     assert rows[0]["agent_status"] == "insufficient"
+    assert rows[0]["market_scope"]["primary"] == "crypto"
     assert rows[0]["signal"]["alert_eligibility"]["provider_score"] == 90
 
 
@@ -4068,12 +4091,13 @@ def test_news_high_signal_candidates_hide_stale_disabled_projected_source_before
                         },
                     },
                     "token_impacts": [{"symbol": "BTC", "score": 90}],
-                    "analysis_admission_status": "admitted",
-                    "analysis_admission_reason": "crypto_native_subject",
-                    "analysis_admission": {
-                        "status": "admitted",
+                    "market_scope": {
+                        "scope": ["crypto"],
+                        "primary": "crypto",
+                        "status": "classified",
                         "reason": "crypto_native_subject",
                         "basis": {"subject": "btc"},
+                        "version": "test_news_market_scope_v1",
                     },
                 }
             ],
@@ -4103,10 +4127,10 @@ def test_news_high_signal_candidates_filter_to_current_projection_version(tmp_pa
             source_item_key="stale-candidate",
             title="Stale candidate",
         )
-        page_only_item_id = _insert_source_provider_and_item(
+        not_eligible_item_id = _insert_source_provider_and_item(
             repo,
-            source_item_key="page-only-candidate",
-            title="Page only provider high candidate",
+            source_item_key="not-eligible-candidate",
+            title="Not eligible provider high candidate",
         )
         ready_signal = {
             "direction": "bullish",
@@ -4117,8 +4141,15 @@ def test_news_high_signal_candidates_filter_to_current_projection_version(tmp_pa
                 "decision_class": "driver",
             },
         }
+        not_eligible_signal = {
+            **ready_signal,
+            "alert_eligibility": {
+                **ready_signal["alert_eligibility"],
+                "in_app_eligible": False,
+            },
+        }
         repo.replace_page_rows_for_items(
-            news_item_ids=[current_item_id, stale_item_id, page_only_item_id],
+            news_item_ids=[current_item_id, stale_item_id, not_eligible_item_id],
             rows=[
                 {
                     **_page_row("row-current-candidate", current_item_id, source_id="source-1"),
@@ -4133,13 +4164,15 @@ def test_news_high_signal_candidates_filter_to_current_projection_version(tmp_pa
                     },
                     "signal_json": ready_signal,
                     "token_impacts_json": [{"symbol": "BTC", "score": 91}],
-                    "analysis_admission_status": "admitted",
-                    "analysis_admission_reason": "crypto_native_subject",
-                    "analysis_admission": {
-                        "status": "admitted",
+                    "market_scope": {
+                        "scope": ["crypto"],
+                        "primary": "crypto",
+                        "status": "classified",
                         "reason": "crypto_native_subject",
                         "basis": {"subject": "btc"},
+                        "version": "test_news_market_scope_v1",
                     },
+                    "agent_admission_status": "eligible",
                 },
                 {
                     **_page_row(
@@ -4150,25 +4183,29 @@ def test_news_high_signal_candidates_filter_to_current_projection_version(tmp_pa
                     ),
                     "signal_json": ready_signal,
                     "token_impacts_json": [{"symbol": "ETH", "score": 91}],
-                    "analysis_admission_status": "admitted",
-                    "analysis_admission_reason": "crypto_native_subject",
-                    "analysis_admission": {
-                        "status": "admitted",
+                    "market_scope": {
+                        "scope": ["crypto"],
+                        "primary": "crypto",
+                        "status": "classified",
                         "reason": "crypto_native_subject",
                         "basis": {"subject": "eth"},
+                        "version": "test_news_market_scope_v1",
                     },
+                    "agent_admission_status": "eligible",
                 },
                 {
-                    **_page_row("row-page-only-candidate", page_only_item_id, source_id="source-1"),
-                    "signal_json": ready_signal,
+                    **_page_row("row-not-eligible-candidate", not_eligible_item_id, source_id="source-1"),
+                    "signal_json": not_eligible_signal,
                     "token_impacts_json": [{"symbol": "SPCX", "score": 91}],
-                    "analysis_admission_status": "page_only",
-                    "analysis_admission_reason": "provider_score_without_crypto_admission",
-                    "analysis_admission": {
-                        "status": "page_only",
+                    "market_scope": {
+                        "scope": ["us_equity"],
+                        "primary": "us_equity",
+                        "status": "classified",
                         "reason": "provider_score_without_crypto_admission",
                         "basis": {"provider_score": 91},
+                        "version": "test_news_market_scope_v1",
                     },
+                    "agent_admission_status": "eligible",
                 },
             ],
         )
@@ -4181,9 +4218,9 @@ def test_news_high_signal_candidates_filter_to_current_projection_version(tmp_pa
     assert rows[0]["representative_news_item_id"] == current_item_id
     assert rows[0]["story_key"] == "news-story:subject:btc-admitted:t412000"
     assert rows[0]["story"]["member_news_item_ids"] == [current_item_id]
-    assert rows[0]["analysis_admission_status"] == "admitted"
-    assert rows[0]["analysis_admission_reason"] == "crypto_native_subject"
-    assert rows[0]["analysis_admission"]["basis"] == {"subject": "btc"}
+    assert rows[0]["market_scope"]["primary"] == "crypto"
+    assert rows[0]["market_scope"]["basis"] == {"subject": "btc"}
+    assert rows[0]["agent_admission_status"] == "eligible"
 
 
 def test_list_news_page_rows_uses_composite_cursor(tmp_path) -> None:
@@ -5139,10 +5176,13 @@ def test_news_item_detail_returns_story_and_admission_fields(tmp_path) -> None:
             "member_count": 1,
             "source_domains": ["example.com"],
         }
-        admission = {
-            "status": "admitted",
+        market_scope = {
+            "scope": ["crypto"],
+            "primary": "crypto",
+            "status": "classified",
             "reason": "crypto_native_subject",
             "basis": {"subject": "btc"},
+            "version": "test_news_market_scope_v1",
         }
         repo.replace_page_rows_for_items(
             news_item_ids=[news_item_id],
@@ -5152,9 +5192,7 @@ def test_news_item_detail_returns_story_and_admission_fields(tmp_path) -> None:
                     "representative_news_item_id": news_item_id,
                     "story_key": story_key,
                     "story": story,
-                    "analysis_admission_status": "admitted",
-                    "analysis_admission_reason": "crypto_native_subject",
-                    "analysis_admission": admission,
+                    "market_scope": market_scope,
                 }
             ],
         )
@@ -5167,9 +5205,7 @@ def test_news_item_detail_returns_story_and_admission_fields(tmp_path) -> None:
     assert detail["representative_news_item_id"] == news_item_id
     assert detail["story_key"] == story_key
     assert detail["story"] == story
-    assert detail["analysis_admission_status"] == "admitted"
-    assert detail["analysis_admission_reason"] == "crypto_native_subject"
-    assert detail["analysis_admission"] == admission
+    assert detail["market_scope"] == market_scope
 
 
 def test_get_news_item_detail_exposes_canonical_observation_evidence(tmp_path) -> None:
@@ -5767,25 +5803,27 @@ def _insert_source_provider_and_item(
     return str(news["news_item_id"])
 
 
-def _set_analysis_story(
+def _set_market_scope_story(
     repo: NewsRepository,
     news_item_id: str,
     *,
-    status: str,
+    primary_scope: str,
     story_key: str,
 ) -> None:
-    repo.update_item_analysis_and_story_identity(
+    repo.update_item_market_scope_and_story_identity(
         news_item_id=news_item_id,
-        admission={
-            "status": status,
-            "reason": "test_story_projection",
+        market_scope={
+            "scope": [primary_scope],
+            "primary": primary_scope,
+            "status": "classified",
+            "reason": f"{primary_scope}_context",
             "basis": {"test": True},
-            "version": "test_news_analysis_admission_v1",
+            "version": "test_news_market_scope_v1",
         },
         story_identity={
             "story_key": story_key,
             "confidence": "strong",
-            "basis": {"test": True},
+            "basis": {"test": True, "market_scope": [primary_scope], "market_scope_primary": primary_scope},
             "version": "test_news_story_identity_v1",
         },
         now_ms=NOW_MS,
@@ -6063,6 +6101,7 @@ def _page_row(
         "source": {"source_id": source_id},
         "source_json": {"source_id": source_id},
         "signal": {"display_signal": {"direction": "neutral", "score": 0}},
+        "market_scope_json": {},
         "projection_version": projection_version,
         "computed_at_ms": computed_at_ms,
     }

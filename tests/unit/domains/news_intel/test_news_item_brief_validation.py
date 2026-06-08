@@ -173,8 +173,7 @@ def _us_energy_firms_hormuz_packet():
         item={
             "news_item_id": "item-hormuz-us-energy-firms",
             "title": (
-                "Rosneft Chief Says US Energy Firms Gain From Strait Of Hormuz Closure Amid Global Oil "
-                "Disruption"
+                "Rosneft Chief Says US Energy Firms Gain From Strait Of Hormuz Closure Amid Global Oil Disruption"
             ),
             "summary": "The report links a potential Hormuz closure to global oil disruption.",
             "body_text": (
@@ -513,6 +512,39 @@ def test_valid_ready_payload_is_publishable_and_hashes_normalized_output() -> No
     assert result.errors == []
     assert result.payload is not None
     assert result.output_hash == json_sha256(result.payload)
+
+
+def test_validation_drops_unsupported_market_impacts_into_data_gaps() -> None:
+    packet = _crypto_packet()
+    payload = _ready_payload(
+        market_impacts=[
+            {
+                "label": "ABC",
+                "market_type": "crypto",
+                "target_type": "asset",
+                "target_id": "asset:abc",
+                "impact_direction": "bullish",
+                "reason_zh": "输入 token lane 支持 ABC。",
+                "evidence_refs": ["entity:token-1"],
+            },
+            {
+                "label": "XYZ",
+                "market_type": "crypto",
+                "target_type": "asset",
+                "target_id": "asset:xyz",
+                "impact_direction": "bullish",
+                "reason_zh": "模型虚构了未被输入支撑的 XYZ。",
+                "evidence_refs": ["item:summary"],
+            },
+        ]
+    )
+
+    result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
+
+    assert result.publishable is True
+    assert result.payload is not None
+    assert result.payload["market_impacts"] == [payload["market_impacts"][0]]
+    assert any("XYZ" in str(gap) for gap in result.payload["data_gaps"])
 
 
 def test_validation_rejects_unknown_evidence_refs() -> None:

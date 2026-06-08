@@ -31,7 +31,9 @@ describe("news route", () => {
       );
     });
     expect(screen.queryByRole("heading", { name: "Search Intel" })).not.toBeInTheDocument();
-    expect(apiMock.readApi.mock.calls.filter(([path]) => path === "/api/search/inspect")).toHaveLength(0);
+    expect(
+      apiMock.readApi.mock.calls.filter(([path]) => path === "/api/search/inspect"),
+    ).toHaveLength(0);
     expect(screen.getByLabelText("Search news")).toHaveValue("ethereum etf");
   }, 10_000);
 });

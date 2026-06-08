@@ -15,12 +15,8 @@ export const queryKeys = {
   status: () => ["status"] as const,
   liveRecent: (scope: ScopeKey, handles: string) => ["recent", scope, handles] as const,
   tokenRadarRoot: () => ["token-radar"] as const,
-  tokenRadar: (
-    window: WindowKey,
-    scope: ScopeKey,
-    venue: TokenRadarVenueFilter,
-    limit: number,
-  ) => ["token-radar", window, scope, venue, limit] as const,
+  tokenRadar: (window: WindowKey, scope: ScopeKey, venue: TokenRadarVenueFilter, limit: number) =>
+    ["token-radar", window, scope, venue, limit] as const,
   tokenCaseRoot: () => ["token-case"] as const,
   tokenCase: (
     targetKey: string | null,
@@ -72,15 +68,7 @@ export const queryKeys = {
     signal?: string | null;
     status?: string | null;
   }) =>
-    [
-      "news",
-      limit,
-      cursor ?? "",
-      signal ?? "",
-      min_score ?? "",
-      status ?? "",
-      q ?? "",
-    ] as const,
+    ["news", limit, cursor ?? "", signal ?? "", min_score ?? "", status ?? "", q ?? ""] as const,
   newsRowsInfinite: ({
     limit,
     min_score,
@@ -93,16 +81,7 @@ export const queryKeys = {
     q?: string | null;
     signal?: string | null;
     status?: string | null;
-  }) =>
-    [
-      "news",
-      "infinite",
-      limit,
-      signal ?? "",
-      min_score ?? "",
-      status ?? "",
-      q ?? "",
-    ] as const,
+  }) => ["news", "infinite", limit, signal ?? "", min_score ?? "", status ?? "", q ?? ""] as const,
   newsItem: (newsItemId: string) => ["news-item", newsItemId] as const,
   targetSocialTimeline: (targetKey: string | null, window: WindowKey, scope: ScopeKey) =>
     ["target-social-timeline", targetKey, window, scope] as const,

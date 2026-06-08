@@ -174,13 +174,14 @@ class TokenRadarProjection:
             except Exception as exc:
                 failures += len(source_claims)
                 first_error = first_error or str(exc)
-                source_dirty_repo.mark_error(
-                    [_source_claim_key(claim) for claim in source_claims],
-                    error=str(exc),
-                    retry_ms=DIRTY_TARGET_RETRY_MS,
-                    now_ms=computed_at_ms,
-                    commit=True,
-                )
+                if source_dirty_repo is not None:
+                    source_dirty_repo.mark_error(
+                        [_source_claim_key(claim) for claim in source_claims],
+                        error=str(exc),
+                        retry_ms=DIRTY_TARGET_RETRY_MS,
+                        now_ms=computed_at_ms,
+                        commit=True,
+                    )
                 source_claims = []
                 source_projection_targets = []
         if source_claims and not source_projection_targets:
@@ -1527,9 +1528,7 @@ def _capture_tier_target_key(row: Mapping[str, Any]) -> tuple[str, str]:
         pricefeed_provider, pricefeed_market_id = _cex_pricefeed_target(
             row.get("pricefeed_id") or subject.get("pricefeed_id")
         )
-        provider = (
-            _optional_text(row.get("provider") or subject.get("provider") or pricefeed_provider) or ""
-        ).lower()
+        provider = (_optional_text(row.get("provider") or subject.get("provider") or pricefeed_provider) or "").lower()
         native_market_id = (
             _optional_text(row.get("native_market_id") or subject.get("native_market_id") or pricefeed_market_id) or ""
         ).upper()

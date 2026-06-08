@@ -149,6 +149,7 @@ class WatchlistIntelRepository:
     def token_resolutions_for_events(self, event_ids: tuple[str, ...]) -> dict[str, list[dict[str, Any]]]:
         return EventTokenProjectionQuery(self.conn).for_events(event_ids)
 
+
 def _decode_timeline_row(row: dict[str, Any]) -> dict[str, Any]:
     event = decode_event_row(row)
     return {

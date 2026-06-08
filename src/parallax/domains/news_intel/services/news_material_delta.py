@@ -5,7 +5,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from parallax.domains.news_intel.services.news_source_role_rank import source_role_rank
+from parallax.domains.news_intel.types.news_source_role_rank import source_role_rank
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,14 +156,18 @@ def _provider_signal(row: Mapping[str, Any]) -> dict[str, Any]:
 def _entity_keys(rows: Sequence[Mapping[str, Any]]) -> set[str]:
     result: set[str] = set()
     for row in rows:
-        key = str(
-            row.get("target_id")
-            or row.get("normalized_value")
-            or row.get("display_symbol")
-            or row.get("raw_value")
-            or row.get("entity_id")
-            or ""
-        ).strip().lower()
+        key = (
+            str(
+                row.get("target_id")
+                or row.get("normalized_value")
+                or row.get("display_symbol")
+                or row.get("raw_value")
+                or row.get("entity_id")
+                or ""
+            )
+            .strip()
+            .lower()
+        )
         entity_type = str(row.get("entity_type") or "").strip().lower()
         if key:
             result.add(f"{entity_type}:{key}")

@@ -260,9 +260,7 @@ def test_enqueue_token_capture_tier_rank_set_dry_run_reads_bounded_current_rows(
     assert payload["data"]["would_enqueue"] == 1
     assert payload["data"]["enqueued"] == 0
     assert dirty_targets.calls == []
-    assert registry.calls == [
-        ("token-radar-v13-social-attention", 1_700_000_100_000 - 24 * 60 * 60 * 1000, 25)
-    ]
+    assert registry.calls == [("token-radar-v13-social-attention", 1_700_000_100_000 - 24 * 60 * 60 * 1000, 25)]
 
 
 def test_enqueue_token_capture_tier_rank_set_execute_writes_rank_set_dirty_target(monkeypatch) -> None:

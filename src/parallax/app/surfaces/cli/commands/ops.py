@@ -66,6 +66,7 @@ from parallax.domains.news_intel.services.news_intel_hard_cut_cleanup import (
     NewsIntelHardCutCleanupAbort,
     cleanup_news_intel_hard_cut,
 )
+from parallax.domains.news_intel.services.news_market_signal_repair import repair_news_market_signal
 from parallax.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_DEFAULT_VENUE,
@@ -272,6 +273,16 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
                         dry_run=False,
                         now_ms=now_ms,
                     )
+            return 0, {"ok": True, "data": data}
+
+        if args.ops_command == "repair-news-market-signal":
+            data = repair_news_market_signal(
+                repos,
+                since_hours=float(args.since_hours),
+                min_score=int(args.min_score),
+                execute=bool(args.execute),
+                now_ms=_now_ms(),
+            )
             return 0, {"ok": True, "data": data}
 
         if args.ops_command == "queue-inspect":

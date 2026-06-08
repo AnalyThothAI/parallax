@@ -44,9 +44,7 @@ def token_radar(
         venue=parsed_venue,
         now_ms=_now_ms(),
     )
-    return _json(
-        {"ok": True, "data": {"window": parsed_window, "scope": parsed_scope, "venue": parsed_venue, **data}}
-    )
+    return _json({"ok": True, "data": {"window": parsed_window, "scope": parsed_scope, "venue": parsed_venue, **data}})
 
 
 @router.get("/stocks-radar", response_model=api_schemas.ApiEnvelope[api_schemas.StocksRadarData])

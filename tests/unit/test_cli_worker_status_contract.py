@@ -178,9 +178,7 @@ def test_cli_ops_worker_status_emits_manifest_workers_lanes_and_queue_depths(mon
                 upstream_client=None,
             )
             self.scheduler = SimpleNamespace(
-                status_payload=lambda: {
-                    name: dict(status_overrides.get(name, base_worker)) for name in manifest_names
-                }
+                status_payload=lambda: {name: dict(status_overrides.get(name, base_worker)) for name in manifest_names}
             )
 
         async def aclose(self):

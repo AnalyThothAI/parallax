@@ -587,29 +587,6 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
             received_at_ms=now_ms - 1_000,
         )
         client.app.state.service.ingest.ingest_event(event, is_watched=True)
-        with client.app.state.service.repositories() as repos:
-            repos.social_event_extractions.upsert_extraction(
-                event_id="event-1",
-                run_id="run-event-1",
-                author_handle="toly",
-                received_at_ms=event.received_at_ms,
-                schema_version="social_event_v2",
-                model_version="fake-model",
-                event_type="meme_phrase_seed",
-                source_action="posted",
-                subject="PEPE ignition",
-                direction_hint="attention_positive",
-                attention_mechanism="direct_token_mention",
-                impact_hint=0.75,
-                semantic_novelty_hint=0.7,
-                confidence=0.9,
-                is_signal_event=True,
-                anchor_terms=[{"term": "$PEPE", "role": "asset", "evidence": "$PEPE"}],
-                token_candidates=[{"symbol": "PEPE", "evidence": "$PEPE", "confidence": 0.9}],
-                semantic_risks=["public_stream_coverage"],
-                summary_zh="PEPE ignition 形成 social-event extraction。",
-                raw_response={"ok": True},
-            )
         rebuild_token_radar(client, now_ms=rebuild_now_ms)
 
         headers = {"Authorization": "Bearer secret"}
@@ -1741,10 +1718,6 @@ def test_api_status_exposes_operational_state(tmp_path):
     assert collector["details"]["frames_received"] == 0
     assert collector["details"]["matched_twitter_events"] == 0
     assert collector["details"]["snapshot_gate_outcomes"] == data["snapshot_gate"]
-
-    enrichment = data["workers"]["enrichment"]
-    assert enrichment["enabled"] is False
-    assert enrichment["running"] is False
 
 
 def test_api_status_remains_queryable_when_readiness_is_degraded(tmp_path):

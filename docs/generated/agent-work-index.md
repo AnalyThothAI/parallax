@@ -8,15 +8,15 @@ This index makes the planning lane visible to coding agents. Active files are wo
 
 | Lane | Active | Completed |
 |------|--------|-----------|
-| `specs` | 89 | 41 |
-| `plans` | 134 | 49 |
+| `specs` | 89 | 44 |
+| `plans` | 137 | 52 |
 
 ## Lifecycle Flags
 
 | Flag | Count | Meaning |
 |------|-------|---------|
 | `review-lifecycle` | 25 | Active file has a status that looks complete/implemented/verified and should be reviewed for migration to `completed/` or marked superseded. |
-| `missing-status` | 141 | File has no status line in its first 40 lines. |
+| `missing-status` | 145 | File has no status line in its first 40 lines. |
 
 ## Items
 
@@ -110,7 +110,7 @@ This index makes the planning lane visible to coding agents. Active files are wo
 | `specs` | `active` | Approved for planning | - | `docs/superpowers/specs/active/2026-05-31-token-profile-image-mirror-kiss-root-fix-cn.md` |
 | `specs` | `active` | Draft | - | `docs/superpowers/specs/active/2026-06-01-news-intel-kiss-simplification-cn.md` |
 | `specs` | `active` | Approved | - | `docs/superpowers/specs/active/2026-06-01-rates-workbench-clarity-redesign.md` |
-| `specs` | `active` | Draft | - | `docs/superpowers/specs/active/2026-06-03-news-agent-context-tools-hard-cut-cn.md` |
+| `specs` | `active` | Approved for implementation planning | - | `docs/superpowers/specs/active/2026-06-07-news-market-wide-notification-hard-cut-cn.md` |
 | `specs` | `completed` | unspecified | `missing-status` | `docs/superpowers/specs/completed/2026-05-04-closed-loop-social-event-harness-cn-evaluation.md` |
 | `specs` | `completed` | unspecified | `missing-status` | `docs/superpowers/specs/completed/2026-05-04-closed-loop-social-event-harness-design.md` |
 | `specs` | `completed` | unspecified | `missing-status` | `docs/superpowers/specs/completed/2026-05-04-market-observation-timing-production-spec-cn.md` |
@@ -150,6 +150,9 @@ This index makes the planning lane visible to coding agents. Active files are wo
 | `specs` | `completed` | Draft | - | `docs/superpowers/specs/completed/2026-05-27-macro-sync-worker-hard-cut-cn.md` |
 | `specs` | `completed` | Active | - | `docs/superpowers/specs/completed/2026-05-28-token-radar-equity-workerspace-root-fix-cn.md` |
 | `specs` | `completed` | Completed | - | `docs/superpowers/specs/completed/2026-06-03-news-intel-hard-cut-residual-root-fix-cn.md` |
+| `specs` | `completed` | unspecified | `missing-status` | `docs/superpowers/specs/completed/2026-06-05-news-agent-requirement-kiss-root-fix-cn.md` |
+| `specs` | `completed` | Draft | - | `docs/superpowers/specs/completed/2026-06-05-news-intel-hard-cut-root-fix-cn.md` |
+| `specs` | `completed` | Draft, pending Qinghuan approval | - | `docs/superpowers/specs/completed/2026-06-06-news-agent-market-wide-dedup-admission-cn.md` |
 | `specs` | `completed` | unspecified | `missing-status` | `docs/superpowers/specs/completed/token-radar-social-heat-research.md` |
 | `specs` | `completed` | unspecified | `missing-status` | `docs/superpowers/specs/completed/token-radar-social-heat-spec.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-05-08-signal-lab-pulse-agent-concrete-cn.md` |
@@ -285,7 +288,10 @@ This index makes the planning lane visible to coding agents. Active files are wo
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-06-01-news-intel-kiss-simplification-cn.md` |
 | `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-06-01-rates-workbench-clarity-redesign-verification.md` |
 | `plans` | `active` | Draft | - | `docs/superpowers/plans/active/2026-06-01-rates-workbench-clarity-redesign.md` |
-| `plans` | `active` | Draft | - | `docs/superpowers/plans/active/2026-06-03-news-agent-context-tools-hard-cut-cn.md` |
+| `plans` | `active` | ** Audit-upgraded for subagent-driven implementation | - | `docs/superpowers/plans/active/2026-06-04-news-duplicate-hard-cut-optimization-plan-cn.md` |
+| `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-06-04-news-duplicate-hard-cut-optimization-verification-cn.md` |
+| `plans` | `active` | unspecified | `missing-status` | `docs/superpowers/plans/active/2026-06-06-news-brief-market-wide-validator-root-fix-cn.md` |
+| `plans` | `active` | ** Draft, ready for execution approval | - | `docs/superpowers/plans/active/2026-06-07-news-market-wide-notification-hard-cut-plan-cn.md` |
 | `plans` | `completed` | unspecified | `missing-status` | `docs/superpowers/plans/completed/2026-05-04-market-observation-timing-production-plan-cn.md` |
 | `plans` | `completed` | unspecified | `missing-status` | `docs/superpowers/plans/completed/2026-05-05-production-notifications-phase1-phase2.md` |
 | `plans` | `completed` | unspecified | `missing-status` | `docs/superpowers/plans/completed/2026-05-05-responsive-token-radar-cockpit.md` |
@@ -335,3 +341,6 @@ This index makes the planning lane visible to coding agents. Active files are wo
 | `plans` | `completed` | ** Draft plan for approval. | - | `docs/superpowers/plans/completed/2026-05-28-token-radar-equity-workerspace-root-fix-plan-cn.md` |
 | `plans` | `completed` | unspecified | `missing-status` | `docs/superpowers/plans/completed/2026-05-28-token-radar-equity-workerspace-root-fix-verification-cn.md` |
 | `plans` | `completed` | ** Completed | - | `docs/superpowers/plans/completed/2026-06-03-news-intel-hard-cut-residual-root-fix-cn.md` |
+| `plans` | `completed` | Draft | - | `docs/superpowers/plans/completed/2026-06-05-news-intel-hard-cut-root-fix-cn.md` |
+| `plans` | `completed` | unspecified | `missing-status` | `docs/superpowers/plans/completed/2026-06-05-news-intel-hard-cut-root-fix-verification-cn.md` |
+| `plans` | `completed` | Draft, ready for Qinghuan review before implementation | - | `docs/superpowers/plans/completed/2026-06-06-news-agent-market-wide-hard-cut-plan-cn.md` |

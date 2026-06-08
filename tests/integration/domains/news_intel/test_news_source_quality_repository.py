@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from parallax.domains.news_intel.repositories.news_repository import NewsRepository
-from parallax.domains.news_intel.services.news_item_brief_contract import CURRENT_NEWS_ITEM_BRIEF_CONTRACT
 from parallax.domains.news_intel.services.source_quality_projection import build_source_quality_rows
+from parallax.domains.news_intel.types.news_item_brief_contract import CURRENT_NEWS_ITEM_BRIEF_CONTRACT
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 

@@ -148,18 +148,18 @@ def test_projection_worker_calls_dirty_incremental_projection_not_window_rebuild
             "limit": 7,
             "rank_limit": 7,
             "lease_owner": "token_radar_projection",
-                "claimed_targets": (
-                    {
-                        "target_type_key": "Asset",
-                        "identity_id": "asset-1",
-                        "payload_hash": "claim-hash",
+            "claimed_targets": (
+                {
+                    "target_type_key": "Asset",
+                    "identity_id": "asset-1",
+                    "payload_hash": "claim-hash",
                     "lease_owner": "token_radar_projection",
-                        "attempt_count": 1,
-                    },
-                ),
-                "claimed_source_events": (),
-            }
-        ]
+                    "attempt_count": 1,
+                },
+            ),
+            "claimed_source_events": (),
+        }
+    ]
     assert result["rows_written"] == 2
     assert result["windows"]["5m:all"]["status"] == "ready"
     assert wake_bus.token_radar_notifications == [{"window": "5m", "scope": "all"}]
@@ -605,12 +605,12 @@ def test_projection_worker_does_not_treat_ready_empty_publication_state_as_missi
     )
 
     missing = worker._missing_work_items(
-            {
-                ("5m", "all", "all"): {"latest_attempt_status": "ready", "current_row_count": 0},
-                ("5m", "matched", "all"): {"latest_attempt_status": "ready", "current_row_count": 0},
-                ("1h", "all", "all"): {"latest_attempt_status": "ready", "current_row_count": 0},
-                ("1h", "matched", "all"): {"latest_attempt_status": "ready", "current_row_count": 0},
-            },
+        {
+            ("5m", "all", "all"): {"latest_attempt_status": "ready", "current_row_count": 0},
+            ("5m", "matched", "all"): {"latest_attempt_status": "ready", "current_row_count": 0},
+            ("1h", "all", "all"): {"latest_attempt_status": "ready", "current_row_count": 0},
+            ("1h", "matched", "all"): {"latest_attempt_status": "ready", "current_row_count": 0},
+        },
         computed_at_ms=1_777_800_000_000,
     )
 
@@ -631,10 +631,10 @@ def test_projection_worker_missing_work_items_excludes_cold_failed_before_backgr
     )
 
     missing = worker._missing_work_items(
-            {
-                ("5m", "all", "all"): {"latest_attempt_status": "ready", "current_published_at_ms": 1_000},
-                ("24h", "all", "all"): {"latest_attempt_status": "failed", "current_published_at_ms": 1_000},
-            },
+        {
+            ("5m", "all", "all"): {"latest_attempt_status": "ready", "current_published_at_ms": 1_000},
+            ("24h", "all", "all"): {"latest_attempt_status": "failed", "current_published_at_ms": 1_000},
+        },
         computed_at_ms=30_000,
     )
 
@@ -655,10 +655,10 @@ def test_projection_worker_missing_work_items_excludes_cold_failed_even_after_in
     )
 
     missing = worker._missing_work_items(
-            {
-                ("5m", "all", "all"): {"latest_attempt_status": "ready", "current_published_at_ms": 1_000},
-                ("24h", "all", "all"): {"latest_attempt_status": "failed", "current_published_at_ms": 1_000},
-            },
+        {
+            ("5m", "all", "all"): {"latest_attempt_status": "ready", "current_published_at_ms": 1_000},
+            ("24h", "all", "all"): {"latest_attempt_status": "failed", "current_published_at_ms": 1_000},
+        },
         computed_at_ms=62_000,
     )
 

@@ -5,7 +5,7 @@ import re
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
-from parallax.domains.news_intel.services.text_normalization import title_fingerprint
+from parallax.domains.news_intel.types.text_normalization import title_fingerprint
 
 _SOURCE_PREFIX_RE = re.compile(
     r"^([A-Z][A-Z0-9&.+/-]*(?:[ -][A-Z][A-Z0-9&.+/-]*){0,2})[:：]\s+",

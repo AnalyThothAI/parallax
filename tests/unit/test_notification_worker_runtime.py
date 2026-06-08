@@ -192,6 +192,9 @@ def test_signal_pulse_duplicate_lookup_uses_in_app_and_external_signatures():
 
     row = repo._semantic_signature_duplicate(
         rule_id="signal_pulse_candidate",
+        source_table="pulse_candidates",
+        source_id="pulse-candidate-1",
+        event_id="event-1",
         payload={"in_app_signature": "sha256:in-app", "external_push_signature": "sha256:external"},
     )
 

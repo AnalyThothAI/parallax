@@ -46,8 +46,7 @@ NOTIFICATION_DELIVERIES = JobQueueDescriptor(
 )
 
 JOB_QUEUE_DESCRIPTORS: Mapping[str, JobQueueDescriptor] = {
-    descriptor.name: descriptor
-    for descriptor in (PULSE_AGENT_JOBS, NOTIFICATION_DELIVERIES)
+    descriptor.name: descriptor for descriptor in (PULSE_AGENT_JOBS, NOTIFICATION_DELIVERIES)
 }
 _DESCRIPTORS_BY_TABLE: Mapping[str, JobQueueDescriptor] = {
     descriptor.table: descriptor for descriptor in JOB_QUEUE_DESCRIPTORS.values()

@@ -291,8 +291,6 @@ class NotificationRuleEngine:
         seen_semantic_signatures: set[str] = set()
         seen_external_push_signatures: set[str] = set()
         for row in rows:
-            if str(row.get("analysis_admission_status") or "") != "admitted":
-                continue
             news_item_id = str(row.get("news_item_id") or row.get("representative_news_item_id") or "")
             if not news_item_id:
                 continue
@@ -365,9 +363,10 @@ class NotificationRuleEngine:
                         "representative_news_item_id": row.get("representative_news_item_id") or news_item_id,
                         "story_key": story_key,
                         "story": _dict(row.get("story")),
-                        "analysis_admission_status": row.get("analysis_admission_status"),
-                        "analysis_admission_reason": row.get("analysis_admission_reason"),
-                        "analysis_admission": _dict(row.get("analysis_admission")),
+                        "market_scope": _dict(row.get("market_scope")),
+                        "agent_admission_status": row.get("agent_admission_status"),
+                        "agent_admission_reason": row.get("agent_admission_reason"),
+                        "agent_admission": _dict(row.get("agent_admission")),
                         "provider_score": provider_score,
                         "decision_class": decision_class,
                         "direction": direction,

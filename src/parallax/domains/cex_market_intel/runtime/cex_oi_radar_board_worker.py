@@ -160,8 +160,7 @@ class CexOiRadarBoardWorker(WorkerBase):
                     "source_rows_scanned": len(universe),
                     "targets_loaded": len(universe),
                     **publication,
-                    "rows_written": int(publication["board_rows_written"])
-                    + int(publication["detail_rows_written"]),
+                    "rows_written": int(publication["board_rows_written"]) + int(publication["detail_rows_written"]),
                 },
             )
         except Exception as exc:

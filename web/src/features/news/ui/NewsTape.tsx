@@ -27,8 +27,7 @@ export function NewsTape({ rows, onOpen }: NewsTapeProps) {
         const overflowCount = Math.max(0, tokens.length - visibleTokens.length);
         const reviewBadge = newsAgentReviewBadge(row);
         const displaySignal = row.signal.display_signal;
-        const useAgentTitle =
-          row.signal.alert_eligibility?.external_push_ready === true || row.agent_brief?.status === "ready";
+        const useAgentTitle = row.agent_brief?.status === "ready";
         const displayTitle = useAgentTitle
           ? row.agent_brief?.title_zh || displaySignal.title_zh || row.headline
           : displaySignal.title_zh || row.headline;

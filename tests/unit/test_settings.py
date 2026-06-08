@@ -736,9 +736,9 @@ def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path
         {
             "ws_token": "secret",
             "handles": ["toly"],
-                "notifications": {
-                    "enabled": True,
-                    "candidate_limit": 40,
+            "notifications": {
+                "enabled": True,
+                "candidate_limit": 40,
                 "rules": {
                     "signal_pulse_candidate": {
                         "enabled": True,

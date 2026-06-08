@@ -450,11 +450,7 @@ def test_news_workers_have_defaults():
     assert settings.news_source_quality_projection.interval_seconds == 60
     assert settings.news_source_quality_projection.batch_size == 100
     assert settings.news_source_quality_projection.advisory_lock_key == 2026052201
-    assert settings.news_source_quality_projection.wakes_on == (
-        "news_item_written",
-        "news_item_processed",
-        "news_item_brief_updated",
-    )
+    assert settings.news_source_quality_projection.wakes_on == ("news_item_written",)
     assert settings.news_source_quality_projection.windows == ("24h", "7d")
 
 

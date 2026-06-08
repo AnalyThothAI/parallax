@@ -349,7 +349,7 @@ def test_process_worker_enqueues_page_and_brief_dirty_in_same_transaction_after_
             "reason": "news_item_processed",
             "now_ms": NOW_MS,
             "commit": False,
-        }
+        },
     ]
     assert "direct_commit" not in repos.conn.events
     assert "tx:release_expired_processing_items" in repos.conn.events
@@ -551,15 +551,25 @@ def _page_payload(news_item_id: str) -> dict[str, Any]:
             "canonical_url": f"https://example.com/{news_item_id}",
             "published_at_ms": 1000,
             "lifecycle_status": "processed",
-            "analysis_admission_status": "admitted",
-            "analysis_admission_reason": "crypto_native_evidence",
-            "analysis_admission_json": {
-                "status": "admitted",
-                "reason": "crypto_native_evidence",
+            "market_scope_json": {
+                "scope": ["crypto"],
+                "primary": "crypto",
+                "status": "classified",
+                "reason": "crypto_evidence",
                 "basis": {"crypto_evidence": ["text:crypto_subject"]},
-                "version": "news_analysis_admission_v1",
+                "version": "news_market_scope_v1",
             },
-            "analysis_admission_version": "news_analysis_admission_v1",
+            "agent_admission_status": "eligible",
+            "agent_admission_reason": "eligible",
+            "agent_admission_json": {
+                "eligible": True,
+                "status": "eligible",
+                "reason": "eligible",
+                "representative_news_item_id": news_item_id,
+                "basis": {"market_scope": ["crypto"], "crypto_evidence": ["text:crypto_subject"]},
+                "version": "news_item_agent_admission_market_v2",
+            },
+            "agent_admission_version": "news_item_agent_admission_market_v2",
             "story_key": f"news-story:{news_item_id}",
             "story_identity_json": {
                 "story_key": f"news-story:{news_item_id}",
@@ -604,15 +614,25 @@ class FakeOpsProjectionConn:
                         "lifecycle_status": "processed",
                         "content_class": "crypto_market",
                         "content_classification_json": {"policy_version": "news_content_classification_v1"},
-                        "analysis_admission_status": "admitted",
-                        "analysis_admission_reason": "crypto_native_evidence",
-                        "analysis_admission_json": {
-                            "status": "admitted",
-                            "reason": "crypto_native_evidence",
+                        "market_scope_json": {
+                            "scope": ["crypto"],
+                            "primary": "crypto",
+                            "status": "classified",
+                            "reason": "crypto_evidence",
                             "basis": {"crypto_evidence": ["resolved_crypto_target:cex:BTC"]},
-                            "version": "news_analysis_admission_v1",
+                            "version": "news_market_scope_v1",
                         },
-                        "analysis_admission_version": "news_analysis_admission_v1",
+                        "agent_admission_status": "eligible",
+                        "agent_admission_reason": "eligible",
+                        "agent_admission_json": {
+                            "eligible": True,
+                            "status": "eligible",
+                            "reason": "eligible",
+                            "representative_news_item_id": "news-provider",
+                            "basis": {"market_scope": ["crypto"]},
+                            "version": "news_item_agent_admission_market_v2",
+                        },
+                        "agent_admission_version": "news_item_agent_admission_market_v2",
                         "provider_type": "opennews",
                         "provider_signal_json": {
                             "source": "provider",
@@ -959,9 +979,18 @@ class FakeProcessRepos:
         self.conn.record("update_item_content_classification")
         self.write_commits.append(payload["commit"])
 
-    def update_item_analysis_and_story_identity(self, **payload: Any) -> None:
-        self.conn.record("update_item_analysis_and_story_identity")
+    def update_item_market_scope_and_story_identity(self, **payload: Any) -> None:
+        self.conn.record("update_item_market_scope_and_story_identity")
         self.write_commits.append(payload["commit"])
+
+    def load_agent_admission_contexts(self, *, news_item_ids: list[str], now_ms: int) -> list[dict[str, Any]]:
+        del news_item_ids, now_ms
+        return []
+
+    def update_item_agent_admission(self, **payload: Any) -> int:
+        self.conn.record("update_item_agent_admission")
+        self.write_commits.append(payload["commit"])
+        return 1
 
     def mark_item_processed(
         self,
@@ -975,15 +1004,6 @@ class FakeProcessRepos:
         del lease_owner, processing_attempts
         self.conn.record("mark_item_processed")
         self.write_commits.append(commit)
-        return 1
-
-    def load_agent_admission_contexts(self, *, news_item_ids: list[str], now_ms: int) -> list[dict[str, Any]]:
-        del news_item_ids, now_ms
-        return []
-
-    def update_item_agent_admission(self, **payload: Any) -> int:
-        self.conn.record("update_item_agent_admission")
-        self.write_commits.append(payload["commit"])
         return 1
 
     def mark_item_process_retryable(self, **payload: Any) -> int:

@@ -4,7 +4,7 @@ import hashlib
 
 import pytest
 
-from parallax.domains.news_intel.services.text_normalization import (
+from parallax.domains.news_intel.types.text_normalization import (
     canonicalize_url,
     clean_news_text,
     content_hash,
@@ -76,9 +76,10 @@ def test_content_hash_uses_only_cleaned_content_fields() -> None:
         )
     )
 
-    assert content_hash(title, summary, body_text=body_text) == hashlib.sha256(
-        expected_payload.encode("utf-8")
-    ).hexdigest()
+    assert (
+        content_hash(title, summary, body_text=body_text)
+        == hashlib.sha256(expected_payload.encode("utf-8")).hexdigest()
+    )
 
 
 def test_content_hash_changes_when_body_text_changes() -> None:

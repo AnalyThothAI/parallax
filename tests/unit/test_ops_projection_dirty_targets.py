@@ -27,6 +27,7 @@ def test_enqueue_projection_dirty_targets_dry_run_reports_counts_without_writes(
     assert result["news"]["source_quality_targets"] == 2
     assert repos.news_dirty.enqueued == []
     assert repos.conn.transactions == 0
+    assert all("analysis_admission" not in sql for sql, _params in repos.conn.statements)
 
 
 def test_enqueue_projection_dirty_targets_execute_enqueues_only_dirty_targets() -> None:
@@ -203,8 +204,10 @@ class FakeRepos:
 class FakeConn:
     def __init__(self) -> None:
         self.transactions = 0
+        self.statements: list[tuple[str, Any]] = []
 
     def execute(self, sql: str, _params: dict[str, Any] | None = None) -> FakeCursor:
+        self.statements.append((sql, _params))
         if "FROM news_items" in sql:
             assert "items.agent_admission_status" in sql
             assert "items.agent_admission_json" in sql
@@ -217,26 +220,16 @@ class FakeConn:
                         "lifecycle_status": "processed",
                         "content_class": "other",
                         "content_classification_json": {},
-                        "analysis_admission_status": "page_only",
-                        "analysis_admission_reason": "provider_evidence_only",
-                        "analysis_admission_json": {
-                            "status": "page_only",
-                            "basis": {"provider_evidence": ["provider_score:95"]},
-                        },
-                        "analysis_admission_version": "news_analysis_admission_v1",
-                        "agent_admission_status": "similar_story_covered",
-                        "agent_admission_reason": "similar_story_covered",
-                        "agent_admission_json": {
-                            "status": "similar_story_covered",
-                            "reason": "similar_story_covered",
-                            "version": "news_item_agent_admission_market_v2",
-                        },
-                        "agent_admission_version": "news_item_agent_admission_market_v2",
-                        "agent_representative_news_item_id": "news-1",
-                        "agent_admission_computed_at_ms": NOW_MS - 900,
                         "story_key": "news-story:item:news-1",
                         "story_identity_json": {"story_key": "news-story:item:news-1"},
                         "story_identity_version": "news_story_identity_v1",
+                        "market_scope_json": {"scope": ["unknown"], "primary": "unknown"},
+                        "agent_admission_status": "needs_review",
+                        "agent_admission_reason": "classification_missing",
+                        "agent_admission_json": {"status": "needs_review", "reason": "classification_missing"},
+                        "agent_admission_version": "news_item_agent_admission_market_v2",
+                        "agent_representative_news_item_id": "news-1",
+                        "agent_admission_computed_at_ms": NOW_MS - 1_000,
                         "provider_type": "rss",
                         "source_domain": "example.com",
                         "source_name": "Example",
@@ -255,26 +248,16 @@ class FakeConn:
                         "lifecycle_status": "processed",
                         "content_class": "exchange_listing",
                         "content_classification_json": {"policy_version": "news_content_classification_v1"},
-                        "analysis_admission_status": "admitted",
-                        "analysis_admission_reason": "crypto_native_evidence",
-                        "analysis_admission_json": {
-                            "status": "admitted",
-                            "basis": {"crypto_evidence": ["resolved_crypto_target:cex:BTC"]},
-                        },
-                        "analysis_admission_version": "news_analysis_admission_v1",
-                        "agent_admission_status": "eligible",
-                        "agent_admission_reason": "crypto_native_evidence",
-                        "agent_admission_json": {
-                            "status": "eligible",
-                            "reason": "crypto_native_evidence",
-                            "version": "news_item_agent_admission_market_v2",
-                        },
-                        "agent_admission_version": "news_item_agent_admission_market_v2",
-                        "agent_representative_news_item_id": "news-2",
-                        "agent_admission_computed_at_ms": NOW_MS - 1_900,
                         "story_key": "news-story:item:news-2",
                         "story_identity_json": {"story_key": "news-story:item:news-2"},
                         "story_identity_version": "news_story_identity_v1",
+                        "market_scope_json": {"scope": ["crypto"], "primary": "crypto"},
+                        "agent_admission_status": "eligible",
+                        "agent_admission_reason": "provider_score_high",
+                        "agent_admission_json": {"status": "eligible", "reason": "provider_score_high"},
+                        "agent_admission_version": "news_item_agent_admission_market_v2",
+                        "agent_representative_news_item_id": "news-2",
+                        "agent_admission_computed_at_ms": NOW_MS - 2_000,
                         "provider_type": "opennews",
                         "source_domain": "6551.io",
                         "source_name": "OpenNews",
@@ -293,26 +276,16 @@ class FakeConn:
                         "lifecycle_status": "processed",
                         "content_class": "other",
                         "content_classification_json": {"policy_version": "news_content_classification_v1"},
-                        "analysis_admission_status": "page_only",
-                        "analysis_admission_reason": "provider_evidence_only",
-                        "analysis_admission_json": {
-                            "status": "page_only",
-                            "basis": {"provider_evidence": ["provider_score:92"]},
-                        },
-                        "analysis_admission_version": "news_analysis_admission_v1",
-                        "agent_admission_status": "eligible",
-                        "agent_admission_reason": "provider_score_high",
-                        "agent_admission_json": {
-                            "status": "eligible",
-                            "reason": "provider_score_high",
-                            "version": "news_item_agent_admission_market_v2",
-                        },
-                        "agent_admission_version": "news_item_agent_admission_market_v2",
-                        "agent_representative_news_item_id": "news-3",
-                        "agent_admission_computed_at_ms": NOW_MS - 2_900,
                         "story_key": "news-story:item:news-3",
                         "story_identity_json": {"story_key": "news-story:item:news-3"},
                         "story_identity_version": "news_story_identity_v1",
+                        "market_scope_json": {"scope": ["us_equity"], "primary": "us_equity"},
+                        "agent_admission_status": "eligible",
+                        "agent_admission_reason": "provider_score_high",
+                        "agent_admission_json": {"status": "eligible", "reason": "provider_score_high"},
+                        "agent_admission_version": "news_item_agent_admission_market_v2",
+                        "agent_representative_news_item_id": "news-3",
+                        "agent_admission_computed_at_ms": NOW_MS - 3_000,
                         "provider_type": "opennews",
                         "source_domain": "6551.io",
                         "source_name": "OpenNews",

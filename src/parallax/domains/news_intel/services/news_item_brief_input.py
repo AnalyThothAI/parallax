@@ -152,9 +152,7 @@ def _entity_lanes(
 ) -> list[NewsItemBriefEntityLane]:
     lanes = [
         lane
-        for lane in (
-            [_entity_lane(row) for row in entities] + [_token_entity_lane(row) for row in token_mentions]
-        )
+        for lane in ([_entity_lane(row) for row in entities] + [_token_entity_lane(row) for row in token_mentions])
         if lane is not None
     ]
     result: list[NewsItemBriefEntityLane] = []

@@ -18,16 +18,9 @@ def construct_narrative_intel_workers(ctx: WorkerFactoryContext) -> dict[str, Wo
     provider = getattr(getattr(ctx.providers, "narrative_intel", None), "narrative_provider", None)
     worker_names = ("narrative_admission", "mention_semantics", "token_discussion_digest")
     if not narrative_bulk_analysis_enabled(ctx.settings):
-        return {
-            name: disabled_worker(ctx, name)
-            for name in worker_names
-            if getattr(workers, name).enabled
-        }
+        return {name: disabled_worker(ctx, name) for name in worker_names if getattr(workers, name).enabled}
     if provider is None:
-        return {
-            name: unavailable_worker(ctx, name, "missing_narrative_intel_provider")
-            for name in worker_names
-        }
+        return {name: unavailable_worker(ctx, name, "missing_narrative_intel_provider") for name in worker_names}
 
     constructed: dict[str, WorkerBase] = {}
     constructed["narrative_admission"] = NarrativeAdmissionWorker(

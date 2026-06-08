@@ -65,7 +65,9 @@ function NewsQueueRoute({ token }: { token: string }) {
   };
 
   useEffect(() => {
-    setCursorState((state) => (state.searchQuery === searchQuery ? state : { searchQuery, stack: [null] }));
+    setCursorState((state) =>
+      state.searchQuery === searchQuery ? state : { searchQuery, stack: [null] },
+    );
   }, [searchQuery]);
 
   return (
@@ -90,7 +92,9 @@ function NewsQueueRoute({ token }: { token: string }) {
               aria-pressed={minScore === DEFAULT_NEWS_MIN_SCORE}
               type="button"
               onClick={() => {
-                setMinScore((current) => (current === DEFAULT_NEWS_MIN_SCORE ? null : DEFAULT_NEWS_MIN_SCORE));
+                setMinScore((current) =>
+                  current === DEFAULT_NEWS_MIN_SCORE ? null : DEFAULT_NEWS_MIN_SCORE,
+                );
                 resetCursor();
               }}
             >

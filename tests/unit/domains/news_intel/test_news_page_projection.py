@@ -41,9 +41,10 @@ def test_build_news_page_row_includes_token_and_fact_lanes() -> None:
     assert row["representative_news_item_id"] == "news-1"
     assert row["story_key"] == ""
     assert row["story"] == {}
-    assert row["analysis_admission_status"] == "needs_review"
-    assert row["analysis_admission_reason"] == ""
-    assert row["analysis_admission"] == {"status": "needs_review", "reason": ""}
+    assert row["market_scope"] == {}
+    assert "analysis_admission_status" not in row
+    assert "analysis_admission_reason" not in row
+    assert "analysis_admission" not in row
     assert "story_id" not in row
     assert row["source"] == {
         "source_id": "example-rss",
@@ -217,12 +218,13 @@ def test_story_row_id_uses_story_key() -> None:
             "source_domain": "bloomberg.com",
             "canonical_url": "https://bloomberg.test/jpm-citi",
             "published_at_ms": 1000,
-            "analysis_admission_status": "admitted",
-            "analysis_admission_reason": "tokenized_deposit_subject",
-            "analysis_admission_json": {
-                "status": "admitted",
+            "market_scope_json": {
+                "scope": ["crypto"],
+                "primary": "crypto",
+                "status": "classified",
                 "reason": "tokenized_deposit_subject",
                 "basis": {"subject": "tokenized_deposit"},
+                "version": "test_news_market_scope_v1",
             },
         },
         token_mentions=[],
@@ -239,12 +241,13 @@ def test_story_row_id_uses_story_key() -> None:
             "source_domain": "reuters.com",
             "canonical_url": "https://reuters.test/jpm-citi",
             "published_at_ms": 1001,
-            "analysis_admission_status": "admitted",
-            "analysis_admission_reason": "tokenized_deposit_subject",
-            "analysis_admission_json": {
-                "status": "admitted",
+            "market_scope_json": {
+                "scope": ["crypto"],
+                "primary": "crypto",
+                "status": "classified",
                 "reason": "tokenized_deposit_subject",
                 "basis": {"subject": "tokenized_deposit"},
+                "version": "test_news_market_scope_v1",
             },
         },
         token_mentions=[],
@@ -333,8 +336,17 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
             "source_domain": "example.test",
             "canonical_url": "https://example.test/a",
             "published_at_ms": 1000,
-            "analysis_admission_status": "admitted",
-            "analysis_admission_reason": "crypto_subject",
+            "agent_admission_status": "eligible",
+            "agent_admission_reason": "eligible",
+            "agent_representative_news_item_id": "news-1",
+            "market_scope_json": {
+                "scope": ["crypto"],
+                "primary": "crypto",
+                "status": "classified",
+                "reason": "crypto_subject",
+                "basis": {"subject": "sol_etf"},
+                "version": "test_news_market_scope_v1",
+            },
         },
         token_mentions=[],
         fact_candidates=[],
@@ -387,8 +399,6 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
         "status": "ready",
         "direction": "bullish",
         "decision_class": "driver",
-        "event_type": "etf_filing",
-        "market_domains": ["crypto"],
         "summary_zh": "SOL ETF 申请提升关注。",
         "market_read_zh": "叙事催化增强。",
         "bull_strength": "strong",
@@ -400,28 +410,12 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
         "prompt_version": "prompt-v1",
         "artifact_version_hash": "artifact-1",
         "input_hash": "input-1",
+        "agent_admission_status": "eligible",
+        "agent_admission_reason": "eligible",
+        "representative_news_item_id": "news-1",
+        "market_impacts": [],
         "bull_view": {"strength": "strong", "thesis_zh": "新增需求预期"},
         "bear_view": {"strength": "weak", "thesis_zh": "审批仍不确定"},
-        "affected_entities": [
-            {
-                "label": "SOL",
-                "symbol": "SOL",
-                "entity_type": "crypto_asset",
-                "market_domain": "crypto",
-                "target_id": "asset:sol",
-                "impact_direction": "bullish",
-                "reason_zh": "ETF 申请直接影响 SOL。",
-            }
-        ],
-        "transmission_paths": [
-            {
-                "market_domain": "crypto",
-                "channel": "regulatory_attention",
-                "direction": "bullish",
-                "strength": "moderate",
-                "explanation_zh": "ETF 申请提升监管叙事。",
-            }
-        ],
     }
 
 
@@ -434,8 +428,16 @@ def test_page_signal_envelope_separates_provider_agent_display_and_alert() -> No
             "source_domain": "6551.io",
             "canonical_url": "https://example.com/news-1",
             "published_at_ms": 1_000,
-            "analysis_admission_status": "admitted",
-            "analysis_admission_reason": "crypto_subject",
+            "agent_admission_status": "eligible",
+            "agent_admission_reason": "ready_market_driver",
+            "market_scope_json": {
+                "scope": ["crypto"],
+                "primary": "crypto",
+                "status": "classified",
+                "reason": "crypto_subject",
+                "basis": {"subject": "exchange_listing"},
+                "version": "test_news_market_scope_v1",
+            },
             "provider_signal_json": {
                 "source": "provider",
                 "provider": "opennews",
@@ -461,6 +463,7 @@ def test_page_signal_envelope_separates_provider_agent_display_and_alert() -> No
     assert row["signal"]["display_signal"]["source"] == "agent"
     assert row["signal"]["provider_signal"]["provider"] == "opennews"
     assert row["signal"]["agent_signal"]["status"] == "ready"
+    assert row["signal"]["alert_eligibility"]["market_scope"]["primary"] == "crypto"
     assert row["signal"]["alert_eligibility"]["external_push_ready"] is True
 
 
@@ -473,8 +476,16 @@ def test_build_news_page_row_preserves_provider_signal_without_masking_ready_age
             "source_domain": "example.test",
             "canonical_url": "https://example.test/a",
             "published_at_ms": 1000,
-            "analysis_admission_status": "admitted",
-            "analysis_admission_reason": "crypto_subject",
+            "agent_admission_status": "eligible",
+            "agent_admission_reason": "ready_market_watch",
+            "market_scope_json": {
+                "scope": ["crypto"],
+                "primary": "crypto",
+                "status": "classified",
+                "reason": "crypto_subject",
+                "basis": {"subject": "sol_etf"},
+                "version": "test_news_market_scope_v1",
+            },
             "provider_signal_json": {
                 "source": "provider",
                 "provider": "opennews",
@@ -526,6 +537,14 @@ def test_build_news_page_row_preserves_provider_signal_without_masking_ready_age
         "decision_class": "watch",
         "provider_status": "ready",
         "provider_score": 92,
+        "market_scope": {
+            "scope": ["crypto"],
+            "primary": "crypto",
+            "status": "classified",
+            "reason": "crypto_subject",
+            "basis": {"subject": "sol_etf"},
+            "version": "test_news_market_scope_v1",
+        },
         "in_app_eligible": True,
         "external_push_ready": True,
         "external_push_basis": "agent_brief",
@@ -572,10 +591,10 @@ def test_build_news_page_row_keeps_provider_candidate_separate_from_external_pus
     eligibility = row["signal"]["alert_eligibility"]
     assert eligibility["in_app_eligible"] is False
     assert eligibility["external_push_ready"] is False
-    assert eligibility["external_push_block_reason"] == "page_material_not_admitted"
+    assert eligibility["external_push_block_reason"] == "agent_brief_not_ready"
 
 
-def test_non_admitted_provider_score_does_not_set_in_app_eligible() -> None:
+def test_ready_market_watch_brief_sets_in_app_eligible_without_crypto_admission() -> None:
     row = build_news_page_row(
         item={
             "news_item_id": "news-spacex",
@@ -584,12 +603,15 @@ def test_non_admitted_provider_score_does_not_set_in_app_eligible() -> None:
             "source_domain": "example.test",
             "canonical_url": "https://example.test/spacex",
             "published_at_ms": 1000,
-            "analysis_admission_status": "page_only",
-            "analysis_admission_reason": "private_company_equity_context",
-            "analysis_admission_json": {
-                "status": "page_only",
+            "agent_admission_status": "eligible",
+            "agent_admission_reason": "market_wide_watch",
+            "market_scope_json": {
+                "scope": ["us_equity"],
+                "primary": "us_equity",
+                "status": "classified",
                 "reason": "private_company_equity_context",
                 "basis": {"provider_score_is_evidence_only": True},
+                "version": "test_news_market_scope_v1",
             },
             "provider_signal_json": {
                 "source": "provider",
@@ -603,12 +625,30 @@ def test_non_admitted_provider_score_does_not_set_in_app_eligible() -> None:
         },
         token_mentions=[],
         fact_candidates=[],
+        agent_brief={
+            "agent_run_id": "run-spacex",
+            "status": "ready",
+            "direction": "bullish",
+            "decision_class": "watch",
+            "brief_json": {"summary_zh": "SpaceX valuation reset matters for private-market risk appetite."},
+            "computed_at_ms": 1500,
+        },
         computed_at_ms=2000,
     )
 
     assert row["signal"]["provider_signal"]["score"] == 95
-    assert row["signal"]["alert_eligibility"]["in_app_eligible"] is False
-    assert row["analysis_admission_status"] == "page_only"
+    assert row["market_scope"] == {
+        "scope": ["us_equity"],
+        "primary": "us_equity",
+        "status": "classified",
+        "reason": "private_company_equity_context",
+        "basis": {"provider_score_is_evidence_only": True},
+        "version": "test_news_market_scope_v1",
+    }
+    assert row["signal"]["alert_eligibility"]["in_app_eligible"] is True
+    assert row["signal"]["alert_eligibility"]["external_push_ready"] is True
+    assert row["signal"]["alert_eligibility"]["market_scope"]["primary"] == "us_equity"
+    assert "analysis_admission_status" not in row
 
 
 def test_admitted_ready_brief_sets_external_push_ready() -> None:
@@ -620,12 +660,22 @@ def test_admitted_ready_brief_sets_external_push_ready() -> None:
             "source_domain": "electriccoin.co",
             "canonical_url": "https://electriccoin.test/orchard",
             "published_at_ms": 1000,
-            "analysis_admission_status": "admitted",
-            "analysis_admission_reason": "crypto_security_event",
-            "analysis_admission_json": {
-                "status": "admitted",
+            "agent_admission_status": "eligible",
+            "agent_admission_reason": "ready_market_driver",
+            "market_scope_json": {
+                "scope": ["crypto"],
+                "primary": "crypto",
+                "status": "classified",
                 "reason": "crypto_security_event",
                 "basis": {"subject": "zcash_orchard"},
+                "version": "test_news_market_scope_v1",
+            },
+            "provider_signal_json": {
+                "source": "provider",
+                "provider": "opennews",
+                "status": "ready",
+                "direction": "bearish",
+                "score": 90,
             },
         },
         token_mentions=[],
@@ -663,8 +713,14 @@ def test_story_payload_includes_member_count_and_domains() -> None:
             "source_domain": "bloomberg.com",
             "canonical_url": "https://bloomberg.test/spacex",
             "published_at_ms": 1000,
-            "analysis_admission_status": "page_only",
-            "analysis_admission_reason": "private_company_equity_context",
+            "market_scope_json": {
+                "scope": ["us_equity"],
+                "primary": "us_equity",
+                "status": "classified",
+                "reason": "private_company_equity_context",
+                "basis": {"subject": "spacex_valuation"},
+                "version": "test_news_market_scope_v1",
+            },
         },
         token_mentions=[],
         fact_candidates=[],
@@ -694,4 +750,9 @@ def test_build_news_page_row_uses_pending_agent_brief_when_missing() -> None:
 
     assert row["agent_status"] == "pending"
     assert row["agent_brief_computed_at_ms"] is None
-    assert row["agent_brief"] == {"status": "pending"}
+    assert row["agent_brief"] == {
+        "status": "pending",
+        "agent_admission_status": "needs_review",
+        "agent_admission_reason": "",
+        "representative_news_item_id": "news-1",
+    }

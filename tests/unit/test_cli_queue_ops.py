@@ -252,7 +252,6 @@ def test_queue_retry_transitions_cover_phase_five_terminal_queues() -> None:
     assert set(queue_ops.QUEUE_RETRY_TRANSITIONS) >= {
         ("resolution_refresh", "token_discovery_dirty_lookup_keys"),
         ("event_anchor_backfill", "event_anchor_backfill_jobs"),
-        ("enrichment", "enrichment_jobs"),
         ("mention_semantics", "token_mention_semantics"),
         ("pulse_candidate", "pulse_agent_jobs"),
     }

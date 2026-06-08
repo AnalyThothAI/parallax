@@ -177,11 +177,7 @@ def _int_or_none(value: Any) -> int | None:
 
 
 def _stable_payload_hash(payload: Mapping[str, Any], *, exclude: set[str]) -> str:
-    normalized = {
-        str(key): _stable_json_value(value)
-        for key, value in payload.items()
-        if str(key) not in exclude
-    }
+    normalized = {str(key): _stable_json_value(value) for key, value in payload.items() if str(key) not in exclude}
     encoded = json.dumps(
         postgres_safe_json(normalized),
         ensure_ascii=False,

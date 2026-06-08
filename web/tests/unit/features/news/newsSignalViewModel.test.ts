@@ -9,6 +9,7 @@ import {
   tokenImpactTone,
   tokenMarketLabel,
 } from "@features/news/model/newsSignalViewModel";
+import type { NewsRow } from "@shared/model/newsIntel";
 import { describe, expect, it } from "vitest";
 
 describe("newsSignalViewModel", () => {
@@ -50,25 +51,20 @@ describe("newsSignalViewModel", () => {
     expect(
       newsAgentReviewBadge({
         agent_status: "not_required",
-        agent_brief: { status: "not_required", eligibility_reason: "below_score_threshold" },
+        agent_brief: { status: "not_required" },
         agent_brief_status: null,
         signal: {
           display_signal: { source: "provider", status: "ready", direction: "neutral" },
           provider_signal: null,
           agent_signal: { status: "not_required" },
-          alert_eligibility: { agent_status: "not_required" },
-          agent_requirement: {
-            status: "not_required",
-            reason: "below_score_threshold",
-            priority: 45,
-          },
+          alert_eligibility: { agent_status: "not_required", agent_admission_reason: "exact_duplicate" },
         },
       }),
     ).toEqual({
       label: "AGENT SKIP",
-      detail: "below_score_threshold",
+      detail: "exact_duplicate",
       tone: "is-blocked",
-      title: "AGENT SKIP · below_score_threshold",
+      title: "AGENT SKIP · exact_duplicate",
     });
   });
 
@@ -86,4 +82,54 @@ describe("newsSignalViewModel", () => {
       { symbol: "SOL", provider_score: 70, provider_grade: "B" },
     ]);
   });
+
+  it("marks ready watch and driver briefs ready independently of external push readiness", () => {
+    expect(newsAgentReviewBadge(agentRow({ status: "ready", decisionClass: "watch" }))).toEqual({
+      label: "AGENT READY",
+      detail: null,
+      tone: "is-ready",
+      title: "AGENT READY",
+    });
+    expect(newsAgentReviewBadge(agentRow({ status: "ready", decisionClass: "driver" }))).toEqual({
+      label: "AGENT READY",
+      detail: null,
+      tone: "is-ready",
+      title: "AGENT READY",
+    });
+  });
+
+  it("keeps ready context briefs separate from agent hold", () => {
+    expect(newsAgentReviewBadge(agentRow({ status: "ready", decisionClass: "context" }))).toEqual({
+      label: "AGENT CONTEXT",
+      detail: "cooldown",
+      tone: "is-waiting",
+      title: "AGENT CONTEXT · cooldown",
+    });
+  });
 });
+
+function agentRow({
+  status,
+  decisionClass,
+}: {
+  status: string;
+  decisionClass: string;
+}): Pick<NewsRow, "agent_brief" | "agent_brief_status" | "agent_status" | "signal"> {
+  return {
+    agent_brief: {
+      status,
+      decision_class: decisionClass,
+    },
+    signal: {
+      display_signal: { source: "agent", status: "ready", direction: "neutral" },
+      provider_signal: null,
+      agent_signal: { status, decision_class: decisionClass },
+      alert_eligibility: {
+        external_push_ready: false,
+        external_push_block_reason: "cooldown",
+        agent_status: status,
+        decision_class: decisionClass,
+      },
+    },
+  };
+}

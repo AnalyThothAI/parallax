@@ -60,9 +60,7 @@ def test_runtime_performance_check_prints_read_only_lifecycle_report() -> None:
 
 
 def test_runtime_performance_check_hard_gates_runtime_sql_fingerprints() -> None:
-    script = (
-        ROOT / "scripts" / "runtime_performance_root_fix_check.sh"
-    ).read_text(encoding="utf-8")
+    script = (ROOT / "scripts" / "runtime_performance_root_fix_check.sh").read_text(encoding="utf-8")
 
     assert "TOKEN_RADAR_EVENT_ID_POPULATE_MIN_CALLS" in script
     assert "source_event_ids_json" in script
@@ -86,5 +84,5 @@ def test_runtime_performance_check_hard_gates_runtime_sql_fingerprints() -> None
     assert "query NOT ILIKE '%requested_events%'" in script
 
     assert "assert_zero_new_or_cumulative_calls" in script
-    assert "stale equity fetch runs\" \"${stale_equity_fetch_runs}\"" not in script
+    assert 'stale equity fetch runs" "${stale_equity_fetch_runs}"' not in script
     assert "top sql token radar share percent" not in script

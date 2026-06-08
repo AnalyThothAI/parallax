@@ -21,8 +21,7 @@ export function buildWatchlistRows({
   const originalIndex = new Map(rows.map((row, index) => [row.handle, index]));
   return rows
     .map((row) => ({
-      activityScore:
-        Number(row.recent_source_event_count ?? 0),
+      activityScore: Number(row.recent_source_event_count ?? 0),
       handle: row.handle,
       lastSeenAtMs: row.last_source_event_at_ms ?? null,
       recentSourceCount: Number(row.recent_source_event_count ?? 0),

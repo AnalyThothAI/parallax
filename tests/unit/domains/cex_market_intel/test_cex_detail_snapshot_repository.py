@@ -185,10 +185,7 @@ def test_upsert_many_returns_changed_rowcount_and_gates_on_payload_hash():
     assert conn.commits == 1
     all_sql = "\n".join(conn.sql_calls)
     assert "payload_hash" in all_sql
-    assert (
-        "WHERE cex_detail_snapshots.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash"
-        in all_sql
-    )
+    assert "WHERE cex_detail_snapshots.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash" in all_sql
 
 
 def test_upsert_many_accepts_commit_false_without_committing():

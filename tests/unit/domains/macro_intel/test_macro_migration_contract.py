@@ -168,13 +168,7 @@ def test_repository_refresh_observation_series_rows_writes_current_read_model() 
 def test_macro_observation_series_contract_is_current_only_after_hard_cut() -> None:
     migration_sql = RUNTIME_DB_PERFORMANCE_HARD_CUT_MIGRATION.read_text(encoding="utf-8")
     repository_sql = (
-        ROOT
-        / "src"
-        / "parallax"
-        / "domains"
-        / "macro_intel"
-        / "repositories"
-        / "macro_intel_repository.py"
+        ROOT / "src" / "parallax" / "domains" / "macro_intel" / "repositories" / "macro_intel_repository.py"
     ).read_text(encoding="utf-8")
 
     assert "macro_observation_series_rows_compact" in migration_sql
@@ -233,10 +227,7 @@ def test_next_runtime_lifecycle_migration_adds_macro_projection_dirty_targets_se
         "updated_at_ms BIGINT NOT NULL",
     ):
         assert column in dirty_targets_table
-    assert (
-        "PRIMARY KEY (projection_name, projection_version, target_kind, target_id)"
-        in dirty_targets_table
-    )
+    assert "PRIMARY KEY (projection_name, projection_version, target_kind, target_id)" in dirty_targets_table
     assert "INSERT INTO macro_projection_dirty_targets" in migration_sql
     assert "'macro_view'" in migration_sql
     assert "'macro_regime_v4'" in migration_sql

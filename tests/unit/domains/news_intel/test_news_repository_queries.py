@@ -60,39 +60,34 @@ def test_unprocessed_item_loader_selects_provider_article_keys_for_story_identit
     assert "sources.provider_type" in conn.sql
 
 
-def test_update_item_analysis_and_story_identity_rejects_unsupported_payload_shape() -> None:
+def test_update_item_market_scope_and_story_identity_rejects_unsupported_payload_shape() -> None:
     conn = CapturingConnection()
     repo = NewsRepository(conn)
 
     try:
-        repo.update_item_analysis_and_story_identity(
+        repo.update_item_market_scope_and_story_identity(
             news_item_id="news-1",
-            admission=object(),
-            story_identity={
-                "story_key": "news-story:opennews-article:2367422",
-                "confidence": "strong",
-                "basis": {},
-                "version": "news_story_identity_v1",
-            },
+            market_scope=object(),
+            story_identity=_valid_story_identity_payload(),
             now_ms=1_000,
             commit=False,
         )
     except ValueError as exc:
-        assert "analysis admission payload" in str(exc)
+        assert "market scope payload" in str(exc)
     else:
-        raise AssertionError("expected unsupported admission payload shape to raise")
+        raise AssertionError("expected unsupported market scope payload shape to raise")
 
     assert conn.statements == []
 
 
-def test_update_item_analysis_and_story_identity_rejects_unsupported_story_identity_shape() -> None:
+def test_update_item_market_scope_and_story_identity_rejects_unsupported_story_identity_shape() -> None:
     conn = CapturingConnection()
     repo = NewsRepository(conn)
 
     with pytest.raises(ValueError, match="story identity payload"):
-        repo.update_item_analysis_and_story_identity(
+        repo.update_item_market_scope_and_story_identity(
             news_item_id="news-1",
-            admission=_valid_admission_payload(),
+            market_scope=_valid_market_scope_payload(),
             story_identity=object(),
             now_ms=1_000,
             commit=False,
@@ -102,32 +97,41 @@ def test_update_item_analysis_and_story_identity_rejects_unsupported_story_ident
 
 
 @pytest.mark.parametrize(
-    ("admission", "story_identity", "match"),
+    ("market_scope", "story_identity", "match"),
     [
         (
-            {"status": "", "reason": "crypto_native_evidence", "basis": {}, "version": "news_analysis_admission_v1"},
+            {
+                "scope": ["crypto"],
+                "primary": "",
+                "status": "classified",
+                "reason": "crypto_evidence",
+                "basis": {},
+                "version": "news_market_scope_v1",
+            },
             {
                 "story_key": "news-story:opennews-article:2367422",
                 "confidence": "strong",
                 "basis": {"method": "opennews_article_key"},
                 "version": "news_story_identity_v1",
             },
-            "blank status",
+            "blank primary",
         ),
         (
             {
-                "status": "admitted",
-                "reason": "crypto_native_evidence",
+                "scope": ["crypto"],
+                "primary": "crypto",
+                "status": "classified",
+                "reason": "crypto_evidence",
                 "basis": {"crypto_evidence": ["resolved_crypto_target:cex:BTC"]},
-                "version": "news_analysis_admission_v1",
+                "version": "news_market_scope_v1",
             },
             {"story_key": "", "confidence": "strong", "basis": {}, "version": "news_story_identity_v1"},
             "blank story_key",
         ),
     ],
 )
-def test_update_item_analysis_and_story_identity_rejects_blank_required_fields(
-    admission: dict[str, object],
+def test_update_item_market_scope_and_story_identity_rejects_blank_required_fields(
+    market_scope: dict[str, object],
     story_identity: dict[str, object],
     match: str,
 ) -> None:
@@ -135,9 +139,9 @@ def test_update_item_analysis_and_story_identity_rejects_blank_required_fields(
     repo = NewsRepository(conn)
 
     with pytest.raises(ValueError, match=match):
-        repo.update_item_analysis_and_story_identity(
+        repo.update_item_market_scope_and_story_identity(
             news_item_id="news-1",
-            admission=admission,
+            market_scope=market_scope,
             story_identity=story_identity,
             now_ms=1_000,
             commit=False,
@@ -147,14 +151,16 @@ def test_update_item_analysis_and_story_identity_rejects_blank_required_fields(
 
 
 @pytest.mark.parametrize(
-    ("admission", "story_identity", "match"),
+    ("market_scope", "story_identity", "match"),
     [
         (
             {
-                "status": "admitted",
-                "reason": "crypto_native_evidence",
-                "basis": ["crypto_evidence"],
-                "version": "news_analysis_admission_v1",
+                "scope": "crypto",
+                "primary": "crypto",
+                "status": "classified",
+                "reason": "crypto_evidence",
+                "basis": {},
+                "version": "news_market_scope_v1",
             },
             {
                 "story_key": "news-story:opennews-article:2367422",
@@ -162,14 +168,33 @@ def test_update_item_analysis_and_story_identity_rejects_blank_required_fields(
                 "basis": {"method": "opennews_article_key"},
                 "version": "news_story_identity_v1",
             },
-            "analysis admission payload.*basis must be mapping",
+            "market scope payload.*scope must be list",
         ),
         (
             {
-                "status": "admitted",
-                "reason": "crypto_native_evidence",
+                "scope": ["crypto"],
+                "primary": "crypto",
+                "status": "classified",
+                "reason": "crypto_evidence",
+                "basis": ["crypto_evidence"],
+                "version": "news_market_scope_v1",
+            },
+            {
+                "story_key": "news-story:opennews-article:2367422",
+                "confidence": "strong",
+                "basis": {"method": "opennews_article_key"},
+                "version": "news_story_identity_v1",
+            },
+            "market scope payload.*basis must be mapping",
+        ),
+        (
+            {
+                "scope": ["crypto"],
+                "primary": "crypto",
+                "status": "classified",
+                "reason": "crypto_evidence",
                 "basis": {"crypto_evidence": ["resolved_crypto_target:cex:BTC"]},
-                "version": "news_analysis_admission_v1",
+                "version": "news_market_scope_v1",
             },
             {
                 "story_key": "news-story:opennews-article:2367422",
@@ -181,8 +206,8 @@ def test_update_item_analysis_and_story_identity_rejects_blank_required_fields(
         ),
     ],
 )
-def test_update_item_analysis_and_story_identity_rejects_non_mapping_basis(
-    admission: dict[str, object],
+def test_update_item_market_scope_and_story_identity_rejects_invalid_nested_fields(
+    market_scope: dict[str, object],
     story_identity: dict[str, object],
     match: str,
 ) -> None:
@@ -190,15 +215,83 @@ def test_update_item_analysis_and_story_identity_rejects_non_mapping_basis(
     repo = NewsRepository(conn)
 
     with pytest.raises(ValueError, match=match):
-        repo.update_item_analysis_and_story_identity(
+        repo.update_item_market_scope_and_story_identity(
             news_item_id="news-1",
-            admission=admission,
+            market_scope=market_scope,
             story_identity=story_identity,
             now_ms=1_000,
             commit=False,
         )
 
     assert conn.statements == []
+
+
+def test_update_item_market_scope_and_story_identity_writes_current_fields_only() -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    repo.update_item_market_scope_and_story_identity(
+        news_item_id="news-1",
+        market_scope=_valid_market_scope_payload(),
+        story_identity=_valid_story_identity_payload(),
+        now_ms=1_000,
+        commit=False,
+    )
+
+    assert "market_scope_json = %s" in conn.sql
+    assert "story_key = %s" in conn.sql
+    assert "story_identity_json = %s" in conn.sql
+    assert "story_identity_version = %s" in conn.sql
+    assert "updated_at_ms = %s" in conn.sql
+    assert "analysis_admission" not in conn.sql
+    assert conn.params[1] == "news-story:opennews-article:2367422"
+    assert conn.params[3] == "news_story_identity_v1"
+    assert conn.params[4] == 1_000
+    assert conn.params[5] == "news-1"
+
+
+def test_update_item_market_scope_and_agent_admission_writes_current_fields_only() -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    repo.update_item_market_scope_and_agent_admission(
+        news_item_id="news-1",
+        market_scope=_valid_market_scope_payload(),
+        story_identity=_valid_story_identity_payload(),
+        admission=_valid_agent_admission_payload(),
+        now_ms=1_000,
+        commit=False,
+    )
+
+    assert "market_scope_json = %s" in conn.sql
+    assert "story_key = %s" in conn.sql
+    assert "agent_admission_status = %s" in conn.sql
+    assert "agent_admission_reason = %s" in conn.sql
+    assert "agent_representative_news_item_id = %s" in conn.sql
+    assert "analysis_admission" not in conn.sql
+    assert conn.params[1] == "news-story:opennews-article:2367422"
+    assert conn.params[4] == "eligible"
+    assert conn.params[5] == "provider_score_high"
+    assert conn.params[8] == "news-1"
+    assert conn.params[11] == "news-1"
+
+
+def test_list_news_market_signal_repair_candidates_uses_current_market_scope_contract() -> None:
+    conn = CapturingConnection()
+    repo = NewsRepository(conn)
+
+    rows = repo.list_news_market_signal_repair_candidates(since_ms=1_000, min_score=80)
+
+    assert rows == []
+    assert "FROM news_items AS items" in conn.sql
+    assert "JOIN news_sources AS sources" in conn.sql
+    assert "items.provider_signal_json ->> 'score'" in conn.sql
+    assert "items.lifecycle_status = 'processed'" in conn.sql
+    assert "token_mentions_json" in conn.sql
+    assert "fact_candidates_json" in conn.sql
+    assert "entities_json" in conn.sql
+    assert "analysis_admission" not in conn.sql
+    assert conn.params == (1_000, 80)
 
 
 def test_material_duplicate_lock_covers_candidate_window_without_symbol_partition() -> None:
@@ -286,12 +379,14 @@ class CapturingConnection:
         return CapturingCursor()
 
 
-def _valid_admission_payload() -> dict[str, object]:
+def _valid_market_scope_payload() -> dict[str, object]:
     return {
-        "status": "admitted",
-        "reason": "crypto_native_evidence",
+        "scope": ["crypto"],
+        "primary": "crypto",
+        "status": "classified",
+        "reason": "crypto_evidence",
         "basis": {"crypto_evidence": ["resolved_crypto_target:cex:BTC"]},
-        "version": "news_analysis_admission_v1",
+        "version": "news_market_scope_v1",
     }
 
 
@@ -301,6 +396,17 @@ def _valid_story_identity_payload() -> dict[str, object]:
         "confidence": "strong",
         "basis": {"method": "opennews_article_key"},
         "version": "news_story_identity_v1",
+    }
+
+
+def _valid_agent_admission_payload() -> dict[str, object]:
+    return {
+        "eligible": True,
+        "status": "eligible",
+        "reason": "provider_score_high",
+        "representative_news_item_id": "news-1",
+        "basis": {"provider_signal": {"score": 95}},
+        "version": "news_item_agent_admission_v1",
     }
 
 

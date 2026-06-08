@@ -139,9 +139,7 @@ def _delete_non_v4_macro_read_models() -> None:
     op.execute("DELETE FROM macro_view_snapshots WHERE projection_version <> 'macro_regime_v4'")
     op.execute("DELETE FROM macro_observation_series_rows WHERE projection_version <> 'macro_regime_v4'")
     op.execute("DELETE FROM macro_projection_dirty_targets WHERE projection_version <> 'macro_regime_v4'")
-    op.execute(
-        "DELETE FROM macro_observation_series_publication_state WHERE projection_version <> 'macro_regime_v4'"
-    )
+    op.execute("DELETE FROM macro_observation_series_publication_state WHERE projection_version <> 'macro_regime_v4'")
 
 
 def _add_macro_observation_fact_hash() -> None:
@@ -367,7 +365,7 @@ def _backfill_macro_observation_fact_hashes() -> None:
                 update_hash,
                 {
                     "observation_id": row["observation_id"],
-                    "fact_payload_hash": macro_observation_fact_payload_hash(row),
+                    "fact_payload_hash": macro_observation_fact_payload_hash(dict(row)),
                 },
             )
 
@@ -413,7 +411,7 @@ def _backfill_macro_series_current_row_payload_hashes() -> None:
                 update_hash,
                 {
                     "row_ctid": row["row_ctid"],
-                    "payload_hash": macro_series_current_row_payload_hash(row),
+                    "payload_hash": macro_series_current_row_payload_hash(dict(row)),
                 },
             )
 

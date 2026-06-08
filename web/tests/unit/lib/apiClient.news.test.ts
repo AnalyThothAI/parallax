@@ -51,22 +51,31 @@ describe("news API client normalization", () => {
                     status: "accepted",
                   },
                 ],
+                market_scope: {
+                  scope: ["us_equity", "crypto"],
+                  primary: "us_equity",
+                  status: "classified",
+                  reason: "market_scope_classified",
+                  basis: { subject: "tokenized_stocks" },
+                  version: "news_market_scope_v1",
+                },
+                agent_admission_status: "eligible",
+                agent_admission_reason: "provider_score_high",
+                agent_admission: {
+                  eligible: true,
+                  status: "eligible",
+                  reason: "provider_score_high",
+                  representative_news_item_id: "news-classified",
+                  basis: { provider_score: 82 },
+                  version: "news_item_agent_admission_market_v1",
+                },
+                agent_representative_news_item_id: "news-classified",
                 source: {
                   provider_type: "opennews",
                   source_role: "aggregator",
                   trust_tier: "standard",
                   coverage_tags: ["opennews", "6551news"],
                   source_quality_status: "healthy",
-                },
-                agent_requirement_status: "required",
-                agent_requirement_reason: "eligible",
-                agent_requirement_priority: 18,
-                agent_requirement_json: {
-                  status: "required",
-                  reason: "eligible",
-                  priority: 18,
-                  basis: { provider_score: 82 },
-                  version: "news_item_agent_requirement_v1",
                 },
               },
             ],
@@ -98,9 +107,14 @@ describe("news API client normalization", () => {
     expect(rows.items[0].token_impacts?.[0].provider_score).toBe(82);
     expect(rows.items[0].source?.provider_type).toBe("opennews");
     expect(rows.items[0].provider_type).toBe("opennews");
-    expect(rows.items[0].signal.agent_requirement?.reason).toBe("eligible");
-    expect(rows.items[0].agent_requirement_reason).toBe("eligible");
-    expect(rows.items[0].agent_requirement_priority).toBe(18);
+    expect(rows.items[0].market_scope?.primary).toBe("us_equity");
+    expect(rows.items[0].agent_admission?.status).toBe("eligible");
+    expect(rows.items[0].agent_representative_news_item_id).toBe("news-classified");
+    expect(rows.items[0].signal.alert_eligibility.market_scope?.primary).toBe("us_equity");
+    expect(rows.items[0].signal.alert_eligibility.agent_admission_status).toBe("eligible");
+    expect(rows.items[0].signal.alert_eligibility.agent_admission_reason).toBe(
+      "provider_score_high",
+    );
   });
 
   it("keeps agent brief optional when the hard-cut row omits it", async () => {
@@ -124,11 +138,27 @@ describe("news API client normalization", () => {
                 }),
                 agent_brief: {
                   status: "ready",
+                  confirmation_state: "single_source",
+                  novelty_status: "new",
+                  source_consensus_zh: "retired consensus",
+                  retrieval_notes_zh: "retired notes",
+                  used_tool_call_ids: ["retired-call"],
+                  impact_zh: "retired impact",
+                  watch_items_zh: "retired watch",
+                  confidence: 0.91,
                   brief_json: {
                     direction: "bearish",
                     decision_class: "watch",
                     summary_zh: "后端摘要",
                     market_read_zh: "后端解读",
+                    confirmation_state: "single_source",
+                    novelty_status: "new",
+                    source_consensus_zh: "retired consensus",
+                    retrieval_notes_zh: "retired notes",
+                    used_tool_call_ids: ["retired-call"],
+                    impact_zh: "retired impact",
+                    watch_items_zh: "retired watch",
+                    confidence: 0.91,
                     bull_view: { strength: "absent", thesis_zh: "", evidence_refs: [] },
                     bear_view: {
                       strength: "strong",
@@ -166,6 +196,17 @@ describe("news API client normalization", () => {
     expect(rows.items[0].agent_brief?.data_gaps).toEqual([
       { description_zh: "identity", severity: "medium" },
     ]);
+    const brief = rows.items[0].agent_brief as Record<string, unknown>;
+    expect(brief).not.toHaveProperty("confirmation_state");
+    expect(brief).not.toHaveProperty("novelty_status");
+    expect(brief).not.toHaveProperty("source_consensus_zh");
+    expect(brief).not.toHaveProperty("retrieval_notes_zh");
+    expect(brief).not.toHaveProperty("used_tool_call_ids");
+    expect(brief).not.toHaveProperty("impact_zh");
+    expect(brief).not.toHaveProperty("watch_items_zh");
+    expect(brief).not.toHaveProperty("confidence");
+    expect(brief.brief_json).not.toHaveProperty("confirmation_state");
+    expect(brief.brief_json).not.toHaveProperty("novelty_status");
     expect(rows.items[1].agent_brief).toBeUndefined();
   });
 
@@ -288,13 +329,6 @@ function newsSignalEnvelope(displaySignal: Record<string, unknown>) {
       external_push_ready: false,
       agent_status: "pending",
       provider_score: displaySignal.score,
-    },
-    agent_requirement: {
-      status: "required",
-      reason: "eligible",
-      priority: 20,
-      basis: { provider_score: displaySignal.score },
-      version: "news_item_agent_requirement_v1",
     },
   };
 }

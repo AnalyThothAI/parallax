@@ -557,15 +557,17 @@ def _candidate(*, provider_score: int = 88) -> dict[str, Any]:
             "lifecycle_status": "processed",
             "content_class": "crypto_market",
             "content_classification_json": {"policy_version": "news_content_classification_v1"},
-            "analysis_admission_status": "admitted",
-            "analysis_admission_reason": "crypto_native_evidence",
-            "analysis_admission_json": {
-                "status": "admitted",
-                "reason": "crypto_native_evidence",
-                "basis": {"crypto_evidence": ["resolved_crypto_target:cex:SOL"]},
-                "version": "news_analysis_admission_v1",
+            "market_scope_json": ["crypto"],
+            "agent_admission_status": "eligible",
+            "agent_admission_reason": "eligible",
+            "agent_admission_json": {
+                "eligible": True,
+                "status": "eligible",
+                "reason": "eligible",
+                "representative_news_item_id": "news-item-1",
+                "basis": {"market_scope": ["crypto"], "crypto_evidence": ["resolved_crypto_target:cex:SOL"]},
+                "version": "news_item_agent_admission_market_v2",
             },
-            "analysis_admission_version": "news_analysis_admission_v1",
             "source_domain": "example.com",
             "source_name": "Example",
             "source_role": "observed_source",
@@ -613,13 +615,16 @@ def _energy_candidate(*, provider_score: int = 90) -> dict[str, Any]:
                 "policy_version": "news_content_classification_v1",
                 "content_class": "energy_geopolitics",
             },
-            "analysis_admission_status": "page_only",
-            "analysis_admission_reason": "market_wide_energy_context",
-            "analysis_admission_json": {
-                "status": "page_only",
-                "reason": "market_wide_energy_context",
+            "market_scope_json": ["energy_geopolitics", "commodity", "crypto"],
+            "agent_admission_status": "eligible",
+            "agent_admission_reason": "eligible",
+            "agent_admission_json": {
+                "eligible": True,
+                "status": "eligible",
+                "reason": "eligible",
+                "representative_news_item_id": "news-item-1",
                 "basis": {"market_scope": ["energy_geopolitics", "commodity", "crypto"]},
-                "version": "news_analysis_admission_v1",
+                "version": "news_item_agent_admission_market_v2",
             },
             "event_type": "geopolitical_supply",
             "provider_signal_json": {
@@ -674,9 +679,7 @@ def _energy_candidate(*, provider_score: int = 90) -> dict[str, Any]:
             "claim": "The Gulf flare-up raised WTI crude futures supply concerns and risk-asset pressure.",
             "realis": "actual",
             "validation_status": "accepted",
-            "affected_targets_json": [
-                {"label": "WTI crude futures", "symbol": "CL", "market_domain": "commodity"}
-            ],
+            "affected_targets_json": [{"label": "WTI crude futures", "symbol": "CL", "market_domain": "commodity"}],
             "evidence_quote": "raised Gulf supply concerns and supported WTI crude futures risk premium",
         }
     ]

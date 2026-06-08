@@ -10,12 +10,21 @@ from parallax.domains.news_intel.services.news_item_brief_entity_support import 
     validate_affected_entity_support,
 )
 from parallax.domains.news_intel.types.news_item_brief import (
+    DataGap,
     NewsItemBriefInputPacket,
     NewsItemBriefPayload,
 )
 from parallax.platform.agent_hashing import json_sha256
 
 _ACTION_AUDIT_KEYS = frozenset({"tool_calls", "tools", "handoffs"})
+_PROVIDER_MARKET_IMPACT_SOURCE_KEYS = (
+    "label",
+    "target_id",
+    "symbol",
+    "ticker",
+    "display_symbol",
+    "observed_symbol",
+)
 _TRADING_INSTRUCTION_PATTERNS = (
     re.compile(r"(?:建议|推荐|可以|应当|应该|适合).{0,16}(?:买入|卖出|开仓|平仓|做多|做空|加仓|减仓|止损|止盈|杠杆)"),
     re.compile(r"(?:买入|卖出|开仓|平仓|做多|做空).{0,12}(?:止损|止盈|杠杆|仓位)"),
@@ -55,6 +64,7 @@ def validate_news_item_brief_output(
     errors: list[dict[str, str]] = []
     payload_dict = parsed.model_dump(mode="json")
     errors.extend(_unexpected_action_errors(audit))
+    payload_dict = _drop_unsupported_market_impacts(payload_dict, packet=packet)
     errors.extend(_evidence_ref_errors(payload_dict, packet=packet))
     errors.extend(_ready_evidence_errors(payload_dict, packet=packet))
     errors.extend(_unsupported_entity_errors(payload_dict, packet=packet))
@@ -88,9 +98,7 @@ def _unexpected_action_errors(audit: Any) -> list[dict[str, str]]:
 def _evidence_ref_errors(payload: dict[str, Any], *, packet: NewsItemBriefInputPacket) -> list[dict[str, str]]:
     allowed = set(packet.evidence_refs)
     return [
-        _error("unknown_evidence_ref", ref)
-        for ref in sorted(_evidence_refs_in_payload(payload))
-        if ref not in allowed
+        _error("unknown_evidence_ref", ref) for ref in sorted(_evidence_refs_in_payload(payload)) if ref not in allowed
     ]
 
 
@@ -101,6 +109,77 @@ def _ready_evidence_errors(payload: dict[str, Any], *, packet: NewsItemBriefInpu
     if any(ref in allowed for ref in _evidence_refs_in_payload(payload)):
         return []
     return [_error("missing_ready_evidence_ref", "ready output requires at least one valid evidence ref")]
+
+
+def _drop_unsupported_market_impacts(payload: dict[str, Any], *, packet: NewsItemBriefInputPacket) -> dict[str, Any]:
+    supported = _source_backed_market_labels(packet)
+    kept_impacts: list[dict[str, Any]] = []
+    dropped_labels: list[str] = []
+    for impact in payload.get("market_impacts") or []:
+        if not isinstance(impact, Mapping):
+            continue
+        labels = {
+            _norm(impact.get("label")),
+            _norm(impact.get("target_id")),
+        }
+        if any(label and label in supported for label in labels):
+            kept_impacts.append(dict(impact))
+            continue
+        dropped_labels.append(str(impact.get("label") or "unknown"))
+    if not dropped_labels:
+        return payload
+    normalized = dict(payload)
+    normalized["market_impacts"] = kept_impacts
+    gaps = list(normalized.get("data_gaps") or [])
+    gaps.extend(
+        [
+            DataGap(
+                description_zh=f"模型提到的市场影响对象 {label} 未在输入 entity、fact 或新闻文本中找到来源支撑。",
+                severity="medium",
+            ).model_dump(mode="json")
+            for label in sorted(set(dropped_labels))
+        ]
+    )
+    normalized["data_gaps"] = gaps[:12]
+    return normalized
+
+
+def _source_backed_market_labels(packet: NewsItemBriefInputPacket) -> set[str]:
+    labels: set[str] = set()
+    text_fields = [
+        packet.news_item.title,
+        packet.news_item.summary,
+        packet.news_item.body_excerpt,
+    ]
+    labels.update(_norm(token) for field in text_fields for token in re.findall(r"[A-Za-z0-9]{2,20}", field or ""))
+    for entity in packet.entity_lanes:
+        labels.update(
+            {
+                _norm(entity.observed_label),
+                _norm(entity.display_symbol),
+                _norm(entity.display_name),
+                _norm(entity.target_id),
+            }
+        )
+    for fact in packet.fact_lanes:
+        labels.update(_norm(token) for token in re.findall(r"[A-Za-z0-9]{2,20}", fact.claim or ""))
+        for target in fact.affected_targets:
+            labels.update(_norm(value) for value in target.values() if isinstance(value, str))
+    if packet.provider_signal_evidence is not None:
+        for impact in packet.provider_signal_evidence.market_impacts:
+            labels.update(_source_values_from_provider_market_impact(impact))
+    return {label for label in labels if label}
+
+
+def _source_values_from_provider_market_impact(value: Any) -> set[str]:
+    payload = value.model_dump(mode="json") if isinstance(value, BaseModel) else _as_dict(value)
+    labels: set[str] = set()
+    for key in _PROVIDER_MARKET_IMPACT_SOURCE_KEYS:
+        source_value = payload.get(key)
+        if source_value is None and not isinstance(value, Mapping):
+            source_value = getattr(value, key, None)
+        labels.add(_norm(source_value))
+    return labels
 
 
 def _unsupported_entity_errors(payload: dict[str, Any], *, packet: NewsItemBriefInputPacket) -> list[dict[str, str]]:
@@ -215,6 +294,10 @@ def _error(code: str, message: str) -> dict[str, str]:
 def _validation_message(exc: ValidationError) -> str:
     messages = [str(error.get("loc", "")) + ": " + str(error.get("msg", "")) for error in exc.errors()]
     return "; ".join(messages)
+
+
+def _norm(value: Any) -> str:
+    return str(value or "").strip().lower()
 
 
 __all__ = ["NewsItemBriefValidationResult", "validate_news_item_brief_output"]

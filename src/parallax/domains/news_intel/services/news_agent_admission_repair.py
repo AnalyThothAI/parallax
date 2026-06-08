@@ -37,7 +37,7 @@ def repair_news_agent_market_admission(
 
     for candidate in candidates:
         item = dict(candidate.get("item") or {})
-        previous_reason = str(item.get("agent_admission_reason") or item.get("analysis_admission_reason") or "")
+        previous_reason = str(item.get("agent_admission_reason") or "")
         counts_by_previous_reason[previous_reason] += 1
         admission = decide_news_item_agent_admission(
             item=item,
@@ -70,11 +70,7 @@ def repair_news_agent_market_admission(
             enqueued += enqueue_item_brief_work(
                 repos,
                 news_item_ids=[representative_news_item_id],
-                priority_by_news_item_id={
-                    representative_news_item_id: news_item_agent_brief_priority(
-                        item=item
-                    )
-                },
+                priority_by_news_item_id={representative_news_item_id: news_item_agent_brief_priority(item=item)},
                 reason="news_agent_market_admission_repair",
                 now_ms=resolved_now_ms,
                 commit=False,

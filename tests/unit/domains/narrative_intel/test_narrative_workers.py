@@ -963,9 +963,9 @@ def test_token_discussion_digest_worker_claims_only_llm_cycle_budget():
         assert result.notes["llm_calls"] == 1
         assert result.notes["deferred_llm_budget"] == 0
         assert "llm_cycle_budget_exhausted" not in result.notes["refresh_reasons"]
-        assert [
-            call["claims"][0]["admission_id"] for call in db.discussion_digest_dirty_targets.reschedule_calls
-        ] == ["admission-1"]
+        assert [call["claims"][0]["admission_id"] for call in db.discussion_digest_dirty_targets.reschedule_calls] == [
+            "admission-1"
+        ]
 
     asyncio.run(scenario())
 

@@ -3,7 +3,12 @@ import { join } from "node:path";
 
 import { NewsPage } from "@features/news";
 import { fetchNewsItem, fetchNewsRows } from "@lib/api/client";
-import type { NewsItemDetail, NewsRow, NewsSignalEnvelope, NewsSignalSummary } from "@shared/model/newsIntel";
+import type {
+  NewsItemDetail,
+  NewsRow,
+  NewsSignalEnvelope,
+  NewsSignalSummary,
+} from "@shared/model/newsIntel";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -221,7 +226,7 @@ describe("NewsPage", () => {
     await screen.findByText("Evidence page");
     expect(screen.getByText("Original article")).toBeInTheDocument();
     expect(screen.getByText("OpenNews source content.")).toBeInTheDocument();
-    expect(screen.getByText("Agent gate")).toBeInTheDocument();
+    expect(screen.getByText("Admission")).toBeInTheDocument();
     expect(screen.getAllByText("eligible").length).toBeGreaterThan(0);
     expect(screen.queryByText("Research tools")).not.toBeInTheDocument();
     expect(screen.queryByText("Legacy agent audit")).not.toBeInTheDocument();
@@ -281,6 +286,25 @@ const providerRow: NewsRow = {
   latest_at_ms: 1_779_000_000_000,
   source_domain: "6551.io",
   canonical_url: "https://example.test/news-1",
+  market_scope: {
+    scope: ["crypto"],
+    primary: "crypto",
+    status: "classified",
+    reason: "crypto_evidence",
+    basis: { fixture: "providerRow" },
+    version: "news_market_scope_v1",
+  },
+  agent_admission_status: "eligible",
+  agent_admission_reason: "eligible",
+  agent_admission: {
+    eligible: true,
+    status: "eligible",
+    reason: "eligible",
+    representative_news_item_id: "news-1",
+    basis: { market_scope: ["crypto"] },
+    version: "news_item_agent_admission_market_v2",
+  },
+  agent_representative_news_item_id: "news-1",
   signal: newsSignalEnvelope({
     source: "provider",
     provider: "opennews",
@@ -319,13 +343,16 @@ function newsSignalEnvelope(displaySignal: NewsSignalSummary): NewsSignalEnvelop
       agent_status: "pending",
       provider_status: displaySignal.status,
       provider_score: displaySignal.score,
-    },
-    agent_requirement: {
-      status: "required",
-      reason: "eligible",
-      priority: 18,
-      basis: { provider_score: displaySignal.score },
-      version: "news_item_agent_requirement_v1",
+      market_scope: {
+        scope: ["crypto"],
+        primary: "crypto",
+        status: "classified",
+        reason: "crypto_evidence",
+        basis: { fixture: "newsSignalEnvelope" },
+        version: "news_market_scope_v1",
+      },
+      agent_admission_status: "eligible",
+      agent_admission_reason: "eligible",
     },
   };
 }
@@ -344,17 +371,7 @@ const providerDetail: NewsItemDetail = {
     status: "ready",
     summary_zh: "ETF 资金流持续增强。",
     market_read_zh: "AI reads this as a liquidity signal worth watching.",
-    confirmation_state: "single_source",
-    novelty_status: "new",
-    requirement_status: "required",
-    requirement_reason: "eligible",
-    eligibility_reason: "eligible",
   },
-  agent_requirement_status: "required",
-  agent_requirement_reason: "eligible",
-  agent_requirement_priority: 18,
-  analysis_admission_status: "admitted",
-  analysis_admission_reason: "crypto_native_evidence",
   agent_run: {
     run_id: "run-news-1",
     status: "completed",

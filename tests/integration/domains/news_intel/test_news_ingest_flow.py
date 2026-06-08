@@ -130,7 +130,7 @@ def test_news_workers_ingest_process_project_and_query_visible_news(tmp_path) ->
     assert row["canonical_url"] == "https://www.binance.com/en/support/announcement/btc-listing"
     assert row["lifecycle_status"] == "accepted"
     assert "story_id" not in row
-    assert "story" not in row
+    assert row["story"]["story_key"].startswith("news-story:")
     assert row["source"]["source_role"] == "official_exchange"
     assert row["token_lanes"][0]["resolution_status"] == "known_symbol"
     assert row["token_lanes"][0]["target_type"] == "CexToken"

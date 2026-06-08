@@ -14,7 +14,7 @@ ALLOWED_DIRTY_STRING_FILES = {
 }
 
 ALLOWED_RETIRED_TOOL_MARKER_FILES = {
-    "src/parallax/domains/news_intel/services/news_intel_hard_cut_cleanup.py",
+    "src/parallax/domains/news_intel/repositories/news_intel_hard_cut_cleanup_repository.py",
 }
 
 RAW_PROJECTION_STRINGS = {"brief_input", "page", "source_quality"}
@@ -87,12 +87,7 @@ def test_news_item_brief_contract_has_no_legacy_crypto_only_surface() -> None:
         "provider_signal_evidence.token_impacts",
         "crypto-market transmission",
     }
-    offenders = [
-        f"{path} contains {token}"
-        for path in paths
-        for token in forbidden
-        if token in _read(path)
-    ]
+    offenders = [f"{path} contains {token}" for path in paths for token in forbidden if token in _read(path)]
     assert offenders == []
 
 
@@ -259,7 +254,7 @@ def test_news_runtime_has_no_retired_research_tool_path() -> None:
 
 
 def test_news_hard_cut_cleanup_is_delete_only_for_retired_artifacts() -> None:
-    source = _read("src/parallax/domains/news_intel/services/news_intel_hard_cut_cleanup.py")
+    source = _read("src/parallax/domains/news_intel/repositories/news_intel_hard_cut_cleanup_repository.py")
     forbidden_write_ops = sorted(
         match.group(0)
         for match in re.finditer(
@@ -279,3 +274,31 @@ def test_news_hard_cut_cleanup_is_delete_only_for_retired_artifacts() -> None:
 
     assert forbidden_write_ops == []
     assert delete_tables == HARD_CUT_CLEANUP_DELETE_TABLES
+
+
+def test_news_runtime_product_paths_do_not_use_legacy_analysis_admission_gate() -> None:
+    paths = [
+        "src/parallax/domains/news_intel/services/news_page_projection.py",
+        "src/parallax/domains/news_intel/services/news_story_identity.py",
+        "src/parallax/domains/news_intel/runtime/news_item_process_worker.py",
+        "src/parallax/domains/news_intel/runtime/news_item_brief_worker.py",
+        "src/parallax/domains/news_intel/repositories/news_repository.py",
+        "src/parallax/domains/notifications/services/notification_rules.py",
+        "src/parallax/app/surfaces/api/schemas.py",
+        "src/parallax/app/surfaces/api/routes_news.py",
+        "web/src/shared/model/newsIntel.ts",
+        "web/src/lib/api/client.ts",
+        "web/src/features/news/model/newsSignalViewModel.ts",
+        "web/src/features/news/ui/NewsTape.tsx",
+        "web/src/features/news/ui/NewsItemEvidencePage.tsx",
+    ]
+    forbidden = {
+        "analysis_admission",
+        "non_crypto_subject",
+        "no_crypto_native_evidence",
+        "provider_evidence_only",
+        "analysis_not_admitted",
+        "page_material_not_admitted",
+    }
+    offenders = [f"{path} contains {token}" for path in paths for token in forbidden if token in _read(path)]
+    assert offenders == []

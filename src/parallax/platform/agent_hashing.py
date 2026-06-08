@@ -44,20 +44,22 @@ def artifact_hash_for(
     output_strategy: str = "json_object",
     schema_enforcement: str = "client_validate",
     request_options_hash: str | None = None,
+    prompt_text_hash: str | None = None,
 ) -> str:
-    return json_sha256(
-        {
-            "model": model,
-            "provider_family": provider_family,
-            "output_strategy": output_strategy,
-            "schema_enforcement": schema_enforcement,
-            "request_options_hash": request_options_hash or json_sha256({}),
-            "prompt_version": prompt_version,
-            "schema_version": schema_version,
-            "runtime_version": runtime_version,
-            "output_schema_hash": output_schema_hash,
-        }
-    )
+    payload = {
+        "model": model,
+        "provider_family": provider_family,
+        "output_strategy": output_strategy,
+        "schema_enforcement": schema_enforcement,
+        "request_options_hash": request_options_hash or json_sha256({}),
+        "prompt_version": prompt_version,
+        "schema_version": schema_version,
+        "runtime_version": runtime_version,
+        "output_schema_hash": output_schema_hash,
+    }
+    if prompt_text_hash is not None:
+        payload["prompt_text_hash"] = prompt_text_hash
+    return json_sha256(payload)
 
 
 __all__ = ["artifact_hash_for", "json_sha256", "text_sha256", "trace_id_for"]

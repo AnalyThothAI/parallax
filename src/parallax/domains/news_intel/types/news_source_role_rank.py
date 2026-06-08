@@ -30,8 +30,7 @@ def source_role_rank(source_role: object) -> int:
 
 def source_role_rank_case_sql(column_sql: str) -> str:
     clauses = "\n".join(
-        f"                           WHEN '{role}' THEN {rank}"
-        for role, rank in SOURCE_ROLE_RANK.items()
+        f"                           WHEN '{role}' THEN {rank}" for role, rank in SOURCE_ROLE_RANK.items()
     )
     return (
         f"CASE COALESCE({column_sql}, '')\n"

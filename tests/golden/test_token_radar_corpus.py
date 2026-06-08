@@ -62,9 +62,7 @@ def test_unresolved_attention_never_projects_as_driver(tmp_path):
     )
 
     assert all(
-        resolution["resolution_status"] != "EXACT"
-        for result in results
-        for resolution in result.token_resolutions
+        resolution["resolution_status"] != "EXACT" for result in results for resolution in result.token_resolutions
     )
     assert rows == []
 

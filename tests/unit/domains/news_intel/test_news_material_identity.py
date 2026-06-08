@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from parallax.domains.news_intel.services.news_material_identity import (
+from parallax.domains.news_intel.types.news_material_identity import (
     material_title_fingerprint,
     material_title_is_eligible,
     provider_symbol_set,

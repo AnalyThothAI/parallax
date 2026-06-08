@@ -9,9 +9,9 @@ from datetime import UTC, datetime
 from typing import Any, cast
 from urllib.parse import urlsplit
 
-from parallax.domains.news_intel.services.news_url_identity import public_url_identity_policy
-from parallax.domains.news_intel.services.text_normalization import clean_news_text
 from parallax.domains.news_intel.types import NormalizedNewsItem
+from parallax.domains.news_intel.types.news_url_identity import public_url_identity_policy
+from parallax.domains.news_intel.types.text_normalization import clean_news_text
 
 _OPENNEWS_FALLBACK_INVALID_RE = re.compile(r"[\s\x00-\x1f\x7f]")
 

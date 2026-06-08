@@ -58,10 +58,6 @@ REPOSITORY_UPWARD_IMPORT_ALLOWLIST = {
         "parallax.domains.news_intel.services.news_canonical_identity",
     ),
     (
-        SRC_ROOT / "domains/news_intel/repositories/news_repository.py",
-        "parallax.domains.news_intel.services.news_url_identity",
-    ),
-    (
         SRC_ROOT / "domains/token_intel/repositories/token_radar_repository.py",
         "parallax.domains.token_intel.services.token_radar_payload_hash",
     ),
@@ -307,9 +303,7 @@ def test_platform_does_not_import_domains_or_integrations_or_app() -> None:
     offenders: list[tuple[str, str]] = []
     for path in (SRC_ROOT / "platform").rglob("*.py"):
         for imported in _imports(path):
-            if imported.startswith(
-                ("parallax.domains.", "parallax.integrations.", "parallax.app.")
-            ):
+            if imported.startswith(("parallax.domains.", "parallax.integrations.", "parallax.app.")):
                 offenders.append((path.relative_to(ROOT).as_posix(), imported))  # noqa: PERF401 -- nested-loop append keeps failure construction readable
     _assert_no_offenders(
         offenders,

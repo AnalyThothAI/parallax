@@ -20,13 +20,13 @@ from parallax.domains.news_intel.services.news_provider_contract import (
     NewsProviderContractError,
     validate_news_provider_contract,
 )
-from parallax.domains.news_intel.services.text_normalization import content_hash, title_fingerprint
 from parallax.domains.news_intel.types.source_classification import PROVIDER_TYPES
 from parallax.domains.news_intel.types.source_provider import (
     NewsProviderObservation,
     NewsSourceHttpCache,
     NewsSourceSnapshot,
 )
+from parallax.domains.news_intel.types.text_normalization import content_hash, title_fingerprint
 
 
 class NewsFetchWorker(WorkerBase):
@@ -402,6 +402,8 @@ def _fetch_policy_int(source: Mapping[str, Any], key: str) -> int | None:
         raw = source.get("fetch_policy")
     policy = _mapping(raw)
     value = policy.get(key)
+    if value is None:
+        return None
     try:
         parsed = int(value)
     except (TypeError, ValueError):
