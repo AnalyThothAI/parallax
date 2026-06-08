@@ -246,8 +246,60 @@ class MacroIntelRepository:
                   due_at_ms = LEAST(macro_sync_windows.due_at_ms, excluded.due_at_ms),
                   max_attempts = GREATEST(macro_sync_windows.max_attempts, excluded.max_attempts),
                   payload_hash = excluded.payload_hash,
+                  status = CASE
+                    WHEN macro_sync_windows.status IN ('done', 'failed')
+                      AND excluded.trigger_reason IN ('steady_overlap', 'operator_sync')
+                    THEN 'pending'
+                    ELSE macro_sync_windows.status
+                  END,
+                  leased_until_ms = CASE
+                    WHEN macro_sync_windows.status IN ('done', 'failed')
+                      AND excluded.trigger_reason IN ('steady_overlap', 'operator_sync')
+                    THEN NULL
+                    ELSE macro_sync_windows.leased_until_ms
+                  END,
+                  lease_owner = CASE
+                    WHEN macro_sync_windows.status IN ('done', 'failed')
+                      AND excluded.trigger_reason IN ('steady_overlap', 'operator_sync')
+                    THEN NULL
+                    ELSE macro_sync_windows.lease_owner
+                  END,
+                  attempt_count = CASE
+                    WHEN macro_sync_windows.status IN ('done', 'failed')
+                      AND excluded.trigger_reason IN ('steady_overlap', 'operator_sync')
+                    THEN 0
+                    ELSE macro_sync_windows.attempt_count
+                  END,
+                  last_error_code = CASE
+                    WHEN macro_sync_windows.status IN ('done', 'failed')
+                      AND excluded.trigger_reason IN ('steady_overlap', 'operator_sync')
+                    THEN NULL
+                    ELSE macro_sync_windows.last_error_code
+                  END,
+                  last_error_message = CASE
+                    WHEN macro_sync_windows.status IN ('done', 'failed')
+                      AND excluded.trigger_reason IN ('steady_overlap', 'operator_sync')
+                    THEN NULL
+                    ELSE macro_sync_windows.last_error_message
+                  END,
+                  last_run_id = CASE
+                    WHEN macro_sync_windows.status IN ('done', 'failed')
+                      AND excluded.trigger_reason IN ('steady_overlap', 'operator_sync')
+                    THEN NULL
+                    ELSE macro_sync_windows.last_run_id
+                  END,
+                  completed_at_ms = CASE
+                    WHEN macro_sync_windows.status IN ('done', 'failed')
+                      AND excluded.trigger_reason IN ('steady_overlap', 'operator_sync')
+                    THEN NULL
+                    ELSE macro_sync_windows.completed_at_ms
+                  END,
                   updated_at_ms = CASE
                     WHEN macro_sync_windows.status IN ('pending', 'retryable')
+                      OR (
+                        macro_sync_windows.status IN ('done', 'failed')
+                        AND excluded.trigger_reason IN ('steady_overlap', 'operator_sync')
+                      )
                     THEN excluded.updated_at_ms
                     ELSE macro_sync_windows.updated_at_ms
                   END
@@ -306,7 +358,7 @@ class MacroIntelRepository:
                   OR (status = 'running' AND leased_until_ms IS NOT NULL AND leased_until_ms <= %s)
                 )
                 AND attempt_count < max_attempts
-              ORDER BY priority ASC, due_at_ms ASC, updated_at_ms ASC, sync_window_id ASC
+              ORDER BY priority ASC, window_end DESC, due_at_ms ASC, updated_at_ms ASC, sync_window_id ASC
               FOR UPDATE SKIP LOCKED
               LIMIT 1
             )

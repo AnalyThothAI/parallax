@@ -93,6 +93,49 @@ def test_worker_success_and_failure_results_reflect_sync_summary() -> None:
     assert failed_result.notes["status"] == "retryable_error"
 
 
+def test_worker_drains_due_windows_up_to_batch_size() -> None:
+    from parallax.domains.macro_intel.runtime.macro_sync_worker import MacroSyncWorker
+
+    results = [
+        MacroSyncRunSummary(
+            sync_run_id=f"sync-run-{index}",
+            import_run_id=f"import-run-{index}",
+            status="ok",
+            observations_count=1,
+            imported_observation_count=1,
+            asof_date=date(2026, 5, 25 + index),
+            max_observed_at=date(2026, 5, 25 + index),
+            diagnostics={},
+        )
+        for index in range(1, 4)
+    ]
+    service = FakeService(results=results)
+    worker = MacroSyncWorker(
+        name="macro_sync",
+        settings=SimpleNamespace(enabled=True, batch_size=3),
+        db=object(),
+        telemetry=object(),
+        settings_root=object(),
+        wake_bus=object(),
+        service_factory=lambda: service,
+    )
+
+    result = worker.run_once_sync(now_ms=1_779_000_000_000)
+
+    assert result.processed == 3
+    assert result.failed == 0
+    assert result.notes["claimed"] == 3
+    assert result.notes["provider_calls"] == 3
+    assert result.notes["imported_observation_count"] == 3
+    assert result.notes["sync_run_ids"] == ["sync-run-1", "sync-run-2", "sync-run-3"]
+    assert service.calls == [
+        ("enqueue_due_windows", {"now_ms": 1_779_000_000_000}),
+        ("run_claimed_window_once", {"lease_owner": "macro_sync", "now_ms": 1_779_000_000_000}),
+        ("run_claimed_window_once", {"lease_owner": "macro_sync", "now_ms": 1_779_000_000_000}),
+        ("run_claimed_window_once", {"lease_owner": "macro_sync", "now_ms": 1_779_000_000_000}),
+    ]
+
+
 def test_worker_counts_successful_empty_window_as_processed() -> None:
     from parallax.domains.macro_intel.runtime.macro_sync_worker import MacroSyncWorker
 
@@ -128,10 +171,12 @@ class FakeService:
     def __init__(
         self,
         *,
-        result: MacroSyncRunSummary | None,
+        result: MacroSyncRunSummary | None = None,
+        results: list[MacroSyncRunSummary | None] | None = None,
         enqueue_summary: dict[str, object] | None = None,
     ) -> None:
         self.result = result
+        self.results = list(results) if results is not None else None
         self.enqueue_summary = enqueue_summary or {}
         self.calls: list[tuple[str, dict[str, object]]] = []
 
@@ -141,4 +186,6 @@ class FakeService:
 
     def run_claimed_window_once(self, *, lease_owner: str, now_ms: int | None = None) -> MacroSyncRunSummary | None:
         self.calls.append(("run_claimed_window_once", {"lease_owner": lease_owner, "now_ms": now_ms}))
+        if self.results is not None:
+            return self.results.pop(0) if self.results else None
         return self.result

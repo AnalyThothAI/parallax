@@ -60,7 +60,7 @@ def test_scheduler_gap_and_steady_state_enqueues_due_windows() -> None:
         ("gap", date(2026, 5, 24), date(2026, 5, 26)),
         ("gap", date(2026, 5, 27), date(2026, 5, 27)),
     ]
-    assert repo.enqueued[3]["trigger_reason"].startswith("steady_overlap:")
+    assert repo.enqueued[3]["trigger_reason"] == "steady_overlap"
     assert (repo.enqueued[3]["window_start"], repo.enqueued[3]["window_end"]) == (
         date(2026, 5, 20),
         date(2026, 5, 27),
@@ -69,7 +69,7 @@ def test_scheduler_gap_and_steady_state_enqueues_due_windows() -> None:
     assert repo.provider_calls == []
 
 
-def test_scheduler_steady_overlap_identity_changes_by_interval_bucket() -> None:
+def test_scheduler_steady_overlap_identity_is_stable_across_interval_buckets() -> None:
     from parallax.domains.macro_intel.services.macro_sync_scheduler import (
         ensure_due_macro_sync_windows,
     )
@@ -117,9 +117,7 @@ def test_scheduler_steady_overlap_identity_changes_by_interval_bucket() -> None:
     )
 
     steady_reasons = [window["trigger_reason"] for window in repo.enqueued]
-    assert steady_reasons[0] == steady_reasons[1]
-    assert steady_reasons[1] != steady_reasons[2]
-    assert all(str(reason).startswith("steady_overlap:") for reason in steady_reasons)
+    assert steady_reasons == ["steady_overlap", "steady_overlap", "steady_overlap"]
 
 
 class FakeRepositorySession:

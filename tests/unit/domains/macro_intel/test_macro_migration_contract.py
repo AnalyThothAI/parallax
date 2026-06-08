@@ -34,6 +34,16 @@ NEXT_RUNTIME_LIFECYCLE_HARD_CUT_MIGRATION = (
     / "versions"
     / "20260527_0115_next_runtime_lifecycle_hard_cut.py"
 )
+MACRO_SYNC_FRESHNESS_CLAIM_ORDER_MIGRATION = (
+    ROOT
+    / "src"
+    / "parallax"
+    / "platform"
+    / "db"
+    / "alembic"
+    / "versions"
+    / "20260608_0153_macro_sync_freshness_claim_order.py"
+)
 
 
 def test_macro_concept_key_migration_backfills_historical_stooq_rows_only() -> None:
@@ -251,6 +261,20 @@ def test_macro_workerspace_root_fix_backfills_hashes_with_runtime_hash_functions
     assert "macro_series_current_row_payload_hash(" in migration_sql
     assert "'md5:'" not in migration_sql
     assert "md5(" not in migration_sql
+
+
+def test_macro_sync_freshness_migration_deletes_bucketed_overlap_queue_and_reindexes_due_order() -> None:
+    migration_sql = _migration_text(MACRO_SYNC_FRESHNESS_CLAIM_ORDER_MIGRATION)
+    normalized_sql = " ".join(migration_sql.split())
+
+    assert "DELETE FROM macro_sync_windows" in migration_sql
+    assert "trigger_reason LIKE 'steady_overlap:%'" in migration_sql
+    assert "status IN ('pending', 'retryable')" in migration_sql
+    assert "DROP INDEX IF EXISTS idx_macro_sync_windows_due" in migration_sql
+    assert (
+        "ON macro_sync_windows(priority ASC, window_end DESC, due_at_ms ASC, updated_at_ms ASC, sync_window_id)"
+        in normalized_sql
+    )
 
 
 def _migration_text(path: Path) -> str:

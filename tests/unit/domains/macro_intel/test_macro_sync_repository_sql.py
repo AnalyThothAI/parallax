@@ -48,7 +48,10 @@ def test_claim_macro_sync_window_uses_atomic_claim_first_sql() -> None:
     assert "status IN ('pending', 'retryable')" in source
     assert "(status = 'running' AND leased_until_ms IS NOT NULL AND leased_until_ms <= %s)" in normalized_source
     assert "due_at_ms <= %s" in source
-    assert "ORDER BY priority ASC, due_at_ms ASC, updated_at_ms ASC, sync_window_id ASC" in normalized_source
+    assert (
+        "ORDER BY priority ASC, window_end DESC, due_at_ms ASC, updated_at_ms ASC, sync_window_id ASC"
+        in normalized_source
+    )
     assert "FROM macro_observations" not in source
 
 
@@ -152,6 +155,10 @@ def test_enqueue_macro_sync_window_coalesces_by_identity_and_returns_id() -> Non
     query, params = conn.executions[0]
     assert "INSERT INTO macro_sync_windows" in query
     assert "ON CONFLICT(source_name, bundle_name, window_start, window_end, trigger_reason) DO UPDATE" in query
+    assert "excluded.trigger_reason IN ('steady_overlap', 'operator_sync')" in query
+    assert "THEN 'pending'" in query
+    assert "attempt_count = CASE" in query
+    assert "completed_at_ms = CASE" in query
     assert "RETURNING sync_window_id" in query
     assert params[1:6] == ("macrodata-cli", "macro-core", "2026-05-01", "2026-05-27", "bootstrap")
 

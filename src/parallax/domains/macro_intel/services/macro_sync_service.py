@@ -464,7 +464,8 @@ def _attempt_budget_exhausted(window: Mapping[str, Any]) -> bool:
 
 
 def _explicit_trigger_reason(trigger_reason: str, *, now_ms: int) -> str:
-    return f"{trigger_reason}:{int(now_ms)}"
+    _ = now_ms
+    return str(trigger_reason).strip() or "operator_sync"
 
 
 def _notify_macro_observations_imported(wake_bus: Any, summary: MacroSyncRunSummary) -> None:
