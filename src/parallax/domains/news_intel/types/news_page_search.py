@@ -48,14 +48,20 @@ def build_news_page_search_text(row: Mapping[str, Any]) -> str:
 
 
 def _json_object(value: Any) -> dict[str, Any]:
-    value = getattr(value, "obj", value)
-    if value is None or not isinstance(value, Mapping):
+    value = _json_value(value)
+    if value is None:
         return {}
+    if not isinstance(value, Mapping):
+        return {}
+    return _compact_mapping(dict(value))
+
+
+def _compact_mapping(value: Mapping[str, Any]) -> dict[str, Any]:
     return {str(key): item for key, item in value.items() if item is not None}
 
 
 def _json_list(value: Any) -> list[Any]:
-    value = getattr(value, "obj", value)
+    value = _json_value(value)
     if value is None:
         return []
     if isinstance(value, list):
@@ -65,6 +71,10 @@ def _json_list(value: Any) -> list[Any]:
     if isinstance(value, Sequence) and not isinstance(value, str):
         return list(value)
     return []
+
+
+def _json_value(value: Any) -> Any:
+    return getattr(value, "obj", value)
 
 
 __all__ = ["build_news_page_search_text"]

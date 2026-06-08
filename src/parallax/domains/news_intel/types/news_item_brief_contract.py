@@ -44,3 +44,13 @@ def current_news_item_brief_sql_predicate(alias: str = "current_brief") -> str:
 
 def _sql_literal(value: str) -> str:
     return "'" + str(value).replace("'", "''") + "'"
+
+
+__all__ = [
+    "CURRENT_NEWS_ITEM_BRIEF_CONTRACT",
+    "CURRENT_NEWS_ITEM_BRIEF_PROMPT_VERSION",
+    "CURRENT_NEWS_ITEM_BRIEF_SCHEMA_VERSION",
+    "CURRENT_NEWS_ITEM_BRIEF_VALIDATOR_VERSION",
+    "current_news_item_brief_sql_predicate",
+    "is_current_news_item_brief_contract",
+]

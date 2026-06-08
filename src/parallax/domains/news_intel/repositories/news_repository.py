@@ -36,7 +36,7 @@ from parallax.domains.news_intel.types.news_material_identity import (
     provider_symbol_set,
     symbol_sets_compatible,
 )
-from parallax.domains.news_intel.types.news_page_projection import build_news_page_search_text
+from parallax.domains.news_intel.types.news_page_search import build_news_page_search_text
 from parallax.domains.news_intel.types.news_source_role_rank import source_role_rank_case_sql
 from parallax.domains.news_intel.types.news_story_identity import NewsStoryIdentity
 from parallax.domains.news_intel.types.news_url_identity import public_url_identity_policy, url_identity_kind

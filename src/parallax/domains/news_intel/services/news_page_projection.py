@@ -5,7 +5,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from parallax.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION
-from parallax.domains.news_intel.types.news_page_projection import build_news_page_search_text
+from parallax.domains.news_intel.types.news_page_search import build_news_page_search_text
 
 _RESOLVED_TOKEN_STATUSES = frozenset({"exact_address", "known_symbol", "unique_by_context"})
 _IGNORED_TOKEN_STATUSES = frozenset({"non_crypto", "nil"})
