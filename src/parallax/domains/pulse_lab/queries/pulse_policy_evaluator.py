@@ -56,7 +56,6 @@ def fetch_radar_rows(conn: Any, *, now_ms: int, lookback_hours: int) -> list[dic
                  AND state."window" = token_radar_current_rows."window"
                  AND state.scope = token_radar_current_rows.scope
                  AND state.venue = token_radar_current_rows.venue
-                 AND state.current_generation_id = token_radar_current_rows.generation_id
                  AND state.latest_attempt_status = 'ready'
                 WHERE token_radar_current_rows.projection_version = %s
                   AND token_radar_current_rows."window" = %s
@@ -293,7 +292,7 @@ def render_pulse_policy_evaluation_report(
 ) -> str:
     recommendation = _recommendation(evaluation)
     lines = [
-        "# Pulse 1h/4h Research Committee Evaluation",
+        "# Pulse 1h/4h Agent Runtime Evaluation",
         "",
         f"- generated_date: {generated_date}",
         f"- lookback_hours: {int(lookback_hours)}",
@@ -335,7 +334,7 @@ def write_pulse_policy_evaluation_report(
     config_context: dict[str, Any],
 ) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
-    path = output_dir / f"pulse-1h-4h-research-committee-evaluation-{generated_date}.md"
+    path = output_dir / f"pulse-1h-4h-agent-runtime-evaluation-{generated_date}.md"
     path.write_text(
         render_pulse_policy_evaluation_report(
             evaluation,

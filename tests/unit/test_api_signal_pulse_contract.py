@@ -50,7 +50,12 @@ def test_signal_pulse_api_uses_fake_runtime_without_postgres():
     assert data["items"][0]["candidate_id"] == "candidate-fake"
     assert "pulse_status" not in data["items"][0]
     assert data["items"][0]["decision"]["summary_zh"] == "PEPE 社交热度显著上升。"
+    assert "stage_count" not in data["items"][0]["decision"]
     assert "agent_recommendation" not in data["items"][0]
+    assert "agent_run_id" not in data["items"][0]
+    assert "stages" not in data["items"][0]
+    assert "claim_verification" not in data["items"][0]
+    assert "evidence_gate" not in data["items"][0]
     assert data["items"][0]["factor_snapshot"]["schema_version"] == "token_factor_snapshot_v3_social_attention"
     assert "radar_score_json" not in data["items"][0]
     assert "market_context_json" not in data["items"][0]

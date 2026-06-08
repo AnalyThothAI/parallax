@@ -6,6 +6,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src" / "parallax"
 TOKEN_RADAR_PROJECTION = SRC / "domains/token_intel/services/token_radar_projection.py"
+TOKEN_RADAR_REPOSITORY = SRC / "domains/token_intel/repositories/token_radar_repository.py"
+ASSET_FLOW_SERVICE = SRC / "domains/token_intel/read_models/asset_flow_service.py"
+ASSET_REGISTRY_REPOSITORY = SRC / "domains/asset_market/repositories/registry_repository.py"
+PULSE_POLICY_EVALUATOR = SRC / "domains/pulse_lab/queries/pulse_policy_evaluator.py"
+NARRATIVE_REPOSITORY = SRC / "domains/narrative_intel/repositories/narrative_repository.py"
 
 BANNED_RUNTIME_TOKENS = (
     "payload_hash changed during selected-row hydration",
@@ -128,6 +133,41 @@ def test_online_token_radar_paths_do_not_read_private_or_cold_tables() -> None:
         violations.extend(
             f"{path.relative_to(ROOT)} reads {table}" for table in FORBIDDEN_ONLINE_TABLES if table in text
         )
+    assert violations == []
+
+
+def test_token_radar_product_read_paths_do_not_gate_serving_rows_by_generation_id() -> None:
+    forbidden_by_path = {
+        TOKEN_RADAR_REPOSITORY: {
+            "state.current_generation_id = current_rows.generation_id",
+            "state.current_generation_id = token_radar_current_rows.generation_id",
+            "def current_rows_for_generation",
+        },
+        ASSET_REGISTRY_REPOSITORY: {
+            "current_generation_id",
+            "rows.generation_id = latest_sets.current_generation_id",
+        },
+        ASSET_FLOW_SERVICE: {
+            "current_generation =",
+            "current_rows_for_generation(",
+            "projection_generation_mismatch",
+        },
+        PULSE_POLICY_EVALUATOR: {
+            "state.current_generation_id = current_rows.generation_id",
+            "state.current_generation_id = token_radar_current_rows.generation_id",
+        },
+        NARRATIVE_REPOSITORY: {
+            "latest.current_generation_id = token_radar_current_rows.generation_id",
+            "token_radar_current_rows.generation_id = latest.current_generation_id",
+        },
+    }
+    violations = [
+        f"{path.relative_to(ROOT)} contains {token}"
+        for path, forbidden_tokens in forbidden_by_path.items()
+        for token in forbidden_tokens
+        if token in path.read_text(encoding="utf-8")
+    ]
+
     assert violations == []
 
 

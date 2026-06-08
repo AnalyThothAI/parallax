@@ -278,7 +278,8 @@ def test_registry_ranked_live_market_targets_projects_rank_score_from_factor_sna
     assert "token_radar_projection_coverage" not in conn.sql
     assert "SELECT computed_at_ms\n                FROM token_radar_current_rows" not in conn.sql
     assert "latest_sets.current_published_at_ms AS computed_at_ms" in conn.sql
-    assert "rows.generation_id = latest_sets.current_generation_id" in conn.sql
+    assert "current_generation_id" not in conn.sql
+    assert "rows.generation_id = latest_sets.current_generation_id" not in conn.sql
     assert "token_radar_current_rows.computed_at_ms >= %s" not in conn.sql
     assert "token_radar_rows" not in conn.sql
     assert conn.params == (

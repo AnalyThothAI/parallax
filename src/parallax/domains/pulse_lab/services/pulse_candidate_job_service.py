@@ -20,6 +20,7 @@ from parallax.domains.pulse_lab.interfaces import (
     WORKFLOW_NAME,
 )
 from parallax.domains.pulse_lab.providers import (
+    PULSE_DECISION_LANE,
     PulseAgentRuntimeContract,
     PulseDecisionProvider,
 )
@@ -41,25 +42,19 @@ from parallax.domains.pulse_lab.services.evidence_completeness_gate import (
     EvidenceCompletenessGateResult,
 )
 from parallax.domains.pulse_lab.services.evidence_packet_builder import PulseEvidenceBuilder
-from parallax.domains.pulse_lab.services.pulse_agent_cost_guard import (
-    PulseCostGuardDecision,
-    decide_pulse_agent_cost,
-)
+from parallax.domains.pulse_lab.services.pulse_agent_cost_guard import PulseCostGuardDecision, decide_pulse_agent_cost
 from parallax.domains.pulse_lab.services.pulse_candidate_gate import (
     PulseGateResult,
     PulseGateThresholds,
 )
-from parallax.domains.pulse_lab.services.pulse_freshness_health import PulseFreshnessHealthService
 from parallax.domains.pulse_lab.services.pulse_source_quality import PulseSourceQuality
 from parallax.domains.pulse_lab.services.recommendation_clipper import clip_recommendation
 from parallax.domains.pulse_lab.services.write_gate import PulseWriteGate
 from parallax.domains.pulse_lab.types.agent_decision import (
-    BearCaseMemo,
     BullBearView,
     DecisionRoute,
     FinalDecision,
     PulseStageFailure,
-    SignalAnalystMemo,
     StageRunAudit,
     TradePlaybook,
 )
@@ -81,7 +76,6 @@ _NO_START_BACKPRESSURE_CLASSES = {
     AgentExecutionErrorClass.PROVIDER_ERROR,
     AgentExecutionErrorClass.TRANSPORT_ERROR,
 }
-_FINGERPRINT_REUSE_TTL_MS = 24 * 60 * 60 * 1000
 
 
 class PulseAgentBackpressureReleased(Exception):
@@ -126,7 +120,6 @@ class PulseCandidateJobService:
         evidence_packet: PulseEvidencePacket | None = None
         evidence_gate: EvidenceCompletenessGateResult | None = None
         cost_guard: PulseCostGuardDecision | None = None
-        terminal_run: dict[str, Any] | None = None
         try:
             run_id = _prefixed_id(
                 "pulse-run",
@@ -144,7 +137,7 @@ class PulseCandidateJobService:
             route = route_decision_context(context.agent_context())
             provider = self.decision_client.provider
             lane_models = _pulse_lane_models(self.decision_client)
-            model = lane_models["pulse.pipeline"]
+            model = lane_models[PULSE_DECISION_LANE]
             artifact_version_hash = _artifact_hash(self.decision_client)
             runtime_manifest = build_pulse_runtime_manifest(
                 provider=provider,
@@ -174,23 +167,6 @@ class PulseCandidateJobService:
                     "evidence_packet_hash": evidence_packet.evidence_packet_hash,
                     "evidence_gate": completeness_json,
                 }
-                preliminary_cost_guard = decide_pulse_agent_cost(
-                    context=context,
-                    evidence_gate=evidence_gate,
-                    gate=gate,
-                    source_quality=source_quality,
-                    runtime_hash=runtime_hash,
-                    evidence_packet_hash=evidence_packet.evidence_packet_hash,
-                    lane_models=lane_models,
-                    terminal_fingerprint_found=False,
-                    provider_cooldown_until_ms=None,
-                    now_ms=now_ms,
-                )
-                terminal_run = repos.pulse_runs.terminal_run_for_fingerprint(
-                    candidate_id=context.candidate_id,
-                    fingerprint_json=preliminary_cost_guard.fingerprint.to_json(),
-                    since_ms=max(0, int(now_ms) - _FINGERPRINT_REUSE_TTL_MS),
-                )
                 cost_guard = decide_pulse_agent_cost(
                     context=context,
                     evidence_gate=evidence_gate,
@@ -198,14 +174,11 @@ class PulseCandidateJobService:
                     source_quality=source_quality,
                     runtime_hash=runtime_hash,
                     evidence_packet_hash=evidence_packet.evidence_packet_hash,
-                    lane_models=lane_models,
-                    terminal_fingerprint_found=terminal_run is not None,
-                    provider_cooldown_until_ms=None,
                     now_ms=now_ms,
                 )
                 agent_context = {
                     **agent_context_base,
-                    "cost_guard": _cost_guard_request_json(cost_guard, terminal_run=terminal_run),
+                    "cost_guard": _cost_guard_request_json(cost_guard),
                 }
                 audit = self.decision_client.request_audit(
                     context=agent_context,
@@ -302,7 +275,7 @@ class PulseCandidateJobService:
                     )
             run_started = True
             stage_audits: tuple[StageRunAudit, ...]
-            if cost_guard is not None and cost_guard.action == "no_llm_finalize":
+            if cost_guard is not None and cost_guard.action == "deterministic_finalize":
                 final_decision = _abstain_decision(
                     route=route,
                     reason=evidence_gate.blocked_reason or "evidence_completeness_blocked",
@@ -312,10 +285,6 @@ class PulseCandidateJobService:
                 )
                 stage_audits = pre_stage_audits
                 result_audit = audit
-            elif cost_guard is not None and cost_guard.action == "reuse_terminal_run" and terminal_run is not None:
-                final_decision = FinalDecision.model_validate(terminal_run.get("response_json") or {})
-                stage_audits = pre_stage_audits
-                result_audit = {**dict(audit or {}), "output_hash": terminal_run.get("output_hash"), "usage": {}}
             else:
                 result = await self.decision_client.run_decision_pipeline(
                     context=agent_context,
@@ -325,7 +294,6 @@ class PulseCandidateJobService:
                     completeness=completeness_json,
                     runtime_manifest=runtime_manifest,
                     parent_reservation=parent_reservation,
-                    stage_plan=cost_guard.stage_plan if cost_guard is not None else None,
                 )
                 final_decision = result.final_decision
                 stage_audits = (*pre_stage_audits, *result.stage_audits)
@@ -337,8 +305,7 @@ class PulseCandidateJobService:
                 evidence_packet=evidence_packet,
             )
             final_decision = clip_recommendation(final_decision, gate=gate, evidence_gate=evidence_gate)
-            signal_memo, bear_memo = _committee_memos_from_stage_audits(stage_audits)
-            claim_verification = ClaimEvidenceVerifier().verify(evidence_packet, signal_memo, bear_memo, final_decision)
+            claim_verification = ClaimEvidenceVerifier().verify(evidence_packet, final_decision)
             finished_at_ms = _now_ms()
             claim_stage = _deterministic_stage_audit(
                 stage="claim_verifier",
@@ -412,19 +379,12 @@ class PulseCandidateJobService:
                     commit=False,
                 )
                 eval_result = grade_pulse_deterministic_eval_case(stored_eval_case)
-                health_status = PulseFreshnessHealthService(repos.conn).health(
-                    window=context.window,
-                    scope=context.scope,
-                    now_ms=finished_at_ms,
-                    since_hours=4,
-                )
                 write_gate_decision = PulseWriteGate().evaluate(
                     final_decision=final_decision,
                     eval_result=eval_result,
                     gate=gate,
                     evidence_gate=evidence_gate,
                     claim_verification=claim_verification,
-                    health_status=health_status,
                     source_quality=source_quality,
                 )
                 eval_result = _eval_result_with_write_gate(eval_result, write_gate_decision.to_json())
@@ -446,10 +406,7 @@ class PulseCandidateJobService:
                     _deterministic_stage_audit(
                         stage="write_gate",
                         route=route,
-                        input_json={
-                            "eval_result_id": eval_result.get("eval_result_id"),
-                            "publish_status": health_status.get("publish_status"),
-                        },
+                        input_json={"eval_result_id": eval_result.get("eval_result_id")},
                         response_json=write_gate_decision.to_json(),
                         trace_metadata_json=audit.get("trace_metadata") or {},
                         started_at_ms=finished_at_ms,
@@ -525,7 +482,6 @@ class PulseCandidateJobService:
                         evidence_event_ids_json=list(final_decision.evidence_event_ids or context.evidence_event_ids),
                         source_event_ids_json=context.source_event_ids,
                         last_edge_events_json=list(context.edge_events),
-                        agent_run_id=run_id,
                         evidence_packet_hash=evidence_packet.evidence_packet_hash,
                         evidence_status=evidence_gate.evidence_status,
                         decision_status=write_gate_decision.decision_status,
@@ -695,7 +651,7 @@ def _runtime_contract_from_client(client: Any) -> dict[str, Any]:
     contract = client.runtime_contract
     if not isinstance(contract, PulseAgentRuntimeContract):
         raise RuntimeError("pulse_agent_runtime_contract_missing")
-    if tuple(contract.stage_names) != ("signal_analyst", "bear_case", "risk_portfolio_judge"):
+    if tuple(contract.stage_names) != ("pulse_decision",):
         raise RuntimeError("pulse_agent_runtime_contract_mismatch")
     kwargs = contract.manifest_kwargs()
     if not kwargs.get("failure_taxonomy_version"):
@@ -704,12 +660,7 @@ def _runtime_contract_from_client(client: Any) -> dict[str, Any]:
 
 
 def _pulse_lane_models(client: Any) -> dict[str, str]:
-    lanes = (
-        "pulse.pipeline",
-        "pulse.signal_analyst",
-        "pulse.bear_case",
-        "pulse.risk_portfolio_judge",
-    )
+    lanes = (PULSE_DECISION_LANE,)
     models: dict[str, str] = {}
     for lane in lanes:
         model = str(client.model_for_lane(lane) or "").strip()
@@ -720,28 +671,18 @@ def _pulse_lane_models(client: Any) -> dict[str, str]:
 
 
 def _model_for_stage(stage: str, lane_models: dict[str, str]) -> str:
-    lane = {
-        "signal_analyst": "pulse.signal_analyst",
-        "bear_case": "pulse.bear_case",
-        "risk_portfolio_judge": "pulse.risk_portfolio_judge",
-    }.get(str(stage), "pulse.pipeline")
-    model = str(lane_models.get(lane) or "").strip()
+    del stage
+    model = str(lane_models.get(PULSE_DECISION_LANE) or "").strip()
     if not model:
-        raise RuntimeError(f"pulse_agent_stage_model_missing:{stage}")
+        raise RuntimeError(f"pulse_agent_stage_model_missing:{PULSE_DECISION_LANE}")
     return model
 
 
-def _cost_guard_request_json(
-    cost_guard: PulseCostGuardDecision,
-    *,
-    terminal_run: dict[str, Any] | None,
-) -> dict[str, Any]:
+def _cost_guard_request_json(cost_guard: PulseCostGuardDecision) -> dict[str, Any]:
     payload = cost_guard.to_json()
     return {
         "decision": payload,
         "fingerprint": cost_guard.fingerprint.to_json(),
-        "stage_plan": cost_guard.stage_plan.to_json(),
-        "reused_run_id": str(terminal_run.get("run_id")) if terminal_run else None,
     }
 
 
@@ -776,28 +717,6 @@ def _deterministic_stage_audit(
         status="ok",
         error=None,
     )
-
-
-def _committee_memos_from_stage_audits(
-    stage_audits: tuple[StageRunAudit, ...],
-) -> tuple[SignalAnalystMemo, BearCaseMemo]:
-    signal_memo = SignalAnalystMemo(
-        bull_claims=(),
-        what_changed_zh="证据门未允许进入 LLM 信号分析，本次只保留确定性证据缺口。",
-        allowed_evidence_ref_ids=(),
-    )
-    bear_memo = BearCaseMemo(
-        risk_claims=(),
-        confidence_ceiling=0.0,
-        missing_fact_impacts=(),
-        allowed_evidence_ref_ids=(),
-    )
-    for stage_audit in stage_audits:
-        if stage_audit.stage == "signal_analyst" and stage_audit.response_json:
-            signal_memo = SignalAnalystMemo.model_validate(stage_audit.response_json)
-        elif stage_audit.stage == "bear_case" and stage_audit.response_json:
-            bear_memo = BearCaseMemo.model_validate(stage_audit.response_json)
-    return signal_memo, bear_memo
 
 
 def _packet_gate_refs(packet: PulseEvidencePacket) -> list[str]:
@@ -1014,7 +933,7 @@ def _preserve_gate_ceiling_decision(
     if (
         gate.pulse_status != "risk_rejected_high_info"
         or final_decision.recommendation != "abstain"
-        or final_decision.abstain_reason != "cost_guard_research_only"
+        or final_decision.abstain_reason != "cost_guard_decision_skipped"
     ):
         return final_decision
     ref = _first_allowed_ref(evidence_packet)
@@ -1025,7 +944,7 @@ def _preserve_gate_ceiling_decision(
         recommendation="ignore",
         confidence=0.0,
         abstain_reason=None,
-        summary_zh="因子门控识别为高信息风险拒绝，本次不进入付费最终判断。",
+        summary_zh="因子门控识别为高信息风险拒绝，本次不进入 Pulse 决策。",
         narrative_archetype="risk_rejected",
         narrative_thesis_zh="确定性因子门控显示风险条件优先；系统保留研究审计并将候选限制为风险拒绝状态。",
         bull_view=BullBearView(strength="absent"),

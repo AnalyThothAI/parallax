@@ -73,14 +73,14 @@ def seed_delivery(repo: NotificationRepository, *, max_attempts=3, provider="app
         rule_id="news_high_signal",
         severity="high",
         title="PEPE news",
-        body="News score 88",
+        body="Agent news driver",
         entity_type="token",
         entity_key="token:eth:pepe",
         symbol="PEPE",
         source_table="news_items",
         source_id="token:eth:pepe",
         occurrence_at_ms=1_700_000_000_000,
-        payload={"provider_score": 88},
+        payload={"decision_class": "driver"},
         channels=["in_app", "pushdeer"],
     )
     assert notification is not None
@@ -123,12 +123,12 @@ def test_delivery_worker_sends_pending_delivery_and_marks_delivered(tmp_path):
     assert updated["status"] == "delivered"
     assert updated["delivered_at_ms"] == 1_700_000_000_100
     assert adapter.sent == [
-        {
-            "url": "json://localhost",
-            "title": "PEPE news",
-            "body": "News score 88",
-            "body_format": "text",
-        }
+            {
+                "url": "json://localhost",
+                "title": "PEPE news",
+                "body": "Agent news driver",
+                "body_format": "text",
+            }
     ]
     assert notification["title"] == "PEPE news"
 
@@ -229,11 +229,11 @@ def test_delivery_worker_sends_pushdeer_provider_as_markdown(tmp_path):
     assert updated is not None
     assert updated["status"] == "delivered"
     assert pushdeer_adapter.sent == [
-        {
-            "url": "pushdeers://pushKey",
-            "title": "PEPE news",
-            "body": "News score 88",
-        }
+            {
+                "url": "pushdeers://pushKey",
+                "title": "PEPE news",
+                "body": "Agent news driver",
+            }
     ]
 
 

@@ -52,3 +52,21 @@ def test_raw_rows_without_targets_do_not_create_admissions():
     )
 
     assert decisions == []
+
+
+def test_admission_preserves_zero_source_watermark():
+    service = NarrativeAdmissionService(hot_rank_limit=10, min_rank_score=0, carry_ttl_ms=1)
+    candidate = row("zero-watermark", rank=1, score=99, computed_at_ms=10_000)
+    candidate["source_max_received_at_ms"] = 0
+
+    decisions = service.reconcile_from_radar_rows(
+        [candidate],
+        existing_admissions=[],
+        window="24h",
+        scope="matched",
+        schema_version="narrative_intel_v1",
+        now_ms=10_000,
+    )
+
+    assert len(decisions) == 1
+    assert decisions[0].source_max_received_at_ms == 0

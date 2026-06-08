@@ -4,9 +4,6 @@ import {
   newsSignalLabel,
   newsSignalScoreLabel,
   newsSignalTone,
-  tokenImpactCompactLabel,
-  tokenImpactLabel,
-  tokenImpactTone,
   tokenMarketLabel,
 } from "@features/news/model/newsSignalViewModel";
 import type { NewsRow } from "@shared/model/newsIntel";
@@ -30,21 +27,15 @@ describe("newsSignalViewModel", () => {
     expect(newsSignalScoreLabel({ score: null, grade: null })).toBe("score --");
   });
 
-  it("uses token impact labels for per-token chip scores", () => {
-    expect(tokenImpactLabel({ provider_score: 82, provider_grade: "A" })).toBe("82 A");
-    expect(tokenImpactCompactLabel({ provider_score: 82, provider_grade: "A" })).toBe("82 A");
-    expect(tokenImpactLabel({ provider_score: null, provider_grade: null })).toBe("score --");
-    expect(tokenImpactCompactLabel({ provider_score: null, provider_grade: null })).toBe("--");
+  it("labels canonical token market context without provider scores", () => {
     expect(
       tokenMarketLabel({ market_type: "cex", resolution_status: "resolved", lane: "resolved" }),
     ).toBe("CEX");
   });
 
-  it("maps signal and token impact tones to compact CSS modifiers", () => {
+  it("maps signal tones to compact CSS modifiers", () => {
     expect(newsSignalTone({ direction: "bullish" })).toBe("is-long");
     expect(newsSignalTone({ direction: "bearish" })).toBe("is-short");
-    expect(tokenImpactTone({ provider_signal: "long" })).toBe("is-long");
-    expect(tokenImpactTone({ provider_signal: "short" })).toBe("is-short");
   });
 
   it("does not label policy-ineligible rows as waiting for agent", () => {
@@ -55,7 +46,6 @@ describe("newsSignalViewModel", () => {
         agent_brief_status: null,
         signal: {
           display_signal: { source: "provider", status: "ready", direction: "neutral" },
-          provider_signal: null,
           agent_signal: { status: "not_required" },
           alert_eligibility: { agent_status: "not_required", agent_admission_reason: "exact_duplicate" },
         },
@@ -68,19 +58,16 @@ describe("newsSignalViewModel", () => {
     });
   });
 
-  it("merges provider token impacts onto resolved token lanes for display only", () => {
+  it("keeps token display lanes canonical and ignores provider token impacts", () => {
     const lanes = newsDisplayTokenLanes({
       token_lanes: [{ lane: "resolved", symbol: "BTC", target_id: "token:btc" }],
       token_impacts: [
-        { lane: "provider", symbol: "BTC", provider_score: 91, provider_grade: "A" },
-        { lane: "provider", symbol: "SOL", provider_score: 70, provider_grade: "B" },
+        { lane: "attention", symbol: "BTC", score: 91, signal: "long" },
+        { lane: "attention", symbol: "SOL", score: 70, signal: "long" },
       ],
     });
 
-    expect(lanes).toMatchObject([
-      { symbol: "BTC", target_id: "token:btc", provider_score: 91, provider_grade: "A" },
-      { symbol: "SOL", provider_score: 70, provider_grade: "B" },
-    ]);
+    expect(lanes).toEqual([{ lane: "resolved", symbol: "BTC", target_id: "token:btc" }]);
   });
 
   it("marks ready watch and driver briefs ready independently of external push readiness", () => {
@@ -122,7 +109,6 @@ function agentRow({
     },
     signal: {
       display_signal: { source: "agent", status: "ready", direction: "neutral" },
-      provider_signal: null,
       agent_signal: { status, decision_class: decisionClass },
       alert_eligibility: {
         external_push_ready: false,

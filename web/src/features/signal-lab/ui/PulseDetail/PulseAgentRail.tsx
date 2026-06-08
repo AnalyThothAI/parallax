@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import type { AgentRailView, DecisionSurfaceView, StageRailItem } from "../../model/pulseDetail";
+import type { AgentRailView, DecisionSurfaceView } from "../../model/pulseDetail";
 
 import styles from "./PulseAgentRail.module.css";
 
@@ -14,7 +14,7 @@ export function PulseAgentRail({ agent }: Props) {
       <header>
         <h2>Agent 推理栏</h2>
         <p>
-          {agent.model} · 总耗时 {formatSeconds(agent.totalLatencyMs)}
+          {agent.model ?? "public"} · 总耗时 {formatSeconds(agent.totalLatencyMs)}
         </p>
       </header>
       {agent.mismatch ? (
@@ -34,16 +34,9 @@ export function PulseAgentRail({ agent }: Props) {
         >
           <Metric label="弃判原因" value={agent.researchOnlyGate?.abstainReason || "—"} />
         </StageCard>
-      ) : (
-        <>
-          {agent.railItems.map((item, index) => (
-            <RailEntry key={railKey(item, index)} item={item} />
-          ))}
-          {agent.railItems.length === 0 ? (
-            <p className={styles.skipped}>（暂无 stage 数据）</p>
-          ) : null}
-        </>
-      )}
+      ) : !agent.decisionSurface ? (
+        <p className={styles.skipped}>（暂无公开决策摘要）</p>
+      ) : null}
       <details className={styles.replay}>
         <summary>回放 · 版本 · 原始载荷</summary>
         <dl>
@@ -51,7 +44,6 @@ export function PulseAgentRail({ agent }: Props) {
           <Meta label="gate" value={agent.replay.gateVersion} />
           <Meta label="prompt" value={agent.replay.promptVersion} />
           <Meta label="schema" value={agent.replay.schemaVersion} />
-          <Meta label="run" value={agent.replay.runId} />
           <Meta label="candidate" value={agent.replay.candidateId} />
         </dl>
       </details>
@@ -151,46 +143,6 @@ function ListBlock({ items, title }: { items: string[]; title: string }) {
   );
 }
 
-function RailEntry({ item }: { item: StageRailItem }) {
-  if (item.kind === "signal_analyst") {
-    return (
-      <StageCard title="阶段 1 · 信号分析" tone="info" status={item.status}>
-        <SimpleBody summary={item.summary} latencyMs={item.latencyMs} />
-      </StageCard>
-    );
-  }
-  if (item.kind === "bear_case") {
-    return (
-      <StageCard title="阶段 2 · 反方风险" tone="warn" status={item.status}>
-        <SimpleBody summary={item.summary} latencyMs={item.latencyMs} />
-      </StageCard>
-    );
-  }
-  if (item.kind === "risk_portfolio_judge") {
-    return (
-      <StageCard title="阶段 3 · 风险裁决" tone="agent" status={item.status}>
-        <SimpleBody summary={item.summary} latencyMs={item.latencyMs} />
-      </StageCard>
-    );
-  }
-  return null;
-}
-
-function railKey(item: StageRailItem, index: number): string {
-  return `${item.kind}-${index}`;
-}
-
-function SimpleBody({ summary, latencyMs }: { summary: string; latencyMs: number | null }) {
-  return (
-    <>
-      <div className={styles.kpis}>
-        <Metric label="耗时" value={formatLatency(latencyMs)} tone="info" />
-      </div>
-      <p>{summary || "—"}</p>
-    </>
-  );
-}
-
 function StageCard({
   children,
   status,
@@ -244,13 +196,8 @@ function Meta({ label, value }: { label: string; value: string }) {
   );
 }
 
-function formatLatency(value: number | null): string {
-  if (value == null) return "—";
-  if (value < 1000) return `${value}ms`;
-  return `${(value / 1000).toFixed(1)}s`;
-}
-
-function formatSeconds(ms: number): string {
+function formatSeconds(ms: number | null): string {
+  if (ms == null) return "—";
   if (ms < 1000) return `${ms}ms`;
   return `${(ms / 1000).toFixed(1)}s`;
 }

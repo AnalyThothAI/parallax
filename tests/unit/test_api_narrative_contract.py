@@ -142,10 +142,6 @@ def test_public_narrative_contract_requires_currentness_and_delta() -> None:
                     "target": {"target_type": "Asset", "target_id": "asset:solana:token:hansa"},
                     "discussion_digest": {
                         **_unsupported_digest(),
-                        "analysis_window": "1h",
-                        "source_window": "1h",
-                        "surface_window": "5m",
-                        "reuse_reason": "no_reusable_1h_digest",
                     },
                 }
             ],
@@ -157,10 +153,6 @@ def test_public_narrative_contract_requires_currentness_and_delta() -> None:
     assert case.narrative_delta.delta_source_event_count == 3
     assert radar.targets[0].discussion_digest is not None
     assert radar.targets[0].discussion_digest.currentness.display_status == "unsupported_window"
-    assert radar.targets[0].discussion_digest.analysis_window == "1h"
-    assert radar.targets[0].discussion_digest.source_window == "1h"
-    assert radar.targets[0].discussion_digest.surface_window == "5m"
-    assert radar.targets[0].discussion_digest.reuse_reason == "no_reusable_1h_digest"
 
 
 def test_narrative_health_route_uses_domain_owned_query(monkeypatch) -> None:

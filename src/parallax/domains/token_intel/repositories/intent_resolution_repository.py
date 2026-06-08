@@ -13,20 +13,27 @@ class IntentResolutionRepository:
     def insert_resolution(self, decision: Any, *, commit: bool = True) -> dict[str, Any]:
         payload = _payload(decision)
         resolution_id = token_intent_resolution_id(payload)
+        decision_time_ms = int(payload["decision_time_ms"])
         self.conn.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
             (payload["intent_id"],),
         )
-        self.conn.execute(
-            """
-            UPDATE token_intent_resolutions
-            SET record_status = 'superseded',
-                is_current = false,
-                superseded_at_ms = %s
-            WHERE intent_id = %s AND is_current = true
-            """,
-            (int(payload["decision_time_ms"]), payload["intent_id"]),
-        )
+        current = self._active_resolution_for_intent_locked(str(payload["intent_id"]))
+        if current is not None and int(current.get("decision_time_ms") or 0) > decision_time_ms:
+            if commit:
+                self.conn.commit()
+            return current
+        if current is None or str(current.get("resolution_id") or "") != resolution_id:
+            self.conn.execute(
+                """
+                UPDATE token_intent_resolutions
+                SET record_status = 'superseded',
+                    is_current = false,
+                    superseded_at_ms = %s
+                WHERE intent_id = %s AND is_current = true
+                """,
+                (decision_time_ms, payload["intent_id"]),
+            )
         self.conn.execute(
             """
             INSERT INTO token_intent_resolutions(
@@ -45,7 +52,8 @@ class IntentResolutionRepository:
               candidate_ids_json = excluded.candidate_ids_json,
               lookup_keys_json = excluded.lookup_keys_json,
               record_status = 'current',
-              is_current = true
+              is_current = true,
+              superseded_at_ms = NULL
             """,
             (
                 resolution_id,
@@ -59,7 +67,7 @@ class IntentResolutionRepository:
                 Jsonb(payload.get("reason_codes") or []),
                 Jsonb(payload.get("candidate_ids") or []),
                 Jsonb(payload.get("lookup_keys") or []),
-                int(payload["decision_time_ms"]),
+                decision_time_ms,
                 int(payload["created_at_ms"]),
             ),
         )
@@ -71,6 +79,20 @@ class IntentResolutionRepository:
         row = self.conn.execute(
             "SELECT * FROM token_intent_resolutions WHERE resolution_id = %s",
             (resolution_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def _active_resolution_for_intent_locked(self, intent_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            SELECT *
+            FROM token_intent_resolutions
+            WHERE intent_id = %s AND is_current = true
+            ORDER BY decision_time_ms DESC, resolution_id DESC
+            LIMIT 1
+            FOR UPDATE
+            """,
+            (intent_id,),
         ).fetchone()
         return dict(row) if row else None
 

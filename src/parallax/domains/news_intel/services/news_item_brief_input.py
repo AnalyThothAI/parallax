@@ -11,8 +11,6 @@ from parallax.domains.news_intel.types.news_item_brief import (
     NewsItemBriefFactLane,
     NewsItemBriefInputPacket,
     NewsItemBriefNewsItem,
-    NewsItemBriefProviderMarketImpact,
-    NewsItemBriefProviderSignalEvidence,
     NewsItemBriefSource,
 )
 from parallax.platform.agent_hashing import json_sha256
@@ -20,9 +18,6 @@ from parallax.platform.agent_hashing import json_sha256
 BODY_EXCERPT_MAX_CHARS = 2000
 MAX_ENTITY_LANES = 50
 MAX_FACT_LANES = 50
-MAX_PROVIDER_MARKET_IMPACTS = 12
-MAX_PROVIDER_AGGREGATION_VALUES = 12
-PROVIDER_SUMMARY_MAX_CHARS = 600
 
 _NEWS_MARKET_DOMAINS = frozenset(
     {
@@ -79,7 +74,6 @@ def build_news_item_brief_input_packet(
     )
     entity_lanes = _entity_lanes(entities=entities, token_mentions=token_mentions)
     fact_lanes = [_fact_lane(row) for row in sorted(fact_candidates, key=_fact_sort_key)[:MAX_FACT_LANES]]
-    provider_signal_evidence = _provider_signal_evidence(item)
     event_type = _optional_bounded(item.get("event_type"), 80)
     agent_admission = _agent_admission(item)
     similarity = _context_object(item, "similarity_json", "similarity", fallback=agent_admission.get("similarity"))
@@ -92,21 +86,18 @@ def build_news_item_brief_input_packet(
     market_scope = _market_scope(
         item=item,
         agent_admission=agent_admission,
-        provider_signal_evidence=provider_signal_evidence,
         entity_lanes=entity_lanes,
     )
     evidence_refs = _evidence_refs(
         news_item=news_item,
         entity_lanes=entity_lanes,
         fact_lanes=fact_lanes,
-        provider_signal_evidence=provider_signal_evidence,
     )
     packet_id = _packet_id(
         news_item=news_item,
         event_type=event_type,
         entity_lanes=entity_lanes,
         fact_lanes=fact_lanes,
-        provider_signal_evidence=provider_signal_evidence,
         market_scope=market_scope,
         agent_admission=agent_admission,
         similarity=similarity,
@@ -119,7 +110,6 @@ def build_news_item_brief_input_packet(
         event_type=event_type,
         entity_lanes=entity_lanes,
         fact_lanes=fact_lanes,
-        provider_signal_evidence=provider_signal_evidence,
         market_scope=market_scope,
         agent_admission=agent_admission,
         similarity=similarity,
@@ -275,66 +265,11 @@ def _fact_lane(row: Mapping[str, Any]) -> NewsItemBriefFactLane:
     )
 
 
-def _provider_signal_evidence(item: Mapping[str, Any]) -> NewsItemBriefProviderSignalEvidence | None:
-    provider_signal = _json_object(item.get("provider_signal_json"))
-    provider_impacts = [
-        impact
-        for impact in (_provider_market_impact(row) for row in _json_list(item.get("provider_token_impacts_json")))
-        if impact is not None
-    ]
-    has_provider_signal = str(provider_signal.get("source") or "").strip().lower() == "provider"
-    if not has_provider_signal and not provider_impacts:
-        return None
-    return NewsItemBriefProviderSignalEvidence(
-        source=_bounded(provider_signal.get("source") or "provider", 64),
-        provider=_bounded(provider_signal.get("provider") or "opennews", 64),
-        status=_bounded(provider_signal.get("status") or "partial", 32),
-        direction=_provider_direction(provider_signal.get("direction") or provider_signal.get("signal")),
-        signal=_optional_bounded(provider_signal.get("signal"), 32),
-        score=_optional_score(provider_signal.get("score")),
-        grade=_optional_bounded(provider_signal.get("grade"), 32),
-        summary_zh=_bounded(provider_signal.get("summary_zh"), PROVIDER_SUMMARY_MAX_CHARS),
-        summary_en=_bounded(provider_signal.get("summary_en"), PROVIDER_SUMMARY_MAX_CHARS),
-        method=_bounded(provider_signal.get("method") or "provider.signal", 128),
-        market_impacts=sorted(provider_impacts, key=_provider_impact_sort_key)[:MAX_PROVIDER_MARKET_IMPACTS],
-        duplicate_count=_bounded_count(item.get("duplicate_count")),
-        source_ids=_bounded_string_list(item.get("source_ids_json"), 160),
-        source_domains=_bounded_string_list(item.get("source_domains_json"), 255),
-        provider_article_keys=_bounded_string_list(
-            item.get("provider_article_keys_json"),
-            255,
-        ),
-    )
-
-
-def _provider_market_impact(row: Any) -> NewsItemBriefProviderMarketImpact | None:
-    payload = _json_object(row)
-    label = _bounded(payload.get("label") or payload.get("symbol") or payload.get("name"), 160).upper()
-    if not label:
-        return None
-    symbol = _optional_bounded(payload.get("symbol"), 64)
-    signal = _optional_bounded(payload.get("signal"), 32)
-    return NewsItemBriefProviderMarketImpact(
-        label=label,
-        symbol=symbol.upper() if symbol else None,
-        market_type=_optional_bounded(payload.get("market_type"), 64),
-        score=_optional_score(payload.get("score")),
-        direction=_provider_direction(payload.get("direction") or signal),
-        signal=signal,
-        grade=_optional_bounded(payload.get("grade"), 32),
-    )
-
-
-def _provider_impact_sort_key(row: NewsItemBriefProviderMarketImpact) -> tuple[int, str]:
-    return (-(row.score if row.score is not None else -1), row.label)
-
-
 def _evidence_refs(
     *,
     news_item: NewsItemBriefNewsItem,
     entity_lanes: list[NewsItemBriefEntityLane],
     fact_lanes: list[NewsItemBriefFactLane],
-    provider_signal_evidence: NewsItemBriefProviderSignalEvidence | None,
 ) -> list[str]:
     refs: list[str] = []
     if news_item.title:
@@ -345,9 +280,6 @@ def _evidence_refs(
         refs.append("item:body_excerpt")
     refs.extend(f"fact:{row.fact_candidate_id}" for row in fact_lanes if row.fact_candidate_id)
     refs.extend(f"entity:{row.entity_id}" for row in entity_lanes if row.entity_id)
-    if provider_signal_evidence is not None:
-        refs.append("provider:signal")
-        refs.extend(f"provider:impact:{row.label}" for row in provider_signal_evidence.market_impacts if row.label)
     return _stable_unique(refs)
 
 
@@ -357,7 +289,6 @@ def _packet_id(
     event_type: str | None,
     entity_lanes: list[NewsItemBriefEntityLane],
     fact_lanes: list[NewsItemBriefFactLane],
-    provider_signal_evidence: NewsItemBriefProviderSignalEvidence | None,
     market_scope: list[str],
     agent_admission: dict[str, object],
     similarity: dict[str, object],
@@ -371,9 +302,6 @@ def _packet_id(
             "event_type": event_type,
             "entities": [row.entity_id for row in entity_lanes],
             "facts": [row.fact_candidate_id for row in fact_lanes],
-            "provider_signal_evidence": provider_signal_evidence.model_dump(mode="json")
-            if provider_signal_evidence is not None
-            else None,
             "market_scope": market_scope,
             "agent_admission": agent_admission,
             "similarity": similarity,
@@ -389,31 +317,19 @@ def _market_scope(
     *,
     item: Mapping[str, Any],
     agent_admission: Mapping[str, object],
-    provider_signal_evidence: NewsItemBriefProviderSignalEvidence | None,
     entity_lanes: list[NewsItemBriefEntityLane],
 ) -> list[str]:
     explicit = _market_domain_list(item.get("market_scope_json") or item.get("market_scope"))
     if explicit:
         return _stable_unique(explicit)[:12]
     admitted = _agent_admission_market_scope(agent_admission)
-    provider_domains = _provider_market_scope(provider_signal_evidence)
     inferred = [lane.market_domain for lane in entity_lanes if lane.market_domain != "unknown"]
-    return _stable_unique([*admitted, *provider_domains, *inferred])[:12]
+    return _stable_unique([*admitted, *inferred])[:12]
 
 
 def _agent_admission_market_scope(agent_admission: Mapping[str, object]) -> list[str]:
     basis = _json_object(agent_admission.get("basis"))
     return _market_domain_list(basis.get("market_scope"))
-
-
-def _provider_market_scope(provider_signal_evidence: NewsItemBriefProviderSignalEvidence | None) -> list[str]:
-    if provider_signal_evidence is None:
-        return []
-    return [
-        domain
-        for domain in (_market_domain(impact.market_type) for impact in provider_signal_evidence.market_impacts)
-        if domain
-    ]
 
 
 def _market_domain_list(value: Any) -> list[str]:
@@ -666,37 +582,6 @@ def _optional_float(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return min(1.0, max(0.0, parsed))
-
-
-def _optional_score(value: Any) -> int | None:
-    if value is None:
-        return None
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        return None
-    return max(0, min(100, parsed))
-
-
-def _bounded_count(value: Any) -> int:
-    return max(1, min(1000, _int(value) or 1))
-
-
-def _provider_direction(value: Any) -> str:
-    normalized = _str(value).lower()
-    if normalized in {"bullish", "long"}:
-        return "bullish"
-    if normalized in {"bearish", "short"}:
-        return "bearish"
-    if normalized == "mixed":
-        return "mixed"
-    return "neutral"
-
-
-def _bounded_string_list(value: Any, max_length: int) -> list[str]:
-    return [cleaned for cleaned in (_bounded(item, max_length) for item in _json_list(value)) if cleaned][
-        :MAX_PROVIDER_AGGREGATION_VALUES
-    ]
 
 
 def _norm(value: Any) -> str:

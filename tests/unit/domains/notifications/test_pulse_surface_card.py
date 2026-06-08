@@ -55,7 +55,6 @@ def _decision(
         "recommendation": recommendation,
         "confidence": confidence,
         "abstain_reason": None,
-        "stage_count": 2,
         "summary_zh": "",
         "invalidation_conditions": [],
         "residual_risks": [],

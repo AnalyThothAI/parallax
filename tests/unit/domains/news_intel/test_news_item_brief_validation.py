@@ -35,7 +35,7 @@ def _crypto_packet():
             "published_at_ms": 1_779_000_000_000,
             "content_hash": "sha256:item",
             "market_scope_json": ["crypto"],
-            "agent_admission_json": {"status": "eligible", "reason": "provider_score_high"},
+            "agent_admission_json": {"status": "eligible", "reason": "ready_market_driver"},
         },
         entities=[],
         token_mentions=[
@@ -303,7 +303,7 @@ def _provider_btc_packet():
             "provider_token_impacts_json": [
                 {"symbol": "BTC", "market_type": "cex", "score": 80, "signal": "proxy", "grade": "B"}
             ],
-            "agent_admission_json": {"status": "eligible", "reason": "provider_score_high"},
+            "agent_admission_json": {"status": "eligible", "reason": "ready_market_driver"},
         },
         entities=[],
         token_mentions=[],
@@ -357,7 +357,7 @@ def _provider_cl_packet(*, market_type: str = "commodity"):
             "provider_token_impacts_json": [
                 {"symbol": "CL", "market_type": market_type, "score": 80, "signal": "proxy", "grade": "B"}
             ],
-            "agent_admission_json": {"status": "eligible", "reason": "provider_score_high"},
+            "agent_admission_json": {"status": "eligible", "reason": "ready_market_driver"},
         },
         entities=[],
         token_mentions=[],
@@ -384,7 +384,7 @@ def _provider_wlfi_packet():
             "provider_token_impacts_json": [
                 {"symbol": "WLFI", "market_type": "cex", "score": 82, "signal": "proxy", "grade": "B"}
             ],
-            "agent_admission_json": {"status": "eligible", "reason": "provider_score_high"},
+            "agent_admission_json": {"status": "eligible", "reason": "ready_market_driver"},
         },
         entities=[],
         token_mentions=[],
@@ -432,7 +432,7 @@ def _htx_packet():
             "published_at_ms": 1_779_000_000_000,
             "content_hash": "sha256:htx",
             "market_scope_json": ["crypto"],
-            "agent_admission_json": {"status": "eligible", "reason": "provider_score_high"},
+            "agent_admission_json": {"status": "eligible", "reason": "ready_market_driver"},
         },
         entities=[
             {
@@ -871,7 +871,7 @@ def test_validation_rejects_btc_proxy_when_only_crypto_market_scope_is_source_ba
     assert {"code": "unsupported_entity", "message": "Bitcoin"} in result.errors
 
 
-def test_validation_allows_btc_proxy_when_provider_market_impact_sources_symbol() -> None:
+def test_validation_rejects_btc_proxy_when_only_provider_market_impact_sources_symbol() -> None:
     packet = _provider_btc_packet()
     payload = _ready_payload(
         direction="mixed",
@@ -914,9 +914,10 @@ def test_validation_allows_btc_proxy_when_provider_market_impact_sources_symbol(
 
     result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
 
-    assert result.publishable is True
-    assert result.status == "ready"
-    assert result.errors == []
+    assert result.publishable is False
+    assert result.status == "failed"
+    assert {"code": "unknown_evidence_ref", "message": "provider:impact:BTC"} in result.errors
+    assert {"code": "unsupported_entity", "message": "Bitcoin"} in result.errors
 
 
 @pytest.mark.parametrize("label", ["Market Token", "Provider Token", "Impact Token", "Source Token"])
@@ -969,7 +970,7 @@ def test_validation_rejects_source_word_label_laundered_by_real_provider_symbol(
 
 
 @pytest.mark.parametrize("label", ["WLFI Token", "WLFI代币"])
-def test_validation_allows_provider_token_label_with_generic_descriptor(label: str) -> None:
+def test_validation_rejects_provider_token_label_with_generic_descriptor(label: str) -> None:
     packet = _provider_wlfi_packet()
     payload = _ready_payload(
         direction="mixed",
@@ -1012,9 +1013,10 @@ def test_validation_allows_provider_token_label_with_generic_descriptor(label: s
 
     result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
 
-    assert result.publishable is True
-    assert result.status == "ready"
-    assert result.errors == []
+    assert result.publishable is False
+    assert result.status == "failed"
+    assert {"code": "unknown_evidence_ref", "message": "provider:impact:WLFI"} in result.errors
+    assert {"code": "unsupported_entity", "message": label} in result.errors
 
 
 def test_validation_allows_source_backed_exchange_label_with_generic_descriptor() -> None:
@@ -1066,7 +1068,7 @@ def test_validation_allows_source_backed_exchange_label_with_generic_descriptor(
 
 
 @pytest.mark.parametrize("label", ["Bitcoin Token", "比特币现货"])
-def test_validation_allows_provider_btc_label_with_generic_descriptor(label: str) -> None:
+def test_validation_rejects_provider_btc_label_with_generic_descriptor(label: str) -> None:
     packet = _provider_btc_packet()
     payload = _ready_payload(
         direction="mixed",
@@ -1109,12 +1111,13 @@ def test_validation_allows_provider_btc_label_with_generic_descriptor(label: str
 
     result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
 
-    assert result.publishable is True
-    assert result.status == "ready"
-    assert result.errors == []
+    assert result.publishable is False
+    assert result.status == "failed"
+    assert {"code": "unknown_evidence_ref", "message": "provider:impact:BTC"} in result.errors
+    assert {"code": "unsupported_entity", "message": label} in result.errors
 
 
-def test_validation_allows_provider_eth_to_support_chinese_asset_label() -> None:
+def test_validation_rejects_provider_eth_as_chinese_asset_label_support() -> None:
     packet = _provider_crypto_symbol_packet("ETH")
     payload = _ready_payload(
         direction="mixed",
@@ -1157,12 +1160,13 @@ def test_validation_allows_provider_eth_to_support_chinese_asset_label() -> None
 
     result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
 
-    assert result.publishable is True
-    assert result.status == "ready"
-    assert result.errors == []
+    assert result.publishable is False
+    assert result.status == "failed"
+    assert {"code": "unknown_evidence_ref", "message": "provider:impact:ETH"} in result.errors
+    assert {"code": "unsupported_entity", "message": "以太坊"} in result.errors
 
 
-def test_validation_allows_provider_cl_proxy_when_provider_sources_cl() -> None:
+def test_validation_rejects_provider_cl_proxy_when_only_provider_sources_cl() -> None:
     packet = _provider_cl_packet()
     payload = _ready_payload(
         direction="mixed",
@@ -1205,12 +1209,13 @@ def test_validation_allows_provider_cl_proxy_when_provider_sources_cl() -> None:
 
     result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
 
-    assert result.publishable is True
-    assert result.status == "ready"
-    assert result.errors == []
+    assert result.publishable is False
+    assert result.status == "failed"
+    assert {"code": "unknown_evidence_ref", "message": "provider:impact:CL"} in result.errors
+    assert {"code": "unsupported_entity", "message": "WTI crude futures"} in result.errors
 
 
-def test_validation_allows_provider_cl_proxy_when_provider_mislabels_market_type_as_cex() -> None:
+def test_validation_rejects_provider_cl_proxy_when_provider_mislabels_market_type_as_cex() -> None:
     packet = _provider_cl_packet(market_type="cex")
     payload = _ready_payload(
         direction="mixed",
@@ -1253,9 +1258,10 @@ def test_validation_allows_provider_cl_proxy_when_provider_mislabels_market_type
 
     result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
 
-    assert result.publishable is True
-    assert result.status == "ready"
-    assert result.errors == []
+    assert result.publishable is False
+    assert result.status == "failed"
+    assert {"code": "unknown_evidence_ref", "message": "provider:impact:CL"} in result.errors
+    assert {"code": "unsupported_entity", "message": "WTI原油"} in result.errors
 
 
 def test_validation_rejects_commodity_provider_symbol_as_crypto_entity() -> None:
@@ -1802,7 +1808,7 @@ def test_validation_allows_non_crypto_market_instrument_target_id_from_packet_la
     assert result.errors == []
 
 
-def test_validation_allows_us_equity_provider_impact_even_when_provider_marks_cex() -> None:
+def test_validation_rejects_us_equity_provider_impact_even_when_source_mentions_company() -> None:
     packet = build_news_item_brief_input_packet(
         item={
             "news_item_id": "item-apple-aapl-provider",
@@ -1883,9 +1889,9 @@ def test_validation_allows_us_equity_provider_impact_even_when_provider_marks_ce
 
     result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
 
-    assert result.publishable is True
-    assert result.status == "ready"
-    assert result.errors == []
+    assert result.publishable is False
+    assert result.status == "failed"
+    assert {"code": "unknown_evidence_ref", "message": "provider:impact:AAPL"} in result.errors
 
 
 def test_validation_allows_private_company_from_compound_source_text() -> None:
@@ -2475,7 +2481,7 @@ def test_validation_allows_translated_us_energy_sector_label_from_fact_evidence(
     assert result.errors == []
 
 
-def test_validation_allows_translated_us_energy_sector_label_from_provider_summary() -> None:
+def test_validation_rejects_translated_us_energy_sector_label_from_provider_summary() -> None:
     packet = _us_energy_firms_provider_only_packet()
     payload = _ready_payload(
         direction="mixed",
@@ -2523,9 +2529,10 @@ def test_validation_allows_translated_us_energy_sector_label_from_provider_summa
 
     result = validate_news_item_brief_output(payload=payload, packet=packet, audit={})
 
-    assert result.publishable is True
-    assert result.status == "ready"
-    assert result.errors == []
+    assert result.publishable is False
+    assert result.status == "failed"
+    assert {"code": "unknown_evidence_ref", "message": "provider:signal"} in result.errors
+    assert {"code": "unsupported_entity", "message": "美国能源企业"} in result.errors
 
 
 def test_validation_rejects_translated_us_energy_sector_label_without_explicit_source_text() -> None:

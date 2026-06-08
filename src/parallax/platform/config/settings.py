@@ -9,6 +9,7 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 
+from parallax.platform.agent_execution import PULSE_DECISION_LANE
 from parallax.platform.paths.runtime_paths import app_home, app_log_path, config_path, workers_config_path
 
 DEFAULT_UPSTREAM_CHAINS = ("sol", "eth", "base", "bsc")
@@ -801,22 +802,11 @@ class AgentLaneSettings(BaseModel):
 
 def _default_agent_lanes() -> dict[str, AgentLaneSettings]:
     return {
-        "pulse.pipeline": AgentLaneSettings(
+        PULSE_DECISION_LANE: AgentLaneSettings(
             priority="high",
             max_concurrency=1,
             timeout_seconds=240.0,
         ),
-        "pulse.signal_analyst": AgentLaneSettings(
-            priority="high",
-            max_concurrency=1,
-            timeout_seconds=180.0,
-        ),
-        "pulse.bear_case": AgentLaneSettings(
-            priority="high",
-            max_concurrency=1,
-            timeout_seconds=180.0,
-        ),
-        "pulse.risk_portfolio_judge": AgentLaneSettings(priority="high", max_concurrency=1, timeout_seconds=180.0),
         "narrative.mention_semantics": AgentLaneSettings(priority="bulk", max_concurrency=1, timeout_seconds=180.0),
         "narrative.discussion_digest": AgentLaneSettings(priority="normal", max_concurrency=1, timeout_seconds=180.0),
         "news.item_brief": AgentLaneSettings(priority="low", max_concurrency=1, timeout_seconds=180.0),
@@ -978,6 +968,7 @@ class TokenImageMirrorWorkerSettings(PerWorkerSettings):
 class TokenProfileCurrentWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=60.0, ge=0)
     batch_size: int = Field(default=500, ge=1)
+    advisory_lock_key: int = 2026051702
 
 
 class TokenCaptureTierWorkerSettings(PerWorkerSettings):
@@ -1829,22 +1820,10 @@ agent_runtime:
   global_max_concurrency: 4
   global_rpm_limit: 60
   lanes:
-    pulse.pipeline:
+    pulse.decision:
       priority: "high"
       max_concurrency: 1
       timeout_seconds: 240.0
-    pulse.signal_analyst:
-      priority: "high"
-      max_concurrency: 1
-      timeout_seconds: 180.0
-    pulse.bear_case:
-      priority: "high"
-      max_concurrency: 1
-      timeout_seconds: 180.0
-    pulse.risk_portfolio_judge:
-      priority: "high"
-      max_concurrency: 1
-      timeout_seconds: 180.0
     narrative.mention_semantics:
       priority: "bulk"
       max_concurrency: 1
@@ -1935,6 +1914,7 @@ token_profile_current:
   enabled: true
   interval_seconds: 60.0
   batch_size: 500
+  advisory_lock_key: 2026051702
 cex_oi_radar_board:
   enabled: true
   interval_seconds: 300.0

@@ -79,8 +79,8 @@ The hot path from one public-stream frame to product output is:
    - narrative_admission claims `narrative_admission_dirty_targets`, then reads exact Radar/material facts and writes current source-set admissions
    - mention_semantics claims due semantic rows and labels only source events from current admissions
    - token_discussion_digest claims `discussion_digest_dirty_targets` and evaluates the exact current admission against the last ready epoch with `NarrativeEpochPolicy`
-   - 5m admissions are scanner-only and are scanned/deferred without discussion-digest writes
-   - 1h/4h/24h material delta, TTL expiry, or first ready work seals a new digest epoch; non-material delta leaves the last ready snapshot readable
+   - realtime narrative work is `1h/all` only; `5m`, `4h`, and `24h` Radar rows are scanner surfaces and return `unsupported_window`
+   - `1h/all` material delta, TTL expiry, or first ready work seals a new digest epoch; non-material delta leaves the last ready snapshot readable
    - emits narrative_semantics_updated only as a wake hint for digest refresh
 
 6. Consumers

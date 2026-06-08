@@ -10,7 +10,6 @@ TOKEN_RADAR_SQL_SURFACES = (
     "src/parallax/app/runtime/queue_health.py",
     "src/parallax/app/runtime/wake_bus.py",
     "src/parallax/app/surfaces/api/routes_radar.py",
-    "src/parallax/domains/asset_market/repositories/cex_binance_hard_cut_cleanup_repository.py",
     "src/parallax/domains/asset_market/repositories/registry_repository.py",
     "src/parallax/domains/narrative_intel/repositories/narrative_repository.py",
     "src/parallax/domains/pulse_lab/queries/pulse_policy_evaluator.py",

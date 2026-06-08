@@ -283,19 +283,6 @@ class FakeTokenRadar:
         del window, scope, venue, projection_version
         return self.rows[:limit]
 
-    def current_rows_for_generation(
-        self,
-        *,
-        window: str,
-        scope: str,
-        venue: str,
-        generation_id: str,
-        limit: int,
-        projection_version: str,
-    ) -> list[dict[str, Any]]:
-        del window, scope, venue, generation_id, projection_version
-        return self.rows[:limit]
-
     def latest_coverage(self, *, projection_version: str, windows: tuple[str, ...], scopes: tuple[str, ...]):
         return {
             (window, scope): {

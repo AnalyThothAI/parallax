@@ -152,7 +152,6 @@ class CliTests(unittest.TestCase):
             ["ops", "sync-binance-usdt-perp-universe", "--dry-run"],
             ["ops", "sync-binance-usdt-perp-universe", "--execute"],
             ["ops", "sync-binance-cex-profiles"],
-            ["ops", "cex-binance-hard-cut-cleanup", "--dry-run"],
             ["ops", "run-resolution-refresh", "--limit", "5"],
             ["ops", "refresh-asset-profiles", "--limit", "5"],
             ["ops", "mirror-token-images", "--limit", "5"],
@@ -205,11 +204,7 @@ class CliTests(unittest.TestCase):
                 "0",
                 "--execute",
             ],
-            ["ops", "cleanup-news-intel-hard-cut"],
-            ["ops", "cleanup-news-intel-hard-cut", "--execute"],
             ["ops", "enqueue-token-capture-tier-rank-set", "--execute"],
-            ["ops", "repair-news-market-signal", "--since-hours", "8", "--min-score", "80", "--dry-run"],
-            ["ops", "repair-news-market-signal", "--since-hours", "8", "--min-score", "80", "--execute"],
         ]
 
         parsed = [parser.parse_args(command) for command in commands]
@@ -228,62 +223,60 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[8].ops_command, "sync-binance-usdt-perp-universe")
         self.assertTrue(parsed[8].execute)
         self.assertEqual(parsed[9].ops_command, "sync-binance-cex-profiles")
-        self.assertEqual(parsed[10].ops_command, "cex-binance-hard-cut-cleanup")
-        self.assertTrue(parsed[10].dry_run)
-        self.assertEqual(parsed[11].ops_command, "run-resolution-refresh")
+        self.assertEqual(parsed[10].ops_command, "run-resolution-refresh")
+        self.assertEqual(parsed[10].limit, 5)
+        self.assertEqual(parsed[11].ops_command, "refresh-asset-profiles")
         self.assertEqual(parsed[11].limit, 5)
-        self.assertEqual(parsed[12].ops_command, "refresh-asset-profiles")
+        self.assertEqual(parsed[12].ops_command, "mirror-token-images")
         self.assertEqual(parsed[12].limit, 5)
-        self.assertEqual(parsed[13].ops_command, "mirror-token-images")
+        self.assertEqual(parsed[13].ops_command, "repair-token-profile-images")
         self.assertEqual(parsed[13].limit, 5)
-        self.assertEqual(parsed[14].ops_command, "repair-token-profile-images")
-        self.assertEqual(parsed[14].limit, 5)
-        self.assertEqual(parsed[15].ops_command, "reprocess-token-intents")
-        self.assertEqual(parsed[15].window, "24h")
-        self.assertEqual(parsed[15].lookup_key, ["symbol:SLOP"])
-        self.assertEqual(parsed[16].ops_command, "rebuild-token-intents")
-        self.assertEqual(parsed[16].window, "5m")
-        self.assertEqual(parsed[17].ops_command, "audit-token-intent")
-        self.assertEqual(parsed[18].ops_command, "rebuild-token-radar")
-        self.assertEqual(parsed[19].ops_command, "audit-token-radar")
-        self.assertEqual(parsed[20].ops_command, "rebuild-narrative-intel")
-        self.assertEqual(parsed[20].window, "1h")
-        self.assertEqual(parsed[20].scope, "all")
-        self.assertEqual(parsed[20].semantic_limit, 5)
-        self.assertEqual(parsed[20].digest_limit, 5)
-        self.assertTrue(parsed[20].drain)
-        self.assertEqual(parsed[21].ops_command, "factor-diagnostics")
-        self.assertEqual(parsed[21].limit, 200)
-        self.assertEqual(parsed[22].ops_command, "settle-token-factors")
-        self.assertEqual(parsed[22].now_ms, 1_700_000_000_000)
-        self.assertEqual(parsed[23].ops_command, "sync-us-equity-symbols")
-        self.assertEqual(parsed[24].ops_command, "rebuild-token-profiles")
-        self.assertEqual(parsed[24].limit, 5)
-        self.assertEqual(parsed[25].ops_command, "rebuild-market-tick-current")
+        self.assertEqual(parsed[14].ops_command, "reprocess-token-intents")
+        self.assertEqual(parsed[14].window, "24h")
+        self.assertEqual(parsed[14].lookup_key, ["symbol:SLOP"])
+        self.assertEqual(parsed[15].ops_command, "rebuild-token-intents")
+        self.assertEqual(parsed[15].window, "5m")
+        self.assertEqual(parsed[16].ops_command, "audit-token-intent")
+        self.assertEqual(parsed[17].ops_command, "rebuild-token-radar")
+        self.assertEqual(parsed[18].ops_command, "audit-token-radar")
+        self.assertEqual(parsed[19].ops_command, "rebuild-narrative-intel")
+        self.assertEqual(parsed[19].window, "1h")
+        self.assertEqual(parsed[19].scope, "all")
+        self.assertEqual(parsed[19].semantic_limit, 5)
+        self.assertEqual(parsed[19].digest_limit, 5)
+        self.assertTrue(parsed[19].drain)
+        self.assertEqual(parsed[20].ops_command, "factor-diagnostics")
+        self.assertEqual(parsed[20].limit, 200)
+        self.assertEqual(parsed[21].ops_command, "settle-token-factors")
+        self.assertEqual(parsed[21].now_ms, 1_700_000_000_000)
+        self.assertEqual(parsed[22].ops_command, "sync-us-equity-symbols")
+        self.assertEqual(parsed[23].ops_command, "rebuild-token-profiles")
+        self.assertEqual(parsed[23].limit, 5)
+        self.assertEqual(parsed[24].ops_command, "rebuild-market-tick-current")
+        self.assertTrue(parsed[24].dry_run)
+        self.assertEqual(parsed[25].ops_command, "enqueue-token-radar-dirty-targets")
+        self.assertEqual(parsed[25].source, "events")
+        self.assertEqual(parsed[25].since_ms, 0)
+        self.assertEqual(parsed[25].limit, 5000)
         self.assertTrue(parsed[25].dry_run)
         self.assertEqual(parsed[26].ops_command, "enqueue-token-radar-dirty-targets")
-        self.assertEqual(parsed[26].source, "events")
-        self.assertEqual(parsed[26].since_ms, 0)
-        self.assertEqual(parsed[26].limit, 5000)
-        self.assertTrue(parsed[26].dry_run)
-        self.assertEqual(parsed[27].ops_command, "enqueue-token-radar-dirty-targets")
-        self.assertEqual(parsed[27].source, "market-current")
+        self.assertEqual(parsed[26].source, "market-current")
+        self.assertTrue(parsed[26].execute)
+        self.assertEqual(parsed[27].ops_command, "enqueue-token-capture-tier-rank-set")
+        self.assertEqual(parsed[27].window, "24h")
         self.assertTrue(parsed[27].execute)
-        self.assertEqual(parsed[28].ops_command, "cleanup-news-intel-hard-cut")
-        self.assertFalse(parsed[28].execute)
-        self.assertEqual(parsed[29].ops_command, "cleanup-news-intel-hard-cut")
-        self.assertTrue(parsed[29].execute)
-        self.assertEqual(parsed[30].ops_command, "enqueue-token-capture-tier-rank-set")
-        self.assertEqual(parsed[30].window, "24h")
-        self.assertTrue(parsed[30].execute)
-        self.assertEqual(parsed[31].ops_command, "repair-news-market-signal")
-        self.assertEqual(parsed[31].since_hours, 8)
-        self.assertEqual(parsed[31].min_score, 80)
-        self.assertTrue(parsed[31].dry_run)
-        self.assertEqual(parsed[32].ops_command, "repair-news-market-signal")
-        self.assertEqual(parsed[32].since_hours, 8)
-        self.assertEqual(parsed[32].min_score, 80)
-        self.assertTrue(parsed[32].execute)
+
+    def test_cli_ops_cex_binance_hard_cut_cleanup_is_not_registered(self):
+        parser = build_parser()
+
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["ops", "cex-binance-hard-cut-cleanup", "--dry-run"])
+
+    def test_cli_ops_cleanup_news_brief_input_is_not_registered(self):
+        parser = build_parser()
+
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["ops", "cleanup-news-brief-input", "--dry-run"])
 
     def test_cli_ops_mirror_token_images_has_no_source_limit_option(self):
         parser = build_parser()
@@ -429,14 +422,14 @@ class CliTests(unittest.TestCase):
                     rule_id="news_high_signal",
                     severity="high",
                     title="PEPE news",
-                    body="news score 88",
+                    body="agent news driver",
                     entity_type="token",
                     entity_key="token:eth:pepe",
                     symbol="PEPE",
                     source_table="news_items",
                     source_id="token:eth:pepe",
                     occurrence_at_ms=1_700_000_060_000,
-                    payload={"provider_score": 88},
+                    payload={"decision_class": "driver"},
                     channels=["in_app", "pushdeer"],
                 )
                 self.assertIsNotNone(notification)
@@ -868,64 +861,13 @@ def test_cli_ops_factor_diagnostics_reads_latest_token_radar_current_rows(monkey
     assert payload["data"]["row_count"] == 1
 
 
-def test_cli_ops_cleanup_news_intel_hard_cut_dispatches_to_service(monkeypatch, tmp_path):
-    from parallax.app.surfaces.cli.commands import ops as ops_module
+def test_cli_ops_cleanup_news_intel_hard_cut_is_not_registered() -> None:
+    parser = build_parser()
 
-    calls = []
-
-    class FakeRepos:
-        conn = object()
-
-    @contextmanager
-    def fake_repositories(_settings):
-        yield FakeRepos()
-
-    def fake_cleanup(repos, *, execute, now_ms, current_artifact_version_hash=None):
-        calls.append(
-            {
-                "repos_type": type(repos).__name__,
-                "execute": execute,
-                "now_ms": now_ms,
-                "current_artifact_version_hash": current_artifact_version_hash,
-            }
-        )
-        return {"execute": execute, "now_ms": now_ms}
-
-    write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db")
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
-    monkeypatch.setattr(ops_module, "cleanup_news_intel_hard_cut", fake_cleanup)
-    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_000_000)
-
-    dry_stdout = io.StringIO()
-    dry_code = main(["ops", "cleanup-news-intel-hard-cut"], stdout=dry_stdout)
-    execute_stdout = io.StringIO()
-    execute_code = main(["ops", "cleanup-news-intel-hard-cut", "--execute"], stdout=execute_stdout)
-
-    assert dry_code == 0
-    assert execute_code == 0
-    assert json.loads(dry_stdout.getvalue()) == {
-        "ok": True,
-        "data": {"execute": False, "now_ms": 1_700_000_000_000},
-    }
-    assert json.loads(execute_stdout.getvalue()) == {
-        "ok": True,
-        "data": {"execute": True, "now_ms": 1_700_000_000_000},
-    }
-    assert calls == [
-        {
-            "repos_type": "FakeRepos",
-            "execute": False,
-            "now_ms": 1_700_000_000_000,
-            "current_artifact_version_hash": None,
-        },
-        {
-            "repos_type": "FakeRepos",
-            "execute": True,
-            "now_ms": 1_700_000_000_000,
-            "current_artifact_version_hash": None,
-        },
-    ]
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ops", "cleanup-news-intel-hard-cut"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ops", "cleanup-news-intel-hard-cut", "--execute"])
 
 
 def test_cli_ops_settle_token_factors_dispatches_to_service_with_hidden_now_ms(monkeypatch, tmp_path):

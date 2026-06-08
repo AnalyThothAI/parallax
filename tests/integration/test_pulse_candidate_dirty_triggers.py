@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
+from dataclasses import replace
 
 import pytest
 
@@ -8,7 +8,7 @@ from parallax.app.runtime.repository_session import repositories_for_connection
 from parallax.domains.pulse_lab.repositories.pulse_trigger_dirty_target_repository import (
     PulseTriggerDirtyTargetRepository,
 )
-from parallax.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
+from parallax.domains.token_intel.interfaces import TOKEN_RADAR_DEFAULT_VENUE, TOKEN_RADAR_PROJECTION_VERSION
 from parallax.domains.token_intel.repositories.token_radar_repository import TokenRadarRepository
 from parallax.domains.token_intel.services.token_radar_projection import TokenRadarProjection
 from tests.integration.test_token_radar_repository import _insert_pricefeed, _insert_token_intent, _valid_factor_row
@@ -89,6 +89,7 @@ def test_token_radar_publish_rolls_back_pulse_trigger_enqueue_with_current_row(t
                 projection_version=TOKEN_RADAR_PROJECTION_VERSION,
                 window="1h",
                 scope="all",
+                venue=TOKEN_RADAR_DEFAULT_VENUE,
                 generation_id="gen-rollback",
                 published_at_ms=1_778_000_000_000,
                 source_frontier_ms=1_778_000_000_000,
@@ -117,9 +118,8 @@ def test_token_radar_refresh_rolls_back_current_rows_when_pulse_enqueue_fails(tm
         migrate(conn)
         _insert_token_intent(conn, intent_id="intent-1", event_id="event-1")
         _insert_pricefeed(conn, "feed-1")
-        repos = SimpleNamespace(
-            conn=conn,
-            token_radar=TokenRadarRepository(conn),
+        repos = replace(
+            repositories_for_connection(conn),
             pulse_trigger_dirty_targets=_FailingPulseTriggerDirtyTargets(conn),
         )
         repos.token_radar.upsert_target_feature(

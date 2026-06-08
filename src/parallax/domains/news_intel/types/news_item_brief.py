@@ -184,44 +184,6 @@ class NewsItemBriefFactLane(BaseModel):
     evidence_quote: str = Field(default="", max_length=500)
 
 
-class NewsItemBriefProviderMarketImpact(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    label: str = Field(min_length=1, max_length=160)
-    symbol: str | None = Field(default=None, max_length=64)
-    market_type: str | None = Field(default=None, max_length=64)
-    score: int | None = Field(default=None, ge=0, le=100)
-    direction: NewsItemBriefDirection = "neutral"
-    signal: str | None = Field(default=None, max_length=32)
-    grade: str | None = Field(default=None, max_length=32)
-
-
-class NewsItemBriefProviderSignalEvidence(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    source: str = Field(default="provider", max_length=64)
-    provider: str = Field(default="", max_length=64)
-    status: str = Field(default="partial", max_length=32)
-    direction: NewsItemBriefDirection = "neutral"
-    signal: str | None = Field(default=None, max_length=32)
-    score: int | None = Field(default=None, ge=0, le=100)
-    grade: str | None = Field(default=None, max_length=32)
-    summary_zh: str = Field(default="", max_length=600)
-    summary_en: str = Field(default="", max_length=600)
-    method: str = Field(default="", max_length=128)
-    market_impacts: list[NewsItemBriefProviderMarketImpact] = Field(default_factory=list, max_length=12)
-    duplicate_count: int = Field(default=1, ge=1, le=1000)
-    source_ids: list[Annotated[str, Field(min_length=1, max_length=160)]] = Field(default_factory=list, max_length=12)
-    source_domains: list[Annotated[str, Field(min_length=1, max_length=255)]] = Field(
-        default_factory=list,
-        max_length=12,
-    )
-    provider_article_keys: list[Annotated[str, Field(min_length=1, max_length=255)]] = Field(
-        default_factory=list,
-        max_length=12,
-    )
-
-
 class NewsItemBriefConstraints(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -247,7 +209,6 @@ class NewsItemBriefInputPacket(BaseModel):
     event_type: str | None = Field(default=None, max_length=80)
     entity_lanes: list[NewsItemBriefEntityLane] = Field(default_factory=list, max_length=50)
     fact_lanes: list[NewsItemBriefFactLane] = Field(default_factory=list, max_length=50)
-    provider_signal_evidence: NewsItemBriefProviderSignalEvidence | None = None
     market_scope: list[NewsMarketDomain] = Field(default_factory=list, max_length=12)
     agent_admission: dict[str, object] = Field(default_factory=dict, max_length=32)
     similarity: dict[str, object] = Field(default_factory=dict, max_length=32)
@@ -306,8 +267,6 @@ __all__ = [
     "NewsItemBriefMarketImpact",
     "NewsItemBriefNewsItem",
     "NewsItemBriefPayload",
-    "NewsItemBriefProviderMarketImpact",
-    "NewsItemBriefProviderSignalEvidence",
     "NewsItemBriefSideStrength",
     "NewsItemBriefSideView",
     "NewsItemBriefSource",

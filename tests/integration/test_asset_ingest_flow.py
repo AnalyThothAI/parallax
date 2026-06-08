@@ -21,10 +21,19 @@ def open_ingest(tmp_path):
         evidence=repos.evidence,
         entities=repos.entities,
         signals=repos.signals,
-        enrichment=repos.enrichment,
         registry=repos.registry,
         identity_evidence=repos.identity_evidence,
+        token_evidence=repos.token_evidence,
+        token_intents=repos.token_intents,
+        intent_resolutions=repos.intent_resolutions,
+        discovery=repos.discovery,
+        market_ticks=repos.market_ticks,
+        market_tick_current_dirty_targets=repos.market_tick_current_dirty_targets,
+        enriched_events=repos.enriched_events,
+        event_anchor_jobs=repos.event_anchor_jobs,
         token_intent_lookup=repos.token_intent_lookup,
+        token_radar_dirty_targets=repos.token_radar_dirty_targets,
+        token_radar_source_dirty_events=repos.token_radar_source_dirty_events,
     )
     return conn, repos, ingest
 

@@ -100,7 +100,7 @@ def test_worker_does_not_swallow_later_signal_pulse_external_identity():
     first = asyncio.run(worker.process_once(now_ms=NOW_MS))
     second = asyncio.run(worker.process_once(now_ms=NOW_MS + 1))
 
-    assert in_app_only.payload["in_app_signature"] == external.payload["in_app_signature"]
+    assert in_app_only.payload["semantic_signature"] == external.payload["semantic_signature"]
     assert in_app_only.payload["external_push_signature"] is None
     assert external.payload["external_push_signature"]
     assert len(first) == 1
@@ -146,7 +146,7 @@ def test_worker_suppresses_delivery_when_external_signature_already_exists_for_n
     first_created = asyncio.run(worker.process_once(now_ms=NOW_MS))
     second_created = asyncio.run(worker.process_once(now_ms=NOW_MS + 1))
 
-    assert first.payload["in_app_signature"] != second.payload["in_app_signature"]
+    assert first.payload["semantic_signature"] != second.payload["semantic_signature"]
     assert first.payload["external_push_signature"] == second.payload["external_push_signature"]
     assert first_created[0]["channels_json"] == ["in_app", "pushdeer"]
     assert first_created[0]["payload_json"]["external_push_eligible"] is True
@@ -178,7 +178,7 @@ def test_worker_batch_limit_counts_created_rows_not_duplicate_candidates():
     assert created[0]["rule_id"] == "news_high_signal"
 
 
-def test_signal_pulse_duplicate_lookup_uses_in_app_and_external_signatures():
+def test_signal_pulse_duplicate_lookup_uses_semantic_and_external_signatures():
     class RecordingConn:
         def __init__(self):
             self.calls = []
@@ -195,12 +195,13 @@ def test_signal_pulse_duplicate_lookup_uses_in_app_and_external_signatures():
         source_table="pulse_candidates",
         source_id="pulse-candidate-1",
         event_id="event-1",
-        payload={"in_app_signature": "sha256:in-app", "external_push_signature": "sha256:external"},
+        payload={"semantic_signature": "sha256:in-app", "external_push_signature": "sha256:external"},
     )
 
     assert row == {"notification_id": "existing"}
     sql, params = conn.calls[-1]
-    assert "COALESCE(payload_json->>'semantic_signature', payload_json->>'in_app_signature')" in sql
+    assert "payload_json->>'semantic_signature' = %s" in sql
+    assert "in_app_signature" not in sql
     assert "COALESCE(payload_json->>'external_push_signature', 'in_app')" in sql
     assert "notification_signature" not in sql
     assert params == ("signal_pulse_candidate", "sha256:in-app", "sha256:external")
@@ -237,6 +238,10 @@ class DedupConflictNotificationRepository:
         self.rows_by_dedup[dedup_key] = row
         return row
 
+    def insert_notification_with_outcome(self, **kwargs):
+        row = self.insert_notification(**kwargs)
+        return SimpleNamespace(row=row, created=row is not None, aggregated=False)
+
     def enqueue_delivery(self, **kwargs):
         delivery = {
             "notification_id": kwargs["notification_id"],
@@ -272,8 +277,8 @@ class InMemoryNotificationConn:
             return self._insert_notification(params)
         if "SELECT * FROM notifications WHERE dedup_key" in sql:
             return _MemoryCursor(self._row_by_dedup(str(params[0])))
-        if "COALESCE(payload_json->>'in_app_signature'" in sql:
-            return _MemoryCursor(self._row_by_signature(rule_id=params[0], in_app=params[1], external=params[2]))
+        if "payload_json->>'semantic_signature'" in sql:
+            return _MemoryCursor(self._row_by_signature(rule_id=params[0], semantic=params[1], external=params[2]))
         if "payload_json->>'external_push_signature'" in sql:
             return _MemoryCursor(self._row_by_external_signature(rule_id=params[0], external=params[1]))
         if "SELECT n.*" in sql:
@@ -321,12 +326,12 @@ class InMemoryNotificationConn:
     def _row_by_id(self, notification_id: str):
         return next((row for row in self.rows if row["notification_id"] == notification_id), None)
 
-    def _row_by_signature(self, *, rule_id: str, in_app: str, external: str):
+    def _row_by_signature(self, *, rule_id: str, semantic: str, external: str):
         for row in reversed(self.rows):
             payload = row["payload_json"]
-            row_in_app = payload.get("in_app_signature")
+            row_semantic = payload.get("semantic_signature")
             row_external = payload.get("external_push_signature") or "in_app"
-            if row["rule_id"] == rule_id and row_in_app == in_app and row_external == external:
+            if row["rule_id"] == rule_id and row_semantic == semantic and row_external == external:
                 return row
         return None
 
@@ -381,6 +386,6 @@ def _notification_candidate(dedup_key: str, *, rule_id: str) -> NotificationCand
         source_table="test",
         source_id=dedup_key,
         occurrence_at_ms=NOW_MS,
-        payload={"in_app_signature": dedup_key},
+        payload={"semantic_signature": dedup_key},
         channels=("in_app",),
     )

@@ -3,7 +3,12 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
+import yaml
+
 from parallax.domains.asset_market.runtime import token_profile_current_worker as module
+from parallax.platform.config.settings import WorkersSettings, default_workers_yaml
+
+ADVISORY_LOCK_KEY = 2026051702
 
 
 def test_token_profile_current_worker_run_once_records_result_and_uses_one_db_session(monkeypatch):
@@ -190,6 +195,40 @@ def test_rebuild_token_profile_current_once_projects_sources_and_writes_rows():
     assert repos.transactions == 1
 
 
+def test_rebuild_token_profile_current_once_reports_zero_rows_written_when_projection_unchanged():
+    repos = FakeRepos(
+        claims=[claim("Asset", "asset:gmgn")],
+        gmgn_openapi={
+            "asset:gmgn": {
+                "asset_id": "asset:gmgn",
+                "provider": "gmgn_dex_profile",
+                "status": "ready",
+                "symbol": "GMGN",
+                "raw_payload_json": {"profile": True},
+                "observed_at_ms": 1_000,
+            }
+        },
+        binance_web3={},
+        gmgn_stream={},
+        okx_dex={},
+    )
+    repos.token_profiles.upsert_results = [False]
+
+    result = module.rebuild_token_profile_current_once(
+        repos=repos,
+        now_ms=10_000,
+        limit=100,
+        lease_owner="profile-worker",
+        lease_ms=60_000,
+        retry_ms=30_000,
+    )
+
+    assert result["claimed"] == 1
+    assert result["rows_written"] == 0
+    assert result["ready"] == 1
+    assert repos.token_profiles.rows[0]["target_id"] == "asset:gmgn"
+
+
 def test_rebuild_token_profile_current_once_admits_missing_image_sources_before_projection():
     logo_url = "https://gmgn.ai/external-res/missing.png"
     repos = FakeRepos(
@@ -285,6 +324,24 @@ def test_rebuild_token_profile_current_once_marks_claim_error_when_exact_load_fa
     ]
 
 
+def test_worker_exposes_single_writer_advisory_lock_key() -> None:
+    worker = module.TokenProfileCurrentWorker(
+        name="token_profile_current",
+        settings=worker_settings(),
+        db=FakeDB(),
+        telemetry=object(),
+    )
+
+    assert module.TokenProfileCurrentWorker.SINGLE_WRITER_KEY == ADVISORY_LOCK_KEY
+    assert worker._advisory_lock_key() == ADVISORY_LOCK_KEY
+
+
+def test_default_workers_yaml_includes_token_profile_current_advisory_lock() -> None:
+    workers = WorkersSettings(**yaml.safe_load(default_workers_yaml()))
+
+    assert workers.token_profile_current.advisory_lock_key == ADVISORY_LOCK_KEY
+
+
 def worker_settings(**overrides):
     values = {
         "enabled": True,
@@ -293,6 +350,7 @@ def worker_settings(**overrides):
         "batch_size": 500,
         "lease_ms": 60_000,
         "retry_ms": 30_000,
+        "advisory_lock_key": ADVISORY_LOCK_KEY,
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -446,10 +504,12 @@ class FakeTokenProfiles:
     def __init__(self) -> None:
         self.rows: list[dict] = []
         self.commits: list[bool] = []
+        self.upsert_results: list[bool] = []
 
     def upsert_current(self, row, *, commit=True):
         self.rows.append(row)
         self.commits.append(commit)
+        return self.upsert_results.pop(0) if self.upsert_results else True
 
 
 class FakeTokenImageAssets:

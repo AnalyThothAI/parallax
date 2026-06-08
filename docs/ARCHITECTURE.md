@@ -214,12 +214,12 @@ are wrong too.
    workers still own admission, claim, retry, finalize, read-model writes,
    and business validation. There is no central durable `agent_tasks`
    queue; PostgreSQL domain facts and read models remain the truth. Pulse
-   multi-stage runs use `pulse.pipeline` as a parent reservation. Every
-   LLM-backed worker that can burn business attempts reserves lane capacity,
+   multi-stage runs reserve the single `pulse.decision` lane before job claim.
+   Every LLM-backed worker that can burn business attempts reserves lane capacity,
    circuit, and RPM before durable queue claim; batch workers request explicit
    `rate_units` for the maximum provider calls they want to execute and claim
    only the actual `reservation.rate_units` returned by the gateway. Pulse
-   parent reservations also reserve child lane capacity/RPM before job claim.
+   internal audit stages reuse the same `pulse.decision` reservation.
    No-start backpressure does not claim work, write business run ledgers, or
    burn provider attempts. Provider-started validation/publication failures
    write the domain run ledger with `execution_started=true`. Lane `priority`
@@ -379,13 +379,13 @@ research-only or hard-blocked rows to an abstain decision, and otherwise calls
 the configured `PulseDecisionProvider`.
 
 LiteLLM-specific model calls live only under `integrations/model_execution/`.
-Signal Pulse uses a three-stage, tool-free runtime:
-`signal_analyst -> bear_case -> risk_portfolio_judge`, with deterministic
-hard-blocks before provider execution. Pulse-specific orchestration is
-domain-owned: `domains/pulse_lab/services/pulse_decision_runtime.py` loads stage
-prompts, builds packet-only input contracts, assembles request audit hashes,
-validates cited evidence ids, and enriches final evidence URLs. The model
-adapter only dispatches typed stage specs through `AgentExecutionGateway` and
+Signal Pulse uses one tool-free `pulse_decision` runtime stage, with
+deterministic hard-blocks before provider execution. Pulse-specific
+orchestration is domain-owned:
+`domains/pulse_lab/services/pulse_decision_runtime.py` loads the prompt, builds
+the packet-only input contract, assembles request audit hashes, validates cited
+evidence refs, and enriches final evidence URLs. The model adapter only
+dispatches typed stage specs through `AgentExecutionGateway` and
 returns audit envelopes. `app/runtime/provider_wiring/model_execution.py` is the
 composition point that creates the domain runtimes and injects concrete LiteLLM
 adapters bound to provider protocols.
@@ -394,7 +394,7 @@ The audit ledger is PostgreSQL: `pulse_agent_runs` records the final outcome and
 route, `pulse_agent_run_steps` records replayable stage inputs/prompts/outputs,
 and `pulse_candidates.decision_*` plus `decision_json` are the public decision
 source. Signal Pulse public payloads expose `decision`, `factor_snapshot`,
-`gate`, and `fact_card`.
+`gate`, and `fact_card`; they do not expose run ids or run-step `stages`.
 
 Narrative Intelligence sits upstream of Pulse decisioning and downstream of
 Token Radar discovery. API surfaces may compose Token Radar / Token Case rows

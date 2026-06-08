@@ -77,7 +77,6 @@ def signal_lab_pulse_by_id(
     with runtime.repositories() as repos:
         data = SignalPulseService(
             pulse_read=repos.pulse_read,
-            pulse_runs=repos.pulse_runs,
         ).candidate(
             candidate_id=normalized,
             visibility=parsed_visibility,
@@ -106,7 +105,6 @@ def _signal_lab_pulse_data(
     with runtime.repositories() as repos:
         return SignalPulseService(
             pulse_read=repos.pulse_read,
-            pulse_runs=repos.pulse_runs,
         ).pulse(
             window=window,
             scope=scope,

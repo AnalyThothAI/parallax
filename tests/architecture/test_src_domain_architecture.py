@@ -643,7 +643,7 @@ def test_pulse_lab_domain_does_not_import_model_sdk_primitives() -> None:
         offenders,
         invariant="pulse_lab domain stays independent of model SDK primitives",
         reason=(
-            "Pulse domain services own prompts, tool query behavior, validation, and audit assembly; "
+            "Pulse domain services own prompts, bounded evidence inputs, validation, and audit assembly; "
             "model SDK calls belong in integrations/model_execution."
         ),
         fix=(
@@ -679,14 +679,13 @@ def test_model_execution_integrations_do_not_import_pulse_queries_or_services() 
     _assert_no_offenders(
         offenders,
         invariant="model execution integrations depend only on Pulse provider protocols and types",
-        reason="Pulse tool queries, prompts, evidence validation, and audit assembly are domain behavior.",
+        reason="Pulse prompts, bounded evidence validation, and audit assembly are domain behavior.",
         fix="Inject pulse_lab service runtimes from app/runtime/provider_wiring/model_execution.py instead.",
     )
 
 
 def test_pulse_prompts_do_not_contain_execution_language() -> None:
-    """Pulse prompts live under per-stage markdown files in
-    ``domains/pulse_lab/prompts/{signal_analyst,bear_case,risk_portfolio_judge}.md``.
+    """Pulse prompt lives under ``domains/pulse_lab/prompts/pulse_decision.md``.
 
     Those markdown prompts deliberately enumerate every forbidden
     execution term inside an explicit anti-injection / "do not produce"

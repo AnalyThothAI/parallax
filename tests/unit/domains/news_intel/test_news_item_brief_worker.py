@@ -25,8 +25,8 @@ def test_worker_publishes_market_wide_proxy_brief_without_domain_validation_fail
     asyncio.run(_test_worker_publishes_market_wide_proxy_brief_without_domain_validation_failure())
 
 
-def test_worker_processes_provider_signal_target_with_llm_context() -> None:
-    asyncio.run(_test_worker_processes_provider_signal_target_with_llm_context())
+def test_worker_processes_provider_signal_target_without_provider_context_in_packet() -> None:
+    asyncio.run(_test_worker_processes_provider_signal_target_without_provider_context_in_packet())
 
 
 def test_worker_skips_fresh_current_even_when_source_updated_is_noisy() -> None:
@@ -92,7 +92,7 @@ async def _test_worker_publishes_market_wide_proxy_brief_without_domain_validati
     assert db.news.briefs[0]["brief_json"]["event_type"] == "geopolitical_supply"
 
 
-async def _test_worker_processes_provider_signal_target_with_llm_context() -> None:
+async def _test_worker_processes_provider_signal_target_without_provider_context_in_packet() -> None:
     candidate = _candidate()
     candidate["item"]["provider_signal_json"] = {
         "source": "provider",
@@ -112,8 +112,8 @@ async def _test_worker_processes_provider_signal_target_with_llm_context() -> No
     assert provider.reserve_calls == [NEWS_ITEM_BRIEF_LANE]
     assert provider.reserve_rate_units == [1]
     assert provider.execution_calls == 1
-    assert provider.seen_packets[0].provider_signal_evidence.score == 88
-    assert provider.seen_packets[0].provider_signal_evidence.market_impacts[0].label == "SOL"
+    assert not hasattr(provider.seen_packets[0], "provider_signal_evidence")
+    assert all(not ref.startswith("provider:") for ref in provider.seen_packets[0].evidence_refs)
     assert db.news.runs[0]["status"] == "completed"
     assert db.news.briefs[0]["status"] == "ready"
     assert len(db.dirty.done) == 1
@@ -492,6 +492,7 @@ async def _test_worker_terminalizes_after_max_attempts_without_permanent_dirty_f
     assert db.dirty.done == []
     assert db.news.briefs[0]["status"] == "failed"
     assert "terminal" not in db.news.briefs[0]["brief_json"]
+    assert "终态原因：RuntimeError" in db.news.briefs[0]["brief_json"]["data_gaps"][0]["description_zh"]
     assert db.news.briefs[0]["brief_json"]["data_gaps"][0]["severity"] == "high"
     assert result.failed == 1
 
@@ -783,7 +784,7 @@ def _energy_ready_payload() -> dict[str, Any]:
                 "channel": "risk_sentiment_proxy",
                 "direction": "mixed",
                 "strength": "weak",
-                "explanation_zh": "风险资产压力可通过情绪渠道影响 BTC，但新闻没有直接点名 BTC。",
+                "explanation_zh": "风险资产压力可能通过情绪渠道影响 crypto beta，但新闻没有直接点名具体加密资产。",
                 "evidence_refs": ["item:summary"],
             },
         ],
@@ -811,19 +812,6 @@ def _energy_ready_payload() -> dict[str, Any]:
                 "reason_zh": "候选事实直接把 WTI 原油期货列为受海湾供应风险影响的商品。",
                 "evidence_refs": ["fact:fact-gulf-supply"],
             },
-            {
-                "label": "Bitcoin",
-                "symbol": "BTC",
-                "name": "Bitcoin",
-                "entity_type": "crypto_asset",
-                "market_domain": "crypto",
-                "resolution_status": "unknown",
-                "target_type": None,
-                "target_id": None,
-                "impact_direction": "mixed",
-                "reason_zh": "BTC 只作为风险资产情绪代理，provider 影响证据给出 crypto 代理范围。",
-                "evidence_refs": ["item:summary", "provider:impact:BTC"],
-            },
         ],
         "watch_triggers": ["后续海湾航运、WTI 价格和风险资产波动是否继续扩大"],
         "invalidation_conditions": ["军事升级降温或原油供应风险被后续报道证伪"],
@@ -833,7 +821,6 @@ def _energy_ready_payload() -> dict[str, Any]:
             "item:summary",
             "item:body_excerpt",
             "fact:fact-gulf-supply",
-            "provider:impact:BTC",
         ],
     }
 
@@ -901,10 +888,14 @@ class FakeBriefProvider:
             _packet_from_candidate,
         )
 
+        candidate_with_context = {
+            **candidate,
+            "agent_admission_context": _agent_admission_context_for_candidate(candidate),
+        }
         return _packet_from_candidate(
             _candidate_with_agent_admission(
-                candidate,
-                _admission_from_candidate(candidate, now_ms=NOW_MS),
+                candidate_with_context,
+                _admission_from_candidate(candidate_with_context, now_ms=NOW_MS),
             ),
             agent_config=self.agent_config(),
         )
@@ -1023,17 +1014,7 @@ class FakeNewsRepository:
             if candidate is None:
                 continue
             contexts.append(
-                {
-                    "item": dict(candidate["item"]),
-                    "entities": [dict(row) for row in candidate.get("entities", [])],
-                    "token_mentions": [dict(row) for row in candidate.get("token_mentions", [])],
-                    "fact_candidates": [dict(row) for row in candidate.get("fact_candidates", [])],
-                    "current_brief": candidate.get("current_brief"),
-                    "exact_duplicate_candidates": [
-                        dict(row) for row in candidate.get("exact_duplicate_candidates", [])
-                    ],
-                    "story_candidates": [dict(row) for row in candidate.get("story_candidates", [])],
-                }
+                _agent_admission_context_for_candidate(candidate)
             )
         return contexts
 
@@ -1114,6 +1095,18 @@ class FakeConn:
     @contextmanager
     def transaction(self):
         yield
+
+
+def _agent_admission_context_for_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "item": dict(candidate["item"]),
+        "entities": [dict(row) for row in candidate.get("entities", [])],
+        "token_mentions": [dict(row) for row in candidate.get("token_mentions", [])],
+        "fact_candidates": [dict(row) for row in candidate.get("fact_candidates", [])],
+        "current_brief": candidate.get("current_brief"),
+        "exact_duplicate_candidates": [dict(row) for row in candidate.get("exact_duplicate_candidates", [])],
+        "story_candidates": [dict(row) for row in candidate.get("story_candidates", [])],
+    }
 
 
 class FakeWakeBus:

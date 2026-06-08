@@ -96,7 +96,7 @@ def test_news_item_brief_input_packet_uses_entity_lanes() -> None:
             )
         ],
         market_scope=["regulation", "crypto"],
-        agent_admission={"status": "eligible", "reason": "provider_score_high"},
+        agent_admission={"status": "eligible", "reason": "eligible"},
         similarity={"exact_duplicate": False},
         material_delta={"status": "material"},
         prompt_version="prompt-v1",

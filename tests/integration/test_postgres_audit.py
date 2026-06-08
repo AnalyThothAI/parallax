@@ -59,12 +59,8 @@ def test_query_audit_token_radar_latest_declares_caller_supplied_projection_vers
     assert query["params"] == {"token_radar_projection_version": None}
 
 
-def test_query_audit_includes_token_factor_settlement_hot_path():
-    query = next(item for item in HOT_QUERIES if item["name"] == "token_factor_settlement_rows")
-
-    assert "factor_version" in query["sql"]
-    assert "computed_at_ms + %(horizon_ms)s <= %(generated_at_ms)s" in query["sql"]
-    assert query["params"]["token_factor_version"] is None
+def test_query_audit_does_not_restore_retired_token_factor_settlement_hot_path():
+    assert all(item["name"] != "token_factor_settlement_rows" for item in HOT_QUERIES)
 
 
 def test_query_audit_binds_caller_supplied_token_radar_projection_version():
@@ -78,11 +74,6 @@ def test_query_audit_binds_caller_supplied_token_radar_projection_version():
 
     assert payload["ok"] is True
     assert {"token_radar_projection_version": "token-radar-custom"} in conn.params_seen
-    assert any(
-        params.get("token_factor_version") == "token-factor-custom"
-        for params in conn.params_seen
-        if isinstance(params, dict)
-    )
 
 
 class RecordingExplainConn:

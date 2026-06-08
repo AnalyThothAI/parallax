@@ -73,8 +73,8 @@ class FakePulseReadRepository:
         return list(self.agent_run_steps.get(run_id, []))
 
 
-def _service(pulse_read: Any, pulse_runs: Any | None = None) -> SignalPulseService:
-    return SignalPulseService(pulse_read=pulse_read, pulse_runs=pulse_runs or pulse_read)
+def _service(pulse_read: Any) -> SignalPulseService:
+    return SignalPulseService(pulse_read=pulse_read)
 
 
 def test_signal_pulse_empty_state_uses_pulse_candidates_only() -> None:
@@ -257,7 +257,6 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
                 "recommendation": "watchlist",
                 "confidence": 0.72,
                 "abstain_reason": None,
-                "stage_count": 3,
                 "summary_zh": "链上质量允许继续观察。",
                 "invalidation_conditions": ["讨论快速降温。"],
                 "residual_risks": ["价格响应仍可能变化。"],
@@ -277,8 +276,6 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
                 "blocked_reasons": [],
                 "risk_reasons": [],
             },
-            "claim_verification": {"valid": True},
-            "evidence_gate": {"evidence_status": "complete"},
             "fact_card": {
                 "rank_score": 82,
                 "recommended_decision": "high_alert",
@@ -302,7 +299,6 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
                 "eligible_for_high_alert": True,
                 "blocked_reasons": [],
             },
-            "agent_run_id": "run-1",
             "pulse_version": "pulse-v1",
             "gate_version": "gate-v1",
             "prompt_version": "prompt-v1",
@@ -506,7 +502,36 @@ def test_candidate_returns_full_item() -> None:
     assert result["playbooks"] == []
 
 
-def test_candidate_includes_stages_from_run_steps() -> None:
+def test_candidate_decision_does_not_fallback_to_legacy_json_scalars() -> None:
+    row = _candidate_row(
+        "cand-json-fallback",
+        pulse_status="token_watch",
+        verdict="token_watch",
+        market_status="fresh",
+    )
+    row["decision_route"] = None
+    row["decision_recommendation"] = None
+    row["decision_abstain_reason"] = None
+    row["decision_json"] = {
+        **row["decision_json"],
+        "route": "meme",
+        "recommendation": "watchlist",
+        "abstain_reason": "json_legacy_reason",
+        "summary_zh": "富文本仍来自 decision_json。",
+    }
+    pulse = FakePulseReadRepository()
+    pulse.candidate_rows = {"cand-json-fallback": row}
+
+    result = _service(pulse).candidate(candidate_id="cand-json-fallback")
+
+    assert result is not None
+    assert result["decision"]["route"] is None
+    assert result["decision"]["recommendation"] is None
+    assert result["decision"]["abstain_reason"] is None
+    assert result["decision"]["summary_zh"] == "富文本仍来自 decision_json。"
+
+
+def test_candidate_detail_does_not_expose_agent_run_step_audit() -> None:
     pulse = FakePulseReadRepository()
     pulse.candidate_rows["pulse-1"] = _candidate_row(
         "pulse-1",
@@ -516,34 +541,12 @@ def test_candidate_includes_stages_from_run_steps() -> None:
     )
     pulse.agent_run_steps["run-1"] = [
         {
-            "stage": "signal_analyst",
+            "stage": "pulse_decision",
             "route": "meme",
             "status": "ok",
             "model": "qwen3.6",
             "started_at_ms": 100,
-            "finished_at_ms": 200,
-            "latency_ms": 100,
-            "attempt_index": 0,
-            "response_json": {"confidence": 0.82, "recommendation": "trade_candidate"},
-        },
-        {
-            "stage": "bear_case",
-            "route": "meme",
-            "status": "ok",
-            "model": "qwen3.6",
-            "started_at_ms": 210,
-            "finished_at_ms": 300,
-            "latency_ms": 90,
-            "attempt_index": 0,
-            "response_json": {"risk_level": "medium"},
-        },
-        {
-            "stage": "risk_portfolio_judge",
-            "route": "meme",
-            "status": "ok",
-            "model": "qwen3.6",
-            "started_at_ms": 350,
-            "finished_at_ms": 500,
+            "finished_at_ms": 250,
             "latency_ms": 150,
             "attempt_index": 0,
             "response_json": {"confidence": 0.35, "recommendation": "trade_candidate"},
@@ -553,128 +556,8 @@ def test_candidate_includes_stages_from_run_steps() -> None:
     item = _service(pulse).candidate(candidate_id="pulse-1")
 
     assert item is not None
-    stages = item["stages"]
-    assert stages["signal_analyst"]["response"]["confidence"] == 0.82
-    assert stages["signal_analyst"]["latency_ms"] == 100
-    assert stages["bear_case"]["response"]["risk_level"] == "medium"
-    assert stages["risk_portfolio_judge"]["response"]["confidence"] == 0.35
-    assert stages.get("evidence_completeness_gate") is None
-
-
-def test_candidate_stages_takes_latest_ok_attempt_per_stage() -> None:
-    pulse = FakePulseReadRepository()
-    pulse.candidate_rows["pulse-2"] = _candidate_row(
-        "pulse-2",
-        pulse_status="token_watch",
-        verdict="token_watch",
-        market_status="fresh",
-    )
-    pulse.agent_run_steps["run-1"] = [
-        {
-            "stage": "signal_analyst",
-            "route": "meme",
-            "status": "failed",
-            "model": "qwen3.6",
-            "started_at_ms": 100,
-            "finished_at_ms": 200,
-            "latency_ms": 100,
-            "attempt_index": 0,
-            "response_json": None,
-        },
-        {
-            "stage": "signal_analyst",
-            "route": "meme",
-            "status": "ok",
-            "model": "qwen3.6",
-            "started_at_ms": 300,
-            "finished_at_ms": 400,
-            "latency_ms": 100,
-            "attempt_index": 1,
-            "response_json": {"confidence": 0.7},
-        },
-    ]
-
-    item = _service(pulse).candidate(candidate_id="pulse-2")
-
-    assert item is not None
-    assert item["stages"]["signal_analyst"]["status"] == "ok"
-    assert item["stages"]["signal_analyst"]["response"]["confidence"] == 0.7
-
-
-def test_candidate_stages_absent_when_no_run() -> None:
-    pulse = FakePulseReadRepository()
-    pulse.candidate_rows["pulse-3"] = _candidate_row(
-        "pulse-3",
-        pulse_status="token_watch",
-        verdict="token_watch",
-        market_status="fresh",
-    )
-    pulse.candidate_rows["pulse-3"]["agent_run_id"] = None
-
-    item = _service(pulse).candidate(candidate_id="pulse-3")
-
-    assert item is not None
-    assert item["stages"] == {
-        "evidence_pack": None,
-        "evidence_completeness_gate": None,
-        "signal_analyst": None,
-        "bear_case": None,
-        "claim_verifier": None,
-        "risk_portfolio_judge": None,
-        "recommendation_clipper": None,
-        "deterministic_eval": None,
-        "write_gate": None,
-    }
-
-
-def test_candidate_stages_only_expose_evidence_first_public_contract() -> None:
-    pulse = FakePulseReadRepository()
-    pulse.candidate_rows["pulse-1"] = _candidate_row(
-        "pulse-1",
-        pulse_status="token_watch",
-        verdict="token_watch",
-        market_status="fresh",
-    )
-    pulse.agent_run_steps["run-1"] = [
-        {
-            "stage": "analyst",
-            "route": "meme",
-            "status": "ok",
-            "model": "qwen3.6",
-            "started_at_ms": 100,
-            "finished_at_ms": 200,
-            "latency_ms": 100,
-            "attempt_index": 0,
-            "response_json": {"summary_zh": "legacy"},
-        },
-        {
-            "stage": "signal_analyst",
-            "route": "meme",
-            "status": "ok",
-            "model": "qwen3.6",
-            "started_at_ms": 210,
-            "finished_at_ms": 300,
-            "latency_ms": 90,
-            "attempt_index": 0,
-            "response_json": {"summary_zh": "v2"},
-        },
-    ]
-
-    item = _service(pulse).candidate(candidate_id="pulse-1")
-
-    assert item is not None
-    assert set(item["stages"]) == {
-        "evidence_pack",
-        "evidence_completeness_gate",
-        "signal_analyst",
-        "bear_case",
-        "claim_verifier",
-        "risk_portfolio_judge",
-        "recommendation_clipper",
-        "deterministic_eval",
-        "write_gate",
-    }
-    assert item["stages"]["signal_analyst"]["response"]["summary_zh"] == "v2"
+    assert "agent_run_id" not in item
+    assert "stages" not in item
 
 
 def test_default_listing_hides_abstain_decisions() -> None:
@@ -698,7 +581,21 @@ def test_default_listing_hides_abstain_decisions() -> None:
         "residual_risks": ["market context missing"],
         "evidence_event_ids": [],
     }
-    pulse = FakePulseReadRepository(pages={None: {"items": [row], "next_cursor": None}})
+    pulse = FakePulseReadRepository(
+        pages={None: {"items": [row], "next_cursor": None}},
+        health={
+            "candidate_count": 1,
+            "public_candidate_count": 1,
+            "blocked_low_information_count": 0,
+            "dead_job_count": 0,
+            "market_ready_rate": 1.0,
+            "summary": {
+                "trade_candidate": 0,
+                "token_watch": 1,
+                "risk_rejected_high_info": 0,
+            },
+        },
+    )
 
     result = _service(pulse).pulse(
         window="1h",
@@ -712,6 +609,9 @@ def test_default_listing_hides_abstain_decisions() -> None:
     )
 
     assert result["items"] == []
+    assert result["health"]["public_candidate_count"] == 0
+    assert result["health"]["pulse_ready"] is False
+    assert result["health"]["public_ready"] is False
     assert result["returned_count"] == 0
 
 
@@ -891,7 +791,21 @@ def test_signal_pulse_item_contains_factor_snapshot_contract_without_legacy_disp
         "top_risks": ["旧风险"],
     }
 
-    pulse = FakePulseReadRepository(pages={None: {"items": [row], "next_cursor": None}})
+    pulse = FakePulseReadRepository(
+        pages={None: {"items": [row], "next_cursor": None}},
+        health={
+            "candidate_count": 1,
+            "public_candidate_count": 1,
+            "blocked_low_information_count": 0,
+            "dead_job_count": 0,
+            "market_ready_rate": 1.0,
+            "summary": {
+                "trade_candidate": 0,
+                "token_watch": 1,
+                "risk_rejected_high_info": 0,
+            },
+        },
+    )
     item = _service(pulse).pulse(
         window="1h",
         scope="all",
@@ -1054,6 +968,9 @@ def test_signal_pulse_rejects_v1_factor_snapshot_with_hard_gates() -> None:
     )
 
     assert result["items"] == []
+    assert result["health"]["public_candidate_count"] == 0
+    assert result["health"]["pulse_ready"] is False
+    assert result["health"]["public_ready"] is False
 
 
 @pytest.mark.parametrize(

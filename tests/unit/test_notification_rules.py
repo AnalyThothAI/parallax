@@ -307,12 +307,34 @@ def test_signal_pulse_notifications_use_materialized_candidates_and_severity_map
     trade = next(item for item in candidates if item.source_id == "trade")
     assert trade.payload["candidate_id"] == "trade"
     assert "decision" in trade.payload
+    assert "stage_count" not in trade.payload["decision"]
     assert "agent_recommendation" not in trade.payload
     assert "gate" in trade.payload
     assert "factor_snapshot" in trade.payload
     assert "top_risks" not in trade.payload
     assert "confirmation_triggers_zh" not in trade.payload
     assert "kind" not in trade.payload
+
+
+def test_signal_pulse_notification_decision_uses_scalar_columns_not_json_fallback():
+    row = pulse_candidate("watch", status="token_watch")
+    row["decision_route"] = None
+    row["decision_recommendation"] = None
+    row["decision_abstain_reason"] = None
+    row["decision_json"] = {
+        **row["decision_json"],
+        "route": "meme",
+        "recommendation": "watchlist",
+        "abstain_reason": "json_legacy_reason",
+        "summary_zh": "通知富文本仍来自 decision_json。",
+    }
+
+    candidate = _only_pulse_notification(row)
+
+    assert candidate.payload["decision"]["route"] is None
+    assert candidate.payload["decision"]["recommendation"] is None
+    assert candidate.payload["decision"]["abstain_reason"] is None
+    assert candidate.payload["decision"]["summary_zh"] == "通知富文本仍来自 decision_json。"
 
 
 def test_signal_pulse_dedup_key_uses_in_app_and_external_identity():
@@ -323,12 +345,12 @@ def test_signal_pulse_dedup_key_uses_in_app_and_external_identity():
     in_app_only = _only_pulse_notification(in_app_only_row, notifications=notifications)
     external = _only_pulse_notification(external_row, notifications=notifications)
 
-    assert in_app_only.payload["in_app_signature"] == external.payload["in_app_signature"]
+    assert in_app_only.payload["semantic_signature"] == external.payload["semantic_signature"]
     assert in_app_only.payload["external_push_signature"] is None
     assert external.payload["external_push_signature"]
-    assert in_app_only.dedup_key == f"signal_pulse_candidate:{in_app_only.payload['in_app_signature']}:in_app"
+    assert in_app_only.dedup_key == f"signal_pulse_candidate:{in_app_only.payload['semantic_signature']}:in_app"
     external_identity = external.payload["external_push_signature"]
-    assert external.dedup_key == f"signal_pulse_candidate:{external.payload['in_app_signature']}:{external_identity}"
+    assert external.dedup_key == f"signal_pulse_candidate:{external.payload['semantic_signature']}:{external_identity}"
 
 
 def test_signal_pulse_signature_changes_on_stable_dimension_shifts():
@@ -367,13 +389,13 @@ def test_signal_pulse_signature_changes_on_stable_dimension_shifts():
     }
 
     signatures = {
-        "base": _only_pulse_notification(base).payload["in_app_signature"],
-        "score_band": _only_pulse_notification({**base, "score_band": "high_conviction"}).payload["in_app_signature"],
-        "gate": _only_pulse_notification(gate_changed).payload["in_app_signature"],
-        "route": _only_pulse_notification(route_changed).payload["in_app_signature"],
-        "narrative_archetype": _only_pulse_notification(archetype_changed).payload["in_app_signature"],
-        "bull_strength": _only_pulse_notification(bull_changed).payload["in_app_signature"],
-        "has_playbook": _only_pulse_notification(playbook_added).payload["in_app_signature"],
+        "base": _only_pulse_notification(base).payload["semantic_signature"],
+        "score_band": _only_pulse_notification({**base, "score_band": "high_conviction"}).payload["semantic_signature"],
+        "gate": _only_pulse_notification(gate_changed).payload["semantic_signature"],
+        "route": _only_pulse_notification(route_changed).payload["semantic_signature"],
+        "narrative_archetype": _only_pulse_notification(archetype_changed).payload["semantic_signature"],
+        "bull_strength": _only_pulse_notification(bull_changed).payload["semantic_signature"],
+        "has_playbook": _only_pulse_notification(playbook_added).payload["semantic_signature"],
     }
 
     assert len(set(signatures.values())) == len(signatures)
@@ -384,7 +406,7 @@ def test_signal_pulse_signature_does_not_change_for_free_text_only_change():
     bump the signature — otherwise minor agent paraphrasing would re-page users.
     """
     base = pulse_candidate("watch", status="token_watch")
-    base_sig = _only_pulse_notification(base).payload["in_app_signature"]
+    base_sig = _only_pulse_notification(base).payload["semantic_signature"]
 
     # Only summary_zh / narrative_thesis_zh / bull_view.thesis_zh differ
     paraphrased = pulse_candidate("watch", status="token_watch", recommendation_summary="完全不同的文字描述")
@@ -406,8 +428,8 @@ def test_signal_pulse_signature_does_not_change_for_free_text_only_change():
             "supporting_event_ids": ["event-1"],
         },
     }
-    base_sig_with_bull = _only_pulse_notification(base).payload["in_app_signature"]
-    paraphrased_sig = _only_pulse_notification(paraphrased).payload["in_app_signature"]
+    base_sig_with_bull = _only_pulse_notification(base).payload["semantic_signature"]
+    paraphrased_sig = _only_pulse_notification(paraphrased).payload["semantic_signature"]
 
     assert paraphrased_sig == base_sig_with_bull
     # And neither matches the pre-bull base (because adding bull strength is a stable shift)
@@ -429,8 +451,8 @@ def test_signal_pulse_signature_does_not_change_for_evidence_or_edge_event_churn
     )
 
     assert (
-        _only_pulse_notification(base).payload["in_app_signature"]
-        == _only_pulse_notification(churned).payload["in_app_signature"]
+        _only_pulse_notification(base).payload["semantic_signature"]
+        == _only_pulse_notification(churned).payload["semantic_signature"]
     )
 
 
@@ -447,8 +469,8 @@ def test_signal_pulse_signature_changes_when_bull_strength_changes():
     }
 
     assert (
-        _only_pulse_notification(base).payload["in_app_signature"]
-        != _only_pulse_notification(bumped).payload["in_app_signature"]
+        _only_pulse_notification(base).payload["semantic_signature"]
+        != _only_pulse_notification(bumped).payload["semantic_signature"]
     )
 
 
@@ -494,11 +516,11 @@ def test_signal_pulse_signature_changes_on_playbook_structure_not_raw_text():
         },
     }
 
-    base_sig = _only_pulse_notification(base).payload["in_app_signature"]
+    base_sig = _only_pulse_notification(base).payload["semantic_signature"]
 
-    assert _only_pulse_notification(raw_text_changed).payload["in_app_signature"] == base_sig
-    assert _only_pulse_notification(horizon_changed).payload["in_app_signature"] != base_sig
-    assert _only_pulse_notification(count_changed).payload["in_app_signature"] != base_sig
+    assert _only_pulse_notification(raw_text_changed).payload["semantic_signature"] == base_sig
+    assert _only_pulse_notification(horizon_changed).payload["semantic_signature"] != base_sig
+    assert _only_pulse_notification(count_changed).payload["semantic_signature"] != base_sig
 
 
 def test_signal_pulse_signature_counts_only_safe_playbook_entries():
@@ -524,8 +546,8 @@ def test_signal_pulse_signature_counts_only_safe_playbook_entries():
     }
 
     assert (
-        _only_pulse_notification(base).payload["in_app_signature"]
-        == _only_pulse_notification(unsafe_extra).payload["in_app_signature"]
+        _only_pulse_notification(base).payload["semantic_signature"]
+        == _only_pulse_notification(unsafe_extra).payload["semantic_signature"]
     )
 
 
@@ -560,7 +582,7 @@ def test_signal_pulse_pushdeer_uses_target_cooldown_signature_once_across_scopes
     external_signature = pushed[0].payload["external_push_signature"]
     assert external_signature
     assert pushed[0].payload["external_push_suppression_reason"] is None
-    assert pushed[0].payload["in_app_signature"]
+    assert pushed[0].payload["semantic_signature"]
 
     in_app_only = [item for item in candidates if item not in pushed]
     assert len(in_app_only) == 1
@@ -568,7 +590,7 @@ def test_signal_pulse_pushdeer_uses_target_cooldown_signature_once_across_scopes
     assert in_app_only[0].payload["external_push_eligible"] is False
     assert in_app_only[0].payload["external_push_signature"] == external_signature
     assert in_app_only[0].payload["external_push_suppression_reason"] == "external_signature_duplicate"
-    assert in_app_only[0].payload["in_app_signature"]
+    assert in_app_only[0].payload["semantic_signature"]
 
 
 def test_signal_pulse_score_band_only_change_is_in_app_only() -> None:
@@ -620,7 +642,7 @@ def test_signal_pulse_external_signature_ignores_in_app_decision_detail_churn() 
     base_candidate = _only_pulse_notification(base, notifications=notifications)
     changed_candidate = _only_pulse_notification(playbook_changed, notifications=notifications)
 
-    assert base_candidate.payload["in_app_signature"] != changed_candidate.payload["in_app_signature"]
+    assert base_candidate.payload["semantic_signature"] != changed_candidate.payload["semantic_signature"]
     assert base_candidate.payload["external_push_signature"] == changed_candidate.payload["external_push_signature"]
 
 
@@ -708,7 +730,7 @@ def test_signal_pulse_candidate_rule_uses_window_scope_status_without_downstream
     assert pulse_candidates[0].channels == ("in_app", "pushdeer")
     assert pulse_candidates[0].dedup_key == (
         "signal_pulse_candidate:"
-        f"{pulse_candidates[0].payload['in_app_signature']}:"
+        f"{pulse_candidates[0].payload['semantic_signature']}:"
         f"{pulse_candidates[0].payload['external_push_signature']}"
     )
     assert pulse.calls == [
@@ -910,7 +932,6 @@ def test_news_high_signal_uses_ready_agent_brief_for_display_and_builds_push_sig
                             "in_app_eligible": True,
                             "external_push_ready": True,
                             "external_push_basis": "agent_brief",
-                            "provider_score": 85,
                             "decision_class": "driver",
                         },
                     },
@@ -937,8 +958,6 @@ def test_news_high_signal_uses_ready_agent_brief_for_display_and_builds_push_sig
             "news_high_signal": {
                 "enabled": True,
                 "channels": ["in_app", "pushdeer"],
-                "combined_score_min": 85,
-                "external_score_min": 85,
                 "cooldown_seconds": 3600,
             }
         }
@@ -950,20 +969,24 @@ def test_news_high_signal_uses_ready_agent_brief_for_display_and_builds_push_sig
         if item.rule_id == "news_high_signal"
     ]
 
-    assert news.calls == [{"min_score": 85, "limit": 1000}]
+    assert news.calls == [{"limit": 1000}]
     assert len(candidates) == 1
     candidate = candidates[0]
-    assert candidate.severity == "critical"
+    assert candidate.severity == "high"
     assert candidate.symbol == "BOV"
     assert candidate.channels == ("in_app", "pushdeer")
     assert candidate.payload["semantic_signature"].startswith("sha256:")
     assert candidate.payload["external_push_signature"].startswith("sha256:")
     assert candidate.payload["external_push_eligible"] is True
     assert candidate.payload["token_impacts"] == [{"symbol": "BOV"}]
+    assert candidate.payload["agent_brief"]["summary_zh"] == "高分新闻已由 agent 归纳。"
+    assert "brief_json" not in candidate.payload["agent_brief"]
+    assert "provider_score" not in candidate.payload
     assert candidate.dedup_key == f"news_high_signal:{candidate.payload['semantic_signature']}"
     assert candidate.title == "AI 标题：重大上所催化"
     assert candidate.payload["display_title"] == "AI 标题：重大上所催化"
     assert "高分新闻已由 agent 归纳" in candidate.body
+    assert "Score:" not in candidate.body
     assert candidate.occurrence_at_ms == NOW_MS - 5_000
 
 
@@ -973,7 +996,7 @@ def test_news_high_signal_allows_market_wide_ready_watch_candidate():
         "primary": "us_equity",
         "status": "classified",
         "reason": "private_company_equity_context",
-        "basis": {"provider_score": 90},
+        "basis": {"subject": "private_company_equity_context"},
         "version": "test_news_market_scope_v1",
     }
     news = FakeNews(
@@ -997,14 +1020,13 @@ def test_news_high_signal_allows_market_wide_ready_watch_candidate():
                 "content_tags": ["private_markets"],
                 "signal": {
                     "direction": "bullish",
-                    "alert_eligibility": {
-                        "in_app_eligible": True,
-                        "external_push_ready": True,
-                        "external_push_basis": "agent_brief",
-                        "provider_score": 90,
-                        "decision_class": "watch",
-                        "market_scope": market_scope,
-                    },
+                        "alert_eligibility": {
+                            "in_app_eligible": True,
+                            "external_push_ready": True,
+                            "external_push_basis": "agent_brief",
+                            "decision_class": "watch",
+                            "market_scope": market_scope,
+                        },
                 },
                 "token_impacts": [{"symbol": "SPCX", "score": 90}],
                 "agent_brief": {
@@ -1027,8 +1049,6 @@ def test_news_high_signal_allows_market_wide_ready_watch_candidate():
             "news_high_signal": {
                 "enabled": True,
                 "channels": ["in_app", "pushdeer"],
-                "combined_score_min": 85,
-                "external_score_min": 85,
                 "cooldown_seconds": 3600,
             }
         }
@@ -1069,7 +1089,6 @@ def test_news_high_signal_uses_projection_external_push_readiness() -> None:
                             "in_app_eligible": True,
                             "external_push_ready": False,
                             "external_push_block_reason": "agent_brief_missing_summary",
-                            "provider_score": 90,
                             "decision_class": "driver",
                         },
                     },
@@ -1090,8 +1109,6 @@ def test_news_high_signal_uses_projection_external_push_readiness() -> None:
             "news_high_signal": {
                 "enabled": True,
                 "channels": ["in_app", "pushdeer"],
-                "combined_score_min": 85,
-                "external_score_min": 85,
                 "cooldown_seconds": 3600,
             }
         }
@@ -1107,6 +1124,73 @@ def test_news_high_signal_uses_projection_external_push_readiness() -> None:
     candidate = candidates[0]
     assert candidate.channels == ("in_app",)
     assert candidate.payload["external_push_eligible"] is False
+    assert candidate.payload["external_push_suppression_reason"] == "agent_brief_missing_summary"
+
+
+def test_news_high_signal_ignores_legacy_brief_json_for_display_payload_and_push():
+    news = FakeNews(
+        [
+            _market_scoped_news_row(
+                {
+                    "news_item_id": "news-legacy-brief-json",
+                    "latest_at_ms": NOW_MS - 5_000,
+                    "agent_brief_computed_at_ms": NOW_MS - 1_000,
+                    "headline": "Scalar headline wins",
+                    "source_domain": "example.test",
+                    "canonical_url": "https://example.test/legacy-brief-json",
+                    "signal": {
+                        "direction": "bullish",
+                        "alert_eligibility": {
+                            "in_app_eligible": True,
+                            "external_push_ready": True,
+                            "external_push_basis": "agent_brief",
+                            "decision_class": "driver",
+                        },
+                    },
+                    "token_impacts": [],
+                    "agent_brief": {
+                        "status": "ready",
+                        "direction": "bullish",
+                        "decision_class": "driver",
+                        "brief_json": {
+                            "title_zh": "旧 JSON 标题不应展示",
+                            "summary_zh": "旧 JSON 摘要不应推送",
+                            "affected_entities": [{"symbol": "LEGACY"}],
+                            "agent_run_id": "run-legacy",
+                        },
+                    },
+                }
+            )
+        ]
+    )
+    notifications = NotificationsConfig(
+        rules={
+            "news_high_signal": {
+                "enabled": True,
+                "channels": ["in_app", "pushdeer"],
+                "cooldown_seconds": 3600,
+            }
+        }
+    )
+
+    candidates = [
+        item
+        for item in engine(news=news, notifications=notifications).evaluate(now_ms=NOW_MS)
+        if item.rule_id == "news_high_signal"
+    ]
+
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate.channels == ("in_app",)
+    assert candidate.title == "Scalar headline wins"
+    assert "旧 JSON 摘要不应推送" not in candidate.body
+    assert candidate.symbol is None
+    assert candidate.payload["affected_entities"] == []
+    assert candidate.payload["agent_brief"] == {
+        "status": "ready",
+        "direction": "bullish",
+        "decision_class": "driver",
+    }
     assert candidate.payload["external_push_suppression_reason"] == "agent_brief_missing_summary"
 
 
@@ -1127,7 +1211,6 @@ def test_news_high_signal_skips_stale_source_items_even_when_agent_finished_now(
                             "in_app_eligible": True,
                             "external_push_ready": True,
                             "external_push_basis": "agent_brief",
-                            "provider_score": 90,
                             "decision_class": "driver",
                         },
                     },
@@ -1170,7 +1253,6 @@ def test_news_high_signal_semantic_dedup_ignores_projection_and_summary_churn():
                     "in_app_eligible": True,
                     "external_push_ready": True,
                     "external_push_basis": "agent_brief",
-                    "provider_score": 90,
                     "decision_class": "driver",
                 },
             },
@@ -1238,7 +1320,6 @@ def test_jpm_citi_story_variants_emit_one_candidate():
                     "in_app_eligible": True,
                     "external_push_ready": False,
                     "external_push_block_reason": "agent_brief_not_ready",
-                    "provider_score": 91,
                     "decision_class": "driver",
                 },
             },
@@ -1300,7 +1381,6 @@ def test_news_high_signal_external_push_signature_keeps_distinct_stories_push_el
                     "in_app_eligible": True,
                     "external_push_ready": True,
                     "external_push_basis": "agent_brief",
-                    "provider_score": 90,
                     "decision_class": "driver",
                 },
             },
@@ -1339,8 +1419,6 @@ def test_news_high_signal_external_push_signature_keeps_distinct_stories_push_el
             "news_high_signal": {
                 "enabled": True,
                 "channels": ["in_app", "pushdeer"],
-                "combined_score_min": 85,
-                "external_score_min": 85,
                 "cooldown_seconds": 3600,
             }
         }
@@ -1376,7 +1454,6 @@ def test_news_high_signal_external_push_signature_uses_asset_cooldown_not_item_i
                     "in_app_eligible": True,
                     "external_push_ready": True,
                     "external_push_basis": "agent_brief",
-                    "provider_score": 90,
                     "decision_class": "driver",
                 },
             },
@@ -1415,8 +1492,6 @@ def test_news_high_signal_external_push_signature_uses_asset_cooldown_not_item_i
             "news_high_signal": {
                 "enabled": True,
                 "channels": ["in_app", "pushdeer"],
-                "combined_score_min": 85,
-                "external_score_min": 85,
                 "cooldown_seconds": 3600,
             }
         }
@@ -1544,7 +1619,7 @@ def pulse_candidate(
         "decision_recommendation": "watchlist",
         "decision_confidence": 0.72,
         "decision_abstain_reason": None,
-        "decision_stage_count": 3,
+        "decision_stage_count": 1,
         "decision_json": {
             "route": "meme",
             "recommendation": "watchlist",

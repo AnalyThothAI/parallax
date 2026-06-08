@@ -152,111 +152,42 @@ def test_ops_news_dedup_commands_are_registered_without_compatibility_flags() ->
     parser = build_parser()
 
     diagnostics = parser.parse_args(["ops", "news-dedup-diagnostics"])
-    diagnostics_custom = parser.parse_args(
-        ["ops", "news-dedup-diagnostics", "--window-hours", "4", "--score-threshold", "90"]
-    )
-    cleanup = parser.parse_args(["ops", "cleanup-news-brief-input", "--dry-run"])
+    diagnostics_custom = parser.parse_args(["ops", "news-dedup-diagnostics", "--window-hours", "4"])
     rebuild_dry_run = parser.parse_args(["ops", "rebuild-news-canonical-items", "--limit", "25", "--dry-run"])
     rebuild_execute = parser.parse_args(["ops", "rebuild-news-canonical-items", "--limit", "25", "--execute"])
-    repair_default = parser.parse_args(["ops", "repair-news-duplicates-hard-cut", "--dry-run"])
-    repair_dry_run = parser.parse_args(["ops", "repair-news-duplicates-hard-cut", "--limit", "25", "--dry-run"])
-    repair_execute = parser.parse_args(["ops", "repair-news-duplicates-hard-cut", "--limit", "25", "--execute"])
-    admission_repair_default = parser.parse_args(
-        ["ops", "repair-news-agent-market-admission", "--since-ms", "1000", "--until-ms", "2000"]
-    )
-    admission_repair_execute = parser.parse_args(
-        [
-            "ops",
-            "repair-news-agent-market-admission",
-            "--since-ms",
-            "1000",
-            "--until-ms",
-            "2000",
-            "--limit",
-            "25",
-            "--execute",
-        ]
-    )
 
     assert diagnostics.ops_command == "news-dedup-diagnostics"
     assert diagnostics.window_hours == 8.0
-    assert diagnostics.score_threshold == 80
     assert diagnostics_custom.window_hours == 4.0
-    assert diagnostics_custom.score_threshold == 90
-    assert cleanup.ops_command == "cleanup-news-brief-input"
-    assert cleanup.dry_run is True
-    assert cleanup.execute is False
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ops", "news-dedup-diagnostics", "--score-threshold", "90"])
     assert rebuild_dry_run.ops_command == "rebuild-news-canonical-items"
     assert rebuild_dry_run.limit == 25
     assert rebuild_dry_run.dry_run is True
     assert rebuild_dry_run.execute is False
     assert rebuild_execute.execute is True
-    assert repair_default.limit == 20000
-    assert repair_default.dry_run is True
-    assert repair_dry_run.ops_command == "repair-news-duplicates-hard-cut"
-    assert repair_dry_run.limit == 25
-    assert repair_dry_run.dry_run is True
-    assert repair_dry_run.execute is False
-    assert repair_execute.execute is True
-    assert admission_repair_default.ops_command == "repair-news-agent-market-admission"
-    assert admission_repair_default.since_ms == 1000
-    assert admission_repair_default.until_ms == 2000
-    assert admission_repair_default.limit == 500
-    assert admission_repair_default.dry_run is True
-    assert admission_repair_default.execute is False
-    assert admission_repair_execute.limit == 25
-    assert admission_repair_execute.execute is True
-    assert admission_repair_execute.dry_run is False
     assert not hasattr(diagnostics, "include_legacy")
     assert not hasattr(rebuild_execute, "legacy_id")
     assert not hasattr(rebuild_execute, "raw_item_id")
-    assert not hasattr(repair_execute, "legacy_id")
-    assert not hasattr(repair_execute, "raw_item_id")
-    assert not hasattr(repair_execute, "include_legacy")
-    assert not hasattr(admission_repair_execute, "analysis_admission_status")
-    assert not hasattr(admission_repair_execute, "min_provider_score")
-    assert not hasattr(admission_repair_execute, "legacy_id")
 
     with pytest.raises(SystemExit):
         parser.parse_args(["ops", "rebuild-news-canonical-items"])
     with pytest.raises(SystemExit):
         parser.parse_args(["ops", "repair-news-duplicates-hard-cut"])
     with pytest.raises(SystemExit):
-        parser.parse_args(["ops", "repair-news-duplicates-hard-cut", "--limit", "25", "--legacy-id", "old"])
+        parser.parse_args(["ops", "repair-news-duplicates-hard-cut", "--limit", "25", "--dry-run"])
     with pytest.raises(SystemExit):
-        parser.parse_args(["ops", "repair-news-duplicates-hard-cut", "--limit", "25", "--dry-run", "--execute"])
+        parser.parse_args(["ops", "repair-news-duplicates-hard-cut", "--limit", "25", "--execute"])
     with pytest.raises(SystemExit):
-        parser.parse_args(["ops", "repair-news-agent-market-admission", "--until-ms", "2000"])
+        parser.parse_args(["ops", "repair-news-agent-market-admission", "--since-ms", "1000", "--until-ms", "2000"])
     with pytest.raises(SystemExit):
-        parser.parse_args(["ops", "repair-news-agent-market-admission", "--since-ms", "1000"])
+        parser.parse_args(["ops", "cleanup-news-intel-hard-cut"])
     with pytest.raises(SystemExit):
-        parser.parse_args(
-            [
-                "ops",
-                "repair-news-agent-market-admission",
-                "--since-ms",
-                "1000",
-                "--until-ms",
-                "2000",
-                "--legacy-id",
-                "old",
-            ]
-        )
-    with pytest.raises(SystemExit):
-        parser.parse_args(
-            [
-                "ops",
-                "repair-news-agent-market-admission",
-                "--since-ms",
-                "1000",
-                "--until-ms",
-                "2000",
-                "--dry-run",
-                "--execute",
-            ]
-        )
+        parser.parse_args(["ops", "cleanup-news-intel-hard-cut", "--execute"])
     with pytest.raises(SystemExit):
         parser.parse_args(["ops", "cleanup-news-brief-input"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ops", "cleanup-news-brief-input", "--dry-run"])
 
 
 def test_removed_cleanup_news_item_brief_schema_hard_cut_command_is_not_registered() -> None:
@@ -268,25 +199,10 @@ def test_removed_cleanup_news_item_brief_schema_hard_cut_command_is_not_register
         parser.parse_args(["ops", "cleanup-news-item-brief-schema-hard-cut", "--execute"])
 
 
-def test_ops_repair_news_market_signal_requires_mode() -> None:
+def test_removed_repair_news_market_signal_command_is_not_registered() -> None:
     parser = build_parser()
 
-    dry_run = parser.parse_args(
-        ["ops", "repair-news-market-signal", "--since-hours", "8", "--min-score", "80", "--dry-run"]
-    )
-    execute = parser.parse_args(
-        ["ops", "repair-news-market-signal", "--since-hours", "8", "--min-score", "80", "--execute"]
-    )
-
-    assert dry_run.ops_command == "repair-news-market-signal"
-    assert dry_run.since_hours == 8
-    assert dry_run.min_score == 80
-    assert dry_run.dry_run is True
-    assert dry_run.execute is False
-    assert execute.execute is True
-    assert execute.dry_run is False
-
     with pytest.raises(SystemExit):
-        parser.parse_args(["ops", "repair-news-market-signal"])
+        parser.parse_args(["ops", "repair-news-market-signal", "--dry-run"])
     with pytest.raises(SystemExit):
         parser.parse_args(["ops", "repair-news-market-signal", "--dry-run", "--execute"])

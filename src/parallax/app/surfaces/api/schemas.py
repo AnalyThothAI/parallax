@@ -178,10 +178,6 @@ class NarrativeCurrentnessData(ApiSchema):
 class TokenDiscussionDigestData(ApiSchema):
     status: Literal["ready", "pending", "insufficient", "semantic_unavailable", "stale"]
     currentness: NarrativeCurrentnessData
-    analysis_window: str | None = None
-    source_window: str | None = None
-    surface_window: str | None = None
-    reuse_reason: str | None = None
     data_gaps: list[Any] = Field(default_factory=list)
     coverage: JsonObject = Field(default_factory=dict)
 
@@ -260,8 +256,6 @@ class NewsAlertEligibility(ApiSchema):
     external_push_basis: str | None = None
     agent_status: str | None = None
     decision_class: str | None = None
-    provider_status: str | None = None
-    provider_score: int | None = None
     market_scope: NewsMarketScope | None = None
     agent_admission_status: str | None = None
     agent_admission_reason: str | None = None
@@ -283,8 +277,9 @@ class NewsSignalSummary(ApiSchema):
 
 
 class NewsSignalEnvelope(ApiSchema):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
     display_signal: NewsSignalSummary = Field(default_factory=NewsSignalSummary)
-    provider_signal: NewsSignalSummary | None = None
     agent_signal: JsonObject = Field(default_factory=dict)
     alert_eligibility: NewsAlertEligibility = Field(default_factory=NewsAlertEligibility)
 
@@ -306,9 +301,6 @@ class NewsTokenLane(ApiSchema):
     symbol: str | None = None
     target_type: str | None = None
     target_id: str | None = None
-    provider_signal: str | None = None
-    provider_score: int | None = None
-    provider_grade: str | None = None
     market_type: str | None = None
     reason_codes: list[str] = Field(default_factory=list)
     score: int | None = None
@@ -331,47 +323,21 @@ class NewsAgentBrief(ApiSchema):
     title_zh: str | None = None
     summary_zh: str | None = None
     market_read_zh: str | None = None
-    research_todos_zh: list[str] = Field(default_factory=list)
     market_impacts: list[Any] = Field(default_factory=list)
     bull_strength: str | None = None
     bear_strength: str | None = None
     data_gap_count: int | None = None
     computed_at_ms: int | None = None
-    agent_run_id: str | None = None
-    schema_version: str | None = None
-    prompt_version: str | None = None
-    artifact_version_hash: str | None = None
-    input_hash: str | None = None
-    output_hash: str | None = None
-    brief_json: JsonObject = Field(default_factory=dict)
     bull_view: JsonObject | None = None
     bear_view: JsonObject | None = None
+    affected_entities: list[Any] = Field(default_factory=list)
     data_gaps: list[Any] = Field(default_factory=list)
     watch_triggers: list[str] = Field(default_factory=list)
     invalidation_conditions: list[str] = Field(default_factory=list)
     evidence_refs: list[Any] = Field(default_factory=list)
 
 
-class NewsResearchToolResult(ApiSchema):
-    tool_call_id: str | None = None
-    tool_name: str | None = None
-    schema_version: str | None = None
-    query_version: str | None = None
-    input: JsonObject | None = None
-    source_tables: list[str] = Field(default_factory=list)
-    rows: list[Any] = Field(default_factory=list)
-    row_count: int | None = None
-    truncated: bool | None = None
-    skipped_reason: str | None = None
-    result_hash: str | None = None
-    generated_at_ms: int | None = None
-    latency_ms: int | None = None
-    redaction_notes: list[str] = Field(default_factory=list)
-    evidence_refs: list[Any] = Field(default_factory=list)
-
-
 class NewsAgentRunSummary(ApiSchema):
-    run_id: str | None = None
     backend: str | None = None
     status: str | None = None
     outcome: str | None = None
@@ -380,14 +346,6 @@ class NewsAgentRunSummary(ApiSchema):
     lane: str | None = None
     workflow_name: str | None = None
     agent_name: str | None = None
-    execution_trace_id: str | None = None
-    artifact_version_hash: str | None = None
-    prompt_version: str | None = None
-    schema_version: str | None = None
-    validator_version: str | None = None
-    guardrail_version: str | None = None
-    input_hash: str | None = None
-    output_hash: str | None = None
     started_at_ms: int | None = None
     finished_at_ms: int | None = None
     latency_ms: int | None = None
@@ -395,16 +353,6 @@ class NewsAgentRunSummary(ApiSchema):
     error_class: str | None = None
     error: str | None = None
     error_message: str | None = None
-    request_json: JsonObject | None = None
-    response_json: JsonObject | None = None
-    validation_errors_json: list[Any] = Field(default_factory=list)
-    usage_json: JsonObject = Field(default_factory=dict)
-    trace_metadata_json: JsonObject = Field(default_factory=dict)
-    research_plan: JsonObject | None = None
-    tool_results: list[NewsResearchToolResult] = Field(default_factory=list)
-    research_execution: JsonObject | None = None
-    research_hashes: JsonObject | None = None
-    base_packet: JsonObject | None = None
 
 
 class NewsRow(ApiSchema):
@@ -465,8 +413,6 @@ class NewsObjectData(NewsRow):
     token_mentions: list[Any] = Field(default_factory=list)
     fact_candidates: list[NewsFactLane] = Field(default_factory=list)
     agent_run: NewsAgentRunSummary | None = None
-    provider_signal: NewsSignalSummary | None = None
-    provider_token_impacts: list[NewsTokenLane] = Field(default_factory=list)
     provider_item: JsonObject | None = None
     fetch_run: JsonObject | None = None
     observation_edges: list[JsonObject] = Field(default_factory=list)
@@ -567,33 +513,6 @@ class NotificationReadAllData(ApiSchema):
     updated_count: int
 
 
-class SignalPulseStagePayload(ApiSchema):
-    stage: str | None = None
-    route: str | None = None
-    status: str | None = None
-    model: str | None = None
-    started_at_ms: int | None = None
-    finished_at_ms: int | None = None
-    latency_ms: int | None = None
-    attempt_index: int | None = None
-    response: JsonObject | None = None
-    error: str | None = None
-
-
-class SignalPulseStages(ApiSchema):
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-    evidence_pack: SignalPulseStagePayload | None = None
-    evidence_completeness_gate: SignalPulseStagePayload | None = None
-    signal_analyst: SignalPulseStagePayload | None = None
-    bear_case: SignalPulseStagePayload | None = None
-    claim_verifier: SignalPulseStagePayload | None = None
-    risk_portfolio_judge: SignalPulseStagePayload | None = None
-    recommendation_clipper: SignalPulseStagePayload | None = None
-    deterministic_eval: SignalPulseStagePayload | None = None
-    write_gate: SignalPulseStagePayload | None = None
-
-
 class SignalPulseBullBearView(ApiSchema):
     strength: str
     thesis_zh: str
@@ -687,10 +606,7 @@ class SignalPulseItem(ApiSchema):
     factor_snapshot: JsonObject | None = None
     decision: SignalPulseDecision | None = None
     gate: JsonObject | None = None
-    claim_verification: JsonObject | None = None
-    evidence_gate: JsonObject | None = None
     fact_card: JsonObject | None = None
-    agent_run_id: str | None = None
     pulse_version: str | None = None
     gate_version: str | None = None
     prompt_version: str | None = None
@@ -698,7 +614,6 @@ class SignalPulseItem(ApiSchema):
     created_at_ms: int | None = None
     updated_at_ms: int | None = None
     playbooks: list[JsonObject] = Field(default_factory=list)
-    stages: SignalPulseStages | None = None
 
 
 class SignalPulseData(ApiSchema):

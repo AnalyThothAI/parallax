@@ -1,4 +1,4 @@
-import type { SignalPulseItem, SignalPulseStages, TokenFactorSnapshot } from "@lib/types";
+import type { SignalPulseItem, TokenFactorSnapshot } from "@lib/types";
 
 const evidenceIds = [
   "gmgn:twitter_monitor_basic:616d49c8-8186-4200-8c04-682d15c9d565",
@@ -7,86 +7,6 @@ const evidenceIds = [
   "gmgn:twitter_monitor_basic:e85fe52a-048e-4539-b262-539a8ed43016",
   "gmgn:twitter_monitor_basic:ee31804e-92ba-4ba2-b38e-9d898d8b3a5a",
 ];
-
-const stages: SignalPulseStages = {
-  evidence_pack: null,
-  evidence_completeness_gate: {
-    stage: "evidence_completeness_gate",
-    route: "meme",
-    status: "ok",
-    model: "deterministic",
-    started_at_ms: 1778726642689 - 14702,
-    finished_at_ms: 1778726642689 - 14702,
-    latency_ms: 0,
-    attempt_index: 0,
-    response: { evidence_status: "complete", hard_blocked: false },
-    error: null,
-  },
-  signal_analyst: {
-    stage: "signal_analyst",
-    route: "meme",
-    status: "ok",
-    model: "qwen3.6",
-    started_at_ms: 1778726642689 - 14702,
-    finished_at_ms: 1778726642689 - 6122,
-    latency_ms: 8580,
-    attempt_index: 0,
-    response: {
-      what_changed_zh: "TITTY 在 1h 内呈现高社交热度爆发，cache100x 主导传播，市值约 $114K。",
-    },
-    error: null,
-  },
-  bear_case: {
-    stage: "bear_case",
-    route: "meme",
-    status: "ok",
-    model: "qwen3.6",
-    started_at_ms: 1778726642689 - 6122,
-    finished_at_ms: 1778726642689 - 3000,
-    latency_ms: 3122,
-    attempt_index: 0,
-    response: {
-      risk_claims: [
-        {
-          claim: "流动性偏薄且传播集中，容易快速降温。",
-          evidence_refs: ["market:pf-titty"],
-          stance: "risk",
-        },
-      ],
-      confidence_ceiling: 0.45,
-    },
-    error: null,
-  },
-  risk_portfolio_judge: {
-    stage: "risk_portfolio_judge",
-    route: "meme",
-    status: "ok",
-    model: "qwen3.6",
-    started_at_ms: 1778726642689 - 3000,
-    finished_at_ms: 1778726642689,
-    latency_ms: 3000,
-    attempt_index: 0,
-    response: {
-      route: "meme",
-      confidence: 0.35,
-      summary_zh:
-        "TITTY 社交热度强但流动性浅、营销集中、缺少定性催化数据；建议以 trade_candidate 路由，置信度被关键风险压低。",
-      abstain_reason: null,
-      recommendation: "trade_candidate",
-      residual_risks: ["thin liquidity", "marketing concentration", "unknown holder distribution"],
-      invalidation_conditions: [
-        "liquidity drops by more than 20%",
-        "social heat score falls below 50",
-      ],
-      evidence_event_ids: evidenceIds,
-    },
-    error: null,
-  },
-  claim_verifier: null,
-  recommendation_clipper: null,
-  deterministic_eval: null,
-  write_gate: null,
-};
 
 export const tittyPulseFixture: SignalPulseItem = {
   candidate_id: "pulse-fa2a12fedd9332271732110ed8bd7b1b49065282",
@@ -144,7 +64,6 @@ export const tittyPulseFixture: SignalPulseItem = {
     volume_24h_usd: 1537005.60842172,
     watched_mentions: 0,
   },
-  agent_run_id: "pulse-run:7d250fd8ed8838475aa1b9f8d7deef780e963804",
   pulse_version: "pulse-decision-harness-v1",
   gate_version: "gate-v1",
   prompt_version: "p4.2",
@@ -152,7 +71,6 @@ export const tittyPulseFixture: SignalPulseItem = {
   created_at_ms: 1778725672119,
   updated_at_ms: 1778726642689,
   playbooks: [],
-  stages,
 };
 
 function tittyFactorSnapshot(): TokenFactorSnapshot {

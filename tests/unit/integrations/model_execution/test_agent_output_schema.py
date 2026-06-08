@@ -4,11 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from parallax.domains.pulse_lab.types.agent_decision import (
-    BearCaseMemo,
-    FinalDecision,
-    SignalAnalystMemo,
-)
+from parallax.domains.pulse_lab.types.agent_decision import FinalDecision
 from parallax.integrations.model_execution.output_schema import (
     StrictJsonOutputSchema,
 )
@@ -64,16 +60,15 @@ def test_pulse_agent_output_schemas_match_litellm_json_object_subset() -> None:
         "then",
     }
 
-    for output_type in (SignalAnalystMemo, BearCaseMemo, FinalDecision):
-        schema = StrictJsonOutputSchema(output_type).json_schema()
+    schema = StrictJsonOutputSchema(FinalDecision).json_schema()
 
-        assert schema["type"] == "object"
-        assert "anyOf" not in schema
-        for node in _walk_schema(schema):
-            assert forbidden_keywords.isdisjoint(node.keys())
-            if node.get("type") == "object":
-                assert node.get("additionalProperties") is False
-                assert node.get("required") == list(node.get("properties", {}).keys())
+    assert schema["type"] == "object"
+    assert "anyOf" not in schema
+    for node in _walk_schema(schema):
+        assert forbidden_keywords.isdisjoint(node.keys())
+        if node.get("type") == "object":
+            assert node.get("additionalProperties") is False
+            assert node.get("required") == list(node.get("properties", {}).keys())
 
 
 def test_final_decision_schema_keeps_worker_enriched_urls_as_empty_object_contract() -> None:

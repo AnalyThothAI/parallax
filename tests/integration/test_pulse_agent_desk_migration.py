@@ -13,13 +13,11 @@ from tests.postgres_test_utils import connect_postgres_test, reset_postgres_sche
 
 pytestmark = pytest.mark.integration
 
-_RESEARCH_COMMITTEE_STAGES = (
+_PULSE_AGENT_STAGES = (
     "evidence_pack",
     "evidence_completeness_gate",
-    "signal_analyst",
-    "bear_case",
+    "pulse_decision",
     "claim_verifier",
-    "risk_portfolio_judge",
     "recommendation_clipper",
     "deterministic_eval",
     "write_gate",
@@ -71,14 +69,14 @@ def _seed_run_and_job(repo: SimpleNamespace, *, run_id: str) -> None:
     )
 
 
-def test_stage_check_admits_research_committee_stages_and_rejects_legacy(tmp_path) -> None:
+def test_stage_check_admits_pulse_agent_stages_and_rejects_legacy(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         reset_postgres_schema(conn)
         repo = _pulse_repos(conn)
         _seed_run_and_job(repo, run_id="run-stage-check")
 
-        for accepted_stage in _RESEARCH_COMMITTEE_STAGES:
+        for accepted_stage in _PULSE_AGENT_STAGES:
             step = repo.runs.insert_agent_run_step(
                 step_id=f"run-stage-check:{accepted_stage}:0",
                 run_id="run-stage-check",

@@ -124,10 +124,6 @@ def _base_gate(
     if _is_source_suppressed(item):
         return _skip("source_suppressed", "source_suppressed", news_item_id, basis)
 
-    provider_signal = _mapping(item.get("provider_signal_json"))
-    if provider_signal:
-        basis["provider_score"] = _optional_int(provider_signal.get("score"))
-
     published_at_ms = _optional_int(item.get("published_at_ms"))
     if published_at_ms is None:
         return _skip("needs_review", "published_at_missing", news_item_id, basis)

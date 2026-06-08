@@ -211,7 +211,6 @@ class NarrativeRepository:
                 "window",
                 scope,
                 venue,
-                current_generation_id,
                 current_published_at_ms,
                 current_row_count
               FROM token_radar_publication_state
@@ -221,7 +220,6 @@ class NarrativeRepository:
                 AND venue = 'all'
                 AND latest_attempt_status = 'ready'
                 AND current_published_at_ms IS NOT NULL
-                AND current_generation_id IS NOT NULL
               LIMIT 1
             )
             SELECT token_radar_current_rows.row_id,
@@ -241,7 +239,6 @@ class NarrativeRepository:
              AND token_radar_current_rows."window" = latest."window"
              AND token_radar_current_rows.scope = latest.scope
              AND token_radar_current_rows.venue = latest.venue
-             AND token_radar_current_rows.generation_id = latest.current_generation_id
              AND token_radar_current_rows.target_type = %s
              AND token_radar_current_rows.target_id = %s
             WHERE latest.current_row_count > 0
@@ -845,8 +842,7 @@ class NarrativeRepository:
             WITH active_admissions AS (
               SELECT
                 admissions.target_type,
-                admissions.target_id,
-                admissions.source_fingerprint
+                admissions.target_id
               FROM narrative_admissions AS admissions
               WHERE admissions.status = 'admitted'
                 AND admissions.schema_version = %s
@@ -864,7 +860,6 @@ class NarrativeRepository:
                 FROM active_admissions
                 WHERE active_admissions.target_type = digest.target_type
                   AND active_admissions.target_id = digest.target_id
-                  AND COALESCE(active_admissions.source_fingerprint, '') = COALESCE(digest.source_fingerprint, '')
               )
             )
             """,
@@ -2067,7 +2062,21 @@ class NarrativeRepository:
         for post in posts:
             row = self.conn.execute(
                 """
-                SELECT *
+                SELECT
+                  event_id,
+                  target_type,
+                  target_id,
+                  schema_version,
+                  language,
+                  status,
+                  trade_stance,
+                  attention_valence,
+                  narrative_cluster_key,
+                  claim_type,
+                  evidence_type,
+                  semantic_confidence,
+                  co_mentioned_targets_json,
+                  evidence_refs_json
                 FROM token_mention_semantics
                 WHERE event_id = %s
                   AND target_type = %s

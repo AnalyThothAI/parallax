@@ -61,13 +61,13 @@ def test_provider_stage_failure_records_failed_run_eval_and_job_failure() -> Non
     class FailingClient(FakeClient):
         async def run_decision_pipeline(self, **kwargs: Any) -> Any:
             failed_audit = StageRunAudit(
-                stage="signal_analyst",
+                stage="pulse_decision",
                 route=kwargs["route"],
                 attempt_index=0,
                 input_json={"context": kwargs["context"]},
-                prompt_text="fake signal analyst prompt",
+                prompt_text="fake pulse decision prompt",
                 response_json={"raw_output": "not valid json"},
-                trace_metadata_json={"stage": "signal_analyst"},
+                trace_metadata_json={"stage": "pulse_decision"},
                 usage_json={"input_tokens": 11},
                 latency_ms=42,
                 started_at_ms=NOW_MS - 42,
@@ -82,7 +82,7 @@ def test_provider_stage_failure_records_failed_run_eval_and_job_failure() -> Non
     with pytest.raises(PulseStageFailure):
         asyncio.run(service.run_job(job, context, now_ms=NOW_MS))
 
-    failed_step = next(row for row in repos.pulse_runs.agent_run_steps if row["stage"] == "signal_analyst")
+    failed_step = next(row for row in repos.pulse_runs.agent_run_steps if row["stage"] == "pulse_decision")
     assert failed_step["status"] == "failed"
     failed_run = next(row for row in repos.pulse_runs.finished_runs if row["status"] == "failed")
     assert failed_run["trace_metadata_json_patch"] == {"failure_reason": "invalid_schema"}
@@ -332,40 +332,32 @@ def test_hard_blocked_success_records_evidence_gate_without_provider_run() -> No
 
     assert client.run_calls == 0
     stored_run = repos.pulse_runs.agent_runs[0]
-    assert stored_run["request_json"]["cost_guard"]["decision"]["action"] == "no_llm_finalize"
+    assert stored_run["request_json"]["cost_guard"]["decision"]["action"] == "deterministic_finalize"
     gate_step = next(row for row in repos.pulse_runs.agent_run_steps if row["stage"] == "evidence_completeness_gate")
     assert gate_step["response_json"]["hard_blocked"] is True
-    assert not any(row["stage"] == "signal_analyst" for row in repos.pulse_runs.agent_run_steps)
-    assert not any(row["stage"] == "bear_case" for row in repos.pulse_runs.agent_run_steps)
-    assert not any(row["stage"] == "risk_portfolio_judge" for row in repos.pulse_runs.agent_run_steps)
+    assert not any(row["stage"] == "pulse_decision" for row in repos.pulse_runs.agent_run_steps)
     finished_run = next(row for row in repos.pulse_runs.finished_runs if row["status"] == "done")
     assert finished_run["outcome"] == "blocked_market_contract"
     assert repos.pulse_jobs.successes == [job["job_id"]]
 
 
-def test_run_job_reuses_terminal_fingerprint_without_model_call() -> None:
+def test_run_job_ignores_prior_terminal_fingerprint_and_runs_current_pipeline() -> None:
     repos = FakeRepos()
     context = _pulse_context(factor_snapshot=_factor_snapshot(rank_score=82))
     job = _enqueue_context_job(repos, context)
-    repos.pulse_runs.terminal_fingerprint_result = {
-        "run_id": "run-existing-terminal",
-        "response_json": _invalid_model_output_abstain(route="meme").model_dump(mode="json"),
-        "output_hash": "sha256:existing-output",
-        "usage_json": {"input_tokens": 999, "output_tokens": 999},
-    }
     client = FakeClient()
     service = _service(repos, client=client)
 
     asyncio.run(service.run_job(job, context, now_ms=NOW_MS))
 
-    assert client.run_calls == 0
-    assert repos.pulse_runs.terminal_fingerprint_lookups
+    assert client.run_calls == 1
+    assert not hasattr(repos.pulse_runs, "terminal_run_for_fingerprint")
     stored_run = repos.pulse_runs.agent_runs[0]
-    assert stored_run["request_json"]["cost_guard"]["decision"]["action"] == "reuse_terminal_run"
-    assert stored_run["request_json"]["cost_guard"]["reused_run_id"] == "run-existing-terminal"
-    assert not any(row["stage"] == "signal_analyst" for row in repos.pulse_runs.agent_run_steps)
+    assert stored_run["request_json"]["cost_guard"]["decision"]["action"] == "run_decision"
+    assert "reused_run_id" not in stored_run["request_json"]["cost_guard"]
+    assert any(row["stage"] == "pulse_decision" for row in repos.pulse_runs.agent_run_steps)
     finished_run = next(row for row in repos.pulse_runs.finished_runs if row["status"] == "done")
-    assert finished_run["usage_json"] == {}
+    assert finished_run["output_hash"] == "output-hash"
     assert repos.pulse_jobs.successes == [job["job_id"]]
 
 
@@ -388,16 +380,12 @@ def test_source_quality_hidden_path_does_not_call_deepseek() -> None:
     asyncio.run(service.run_job(job, context, now_ms=NOW_MS))
 
     assert client.run_calls == 1
-    assert client.stage_plans
-    assert client.stage_plans[0].run_signal_analyst is True
-    assert client.stage_plans[0].run_bear_case is True
-    assert client.stage_plans[0].run_risk_portfolio_judge is False
     stored_run = repos.pulse_runs.agent_runs[0]
-    assert stored_run["request_json"]["cost_guard"]["decision"]["action"] == "research_only"
-    assert stored_run["request_json"]["cost_guard"]["decision"]["public_judge_allowed"] is False
-    assert any(row["stage"] == "signal_analyst" for row in repos.pulse_runs.agent_run_steps)
-    assert any(row["stage"] == "bear_case" for row in repos.pulse_runs.agent_run_steps)
-    assert not any(row["stage"] == "risk_portfolio_judge" for row in repos.pulse_runs.agent_run_steps)
+    assert stored_run["request_json"]["cost_guard"]["decision"]["action"] == "skip_decision"
+    assert stored_run["request_json"]["cost_guard"]["decision"]["decision_allowed"] is False
+    assert "public_judge_allowed" not in stored_run["request_json"]["cost_guard"]["decision"]
+    assert "stage_plan" not in stored_run["request_json"]["cost_guard"]
+    assert not any(row["stage"] == "pulse_decision" for row in repos.pulse_runs.agent_run_steps)
     assert repos.pulse_candidates.candidate_upserts[0]["display_status"] == "hidden_source_quality"
 
 
@@ -540,15 +528,15 @@ def _failed_stage_audit(
     error: str,
     error_class: AgentExecutionErrorClass | None = None,
 ) -> StageRunAudit:
-    trace_metadata_json = {"stage": "signal_analyst"}
+    trace_metadata_json = {"stage": "pulse_decision"}
     if error_class is not None:
         trace_metadata_json["error_class"] = str(error_class.value)
     return StageRunAudit(
-        stage="signal_analyst",
+        stage="pulse_decision",
         route=route,  # type: ignore[arg-type]
         attempt_index=0,
         input_json={"context": "test"},
-        prompt_text="fake signal analyst prompt",
+        prompt_text="fake pulse decision prompt",
         response_json=None,
         trace_metadata_json=trace_metadata_json,
         usage_json={"input_tokens": 11},

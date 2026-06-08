@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from types import SimpleNamespace
 
 from parallax.domains.pulse_lab.services.pulse_freshness_health import PulseFreshnessHealthService
@@ -7,7 +8,11 @@ from parallax.domains.pulse_lab.services.write_gate import PulseWriteGate
 from parallax.domains.pulse_lab.types.agent_decision import BullBearView, FinalDecision, TradePlaybook
 
 
-def test_write_gate_does_not_hide_current_valid_candidate_due_to_aggregate_hold_health() -> None:
+def test_write_gate_has_no_aggregate_health_dependency() -> None:
+    assert "health_status" not in inspect.signature(PulseWriteGate.evaluate).parameters
+
+
+def test_write_gate_allows_current_valid_candidate_without_aggregate_health() -> None:
     decision = _trade_candidate_decision()
 
     result = PulseWriteGate().evaluate(
@@ -16,7 +21,6 @@ def test_write_gate_does_not_hide_current_valid_candidate_due_to_aggregate_hold_
         gate=SimpleNamespace(pulse_status="trade_candidate"),
         evidence_gate=SimpleNamespace(evidence_status="complete", public_allowed=True),
         claim_verification=SimpleNamespace(valid=True, decision_status="trade_candidate"),
-        health_status={"publish_status": "hold_publish", "reasons": ["agent_failure_rate_hold"]},
     )
 
     assert result.public_write_allowed is True

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from contextlib import contextmanager
 from decimal import Decimal
 from types import SimpleNamespace
@@ -30,12 +31,9 @@ from parallax.domains.pulse_lab.services.pulse_candidate_job_service import (
     _run_outcome,
 )
 from parallax.domains.pulse_lab.types.agent_decision import (
-    BearCaseMemo,
     BullBearView,
-    EvidenceClaim,
     FinalDecision,
     PulseStageFailure,
-    SignalAnalystMemo,
     StageRunAudit,
     TradePlaybook,
 )
@@ -48,6 +46,21 @@ from parallax.platform.agent_execution import (
 from parallax.platform.config.settings import Settings
 
 NOW_MS = 1_800_000
+
+
+def test_asset_candidate_id_uses_stable_product_window_identity() -> None:
+    expected = "pulse-" + hashlib.sha256(b"token_target|1h|all|Asset|asset-1").hexdigest()[:40]
+
+    assert (
+        _asset_candidate_id(
+            candidate_type="token_target",
+            window="1h",
+            scope="all",
+            target_type="Asset",
+            target_id="asset-1",
+        )
+        == expected
+    )
 
 
 def test_missing_factor_snapshot_is_not_enqueued() -> None:
@@ -1015,13 +1028,13 @@ def test_worker_persists_failed_stage_audits_when_provider_raises_stage_failure(
         async def run_decision_pipeline(self, **kwargs: Any) -> Any:
             self.run_calls += 1
             failed_audit = StageRunAudit(
-                stage="signal_analyst",
+                stage="pulse_decision",
                 route=kwargs["route"],
                 attempt_index=0,
                 input_json={"context": kwargs["context"]},
-                prompt_text="fake signal analyst prompt",
+                prompt_text="fake pulse decision prompt",
                 response_json={"raw_output": "**Investigation Report:** prose only"},
-                trace_metadata_json={"stage": "signal_analyst"},
+                trace_metadata_json={"stage": "pulse_decision"},
                 usage_json={"input_tokens": 11},
                 latency_ms=42,
                 started_at_ms=NOW_MS - 42,
@@ -1038,7 +1051,7 @@ def test_worker_persists_failed_stage_audits_when_provider_raises_stage_failure(
 
     assert result["processed"] == 0
     assert result["failed"] == 1
-    step = next(row for row in repos.pulse_runs.agent_run_steps if row["stage"] == "signal_analyst")
+    step = next(row for row in repos.pulse_runs.agent_run_steps if row["stage"] == "pulse_decision")
     assert step["status"] == "failed"
     assert step["error"] == "ValidationError: invalid JSON"
     assert step["response_json"] == {"raw_output": "**Investigation Report:** prose only"}
@@ -1091,7 +1104,7 @@ def test_hard_blocked_evidence_gate_does_not_call_agent() -> None:
     assert gate_step["status"] == "ok"
     assert gate_step["response_json"]["hard_blocked"] is True
     assert gate_step["response_json"]["blocked_reason"] == "blocked_market_contract"
-    assert not any(row["stage"] == "risk_portfolio_judge" for row in repos.pulse_runs.agent_run_steps)
+    assert not any(row["stage"] == "pulse_decision" for row in repos.pulse_runs.agent_run_steps)
 
 
 def test_hard_blocked_run_marks_edge_state_processed(monkeypatch) -> None:
@@ -1121,8 +1134,7 @@ def test_worker_runtime_manifest_uses_decision_client_runtime_contract() -> None
 
     class ContractClient(FakeClient):
         runtime_contract = PulseAgentRuntimeContract(
-            stage_names=("signal_analyst", "bear_case", "risk_portfolio_judge"),
-            safety_net_enabled=False,
+            stage_names=("pulse_decision",),
             validators_enabled=("runtime_evidence_id_subset",),
             failure_taxonomy_version="pulse-failure-taxonomy-test",
         )
@@ -1136,7 +1148,7 @@ def test_worker_runtime_manifest_uses_decision_client_runtime_contract() -> None
     manifest = repos.pulse_agent_eval.runtime_versions[0]["manifest_json"]
     assert "tool_names_by_stage" not in manifest["runtime"]
     assert "max_turns_per_stage" not in manifest["runtime"]
-    assert manifest["runtime"]["safety_net_enabled"] is False
+    assert "safety_net_enabled" not in manifest["runtime"]
     assert manifest["contracts"]["validators_enabled"] == ["runtime_evidence_id_subset"]
     assert manifest["failure_taxonomy"]["version"] == "pulse-failure-taxonomy-test"
 
@@ -1151,7 +1163,7 @@ def test_worker_runtime_manifest_uses_wired_provider_evidence_first_contract(mon
             "agent_runtime": {
                 "defaults": {"model": "gpt-enrich"},
                 "lanes": {
-                    "pulse.signal_analyst": {"model": "gpt-pulse"},
+                    "pulse.decision": {"model": "gpt-pulse"},
                 },
             },
         },
@@ -1174,9 +1186,9 @@ def test_worker_runtime_manifest_uses_wired_provider_evidence_first_contract(mon
 
     assert result["processed"] == 1
     manifest = repos.pulse_agent_eval.runtime_versions[0]["manifest_json"]
-    assert manifest["runtime"]["stages"] == ["signal_analyst", "bear_case", "risk_portfolio_judge"]
+    assert manifest["runtime"]["stages"] == ["pulse_decision"]
     assert "tool_names_by_stage" not in manifest["runtime"]
-    assert manifest["runtime"]["safety_net_enabled"] is True
+    assert "safety_net_enabled" not in manifest["runtime"]
 
 
 def test_pulse_worker_run_once_returns_worker_result() -> None:
@@ -1277,8 +1289,8 @@ def test_pulse_pipeline_parent_reservation_is_passed_to_stage_execution() -> Non
     assert all(
         call
         == {
-            "lane": "pulse.pipeline",
-            "child_lanes": ("pulse.signal_analyst", "pulse.bear_case", "pulse.risk_portfolio_judge"),
+            "lane": "pulse.decision",
+            "child_lanes": ("pulse.decision",),
             "scope": "parent",
         }
         for call in client.reserve_calls
@@ -1440,7 +1452,7 @@ class FakeDB:
 
 class FakeAgentExecutionGateway:
     def model_for_lane(self, lane: str) -> str:
-        if lane == "pulse.signal_analyst":
+        if lane == "pulse.decision":
             return "gpt-pulse"
         if lane == "watchlist.handle_summary":
             return "gpt-summary"
@@ -1459,62 +1471,36 @@ class FakeAgentExecutionGateway:
         risk_refs = tuple(ref for ref in allowed_refs if ref.startswith("market:"))[:1]
         evidence_packet = stage.input_payload.get("evidence_packet") or {}
         evidence_ids = evidence_packet.get("source_event_ids") or ["event-1"]
-        if stage.stage == "signal_analyst":
-            final_output = SignalAnalystMemo(
-                bull_claims=(
-                    EvidenceClaim(
-                        claim="独立作者扩散和关注账号确认提供了继续观察的积极证据。",
-                        evidence_refs=supporting_refs,
-                        stance="bull",
-                    ),
-                ),
-                what_changed_zh="基于封闭证据包的信号分析完成。",
-                allowed_evidence_ref_ids=tuple(allowed_refs),
-            )
-        elif stage.stage == "bear_case":
-            final_output = BearCaseMemo(
-                risk_claims=(
-                    EvidenceClaim(
-                        claim="价格响应和流动性确认仍不足，热度可能快速降温。",
-                        evidence_refs=risk_refs or supporting_refs,
-                        stance="risk",
-                    ),
-                ),
-                confidence_ceiling=0.7,
-                missing_fact_impacts=(),
-                allowed_evidence_ref_ids=tuple(allowed_refs),
-            )
-        else:
-            final_output = FinalDecision(
-                route=stage.input_payload.get("route") or "meme",
-                recommendation="watchlist",
-                confidence=0.7,
-                abstain_reason=None,
-                summary_zh="因子快照显示信号值得继续观察。",
-                narrative_archetype="社交扩散",
-                narrative_thesis_zh="当前独立作者与社交热度同步抬升，链上质量尚可，适合继续观察扩散是否持续。",
-                bull_view=BullBearView(
-                    strength="moderate",
-                    thesis_zh="独立作者扩散和关注账号确认提供了继续观察的积极证据。",
-                    supporting_event_ids=list(evidence_ids),
-                ),
-                bear_view=BullBearView(
-                    strength="weak",
-                    thesis_zh="价格响应和流动性确认仍不足，热度可能快速降温。",
-                    supporting_event_ids=list(evidence_ids),
-                ),
-                playbook=TradePlaybook(
-                    has_playbook=True,
-                    watch_signals=["关注独立作者是否继续扩散"],
-                    exit_triggers=["独立作者讨论快速降温"],
-                    monitoring_horizon="4h",
-                ),
-                invalidation_conditions=["独立作者数回落。"],
-                residual_risks=["价格响应仍可能变化。"],
-                evidence_event_ids=list(evidence_ids),
-                supporting_evidence_refs=supporting_refs,
-                risk_evidence_refs=risk_refs,
-            )
+        final_output = FinalDecision(
+            route=stage.input_payload.get("route") or "meme",
+            recommendation="watchlist",
+            confidence=0.7,
+            abstain_reason=None,
+            summary_zh="因子快照显示信号值得继续观察。",
+            narrative_archetype="社交扩散",
+            narrative_thesis_zh="当前独立作者与社交热度同步抬升，链上质量尚可，适合继续观察扩散是否持续。",
+            bull_view=BullBearView(
+                strength="moderate",
+                thesis_zh="独立作者扩散和关注账号确认提供了继续观察的积极证据。",
+                supporting_event_ids=list(evidence_ids),
+            ),
+            bear_view=BullBearView(
+                strength="weak",
+                thesis_zh="价格响应和流动性确认仍不足，热度可能快速降温。",
+                supporting_event_ids=list(evidence_ids),
+            ),
+            playbook=TradePlaybook(
+                has_playbook=True,
+                watch_signals=["关注独立作者是否继续扩散"],
+                exit_triggers=["独立作者讨论快速降温"],
+                monitoring_horizon="4h",
+            ),
+            invalidation_conditions=["独立作者数回落。"],
+            residual_risks=["价格响应仍可能变化。"],
+            evidence_event_ids=list(evidence_ids),
+            supporting_evidence_refs=supporting_refs,
+            risk_evidence_refs=risk_refs,
+        )
         return SimpleNamespace(
             final_output=final_output,
             audit=SimpleNamespace(
@@ -1721,8 +1707,6 @@ class FakePulseStore:
         self.agent_runs: list[dict[str, Any]] = []
         self.agent_run_steps: list[dict[str, Any]] = []
         self.finished_runs: list[dict[str, Any]] = []
-        self.terminal_fingerprint_result: dict[str, Any] | None = None
-        self.terminal_fingerprint_lookups: list[dict[str, Any]] = []
         self.runtime_versions: list[dict[str, Any]] = []
         self.eval_cases: list[dict[str, Any]] = []
         self.eval_results: list[dict[str, Any]] = []
@@ -1999,10 +1983,6 @@ class FakePulseStore:
         self.agent_run_steps.append(kwargs)
         return kwargs
 
-    def terminal_run_for_fingerprint(self, **kwargs: Any) -> dict[str, Any] | None:
-        self.terminal_fingerprint_lookups.append(kwargs)
-        return self.terminal_fingerprint_result
-
     def upsert_agent_runtime_version(self, **kwargs: Any) -> dict[str, Any]:
         self.runtime_versions.append(kwargs)
         return kwargs
@@ -2161,16 +2141,13 @@ class FakeClient:
     def __init__(self, *, recommendation: str = "watchlist") -> None:
         self.recommendation = recommendation
         self.contexts: list[dict[str, Any]] = []
-        self.stage_plans: list[Any] = []
         self.run_calls = 0
 
     def try_reserve_execution(self, lane: str, **_: Any) -> AgentCapacityReservation:
         return AgentCapacityReservation(lane=lane, acquired=True)
 
     def model_for_lane(self, lane: str) -> str:
-        if lane == "pulse.pipeline":
-            return "fake-pulse"
-        if lane in {"pulse.signal_analyst", "pulse.bear_case", "pulse.risk_portfolio_judge"}:
+        if lane == "pulse.decision":
             return "fake-pulse"
         return ""
 
@@ -2215,10 +2192,8 @@ class FakeClient:
         completeness: dict[str, Any],
         runtime_manifest: dict[str, Any],
         parent_reservation: AgentCapacityReservation | None = None,
-        stage_plan: Any | None = None,
     ) -> PulseDecisionResult:
         self.run_calls += 1
-        self.stage_plans.append(stage_plan)
         allowed_refs = [
             str(ref.get("ref_id"))
             for ref in context.get("evidence_packet", {}).get("allowed_evidence_refs", [])
@@ -2257,71 +2232,18 @@ class FakeClient:
             supporting_evidence_refs=supporting_refs,
             risk_evidence_refs=risk_refs,
         )
-        signal_memo = SignalAnalystMemo(
-            bull_claims=(
-                EvidenceClaim(
-                    claim="独立作者扩散和关注账号确认提供了继续观察的积极证据。",
-                    evidence_refs=supporting_refs,
-                    stance="bull",
-                ),
-            ),
-            what_changed_zh="基于封闭证据包的信号分析完成。",
-            allowed_evidence_ref_ids=tuple(allowed_refs),
-        )
-        bear_memo = BearCaseMemo(
-            risk_claims=(
-                EvidenceClaim(
-                    claim="价格响应和流动性确认仍不足，热度可能快速降温。",
-                    evidence_refs=risk_refs or supporting_refs,
-                    stance="risk",
-                ),
-            ),
-            confidence_ceiling=0.7,
-            missing_fact_impacts=(),
-            allowed_evidence_ref_ids=tuple(allowed_refs),
-        )
-        signal_audit = StageRunAudit(
-            stage="signal_analyst",
-            route=route,  # type: ignore[arg-type]
-            attempt_index=0,
-            input_json={
-                "context": context,
-                "completeness": completeness,
-            },
-            prompt_text="fake signal analyst prompt",
-            response_json=signal_memo.model_dump(mode="json"),
-            trace_metadata_json={},
-            usage_json={},
-            latency_ms=1,
-            status="ok",
-            error=None,
-        )
-        bear_audit = StageRunAudit(
-            stage="bear_case",
-            route=route,  # type: ignore[arg-type]
-            attempt_index=0,
-            input_json={
-                "context": context,
-                "completeness": completeness,
-                "signal_memo": signal_memo.model_dump(mode="json"),
-            },
-            prompt_text="fake bear case prompt",
-            response_json=bear_memo.model_dump(mode="json"),
-            trace_metadata_json={},
-            usage_json={},
-            latency_ms=1,
-            status="ok",
-            error=None,
-        )
-        if stage_plan is not None and not bool(getattr(stage_plan, "run_risk_portfolio_judge", True)):
+        if _decision_allowed_from_context(context) is False:
             final_decision = FinalDecision(
                 route=route,  # type: ignore[arg-type]
                 recommendation="abstain",
                 confidence=0.0,
-                abstain_reason="cost_guard_research_only",
-                summary_zh="成本门控仅完成研究阶段，本次不进入付费最终判断。",
+                abstain_reason="cost_guard_decision_skipped",
+                summary_zh="成本门控跳过单阶段决策，本次不发布候选。",
                 narrative_archetype="unclear",
-                narrative_thesis_zh="确定性成本门控判定该样本不需要公开最终判断；系统保留研究审计并等待下一轮公开资格确认。",
+                narrative_thesis_zh=(
+                    "确定性成本门控判定该样本不需要运行 Pulse 决策；"
+                    "系统保留审计并等待下一轮公开资格确认。"
+                ),
                 bull_view=BullBearView(strength="absent"),
                 bear_view=BullBearView(strength="absent"),
                 playbook=TradePlaybook(
@@ -2331,7 +2253,7 @@ class FakeClient:
                     monitoring_horizon="1h",
                 ),
                 invalidation_conditions=[],
-                residual_risks=["cost_guard_research_only"],
+                residual_risks=["cost_guard_decision_skipped"],
                 evidence_event_ids=list(evidence_ids),
                 supporting_evidence_refs=tuple(),
                 risk_evidence_refs=tuple(),
@@ -2348,19 +2270,17 @@ class FakeClient:
             return PulseDecisionResult(
                 final_decision=final_decision,
                 agent_run_audit={**audit, "output_hash": "output-hash"},
-                stage_audits=(signal_audit, bear_audit),
+                stage_audits=(),
             )
         stage_audit = StageRunAudit(
-            stage="risk_portfolio_judge",
+            stage="pulse_decision",
             route=route,  # type: ignore[arg-type]
             attempt_index=0,
             input_json={
                 "context": context,
                 "completeness": completeness,
-                "signal_memo": signal_memo.model_dump(mode="json"),
-                "bear_memo": bear_memo.model_dump(mode="json"),
             },
-            prompt_text="fake risk portfolio judge prompt",
+            prompt_text="fake pulse decision prompt",
             response_json=final_decision.model_dump(mode="json"),
             trace_metadata_json={},
             usage_json={},
@@ -2379,7 +2299,7 @@ class FakeClient:
         return PulseDecisionResult(
             final_decision=final_decision,
             agent_run_audit={**audit, "output_hash": "output-hash"},
-            stage_audits=(signal_audit, bear_audit, stage_audit),
+            stage_audits=(stage_audit,),
         )
 
 
@@ -2392,10 +2312,20 @@ class CapacityDeniedFakeClient(FakeClient):
         )
 
 
+def _decision_allowed_from_context(context: dict[str, Any]) -> bool:
+    cost_guard = context.get("cost_guard")
+    if not isinstance(cost_guard, dict):
+        return True
+    decision = cost_guard.get("decision")
+    if not isinstance(decision, dict):
+        return True
+    return bool(decision.get("decision_allowed", True))
+
+
 class TrackingParentReservationClient(FakeClient):
     def __init__(self) -> None:
         super().__init__()
-        self.reservation = AgentCapacityReservation(lane="pulse.pipeline", acquired=True)
+        self.reservation = AgentCapacityReservation(lane="pulse.decision", acquired=True)
         self.reserve_calls: list[dict[str, Any]] = []
         self.parent_reservations: list[AgentCapacityReservation | None] = []
 
@@ -2419,7 +2349,7 @@ class NoStartBackpressureClient(FakeClient):
         self.run_calls += 1
         raise AgentExecutionError(
             AgentExecutionErrorClass.CAPACITY_DENIED,
-            "agent lane unavailable: pulse.signal_analyst",
+            "agent lane unavailable: pulse.decision",
             audit=None,
             execution_started=False,
         )

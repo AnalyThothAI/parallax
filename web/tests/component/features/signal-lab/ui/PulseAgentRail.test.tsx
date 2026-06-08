@@ -42,19 +42,20 @@ describe("PulseAgentRail", () => {
     },
   });
 
-  it("renders research committee stage cards", () => {
+  it("renders the public decision rail without run-step stage cards", () => {
     const view = buildPulseDetailView({
       item: tittyPulseFixture,
       sourceEvents: tittySourceEventsFixture,
       now: TITTY_NOW_MS,
     });
     render(<PulseAgentRail agent={view.agent} />);
-    expect(screen.getByText(/阶段 1 · 信号分析/)).toBeInTheDocument();
-    expect(screen.getByText(/阶段 2 · 反方风险/)).toBeInTheDocument();
-    expect(screen.getByText(/阶段 3 · 风险裁决/)).toBeInTheDocument();
+    expect(screen.queryByText(/阶段 1 · 信号分析/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/阶段 2 · 反方风险/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/阶段 3 · 风险裁决/)).not.toBeInTheDocument();
+    expect(screen.getByText(/暂无公开决策摘要/)).toBeInTheDocument();
   });
 
-  it("renders v2 decision surface before stage cards", () => {
+  it("renders v2 decision surface", () => {
     const view = buildPulseDetailView({
       item: withDecisionSurface(),
       sourceEvents: tittySourceEventsFixture,
@@ -72,6 +73,7 @@ describe("PulseAgentRail", () => {
     expect(
       screen.getByRole("link", { name: tittySourceEventsFixture[0].event_id }),
     ).toHaveAttribute("href", "https://x.com/moontoklisting/status/1");
+    expect(screen.queryByText(/阶段 1 · 信号分析/)).not.toBeInTheDocument();
   });
 
   it("does not render absent bull or bear decision sections", () => {
@@ -94,22 +96,6 @@ describe("PulseAgentRail", () => {
     expect(screen.queryByText("看空")).not.toBeInTheDocument();
   });
 
-  it("renders research committee stage cards from the public payload", () => {
-    const view = buildPulseDetailView({
-      item: {
-        ...tittyPulseFixture,
-        stages: tittyPulseFixture.stages,
-      },
-      sourceEvents: tittySourceEventsFixture,
-      now: TITTY_NOW_MS,
-    });
-    render(<PulseAgentRail agent={view.agent} />);
-
-    expect(screen.getByText(/阶段 1 · 信号分析/)).toBeInTheDocument();
-    expect(screen.getByText(/阶段 2 · 反方风险/)).toBeInTheDocument();
-    expect(screen.getByText(/阶段 3 · 风险裁决/)).toBeInTheDocument();
-  });
-
   it("uses mismatch copy that points to decision and evidence links", () => {
     const view = buildPulseDetailView({
       item: tittyPulseFixture,
@@ -120,18 +106,18 @@ describe("PulseAgentRail", () => {
 
     expect(
       screen.getByText(
-        "策略门将该资产推到 top 区间，但 Agent 最终置信度偏低。请核对信号分析、反方风险、风险裁决和证据链接。",
+        "策略门将该资产推到 top 区间，但 Agent 最终置信度偏低。请核对公共决策、证据链接和市场数据。",
       ),
     ).toBeInTheDocument();
   });
 
-  it("does not throw when stages payload is entirely missing", () => {
+  it("does not need run-step stages in the public payload", () => {
     const view = buildPulseDetailView({
-      item: { ...tittyPulseFixture, stages: null },
+      item: tittyPulseFixture,
       sourceEvents: tittySourceEventsFixture,
       now: TITTY_NOW_MS,
     });
     render(<PulseAgentRail agent={view.agent} />);
-    expect(screen.getByText(/暂无 stage 数据/)).toBeInTheDocument();
+    expect(screen.getByText(/暂无公开决策摘要/)).toBeInTheDocument();
   });
 });

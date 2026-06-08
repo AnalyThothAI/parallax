@@ -10,7 +10,7 @@ from parallax.domains.pulse_lab.interfaces import (
     PULSE_GATE_VERSION,
 )
 
-PULSE_AGENT_RUNTIME_VERSION = "pulse-research-committee-runtime-v1"
+PULSE_AGENT_RUNTIME_VERSION = "pulse-agent-runtime-v2"
 PULSE_AGENT_STRATEGY = "signal_pulse_decision"
 PULSE_DETERMINISTIC_GRADER_VERSION = "pulse-deterministic-eval-v3"
 PULSE_FAILURE_TAXONOMY_VERSION = "pulse-failure-taxonomy-v1"
@@ -25,7 +25,7 @@ PULSE_FAILURE_TAXONOMY_CODES = (
     "unexpected_exception",
 )
 
-_DEFAULT_STAGE_NAMES = ("signal_analyst", "bear_case", "risk_portfolio_judge")
+_DEFAULT_STAGE_NAMES = ("pulse_decision",)
 _DEFAULT_VALIDATORS_ENABLED = (
     "pydantic_final_decision_schema",
     "runtime_evidence_ref_subset",
@@ -40,7 +40,6 @@ def build_pulse_runtime_manifest(
     artifact_version_hash: str,
     timeout_seconds: float,
     stage_names: tuple[str, ...] | list[str] | None = None,
-    safety_net_enabled: bool = False,
     validators_enabled: tuple[str, ...] | list[str] | None = None,
     failure_taxonomy_version: str = PULSE_FAILURE_TAXONOMY_VERSION,
     evidence_packet_schema_version: str = PULSE_EVIDENCE_PACKET_SCHEMA_VERSION,
@@ -51,9 +50,8 @@ def build_pulse_runtime_manifest(
         "strategy": PULSE_AGENT_STRATEGY,
         "runtime": {
             "framework": "litellm",
-            "orchestration": "sequential_stage_runner",
+            "orchestration": "single_stage_runner",
             "stages": stages,
-            "safety_net_enabled": bool(safety_net_enabled),
             "timeout_seconds": float(timeout_seconds),
         },
         "model": {
@@ -94,7 +92,7 @@ def build_pulse_runtime_manifest(
         },
         "eval_metadata": {
             "deterministic_grader_version": PULSE_DETERMINISTIC_GRADER_VERSION,
-            "closed_loop": "trace_to_eval_case_to_eval_result",
+            "eval_flow": "trace_to_eval_case_to_eval_result",
         },
         "failure_taxonomy": {
             "version": str(failure_taxonomy_version or PULSE_FAILURE_TAXONOMY_VERSION),

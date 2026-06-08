@@ -1,3 +1,4 @@
+from parallax.domains.account_quality.repositories import account_quality_repository as account_quality_module
 from parallax.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
@@ -49,6 +50,60 @@ def test_account_quality_repository_upserts_profiles_stats_and_snapshots(tmp_pat
     assert account["token_call_stats"][0]["token_id"] == "token:eth:0xdog"
     assert account["token_call_stats"][0]["was_early_author"] == 1
     assert account["quality_snapshots"][0]["sample_size"] == 1
+
+
+def test_quality_snapshot_identity_is_stable_per_handle_window(tmp_path, monkeypatch):
+    now_values = iter([1_700_000_000_000, 1_700_000_060_000])
+    monkeypatch.setattr(account_quality_module, "_now_ms", lambda: next(now_values))
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = AccountQualityRepository(conn)
+
+        first_id = repo.insert_quality_snapshot(
+            handle="@Toly",
+            window="30d",
+            precision_score=40.0,
+            early_call_score=72.0,
+            spam_risk_score=8.0,
+            avg_realized_return=1.5,
+            sample_size=1,
+        )
+        second_id = repo.insert_quality_snapshot(
+            handle="toly",
+            window="30d",
+            precision_score=55.0,
+            early_call_score=80.0,
+            spam_risk_score=5.0,
+            avg_realized_return=2.5,
+            sample_size=3,
+        )
+        rows = conn.execute(
+            """
+            SELECT snapshot_id, handle, "window", precision_score, early_call_score,
+                   spam_risk_score, avg_realized_return, sample_size, updated_at_ms
+              FROM account_quality_snapshots
+             ORDER BY snapshot_id
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert first_id == "account-quality:toly:30d:current"
+    assert second_id == first_id
+    assert [dict(row) for row in rows] == [
+        {
+            "snapshot_id": first_id,
+            "handle": "toly",
+            "window": "30d",
+            "precision_score": 55.0,
+            "early_call_score": 80.0,
+            "spam_risk_score": 5.0,
+            "avg_realized_return": 2.5,
+            "sample_size": 3,
+            "updated_at_ms": 1_700_000_060_000,
+        }
+    ]
 
 
 def test_account_profiles_has_gmgn_directory_columns(tmp_path):

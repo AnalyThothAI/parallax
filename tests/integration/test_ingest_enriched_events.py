@@ -159,14 +159,10 @@ def test_ingest_chain_event_with_existing_tick_writes_composite_tick_capture(tmp
     try:
         result = store.ingest_event(event, is_watched=True)
         enriched_rows = conn.execute("SELECT * FROM enriched_events WHERE event_id = %s", (event.event_id,)).fetchall()
-        current_row = conn.execute(
-            """
-            SELECT *
-            FROM market_tick_current
-            WHERE target_type = %s AND target_id = %s
-            """,
+        market_rows = conn.execute(
+            "SELECT * FROM market_ticks WHERE target_type = %s AND target_id = %s",
             ("chain_token", target_id),
-        ).fetchone()
+        ).fetchall()
     finally:
         conn.close()
 
@@ -176,9 +172,7 @@ def test_ingest_chain_event_with_existing_tick_writes_composite_tick_capture(tmp
     assert enriched_rows[0]["tick_id"] == tick.tick_id
     assert enriched_rows[0]["capture_method"] == "tier3_inline"
     assert enriched_rows[0]["tick_lag_ms"] == 250
-    assert current_row is not None
-    assert current_row["tick_observed_at_ms"] == observed_at_ms
-    assert current_row["tick_id"] == tick.tick_id
+    assert [row["tick_id"] for row in market_rows] == [tick.tick_id]
 
 
 class _DexQuoteProvider:

@@ -882,7 +882,7 @@ def test_api_exposes_notification_list_summary_and_read_state(tmp_path):
             rule_id="news_high_signal",
             severity="high",
             title="PEPE news",
-            body="news score 88",
+            body="agent news driver",
             entity_type="token",
             entity_key="token:eth:pepe",
             symbol="PEPE",
@@ -891,7 +891,19 @@ def test_api_exposes_notification_list_summary_and_read_state(tmp_path):
             source_table="news_items",
             source_id="token:eth:pepe",
             occurrence_at_ms=1_700_000_060_000,
-            payload={"provider_score": 88},
+            payload={
+                "decision_class": "driver",
+                "agent_run_id": "run-legacy",
+                "artifact_version_hash": "artifact-legacy",
+                "provider_signal": {"score": 95},
+                "agent_brief": {
+                    "status": "ready",
+                    "direction": "bullish",
+                    "summary_zh": "Agent news driver.",
+                    "agent_run_id": "run-legacy",
+                    "artifact_version_hash": "artifact-legacy",
+                },
+            },
             channels=["in_app"],
         )
         assert first is not None
@@ -910,7 +922,12 @@ def test_api_exposes_notification_list_summary_and_read_state(tmp_path):
 
     assert listed.status_code == 200
     assert listed.json()["data"]["items"][0]["rule_id"] == "news_high_signal"
-    assert listed.json()["data"]["items"][0]["payload"]["provider_score"] == 88
+    assert listed.json()["data"]["items"][0]["payload"]["decision_class"] == "driver"
+    assert "agent_run_id" not in listed.json()["data"]["items"][0]["payload"]
+    assert "artifact_version_hash" not in listed.json()["data"]["items"][0]["payload"]
+    assert "provider_signal" not in listed.json()["data"]["items"][0]["payload"]
+    assert "agent_run_id" not in listed.json()["data"]["items"][0]["payload"]["agent_brief"]
+    assert "artifact_version_hash" not in listed.json()["data"]["items"][0]["payload"]["agent_brief"]
     assert listed.json()["data"]["items"][0]["channels"] == ["in_app"]
 
     assert read.status_code == 200
@@ -980,14 +997,14 @@ def test_api_exposes_notification_delivery_audit(tmp_path):
             rule_id="news_high_signal",
             severity="high",
             title="PEPE news",
-            body="news score 88",
+            body="agent news driver",
             entity_type="token",
             entity_key="token:eth:pepe",
             symbol="PEPE",
             source_table="news_items",
             source_id="token:eth:pepe",
             occurrence_at_ms=1_700_000_060_000,
-            payload={"provider_score": 88},
+            payload={"decision_class": "driver"},
             channels=["in_app", "pushdeer"],
         )
         assert notification is not None
@@ -1756,7 +1773,6 @@ def _seed_displayable_candidate(
     app,
     *,
     candidate_id: str,
-    agent_run_id: str | None = None,
     display_status: str = "display_token_watch",
     decision_status: str = "token_watch",
     evidence_status: str = "complete",
@@ -1795,7 +1811,6 @@ def _seed_displayable_candidate(
             risk_reasons_json=[],
             evidence_event_ids_json=["event-1"],
             source_event_ids_json=["event-1"],
-            agent_run_id=agent_run_id,
             evidence_packet_hash="sha256:test-packet",
             evidence_status=evidence_status,
             decision_status=decision_status,
@@ -1819,6 +1834,9 @@ def test_api_signal_pulse_by_id_returns_item(tmp_path):
     assert payload["ok"] is True
     assert payload["data"]["candidate_id"] == "cand-real"
     assert "pulse_status" not in payload["data"]
+    assert "stage_count" not in payload["data"]["decision"]
+    assert "claim_verification" not in payload["data"]
+    assert "evidence_gate" not in payload["data"]
     assert payload["data"]["display_status"] == "display_token_watch"
 
 
@@ -1858,7 +1876,7 @@ def test_api_signal_pulse_hidden_visibility_returns_hidden_items_and_detail(tmp_
     assert public_detail.status_code == 404
 
 
-def test_api_signal_pulse_by_id_returns_stages(tmp_path):
+def test_api_signal_pulse_by_id_does_not_expose_run_step_audit(tmp_path):
     settings = make_settings(tmp_path)
     app = create_app(settings=settings, start_collector=False)
     with TestClient(app) as client:
@@ -1894,14 +1912,12 @@ def test_api_signal_pulse_by_id_returns_stages(tmp_path):
                 status="ok",
                 outcome="completed",
                 decision_route="meme",
-                decision_stage_count=3,
+                decision_stage_count=1,
             )
-        _seed_displayable_candidate(client.app, candidate_id="cand-stages", agent_run_id="run-stages")
+        _seed_displayable_candidate(client.app, candidate_id="cand-stages")
         with client.app.state.service.repositories() as repos:
             for stage, response_json, started_at_ms, finished_at_ms in [
-                ("signal_analyst", {"confidence": 0.82, "recommendation": "trade_candidate"}, 100, 200),
-                ("bear_case", {"risk_level": "medium"}, 210, 300),
-                ("risk_portfolio_judge", {"confidence": 0.35, "recommendation": "trade_candidate"}, 350, 500),
+                ("pulse_decision", {"confidence": 0.35, "recommendation": "trade_candidate"}, 100, 250),
             ]:
                 repos.pulse_runs.insert_agent_run_step(
                     step_id=f"run-stages:{stage}:0",
@@ -1926,22 +1942,10 @@ def test_api_signal_pulse_by_id_returns_stages(tmp_path):
         )
 
     assert response.status_code == 200
-    stages = response.json()["data"]["stages"]
-    assert set(stages.keys()) == {
-        "evidence_pack",
-        "evidence_completeness_gate",
-        "signal_analyst",
-        "bear_case",
-        "claim_verifier",
-        "risk_portfolio_judge",
-        "recommendation_clipper",
-        "deterministic_eval",
-        "write_gate",
-    }
-    assert stages["signal_analyst"]["status"] == "ok"
-    assert stages["signal_analyst"]["response"]["confidence"] == 0.82
-    assert stages["bear_case"]["response"]["risk_level"] == "medium"
-    assert stages["risk_portfolio_judge"]["response"]["confidence"] == 0.35
+    data = response.json()["data"]
+    assert data["candidate_id"] == "cand-stages"
+    assert "agent_run_id" not in data
+    assert "stages" not in data
 
 
 def test_social_events_by_ids_returns_full_records(tmp_path):
@@ -1950,7 +1954,7 @@ def test_social_events_by_ids_returns_full_records(tmp_path):
     with TestClient(app) as client:
         _seed_social_event_batch(client.app)
         response = client.get(
-            "/api/social-events/by-ids",
+            "/api/events/by-ids",
             params={"ids": ",".join(ids)},
             headers={"Authorization": "Bearer secret"},
         )
@@ -1970,7 +1974,7 @@ def test_social_events_by_ids_skips_missing(tmp_path):
     with TestClient(app) as client:
         _seed_social_event_batch(client.app)
         response = client.get(
-            "/api/social-events/by-ids",
+            "/api/events/by-ids",
             params={"ids": "event-watched,nonexistent-id"},
             headers={"Authorization": "Bearer secret"},
         )
@@ -1986,7 +1990,7 @@ def test_social_events_by_ids_rejects_too_many(tmp_path):
     huge = ",".join(f"id-{i}" for i in range(201))
     with TestClient(app) as client:
         response = client.get(
-            "/api/social-events/by-ids",
+            "/api/events/by-ids",
             params={"ids": huge},
             headers={"Authorization": "Bearer secret"},
         )
@@ -1999,7 +2003,7 @@ def test_social_events_by_ids_requires_ids(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
     with TestClient(app) as client:
         response = client.get(
-            "/api/social-events/by-ids",
+            "/api/events/by-ids",
             headers={"Authorization": "Bearer secret"},
         )
 

@@ -127,7 +127,7 @@ const routeCases: RouteCase[] = [
     specific: async (page) => {
       await expect(page.getByRole("link", { name: "Queue" })).toBeVisible();
       await expect(page.getByText("Evidence page", { exact: true })).toBeVisible();
-      await expect(page.getByText("Provider aiRating", { exact: true })).toBeVisible();
+      await expect(page.getByText("Signal", { exact: true })).toBeVisible();
       await expect(page.getByText("Token impacts", { exact: true })).toBeVisible();
       await expect(page.getByText("Execution gaps", { exact: true })).toBeVisible();
       await expect(page.getByText("Price reaction", { exact: true })).toBeVisible();

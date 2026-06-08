@@ -340,7 +340,9 @@ class FakeRefreshConnection:
             return FakeCursor(self.rows[: self.row_count])
         if "FROM macro_observation_series_publication_state" in query:
             return FakeCursor([])
-        return FakeCursor([], rowcount=self.row_count)
+        if "INSERT INTO macro_observation_series_rows" in query:
+            return FakeCursor([], rowcount=self.row_count)
+        return FakeCursor([], rowcount=0)
 
     def transaction(self):
         return FakeTransaction()

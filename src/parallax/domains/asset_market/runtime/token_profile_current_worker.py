@@ -17,9 +17,12 @@ from parallax.domains.asset_market.services.token_profile_current_projection imp
 
 DEFAULT_LEASE_MS = 60_000
 DEFAULT_RETRY_MS = 30_000
+SINGLE_WRITER_KEY = 2026051702
 
 
 class TokenProfileCurrentWorker(WorkerBase):
+    SINGLE_WRITER_KEY = SINGLE_WRITER_KEY
+
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
         observed_at_ms = int(now_ms if now_ms is not None else time.time() * 1000)
         result = await asyncio.to_thread(self._rebuild_once, observed_at_ms)
@@ -136,8 +139,8 @@ def _project_claimed_token_profiles(
             image_states_by_source_key=admission.image_states_by_source_key,
             computed_at_ms=now_ms,
         )
-        repos.token_profiles.upsert_current(row, commit=False)
-        result["rows_written"] += 1
+        if repos.token_profiles.upsert_current(row, commit=False):
+            result["rows_written"] += 1
         _record_row(result, row)
 
 

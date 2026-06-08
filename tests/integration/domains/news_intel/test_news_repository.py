@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import inspect
+import json
 from contextlib import contextmanager
 from types import SimpleNamespace
+from typing import Any
 
 from alembic import command
 from psycopg.types.json import Jsonb
@@ -150,7 +152,7 @@ def test_source_fetch_provider_and_news_item_round_trip(tmp_path) -> None:
     }
 
 
-def test_upsert_news_item_persists_provider_signal_and_token_impacts(tmp_path) -> None:
+def test_upsert_news_item_persists_provider_signal_without_public_detail_exposure(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -191,19 +193,32 @@ def test_upsert_news_item_persists_provider_signal_and_token_impacts(tmp_path) -
             },
             provider_token_impacts=[{"symbol": "BTC", "score": 82, "signal": "long", "grade": "A"}],
         )
+        repo.replace_page_rows_for_items(
+            news_item_ids=[row["news_item_id"]],
+            rows=[_page_row("row-provider-signal-public-detail", row["news_item_id"], source_id="opennews-realtime")],
+        )
 
         loaded = repo.get_news_item_detail(news_item_id=row["news_item_id"])
+        stored = conn.execute(
+            "SELECT provider_signal_json, provider_token_impacts_json FROM news_items WHERE news_item_id = %s",
+            (row["news_item_id"],),
+        ).fetchone()
     finally:
         conn.close()
 
     assert loaded is not None
-    assert loaded["provider_signal"] == {
+    assert stored is not None
+    assert _json_value(stored["provider_signal_json"]) == {
         "source": "provider",
         "provider": "opennews",
         "status": "ready",
         "direction": "bullish",
     }
-    assert loaded["provider_token_impacts"] == [{"symbol": "BTC", "score": 82, "signal": "long", "grade": "A"}]
+    assert _json_value(stored["provider_token_impacts_json"]) == [
+        {"symbol": "BTC", "score": 82, "signal": "long", "grade": "A"}
+    ]
+    assert "provider_signal" not in loaded
+    assert "provider_token_impacts" not in loaded
 
 
 def test_provider_and_news_item_upserts_are_idempotent_and_update_content(tmp_path) -> None:
@@ -961,7 +976,7 @@ def test_opennews_missing_link_material_duplicate_attaches_to_existing_public_ur
     ]
 
 
-def test_opennews_public_url_later_remaps_existing_material_duplicate_item(tmp_path) -> None:
+def test_opennews_public_url_later_remaps_dirty_targets_without_rewriting_agent_outputs(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -1019,6 +1034,17 @@ def test_opennews_public_url_later_remaps_existing_material_duplicate_item(tmp_p
             computed_at_ms=NOW_MS + 10,
             created_at_ms=NOW_MS + 10,
             updated_at_ms=NOW_MS + 10,
+        )
+        repo.replace_page_rows_for_items(
+            news_item_ids=[fallback_news["news_item_id"]],
+            rows=[
+                _page_row(
+                    "row-material-fallback-before-remap",
+                    fallback_news["news_item_id"],
+                    source_id="opennews-news",
+                    computed_at_ms=NOW_MS + 10,
+                )
+            ],
         )
         repositories_for_connection(conn).news_projection_dirty_targets.enqueue_targets(
             [
@@ -1105,18 +1131,22 @@ def test_opennews_public_url_later_remaps_existing_material_duplicate_item(tmp_p
             SELECT projection_name, target_id, dirty_reason, priority, due_at_ms,
                    leased_until_ms, lease_owner, attempt_count
               FROM news_projection_dirty_targets
-             ORDER BY projection_name
+             ORDER BY target_id, projection_name
             """
         ).fetchall()
         old_dirty_target_count = conn.execute(
             "SELECT COUNT(*) AS count FROM news_projection_dirty_targets WHERE target_id = %s",
             (fallback_news["news_item_id"],),
         ).fetchone()["count"]
+        old_page_row_count = conn.execute(
+            "SELECT COUNT(*) AS count FROM news_page_rows WHERE news_item_id = %s",
+            (fallback_news["news_item_id"],),
+        ).fetchone()["count"]
     finally:
         conn.close()
 
     assert public_news["news_item_id"] != fallback_news["news_item_id"]
-    assert item_count == 1
+    assert item_count == 2
     assert stored_public["canonical_item_key"].startswith("canonical-url:")
     assert stored_public["dedup_key_kind"] == "canonical_url"
     assert stored_public["url_identity_kind"] == "article"
@@ -1138,46 +1168,53 @@ def test_opennews_public_url_later_remaps_existing_material_duplicate_item(tmp_p
     assert [dict(row) for row in agent_runs] == [
         {
             "run_id": "run-material-fallback",
-            "news_item_id": public_news["news_item_id"],
-            "trace_metadata_json": {
-                "attempt": 1,
-                "news_item_remap_reason": "canonical_news_item_merge",
-                "remapped_from_news_item_id": fallback_news["news_item_id"],
-                "remapped_to_news_item_id": public_news["news_item_id"],
-                "remapped_at_ms": NOW_MS + 1,
-            },
+            "news_item_id": fallback_news["news_item_id"],
+            "trace_metadata_json": {"attempt": 1},
         }
     ]
-    assert dict(current_brief) == {
-        "news_item_id": public_news["news_item_id"],
-        "agent_run_id": "run-material-fallback",
-        "brief_json": {"summary_zh": "BTC 多头清算推动短线风险。"},
-        "computed_at_ms": NOW_MS + 10,
+    assert current_brief is None
+    assert old_brief_count == 1
+    dirty_target_by_key = {
+        (row["target_id"], row["projection_name"]): dict(row)
+        for row in dirty_targets
     }
-    assert old_brief_count == 0
-    assert [dict(row) for row in dirty_targets] == [
-        {
-            "projection_name": "brief_input",
-            "target_id": public_news["news_item_id"],
-            "dirty_reason": "canonical_news_item_merge",
-            "priority": 5,
-            "due_at_ms": NOW_MS + 20,
-            "leased_until_ms": None,
-            "lease_owner": None,
-            "attempt_count": 0,
-        },
-        {
-            "projection_name": "page",
-            "target_id": public_news["news_item_id"],
-            "dirty_reason": "canonical_news_item_merge",
-            "priority": 10,
-            "due_at_ms": NOW_MS + 30,
-            "leased_until_ms": None,
-            "lease_owner": None,
-            "attempt_count": 0,
-        },
-    ]
-    assert old_dirty_target_count == 0
+    assert set(dirty_target_by_key) == {
+        (fallback_news["news_item_id"], "page"),
+        (public_news["news_item_id"], "brief_input"),
+        (public_news["news_item_id"], "page"),
+    }
+    assert dirty_target_by_key[(fallback_news["news_item_id"], "page")] == {
+        "projection_name": "page",
+        "target_id": fallback_news["news_item_id"],
+        "dirty_reason": "canonical_news_item_merge_cleanup",
+        "priority": 1,
+        "due_at_ms": NOW_MS + 1,
+        "leased_until_ms": None,
+        "lease_owner": None,
+        "attempt_count": 0,
+    }
+    assert dirty_target_by_key[(public_news["news_item_id"], "brief_input")] == {
+        "projection_name": "brief_input",
+        "target_id": public_news["news_item_id"],
+        "dirty_reason": "canonical_news_item_merge",
+        "priority": 5,
+        "due_at_ms": NOW_MS + 20,
+        "leased_until_ms": None,
+        "lease_owner": None,
+        "attempt_count": 0,
+    }
+    assert dirty_target_by_key[(public_news["news_item_id"], "page")] == {
+        "projection_name": "page",
+        "target_id": public_news["news_item_id"],
+        "dirty_reason": "canonical_news_item_merge",
+        "priority": 10,
+        "due_at_ms": NOW_MS + 30,
+        "leased_until_ms": None,
+        "lease_owner": None,
+        "attempt_count": 0,
+    }
+    assert old_dirty_target_count == 1
+    assert old_page_row_count == 1
 
 
 def test_single_segment_public_url_collapses_opennews_observations_with_different_provider_ids(tmp_path) -> None:
@@ -2585,9 +2622,9 @@ def test_replace_page_rows_for_items_removes_stale_rows_in_item_scope(tmp_path) 
                     "summary": "Old summary",
                     "canonical_url": "https://example.com/stale",
                     "lifecycle_status": "raw",
-                    "token_lanes_json": [],
-                    "fact_lanes_json": [],
-                    "source_json": {"source_id": "source-1"},
+                    "token_lanes": [],
+                    "fact_lanes": [],
+                    "source": {"source_id": "source-1"},
                     "projection_version": "test-v1",
                     "computed_at_ms": NOW_MS,
                 },
@@ -2600,9 +2637,9 @@ def test_replace_page_rows_for_items_removes_stale_rows_in_item_scope(tmp_path) 
                     "summary": "Other summary",
                     "canonical_url": "https://example.com/other",
                     "lifecycle_status": "raw",
-                    "token_lanes_json": [],
-                    "fact_lanes_json": [],
-                    "source_json": {"source_id": "source-1"},
+                    "token_lanes": [],
+                    "fact_lanes": [],
+                    "source": {"source_id": "source-1"},
                     "projection_version": "test-v1",
                     "computed_at_ms": NOW_MS,
                 },
@@ -2621,9 +2658,9 @@ def test_replace_page_rows_for_items_removes_stale_rows_in_item_scope(tmp_path) 
                     "summary": "New summary",
                     "canonical_url": "https://example.com/fresh",
                     "lifecycle_status": "processed",
-                    "token_lanes_json": [{"lane": "resolved", "symbol": "SOL"}],
-                    "fact_lanes_json": [],
-                    "source_json": {"source_id": "source-1"},
+                    "token_lanes": [{"lane": "resolved", "symbol": "SOL"}],
+                    "fact_lanes": [],
+                    "source": {"source_id": "source-1"},
                     "projection_version": "test-v1",
                     "computed_at_ms": NOW_MS + 1,
                 }
@@ -2762,7 +2799,7 @@ def test_story_projection_groups_spacex_variants_with_private_company_scope(tmp_
         conn.close()
 
     assert row["market_scope"]["primary"] == "private_company"
-    assert row["signal"]["provider_signal"]["score"] >= 90
+    assert "provider_signal" not in row["signal"]
     assert row["signal"]["alert_eligibility"]["in_app_eligible"] is False
     assert stored["story_key"] == story_key
     assert stored["story_json"]["member_count"] == 2
@@ -3940,7 +3977,7 @@ def test_page_projection_rebuilds_and_lists_agent_brief_columns_when_brief_updat
 
     assert [candidate["item"]["news_item_id"] for candidate in candidates] == [news_item_id]
     assert row["current_brief"]["agent_run_id"] == "run-brief-1"
-    assert projected_row["agent_brief"]["validator_version"] == NEWS_ITEM_BRIEF_VALIDATOR_VERSION
+    assert projected_row["agent_brief"]["status"] == "ready"
     assert rows[0]["agent_status"] == "ready"
     assert rows[0]["agent_brief_computed_at_ms"] == NOW_MS + 100
     assert "agent_brief_status" not in rows[0]
@@ -3949,6 +3986,9 @@ def test_page_projection_rebuilds_and_lists_agent_brief_columns_when_brief_updat
     assert "agent_run_id" not in rows[0]["agent_brief"]
     assert "input_hash" not in rows[0]["agent_brief"]
     assert "artifact_version_hash" not in rows[0]["agent_brief"]
+    assert "prompt_version" not in rows[0]["agent_brief"]
+    assert "schema_version" not in rows[0]["agent_brief"]
+    assert "validator_version" not in rows[0]["agent_brief"]
 
 
 def test_load_items_for_page_projection_ignores_non_current_brief(tmp_path) -> None:
@@ -3983,7 +4023,7 @@ def test_load_items_for_page_projection_ignores_non_current_brief(tmp_path) -> N
     assert candidates[0]["current_brief"] is None
 
 
-def test_news_high_signal_candidates_do_not_require_ready_agent_status(tmp_path) -> None:
+def test_news_high_signal_candidates_require_ready_agent_status(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -3994,17 +4034,16 @@ def test_news_high_signal_candidates_do_not_require_ready_agent_status(tmp_path)
             rows=[
                 {
                     **_page_row("row-provider-high", news_item_id, source_id="source-1"),
-                    "signal_json": {
+                    "signal": {
                         "direction": "bullish",
                         "alert_eligibility": {
                             "in_app_eligible": True,
                             "external_push_ready": False,
                             "external_push_block_reason": "agent_brief_not_ready",
-                            "provider_score": 90,
                             "decision_class": "context",
                         },
                     },
-                    "token_impacts_json": [{"symbol": "BTC", "score": 90}],
+                    "token_impacts": [{"symbol": "BTC"}],
                     "market_scope": {
                         "scope": ["crypto"],
                         "primary": "crypto",
@@ -4015,7 +4054,7 @@ def test_news_high_signal_candidates_do_not_require_ready_agent_status(tmp_path)
                     },
                     "agent_admission_status": "needs_review",
                     "agent_status": "insufficient",
-                    "agent_brief_json": {
+                    "agent_brief": {
                         "status": "insufficient",
                         "direction": "neutral",
                         "decision_class": "context",
@@ -4024,14 +4063,11 @@ def test_news_high_signal_candidates_do_not_require_ready_agent_status(tmp_path)
             ],
         )
 
-        rows = repo.list_news_high_signal_notification_candidates(min_score=85, limit=10)
+        rows = repo.list_news_high_signal_notification_candidates(limit=10)
     finally:
         conn.close()
 
-    assert [row["news_item_id"] for row in rows] == [news_item_id]
-    assert rows[0]["agent_status"] == "insufficient"
-    assert rows[0]["market_scope"]["primary"] == "crypto"
-    assert rows[0]["signal"]["alert_eligibility"]["provider_score"] == 90
+    assert rows == []
 
 
 def test_news_high_signal_candidates_hide_stale_disabled_projected_source_before_reprojection(tmp_path) -> None:
@@ -4082,15 +4118,14 @@ def test_news_high_signal_candidates_hide_stale_disabled_projected_source_before
                 {
                     **_page_row("row-candidate-stale", news_item_id, source_id="source-disabled"),
                     "signal": {
-                        "display_signal": {"direction": "bullish", "score": 90},
+                        "display_signal": {"direction": "bullish"},
                         "alert_eligibility": {
                             "in_app_eligible": True,
                             "external_push_ready": True,
-                            "provider_score": 90,
                             "decision_class": "driver",
                         },
                     },
-                    "token_impacts": [{"symbol": "BTC", "score": 90}],
+                    "token_impacts": [{"symbol": "BTC"}],
                     "market_scope": {
                         "scope": ["crypto"],
                         "primary": "crypto",
@@ -4105,7 +4140,7 @@ def test_news_high_signal_candidates_hide_stale_disabled_projected_source_before
         conn.execute("UPDATE news_sources SET enabled = false WHERE source_id = 'source-disabled'")
         conn.commit()
 
-        rows = repo.list_news_high_signal_notification_candidates(min_score=85, limit=10)
+        rows = repo.list_news_high_signal_notification_candidates(limit=10)
     finally:
         conn.close()
 
@@ -4137,7 +4172,6 @@ def test_news_high_signal_candidates_filter_to_current_projection_version(tmp_pa
             "alert_eligibility": {
                 "in_app_eligible": True,
                 "external_push_ready": True,
-                "provider_score": 91,
                 "decision_class": "driver",
             },
         }
@@ -4162,8 +4196,8 @@ def test_news_high_signal_candidates_filter_to_current_projection_version(tmp_pa
                         "member_count": 1,
                         "source_domains": ["example.com"],
                     },
-                    "signal_json": ready_signal,
-                    "token_impacts_json": [{"symbol": "BTC", "score": 91}],
+                    "signal": ready_signal,
+                    "token_impacts": [{"symbol": "BTC"}],
                     "market_scope": {
                         "scope": ["crypto"],
                         "primary": "crypto",
@@ -4173,6 +4207,12 @@ def test_news_high_signal_candidates_filter_to_current_projection_version(tmp_pa
                         "version": "test_news_market_scope_v1",
                     },
                     "agent_admission_status": "eligible",
+                    "agent_status": "ready",
+                    "agent_brief": {
+                        "status": "ready",
+                        "direction": "bullish",
+                        "decision_class": "driver",
+                    },
                 },
                 {
                     **_page_row(
@@ -4181,8 +4221,8 @@ def test_news_high_signal_candidates_filter_to_current_projection_version(tmp_pa
                         source_id="source-1",
                         projection_version="news_page_rows_v2",
                     ),
-                    "signal_json": ready_signal,
-                    "token_impacts_json": [{"symbol": "ETH", "score": 91}],
+                    "signal": ready_signal,
+                    "token_impacts": [{"symbol": "ETH"}],
                     "market_scope": {
                         "scope": ["crypto"],
                         "primary": "crypto",
@@ -4192,25 +4232,37 @@ def test_news_high_signal_candidates_filter_to_current_projection_version(tmp_pa
                         "version": "test_news_market_scope_v1",
                     },
                     "agent_admission_status": "eligible",
+                    "agent_status": "ready",
+                    "agent_brief": {
+                        "status": "ready",
+                        "direction": "bullish",
+                        "decision_class": "driver",
+                    },
                 },
                 {
                     **_page_row("row-not-eligible-candidate", not_eligible_item_id, source_id="source-1"),
-                    "signal_json": not_eligible_signal,
-                    "token_impacts_json": [{"symbol": "SPCX", "score": 91}],
+                    "signal": not_eligible_signal,
+                    "token_impacts": [{"symbol": "SPCX"}],
                     "market_scope": {
                         "scope": ["us_equity"],
                         "primary": "us_equity",
                         "status": "classified",
-                        "reason": "provider_score_without_crypto_admission",
-                        "basis": {"provider_score": 91},
+                        "reason": "market_wide_watch",
+                        "basis": {"subject": "private_company_equity_context"},
                         "version": "test_news_market_scope_v1",
                     },
                     "agent_admission_status": "eligible",
+                    "agent_status": "ready",
+                    "agent_brief": {
+                        "status": "ready",
+                        "direction": "bullish",
+                        "decision_class": "driver",
+                    },
                 },
             ],
         )
 
-        rows = repo.list_news_high_signal_notification_candidates(min_score=85, limit=10)
+        rows = repo.list_news_high_signal_notification_candidates(limit=10)
     finally:
         conn.close()
 
@@ -4262,13 +4314,13 @@ def test_list_news_page_rows_filters_by_signal(tmp_path) -> None:
                 {
                     **_page_row("row-bullish", bullish_item_id, source_id="source-1"),
                     "agent_status": "ready",
-                    "agent_brief_json": {"status": "ready", "direction": "bullish"},
+                    "agent_brief": {"status": "ready", "direction": "bullish"},
                     "signal": {"display_signal": {"direction": "bullish", "score": 80}},
                 },
                 {
                     **_page_row("row-bearish", bearish_item_id, source_id="source-1"),
                     "agent_status": "ready",
-                    "agent_brief_json": {"status": "ready", "direction": "bearish"},
+                    "agent_brief": {"status": "ready", "direction": "bearish"},
                     "signal": {"display_signal": {"direction": "bearish", "score": 88}},
                 },
             ],
@@ -4349,12 +4401,6 @@ def test_list_news_page_rows_filters_by_source_search_text(tmp_path) -> None:
                         "source_domain": "6551.io",
                         "source_name": "OpenNews",
                     },
-                    "source_json": {
-                        "source_id": "opennews-realtime",
-                        "provider_type": "opennews",
-                        "source_domain": "6551.io",
-                        "source_name": "OpenNews",
-                    },
                 },
                 {
                     **_page_row("row-other-source", other_item_id, source_id="other-source"),
@@ -4362,12 +4408,6 @@ def test_list_news_page_rows_filters_by_source_search_text(tmp_path) -> None:
                     "summary": "Community vote note.",
                     "source_domain": "example.com",
                     "source": {
-                        "source_id": "other-source",
-                        "provider_type": "rss",
-                        "source_domain": "example.com",
-                        "source_name": "Example",
-                    },
-                    "source_json": {
                         "source_id": "other-source",
                         "provider_type": "rss",
                         "source_domain": "example.com",
@@ -4409,29 +4449,12 @@ def test_list_news_page_rows_searches_token_lane_symbols_without_json_noise(tmp_
                             "reason_codes": ["json-noise-marker"],
                         }
                     ],
-                    "token_lanes_json": [
-                        {
-                            "lane": "resolved",
-                            "resolution_status": "known_symbol",
-                            "symbol": "ZEC",
-                            "target_id": "asset:zec",
-                            "reason_codes": ["json-noise-marker"],
-                        }
-                    ],
                 },
                 {
                     **_page_row("row-other-token", other_item_id, source_id="source-1"),
                     "headline": "Layer two update",
                     "summary": "Bridge note.",
                     "token_lanes": [
-                        {
-                            "lane": "resolved",
-                            "resolution_status": "known_symbol",
-                            "symbol": "ARB",
-                            "target_id": "asset:arb",
-                        }
-                    ],
-                    "token_lanes_json": [
                         {
                             "lane": "resolved",
                             "resolution_status": "known_symbol",
@@ -5047,6 +5070,20 @@ def test_claim_unprocessed_items_ignores_processed_unclassified_rows_after_hard_
     assert stale_row["content_classification_json"] == {}
 
 
+def test_get_news_item_detail_requires_current_page_projection(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo, source_item_key="detail-no-projection")
+
+        detail = repo.get_news_item_detail(news_item_id=news_item_id)
+    finally:
+        conn.close()
+
+    assert detail is None
+
+
 def test_get_news_item_detail_hydrates_agent_brief_and_latest_run_summary(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
@@ -5075,6 +5112,10 @@ def test_get_news_item_detail_hydrates_agent_brief_and_latest_run_summary(tmp_pa
             created_at_ms=NOW_MS + 100,
             updated_at_ms=NOW_MS + 100,
         )
+        repo.replace_page_rows_for_items(
+            news_item_ids=[news_item_id],
+            rows=[_page_row("row-detail-brief", news_item_id, source_id="source-1")],
+        )
 
         detail = repo.get_news_item_detail(news_item_id=news_item_id)
     finally:
@@ -5083,12 +5124,13 @@ def test_get_news_item_detail_hydrates_agent_brief_and_latest_run_summary(tmp_pa
     assert detail is not None
     assert detail["agent_brief"]["status"] == "ready"
     assert detail["agent_brief"]["direction"] == "mixed"
-    assert detail["agent_brief"]["brief_json"]["summary_zh"] == "事件仍需观察。"
+    assert detail["agent_brief"]["summary_zh"] == "事件仍需观察。"
+    assert detail["agent_brief"]["market_read_zh"] == "短线影响取决于确认信号。"
     assert "agent_run_id" not in detail["agent_brief"]
     assert "input_hash" not in detail["agent_brief"]
     assert "artifact_version_hash" not in detail["agent_brief"]
+    assert "brief_json" not in detail["agent_brief"]
     agent_run = detail["agent_run"]
-    assert agent_run["run_id"] == "run-detail-1"
     assert agent_run["status"] == "completed"
     assert agent_run["outcome"] == "ready"
     assert agent_run["execution_started"] is True
@@ -5096,7 +5138,12 @@ def test_get_news_item_detail_hydrates_agent_brief_and_latest_run_summary(tmp_pa
     assert agent_run["provider"] == "litellm"
     assert agent_run["lane"] == NEWS_ITEM_BRIEF_LANE
     assert agent_run["latency_ms"] == 10
-    assert agent_run["usage_json"] == {"input_tokens": 10, "output_tokens": 5}
+    assert "run_id" not in agent_run
+    assert "usage_json" not in agent_run
+    assert "trace_metadata_json" not in agent_run
+    assert "input_hash" not in agent_run
+    assert "output_hash" not in agent_run
+    assert "artifact_version_hash" not in agent_run
     assert "request_json" not in agent_run
     assert "response_json" not in agent_run
 
@@ -5132,18 +5179,18 @@ def test_get_news_item_detail_reads_current_projected_signal_and_lanes(tmp_path)
             rows=[
                 {
                     **_page_row("row-detail-current", news_item_id, source_id="source-1"),
-                    "signal_json": {
+                    "signal": {
                         "source": "provider",
                         "status": "ready",
                         "direction": "bullish",
                         "score": 88,
                         "method": "projected-page-row",
                     },
-                    "token_impacts_json": [{"symbol": "BTC", "score": 88}],
-                    "token_lanes_json": [{"lane": "resolved", "symbol": "BTC"}],
-                    "fact_lanes_json": [{"status": "accepted", "event_type": "macro"}],
-                    "content_tags_json": ["macro"],
-                    "content_classification_json": {"policy_version": "projected"},
+                    "token_impacts": [{"symbol": "BTC", "score": 88}],
+                    "token_lanes": [{"lane": "resolved", "symbol": "BTC"}],
+                    "fact_lanes": [{"status": "accepted", "event_type": "macro"}],
+                    "content_tags": ["macro"],
+                    "content_classification": {"policy_version": "projected"},
                 }
             ],
         )
@@ -5245,6 +5292,10 @@ def test_get_news_item_detail_exposes_canonical_observation_evidence(tmp_path) -
             title_fingerprint="shared",
             now_ms=NOW_MS,
         )
+        repo.replace_page_rows_for_items(
+            news_item_ids=[news_item_id],
+            rows=[_page_row("row-detail-observation", news_item_id, source_id="source-1")],
+        )
 
         detail = repo.get_news_item_detail(news_item_id=news_item_id)
     finally:
@@ -5324,13 +5375,17 @@ def test_news_item_detail_suppresses_non_current_agent_brief(tmp_path) -> None:
             run_id="run-stale-detail",
             schema_version="news_item_brief_v0",
         )
+        repo.replace_page_rows_for_items(
+            news_item_ids=[news_item_id],
+            rows=[_page_row("row-detail-stale-brief", news_item_id, source_id="source-stale-detail")],
+        )
 
         detail = repo.get_news_item_detail(news_item_id=news_item_id)
     finally:
         conn.close()
 
     assert detail is not None
-    assert detail["agent_brief"] == {"status": "pending", "brief_json": {}}
+    assert detail["agent_brief"] == {"status": "pending"}
 
 
 def test_repository_lists_and_clears_current_briefs_outside_schema(tmp_path) -> None:
@@ -5340,6 +5395,11 @@ def test_repository_lists_and_clears_current_briefs_outside_schema(tmp_path) -> 
         repo = NewsRepository(conn)
         stale_id = _insert_source_provider_and_item(repo, source_id="source-stale", source_item_key="stale")
         missing_id = _insert_source_provider_and_item(repo, source_id="source-missing", source_item_key="missing")
+        embedded_only_id = _insert_source_provider_and_item(
+            repo,
+            source_id="source-embedded-only",
+            source_item_key="embedded-only",
+        )
         current_id = _insert_source_provider_and_item(repo, source_id="source-current", source_item_key="current")
         _insert_schema_brief(
             repo,
@@ -5352,6 +5412,13 @@ def test_repository_lists_and_clears_current_briefs_outside_schema(tmp_path) -> 
             news_item_id=missing_id,
             run_id="run-missing",
             schema_version="",
+        )
+        _insert_schema_brief(
+            repo,
+            news_item_id=embedded_only_id,
+            run_id="run-embedded-only",
+            schema_version="",
+            brief_json_extra={"schema_version": NEWS_ITEM_BRIEF_SCHEMA_VERSION},
         )
         _insert_schema_brief(
             repo,
@@ -5371,8 +5438,8 @@ def test_repository_lists_and_clears_current_briefs_outside_schema(tmp_path) -> 
     finally:
         conn.close()
 
-    assert set(listed) == {missing_id, stale_id}
-    assert set(cleared) == {missing_id, stale_id}
+    assert set(listed) == {embedded_only_id, missing_id, stale_id}
+    assert set(cleared) == {embedded_only_id, missing_id, stale_id}
     assert [dict(row) for row in remaining] == [
         {"news_item_id": current_id, "schema_version": NEWS_ITEM_BRIEF_SCHEMA_VERSION}
     ]
@@ -5599,7 +5666,6 @@ def test_news_dedup_diagnostics_reports_material_risk_without_repair_actions(tmp
 
         diagnostics = repo.news_dedup_diagnostics(
             window_ms=8 * 3_600_000,
-            score_threshold=80,
             now_ms=NOW_MS + 2,
         )
     finally:
@@ -5607,7 +5673,7 @@ def test_news_dedup_diagnostics_reports_material_risk_without_repair_actions(tmp
 
     assert diagnostics["material_title_duplicate_groups"]["groups"] == 1
     assert diagnostics["case_insensitive_url_duplicate_groups"]["groups"] == 1
-    assert diagnostics["case_insensitive_url_duplicate_groups"]["ge_threshold_duplicate_rows"] == 1
+    assert diagnostics["case_insensitive_url_duplicate_groups"]["duplicate_rows"] == 1
     assert "repair_groups" not in diagnostics
     assert "would_merge" not in diagnostics
 
@@ -5733,7 +5799,6 @@ def test_news_dedup_diagnostics_reports_current_policy_duplicate_gates(tmp_path)
 
         diagnostics = repo.news_dedup_diagnostics(
             window_ms=8 * 3_600_000,
-            score_threshold=80,
             now_ms=NOW_MS + 2_000,
         )
     finally:
@@ -6096,12 +6161,11 @@ def _page_row(
         "summary": "summary",
         "canonical_url": f"https://example.com/{row_id}",
         "lifecycle_status": "raw",
-        "token_lanes_json": [],
-        "fact_lanes_json": [],
+        "token_lanes": [],
+        "fact_lanes": [],
         "source": {"source_id": source_id},
-        "source_json": {"source_id": source_id},
         "signal": {"display_signal": {"direction": "neutral", "score": 0}},
-        "market_scope_json": {},
+        "market_scope": {},
         "projection_version": projection_version,
         "computed_at_ms": computed_at_ms,
     }
@@ -6266,6 +6330,7 @@ def _insert_schema_brief(
     news_item_id: str,
     run_id: str,
     schema_version: str,
+    brief_json_extra: dict[str, Any] | None = None,
 ) -> None:
     _insert_agent_run(repo, news_item_id=news_item_id, run_id=run_id)
     repo.upsert_news_item_agent_brief(
@@ -6278,6 +6343,7 @@ def _insert_schema_brief(
             "summary_zh": "schema cleanup fixture",
             "market_read_zh": "schema cleanup fixture",
             "status": "ready",
+            **(brief_json_extra or {}),
         },
         input_hash=f"input-{run_id}",
         artifact_version_hash="artifact",
@@ -6329,3 +6395,7 @@ def _insert_agent_run(repo: NewsRepository, *, news_item_id: str, run_id: str) -
         finished_at_ms=NOW_MS + 100,
         created_at_ms=NOW_MS + 90,
     )
+
+
+def _json_value(value):
+    return json.loads(value) if isinstance(value, str) else value

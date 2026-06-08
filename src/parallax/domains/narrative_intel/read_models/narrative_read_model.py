@@ -8,9 +8,7 @@ from parallax.domains.narrative_intel.types.narrative_currentness import (
     public_currentness,
 )
 
-TOKEN_RADAR_NARRATIVE_ANALYSIS_WINDOW = "1h"
-TOKEN_RADAR_NARRATIVE_SURFACE_WINDOWS = frozenset({"5m", "4h", "24h"})
-OVERLAY_READY_STATUSES = frozenset({"current", "updating", "stale"})
+MISSING_DIGEST_REASON = "no_ready_digest"
 
 
 class NarrativeReadModel:
@@ -20,12 +18,9 @@ class NarrativeReadModel:
     def hydrate_token_radar(self, data: dict[str, Any], *, window: str, scope: str, now_ms: int) -> dict[str, Any]:
         targets = _extract_targets(data)
         normalized_scope = _normalize_scope(scope)
-        repository_window = (
-            TOKEN_RADAR_NARRATIVE_ANALYSIS_WINDOW if window in TOKEN_RADAR_NARRATIVE_SURFACE_WINDOWS else window
-        )
         digests = self.repository.current_narrative_snapshots_for_targets(
             targets,
-            window=repository_window,
+            window=window,
             scope=normalized_scope,
             schema_version=NARRATIVE_SCHEMA_VERSION,
             now_ms=now_ms,
@@ -38,8 +33,6 @@ class NarrativeReadModel:
                         row,
                         digests,
                         now_ms=now_ms,
-                        surface_window=window,
-                        scope=normalized_scope,
                     )
                     for row in hydrated[key]
                 ]
@@ -58,7 +51,7 @@ class NarrativeReadModel:
         hydrated["discussion_digest"] = _public_digest(
             digests.get(
                 (str(target.get("target_type")), str(target.get("target_id"))),
-                _missing_digest("digest_not_ready"),
+                _missing_digest(MISSING_DIGEST_REASON),
             ),
             now_ms=now_ms,
             surface="token_case",
@@ -87,7 +80,7 @@ class NarrativeReadModel:
         hydrated_posts = []
         for post in posts:
             key = (str(post.get("event_id")), str(post.get("target_type")), str(post.get("target_id")))
-            hydrated_posts.append({**post, "semantic": semantics.get(key, _missing_semantic())})
+            hydrated_posts.append({**post, "semantic": _public_semantic(semantics.get(key))})
         hydrated = dict(posts_data)
         if "items" in hydrated:
             hydrated["items"] = hydrated_posts
@@ -101,21 +94,10 @@ class NarrativeReadModel:
         digests: dict[tuple[str, str], dict[str, Any]],
         *,
         now_ms: int,
-        surface_window: str,
-        scope: str,
     ) -> dict[str, Any]:
         target_type = str(row.get("target_type") or row.get("type") or "")
         target_id = str(row.get("target_id") or row.get("id") or "")
-        digest = digests.get((target_type, target_id), _missing_digest("digest_not_ready"))
-        if surface_window in TOKEN_RADAR_NARRATIVE_SURFACE_WINDOWS:
-            digest = _token_radar_overlay_digest(
-                digest,
-                target_type=target_type,
-                target_id=target_id,
-                surface_window=surface_window,
-                scope=scope,
-                now_ms=now_ms,
-            )
+        digest = digests.get((target_type, target_id), _missing_digest(MISSING_DIGEST_REASON))
         return {
             **row,
             "discussion_digest": _public_digest(
@@ -151,76 +133,6 @@ def _missing_digest(reason: str) -> dict[str, Any]:
     }
 
 
-def _token_radar_overlay_digest(
-    digest: dict[str, Any],
-    *,
-    target_type: str,
-    target_id: str,
-    surface_window: str,
-    scope: str,
-    now_ms: int,
-) -> dict[str, Any]:
-    if _is_reusable_token_radar_overlay_digest(digest, now_ms=now_ms):
-        return {
-            **digest,
-            "analysis_window": TOKEN_RADAR_NARRATIVE_ANALYSIS_WINDOW,
-            "source_window": TOKEN_RADAR_NARRATIVE_ANALYSIS_WINDOW,
-            "surface_window": surface_window,
-            "reuse_reason": "target_current_1h_narrative",
-        }
-    return _missing_token_radar_overlay_digest(
-        target_type=target_type,
-        target_id=target_id,
-        surface_window=surface_window,
-        scope=scope,
-        now_ms=now_ms,
-    )
-
-
-def _is_reusable_token_radar_overlay_digest(digest: dict[str, Any], *, now_ms: int) -> bool:
-    if digest.get("status") != "ready":
-        return False
-    currentness = _public_currentness_for_row(digest, now_ms=now_ms)
-    return currentness.get("display_status") in OVERLAY_READY_STATUSES
-
-
-def _missing_token_radar_overlay_digest(
-    *,
-    target_type: str,
-    target_id: str,
-    surface_window: str,
-    scope: str,
-    now_ms: int,
-) -> dict[str, Any]:
-    reason = "no_reusable_1h_digest"
-    return {
-        "target_type": target_type,
-        "target_id": target_id,
-        "window": TOKEN_RADAR_NARRATIVE_ANALYSIS_WINDOW,
-        "scope": scope,
-        "schema_version": NARRATIVE_SCHEMA_VERSION,
-        "status": "pending",
-        "is_current": False,
-        "analysis_window": TOKEN_RADAR_NARRATIVE_ANALYSIS_WINDOW,
-        "source_window": TOKEN_RADAR_NARRATIVE_ANALYSIS_WINDOW,
-        "surface_window": surface_window,
-        "reuse_reason": reason,
-        "data_gaps_json": [{"reason": reason}],
-        "semantic_coverage": 0,
-        "source_event_count": 0,
-        "labeled_event_count": 0,
-        "independent_author_count": 0,
-        "evidence_refs_json": [],
-        "currentness": public_currentness(
-            digest=None,
-            admission=None,
-            window=TOKEN_RADAR_NARRATIVE_ANALYSIS_WINDOW,
-            now_ms=now_ms,
-            reason=reason,
-        ),
-    }
-
-
 def _public_digest(
     digest: dict[str, Any],
     *,
@@ -243,7 +155,19 @@ def _public_digest(
     ):
         currentness = {**currentness, "display_status": "stale"}
     payload = {
-        **row,
+        "target_type": row.get("target_type"),
+        "target_id": row.get("target_id"),
+        "window": row.get("window"),
+        "scope": row.get("scope"),
+        "schema_version": row.get("schema_version"),
+        "status": row.get("status") or "pending",
+        "is_current": row.get("is_current"),
+        "headline_zh": row.get("headline_zh"),
+        "semantic_coverage": semantic_coverage,
+        "source_event_count": _int(row.get("source_event_count")),
+        "labeled_event_count": _int(row.get("labeled_event_count")),
+        "independent_author_count": _int(row.get("independent_author_count")),
+        "computed_at_ms": row.get("computed_at_ms"),
         "currentness": currentness,
         "dominant_narratives": narratives,
         "dominant_narrative": _dominant_narrative(row, dominant),
@@ -412,3 +336,33 @@ def _missing_semantic() -> dict[str, Any]:
         "attention_valence": "unknown",
         "data_gaps": [{"reason": "semantic_not_ready"}],
     }
+
+
+def _public_semantic(semantic: dict[str, Any] | None) -> dict[str, Any]:
+    if not semantic:
+        return _missing_semantic()
+    status = str(semantic.get("status") or "pending")
+    if status == "semantic_unavailable":
+        return {
+            "status": "semantic_unavailable",
+            "trade_stance": "unknown",
+            "attention_valence": "unknown",
+            "data_gaps": [{"reason": "semantic_unavailable"}],
+        }
+    if status != "labeled":
+        return _missing_semantic()
+
+    payload: dict[str, Any] = {
+        "status": "labeled",
+        "trade_stance": semantic.get("trade_stance") or "unknown",
+        "attention_valence": semantic.get("attention_valence") or "unknown",
+        "claim_type": semantic.get("claim_type") or "other",
+        "evidence_type": semantic.get("evidence_type") or "unknown",
+        "semantic_confidence": _float(semantic.get("semantic_confidence")),
+        "co_mentioned_targets": _list(semantic.get("co_mentioned_targets_json")),
+        "evidence_refs": _list(semantic.get("evidence_refs_json")),
+    }
+    for key in ("language", "narrative_cluster_key"):
+        if semantic.get(key) is not None:
+            payload[key] = semantic.get(key)
+    return payload

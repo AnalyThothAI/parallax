@@ -7,10 +7,9 @@ from parallax.domains.pulse_lab.services.claim_evidence_verifier import ClaimEvi
 
 def test_unknown_ref_blocks_publish() -> None:
     packet = _packet()
-    memo = _memo(bull_refs=("event:event-1", "metric:market:unknown"))
-    decision = _decision("trade_candidate", supporting_refs=("event:event-1",))
+    decision = _decision("trade_candidate", supporting_refs=("event:event-1", "metric:market:unknown"))
 
-    result = _verify(packet, memo, decision)
+    result = _verify(packet, decision)
 
     assert result.valid is False
     assert result.unknown_ref_ids == ("metric:market:unknown",)
@@ -19,10 +18,9 @@ def test_unknown_ref_blocks_publish() -> None:
 
 def test_event_id_only_final_decision_blocks_non_abstain_publish() -> None:
     packet = _packet()
-    memo = _memo(bull_refs=("event:event-1",))
     decision = _decision("trade_candidate", supporting_refs=(), evidence_event_ids=("event-1",))
 
-    result = _verify(packet, memo, decision)
+    result = _verify(packet, decision)
 
     assert result.valid is False
     assert "final_decision.supporting_evidence_refs" in result.missing_required_ref_claims
@@ -31,10 +29,9 @@ def test_event_id_only_final_decision_blocks_non_abstain_publish() -> None:
 
 def test_event_id_string_is_not_accepted_as_complete_evidence_ref() -> None:
     packet = _packet()
-    memo = _memo(bull_refs=("event:event-1",))
     decision = _decision("trade_candidate", supporting_refs=("event-1",))
 
-    result = _verify(packet, memo, decision)
+    result = _verify(packet, decision)
 
     assert result.valid is False
     assert result.unknown_ref_ids == ("event-1",)
@@ -42,10 +39,9 @@ def test_event_id_string_is_not_accepted_as_complete_evidence_ref() -> None:
 
 def test_complete_refs_allow_public_display() -> None:
     packet = _packet()
-    memo = _memo(bull_refs=("event:event-1", "metric:market:price_usd"))
     decision = _decision("trade_candidate", supporting_refs=("event:event-1", "metric:market:price_usd"))
 
-    result = _verify(packet, memo, decision)
+    result = _verify(packet, decision)
 
     assert result.valid is True
     assert result.unknown_ref_ids == ()
@@ -55,15 +51,9 @@ def test_complete_refs_allow_public_display() -> None:
 
 def test_abstain_can_use_gate_gap_ref_without_supporting_refs() -> None:
     packet = _packet()
-    memo = SimpleNamespace(
-        bull_claims=(),
-        bear_claims=(),
-        rebuttal_claims=(),
-        data_gap_claims=(_claim(("gate:pulse:blocked_market_contract", "missing:market.price_usd")),),
-    )
     decision = _decision("abstain", supporting_refs=(), data_gap_refs=("gate:pulse:blocked_market_contract",))
 
-    result = _verify(packet, memo, decision, bear_memo=memo)
+    result = _verify(packet, decision)
 
     assert result.valid is True
     assert result.decision_status == "abstain"
@@ -82,29 +72,9 @@ def _packet() -> SimpleNamespace:
 
 def _verify(
     packet: SimpleNamespace,
-    signal_memo: SimpleNamespace,
     decision: SimpleNamespace,
-    *,
-    bear_memo: SimpleNamespace | None = None,
 ):
-    return ClaimEvidenceVerifier().verify(packet, signal_memo, bear_memo or _bear_memo(), decision)
-
-
-def _memo(*, bull_refs: tuple[str, ...]) -> SimpleNamespace:
-    return SimpleNamespace(
-        bull_claims=(_claim(bull_refs),),
-        bear_claims=(),
-        rebuttal_claims=(),
-        data_gap_claims=(),
-    )
-
-
-def _bear_memo() -> SimpleNamespace:
-    return SimpleNamespace(risk_claims=(), missing_fact_impacts=())
-
-
-def _claim(refs: tuple[str, ...]) -> SimpleNamespace:
-    return SimpleNamespace(claim="claim", evidence_refs=refs, stance="bull")
+    return ClaimEvidenceVerifier().verify(packet, decision)
 
 
 def _decision(

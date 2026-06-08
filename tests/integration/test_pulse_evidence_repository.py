@@ -280,14 +280,14 @@ def _insert_narrative_admission(
           next_semantics_due_at_ms, next_digest_due_at_ms, suppressed_at_ms,
           updated_at_ms, projection_computed_at_ms, source_window_start_ms,
           source_window_end_ms, source_event_count, independent_author_count,
-          admission_generation
+          admission_generation, payload_hash
         )
         VALUES (
           'admission-current', %s, %s, %s, %s, 'narrative_intel_v1',
           'admitted', 'test', 10, %s::jsonb, %s,
           1800000000200, 1800000000000, 1800000000200,
           0, 0, NULL, 1800000000200, 1800000000200, 1800000000000,
-          1800000000200, %s, %s, 'test-generation'
+          1800000000200, %s, %s, 'test-generation', 'test-admission-hash'
         )
         """,
         (
@@ -330,7 +330,7 @@ def _insert_discussion_digest(
           model_run_id, computed_at_ms, expires_at_ms, superseded_at_ms,
           epoch_id, epoch_policy_version, source_event_ids_json,
           source_window_start_ms, source_window_end_ms, epoch_closed_at_ms,
-          display_current_until_ms, refresh_reason
+          display_current_until_ms, refresh_reason, payload_hash
         )
         VALUES (
           %s, %s, %s, %s, %s, 'narrative_intel_v1',
@@ -343,7 +343,7 @@ def _insert_discussion_digest(
           NULL, 1800000000100, 1800003600100, NULL,
           'epoch-old', 'token-narrative-epoch-v1', %s::jsonb,
           1800000000000, 1800000000100, 1800000000100,
-          1800003600100, 'material_delta_due'
+          1800003600100, 'material_delta_due', %s
         )
         """,
         (
@@ -362,6 +362,7 @@ def _insert_discussion_digest(
             independent_author_count,
             json.dumps([{"ref_id": "event:event-old"}]),
             json.dumps(source_event_ids),
+            f"test-digest-hash:{digest_id}",
         ),
     )
 

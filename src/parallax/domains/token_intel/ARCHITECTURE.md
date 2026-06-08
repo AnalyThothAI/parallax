@@ -93,13 +93,14 @@ Latest read models read `token_radar_current_rows`; diagnostics use
 `token_score_evaluations` and v3 score-version keys to keep populations
 comparable. Online readiness and last-failure semantics come only
 from `token_radar_publication_state`: `fresh` requires a ready latest attempt,
-matching `current_generation_id`, and a single current-row generation for the
-requested `(projection_version, window, scope)`. A failed latest attempt with
-prior current rows is `stale`; a failed latest attempt without current rows is
-`failed`; missing state must not be reported as `fresh`. `fresh`, `stale`, and
-`failed` describe publication freshness, while row `quality_status` describes
-business credibility. A degraded row can still be a useful `watch`, but
-`high_alert` requires market quality and deterministic gates to pass.
+product/window current rows, or an explicitly empty ready publication. A failed
+latest attempt with prior current rows is `stale`; a failed latest attempt
+without current rows is `failed`; missing state must not be reported as
+`fresh`. `current_generation_id` remains attempt audit metadata, not an online
+serving join key. `fresh`, `stale`, and `failed` describe publication
+freshness, while row `quality_status` describes business credibility. A
+degraded row can still be a useful `watch`, but `high_alert` requires market
+quality and deterministic gates to pass.
 
 Successful publication generation ids are content-stable over current-row
 content. When a rebuild produces unchanged content, publication state refreshes

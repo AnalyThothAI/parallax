@@ -5,17 +5,13 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from parallax.domains.pulse_lab.types.evidence_packet import PulseEvidencePacket
-
 DecisionRoute = Literal["cex", "meme", "research_only"]
 DecisionRecommendation = Literal["high_conviction", "trade_candidate", "watchlist", "ignore", "abstain"]
 StageName = Literal[
     "evidence_pack",
     "evidence_completeness_gate",
-    "signal_analyst",
-    "bear_case",
+    "pulse_decision",
     "claim_verifier",
-    "risk_portfolio_judge",
     "recommendation_clipper",
     "deterministic_eval",
     "write_gate",
@@ -91,69 +87,6 @@ class TradePlaybook(BaseModel):
         return self
 
 
-class EvidenceClaim(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    claim: str = Field(max_length=180)
-    evidence_refs: tuple[str, ...] = Field(max_length=3)
-    stance: Literal["bull", "bear", "gap", "risk"]
-
-    @field_validator("claim", mode="after")
-    @classmethod
-    def _clean_claim(cls, value: str) -> str:
-        cleaned = _clean_text(value)
-        if not cleaned:
-            raise ValueError("claim is required")
-        _reject_execution_language(cleaned)
-        return cleaned
-
-    @field_validator("evidence_refs", mode="after")
-    @classmethod
-    def _stable_refs(cls, values: tuple[str, ...]) -> tuple[str, ...]:
-        return tuple(sorted({str(value).strip() for value in values if str(value).strip()}))
-
-
-class SignalAnalystMemo(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    bull_claims: tuple[EvidenceClaim, ...] = Field(default=(), max_length=3)
-    what_changed_zh: str = Field(max_length=240)
-    allowed_evidence_ref_ids: tuple[str, ...] = Field(default=(), max_length=20)
-
-    @field_validator("what_changed_zh", mode="after")
-    @classmethod
-    def _clean_what_changed(cls, value: str) -> str:
-        cleaned = _clean_text(value)
-        if not cleaned:
-            raise ValueError("what_changed_zh is required")
-        _reject_execution_language(cleaned)
-        return cleaned
-
-    @field_validator("allowed_evidence_ref_ids", mode="after")
-    @classmethod
-    def _stable_allowed_refs(cls, values: tuple[str, ...]) -> tuple[str, ...]:
-        return tuple(sorted({str(value).strip() for value in values if str(value).strip()}))
-
-
-class BearCaseMemo(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    risk_claims: tuple[EvidenceClaim, ...] = Field(default=(), max_length=4)
-    confidence_ceiling: float = Field(ge=0, le=1)
-    missing_fact_impacts: tuple[EvidenceClaim, ...] = Field(default=(), max_length=3)
-    allowed_evidence_ref_ids: tuple[str, ...] = Field(default=(), max_length=20)
-
-    @field_validator("confidence_ceiling", mode="after")
-    @classmethod
-    def _clamp_confidence_ceiling(cls, value: float) -> float:
-        return max(0.0, min(1.0, float(value)))
-
-    @field_validator("allowed_evidence_ref_ids", mode="after")
-    @classmethod
-    def _stable_allowed_refs(cls, values: tuple[str, ...]) -> tuple[str, ...]:
-        return tuple(sorted({str(value).strip() for value in values if str(value).strip()}))
-
-
 class FinalDecision(BaseModel):
     """v2 strict schema: extends v1 with narrative + bull/bear + playbook.
 
@@ -163,7 +96,7 @@ class FinalDecision(BaseModel):
     descriptive message.
     """
 
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="forbid")
 
     route: DecisionRoute
     recommendation: DecisionRecommendation
@@ -265,33 +198,11 @@ class StageRunAudit(BaseModel):
     finished_at_ms: int | None = Field(default=None, ge=0)
     status: StageStatus
     error: str | None = None
-    # Promoted from trace_metadata_json jsonb to dedicated columns by migration
-    # 20260516_0048. Clients keep dual-writing into trace_metadata_json for one
-    # release cycle so a rollback can recover the values.
     safety_net_used: bool = False
     safety_net_retries: int = Field(default=0, ge=0)
     parse_mode: str = "strict"
     input_hash: str | None = None
     output_hash: str | None = None
-
-
-class PulseDecisionPayload(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    final_decision: FinalDecision
-    stage_audits: tuple[StageRunAudit, ...]
-
-
-class PulseAgentDecisionResult(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    evidence_packet: PulseEvidencePacket
-    evidence_gate: dict[str, Any]
-    signal_memo: SignalAnalystMemo
-    bear_memo: BearCaseMemo
-    final_decision: FinalDecision
-    claim_verification: dict[str, Any]
-    stage_audits: tuple[StageRunAudit, ...]
 
 
 class PulseStageFailure(Exception):
@@ -332,18 +243,13 @@ def _reject_execution_language(value: Any) -> None:
 
 
 __all__ = [
-    "BearCaseMemo",
     "BullBearStrength",
     "BullBearView",
     "DecisionRecommendation",
     "DecisionRoute",
-    "EvidenceClaim",
     "FinalDecision",
     "MonitoringHorizon",
-    "PulseAgentDecisionResult",
-    "PulseDecisionPayload",
     "PulseStageFailure",
-    "SignalAnalystMemo",
     "StageName",
     "StageRunAudit",
     "StageStatus",

@@ -60,6 +60,37 @@ def test_recompute_current_identity_writes_policy_result_without_source_preceden
     assert conn.commits == 0
 
 
+def test_recompute_current_identity_reports_zero_rows_written_when_projection_unchanged():
+    conn = FakeIdentityConnection(
+        evidence_rows=[
+            {
+                "evidence_id": "okx-exact-slop",
+                "asset_id": "asset:eip155:1:erc20:0x999b49c0d1612e619a4a4f6280733184da025108",
+                "evidence_kind": EVIDENCE_OKX_DEX_EXACT_ADDRESS,
+                "provider": "okx",
+                "lookup_mode": "exact_address",
+                "symbol": "SLOP",
+                "name": "SLOP",
+                "decimals": None,
+                "observed_at_ms": 200,
+            },
+        ],
+        insert_changed=False,
+    )
+
+    current = IdentityEvidenceRepository(conn).recompute_current_identity(
+        "asset:eip155:1:erc20:0x999b49c0d1612e619a4a4f6280733184da025108",
+        now_ms=2_000,
+        commit=False,
+    )
+
+    assert current["rows_written"] == 0
+    assert "RETURNING true AS changed" in conn.insert_sql
+    assert "asset_identity_current.canonical_symbol IS DISTINCT FROM excluded.canonical_symbol" in conn.insert_sql
+    assert "asset_identity_current.updated_at_ms IS DISTINCT FROM excluded.updated_at_ms" not in conn.insert_sql
+    assert "asset_identity_current.verified_at_ms IS DISTINCT FROM excluded.verified_at_ms" not in conn.insert_sql
+
+
 class FakeCursor:
     def __init__(self, rows):
         self.rows = rows
@@ -72,8 +103,10 @@ class FakeCursor:
 
 
 class FakeIdentityConnection:
-    def __init__(self, *, evidence_rows):
+    def __init__(self, *, evidence_rows, insert_changed: bool = True):
         self.evidence_rows = evidence_rows
+        self.insert_changed = insert_changed
+        self.insert_sql = ""
         self.current_rows = []
         self.commits = 0
 
@@ -82,6 +115,7 @@ class FakeIdentityConnection:
         if "FROM asset_identity_evidence" in text:
             return FakeCursor(self.evidence_rows)
         if "INSERT INTO asset_identity_current" in text:
+            self.insert_sql = text
             self.current_rows.append(
                 {
                     "asset_id": params[0],
@@ -93,7 +127,7 @@ class FakeIdentityConnection:
                     "conflict_count": params[7],
                 }
             )
-            return FakeCursor([])
+            return FakeCursor([{"changed": True}] if self.insert_changed else [])
         raise AssertionError(f"unexpected SQL: {text}")
 
     def commit(self):

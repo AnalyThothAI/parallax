@@ -36,7 +36,7 @@ def test_packet_builds_market_wide_entity_lanes_refs_hash_and_source_text_constr
             "content_hash": "sha256:item",
             "event_type": "macro_risk_repricing",
             "market_scope_json": ["us_equity", "ai_semiconductors", "crypto", "macro_rates"],
-            "agent_admission_json": {"status": "eligible", "reason": "provider_score_high", "score": 91},
+            "agent_admission_json": {"status": "eligible", "reason": "ready_market_driver", "score": 91},
             "similarity_json": {"exact_duplicate": False, "similar_story_ids": ["item-old"]},
             "material_delta_json": {"status": "material", "changed_fields": ["market_scope"]},
         },
@@ -140,7 +140,7 @@ def test_packet_uses_agent_admission_basis_market_scope_without_item_scope_field
     assert packet.market_scope == ["energy_geopolitics", "commodity", "crypto"]
 
 
-def test_packet_uses_provider_cex_token_impact_as_crypto_scope_without_item_scope_field() -> None:
+def test_packet_ignores_provider_token_impacts_for_agent_scope_refs_and_hash() -> None:
     packet = build_news_item_brief_input_packet(
         item={
             "news_item_id": "item-energy-btc",
@@ -165,10 +165,34 @@ def test_packet_uses_provider_cex_token_impact_as_crypto_scope_without_item_scop
         agent_config=_agent_config(),
     )
 
-    assert packet.provider_signal_evidence is not None
-    assert packet.provider_signal_evidence.market_impacts[0].market_type == "cex"
-    assert "provider:impact:BTC" in packet.evidence_refs
-    assert packet.market_scope == ["energy_geopolitics", "commodity", "crypto"]
+    payload = news_item_brief_material_input_payload(packet)
+    assert not hasattr(packet, "provider_signal_evidence")
+    assert "provider_signal_evidence" not in packet.model_dump(mode="json")
+    assert all(not ref.startswith("provider:") for ref in packet.evidence_refs)
+    assert packet.market_scope == ["energy_geopolitics", "commodity"]
+
+    without_provider = build_news_item_brief_input_packet(
+        item={
+            "news_item_id": "item-energy-btc",
+            "title": "Gulf flare-up raises crude supply risk",
+            "summary": "The event raised WTI crude supply concerns.",
+            "body_text": "No item market scope field is present on this production-shaped item.",
+            "published_at_ms": 1_779_000_000_000,
+            "content_hash": "sha256:energy-btc",
+            "agent_admission_json": {
+                "status": "eligible",
+                "reason": "eligible",
+                "basis": {"market_scope": ["energy_geopolitics", "commodity"]},
+            },
+        },
+        entities=[{"entity_id": "entity-wti", "raw_value": "WTI crude futures", "entity_type": "commodity"}],
+        token_mentions=[],
+        fact_candidates=[],
+        agent_config=_agent_config(),
+    )
+    assert packet.input_hash == without_provider.input_hash
+    assert "provider_signal_json" not in payload
+    assert "provider_token_impacts_json" not in payload
 
 
 def test_packet_maps_non_crypto_market_instrument_token_mention_to_equity_lane() -> None:
@@ -270,7 +294,7 @@ def test_packet_truncates_entity_and_fact_lanes_after_stable_sort() -> None:
     assert packet.input_hash == repeat.input_hash
 
 
-def test_packet_includes_bounded_provider_signal_evidence() -> None:
+def test_packet_omits_provider_signal_context_from_agent_input() -> None:
     packet = build_news_item_brief_input_packet(
         item={
             "news_item_id": "item-provider-signal",
@@ -304,22 +328,12 @@ def test_packet_includes_bounded_provider_signal_evidence() -> None:
         agent_config=_agent_config(),
     )
 
-    evidence = packet.provider_signal_evidence
-    assert evidence is not None
-    assert evidence.score == 91
-    assert evidence.direction == "bullish"
-    assert evidence.grade == "A"
-    assert len(evidence.summary_zh) == 600
-    assert len(evidence.summary_en) == 600
-    assert [impact.label for impact in evidence.market_impacts] == [f"T{index:02d}" for index in range(12)]
-    assert len(evidence.source_ids) == 12
-    assert len(evidence.source_domains) == 12
-    assert len(evidence.provider_article_keys) == 12
-    assert evidence.duplicate_count == 17
-    assert "provider:signal" in packet.evidence_refs
-    assert "provider:impact:T00" in packet.evidence_refs
-    assert "provider:impact:T12" not in packet.evidence_refs
-    assert packet.input_hash == json_sha256(news_item_brief_material_input_payload(packet))
+    payload = news_item_brief_material_input_payload(packet)
+    assert not hasattr(packet, "provider_signal_evidence")
+    assert "provider_signal_evidence" not in packet.model_dump(mode="json")
+    assert all(not ref.startswith("provider:") for ref in packet.evidence_refs)
+    assert packet.market_scope == []
+    assert packet.input_hash == json_sha256(payload)
 
 
 def test_packet_ignores_legacy_context_items_from_item_payload() -> None:
@@ -359,7 +373,7 @@ def test_packet_hash_includes_admission_and_material_delta_but_ignores_fetched_a
         "published_at_ms": 1_779_000_000_000,
         "fetched_at_ms": 1_779_000_010_000,
         "content_hash": "sha256:btc-etf-flow",
-        "agent_admission_json": {"status": "eligible", "reason": "provider_score_high"},
+        "agent_admission_json": {"status": "eligible", "reason": "ready_market_driver"},
         "material_delta_json": {"status": "material", "changed_fields": ["score"]},
     }
     first = build_news_item_brief_input_packet(

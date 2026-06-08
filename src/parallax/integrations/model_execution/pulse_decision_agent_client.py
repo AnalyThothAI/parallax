@@ -10,19 +10,16 @@ from parallax.domains.pulse_lab.interfaces import (
 )
 from parallax.domains.pulse_lab.providers import (
     DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT,
-    BearCaseMemo,
+    PULSE_DECISION_LANE,
     PulseAgentRuntimeContract,
     PulseDecisionRuntime,
     PulseDecisionStageSpec,
     PulseEvidencePacket,
-    PulseStagePlan,
-    SignalAnalystMemo,
 )
 from parallax.domains.pulse_lab.types.agent_decision import (
     BullBearView,
     DecisionRoute,
     FinalDecision,
-    PulseDecisionPayload,
     PulseStageFailure,
     StageRunAudit,
     StageStatus,
@@ -52,7 +49,7 @@ class PulseDecisionAgentResult:
 
 
 class LiteLLMPulseDecisionClient:
-    """Packet-only SignalAnalyst -> BearCase -> RiskPortfolioJudge client."""
+    """Packet-only single-stage Pulse decision client."""
 
     provider = "litellm"
 
@@ -77,7 +74,7 @@ class LiteLLMPulseDecisionClient:
 
     @property
     def model(self) -> str:
-        return self._agent_gateway.model_for_lane("pulse.signal_analyst")
+        return self._agent_gateway.model_for_lane(PULSE_DECISION_LANE)
 
     def model_for_lane(self, lane: str) -> str:
         return self._agent_gateway.model_for_lane(lane)
@@ -85,30 +82,18 @@ class LiteLLMPulseDecisionClient:
     @property
     def artifact_version_hash(self) -> str:
         return artifact_hash_for(
-            model=json_sha256(
-                {
-                    "signal_analyst": self._agent_gateway.model_for_lane("pulse.signal_analyst"),
-                    "bear_case": self._agent_gateway.model_for_lane("pulse.bear_case"),
-                    "risk_portfolio_judge": self._agent_gateway.model_for_lane("pulse.risk_portfolio_judge"),
-                }
-            ),
+            model=self._agent_gateway.model_for_lane(PULSE_DECISION_LANE),
             prompt_version=PULSE_DECISION_PROMPT_VERSION,
             schema_version=PULSE_DECISION_SCHEMA_VERSION,
             runtime_version=RUNTIME_VERSION,
-            output_schema_hash=json_sha256(
-                {
-                    "signal_analyst": SignalAnalystMemo.model_json_schema(),
-                    "bear_case": BearCaseMemo.model_json_schema(),
-                    "risk_portfolio_judge": FinalDecision.model_json_schema(),
-                }
-            ),
+            output_schema_hash=json_sha256({"pulse_decision": FinalDecision.model_json_schema()}),
+            prompt_text_hash=self._decision_runtime.prompt_text_hash(),
         )
 
     @property
     def runtime_contract(self) -> PulseAgentRuntimeContract:
         return PulseAgentRuntimeContract(
-            stage_names=("signal_analyst", "bear_case", "risk_portfolio_judge"),
-            safety_net_enabled=True,
+            stage_names=("pulse_decision",),
             evidence_packet_schema_version=DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT.evidence_packet_schema_version,
         )
 
@@ -155,7 +140,6 @@ class LiteLLMPulseDecisionClient:
         completeness: dict[str, Any],
         runtime_manifest: dict[str, Any],
         parent_reservation: AgentCapacityReservation | None = None,
-        stage_plan: PulseStagePlan | None = None,
     ) -> PulseDecisionAgentResult:
         audit = self.request_audit(
             context=context,
@@ -167,21 +151,22 @@ class LiteLLMPulseDecisionClient:
         )
         evidence_packet = _evidence_packet_from_context(context)
         evidence_gate = completeness
-        if stage_plan is not None and not (stage_plan.run_signal_analyst and stage_plan.run_bear_case):
+
+        if not _decision_allowed(context):
             final = _stage_failure_abstain_decision(
                 route=route,
-                reason="cost_guard_no_llm_stage_plan",
+                reason="pulse_decision_not_required",
                 evidence_packet=evidence_packet,
-                abstain_reason="cost_guard_research_only",
+                abstain_reason="cost_guard_decision_skipped",
             )
             audit = self._decision_runtime.with_output_hash(audit, final=final)
             return PulseDecisionAgentResult(
                 final_decision=final,
                 agent_run_audit=audit,
-                stage_audits=tuple(),
+                stage_audits=(),
             )
 
-        signal_step = await self._run_signal_analyst(
+        decision_step = await self._run_pulse_decision(
             route=route,
             evidence_packet=evidence_packet,
             evidence_gate=evidence_gate,
@@ -189,14 +174,14 @@ class LiteLLMPulseDecisionClient:
             audit=audit,
             parent_reservation=parent_reservation,
         )
-        stage_audits: list[StageRunAudit] = [signal_step]
-        if signal_step.status != "ok":
-            if _is_model_contract_stage_failure(signal_step):
+        stage_audits: list[StageRunAudit] = [decision_step]
+        if decision_step.status != "ok":
+            if _is_model_contract_stage_failure(decision_step):
                 final = _stage_failure_abstain_decision(
                     route=route,
-                    reason=signal_step.error or "signal_analyst_contract_failed",
+                    reason=decision_step.error or "pulse_decision_contract_failed",
                     evidence_packet=evidence_packet,
-                    abstain_reason=_abstain_reason_for_stage_failure(signal_step),
+                    abstain_reason=_abstain_reason_for_stage_failure(decision_step),
                 )
                 audit = self._decision_runtime.with_output_hash(audit, final=final)
                 return PulseDecisionAgentResult(
@@ -205,135 +190,17 @@ class LiteLLMPulseDecisionClient:
                     stage_audits=tuple(stage_audits),
                 )
             raise PulseStageFailure(
-                f"signal_analyst stage {signal_step.status}: {signal_step.error}",
+                f"pulse_decision stage {decision_step.status}: {decision_step.error}",
                 audits=tuple(stage_audits),
             )
-        signal_memo = SignalAnalystMemo.model_validate(signal_step.response_json)
-
-        try:
-            self._decision_runtime.validate_signal_refs(
-                signal_memo,
-                evidence_packet=evidence_packet,
-            )
-        except ValueError as exc:
-            failed_step = self._decision_runtime.mark_step_failed(signal_step, error=str(exc))
-            stage_audits[-1] = failed_step
-            final = _stage_failure_abstain_decision(
-                route=route,
-                reason=str(exc),
-                evidence_packet=evidence_packet,
-                abstain_reason="invalid_unknown_evidence_ref",
-            )
-            audit = self._decision_runtime.with_output_hash(audit, final=final)
-            return PulseDecisionAgentResult(
-                final_decision=final,
-                agent_run_audit=audit,
-                stage_audits=tuple(stage_audits),
-            )
-
-        bear_step = await self._run_bear_case(
-            route=route,
-            evidence_packet=evidence_packet,
-            evidence_gate=evidence_gate,
-            signal_memo=signal_memo,
-            run_id=run_id,
-            audit=audit,
-            parent_reservation=parent_reservation,
-        )
-        stage_audits.append(bear_step)
-        if bear_step.status != "ok":
-            if _is_model_contract_stage_failure(bear_step):
-                final = _stage_failure_abstain_decision(
-                    route=route,
-                    reason=bear_step.error or "bear_case_contract_failed",
-                    evidence_packet=evidence_packet,
-                    abstain_reason=_abstain_reason_for_stage_failure(bear_step),
-                )
-                audit = self._decision_runtime.with_output_hash(audit, final=final)
-                return PulseDecisionAgentResult(
-                    final_decision=final,
-                    agent_run_audit=audit,
-                    stage_audits=tuple(stage_audits),
-                )
-            raise PulseStageFailure(
-                f"bear_case stage {bear_step.status}: {bear_step.error}",
-                audits=tuple(stage_audits),
-            )
-        bear_memo = BearCaseMemo.model_validate(bear_step.response_json)
-        try:
-            self._decision_runtime.validate_bear_refs(
-                bear_memo,
-                evidence_packet=evidence_packet,
-            )
-        except ValueError as exc:
-            failed_step = self._decision_runtime.mark_step_failed(bear_step, error=str(exc))
-            stage_audits[-1] = failed_step
-            final = _stage_failure_abstain_decision(
-                route=route,
-                reason=str(exc),
-                evidence_packet=evidence_packet,
-                abstain_reason="invalid_unknown_evidence_ref",
-            )
-            audit = self._decision_runtime.with_output_hash(audit, final=final)
-            return PulseDecisionAgentResult(
-                final_decision=final,
-                agent_run_audit=audit,
-                stage_audits=tuple(stage_audits),
-            )
-
-        if stage_plan is not None and not stage_plan.run_risk_portfolio_judge:
-            final = _stage_failure_abstain_decision(
-                route=route,
-                reason="public_judge_not_required",
-                evidence_packet=evidence_packet,
-                abstain_reason="cost_guard_research_only",
-            )
-            audit = self._decision_runtime.with_output_hash(audit, final=final)
-            return PulseDecisionAgentResult(
-                final_decision=final,
-                agent_run_audit=audit,
-                stage_audits=tuple(stage_audits),
-            )
-
-        judge_step = await self._run_risk_portfolio_judge(
-            route=route,
-            evidence_packet=evidence_packet,
-            evidence_gate=evidence_gate,
-            signal_memo=signal_memo,
-            bear_memo=bear_memo,
-            run_id=run_id,
-            audit=audit,
-            parent_reservation=parent_reservation,
-        )
-        stage_audits.append(judge_step)
-        if judge_step.status != "ok":
-            if _is_model_contract_stage_failure(judge_step):
-                final = _stage_failure_abstain_decision(
-                    route=route,
-                    reason=judge_step.error or "risk_portfolio_judge_contract_failed",
-                    evidence_packet=evidence_packet,
-                    abstain_reason=_abstain_reason_for_stage_failure(judge_step),
-                )
-                audit = self._decision_runtime.with_output_hash(audit, final=final)
-                return PulseDecisionAgentResult(
-                    final_decision=final,
-                    agent_run_audit=audit,
-                    stage_audits=tuple(stage_audits),
-                )
-            raise PulseStageFailure(
-                f"risk_portfolio_judge stage {judge_step.status}: {judge_step.error}",
-                audits=tuple(stage_audits),
-            )
-        final = FinalDecision.model_validate(judge_step.response_json)
+        final = FinalDecision.model_validate(decision_step.response_json)
         try:
             self._decision_runtime.validate_final_evidence_refs(
                 final,
                 evidence_packet=evidence_packet,
-                signal_memo=signal_memo,
-                bear_memo=bear_memo,
             )
         except ValueError as exc:
-            failed_step = self._decision_runtime.mark_step_failed(judge_step, error=str(exc))
+            failed_step = self._decision_runtime.mark_step_failed(decision_step, error=str(exc))
             stage_audits[-1] = failed_step
             final = _stage_failure_abstain_decision(
                 route=route,
@@ -342,9 +209,6 @@ class LiteLLMPulseDecisionClient:
                 abstain_reason="invalid_unknown_evidence_ref",
             )
 
-        final = self._decision_runtime.enrich_evidence_urls(final)
-
-        PulseDecisionPayload(final_decision=final, stage_audits=tuple(stage_audits))
         audit = self._decision_runtime.with_output_hash(audit, final=final)
         return PulseDecisionAgentResult(
             final_decision=final,
@@ -352,7 +216,7 @@ class LiteLLMPulseDecisionClient:
             stage_audits=tuple(stage_audits),
         )
 
-    async def _run_signal_analyst(
+    async def _run_pulse_decision(
         self,
         *,
         route: DecisionRoute,
@@ -362,64 +226,10 @@ class LiteLLMPulseDecisionClient:
         audit: dict[str, Any],
         parent_reservation: AgentCapacityReservation | None = None,
     ) -> StageRunAudit:
-        spec = self._decision_runtime.signal_analyst_stage_spec(
+        spec = self._decision_runtime.pulse_decision_stage_spec(
             route=route,
             evidence_packet=evidence_packet,
             evidence_gate=evidence_gate,
-        )
-        return await self._run_stage(
-            spec=spec,
-            route=route,
-            output_type=SignalAnalystMemo,
-            run_id=run_id,
-            audit=audit,
-            parent_reservation=parent_reservation,
-        )
-
-    async def _run_bear_case(
-        self,
-        *,
-        route: DecisionRoute,
-        evidence_packet: PulseEvidencePacket,
-        evidence_gate: dict[str, Any],
-        signal_memo: SignalAnalystMemo,
-        run_id: str,
-        audit: dict[str, Any],
-        parent_reservation: AgentCapacityReservation | None = None,
-    ) -> StageRunAudit:
-        spec = self._decision_runtime.bear_case_stage_spec(
-            route=route,
-            evidence_packet=evidence_packet,
-            evidence_gate=evidence_gate,
-            signal_memo=signal_memo,
-        )
-        return await self._run_stage(
-            spec=spec,
-            route=route,
-            output_type=BearCaseMemo,
-            run_id=run_id,
-            audit=audit,
-            parent_reservation=parent_reservation,
-        )
-
-    async def _run_risk_portfolio_judge(
-        self,
-        *,
-        route: DecisionRoute,
-        evidence_packet: PulseEvidencePacket,
-        evidence_gate: dict[str, Any],
-        signal_memo: SignalAnalystMemo,
-        bear_memo: BearCaseMemo,
-        run_id: str,
-        audit: dict[str, Any],
-        parent_reservation: AgentCapacityReservation | None = None,
-    ) -> StageRunAudit:
-        spec = self._decision_runtime.risk_portfolio_judge_stage_spec(
-            route=route,
-            evidence_packet=evidence_packet,
-            evidence_gate=evidence_gate,
-            signal_memo=signal_memo,
-            bear_memo=bear_memo,
             recommendation_constraints=_recommendation_constraints(route=route, completeness=evidence_gate),
         )
         return await self._run_stage(
@@ -530,35 +340,21 @@ class LiteLLMPulseDecisionClient:
         )
 
     def _pipeline_model_manifest(self) -> str:
-        return json_sha256(
-            {
-                "signal_analyst": self._agent_gateway.model_for_lane("pulse.signal_analyst"),
-                "bear_case": self._agent_gateway.model_for_lane("pulse.bear_case"),
-                "risk_portfolio_judge": self._agent_gateway.model_for_lane("pulse.risk_portfolio_judge"),
-            }
-        )
+        return self._agent_gateway.model_for_lane(PULSE_DECISION_LANE)
 
     async def aclose(self) -> None:
         return None
 
 
 def _stage_lane(stage: str) -> str:
-    if stage == "signal_analyst":
-        return "pulse.signal_analyst"
-    if stage == "bear_case":
-        return "pulse.bear_case"
-    if stage == "risk_portfolio_judge":
-        return "pulse.risk_portfolio_judge"
-    raise ValueError(f"unsupported pulse stage: {stage}")
+    if stage != "pulse_decision":
+        raise ValueError(f"unsupported pulse stage: {stage}")
+    return PULSE_DECISION_LANE
 
 
 def _stage_agent_name(stage: str, route: DecisionRoute) -> str:
-    if stage == "signal_analyst":
-        return f"PulseSignalAnalyst{_route_label(route)}"
-    if stage == "bear_case":
-        return f"PulseBearCase{_route_label(route)}"
-    if stage == "risk_portfolio_judge":
-        return f"PulseRiskPortfolioJudge{_route_label(route)}"
+    if stage == "pulse_decision":
+        return f"PulseDecisionDesk{_route_label(route)}"
     return AGENT_NAME
 
 
@@ -582,11 +378,10 @@ def _stage_audit_from_execution(
     input_hash = str(getattr(audit, "input_hash", None) or stage_spec.input_hash)
     output_hash = getattr(audit, "output_hash", None) if audit is not None else None
     trace_metadata = {
-        **dict(getattr(audit, "trace_metadata", {}) or {}),
+        **_stage_trace_metadata(audit),
         **dict(trace_extra or {}),
         "input_hash": input_hash,
         "output_hash": output_hash,
-        "safety_net": safety,
     }
     if getattr(audit, "error_class", None):
         trace_metadata["error_class"] = str(audit.error_class)
@@ -632,6 +427,16 @@ def _stage_audit_from_execution_error(
         error=error,
         trace_extra={},
     )
+
+
+def _stage_trace_metadata(audit: AgentExecutionRequestAudit | AgentExecutionResultAudit | None) -> dict[str, Any]:
+    if audit is None:
+        return {}
+    return {
+        str(key): value
+        for key, value in dict(getattr(audit, "trace_metadata", {}) or {}).items()
+        if str(key) not in {"safety_net", "safety_net_used", "safety_net_retries", "parse_mode"}
+    }
 
 
 def _is_no_start_agent_backpressure(exc: AgentExecutionError) -> bool:
@@ -683,6 +488,16 @@ def _recommendation_constraints(*, route: DecisionRoute, completeness: dict[str,
         "high_conviction_requires_multiple_supporting_refs": True,
         "when_fact_absent": "lower_confidence_or_abstain",
     }
+
+
+def _decision_allowed(context: dict[str, Any]) -> bool:
+    cost_guard = context.get("cost_guard") if isinstance(context, dict) else None
+    if not isinstance(cost_guard, dict):
+        return True
+    decision = cost_guard.get("decision")
+    if not isinstance(decision, dict):
+        return True
+    return bool(decision.get("decision_allowed", True))
 
 
 def _stage_failure_abstain_decision(
@@ -749,18 +564,18 @@ def _abstain_reason_for_stage_failure(step: StageRunAudit) -> str:
 
 
 def _stage_failure_summary(abstain_reason: str) -> str:
-    if abstain_reason == "cost_guard_research_only":
-        return "成本门控仅完成研究阶段，本次不进入付费最终判断。"
+    if abstain_reason == "cost_guard_decision_skipped":
+        return "成本门控跳过单阶段决策，本次不发布候选。"
     if abstain_reason == "stage_timeout":
-        return "LLM 研究委员会阶段超时，本次不发布候选。"
+        return "LLM agent 阶段超时，本次不发布候选。"
     if abstain_reason == "invalid_model_output":
         return "模型输出不符合结构化合同，本次不发布候选。"
     return "模型输出引用了证据包外的 ref，本次不发布候选。"
 
 
 def _stage_failure_thesis(abstain_reason: str) -> str:
-    if abstain_reason == "cost_guard_research_only":
-        return "确定性成本门控判定该样本不需要公开最终判断；系统保留研究审计并等待下一轮公开资格确认。"
+    if abstain_reason == "cost_guard_decision_skipped":
+        return "确定性成本门控判定该样本不需要运行 Pulse 决策；系统保留审计并等待下一轮公开资格确认。"
     if abstain_reason == "stage_timeout":
         return "LLM 阶段超过实时预算，没有形成可验证的完整结论；本次仅记录超时并等待下一轮有效证据综合。"
     if abstain_reason == "invalid_model_output":

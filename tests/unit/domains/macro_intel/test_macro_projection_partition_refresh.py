@@ -6,7 +6,7 @@ from parallax.domains.macro_intel.observation_identity import (
 from parallax.domains.macro_intel.repositories.macro_intel_repository import MacroIntelRepository
 
 
-def test_partition_refresh_selects_and_replaces_only_claimed_concepts() -> None:
+def test_partition_refresh_upserts_only_claimed_concepts() -> None:
     selected_row = _series_row(concept_key="rates:dgs10")
     conn = PartitionRefreshConnection(selected_rows=[selected_row], existing_rows=[], insert_rowcount=1)
     repo = MacroIntelRepository(conn)
@@ -36,8 +36,17 @@ def test_partition_refresh_selects_and_replaces_only_claimed_concepts() -> None:
     assert source_params == (["rates:dgs10"], 730, "macro_regime_v4", 1_779_000_000_000, 252)
     assert "projection_version = %s" in delete_query
     assert "concept_key = ANY" in delete_query
-    assert delete_params == ("macro_regime_v4", ["rates:dgs10"])
+    assert "NOT EXISTS" in delete_query
+    assert "unnest(%s::text[], %s::date[])" in delete_query
+    assert delete_params == (
+        ["rates:dgs10"],
+        ["2026-05-20"],
+        "macro_regime_v4",
+        ["rates:dgs10"],
+    )
     assert "payload_hash" in insert_query
+    assert "ON CONFLICT (projection_version, concept_key, observed_at) DO UPDATE SET" in insert_query
+    assert "WHERE macro_observation_series_rows.payload_hash IS DISTINCT FROM excluded.payload_hash" in insert_query
     unbounded_delete = (
         'DELETE FROM macro_observation_series_rows\n                WHERE projection_version = %s\n                """'
     )

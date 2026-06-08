@@ -1968,17 +1968,27 @@ def test_cleanup_narrative_current_hard_cut_reports_exact_counts(tmp_path):
                 """
             ).fetchall()
         }
+        current = repo.current_narrative_snapshots_for_targets(
+            [{"target_type": "chain_token", "target_id": "solana:Current"}],
+            window="1h",
+            scope="all",
+            schema_version="narrative_intel_v1",
+            now_ms=4_000,
+        )
     finally:
         conn.close()
 
     assert result == {
         "deleted_old_admissions": 1,
-        "deleted_old_digests": 2,
+        "deleted_old_digests": 1,
         "deleted_old_semantics": 2,
         "deleted_old_model_runs": 0,
     }
     assert semantics == {"event-current": "queued"}
-    assert digest_rows == {}
+    assert set(digest_rows) == {"solana:Current"}
+    assert digest_rows["solana:Current"]["status"] == "ready"
+    assert digest_rows["solana:Current"]["is_current"] is True
+    assert current[("chain_token", "solana:Current")]["currentness"]["display_status"] == "updating"
 
 
 def test_cleanup_narrative_current_hard_cut_suppresses_non_realtime_state(tmp_path):

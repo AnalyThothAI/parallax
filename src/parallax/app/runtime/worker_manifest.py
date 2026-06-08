@@ -240,6 +240,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
             "dirty target payload hash",
         ),
         dirty_target_tables=("token_profile_current_dirty_targets",),
+        advisory_lock_key="2026051702",
     ),
     WorkerManifest(
         name="token_radar_projection",

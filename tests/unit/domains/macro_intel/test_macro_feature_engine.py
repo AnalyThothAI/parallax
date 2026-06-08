@@ -205,21 +205,17 @@ def test_repository_latest_snapshot_filters_current_projection_version_by_defaul
     assert params == ("macro_regime_v4",)
 
 
-def test_repository_latest_snapshot_can_read_any_projection_version_when_requested() -> None:
+def test_repository_latest_snapshot_rejects_unbounded_projection_version() -> None:
     conn = LatestSnapshotConnection(
         current_row={"snapshot_id": "v3", "projection_version": "macro_regime_v3", "computed_at_ms": 100},
         any_version_row={"snapshot_id": "v1-newer", "projection_version": "macro_regime_v1", "computed_at_ms": 200},
     )
     repo = MacroIntelRepository(conn)
 
-    assert repo.latest_snapshot(projection_version=None) == {
-        "snapshot_id": "v1-newer",
-        "projection_version": "macro_regime_v1",
-        "computed_at_ms": 200,
-    }
-    query, params = conn.executions[0]
-    assert "WHERE projection_version = %s" not in query
-    assert params == ()
+    with pytest.raises(ValueError, match="projection_version is required"):
+        repo.latest_snapshot(projection_version=None)
+
+    assert conn.executions == []
 
 
 def _daily_observations(

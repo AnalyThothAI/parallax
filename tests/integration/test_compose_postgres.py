@@ -11,7 +11,9 @@ def test_compose_runs_postgres_and_migration_before_app() -> None:
 
     assert "postgres" in services
     assert "migrate" in services
-    assert services["postgres"]["image"].startswith("postgres:")
+    assert services["postgres"]["image"] == "parallax-postgres-observability:18"
+    assert services["postgres"]["build"]["dockerfile"] == "ops/postgres/Dockerfile"
+    assert any("pg_stat_statements" in part for part in services["postgres"]["command"])
     assert "parallax-postgres:/var/lib/postgresql" in services["postgres"]["volumes"]
     assert services["postgres"]["healthcheck"]["test"][0] == "CMD-SHELL"
     assert "pg_isready" in services["postgres"]["healthcheck"]["test"][1]

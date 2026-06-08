@@ -36,7 +36,7 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.defaults.hard_timeout_seconds == 180
     assert settings.defaults.backoff.kind == "exponential"
     assert settings.agent_runtime.defaults.model == "deepseek-v4-flash"
-    assert settings.agent_runtime.lanes["pulse.signal_analyst"].model is None
+    assert settings.agent_runtime.lanes["pulse.decision"].model is None
     assert settings.collector.mode == "continuous"
     assert settings.collector.soft_timeout_seconds == 0
     assert settings.collector.hard_timeout_seconds == 0
@@ -306,9 +306,8 @@ def test_agent_runtime_settings_default_lanes() -> None:
     assert settings.agent_runtime.defaults.model == "deepseek-v4-flash"
     assert settings.agent_runtime.defaults.disable_thinking is True
     assert settings.agent_runtime.defaults.include_usage is True
-    assert settings.agent_runtime.lanes["pulse.signal_analyst"].priority == "high"
-    assert settings.agent_runtime.lanes["pulse.bear_case"].timeout_seconds == 180
-    assert settings.agent_runtime.lanes["pulse.risk_portfolio_judge"].timeout_seconds == 180
+    assert settings.agent_runtime.lanes["pulse.decision"].priority == "high"
+    assert settings.agent_runtime.lanes["pulse.decision"].timeout_seconds == 240
     assert settings.agent_runtime.lanes["narrative.discussion_digest"].timeout_seconds == 180
     assert settings.agent_runtime.lanes["narrative.mention_semantics"].priority == "bulk"
     assert settings.agent_runtime.lanes["news.item_brief"].priority == "low"
@@ -324,9 +323,9 @@ def test_agent_runtime_settings_partial_lane_override_preserves_default_lanes() 
             "global_max_concurrency": 2,
             "global_rpm_limit": 30,
             "lanes": {
-                "pulse.risk_portfolio_judge": {
+                "pulse.decision": {
                     "priority": "high",
-                    "model": "gpt-judge",
+                    "model": "gpt-pulse",
                     "max_concurrency": 1,
                     "timeout_seconds": 90,
                     "circuit_breaker": {
@@ -339,14 +338,12 @@ def test_agent_runtime_settings_partial_lane_override_preserves_default_lanes() 
         }
     )
 
-    lane = settings.agent_runtime.lanes["pulse.risk_portfolio_judge"]
+    lane = settings.agent_runtime.lanes["pulse.decision"]
     assert settings.agent_runtime.global_max_concurrency == 2
     assert settings.agent_runtime.global_rpm_limit == 30
-    assert lane.model == "gpt-judge"
+    assert lane.model == "gpt-pulse"
     assert lane.timeout_seconds == 90
     assert lane.circuit_breaker.failure_threshold == 3
-    assert settings.agent_runtime.lanes["pulse.pipeline"].timeout_seconds == 240
-    assert settings.agent_runtime.lanes["pulse.pipeline"].model is None
     assert settings.agent_runtime.lanes["narrative.mention_semantics"].priority == "bulk"
     assert settings.agent_runtime.lanes["news.item_brief"].timeout_seconds == 180
 
@@ -476,7 +473,7 @@ def test_agent_runtime_default_model_uses_registered_capability_profile() -> Non
     settings = WorkersSettings(agent_runtime={"defaults": {"model": "deepseek-v4-flash"}})
     policy = AgentRuntimePolicy.model_validate(settings.agent_runtime.model_dump(mode="json"))
 
-    profile = policy.capability_for_lane("pulse.signal_analyst")
+    profile = policy.capability_for_lane("pulse.decision")
 
     assert profile.provider_family.value == "deepseek"
     assert profile.request_options.extra_body == {"thinking": {"type": "disabled"}}

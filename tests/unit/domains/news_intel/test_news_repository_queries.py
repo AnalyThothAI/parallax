@@ -271,27 +271,9 @@ def test_update_item_market_scope_and_agent_admission_writes_current_fields_only
     assert "analysis_admission" not in conn.sql
     assert conn.params[1] == "news-story:opennews-article:2367422"
     assert conn.params[4] == "eligible"
-    assert conn.params[5] == "provider_score_high"
+    assert conn.params[5] == "eligible"
     assert conn.params[8] == "news-1"
     assert conn.params[11] == "news-1"
-
-
-def test_list_news_market_signal_repair_candidates_uses_current_market_scope_contract() -> None:
-    conn = CapturingConnection()
-    repo = NewsRepository(conn)
-
-    rows = repo.list_news_market_signal_repair_candidates(since_ms=1_000, min_score=80)
-
-    assert rows == []
-    assert "FROM news_items AS items" in conn.sql
-    assert "JOIN news_sources AS sources" in conn.sql
-    assert "items.provider_signal_json ->> 'score'" in conn.sql
-    assert "items.lifecycle_status = 'processed'" in conn.sql
-    assert "token_mentions_json" in conn.sql
-    assert "fact_candidates_json" in conn.sql
-    assert "entities_json" in conn.sql
-    assert "analysis_admission" not in conn.sql
-    assert conn.params == (1_000, 80)
 
 
 def test_material_duplicate_lock_covers_candidate_window_without_symbol_partition() -> None:
@@ -403,9 +385,9 @@ def _valid_agent_admission_payload() -> dict[str, object]:
     return {
         "eligible": True,
         "status": "eligible",
-        "reason": "provider_score_high",
+        "reason": "eligible",
         "representative_news_item_id": "news-1",
-        "basis": {"provider_signal": {"score": 95}},
+        "basis": {"market_scope": ["crypto"]},
         "version": "news_item_agent_admission_v1",
     }
 

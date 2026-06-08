@@ -115,7 +115,7 @@ class TokenRadarProjectionWorker(WorkerBase):
     def _rebuild_once(self, *, computed_at_ms: int) -> dict[str, Any]:
         try:
             with self._worker_session() as repos:
-                work_items = self._next_work_items(
+                publication_work_items = self._next_work_items(
                     publication_state=_latest_publication_state_from_repos(
                         repos,
                         windows=self.windows,
@@ -124,16 +124,12 @@ class TokenRadarProjectionWorker(WorkerBase):
                     ),
                     computed_at_ms=computed_at_ms,
                 )[0]
-                target_claims = (
-                    repos.token_radar_dirty_targets.claim_due(
-                        limit=self.limit,
-                        lease_ms=_dirty_target_lease_ms(),
-                        now_ms=computed_at_ms,
-                        lease_owner=self.name,
-                        commit=True,
-                    )
-                    if work_items
-                    else []
+                target_claims = repos.token_radar_dirty_targets.claim_due(
+                    limit=self.limit,
+                    lease_ms=_dirty_target_lease_ms(),
+                    now_ms=computed_at_ms,
+                    lease_owner=self.name,
+                    commit=True,
                 )
                 source_dirty_repo = getattr(repos, "token_radar_source_dirty_events", None)
                 source_claims = (
@@ -144,19 +140,27 @@ class TokenRadarProjectionWorker(WorkerBase):
                         lease_owner=self.name,
                         commit=True,
                     )
-                    if work_items and source_dirty_repo is not None
+                    if source_dirty_repo is not None
                     else []
                 )
-            if work_items:
+            has_claims = bool(target_claims or source_claims)
+            if publication_work_items or has_claims:
+                score_work_items = _dedupe_work_items(
+                    _configured_work_items(windows=self.windows, scopes=self.scopes, venues=self.venues)
+                    if has_claims
+                    else publication_work_items
+                )
+                publish_work_items = _dedupe_work_items(publication_work_items)
                 with self._worker_session() as repos:
                     projection = _projection_class()(
                         repos=repos,
                         enqueue_narrative_admission=self.enqueue_narrative_admission,
                     )
+                    metadata_work_items = score_work_items or publish_work_items
                     rebuild_kwargs: dict[str, Any] = {
-                        "windows": tuple(dict.fromkeys(window for window, _scope, _venue in work_items)),
-                        "scopes": tuple(dict.fromkeys(scope for _window, scope, _venue in work_items)),
-                        "work_items": _service_work_items(work_items),
+                        "windows": tuple(dict.fromkeys(window for window, _scope, _venue in metadata_work_items)),
+                        "scopes": tuple(dict.fromkeys(scope for _window, scope, _venue in metadata_work_items)),
+                        "work_items": _service_work_items(publish_work_items),
                         "now_ms": computed_at_ms,
                         "limit": self.limit,
                         "rank_limit": self.limit,
@@ -164,7 +168,9 @@ class TokenRadarProjectionWorker(WorkerBase):
                         "claimed_targets": tuple(dict(claim) for claim in target_claims),
                         "claimed_source_events": tuple(dict(claim) for claim in source_claims),
                     }
-                    venues = tuple(dict.fromkeys(venue for _window, _scope, venue in work_items))
+                    if has_claims:
+                        rebuild_kwargs["score_work_items"] = _service_work_items(score_work_items)
+                    venues = tuple(dict.fromkeys(venue for _window, _scope, venue in metadata_work_items))
                     if venues != (TOKEN_RADAR_DEFAULT_VENUE,):
                         rebuild_kwargs["venues"] = venues
                     result = projection.rebuild_dirty_targets(**rebuild_kwargs)
@@ -450,6 +456,15 @@ def _dedupe_work_items(items: list[tuple[str, str, str]]) -> list[tuple[str, str
         seen.add(item)
         out.append(item)
     return out
+
+
+def _configured_work_items(
+    *,
+    windows: tuple[str, ...],
+    scopes: tuple[str, ...],
+    venues: tuple[str, ...],
+) -> list[tuple[str, str, str]]:
+    return [(window, scope, venue) for window in windows for scope in scopes for venue in venues]
 
 
 def _service_work_items(items: list[tuple[str, str, str]]) -> tuple[tuple[str, ...], ...]:

@@ -18,7 +18,7 @@ from parallax.domains.pulse_lab.interfaces import (
     PULSE_GATE_VERSION,
     PULSE_VERSION,
 )
-from parallax.domains.pulse_lab.providers import PulseDecisionProvider
+from parallax.domains.pulse_lab.providers import PULSE_DECISION_LANE, PulseDecisionProvider
 from parallax.domains.pulse_lab.services.pulse_admission_policy import (
     ESCALATION_EDGE_EVENTS,
     PulseAdmissionPolicy,
@@ -295,8 +295,8 @@ class PulseCandidateWorker(WorkerBase):
                     now_ms=resolved_now_ms,
                 )
             reservation = self.decision_client.try_reserve_execution(
-                "pulse.pipeline",
-                child_lanes=("pulse.signal_analyst", "pulse.bear_case", "pulse.risk_portfolio_judge"),
+                PULSE_DECISION_LANE,
+                child_lanes=(PULSE_DECISION_LANE,),
                 scope="parent",
             )
             if not reservation.acquired:
@@ -619,7 +619,7 @@ def _asset_candidate_id(
     target_type: str,
     target_id: str,
 ) -> str:
-    return _stable_id(PULSE_VERSION, candidate_type, window, scope, target_type, target_id)
+    return _stable_id(candidate_type, window, scope, target_type, target_id)
 
 
 def _asset_trigger_signature(

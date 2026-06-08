@@ -159,21 +159,36 @@ class CexOiRadarRepository:
                 computed_at,
             ),
         )
-        self.conn.execute(
-            """
-            DELETE FROM cex_oi_radar_rows
-            WHERE board_provider = 'binance'
-              AND board_exchange = 'binance'
-              AND board_quote_symbol = 'USDT'
-              AND board_contract_type = 'PERPETUAL'
-              AND period = %s
-            """,
-            (board_period,),
-        )
+        incoming_row_ids = [_row_id(board_period, str(row["target_id"])) for row in rows]
+        if incoming_row_ids:
+            delete_cursor = self.conn.execute(
+                """
+                DELETE FROM cex_oi_radar_rows
+                WHERE board_provider = 'binance'
+                  AND board_exchange = 'binance'
+                  AND board_quote_symbol = 'USDT'
+                  AND board_contract_type = 'PERPETUAL'
+                  AND period = %s
+                  AND NOT (row_id = ANY(%s::text[]))
+                """,
+                (board_period, incoming_row_ids),
+            )
+        else:
+            delete_cursor = self.conn.execute(
+                """
+                DELETE FROM cex_oi_radar_rows
+                WHERE board_provider = 'binance'
+                  AND board_exchange = 'binance'
+                  AND board_quote_symbol = 'USDT'
+                  AND board_contract_type = 'PERPETUAL'
+                  AND period = %s
+                """,
+                (board_period,),
+            )
 
-        written = 0
-        for row in rows:
-            self.conn.execute(
+        written = _cursor_rowcount(delete_cursor, default=0)
+        for row, row_id in zip(rows, incoming_row_ids, strict=True):
+            upsert_cursor = self.conn.execute(
                 """
                 INSERT INTO cex_oi_radar_rows(
                   row_id, period, board_provider, board_exchange, board_quote_symbol, board_contract_type,
@@ -202,9 +217,23 @@ class CexOiRadarRepository:
                   score_components_json = excluded.score_components_json,
                   observed_at_ms = excluded.observed_at_ms,
                   computed_at_ms = excluded.computed_at_ms
+                WHERE cex_oi_radar_rows.rank IS DISTINCT FROM excluded.rank
+                   OR cex_oi_radar_rows.pricefeed_id IS DISTINCT FROM excluded.pricefeed_id
+                   OR cex_oi_radar_rows.native_market_id IS DISTINCT FROM excluded.native_market_id
+                   OR cex_oi_radar_rows.base_symbol IS DISTINCT FROM excluded.base_symbol
+                   OR cex_oi_radar_rows.quote_symbol IS DISTINCT FROM excluded.quote_symbol
+                   OR cex_oi_radar_rows.open_interest_usd IS DISTINCT FROM excluded.open_interest_usd
+                   OR cex_oi_radar_rows.open_interest_change_pct_1h
+                      IS DISTINCT FROM excluded.open_interest_change_pct_1h
+                   OR cex_oi_radar_rows.volume_24h_usd IS DISTINCT FROM excluded.volume_24h_usd
+                   OR cex_oi_radar_rows.funding_rate IS DISTINCT FROM excluded.funding_rate
+                   OR cex_oi_radar_rows.mark_price IS DISTINCT FROM excluded.mark_price
+                   OR cex_oi_radar_rows.score IS DISTINCT FROM excluded.score
+                   OR cex_oi_radar_rows.score_components_json IS DISTINCT FROM excluded.score_components_json
+                   OR cex_oi_radar_rows.observed_at_ms IS DISTINCT FROM excluded.observed_at_ms
                 """,
                 (
-                    _row_id(board_period, str(row["target_id"])),
+                    row_id,
                     board_period,
                     "binance",
                     "binance",
@@ -227,7 +256,7 @@ class CexOiRadarRepository:
                     computed_at,
                 ),
             )
-            written += 1
+            written += _cursor_rowcount(upsert_cursor, default=1)
 
         if commit:
             self.conn.commit()
@@ -348,6 +377,14 @@ def _board_key(period: str) -> str:
 def _row_id(period: str, target_id: str) -> str:
     digest = hashlib.sha256(f"binance|binance|USDT|PERPETUAL|{period}|{target_id}".encode()).hexdigest()[:32]
     return f"cex-oi-radar-row:{digest}"
+
+
+def _cursor_rowcount(cursor: Any, *, default: int) -> int:
+    rowcount = getattr(cursor, "rowcount", default)
+    try:
+        return max(0, int(rowcount))
+    except (TypeError, ValueError):
+        return default
 
 
 def _source_frontier_ms(rows: list[dict[str, Any]], *, default: int) -> int:

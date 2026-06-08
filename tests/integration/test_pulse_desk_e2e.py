@@ -4,12 +4,10 @@ from contextlib import contextmanager
 from typing import Any
 
 import pytest
-from psycopg import errors as psycopg_errors
 from psycopg.types.json import Jsonb
 
 from parallax.domains.notifications.services.notification_rules import NotificationRuleEngine
 from parallax.domains.pulse_lab.providers import DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT, PulseDecisionResult
-from parallax.domains.pulse_lab.queries.agent_tool_queries import fetch_evidence_event_urls
 from parallax.domains.pulse_lab.read_models.signal_pulse_service import SignalPulseService
 from parallax.domains.pulse_lab.repositories.pulse_admission_repository import PulseAdmissionRepository
 from parallax.domains.pulse_lab.repositories.pulse_agent_eval_repository import PulseAgentEvalRepository
@@ -24,11 +22,8 @@ from parallax.domains.pulse_lab.repositories.pulse_trigger_dirty_target_reposito
 )
 from parallax.domains.pulse_lab.runtime.pulse_candidate_worker import PulseCandidateWorker
 from parallax.domains.pulse_lab.types.agent_decision import (
-    BearCaseMemo,
     BullBearView,
-    EvidenceClaim,
     FinalDecision,
-    SignalAnalystMemo,
     StageRunAudit,
     TradePlaybook,
 )
@@ -53,7 +48,7 @@ def test_pulse_agent_desk_synthetic_worker_surface_smoke() -> None:
     repos = FakeRepos()
     repos.token_radar.rows = [_radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82))]
     repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
-    client = _ResearchCommitteeClient()
+    client = _PulseAgentClient()
     worker = PulseCandidateWorker(
         name="pulse_candidate",
         settings=_settings(),
@@ -61,7 +56,6 @@ def test_pulse_agent_desk_synthetic_worker_surface_smoke() -> None:
         telemetry=object(),
         decision_client=client,
     )
-
     scan = worker.scan_triggers_once(now_ms=NOW_MS)
     run = worker.process_due_jobs_once(now_ms=NOW_MS)
 
@@ -73,19 +67,19 @@ def test_pulse_agent_desk_synthetic_worker_surface_smoke() -> None:
     assert {"narrative_archetype", "narrative_thesis_zh", "bull_view", "bear_view", "playbook"} <= set(decision)
     assert decision["evidence_event_urls"] == {"event-1": "https://x.com/toly/status/1"}
     steps_by_stage = {step["stage"]: step for step in repos.pulse_runs.agent_run_steps}
-    assert set(steps_by_stage) == _RESEARCH_COMMITTEE_STAGES
+    assert set(steps_by_stage) == _PULSE_AGENT_STAGES
     assert steps_by_stage["evidence_pack"]["response_json"]["evidence_packet_hash"] == candidate["evidence_packet_hash"]
-    assert "tool_calls" not in steps_by_stage["signal_analyst"]["input_json"]
+    assert "tool_calls" not in steps_by_stage["pulse_decision"]["input_json"]
 
     pulse_read = _PulseReadAdapter(repos)
-    detail = SignalPulseService(pulse_read=pulse_read, pulse_runs=pulse_read).candidate(
+    detail = SignalPulseService(pulse_read=pulse_read).candidate(
         candidate_id=candidate["candidate_id"]
     )
     assert detail is not None
     assert detail["decision"]["playbook"]["has_playbook"] is True
     assert detail["decision"]["bull_view"]["strength"] == "moderate"
-    assert detail["stages"]["signal_analyst"]["response"]["what_changed_zh"] == "基于封闭证据包的正向信号完成。"
-    assert detail["stages"]["risk_portfolio_judge"]["response"]["recommendation"] == "trade_candidate"
+    assert "agent_run_id" not in detail
+    assert "stages" not in detail
 
     notifications = _notification_engine(pulse_read).evaluate(now_ms=NOW_MS)
     pulse_notifications = [item for item in notifications if item.rule_id == "signal_pulse_candidate"]
@@ -112,7 +106,7 @@ def test_pulse_agent_desk_real_postgres_read_model_and_notification_dataflow(tmp
                 token_target_rows=[_timeline_row("event-1", NOW_MS - 1_000)],
             ),
             telemetry=object(),
-            decision_client=_ResearchCommitteeClient(),
+            decision_client=_PulseAgentClient(),
         )
         _insert_event(
             conn,
@@ -146,32 +140,34 @@ def test_pulse_agent_desk_real_postgres_read_model_and_notification_dataflow(tmp
         page = pulse_read.list_candidates(window="1h", scope="all", status="trade_candidate", limit=10)
         assert len(page["items"]) == 1
         stored = page["items"][0]
-        ids = {"candidate_id": stored["candidate_id"], "run_id": stored["agent_run_id"]}
+        latest_run = pulse_runs.latest_agent_run_for_candidate(stored["candidate_id"])
+        assert latest_run is not None
+        ids = {"candidate_id": stored["candidate_id"], "run_id": latest_run["run_id"]}
 
         decision = stored["decision_json"]
         assert {"narrative_archetype", "narrative_thesis_zh", "bull_view", "bear_view", "playbook"} <= set(decision)
 
         steps = pulse_runs.list_agent_run_steps(ids["run_id"])
         steps_by_stage = {step["stage"]: step for step in steps}
-        assert set(steps_by_stage) == _RESEARCH_COMMITTEE_STAGES
+        assert set(steps_by_stage) == _PULSE_AGENT_STAGES
         packet_step = steps_by_stage["evidence_pack"]
         assert packet_step["response_json"]["evidence_packet_hash"] == stored["evidence_packet_hash"]
-        assert "tool_calls" not in steps_by_stage["signal_analyst"]["input_json"]
+        assert "tool_calls" not in steps_by_stage["pulse_decision"]["input_json"]
 
-        detail = SignalPulseService(pulse_read=pulse_read, pulse_runs=pulse_runs).candidate(
+        detail = SignalPulseService(pulse_read=pulse_read).candidate(
             candidate_id=ids["candidate_id"]
         )
         assert detail is not None
         assert detail["decision"]["playbook"]["has_playbook"] is True
         assert detail["decision"]["bull_view"]["strength"] == "moderate"
-        assert detail["stages"]["signal_analyst"]["response"]["what_changed_zh"] == "基于封闭证据包的正向信号完成。"
-        assert detail["stages"]["risk_portfolio_judge"]["response"]["recommendation"] == "trade_candidate"
+        assert "agent_run_id" not in detail
+        assert "stages" not in detail
 
         notifications = _notification_engine(pulse_read).evaluate(now_ms=NOW_MS)
         pulse_notifications = [item for item in notifications if item.rule_id == "signal_pulse_candidate"]
         assert len(pulse_notifications) == 1
         notification = pulse_notifications[0]
-        signature = notification.payload["in_app_signature"]
+        signature = notification.payload["semantic_signature"]
         assert signature.startswith("sha256:")
         external_identity = notification.payload.get("external_push_signature") or "in_app"
         assert notification.dedup_key == f"signal_pulse_candidate:{signature}:{external_identity}"
@@ -185,54 +181,22 @@ def test_pulse_agent_desk_real_postgres_read_model_and_notification_dataflow(tmp
         conn.close()
 
 
-@pytest.mark.integration
-def test_pulse_agent_tool_queries_read_seeded_events_through_read_only_connection(tmp_path) -> None:
-    write_conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
-    try:
-        reset_postgres_schema(write_conn)
-        _insert_event(
-            write_conn,
-            event_id="event-readonly",
-            received_at_ms=NOW_MS - 1_000,
-            canonical_url="https://x.com/toly/status/read-only",
-        )
-        write_conn.commit()
-    finally:
-        write_conn.close()
-
-    read_conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=True)
-    try:
-        with pytest.raises(psycopg_errors.ReadOnlySqlTransaction):
-            read_conn.execute(
-                "INSERT INTO schema_migrations(version, name, applied_at_ms) VALUES (%s, %s, %s)",
-                (999_999_999, "read-only-check", NOW_MS),
-            )
-        read_conn.rollback()
-
-        urls = fetch_evidence_event_urls(_SingleConnectionPool(read_conn), event_ids=["event-readonly"])
-        assert urls == {"event-readonly": "https://x.com/toly/status/read-only"}
-    finally:
-        read_conn.close()
-
-
-_RESEARCH_COMMITTEE_STAGES = {
+_PULSE_AGENT_STAGES = {
     "evidence_pack",
     "evidence_completeness_gate",
-    "signal_analyst",
-    "bear_case",
+    "pulse_decision",
     "claim_verifier",
-    "risk_portfolio_judge",
     "recommendation_clipper",
     "deterministic_eval",
     "write_gate",
 }
 
 
-class _ResearchCommitteeClient:
+class _PulseAgentClient:
     provider = "fake"
     model = "fake-pulse"
     timeout_seconds = 1.0
-    artifact_version_hash = "artifact:fake-research-committee"
+    artifact_version_hash = "artifact:fake-agent-runtime"
     runtime_contract = DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT
 
     def model_for_lane(self, lane: str) -> str:
@@ -284,9 +248,8 @@ class _ResearchCommitteeClient:
         completeness: dict[str, Any],
         runtime_manifest: dict[str, Any],
         parent_reservation: AgentCapacityReservation | None = None,
-        stage_plan: Any | None = None,
     ) -> PulseDecisionResult:
-        del parent_reservation, stage_plan
+        del parent_reservation
         allowed_refs = [
             str(ref.get("ref_id"))
             for ref in context.get("evidence_packet", {}).get("allowed_evidence_refs", [])
@@ -294,29 +257,6 @@ class _ResearchCommitteeClient:
         ]
         supporting_refs = tuple(ref for ref in allowed_refs if ref.startswith("event:"))[:1]
         risk_refs = tuple(ref for ref in allowed_refs if ref.startswith("market:"))[:1]
-        signal_memo = SignalAnalystMemo(
-            bull_claims=(
-                EvidenceClaim(
-                    claim="独立作者扩散和关注账号确认共同支撑继续观察。",
-                    evidence_refs=supporting_refs,
-                    stance="bull",
-                ),
-            ),
-            what_changed_zh="基于封闭证据包的正向信号完成。",
-            allowed_evidence_ref_ids=tuple(allowed_refs),
-        )
-        bear_memo = BearCaseMemo(
-            risk_claims=(
-                EvidenceClaim(
-                    claim="讨论窗口仍短，热度可能快速回落。",
-                    evidence_refs=risk_refs or supporting_refs,
-                    stance="risk",
-                ),
-            ),
-            confidence_ceiling=0.78,
-            missing_fact_impacts=(),
-            allowed_evidence_ref_ids=tuple(allowed_refs),
-        )
         final = FinalDecision(
             route=route,  # type: ignore[arg-type]
             recommendation="trade_candidate",
@@ -360,50 +300,17 @@ class _ResearchCommitteeClient:
             agent_run_audit={**audit, "output_hash": "output-e2e"},
             stage_audits=(
                 StageRunAudit(
-                    stage="signal_analyst",
+                    stage="pulse_decision",
                     route=route,  # type: ignore[arg-type]
                     attempt_index=0,
                     input_json={
                         "evidence_packet_hash": context["evidence_packet"]["evidence_packet_hash"],
                         "completeness": completeness,
                     },
-                    prompt_text="signal analyst prompt",
-                    response_json=signal_memo.model_dump(mode="json"),
-                    trace_metadata_json={},
-                    usage_json={"input_tokens": 60},
-                    latency_ms=10,
-                    status="ok",
-                ),
-                StageRunAudit(
-                    stage="bear_case",
-                    route=route,  # type: ignore[arg-type]
-                    attempt_index=0,
-                    input_json={
-                        "evidence_packet_hash": context["evidence_packet"]["evidence_packet_hash"],
-                        "completeness": completeness,
-                        "signal_memo": signal_memo.model_dump(mode="json"),
-                    },
-                    prompt_text="bear case prompt",
-                    response_json=bear_memo.model_dump(mode="json"),
-                    trace_metadata_json={},
-                    usage_json={"output_tokens": 20},
-                    latency_ms=11,
-                    status="ok",
-                ),
-                StageRunAudit(
-                    stage="risk_portfolio_judge",
-                    route=route,  # type: ignore[arg-type]
-                    attempt_index=0,
-                    input_json={
-                        "evidence_packet_hash": context["evidence_packet"]["evidence_packet_hash"],
-                        "completeness": completeness,
-                        "signal_memo": signal_memo.model_dump(mode="json"),
-                        "bear_memo": bear_memo.model_dump(mode="json"),
-                    },
-                    prompt_text="risk portfolio judge prompt",
+                    prompt_text="pulse decision prompt",
                     response_json=final.model_dump(mode="json"),
                     trace_metadata_json={},
-                    usage_json={"output_tokens": 40},
+                    usage_json={"input_tokens": 60, "output_tokens": 40},
                     latency_ms=12,
                     status="ok",
                 ),
@@ -621,12 +528,3 @@ def _insert_event(conn: Any, *, event_id: str, received_at_ms: int, canonical_ur
             received_at_ms,
         ),
     )
-
-
-class _SingleConnectionPool:
-    def __init__(self, conn: Any) -> None:
-        self._conn = conn
-
-    @contextmanager
-    def connection(self):
-        yield self._conn

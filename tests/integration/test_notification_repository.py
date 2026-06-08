@@ -378,7 +378,7 @@ def test_insert_notification_suppresses_same_pulse_signature_only(tmp_path):
             "candidate_id": "pulse-1",
             "pulse_status": "token_watch",
             "symbol": "SLOP",
-            "in_app_signature": "sha256:first",
+            "semantic_signature": "sha256:first",
         },
         channels=["in_app", "pushdeer"],
     )
@@ -398,7 +398,7 @@ def test_insert_notification_suppresses_same_pulse_signature_only(tmp_path):
             "candidate_id": "pulse-1",
             "pulse_status": "token_watch",
             "symbol": "SLOP",
-            "in_app_signature": "sha256:first",
+            "semantic_signature": "sha256:first",
         },
         channels=["in_app", "pushdeer"],
     )
@@ -418,7 +418,7 @@ def test_insert_notification_suppresses_same_pulse_signature_only(tmp_path):
             "candidate_id": "pulse-1",
             "pulse_status": "token_watch",
             "symbol": "SLOP",
-            "in_app_signature": "sha256:second",
+            "semantic_signature": "sha256:second",
         },
         channels=["in_app", "pushdeer"],
     )
@@ -457,7 +457,7 @@ def test_summary_and_mark_read_use_subscriber_read_state(tmp_path):
         rule_id="news_high_signal",
         severity="high",
         title="PEPE news",
-        body="news score 88",
+        body="agent news driver",
         entity_type="token",
         entity_key="token:eth:pepe",
         symbol="PEPE",
@@ -466,7 +466,7 @@ def test_summary_and_mark_read_use_subscriber_read_state(tmp_path):
         source_table="news_items",
         source_id="token:eth:pepe",
         occurrence_at_ms=1_700_000_060_000,
-        payload={"provider_score": 88},
+        payload={"decision_class": "driver"},
         channels=["in_app"],
     )
     assert info is not None

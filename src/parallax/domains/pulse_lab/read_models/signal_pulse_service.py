@@ -21,9 +21,8 @@ ALPHA_FAMILIES = ("social_heat", "social_propagation", "semantic_catalyst", "tim
 
 
 class SignalPulseService:
-    def __init__(self, *, pulse_read: Any, pulse_runs: Any):
+    def __init__(self, *, pulse_read: Any):
         self.pulse_read_repository = pulse_read
-        self.pulse_runs_repository = pulse_runs
 
     def pulse(
         self,
@@ -62,6 +61,8 @@ class SignalPulseService:
             freshness_health.get("public_candidates_4h"),
             candidate_count,
         )
+        if public_only and status is None and page.get("next_cursor") is None:
+            public_candidate_count = len(page_rows)
         hidden_candidate_count = _first_int(
             aggregate.get("hidden_candidate_count"),
             candidate_count - public_candidate_count,
@@ -108,40 +109,7 @@ class SignalPulseService:
             return None
         if parsed_visibility == "hidden" and not _is_hidden_viewable(row):
             return None
-        item = pulse_item_from_row(row)
-        item["stages"] = self._stages_for(row.get("agent_run_id"))
-        return item
-
-    def _stages_for(self, run_id: Any) -> dict[str, Any]:
-        empty: dict[str, dict[str, Any] | None] = {
-            "evidence_pack": None,
-            "evidence_completeness_gate": None,
-            "signal_analyst": None,
-            "bear_case": None,
-            "claim_verifier": None,
-            "risk_portfolio_judge": None,
-            "recommendation_clipper": None,
-            "deterministic_eval": None,
-            "write_gate": None,
-        }
-        if not run_id:
-            return empty
-        try:
-            steps = self.pulse_runs_repository.list_agent_run_steps(str(run_id))
-        except Exception:
-            return empty
-        by_stage: dict[str, dict[str, Any]] = {}
-        for step in steps:
-            stage = step.get("stage")
-            if stage not in empty:
-                continue
-            prior = by_stage.get(stage)
-            if prior is None or _is_better_step(step, prior):
-                by_stage[stage] = step
-        result = dict(empty)
-        for stage, step in by_stage.items():
-            result[stage] = _stage_payload(step)
-        return result
+        return pulse_item_from_row(row)
 
 
 def _rows(page: dict[str, Any]) -> list[dict[str, Any]]:
@@ -257,10 +225,7 @@ def pulse_item_from_row(row: dict[str, Any]) -> dict[str, Any]:
         "factor_snapshot": factor_snapshot,
         "decision": _decision(row),
         "gate": gate,
-        "claim_verification": _dict(row.get("claim_verification_json")),
-        "evidence_gate": _dict(row.get("evidence_gate_json")),
         "fact_card": _fact_card(factor_snapshot=factor_snapshot, gate=gate),
-        "agent_run_id": row.get("agent_run_id"),
         "pulse_version": row.get("pulse_version"),
         "gate_version": row.get("gate_version"),
         "prompt_version": row.get("prompt_version"),
@@ -293,11 +258,10 @@ def _first_int(*values: Any) -> int:
 def _decision(row: dict[str, Any]) -> dict[str, Any]:
     decision = _dict(row.get("decision_json"))
     return {
-        "route": row.get("decision_route") or decision.get("route"),
-        "recommendation": row.get("decision_recommendation") or decision.get("recommendation"),
+        "route": row.get("decision_route"),
+        "recommendation": row.get("decision_recommendation"),
         "confidence": row.get("decision_confidence"),
-        "abstain_reason": row.get("decision_abstain_reason") or decision.get("abstain_reason"),
-        "stage_count": int(row.get("decision_stage_count") or 0),
+        "abstain_reason": row.get("decision_abstain_reason"),
         "summary_zh": decision.get("summary_zh") or "",
         "invalidation_conditions": _string_list(decision.get("invalidation_conditions")),
         "residual_risks": _string_list(decision.get("residual_risks")),
@@ -410,26 +374,3 @@ def _list(value: Any) -> list[Any]:
 
 def _string_list(value: Any) -> list[str]:
     return [item for item in value if isinstance(item, str)] if isinstance(value, list) else []
-
-
-def _is_better_step(candidate: dict[str, Any], existing: dict[str, Any]) -> bool:
-    candidate_ok = candidate.get("status") == "ok"
-    existing_ok = existing.get("status") == "ok"
-    if candidate_ok != existing_ok:
-        return candidate_ok
-    return int(candidate.get("attempt_index") or 0) >= int(existing.get("attempt_index") or 0)
-
-
-def _stage_payload(step: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "stage": step.get("stage"),
-        "route": step.get("route"),
-        "status": step.get("status"),
-        "model": step.get("model"),
-        "started_at_ms": step.get("started_at_ms"),
-        "finished_at_ms": step.get("finished_at_ms"),
-        "latency_ms": step.get("latency_ms"),
-        "attempt_index": step.get("attempt_index"),
-        "response": _dict(step.get("response_json")) or step.get("response_json"),
-        "error": step.get("error"),
-    }

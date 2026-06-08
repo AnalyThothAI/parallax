@@ -25,9 +25,9 @@ forced into a resolved asset.
   `agent_admission_status` records the market-wide item brief decision after
   deterministic duplicate/similar checks.
   Its `signal_json` is an explicit envelope:
-  `display_signal` is the product display choice, `provider_signal` preserves
-  provider-native evidence, `agent_signal` preserves compact current-brief
-  state, and `alert_eligibility` is an object whose `in_app_eligible` field can
+  `display_signal` is the product display choice, `agent_signal` preserves
+  compact current-brief state, and `alert_eligibility` is an object whose
+  `in_app_eligible` field can
   be true for high-signal candidates only after market-wide agent admission and
   current brief readiness pass.
   External phone pushes require `external_push_ready` plus a ready, publishable
@@ -90,7 +90,7 @@ news_fetch/source refresh -> news_source_quality_projection
 | Item brief | Build bounded item/entity/fact packets, reserve `news.item_brief`, execute through the shared `AgentExecutionGateway`, shape-validate the standard market-wide brief output, write the run ledger, upsert the current brief, and dirty page rows. Evidence refs and sparse source context are audit/quality metadata, not publication gates. |
 | Page projection | Claim item-scoped dirty targets, expand them to bounded story groups, and rebuild story-shaped News page rows from news facts, market scope, agent admission, story identity, provider-native signal, and the current item brief. |
 | Source quality projection | Own source-quality windows, expand source refresh intents into configured source/window work, rebuild source quality rows, and dirty page rows only when compact source quality status changes. It is an operational projection, not item hot-path fanout. |
-| API/UI | Read-only surfaces over projected `news_page_rows`, with explicit source/content/decision filters and source status diagnostics. Raw `news_items` are worker inputs, not public fallback rows. |
+| API/UI | Read-only surfaces over projected `news_page_rows`, with explicit source/content/decision filters and source status diagnostics. Item detail requires a current page row before hydrating provider observations, facts, current brief, or run summaries as evidence. Raw `news_items` are worker inputs, not public fallback rows. |
 
 ## Provider Waves
 

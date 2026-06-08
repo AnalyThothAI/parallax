@@ -103,8 +103,6 @@ account-alerts: ## print watched-account token alerts
 token-radar-cex-recover: ## recover Token Radar CEX recognition
 	@$(PARALLAX) ops sync-binance-usdt-perp-universe --execute
 	@$(PARALLAX) ops sync-binance-cex-profiles
-	@$(PARALLAX) ops cex-binance-hard-cut-cleanup --dry-run --min-binance-feeds 400
-	@$(PARALLAX) ops cex-binance-hard-cut-cleanup --execute --min-binance-feeds 400
 	@$(PARALLAX) ops rebuild-token-intents --window 24h --limit 5000 --projection-limit 5000
 	@$(PARALLAX) ops audit-token-radar --window 1h --scope all --limit 20
 

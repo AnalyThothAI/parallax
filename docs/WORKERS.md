@@ -215,9 +215,7 @@ curl -sS -H "Authorization: Bearer $GMGN_API_TOKEN" \
 
 Only report config paths and booleans from `parallax config`; never
 copy provider credentials, cookies, tokens, proxy URLs, or API keys into logs or
-docs. `parallax ops repair-news-duplicates-hard-cut` is a guarded ops repair for
-historical duplicate facts and derived rows; it is not a runtime worker path and
-must be run only after the News worker/lease/advisory-lock guard passes.
+docs.
 Staged provider waves are:
 
 1. Enable `cryptopanic` when credentials exist, as aggregator/specialist media.
@@ -245,10 +243,10 @@ same event may count once per current admission/window/scope, but duplicate
 semantic fingerprints for one admission-source row still count as one covered
 source row.
 
-Token Radar remains the scanner. `5m` admissions may exist so Radar and health
-can explain the live frontier, but `TokenDiscussionDigestWorker` does not write
-`token_discussion_digests` for `5m`. The digest lane supports `1h`, `4h`, and
-`24h` only.
+Token Radar remains the scanner. Realtime Narrative Intelligence writes
+admissions and discussion digests only for `1h/all`; other Radar windows remain
+scanner surfaces and public reads return `unsupported_window` rather than
+reusing a `1h` digest or building an independent digest.
 
 Writer ownership remains narrow: `NarrativeAdmissionWorker` writes
 `narrative_admissions`, `MentionSemanticsWorker` writes
@@ -275,10 +273,12 @@ epoch-policy deferral is separate from provider capacity.
 `token_radar_current_rows`, `token_radar_publication_state`, and
 `token_radar_target_first_seen`. Token Radar online serving is
 `token_radar_current_rows` plus `token_radar_publication_state`. `fresh` is
-allowed only when publication state is `ready` and served rows match
-`current_generation_id`. Failed latest attempts serve previous rows as `stale`
-or no rows as `failed`. The compact first-seen read model preserves
-`listed_at_ms` while current rows stay small.
+allowed only when publication state is `ready` and the product/window current
+rows are available; an explicitly empty ready publication is fresh with zero
+rows. Failed latest attempts serve previous rows as `stale` or no rows as
+`failed`. `current_generation_id` remains attempt audit metadata, not an online
+serving join key. The compact first-seen read model preserves `listed_at_ms`
+while current rows stay small.
 Token Radar has no runtime hard-reset command. Legacy derived-storage removal
 belongs to migrations, and online repair is handled by the domain projection
 path plus explicit Token Radar dirty-target enqueue.
@@ -438,10 +438,9 @@ provider SDK clients or expose worker/stage execution limits.
 Current lanes are configured under `workers.agent_runtime` in
 `workers.yaml`. `agent_runtime.defaults.model` is the single global
 agent model default; any lane can override `model` locally and otherwise
-inherits that default. Current lanes are `pulse.pipeline`, `pulse.signal_analyst`,
-`pulse.bear_case`, `pulse.risk_portfolio_judge`,
-`narrative.mention_semantics`, `narrative.discussion_digest`,
-and `news.item_brief`. News fact candidates are deterministic outputs of
+inherits that default. Current lanes are `pulse.decision`,
+`narrative.mention_semantics`, `narrative.discussion_digest`, and
+`news.item_brief`. News fact candidates are deterministic outputs of
 `news_item_process`, not a separate LLM lane. Attempt-burning workers reserve
 capacity before claiming DB work:
 
@@ -457,7 +456,7 @@ model is known. Example DeepSeek lane override:
 ```yaml
 agent_runtime:
   lanes:
-    pulse.signal_analyst:
+    pulse.decision:
       model: deepseek-v4-flash
 ```
 
@@ -471,27 +470,17 @@ agent_runtime:
     model: deepseek-v4-flash
     provider_family: deepseek
   lanes:
-    pulse.pipeline:
-      priority: high
-    pulse.signal_analyst:
-      priority: high
-    pulse.bear_case:
-      priority: high
-    pulse.risk_portfolio_judge:
+    pulse.decision:
       priority: high
 ```
 
-- `pulse_candidate` reserves `pulse.pipeline` before `pulse_agent_jobs`
-  claim. The pipeline reservation owns the parent global slot for the
-  full decision run; child stages reuse that parent global slot and
-  acquire only their stage lane bulkhead (`pulse.signal_analyst`,
-  `pulse.bear_case`, or `pulse.risk_portfolio_judge`).
+- `pulse_candidate` reserves `pulse.decision` before `pulse_agent_jobs`
+  claim. The decision reservation owns the global slot and lane bulkhead
+  for the single `pulse_decision` provider call.
 - Signal Pulse builds a domain-owned cost guard after evidence packet
   construction and before LLM execution. Evidence-hard-blocked jobs finish
-  with deterministic audit only; duplicate terminal fingerprints reuse prior
-  output; source-quality-hidden and non-public paths run Qwen research without
-  DeepSeek; public trade/watch candidates run Qwen research plus the DeepSeek
-  final judge.
+  with deterministic audit only; source-quality-hidden and non-public paths skip
+  LLM execution; public trade/watch candidates run the single decision stage.
 - `news_item_brief` reserves `news.item_brief` before claiming a brief dirty
   target. No-start backpressure does not claim, burn attempts, or write an
   agent run ledger; provider-started validation failures write

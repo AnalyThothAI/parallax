@@ -53,7 +53,6 @@ class PulseCandidatesRepository:
         evidence_event_ids_json: list[Any] | None = None,
         source_event_ids_json: list[Any] | None = None,
         last_edge_events_json: list[Any] | None = None,
-        agent_run_id: str | None = None,
         evidence_packet_hash: str | None = None,
         evidence_status: str = "insufficient",
         decision_status: str = "invalid",
@@ -75,7 +74,7 @@ class PulseCandidatesRepository:
               factor_snapshot_json, gate_json, decision_route, decision_recommendation,
               decision_confidence, decision_abstain_reason, decision_stage_count, decision_json,
               gate_reasons_json, risk_reasons_json, evidence_event_ids_json, source_event_ids_json,
-              last_edge_events_json, agent_run_id, pulse_version, gate_version, prompt_version, schema_version,
+              last_edge_events_json, pulse_version, gate_version, prompt_version, schema_version,
               evidence_packet_hash, evidence_status, decision_status, display_status,
               claim_verification_json, evidence_gate_json, created_at_ms, updated_at_ms
             )
@@ -83,10 +82,12 @@ class PulseCandidatesRepository:
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-              %s
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
-            ON CONFLICT(candidate_id) DO UPDATE SET
+            ON CONFLICT(candidate_type, "window", scope, target_type, target_id)
+              WHERE target_type IS NOT NULL AND target_id IS NOT NULL
+            DO UPDATE SET
+              candidate_id = excluded.candidate_id,
               candidate_type = excluded.candidate_type,
               subject_key = excluded.subject_key,
               target_type = excluded.target_type,
@@ -114,7 +115,6 @@ class PulseCandidatesRepository:
               evidence_event_ids_json = excluded.evidence_event_ids_json,
               source_event_ids_json = excluded.source_event_ids_json,
               last_edge_events_json = excluded.last_edge_events_json,
-              agent_run_id = excluded.agent_run_id,
               pulse_version = excluded.pulse_version,
               gate_version = excluded.gate_version,
               prompt_version = excluded.prompt_version,
@@ -126,6 +126,83 @@ class PulseCandidatesRepository:
               claim_verification_json = excluded.claim_verification_json,
               evidence_gate_json = excluded.evidence_gate_json,
               updated_at_ms = excluded.updated_at_ms
+            WHERE (
+              pulse_candidates.candidate_id,
+              pulse_candidates.candidate_type,
+              pulse_candidates.subject_key,
+              pulse_candidates.target_type,
+              pulse_candidates.target_id,
+              pulse_candidates.symbol,
+              pulse_candidates."window",
+              pulse_candidates.scope,
+              pulse_candidates.pulse_status,
+              pulse_candidates.verdict,
+              pulse_candidates.social_phase,
+              pulse_candidates.candidate_score,
+              pulse_candidates.score_band,
+              pulse_candidates.trigger_signature,
+              pulse_candidates.timeline_signature,
+              pulse_candidates.factor_snapshot_json,
+              pulse_candidates.gate_json,
+              pulse_candidates.decision_route,
+              pulse_candidates.decision_recommendation,
+              pulse_candidates.decision_confidence,
+              pulse_candidates.decision_abstain_reason,
+              pulse_candidates.decision_json,
+              pulse_candidates.gate_reasons_json,
+              pulse_candidates.risk_reasons_json,
+              pulse_candidates.evidence_event_ids_json,
+              pulse_candidates.source_event_ids_json,
+              pulse_candidates.last_edge_events_json,
+              pulse_candidates.pulse_version,
+              pulse_candidates.gate_version,
+              pulse_candidates.prompt_version,
+              pulse_candidates.schema_version,
+              pulse_candidates.evidence_packet_hash,
+              pulse_candidates.evidence_status,
+              pulse_candidates.decision_status,
+              pulse_candidates.display_status,
+              pulse_candidates.claim_verification_json,
+              pulse_candidates.evidence_gate_json
+            ) IS DISTINCT FROM (
+              excluded.candidate_id,
+              excluded.candidate_type,
+              excluded.subject_key,
+              excluded.target_type,
+              excluded.target_id,
+              excluded.symbol,
+              excluded."window",
+              excluded.scope,
+              excluded.pulse_status,
+              excluded.verdict,
+              excluded.social_phase,
+              excluded.candidate_score,
+              excluded.score_band,
+              excluded.trigger_signature,
+              excluded.timeline_signature,
+              excluded.factor_snapshot_json,
+              excluded.gate_json,
+              excluded.decision_route,
+              excluded.decision_recommendation,
+              excluded.decision_confidence,
+              excluded.decision_abstain_reason,
+              excluded.decision_json,
+              excluded.gate_reasons_json,
+              excluded.risk_reasons_json,
+              excluded.evidence_event_ids_json,
+              excluded.source_event_ids_json,
+              excluded.last_edge_events_json,
+              excluded.pulse_version,
+              excluded.gate_version,
+              excluded.prompt_version,
+              excluded.schema_version,
+              excluded.evidence_packet_hash,
+              excluded.evidence_status,
+              excluded.decision_status,
+              excluded.display_status,
+              excluded.claim_verification_json,
+              excluded.evidence_gate_json
+            )
             RETURNING *
             """,
             (
@@ -157,7 +234,6 @@ class PulseCandidatesRepository:
                 _json(evidence_event_ids_json or []),
                 _json(source_event_ids_json or []),
                 _json(last_edge_events_json or []),
-                agent_run_id,
                 pulse_version,
                 gate_version,
                 prompt_version,
@@ -172,6 +248,11 @@ class PulseCandidatesRepository:
                 now,
             ),
         ).fetchone()
+        if row is None:
+            row = self.conn.execute(
+                "SELECT * FROM pulse_candidates WHERE candidate_id = %s",
+                (candidate_id,),
+            ).fetchone()
         if commit:
             self.conn.commit()
         return _row(row)

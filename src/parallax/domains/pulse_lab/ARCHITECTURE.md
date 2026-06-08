@@ -9,7 +9,7 @@ Signal Pulse is an evidence-first read-model producer. It turns Token Radar
 projection rows into replayable Pulse decisions on the `1h` and `4h` horizons,
 but PostgreSQL material facts remain the only business truth. The LLM never
 acquires critical facts itself: the worker first builds a sealed
-`PulseEvidencePacket`, then the research committee can only synthesize,
+`PulseEvidencePacket`, then the Pulse agent workflow can only synthesize,
 challenge, judge, and cite refs inside that packet. Token Radar may still
 compute `5m` rows for other surfaces; Pulse Agent admission must not scan or
 enqueue `5m`.
@@ -24,9 +24,8 @@ pulse_trigger_dirty_targets
   -> PulseEvidenceBuilder
   -> pulse_evidence_packets
   -> EvidenceCompletenessGate
-  -> signal_analyst LLM
-  -> bear_case LLM
-  -> risk_portfolio_judge LLM
+  -> CostGuard
+  -> pulse_decision LLM when public decision is allowed
   -> ClaimEvidenceVerifier
   -> RecommendationClipper
   -> deterministic eval
@@ -34,8 +33,10 @@ pulse_trigger_dirty_targets
   -> pulse_candidates / pulse_playbooks / public Signal Pulse read model
 ```
 
-Hard-blocked packets do not call the LLM. They still write packet, gate, run,
-eval, and write-gate audit rows so operators can see why nothing was published.
+Hard-blocked packets do not call the LLM. Source-quality or eligibility ceilings
+can skip the single public decision stage. Both paths still write packet, gate,
+run, eval, and write-gate audit rows so operators can see why nothing was
+published.
 
 ## Runtime Map
 
@@ -46,10 +47,10 @@ eval, and write-gate audit rows so operators can see why nothing was published.
 | Evidence source repository | `repositories/pulse_evidence_source_repository.py` | none | Reads events, enriched events, market ticks/price observations, and identity/profile facts. Provider raw frames are not facts. |
 | Evidence packet builder | `services/evidence_packet_builder.py` | `pulse_evidence_packets` through repository | Constructs a sealed packet with stable `allowed_evidence_refs`, source fingerprints, quality metrics, and data gaps before any LLM call. |
 | Evidence completeness gate | `services/evidence_completeness_gate.py` | run-step audit only | Decides whether packet evidence is complete, partial, stale, or insufficient; sets max decision status and public display ceiling. |
-| Decision runtime | `services/pulse_decision_runtime.py` | none | Builds packet-only committee payloads, loads prompts, validates committee refs, and enriches event URLs. No provider SDK import. |
-| Model execution adapter | `integrations/model_execution/pulse_decision_agent_client.py` | none directly | Runs exactly three tool-free stages: `signal_analyst`, `bear_case`, and `risk_portfolio_judge`. Tools are not registered for Pulse. |
+| Decision runtime | `services/pulse_decision_runtime.py` | none | Builds the packet-only decision payload, loads the prompt, validates final refs, and prepares final decisions. No provider SDK import. |
+| Model execution adapter | `integrations/model_execution/pulse_decision_agent_client.py` | none directly | Runs one tool-free `pulse_decision` stage when the cost guard permits public judging. Tools are not registered for Pulse. |
 | Job service | `services/pulse_candidate_job_service.py` | runs, steps, packets, candidates, eval, playbooks | Owns per-job orchestration and persistence; writes hidden audit rows for invalid/abstain/hold-publish outputs. |
-| Public read model | `read_models/signal_pulse_service.py` and `repositories/pulse_read_repository.py` | none | Lists only public `display_*` rows with `evidence_packet_hash`; hidden states remain operator/audit data. |
+| Public read model | `read_models/signal_pulse_service.py` and `repositories/pulse_read_repository.py` | none | Lists only public `display_*` rows with `evidence_packet_hash`; hidden states remain operator/audit data. Public list/detail payloads expose decision, factor, gate, fact, and version fields only; `agent_run_id` and run-step `stages` stay in the audit ledger. |
 
 ## Stage Contract
 
@@ -57,18 +58,17 @@ eval, and write-gate audit rows so operators can see why nothing was published.
 
 - `evidence_pack`
 - `evidence_completeness_gate`
-- `signal_analyst`
-- `bear_case`
+- `pulse_decision`
 - `claim_verifier`
-- `risk_portfolio_judge`
 - `recommendation_clipper`
 - `deterministic_eval`
 - `write_gate`
 
 There is no public legacy stage alias runtime. Older exploratory role names are
-not stage names. `research_only` can still be a route value, but hard blocking
-is represented by `evidence_completeness_gate` plus hidden display state, not
-by a separate compatibility stage.
+not stage names. `research_only` can still be a route value, but cost execution
+uses the single decision stage only when public judging is allowed; hard blocking
+is represented by `evidence_completeness_gate` plus hidden display state, not by
+a separate compatibility stage.
 
 ## Public Decision Contract
 
@@ -125,6 +125,7 @@ not good enough for default discovery.
 - No LLM fact acquisition for critical Pulse facts.
 - No fallback to legacy thesis, radar-score, or market-context JSON payloads.
 - No public row without `evidence_packet_hash`.
+- No public Signal Pulse list/detail payload with `agent_run_id` or run-step `stages`.
 - No non-abstain decision without `supporting_evidence_refs`.
 - No decision without an audit row.
 - Pulse never writes Token Radar current/history/audit read models.

@@ -185,7 +185,6 @@ function minimalPulseItem() {
       blocked_reasons: [],
     },
     fact_card: { mentions_1h: 1, unique_authors: 1 },
-    agent_run_id: null,
     pulse_version: "v1",
     gate_version: "v1",
     prompt_version: "v1",

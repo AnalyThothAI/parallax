@@ -970,10 +970,6 @@
 | `processing_leased_until_ms` | `BIGINT` | True | `None` |
 | `processing_next_due_at_ms` | `BIGINT` | False | `0` |
 | `processing_terminal_error` | `TEXT` | True | `None` |
-| `analysis_admission_status` | `TEXT` | False | `'needs_review'::text` |
-| `analysis_admission_reason` | `TEXT` | False | `''::text` |
-| `analysis_admission_json` | `JSONB` | False | `'{}'::jsonb` |
-| `analysis_admission_version` | `TEXT` | False | `''::text` |
 | `story_key` | `TEXT` | False | `''::text` |
 | `story_identity_json` | `JSONB` | False | `'{}'::jsonb` |
 | `story_identity_version` | `TEXT` | False | `''::text` |
@@ -983,6 +979,7 @@
 | `agent_admission_version` | `TEXT` | False | `''::text` |
 | `agent_representative_news_item_id` | `TEXT` | False | `''::text` |
 | `agent_admission_computed_at_ms` | `BIGINT` | True | `None` |
+| `market_scope_json` | `JSONB` | False | `'{}'::jsonb` |
 
 ## `news_page_rows`
 
@@ -1018,14 +1015,12 @@
 | `representative_news_item_id` | `TEXT` | True | `None` |
 | `story_key` | `TEXT` | False | `''::text` |
 | `story_json` | `JSONB` | False | `'{}'::jsonb` |
-| `analysis_admission_status` | `TEXT` | False | `'needs_review'::text` |
-| `analysis_admission_reason` | `TEXT` | False | `''::text` |
-| `analysis_admission_json` | `JSONB` | False | `'{}'::jsonb` |
-| `search_text` | `TEXT` | False | `''::text` |
 | `agent_admission_status` | `TEXT` | False | `'needs_review'::text` |
 | `agent_admission_reason` | `TEXT` | False | `''::text` |
 | `agent_admission_json` | `JSONB` | False | `'{}'::jsonb` |
 | `agent_representative_news_item_id` | `TEXT` | False | `''::text` |
+| `search_text` | `TEXT` | False | `''::text` |
+| `market_scope_json` | `JSONB` | False | `'{}'::jsonb` |
 
 ## `news_projection_dirty_targets`
 
@@ -1469,7 +1464,6 @@
 | `risk_reasons_json` | `JSONB` | False | `'[]'::jsonb` |
 | `evidence_event_ids_json` | `JSONB` | False | `'[]'::jsonb` |
 | `source_event_ids_json` | `JSONB` | False | `'[]'::jsonb` |
-| `agent_run_id` | `TEXT` | True | `None` |
 | `pulse_version` | `TEXT` | False | `None` |
 | `gate_version` | `TEXT` | False | `None` |
 | `prompt_version` | `TEXT` | False | `None` |

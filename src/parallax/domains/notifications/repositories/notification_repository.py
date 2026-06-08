@@ -223,9 +223,6 @@ class NotificationRepository:
     ) -> dict[str, Any] | None:
         signature_key_sql = "payload_json->>'semantic_signature'"
         semantic_signature = str(payload.get("semantic_signature") or "").strip()
-        if rule_id != "news_high_signal":
-            signature_key_sql = "COALESCE(payload_json->>'semantic_signature', payload_json->>'in_app_signature')"
-            semantic_signature = str(payload.get("semantic_signature") or payload.get("in_app_signature") or "").strip()
         if not semantic_signature:
             return None
         external_clause = ""

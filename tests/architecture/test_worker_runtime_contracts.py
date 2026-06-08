@@ -26,6 +26,8 @@ DOCS_WORKERS = ROOT / "docs" / "WORKERS.md"
 DOCS_CONTRACTS = ROOT / "docs" / "CONTRACTS.md"
 NARRATIVE_ARCHITECTURE = SRC / "domains" / "narrative_intel" / "ARCHITECTURE.md"
 NARRATIVE_REPOSITORY = SRC / "domains" / "narrative_intel" / "repositories" / "narrative_repository.py"
+NARRATIVE_READ_MODEL = SRC / "domains" / "narrative_intel" / "read_models" / "narrative_read_model.py"
+NARRATIVE_DIGEST_SERVICE = SRC / "domains" / "narrative_intel" / "services" / "discussion_digest_service.py"
 NARRATIVE_DIGEST_WORKER = SRC / "domains" / "narrative_intel" / "runtime" / "token_discussion_digest_worker.py"
 NARRATIVE_EPOCH_POLICY = SRC / "domains" / "narrative_intel" / "services" / "narrative_epoch_policy.py"
 API_ROUTES = SRC / "app" / "surfaces" / "api"
@@ -38,11 +40,6 @@ NEWS_INTEL_CANONICAL_DEDUP_MIGRATION = (
 NEWS_REALTIME_POSTGRES_HOTPATH_MIGRATION = (
     SRC / "platform/db/alembic/versions/20260528_0118_news_realtime_postgres_hotpath_hard_cut.py"
 )
-NEWS_INTEL_HARD_CUT_CLEANUP = SRC / "domains/news_intel/services/news_intel_hard_cut_cleanup.py"
-NEWS_INTEL_HARD_CUT_CLEANUP_REPOSITORY = (
-    SRC / "domains/news_intel/repositories/news_intel_hard_cut_cleanup_repository.py"
-)
-
 ZERO_HARD_TIMEOUT_ALLOWLIST = {"collector"}
 
 
@@ -130,19 +127,16 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
     "news_page_rows": {
         SRC / "domains/news_intel/repositories/news_repository.py",
         SRC / "domains/news_intel/runtime/news_page_projection_worker.py",
-        NEWS_INTEL_HARD_CUT_CLEANUP_REPOSITORY,
         SRC / "platform/db/alembic/versions/20260519_0064_news_intel_kappa_cqrs.py",
     },
     "news_item_agent_runs": {
         SRC / "domains/news_intel/repositories/news_repository.py",
         SRC / "domains/news_intel/runtime/news_item_brief_worker.py",
-        NEWS_INTEL_HARD_CUT_CLEANUP_REPOSITORY,
         SRC / "platform/db/alembic/versions/20260520_0068_news_item_agent_brief.py",
     },
     "news_item_agent_briefs": {
         SRC / "domains/news_intel/repositories/news_repository.py",
         SRC / "domains/news_intel/runtime/news_item_brief_worker.py",
-        NEWS_INTEL_HARD_CUT_CLEANUP_REPOSITORY,
         SRC / "platform/db/alembic/versions/20260520_0068_news_item_agent_brief.py",
     },
     "news_source_quality_rows": {
@@ -203,7 +197,6 @@ CONTROL_PLANE_TABLES: dict[str, set[Path]] = {
     "news_projection_dirty_targets": {
         SRC / "domains/news_intel/repositories/news_repository.py",
         SRC / "domains/news_intel/repositories/news_projection_dirty_target_repository.py",
-        NEWS_INTEL_HARD_CUT_CLEANUP_REPOSITORY,
         SRC / "platform/db/alembic/versions/20260524_0094_projection_dirty_targets_hard_cut.py",
         SRC / "platform/db/alembic/versions/20260525_0097_agent_brief_dirty_targets.py",
         NEWS_INTEL_CANONICAL_DEDUP_MIGRATION,
@@ -474,6 +467,7 @@ def test_token_profile_current_owns_image_source_admission() -> None:
         "dirty target payload hash",
     }
     assert token_profile_current.dirty_target_tables == ("token_profile_current_dirty_targets",)
+    assert token_profile_current.advisory_lock_key == "2026051702"
 
 
 @pytest.mark.architecture
@@ -956,8 +950,48 @@ def test_narrative_cleanup_deletes_non_current_digest_state() -> None:
     assert "DELETE FROM token_discussion_digests" in method
     assert "deleted_old_digests" in method
     assert "fingerprint_mismatch_digests_preserved" not in method
+    assert "active_admissions.source_fingerprint" not in method
     assert "UPDATE token_discussion_digests" not in method
     assert "SET status = 'stale'" not in method
+
+
+@pytest.mark.architecture
+def test_token_radar_narrative_read_model_does_not_reuse_1h_digest_for_other_windows() -> None:
+    text = NARRATIVE_READ_MODEL.read_text()
+
+    assert "TOKEN_RADAR_NARRATIVE_SURFACE_WINDOWS" not in text
+    assert "_token_radar_overlay_digest" not in text
+    assert "reuse_reason" not in text
+
+
+@pytest.mark.architecture
+def test_narrative_runtime_does_not_keep_removed_digest_not_ready_reason() -> None:
+    narrative_files = [
+        path
+        for path in (SRC / "domains" / "narrative_intel").rglob("*.py")
+        if "/migrations/" not in path.as_posix()
+    ]
+
+    offenders = [path for path in narrative_files if "digest_not_ready" in path.read_text()]
+
+    assert offenders == []
+
+
+@pytest.mark.architecture
+def test_ready_discussion_digest_service_does_not_synthesize_public_claims() -> None:
+    text = NARRATIVE_DIGEST_SERVICE.read_text()
+    publish_path = text.split("def publish_ready_digest", 1)[1].split("def _author_count", 1)[0]
+
+    forbidden = {
+        "_ensure_ready_public_claims",
+        "_fallback_summary",
+        "realtime-discussion",
+        "实时讨论达到发布阈值",
+        "达到实时叙事发布阈值",
+        "_compact_allowed_refs(list(context.get(\"allowed_refs\")",
+    }
+    offenders = sorted(token for token in forbidden if token in publish_path)
+    assert offenders == []
 
 
 @pytest.mark.architecture

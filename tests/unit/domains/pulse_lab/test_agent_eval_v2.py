@@ -68,18 +68,13 @@ def test_hard_blocked_packet_does_not_require_llm_stages() -> None:
     assert result["status"] == "pass"
 
 
-def test_cost_guard_research_only_does_not_require_public_judge_stage() -> None:
+def test_cost_guard_skip_decision_does_not_require_decision_stage() -> None:
     case = _case(
         final=_abstain_decision(),
-        stages=("evidence_pack", "evidence_completeness_gate", "signal_analyst", "bear_case"),
+        stages=("evidence_pack", "evidence_completeness_gate"),
     )
     case["input_json"]["context"]["cost_guard"] = {
-        "decision": {"action": "research_only"},
-        "stage_plan": {
-            "run_signal_analyst": True,
-            "run_bear_case": True,
-            "run_risk_portfolio_judge": False,
-        },
+        "decision": {"action": "skip_decision", "decision_allowed": False},
     }
 
     result = grade_pulse_deterministic_eval_case(case)
@@ -88,25 +83,19 @@ def test_cost_guard_research_only_does_not_require_public_judge_stage() -> None:
     assert result["details_json"]["checked_stage_names"] == [
         "evidence_pack",
         "evidence_completeness_gate",
-        "signal_analyst",
-        "bear_case",
     ]
 
 
-def test_cost_guard_reused_terminal_run_does_not_require_model_stages() -> None:
+def test_cost_guard_reuse_terminal_run_is_not_a_stage_skip_escape_hatch() -> None:
     case = _case(stages=("evidence_pack", "evidence_completeness_gate"))
     case["input_json"]["context"]["cost_guard"] = {
         "decision": {"action": "reuse_terminal_run"},
-        "stage_plan": {
-            "run_signal_analyst": True,
-            "run_bear_case": True,
-            "run_risk_portfolio_judge": True,
-        },
     }
 
     result = grade_pulse_deterministic_eval_case(case)
 
-    assert result["status"] == "pass"
+    assert result["status"] == "fail"
+    assert "stage_contract" in result["details_json"]["violations"]
 
 
 def test_failed_eval_case_records_failure_reason() -> None:
@@ -116,7 +105,7 @@ def test_failed_eval_case_records_failure_reason() -> None:
         context={"evidence_packet": _packet()},
         route="meme",
         completeness={"hard_blocked": False},
-        stage_audits=(_stage("signal_analyst", status="failed"),),
+        stage_audits=(_stage("pulse_decision", status="failed"),),
         failure_reason="invalid_schema",
     )
 
@@ -132,9 +121,7 @@ def _case(
     stages: tuple[str, ...] = (
         "evidence_pack",
         "evidence_completeness_gate",
-        "signal_analyst",
-        "bear_case",
-        "risk_portfolio_judge",
+        "pulse_decision",
     ),
 ) -> dict[str, Any]:
     return build_pulse_deterministic_eval_case(

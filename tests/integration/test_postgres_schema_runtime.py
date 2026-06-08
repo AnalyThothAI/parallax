@@ -543,17 +543,6 @@ def test_runtime_schema_contains_token_radar_current_storage_and_watchlist_signa
                 "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
             ).fetchall()
         }
-        social_extraction_columns = {
-            row["column_name"]
-            for row in conn.execute(
-                """
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_schema = 'public'
-                  AND table_name = 'social_event_extractions'
-                """
-            ).fetchall()
-        }
         first_seen_columns = {
             row["column_name"]: row
             for row in conn.execute(
@@ -562,23 +551,6 @@ def test_runtime_schema_contains_token_radar_current_storage_and_watchlist_signa
                 FROM information_schema.columns
                 WHERE table_schema = 'public'
                   AND table_name = 'token_radar_target_first_seen'
-                """
-            ).fetchall()
-        }
-        signal_events_primary_key_columns = {
-            row["column_name"]
-            for row in conn.execute(
-                """
-                SELECT kcu.column_name
-                FROM information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage kcu
-                  ON tc.constraint_name = kcu.constraint_name
-                 AND tc.table_schema = kcu.table_schema
-                 AND tc.table_name = kcu.table_name
-                WHERE tc.table_schema = 'public'
-                  AND tc.table_name = 'watchlist_handle_signal_events'
-                  AND tc.constraint_type = 'PRIMARY KEY'
-                ORDER BY kcu.ordinal_position
                 """
             ).fetchall()
         }
@@ -592,10 +564,7 @@ def test_runtime_schema_contains_token_radar_current_storage_and_watchlist_signa
                   AND tablename IN (
                     'token_radar_current_rows',
                     'token_radar_publication_state',
-                    'token_radar_target_first_seen',
-                    'social_event_extractions',
-                    'watchlist_handle_signal_stats',
-                    'watchlist_handle_signal_events'
+                    'token_radar_target_first_seen'
                   )
                 """
             ).fetchall()
@@ -608,28 +577,23 @@ def test_runtime_schema_contains_token_radar_current_storage_and_watchlist_signa
         "token_radar_publication_state",
         "token_radar_target_first_seen",
         "token_radar_storage_maintenance_runs",
-        "watchlist_handle_signal_stats",
-        "watchlist_handle_signal_events",
     }.issubset(tables)
+    assert "social_event_extractions" not in tables
+    assert "watchlist_handle_signal_stats" not in tables
+    assert "watchlist_handle_signal_events" not in tables
     assert "token_radar_rows" not in tables
     assert "token_radar_projection_coverage" not in tables
     assert "token_radar_rank_history" not in tables
     assert "token_radar_snapshot_audit" not in tables
     assert "token_radar_retention_runs" not in tables
-    assert "normalized_handle" in social_extraction_columns
     assert first_seen_columns["target_type_key"]["data_type"] == "text"
     assert first_seen_columns["target_type_key"]["is_nullable"] == "NO"
     assert first_seen_columns["identity_id"]["data_type"] == "text"
     assert first_seen_columns["identity_id"]["is_nullable"] == "NO"
-    assert signal_events_primary_key_columns == {"event_id"}
     assert {
-        "idx_token_radar_current_rows_read",
+        "idx_token_radar_current_rows_venue_rank",
         "idx_token_radar_current_rows_generation",
-        "idx_token_radar_publication_state_current",
         "idx_token_radar_first_seen_updated",
-        "idx_social_event_extractions_signal_normalized_handle_received",
-        "idx_watchlist_handle_signal_stats_latest",
-        "idx_watchlist_handle_signal_events_handle_received",
     }.issubset(indexes)
 
 
@@ -744,7 +708,6 @@ def test_token_radar_postgres_hard_cut_runtime_schema_uses_partitioned_facts_and
                   AND relname IN (
                     'market_tick_current',
                     'token_radar_current_rows',
-                    'token_radar_publication_state',
                     'token_radar_dirty_targets'
                   )
                 """

@@ -407,12 +407,9 @@ class NewsItemBriefWorker(WorkerBase):
                 list[dict[str, Any]],
                 repos.news.load_items_for_brief_targets(news_item_ids=news_item_ids),
             )
-            load_contexts = getattr(repos.news, "load_agent_admission_contexts", None)
-            if not callable(load_contexts):
-                return candidates
             contexts = cast(
                 list[dict[str, Any]],
-                load_contexts(news_item_ids=news_item_ids, now_ms=int(now_ms)),
+                repos.news.load_agent_admission_contexts(news_item_ids=news_item_ids, now_ms=int(now_ms)),
             )
         contexts_by_id = {
             str(context.get("item", {}).get("news_item_id") or ""): context
@@ -661,23 +658,6 @@ class NewsItemBriefWorker(WorkerBase):
                 commit=False,
             )
 
-    def _upsert_failed_current(
-        self,
-        *,
-        run_id: str,
-        packet: NewsItemBriefInputPacket,
-        agent_config: NewsItemBriefAgentConfig,
-        errors: list[dict[str, str]],
-        computed_at_ms: int,
-    ) -> None:
-        self._upsert_current(
-            run_id=run_id,
-            packet=packet,
-            agent_config=agent_config,
-            payload=_failed_brief(errors),
-            computed_at_ms=computed_at_ms,
-        )
-
     def _upsert_terminal_failed_current(
         self,
         *,
@@ -692,7 +672,7 @@ class NewsItemBriefWorker(WorkerBase):
             run_id=run_id,
             packet=packet,
             agent_config=agent_config,
-            payload=_failed_brief(errors, terminal=True, terminal_reason=terminal_reason),
+            payload=_failed_brief(errors, terminal_reason=terminal_reason),
             computed_at_ms=computed_at_ms,
         )
 
@@ -785,12 +765,7 @@ def _current_brief_is_fresh(
 def _admission_from_candidate(candidate: Mapping[str, Any], *, now_ms: int) -> NewsItemAgentAdmission:
     context = _dict(candidate.get("agent_admission_context"))
     if not context:
-        context = {
-            "item": _dict(candidate.get("item") or candidate),
-            "current_brief": candidate.get("current_brief"),
-            "exact_duplicate_candidates": [],
-            "story_candidates": [],
-        }
+        raise ValueError("news item brief candidate is missing repository admission context")
     return decide_news_item_agent_admission(
         item=_dict(candidate.get("item") or candidate),
         entities=_list_of_dicts(candidate.get("entities")),
@@ -849,12 +824,15 @@ def _request_json(*, packet: NewsItemBriefInputPacket, audit: Mapping[str, Any])
 def _failed_brief(
     errors: list[dict[str, str]],
     *,
-    terminal: bool = False,
     terminal_reason: str = "",
 ) -> dict[str, Any]:
-    del terminal, terminal_reason
     reason = "; ".join(str(error.get("message") or error.get("code") or "")[:120] for error in errors[:3])
-    suffix = f"原因：{reason}" if reason else "已记录失败原因。"
+    details = []
+    if terminal_reason:
+        details.append(f"终态原因：{str(terminal_reason)[:120]}")
+    if reason:
+        details.append(f"原因：{reason}")
+    suffix = "；".join(details) if details else "已记录失败原因。"
     payload: dict[str, Any] = {
         "status": "failed",
         "direction": "neutral",

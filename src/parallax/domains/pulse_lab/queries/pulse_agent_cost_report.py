@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Any
 
 PUBLIC_DISPLAY_STATUSES = ("display_trade_candidate", "display_token_watch")
-FINAL_JUDGE_STAGE = "risk_portfolio_judge"
-DEFAULT_DRY_RUN_POLICY = {"skip_final_judge_display_status_prefixes": ("hidden_",)}
+DECISION_STAGE = "pulse_decision"
+DEFAULT_DRY_RUN_POLICY = {"skip_decision_stage_display_status_prefixes": ("hidden_",)}
 
 
 def build_signal_pulse_agent_cost_report(
@@ -52,11 +52,11 @@ def summarize_signal_pulse_agent_cost_rows(
     since_ms = _since_ms(now_ms=now_ms, lookback_hours=lookback_hours)
     runs_by_id = {str(row.get("run_id") or ""): row for row in run_rows}
     steps_with_runs = [dict(step, _run=runs_by_id.get(str(step.get("run_id") or ""), {})) for step in step_rows]
-    final_judge_steps = [step for step in steps_with_runs if _is_final_judge_stage(step.get("stage"))]
-    final_judge_tokens_before = sum(_usage_tokens(step.get("usage_json")) for step in final_judge_steps)
+    decision_stage_steps = [step for step in steps_with_runs if _is_decision_stage(step.get("stage"))]
+    decision_stage_tokens_before = sum(_usage_tokens(step.get("usage_json")) for step in decision_stage_steps)
     hidden_invalid_tokens = sum(
         _usage_tokens(step.get("usage_json"))
-        for step in final_judge_steps
+        for step in decision_stage_steps
         if _display_status(step) == "hidden_invalid_output"
     )
     public_display = Counter(
@@ -71,8 +71,8 @@ def summarize_signal_pulse_agent_cost_rows(
     }
     after_tokens = sum(
         _usage_tokens(step.get("usage_json"))
-        for step in final_judge_steps
-        if not _dry_run_skips_final_judge(step, dry_run_policy=dry_run_policy)
+        for step in decision_stage_steps
+        if not _dry_run_skips_decision_stage(step, dry_run_policy=dry_run_policy)
     )
     steps_by_stage_model_status = _steps_by_stage_model_status(step_rows)
     tokens_by_display_status = _tokens_by_display_status(steps_with_runs)
@@ -83,10 +83,10 @@ def summarize_signal_pulse_agent_cost_rows(
     return {
         "window": {"lookback_hours": int(lookback_hours), "since_ms": since_ms, "now_ms": int(now_ms)},
         "runs": runs,
-        "final_judge": {
-            "steps": len(final_judge_steps),
-            "total_tokens": final_judge_tokens_before,
-            "stage_counts": _counter_dict(_count_values(final_judge_steps, "stage")),
+        "decision_stage": {
+            "steps": len(decision_stage_steps),
+            "total_tokens": decision_stage_tokens_before,
+            "stage_counts": _counter_dict(_count_values(decision_stage_steps, "stage")),
         },
         "hidden_invalid_output": {"runs": runs["hidden_invalid_output"], "total_tokens": hidden_invalid_tokens},
         "public_display": public_candidate_delta.copy(),
@@ -96,11 +96,11 @@ def summarize_signal_pulse_agent_cost_rows(
         "duplicate_fingerprints": _duplicate_fingerprints(run_rows),
         "public_candidate_delta": public_candidate_delta,
         "predicted_savings": {
-            "final_judge_tokens_before": final_judge_tokens_before,
-            "final_judge_tokens_after": after_tokens,
-            "final_judge_token_reduction_ratio": _ratio(
-                final_judge_tokens_before - after_tokens,
-                final_judge_tokens_before,
+            "decision_stage_tokens_before": decision_stage_tokens_before,
+            "decision_stage_tokens_after": after_tokens,
+            "decision_stage_token_reduction_ratio": _ratio(
+                decision_stage_tokens_before - after_tokens,
+                decision_stage_tokens_before,
             ),
         },
     }
@@ -115,7 +115,7 @@ def render_signal_pulse_agent_cost_report(
 ) -> str:
     window = _mapping(report.get("window"))
     runs = _mapping(report.get("runs"))
-    final_judge = _mapping(report.get("final_judge"))
+    decision_stage = _mapping(report.get("decision_stage"))
     predicted = _mapping(report.get("predicted_savings"))
     duplicates = _mapping(report.get("duplicate_fingerprints"))
     public_delta = _mapping(report.get("public_candidate_delta"))
@@ -143,12 +143,12 @@ def render_signal_pulse_agent_cost_report(
         f"- runs_total: {_int(runs.get('total'))}",
         f"- backpressure_circuit_open_runs: {_int(runs.get('backpressure_circuit_open'))}",
         f"- hidden_invalid_output_runs: {_int(runs.get('hidden_invalid_output'))}",
-        f"- final_judge_total_tokens: {_int(final_judge.get('total_tokens'))}",
+        f"- decision_stage_total_tokens: {_int(decision_stage.get('total_tokens'))}",
         f"- hidden_invalid_output_tokens: {_int(_mapping(report.get('hidden_invalid_output')).get('total_tokens'))}",
-        f"- predicted_final_judge_tokens_after: {_int(predicted.get('final_judge_tokens_after'))}",
+        f"- predicted_decision_stage_tokens_after: {_int(predicted.get('decision_stage_tokens_after'))}",
         (
-            "- predicted_final_judge_reduction_ratio: "
-            f"{float(predicted.get('final_judge_token_reduction_ratio') or 0.0):.4f}"
+            "- predicted_decision_stage_reduction_ratio: "
+            f"{float(predicted.get('decision_stage_token_reduction_ratio') or 0.0):.4f}"
         ),
         f"- duplicate_success_fingerprint_groups: {_int(duplicates.get('duplicate_success_fingerprint_groups'))}",
         f"- extra_success_runs_same_fingerprint: {_int(duplicates.get('extra_success_runs_same_fingerprint'))}",
@@ -253,10 +253,10 @@ def _duplicate_fingerprints(run_rows: Sequence[Mapping[str, Any]]) -> dict[str, 
     }
 
 
-def _dry_run_skips_final_judge(step: Mapping[str, Any], *, dry_run_policy: Mapping[str, Any] | None) -> bool:
+def _dry_run_skips_decision_stage(step: Mapping[str, Any], *, dry_run_policy: Mapping[str, Any] | None) -> bool:
     policy = dict(DEFAULT_DRY_RUN_POLICY if dry_run_policy is None else dry_run_policy)
-    statuses = set(str(value) for value in policy.get("skip_final_judge_display_statuses") or ())
-    prefixes = tuple(str(value) for value in policy.get("skip_final_judge_display_status_prefixes") or ())
+    statuses = set(str(value) for value in policy.get("skip_decision_stage_display_statuses") or ())
+    prefixes = tuple(str(value) for value in policy.get("skip_decision_stage_display_status_prefixes") or ())
     display_status = _display_status(step)
     return display_status in statuses or any(display_status.startswith(prefix) for prefix in prefixes)
 
@@ -276,8 +276,8 @@ def _usage_tokens(value: Any) -> int:
     )
 
 
-def _is_final_judge_stage(value: Any) -> bool:
-    return str(value or "") == FINAL_JUDGE_STAGE
+def _is_decision_stage(value: Any) -> bool:
+    return str(value or "") == DECISION_STAGE
 
 
 def _is_circuit_open_run(row: Mapping[str, Any]) -> bool:

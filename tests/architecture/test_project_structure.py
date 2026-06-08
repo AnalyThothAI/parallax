@@ -306,8 +306,7 @@ def test_makefile_exposes_single_token_radar_cex_recovery_target():
     assert "token-radar-cex-recover: ## recover Token Radar CEX recognition" in makefile
     assert "\t@$(PARALLAX) ops sync-binance-usdt-perp-universe --execute" in makefile
     assert "\t@$(PARALLAX) ops sync-binance-cex-profiles" in makefile
-    assert "\t@$(PARALLAX) ops cex-binance-hard-cut-cleanup --dry-run --min-binance-feeds 400" in makefile
-    assert "\t@$(PARALLAX) ops cex-binance-hard-cut-cleanup --execute --min-binance-feeds 400" in makefile
+    assert "cex-binance-hard-cut-cleanup" not in makefile
     assert "\t@$(PARALLAX) ops rebuild-token-intents --window 24h --limit 5000 --projection-limit 5000" in makefile
     assert "\t@$(PARALLAX) ops audit-token-radar --window 1h --scope all --limit 20" in makefile
 

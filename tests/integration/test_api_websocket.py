@@ -254,6 +254,46 @@ def test_websocket_symbol_filter_matches_token_intents_without_entities():
     assert hub._payload_matches_subscription(payload, client) is True
 
 
+def test_websocket_symbol_filter_matches_projected_token_resolution_symbol_not_target_id():
+    hub = PublicWebSocketHub(token="secret", repository_session=lambda: None)
+    client = ClientSubscription(websocket=None, symbols={"MIRROR"})
+    payload = {
+        "type": "event",
+        "event": {"author_handle": "random"},
+        "entities": [],
+        "token_intents": [],
+        "token_resolutions": [
+            {
+                "target_type": "Asset",
+                "target_id": "asset:eip155:1:erc20:0xfeedface",
+                "symbol": "MIRROR",
+            }
+        ],
+    }
+
+    assert hub._payload_matches_subscription(payload, client) is True
+
+
+def test_websocket_symbol_filter_does_not_match_target_id_substrings():
+    hub = PublicWebSocketHub(token="secret", repository_session=lambda: None)
+    client = ClientSubscription(websocket=None, symbols={"SET"})
+    payload = {
+        "type": "event",
+        "event": {"author_handle": "random"},
+        "entities": [],
+        "token_intents": [],
+        "token_resolutions": [
+            {
+                "target_type": "Asset",
+                "target_id": "asset:eip155:1:erc20:0xfeedface",
+                "symbol": "VOICE",
+            }
+        ],
+    }
+
+    assert hub._payload_matches_subscription(payload, client) is False
+
+
 def test_websocket_ca_filter_matches_token_intents_without_entities():
     hub = PublicWebSocketHub(token="secret", repository_session=lambda: None)
     client = ClientSubscription(

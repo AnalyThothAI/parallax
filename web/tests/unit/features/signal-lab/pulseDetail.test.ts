@@ -176,18 +176,14 @@ describe("buildPulseDetailView", () => {
     expect(view.evidence.concentration.topAuthorShare).toBeCloseTo(0.6);
   });
 
-  it("builds research committee stage rail entries", () => {
-    expect(view.agent.kind).toBe("stages");
-    expect(view.agent.railItems.map((entry) => entry.kind)).toEqual([
-      "signal_analyst",
-      "bear_case",
-      "risk_portfolio_judge",
-    ]);
-    const decision = view.agent.railItems.find((entry) => entry.kind === "risk_portfolio_judge");
-    expect(decision?.status).toBe("ok");
-    expect(decision?.summary).toMatch(/TITTY/);
+  it("builds the public agent rail without run-step audit fields", () => {
+    expect(view.agent.kind).toBe("decision");
+    expect(view.agent.totalLatencyMs).toBeNull();
+    expect(view.agent.model).toBeNull();
     expect(view.agent.mismatch?.agentLabel).toMatch(/0\.35/);
     expect(view.agent.replay.pulseVersion).toBe("pulse-decision-harness-v1");
+    expect(view.agent.replay).not.toHaveProperty("runId");
+    expect(view.agent.replay).not.toHaveProperty("agentRunId");
   });
 
   it("exposes v2 decision surface fields for the agent rail", () => {
@@ -266,24 +262,7 @@ describe("buildPulseDetailView", () => {
     expect(decisionView.agent.decisionSurface?.bear).toBeNull();
   });
 
-  it("renders research committee stages in the public agent rail", () => {
-    const view = buildPulseDetailView({
-      item: {
-        ...tittyPulseFixture,
-        stages: tittyPulseFixture.stages,
-      },
-      sourceEvents: tittySourceEventsFixture,
-      now: TITTY_NOW_MS,
-    });
-
-    expect(view.agent.railItems.map((entry) => entry.kind)).toEqual([
-      "signal_analyst",
-      "bear_case",
-      "risk_portfolio_judge",
-    ]);
-  });
-
-  it("handles abstain, research-only, and failed stage edge cases", () => {
+  it("handles abstain and research-only edge cases", () => {
     const abstain = buildPulseDetailView({
       item: {
         ...tittyPulseFixture,
@@ -310,55 +289,13 @@ describe("buildPulseDetailView", () => {
           recommendation: "abstain",
           confidence: 0,
         },
-        stages: {
-          evidence_pack: null,
-          signal_analyst: null,
-          bear_case: null,
-          claim_verifier: null,
-          risk_portfolio_judge: null,
-          recommendation_clipper: null,
-          deterministic_eval: null,
-          write_gate: null,
-          evidence_completeness_gate: {
-            stage: "evidence_completeness_gate",
-            route: "research_only",
-            status: "ok",
-            model: null,
-            started_at_ms: TITTY_NOW_MS,
-            finished_at_ms: TITTY_NOW_MS,
-            latency_ms: 0,
-            attempt_index: 0,
-            response: { blocked_reason: "no_target_resolved" },
-            error: null,
-          },
-        },
+        evidence_gate: { status: "ok", blocked_reason: "no_target_resolved" },
       },
       sourceEvents: [],
       now: TITTY_NOW_MS,
     });
     expect(researchOnly.agent.kind).toBe("research_only");
-    expect(researchOnly.agent.railItems).toEqual([]);
     expect(researchOnly.agent.researchOnlyGate?.abstainReason).toBe("no_target_resolved");
-
-    const failed = buildPulseDetailView({
-      item: {
-        ...tittyPulseFixture,
-        stages: {
-          ...tittyPulseFixture.stages!,
-          signal_analyst: {
-            ...tittyPulseFixture.stages!.signal_analyst!,
-            status: "failed",
-            response: null,
-            error: "signal analyst timed out",
-          },
-        },
-      },
-      sourceEvents: tittySourceEventsFixture,
-      now: TITTY_NOW_MS,
-    });
-    const failedDebate = failed.agent.railItems.find((entry) => entry.kind === "signal_analyst");
-    expect(failedDebate?.status).toBe("failed");
-    expect(failedDebate?.summary).toMatch(/timed out/);
   });
 });
 

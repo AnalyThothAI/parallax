@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import time
 from typing import Any
 
@@ -157,8 +156,9 @@ class AccountQualityRepository:
         commit: bool = True,
     ) -> str:
         normalized = _handle(handle)
+        window_key = str(window).strip().lower()
         now_ms = _now_ms()
-        snapshot_id = _id("account_quality_snapshot", normalized, window, str(now_ms))
+        snapshot_id = _quality_snapshot_id(handle=normalized, window=window_key)
         self.conn.execute(
             """
             INSERT INTO account_quality_snapshots(
@@ -166,11 +166,19 @@ class AccountQualityRepository:
               avg_realized_return, sample_size, updated_at_ms
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(handle, "window") DO UPDATE SET
+              snapshot_id = excluded.snapshot_id,
+              precision_score = excluded.precision_score,
+              early_call_score = excluded.early_call_score,
+              spam_risk_score = excluded.spam_risk_score,
+              avg_realized_return = excluded.avg_realized_return,
+              sample_size = excluded.sample_size,
+              updated_at_ms = excluded.updated_at_ms
             """,
             (
                 snapshot_id,
                 normalized,
-                window,
+                window_key,
                 precision_score,
                 early_call_score,
                 spam_risk_score,
@@ -362,8 +370,8 @@ def _handle(handle: str) -> str:
     return handle.strip().lstrip("@").lower()
 
 
-def _id(*parts: str) -> str:
-    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+def _quality_snapshot_id(*, handle: str, window: str) -> str:
+    return f"account-quality:{handle}:{window}:current"
 
 
 def _now_ms() -> int:

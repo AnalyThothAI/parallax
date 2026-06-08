@@ -123,8 +123,8 @@ def _context(
     profile = capability_profile or resolve_agent_capability_profile(model="deepseek-v4-flash")
     return StructuredOutputContext(
         stage=AgentStageSpec(
-            lane="pulse.signal_analyst",
-            stage="signal_analyst",
+            lane="pulse.decision",
+            stage="pulse_decision",
             instructions="Return JSON for the signal.",
             input_payload={"token": "ABC"},
             output_type=Payload,

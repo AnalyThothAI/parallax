@@ -226,7 +226,7 @@ class NotificationRuleEngine:
                 continue
             candidate_id = str(row.get("candidate_id") or "")
             occurrence_at_ms = _int(row.get("updated_at_ms") or now_ms)
-            in_app_signature = _pulse_in_app_signature(row)
+            semantic_signature = _pulse_semantic_signature(row)
             push_policy = _pulse_external_push_policy(
                 row,
                 severity=severity,
@@ -245,7 +245,7 @@ class NotificationRuleEngine:
             external_identity = push_policy.external_push_signature or "in_app"
             payload = _pulse_payload(
                 row,
-                in_app_signature=in_app_signature,
+                semantic_signature=semantic_signature,
                 external_push_signature=push_policy.external_push_signature,
                 external_push_eligible=push_policy.eligible,
                 external_push_suppression_reason=push_policy.suppression_reason,
@@ -260,7 +260,7 @@ class NotificationRuleEngine:
             title_subject = f"${symbol}" if symbol else subject
             candidates.append(
                 NotificationCandidate(
-                    dedup_key=f"{SIGNAL_PULSE_RULE_ID}:{in_app_signature}:{external_identity}",
+                    dedup_key=f"{SIGNAL_PULSE_RULE_ID}:{semantic_signature}:{external_identity}",
                     rule_id=SIGNAL_PULSE_RULE_ID,
                     severity=severity,
                     title=f"{title_subject} {status.replace('_', ' ')}",
@@ -281,10 +281,7 @@ class NotificationRuleEngine:
         rule = self._rule(NEWS_HIGH_SIGNAL_RULE_ID)
         if not rule.enabled or self.news is None:
             return []
-        min_score = int(rule.combined_score_min if rule.combined_score_min is not None else 85)
-        external_min_score = int(rule.external_score_min if rule.external_score_min is not None else 85)
         rows = self.news.list_news_high_signal_notification_candidates(
-            min_score=min_score,
             limit=self._news_high_signal_query_limit(),
         )
         candidates: list[NotificationCandidate] = []
@@ -301,7 +298,6 @@ class NotificationRuleEngine:
             signal = _dict(row.get("signal"))
             display_signal = _news_display_signal(row)
             eligibility = _dict(signal.get("alert_eligibility"))
-            provider_score = _int(eligibility.get("provider_score") or display_signal.get("score"))
             agent_brief = _dict(row.get("agent_brief"))
             ready_agent_brief = _ready_news_agent_brief(agent_brief)
             external_push_ready, readiness_suppression_reason = _news_external_push_readiness(
@@ -321,14 +317,13 @@ class NotificationRuleEngine:
             external_push_signature = None
             external_push_eligible = False
             suppression_reason = None
-            if provider_score < external_min_score or not _has_external_channels(rule.channels):
+            if not _has_external_channels(rule.channels):
                 suppression_reason = "external_threshold_or_channel"
             elif not external_push_ready:
                 suppression_reason = readiness_suppression_reason
             else:
                 external_push_signature = _news_external_push_signature(
                     row,
-                    provider_score=provider_score,
                     occurrence_at_ms=occurrence_at_ms,
                     cooldown_seconds=rule.cooldown_seconds,
                 )
@@ -342,14 +337,14 @@ class NotificationRuleEngine:
             source_id = str(row.get("row_id") or news_item_id)
             summary = _news_agent_summary(ready_agent_brief)
             title = _news_display_title(row, agent_brief=ready_agent_brief)
-            body = _news_body(row, provider_score=provider_score, summary=summary)
+            body = _news_body(row, summary=summary)
             entity_type = "news_story" if story_key else "news_item"
             entity_key = f"news_story:{story_key}" if story_key else f"news_item:{news_item_id}"
             candidates.append(
                 NotificationCandidate(
                     dedup_key=f"{NEWS_HIGH_SIGNAL_RULE_ID}:{semantic_signature}",
                     rule_id=NEWS_HIGH_SIGNAL_RULE_ID,
-                    severity="high" if provider_score < external_min_score else "critical",
+                    severity="high",
                     title=title,
                     body=body,
                     entity_type=entity_type,
@@ -367,7 +362,6 @@ class NotificationRuleEngine:
                         "agent_admission_status": row.get("agent_admission_status"),
                         "agent_admission_reason": row.get("agent_admission_reason"),
                         "agent_admission": _dict(row.get("agent_admission")),
-                        "provider_score": provider_score,
                         "decision_class": decision_class,
                         "direction": direction,
                         "affected_entities": affected_entities,
@@ -376,7 +370,7 @@ class NotificationRuleEngine:
                         "external_push_signature": external_push_signature,
                         "external_push_eligible": external_push_eligible,
                         "external_push_suppression_reason": suppression_reason,
-                        "agent_brief": agent_brief,
+                        "agent_brief": _public_news_agent_brief(agent_brief),
                         "canonical_url": row.get("canonical_url"),
                         "source_domain": row.get("source_domain"),
                         "duplicate_count": _int(row.get("duplicate_count")),
@@ -469,7 +463,7 @@ def _pulse_stable_decision_signature(row: dict[str, Any]) -> str:
     return _stable_hash(payload)
 
 
-def _pulse_in_app_signature(row: dict[str, Any]) -> str:
+def _pulse_semantic_signature(row: dict[str, Any]) -> str:
     return _pulse_stable_decision_signature(row)
 
 
@@ -544,7 +538,7 @@ def _pulse_recommendation_escalation_level(value: Any) -> int:
 def _pulse_payload(
     row: dict[str, Any],
     *,
-    in_app_signature: str,
+    semantic_signature: str,
     external_push_signature: str | None,
     external_push_eligible: bool,
     external_push_suppression_reason: str | None,
@@ -565,7 +559,7 @@ def _pulse_payload(
         "target_type": row.get("target_type"),
         "target_id": row.get("target_id"),
         "symbol": _symbol(row.get("symbol")),
-        "in_app_signature": in_app_signature,
+        "semantic_signature": semantic_signature,
         "external_push_signature": external_push_signature,
         "external_push_eligible": external_push_eligible,
         "external_push_suppression_reason": external_push_suppression_reason,
@@ -636,17 +630,14 @@ def _valid_factor_snapshot(value: Any) -> bool:
 def _pulse_decision(row: dict[str, Any]) -> dict[str, Any]:
     decision = _dict(row.get("decision_json"))
     return {
-        # v1 retained fields
-        "route": row.get("decision_route") or decision.get("route"),
-        "recommendation": row.get("decision_recommendation") or decision.get("recommendation"),
+        "route": row.get("decision_route"),
+        "recommendation": row.get("decision_recommendation"),
         "confidence": row.get("decision_confidence"),
-        "abstain_reason": row.get("decision_abstain_reason") or decision.get("abstain_reason"),
-        "stage_count": int(row.get("decision_stage_count") or 0),
+        "abstain_reason": row.get("decision_abstain_reason"),
         "summary_zh": decision.get("summary_zh") or "",
         "invalidation_conditions": _string_list(decision.get("invalidation_conditions")),
         "residual_risks": _string_list(decision.get("residual_risks")),
         "evidence_event_ids": _string_list(decision.get("evidence_event_ids")),
-        # v2 new fields (consumed by SurfaceCard renderer + signature)
         "narrative_archetype": decision.get("narrative_archetype") or "",
         "narrative_thesis_zh": decision.get("narrative_thesis_zh") or "",
         "bull_view": _bull_bear_view(decision.get("bull_view")),
@@ -723,12 +714,8 @@ def _news_token_impacts_payload(value: Any) -> list[dict[str, Any]]:
         symbol = _symbol(item.get("symbol") or item.get("target_symbol"))
         if not symbol:
             continue
-        score = _int(item.get("score") or item.get("provider_score"))
         payload = {
             "symbol": symbol,
-            "score": score or None,
-            "signal": item.get("signal") or item.get("provider_signal"),
-            "grade": item.get("grade") or item.get("provider_grade"),
             "market_type": item.get("market_type"),
         }
         impacts.append({key: value for key, value in payload.items() if value is not None})
@@ -780,12 +767,9 @@ def _has_external_channels(channels: tuple[str, ...]) -> bool:
 
 
 def _news_agent_summary(agent_brief: dict[str, Any]) -> str:
-    brief_json = _dict(agent_brief.get("brief_json"))
     return _compact_text(
         agent_brief.get("summary_zh")
-        or brief_json.get("summary_zh")
         or agent_brief.get("market_read_zh")
-        or brief_json.get("market_read_zh")
         or "",
         limit=360,
     )
@@ -812,11 +796,9 @@ def _news_external_push_readiness(
 
 
 def _news_display_title(row: dict[str, Any], *, agent_brief: dict[str, Any]) -> str:
-    brief_json = _dict(agent_brief.get("brief_json"))
     display_signal = _news_display_signal(row)
     return _compact_text(
         agent_brief.get("title_zh")
-        or brief_json.get("title_zh")
         or display_signal.get("title_zh")
         or row.get("headline")
         or "News high signal",
@@ -853,7 +835,6 @@ def _news_semantic_signature(row: dict[str, Any], *, agent_brief: dict[str, Any]
 def _news_external_push_signature(
     row: dict[str, Any],
     *,
-    provider_score: int,
     occurrence_at_ms: int,
     cooldown_seconds: int,
 ) -> str:
@@ -862,7 +843,6 @@ def _news_external_push_signature(
     signature = {
         "asset_bucket": _news_external_asset_bucket(row),
         "direction": agent_brief.get("direction") or display_signal.get("direction"),
-        "provider_score_band": provider_score // 5,
         "cooldown_bucket": _cooldown_bucket(occurrence_at_ms, cooldown_seconds),
     }
     story_key = str(row.get("story_key") or "")
@@ -879,9 +859,6 @@ def _news_external_asset_bucket(row: dict[str, Any]) -> str:
             symbols.append(normalized)
     for impact in _list(row.get("token_impacts")):
         if not isinstance(impact, dict):
-            continue
-        score = _int(impact.get("score") or impact.get("provider_score"))
-        if score and score < 70:
             continue
         normalized = _news_external_asset_symbol(impact.get("symbol") or impact.get("target_symbol"))
         if normalized and normalized not in symbols:
@@ -917,8 +894,49 @@ def _news_primary_symbol(row: dict[str, Any]) -> str | None:
 
 
 def _news_agent_affected_entities(agent_brief: dict[str, Any]) -> list[Any]:
-    brief_json = _dict(agent_brief.get("brief_json"))
-    return _list(agent_brief.get("affected_entities")) or _list(brief_json.get("affected_entities"))
+    return _list(agent_brief.get("affected_entities"))
+
+
+def _public_news_agent_brief(agent_brief: dict[str, Any]) -> dict[str, Any]:
+    payload = {
+        key: agent_brief[key]
+        for key in (
+            "status",
+            "direction",
+            "decision_class",
+            "title_zh",
+            "summary_zh",
+            "market_read_zh",
+        )
+        if key in agent_brief and agent_brief.get(key) is not None
+    }
+    affected_entities = [_public_news_affected_entity(entity) for entity in _news_agent_affected_entities(agent_brief)]
+    affected_entities = [entity for entity in affected_entities if entity]
+    if affected_entities:
+        payload["affected_entities"] = affected_entities
+    return payload
+
+
+def _public_news_affected_entity(entity: Any) -> dict[str, Any]:
+    if not isinstance(entity, dict):
+        return {}
+    return {
+        key: entity[key]
+        for key in (
+            "label",
+            "symbol",
+            "name",
+            "entity_type",
+            "market_domain",
+            "resolution_status",
+            "target_type",
+            "target_id",
+            "impact_direction",
+            "reason_zh",
+            "evidence_refs",
+        )
+        if key in entity and entity.get(key) is not None
+    }
 
 
 def _news_affected_entity_symbols(value: Any) -> list[str]:
@@ -931,9 +949,8 @@ def _news_affected_entity_symbols(value: Any) -> list[str]:
     return symbols[:12]
 
 
-def _news_body(row: dict[str, Any], *, provider_score: int, summary: str) -> str:
+def _news_body(row: dict[str, Any], *, summary: str) -> str:
     lines = [
-        f"Score: {provider_score}",
         f"Source: {_compact_text(row.get('source_domain') or 'unknown', limit=80)}",
     ]
     if summary:

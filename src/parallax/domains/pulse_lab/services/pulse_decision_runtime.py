@@ -11,19 +11,15 @@ from parallax.domains.pulse_lab.interfaces import (
     PULSE_DECISION_SCHEMA_VERSION,
 )
 from parallax.domains.pulse_lab.providers import (
-    BearCaseMemo,
     EvidenceCompletenessGateResult,
     PulseDecisionStageSpec,
     PulseEvidencePacket,
-    SignalAnalystMemo,
 )
-from parallax.domains.pulse_lab.queries.agent_tool_queries import fetch_evidence_event_urls
 from parallax.domains.pulse_lab.services.agent_output_normalization import normalize_pulse_stage_output
 from parallax.domains.pulse_lab.services.agent_runtime import pulse_runtime_hash
 from parallax.domains.pulse_lab.services.prompt_loader import (
-    load_bear_case_prompt,
-    load_risk_portfolio_judge_prompt,
-    load_signal_analyst_prompt,
+    load_pulse_decision_prompt,
+    pulse_decision_prompt_text_hash,
 )
 from parallax.domains.pulse_lab.types.agent_decision import (
     DecisionRoute,
@@ -34,24 +30,27 @@ from parallax.domains.pulse_lab.types.agent_decision import (
 
 @dataclass(frozen=True, slots=True)
 class PulseDecisionRuntimeService:
-    db_pool: Any
+    def prompt_text_hash(self) -> str:
+        return pulse_decision_prompt_text_hash()
 
-    def signal_analyst_stage_spec(
+    def pulse_decision_stage_spec(
         self,
         *,
         route: DecisionRoute,
         evidence_packet: PulseEvidencePacket,
         evidence_gate: EvidenceCompletenessGateResult,
+        recommendation_constraints: dict[str, Any],
     ) -> PulseDecisionStageSpec:
         packet_payload = _agent_packet_payload(evidence_packet)
         gate_payload = _model_payload(evidence_gate)
         return PulseDecisionStageSpec(
-            stage="signal_analyst",
-            prompt_text=load_signal_analyst_prompt(route),
+            stage="pulse_decision",
+            prompt_text=load_pulse_decision_prompt(route),
             input_payload={
                 "route": route,
                 "evidence_packet": packet_payload,
                 "evidence_gate": gate_payload,
+                "recommendation_constraints": dict(recommendation_constraints or {}),
                 "source_quality_summary": _source_quality_summary(packet_payload),
                 "evidence_packet_hash": _packet_hash(packet_payload),
                 "allowed_evidence_refs": _allowed_evidence_refs(packet_payload),
@@ -60,111 +59,18 @@ class PulseDecisionRuntimeService:
             },
         )
 
-    def bear_case_stage_spec(
-        self,
-        *,
-        route: DecisionRoute,
-        evidence_packet: PulseEvidencePacket,
-        evidence_gate: EvidenceCompletenessGateResult,
-        signal_memo: SignalAnalystMemo,
-    ) -> PulseDecisionStageSpec:
-        packet_payload = _agent_packet_payload(evidence_packet)
-        gate_payload = _model_payload(evidence_gate)
-        signal_payload = _model_payload(signal_memo)
-        return PulseDecisionStageSpec(
-            stage="bear_case",
-            prompt_text=load_bear_case_prompt(route),
-            input_payload={
-                "route": route,
-                "evidence_packet": packet_payload,
-                "evidence_gate": gate_payload,
-                "signal_memo": signal_payload,
-                "evidence_packet_hash": _packet_hash(packet_payload),
-                "allowed_evidence_refs": _allowed_evidence_refs(packet_payload),
-                "allowed_evidence_ref_ids": _sorted_ref_ids(_allowed_evidence_ref_ids(packet_payload)),
-                "evidence_ref_policy": _evidence_ref_policy(),
-            },
-        )
-
-    def risk_portfolio_judge_stage_spec(
-        self,
-        *,
-        route: DecisionRoute,
-        evidence_packet: PulseEvidencePacket,
-        evidence_gate: EvidenceCompletenessGateResult,
-        signal_memo: SignalAnalystMemo,
-        bear_memo: BearCaseMemo,
-        recommendation_constraints: dict[str, Any],
-    ) -> PulseDecisionStageSpec:
-        packet_payload = _agent_packet_payload(evidence_packet)
-        gate_payload = _model_payload(evidence_gate)
-        signal_payload = _model_payload(signal_memo)
-        bear_payload = _model_payload(bear_memo)
-        return PulseDecisionStageSpec(
-            stage="risk_portfolio_judge",
-            prompt_text=load_risk_portfolio_judge_prompt(route),
-            input_payload={
-                "route": route,
-                "evidence_packet": packet_payload,
-                "evidence_gate": gate_payload,
-                "signal_memo": signal_payload,
-                "bear_memo": bear_payload,
-                "recommendation_constraints": dict(recommendation_constraints or {}),
-                "evidence_packet_hash": _packet_hash(packet_payload),
-                "allowed_evidence_refs": _allowed_evidence_refs(packet_payload),
-                "allowed_evidence_ref_ids": _sorted_ref_ids(_allowed_evidence_ref_ids(packet_payload)),
-                "evidence_ref_policy": _evidence_ref_policy(),
-            },
-        )
-
-    def validate_signal_refs(
-        self,
-        signal_memo: SignalAnalystMemo,
-        *,
-        evidence_packet: PulseEvidencePacket,
-    ) -> None:
-        packet_payload = _model_payload(evidence_packet)
-        allowed = _allowed_evidence_ref_ids(packet_payload)
-        unknown = sorted(_memo_ref_ids(_model_payload(signal_memo), groups=("bull_claims",)) - allowed)
-        if unknown:
-            preview = unknown[:5]
-            suffix = "..." if len(unknown) > 5 else ""
-            raise ValueError(f"SignalAnalystMemo cites refs outside allowed_evidence_refs: {preview}{suffix}")
-
-    def validate_bear_refs(
-        self,
-        bear_memo: BearCaseMemo,
-        *,
-        evidence_packet: PulseEvidencePacket,
-    ) -> None:
-        packet_payload = _model_payload(evidence_packet)
-        allowed = _allowed_evidence_ref_ids(packet_payload)
-        unknown = sorted(
-            _memo_ref_ids(_model_payload(bear_memo), groups=("risk_claims", "missing_fact_impacts")) - allowed
-        )
-        if unknown:
-            preview = unknown[:5]
-            suffix = "..." if len(unknown) > 5 else ""
-            raise ValueError(f"BearCaseMemo cites refs outside allowed_evidence_refs: {preview}{suffix}")
-
     def validate_final_evidence_refs(
         self,
         final: FinalDecision,
         *,
         evidence_packet: PulseEvidencePacket,
-        signal_memo: SignalAnalystMemo,
-        bear_memo: BearCaseMemo,
     ) -> None:
         packet_payload = _model_payload(evidence_packet)
         allowed_refs = _allowed_evidence_ref_ids(packet_payload)
         allowed_events = _packet_event_ids(packet_payload)
-        memo_refs = _memo_ref_ids(_model_payload(signal_memo), groups=("bull_claims",)) | _memo_ref_ids(
-            _model_payload(bear_memo),
-            groups=("risk_claims", "missing_fact_impacts"),
-        )
         fields = _final_ref_fields(final)
         for field_name, values in fields:
-            allowed = allowed_events if field_name.endswith("event_ids") else (allowed_refs | memo_refs)
+            allowed = allowed_events if field_name.endswith("event_ids") else allowed_refs
             unknown = [
                 ref_id
                 for ref_id in values
@@ -187,13 +93,6 @@ class PulseDecisionRuntimeService:
             raw_output=raw_output,
             evidence_packet=evidence_packet,
         )
-
-    def enrich_evidence_urls(self, final: FinalDecision) -> FinalDecision:
-        event_ids = _final_url_event_ids(final)
-        if not event_ids:
-            return final.model_copy(update={"evidence_event_urls": {}})
-        urls = fetch_evidence_event_urls(self.db_pool, event_ids=event_ids)
-        return final.model_copy(update={"evidence_event_urls": urls})
 
     def mark_step_failed(self, step: StageRunAudit, *, error: str) -> StageRunAudit:
         return step.model_copy(
@@ -354,26 +253,6 @@ def _evidence_ref_policy() -> dict[str, str]:
     }
 
 
-def _memo_ref_ids(memo_payload: dict[str, Any], *, groups: tuple[str, ...]) -> set[str]:
-    refs: set[str] = set()
-    for key in groups:
-        claims = memo_payload.get(key)
-        if not isinstance(claims, list | tuple):
-            continue
-        for claim in claims:
-            claim_payload = _model_payload(claim)
-            values = claim_payload.get("evidence_refs") if claim_payload else None
-            if isinstance(values, list | tuple):
-                for value in values:
-                    ref_id = _string_value(value)
-                    if not ref_id:
-                        continue
-                    if ref_id.startswith("missing:"):
-                        continue
-                    refs.add(ref_id)
-    return refs
-
-
 def _source_quality_summary(packet_payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "window": packet_payload.get("window"),
@@ -396,21 +275,6 @@ def _final_ref_fields(final: FinalDecision) -> tuple[tuple[str, list[str]], ...]
         ("evidence_event_ids", [_string_value(value) for value in final.evidence_event_ids if _string_value(value)])
     )
     return tuple(fields)
-
-
-def _final_url_event_ids(final: FinalDecision) -> list[str]:
-    seen: set[str] = set()
-    result: list[str] = []
-    for value in (
-        *final.evidence_event_ids,
-        *final.bull_view.supporting_event_ids,
-        *final.bear_view.supporting_event_ids,
-    ):
-        cleaned = str(value or "").strip()
-        if cleaned and cleaned not in seen:
-            seen.add(cleaned)
-            result.append(cleaned)
-    return result
 
 
 def _context_string(context: dict[str, Any], key: str) -> str | None:

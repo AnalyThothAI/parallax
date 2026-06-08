@@ -1434,20 +1434,14 @@ export interface components {
         };
         /** NewsAgentBrief */
         NewsAgentBrief: {
-            /** Agent Run Id */
-            agent_run_id?: string | null;
-            /** Artifact Version Hash */
-            artifact_version_hash?: string | null;
+            /** Affected Entities */
+            affected_entities?: unknown[];
             /** Bear Strength */
             bear_strength?: string | null;
             /** Bear View */
             bear_view?: {
                 [key: string]: unknown;
             } | null;
-            /** Brief Json */
-            brief_json?: {
-                [key: string]: unknown;
-            };
             /** Bull Strength */
             bull_strength?: string | null;
             /** Bull View */
@@ -1466,22 +1460,12 @@ export interface components {
             direction?: string | null;
             /** Evidence Refs */
             evidence_refs?: unknown[];
-            /** Input Hash */
-            input_hash?: string | null;
             /** Invalidation Conditions */
             invalidation_conditions?: string[];
             /** Market Impacts */
             market_impacts?: unknown[];
             /** Market Read Zh */
             market_read_zh?: string | null;
-            /** Output Hash */
-            output_hash?: string | null;
-            /** Prompt Version */
-            prompt_version?: string | null;
-            /** Research Todos Zh */
-            research_todos_zh?: string[];
-            /** Schema Version */
-            schema_version?: string | null;
             /** Status */
             status?: string | null;
             /** Summary Zh */
@@ -1497,14 +1481,8 @@ export interface components {
         NewsAgentRunSummary: {
             /** Agent Name */
             agent_name?: string | null;
-            /** Artifact Version Hash */
-            artifact_version_hash?: string | null;
             /** Backend */
             backend?: string | null;
-            /** Base Packet */
-            base_packet?: {
-                [key: string]: unknown;
-            } | null;
             /** Error */
             error?: string | null;
             /** Error Class */
@@ -1513,14 +1491,8 @@ export interface components {
             error_message?: string | null;
             /** Execution Started */
             execution_started?: boolean | null;
-            /** Execution Trace Id */
-            execution_trace_id?: string | null;
             /** Finished At Ms */
             finished_at_ms?: number | null;
-            /** Guardrail Version */
-            guardrail_version?: string | null;
-            /** Input Hash */
-            input_hash?: string | null;
             /** Lane */
             lane?: string | null;
             /** Latency Ms */
@@ -1529,54 +1501,12 @@ export interface components {
             model?: string | null;
             /** Outcome */
             outcome?: string | null;
-            /** Output Hash */
-            output_hash?: string | null;
-            /** Prompt Version */
-            prompt_version?: string | null;
             /** Provider */
             provider?: string | null;
-            /** Request Json */
-            request_json?: {
-                [key: string]: unknown;
-            } | null;
-            /** Research Execution */
-            research_execution?: {
-                [key: string]: unknown;
-            } | null;
-            /** Research Hashes */
-            research_hashes?: {
-                [key: string]: unknown;
-            } | null;
-            /** Research Plan */
-            research_plan?: {
-                [key: string]: unknown;
-            } | null;
-            /** Response Json */
-            response_json?: {
-                [key: string]: unknown;
-            } | null;
-            /** Run Id */
-            run_id?: string | null;
-            /** Schema Version */
-            schema_version?: string | null;
             /** Started At Ms */
             started_at_ms?: number | null;
             /** Status */
             status?: string | null;
-            /** Tool Results */
-            tool_results?: components["schemas"]["NewsResearchToolResult"][];
-            /** Trace Metadata Json */
-            trace_metadata_json?: {
-                [key: string]: unknown;
-            };
-            /** Usage Json */
-            usage_json?: {
-                [key: string]: unknown;
-            };
-            /** Validation Errors Json */
-            validation_errors_json?: unknown[];
-            /** Validator Version */
-            validator_version?: string | null;
             /** Workflow Name */
             workflow_name?: string | null;
         } & {
@@ -1601,10 +1531,6 @@ export interface components {
             /** In App Eligible */
             in_app_eligible?: boolean | null;
             market_scope?: components["schemas"]["NewsMarketScope"] | null;
-            /** Provider Score */
-            provider_score?: number | null;
-            /** Provider Status */
-            provider_status?: string | null;
         } & {
             [key: string]: unknown;
         };
@@ -1766,9 +1692,6 @@ export interface components {
             provider_observations?: {
                 [key: string]: unknown;
             }[];
-            provider_signal?: components["schemas"]["NewsSignalSummary"] | null;
-            /** Provider Token Impacts */
-            provider_token_impacts?: components["schemas"]["NewsTokenLane"][];
             /** Provider Type */
             provider_type?: string | null;
             /** Published At Ms */
@@ -1804,43 +1727,6 @@ export interface components {
             token_mentions?: unknown[];
             /** Trust Tier */
             trust_tier?: string | null;
-        } & {
-            [key: string]: unknown;
-        };
-        /** NewsResearchToolResult */
-        NewsResearchToolResult: {
-            /** Evidence Refs */
-            evidence_refs?: unknown[];
-            /** Generated At Ms */
-            generated_at_ms?: number | null;
-            /** Input */
-            input?: {
-                [key: string]: unknown;
-            } | null;
-            /** Latency Ms */
-            latency_ms?: number | null;
-            /** Query Version */
-            query_version?: string | null;
-            /** Redaction Notes */
-            redaction_notes?: string[];
-            /** Result Hash */
-            result_hash?: string | null;
-            /** Row Count */
-            row_count?: number | null;
-            /** Rows */
-            rows?: unknown[];
-            /** Schema Version */
-            schema_version?: string | null;
-            /** Skipped Reason */
-            skipped_reason?: string | null;
-            /** Source Tables */
-            source_tables?: string[];
-            /** Tool Call Id */
-            tool_call_id?: string | null;
-            /** Tool Name */
-            tool_name?: string | null;
-            /** Truncated */
-            truncated?: boolean | null;
         } & {
             [key: string]: unknown;
         };
@@ -1941,9 +1827,6 @@ export interface components {
             };
             alert_eligibility?: components["schemas"]["NewsAlertEligibility"];
             display_signal?: components["schemas"]["NewsSignalSummary"];
-            provider_signal?: components["schemas"]["NewsSignalSummary"] | null;
-        } & {
-            [key: string]: unknown;
         };
         /** NewsSignalSummary */
         NewsSignalSummary: {
@@ -2033,12 +1916,6 @@ export interface components {
             lane?: string | null;
             /** Market Type */
             market_type?: string | null;
-            /** Provider Grade */
-            provider_grade?: string | null;
-            /** Provider Score */
-            provider_score?: number | null;
-            /** Provider Signal */
-            provider_signal?: string | null;
             /** Reason Codes */
             reason_codes?: string[];
             /** Resolution Status */
@@ -2407,18 +2284,12 @@ export interface components {
         };
         /** SignalPulseItem */
         SignalPulseItem: {
-            /** Agent Run Id */
-            agent_run_id?: string | null;
             /** Candidate Id */
             candidate_id?: string | null;
             /** Candidate Score */
             candidate_score?: number | null;
             /** Candidate Type */
             candidate_type?: string | null;
-            /** Claim Verification */
-            claim_verification?: {
-                [key: string]: unknown;
-            } | null;
             /** Created At Ms */
             created_at_ms?: number | null;
             decision?: components["schemas"]["SignalPulseDecision"] | null;
@@ -2428,10 +2299,6 @@ export interface components {
             display_status?: string | null;
             /** Evidence Event Ids */
             evidence_event_ids?: string[];
-            /** Evidence Gate */
-            evidence_gate?: {
-                [key: string]: unknown;
-            } | null;
             /** Evidence Packet Hash */
             evidence_packet_hash?: string | null;
             /** Evidence Status */
@@ -2472,7 +2339,6 @@ export interface components {
             social_phase?: string | null;
             /** Source Event Ids */
             source_event_ids?: string[];
-            stages?: components["schemas"]["SignalPulseStages"] | null;
             /** Subject */
             subject?: {
                 [key: string]: unknown;
@@ -2506,45 +2372,6 @@ export interface components {
             watch_signals: string[];
         } & {
             [key: string]: unknown;
-        };
-        /** SignalPulseStagePayload */
-        SignalPulseStagePayload: {
-            /** Attempt Index */
-            attempt_index?: number | null;
-            /** Error */
-            error?: string | null;
-            /** Finished At Ms */
-            finished_at_ms?: number | null;
-            /** Latency Ms */
-            latency_ms?: number | null;
-            /** Model */
-            model?: string | null;
-            /** Response */
-            response?: {
-                [key: string]: unknown;
-            } | null;
-            /** Route */
-            route?: string | null;
-            /** Stage */
-            stage?: string | null;
-            /** Started At Ms */
-            started_at_ms?: number | null;
-            /** Status */
-            status?: string | null;
-        } & {
-            [key: string]: unknown;
-        };
-        /** SignalPulseStages */
-        SignalPulseStages: {
-            bear_case?: components["schemas"]["SignalPulseStagePayload"] | null;
-            claim_verifier?: components["schemas"]["SignalPulseStagePayload"] | null;
-            deterministic_eval?: components["schemas"]["SignalPulseStagePayload"] | null;
-            evidence_completeness_gate?: components["schemas"]["SignalPulseStagePayload"] | null;
-            evidence_pack?: components["schemas"]["SignalPulseStagePayload"] | null;
-            recommendation_clipper?: components["schemas"]["SignalPulseStagePayload"] | null;
-            risk_portfolio_judge?: components["schemas"]["SignalPulseStagePayload"] | null;
-            signal_analyst?: components["schemas"]["SignalPulseStagePayload"] | null;
-            write_gate?: components["schemas"]["SignalPulseStagePayload"] | null;
         };
         /** SourceEventDetail */
         SourceEventDetail: {
@@ -2752,8 +2579,6 @@ export interface components {
         };
         /** TokenDiscussionDigestData */
         TokenDiscussionDigestData: {
-            /** Analysis Window */
-            analysis_window?: string | null;
             /** Coverage */
             coverage?: {
                 [key: string]: unknown;
@@ -2761,17 +2586,11 @@ export interface components {
             currentness: components["schemas"]["NarrativeCurrentnessData"];
             /** Data Gaps */
             data_gaps?: unknown[];
-            /** Reuse Reason */
-            reuse_reason?: string | null;
-            /** Source Window */
-            source_window?: string | null;
             /**
              * Status
              * @enum {string}
              */
             status: "ready" | "pending" | "insufficient" | "semantic_unavailable" | "stale";
-            /** Surface Window */
-            surface_window?: string | null;
         } & {
             [key: string]: unknown;
         };

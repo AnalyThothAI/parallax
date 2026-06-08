@@ -183,22 +183,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="print News canonical dedup and OpenNews sync diagnostics",
     )
     news_dedup_diagnostics.add_argument("--window-hours", type=float, default=8.0)
-    news_dedup_diagnostics.add_argument("--score-threshold", type=int, default=80)
-    cleanup_news_brief_input = ops_subcommands.add_parser(
-        "cleanup-news-brief-input",
-        help="delete stale News brief_input dirty targets whose persisted agent requirement is not required",
-    )
-    cleanup_news_brief_input_mode = cleanup_news_brief_input.add_mutually_exclusive_group(required=True)
-    cleanup_news_brief_input_mode.add_argument("--dry-run", action="store_true")
-    cleanup_news_brief_input_mode.add_argument("--execute", action="store_true")
-    cleanup_news_intel_hard_cut = ops_subcommands.add_parser(
-        "cleanup-news-intel-hard-cut",
-        help="dry-run or execute the News Intel hard-cut artifact-only cleanup",
-    )
-    cleanup_news_intel_hard_cut_mode = cleanup_news_intel_hard_cut.add_mutually_exclusive_group(required=False)
-    cleanup_news_intel_hard_cut_mode.add_argument("--dry-run", action="store_true")
-    cleanup_news_intel_hard_cut_mode.add_argument("--execute", action="store_true")
-    cleanup_news_intel_hard_cut.add_argument("--current-artifact-version-hash", default=None)
     rebuild_news_canonical_items = ops_subcommands.add_parser(
         "rebuild-news-canonical-items",
         help="enqueue a bounded rebuild of News canonical item derived projections",
@@ -207,34 +191,6 @@ def build_parser() -> argparse.ArgumentParser:
     rebuild_news_canonical_items_mode = rebuild_news_canonical_items.add_mutually_exclusive_group(required=True)
     rebuild_news_canonical_items_mode.add_argument("--dry-run", action="store_true")
     rebuild_news_canonical_items_mode.add_argument("--execute", action="store_true")
-    repair_news_duplicates_hard_cut = ops_subcommands.add_parser(
-        "repair-news-duplicates-hard-cut",
-        help="repair historical News duplicate rows under the current hard-cut identity policy",
-    )
-    repair_news_duplicates_hard_cut.add_argument("--limit", type=_positive_int, default=20000)
-    repair_news_duplicates_hard_cut_mode = repair_news_duplicates_hard_cut.add_mutually_exclusive_group(required=True)
-    repair_news_duplicates_hard_cut_mode.add_argument("--dry-run", action="store_true")
-    repair_news_duplicates_hard_cut_mode.add_argument("--execute", action="store_true")
-    repair_news_agent_market_admission = ops_subcommands.add_parser(
-        "repair-news-agent-market-admission",
-        help="recompute market-wide News agent admission and enqueue eligible brief work",
-    )
-    repair_news_agent_market_admission.add_argument("--since-ms", type=int, required=True)
-    repair_news_agent_market_admission.add_argument("--until-ms", type=int, required=True)
-    repair_news_agent_market_admission.add_argument("--limit", type=_positive_int, default=500)
-    repair_news_agent_market_admission_mode = repair_news_agent_market_admission.add_mutually_exclusive_group()
-    repair_news_agent_market_admission_mode.add_argument("--dry-run", action="store_true", default=True)
-    repair_news_agent_market_admission_mode.add_argument("--execute", action=_ExecuteMode, default=False)
-
-    repair_news_market_signal = ops_subcommands.add_parser(
-        "repair-news-market-signal",
-        help="recompute market scope and enqueue News market-signal repair targets",
-    )
-    repair_news_market_signal.add_argument("--since-hours", type=float, default=8.0)
-    repair_news_market_signal.add_argument("--min-score", type=int, default=80)
-    repair_news_market_signal_mode = repair_news_market_signal.add_mutually_exclusive_group(required=True)
-    repair_news_market_signal_mode.add_argument("--dry-run", action="store_true")
-    repair_news_market_signal_mode.add_argument("--execute", action="store_true")
     sync_binance_universe = ops_subcommands.add_parser(
         "sync-binance-usdt-perp-universe",
         help="sync Binance USD-M USDT perpetual contracts into the CEX registry",
@@ -243,14 +199,6 @@ def build_parser() -> argparse.ArgumentParser:
     sync_binance_universe_mode.add_argument("--dry-run", action="store_true")
     sync_binance_universe_mode.add_argument("--execute", action="store_true")
     ops_subcommands.add_parser("sync-binance-cex-profiles", help="sync Binance CEX token profiles")
-    cex_binance_cleanup = ops_subcommands.add_parser(
-        "cex-binance-hard-cut-cleanup",
-        help="clean old OKX CEX rows after Binance CEX registry sync",
-    )
-    cex_binance_cleanup.add_argument("--min-binance-feeds", type=int, default=400)
-    cleanup_mode = cex_binance_cleanup.add_mutually_exclusive_group(required=True)
-    cleanup_mode.add_argument("--dry-run", action="store_true")
-    cleanup_mode.add_argument("--execute", action="store_true")
     ops_subcommands.add_parser("sync-us-equity-symbols", help="sync Nasdaq Trader US equity symbols")
     sync_gmgn_directory = ops_subcommands.add_parser(
         "sync-gmgn-directory",

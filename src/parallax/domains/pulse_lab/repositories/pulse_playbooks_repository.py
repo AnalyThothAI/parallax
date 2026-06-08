@@ -57,6 +57,29 @@ class PulsePlaybooksRepository:
               entry_market_json = excluded.entry_market_json,
               outcome_status = excluded.outcome_status,
               created_at_ms = excluded.created_at_ms
+            WHERE (
+              pulse_playbook_snapshots.target_type,
+              pulse_playbook_snapshots.target_id,
+              pulse_playbook_snapshots.playbook_status,
+              pulse_playbook_snapshots.side,
+              pulse_playbook_snapshots.setup_json,
+              pulse_playbook_snapshots.confirmation_json,
+              pulse_playbook_snapshots.invalidation_json,
+              pulse_playbook_snapshots.risk_json,
+              pulse_playbook_snapshots.entry_market_json,
+              pulse_playbook_snapshots.outcome_status
+            ) IS DISTINCT FROM (
+              excluded.target_type,
+              excluded.target_id,
+              excluded.playbook_status,
+              excluded.side,
+              excluded.setup_json,
+              excluded.confirmation_json,
+              excluded.invalidation_json,
+              excluded.risk_json,
+              excluded.entry_market_json,
+              excluded.outcome_status
+            )
             RETURNING *
             """,
             (
@@ -78,6 +101,17 @@ class PulsePlaybooksRepository:
                 created,
             ),
         ).fetchone()
+        if row is None:
+            row = self.conn.execute(
+                """
+                SELECT *
+                FROM pulse_playbook_snapshots
+                WHERE candidate_id = %s
+                  AND horizon = %s
+                  AND playbook_version = %s
+                """,
+                (candidate_id, horizon, playbook_version),
+            ).fetchone()
         if commit:
             self.conn.commit()
         return _row(row)

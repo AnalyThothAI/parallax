@@ -212,7 +212,7 @@ describe("NewsPage", () => {
     expect(screen.getByTestId("location")).toHaveTextContent("/news/items/news-1");
   });
 
-  it("renders an evidence page for OpenNews provider facts instead of Agent memo", async () => {
+  it("renders an evidence page for canonical news facts instead of provider signal payloads", async () => {
     fetchNewsItemMock.mockResolvedValue(providerDetail);
 
     renderNews(<NewsPage newsItemId="news-1" token="test-token" />);
@@ -230,7 +230,12 @@ describe("NewsPage", () => {
     expect(screen.getAllByText("eligible").length).toBeGreaterThan(0);
     expect(screen.queryByText("Research tools")).not.toBeInTheDocument();
     expect(screen.queryByText("Legacy agent audit")).not.toBeInTheDocument();
-    expect(screen.getAllByText("Provider aiRating").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Raw JSON")).not.toBeInTheDocument();
+    expect(screen.queryByText("AI brief JSON")).not.toBeInTheDocument();
+    expect(screen.queryByText("AI response JSON")).not.toBeInTheDocument();
+    expect(screen.queryByText("Agent request JSON")).not.toBeInTheDocument();
+    expect(screen.queryByText("Provider aiRating")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Signal").length).toBeGreaterThan(0);
     expect(screen.getByText("Token impacts")).toBeInTheDocument();
     expect(screen.getByText("Execution gaps")).toBeInTheDocument();
     expect(screen.getByText("Price reaction")).toBeInTheDocument();
@@ -323,9 +328,6 @@ const providerRow: NewsRow = {
       resolution_status: "resolved",
       symbol: "BTC",
       target_id: "token:btc",
-      provider_signal: "long",
-      provider_score: 82,
-      provider_grade: "A",
       market_type: "cex",
     },
   ],
@@ -335,14 +337,11 @@ const providerRow: NewsRow = {
 function newsSignalEnvelope(displaySignal: NewsSignalSummary): NewsSignalEnvelope {
   return {
     display_signal: displaySignal,
-    provider_signal: displaySignal.source === "provider" ? displaySignal : null,
     agent_signal: { status: "pending" },
     alert_eligibility: {
       in_app_eligible: true,
       external_push_ready: false,
       agent_status: "pending",
-      provider_status: displaySignal.status,
-      provider_score: displaySignal.score,
       market_scope: {
         scope: ["crypto"],
         primary: "crypto",
@@ -373,13 +372,10 @@ const providerDetail: NewsItemDetail = {
     market_read_zh: "AI reads this as a liquidity signal worth watching.",
   },
   agent_run: {
-    run_id: "run-news-1",
     status: "completed",
     outcome: "ready",
     model: "deepseek-v4-flash",
     provider: "litellm",
     latency_ms: 1200,
-    usage_json: { input_tokens: 100, output_tokens: 20 },
-    response_json: { summary_zh: "ETF 资金流持续增强。" },
   },
 };

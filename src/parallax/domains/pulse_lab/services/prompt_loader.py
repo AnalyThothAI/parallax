@@ -17,10 +17,11 @@ from functools import lru_cache
 from pathlib import Path
 
 from parallax.domains.pulse_lab.types.agent_decision import DecisionRoute
+from parallax.platform.agent_hashing import json_sha256
 
 _PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 _ROUTE_HEADING_RE = re.compile(r"^##\s+Route:\s+(?P<route>\w+)\s*$", re.MULTILINE)
-_KNOWN_ROLES = ("signal_analyst", "bear_case", "risk_portfolio_judge")
+_KNOWN_ROLES = ("pulse_decision",)
 
 
 @lru_cache(maxsize=8)
@@ -65,21 +66,22 @@ def load_prompt(role: str, route: DecisionRoute) -> str:
     )
 
 
-def load_signal_analyst_prompt(route: DecisionRoute) -> str:
-    return load_prompt("signal_analyst", route)
+def load_pulse_decision_prompt(route: DecisionRoute) -> str:
+    return load_prompt("pulse_decision", route)
 
 
-def load_bear_case_prompt(route: DecisionRoute) -> str:
-    return load_prompt("bear_case", route)
-
-
-def load_risk_portfolio_judge_prompt(route: DecisionRoute) -> str:
-    return load_prompt("risk_portfolio_judge", route)
+@lru_cache(maxsize=1)
+def pulse_decision_prompt_text_hash() -> str:
+    return json_sha256(
+        {
+            role: _read_file(str(_PROMPTS_DIR / f"{role}.md"))
+            for role in _KNOWN_ROLES
+        }
+    )
 
 
 __all__ = [
-    "load_bear_case_prompt",
     "load_prompt",
-    "load_risk_portfolio_judge_prompt",
-    "load_signal_analyst_prompt",
+    "load_pulse_decision_prompt",
+    "pulse_decision_prompt_text_hash",
 ]

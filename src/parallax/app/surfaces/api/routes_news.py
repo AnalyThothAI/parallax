@@ -7,11 +7,14 @@ from fastapi.responses import JSONResponse
 
 from parallax.app.surfaces.api import schemas as api_schemas
 from parallax.app.surfaces.api.dependencies import _authenticated_runtime
+from parallax.app.surfaces.api.exceptions import ApiBadRequest
 from parallax.app.surfaces.api.responses import _json
 from parallax.app.surfaces.api.validators import _limit
 from parallax.domains.news_intel.queries.news_page_query import NewsPageQuery
 
 router = APIRouter()
+
+_NEWS_SIGNALS = frozenset({"bullish", "bearish", "neutral"})
 
 
 @router.get("/news", response_model=api_schemas.ApiEnvelope[api_schemas.NewsData])
@@ -79,14 +82,12 @@ def _news_read_model(repos: Any) -> NewsPageQuery:
 
 
 def _signal(value: str) -> str | None:
-    normalized = value.strip()
+    normalized = value.strip().lower()
     if not normalized:
         return None
-    if normalized == "long":
-        return "bullish"
-    if normalized == "short":
-        return "bearish"
-    return normalized
+    if normalized in _NEWS_SIGNALS:
+        return normalized
+    raise ApiBadRequest("invalid_news_signal")
 
 
 def _provider_capabilities(sources: list[dict[str, Any]], *, supported_types: tuple[str, ...]) -> dict[str, Any]:

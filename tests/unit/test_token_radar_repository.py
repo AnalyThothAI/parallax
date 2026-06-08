@@ -49,7 +49,7 @@ def test_json_payload_converts_decimal_values_before_jsonb_binding():
         assert dropped_column not in payload
 
 
-def test_publish_current_generation_replaces_current_rows_and_marks_ready_publication_state():
+def test_publish_current_generation_upserts_current_rows_and_marks_ready_publication_state():
     conn = FakePublishConn()
     row = _valid_factor_row()
 
@@ -67,8 +67,10 @@ def test_publish_current_generation_replaces_current_rows_and_marks_ready_public
 
     joined_sql = "\n".join(conn.sqls)
     assert result == {"status": "published", "generation_id": "gen-1h-1778", "rows_written": 1}
-    assert "DELETE FROM token_radar_current_rows" in joined_sql
+    assert "DELETE FROM token_radar_current_rows" not in joined_sql
     assert "INSERT INTO token_radar_current_rows" in joined_sql
+    assert 'ON CONFLICT(projection_version, "window", scope, venue, lane, target_type_key, identity_id)' in joined_sql
+    assert "WHERE token_radar_current_rows.payload_hash IS DISTINCT FROM excluded.payload_hash" in joined_sql
     assert "INSERT INTO token_radar_publication_state" in joined_sql
     assert "INSERT INTO token_radar_rank_history" not in joined_sql
     assert "INSERT INTO token_radar_snapshot_audit" not in joined_sql
@@ -285,8 +287,9 @@ def test_publish_current_generation_rewrites_when_only_row_quality_changes():
 
     joined_sql = "\n".join(conn.sqls)
     assert result == {"status": "published", "generation_id": "gen-degraded", "rows_written": 1}
-    assert "DELETE FROM token_radar_current_rows" in joined_sql
+    assert "DELETE FROM token_radar_current_rows" not in joined_sql
     assert "INSERT INTO token_radar_current_rows" in joined_sql
+    assert "quality_status IS DISTINCT FROM excluded.quality_status" in joined_sql
 
 
 def test_publish_current_generation_unchanged_does_not_delete_insert_or_emit_current_changes():
@@ -334,7 +337,7 @@ def test_publish_current_generation_unchanged_does_not_delete_insert_or_emit_cur
     assert conn.publication_state_params["latest_attempt_status"] == "ready"
 
 
-def test_publish_current_generation_replaces_rows_without_payload_hash_retry_path():
+def test_publish_current_generation_upserts_rows_without_payload_hash_retry_path():
     row = _valid_factor_row()
     existing_payload = _payload_hash(
         _runtime_row_payload(
@@ -379,8 +382,8 @@ def test_publish_current_generation_replaces_rows_without_payload_hash_retry_pat
     assert result == {"status": "published", "generation_id": "gen-next", "rows_written": 1}
     assert conn.current_insert_params["generation_id"] == "gen-next"
     current_sql = next(sql for sql in conn.sqls if "INSERT INTO token_radar_current_rows" in sql)
-    assert "payload_hash IS DISTINCT FROM" not in current_sql
-    assert "ON CONFLICT" not in current_sql
+    assert "payload_hash IS DISTINCT FROM" in current_sql
+    assert "ON CONFLICT" in current_sql
     assert existing_payload
 
 
@@ -524,7 +527,7 @@ def test_latest_current_rows_limits_each_lane_independently():
     assert rows == []
     assert "FROM token_radar_current_rows current_rows" in conn.sql
     assert "JOIN token_radar_publication_state state" in conn.sql
-    assert "state.current_generation_id = current_rows.generation_id" in conn.sql
+    assert "state.current_generation_id = current_rows.generation_id" not in conn.sql
     assert "state.latest_attempt_status = 'ready'" in conn.sql
     assert "PARTITION BY lane" in conn.sql
     assert "lane_rank <= %s" in conn.sql
@@ -546,27 +549,6 @@ def test_latest_current_rows_reads_materialized_listed_at_without_history_latera
     assert "token_radar_rows" not in conn.sql
 
 
-def test_current_rows_for_generation_reads_current_generation_without_ready_filter():
-    conn = FakeConn(rows=[{"row_id": "row-1", "generation_id": "gen-previous"}])
-
-    rows = TokenRadarRepository(conn).current_rows_for_generation(
-        window="1h",
-        scope="all",
-        venue=TOKEN_RADAR_DEFAULT_VENUE,
-        generation_id="gen-previous",
-        limit=20,
-        projection_version="token-radar-v13-social-attention",
-    )
-
-    assert rows == [{"row_id": "row-1", "generation_id": "gen-previous"}]
-    assert "FROM token_radar_current_rows current_rows" in conn.sql
-    assert "JOIN token_radar_publication_state state" in conn.sql
-    assert "state.current_generation_id = current_rows.generation_id" in conn.sql
-    assert "state.latest_attempt_status = 'ready'" not in conn.sql
-    assert "current_rows.generation_id = %s" in conn.sql
-    assert conn.params[-3:] == ("gen-previous", 20, 40)
-
-
 def test_current_row_for_target_reads_only_ready_published_generation():
     conn = FakeConn(rows=[{"row_id": "row-1"}])
 
@@ -581,7 +563,7 @@ def test_current_row_for_target_reads_only_ready_published_generation():
 
     assert row == {"row_id": "row-1"}
     assert "JOIN token_radar_publication_state state" in conn.sql
-    assert "state.current_generation_id = current_rows.generation_id" in conn.sql
+    assert "state.current_generation_id = current_rows.generation_id" not in conn.sql
     assert "state.latest_attempt_status = 'ready'" in conn.sql
     assert "token_radar_projection_coverage" not in conn.sql
 

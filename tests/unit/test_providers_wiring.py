@@ -337,8 +337,7 @@ def test_litellm_providers_receive_agent_execution_gateway(monkeypatch) -> None:
             timeout_seconds=120.0,
             artifact_version_hash="artifact:pulse",
             runtime_contract=SimpleNamespace(
-                stage_names=("signal_analyst", "bear_case", "risk_portfolio_judge"),
-                safety_net_enabled=True,
+                stage_names=("pulse_decision",),
             ),
             _agent_gateway=kwargs["agent_gateway"],
         )
@@ -363,8 +362,8 @@ def test_litellm_providers_receive_agent_execution_gateway(monkeypatch) -> None:
 
     assert providers.pulse_lab.decision_provider is not None
     contract = providers.pulse_lab.decision_provider.runtime_contract
-    assert contract.stage_names == ("signal_analyst", "bear_case", "risk_portfolio_judge")
-    assert contract.safety_net_enabled is True
+    assert contract.stage_names == ("pulse_decision",)
+    assert not hasattr(contract, "safety_net_enabled")
     assert providers.narrative_intel.narrative_provider is not None
     assert providers.narrative_intel.narrative_provider._client._agent_gateway is gateway
     assert providers.news_intel.brief_provider is not None
@@ -448,14 +447,15 @@ def test_news_feed_client_returns_registry_backed_provider_and_closes_underlying
     assert cryptopanic_client.close_count == 1
 
 
-def test_litellm_pulse_provider_wiring_requires_db_pool() -> None:
-    with pytest.raises(RuntimeError, match="db_pool is required"):
-        providers_wiring.wire_providers(
-            _settings_with_all_llm_models(),
-            start_collector=True,
-            agent_execution_gateway=object(),
-            db_pool=None,
-        )
+def test_litellm_pulse_provider_wiring_does_not_require_db_pool() -> None:
+    providers = providers_wiring.wire_providers(
+        _settings_with_all_llm_models(),
+        start_collector=True,
+        agent_execution_gateway=object(),
+        db_pool=None,
+    )
+
+    assert providers.pulse_lab.decision_provider is not None
 
 
 def test_unknown_numeric_okx_dex_chain_indexes_round_trip_through_discovery_provider() -> None:
@@ -789,7 +789,7 @@ def _settings_with_all_llm_models() -> Settings:
             "agent_runtime": {
                 "defaults": {"model": "gpt-enrich"},
                 "lanes": {
-                    "pulse.signal_analyst": {"model": "gpt-pulse"},
+                    "pulse.decision": {"model": "gpt-pulse"},
                     "news.item_brief": {"model": "gpt-news"},
                 },
             },

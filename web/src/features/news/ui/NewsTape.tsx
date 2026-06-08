@@ -8,8 +8,7 @@ import {
   newsSignalLabel,
   newsSignalScoreLabel,
   newsSignalTone,
-  tokenImpactCompactLabel,
-  tokenImpactTone,
+  tokenMarketLabel,
 } from "../model/newsSignalViewModel";
 import "./newsTape.css";
 
@@ -70,12 +69,12 @@ export function NewsTape({ rows, onOpen }: NewsTapeProps) {
               <span className="news-tape-token-strip">
                 {visibleTokens.map((lane, index) => (
                   <span
-                    className={`news-tape-token ${tokenImpactTone(lane)}`}
+                    className="news-tape-token is-neutral"
                     key={`${row.news_item_id}-${lane.symbol ?? lane.target_id ?? index}`}
-                    title={`${lane.symbol || lane.target_id || "token"} · ${tokenImpactCompactLabel(lane)}`}
+                    title={`${lane.symbol || lane.target_id || "token"} · ${tokenMarketLabel(lane)}`}
                   >
                     <b>{lane.symbol || lane.target_id || "token"}</b>
-                    <small>{tokenImpactCompactLabel(lane)}</small>
+                    <small>{tokenMarketLabel(lane)}</small>
                   </span>
                 ))}
                 {overflowCount ? (

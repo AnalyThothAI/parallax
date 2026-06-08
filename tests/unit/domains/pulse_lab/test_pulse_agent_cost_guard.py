@@ -10,14 +10,8 @@ from parallax.domains.pulse_lab.services.pulse_candidate_gate import PulseGateRe
 from parallax.domains.pulse_lab.services.pulse_source_quality import PulseSourceQualityDecision
 from parallax.domains.pulse_lab.types.pulse_candidate_context import PulseCandidateContext
 
-LANE_MODELS = {
-    "pulse.signal_analyst": "qwen3.6",
-    "pulse.bear_case": "qwen3.6",
-    "pulse.risk_portfolio_judge": "deepseek-v4-flash",
-}
 
-
-def test_cost_guard_hard_block_finalizes_without_public_judge() -> None:
+def test_cost_guard_hard_block_uses_deterministic_finalize() -> None:
     decision = decide_pulse_agent_cost(
         context=_context(),
         evidence_gate=_evidence_gate(public_allowed=False, hard_blocked=True, blocked_reason="blocked_market_contract"),
@@ -25,20 +19,20 @@ def test_cost_guard_hard_block_finalizes_without_public_judge() -> None:
         source_quality=_source_quality(public_allowed=True),
         runtime_hash="runtime-a",
         evidence_packet_hash="packet-a",
-        lane_models=LANE_MODELS,
-        terminal_fingerprint_found=False,
-        provider_cooldown_until_ms=None,
         now_ms=1_000,
     )
 
-    assert decision.action == "no_llm_finalize"
+    assert decision.action == "deterministic_finalize"
     assert decision.reason == "deterministic_evidence_block"
     assert decision.public_eligible is False
-    assert decision.public_judge_allowed is False
-    assert decision.stage_plan.run_risk_portfolio_judge is False
+    assert decision.decision_allowed is False
+    assert "stage_plan" not in decision.to_json()
+    assert "stage_plan_hash" not in decision.fingerprint.to_json()
+    assert "analysis_allowed" not in decision.to_json()
+    assert "public_judge_allowed" not in decision.to_json()
 
 
-def test_cost_guard_source_quality_hidden_uses_research_only() -> None:
+def test_cost_guard_source_quality_hidden_skips_decision() -> None:
     decision = decide_pulse_agent_cost(
         context=_context(),
         evidence_gate=_evidence_gate(public_allowed=True),
@@ -46,23 +40,17 @@ def test_cost_guard_source_quality_hidden_uses_research_only() -> None:
         source_quality=_source_quality(public_allowed=False, reasons=("single_author_source",)),
         runtime_hash="runtime-a",
         evidence_packet_hash="packet-a",
-        lane_models=LANE_MODELS,
-        terminal_fingerprint_found=False,
-        provider_cooldown_until_ms=None,
         now_ms=1_000,
     )
 
-    assert decision.action == "research_only"
+    assert decision.action == "skip_decision"
     assert decision.reason == "source_quality_hidden"
     assert decision.public_eligible is False
-    assert decision.research_allowed is True
-    assert decision.public_judge_allowed is False
-    assert decision.stage_plan.signal_model == "qwen3.6"
-    assert decision.stage_plan.bear_model == "qwen3.6"
-    assert decision.stage_plan.judge_model is None
+    assert decision.decision_allowed is False
+    assert "stage_plan" not in decision.to_json()
 
 
-def test_cost_guard_public_trade_candidate_uses_research_and_public_judge() -> None:
+def test_cost_guard_public_trade_candidate_runs_single_decision() -> None:
     decision = decide_pulse_agent_cost(
         context=_context(),
         evidence_gate=_evidence_gate(public_allowed=True),
@@ -70,24 +58,17 @@ def test_cost_guard_public_trade_candidate_uses_research_and_public_judge() -> N
         source_quality=_source_quality(public_allowed=True),
         runtime_hash="runtime-a",
         evidence_packet_hash="packet-a",
-        lane_models=LANE_MODELS,
-        terminal_fingerprint_found=False,
-        provider_cooldown_until_ms=None,
         now_ms=1_000,
     )
 
-    assert decision.action == "research_with_public_judge"
-    assert decision.reason == "public_judge"
+    assert decision.action == "run_decision"
+    assert decision.reason == "public_decision"
     assert decision.public_eligible is True
-    assert decision.research_allowed is True
-    assert decision.public_judge_allowed is True
-    assert decision.stage_plan.run_signal_analyst is True
-    assert decision.stage_plan.run_bear_case is True
-    assert decision.stage_plan.run_risk_portfolio_judge is True
-    assert decision.stage_plan.judge_model == "deepseek-v4-flash"
+    assert decision.decision_allowed is True
+    assert "stage_plan" not in decision.to_json()
 
 
-def test_cost_guard_duplicate_fingerprint_reuses_terminal_run() -> None:
+def test_cost_guard_public_token_watch_runs_current_decision() -> None:
     decision = decide_pulse_agent_cost(
         context=_context(),
         evidence_gate=_evidence_gate(public_allowed=True),
@@ -95,41 +76,15 @@ def test_cost_guard_duplicate_fingerprint_reuses_terminal_run() -> None:
         source_quality=_source_quality(public_allowed=True),
         runtime_hash="runtime-a",
         evidence_packet_hash="packet-a",
-        lane_models=LANE_MODELS,
-        terminal_fingerprint_found=True,
-        provider_cooldown_until_ms=None,
         now_ms=1_000,
     )
 
-    assert decision.action == "reuse_terminal_run"
-    assert decision.reason == "duplicate_fingerprint"
+    assert decision.action == "run_decision"
+    assert decision.reason == "public_decision"
     assert decision.fingerprint.candidate_id == "candidate-1"
     assert decision.fingerprint.trigger_signature == "trigger-a"
     assert decision.fingerprint.timeline_signature == "timeline-a"
-    assert decision.public_judge_allowed is False
-
-
-def test_cost_guard_provider_cooldown_suppresses_model_work() -> None:
-    decision = decide_pulse_agent_cost(
-        context=_context(),
-        evidence_gate=_evidence_gate(public_allowed=True),
-        gate=_gate("trade_candidate", "trade_candidate"),
-        source_quality=_source_quality(public_allowed=True),
-        runtime_hash="runtime-a",
-        evidence_packet_hash="packet-a",
-        lane_models=LANE_MODELS,
-        terminal_fingerprint_found=False,
-        provider_cooldown_until_ms=60_000,
-        now_ms=1_000,
-    )
-
-    assert decision.action == "provider_cooldown"
-    assert decision.reason == "provider_cooldown_active"
-    assert decision.cooldown_until_ms == 60_000
-    assert decision.research_allowed is False
-    assert decision.public_judge_allowed is False
-    assert decision.stage_plan.run_signal_analyst is False
-    assert decision.stage_plan.run_risk_portfolio_judge is False
+    assert decision.decision_allowed is True
 
 
 def _context() -> PulseCandidateContext:

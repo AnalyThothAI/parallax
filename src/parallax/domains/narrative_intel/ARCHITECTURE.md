@@ -68,7 +68,7 @@ ready digest with the current admitted source set and returns a required
 - `stale`: ready epoch is historical context because its display horizon passed.
 - `not_ready`: an admitted frontier exists but no ready epoch exists yet.
 - `out_of_frontier`: no admitted frontier exists for the target/window/scope.
-- `unsupported_window`: the window intentionally has no digest, especially `5m`.
+- `unsupported_window`: the window intentionally has no digest (`5m`, `4h`, or `24h`).
 
 Digest and semantics budget pressure is explicit. `llm_cycle_budget_exhausted`
 means the digest worker deferred an otherwise due LLM call for cycle capacity.

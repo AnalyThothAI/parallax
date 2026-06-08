@@ -7,7 +7,6 @@ import type {
   NewsAgentEvidenceRef,
   NewsMarketScope,
   NewsAgentRunSummary,
-  NewsResearchToolResult,
   NewsFactLane,
   NewsItemDetail,
   NewsRowsData,
@@ -168,7 +167,7 @@ function normalizeNewsRow<T extends NewsRow>(row: T): T {
       agentAdmissionStatus,
       marketScope,
     }),
-    token_impacts: normalizeTokenLanes(payload.token_impacts),
+    token_impacts: normalizeTokenLanes(payload.token_impacts, { dropProviderRows: true }),
     token_lanes: normalizeTokenLanes(payload.token_lanes),
     fact_lanes: normalizeFactLanes(payload.fact_lanes),
     agent_brief: payload.agent_brief
@@ -248,14 +247,12 @@ function normalizeNewsSignal(
 ): NewsSignalEnvelope {
   const payload = objectOrNull(raw) ?? {};
   const displayPayload = objectOrNull(payload.display_signal) ?? {};
-  const providerPayload = objectOrNull(payload.provider_signal);
   const agentPayload = objectOrNull(payload.agent_signal) ?? {};
   const alertPayload = objectOrNull(payload.alert_eligibility) ?? {};
   const marketScope =
     normalizeMarketScope(alertPayload.market_scope) ?? context.marketScope ?? null;
   return {
     display_signal: normalizeNewsSignalSummary(displayPayload),
-    provider_signal: providerPayload ? normalizeNewsSignalSummary(providerPayload) : null,
     agent_signal: agentPayload,
     alert_eligibility: {
       in_app_eligible: booleanOrNull(alertPayload.in_app_eligible),
@@ -264,8 +261,6 @@ function normalizeNewsSignal(
       external_push_basis: stringOrNull(alertPayload.external_push_basis),
       agent_status: stringOrNull(alertPayload.agent_status),
       decision_class: stringOrNull(alertPayload.decision_class),
-      provider_status: stringOrNull(alertPayload.provider_status),
-      provider_score: numberOrNull(alertPayload.provider_score),
       market_scope: marketScope,
       agent_admission_status:
         stringOrNull(alertPayload.agent_admission_status) ?? context.agentAdmissionStatus ?? null,
@@ -324,16 +319,24 @@ function normalizeNewsSignalSummary(raw: unknown): NewsSignalSummary {
   };
 }
 
-function normalizeTokenLanes(raw: unknown): NewsTokenLane[] {
+function normalizeTokenLanes(
+  raw: unknown,
+  options: { dropProviderRows?: boolean } = {},
+): NewsTokenLane[] {
   if (!Array.isArray(raw)) {
     return [];
   }
-  return raw.map((lane) => {
+  return raw.flatMap((lane) => {
     const payload = lane && typeof lane === "object" ? (lane as Record<string, unknown>) : {};
+    if (
+      options.dropProviderRows &&
+      (payload.provider_signal != null || payload.provider_score != null || payload.provider_grade != null)
+    ) {
+      return [];
+    }
     const targetId = stringOrNull(payload.target_id);
     const resolution = stringOrNull(payload.resolution_status);
-    return {
-      ...(payload as NewsTokenLane),
+    const normalized: NewsTokenLane = {
       lane:
         targetId || resolution === "resolved"
           ? "resolved"
@@ -343,11 +346,11 @@ function normalizeTokenLanes(raw: unknown): NewsTokenLane[] {
       symbol: stringOrNull(payload.symbol),
       target_id: targetId,
       target_type: stringOrNull(payload.target_type),
-      provider_signal: stringOrNull(payload.provider_signal),
-      provider_score: numberOrNull(payload.provider_score),
-      provider_grade: stringOrNull(payload.provider_grade),
       market_type: stringOrNull(payload.market_type),
+      score: numberOrNull(payload.score),
+      signal: stringOrNull(payload.signal),
     };
+    return [normalized];
   });
 }
 
@@ -375,54 +378,32 @@ function normalizeAgentBrief(
   computedAtAlias?: unknown,
 ): NewsAgentBrief {
   const payload = objectOrNull(raw) ?? {};
-  const briefJson = objectOrNull(payload.brief_json);
-  const status =
-    stringOrNull(payload.status ?? statusAlias) ?? stringOrNull(briefJson?.status) ?? "pending";
-  const bullView = normalizeAgentBriefView(payload.bull_view ?? briefJson?.bull_view);
-  const bearView = normalizeAgentBriefView(payload.bear_view ?? briefJson?.bear_view);
-  const dataGaps = normalizeAgentDataGaps(payload.data_gaps ?? briefJson?.data_gaps);
-  const titleZh = stringOrNull(payload.title_zh ?? briefJson?.title_zh);
-  const summaryZh = stringOrNull(payload.summary_zh ?? briefJson?.summary_zh);
-  const marketReadZh = stringOrNull(payload.market_read_zh ?? briefJson?.market_read_zh);
-  const marketImpacts = arrayOrEmpty(payload.market_impacts ?? briefJson?.market_impacts);
-  const watchTriggers = stringArray(payload.watch_triggers ?? briefJson?.watch_triggers);
-  const invalidationConditions = stringArray(
-    payload.invalidation_conditions ?? briefJson?.invalidation_conditions,
-  );
-  const evidenceRefs = normalizeEvidenceRefs(payload.evidence_refs ?? briefJson?.evidence_refs);
+  const status = stringOrNull(payload.status ?? statusAlias) ?? "pending";
+  const bullView = normalizeAgentBriefView(payload.bull_view);
+  const bearView = normalizeAgentBriefView(payload.bear_view);
+  const dataGaps = normalizeAgentDataGaps(payload.data_gaps);
+  const titleZh = stringOrNull(payload.title_zh);
+  const summaryZh = stringOrNull(payload.summary_zh);
+  const marketReadZh = stringOrNull(payload.market_read_zh);
+  const marketImpacts = arrayOrEmpty(payload.market_impacts);
+  const watchTriggers = stringArray(payload.watch_triggers);
+  const invalidationConditions = stringArray(payload.invalidation_conditions);
+  const evidenceRefs = normalizeEvidenceRefs(payload.evidence_refs);
   return {
     status,
-    direction: stringOrNull(payload.direction ?? briefJson?.direction),
-    decision_class: stringOrNull(payload.decision_class ?? briefJson?.decision_class),
+    direction: stringOrNull(payload.direction),
+    decision_class: stringOrNull(payload.decision_class),
     title_zh: titleZh,
     summary_zh: summaryZh,
     market_read_zh: marketReadZh,
-    research_todos_zh: stringArray(payload.research_todos_zh ?? briefJson?.research_todos_zh),
     market_impacts: marketImpacts,
     bull_strength: stringOrNull(payload.bull_strength ?? bullView?.strength),
     bear_strength: stringOrNull(payload.bear_strength ?? bearView?.strength),
     data_gap_count: numberOrNull(payload.data_gap_count) ?? dataGaps.length,
     computed_at_ms: numberOrNull(payload.computed_at_ms ?? computedAtAlias),
-    agent_run_id: stringOrNull(payload.agent_run_id),
-    schema_version: stringOrNull(payload.schema_version),
-    prompt_version: stringOrNull(payload.prompt_version),
-    artifact_version_hash: stringOrNull(payload.artifact_version_hash),
-    input_hash: stringOrNull(payload.input_hash),
-    output_hash: stringOrNull(payload.output_hash),
-    brief_json: {
-      title_zh: titleZh,
-      summary_zh: summaryZh,
-      market_read_zh: marketReadZh,
-      bull_view: bullView,
-      bear_view: bearView,
-      market_impacts: marketImpacts,
-      watch_triggers: watchTriggers,
-      invalidation_conditions: invalidationConditions,
-      data_gaps: dataGaps,
-      evidence_refs: evidenceRefs,
-    },
     bull_view: bullView,
     bear_view: bearView,
+    affected_entities: arrayOrEmpty(payload.affected_entities),
     data_gaps: dataGaps,
     watch_triggers: watchTriggers,
     invalidation_conditions: invalidationConditions,
@@ -468,11 +449,7 @@ function normalizeAgentBriefView(raw: unknown) {
 function normalizeAgentRun(raw: unknown): NewsAgentRunSummary | null {
   const payload = objectOrNull(raw);
   if (!payload) return null;
-  const requestJson = objectOrNull(payload.request_json);
-  const responseJson = objectOrNull(payload.response_json);
   return {
-    ...(payload as NewsAgentRunSummary),
-    run_id: stringOrNull(payload.run_id),
     backend: stringOrNull(payload.backend),
     status: stringOrNull(payload.status),
     outcome: stringOrNull(payload.outcome),
@@ -481,14 +458,6 @@ function normalizeAgentRun(raw: unknown): NewsAgentRunSummary | null {
     lane: stringOrNull(payload.lane),
     workflow_name: stringOrNull(payload.workflow_name),
     agent_name: stringOrNull(payload.agent_name),
-    execution_trace_id: stringOrNull(payload.execution_trace_id),
-    artifact_version_hash: stringOrNull(payload.artifact_version_hash),
-    prompt_version: stringOrNull(payload.prompt_version),
-    schema_version: stringOrNull(payload.schema_version),
-    validator_version: stringOrNull(payload.validator_version),
-    guardrail_version: stringOrNull(payload.guardrail_version),
-    input_hash: stringOrNull(payload.input_hash),
-    output_hash: stringOrNull(payload.output_hash),
     started_at_ms: numberOrNull(payload.started_at_ms),
     finished_at_ms: numberOrNull(payload.finished_at_ms),
     latency_ms: numberOrNull(payload.latency_ms),
@@ -497,49 +466,7 @@ function normalizeAgentRun(raw: unknown): NewsAgentRunSummary | null {
     error_class: stringOrNull(payload.error_class),
     error: stringOrNull(payload.error),
     error_message: stringOrNull(payload.error_message ?? payload.error),
-    request_json: requestJson,
-    response_json: responseJson,
-    validation_errors_json: arrayOrEmpty(payload.validation_errors_json),
-    usage_json: objectOrNull(payload.usage_json) ?? {},
-    trace_metadata_json: objectOrNull(payload.trace_metadata_json) ?? {},
-    research_plan: objectOrNull(payload.research_plan ?? requestJson?.research_plan),
-    tool_results: normalizeToolResults(payload.tool_results ?? requestJson?.tool_results),
-    research_execution: objectOrNull(payload.research_execution ?? requestJson?.research_execution),
-    research_hashes: objectOrNull(payload.research_hashes ?? requestJson?.research_hashes),
-    base_packet: objectOrNull(payload.base_packet ?? requestJson?.base_packet),
   };
-}
-
-function normalizeToolResults(raw: unknown): NewsResearchToolResult[] {
-  if (!Array.isArray(raw)) {
-    return [];
-  }
-  return raw.flatMap<NewsResearchToolResult>((result) => {
-    const payload = objectOrNull(result);
-    if (!payload) {
-      return [];
-    }
-    return [
-      {
-        ...(payload as NewsResearchToolResult),
-        tool_call_id: stringOrNull(payload.tool_call_id),
-        tool_name: stringOrNull(payload.tool_name),
-        schema_version: stringOrNull(payload.schema_version),
-        query_version: stringOrNull(payload.query_version),
-        input: objectOrNull(payload.input),
-        source_tables: stringArray(payload.source_tables),
-        rows: arrayOrEmpty(payload.rows),
-        row_count: numberOrNull(payload.row_count),
-        truncated: booleanOrNull(payload.truncated),
-        skipped_reason: stringOrNull(payload.skipped_reason),
-        result_hash: stringOrNull(payload.result_hash),
-        generated_at_ms: numberOrNull(payload.generated_at_ms),
-        latency_ms: numberOrNull(payload.latency_ms),
-        redaction_notes: stringArray(payload.redaction_notes),
-        evidence_refs: normalizeEvidenceRefs(payload.evidence_refs),
-      },
-    ];
-  });
 }
 
 function arrayOrEmpty(value: unknown): unknown[] {

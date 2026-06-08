@@ -1834,42 +1834,6 @@ export type PulseDecision = {
   evidence_event_urls?: Record<string, string>;
 };
 
-export type SignalPulseStageName =
-  | "evidence_pack"
-  | "evidence_completeness_gate"
-  | "signal_analyst"
-  | "bear_case"
-  | "claim_verifier"
-  | "risk_portfolio_judge"
-  | "recommendation_clipper"
-  | "deterministic_eval"
-  | "write_gate";
-
-export type SignalPulseStagePayload = {
-  stage: SignalPulseStageName | string | null;
-  route: string | null;
-  status: "ok" | "failed" | "timeout" | "skipped" | string | null;
-  model: string | null;
-  started_at_ms: number | null;
-  finished_at_ms: number | null;
-  latency_ms: number | null;
-  attempt_index: number | null;
-  response: Record<string, unknown> | null;
-  error: string | null;
-};
-
-export type SignalPulseStages = {
-  evidence_pack?: SignalPulseStagePayload | null;
-  evidence_completeness_gate?: SignalPulseStagePayload | null;
-  signal_analyst?: SignalPulseStagePayload | null;
-  bear_case?: SignalPulseStagePayload | null;
-  claim_verifier?: SignalPulseStagePayload | null;
-  risk_portfolio_judge?: SignalPulseStagePayload | null;
-  recommendation_clipper?: SignalPulseStagePayload | null;
-  deterministic_eval?: SignalPulseStagePayload | null;
-  write_gate?: SignalPulseStagePayload | null;
-};
-
 export type SignalPulseItem = {
   candidate_id: string;
   candidate_type: string;
@@ -1895,7 +1859,6 @@ export type SignalPulseItem = {
   claim_verification?: Record<string, unknown> | null;
   evidence_gate?: Record<string, unknown> | null;
   fact_card: Record<string, unknown>;
-  agent_run_id?: string | null;
   pulse_version?: string | null;
   gate_version?: string | null;
   prompt_version?: string | null;
@@ -1903,7 +1866,6 @@ export type SignalPulseItem = {
   created_at_ms: number;
   updated_at_ms: number;
   playbooks: unknown[];
-  stages?: SignalPulseStages | null;
 };
 
 export type SignalPulseData = {

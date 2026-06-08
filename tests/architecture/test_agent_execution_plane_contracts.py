@@ -190,3 +190,258 @@ def test_news_item_brief_has_no_runtime_legacy_hash_fallback() -> None:
         lowered = text.lower()
         for token in forbidden:
             assert token not in lowered, f"{path} contains runtime compatibility token {token!r}"
+
+
+def test_pulse_agent_runtime_has_no_post_stage_tool_query_path() -> None:
+    retired_query = SRC / "domains/pulse_lab/queries/agent_tool_queries.py"
+    forbidden_tokens = (
+        "fetch_evidence_event_urls",
+        "enrich_evidence_urls",
+        "agent_tool_queries",
+    )
+    offenders: list[str] = []
+    for path in [
+        SRC / "domains/pulse_lab/services/pulse_decision_runtime.py",
+        SRC / "integrations/model_execution/pulse_decision_agent_client.py",
+        SRC / "domains/pulse_lab/providers.py",
+    ]:
+        text = path.read_text(encoding="utf-8")
+        offenders.extend(
+            f"{path.relative_to(ROOT)} contains retired Pulse agent tool-query token {token}"
+            for token in forbidden_tokens
+            if token in text
+        )
+
+    assert not retired_query.exists()
+    assert offenders == []
+
+
+def test_pulse_decision_runtime_has_no_database_pool_dependency() -> None:
+    runtime_text = (SRC / "domains/pulse_lab/services/pulse_decision_runtime.py").read_text(encoding="utf-8")
+    wiring_text = (SRC / "app/runtime/provider_wiring/model_execution.py").read_text(encoding="utf-8")
+
+    assert "db_pool" not in runtime_text
+    assert "PulseDecisionRuntimeService(db_pool=" not in wiring_text
+    assert "db_pool is required for LiteLLMPulseDecisionProvider" not in wiring_text
+
+
+def test_pulse_final_decision_refs_are_not_synthesized_from_packet_inputs() -> None:
+    normalization_text = (
+        SRC / "domains/pulse_lab/services/agent_output_normalization.py"
+    ).read_text(encoding="utf-8")
+
+    forbidden_tokens = (
+        "_synthesize_missing_supporting_refs",
+        "_supporting_refs_from_event_ids",
+        "_fallback_supporting_refs",
+        "inserted_from_allowed_evidence_refs",
+    )
+    assert [token for token in forbidden_tokens if token in normalization_text] == []
+
+
+def test_pulse_evidence_refs_have_no_fuzzy_or_alias_canonicalization() -> None:
+    normalization_text = (
+        SRC / "domains/pulse_lab/services/agent_output_normalization.py"
+    ).read_text(encoding="utf-8")
+
+    forbidden_tokens = (
+        "unique_same_type_edit_distance_1",
+        "ambiguous_same_type_edit_distance_1",
+        "event_source_alias",
+        "event_prefix_alias",
+        "_bounded_levenshtein_distance",
+        "_event_ref_alias",
+    )
+    assert [token for token in forbidden_tokens if token in normalization_text] == []
+
+
+def test_pulse_runtime_manifest_uses_agent_runtime_language_not_committee_or_harness_language() -> None:
+    runtime_text = (SRC / "domains/pulse_lab/services/agent_runtime.py").read_text(encoding="utf-8")
+
+    forbidden_tokens = (
+        "research_committee",
+        "research-committee",
+        '"closed_loop"',
+    )
+    assert [token for token in forbidden_tokens if token in runtime_text] == []
+
+
+def test_pulse_finalization_has_no_post_stage_mutable_freshness_health_query() -> None:
+    job_service_text = (
+        SRC / "domains/pulse_lab/services/pulse_candidate_job_service.py"
+    ).read_text(encoding="utf-8")
+
+    forbidden_tokens = (
+        "PulseFreshnessHealthService",
+        "health_status=",
+        '"publish_status":',
+    )
+    assert [token for token in forbidden_tokens if token in job_service_text] == []
+
+
+def test_pulse_stage_audit_no_longer_dual_writes_safety_net_trace_metadata() -> None:
+    client_text = (SRC / "integrations/model_execution/pulse_decision_agent_client.py").read_text(
+        encoding="utf-8"
+    )
+    decision_types_text = (SRC / "domains/pulse_lab/types/agent_decision.py").read_text(encoding="utf-8")
+
+    forbidden_client_tokens = (
+        '"safety_net": safety',
+        '"safety_net_used": safety',
+        '"safety_net_retries": safety',
+    )
+    forbidden_type_tokens = (
+        "dual-writing",
+        "one release cycle",
+    )
+
+    assert [token for token in forbidden_client_tokens if token in client_text] == []
+    assert [token for token in forbidden_type_tokens if token in decision_types_text] == []
+
+
+def test_pulse_runtime_manifest_no_longer_advertises_safety_net_switch() -> None:
+    paths = [
+        SRC / "domains/pulse_lab/providers.py",
+        SRC / "domains/pulse_lab/services/agent_runtime.py",
+        SRC / "integrations/model_execution/pulse_decision_agent_client.py",
+    ]
+    offenders = [
+        f"{path.relative_to(ROOT)} contains safety_net_enabled"
+        for path in paths
+        if "safety_net_enabled" in path.read_text(encoding="utf-8")
+    ]
+
+    assert offenders == []
+
+
+def test_pulse_runtime_has_no_terminal_run_reuse_short_circuit() -> None:
+    paths = [
+        SRC / "domains/pulse_lab/services/pulse_agent_cost_guard.py",
+        SRC / "domains/pulse_lab/services/pulse_candidate_job_service.py",
+        SRC / "domains/pulse_lab/services/agent_eval.py",
+        SRC / "domains/pulse_lab/repositories/pulse_runs_repository.py",
+    ]
+    forbidden_tokens = (
+        "reuse_terminal_run",
+        "terminal_fingerprint_found",
+        "terminal_run_for_fingerprint",
+        "reused_run_id",
+    )
+    offenders = [
+        f"{path.relative_to(ROOT)} contains {token}"
+        for path in paths
+        for token in forbidden_tokens
+        if token in path.read_text(encoding="utf-8")
+    ]
+
+    assert offenders == []
+
+
+def test_pulse_runtime_uses_single_decision_lane() -> None:
+    paths = [
+        SRC / "platform/config/settings.py",
+        SRC / "domains/pulse_lab/services/pulse_agent_cost_guard.py",
+        SRC / "domains/pulse_lab/services/pulse_candidate_job_service.py",
+        SRC / "domains/pulse_lab/runtime/pulse_candidate_worker.py",
+        SRC / "integrations/model_execution/pulse_decision_agent_client.py",
+        SRC / "app/runtime/provider_wiring/model_execution.py",
+    ]
+    forbidden_tokens = (
+        "pulse.pipeline",
+        "pulse.signal_analyst",
+        "pulse.bear_case",
+        "pulse.risk_portfolio_judge",
+    )
+    offenders = [
+        f"{path.relative_to(ROOT)} contains {token}"
+        for path in paths
+        for token in forbidden_tokens
+        if token in path.read_text(encoding="utf-8")
+    ]
+
+    assert offenders == []
+
+
+def test_pulse_decision_lane_literal_lives_in_runtime_contract_only() -> None:
+    paths = [
+        path
+        for path in SRC.rglob("*.py")
+        if "src/parallax/platform/db/alembic/versions" not in str(path)
+    ]
+    offenders = [
+        str(path.relative_to(ROOT))
+        for path in paths
+        if path != SRC / "platform/agent_execution.py"
+        and '"pulse.decision"' in path.read_text(encoding="utf-8")
+    ]
+
+    assert offenders == []
+
+
+def test_pulse_runtime_has_no_stage_plan_contract() -> None:
+    paths = [
+        SRC / "domains/pulse_lab/providers.py",
+        SRC / "domains/pulse_lab/services/pulse_agent_cost_guard.py",
+        SRC / "domains/pulse_lab/services/pulse_candidate_job_service.py",
+        SRC / "domains/pulse_lab/services/agent_eval.py",
+        SRC / "integrations/model_execution/pulse_decision_agent_client.py",
+    ]
+    forbidden_tokens = (
+        "PulseStagePlan",
+        "stage_plan",
+        '"run_signal_analyst"',
+        '"run_bear_case"',
+        '"run_risk_portfolio_judge"',
+        "run_signal_analyst=",
+        "run_bear_case=",
+        "run_risk_portfolio_judge=",
+    )
+    offenders = [
+        f"{path.relative_to(ROOT)} contains {token}"
+        for path in paths
+        for token in forbidden_tokens
+        if token in path.read_text(encoding="utf-8")
+    ]
+
+    assert offenders == []
+
+
+def test_pulse_runtime_has_single_final_decision_stage_contract() -> None:
+    paths = [
+        SRC / "domains/pulse_lab/providers.py",
+        SRC / "domains/pulse_lab/services/agent_runtime.py",
+        SRC / "domains/pulse_lab/services/claim_evidence_verifier.py",
+        SRC / "domains/pulse_lab/services/prompt_loader.py",
+        SRC / "domains/pulse_lab/services/pulse_candidate_job_service.py",
+        SRC / "domains/pulse_lab/services/pulse_decision_runtime.py",
+        SRC / "domains/pulse_lab/types/agent_decision.py",
+        SRC / "integrations/model_execution/pulse_decision_agent_client.py",
+    ]
+    forbidden_tokens = (
+        "SignalAnalystMemo",
+        "BearCaseMemo",
+        "signal_memo",
+        "bear_memo",
+        "signal_analyst",
+        "bear_case",
+        "risk_portfolio_judge",
+    )
+    offenders = [
+        f"{path.relative_to(ROOT)} contains {token}"
+        for path in paths
+        for token in forbidden_tokens
+        if token in path.read_text(encoding="utf-8")
+    ]
+
+    assert offenders == []
+
+
+def test_news_canonical_merge_does_not_rewrite_agent_outputs() -> None:
+    repository_text = (SRC / "domains/news_intel/repositories/news_repository.py").read_text(encoding="utf-8")
+
+    forbidden_tokens = (
+        "_remap_item_scoped_agent_outputs_to_news_item",
+        "news_item_remap_reason",
+        "UPDATE news_item_agent_runs",
+    )
+    assert [token for token in forbidden_tokens if token in repository_text] == []

@@ -23,8 +23,6 @@ export type NewsAlertEligibility = {
   external_push_basis?: string | null;
   agent_status?: string | null;
   decision_class?: string | null;
-  provider_status?: string | null;
-  provider_score?: number | null;
   market_scope?: NewsMarketScope | null;
   agent_admission_status?: string | null;
   agent_admission_reason?: string | null;
@@ -47,7 +45,6 @@ export type NewsSignalSummary = {
 
 export type NewsSignalEnvelope = {
   display_signal: NewsSignalSummary;
-  provider_signal: NewsSignalSummary | null;
   agent_signal: Record<string, unknown>;
   alert_eligibility: NewsAlertEligibility;
 };
@@ -58,11 +55,10 @@ export type NewsTokenLane = {
   symbol?: string | null;
   target_type?: string | null;
   target_id?: string | null;
-  provider_signal?: string | null;
-  provider_score?: number | null;
-  provider_grade?: string | null;
   market_type?: string | null;
   reason_codes?: string[];
+  score?: number | null;
+  signal?: string | null;
 };
 
 export type NewsFactLane = {
@@ -116,19 +112,11 @@ export type NewsAgentBrief = {
   title_zh?: string | null;
   summary_zh?: string | null;
   market_read_zh?: string | null;
-  research_todos_zh?: string[];
   market_impacts?: unknown[];
   bull_strength?: string | null;
   bear_strength?: string | null;
   data_gap_count?: number | null;
   computed_at_ms?: number | null;
-  agent_run_id?: string | null;
-  schema_version?: string | null;
-  prompt_version?: string | null;
-  artifact_version_hash?: string | null;
-  input_hash?: string | null;
-  output_hash?: string | null;
-  brief_json?: Record<string, unknown> | null;
   bull_view?: NewsAgentBriefView | null;
   bear_view?: NewsAgentBriefView | null;
   affected_entities?: unknown[];
@@ -138,26 +126,7 @@ export type NewsAgentBrief = {
   evidence_refs?: NewsAgentEvidenceRef[];
 };
 
-export type NewsResearchToolResult = {
-  tool_call_id?: string | null;
-  tool_name?: string | null;
-  schema_version?: string | null;
-  query_version?: string | null;
-  input?: Record<string, unknown> | null;
-  source_tables?: string[];
-  rows?: unknown[];
-  row_count?: number | null;
-  truncated?: boolean | null;
-  skipped_reason?: string | null;
-  result_hash?: string | null;
-  generated_at_ms?: number | null;
-  latency_ms?: number | null;
-  redaction_notes?: string[];
-  evidence_refs?: NewsAgentEvidenceRef[];
-};
-
 export type NewsAgentRunSummary = {
-  run_id?: string | null;
   backend?: string | null;
   status?: string | null;
   outcome?: string | null;
@@ -166,14 +135,6 @@ export type NewsAgentRunSummary = {
   lane?: string | null;
   workflow_name?: string | null;
   agent_name?: string | null;
-  execution_trace_id?: string | null;
-  artifact_version_hash?: string | null;
-  prompt_version?: string | null;
-  schema_version?: string | null;
-  validator_version?: string | null;
-  guardrail_version?: string | null;
-  input_hash?: string | null;
-  output_hash?: string | null;
   started_at_ms?: number | null;
   finished_at_ms?: number | null;
   latency_ms?: number | null;
@@ -181,16 +142,6 @@ export type NewsAgentRunSummary = {
   error_class?: string | null;
   error?: string | null;
   error_message?: string | null;
-  request_json?: Record<string, unknown> | null;
-  response_json?: Record<string, unknown> | null;
-  validation_errors_json?: unknown[];
-  usage_json?: Record<string, unknown>;
-  trace_metadata_json?: Record<string, unknown>;
-  research_plan?: Record<string, unknown> | null;
-  tool_results?: NewsResearchToolResult[];
-  research_execution?: Record<string, unknown> | null;
-  research_hashes?: Record<string, unknown> | null;
-  base_packet?: Record<string, unknown> | null;
 };
 
 export type NewsRow = {

@@ -29,7 +29,8 @@ def test_insert_resolution_serializes_current_row_by_intent_before_superseding()
 
     assert "pg_advisory_xact_lock(hashtextextended(%s, 0))" in conn.statements[0][0]
     assert conn.statements[0][1] == ("intent-1",)
-    assert "UPDATE token_intent_resolutions" in conn.statements[1][0]
+    assert "FOR UPDATE" in conn.statements[1][0]
+    assert "UPDATE token_intent_resolutions" in conn.statements[2][0]
 
 
 class RecordingConn:

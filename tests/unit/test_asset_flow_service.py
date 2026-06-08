@@ -96,7 +96,7 @@ def test_asset_flow_projection_metadata_prefers_publication_state_timestamp():
     assert result["projection"]["computed_at_ms"] == 1_700_000_120_000
 
 
-def test_asset_flow_ready_state_with_missing_current_generation_rows_is_stale():
+def test_asset_flow_ready_state_with_missing_current_rows_is_stale():
     service = asset_flow_service(
         rows=[],
         publication_state={
@@ -116,7 +116,7 @@ def test_asset_flow_ready_state_with_missing_current_generation_rows_is_stale():
 
     assert result["targets"] == []
     assert result["projection"]["status"] == "stale"
-    assert result["projection"]["reason"] == "projection_generation_mismatch"
+    assert result["projection"]["reason"] == "projection_rows_missing"
     assert result["projection"]["row_count"] == 1
 
 
@@ -283,19 +283,6 @@ class FakeTokenRadar:
             {"window": window, "scope": scope, "venue": venue, "limit": limit, "projection_version": projection_version}
         )
         return self.rows[:limit]
-
-    def current_rows_for_generation(self, *, window, scope, venue, generation_id, limit, projection_version):
-        self.calls.append(
-            {
-                "window": window,
-                "scope": scope,
-                "venue": venue,
-                "generation_id": generation_id,
-                "limit": limit,
-                "projection_version": projection_version,
-            }
-        )
-        return [row for row in self.rows if str(row.get("generation_id") or "") == str(generation_id)][:limit]
 
     def latest_publication_state(self, *, projection_version, windows, scopes, venues):
         if self.publication_state is None:

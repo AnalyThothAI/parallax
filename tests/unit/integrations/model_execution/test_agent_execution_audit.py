@@ -151,8 +151,8 @@ def test_agent_stage_spec_request_audit_shape() -> None:
 
 def test_request_audit_shape_includes_capability_profile() -> None:
     spec = AgentStageSpec(
-        lane="pulse.signal_analyst",
-        stage="signal_analyst",
+        lane="pulse.decision",
+        stage="pulse_decision",
         instructions="Return JSON.",
         input_payload={"event_id": "e1"},
         output_type=dict,
@@ -224,7 +224,7 @@ def test_runtime_policy_resolves_model_capability_profiles() -> None:
 def test_runtime_policy_resolves_capability_for_inherited_deepseek_default_model() -> None:
     policy = AgentRuntimePolicy(defaults=AgentRuntimeDefaultsPolicy(model="deepseek-v4-flash"))
 
-    profile = policy.capability_for_lane("pulse.signal_analyst")
+    profile = policy.capability_for_lane("pulse.decision")
 
     assert profile.provider_family == AgentProviderFamily.DEEPSEEK
     assert profile.request_options.extra_body == {"thinking": {"type": "disabled"}}

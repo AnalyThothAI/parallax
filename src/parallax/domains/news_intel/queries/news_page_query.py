@@ -43,6 +43,4 @@ class NewsPageQuery:
 
 
 def _public_news_row(row: dict[str, Any]) -> dict[str, Any]:
-    payload = dict(row)
-    payload.pop("story", None)
-    return payload
+    return dict(row)

@@ -35,6 +35,16 @@ def test_insert_snapshot_returns_false_when_only_computed_at_ms_changes() -> Non
     assert conn.payload_hashes[0] == conn.payload_hashes[1]
 
 
+def test_insert_snapshot_leaves_commit_to_projection_worker_transaction() -> None:
+    conn = SnapshotConnection()
+    repo = MacroIntelRepository(conn)
+    snapshot = build_macro_view_snapshot([_observation()], computed_at_ms=1_779_000_000_000)
+
+    repo.insert_snapshot(snapshot)
+
+    assert conn.commit_count == 0
+
+
 def test_macro_series_source_signature_ignores_now_ms_and_ingested_at_ms() -> None:
     base_row = _series_row(ingested_at_ms=100, projected_at_ms=1_779_000_000_000)
     changed_timing_row = _series_row(ingested_at_ms=200, projected_at_ms=1_779_000_060_000)
@@ -117,7 +127,7 @@ def test_refresh_observation_series_rows_skips_writes_when_source_signature_unch
     assert "macro_observation_series_generations" not in queries
 
 
-def test_refresh_observation_series_rows_replaces_current_rows_when_signature_changes() -> None:
+def test_refresh_observation_series_rows_upserts_current_rows_when_signature_changes() -> None:
     selected_row = _series_row()
     conn = CurrentRefreshConnection(selected_rows=[selected_row], publication_state=None, insert_rowcount=1)
     repo = MacroIntelRepository(conn)
@@ -136,6 +146,9 @@ def test_refresh_observation_series_rows_replaces_current_rows_when_signature_ch
     assert result["source_rows"] == 1
     assert "DELETE FROM macro_observation_series_rows" in queries
     assert "INSERT INTO macro_observation_series_rows" in queries
+    assert "NOT EXISTS" in queries
+    assert "ON CONFLICT (projection_version, concept_key, observed_at) DO UPDATE SET" in queries
+    assert "WHERE macro_observation_series_rows.payload_hash IS DISTINCT FROM excluded.payload_hash" in queries
     assert "INSERT INTO macro_observation_series_publication_state" in queries
     assert "generation_id" not in queries
     assert "macro_observation_series_active_generation" not in queries
@@ -326,6 +339,7 @@ class SnapshotConnection:
         self.executions: list[tuple[str, tuple[object, ...]]] = []
         self.payload_hashes: list[object] = []
         self.current_payload_hash: object | None = None
+        self.commit_count = 0
 
     def execute(self, query: str, params: tuple[object, ...]) -> Cursor:
         self.executions.append((query, params))
@@ -336,7 +350,7 @@ class SnapshotConnection:
         return Cursor([{"changed": changed}] if changed else [], rowcount=1 if changed else 0)
 
     def commit(self) -> None:
-        return None
+        self.commit_count += 1
 
 
 class NullContext:

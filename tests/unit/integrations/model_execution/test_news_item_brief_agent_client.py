@@ -148,7 +148,7 @@ def _packet() -> NewsItemBriefInputPacket:
         ),
         entity_lanes=[],
         market_scope=["crypto", "macro_rates"],
-        agent_admission={"status": "eligible", "reason": "provider_score_high"},
+        agent_admission={"status": "eligible", "reason": "ready_market_driver"},
         similarity={},
         material_delta={},
         prompt_version=NEWS_ITEM_BRIEF_PROMPT_VERSION,

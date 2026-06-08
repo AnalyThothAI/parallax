@@ -194,24 +194,61 @@ class TokenRadarRepository:
         existing_by_key = {_current_key(row): row for row in existing_current}
         current_keys = {_current_key(row) for row in rows_to_insert}
         exited_rows = [row for key, row in existing_by_key.items() if key not in current_keys]
-        self.conn.execute(
-            """
-            DELETE FROM token_radar_current_rows
-            WHERE projection_version = %s
-              AND "window" = %s
-              AND scope = %s
-              AND venue = %s
-            """,
-            (projection_version, window, scope, venue),
-        )
+        rows_written = 0
+        for row in exited_rows:
+            cursor = self.conn.execute(
+                """
+                DELETE FROM token_radar_current_rows
+                WHERE projection_version = %s
+                  AND "window" = %s
+                  AND scope = %s
+                  AND venue = %s
+                  AND lane = %s
+                  AND target_type_key = %s
+                  AND identity_id = %s
+                """,
+                (projection_version, window, scope, venue, *_current_key(row)),
+            )
+            rows_written += int(getattr(cursor, "rowcount", 0) or 0)
         for row in rows_to_insert:
-            self.conn.execute(
+            cursor = self.conn.execute(
                 f"""
                 INSERT INTO token_radar_current_rows({RADAR_ROW_INSERT_COLUMNS_SQL})
                 VALUES ({RADAR_ROW_INSERT_VALUES_SQL})
+                ON CONFLICT(projection_version, "window", scope, venue, lane, target_type_key, identity_id)
+                DO UPDATE SET
+                  row_id = excluded.row_id,
+                  computed_at_ms = excluded.computed_at_ms,
+                  source_max_received_at_ms = excluded.source_max_received_at_ms,
+                  generation_id = excluded.generation_id,
+                  published_at_ms = excluded.published_at_ms,
+                  source_frontier_ms = excluded.source_frontier_ms,
+                  rank = excluded.rank,
+                  rank_score = excluded.rank_score,
+                  intent_id = excluded.intent_id,
+                  event_id = excluded.event_id,
+                  target_type = excluded.target_type,
+                  target_id = excluded.target_id,
+                  pricefeed_id = excluded.pricefeed_id,
+                  intent_json = excluded.intent_json,
+                  resolution_json = excluded.resolution_json,
+                  factor_snapshot_json = excluded.factor_snapshot_json,
+                  factor_version = excluded.factor_version,
+                  decision = excluded.decision,
+                  quality_status = excluded.quality_status,
+                  degraded_reasons_json = excluded.degraded_reasons_json,
+                  data_health_json = excluded.data_health_json,
+                  source_event_ids_json = excluded.source_event_ids_json,
+                  payload_hash = excluded.payload_hash,
+                  listed_at_ms = excluded.listed_at_ms
+                WHERE token_radar_current_rows.payload_hash IS DISTINCT FROM excluded.payload_hash
+                   OR token_radar_current_rows.quality_status IS DISTINCT FROM excluded.quality_status
+                   OR token_radar_current_rows.rank IS DISTINCT FROM excluded.rank
+                   OR token_radar_current_rows.decision IS DISTINCT FROM excluded.decision
                 """,
                 _json_payload(row),
             )
+            rows_written += int(getattr(cursor, "rowcount", 1) or 0)
         self.upsert_first_seen_batch(
             projection_version=projection_version,
             window=window,
@@ -246,7 +283,7 @@ class TokenRadarRepository:
             )
         if commit:
             self.conn.commit()
-        return {"status": "published", "generation_id": str(generation_id), "rows_written": len(rows_to_insert)}
+        return {"status": "published", "generation_id": str(generation_id), "rows_written": rows_written}
 
     def _upsert_ready_publication_state(
         self,
@@ -358,7 +395,6 @@ class TokenRadarRepository:
                  AND state."window" = current_rows."window"
                  AND state.scope = current_rows.scope
                  AND state.venue = current_rows.venue
-                 AND state.current_generation_id = current_rows.generation_id
                 WHERE current_rows.projection_version = %s
                   AND current_rows."window" = %s
                   AND current_rows.scope = %s
@@ -377,56 +413,6 @@ class TokenRadarRepository:
                 window,
                 scope,
                 venue,
-                max(0, int(limit)),
-                max(0, int(limit)) * 2,
-            ),
-        ).fetchall()
-        return [dict(row) for row in rows]
-
-    def current_rows_for_generation(
-        self,
-        *,
-        window: str,
-        scope: str,
-        venue: str,
-        generation_id: str,
-        limit: int,
-        projection_version: str,
-    ) -> list[dict[str, Any]]:
-        rows = self.conn.execute(
-            """
-            WITH ranked AS (
-              SELECT *
-              FROM (
-                SELECT
-                  current_rows.*,
-                  row_number() OVER (PARTITION BY lane ORDER BY rank ASC) AS lane_rank
-                FROM token_radar_current_rows current_rows
-                JOIN token_radar_publication_state state
-                  ON state.projection_version = current_rows.projection_version
-                 AND state."window" = current_rows."window"
-                 AND state.scope = current_rows.scope
-                 AND state.venue = current_rows.venue
-                 AND state.current_generation_id = current_rows.generation_id
-                WHERE current_rows.projection_version = %s
-                  AND current_rows."window" = %s
-                  AND current_rows.scope = %s
-                  AND current_rows.venue = %s
-                  AND current_rows.generation_id = %s
-              ) latest_ranked
-              WHERE lane_rank <= %s
-            )
-            SELECT ranked.*
-            FROM ranked
-            ORDER BY lane DESC, rank ASC
-            LIMIT %s
-            """,
-            (
-                projection_version,
-                window,
-                scope,
-                venue,
-                str(generation_id),
                 max(0, int(limit)),
                 max(0, int(limit)) * 2,
             ),
@@ -452,7 +438,6 @@ class TokenRadarRepository:
              AND state."window" = current_rows."window"
              AND state.scope = current_rows.scope
              AND state.venue = current_rows.venue
-             AND state.current_generation_id = current_rows.generation_id
             WHERE current_rows.projection_version = %s
               AND current_rows."window" = %s
               AND current_rows.scope = %s

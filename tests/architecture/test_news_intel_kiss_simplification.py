@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ast
-import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -13,22 +12,11 @@ ALLOWED_DIRTY_STRING_FILES = {
     "src/parallax/app/runtime/projection_dirty_targets.py",
 }
 
-ALLOWED_RETIRED_TOOL_MARKER_FILES = {
-    "src/parallax/domains/news_intel/repositories/news_intel_hard_cut_cleanup_repository.py",
-}
-
 RAW_PROJECTION_STRINGS = {"brief_input", "page", "source_quality"}
 RETIRED_RESEARCH_TOOL_TOKENS = {
     "get_target_news_context",
     "search_news_archive",
     "get_observation_history",
-}
-HARD_CUT_CLEANUP_DELETE_TABLES = {
-    "news_item_agent_briefs",
-    "news_item_agent_runs",
-    "news_page_rows",
-    "news_projection_dirty_targets",
-    "notifications",
 }
 
 
@@ -64,6 +52,28 @@ def test_news_fetch_has_no_agent_brief_admission_dependency() -> None:
     assert "brief_input" not in source
     assert "news_item_agent_brief_eligibility" not in source
     assert "NEWS_ITEM_AGENT_BRIEF_MAX_PUBLISHED_AGE_MS" not in source
+
+
+def test_ops_projection_dirty_repair_does_not_recompute_news_agent_admission() -> None:
+    source = _read("src/parallax/app/runtime/projection_dirty_targets.py")
+    forbidden = {
+        "decide_news_item_agent_admission",
+        "NewsItemAgentAdmissionContext",
+        "load_agent_admission_contexts",
+    }
+    offenders = sorted(token for token in forbidden if token in source)
+    assert offenders == []
+
+
+def test_news_brief_input_cleanup_runtime_surface_is_removed() -> None:
+    paths = {
+        "src/parallax/app/surfaces/cli/parser.py",
+        "src/parallax/app/surfaces/cli/commands/ops.py",
+        "src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py",
+    }
+    forbidden = {"cleanup-news-brief-input", "cleanup_stale_brief_input_targets"}
+    offenders = [f"{path} contains {token}" for path in paths for token in forbidden if token in _read(path)]
+    assert offenders == []
 
 
 def test_news_item_brief_contract_has_no_legacy_crypto_only_surface() -> None:
@@ -143,13 +153,13 @@ def test_news_has_single_item_brief_llm_lane() -> None:
 
 
 def test_news_item_brief_input_has_no_provider_signal_field_aliases() -> None:
-    source = _function_source(
-        "src/parallax/domains/news_intel/services/news_item_brief_input.py",
-        "_provider_signal_evidence",
-    )
+    source = _read("src/parallax/domains/news_intel/services/news_item_brief_input.py")
     forbidden = {
+        "_provider_signal_evidence",
         'item.get("provider_signal")',
         'item.get("provider_token_impacts")',
+        'item.get("provider_signal_json")',
+        'item.get("provider_token_impacts_json")',
         'item.get("source_ids")',
         'item.get("source_domains")',
         'item.get("provider_article_keys")',
@@ -158,12 +168,162 @@ def test_news_item_brief_input_has_no_provider_signal_field_aliases() -> None:
     assert offenders == []
 
 
+def test_opennews_provider_signal_is_not_news_agent_evidence_or_priority() -> None:
+    paths = [
+        "src/parallax/domains/news_intel/types/news_item_brief.py",
+        "src/parallax/domains/news_intel/services/news_item_brief_input.py",
+        "src/parallax/domains/news_intel/services/news_item_agent_policy.py",
+        "src/parallax/domains/news_intel/services/news_item_agent_admission.py",
+        "src/parallax/domains/news_intel/services/news_item_brief_validation.py",
+        "src/parallax/domains/news_intel/services/news_item_brief_entity_support.py",
+        "src/parallax/domains/news_intel/services/news_market_scope.py",
+        "src/parallax/domains/news_intel/services/news_material_delta.py",
+        "src/parallax/domains/news_intel/prompts/news_item_brief.md",
+    ]
+    forbidden = {
+        "provider_signal_evidence",
+        "provider_signal_json",
+        "provider_token_impacts_json",
+        "provider:signal",
+        "provider:impact",
+        "provider_score",
+        "provider evidence",
+        "provider-native",
+        "provider fields",
+    }
+    offenders = [f"{path} contains {token}" for path in paths for token in forbidden if token in _read(path)]
+    assert offenders == []
+
+
+def test_opennews_provider_signal_is_not_news_page_or_notification_signal() -> None:
+    paths = [
+        "src/parallax/domains/news_intel/services/news_page_projection.py",
+        "src/parallax/domains/notifications/services/notification_rules.py",
+    ]
+    forbidden = {
+        "provider_signal_json",
+        "provider_token_impacts_json",
+        "provider_signal",
+        "provider_score",
+        "provider_score_band",
+        "provider_status",
+        "Score:",
+        "_provider_signal_payload",
+        "_merge_provider_impact",
+    }
+    offenders = [f"{path} contains {token}" for path in paths for token in forbidden if token in _read(path)]
+    assert offenders == []
+
+
+def test_news_page_compact_agent_brief_does_not_emit_audit_identity_fields() -> None:
+    source = _function_source(
+        "src/parallax/domains/news_intel/services/news_page_projection.py",
+        "_compact_agent_brief",
+    )
+    forbidden = {
+        "agent_run_id",
+        "artifact_version_hash",
+        "input_hash",
+        "output_hash",
+        "prompt_version",
+        "schema_version",
+        "validator_version",
+    }
+    offenders = sorted(token for token in forbidden if token in source)
+    assert offenders == []
+
+
+def test_news_detail_signal_fallbacks_do_not_emit_provider_signal_fields() -> None:
+    functions = [
+        "_signal_from_agent_brief",
+        "_projection_missing_signal",
+    ]
+    forbidden = {
+        "provider_signal",
+        "provider_token_impacts",
+    }
+    offenders: list[str] = []
+    for function_name in functions:
+        source = _function_source("src/parallax/domains/news_intel/repositories/news_repository.py", function_name)
+        offenders.extend(f"{function_name} contains {token}" for token in forbidden if token in source)
+    assert offenders == []
+
+
+def test_news_edge_remap_cleanup_dirties_page_projection_instead_of_deleting_rows() -> None:
+    paths = [
+        "src/parallax/domains/news_intel/repositories/news_repository.py",
+    ]
+    offenders = [path for path in paths if "_delete_item_scoped_page_rows" in _read(path)]
+    assert offenders == []
+
+
+def test_news_duplicate_hard_cut_repair_runtime_surface_is_removed() -> None:
+    removed_paths = [
+        SRC / "domains/news_intel/services/news_duplicate_hard_cut_repair.py",
+        SRC / "domains/news_intel/repositories/news_duplicate_hard_cut_repair_repository.py",
+    ]
+    assert [str(path.relative_to(ROOT)) for path in removed_paths if path.exists()] == []
+
+    forbidden_sources = [
+        "src/parallax/app/surfaces/cli/parser.py",
+        "src/parallax/app/surfaces/cli/commands/ops.py",
+        "docs/WORKERS.md",
+    ]
+    forbidden_tokens = {
+        "repair-news-duplicates-hard-cut",
+        "repair_news_duplicates_hard_cut",
+        "NewsDuplicateHardCutRepairAbort",
+        "news_duplicate_hard_cut_repair",
+        "ops_news_duplicate_hard_cut_repair",
+    }
+    offenders = [
+        f"{path} contains {token}"
+        for path in forbidden_sources
+        for token in forbidden_tokens
+        if token in _read(path)
+    ]
+    assert offenders == []
+
+
+def test_news_agent_admission_contexts_do_not_rank_by_provider_score() -> None:
+    functions = [
+        "load_agent_admission_contexts",
+        "_agent_similar_story_context",
+    ]
+    forbidden = {
+        "provider_score",
+        "provider_signal_json ->> 'score'",
+        "provider_score DESC",
+    }
+    offenders: list[str] = []
+    for function_name in functions:
+        source = _function_source("src/parallax/domains/news_intel/repositories/news_repository.py", function_name)
+        offenders.extend(f"{function_name} contains {token}" for token in forbidden if token in source)
+    assert offenders == []
+
+
+def test_news_item_brief_worker_requires_repository_admission_contexts() -> None:
+    load_source = _function_source(
+        "src/parallax/domains/news_intel/runtime/news_item_brief_worker.py",
+        "_load_candidates",
+    )
+    admission_source = _function_source(
+        "src/parallax/domains/news_intel/runtime/news_item_brief_worker.py",
+        "_admission_from_candidate",
+    )
+
+    assert 'getattr(repos.news, "load_agent_admission_contexts"' not in load_source
+    assert "return candidates" not in load_source
+    assert '"exact_duplicate_candidates": []' not in admission_source
+    assert '"story_candidates": []' not in admission_source
+
+
 def test_news_item_agent_policy_does_not_gate_on_legacy_analysis_admission() -> None:
     admission_source = _read("src/parallax/domains/news_intel/services/news_item_agent_admission.py")
     policy_source = _read("src/parallax/domains/news_intel/services/news_item_agent_policy.py")
-    repair_source = _read("src/parallax/domains/news_intel/services/news_agent_admission_repair.py")
     cli_parser_source = _read("src/parallax/app/surfaces/cli/parser.py")
     brief_worker_source = _read("src/parallax/domains/news_intel/runtime/news_item_brief_worker.py")
+    assert not (SRC / "domains/news_intel/services/news_agent_admission_repair.py").exists()
     forbidden = {
         "analysis_admission_status",
         "analysis_not_admitted",
@@ -178,7 +338,6 @@ def test_news_item_agent_policy_does_not_gate_on_legacy_analysis_admission() -> 
     }
     assert sorted(token for token in forbidden if token in admission_source) == []
     assert sorted(token for token in forbidden if token in policy_source) == []
-    assert sorted(token for token in forbidden if token in repair_source) == []
     assert sorted(token for token in forbidden if token in cli_parser_source) == []
     assert sorted(token for token in forbidden if token in brief_worker_source) == []
 
@@ -208,15 +367,18 @@ def test_news_page_row_payload_has_no_retired_public_field_aliases() -> None:
     forbidden = {
         'payload.get("title")',
         'payload.get("url")',
-        'payload.get("token_lanes_json",',
-        'payload.get("fact_lanes_json",',
-        'payload.get("token_impacts_json",',
-        'payload.get("content_tags_json",',
-        'payload.get("content_classification_json",',
-        'payload.get("source_json",',
-        'payload.get("agent_brief_json",',
+        'payload.get("story_json")',
+        'payload.get("token_lanes_json")',
+        'payload.get("fact_lanes_json")',
+        'payload.get("token_impacts_json")',
+        'payload.get("content_tags_json")',
+        'payload.get("content_classification_json")',
+        'payload.get("source_json")',
+        'payload.get("agent_brief_json")',
         'payload.get("agent_brief_status")',
-        'payload.get("signal_json",',
+        'payload.get("signal_json")',
+        'payload.get("market_scope_json")',
+        'payload.get("agent_admission_json")',
     }
     offenders = sorted(token for token in forbidden if token in source)
     assert offenders == []
@@ -237,12 +399,22 @@ def test_news_page_projection_outputs_semantic_fields_only() -> None:
     assert offenders == []
 
 
+def test_news_api_signal_filter_has_no_retired_long_short_aliases() -> None:
+    source = _read("src/parallax/app/surfaces/api/routes_news.py")
+    forbidden = {
+        'normalized == "long"',
+        'normalized == "short"',
+        'return "bullish"',
+        'return "bearish"',
+    }
+    offenders = sorted(token for token in forbidden if token in source)
+    assert offenders == []
+
+
 def test_news_runtime_has_no_retired_research_tool_path() -> None:
     offenders: list[str] = []
     for path in SRC.rglob("*.py"):
         rel = _rel(path)
-        if rel in ALLOWED_RETIRED_TOOL_MARKER_FILES:
-            continue
         text = path.read_text(encoding="utf-8")
         offenders.extend(
             f"{rel} contains retired News research tool token {token}"
@@ -253,27 +425,33 @@ def test_news_runtime_has_no_retired_research_tool_path() -> None:
     assert offenders == []
 
 
-def test_news_hard_cut_cleanup_is_delete_only_for_retired_artifacts() -> None:
-    source = _read("src/parallax/domains/news_intel/repositories/news_intel_hard_cut_cleanup_repository.py")
-    forbidden_write_ops = sorted(
-        match.group(0)
-        for match in re.finditer(
-            r"\b(?:INSERT\s+INTO|UPDATE\s+[A-Za-z_][A-Za-z0-9_]*|TRUNCATE\s+TABLE|DROP\s+TABLE)\b",
-            source,
-            re.IGNORECASE,
-        )
-    )
-    delete_tables = {
-        match.group(1)
-        for match in re.finditer(
-            r"\bDELETE\s+FROM\s+([A-Za-z_][A-Za-z0-9_]*)\b",
-            source,
-            re.IGNORECASE,
-        )
-    }
+def test_news_hard_cut_cleanup_runtime_surface_is_removed() -> None:
+    removed_paths = [
+        SRC / "domains/news_intel/services/news_intel_hard_cut_cleanup.py",
+        SRC / "domains/news_intel/repositories/news_intel_hard_cut_cleanup_repository.py",
+    ]
+    assert [str(path.relative_to(ROOT)) for path in removed_paths if path.exists()] == []
 
-    assert forbidden_write_ops == []
-    assert delete_tables == HARD_CUT_CLEANUP_DELETE_TABLES
+    forbidden_sources = [
+        "src/parallax/app/surfaces/cli/parser.py",
+        "src/parallax/app/surfaces/cli/commands/ops.py",
+        "docs/WORKERS.md",
+        "docs/generated/cli-help.md",
+    ]
+    forbidden_tokens = {
+        "cleanup-news-intel-hard-cut",
+        "cleanup_news_intel_hard_cut",
+        "NewsIntelHardCutCleanupAbort",
+        "news_intel_hard_cut_cleanup",
+        "news_intel_hard_cut_runtime_guard",
+    }
+    offenders = [
+        f"{path} contains {token}"
+        for path in forbidden_sources
+        for token in forbidden_tokens
+        if token in _read(path)
+    ]
+    assert offenders == []
 
 
 def test_news_runtime_product_paths_do_not_use_legacy_analysis_admission_gate() -> None:
@@ -301,4 +479,17 @@ def test_news_runtime_product_paths_do_not_use_legacy_analysis_admission_gate() 
         "page_material_not_admitted",
     }
     offenders = [f"{path} contains {token}" for path in paths for token in forbidden if token in _read(path)]
+    assert offenders == []
+
+
+def test_news_current_brief_schema_gate_uses_column_schema_version_only() -> None:
+    source = _read("src/parallax/domains/news_intel/repositories/news_repository.py")
+    forbidden = {
+        "brief_json ->> 'schema_version'",
+        'brief_json ->> "schema_version"',
+        "brief_json->>'schema_version'",
+        'brief_json->>"schema_version"',
+    }
+    offenders = sorted(token for token in forbidden if token in source)
+
     assert offenders == []

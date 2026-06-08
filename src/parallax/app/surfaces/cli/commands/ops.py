@@ -38,10 +38,6 @@ from parallax.domains.asset_market.runtime.resolution_refresh_worker import Reso
 from parallax.domains.asset_market.runtime.token_image_mirror_worker import TokenImageMirrorWorker
 from parallax.domains.asset_market.runtime.token_profile_current_worker import TokenProfileCurrentWorker
 from parallax.domains.asset_market.services.asset_market_sync import sync_binance_usdt_perp_routes
-from parallax.domains.asset_market.services.cex_binance_hard_cut_cleanup import (
-    CexBinanceHardCutAbort,
-    cleanup_cex_binance_hard_cut,
-)
 from parallax.domains.asset_market.services.cex_token_profile_sync import sync_cex_token_profiles
 from parallax.domains.asset_market.services.market_tick_current_rebuild import (
     MarketTickCurrentRebuildService,
@@ -57,16 +53,6 @@ from parallax.domains.narrative_intel.runtime.narrative_admission_worker import 
 from parallax.domains.narrative_intel.runtime.token_discussion_digest_worker import (
     TokenDiscussionDigestWorker,
 )
-from parallax.domains.news_intel.services.news_agent_admission_repair import repair_news_agent_market_admission
-from parallax.domains.news_intel.services.news_duplicate_hard_cut_repair import (
-    NewsDuplicateHardCutRepairAbort,
-    repair_news_duplicates_hard_cut,
-)
-from parallax.domains.news_intel.services.news_intel_hard_cut_cleanup import (
-    NewsIntelHardCutCleanupAbort,
-    cleanup_news_intel_hard_cut,
-)
-from parallax.domains.news_intel.services.news_market_signal_repair import repair_news_market_signal
 from parallax.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_DEFAULT_VENUE,
@@ -198,88 +184,22 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
     with repositories(settings) as repos:
         if args.ops_command == "news-dedup-diagnostics":
             window_hours = max(0.0, float(args.window_hours))
-            score_threshold = max(0, int(args.score_threshold))
             return (
                 0,
                 {
                     "ok": True,
                     "data": repos.news.news_dedup_diagnostics(
                         window_ms=int(window_hours * 3_600_000),
-                        score_threshold=score_threshold,
                         now_ms=_now_ms(),
                     ),
                 },
             )
-
-        if args.ops_command == "cleanup-news-brief-input":
-            data = repos.news_projection_dirty_targets.cleanup_stale_brief_input_targets(
-                now_ms=_now_ms(),
-                execute=bool(args.execute),
-            )
-            return 0, {"ok": True, "data": data}
-
-        if args.ops_command == "cleanup-news-intel-hard-cut":
-            try:
-                data = cleanup_news_intel_hard_cut(
-                    repos,
-                    execute=bool(args.execute),
-                    now_ms=_now_ms(),
-                    current_artifact_version_hash=args.current_artifact_version_hash,
-                )
-            except NewsIntelHardCutCleanupAbort as exc:
-                return 1, {"ok": False, "error": str(exc)}
-            return 0, {"ok": True, "data": data}
 
         if args.ops_command == "rebuild-news-canonical-items":
             data = _rebuild_news_canonical_items(
                 repos,
                 limit=args.limit,
                 dry_run=bool(args.dry_run),
-                execute=bool(args.execute),
-                now_ms=_now_ms(),
-            )
-            return 0, {"ok": True, "data": data}
-
-        if args.ops_command == "repair-news-duplicates-hard-cut":
-            try:
-                data = repair_news_duplicates_hard_cut(
-                    repos,
-                    limit=args.limit,
-                    execute=bool(args.execute),
-                    now_ms=_now_ms(),
-                )
-            except NewsDuplicateHardCutRepairAbort as exc:
-                return 1, {"ok": False, "error": str(exc)}
-            return 0, {"ok": True, "data": data}
-
-        if args.ops_command == "repair-news-agent-market-admission":
-            now_ms = _now_ms()
-            if bool(args.dry_run):
-                data = repair_news_agent_market_admission(
-                    repos=repos,
-                    since_ms=args.since_ms,
-                    until_ms=args.until_ms,
-                    limit=args.limit,
-                    dry_run=True,
-                    now_ms=now_ms,
-                )
-            else:
-                with repos.conn.transaction():
-                    data = repair_news_agent_market_admission(
-                        repos=repos,
-                        since_ms=args.since_ms,
-                        until_ms=args.until_ms,
-                        limit=args.limit,
-                        dry_run=False,
-                        now_ms=now_ms,
-                    )
-            return 0, {"ok": True, "data": data}
-
-        if args.ops_command == "repair-news-market-signal":
-            data = repair_news_market_signal(
-                repos,
-                since_hours=float(args.since_hours),
-                min_score=int(args.min_score),
                 execute=bool(args.execute),
                 now_ms=_now_ms(),
             )
@@ -403,19 +323,6 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
                 )
             finally:
                 client.close()
-            return 0, {"ok": True, "data": data}
-
-        if args.ops_command == "cex-binance-hard-cut-cleanup":
-            try:
-                data = cleanup_cex_binance_hard_cut(
-                    repos.registry,
-                    dry_run=bool(args.dry_run),
-                    execute=bool(args.execute),
-                    min_binance_feeds=int(args.min_binance_feeds),
-                    now_ms=_now_ms(),
-                )
-            except CexBinanceHardCutAbort as exc:
-                return 1, {"ok": False, "error": str(exc)}
             return 0, {"ok": True, "data": data}
 
         if args.ops_command == "sync-us-equity-symbols":

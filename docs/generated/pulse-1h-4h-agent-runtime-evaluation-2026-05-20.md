@@ -1,4 +1,4 @@
-# Pulse 1h/4h Research Committee Evaluation
+# Pulse 1h/4h Agent Runtime Evaluation
 
 - generated_date: 2026-05-20
 - lookback_hours: 24

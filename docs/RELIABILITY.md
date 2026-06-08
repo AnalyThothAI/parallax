@@ -93,9 +93,9 @@ reservation must not cover multiple unreserved model calls. This applies to
 reservation is denied, the worker returns an `agent_backpressure_*` note and
 leaves the job unclaimed. This preserves retry budgets during provider
 congestion and lets the next bounded catch-up cycle retry naturally. For Pulse,
-`pulse.pipeline` is a parent reservation that also reserves child stage lane
-capacity/RPM before job claim. A no-start response from capacity, circuit,
-RPM, or parent-reservation pressure is backpressure, not a provider attempt.
+`pulse.decision` is reserved before job claim and covers all internal decision
+audit stages. A no-start response from capacity, circuit, RPM, or reservation
+pressure is backpressure, not a provider attempt.
 No-start backpressure must not write business run ledgers or increment
 business attempts. Provider-started validation, publication, schema, timeout,
 or cancellation failures remain started execution failures and follow the
@@ -280,10 +280,12 @@ does not print passwords or application config.
 Token Radar storage is a clean-reset hard cut. Legacy `token_radar_rows` and
 `token_radar_retention_runs` are removed by migration/reset. Token Radar online
 serving is `token_radar_current_rows` plus `token_radar_publication_state`.
-`fresh` is allowed only when publication state is `ready` and served rows match
-`current_generation_id`. Failed latest attempts serve previous rows as `stale`
-or no rows as `failed`; retired history/audit tables are not part of runtime
-serving. `fresh`, `stale`, and `failed` describe publication freshness only;
+`fresh` is allowed only when publication state is `ready` and product/window
+current rows are available; an explicitly empty ready publication is fresh with
+zero rows. Failed latest attempts serve previous rows as `stale` or no rows as
+`failed`; retired history/audit tables are not part of runtime serving.
+`current_generation_id` remains attempt audit metadata, not an online serving
+join key. `fresh`, `stale`, and `failed` describe publication freshness only;
 row `quality_status` describes business credibility.
 
 Successful publication generation ids are content-stable. If a rebuild produces

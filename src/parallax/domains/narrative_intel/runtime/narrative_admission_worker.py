@@ -180,7 +180,11 @@ class NarrativeAdmissionWorker(WorkerBase):
         for decision in decisions:
             payload = asdict(decision)
             projection_computed_at_ms = decision.projection_computed_at_ms or now_ms
-            source_end_ms = projection_computed_at_ms
+            source_end_ms = (
+                int(decision.source_max_received_at_ms)
+                if decision.source_max_received_at_ms is not None
+                else projection_computed_at_ms
+            )
             source_start_ms = max(0, int(source_end_ms) - _window_ms(window))
             source_set = repos.narratives.source_set_for_admission(
                 target_type=decision.target_type,

@@ -6,13 +6,11 @@ import type {
   NewsFactLane,
   NewsItemDetail,
   NewsMarketScope,
-  NewsResearchToolResult,
   NewsTokenLane,
 } from "@shared/model/newsIntel";
 import { newsLifecycleLabel } from "@shared/model/newsIntel";
 import {
   Activity,
-  Braces,
   Brain,
   Database,
   ExternalLink,
@@ -22,12 +20,9 @@ import {
 import type { ComponentType } from "react";
 
 import {
-  newsDisplayTokenLanes,
   newsSignalLabel,
   newsSignalScoreLabel,
   newsSignalTone,
-  tokenImpactLabel,
-  tokenMarketLabel,
 } from "../model/newsSignalViewModel";
 import "./NewsItemEvidencePage.css";
 
@@ -38,14 +33,11 @@ type NewsItemEvidencePageProps = {
 type IconComponent = ComponentType<{ "aria-hidden"?: boolean; size?: number }>;
 
 export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
-  const tokenImpacts = newsDisplayTokenLanes(item);
   const tokenIdentities = item.token_lanes ?? [];
   const facts = item.fact_lanes ?? [];
   const displaySignal = item.signal.display_signal;
-  const providerSignal = item.signal.provider_signal;
   const brief = item.agent_brief ?? null;
   const run = item.agent_run ?? null;
-  const toolResults = run?.tool_results ?? [];
   const displayTitle = brief?.title_zh || displaySignal.title_zh || item.headline;
   const sourceDomains = sourceDomainList(item);
   const marketScope = marketScopeForItem(item);
@@ -78,9 +70,9 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
 
       <section className="news-evidence-metric-grid" aria-label="news item state">
         <EvidenceMetric
-          label="Provider aiRating"
-          value={providerSignal ? newsSignalScoreLabel(providerSignal) : "score --"}
-          detail={providerSignal?.method || providerSignal?.provider || providerSignal?.source}
+          label="Signal"
+          value={newsSignalScoreLabel(displaySignal)}
+          detail={displaySignal.method || displaySignal.provider || displaySignal.source}
         />
         <EvidenceMetric
           label="Market scope"
@@ -106,32 +98,16 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
               : `${formatDuration(run.latency_ms)} · ${run.model || ""}`
           }
         />
-        <EvidenceMetric
-          label="Tools"
-          value={String(toolResults.length)}
-          detail={
-            toolResults.length
-              ? toolResults
-                  .map((tool) => tool.tool_name)
-                  .filter(Boolean)
-                  .join(", ")
-              : "no calls"
-          }
-        />
       </section>
 
       <div className="news-evidence-layout">
         <main className="news-evidence-main">
           <OriginalArticle item={item} />
           <AiInterpretation brief={brief} displayDirection={displaySignal.direction} />
-          {hasLegacyAgentAudit(run, toolResults) ? (
-            <LegacyAgentAudit run={run} toolResults={toolResults} />
-          ) : null}
-          <RawJson brief={brief} run={run} />
         </main>
         <aside className="news-evidence-side" aria-label="news evidence metadata">
           <MarketScopeEvidence item={item} />
-          <ProviderSignalEvidence item={item} tokenImpacts={tokenImpacts} />
+          <SignalEvidence item={item} />
           <AgentBriefState item={item} brief={brief} run={run} />
           <TokenIdentityEvidence tokens={tokenIdentities} />
           <FactEvidence facts={facts} />
@@ -286,174 +262,33 @@ function AiInterpretation({
       <ExecutionGapPanel brief={brief} />
       <ListBlock title="Watch triggers" items={brief?.watch_triggers ?? []} />
       <ListBlock title="Invalidation" items={brief?.invalidation_conditions ?? []} />
-      <ListBlock title="Research todos" items={brief?.research_todos_zh ?? []} />
       <JsonDetails title="Affected entities JSON" value={brief?.affected_entities ?? []} />
     </section>
   );
 }
 
-function LegacyAgentAudit({
-  run,
-  toolResults,
-}: {
-  run?: NewsItemDetail["agent_run"] | null;
-  toolResults: NewsResearchToolResult[];
-}) {
-  return (
-    <section className="news-evidence-section">
-      <SectionHeading icon={Database} title="Legacy agent audit" tag={`${toolResults.length} calls`} />
-      <dl className="news-evidence-definition-grid">
-        <FieldRow label="Run" value={run?.run_id} />
-        <FieldRow label="Model" value={run?.model} />
-        <FieldRow label="Provider" value={run?.provider} />
-        <FieldRow
-          label="Latency"
-          value={run?.latency_ms == null ? null : formatDuration(run.latency_ms)}
-        />
-        <FieldRow label="Tokens" value={usageLabel(run?.usage_json)} />
-        <FieldRow label="Input hash" value={run?.input_hash} />
-      </dl>
-      <JsonDetails title="Research plan JSON" value={run?.research_plan ?? {}} />
-      {toolResults.length ? (
-        <div className="news-evidence-tool-list">
-          {toolResults.map((tool, index) => (
-            <ToolResultCard
-              key={`${tool.tool_call_id || tool.tool_name || "tool"}-${index}`}
-              tool={tool}
-            />
-          ))}
-        </div>
-      ) : (
-        <p className="news-evidence-muted">No legacy tool results are attached to this run.</p>
-      )}
-      <JsonDetails title="Research execution JSON" value={run?.research_execution ?? {}} />
-      <JsonDetails title="Research hashes JSON" value={run?.research_hashes ?? {}} />
-    </section>
-  );
-}
-
-function ToolResultCard({ tool }: { tool: NewsResearchToolResult }) {
-  const rows = tool.rows ?? [];
-  return (
-    <article className="news-evidence-tool-card">
-      <div className="news-evidence-tool-card-head">
-        <div>
-          <span>{tool.tool_call_id || "call"}</span>
-          <b>{tool.tool_name || "unknown tool"}</b>
-        </div>
-        <span className={`news-evidence-pill ${tool.truncated ? "is-short" : "is-context"}`}>
-          {tool.truncated ? "truncated" : tool.skipped_reason || "ok"}
-        </span>
-      </div>
-      <dl className="news-evidence-definition-grid">
-        <FieldRow label="Rows" value={tool.row_count ?? rows.length} />
-        <FieldRow
-          label="Latency"
-          value={tool.latency_ms == null ? null : formatDuration(tool.latency_ms)}
-        />
-        <FieldRow label="Tables" value={(tool.source_tables ?? []).join(", ")} />
-        <FieldRow label="Hash" value={tool.result_hash} />
-        <FieldRow label="Schema" value={tool.schema_version} />
-        <FieldRow label="Query" value={tool.query_version} />
-      </dl>
-      <EvidenceRefList refs={tool.evidence_refs ?? []} />
-      <JsonDetails title="Tool input JSON" value={tool.input ?? {}} />
-      <JsonDetails title="Tool rows JSON" value={rows} />
-      <ListBlock title="Redaction notes" items={tool.redaction_notes ?? []} />
-    </article>
-  );
-}
-
-function hasLegacyAgentAudit(
-  run: NewsItemDetail["agent_run"] | null | undefined,
-  toolResults: NewsResearchToolResult[],
-): boolean {
-  if (toolResults.length > 0) return true;
-  return Boolean(
-    run &&
-      (hasObjectKeys(run.research_plan) ||
-        hasObjectKeys(run.research_execution) ||
-        hasObjectKeys(run.research_hashes) ||
-        hasObjectKeys(run.base_packet)),
-  );
-}
-
-function RawJson({
-  brief,
-  run,
-}: {
-  brief?: NewsAgentBrief | null;
-  run?: NewsItemDetail["agent_run"] | null;
-}) {
-  return (
-    <section className="news-evidence-section">
-      <SectionHeading icon={Braces} title="Raw JSON" tag="audit" />
-      <JsonDetails title="AI brief JSON" value={brief?.brief_json ?? {}} open />
-      <JsonDetails title="AI response JSON" value={run?.response_json ?? {}} open />
-      <JsonDetails title="Agent request JSON" value={run?.request_json ?? {}} />
-      <JsonDetails title="Validation errors JSON" value={run?.validation_errors_json ?? []} />
-    </section>
-  );
-}
-
-function hasObjectKeys(value: Record<string, unknown> | null | undefined): boolean {
-  return Boolean(value && Object.keys(value).length > 0);
-}
-
-function ProviderSignalEvidence({
-  item,
-  tokenImpacts,
-}: {
-  item: NewsItemDetail;
-  tokenImpacts: NewsTokenLane[];
-}) {
+function SignalEvidence({ item }: { item: NewsItemDetail }) {
   const displaySignal = item.signal.display_signal;
-  const providerSignal = item.signal.provider_signal;
   return (
-    <section className="news-evidence-section news-evidence-provider-rating">
+    <section className="news-evidence-section">
       <SectionHeading
         icon={ShieldCheck}
-        title="Provider aiRating"
-        tag={providerSignal?.status || "missing"}
+        title="Signal"
+        tag={displaySignal.status || "missing"}
         tone={newsSignalTone(displaySignal)}
       />
       <dl className="news-evidence-definition-grid">
-        <FieldRow label="Source" value={providerSignal?.provider || providerSignal?.source} />
-        <FieldRow label="Method" value={providerSignal?.method} />
-        <FieldRow label="Direction" value={providerSignal?.direction} />
-        <FieldRow label="Signal" value={providerSignal?.signal} />
-        <FieldRow label="Score" value={providerSignal?.score} />
-        <FieldRow label="Grade" value={providerSignal?.grade} />
+        <FieldRow label="Source" value={displaySignal.provider || displaySignal.source} />
+        <FieldRow label="Method" value={displaySignal.method} />
+        <FieldRow label="Direction" value={displaySignal.direction} />
+        <FieldRow label="Signal" value={displaySignal.signal} />
+        <FieldRow label="Score" value={displaySignal.score} />
+        <FieldRow label="Grade" value={displaySignal.grade} />
       </dl>
       <p>
-        {providerSignal?.summary_zh ||
-          providerSignal?.summary_en ||
-          "No provider aiRating summary is present."}
+        {displaySignal.summary_zh || displaySignal.summary_en || "No signal summary is present."}
       </p>
-      <TokenImpactList tokens={tokenImpacts} />
     </section>
-  );
-}
-
-function TokenImpactList({ tokens }: { tokens: NewsTokenLane[] }) {
-  if (!tokens.length) {
-    return <p className="news-evidence-muted">No provider token impact rows are attached.</p>;
-  }
-  return (
-    <div className="news-evidence-card-list" aria-label="Token impacts">
-      {tokens.map((token, index) => (
-        <div
-          className="news-evidence-card"
-          key={`${token.symbol ?? token.target_id ?? "impact"}-${index}`}
-        >
-          <b>{token.symbol || token.target_id || "unknown token"}</b>
-          <span>{token.provider_signal || "provider signal missing"}</span>
-          <small>
-            {tokenImpactLabel(token)} · {tokenMarketLabel(token)}
-          </small>
-        </div>
-      ))}
-    </div>
   );
 }
 
@@ -540,10 +375,7 @@ function AgentBriefState({
           value={item.signal.alert_eligibility?.external_push_block_reason}
         />
         <FieldRow label="Outcome" value={run?.outcome} />
-        <FieldRow label="Run" value={run?.run_id} />
         <FieldRow label="Lane" value={run?.lane} />
-        <FieldRow label="Prompt" value={run?.prompt_version || brief?.prompt_version} />
-        <FieldRow label="Schema" value={run?.schema_version || brief?.schema_version} />
         <FieldRow label="Computed" value={formatTimestamp(brief?.computed_at_ms)} />
       </dl>
     </section>
@@ -694,11 +526,6 @@ function ListBlock({ title, items }: { title: string; items: string[] }) {
   );
 }
 
-function EvidenceRefList({ refs }: { refs: NewsAgentEvidenceRef[] }) {
-  if (!refs.length) return null;
-  return <ListBlock title="Evidence refs" items={refs.map(evidenceRefLabel)} />;
-}
-
 function JsonDetails({
   title,
   value,
@@ -741,17 +568,6 @@ function notificationStateLabel(value?: boolean | null): string {
 
 function providerObservationCount(item: NewsItemDetail): number {
   return item.provider_observations?.length || item.observation_edges?.length || 0;
-}
-
-function usageLabel(value?: Record<string, unknown>): string | null {
-  if (!value) return null;
-  const input = value.input_tokens ?? value.prompt_tokens ?? value.input;
-  const output = value.output_tokens ?? value.completion_tokens ?? value.output;
-  const total = value.total_tokens ?? value.total;
-  if (total != null) return `${displayScalar(total)} total`;
-  if (input != null || output != null)
-    return `${displayScalar(input)} in / ${displayScalar(output)} out`;
-  return null;
 }
 
 function gapText(brief: NewsAgentBrief | null | undefined, kind: string, fallback: string): string {

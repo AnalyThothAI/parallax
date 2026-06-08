@@ -54,3 +54,33 @@ def test_completed_docs_do_not_republish_retired_cex_run_serving_instructions() 
         )
 
     assert offenders == []
+
+
+def test_cex_binance_hard_cut_cleanup_runtime_surface_is_removed() -> None:
+    removed_paths = [
+        SRC / "domains/asset_market/services/cex_binance_hard_cut_cleanup.py",
+        SRC / "domains/asset_market/repositories/cex_binance_hard_cut_cleanup_repository.py",
+        ROOT / "tests/unit/test_cex_binance_hard_cut_cleanup.py",
+    ]
+    assert [path.relative_to(ROOT).as_posix() for path in removed_paths if path.exists()] == []
+
+    forbidden_runtime_tokens = {
+        "cex-binance-hard-cut-cleanup",
+        "cleanup_cex_binance_hard_cut",
+        "CexBinanceHardCutAbort",
+        "cex_binance_hard_cut_cleanup_repository",
+    }
+    scanned_paths = [
+        SRC / "app/surfaces/cli/parser.py",
+        SRC / "app/surfaces/cli/commands/ops.py",
+        ROOT / "Makefile",
+        ROOT / "tests/architecture/test_token_radar_sql_surface_inventory_contract.py",
+    ]
+    offenders = [
+        f"{path.relative_to(ROOT)} contains {token}"
+        for path in scanned_paths
+        for token in forbidden_runtime_tokens
+        if token in path.read_text(encoding="utf-8")
+    ]
+
+    assert offenders == []

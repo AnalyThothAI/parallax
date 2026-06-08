@@ -140,16 +140,14 @@ def _policy(*, timeout_seconds: float = 10, failure_threshold: int = 5) -> Agent
     )
 
 
-def _pulse_policy() -> AgentRuntimePolicy:
+def _parent_child_policy() -> AgentRuntimePolicy:
     return AgentRuntimePolicy(
         defaults=AgentRuntimeDefaultsPolicy(model="local-json-object-model"),
         global_max_concurrency=2,
         global_rpm_limit=1000,
         lanes={
-            "pulse.pipeline": AgentLanePolicy(max_concurrency=2, timeout_seconds=10),
-            "pulse.signal_analyst": AgentLanePolicy(max_concurrency=1, timeout_seconds=10),
-            "pulse.bear_case": AgentLanePolicy(max_concurrency=1, timeout_seconds=10),
-            "pulse.risk_portfolio_judge": AgentLanePolicy(max_concurrency=1, timeout_seconds=10),
+            "test.parent": AgentLanePolicy(max_concurrency=2, timeout_seconds=10),
+            "test.child": AgentLanePolicy(max_concurrency=1, timeout_seconds=10),
         },
     )
 
@@ -298,17 +296,17 @@ def test_execute_uses_caller_reservation_without_double_acquiring_lane_capacity(
 def test_parent_pipeline_reservation_reuses_global_slot_for_child_stage() -> None:
     async def scenario() -> None:
         llm_gateway = FakeLLMGateway()
-        gateway = _gateway(llm_gateway=llm_gateway, policy=_pulse_policy())
+        gateway = _gateway(llm_gateway=llm_gateway, policy=_parent_child_policy())
         parent = gateway.try_reserve(
-            "pulse.pipeline",
-            child_lanes=("pulse.signal_analyst", "pulse.bear_case", "pulse.risk_portfolio_judge"),
+            "test.parent",
+            child_lanes=("test.child",),
             scope="parent",
         )
 
         try:
             assert parent.acquired is True
             result = await gateway.execute(
-                _spec("pulse.signal_analyst"),
+                _spec("test.child"),
                 parent_reservation=parent,
             )
             assert result.audit.status == AgentExecutionStatus.DONE
@@ -318,8 +316,8 @@ def test_parent_pipeline_reservation_reuses_global_slot_for_child_stage() -> Non
 
         snapshot = gateway.status_snapshot()
         assert snapshot["global_in_flight"] == 0
-        assert snapshot["lanes"]["pulse.pipeline"]["in_flight"] == 0
-        assert snapshot["lanes"]["pulse.signal_analyst"]["in_flight"] == 0
+        assert snapshot["lanes"]["test.parent"]["in_flight"] == 0
+        assert snapshot["lanes"]["test.child"]["in_flight"] == 0
         assert len(llm_gateway.completions.calls) == 1
 
     asyncio.run(scenario())
@@ -327,16 +325,16 @@ def test_parent_pipeline_reservation_reuses_global_slot_for_child_stage() -> Non
 
 def test_parent_pipeline_reservation_reserves_child_lane_capacity_before_claim() -> None:
     async def scenario() -> None:
-        gateway = _gateway(policy=_pulse_policy())
+        gateway = _gateway(policy=_parent_child_policy())
         first = gateway.try_reserve(
-            "pulse.pipeline",
-            child_lanes=("pulse.signal_analyst",),
+            "test.parent",
+            child_lanes=("test.child",),
             scope="parent",
         )
         try:
             second = gateway.try_reserve(
-                "pulse.pipeline",
-                child_lanes=("pulse.signal_analyst",),
+                "test.parent",
+                child_lanes=("test.child",),
                 scope="parent",
             )
 
@@ -345,15 +343,15 @@ def test_parent_pipeline_reservation_reserves_child_lane_capacity_before_claim()
             assert second.reason is AgentExecutionErrorClass.CAPACITY_DENIED
             snapshot = gateway.status_snapshot()
             assert snapshot["global_in_flight"] == 1
-            assert snapshot["lanes"]["pulse.pipeline"]["in_flight"] == 1
-            assert snapshot["lanes"]["pulse.signal_analyst"]["in_flight"] == 1
+            assert snapshot["lanes"]["test.parent"]["in_flight"] == 1
+            assert snapshot["lanes"]["test.child"]["in_flight"] == 1
         finally:
             await first.release()
 
         snapshot = gateway.status_snapshot()
         assert snapshot["global_in_flight"] == 0
-        assert snapshot["lanes"]["pulse.pipeline"]["in_flight"] == 0
-        assert snapshot["lanes"]["pulse.signal_analyst"]["in_flight"] == 0
+        assert snapshot["lanes"]["test.parent"]["in_flight"] == 0
+        assert snapshot["lanes"]["test.child"]["in_flight"] == 0
 
     asyncio.run(scenario())
 

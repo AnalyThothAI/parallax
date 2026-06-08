@@ -801,89 +801,6 @@ def test_insert_agent_run_and_finish_agent_run_store_audit_json(tmp_path) -> Non
     assert finished["decision_stage_count"] == 3
 
 
-def test_pulse_runs_terminal_run_for_fingerprint_returns_latest_matching_terminal_run(tmp_path) -> None:
-    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
-    fingerprint = {
-        "candidate_id": "candidate-fingerprint",
-        "trigger_signature": "trigger-a",
-        "timeline_signature": "timeline-a",
-        "evidence_packet_hash": "packet-a",
-        "runtime_hash": "runtime-a",
-        "stage_plan_hash": "stage-plan-a",
-        "route": "meme",
-    }
-    try:
-        migrate(conn)
-        repo = _repo_bundle(conn)
-        repo.jobs.enqueue_job(
-            job_id="job-fingerprint",
-            candidate_id="candidate-fingerprint",
-            candidate_type="token_target",
-            subject_key="asset-1",
-            target_type="Asset",
-            target_id="asset-1",
-            window="1h",
-            scope="all",
-            trigger_signature="trigger-a",
-            timeline_signature="timeline-a",
-            priority=10,
-            next_run_at_ms=1_000,
-            now_ms=900,
-        )
-        _insert_fingerprint_run(
-            repo,
-            run_id="run-too-old",
-            fingerprint=fingerprint,
-            status="done",
-            outcome="completed",
-            finished_at_ms=1_000,
-        )
-        _insert_fingerprint_run(
-            repo,
-            run_id="run-latest-terminal",
-            fingerprint=fingerprint,
-            status="done",
-            outcome="completed",
-            finished_at_ms=3_000,
-        )
-        _insert_fingerprint_run(
-            repo,
-            run_id="run-running-later",
-            fingerprint=fingerprint,
-            status="running",
-            outcome="running",
-            finished_at_ms=4_000,
-        )
-        _insert_fingerprint_run(
-            repo,
-            run_id="run-failed-later",
-            fingerprint=fingerprint,
-            status="failed",
-            outcome="invalid_schema",
-            finished_at_ms=5_000,
-        )
-        _insert_fingerprint_run(
-            repo,
-            run_id="run-different-fingerprint",
-            fingerprint={**fingerprint, "stage_plan_hash": "stage-plan-b"},
-            status="done",
-            outcome="completed",
-            finished_at_ms=6_000,
-        )
-
-        row = repo.runs.terminal_run_for_fingerprint(
-            candidate_id="candidate-fingerprint",
-            fingerprint_json=fingerprint,
-            since_ms=2_000,
-        )
-    finally:
-        conn.close()
-
-    assert row is not None
-    assert row["run_id"] == "run-latest-terminal"
-    assert row["request_json"]["cost_guard"]["fingerprint"] == fingerprint
-
-
 def test_agent_run_outcome_has_no_database_default_and_finish_requires_explicit_outcome(tmp_path) -> None:
     signature = inspect.signature(PulseRunsRepository.finish_agent_run)
     assert signature.parameters["outcome"].default is inspect.Parameter.empty
@@ -912,42 +829,6 @@ def test_agent_run_outcome_has_no_database_default_and_finish_requires_explicit_
             "run-missing-outcome",
             "done",
         )
-
-
-def _insert_fingerprint_run(
-    repo: SimpleNamespace,
-    *,
-    run_id: str,
-    fingerprint: dict[str, Any],
-    status: str,
-    outcome: str,
-    finished_at_ms: int,
-) -> dict[str, Any]:
-    return repo.runs.insert_agent_run(
-        run_id=run_id,
-        job_id="job-fingerprint",
-        candidate_id="candidate-fingerprint",
-        provider="litellm",
-        model="qwen3.6",
-        workflow_name="signal_lab_pulse",
-        agent_name="pulse_decision_pipeline",
-        artifact_version_hash="artifact-hash",
-        prompt_version="pulse-decision-v1",
-        schema_version="pulse_decision_v1",
-        runtime_version="pulse-decision-runtime-v1",
-        runtime_hash="sha256:runtime-fingerprint",
-        input_hash=f"input-{run_id}",
-        request_json={"cost_guard": {"fingerprint": fingerprint}},
-        response_json={"status": outcome} if status == "done" else None,
-        trace_metadata_json={},
-        usage_json={},
-        status=status,
-        outcome=outcome,
-        decision_route="meme",
-        decision_stage_count=0,
-        started_at_ms=max(0, finished_at_ms - 100),
-        finished_at_ms=finished_at_ms,
-    )
 
 
 def test_agent_runtime_version_round_trip(tmp_path) -> None:
@@ -1247,14 +1128,14 @@ def test_agent_run_steps_round_trip(tmp_path) -> None:
             started_at_ms=1_100,
         )
         step = repo.runs.insert_agent_run_step(
-            step_id="run-step:signal_analyst:0",
+            step_id="run-step:pulse_decision:0",
             run_id="run-step",
-            stage="signal_analyst",
+            stage="pulse_decision",
             route="meme",
             attempt_index=0,
             provider="litellm",
             model="gpt-5-mini",
-            prompt_version="meme-signal-analyst-v1",
+            prompt_version="pulse-decision-v1",
             schema_version="pulse_decision_v1",
             input_json={"factor_snapshot": {"schema_version": "token_factor_snapshot_v3_social_attention"}},
             prompt_text="Investigate meme token facts only.",
@@ -1272,7 +1153,7 @@ def test_agent_run_steps_round_trip(tmp_path) -> None:
     finally:
         conn.close()
 
-    assert step["step_id"] == "run-step:signal_analyst:0"
+    assert step["step_id"] == "run-step:pulse_decision:0"
     assert steps == [step]
     assert steps[0]["prompt_text"] == "Investigate meme token facts only."
     assert steps[0]["input_json"]["factor_snapshot"]["schema_version"] == "token_factor_snapshot_v3_social_attention"
@@ -1377,6 +1258,7 @@ def test_upsert_candidate_and_list_candidates_contract_filters_and_cursor(tmp_pa
         repo.candidates.upsert_candidate(
             **_candidate_payload(
                 "candidate-blocked",
+                symbol="BONK",
                 pulse_status="blocked_low_information",
                 verdict="blocked_low_information",
                 score_band="blocked",
@@ -1489,6 +1371,117 @@ def test_upsert_candidate_persists_factor_snapshot_gate_and_decision(tmp_path) -
     }
 
 
+def test_upsert_candidate_skips_serving_update_when_only_runtime_metadata_changes(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repos = _repo_bundle(conn)
+        repo = repos.candidates
+        repos.jobs.enqueue_job(
+            job_id="job-stable-projection",
+            candidate_id="candidate-stable-projection",
+            candidate_type="token_target",
+            subject_key="toly",
+            window="1h",
+            scope="global",
+            trigger_signature="trigger:candidate-stable-projection",
+            timeline_signature="timeline:candidate-stable-projection",
+            priority=10,
+            next_run_at_ms=1_000,
+            now_ms=900,
+        )
+        for run_id in ("run-original", "run-retry"):
+            repos.runs.insert_agent_run(
+                run_id=run_id,
+                job_id="job-stable-projection",
+                candidate_id="candidate-stable-projection",
+                provider="litellm",
+                model="gpt-5-mini",
+                workflow_name="signal_lab_pulse",
+                agent_name="pulse_agent",
+                artifact_version_hash="artifact-hash",
+                prompt_version="pulse-prompt-v1",
+                schema_version="pulse-schema-v1",
+                runtime_version="pulse-decision-runtime-v1",
+                runtime_hash="sha256:runtime-run",
+                input_hash=f"input-{run_id}",
+                status="done",
+                outcome="completed",
+                response_json={"status": "completed"},
+                started_at_ms=1_000,
+                finished_at_ms=1_100,
+            )
+        first_payload = _candidate_payload("candidate-stable-projection", updated_at_ms=3_000)
+        second_payload = {
+            **_candidate_payload("candidate-stable-projection", updated_at_ms=9_000),
+            "decision_stage_count": 1,
+        }
+
+        first = repo.upsert_candidate(**first_payload)
+        second = repo.upsert_candidate(**second_payload)
+        stored = conn.execute(
+            """
+            SELECT decision_stage_count, updated_at_ms
+              FROM pulse_candidates
+             WHERE candidate_id = %s
+            """,
+            ("candidate-stable-projection",),
+        ).fetchone()
+        agent_run_column = conn.execute(
+            """
+            SELECT column_name
+              FROM information_schema.columns
+             WHERE table_schema = 'public'
+               AND table_name = 'pulse_candidates'
+               AND column_name = 'agent_run_id'
+            """
+        ).fetchone()
+        latest_run = repos.runs.latest_agent_run_for_candidate("candidate-stable-projection")
+    finally:
+        conn.close()
+
+    assert "agent_run_id" not in first
+    assert "agent_run_id" not in second
+    assert second["decision_stage_count"] == 3
+    assert second["updated_at_ms"] == 3_000
+    assert dict(stored) == {"decision_stage_count": 3, "updated_at_ms": 3_000}
+    assert agent_run_column is None
+    assert latest_run is not None
+    assert latest_run["run_id"] == "run-retry"
+
+
+def test_upsert_candidate_uses_product_window_key_across_pulse_versions(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = _repo_bundle(conn).candidates
+        first = repo.upsert_candidate(**_candidate_payload("candidate-product-v1", updated_at_ms=3_000))
+        second_payload = {
+            **_candidate_payload("candidate-product-v2", updated_at_ms=9_000),
+            "pulse_version": "pulse-v2",
+        }
+        second = repo.upsert_candidate(**second_payload)
+        rows = conn.execute(
+            """
+            SELECT candidate_id, pulse_version, updated_at_ms
+              FROM pulse_candidates
+             WHERE candidate_type = 'token_target'
+               AND "window" = '1h'
+               AND scope = 'global'
+               AND target_type = 'asset'
+               AND target_id = 'asset:sol'
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert first["candidate_id"] == "candidate-product-v1"
+    assert second["candidate_id"] == "candidate-product-v2"
+    assert [dict(row) for row in rows] == [
+        {"candidate_id": "candidate-product-v2", "pulse_version": "pulse-v2", "updated_at_ms": 9_000}
+    ]
+
+
 def test_candidate_upsert_rejects_missing_decision_fields(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
@@ -1518,7 +1511,7 @@ def test_pulse_summary_reads_market_fresh_count_from_factor_snapshot_contract() 
     assert "market_context_json" not in conn.summary_sql
 
 
-def test_pulse_summary_counts_market_freshness_from_factor_snapshot(tmp_path) -> None:
+def test_pulse_summary_counts_market_freshness_from_evidence_packet_status(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -1535,8 +1528,10 @@ def test_pulse_summary_counts_market_freshness_from_factor_snapshot(tmp_path) ->
         repo.candidates.upsert_candidate(
             **_candidate_payload(
                 "candidate-stale-factor",
+                symbol="BONK",
+                subject_key="BONK",
                 factor_snapshot_json={
-                    "data_health": {"market": "partial"},
+                    "data_health": {"market": "ready"},
                 },
                 evidence_status="insufficient",
                 updated_at_ms=2_000,
@@ -1602,7 +1597,6 @@ def test_candidate_handle_filter_clause_checks_source_event_authors() -> None:
     assert "candidate.evidence_event_ids_json" in clause
     assert "jsonb_array_elements_text" in clause
     assert "events" in clause
-    assert "social_event_extractions" in clause
     assert params == ["traderpow", "traderpow"]
 
 
@@ -1687,6 +1681,8 @@ def test_get_health_counts_candidates_blocked_low_information_and_dead_jobs(tmp_
         repo.candidates.upsert_candidate(
             **_candidate_payload(
                 "candidate-low-info",
+                symbol="BONK",
+                subject_key="BONK",
                 pulse_status="blocked_low_information",
                 verdict="blocked_low_information",
                 score_band="blocked",
@@ -1768,6 +1764,65 @@ def test_playbook_snapshot_and_outcome_use_explicit_spec_fields(tmp_path) -> Non
     assert outcome["actual_return"] == 0.12
     assert outcome["confirmation_hit"] is True
     assert outcome["outcome_json"] == {"label": "worked"}
+
+
+def test_playbook_snapshot_skips_update_when_only_runtime_timestamps_change(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = _repo_bundle(conn)
+        repo.candidates.upsert_candidate(**_candidate_payload("candidate-playbook-stable", updated_at_ms=3_000))
+        first = repo.playbooks.upsert_playbook_snapshot(
+            playbook_id="playbook-stable",
+            candidate_id="candidate-playbook-stable",
+            target_type="cex_token",
+            target_id="binance:SOLUSDT",
+            horizon="6h",
+            decision_time_ms=3_100,
+            playbook_status="pending_confirmation",
+            side="long",
+            setup={"trigger": "social ignition"},
+            confirmation={"price": "breakout"},
+            invalidation={"social": "attention fades"},
+            risk={"max_loss": 0.05},
+            entry_market={"price": 145.2},
+            playbook_version="playbook-v1",
+            outcome_status="pending",
+            created_at_ms=3_100,
+        )
+        second = repo.playbooks.upsert_playbook_snapshot(
+            playbook_id="playbook-stable",
+            candidate_id="candidate-playbook-stable",
+            target_type="cex_token",
+            target_id="binance:SOLUSDT",
+            horizon="6h",
+            decision_time_ms=9_100,
+            playbook_status="pending_confirmation",
+            side="long",
+            setup={"trigger": "social ignition"},
+            confirmation={"price": "breakout"},
+            invalidation={"social": "attention fades"},
+            risk={"max_loss": 0.05},
+            entry_market={"price": 145.2},
+            playbook_version="playbook-v1",
+            outcome_status="pending",
+            created_at_ms=9_100,
+        )
+        stored = conn.execute(
+            """
+            SELECT decision_time_ms, created_at_ms
+            FROM pulse_playbook_snapshots
+            WHERE playbook_id = 'playbook-stable'
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert first["decision_time_ms"] == 3_100
+    assert second["decision_time_ms"] == 3_100
+    assert second["created_at_ms"] == 3_100
+    assert stored["decision_time_ms"] == 3_100
+    assert stored["created_at_ms"] == 3_100
 
 
 def test_repository_session_exposes_focused_pulse_repositories(tmp_path) -> None:

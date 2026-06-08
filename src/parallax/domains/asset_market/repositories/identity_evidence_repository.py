@@ -184,16 +184,16 @@ class IdentityEvidenceRepository:
             evidence_rows=self.list_identity_evidence(asset_id),
             now_ms=now_ms,
         )
-        self._upsert_current_identity(current)
+        changed = self._upsert_current_identity(current)
         if commit:
             self.conn.commit()
-        return current
+        return {**current, "rows_written": int(changed)}
 
     def current_identity(self, asset_id: str) -> dict[str, Any] | None:
         return self._row_by_id("asset_identity_current", "asset_id", asset_id)
 
-    def _upsert_current_identity(self, current: dict[str, Any]) -> None:
-        self.conn.execute(
+    def _upsert_current_identity(self, current: dict[str, Any]) -> bool:
+        returned = self.conn.execute(
             """
             INSERT INTO asset_identity_current(
               asset_id, canonical_symbol, canonical_name, decimals, identity_confidence,
@@ -210,6 +210,15 @@ class IdentityEvidenceRepository:
               conflict_count = excluded.conflict_count,
               verified_at_ms = excluded.verified_at_ms,
               updated_at_ms = excluded.updated_at_ms
+            WHERE asset_identity_current.canonical_symbol IS DISTINCT FROM excluded.canonical_symbol
+               OR asset_identity_current.canonical_name IS DISTINCT FROM excluded.canonical_name
+               OR asset_identity_current.decimals IS DISTINCT FROM excluded.decimals
+               OR asset_identity_current.identity_confidence IS DISTINCT FROM excluded.identity_confidence
+               OR asset_identity_current.selected_evidence_id IS DISTINCT FROM excluded.selected_evidence_id
+               OR asset_identity_current.selection_reason_codes_json
+                  IS DISTINCT FROM excluded.selection_reason_codes_json
+               OR asset_identity_current.conflict_count IS DISTINCT FROM excluded.conflict_count
+            RETURNING true AS changed
             """,
             (
                 current["asset_id"],
@@ -224,6 +233,9 @@ class IdentityEvidenceRepository:
                 current["updated_at_ms"],
             ),
         )
+        fetchone = getattr(returned, "fetchone", None)
+        row = fetchone() if fetchone is not None else None
+        return row is not None and bool(row.get("changed", True))
 
     def _row_by_id(self, table: str, key: str, value: str) -> dict[str, Any] | None:
         row = self.conn.execute(f"SELECT * FROM {table} WHERE {key} = %s", (value,)).fetchone()

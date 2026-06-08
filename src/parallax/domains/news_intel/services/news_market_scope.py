@@ -84,12 +84,10 @@ def classify_news_market_scope(
         "content_class": _text(item.get("content_class")),
         "crypto_evidence": [],
         "scope_evidence": {},
-        "provider_evidence": [],
     }
     scopes: set[NewsMarketScopeName] = set()
     text = _item_text(item)
 
-    _add_provider_evidence(item=item, basis=basis)
     _add_token_scopes(scopes=scopes, basis=basis, token_mentions=token_mentions)
     _add_fact_scopes(scopes=scopes, basis=basis, fact_candidates=fact_candidates)
     _add_item_text_scopes(scopes=scopes, basis=basis, item=item, text=text)
@@ -107,19 +105,6 @@ def classify_news_market_scope(
         reason=_reason(primary=primary, basis=basis),
         basis=_finalize_basis(basis),
     )
-
-
-def _add_provider_evidence(*, item: Mapping[str, Any], basis: dict[str, Any]) -> None:
-    provider_signal = _json_object(item.get("provider_signal_json"))
-    provider_score = _optional_int(provider_signal.get("score"))
-    if provider_score is not None:
-        basis["provider_evidence"].append(f"provider_score:{provider_score}")
-    for impact in _json_list(item.get("provider_token_impacts_json")):
-        if not isinstance(impact, Mapping):
-            continue
-        symbol = _text(impact.get("symbol")).upper()
-        if symbol:
-            basis["provider_evidence"].append(f"provider_impact:{symbol}")
 
 
 def _add_token_scopes(
@@ -267,7 +252,6 @@ def _reason(*, primary: NewsMarketScopeName, basis: Mapping[str, Any]) -> str:
 def _finalize_basis(basis: dict[str, Any]) -> dict[str, Any]:
     finalized = dict(basis)
     finalized["crypto_evidence"] = _dedupe([str(value) for value in basis.get("crypto_evidence") or []])
-    finalized["provider_evidence"] = _dedupe([str(value) for value in basis.get("provider_evidence") or []])
     scope_evidence = basis.get("scope_evidence")
     finalized["scope_evidence"] = {
         str(scope): _dedupe([str(value) for value in evidence])

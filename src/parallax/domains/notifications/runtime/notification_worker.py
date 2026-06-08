@@ -5,7 +5,6 @@ import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
-from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
 from parallax.app.runtime.worker_base import WorkerBase
@@ -118,29 +117,7 @@ class NotificationWorker(WorkerBase):
 
     @staticmethod
     def _insert_candidate_with_repository(repository: NotificationRepository, candidate: NotificationCandidate) -> Any:
-        insert_with_outcome = getattr(repository, "insert_notification_with_outcome", None)
-        if insert_with_outcome is not None:
-            return insert_with_outcome(
-                dedup_key=candidate.dedup_key,
-                rule_id=candidate.rule_id,
-                severity=candidate.severity,
-                title=candidate.title,
-                body=candidate.body,
-                entity_type=candidate.entity_type,
-                entity_key=candidate.entity_key,
-                author_handle=candidate.author_handle,
-                symbol=candidate.symbol,
-                chain=candidate.chain,
-                address=candidate.address,
-                event_id=candidate.event_id,
-                source_table=candidate.source_table,
-                source_id=candidate.source_id,
-                occurrence_at_ms=candidate.occurrence_at_ms,
-                payload=candidate.payload,
-                channels=candidate.channels,
-                commit=False,
-            )
-        result: dict[str, Any] | None = repository.insert_notification(
+        return repository.insert_notification_with_outcome(
             dedup_key=candidate.dedup_key,
             rule_id=candidate.rule_id,
             severity=candidate.severity,
@@ -160,7 +137,6 @@ class NotificationWorker(WorkerBase):
             channels=candidate.channels,
             commit=False,
         )
-        return SimpleNamespace(row=result, created=result is not None, aggregated=False)
 
     def _enqueue_external_deliveries_with_repository(
         self,

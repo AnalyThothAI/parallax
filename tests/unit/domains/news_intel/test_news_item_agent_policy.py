@@ -16,21 +16,15 @@ def _item(**overrides):
     return item
 
 
-def test_news_item_agent_brief_priority_keeps_higher_provider_scores_first() -> None:
+def test_news_item_agent_brief_priority_ignores_provider_scores() -> None:
     assert news_item_agent_brief_priority(
         item=_item(provider_signal_json={"source": "provider", "score": 95}),
-    ) < news_item_agent_brief_priority(
+    ) == news_item_agent_brief_priority(
         item=_item(provider_signal_json={"source": "provider", "score": 80}),
     )
 
 
-def test_news_item_agent_brief_priority_does_not_penalize_low_scores_beyond_sort_order() -> None:
-    assert (
-        news_item_agent_brief_priority(
-            item=_item(provider_signal_json={"source": "provider", "score": 79}),
-        )
-        == news_item_agent_brief_priority(
-            item=_item(provider_signal_json={"source": "provider", "score": 80}),
-        )
-        + 1
-    )
+def test_news_item_agent_brief_priority_ignores_provider_ready_status() -> None:
+    assert news_item_agent_brief_priority(
+        item=_item(provider_signal_json={"source": "provider", "status": "ready"}),
+    ) == news_item_agent_brief_priority(item=_item(provider_signal_json={}))

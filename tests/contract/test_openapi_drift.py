@@ -111,7 +111,6 @@ def test_signal_pulse_item_schema_matches_runtime_payload_keys() -> None:
         "decision",
         "gate",
         "fact_card",
-        "agent_run_id",
         "pulse_version",
         "gate_version",
         "prompt_version",
@@ -119,9 +118,10 @@ def test_signal_pulse_item_schema_matches_runtime_payload_keys() -> None:
         "created_at_ms",
         "updated_at_ms",
         "playbooks",
-        "stages",
     }
     assert expected <= set(props)
+    assert "agent_run_id" not in props
+    assert "stages" not in props
     assert "status" not in props
     assert "target" not in props
 
@@ -145,37 +145,39 @@ def test_signal_pulse_item_schema_matches_runtime_payload_keys() -> None:
 
 
 @pytest.mark.contract
-def test_signal_pulse_stages_schema_exposes_only_evidence_first_stage_fields() -> None:
-    """Signal Pulse public stages expose only research-committee stage fields."""
+def test_signal_pulse_public_schema_does_not_expose_run_step_audit() -> None:
+    """Signal Pulse public schema must not expose agent run-step audit payloads."""
     from parallax.app.runtime.app import create_app
     from parallax.platform.config.settings import Settings
 
     settings = Settings(ws_token="schema-gen-placeholder")
     app = create_app(settings=settings, start_collector=False)
     schema = app.openapi()
-    props = schema["components"]["schemas"]["SignalPulseStages"]["properties"]
 
-    assert set(props) == {
-        "evidence_pack",
-        "evidence_completeness_gate",
-        "signal_analyst",
-        "bear_case",
-        "claim_verifier",
-        "risk_portfolio_judge",
-        "recommendation_clipper",
-        "deterministic_eval",
-        "write_gate",
-    }
-    assert schema["components"]["schemas"]["SignalPulseStages"]["additionalProperties"] is False
+    assert "SignalPulseStages" not in schema["components"]["schemas"]
+    assert "SignalPulseStagePayload" not in schema["components"]["schemas"]
 
 
 @pytest.mark.contract
-def test_signal_pulse_stages_openapi_type_has_no_index_signature() -> None:
-    """Generated OpenAPI TS must not allow arbitrary stage keys on SignalPulseStages."""
+def test_signal_pulse_openapi_type_has_no_run_step_audit_surface() -> None:
+    """Generated OpenAPI TS must not expose Signal Pulse run-step audit payloads."""
     text = OPENAPI_TS_PATH.read_text(encoding="utf-8")
-    section = text.split("/** SignalPulseStages */", 1)[1].split("/** SourceEventDetail */", 1)[0]
 
-    assert "[key: string]" not in section
+    assert "SignalPulseStages" not in text
+    assert "SignalPulseStagePayload" not in text
+    signal_item_section = text.split("/** SignalPulseItem */", 1)[1].split("/** SourceEventDetail */", 1)[0]
+    assert "agent_run_id" not in signal_item_section
+    assert "stages" not in signal_item_section
+
+
+@pytest.mark.contract
+def test_news_signal_envelope_openapi_type_has_no_top_level_index_signature() -> None:
+    """Generated OpenAPI TS must not allow flat compatibility fields on NewsSignalEnvelope."""
+    text = OPENAPI_TS_PATH.read_text(encoding="utf-8")
+    section = text.split("/** NewsSignalEnvelope */", 1)[1].split("/** NewsSignalSummary */", 1)[0]
+
+    assert "\n            [key: string]" not in section
+    assert "provider_signal" not in section
 
 
 @pytest.mark.contract

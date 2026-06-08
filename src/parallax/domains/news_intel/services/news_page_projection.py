@@ -38,12 +38,7 @@ def build_news_page_row(
     agent_representative_news_item_id = str(
         agent_admission.get("representative_news_item_id") or representative_news_item_id
     )
-    provider_signal = _json_object(item.get("provider_signal_json"))
-    token_impacts = _provider_token_impacts(item.get("provider_token_impacts_json"))
-    impacts_by_symbol = {
-        str(impact.get("symbol") or "").upper(): impact for impact in token_impacts if str(impact.get("symbol") or "")
-    }
-    token_lanes = [_merge_provider_impact(_token_lane(row), impacts_by_symbol) for row in token_mentions]
+    token_lanes = [_token_lane(row) for row in token_mentions]
     fact_lanes = [_fact_lane(row) for row in fact_candidates]
     source_payload = _source_payload(item)
     agent_payload = _agent_signal_payload(
@@ -71,12 +66,11 @@ def build_news_page_row(
         "token_lanes": token_lanes,
         "fact_lanes": fact_lanes,
         "signal": _page_signal(
-            provider_signal=provider_signal,
             agent_signal=agent_payload,
             agent_admission_status=agent_admission_status,
             market_scope=market_scope,
         ),
-        "token_impacts": token_impacts,
+        "token_impacts": [],
         "content_class": item.get("content_class"),
         "content_tags": content_tags,
         "content_classification": content_classification,
@@ -112,47 +106,6 @@ def _token_lane(row: dict[str, Any]) -> dict[str, Any]:
         "reason_codes": _json_list(row.get("reason_codes_json")),
         "candidate_targets": _json_list(row.get("candidate_targets_json")),
     }
-
-
-def _provider_token_impacts(value: Any) -> list[dict[str, Any]]:
-    impacts: list[dict[str, Any]] = []
-    for impact in _json_list(value):
-        if not isinstance(impact, Mapping):
-            continue
-        symbol = str(impact.get("symbol") or "").strip().upper()
-        if not symbol:
-            continue
-        impacts.append(
-            _compact_mapping(
-                {
-                    "symbol": symbol,
-                    "market_type": impact.get("market_type"),
-                    "score": _optional_int_or_none(impact.get("score")),
-                    "signal": impact.get("signal"),
-                    "grade": impact.get("grade"),
-                }
-            )
-        )
-    return impacts
-
-
-def _merge_provider_impact(
-    lane: dict[str, Any],
-    impacts_by_symbol: Mapping[str, Mapping[str, Any]],
-) -> dict[str, Any]:
-    symbol = str(lane.get("symbol") or "").upper()
-    impact = impacts_by_symbol.get(symbol)
-    if not impact:
-        return lane
-    return _compact_mapping(
-        {
-            **lane,
-            "provider_signal": impact.get("signal"),
-            "provider_score": _optional_int_or_none(impact.get("score")),
-            "provider_grade": impact.get("grade"),
-            "market_type": impact.get("market_type"),
-        }
-    )
 
 
 def _token_lane_name(status: str) -> str:
@@ -312,12 +265,6 @@ def _compact_agent_brief(agent_brief: Mapping[str, Any] | None) -> dict[str, Any
             "bear_strength": bear_view.get("strength"),
             "data_gap_count": len(_json_list(brief_json.get("data_gaps"))),
             "computed_at_ms": _optional_int(agent_brief.get("computed_at_ms")),
-            "agent_run_id": agent_brief.get("agent_run_id"),
-            "schema_version": agent_brief.get("schema_version") or brief_json.get("schema_version"),
-            "prompt_version": agent_brief.get("prompt_version") or brief_json.get("prompt_version"),
-            "validator_version": agent_brief.get("validator_version") or brief_json.get("validator_version"),
-            "artifact_version_hash": agent_brief.get("artifact_version_hash"),
-            "input_hash": agent_brief.get("input_hash"),
             "bull_view": bull_view or None,
             "bear_view": bear_view or None,
             "market_impacts": _agent_market_impacts(brief_json.get("market_impacts")),
@@ -351,13 +298,10 @@ def _agent_market_impacts(value: Any) -> list[dict[str, Any]]:
 
 def _page_signal(
     *,
-    provider_signal: Mapping[str, Any],
     agent_signal: Mapping[str, Any],
     agent_admission_status: str,
     market_scope: Mapping[str, Any],
 ) -> dict[str, Any]:
-    provider_payload = _provider_signal_payload(provider_signal)
-    provider_score = _optional_int_or_none(provider_payload.get("score")) if provider_payload else None
     if str(agent_signal.get("status") or "") == "ready":
         direction = str(agent_signal.get("direction") or "neutral")
         return _signal_with_independent_state(
@@ -366,21 +310,10 @@ def _page_signal(
                 "status": "ready",
                 "direction": direction,
                 "label_zh": _direction_label(direction),
-                "score": provider_score,
-                "grade": provider_payload.get("grade") if provider_payload else None,
                 "title_zh": agent_signal.get("title_zh"),
                 "summary_zh": agent_signal.get("summary_zh"),
                 "method": "news_item_brief",
             },
-            provider_signal=provider_payload,
-            agent_signal=agent_signal,
-            agent_admission_status=agent_admission_status,
-            market_scope=market_scope,
-        )
-    if provider_payload:
-        return _signal_with_independent_state(
-            provider_payload,
-            provider_signal=provider_payload,
             agent_signal=agent_signal,
             agent_admission_status=agent_admission_status,
             market_scope=market_scope,
@@ -393,60 +326,32 @@ def _page_signal(
             "label_zh": "中性",
             "method": "pending",
         },
-        provider_signal=None,
         agent_signal=agent_signal,
         agent_admission_status=agent_admission_status,
         market_scope=market_scope,
     )
 
 
-def _provider_signal_payload(provider_signal: Mapping[str, Any]) -> dict[str, Any] | None:
-    if provider_signal.get("source") != "provider":
-        return None
-    return _compact_mapping(
-        {
-            "source": "provider",
-            "provider": provider_signal.get("provider") or "opennews",
-            "status": provider_signal.get("status") or "partial",
-            "direction": provider_signal.get("direction") or "neutral",
-            "label_zh": provider_signal.get("label_zh")
-            or _direction_label(str(provider_signal.get("direction") or "neutral")),
-            "signal": provider_signal.get("signal"),
-            "score": _optional_int_or_none(provider_signal.get("score")),
-            "grade": provider_signal.get("grade"),
-            "summary_zh": provider_signal.get("summary_zh"),
-            "summary_en": provider_signal.get("summary_en"),
-            "method": provider_signal.get("method") or "opennews.provider_signal",
-        }
-    )
-
-
 def _signal_with_independent_state(
     signal: Mapping[str, Any],
     *,
-    provider_signal: Mapping[str, Any] | None,
     agent_signal: Mapping[str, Any],
     agent_admission_status: str,
     market_scope: Mapping[str, Any],
 ) -> dict[str, Any]:
     agent_status = str(agent_signal.get("status") or "pending")
-    provider_score = _optional_int_or_none(provider_signal.get("score")) if provider_signal else None
     in_app_eligible = _alert_eligible(
         agent_signal=agent_signal,
-        provider_score=provider_score,
         agent_admission_status=agent_admission_status,
     )
     external_push_ready, external_push_block_reason = _external_push_readiness(agent_signal)
     return {
         "display_signal": _compact_mapping(signal),
-        "provider_signal": dict(provider_signal) if provider_signal else None,
         "agent_signal": dict(agent_signal),
         "alert_eligibility": _compact_mapping(
             {
                 "agent_status": agent_status,
                 "decision_class": agent_signal.get("decision_class"),
-                "provider_status": provider_signal.get("status") if provider_signal else None,
-                "provider_score": provider_score,
                 "market_scope": dict(market_scope) if market_scope else None,
                 "in_app_eligible": in_app_eligible,
                 "external_push_ready": external_push_ready,
@@ -460,12 +365,9 @@ def _signal_with_independent_state(
 def _alert_eligible(
     *,
     agent_signal: Mapping[str, Any],
-    provider_score: int | None,
     agent_admission_status: str,
 ) -> bool:
     if agent_admission_status not in _AGENT_NOTIFICATION_ADMISSION_STATUSES:
-        return False
-    if provider_score is None or provider_score < 85:
         return False
     if str(agent_signal.get("status") or "") != "ready":
         return False
@@ -528,15 +430,6 @@ def _optional_int(value: Any) -> int | None:
     if value is None:
         return None
     return int(value)
-
-
-def _optional_int_or_none(value: Any) -> int | None:
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
 
 
 def _stable_id(*parts: str) -> str:

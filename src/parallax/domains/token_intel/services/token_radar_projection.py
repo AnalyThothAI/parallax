@@ -96,6 +96,7 @@ class TokenRadarProjection:
         scopes: tuple[str, ...] = (),
         venues: tuple[str, ...] = (),
         work_items: tuple[tuple[str, ...], ...] | None = None,
+        score_work_items: tuple[tuple[str, ...], ...] | None = None,
         now_ms: int | None = None,
         limit: int = 100,
         rank_limit: int = 100,
@@ -104,7 +105,12 @@ class TokenRadarProjection:
         claimed_source_events: Sequence[Mapping[str, Any]] | None = None,
     ) -> dict[str, Any]:
         computed_at_ms = int(now_ms or time.time() * 1000)
-        source_work_items = _resolve_work_items(windows=windows, scopes=scopes, venues=venues, work_items=work_items)
+        source_work_items = _resolve_work_items(
+            windows=windows,
+            scopes=scopes,
+            venues=venues,
+            work_items=score_work_items if score_work_items is not None else work_items,
+        )
         due_work_items = _resolve_due_work_items(work_items=work_items)
         target_claims = (
             [dict(claim) for claim in claimed_targets]

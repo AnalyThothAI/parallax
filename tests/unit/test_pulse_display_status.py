@@ -3,11 +3,8 @@ from __future__ import annotations
 import pytest
 
 from parallax.domains.pulse_lab.types import (
-    BearCaseMemo,
-    EvidenceClaim,
     FinalDecision,
     PulseEvidencePacket,
-    SignalAnalystMemo,
     display_status_from_decision,
     is_public_display_status,
     run_outcome_from_failure,
@@ -58,24 +55,7 @@ def test_evidence_packet_hash_is_stable_across_dict_key_order() -> None:
     assert packet_a.evidence_packet_hash.startswith("sha256:")
 
 
-def test_research_committee_memos_and_final_decision_serialize_round_trip() -> None:
-    signal_memo = SignalAnalystMemo(
-        bull_claims=(EvidenceClaim(claim="价格和社交流量同时活跃", evidence_refs=("event:event-1",), stance="bull"),),
-        what_changed_zh="证据足够形成观察，但仍需关注流动性持续性。",
-        allowed_evidence_ref_ids=("event:event-1", "metric:market:price_usd"),
-    )
-    restored_signal = SignalAnalystMemo.model_validate_json(signal_memo.model_dump_json())
-    assert restored_signal == signal_memo
-
-    bear_memo = BearCaseMemo(
-        risk_claims=(),
-        confidence_ceiling=0.7,
-        missing_fact_impacts=(),
-        allowed_evidence_ref_ids=("event:event-1",),
-    )
-    restored_bear = BearCaseMemo.model_validate_json(bear_memo.model_dump_json())
-    assert restored_bear == bear_memo
-
+def test_pulse_final_decision_serializes_round_trip() -> None:
     decision = _final_decision(supporting_evidence_refs=("event:event-1",))
     assert FinalDecision.model_validate_json(decision.model_dump_json()) == decision
 

@@ -30,28 +30,21 @@ class FakeTokenRadar:
 
 
 class FakeRepos:
-    def __init__(self, publication_state):
+    def __init__(self, publication_state, *, dirty_claims=None, source_claims=None):
         self.token_radar = FakeTokenRadar(publication_state)
-        self.token_radar_dirty_targets = FakeDirtyTargets()
-        self.token_radar_source_dirty_events = FakeSourceDirtyEvents()
+        self.token_radar_dirty_targets = FakeDirtyTargets(dirty_claims)
+        self.token_radar_source_dirty_events = FakeSourceDirtyEvents(source_claims)
 
 
 class FakeDirtyTargets:
-    def __init__(self):
+    def __init__(self, claims=None):
         self.catch_up_calls: list[dict[str, object]] = []
         self.claim_due_calls: list[dict[str, object]] = []
+        self.claims = list(claims) if claims is not None else [_default_dirty_claim()]
 
     def claim_due(self, **kwargs):
         self.claim_due_calls.append(kwargs)
-        return [
-            {
-                "target_type_key": "Asset",
-                "identity_id": "asset-1",
-                "payload_hash": "claim-hash",
-                "lease_owner": kwargs["lease_owner"],
-                "attempt_count": 1,
-            }
-        ]
+        return [dict(claim, lease_owner=kwargs["lease_owner"]) for claim in self.claims]
 
     def enqueue_recent_resolved_targets(self, **kwargs):
         self.catch_up_calls.append(kwargs)
@@ -59,17 +52,18 @@ class FakeDirtyTargets:
 
 
 class FakeSourceDirtyEvents:
-    def __init__(self):
+    def __init__(self, claims=None):
         self.claim_due_calls: list[dict[str, object]] = []
+        self.claims = list(claims) if claims is not None else []
 
     def claim_due(self, **kwargs):
         self.claim_due_calls.append(kwargs)
-        return []
+        return [dict(claim, lease_owner=kwargs["lease_owner"]) for claim in self.claims]
 
 
 class FakeSession:
-    def __init__(self, publication_state):
-        self.repos = FakeRepos(publication_state)
+    def __init__(self, publication_state, *, dirty_claims=None, source_claims=None):
+        self.repos = FakeRepos(publication_state, dirty_claims=dirty_claims, source_claims=source_claims)
 
     def __enter__(self):
         return self.repos
@@ -79,15 +73,21 @@ class FakeSession:
 
 
 class FakeDB:
-    def __init__(self, publication_state):
+    def __init__(self, publication_state, *, dirty_claims=None, source_claims=None):
         self.publication_state = publication_state
+        self.dirty_claims = dirty_claims
+        self.source_claims = source_claims
         self.worker_sessions: list[dict[str, object]] = []
         self.sessions: list[FakeSession] = []
 
     @contextmanager
     def worker_session(self, name, statement_timeout_seconds=None):
         self.worker_sessions.append({"name": name, "statement_timeout_seconds": statement_timeout_seconds})
-        session = FakeSession(self.publication_state)
+        session = FakeSession(
+            self.publication_state,
+            dirty_claims=self.dirty_claims,
+            source_claims=self.source_claims,
+        )
         self.sessions.append(session)
         yield session.repos
 
@@ -98,6 +98,15 @@ class FakeDB:
 class FakeAdvisoryLock:
     def release(self):
         return None
+
+
+def _default_dirty_claim() -> dict[str, object]:
+    return {
+        "target_type_key": "Asset",
+        "identity_id": "asset-1",
+        "payload_hash": "claim-hash",
+        "attempt_count": 1,
+    }
 
 
 def test_projection_worker_calls_dirty_incremental_projection_not_window_rebuild(monkeypatch):
@@ -137,7 +146,7 @@ def test_projection_worker_calls_dirty_incremental_projection_not_window_rebuild
 
     assert calls == [
         {
-            "windows": ("5m", "1h"),
+            "windows": ("5m", "1h", "4h"),
             "scopes": ("all", "matched"),
             "work_items": (
                 ("5m", "all"),
@@ -158,6 +167,14 @@ def test_projection_worker_calls_dirty_incremental_projection_not_window_rebuild
                 },
             ),
             "claimed_source_events": (),
+            "score_work_items": (
+                ("5m", "all"),
+                ("5m", "matched"),
+                ("1h", "all"),
+                ("1h", "matched"),
+                ("4h", "all"),
+                ("4h", "matched"),
+            ),
         }
     ]
     assert result["rows_written"] == 2
@@ -217,7 +234,7 @@ def test_token_radar_wake_does_not_bypass_hot_interval_gate(monkeypatch):
     worker = module.TokenRadarProjectionWorker(
         name="token_radar_projection",
         settings=_settings(windows=("5m",), scopes=("all",), hot_windows=("5m",), interval_seconds=10.0),
-        db=FakeDB(publication_state),
+        db=FakeDB(publication_state, dirty_claims=[]),
         telemetry=object(),
     )
 
@@ -228,6 +245,61 @@ def test_token_radar_wake_does_not_bypass_hot_interval_gate(monkeypatch):
     assert result.failed == 0
     assert result.notes["status"] == "idle"
     assert result.notes["reason"] == "no_due_work_items"
+
+
+def test_token_radar_worker_claims_dirty_targets_even_when_publication_cadence_is_fresh(monkeypatch):
+    calls: list[dict[str, object]] = []
+    now_ms = 1_777_800_001_000
+    publication_state = {
+        ("5m", "all"): _ready_state(now_ms - 1_000),
+        ("1h", "all"): _ready_state(now_ms - 1_000),
+    }
+
+    class FakeProjection:
+        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
+            self.repos = repos
+
+        def rebuild_dirty_targets(self, **kwargs):
+            calls.append(kwargs)
+            return {
+                "rows_written": 0,
+                "source_rows": 2,
+                "computed_at_ms": kwargs["now_ms"],
+                "status": "ready",
+                "claimed": 1,
+                "windows": {},
+            }
+
+    monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
+    db = FakeDB(publication_state)
+    worker = module.TokenRadarProjectionWorker(
+        name="token_radar_projection",
+        settings=_settings(
+            windows=("5m", "1h"),
+            scopes=("all",),
+            hot_windows=("5m",),
+            interval_seconds=10.0,
+            cold_interval_seconds=60.0,
+        ),
+        db=db,
+        telemetry=object(),
+    )
+
+    result = worker.rebuild_once(now_ms=now_ms)
+
+    assert result["status"] == "ready"
+    assert calls[0]["work_items"] == ()
+    assert calls[0]["score_work_items"] == (("5m", "all"), ("1h", "all"))
+    assert calls[0]["claimed_targets"] == (
+        {
+            "target_type_key": "Asset",
+            "identity_id": "asset-1",
+            "payload_hash": "claim-hash",
+            "lease_owner": "token_radar_projection",
+            "attempt_count": 1,
+        },
+    )
+    assert db.sessions[0].repos.token_radar_dirty_targets.claim_due_calls
 
 
 def test_token_radar_worker_runs_only_due_hot_items_after_interval(monkeypatch):
@@ -265,7 +337,7 @@ def test_token_radar_worker_runs_only_due_hot_items_after_interval(monkeypatch):
             interval_seconds=10.0,
             cold_interval_seconds=60.0,
         ),
-        db=FakeDB(publication_state),
+        db=FakeDB(publication_state, dirty_claims=[]),
         telemetry=object(),
     )
 
@@ -302,7 +374,7 @@ def test_token_radar_worker_idles_when_cold_grouped_window_is_fresh(monkeypatch)
             interval_seconds=10.0,
             cold_interval_seconds=60.0,
         ),
-        db=FakeDB(publication_state),
+        db=FakeDB(publication_state, dirty_claims=[]),
         telemetry=object(),
     )
 
@@ -348,7 +420,7 @@ def test_token_radar_worker_runs_due_cold_grouped_window_after_interval(monkeypa
             interval_seconds=10.0,
             cold_interval_seconds=60.0,
         ),
-        db=FakeDB(publication_state),
+        db=FakeDB(publication_state, dirty_claims=[]),
         telemetry=object(),
     )
 
@@ -382,7 +454,7 @@ def test_token_radar_failed_without_current_backs_off_recent_attempt(monkeypatch
     worker = module.TokenRadarProjectionWorker(
         name="token_radar_projection",
         settings=_settings(windows=("5m",), scopes=("all",), hot_windows=("5m",), interval_seconds=10.0),
-        db=FakeDB(publication_state),
+        db=FakeDB(publication_state, dirty_claims=[]),
         telemetry=object(),
     )
 
@@ -423,7 +495,7 @@ def test_token_radar_failed_with_previous_generation_uses_attempt_backoff(monkey
             interval_seconds=10.0,
             cold_interval_seconds=60.0,
         ),
-        db=FakeDB(publication_state),
+        db=FakeDB(publication_state, dirty_claims=[]),
         telemetry=object(),
     )
 
@@ -502,7 +574,7 @@ def test_token_radar_worker_limits_partial_cold_missing_to_one_background_item(m
             interval_seconds=10.0,
             cold_interval_seconds=60.0,
         ),
-        db=FakeDB(publication_state),
+        db=FakeDB(publication_state, dirty_claims=[]),
         telemetry=object(),
     )
 

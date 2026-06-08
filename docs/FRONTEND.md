@@ -53,14 +53,15 @@ Do not add new code under old `api/`, `store/`, or `components/` roots. Public f
   `timeline_scope=signal|all` for its own timeline state and does not consume
   `/api/recent` or WebSocket replay to reconstruct selected-handle counts,
   resolved targets, candidate mentions, or narrative clusters.
-- **News route.** `/news` is a provider-signal tape with filters, pagination,
-  source-backed signal fields, and links into `/news/items/:newsItemId`.
+- **News route.** `/news` is a canonical news-signal tape with filters,
+  pagination, source-backed signal fields, and links into
+  `/news/items/:newsItemId`.
   On `/news` and `/news/items/:newsItemId`, topbar search is route-local:
   submit navigates to `/news?q=<query>` and the page calls `/api/news` with
   `q`; it must not call `/api/search/inspect` or reuse token resolver state.
-  `/news/items/:newsItemId` is the item evidence page rendering provider
-  `aiRating`, token impacts, token identity, fact candidates, source metadata,
-  and persisted agent brief state directly from
+  `/news/items/:newsItemId` is the item evidence page rendering the canonical
+  `signal.display_signal`, token identity lanes, fact candidates, source
+  metadata, and persisted agent brief state directly from
   `/api/news/items/{news_item_id}`. The list route must not keep an inline
   selected inspector or recreate trading narrative from headline, summary, or
   fact-lane keyword heuristics. The detail route must show explicit gaps for

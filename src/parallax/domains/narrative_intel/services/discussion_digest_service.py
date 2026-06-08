@@ -9,9 +9,7 @@ from parallax.domains.narrative_intel._constants import (
     NARRATIVE_SCHEMA_VERSION,
 )
 from parallax.domains.narrative_intel.types.discussion_digest import (
-    DigestArgument,
     DiscussionDigestRequest,
-    NarrativeCluster,
     TokenDiscussionDigest,
 )
 
@@ -248,7 +246,7 @@ class DiscussionDigestService:
                 "computed_at_ms": int(now_ms),
             }
         )
-        _ensure_ready_public_claims(payload, context=context)
+        _normalize_ready_evidence_refs(payload)
         return TokenDiscussionDigest.model_validate(payload)
 
 
@@ -332,52 +330,25 @@ def _compact_allowed_refs(refs: list[Any], mentions: list[dict[str, Any]]) -> li
     return compact_refs
 
 
-def _ensure_ready_public_claims(payload: dict[str, Any], *, context: dict[str, Any]) -> None:
-    refs = _ready_refs(payload, context=context)
-    if not refs:
-        return
-    payload["evidence_refs"] = _dedupe_ref_payloads(list(payload.get("evidence_refs") or []) + refs)[:6]
-    if not payload.get("dominant_narratives"):
-        payload["dominant_narratives"] = [
-            NarrativeCluster(
-                cluster_key="realtime-discussion",
-                label_zh="实时讨论",
-                summary_zh=_fallback_summary(context),
-                confidence=0.45,
-                evidence_refs=refs[:2],
-            ).model_dump(mode="json")
-        ]
-    bull_candidate = payload.get("bull_view")
-    bear_candidate = payload.get("bear_view")
-    bull_view: dict[str, Any] = bull_candidate if isinstance(bull_candidate, dict) else {}
-    bear_view: dict[str, Any] = bear_candidate if isinstance(bear_candidate, dict) else {}
-    if not bull_view.get("evidence_refs") and not bear_view.get("evidence_refs"):
-        payload["bull_view"] = DigestArgument(
-            summary_zh=_fallback_summary(context),
-            strength="moderate",
-            evidence_refs=refs[:2],
-        ).model_dump(mode="json")
-    if not payload.get("headline_zh"):
-        payload["headline_zh"] = "实时讨论达到发布阈值"
+def _normalize_ready_evidence_refs(payload: dict[str, Any]) -> None:
+    refs: list[Any] = list(payload.get("evidence_refs") or [])
+    for cluster in list(payload.get("dominant_narratives") or []):
+        cluster_payload = _payload_dict(cluster)
+        refs.extend(list(cluster_payload.get("evidence_refs") or []))
+    for key in ("bull_view", "bear_view", "reflexivity_read"):
+        view_payload = _payload_dict(payload.get(key))
+        refs.extend(list(view_payload.get("evidence_refs") or []))
+    deduped = _dedupe_ref_payloads(refs)
+    if deduped:
+        payload["evidence_refs"] = deduped[:6]
 
 
-def _ready_refs(payload: dict[str, Any], *, context: dict[str, Any]) -> list[dict[str, Any]]:
-    refs = _dedupe_ref_payloads(list(payload.get("evidence_refs") or []))
-    if refs:
-        return refs
-    mentions = [
-        _compact_mention(row)
-        for row in list(context.get("mentions") or [])
-        if str(row.get("status") or "") == "labeled"
-    ]
-    allowed_refs = _compact_allowed_refs(list(context.get("allowed_refs") or []), mentions)
-    if allowed_refs:
-        return allowed_refs
-    for mention in mentions:
-        evidence_refs = mention.get("evidence_refs")
-        if isinstance(evidence_refs, list) and evidence_refs:
-            return _dedupe_ref_payloads(evidence_refs)
-    return []
+def _payload_dict(value: Any) -> dict[str, Any]:
+    if isinstance(value, BaseModel):
+        return value.model_dump(mode="json")
+    if isinstance(value, dict):
+        return value
+    return {}
 
 
 def _dedupe_ref_payloads(refs: list[Any]) -> list[dict[str, Any]]:
@@ -392,12 +363,6 @@ def _dedupe_ref_payloads(refs: list[Any]) -> list[dict[str, Any]]:
         seen.add(ref_id)
         result.append({key: value for key, value in ref.items() if value not in (None, "")})
     return result
-
-
-def _fallback_summary(context: dict[str, Any]) -> str:
-    labeled = int(context.get("labeled_event_count") or 0)
-    authors = int(context.get("independent_author_count") or 0)
-    return f"{labeled} 条已标注讨论来自 {authors} 个独立作者，达到实时叙事发布阈值。"
 
 
 def _clean_str(value: Any) -> str | None:

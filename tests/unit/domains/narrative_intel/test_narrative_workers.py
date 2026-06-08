@@ -186,10 +186,20 @@ def test_narrative_admission_worker_claims_target_and_recomputes_exact_source_se
         ]
         assert repo.upserted_admissions[0]["source_event_ids"] == ["event-1"]
         assert repo.upserted_admissions[0]["projection_computed_at_ms"] == 10_000
-        assert repo.upserted_admissions[0]["source_window_end_ms"] == 10_000
+        assert repo.upserted_admissions[0]["source_window_end_ms"] == 9_000
         assert repo.upserted_admissions[0]["source_max_received_at_ms"] == 9_000
         assert repo.upserted_admissions[0]["source_event_count"] == 1
         assert repo.upserted_admissions[0]["independent_author_count"] == 1
+        assert repo.source_set_calls == [
+            {
+                "target_type": "chain_token",
+                "target_id": "solana:So111",
+                "since_ms": 0,
+                "until_ms": 9_000,
+                "watched_only": True,
+                "limit": 100,
+            }
+        ]
         assert repo.enqueued_source_event_ids == ["event-1"]
         assert digest_dirty_targets.enqueued_targets == [
             {
@@ -1702,7 +1712,7 @@ def test_token_discussion_digest_worker_publishes_successful_refresh_as_ready():
     asyncio.run(scenario())
 
 
-def test_token_discussion_digest_worker_repairs_sparse_provider_digest_as_ready():
+def test_token_discussion_digest_worker_rejects_sparse_provider_digest():
     async def scenario():
         repo = FakeDigestRepository(
             context={
@@ -1762,13 +1772,22 @@ def test_token_discussion_digest_worker_repairs_sparse_provider_digest_as_ready(
 
         result = await worker.run_once(now_ms=10_000)
 
-        digest = repo.replaced_digests[0]
-        assert result.notes["ready"] == 1
-        assert result.failed == 0
-        assert digest["status"] == "ready"
-        assert digest["dominant_narratives"]
-        assert digest["bull_view"]["evidence_refs"]
-        assert digest["evidence_refs"]
+        assert result.notes["ready"] == 0
+        assert result.failed == 1
+        assert repo.replaced_digests == []
+        assert repo.recorded_runs[0]["stage"] == "discussion_digest"
+        assert repo.recorded_runs[0]["status"] == "failed"
+        assert repo.recorded_runs[0]["error"] == "publish_ready_digest_failed"
+        assert repo.recorded_runs[0]["trace_metadata_json"]["error_type"] == "ValidationError"
+        assert db.discussion_digest_dirty_targets.mark_error_calls == [
+            {
+                "claims": db.discussion_digest_dirty_targets.claimed,
+                "error": "publish_ready_digest_failed",
+                "now_ms": 10_000,
+                "retry_ms": 900_000,
+                "commit": True,
+            }
+        ]
 
     asyncio.run(scenario())
 
@@ -1969,6 +1988,7 @@ class FakeNarrativeRepository:
         self.recorded_run_commits = []
         self.completed_batches = []
         self.upserted_admissions = []
+        self.source_set_calls = []
         self.deleted_frontiers = []
         self.staled_admission_targets = []
         self.scanned_admission_ids = []
@@ -2010,6 +2030,16 @@ class FakeNarrativeRepository:
         return dict(self.target_contexts.get((target_type, target_id, window, scope), {}))
 
     def source_set_for_admission(self, *, target_type, target_id, since_ms, until_ms, watched_only, limit):
+        self.source_set_calls.append(
+            {
+                "target_type": target_type,
+                "target_id": target_id,
+                "since_ms": since_ms,
+                "until_ms": until_ms,
+                "watched_only": watched_only,
+                "limit": limit,
+            }
+        )
         rows = [
             row
             for row in self.source_rows[:limit]

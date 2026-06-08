@@ -193,7 +193,7 @@ def fake_wired_providers(
             discovery_chain_ids=(),
         ),
         pulse_lab=SimpleNamespace(
-            decision_provider=FakePulseProvider(model=settings.agent_runtime_model_for_lane("pulse.signal_analyst"))
+            decision_provider=FakePulseProvider(model=settings.agent_runtime_model_for_lane("pulse.decision"))
         ),
         narrative_intel=SimpleNamespace(narrative_provider=None),
         news_intel=news_intel or SimpleNamespace(feed_client=None, brief_provider=None),
@@ -579,7 +579,7 @@ def test_bootstrap_creates_pulse_worker_when_enabled_and_configured(monkeypatch,
             "api_key": "test-key",
         },
         workers={
-            "agent_runtime": {"lanes": {"pulse.signal_analyst": {"model": "gpt-pulse"}}},
+            "agent_runtime": {"lanes": {"pulse.decision": {"model": "gpt-pulse"}}},
             "pulse_candidate": {"batch_size": 7},
         },
         notifications={"enabled": False},

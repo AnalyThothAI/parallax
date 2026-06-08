@@ -34,33 +34,16 @@ class AssetFlowService:
         ).get((window, scope, venue))
         row_limit = max(0, int(limit)) * 2
         publication_status = str((publication_state or {}).get("latest_attempt_status") or "")
-        current_generation = str((publication_state or {}).get("current_generation_id") or "")
-        if current_generation:
-            rows = self.token_radar.current_rows_for_generation(
-                window=window,
-                scope=scope,
-                venue=venue,
-                generation_id=current_generation,
-                limit=row_limit,
-                projection_version=TOKEN_RADAR_PROJECTION_VERSION,
-            )
-        else:
-            rows = self.token_radar.latest_current_rows(
-                window=window,
-                scope=scope,
-                venue=venue,
-                limit=row_limit,
-                projection_version=TOKEN_RADAR_PROJECTION_VERSION,
-            )
-        row_generations = {str(row.get("generation_id") or "") for row in rows if row.get("generation_id")}
+        rows = self.token_radar.latest_current_rows(
+            window=window,
+            scope=scope,
+            venue=venue,
+            limit=row_limit,
+            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+        )
         state_row_count = int((publication_state or {}).get("current_row_count") or 0)
         state_source_rows = int((publication_state or {}).get("current_source_rows") or 0)
-        matches_current_generation = (
-            bool(current_generation)
-            and row_generations <= {current_generation}
-            and (bool(rows) or state_row_count == 0)
-        )
-        if publication_status == "ready" and matches_current_generation:
+        if publication_status == "ready" and (bool(rows) or state_row_count == 0):
             projection_status = "fresh"
             projection_reason = None
         elif rows:
@@ -72,7 +55,7 @@ class AssetFlowService:
             return _pending_projection_payload(publication_state, venue=venue)
         else:
             projection_status = "stale"
-            projection_reason = "projection_generation_mismatch"
+            projection_reason = "projection_rows_missing"
 
         row_computed_at_ms = max((int(row.get("computed_at_ms") or 0) for row in rows), default=0) or None
         published_at_ms = (publication_state or {}).get("current_published_at_ms")
@@ -108,8 +91,6 @@ class AssetFlowService:
                     default=0,
                 ),
                 "source_frontier_ms": (publication_state or {}).get("current_source_frontier_ms"),
-                "generation_id": current_generation or None,
-                "row_generation_ids": sorted(row_generations),
                 "computed_at_ms": computed_at_ms,
                 "error": (publication_state or {}).get("latest_attempt_error"),
                 "anchor_coverage": _anchor_coverage(returned_rows),
@@ -333,7 +314,6 @@ def _pending_projection_payload(publication_state: dict[str, Any] | None, *, ven
             "source_rows": int((publication_state or {}).get("current_source_rows") or 0),
             "source_max_received_at_ms": 0,
             "source_frontier_ms": (publication_state or {}).get("current_source_frontier_ms"),
-            "generation_id": (publication_state or {}).get("current_generation_id"),
             "computed_at_ms": (publication_state or {}).get("current_published_at_ms"),
             "error": (publication_state or {}).get("latest_attempt_error"),
             "anchor_coverage": {"status": projection_status, "ready": 0, "missing": 0, "total": 0},

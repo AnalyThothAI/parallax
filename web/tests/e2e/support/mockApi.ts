@@ -130,12 +130,12 @@ function newsRowsData() {
         source_domain: "example.com",
         summary: "Liquidity rotation is visible across crypto beta and rates-sensitive assets.",
         signal: newsProviderSignal(),
-        token_impacts: [newsProviderTokenImpact()],
+        token_impacts: [],
         token_lanes: [
           {
-            ...newsProviderTokenImpact(),
             lane: "resolved",
             resolution_status: "resolved",
+            symbol: "UPEG",
             target_type: "Asset",
             target_id: TARGET_ID,
             market_type: "dex",
@@ -176,12 +176,12 @@ function newsItemDetailData(path: string) {
       source_quality_status: "healthy",
     },
     signal: newsProviderSignal(),
-    token_impacts: [newsProviderTokenImpact()],
+    token_impacts: [],
     token_lanes: [
       {
-        ...newsProviderTokenImpact(),
         lane: "resolved",
         resolution_status: "resolved",
+        symbol: "UPEG",
         target_type: "Asset",
         target_id: TARGET_ID,
         market_type: "dex",
@@ -220,29 +220,17 @@ function newsProviderSignal() {
     score: 82,
     grade: "A",
     summary_zh: "OpenNews aiRating flags liquidity rotation as a positive crypto-beta signal.",
-    summary_en: "Provider aiRating links the liquidity rotation to crypto beta.",
+    summary_en: "The display signal links the liquidity rotation to crypto beta.",
     method: "opennews.aiRating",
   };
   return {
     display_signal: displaySignal,
-    provider_signal: displaySignal,
     agent_signal: { status: "pending" },
     alert_eligibility: {
       in_app_eligible: true,
       external_push_ready: false,
       agent_status: "pending",
-      provider_status: "ready",
-      provider_score: 82,
     },
-  };
-}
-
-function newsProviderTokenImpact() {
-  return {
-    symbol: "UPEG",
-    provider_signal: "long",
-    provider_score: 82,
-    provider_grade: "A",
   };
 }
 
@@ -801,103 +789,6 @@ function pulseItem() {
       mentions_1h: 4,
       unique_authors: 3,
     },
-    stages: {
-      evidence_pack: null,
-      evidence_completeness_gate: {
-        stage: "evidence_completeness_gate",
-        route: "meme",
-        status: "ok",
-        model: "deterministic",
-        started_at_ms: NOW - 1_060,
-        finished_at_ms: NOW - 1_060,
-        attempt_index: 0,
-        latency_ms: 0,
-        response: {
-          evidence_status: "complete",
-          hard_blocked: false,
-        },
-        error: null,
-      },
-      signal_analyst: {
-        stage: "signal_analyst",
-        route: "meme",
-        status: "ok",
-        model: "gpt-5.2",
-        started_at_ms: NOW - 1_050,
-        finished_at_ms: NOW - 360,
-        attempt_index: 0,
-        latency_ms: 690,
-        response: {
-          what_changed_zh:
-            "Sealed evidence packet supports watched-account seed plus independent amplification; risk evidence remains thin liquidity.",
-          supporting_claims: [
-            {
-              claim_zh:
-                "Watched-account seed and public amplification align within the same pulse window.",
-              evidence_refs: ["event:event-upeg-1"],
-            },
-          ],
-          risk_claims: [
-            {
-              claim_zh:
-                "Thin liquidity can unwind the setup if independent authors stop adding confirmation.",
-              evidence_refs: ["event:event-upeg-2", "market:bnb-latest"],
-            },
-          ],
-          data_gaps: [],
-        },
-        error: null,
-      },
-      bear_case: {
-        stage: "bear_case",
-        route: "meme",
-        status: "ok",
-        model: "gpt-5.2",
-        started_at_ms: NOW - 350,
-        finished_at_ms: NOW - 180,
-        attempt_index: 0,
-        latency_ms: 170,
-        response: {
-          risk_claims: [
-            {
-              claim:
-                "Thin liquidity can unwind the setup if independent authors stop adding confirmation.",
-              evidence_refs: ["event:event-upeg-2", "market:bnb-latest"],
-              stance: "risk",
-            },
-          ],
-          confidence_ceiling: 0.78,
-        },
-        error: null,
-      },
-      risk_portfolio_judge: {
-        stage: "risk_portfolio_judge",
-        route: "meme",
-        status: "ok",
-        model: "gpt-5.2",
-        started_at_ms: NOW - 170,
-        finished_at_ms: NOW,
-        attempt_index: 0,
-        latency_ms: 170,
-        response: {
-          route: "meme",
-          recommendation: "trade_candidate",
-          confidence: 0.72,
-          summary_zh: "Accept as trade candidate with liquidity risk noted.",
-          residual_risks: ["Low-liquidity reversal."],
-          invalidation_conditions: ["No fresh independent authors."],
-          supporting_evidence_refs: ["event:event-upeg-1", "market:bnb-latest"],
-          risk_evidence_refs: ["event:event-upeg-2"],
-          data_gap_refs: [],
-        },
-        error: null,
-      },
-      claim_verifier: null,
-      recommendation_clipper: null,
-      deterministic_eval: null,
-      write_gate: null,
-    },
-    agent_run_id: "run-pulse-bnb",
     pulse_version: "pulse-v1",
     gate_version: "gate-v1",
     prompt_version: "prompt-v1",

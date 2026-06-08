@@ -96,5 +96,5 @@ def test_news_item_brief_prompt_forbids_synthetic_market_entities() -> None:
     assert "Never invent synthetic symbols" in instructions
     assert "XYZ-CL" in instructions
     assert "controlled market proxy" in instructions
-    assert "`market_scope`、source text、fact lanes 或 provider evidence 明确支持" in instructions
+    assert "`market_scope`、source text 或 fact lanes 明确支持" in instructions
     assert "`target_id` 和 `target_type` 必须为 `null`" in instructions

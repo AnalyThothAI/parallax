@@ -57,7 +57,6 @@ def test_resolution_refresh_worker_resolves_recent_symbol_and_emits_resolution_w
             evidence=EvidenceRepository(conn),
             entities=EntityRepository(conn),
             signals=SignalRepository(conn),
-            enrichment=FakeEnrichment(),
         )
         event = make_event(
             "event-upeg",
@@ -165,7 +164,6 @@ def test_resolution_refresh_worker_skips_symbol_lookup_after_retained_candidate_
             evidence=EvidenceRepository(conn),
             entities=EntityRepository(conn),
             signals=SignalRepository(conn),
-            enrichment=FakeEnrichment(),
         )
         worker = ResolutionRefreshWorker(
             name="resolution_refresh",
@@ -234,7 +232,6 @@ def test_resolution_refresh_worker_retries_hot_not_found_before_default_ttl(tmp_
             evidence=EvidenceRepository(conn),
             entities=EntityRepository(conn),
             signals=SignalRepository(conn),
-            enrichment=FakeEnrichment(),
         )
         worker = ResolutionRefreshWorker(
             name="resolution_refresh",
@@ -358,7 +355,6 @@ def test_dex_symbol_discovery_retains_top_three_per_chain(tmp_path):
             evidence=EvidenceRepository(conn),
             entities=EntityRepository(conn),
             signals=SignalRepository(conn),
-            enrichment=FakeEnrichment(),
         )
         ingest.ingest_event(
             make_event("event-hanta-top3", text="$HANTA is moving", received_at_ms=now_ms, is_watched=True),
@@ -511,7 +507,6 @@ def test_dex_symbol_discovery_excludes_stale_unretained_search_assets_from_resul
             evidence=EvidenceRepository(conn),
             entities=EntityRepository(conn),
             signals=SignalRepository(conn),
-            enrichment=FakeEnrichment(),
         )
         ingest.ingest_event(
             make_event("event-hanta-demote", text="$HANTA", received_at_ms=now_ms + 1_000, is_watched=True),

@@ -30,7 +30,7 @@ _RULES = (
     _RULE_PLAYBOOK_CONSISTENT,
 )
 
-_NON_BLOCKED_REQUIRED_STAGES = ("signal_analyst", "bear_case", "risk_portfolio_judge")
+_NON_BLOCKED_REQUIRED_STAGES = ("pulse_decision",)
 _EVIDENCE_REQUIRED_STAGES = ("evidence_pack", "evidence_completeness_gate")
 _RECOMMENDATION_RANK = {
     "abstain": 0,
@@ -201,19 +201,12 @@ def _stage_status_by_name(stages: list[Any]) -> dict[str, str]:
 def _required_non_blocked_stages(context: dict[str, Any]) -> tuple[str, ...]:
     cost_guard = _mapping(context.get("cost_guard"))
     decision = _mapping(cost_guard.get("decision"))
-    if str(decision.get("action") or "") == "reuse_terminal_run":
+    action = str(decision.get("action") or "")
+    if action == "deterministic_finalize":
         return tuple()
-    stage_plan = _mapping(cost_guard.get("stage_plan"))
-    if not stage_plan:
-        return _NON_BLOCKED_REQUIRED_STAGES
-    stages: list[str] = []
-    if bool(stage_plan.get("run_signal_analyst")):
-        stages.append("signal_analyst")
-    if bool(stage_plan.get("run_bear_case")):
-        stages.append("bear_case")
-    if bool(stage_plan.get("run_risk_portfolio_judge")):
-        stages.append("risk_portfolio_judge")
-    return tuple(stages)
+    if action == "skip_decision" or decision.get("decision_allowed") is False:
+        return tuple()
+    return _NON_BLOCKED_REQUIRED_STAGES
 
 
 def _allowed_ref_ids(packet: dict[str, Any]) -> set[str]:

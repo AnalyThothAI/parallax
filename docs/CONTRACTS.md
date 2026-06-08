@@ -171,6 +171,11 @@ News Intel contract:
 - `/api/news` is read-only and paginated. Rows come from `news_page_rows` or
   nothing else; handlers do not fetch feeds, run extraction, execute agents,
   rebuild projections, or fall back to raw `news_items`.
+- `/api/news/{news_item_id}` is the read-only item detail companion for the
+  current News page projection. It requires a current-version `news_page_rows`
+  row for the item; raw `news_items`, provider observations, agent briefs, and
+  agent run audit rows are detail evidence only and must not synthesize a
+  public detail when the projection row is absent.
 - `/api/news` accepts optional product filters for the current page surface:
   `signal=bullish|bearish|neutral`, `min_score`, `status`, and `q`.
   News rows default to the full projected tape regardless of whether token
@@ -197,7 +202,6 @@ News Intel contract:
   provider score is evidence for ranking and alert thresholds, not an admission
   gate. `signal` is
   an explicit envelope: `signal.display_signal` is the row-level display choice,
-  `signal.provider_signal` is provider-native signal evidence,
   `signal.agent_signal` is the current compact agent/admission signal, and
   `signal.alert_eligibility.in_app_eligible` can be true for in-app high-signal
   output only when the current market-wide agent brief is ready with
@@ -207,12 +211,14 @@ News Intel contract:
   cooldown checks, and
   `external_push_block_reason` explains blocked push delivery. PushDeer
   delivery must not treat provider score alone as a publishable agent brief. A
-  ready compact brief may still include
+  ready compact brief may include only sanitized product fields such as
   `summary_zh`, `market_read_zh`, `event_type`, `market_domains`,
   `affected_entities`, `transmission_paths`, bull/bear strengths,
-  evidence/data-gap metadata, run id, prompt/schema versions, and hashes when
-  available, but OpenNews provider rows can carry provider signal and token
-  impact facts without requiring an agent brief. OpenNews ingestion is
+  and evidence/data-gap metadata. Agent run ids, prompt/schema/validator
+  versions, hashes, raw requests, raw responses, tool traces, and usage
+  metadata are audit storage, not public News API fields. OpenNews provider
+  rows can carry provider signal and token impact facts without requiring an
+  agent brief. OpenNews ingestion is
   REST-only through
   `/open/news_search`; the client merges partial/ready article fragments by
   provider article id so delayed `aiRating.score`, direction, grade, and
@@ -272,8 +278,9 @@ Token Radar market contract:
   fingerprints, ready/current/delta source counts, delta independent authors,
   last-ready time, next-refresh time, and a public reason. Source fingerprint
   mismatch no longer hides a ready digest by itself; it displays as
-  `updating` or `stale` with explicit delta metadata. `5m` is scanner-only and
-  returns `unsupported_window`, not a pending digest backlog.
+  `updating` or `stale` with explicit delta metadata. Realtime narrative digest
+  hydration is `1h` only; `5m`, `4h`, and `24h` Radar rows return
+  `unsupported_window`, not a pending digest backlog or a reused `1h` digest.
 - `market.event_anchor` and `market.decision_latest` are public response keys
   generated from `enriched_events` and `market_ticks`. They are not internal
   market concepts, DB tables, worker names, or provider runtime semantics.
@@ -626,6 +633,9 @@ Radar window mirror:
   watched evidence alone does not bypass independent-source display quality.
 - The frontend default query is `4h/all`; `1h` is the early-confirmation lane.
   Token Radar may still expose `5m` outside Signal Pulse.
+- Public Signal Pulse list/detail payloads do not expose run identity or
+  run-step audit fields such as `agent_run_id`, `run_id`, or `stages`. Those
+  remain in `pulse_agent_runs` / `pulse_agent_run_steps` for operator replay.
 
 Signal Pulse `decision` blocks are the runtime contract for agent output:
 
@@ -662,19 +672,17 @@ Signal Pulse `decision` blocks are the runtime contract for agent output:
 }
 ```
 
-Decision block field semantics (research committee hard cut, set in plan
-2026-05-20):
+Decision block field semantics:
 
-- `stage_count` is opaque audit metadata. A standard non-blocked research
-  committee run has three LLM committee stages:
-  `signal_analyst`, `bear_case`, and `risk_portfolio_judge`. Hard-blocked
-  packets may have fewer LLM stages. Readers must never infer UI ordering or
-  run completeness from this number alone.
+- `stage_count` is opaque audit metadata. Readers must never infer UI ordering,
+  run completeness, or public display state from this number alone. Detailed
+  stage order, prompts, responses, latency, and attempts are audit-ledger data,
+  not public Signal Pulse contract fields.
 - `narrative_archetype` is a short (≤ 20 chars) free-text tag the
-  final `risk_portfolio_judge` assigns to the run; empty string when no archetype
+  `pulse_decision` stage assigns to the run; empty string when no archetype
   applies. Phase 2 may tighten to a Literal enum.
 - `narrative_thesis_zh` is a 30–300 char one-paragraph thesis written by
-  the final `risk_portfolio_judge`. Required for non-abstain decisions.
+  the `pulse_decision` stage. Required for non-abstain decisions.
 - `bull_view` / `bear_view` are symmetric two-sided opinions
   (`{strength, thesis_zh, supporting_event_ids}`). `strength` is one of
   `absent | weak | moderate | strong`; `absent` requires empty
@@ -726,10 +734,12 @@ v1/v2 shapes and reject legacy gate blocks. The v3 contract separates:
 
 Token Radar online serving is `token_radar_current_rows` plus
 `token_radar_publication_state`. `fresh` is allowed only when publication state
-is `ready` and served rows match `current_generation_id`. Failed latest attempts
-serve previous rows as `stale` or no rows as `failed`. Compact first-seen
-metadata preserves `listed_at_ms`; rank source edges are lazy evidence/detail,
-not a current-row fallback.
+is `ready` and the product/window current rows are available; an explicitly
+empty ready publication is fresh with zero rows. Failed latest attempts serve
+the previous product/window rows as `stale` or no rows as `failed`.
+`current_generation_id` remains attempt audit metadata, not an online serving
+join key. Compact first-seen metadata preserves `listed_at_ms`; rank source
+edges are lazy evidence/detail, not a current-row fallback.
 
 Operational commands:
 

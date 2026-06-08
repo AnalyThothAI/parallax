@@ -65,7 +65,6 @@ def wire_providers(
             decision_provider=model_execution.litellm_pulse_decision_provider(
                 settings,
                 agent_gateway=_require_agent_execution_gateway(agent_execution_gateway),
-                db_pool=db_pool,
             )
             if settings.workers.pulse_candidate.enabled and settings.pulse_agent_configured
             else None,

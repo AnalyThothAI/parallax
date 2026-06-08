@@ -38,16 +38,11 @@ class PulseWriteGate:
         gate: Any,
         evidence_gate: Any | None = None,
         claim_verification: Any | None = None,
-        health_status: dict[str, Any] | None = None,
         source_quality: Any | None = None,
     ) -> PulseWriteGateDecision:
         evidence_status = str(getattr(evidence_gate, "evidence_status", "") or "complete")
         claim_valid = bool(getattr(claim_verification, "valid", True))
         decision_status = str(getattr(claim_verification, "decision_status", "") or _decision_status(final_decision))
-        # Aggregate freshness health is diagnostic, not a per-candidate truth.
-        # If it gates writes here, historical failures can self-lock the public
-        # read model: fresh valid runs get hidden, keeping public freshness stale.
-        _ = health_status
         if not claim_valid:
             return PulseWriteGateDecision(
                 write_allowed=True,

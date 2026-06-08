@@ -1315,15 +1315,12 @@ class MacroIntelRepository:
             row for row in selected_rows if str(row.get("concept_key") or "") in set(changed_concept_keys)
         ]
         with _transaction_context(self.conn):
-            self.conn.execute(
-                """
-                DELETE FROM macro_observation_series_rows
-                WHERE projection_version = %s
-                  AND concept_key = ANY(%s)
-                """,
-                (projection_version, list(changed_concept_keys)),
+            rows_written = self._delete_exited_observation_series_rows(
+                projection_version=projection_version,
+                concept_keys=changed_concept_keys,
+                current_rows=rows_to_insert,
             )
-            rows_written = self._insert_observation_series_rows(rows_to_insert)
+            rows_written += self._insert_observation_series_rows(rows_to_insert)
             self._upsert_macro_series_publication_state(
                 projection_version=projection_version,
                 status="published",
@@ -1443,6 +1440,53 @@ class MacroIntelRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def _delete_exited_observation_series_rows(
+        self,
+        *,
+        projection_version: str,
+        concept_keys: Sequence[str],
+        current_rows: Sequence[Mapping[str, Any]],
+    ) -> int:
+        concept_key_values = [str(row["concept_key"]) for row in current_rows]
+        observed_at_values = [row["observed_at"] for row in current_rows]
+        if concept_key_values:
+            cursor = self.conn.execute(
+                """
+                WITH current_keys(concept_key, observed_at) AS (
+                  SELECT *
+                  FROM unnest(%s::text[], %s::date[])
+                )
+                DELETE FROM macro_observation_series_rows AS rows
+                WHERE rows.projection_version = %s
+                  AND rows.concept_key = ANY(%s)
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM current_keys
+                    WHERE current_keys.concept_key = rows.concept_key
+                      AND current_keys.observed_at = rows.observed_at
+                  )
+                """,
+                (
+                    concept_key_values,
+                    observed_at_values,
+                    projection_version,
+                    list(concept_keys),
+                ),
+            )
+        else:
+            cursor = self.conn.execute(
+                """
+                DELETE FROM macro_observation_series_rows
+                WHERE projection_version = %s
+                  AND concept_key = ANY(%s)
+                """,
+                (projection_version, list(concept_keys)),
+            )
+        rowcount = getattr(cursor, "rowcount", None)
+        if rowcount is None or int(rowcount) < 0:
+            return 0
+        return int(rowcount)
+
     def _insert_observation_series_rows(self, rows: Sequence[Mapping[str, Any]]) -> int:
         if not rows:
             return 0
@@ -1498,6 +1542,21 @@ class MacroIntelRepository:
               payload_hash
             )
             VALUES {values_sql}
+            ON CONFLICT (projection_version, concept_key, observed_at) DO UPDATE SET
+              series_rank = excluded.series_rank,
+              value_numeric = excluded.value_numeric,
+              source_name = excluded.source_name,
+              series_key = excluded.series_key,
+              source_priority = excluded.source_priority,
+              unit = excluded.unit,
+              frequency = excluded.frequency,
+              data_quality = excluded.data_quality,
+              source_ts = excluded.source_ts,
+              raw_payload_json = excluded.raw_payload_json,
+              ingested_at_ms = excluded.ingested_at_ms,
+              projected_at_ms = excluded.projected_at_ms,
+              payload_hash = excluded.payload_hash
+            WHERE macro_observation_series_rows.payload_hash IS DISTINCT FROM excluded.payload_hash
             """,
             tuple(params),
         )
@@ -1682,7 +1741,6 @@ class MacroIntelRepository:
                 payload_hash,
             ),
         ).fetchone()
-        self.conn.commit()
         return bool(dict(row or {}).get("changed", False))
 
     def latest_snapshot(
@@ -1691,24 +1749,16 @@ class MacroIntelRepository:
         projection_version: str | None = MACRO_VIEW_PROJECTION_VERSION,
     ) -> dict[str, Any] | None:
         if projection_version is None:
-            row = self.conn.execute(
-                """
-                SELECT *
-                FROM macro_view_snapshots
-                ORDER BY computed_at_ms DESC
-                LIMIT 1
-                """
-            ).fetchone()
-        else:
-            row = self.conn.execute(
-                """
-                SELECT *
-                FROM macro_view_snapshots
-                WHERE projection_version = %s
-                LIMIT 1
-                """,
-                (projection_version,),
-            ).fetchone()
+            raise ValueError("projection_version is required")
+        row = self.conn.execute(
+            """
+            SELECT *
+            FROM macro_view_snapshots
+            WHERE projection_version = %s
+            LIMIT 1
+            """,
+            (projection_version,),
+        ).fetchone()
         return dict(row) if row is not None else None
 
     def observations_count(self) -> int:

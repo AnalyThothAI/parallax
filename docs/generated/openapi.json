@@ -2106,27 +2106,10 @@
       "NewsAgentBrief": {
         "additionalProperties": true,
         "properties": {
-          "agent_run_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Agent Run Id"
-          },
-          "artifact_version_hash": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Artifact Version Hash"
+          "affected_entities": {
+            "items": {},
+            "title": "Affected Entities",
+            "type": "array"
           },
           "bear_strength": {
             "anyOf": [
@@ -2150,11 +2133,6 @@
               }
             ],
             "title": "Bear View"
-          },
-          "brief_json": {
-            "additionalProperties": true,
-            "title": "Brief Json",
-            "type": "object"
           },
           "bull_strength": {
             "anyOf": [
@@ -2233,17 +2211,6 @@
             "title": "Evidence Refs",
             "type": "array"
           },
-          "input_hash": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Input Hash"
-          },
           "invalidation_conditions": {
             "items": {
               "type": "string"
@@ -2266,46 +2233,6 @@
               }
             ],
             "title": "Market Read Zh"
-          },
-          "output_hash": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Output Hash"
-          },
-          "prompt_version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Prompt Version"
-          },
-          "research_todos_zh": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Research Todos Zh",
-            "type": "array"
-          },
-          "schema_version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Schema Version"
           },
           "status": {
             "anyOf": [
@@ -2365,17 +2292,6 @@
             ],
             "title": "Agent Name"
           },
-          "artifact_version_hash": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Artifact Version Hash"
-          },
           "backend": {
             "anyOf": [
               {
@@ -2386,18 +2302,6 @@
               }
             ],
             "title": "Backend"
-          },
-          "base_packet": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Base Packet"
           },
           "error": {
             "anyOf": [
@@ -2443,17 +2347,6 @@
             ],
             "title": "Execution Started"
           },
-          "execution_trace_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Execution Trace Id"
-          },
           "finished_at_ms": {
             "anyOf": [
               {
@@ -2464,28 +2357,6 @@
               }
             ],
             "title": "Finished At Ms"
-          },
-          "guardrail_version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Guardrail Version"
-          },
-          "input_hash": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Input Hash"
           },
           "lane": {
             "anyOf": [
@@ -2531,28 +2402,6 @@
             ],
             "title": "Outcome"
           },
-          "output_hash": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Output Hash"
-          },
-          "prompt_version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Prompt Version"
-          },
           "provider": {
             "anyOf": [
               {
@@ -2563,88 +2412,6 @@
               }
             ],
             "title": "Provider"
-          },
-          "request_json": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Request Json"
-          },
-          "research_execution": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Research Execution"
-          },
-          "research_hashes": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Research Hashes"
-          },
-          "research_plan": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Research Plan"
-          },
-          "response_json": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Response Json"
-          },
-          "run_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Run Id"
-          },
-          "schema_version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Schema Version"
           },
           "started_at_ms": {
             "anyOf": [
@@ -2667,39 +2434,6 @@
               }
             ],
             "title": "Status"
-          },
-          "tool_results": {
-            "items": {
-              "$ref": "#/components/schemas/NewsResearchToolResult"
-            },
-            "title": "Tool Results",
-            "type": "array"
-          },
-          "trace_metadata_json": {
-            "additionalProperties": true,
-            "title": "Trace Metadata Json",
-            "type": "object"
-          },
-          "usage_json": {
-            "additionalProperties": true,
-            "title": "Usage Json",
-            "type": "object"
-          },
-          "validation_errors_json": {
-            "items": {},
-            "title": "Validation Errors Json",
-            "type": "array"
-          },
-          "validator_version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Validator Version"
           },
           "workflow_name": {
             "anyOf": [
@@ -2816,28 +2550,6 @@
                 "type": "null"
               }
             ]
-          },
-          "provider_score": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Provider Score"
-          },
-          "provider_status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Provider Status"
           }
         },
         "title": "NewsAlertEligibility",
@@ -3508,23 +3220,6 @@
             "title": "Provider Observations",
             "type": "array"
           },
-          "provider_signal": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/NewsSignalSummary"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "provider_token_impacts": {
-            "items": {
-              "$ref": "#/components/schemas/NewsTokenLane"
-            },
-            "title": "Provider Token Impacts",
-            "type": "array"
-          },
           "provider_type": {
             "anyOf": [
               {
@@ -3704,159 +3399,6 @@
           }
         },
         "title": "NewsObjectData",
-        "type": "object"
-      },
-      "NewsResearchToolResult": {
-        "additionalProperties": true,
-        "properties": {
-          "evidence_refs": {
-            "items": {},
-            "title": "Evidence Refs",
-            "type": "array"
-          },
-          "generated_at_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Generated At Ms"
-          },
-          "input": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Input"
-          },
-          "latency_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Latency Ms"
-          },
-          "query_version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Query Version"
-          },
-          "redaction_notes": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Redaction Notes",
-            "type": "array"
-          },
-          "result_hash": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Result Hash"
-          },
-          "row_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Row Count"
-          },
-          "rows": {
-            "items": {},
-            "title": "Rows",
-            "type": "array"
-          },
-          "schema_version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Schema Version"
-          },
-          "skipped_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Skipped Reason"
-          },
-          "source_tables": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Source Tables",
-            "type": "array"
-          },
-          "tool_call_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tool Call Id"
-          },
-          "tool_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tool Name"
-          },
-          "truncated": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Truncated"
-          }
-        },
-        "title": "NewsResearchToolResult",
         "type": "object"
       },
       "NewsRow": {
@@ -4304,7 +3846,7 @@
         "type": "object"
       },
       "NewsSignalEnvelope": {
-        "additionalProperties": true,
+        "additionalProperties": false,
         "properties": {
           "agent_signal": {
             "additionalProperties": true,
@@ -4316,16 +3858,6 @@
           },
           "display_signal": {
             "$ref": "#/components/schemas/NewsSignalSummary"
-          },
-          "provider_signal": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/NewsSignalSummary"
-              },
-              {
-                "type": "null"
-              }
-            ]
           }
         },
         "title": "NewsSignalEnvelope",
@@ -4664,39 +4196,6 @@
               }
             ],
             "title": "Market Type"
-          },
-          "provider_grade": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Provider Grade"
-          },
-          "provider_score": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Provider Score"
-          },
-          "provider_signal": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Provider Signal"
           },
           "reason_codes": {
             "items": {
@@ -5850,17 +5349,6 @@
       "SignalPulseItem": {
         "additionalProperties": true,
         "properties": {
-          "agent_run_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Agent Run Id"
-          },
           "candidate_id": {
             "anyOf": [
               {
@@ -5893,18 +5381,6 @@
               }
             ],
             "title": "Candidate Type"
-          },
-          "claim_verification": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Claim Verification"
           },
           "created_at_ms": {
             "anyOf": [
@@ -5955,18 +5431,6 @@
             },
             "title": "Evidence Event Ids",
             "type": "array"
-          },
-          "evidence_gate": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Evidence Gate"
           },
           "evidence_packet_hash": {
             "anyOf": [
@@ -6132,16 +5596,6 @@
             "title": "Source Event Ids",
             "type": "array"
           },
-          "stages": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SignalPulseStages"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "subject": {
             "anyOf": [
               {
@@ -6268,221 +5722,6 @@
           "monitoring_horizon"
         ],
         "title": "SignalPulsePlaybook",
-        "type": "object"
-      },
-      "SignalPulseStagePayload": {
-        "additionalProperties": true,
-        "properties": {
-          "attempt_index": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Attempt Index"
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
-          "finished_at_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Finished At Ms"
-          },
-          "latency_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Latency Ms"
-          },
-          "model": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Model"
-          },
-          "response": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Response"
-          },
-          "route": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Route"
-          },
-          "stage": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Stage"
-          },
-          "started_at_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Started At Ms"
-          },
-          "status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Status"
-          }
-        },
-        "title": "SignalPulseStagePayload",
-        "type": "object"
-      },
-      "SignalPulseStages": {
-        "additionalProperties": false,
-        "properties": {
-          "bear_case": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SignalPulseStagePayload"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "claim_verifier": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SignalPulseStagePayload"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "deterministic_eval": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SignalPulseStagePayload"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "evidence_completeness_gate": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SignalPulseStagePayload"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "evidence_pack": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SignalPulseStagePayload"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "recommendation_clipper": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SignalPulseStagePayload"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "risk_portfolio_judge": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SignalPulseStagePayload"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "signal_analyst": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SignalPulseStagePayload"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "write_gate": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SignalPulseStagePayload"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "title": "SignalPulseStages",
         "type": "object"
       },
       "SourceEventDetail": {
@@ -7026,17 +6265,6 @@
       "TokenDiscussionDigestData": {
         "additionalProperties": true,
         "properties": {
-          "analysis_window": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Analysis Window"
-          },
           "coverage": {
             "additionalProperties": true,
             "title": "Coverage",
@@ -7050,28 +6278,6 @@
             "title": "Data Gaps",
             "type": "array"
           },
-          "reuse_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reuse Reason"
-          },
-          "source_window": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source Window"
-          },
           "status": {
             "enum": [
               "ready",
@@ -7082,17 +6288,6 @@
             ],
             "title": "Status",
             "type": "string"
-          },
-          "surface_window": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Surface Window"
           }
         },
         "required": [

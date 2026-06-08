@@ -541,10 +541,10 @@ def test_news_item_process_provider_only_non_crypto_row_enqueues_page_and_brief(
         {
             "rows": [
                 {
-                    "projection_name": "brief_input",
-                    "target_kind": "news_item",
-                    "target_id": "news-spacex",
-                    "priority": 8,
+                        "projection_name": "brief_input",
+                        "target_kind": "news_item",
+                        "target_id": "news-spacex",
+                        "priority": 100,
                 }
             ],
             "reason": "news_item_processed",
@@ -610,10 +610,10 @@ def test_news_item_process_admitted_crypto_row_enqueues_page_and_brief_with_stor
         {
             "rows": [
                 {
-                    "projection_name": "brief_input",
-                    "target_kind": "news_item",
-                    "target_id": "news-zec",
-                    "priority": 12,
+                        "projection_name": "brief_input",
+                        "target_kind": "news_item",
+                        "target_id": "news-zec",
+                        "priority": 100,
                 }
             ],
             "reason": "news_item_processed",
@@ -1014,7 +1014,7 @@ def test_news_page_projection_worker_replaces_rows_without_emitting_wake() -> No
     assert repo.replaced_story_rows[0]["news_item_id"] == "news-1"
     assert repo.replaced_story_rows[0]["lifecycle_status"] == "attention"
     assert repo.replaced_story_rows[0]["agent_status"] == "ready"
-    assert repo.replaced_story_rows[0]["agent_brief"]["agent_run_id"] == "run-1"
+    assert "agent_run_id" not in repo.replaced_story_rows[0]["agent_brief"]
     assert wake_bus.notifications == []
 
 

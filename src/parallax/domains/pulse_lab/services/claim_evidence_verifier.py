@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from parallax.domains.pulse_lab.types.agent_decision import BearCaseMemo, FinalDecision, SignalAnalystMemo
+    from parallax.domains.pulse_lab.types.agent_decision import FinalDecision
     from parallax.domains.pulse_lab.types.evidence_packet import PulseEvidencePacket
 
 
@@ -25,38 +25,12 @@ class ClaimEvidenceVerifier:
     def verify(
         self,
         packet: PulseEvidencePacket | Any,
-        signal_memo: SignalAnalystMemo | Any,
-        bear_memo: BearCaseMemo | Any,
         final_decision: FinalDecision | Any,
     ) -> ClaimEvidenceVerificationResult:
         allowed = _allowed_ref_ids(packet)
         unknown: list[str] = []
         unsupported: list[str] = []
         missing: list[str] = []
-
-        for claim in _sequence(getattr(signal_memo, "bull_claims", ())):
-            refs = _string_tuple(getattr(claim, "evidence_refs", ()))
-            if not refs:
-                missing.append("signal_memo.bull_claims.evidence_refs")
-            for ref_id in refs:
-                if ref_id in allowed or ref_id.startswith("missing:"):
-                    continue
-                unknown.append(ref_id)
-
-        for claim in _sequence(getattr(bear_memo, "risk_claims", ())):
-            refs = _string_tuple(getattr(claim, "evidence_refs", ()))
-            if not refs:
-                missing.append("bear_memo.risk_claims.evidence_refs")
-            for ref_id in refs:
-                if ref_id in allowed or ref_id.startswith("missing:"):
-                    continue
-                unknown.append(ref_id)
-
-        for claim in _sequence(getattr(bear_memo, "missing_fact_impacts", ())):
-            for ref_id in _string_tuple(getattr(claim, "evidence_refs", ())):
-                if ref_id in allowed or ref_id.startswith("missing:"):
-                    continue
-                unknown.append(ref_id)
 
         recommendation = str(getattr(final_decision, "recommendation", "") or "")
         supporting_refs = _string_tuple(getattr(final_decision, "supporting_evidence_refs", ()))
@@ -92,11 +66,9 @@ class ClaimEvidenceVerifier:
 def verify_claim_evidence(
     *,
     packet: PulseEvidencePacket | Any,
-    signal_memo: SignalAnalystMemo | Any,
-    bear_memo: BearCaseMemo | Any,
     final_decision: FinalDecision | Any,
 ) -> ClaimEvidenceVerificationResult:
-    return ClaimEvidenceVerifier().verify(packet, signal_memo, bear_memo, final_decision)
+    return ClaimEvidenceVerifier().verify(packet, final_decision)
 
 
 def _allowed_ref_ids(packet: Any) -> set[str]:

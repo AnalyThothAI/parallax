@@ -19,7 +19,7 @@ def test_cex_oi_radar_repository_reads_binance_usdt_perp_universe_only():
     assert "status = 'canonical'" in sql
 
 
-def test_publish_board_replaces_current_rows_with_stable_target_identity():
+def test_publish_board_upserts_current_rows_with_stable_target_identity():
     conn = _RecordingConn()
     repo = CexOiRadarRepository(conn)
     row = {
@@ -55,6 +55,8 @@ def test_publish_board_replaces_current_rows_with_stable_target_identity():
     assert "cex_oi_radar_runs" not in all_sql
     assert "run_id" not in all_sql
     assert "DELETE FROM cex_oi_radar_rows" in all_sql
+    assert "AND NOT (row_id = ANY(%s::text[]))" in all_sql
+    assert "WHERE cex_oi_radar_rows.rank IS DISTINCT FROM excluded.rank" in all_sql
 
     state_params = conn.params_for("INSERT INTO cex_oi_radar_publication_state")
     assert state_params[:7] == (
@@ -177,6 +179,7 @@ def test_publish_board_with_result_reports_changed_empty_board_decision():
     assert result.board_rows_written == 0
     all_sql = "\n".join(conn.sql_calls)
     assert "DELETE FROM cex_oi_radar_rows" in all_sql
+    assert "AND NOT (row_id = ANY(%s::text[]))" not in all_sql
 
 
 def test_skipped_publish_preserves_existing_current_rows():

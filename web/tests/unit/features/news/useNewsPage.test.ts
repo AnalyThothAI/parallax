@@ -31,9 +31,9 @@ describe("useNewsPage", () => {
                 token_lanes: [
                   {
                     symbol: "BTC",
-                    provider_score: 82,
-                    provider_signal: "long",
-                    provider_grade: "A",
+                    market_type: "cex",
+                    resolution_status: "resolved",
+                    target_id: "asset:btc",
                   },
                 ],
                 fact_lanes: [],
@@ -51,7 +51,12 @@ describe("useNewsPage", () => {
       expect(result.current.data?.items[0].signal.display_signal.label_zh).toBe("利好"),
     );
     expect(result.current.data?.items[0].agent_brief).toBeUndefined();
-    expect(result.current.data?.items[0].token_lanes[0].provider_score).toBe(82);
+    expect(result.current.data?.items[0].token_lanes[0]).toMatchObject({
+      lane: "resolved",
+      market_type: "cex",
+      symbol: "BTC",
+      target_id: "asset:btc",
+    });
   });
 
   it("requests only hard-cut signal, score, and search filters", async () => {
@@ -173,13 +178,11 @@ function wrapper() {
 function newsSignalEnvelope(displaySignal: Record<string, unknown>) {
   return {
     display_signal: displaySignal,
-    provider_signal: displaySignal.source === "provider" ? displaySignal : null,
     agent_signal: { status: "pending" },
     alert_eligibility: {
       in_app_eligible: true,
       external_push_ready: false,
       agent_status: "pending",
-      provider_score: displaySignal.score,
     },
   };
 }

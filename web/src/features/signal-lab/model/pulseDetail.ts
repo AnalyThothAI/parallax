@@ -8,8 +8,6 @@ import {
 } from "@lib/format";
 import type {
   SignalPulseItem,
-  SignalPulseStagePayload,
-  SignalPulseStages,
   SourceEventDetail,
   TokenFactorFamily,
   TokenFactorFamilyKey,
@@ -125,25 +123,6 @@ export type EvidenceView = {
   concentration: AuthorConcentrationBar;
   abstainCallout: string | null;
 };
-export type SignalAnalystView = {
-  status: string;
-  latencyMs: number | null;
-  summary: string;
-};
-export type BearCaseView = {
-  status: string;
-  latencyMs: number | null;
-  summary: string;
-};
-export type RiskPortfolioJudgeView = {
-  status: string;
-  latencyMs: number | null;
-  summary: string;
-};
-export type StageRailItem =
-  | { kind: "signal_analyst"; status: string; latencyMs: number | null; summary: string }
-  | { kind: "bear_case"; status: string; latencyMs: number | null; summary: string }
-  | { kind: "risk_portfolio_judge"; status: string; latencyMs: number | null; summary: string };
 export type EvidenceGateView = { status: string; abstainReason: string } | null;
 export type GateAgentMismatch = { gateLabel: string; agentLabel: string; note: string } | null;
 export type DecisionViewSide = {
@@ -170,17 +149,14 @@ export type ReplayMeta = {
   gateVersion: string;
   promptVersion: string;
   schemaVersion: string;
-  runId: string;
   candidateId: string;
-  agentRunId: string;
 };
 export type AgentRailView = {
-  kind: "stages" | "research_only";
-  totalLatencyMs: number;
-  model: string;
+  kind: "decision" | "research_only";
+  totalLatencyMs: number | null;
+  model: string | null;
   mismatch: GateAgentMismatch;
   decisionSurface: DecisionSurfaceView | null;
-  railItems: StageRailItem[];
   researchOnlyGate: EvidenceGateView;
   replay: ReplayMeta;
 };
@@ -858,82 +834,39 @@ function buildConcentration(
 }
 
 function buildAgent(item: SignalPulseItem): AgentRailView {
-  const stages = item.stages ?? emptyStages();
-  const kind = item.decision.route === "research_only" ? "research_only" : "stages";
-  const signalAnalyst = stages.signal_analyst ?? null;
-  const evidenceGate = stages.evidence_completeness_gate ?? null;
-  const bearCase = stages.bear_case ?? null;
-  const riskPortfolioJudge = stages.risk_portfolio_judge ?? null;
-  const hasCommitteeStages = Boolean(signalAnalyst || bearCase || riskPortfolioJudge);
-
-  const railItems: StageRailItem[] = [];
-  if (kind !== "research_only") {
-    if (hasCommitteeStages) {
-      if (signalAnalyst) {
-        railItems.push({
-          kind: "signal_analyst",
-          status: signalAnalyst.status ?? "skipped",
-          latencyMs: signalAnalyst.latency_ms ?? null,
-          summary: stagePreviewSummary(signalAnalyst),
-        });
-      }
-      if (bearCase) {
-        railItems.push({
-          kind: "bear_case",
-          status: bearCase.status ?? "skipped",
-          latencyMs: bearCase.latency_ms ?? null,
-          summary: stagePreviewSummary(bearCase),
-        });
-      }
-      if (riskPortfolioJudge) {
-        railItems.push({
-          kind: "risk_portfolio_judge",
-          status: riskPortfolioJudge.status ?? "skipped",
-          latencyMs: riskPortfolioJudge.latency_ms ?? null,
-          summary: stagePreviewSummary(riskPortfolioJudge),
-        });
-      }
-    }
-  }
-
-  const totalLatencyMs =
-    (evidenceGate?.latency_ms ?? 0) +
-    (signalAnalyst?.latency_ms ?? 0) +
-    (bearCase?.latency_ms ?? 0) +
-    (riskPortfolioJudge?.latency_ms ?? 0);
-  const model =
-    riskPortfolioJudge?.model ??
-    bearCase?.model ??
-    signalAnalyst?.model ??
-    evidenceGate?.model ??
-    "-";
+  const kind = item.decision.route === "research_only" ? "research_only" : "decision";
 
   return {
     kind,
-    totalLatencyMs,
-    model,
+    totalLatencyMs: null,
+    model: null,
     mismatch: detectMismatch(item),
     decisionSurface: buildDecisionSurface(item),
-    railItems,
-    researchOnlyGate:
-      kind === "research_only" && evidenceGate
-        ? {
-            status: evidenceGate.status ?? "ok",
-            abstainReason:
-              stringValue(record(evidenceGate.response).blocked_reason) ??
-              item.decision.abstain_reason ??
-              "",
-          }
-        : null,
+    researchOnlyGate: kind === "research_only" ? buildResearchOnlyGate(item) : null,
     replay: {
       pulseVersion: item.pulse_version ?? "-",
       gateVersion: item.gate_version ?? "-",
       promptVersion: item.prompt_version ?? "-",
       schemaVersion: item.schema_version ?? "-",
-      runId: item.agent_run_id ?? "-",
       candidateId: item.candidate_id,
-      agentRunId: item.agent_run_id ?? "-",
     },
+  };
+}
+
+function buildResearchOnlyGate(item: SignalPulseItem): EvidenceGateView {
+  const gate = record(item.evidence_gate);
+  const blockedReasons = stringList(gate.blocked_reasons);
+  return {
+    status:
+      stringValue(gate.status) ??
+      stringValue(gate.evidence_status) ??
+      stringValue(item.evidence_status) ??
+      "ok",
+    abstainReason:
+      stringValue(gate.blocked_reason) ??
+      (blockedReasons.length ? blockedReasons.join(", ") : null) ??
+      item.decision.abstain_reason ??
+      "",
   };
 }
 
@@ -1001,21 +934,6 @@ function buildDecisionPlaybook(value: unknown): DecisionSurfaceView["playbook"] 
   };
 }
 
-function stagePreviewSummary(stage: SignalPulseStagePayload): string {
-  const response = record(stage.response);
-  const firstRiskClaim = Array.isArray(response.risk_claims)
-    ? record(response.risk_claims[0]).claim
-    : null;
-  const summary =
-    stringValue(response.what_changed_zh) ??
-    stringValue(firstRiskClaim) ??
-    stringValue(response.summary_zh) ??
-    stringValue(response.summary) ??
-    stringValue(response.recommendation) ??
-    stringValue(stage.error);
-  return summary ?? "—";
-}
-
 function detectMismatch(item: SignalPulseItem): GateAgentMismatch {
   const highGate = item.score_band === "high_conviction" || item.score_band === "trade_candidate";
   const confidence = item.decision.confidence ?? 0;
@@ -1026,7 +944,7 @@ function detectMismatch(item: SignalPulseItem): GateAgentMismatch {
   return {
     gateLabel: `策略门：${scoreBandLabel(item.score_band)} (score ${item.candidate_score ?? 0})`,
     agentLabel: `Agent：${recommendation ?? "-"} · 置信度 ${confidence.toFixed(2)}`,
-    note: "策略门将该资产推到 top 区间，但 Agent 最终置信度偏低。请核对信号分析、反方风险、风险裁决和证据链接。",
+    note: "策略门将该资产推到 top 区间，但 Agent 最终置信度偏低。请核对公共决策、证据链接和市场数据。",
   };
 }
 
@@ -1110,20 +1028,6 @@ function authorRunIndex(
     }
   }
   return count;
-}
-
-function emptyStages(): SignalPulseStages {
-  return {
-    evidence_pack: null,
-    evidence_completeness_gate: null,
-    signal_analyst: null,
-    bear_case: null,
-    claim_verifier: null,
-    risk_portfolio_judge: null,
-    recommendation_clipper: null,
-    deterministic_eval: null,
-    write_gate: null,
-  };
 }
 
 function formatConfidence(value: number | null | undefined): string {

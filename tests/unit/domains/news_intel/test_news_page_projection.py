@@ -129,10 +129,10 @@ def test_build_news_page_row_copies_item_level_agent_admission() -> None:
             "canonical_url": "https://example.test/fed-liquidity",
             "published_at_ms": 1000,
             "agent_admission_status": "eligible",
-            "agent_admission_reason": "provider_score_high",
+            "agent_admission_reason": "ready_market_driver",
             "agent_admission_json": {
                 "status": "eligible",
-                "reason": "provider_score_high",
+                "reason": "ready_market_driver",
                 "version": "news_item_agent_admission_market_v2",
                 "basis": {"market_scope": ["macro"]},
             },
@@ -144,10 +144,10 @@ def test_build_news_page_row_copies_item_level_agent_admission() -> None:
     )
 
     assert row["agent_admission_status"] == "eligible"
-    assert row["agent_admission_reason"] == "provider_score_high"
+    assert row["agent_admission_reason"] == "ready_market_driver"
     assert row["agent_admission"] == {
         "status": "eligible",
-        "reason": "provider_score_high",
+        "reason": "ready_market_driver",
         "version": "news_item_agent_admission_market_v2",
         "basis": {"market_scope": ["macro"]},
         "representative_news_item_id": "news-1",
@@ -405,11 +405,6 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
         "bear_strength": "weak",
         "data_gap_count": 1,
         "computed_at_ms": 3000,
-        "agent_run_id": "run-1",
-        "schema_version": "schema-v1",
-        "prompt_version": "prompt-v1",
-        "artifact_version_hash": "artifact-1",
-        "input_hash": "input-1",
         "agent_admission_status": "eligible",
         "agent_admission_reason": "eligible",
         "representative_news_item_id": "news-1",
@@ -417,6 +412,14 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
         "bull_view": {"strength": "strong", "thesis_zh": "新增需求预期"},
         "bear_view": {"strength": "weak", "thesis_zh": "审批仍不确定"},
     }
+    assert not {
+        "agent_run_id",
+        "schema_version",
+        "prompt_version",
+        "validator_version",
+        "artifact_version_hash",
+        "input_hash",
+    } & row["agent_brief"].keys()
 
 
 def test_page_signal_envelope_separates_provider_agent_display_and_alert() -> None:
@@ -459,15 +462,14 @@ def test_page_signal_envelope_separates_provider_agent_display_and_alert() -> No
         computed_at_ms=3_000,
     )
 
-    assert set(row["signal"]) == {"display_signal", "provider_signal", "agent_signal", "alert_eligibility"}
+    assert set(row["signal"]) == {"display_signal", "agent_signal", "alert_eligibility"}
     assert row["signal"]["display_signal"]["source"] == "agent"
-    assert row["signal"]["provider_signal"]["provider"] == "opennews"
     assert row["signal"]["agent_signal"]["status"] == "ready"
     assert row["signal"]["alert_eligibility"]["market_scope"]["primary"] == "crypto"
     assert row["signal"]["alert_eligibility"]["external_push_ready"] is True
 
 
-def test_build_news_page_row_preserves_provider_signal_without_masking_ready_agent_brief() -> None:
+def test_build_news_page_row_does_not_mix_provider_signal_into_ready_agent_brief() -> None:
     row = build_news_page_row(
         item={
             "news_item_id": "news-1",
@@ -519,24 +521,12 @@ def test_build_news_page_row_preserves_provider_signal_without_masking_ready_age
     assert row["agent_status"] == "ready"
     assert row["signal"]["display_signal"]["source"] == "agent"
     assert row["signal"]["display_signal"]["direction"] == "bearish"
-    assert row["signal"]["display_signal"]["score"] == 92
-    assert row["signal"]["provider_signal"] == {
-        "source": "provider",
-        "provider": "opennews",
-        "status": "ready",
-        "direction": "bullish",
-        "label_zh": "利好",
-        "signal": "long",
-        "score": 92,
-        "grade": "A",
-        "summary_en": "Provider summary",
-        "method": "opennews.aiRating",
-    }
+    assert "score" not in row["signal"]["display_signal"]
+    assert "grade" not in row["signal"]["display_signal"]
+    assert "provider_signal" not in row["signal"]
     assert row["signal"]["alert_eligibility"] == {
         "agent_status": "ready",
         "decision_class": "watch",
-        "provider_status": "ready",
-        "provider_score": 92,
         "market_scope": {
             "scope": ["crypto"],
             "primary": "crypto",
@@ -592,6 +582,8 @@ def test_build_news_page_row_keeps_provider_candidate_separate_from_external_pus
     assert eligibility["in_app_eligible"] is False
     assert eligibility["external_push_ready"] is False
     assert eligibility["external_push_block_reason"] == "agent_brief_not_ready"
+    assert "provider_signal" not in row["signal"]
+    assert "provider_score" not in eligibility
 
 
 def test_ready_market_watch_brief_sets_in_app_eligible_without_crypto_admission() -> None:
@@ -610,7 +602,7 @@ def test_ready_market_watch_brief_sets_in_app_eligible_without_crypto_admission(
                 "primary": "us_equity",
                 "status": "classified",
                 "reason": "private_company_equity_context",
-                "basis": {"provider_score_is_evidence_only": True},
+                "basis": {"subject": "private_company_equity_context"},
                 "version": "test_news_market_scope_v1",
             },
             "provider_signal_json": {
@@ -636,13 +628,14 @@ def test_ready_market_watch_brief_sets_in_app_eligible_without_crypto_admission(
         computed_at_ms=2000,
     )
 
-    assert row["signal"]["provider_signal"]["score"] == 95
+    assert "provider_signal" not in row["signal"]
+    assert row["token_impacts"] == []
     assert row["market_scope"] == {
         "scope": ["us_equity"],
         "primary": "us_equity",
         "status": "classified",
         "reason": "private_company_equity_context",
-        "basis": {"provider_score_is_evidence_only": True},
+        "basis": {"subject": "private_company_equity_context"},
         "version": "test_news_market_scope_v1",
     }
     assert row["signal"]["alert_eligibility"]["in_app_eligible"] is True

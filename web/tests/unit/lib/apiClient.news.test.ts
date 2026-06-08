@@ -104,7 +104,9 @@ describe("news API client normalization", () => {
     expect(rows.items[0].signal.display_signal.label_zh).toBe("利好");
     expect(rows.items[0].signal.display_signal.score).toBe(82);
     expect(rows.items[0].token_lanes).toEqual([]);
-    expect(rows.items[0].token_impacts?.[0].provider_score).toBe(82);
+    expect(rows.items[0].token_impacts).toEqual([]);
+    expect(rows.items[0].signal).not.toHaveProperty("provider_signal");
+    expect(rows.items[0].signal.alert_eligibility).not.toHaveProperty("provider_score");
     expect(rows.items[0].source?.provider_type).toBe("opennews");
     expect(rows.items[0].provider_type).toBe("opennews");
     expect(rows.items[0].market_scope?.primary).toBe("us_equity");
@@ -138,6 +140,16 @@ describe("news API client normalization", () => {
                 }),
                 agent_brief: {
                   status: "ready",
+                  direction: "bearish",
+                  decision_class: "watch",
+                  summary_zh: "后端摘要",
+                  market_read_zh: "后端解读",
+                  agent_run_id: "run-retired",
+                  artifact_version_hash: "artifact-hash",
+                  input_hash: "input-hash",
+                  output_hash: "output-hash",
+                  prompt_version: "prompt-retired",
+                  schema_version: "schema-retired",
                   confirmation_state: "single_source",
                   novelty_status: "new",
                   source_consensus_zh: "retired consensus",
@@ -147,27 +159,19 @@ describe("news API client normalization", () => {
                   watch_items_zh: "retired watch",
                   confidence: 0.91,
                   brief_json: {
-                    direction: "bearish",
-                    decision_class: "watch",
-                    summary_zh: "后端摘要",
-                    market_read_zh: "后端解读",
+                    summary_zh: "兼容摘要不应被读取",
+                    market_read_zh: "兼容解读不应被读取",
                     confirmation_state: "single_source",
                     novelty_status: "new",
-                    source_consensus_zh: "retired consensus",
-                    retrieval_notes_zh: "retired notes",
-                    used_tool_call_ids: ["retired-call"],
-                    impact_zh: "retired impact",
-                    watch_items_zh: "retired watch",
-                    confidence: 0.91,
-                    bull_view: { strength: "absent", thesis_zh: "", evidence_refs: [] },
-                    bear_view: {
-                      strength: "strong",
-                      thesis_zh: "空头",
-                      evidence_refs: ["item:summary"],
-                    },
-                    data_gaps: [{ kind: "identity", severity: "medium" }],
+                  },
+                  bull_view: { strength: "absent", thesis_zh: "", evidence_refs: [] },
+                  bear_view: {
+                    strength: "strong",
+                    thesis_zh: "空头",
                     evidence_refs: ["item:summary"],
                   },
+                  data_gaps: [{ kind: "identity", severity: "medium" }],
+                  evidence_refs: ["item:summary"],
                 },
               },
               {
@@ -205,8 +209,13 @@ describe("news API client normalization", () => {
     expect(brief).not.toHaveProperty("impact_zh");
     expect(brief).not.toHaveProperty("watch_items_zh");
     expect(brief).not.toHaveProperty("confidence");
-    expect(brief.brief_json).not.toHaveProperty("confirmation_state");
-    expect(brief.brief_json).not.toHaveProperty("novelty_status");
+    expect(brief).not.toHaveProperty("agent_run_id");
+    expect(brief).not.toHaveProperty("artifact_version_hash");
+    expect(brief).not.toHaveProperty("input_hash");
+    expect(brief).not.toHaveProperty("output_hash");
+    expect(brief).not.toHaveProperty("prompt_version");
+    expect(brief).not.toHaveProperty("schema_version");
+    expect(brief).not.toHaveProperty("brief_json");
     expect(rows.items[1].agent_brief).toBeUndefined();
   });
 
@@ -274,6 +283,13 @@ describe("news API client normalization", () => {
               usage_json: { input_tokens: 12, output_tokens: 3 },
               request_json: { packet: { news_item_id: "news-failed" } },
               response_json: { summary_zh: "失败前输出" },
+              validation_errors_json: [{ path: "summary_zh" }],
+              trace_metadata_json: { sdk_trace_id: "trace-1" },
+              research_plan: { legacy: true },
+              tool_results: [{ tool_name: "legacy" }],
+              research_execution: { legacy: true },
+              research_hashes: { legacy: true },
+              base_packet: { legacy: true },
             },
           },
         }),
@@ -289,10 +305,18 @@ describe("news API client normalization", () => {
     expect(item.agent_run?.error_class).toBe("ProviderError");
     expect(item.agent_run?.error).toBe("provider timeout");
     expect(item.agent_run?.error_message).toBe("provider timeout");
-    expect(item.agent_run?.usage_json?.input_tokens).toBe(12);
-    expect(item.agent_run?.research_plan).toBeNull();
-    expect(item.agent_run?.tool_results).toEqual([]);
-    expect(item.agent_run?.response_json?.summary_zh).toBe("失败前输出");
+    const run = item.agent_run as Record<string, unknown>;
+    expect(run).not.toHaveProperty("run_id");
+    expect(run).not.toHaveProperty("usage_json");
+    expect(run).not.toHaveProperty("request_json");
+    expect(run).not.toHaveProperty("response_json");
+    expect(run).not.toHaveProperty("validation_errors_json");
+    expect(run).not.toHaveProperty("trace_metadata_json");
+    expect(run).not.toHaveProperty("research_plan");
+    expect(run).not.toHaveProperty("tool_results");
+    expect(run).not.toHaveProperty("research_execution");
+    expect(run).not.toHaveProperty("research_hashes");
+    expect(run).not.toHaveProperty("base_packet");
   });
 
   it("does not reconstruct detail lanes from retired token and fact aliases", async () => {
@@ -322,13 +346,11 @@ describe("news API client normalization", () => {
 function newsSignalEnvelope(displaySignal: Record<string, unknown>) {
   return {
     display_signal: displaySignal,
-    provider_signal: displaySignal.source === "provider" ? displaySignal : null,
     agent_signal: { status: "pending" },
     alert_eligibility: {
       in_app_eligible: true,
       external_push_ready: false,
       agent_status: "pending",
-      provider_score: displaySignal.score,
     },
   };
 }

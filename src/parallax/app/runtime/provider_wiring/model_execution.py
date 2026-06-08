@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from parallax.domains.pulse_lab.providers import PulseAgentRuntimeContract, PulseDecisionResult
+from parallax.domains.pulse_lab.providers import PULSE_DECISION_LANE, PulseAgentRuntimeContract, PulseDecisionResult
 from parallax.domains.pulse_lab.services.pulse_decision_runtime import (
     PulseDecisionRuntimeService,
 )
@@ -127,7 +127,6 @@ class LiteLLMPulseDecisionProvider:
         completeness: dict[str, Any],
         runtime_manifest: dict[str, Any],
         parent_reservation: AgentCapacityReservation | None = None,
-        stage_plan: Any | None = None,
     ) -> PulseDecisionResult:
         result = await self._client.run_decision_pipeline(
             context=context,
@@ -137,7 +136,6 @@ class LiteLLMPulseDecisionProvider:
             completeness=completeness,
             runtime_manifest=runtime_manifest,
             parent_reservation=parent_reservation,
-            stage_plan=stage_plan,
         )
         return PulseDecisionResult(
             final_decision=result.final_decision,
@@ -153,16 +151,13 @@ def litellm_pulse_decision_provider(
     settings: Settings,
     *,
     agent_gateway: AgentExecutionGateway,
-    db_pool: Any | None,
 ) -> LiteLLMPulseDecisionProvider:
-    if db_pool is None:
-        raise RuntimeError("db_pool is required for LiteLLMPulseDecisionProvider")
     return LiteLLMPulseDecisionProvider(
         LiteLLMPulseDecisionClient(
-            decision_runtime=PulseDecisionRuntimeService(db_pool=db_pool),
+            decision_runtime=PulseDecisionRuntimeService(),
             agent_gateway=agent_gateway,
         ),
-        pipeline_timeout_seconds=_agent_runtime_lane_timeout_seconds(settings, "pulse.pipeline"),
+        pipeline_timeout_seconds=_agent_runtime_lane_timeout_seconds(settings, PULSE_DECISION_LANE),
     )
 
 

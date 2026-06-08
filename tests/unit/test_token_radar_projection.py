@@ -2049,6 +2049,58 @@ def test_projection_rebuild_dirty_targets_scores_only_selected_work_items(monkey
     assert set(result["windows"]) == {"5m:all:all", "1h:matched:all"}
 
 
+def test_projection_rebuild_dirty_targets_separates_score_work_from_due_publish_work(monkeypatch):
+    score_calls: list[tuple[str, str]] = []
+    refresh_calls: list[tuple[str, str]] = []
+    token_radar = FakeTokenRadar(upsert_return=0, delete_return=0)
+    dirty_targets = FakeDirtyTargets(
+        [
+            {
+                "target_type_key": "Asset",
+                "identity_id": "asset-1",
+                "payload_hash": "claim-hash",
+                "lease_owner": "projection-worker",
+                "attempt_count": 1,
+                "source_event_ids_json": ["event-score-all"],
+            }
+        ]
+    )
+    repos = type(
+        "Repos",
+        (),
+        {
+            "conn": FakeTransactionConn(),
+            "token_radar": token_radar,
+            "token_radar_dirty_targets": dirty_targets,
+            "token_radar_rank_sources": FakeRankSources(token_radar=token_radar, rows_by_request={}),
+        },
+    )()
+
+    def score(self, **kwargs):
+        score_calls.append((kwargs["request"].window, kwargs["request"].scope))
+        return {"source_rows": 0, "status": "unchanged", "rank_set_changed": False}
+
+    def refresh(self, **kwargs):
+        refresh_calls.append((kwargs["window"], kwargs["scope"]))
+        return {"rows_written": 0, "source_rows": 0, "status": "unchanged"}
+
+    monkeypatch.setattr(TokenRadarProjection, "_project_source_request", score)
+    monkeypatch.setattr(TokenRadarProjection, "refresh_rank_set", refresh)
+
+    result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
+        work_items=(("5m", "all"),),
+        score_work_items=(("5m", "all"), ("1h", "all")),
+        now_ms=1_777_800_060_000,
+        limit=20,
+    )
+
+    assert result["status"] == "ready"
+    assert score_calls == [("5m", "all"), ("1h", "all")]
+    assert refresh_calls == [("5m", "all")]
+    assert set(result["windows"]) == {"5m:all:all"}
+    assert dirty_targets.done
+
+
 def test_projection_rebuild_dirty_targets_publishes_requested_work_items_without_dirty_claims(monkeypatch):
     refresh_calls: list[tuple[str, str]] = []
     token_radar = FakeTokenRadar()

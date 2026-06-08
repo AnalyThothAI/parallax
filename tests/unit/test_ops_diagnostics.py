@@ -216,7 +216,7 @@ def test_ops_diagnostics_agent_execution_sanitizes_snapshot() -> None:
             "prompt": "do not expose",
             "api_key": "sk-live",
             "lanes": {
-                "pulse.pipeline": {
+                "pulse.decision": {
                     "policy": {"priority": "high", "max_concurrency": 1},
                     "in_flight": 1,
                     "input_payload": {"secret": "value"},
@@ -231,13 +231,13 @@ def test_ops_diagnostics_agent_execution_sanitizes_snapshot() -> None:
     assert payload["agent_execution"]["status"] == "ok"
     assert "prompt" not in payload["agent_execution"]
     assert "api_key" not in payload["agent_execution"]
-    assert set(payload["agent_execution"]["lanes"]["pulse.pipeline"]) <= {
+    assert set(payload["agent_execution"]["lanes"]["pulse.decision"]) <= {
         "status",
         "reason",
         "policy",
         "counters",
     }
-    assert "input_payload" not in payload["agent_execution"]["lanes"]["pulse.pipeline"]
+    assert "input_payload" not in payload["agent_execution"]["lanes"]["pulse.decision"]
 
 
 def test_ops_diagnostics_agent_execution_disabled_without_gateway() -> None:
@@ -265,7 +265,7 @@ def test_ops_diagnostics_overall_includes_blocked_agent_execution() -> None:
             "global_max_concurrency": 4,
             "global_in_flight": 0,
             "lanes": {
-                "pulse.pipeline": {
+                "pulse.decision": {
                     "policy": {"priority": "high", "max_concurrency": 1},
                     "circuit_state": "open",
                     "last_circuit_open_at_ms": 9_900,

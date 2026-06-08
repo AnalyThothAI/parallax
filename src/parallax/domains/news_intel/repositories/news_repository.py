@@ -1225,16 +1225,19 @@ class NewsRepository:
                 )
                 self._clear_item_scoped_derived_facts(news_item_id=old_news_item_id)
                 continue
-            self._remap_item_scoped_agent_outputs_to_news_item(
-                old_news_item_ids=[old_news_item_id],
-                news_item_id=str(row["news_item_id"]),
-                now_ms=now_ms,
-            )
             self._remap_projection_dirty_targets_to_news_item(
                 old_news_item_ids=[old_news_item_id],
                 news_item_id=str(row["news_item_id"]),
                 now_ms=now_ms,
             )
+            if self._news_item_has_agent_outputs(news_item_id=old_news_item_id):
+                self._clear_item_scoped_derived_facts(news_item_id=old_news_item_id)
+                self._enqueue_item_scoped_page_cleanup_target(
+                    news_item_id=old_news_item_id,
+                    reason="canonical_news_item_merge_cleanup",
+                    now_ms=now_ms,
+                )
+                continue
             deleted_old_item = self._delete_zero_edge_news_item(news_item_id=old_news_item_id)
             if not deleted_old_item:
                 self._reselect_news_item_representative_from_edges(
@@ -1628,99 +1631,23 @@ class NewsRepository:
         ).fetchone()
         return bool(row and row["has_edges"])
 
-    def _remap_item_scoped_agent_outputs_to_news_item(
-        self,
-        *,
-        old_news_item_ids: Sequence[str],
-        news_item_id: str,
-        now_ms: int,
-    ) -> None:
-        old_ids = _distinct_old_news_item_ids(old_news_item_ids, news_item_id=news_item_id)
-        if not old_ids:
-            return
-        placeholders = ", ".join(["%s"] * len(old_ids))
-        self.conn.execute(
-            f"""
-            UPDATE news_item_agent_runs AS runs
-               SET news_item_id = %s,
-                   trace_metadata_json = COALESCE(runs.trace_metadata_json, '{{}}'::jsonb)
-                     || jsonb_build_object(
-                       'news_item_remap_reason', 'canonical_news_item_merge',
-                       'remapped_from_news_item_id', runs.news_item_id,
-                       'remapped_to_news_item_id', %s::text,
-                       'remapped_at_ms', %s::bigint
-                     )
-             WHERE runs.news_item_id IN ({placeholders})
-               AND runs.news_item_id <> %s
-            """,
-            (str(news_item_id), str(news_item_id), int(now_ms), *old_ids, str(news_item_id)),
-        )
-        self.conn.execute(
-            f"""
-            WITH candidate AS (
-              SELECT briefs.*
+    def _news_item_has_agent_outputs(self, *, news_item_id: str) -> bool:
+        row = self.conn.execute(
+            """
+            SELECT EXISTS (
+              SELECT 1
+                FROM news_item_agent_runs AS runs
+               WHERE runs.news_item_id = %s
+              UNION ALL
+              SELECT 1
                 FROM news_item_agent_briefs AS briefs
-               WHERE (
-                     briefs.news_item_id = %s
-                  OR briefs.news_item_id IN ({placeholders})
-               )
-                 AND {_CURRENT_NEWS_ITEM_BRIEF_BRIEFS_SQL}
-               ORDER BY
-                 briefs.computed_at_ms DESC,
-                 briefs.updated_at_ms DESC,
-                 CASE WHEN briefs.news_item_id = %s THEN 0 ELSE 1 END,
-                 briefs.agent_run_id ASC
-               LIMIT 1
-            ),
-            upserted AS (
-              INSERT INTO news_item_agent_briefs (
-                news_item_id, agent_run_id, status, direction, decision_class, brief_json,
-                input_hash, artifact_version_hash, prompt_version, schema_version,
-                validator_version, computed_at_ms, created_at_ms, updated_at_ms
-              )
-              SELECT
-                %s,
-                agent_run_id,
-                status,
-                direction,
-                decision_class,
-                brief_json,
-                input_hash,
-                artifact_version_hash,
-                prompt_version,
-                schema_version,
-                validator_version,
-                computed_at_ms,
-                created_at_ms,
-                GREATEST(updated_at_ms, %s::bigint)
-              FROM candidate
-              ON CONFLICT (news_item_id) DO UPDATE SET
-                agent_run_id = EXCLUDED.agent_run_id,
-                status = EXCLUDED.status,
-                direction = EXCLUDED.direction,
-                decision_class = EXCLUDED.decision_class,
-                brief_json = EXCLUDED.brief_json,
-                input_hash = EXCLUDED.input_hash,
-                artifact_version_hash = EXCLUDED.artifact_version_hash,
-                prompt_version = EXCLUDED.prompt_version,
-                schema_version = EXCLUDED.schema_version,
-                validator_version = EXCLUDED.validator_version,
-                computed_at_ms = EXCLUDED.computed_at_ms,
-                updated_at_ms = EXCLUDED.updated_at_ms
-              RETURNING news_item_id
-            )
-            DELETE FROM news_item_agent_briefs AS briefs
-             WHERE briefs.news_item_id IN ({placeholders})
+               WHERE briefs.news_item_id = %s
+              LIMIT 1
+            ) AS has_agent_outputs
             """,
-            (
-                str(news_item_id),
-                *old_ids,
-                str(news_item_id),
-                str(news_item_id),
-                int(now_ms),
-                *old_ids,
-            ),
-        )
+            (news_item_id, news_item_id),
+        ).fetchone()
+        return bool(row and row["has_agent_outputs"])
 
     def _remap_projection_dirty_targets_to_news_item(
         self,
@@ -1829,6 +1756,74 @@ class NewsRepository:
         self.conn.execute("DELETE FROM news_fact_candidates WHERE news_item_id = %s", (news_item_id,))
         self.conn.execute("DELETE FROM news_token_mentions WHERE news_item_id = %s", (news_item_id,))
         self.conn.execute("DELETE FROM news_item_entities WHERE news_item_id = %s", (news_item_id,))
+
+    def _enqueue_item_scoped_page_cleanup_target(self, *, news_item_id: str, reason: str, now_ms: int) -> None:
+        payload_hash = hashlib.sha256(f"{reason}:{news_item_id}".encode()).hexdigest()
+        self.conn.execute(
+            """
+            INSERT INTO news_projection_dirty_targets(
+              projection_name,
+              target_kind,
+              target_id,
+              "window",
+              dirty_reason,
+              payload_hash,
+              source_watermark_ms,
+              priority,
+              due_at_ms,
+              leased_until_ms,
+              lease_owner,
+              attempt_count,
+              last_error,
+              first_dirty_at_ms,
+              updated_at_ms
+            )
+            VALUES (
+              'page',
+              'news_item',
+              %s,
+              '',
+              %s,
+              %s,
+              %s,
+              1,
+              %s,
+              NULL,
+              NULL,
+              0,
+              NULL,
+              %s,
+              %s
+            )
+            ON CONFLICT(projection_name, target_kind, target_id, "window") DO UPDATE SET
+              dirty_reason = EXCLUDED.dirty_reason,
+              payload_hash = EXCLUDED.payload_hash,
+              source_watermark_ms = GREATEST(
+                news_projection_dirty_targets.source_watermark_ms,
+                EXCLUDED.source_watermark_ms
+              ),
+              priority = LEAST(news_projection_dirty_targets.priority, EXCLUDED.priority),
+              due_at_ms = LEAST(news_projection_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
+              leased_until_ms = NULL,
+              lease_owner = NULL,
+              attempt_count = 0,
+              last_error = NULL,
+              first_dirty_at_ms = LEAST(
+                news_projection_dirty_targets.first_dirty_at_ms,
+                EXCLUDED.first_dirty_at_ms
+              ),
+              updated_at_ms = EXCLUDED.updated_at_ms
+            """,
+            (
+                str(news_item_id),
+                str(reason),
+                payload_hash,
+                int(now_ms),
+                int(now_ms),
+                int(now_ms),
+                int(now_ms),
+            ),
+        )
 
     def _reselect_news_item_representative_from_edges(self, *, news_item_id: str, now_ms: int) -> dict[str, Any]:
         row = self.conn.execute(
@@ -2002,8 +1997,7 @@ class NewsRepository:
             """
             SELECT news_item_id
               FROM news_item_agent_briefs
-             WHERE COALESCE(NULLIF(schema_version, ''), NULLIF(brief_json ->> 'schema_version', ''), '')
-                   <> %s
+             WHERE COALESCE(NULLIF(schema_version, ''), '') <> %s
              ORDER BY updated_at_ms ASC, news_item_id ASC
              LIMIT %s
             """,
@@ -2030,8 +2024,7 @@ class NewsRepository:
         rows = self.conn.execute(
             f"""
             DELETE FROM news_item_agent_briefs
-             WHERE COALESCE(NULLIF(schema_version, ''), NULLIF(brief_json ->> 'schema_version', ''), '')
-                   <> %s
+             WHERE COALESCE(NULLIF(schema_version, ''), '') <> %s
                {row_filter}
              RETURNING news_item_id
             """,
@@ -2066,7 +2059,6 @@ class NewsRepository:
     def list_news_high_signal_notification_candidates(
         self,
         *,
-        min_score: int,
         limit: int,
     ) -> list[dict[str, Any]]:
         rows = self.conn.execute(
@@ -2103,7 +2095,8 @@ class NewsRepository:
             FROM news_page_rows
             WHERE projection_version = %s
               AND COALESCE((signal_json -> 'alert_eligibility' ->> 'in_app_eligible')::boolean, false) = true
-              AND COALESCE(NULLIF(signal_json -> 'alert_eligibility' ->> 'provider_score', '')::int, -1) >= %s
+              AND agent_status = 'ready'
+              AND COALESCE(agent_brief_json ->> 'status', '') = 'ready'
               AND EXISTS (
                 SELECT 1
                   FROM news_item_observation_edges AS edges
@@ -2123,11 +2116,10 @@ class NewsRepository:
             ORDER BY
               latest_at_ms DESC,
               agent_brief_computed_at_ms DESC NULLS LAST,
-              COALESCE(NULLIF(signal_json -> 'alert_eligibility' ->> 'provider_score', '')::int, -1) DESC,
               row_id DESC
             LIMIT %s
             """,
-            (NEWS_PAGE_PROJECTION_VERSION, int(min_score), max(0, int(limit))),
+            (NEWS_PAGE_PROJECTION_VERSION, max(0, int(limit))),
         ).fetchall()
         payloads: list[dict[str, Any]] = []
         for row in rows:
@@ -2678,77 +2670,6 @@ class NewsRepository:
             self.conn.commit()
         return int(getattr(cursor, "rowcount", 0) or 0)
 
-    def list_news_market_signal_repair_candidates(self, *, since_ms: int, min_score: int) -> list[dict[str, Any]]:
-        rows = self.conn.execute(
-            """
-            WITH scored_items AS (
-              SELECT items.*,
-                     sources.enabled AS source_enabled,
-                     sources.source_role,
-                     sources.trust_tier,
-                     sources.source_quality_status,
-                     sources.source_name,
-                     sources.provider_type,
-                     sources.source_domain,
-                     CASE
-                       WHEN items.provider_signal_json ->> 'score' ~ '^-?[0-9]+(\\.[0-9]+)?$'
-                         THEN (items.provider_signal_json ->> 'score')::numeric
-                       ELSE NULL
-                     END AS provider_score
-                FROM news_items AS items
-                JOIN news_sources AS sources ON sources.source_id = items.source_id
-               WHERE items.published_at_ms >= %s
-                 AND items.lifecycle_status = 'processed'
-                 AND LOWER(COALESCE(items.provider_signal_json ->> 'source', '')) = 'provider'
-            )
-            SELECT scored_items.*,
-                   scored_items.published_at_ms AS source_watermark_ms,
-                   COALESCE(entities.entities_json, '[]'::jsonb) AS entities_json,
-                   COALESCE(mentions.token_mentions_json, '[]'::jsonb) AS token_mentions_json,
-                   COALESCE(facts.fact_candidates_json, '[]'::jsonb) AS fact_candidates_json
-              FROM scored_items
-              LEFT JOIN LATERAL (
-                SELECT jsonb_agg(to_jsonb(entities.*) ORDER BY entities.entity_id) AS entities_json
-                  FROM news_item_entities AS entities
-                 WHERE entities.news_item_id = scored_items.news_item_id
-              ) AS entities ON true
-              LEFT JOIN LATERAL (
-                SELECT jsonb_agg(to_jsonb(mentions.*) ORDER BY mentions.mention_id) AS token_mentions_json
-                  FROM news_token_mentions AS mentions
-                 WHERE mentions.news_item_id = scored_items.news_item_id
-              ) AS mentions ON true
-              LEFT JOIN LATERAL (
-                SELECT jsonb_agg(to_jsonb(facts.*) ORDER BY facts.fact_candidate_id) AS fact_candidates_json
-                  FROM news_fact_candidates AS facts
-                 WHERE facts.news_item_id = scored_items.news_item_id
-              ) AS facts ON true
-             WHERE scored_items.provider_score >= %s
-             ORDER BY scored_items.published_at_ms DESC, scored_items.news_item_id ASC
-            """,
-            (int(since_ms), int(min_score)),
-        ).fetchall()
-        return [dict(row) for row in rows]
-
-    def load_agent_admission_repair_contexts(
-        self,
-        *,
-        items: Sequence[Mapping[str, Any]],
-        now_ms: int,
-    ) -> dict[str, dict[str, Any]]:
-        del now_ms
-        contexts: dict[str, dict[str, Any]] = {}
-        for item in items:
-            item_payload = dict(item)
-            news_item_id = str(item_payload.get("news_item_id") or "")
-            if not news_item_id:
-                continue
-            contexts[news_item_id] = {
-                "exact_duplicate": self._agent_exact_duplicate_context(item_payload),
-                "similar_story": self._agent_similar_story_context(item_payload),
-                "material_delta": {"has_delta": False, "reasons": [], "evidence": {}},
-            }
-        return contexts
-
     def _current_brief_for_item(self, news_item_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
             f"""
@@ -2835,8 +2756,7 @@ class NewsRepository:
                    candidates.story_key,
                    current_brief.status AS brief_status,
                    current_brief.input_hash AS brief_input_hash,
-                   candidates.published_at_ms,
-                   COALESCE(NULLIF(candidates.provider_signal_json ->> 'score', '')::int, -1) AS provider_score
+                   candidates.published_at_ms
               FROM news_items AS candidates
               JOIN news_sources AS sources ON sources.source_id = candidates.source_id
               JOIN news_item_agent_briefs AS current_brief
@@ -2847,7 +2767,6 @@ class NewsRepository:
                AND sources.enabled = true
              ORDER BY
                CASE WHEN current_brief.status IN ('ready', 'insufficient') THEN 0 ELSE 1 END,
-               provider_score DESC,
                candidates.published_at_ms DESC,
                candidates.news_item_id ASC
              LIMIT 1
@@ -3253,7 +3172,6 @@ class NewsRepository:
                        candidate
                        ORDER BY
                          agent_admission_rank DESC,
-                         provider_score DESC NULLS LAST,
                          source_role_rank DESC,
                          trust_tier_rank DESC,
                          published_at_ms DESC,
@@ -3289,11 +3207,6 @@ class NewsRepository:
                            WHEN duplicate_items.agent_admission_status IN ('eligible', 'eligible_refresh') THEN 1
                            ELSE 0
                          END AS agent_admission_rank,
-                         CASE
-                           WHEN COALESCE(duplicate_items.provider_signal_json ->> 'score', '') ~ '^-?[0-9]+$'
-                             THEN (duplicate_items.provider_signal_json ->> 'score')::int
-                           ELSE NULL
-                         END AS provider_score,
                          {source_role_rank_case_sql("duplicate_item_sources.source_role")} AS source_role_rank,
                          CASE duplicate_item_sources.trust_tier
                            WHEN 'official' THEN 40
@@ -3372,7 +3285,6 @@ class NewsRepository:
                      )
                    ORDER BY
                      agent_admission_rank DESC,
-                     provider_score DESC NULLS LAST,
                      source_role_rank DESC,
                      trust_tier_rank DESC,
                      duplicate_items.published_at_ms DESC,
@@ -3386,7 +3298,6 @@ class NewsRepository:
                        ORDER BY
                          ready_brief_rank DESC,
                          agent_admission_rank DESC,
-                         provider_score DESC NULLS LAST,
                          source_role_rank DESC,
                          trust_tier_rank DESC,
                          published_at_ms DESC,
@@ -3420,11 +3331,6 @@ class NewsRepository:
                            WHEN story_items.agent_admission_status IN ('eligible', 'eligible_refresh') THEN 1
                            ELSE 0
                          END AS agent_admission_rank,
-                         CASE
-                           WHEN COALESCE(story_items.provider_signal_json ->> 'score', '') ~ '^-?[0-9]+$'
-                             THEN (story_items.provider_signal_json ->> 'score')::int
-                           ELSE NULL
-                         END AS provider_score,
                          {source_role_rank_case_sql("story_item_sources.source_role")} AS source_role_rank,
                          CASE story_item_sources.trust_tier
                            WHEN 'official' THEN 40
@@ -3486,7 +3392,6 @@ class NewsRepository:
                    ORDER BY
                      ready_brief_rank DESC,
                      agent_admission_rank DESC,
-                     provider_score DESC NULLS LAST,
                      source_role_rank DESC,
                      trust_tier_rank DESC,
                      story_items.published_at_ms DESC,
@@ -3510,74 +3415,6 @@ class NewsRepository:
             }
             for row in rows
         ]
-
-    def list_agent_admission_repair_candidates(
-        self,
-        *,
-        since_ms: int,
-        until_ms: int,
-        limit: int = 500,
-    ) -> list[dict[str, Any]]:
-        bounded_limit = max(0, min(int(limit), 500))
-        if bounded_limit <= 0:
-            return []
-        rows = self.conn.execute(
-            """
-            WITH candidates AS (
-              SELECT items.news_item_id,
-                     CASE
-                       WHEN COALESCE(items.provider_signal_json ->> 'score', '') ~ '^-?[0-9]+$'
-                       THEN (items.provider_signal_json ->> 'score')::int
-                       ELSE NULL
-                     END AS provider_score,
-                     items.published_at_ms
-                FROM news_items AS items
-                JOIN news_sources AS sources ON sources.source_id = items.source_id
-               WHERE items.lifecycle_status = 'processed'
-                 AND sources.enabled = true
-                 AND items.published_at_ms >= %s
-                 AND items.published_at_ms <= %s
-                 AND EXISTS (
-                   SELECT 1
-                     FROM news_item_observation_edges AS edges
-                     JOIN news_sources AS edge_sources ON edge_sources.source_id = edges.source_id
-                    WHERE edges.news_item_id = items.news_item_id
-                      AND edge_sources.enabled = true
-                 )
-               ORDER BY provider_score DESC, items.published_at_ms DESC, items.news_item_id ASC
-               LIMIT %s
-            )
-            SELECT news_item_id, provider_score
-              FROM candidates
-             ORDER BY provider_score DESC, published_at_ms DESC, news_item_id ASC
-            """,
-            (
-                int(since_ms),
-                int(until_ms),
-                bounded_limit,
-            ),
-        ).fetchall()
-        if not rows:
-            return []
-        candidate_ids = [str(row["news_item_id"]) for row in rows]
-        contexts_by_id = {
-            str(context["item"].get("news_item_id")): context
-            for context in self.load_agent_admission_contexts(news_item_ids=candidate_ids, now_ms=int(until_ms))
-        }
-        candidates: list[dict[str, Any]] = []
-        for row in rows:
-            news_item_id = str(row["news_item_id"])
-            context = contexts_by_id.get(news_item_id)
-            if context is None:
-                continue
-            provider_score = row["provider_score"]
-            candidates.append(
-                {
-                    **context,
-                    "provider_score": int(provider_score) if provider_score is not None else None,
-                }
-            )
-        return candidates
 
     def load_story_projection_payloads_for_items(self, *, news_item_ids: Sequence[str]) -> list[dict[str, Any]]:
         target_ids = list(dict.fromkeys(str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)))
@@ -3867,7 +3704,6 @@ class NewsRepository:
                AND {_CURRENT_NEWS_ITEM_BRIEF_CURRENT_BRIEF_SQL}
               LEFT JOIN LATERAL (
                 SELECT jsonb_build_object(
-                         'run_id', runs.run_id,
                          'backend', runs.backend,
                          'status', runs.status,
                          'outcome', runs.outcome,
@@ -3877,21 +3713,8 @@ class NewsRepository:
                          'lane', runs.lane,
                          'workflow_name', runs.workflow_name,
                          'agent_name', runs.agent_name,
-                         'execution_trace_id', runs.execution_trace_id,
-                         'artifact_version_hash', runs.artifact_version_hash,
-                         'prompt_version', runs.prompt_version,
-                         'schema_version', runs.schema_version,
-                         'validator_version', runs.validator_version,
-                         'guardrail_version', runs.guardrail_version,
-                         'input_hash', runs.input_hash,
-                         'output_hash', runs.output_hash,
                          'error_class', runs.error_class,
                          'error', runs.error,
-                         'request_json', runs.request_json,
-                         'response_json', runs.response_json,
-                         'validation_errors_json', runs.validation_errors_json,
-                         'usage_json', runs.usage_json,
-                         'trace_metadata_json', runs.trace_metadata_json,
                          'latency_ms', runs.latency_ms,
                          'started_at_ms', runs.started_at_ms,
                          'finished_at_ms', runs.finished_at_ms
@@ -3947,6 +3770,8 @@ class NewsRepository:
             """,
             (news_item_id, NEWS_PAGE_PROJECTION_VERSION),
         ).fetchone()
+        if page_row is None:
+            return None
         observation_rows = self.conn.execute(
             """
             SELECT to_jsonb(edges.*)
@@ -3977,13 +3802,10 @@ class NewsRepository:
             (news_item_id,),
         ).fetchall()
         item_payload = _json_dict(row["item"])
-        provider_signal = _json_dict(item_payload.get("provider_signal_json"))
-        provider_token_impacts = _json_list(item_payload.get("provider_token_impacts_json"))
         agent_brief = _detail_agent_brief(row["agent_brief"])
-        projected = dict(page_row) if page_row is not None else {}
+        projected = dict(page_row)
         projected_signal = _json_dict(projected.get("signal")) or _projection_missing_signal(
             agent_brief=agent_brief,
-            provider_signal=provider_signal,
         )
         token_mentions = _json_list(row["token_mentions"])
         fact_candidates = _json_list(row["fact_candidates"])
@@ -4020,8 +3842,6 @@ class NewsRepository:
             "token_impacts": _json_list(projected.get("token_impacts")),
             "token_lanes": _json_list(projected.get("token_lanes")),
             "fact_lanes": _json_list(projected.get("fact_lanes")),
-            "provider_signal": provider_signal,
-            "provider_token_impacts": provider_token_impacts,
             "source": _public_source_payload(_json_dict(row["source"])),
             "provider_item": _public_provider_observation_payload(_json_dict(row["provider_item"])),
             "fetch_run": _public_fetch_run_payload(_json_dict(row["fetch_run"]))
@@ -4409,7 +4229,6 @@ class NewsRepository:
         self,
         *,
         window_ms: int = 8 * 3_600_000,
-        score_threshold: int = 80,
         now_ms: int | None = None,
     ) -> dict[str, Any]:
         resolved_now_ms = int(now_ms) if now_ms is not None else 0
@@ -4421,8 +4240,7 @@ class NewsRepository:
                   WHEN %(now_ms)s::bigint > 0 THEN %(now_ms)s::bigint
                   ELSE (extract(epoch FROM clock_timestamp()) * 1000)::bigint
                 END AS now_ms,
-                GREATEST(%(window_ms)s::bigint, 0) AS window_ms,
-                GREATEST(%(score_threshold)s::numeric, 0) AS score_threshold
+                GREATEST(%(window_ms)s::bigint, 0) AS window_ms
             ),
             visible_rows AS (
               SELECT rows.row_id,
@@ -4486,12 +4304,7 @@ class NewsRepository:
                      items.canonical_url,
                      items.published_at_ms,
                      items.fetched_at_ms,
-                     items.created_at_ms,
-                     CASE
-                       WHEN items.provider_signal_json ->> 'score' ~ '^-?[0-9]+(\\.[0-9]+)?$'
-                         THEN (items.provider_signal_json ->> 'score')::numeric
-                       ELSE 0
-                     END AS provider_score
+                     items.created_at_ms
                 FROM news_items AS items
                 CROSS JOIN params
                WHERE COALESCE(NULLIF(items.created_at_ms, 0), items.fetched_at_ms, 0)
@@ -4500,9 +4313,7 @@ class NewsRepository:
             material_title_duplicates AS (
               SELECT scoped_items.source_id,
                      scoped_items.title_fingerprint,
-                     COUNT(*)::int AS row_count,
-                     COUNT(*) FILTER (WHERE scoped_items.provider_score >= params.score_threshold)::int
-                       AS ge_threshold_rows
+                     COUNT(*)::int AS row_count
                 FROM scoped_items
                 CROSS JOIN params
                WHERE COALESCE(scoped_items.title_fingerprint, '') <> ''
@@ -4515,8 +4326,6 @@ class NewsRepository:
                        'title_fingerprint', duplicates.title_fingerprint,
                        'row_count', duplicates.row_count,
                        'duplicate_rows', duplicates.row_count - 1,
-                       'ge_threshold_rows', duplicates.ge_threshold_rows,
-                       'ge_threshold_duplicate_rows', GREATEST(duplicates.ge_threshold_rows - 1, 0),
                        'news_item_ids',
                          (
                            SELECT COALESCE(jsonb_agg(items.news_item_id ORDER BY items.news_item_id), '[]'::jsonb)
@@ -4526,15 +4335,12 @@ class NewsRepository:
                          )
                      ) AS payload
                 FROM material_title_duplicates AS duplicates
-               ORDER BY duplicates.ge_threshold_rows DESC, duplicates.row_count DESC,
-                        duplicates.source_id ASC, duplicates.title_fingerprint ASC
+               ORDER BY duplicates.row_count DESC, duplicates.source_id ASC, duplicates.title_fingerprint ASC
                LIMIT 20
             ),
             case_insensitive_url_duplicates AS (
               SELECT lower(scoped_items.canonical_url) AS normalized_url,
-                     COUNT(*)::int AS row_count,
-                     COUNT(*) FILTER (WHERE scoped_items.provider_score >= params.score_threshold)::int
-                       AS ge_threshold_rows
+                     COUNT(*)::int AS row_count
                 FROM scoped_items
                 CROSS JOIN params
                WHERE scoped_items.canonical_url ~* '^https?://'
@@ -4546,8 +4352,6 @@ class NewsRepository:
                        'normalized_url', duplicates.normalized_url,
                        'row_count', duplicates.row_count,
                        'duplicate_rows', duplicates.row_count - 1,
-                       'ge_threshold_rows', duplicates.ge_threshold_rows,
-                       'ge_threshold_duplicate_rows', GREATEST(duplicates.ge_threshold_rows - 1, 0),
                        'news_item_ids',
                          (
                            SELECT COALESCE(jsonb_agg(items.news_item_id ORDER BY items.news_item_id), '[]'::jsonb)
@@ -4556,25 +4360,16 @@ class NewsRepository:
                          )
                      ) AS payload
                 FROM case_insensitive_url_duplicates AS duplicates
-               ORDER BY duplicates.ge_threshold_rows DESC, duplicates.row_count DESC, duplicates.normalized_url ASC
+               ORDER BY duplicates.row_count DESC, duplicates.normalized_url ASC
                LIMIT 20
             ),
             preview_or_generic_url_rows AS (
-              SELECT COUNT(*)::int AS row_count,
-                     COUNT(*) FILTER (WHERE scoped_items.provider_score >= params.score_threshold)::int
-                       AS ge_threshold_rows
+              SELECT COUNT(*)::int AS row_count
                 FROM scoped_items
                 CROSS JOIN params
                WHERE scoped_items.canonical_url ~* '^https?://news\\.6551\\.io/preview/'
                   OR scoped_items.canonical_url ~* '^https?://([^/]+\\.)?treeofalpha\\.com/preview_article'
                   OR scoped_items.canonical_url ~* '^https?://([^/]+\\.)?binance\\.com/[^?]*/support/announcement/?$'
-            ),
-            historical_high_score_items AS (
-              SELECT COUNT(*)::int AS row_count
-                FROM scoped_items
-                CROSS JOIN params
-               WHERE scoped_items.provider_score >= params.score_threshold
-                 AND COALESCE(scoped_items.published_at_ms, 0) < params.now_ms - params.window_ms
             ),
             brief_input_risk AS (
               SELECT COUNT(*)::int AS row_count,
@@ -4628,9 +4423,6 @@ class NewsRepository:
                 'groups', COALESCE((SELECT COUNT(*)::int FROM material_title_duplicates), 0),
                 'rows', COALESCE((SELECT SUM(row_count)::int FROM material_title_duplicates), 0),
                 'duplicate_rows', COALESCE((SELECT SUM(row_count - 1)::int FROM material_title_duplicates), 0),
-                'ge_threshold_rows', COALESCE((SELECT SUM(ge_threshold_rows)::int FROM material_title_duplicates), 0),
-                'ge_threshold_duplicate_rows',
-                  COALESCE((SELECT SUM(GREATEST(ge_threshold_rows - 1, 0))::int FROM material_title_duplicates), 0),
                 'top_groups',
                   COALESCE((SELECT jsonb_agg(payload) FROM top_material_title_duplicate_groups), '[]'::jsonb)
               ) AS material_title_duplicate_groups,
@@ -4638,23 +4430,12 @@ class NewsRepository:
                 'groups', COALESCE((SELECT COUNT(*)::int FROM case_insensitive_url_duplicates), 0),
                 'rows', COALESCE((SELECT SUM(row_count)::int FROM case_insensitive_url_duplicates), 0),
                 'duplicate_rows', COALESCE((SELECT SUM(row_count - 1)::int FROM case_insensitive_url_duplicates), 0),
-                'ge_threshold_rows',
-                  COALESCE((SELECT SUM(ge_threshold_rows)::int FROM case_insensitive_url_duplicates), 0),
-                'ge_threshold_duplicate_rows',
-                  COALESCE(
-                    (SELECT SUM(GREATEST(ge_threshold_rows - 1, 0))::int FROM case_insensitive_url_duplicates),
-                    0
-                  ),
                 'top_groups',
                   COALESCE((SELECT jsonb_agg(payload) FROM top_case_insensitive_url_duplicate_groups), '[]'::jsonb)
               ) AS case_insensitive_url_duplicate_groups,
               jsonb_build_object(
-                'rows', COALESCE((SELECT row_count FROM preview_or_generic_url_rows), 0),
-                'ge_threshold_rows', COALESCE((SELECT ge_threshold_rows FROM preview_or_generic_url_rows), 0)
+                'rows', COALESCE((SELECT row_count FROM preview_or_generic_url_rows), 0)
               ) AS preview_or_generic_url_rows,
-              jsonb_build_object(
-                'rows', COALESCE((SELECT row_count FROM historical_high_score_items), 0)
-              ) AS historical_high_score_items,
               jsonb_build_object(
                 'rows', COALESCE((SELECT row_count FROM brief_input_risk), 0),
                 'stale_rows', COALESCE((SELECT stale_rows FROM brief_input_risk), 0)
@@ -4664,7 +4445,6 @@ class NewsRepository:
             {
                 "now_ms": resolved_now_ms,
                 "window_ms": max(0, int(window_ms)),
-                "score_threshold": max(0, int(score_threshold)),
             },
         ).fetchone()
         current_policy = self._news_dedup_current_policy_diagnostics(
@@ -4684,7 +4464,6 @@ class NewsRepository:
                 "material_title_duplicate_groups": {},
                 "case_insensitive_url_duplicate_groups": {},
                 "preview_or_generic_url_rows": {},
-                "historical_high_score_items": {},
                 "brief_input_risk": {},
                 "source_sync_diagnostics": [],
                 **current_policy,
@@ -4703,7 +4482,6 @@ class NewsRepository:
             "material_title_duplicate_groups": _json_dict(row["material_title_duplicate_groups"]),
             "case_insensitive_url_duplicate_groups": _json_dict(row["case_insensitive_url_duplicate_groups"]),
             "preview_or_generic_url_rows": _json_dict(row["preview_or_generic_url_rows"]),
-            "historical_high_score_items": _json_dict(row["historical_high_score_items"]),
             "brief_input_risk": _json_dict(row["brief_input_risk"]),
             "source_sync_diagnostics": _json_list(row["source_sync_diagnostics"]),
             **current_policy,
@@ -5212,33 +4990,30 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     payload["canonical_url"] = str(payload.get("canonical_url") or "")
     payload["summary"] = str(payload.get("summary") or "")
     payload["search_text"] = str(payload.get("search_text") or "")
-    payload["token_lanes_json"] = _json(payload.get("token_lanes_json") or payload.get("token_lanes") or [])
-    payload["fact_lanes_json"] = _json(payload.get("fact_lanes_json") or payload.get("fact_lanes") or [])
+    payload["token_lanes_json"] = _json(payload.get("token_lanes") or [])
+    payload["fact_lanes_json"] = _json(payload.get("fact_lanes") or [])
     payload["representative_news_item_id"] = str(
         payload.get("representative_news_item_id") or payload.get("news_item_id") or ""
     )
     payload["story_key"] = str(payload.get("story_key") or "")
-    payload["story_json"] = _json(payload.get("story_json") or payload.get("story") or {})
-    payload["token_impacts_json"] = _json(payload.get("token_impacts_json") or payload.get("token_impacts") or [])
+    payload["story_json"] = _json(payload.get("story") or {})
+    payload["token_impacts_json"] = _json(payload.get("token_impacts") or [])
     payload["content_class"] = str(payload.get("content_class") or "low_signal")
-    payload["content_tags_json"] = _json(payload.get("content_tags_json") or payload.get("content_tags") or [])
-    payload["content_classification_json"] = _json(
-        payload.get("content_classification_json") or payload.get("content_classification") or {}
-    )
-    payload["source_json"] = _json(payload.get("source_json") or payload.get("source") or {})
-    agent_brief = payload.get("agent_brief_json") or payload.get("agent_brief") or {"status": "pending"}
+    payload["content_tags_json"] = _json(payload.get("content_tags") or [])
+    payload["content_classification_json"] = _json(payload.get("content_classification") or {})
+    payload["source_json"] = _json(payload.get("source") or {})
+    agent_brief = payload.get("agent_brief") or {"status": "pending"}
     agent_status = str(payload.get("agent_status") or "pending")
-    signal = payload.get("signal_json") or payload.get("signal") or {}
+    signal = payload.get("signal") or {}
     payload["signal_json"] = _json(signal)
     payload["agent_brief_json"] = _json(agent_brief)
     payload["agent_status"] = agent_status
     payload["agent_brief_computed_at_ms"] = (
         int(payload["agent_brief_computed_at_ms"]) if payload.get("agent_brief_computed_at_ms") is not None else None
     )
-    payload["market_scope_json"] = _json(payload.get("market_scope_json") or payload.get("market_scope") or {})
+    payload["market_scope_json"] = _json(payload.get("market_scope") or {})
     agent_admission = _agent_admission_payload(
-        payload.get("agent_admission_json")
-        or payload.get("agent_admission")
+        payload.get("agent_admission")
         or {
             "status": payload.get("agent_admission_status") or "needs_review",
             "reason": payload.get("agent_admission_reason") or "",
@@ -5328,7 +5103,6 @@ def _signal_from_agent_brief(value: Any) -> dict[str, Any]:
                 "label_zh": "中性",
                 "method": "pending",
             },
-            "provider_signal": None,
             "agent_signal": payload or {"status": "pending"},
             "alert_eligibility": {
                 "agent_status": str(payload.get("status") or "pending"),
@@ -5348,7 +5122,6 @@ def _signal_from_agent_brief(value: Any) -> dict[str, Any]:
             "summary_zh": _json_dict(payload.get("brief_json")).get("summary_zh"),
             "method": "news_item_brief",
         },
-        "provider_signal": None,
         "agent_signal": payload,
         "alert_eligibility": {
             "agent_status": "ready",
@@ -5363,10 +5136,7 @@ def _signal_from_agent_brief(value: Any) -> dict[str, Any]:
 def _projection_missing_signal(
     *,
     agent_brief: Mapping[str, Any],
-    provider_signal: Mapping[str, Any],
 ) -> dict[str, Any]:
-    provider_payload = _provider_signal_payload(provider_signal)
-    provider_score = _optional_int(provider_payload.get("score")) if provider_payload else None
     agent_status = str(agent_brief.get("status") or "pending")
     return {
         "display_signal": {
@@ -5376,44 +5146,18 @@ def _projection_missing_signal(
             "label_zh": "中性",
             "method": "projection_missing",
         },
-        "provider_signal": provider_payload,
         "agent_signal": dict(agent_brief),
         "alert_eligibility": {
             key: value
             for key, value in {
                 "agent_status": agent_status,
                 "decision_class": agent_brief.get("decision_class"),
-                "provider_status": provider_payload.get("status") if provider_payload else None,
-                "provider_score": provider_score,
                 "in_app_eligible": False,
                 "external_push_ready": False,
                 "external_push_block_reason": "projection_missing",
             }.items()
             if value is not None
         },
-    }
-
-
-def _provider_signal_payload(provider_signal: Mapping[str, Any]) -> dict[str, Any] | None:
-    if provider_signal.get("source") != "provider":
-        return None
-    return {
-        key: value
-        for key, value in {
-            "source": "provider",
-            "provider": provider_signal.get("provider") or "opennews",
-            "status": provider_signal.get("status") or "partial",
-            "direction": provider_signal.get("direction") or "neutral",
-            "label_zh": provider_signal.get("label_zh")
-            or _direction_label(str(provider_signal.get("direction") or "neutral")),
-            "signal": provider_signal.get("signal"),
-            "score": _optional_int(provider_signal.get("score")),
-            "grade": provider_signal.get("grade"),
-            "summary_zh": provider_signal.get("summary_zh"),
-            "summary_en": provider_signal.get("summary_en"),
-            "method": provider_signal.get("method") or "opennews.provider_signal",
-        }.items()
-        if value is not None
     }
 
 
@@ -6215,8 +5959,9 @@ def _public_fetch_run_payload(row: Mapping[str, Any]) -> dict[str, Any]:
 
 def _public_agent_brief_payload(value: Any) -> dict[str, Any]:
     payload = _json_dict(value)
-    if not is_current_news_item_brief_contract(payload):
-        return {"status": "pending", "brief_json": {}}
+    has_contract_keys = any(key in payload for key in ("prompt_version", "schema_version", "validator_version"))
+    if has_contract_keys and not is_current_news_item_brief_contract(payload):
+        return {"status": "pending"}
     brief_json = _json_dict(payload.get("brief_json"))
     public_fields = (
         "status",
@@ -6235,10 +5980,11 @@ def _public_agent_brief_payload(value: Any) -> dict[str, Any]:
         "invalidation_conditions",
         "data_gaps",
         "evidence_refs",
-        "prompt_version",
-        "schema_version",
-        "validator_version",
         "computed_at_ms",
+        "data_gap_count",
+        "market_impacts",
+        "bull_strength",
+        "bear_strength",
     )
     brief_fields = (
         "title_zh",
@@ -6258,21 +6004,22 @@ def _public_agent_brief_payload(value: Any) -> dict[str, Any]:
     public_payload = {key: payload.get(key) for key in public_fields if key in payload}
     public_payload["status"] = str(public_payload.get("status") or "pending")
     public_brief_json = {key: brief_json.get(key) for key in brief_fields if key in brief_json}
-    public_payload["brief_json"] = public_brief_json
     for key, field_value in public_brief_json.items():
         if key not in public_payload:
             public_payload[key] = field_value
     for list_key in ("affected_entities", "transmission_paths", "market_domains"):
         if list_key in public_payload:
             public_payload[list_key] = _json_list(public_payload.get(list_key))
-        if list_key in public_brief_json:
-            public_brief_json[list_key] = _json_list(public_brief_json.get(list_key))
+    for list_key in ("data_gaps", "evidence_refs", "watch_triggers", "invalidation_conditions"):
+        if list_key in public_payload:
+            public_payload[list_key] = _json_list(public_payload.get(list_key))
+    if "data_gap_count" not in public_payload and "data_gaps" in public_payload:
+        public_payload["data_gap_count"] = len(_json_list(public_payload.get("data_gaps")))
     return public_payload
 
 
 def _public_agent_run_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     allowed = (
-        "run_id",
         "backend",
         "status",
         "outcome",
@@ -6282,19 +6029,9 @@ def _public_agent_run_payload(row: Mapping[str, Any]) -> dict[str, Any]:
         "lane",
         "workflow_name",
         "agent_name",
-        "execution_trace_id",
-        "artifact_version_hash",
-        "prompt_version",
-        "schema_version",
-        "validator_version",
-        "guardrail_version",
-        "input_hash",
-        "output_hash",
         "error_class",
         "error",
-        "validation_errors_json",
-        "usage_json",
-        "trace_metadata_json",
+        "error_message",
         "latency_ms",
         "started_at_ms",
         "finished_at_ms",
@@ -6302,6 +6039,8 @@ def _public_agent_run_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     payload = {key: row.get(key) for key in allowed if key in row}
     if "error" in payload:
         payload["error"] = _compact_error(payload.get("error"))
+    if "error_message" in payload:
+        payload["error_message"] = _compact_error(payload.get("error_message"))
     return payload
 
 

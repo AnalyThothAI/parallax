@@ -37,7 +37,7 @@ class FakePulseClient:
         return SimpleNamespace(
             final_decision={"recommendation": "watchlist"},
             agent_run_audit={"output_hash": "hash-1"},
-            stage_audits=("signal_analyst",),
+            stage_audits=("pulse_decision",),
         )
 
     async def aclose(self):
@@ -56,7 +56,7 @@ def test_build_agent_execution_gateway_uses_workers_agent_runtime_settings() -> 
                 "global_max_concurrency": 2,
                 "global_rpm_limit": 30,
                 "lanes": {
-                    "pulse.risk_portfolio_judge": {
+                    "pulse.decision": {
                         "priority": "high",
                         "max_concurrency": 1,
                         "timeout_seconds": 90,
@@ -70,7 +70,7 @@ def test_build_agent_execution_gateway_uses_workers_agent_runtime_settings() -> 
 
     snapshot = gateway.status_snapshot()
     assert snapshot["global_max_concurrency"] == 2
-    assert snapshot["lanes"]["pulse.risk_portfolio_judge"]["timeout_seconds"] == 90
+    assert snapshot["lanes"]["pulse.decision"]["timeout_seconds"] == 90
 
 
 def test_build_agent_execution_gateway_hard_cuts_safety_net() -> None:
@@ -96,7 +96,7 @@ def test_wire_providers_passes_one_agent_execution_gateway_to_model_execution_fa
             "agent_runtime": {
                 "defaults": {"model": "gpt-social"},
                 "lanes": {
-                    "pulse.signal_analyst": {"model": "gpt-pulse"},
+                    "pulse.decision": {"model": "gpt-pulse"},
                     "narrative.mention_semantics": {"model": "gpt-narrative"},
                     "news.item_brief": {"model": "gpt-news"},
                 },
@@ -124,12 +124,10 @@ def test_wire_providers_passes_one_agent_execution_gateway_to_model_execution_fa
         settings: Settings,
         *,
         agent_gateway: object,
-        db_pool: object | None,
         **kwargs: Any,
     ) -> object:
         assert "llm_gateway" not in kwargs
-        assert db_pool is db_pool_token
-        calls.append(("pulse", settings.agent_runtime_model_for_lane("pulse.signal_analyst"), agent_gateway))
+        calls.append(("pulse", settings.agent_runtime_model_for_lane("pulse.decision"), agent_gateway))
         return object()
 
     def fake_news_item_brief(
@@ -162,7 +160,7 @@ def test_wire_providers_passes_one_agent_execution_gateway_to_model_execution_fa
     ]
 
 
-def test_pulse_provider_uses_agent_runtime_pipeline_timeout() -> None:
+def test_pulse_provider_uses_agent_runtime_decision_timeout() -> None:
     settings = Settings(
         ws_token="secret",
         llm={
@@ -172,7 +170,7 @@ def test_pulse_provider_uses_agent_runtime_pipeline_timeout() -> None:
             "agent_runtime": {
                 "defaults": {"model": "gpt-social"},
                 "lanes": {
-                    "pulse.pipeline": {
+                    "pulse.decision": {
                         "timeout_seconds": 305,
                     }
                 },
@@ -183,7 +181,6 @@ def test_pulse_provider_uses_agent_runtime_pipeline_timeout() -> None:
     provider = model_execution.litellm_pulse_decision_provider(
         settings,
         agent_gateway=object(),
-        db_pool=object(),
     )
 
     assert provider.timeout_seconds == 305
@@ -192,7 +189,6 @@ def test_pulse_provider_uses_agent_runtime_pipeline_timeout() -> None:
 def test_pulse_provider_maps_agent_run_audit_from_litellm_client() -> None:
     client = FakePulseClient()
     provider = model_execution.LiteLLMPulseDecisionProvider(client, pipeline_timeout_seconds=305)
-    stage_plan = object()
 
     result = asyncio.run(
         provider.run_decision_pipeline(
@@ -202,12 +198,11 @@ def test_pulse_provider_maps_agent_run_audit_from_litellm_client() -> None:
             route="meme",
             completeness={},
             runtime_manifest={},
-            stage_plan=stage_plan,
         )
     )
 
     assert client.pipeline_kwargs is not None
-    assert client.pipeline_kwargs["stage_plan"] is stage_plan
+    assert "stage_plan" not in client.pipeline_kwargs
     assert result.agent_run_audit == {"output_hash": "hash-1"}
     assert result.final_decision == {"recommendation": "watchlist"}
-    assert result.stage_audits == ("signal_analyst",)
+    assert result.stage_audits == ("pulse_decision",)

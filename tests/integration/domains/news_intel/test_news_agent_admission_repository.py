@@ -20,10 +20,21 @@ def test_update_item_agent_admission_persists_without_touching_market_scope(tmp_
             news_item_id=news_item_id,
             admission=_agent_admission_fixture(
                 status="eligible",
-                reason="provider_score_high",
+                reason="eligible",
                 representative_news_item_id=news_item_id,
             ),
             now_ms=NOW_MS + 2_000,
+        )
+        repo.replace_page_rows_for_items(
+            news_item_ids=[news_item_id],
+            rows=[
+                _page_row_fixture(
+                    news_item_id=news_item_id,
+                    agent_admission_status="eligible",
+                    agent_admission_reason="eligible",
+                    agent_representative_news_item_id=news_item_id,
+                )
+            ],
         )
         row = repo.get_news_item_detail(news_item_id=news_item_id)
     finally:
@@ -32,7 +43,7 @@ def test_update_item_agent_admission_persists_without_touching_market_scope(tmp_
     assert row is not None
     assert updated == 1
     assert row["agent_admission"]["status"] == "eligible"
-    assert row["agent_admission"]["reason"] == "provider_score_high"
+    assert row["agent_admission"]["reason"] == "eligible"
     assert row["agent_admission"]["version"] == AGENT_ADMISSION_VERSION
     assert row["agent_admission_status"] == "eligible"
     assert row["agent_representative_news_item_id"] == news_item_id
@@ -62,45 +73,6 @@ def test_page_row_persists_agent_admission_fields(tmp_path) -> None:
     assert listed[0]["agent_admission_reason"] == "same_story_representative_exists"
     assert listed[0]["agent_admission"]["status"] == "similar_story_covered"
     assert listed[0]["agent_representative_news_item_id"] == "representative-page-row"
-
-
-def test_list_agent_admission_repair_candidates_includes_page_only_items_without_score_gate(tmp_path) -> None:
-    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
-    try:
-        migrate(conn)
-        repo = NewsRepository(conn)
-        page_only_id = _seed_processed_news_item(
-            repo,
-            suffix="page-only-high-score",
-            provider_score=88,
-            primary_scope="us_equity",
-        )
-        below_threshold_id = _seed_processed_news_item(
-            repo,
-            suffix="page-only-low-score",
-            provider_score=79,
-            primary_scope="us_equity",
-        )
-
-        candidates = repo.list_agent_admission_repair_candidates(
-            since_ms=NOW_MS - 60_000,
-            until_ms=NOW_MS + 60_000,
-        )
-    finally:
-        conn.close()
-
-    candidate_ids = [str(candidate["item"]["news_item_id"]) for candidate in candidates]
-    assert page_only_id in candidate_ids
-    assert below_threshold_id in candidate_ids
-    page_only_candidate = next(
-        candidate for candidate in candidates if candidate["item"]["news_item_id"] == page_only_id
-    )
-    low_score_candidate = next(
-        candidate for candidate in candidates if candidate["item"]["news_item_id"] == below_threshold_id
-    )
-    assert page_only_candidate["provider_score"] == 88
-    assert low_score_candidate["provider_score"] == 79
-    assert page_only_candidate["item"]["market_scope_json"]["primary"] == "us_equity"
 
 
 def test_load_agent_admission_contexts_exposes_duplicate_provider_article_keys(tmp_path) -> None:
@@ -303,13 +275,13 @@ def _seed_processed_news_item(
 def _agent_admission_fixture(
     *,
     status: str = "eligible",
-    reason: str = "provider_score_high",
+    reason: str = "eligible",
     representative_news_item_id: str = "",
 ) -> dict[str, object]:
     return {
         "status": status,
         "reason": reason,
-        "basis": {"provider_score": 88},
+        "basis": {"market_scope": ["crypto"]},
         "version": AGENT_ADMISSION_VERSION,
         "representative_news_item_id": representative_news_item_id,
     }
@@ -319,7 +291,7 @@ def _page_row_fixture(
     *,
     news_item_id: str,
     agent_admission_status: str = "eligible",
-    agent_admission_reason: str = "provider_score_high",
+    agent_admission_reason: str = "eligible",
     agent_representative_news_item_id: str = "",
 ) -> dict[str, object]:
     return {

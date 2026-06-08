@@ -14,9 +14,10 @@ describe("NewsTape", () => {
     expect(screen.getByText("利好")).toBeInTheDocument();
     expect(screen.getByText("A · 82")).toBeInTheDocument();
     expect(screen.getByText("BTC")).toBeInTheDocument();
-    expect(screen.getByText("82 A")).toBeInTheDocument();
     expect(screen.getByText("ETH")).toBeInTheDocument();
-    expect(screen.getByText("70 B+")).toBeInTheDocument();
+    expect(screen.getAllByText("CEX").length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText("82 A")).not.toBeInTheDocument();
+    expect(screen.queryByText("70 B+")).not.toBeInTheDocument();
     expect(screen.queryByText("score")).not.toBeInTheDocument();
   });
 
@@ -38,7 +39,6 @@ describe("NewsTape", () => {
     render(<NewsTape rows={[rowWithInsufficientAgentBrief]} onOpen={vi.fn()} />);
 
     expect(screen.getByText("AGENT INSUFF")).toBeInTheDocument();
-    expect(screen.getByText("A · 90")).toBeInTheDocument();
     expect(
       screen.getByText("Provider high score without enough agent evidence"),
     ).toBeInTheDocument();
@@ -94,17 +94,11 @@ const rowWithBtcEth: NewsRow = {
     {
       lane: "provider",
       symbol: "BTC",
-      provider_signal: "long",
-      provider_score: 82,
-      provider_grade: "A",
       market_type: "cex",
     },
     {
       lane: "provider",
       symbol: "ETH",
-      provider_signal: "long",
-      provider_score: 70,
-      provider_grade: "B+",
       market_type: "cex",
     },
   ],
@@ -136,8 +130,6 @@ const rowWithInsufficientAgentBrief: NewsRow = {
         external_push_block_reason: "agent_brief_not_ready",
         agent_status: "insufficient",
         decision_class: "context",
-        provider_status: "ready",
-        provider_score: 90,
       },
     },
   ),
@@ -176,8 +168,6 @@ const rowWithReadyWatchAgentPushBlocked: NewsRow = {
         external_push_block_reason: "cooldown",
         agent_status: "ready",
         decision_class: "watch",
-        provider_status: "ready",
-        provider_score: 91,
       },
     },
   ),
@@ -196,14 +186,11 @@ function newsSignalEnvelope(
 ): NewsSignalEnvelope {
   return {
     display_signal: displaySignal,
-    provider_signal: displaySignal.source === "provider" ? displaySignal : null,
     agent_signal: { status: overrides.alert_eligibility?.agent_status ?? "pending" },
     alert_eligibility: {
       in_app_eligible: true,
       external_push_ready: false,
       agent_status: "pending",
-      provider_status: displaySignal.status,
-      provider_score: displaySignal.score,
       ...overrides.alert_eligibility,
     },
   };

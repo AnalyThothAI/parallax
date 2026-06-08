@@ -10,6 +10,7 @@ from parallax.domains.pulse_lab.queries.pulse_policy_evaluator import (
     summarize_job_policy_rows,
     summarize_pulse_run_rows,
     summarize_radar_policy_rows,
+    write_pulse_policy_evaluation_report,
 )
 
 
@@ -186,7 +187,7 @@ def test_fetch_radar_rows_uses_publication_state_for_ready_current_generation() 
     assert all("token_radar_projection_coverage" not in sql for sql in conn.executed_sql)
     row_sql = next(sql for sql in conn.executed_sql if "FROM token_radar_current_rows" in sql)
     assert "JOIN token_radar_publication_state" in row_sql
-    assert "state.current_generation_id = token_radar_current_rows.generation_id" in row_sql
+    assert "state.current_generation_id = token_radar_current_rows.generation_id" not in row_sql
     assert "state.latest_attempt_status = 'ready'" in row_sql
 
 
@@ -313,6 +314,8 @@ def test_report_rendering_redacts_secrets_and_includes_recommendation() -> None:
     assert any(
         f"Recommendation: {recommendation}" in report for recommendation in ("ship", "revise thresholds", "stop")
     )
+    assert "# Pulse 1h/4h Agent Runtime Evaluation" in report
+    assert "Research Committee" not in report
     assert "/Users/qinghuan/.parallax/config.yaml" in report
     assert "config_path_under_operator_home: true" in report
     assert "top_author_share_buckets=" in report
@@ -325,6 +328,19 @@ def test_report_rendering_redacts_secrets_and_includes_recommendation() -> None:
     assert "sample_kind=latest_snapshot" in report
     assert "radar latest-snapshot sample size" in report
     assert not report.endswith("\n")
+
+
+def test_write_pulse_policy_evaluation_report_uses_agent_runtime_filename(tmp_path) -> None:
+    path = write_pulse_policy_evaluation_report(
+        {"radar": {}, "candidates": {}, "runs": {}, "jobs": {}},
+        output_dir=tmp_path,
+        generated_date="2026-05-20",
+        lookback_hours=24,
+        config_context={},
+    )
+
+    assert path.name == "pulse-1h-4h-agent-runtime-evaluation-2026-05-20.md"
+    assert path.exists()
 
 
 class FakeCursor:

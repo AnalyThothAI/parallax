@@ -73,10 +73,7 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.llm_configured is False
     assert settings.llm_timeout_seconds == 120
     assert settings.agent_runtime_default_model == "deepseek-v4-flash"
-    assert settings.agent_runtime_model_for_lane("pulse.pipeline") == "deepseek-v4-flash"
-    assert settings.agent_runtime_model_for_lane("pulse.signal_analyst") == "deepseek-v4-flash"
-    assert settings.agent_runtime_model_for_lane("pulse.bear_case") == "deepseek-v4-flash"
-    assert settings.agent_runtime_model_for_lane("pulse.risk_portfolio_judge") == "deepseek-v4-flash"
+    assert settings.agent_runtime_model_for_lane("pulse.decision") == "deepseek-v4-flash"
     assert settings.pulse_agent_configured is False
     assert not hasattr(settings.workers, "enrichment")
     assert settings.workers.pulse_candidate.interval_seconds == 60
@@ -447,9 +444,7 @@ def test_postgres_storage_and_llm_can_be_explicitly_configured(tmp_path, monkeyp
     assert settings.workers.pulse_candidate.interval_seconds == 1
     assert settings.workers.pulse_candidate.batch_size == 100
     assert settings.workers.pulse_candidate.max_attempts == 1
-    assert settings.agent_runtime_model_for_lane("pulse.signal_analyst") == "gpt-test"
-    assert settings.agent_runtime_model_for_lane("pulse.bear_case") == "gpt-test"
-    assert settings.agent_runtime_model_for_lane("pulse.risk_portfolio_judge") == "gpt-test"
+    assert settings.agent_runtime_model_for_lane("pulse.decision") == "gpt-test"
     assert settings.pulse_agent_configured is True
     assert settings.workers.pulse_candidate.trigger_thresholds.min_rank_score == 60
     assert settings.workers.pulse_candidate.gate_thresholds.trade_candidate_min == 70
@@ -473,16 +468,14 @@ def test_agent_runtime_lane_model_can_override_default_model(tmp_path, monkeypat
     )
     workers = yaml.safe_load(default_workers_yaml())
     workers["agent_runtime"]["defaults"]["model"] = "gpt-base"
-    workers["agent_runtime"]["lanes"]["pulse.signal_analyst"]["model"] = "gpt-pulse"
+    workers["agent_runtime"]["lanes"]["pulse.decision"]["model"] = "gpt-pulse"
     workers["agent_runtime"]["lanes"]["news.item_brief"]["model"] = "gpt-news"
     write_workers_config(tmp_path, workers)
 
     settings = load_settings()
 
     assert settings.agent_runtime_default_model == "gpt-base"
-    assert settings.agent_runtime_model_for_lane("pulse.signal_analyst") == "gpt-pulse"
-    assert settings.agent_runtime_model_for_lane("pulse.bear_case") == "gpt-base"
-    assert settings.agent_runtime_model_for_lane("pulse.risk_portfolio_judge") == "gpt-base"
+    assert settings.agent_runtime_model_for_lane("pulse.decision") == "gpt-pulse"
     assert settings.agent_runtime_model_for_lane("news.item_brief") == "gpt-news"
     assert settings.pulse_agent_configured is True
     assert settings.news_item_brief_configured is True

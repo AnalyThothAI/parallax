@@ -54,7 +54,7 @@ def test_low_score_market_news_is_not_filtered_by_provider_score() -> None:
     assert admission.eligible is True
     assert admission.status == "eligible"
     assert admission.reason == "eligible"
-    assert admission.basis["provider_score"] == 42
+    assert "provider_score" not in admission.basis
 
 
 def test_high_score_old_item_is_not_filtered_by_agent_age_gate() -> None:
