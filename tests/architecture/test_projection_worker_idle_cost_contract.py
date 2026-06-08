@@ -16,11 +16,13 @@ ALLOWED_PROJECTION_REPOSITORY_CALLS = {
     "enqueue_targets",
     "list_news_item_ids_for_sources",
     "list_source_quality_inputs_for_targets",
+    "load_story_projection_payloads_for_items",
     "load_items_for_page_projection",
     "mark_done",
     "mark_error",
     "replace_page_rows",
     "replace_page_rows_for_items",
+    "replace_page_rows_for_story_targets",
     "replace_source_quality_rows",
 }
 

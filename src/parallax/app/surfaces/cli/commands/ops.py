@@ -65,9 +65,6 @@ from parallax.domains.news_intel.services.news_intel_hard_cut_cleanup import (
     NewsIntelHardCutCleanupAbort,
     cleanup_news_intel_hard_cut,
 )
-from parallax.domains.news_intel.services.news_item_brief_schema_hard_cut import (
-    cleanup_news_item_brief_schema_hard_cut,
-)
 from parallax.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_DEFAULT_VENUE,
@@ -224,6 +221,10 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
             return 0, {"ok": True, "data": data}
 
         if args.ops_command == "cleanup-news-item-brief-schema-hard-cut":
+            from parallax.domains.news_intel.services.news_item_brief_schema_hard_cut import (
+                cleanup_news_item_brief_schema_hard_cut,
+            )
+
             data = cleanup_news_item_brief_schema_hard_cut(
                 repos,
                 execute=bool(args.execute),

@@ -58,10 +58,6 @@ REPOSITORY_UPWARD_IMPORT_ALLOWLIST = {
         "parallax.domains.news_intel.services.news_canonical_identity",
     ),
     (
-        SRC_ROOT / "domains/news_intel/repositories/news_repository.py",
-        "parallax.domains.news_intel.services.news_url_identity",
-    ),
-    (
         SRC_ROOT / "domains/token_intel/repositories/token_radar_repository.py",
         "parallax.domains.token_intel.services.token_radar_payload_hash",
     ),

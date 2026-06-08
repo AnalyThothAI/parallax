@@ -3,12 +3,13 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any
 
 from parallax.domains.news_intel._constants import NEWS_ANALYSIS_ADMISSION_VERSION
-
-NewsAnalysisAdmissionStatus = Literal["admitted", "page_only", "research_context", "suppressed", "needs_review"]
+from parallax.domains.news_intel.types.news_analysis_admission import (
+    NewsAnalysisAdmission,
+    NewsAnalysisAdmissionStatus,
+)
 
 _ADMISSION_CONTENT_CLASSES = frozenset(
     {
@@ -41,15 +42,6 @@ _NON_CRYPTO_SUBJECT_RE = re.compile(
     r"\b(?:shares?|stocks?|equity|private company|space company|semiconductor|memory chip|dram|hard drives?)\b",
     re.IGNORECASE,
 )
-
-
-@dataclass(frozen=True, slots=True)
-class NewsAnalysisAdmission:
-    status: NewsAnalysisAdmissionStatus
-    reason: str
-    basis: dict[str, Any]
-    version: str
-
 
 def decide_news_analysis_admission(
     *,

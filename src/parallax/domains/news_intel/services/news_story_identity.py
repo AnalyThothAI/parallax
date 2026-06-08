@@ -3,12 +3,10 @@ from __future__ import annotations
 import hashlib
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 from typing import Any
 
 from parallax.domains.news_intel.services.text_normalization import title_fingerprint
-
-NEWS_STORY_IDENTITY_VERSION = "news_story_identity_v1"
+from parallax.domains.news_intel.types.news_story_identity import NEWS_STORY_IDENTITY_VERSION, NewsStoryIdentity
 
 _HOUR_MS = 60 * 60 * 1000
 _STRONG_BUCKET_MS = 12 * _HOUR_MS
@@ -71,15 +69,6 @@ _STRONG_SUBJECT_RULES: tuple[tuple[str, frozenset[str]], ...] = (
 )
 _SPACEX_VALUATION_TOKENS = frozenset({"sale", "share", "shares", "tender", "valuation", "valuing"})
 _TRUMP_IRAN_TALKS_TOKENS = frozenset({"negotiation", "negotiations", "talk", "talks"})
-
-
-@dataclass(frozen=True, slots=True)
-class NewsStoryIdentity:
-    story_key: str
-    confidence: str
-    basis: dict[str, Any]
-    version: str
-
 
 def build_news_story_identity(
     *,

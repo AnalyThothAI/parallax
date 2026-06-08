@@ -14,7 +14,7 @@ ALLOWED_DIRTY_STRING_FILES = {
 }
 
 ALLOWED_RETIRED_TOOL_MARKER_FILES = {
-    "src/parallax/domains/news_intel/services/news_intel_hard_cut_cleanup.py",
+    "src/parallax/domains/news_intel/repositories/news_intel_hard_cut_cleanup_repository.py",
 }
 
 RAW_PROJECTION_STRINGS = {"brief_input", "page", "source_quality"}
@@ -225,7 +225,7 @@ def test_news_runtime_has_no_retired_research_tool_path() -> None:
 
 
 def test_news_hard_cut_cleanup_is_delete_only_for_retired_artifacts() -> None:
-    source = _read("src/parallax/domains/news_intel/services/news_intel_hard_cut_cleanup.py")
+    source = _read("src/parallax/domains/news_intel/repositories/news_intel_hard_cut_cleanup_repository.py")
     forbidden_write_ops = sorted(
         match.group(0)
         for match in re.finditer(

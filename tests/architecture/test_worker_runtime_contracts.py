@@ -39,6 +39,9 @@ NEWS_REALTIME_POSTGRES_HOTPATH_MIGRATION = (
     SRC / "platform/db/alembic/versions/20260528_0118_news_realtime_postgres_hotpath_hard_cut.py"
 )
 NEWS_INTEL_HARD_CUT_CLEANUP = SRC / "domains/news_intel/services/news_intel_hard_cut_cleanup.py"
+NEWS_INTEL_HARD_CUT_CLEANUP_REPOSITORY = (
+    SRC / "domains/news_intel/repositories/news_intel_hard_cut_cleanup_repository.py"
+)
 
 ZERO_HARD_TIMEOUT_ALLOWLIST = {"collector"}
 
@@ -127,19 +130,19 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
     "news_page_rows": {
         SRC / "domains/news_intel/repositories/news_repository.py",
         SRC / "domains/news_intel/runtime/news_page_projection_worker.py",
-        NEWS_INTEL_HARD_CUT_CLEANUP,
+        NEWS_INTEL_HARD_CUT_CLEANUP_REPOSITORY,
         SRC / "platform/db/alembic/versions/20260519_0064_news_intel_kappa_cqrs.py",
     },
     "news_item_agent_runs": {
         SRC / "domains/news_intel/repositories/news_repository.py",
         SRC / "domains/news_intel/runtime/news_item_brief_worker.py",
-        NEWS_INTEL_HARD_CUT_CLEANUP,
+        NEWS_INTEL_HARD_CUT_CLEANUP_REPOSITORY,
         SRC / "platform/db/alembic/versions/20260520_0068_news_item_agent_brief.py",
     },
     "news_item_agent_briefs": {
         SRC / "domains/news_intel/repositories/news_repository.py",
         SRC / "domains/news_intel/runtime/news_item_brief_worker.py",
-        NEWS_INTEL_HARD_CUT_CLEANUP,
+        NEWS_INTEL_HARD_CUT_CLEANUP_REPOSITORY,
         SRC / "platform/db/alembic/versions/20260520_0068_news_item_agent_brief.py",
     },
     "news_source_quality_rows": {
@@ -200,7 +203,7 @@ CONTROL_PLANE_TABLES: dict[str, set[Path]] = {
     "news_projection_dirty_targets": {
         SRC / "domains/news_intel/repositories/news_repository.py",
         SRC / "domains/news_intel/repositories/news_projection_dirty_target_repository.py",
-        NEWS_INTEL_HARD_CUT_CLEANUP,
+        NEWS_INTEL_HARD_CUT_CLEANUP_REPOSITORY,
         SRC / "platform/db/alembic/versions/20260524_0094_projection_dirty_targets_hard_cut.py",
         SRC / "platform/db/alembic/versions/20260525_0097_agent_brief_dirty_targets.py",
         NEWS_INTEL_CANONICAL_DEDUP_MIGRATION,
@@ -320,6 +323,7 @@ def test_worker_manifest_owns_all_single_writer_tables() -> None:
         for manifest in all_worker_manifests()
         for table in (
             *manifest.writes_facts,
+            *getattr(manifest, "writes_input_observations", ()),
             *manifest.writes_read_models,
             *manifest.writes_control_plane,
             *manifest.side_effect_ledgers,
@@ -328,6 +332,14 @@ def test_worker_manifest_owns_all_single_writer_tables() -> None:
     missing = sorted(set(SINGLE_WRITER_READ_MODELS) - owned_tables)
 
     assert missing == []
+
+
+@pytest.mark.architecture
+def test_worker_manifest_keeps_provider_raw_frames_out_of_business_facts() -> None:
+    collector = {manifest.name: manifest for manifest in all_worker_manifests()}["collector"]
+
+    assert "raw_frames" not in collector.writes_facts
+    assert collector.writes_input_observations == ("raw_frames",)
 
 
 @pytest.mark.architecture
@@ -472,6 +484,7 @@ def test_token_image_mirror_is_only_token_image_assets_writer() -> None:
         if "token_image_assets"
         in (
             *manifest.writes_facts,
+            *getattr(manifest, "writes_input_observations", ()),
             *manifest.writes_read_models,
             *manifest.writes_control_plane,
             *manifest.side_effect_ledgers,

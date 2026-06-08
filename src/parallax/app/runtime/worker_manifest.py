@@ -37,6 +37,7 @@ class WorkerManifest:
     start_priority: int
     input_contract: tuple[str, ...]
     ordering_keys: tuple[str, ...]
+    writes_input_observations: tuple[str, ...] = ()
     writes_facts: tuple[str, ...] = ()
     writes_read_models: tuple[str, ...] = ()
     writes_control_plane: tuple[str, ...] = ()
@@ -63,7 +64,8 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         start_priority=10,
         input_contract=("gmgn public websocket frames",),
         ordering_keys=("provider_event_id", "received_at_ms"),
-        writes_facts=("raw_frames", "events", "token_intents"),
+        writes_input_observations=("raw_frames",),
+        writes_facts=("events", "token_intents"),
         uses_provider_io=True,
         idempotency_evidence=("events provider event identity",),
         wakes_out=("event_written",),
@@ -712,6 +714,7 @@ def _validate_worker_manifests() -> None:
             - set(
                 (
                     *manifest.writes_facts,
+                    *manifest.writes_input_observations,
                     *manifest.writes_read_models,
                     *manifest.writes_control_plane,
                     *manifest.side_effect_ledgers,
@@ -723,6 +726,7 @@ def _validate_worker_manifests() -> None:
         - set(
             (
                 *manifest.writes_facts,
+                *manifest.writes_input_observations,
                 *manifest.writes_read_models,
                 *manifest.writes_control_plane,
                 *manifest.side_effect_ledgers,

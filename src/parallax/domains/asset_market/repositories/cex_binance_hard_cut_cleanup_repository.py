@@ -4,6 +4,13 @@ from contextlib import nullcontext
 from typing import Any
 
 ADVISORY_LOCK_KEY = 2026052107
+CEX_HARD_CUT_ADVISORY_LOCK_KEYS = {
+    "cex_binance_hard_cut_cleanup": ADVISORY_LOCK_KEY,
+    "token_radar_projection": 2026051501,
+    "token_capture_tier": 2026051503,
+    "market_tick_current_projection": 2026052401,
+    "cex_oi_radar_board": 2026052108,
+}
 TOKEN_RADAR_IMPACT_TABLES = (
     "token_radar_current_rows",
 )
@@ -55,7 +62,10 @@ def cleanup_cex_binance_hard_cut(
         }
 
     with _transaction(conn):
-        _execute(conn, "SELECT pg_advisory_xact_lock(%s)", (ADVISORY_LOCK_KEY,))
+        guard_state = cex_binance_hard_cut_runtime_guard(conn, now_ms=now_ms)
+        blockers = guard_state["blockers"]
+        if blockers:
+            raise CexBinanceHardCutAbort(f"cex_binance_hard_cut_runtime_active:{blockers}")
         before_counts = _collect_counts(conn)
         binance_feeds = before_counts["binance_canonical_usdt_perp_feeds"]
         if binance_feeds < min_binance_feeds:
@@ -73,6 +83,8 @@ def cleanup_cex_binance_hard_cut(
             "before_counts": before_counts,
             "executed_counts": executed_counts,
             "after_counts": after_counts,
+            "active_state": guard_state["active_state"],
+            "advisory_locks": guard_state["advisory_locks"],
             "token_radar_rebuild": TOKEN_RADAR_REBUILD_ACTION,
             "constraint_validated": True,
         }
@@ -99,8 +111,8 @@ def _collect_counts(conn: Any) -> dict[str, int]:
     return {name: _select_count(conn, sql) for name, sql in COUNT_SQL.items()}
 
 
-def _select_count(conn: Any, sql: str) -> int:
-    row = _execute(conn, sql).fetchone()
+def _select_count(conn: Any, sql: str, params: Any | None = None) -> int:
+    row = _execute(conn, sql, params).fetchone()
     if row is None:
         return 0
     if isinstance(row, dict):
@@ -112,6 +124,16 @@ def _select_count(conn: Any, sql: str) -> int:
     return int(row or 0)
 
 
+def _bool_row_value(row: Any, key: str) -> bool:
+    if row is None:
+        return False
+    if isinstance(row, dict):
+        return bool(row.get(key))
+    if hasattr(row, "__getitem__"):
+        return bool(row[0])
+    return bool(row)
+
+
 def _execute_cleanup(conn: Any, *, now_ms: int) -> dict[str, int]:
     params = {"now_ms": now_ms}
     executed: dict[str, int] = {}
@@ -119,6 +141,80 @@ def _execute_cleanup(conn: Any, *, now_ms: int) -> dict[str, int]:
         result = _execute(conn, sql, params if "%(now_ms)s" in sql else None)
         executed[name] = _rowcount(result)
     return executed
+
+
+def cex_binance_hard_cut_runtime_guard(conn: Any, *, now_ms: int) -> dict[str, Any]:
+    active_state = _active_cex_hard_cut_state(conn, now_ms=now_ms)
+    advisory_locks = _try_cex_hard_cut_advisory_locks(conn)
+    blockers = _active_blockers(active_state=active_state, advisory_locks=advisory_locks)
+    return {
+        "active_state": active_state,
+        "advisory_locks": advisory_locks,
+        "blockers": blockers,
+    }
+
+
+def _try_cex_hard_cut_advisory_locks(conn: Any) -> dict[str, bool]:
+    lock_state: dict[str, bool] = {}
+    for owner, lock_key in CEX_HARD_CUT_ADVISORY_LOCK_KEYS.items():
+        row = _execute(conn, "SELECT pg_try_advisory_xact_lock(%s) AS acquired", (int(lock_key),)).fetchone()
+        lock_state[owner] = _bool_row_value(row, "acquired")
+    return lock_state
+
+
+def _active_cex_hard_cut_state(conn: Any, *, now_ms: int) -> dict[str, int]:
+    params = (int(now_ms),)
+    return {
+        "market_tick_current_dirty_leases": _select_count(
+            conn,
+            """
+            SELECT COUNT(*)::bigint AS market_tick_current_dirty_leases
+              FROM market_tick_current_dirty_targets
+             WHERE leased_until_ms IS NOT NULL
+               AND leased_until_ms > %s
+            """,
+            params,
+        ),
+        "token_radar_dirty_leases": _select_count(
+            conn,
+            """
+            SELECT COUNT(*)::bigint AS token_radar_dirty_leases
+              FROM token_radar_dirty_targets
+             WHERE leased_until_ms IS NOT NULL
+               AND leased_until_ms > %s
+            """,
+            params,
+        ),
+        "token_capture_tier_dirty_leases": _select_count(
+            conn,
+            """
+            SELECT COUNT(*)::bigint AS token_capture_tier_dirty_leases
+              FROM token_capture_tier_dirty_targets
+             WHERE leased_until_ms IS NOT NULL
+               AND leased_until_ms > %s
+            """,
+            params,
+        ),
+        "running_event_anchor_backfill_jobs": _select_count(
+            conn,
+            """
+            SELECT COUNT(*)::bigint AS running_event_anchor_backfill_jobs
+              FROM event_anchor_backfill_jobs
+             WHERE status IN ('running', 'claimed')
+            """,
+        ),
+    }
+
+
+def _active_blockers(*, active_state: dict[str, int], advisory_locks: dict[str, bool]) -> list[dict[str, Any]]:
+    blockers: list[dict[str, Any]] = []
+    for key, count in sorted(active_state.items()):
+        if int(count):
+            blockers.append({"type": key, "count": int(count)})
+    unavailable_locks = [owner for owner, acquired in advisory_locks.items() if not acquired]
+    if unavailable_locks:
+        blockers.append({"type": "advisory_lock_unavailable", "workers": unavailable_locks})
+    return blockers
 
 
 def _execute(conn: Any, sql: str, params: Any | None = None) -> Any:

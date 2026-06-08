@@ -42,7 +42,7 @@ def test_dry_run_reports_planned_counts_without_lock_or_mutation() -> None:
         "ops rebuild-token-intents --window 24h --limit 5000 --projection-limit 5000"
     )
     assert conn.transaction_entries == 0
-    assert not _has_statement(conn.sqls, "pg_advisory_xact_lock")
+    assert not _has_statement(conn.sqls, "pg_try_advisory_xact_lock")
     assert not _has_mutation(conn.sqls)
 
 
@@ -71,7 +71,9 @@ def test_execute_only_passes_params_to_now_ms_sql_and_escapes_literal_percent() 
         now_ms=1_779_321_600_000,
     )
 
-    cleanup_calls = list(zip(conn.sqls, conn.params, strict=True))[1:]
+    cleanup_calls = [
+        (sql, params) for sql, params in zip(conn.sqls, conn.params, strict=True) if _is_cleanup_statement(sql)
+    ]
     for sql, params in cleanup_calls:
         if "%(now_ms)s" in sql:
             assert params == {"now_ms": 1_779_321_600_000}
@@ -93,7 +95,45 @@ def test_execute_acquires_transaction_lock_and_aborts_below_min_binance_feeds() 
         )
 
     assert conn.transaction_entries == 1
-    assert _first_statement_index(conn.sqls, "pg_advisory_xact_lock") == 0
+    assert _first_statement_index(conn.sqls, "pg_try_advisory_xact_lock") >= 0
+    assert not _has_mutation(conn.sqls)
+
+
+def test_execute_aborts_when_worker_advisory_lock_is_unavailable() -> None:
+    conn = RecordingConn(
+        counts={"binance_canonical_usdt_perp_feeds": 512},
+        locks={"token_radar_projection": False},
+    )
+
+    with pytest.raises(CexBinanceHardCutAbort, match="advisory_lock_unavailable"):
+        cleanup_cex_binance_hard_cut(
+            conn,
+            dry_run=False,
+            execute=True,
+            min_binance_feeds=400,
+            now_ms=1_779_321_600_000,
+        )
+
+    assert not _has_mutation(conn.sqls)
+
+
+def test_execute_aborts_when_related_dirty_lease_is_active() -> None:
+    conn = RecordingConn(
+        counts={
+            "binance_canonical_usdt_perp_feeds": 512,
+            "token_radar_dirty_leases": 1,
+        }
+    )
+
+    with pytest.raises(CexBinanceHardCutAbort, match="token_radar_dirty_leases"):
+        cleanup_cex_binance_hard_cut(
+            conn,
+            dry_run=False,
+            execute=True,
+            min_binance_feeds=400,
+            now_ms=1_779_321_600_000,
+        )
+
     assert not _has_mutation(conn.sqls)
 
 
@@ -135,7 +175,7 @@ def test_execute_runs_cleanup_in_fk_safe_order_and_validates_constraint() -> Non
         now_ms=1_779_321_600_000,
     )
 
-    assert _first_statement_index(conn.sqls, "pg_advisory_xact_lock") == 0
+    assert _first_statement_index(conn.sqls, "pg_try_advisory_xact_lock") >= 0
     assert not _has_statement(conn.sqls, f"DELETE FROM {TOKEN_RADAR_CURRENT_ROWS_TABLE}")
     assert _first_statement_index(conn.sqls, "UPDATE token_intent_resolutions") < _first_statement_index(
         conn.sqls, "UPDATE enriched_events"
@@ -161,8 +201,9 @@ def test_execute_runs_cleanup_in_fk_safe_order_and_validates_constraint() -> Non
 
 
 class RecordingConn:
-    def __init__(self, *, counts: dict[str, int] | None = None) -> None:
+    def __init__(self, *, counts: dict[str, int] | None = None, locks: dict[str, bool] | None = None) -> None:
         self.counts = counts or {}
+        self.locks = locks or {}
         self.sqls: list[str] = []
         self.params: list[object] = []
         self.transaction_entries = 0
@@ -170,6 +211,8 @@ class RecordingConn:
     def execute(self, sql: str, params: object | None = None) -> RecordingResult:
         self.sqls.append(_normalize_sql(sql))
         self.params.append(params)
+        if "pg_try_advisory_xact_lock" in sql:
+            return RecordingResult(1, row={"acquired": self._lock_acquired(params)})
         return RecordingResult(self._count_for(sql))
 
     def transaction(self) -> RecordingTransaction:
@@ -181,6 +224,17 @@ class RecordingConn:
             if f"AS {key}" in normalized:
                 return value
         return 0
+
+    def _lock_acquired(self, params: object | None) -> bool:
+        key = params[0] if isinstance(params, tuple) and params else None
+        lock_names = {
+            2026052107: "cex_binance_hard_cut_cleanup",
+            2026051501: "token_radar_projection",
+            2026051503: "token_capture_tier",
+            2026052401: "market_tick_current_projection",
+            2026052108: "cex_oi_radar_board",
+        }
+        return bool(self.locks.get(lock_names.get(key, ""), True))
 
 
 class RecordingTransaction:
@@ -196,11 +250,14 @@ class RecordingTransaction:
 
 
 class RecordingResult:
-    def __init__(self, count: int) -> None:
+    def __init__(self, count: int, *, row: dict[str, object] | None = None) -> None:
         self.count = count
+        self.row = row
         self.rowcount = count
 
-    def fetchone(self) -> dict[str, int]:
+    def fetchone(self) -> dict[str, object]:
+        if self.row is not None:
+            return self.row
         return {"count": self.count}
 
 
@@ -222,3 +279,7 @@ def _first_statement_index(sqls: list[str], needle: str) -> int:
         if needle in sql:
             return index
     raise AssertionError(f"statement not found: {needle}")
+
+
+def _is_cleanup_statement(sql: str) -> bool:
+    return sql.startswith(("UPDATE ", "DELETE ", "ALTER TABLE ")) or "INSERT INTO token_intent_resolutions" in sql
