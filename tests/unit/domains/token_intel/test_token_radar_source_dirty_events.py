@@ -5,9 +5,7 @@ from typing import ClassVar
 
 
 def test_source_dirty_event_queue_coalesces_by_source_event_edge() -> None:
-    module = import_module(
-        "parallax.domains.token_intel.repositories.token_radar_source_dirty_event_repository"
-    )
+    module = import_module("parallax.domains.token_intel.repositories.token_radar_source_dirty_event_repository")
     repo = module.TokenRadarSourceDirtyEventRepository(_ScriptedConnection())
 
     count = repo.enqueue_events(
@@ -33,9 +31,7 @@ def test_source_dirty_event_queue_coalesces_by_source_event_edge() -> None:
 
 
 def test_source_dirty_event_payload_hash_ignores_lease_lifecycle() -> None:
-    module = import_module(
-        "parallax.domains.token_intel.repositories.token_radar_source_dirty_event_repository"
-    )
+    module = import_module("parallax.domains.token_intel.repositories.token_radar_source_dirty_event_repository")
 
     first = module.source_dirty_event_payload_hash(
         {

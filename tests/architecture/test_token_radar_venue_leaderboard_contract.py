@@ -25,8 +25,7 @@ def test_token_radar_api_accepts_server_side_venue() -> None:
 def test_token_radar_current_identity_includes_venue() -> None:
     manifest = _text("src/parallax/app/runtime/worker_manifest.py")
     migration = _text(
-        "src/parallax/platform/db/alembic/versions/"
-        "20260529_0126_token_radar_venue_source_width_hard_cut.py"
+        "src/parallax/platform/db/alembic/versions/20260529_0126_token_radar_venue_source_width_hard_cut.py"
     )
 
     assert '"token_radar_current_rows"' in manifest
@@ -37,8 +36,7 @@ def test_token_radar_current_identity_includes_venue() -> None:
 
 def test_token_radar_prevenue_current_uniques_are_hard_dropped() -> None:
     migration = _text(
-        "src/parallax/platform/db/alembic/versions/"
-        "20260529_0127_token_radar_drop_prevenue_current_uniques.py"
+        "src/parallax/platform/db/alembic/versions/20260529_0127_token_radar_drop_prevenue_current_uniques.py"
     )
 
     assert "pg_get_constraintdef(oid)" in migration

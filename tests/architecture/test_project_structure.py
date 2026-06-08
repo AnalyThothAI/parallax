@@ -50,12 +50,12 @@ def test_project_uses_domain_package_src_layout():
         "routes_news.py",
         "routes_notifications.py",
         "routes_ops.py",
-            "routes_pulse.py",
-            "routes_radar.py",
-            "routes_search.py",
-            "routes_status.py",
-            "routes_token_images.py",
-            "routes_watchlist.py",
+        "routes_pulse.py",
+        "routes_radar.py",
+        "routes_search.py",
+        "routes_status.py",
+        "routes_token_images.py",
+        "routes_watchlist.py",
     }
     assert {path.name for path in (cli / "commands").glob("*.py")} == {
         "__init__.py",
@@ -156,9 +156,7 @@ def test_trading_attention_service_has_been_hard_deleted():
 
 
 def test_pulse_agent_repository_has_no_dual_name_compatibility_arguments():
-    pulse_repo_path = (
-        ROOT / "src" / "parallax" / "domains" / "pulse_lab" / "repositories" / "pulse_runs_repository.py"
-    )
+    pulse_repo_path = ROOT / "src" / "parallax" / "domains" / "pulse_lab" / "repositories" / "pulse_runs_repository.py"
     text = pulse_repo_path.read_text(encoding="utf-8")
     forbidden = {
         "context: dict[str, Any]",
@@ -188,9 +186,7 @@ def test_pulse_repository_monolith_and_session_facade_stay_removed():
     ]
     text_by_path = {path: path.read_text(encoding="utf-8") for path in active_paths}
 
-    assert not (
-        ROOT / "src" / "parallax" / "domains" / "pulse_lab" / "repositories" / "pulse_repository.py"
-    ).exists()
+    assert not (ROOT / "src" / "parallax" / "domains" / "pulse_lab" / "repositories" / "pulse_repository.py").exists()
     class_name = "Pulse" + "Repository"
     import_text = f"from parallax.domains.pulse_lab.repositories.pulse_repository import {class_name}"
     for path, text in text_by_path.items():

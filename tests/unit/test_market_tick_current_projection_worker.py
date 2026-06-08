@@ -52,9 +52,7 @@ def test_worker_claims_dirty_target_writes_current_enqueues_radar_and_wakes_afte
         }
     ]
     assert tx.market_tick_current_dirty_targets.done == [(claim, 1_700_000_010_000, False)]
-    assert wake.market_tick_current_notifications == [
-        {"target_type": "batch", "target_id": "market_tick_current"}
-    ]
+    assert wake.market_tick_current_notifications == [{"target_type": "batch", "target_id": "market_tick_current"}]
 
 
 def test_worker_does_not_wake_token_radar_when_dirty_enqueue_returns_zero() -> None:
@@ -110,9 +108,7 @@ def test_worker_coalesces_token_radar_wake_for_multiple_changed_claims() -> None
         "failed": 0,
         "token_radar_dirty_enqueued": 2,
     }
-    assert wake.market_tick_current_notifications == [
-        {"target_type": "batch", "target_id": "market_tick_current"}
-    ]
+    assert wake.market_tick_current_notifications == [{"target_type": "batch", "target_id": "market_tick_current"}]
 
 
 def test_worker_marks_done_without_radar_enqueue_when_latest_tick_missing() -> None:

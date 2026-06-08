@@ -4,15 +4,12 @@ from contextlib import nullcontext
 from typing import Any
 
 ADVISORY_LOCK_KEY = 2026052107
-TOKEN_RADAR_IMPACT_TABLES = (
-    "token_radar_current_rows",
-)
+TOKEN_RADAR_IMPACT_TABLES = ("token_radar_current_rows",)
 TOKEN_RADAR_REBUILD_ACTION = {
     "required": True,
     "command": "ops rebuild-token-intents --window 24h --limit 5000 --projection-limit 5000",
     "reason": (
-        "CEX cleanup mutates resolution facts; Token Radar must rebuild from facts through "
-        "the normal projection path."
+        "CEX cleanup mutates resolution facts; Token Radar must rebuild from facts through the normal projection path."
     ),
 }
 TOKEN_CAPTURE_TIER_TABLE = "token_capture_tier"

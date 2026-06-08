@@ -71,8 +71,7 @@ class StocksRadarService:
             return {}
         if self.quote_provider is None:
             return {
-                symbol: _unavailable_quote("quote_provider_unavailable", symbol=symbol)
-                for symbol in unique_symbols
+                symbol: _unavailable_quote("quote_provider_unavailable", symbol=symbol) for symbol in unique_symbols
             }
         quotes: dict[str, dict[str, Any]] = {}
         for symbol in unique_symbols:

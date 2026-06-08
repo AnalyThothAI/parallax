@@ -39,9 +39,7 @@ def test_partition_refresh_selects_and_replaces_only_claimed_concepts() -> None:
     assert delete_params == ("macro_regime_v4", ["rates:dgs10"])
     assert "payload_hash" in insert_query
     unbounded_delete = (
-        "DELETE FROM macro_observation_series_rows\n"
-        "                WHERE projection_version = %s\n"
-        '                """'
+        'DELETE FROM macro_observation_series_rows\n                WHERE projection_version = %s\n                """'
     )
     assert unbounded_delete not in queries
 

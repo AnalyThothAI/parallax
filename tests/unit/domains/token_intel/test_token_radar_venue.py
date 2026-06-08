@@ -8,18 +8,25 @@ from parallax.domains.token_intel.services import token_radar_projection
 
 
 def test_token_radar_venue_for_rank_input_prefers_cex_target_type() -> None:
-    assert token_radar_projection.token_radar_venue_for_rank_input(
-        {"target_type": "CexToken", "asset_chain_id": "eip155:56"}
-    ) == "cex"
+    assert (
+        token_radar_projection.token_radar_venue_for_rank_input(
+            {"target_type": "CexToken", "asset_chain_id": "eip155:56"}
+        )
+        == "cex"
+    )
 
 
 def test_token_radar_venue_for_rank_input_normalizes_bsc_chain_ids() -> None:
-    assert token_radar_projection.token_radar_venue_for_rank_input(
-        {"target_type": "Asset", "asset_chain_id": "eip155:56"}
-    ) == "bsc"
-    assert token_radar_projection.token_radar_venue_for_rank_input(
-        {"target_type": "Asset", "factor_snapshot_json": {"subject": {"chain": "bnb"}}}
-    ) == "bsc"
+    assert (
+        token_radar_projection.token_radar_venue_for_rank_input({"target_type": "Asset", "asset_chain_id": "eip155:56"})
+        == "bsc"
+    )
+    assert (
+        token_radar_projection.token_radar_venue_for_rank_input(
+            {"target_type": "Asset", "factor_snapshot_json": {"subject": {"chain": "bnb"}}}
+        )
+        == "bsc"
+    )
 
 
 def test_stable_generation_id_is_scoped_by_venue_product_key() -> None:

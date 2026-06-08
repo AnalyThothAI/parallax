@@ -178,9 +178,7 @@ def _detail_payload_hash(snapshot: Mapping[str, Any]) -> str:
         "long_short_ratio": snapshot.get("long_short_ratio"),
         "top_trader_position_ratio": snapshot.get("top_trader_position_ratio"),
         "level_bands": _list_payload(snapshot.get("level_bands") or snapshot.get("level_bands_json")),
-        "degraded_reasons": _list_payload(
-            snapshot.get("degraded_reasons") or snapshot.get("degraded_reasons_json")
-        ),
+        "degraded_reasons": _list_payload(snapshot.get("degraded_reasons") or snapshot.get("degraded_reasons_json")),
         "source_refs": _source_refs_for_hash(snapshot),
         "observed_at_ms": _provider_observed_at_ms(snapshot),
     }

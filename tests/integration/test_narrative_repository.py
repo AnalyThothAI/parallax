@@ -1377,13 +1377,13 @@ def test_current_digests_returns_matching_fingerprint_digest(tmp_path):
     try:
         admission = repo.upsert_admissions(
             [
-                    {
-                        "target_type": "chain_token",
-                        "target_id": "solana:So111",
-                        "window": "1h",
-                        "scope": "matched",
-                        "schema_version": "narrative_intel_v1",
-                        "source_event_ids": ["event-source"],
+                {
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "window": "1h",
+                    "scope": "matched",
+                    "schema_version": "narrative_intel_v1",
+                    "source_event_ids": ["event-source"],
                     "source_max_received_at_ms": 3_000,
                     "source_event_count": 1,
                 }
@@ -1767,12 +1767,12 @@ def test_current_digests_marks_suppressed_ready_digest_out_of_frontier(tmp_path)
 def test_current_digests_returns_not_ready_without_admission_or_digest(tmp_path):
     conn, _, repo = open_repo(tmp_path)
     try:
-            current = repo.current_digests_for_targets(
-                [{"target_type": "chain_token", "target_id": "solana:So111"}],
-                window="1h",
-                scope="matched",
-                schema_version="narrative_intel_v1",
-            )
+        current = repo.current_digests_for_targets(
+            [{"target_type": "chain_token", "target_id": "solana:So111"}],
+            window="1h",
+            scope="matched",
+            schema_version="narrative_intel_v1",
+        )
     finally:
         conn.close()
 

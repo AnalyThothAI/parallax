@@ -838,11 +838,11 @@ def test_mark_publication_failed_records_failed_attempt_without_replacing_curren
 def test_latest_publication_state_reads_state_for_requested_sets():
     conn = FakeConn(
         rows=[
-                {
-                    "window": "1h",
-                    "scope": "all",
-                    "venue": TOKEN_RADAR_DEFAULT_VENUE,
-                    "latest_attempt_status": "failed",
+            {
+                "window": "1h",
+                "scope": "all",
+                "venue": TOKEN_RADAR_DEFAULT_VENUE,
+                "latest_attempt_status": "failed",
                 "latest_attempt_started_at_ms": 1_778_000_000_000,
                 "latest_attempt_finished_at_ms": 1_778_000_001_000,
                 "updated_at_ms": 1_778_000_002_000,

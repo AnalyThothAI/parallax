@@ -1527,9 +1527,7 @@ def _capture_tier_target_key(row: Mapping[str, Any]) -> tuple[str, str]:
         pricefeed_provider, pricefeed_market_id = _cex_pricefeed_target(
             row.get("pricefeed_id") or subject.get("pricefeed_id")
         )
-        provider = (
-            _optional_text(row.get("provider") or subject.get("provider") or pricefeed_provider) or ""
-        ).lower()
+        provider = (_optional_text(row.get("provider") or subject.get("provider") or pricefeed_provider) or "").lower()
         native_market_id = (
             _optional_text(row.get("native_market_id") or subject.get("native_market_id") or pricefeed_market_id) or ""
         ).upper()

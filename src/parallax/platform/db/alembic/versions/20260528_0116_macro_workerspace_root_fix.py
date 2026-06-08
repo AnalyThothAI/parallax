@@ -139,9 +139,7 @@ def _delete_non_v4_macro_read_models() -> None:
     op.execute("DELETE FROM macro_view_snapshots WHERE projection_version <> 'macro_regime_v4'")
     op.execute("DELETE FROM macro_observation_series_rows WHERE projection_version <> 'macro_regime_v4'")
     op.execute("DELETE FROM macro_projection_dirty_targets WHERE projection_version <> 'macro_regime_v4'")
-    op.execute(
-        "DELETE FROM macro_observation_series_publication_state WHERE projection_version <> 'macro_regime_v4'"
-    )
+    op.execute("DELETE FROM macro_observation_series_publication_state WHERE projection_version <> 'macro_regime_v4'")
 
 
 def _add_macro_observation_fact_hash() -> None:

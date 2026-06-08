@@ -1402,9 +1402,7 @@ class MacroIntelRepository:
         return rows_written
 
     def _insert_observation_series_rows_chunk(self, rows: Sequence[Mapping[str, Any]]) -> int:
-        values_sql = ",".join(
-            ["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(rows)
-        )
+        values_sql = ",".join(["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(rows))
         params: list[Any] = []
         for row in rows:
             params.extend(

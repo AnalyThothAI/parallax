@@ -130,13 +130,13 @@ def test_sync_service_import_success_writes_facts_completes_window_and_wakes_pro
         {
             "changed_observations": [
                 {
-                        "observation_id": "observation-1",
-                        "status": "inserted",
-                        "concept_key": "liquidity:sofr",
-                        "observed_at": date(2026, 5, 27),
-                        "fact_payload_hash": "hash-1",
-                    }
-                ],
+                    "observation_id": "observation-1",
+                    "status": "inserted",
+                    "concept_key": "liquidity:sofr",
+                    "observed_at": date(2026, 5, 27),
+                    "fact_payload_hash": "hash-1",
+                }
+            ],
             "projection_name": "macro_view",
             "projection_version": "macro_regime_v4",
             "now_ms": NOW_MS,
@@ -145,9 +145,7 @@ def test_sync_service_import_success_writes_facts_completes_window_and_wakes_pro
             "commit": False,
         }
     ]
-    assert wake_bus.notifications == [
-        {"count": 1, "max_observed_at": "2026-05-27", "asof_date": "2026-05-27"}
-    ]
+    assert wake_bus.notifications == [{"count": 1, "max_observed_at": "2026-05-27", "asof_date": "2026-05-27"}]
     assert events.index("transaction-commit") < events.index("wake")
 
 

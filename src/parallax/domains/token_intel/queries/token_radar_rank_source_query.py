@@ -31,6 +31,7 @@ class TokenRadarFeatureSourceRequest:
     score_since_ms: int
     now_ms: int
 
+
 class TokenRadarRankSourceQuery:
     def __init__(self, conn: Any, *, chunk_size: int = TOKEN_RADAR_RANK_SOURCE_REQUEST_CHUNK_SIZE) -> None:
         self.conn = conn

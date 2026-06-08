@@ -120,9 +120,8 @@ def _handle_status() -> tuple[int, dict[str, Any]]:
             publication_state = repos.macro_intel.macro_series_publication_state(MACRO_VIEW_PROJECTION_VERSION)
             facts_max_observed_at = _snapshot_latest_observed_at(latest_snapshot)
             snapshot_asof = _to_date(latest_snapshot.get("asof_date") if latest_snapshot else None)
-            projection_behind_facts = (
-                facts_max_observed_at is not None
-                and (snapshot_asof is None or snapshot_asof < facts_max_observed_at)
+            projection_behind_facts = facts_max_observed_at is not None and (
+                snapshot_asof is None or snapshot_asof < facts_max_observed_at
             )
             data = {
                 "migration_ready": True,

@@ -1901,13 +1901,13 @@ def test_projection_rebuild_dirty_targets_explicit_due_work_item_publishes_even_
             {
                 "target_type_key": "Asset",
                 "identity_id": "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
-                    "payload_hash": "claim-hash",
-                    "lease_owner": "projection-worker",
-                    "attempt_count": 1,
-                    "source_event_ids_json": ["event-due-unchanged"],
-                }
-            ]
-        )
+                "payload_hash": "claim-hash",
+                "lease_owner": "projection-worker",
+                "attempt_count": 1,
+                "source_event_ids_json": ["event-due-unchanged"],
+            }
+        ]
+    )
     repos = type(
         "Repos",
         (),
