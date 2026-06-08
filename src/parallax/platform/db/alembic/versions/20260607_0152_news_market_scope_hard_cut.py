@@ -13,9 +13,7 @@ depends_on = None
 def upgrade() -> None:
     op.execute("SET LOCAL lock_timeout = '5s'")
     op.execute("SET LOCAL statement_timeout = '30min'")
-    op.execute(
-        "ALTER TABLE news_items ADD COLUMN IF NOT EXISTS market_scope_json JSONB NOT NULL DEFAULT '{}'::jsonb"
-    )
+    op.execute("ALTER TABLE news_items ADD COLUMN IF NOT EXISTS market_scope_json JSONB NOT NULL DEFAULT '{}'::jsonb")
     op.execute(
         "ALTER TABLE news_page_rows ADD COLUMN IF NOT EXISTS market_scope_json JSONB NOT NULL DEFAULT '{}'::jsonb"
     )

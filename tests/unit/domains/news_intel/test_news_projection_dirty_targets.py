@@ -349,7 +349,7 @@ def test_process_worker_enqueues_page_and_brief_dirty_in_same_transaction_after_
             "reason": "news_item_processed",
             "now_ms": NOW_MS,
             "commit": False,
-        }
+        },
     ]
     assert "direct_commit" not in repos.conn.events
     assert "tx:release_expired_processing_items" in repos.conn.events

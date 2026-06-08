@@ -3613,9 +3613,7 @@ class NewsRepository:
             "story": _json_dict(projected.get("story") or item_payload.get("story_identity_json")),
             "market_scope": _json_dict(projected.get("market_scope") or item_payload.get("market_scope_json") or {}),
             "agent_admission_status": str(
-                projected.get("agent_admission_status")
-                or item_payload.get("agent_admission_status")
-                or "needs_review"
+                projected.get("agent_admission_status") or item_payload.get("agent_admission_status") or "needs_review"
             ),
             "agent_admission_reason": str(
                 projected.get("agent_admission_reason") or item_payload.get("agent_admission_reason") or ""

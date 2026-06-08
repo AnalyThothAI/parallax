@@ -95,12 +95,7 @@ def test_news_item_brief_contract_has_no_legacy_crypto_only_surface() -> None:
         "provider_signal_evidence.token_impacts",
         "crypto-market transmission",
     }
-    offenders = [
-        f"{path} contains {token}"
-        for path in paths
-        for token in forbidden
-        if token in _read(path)
-    ]
+    offenders = [f"{path} contains {token}" for path in paths for token in forbidden if token in _read(path)]
     assert offenders == []
 
 
@@ -271,10 +266,5 @@ def test_news_runtime_product_paths_do_not_use_legacy_analysis_admission_gate() 
         "analysis_not_admitted",
         "page_material_not_admitted",
     }
-    offenders = [
-        f"{path} contains {token}"
-        for path in paths
-        for token in forbidden
-        if token in _read(path)
-    ]
+    offenders = [f"{path} contains {token}" for path in paths for token in forbidden if token in _read(path)]
     assert offenders == []
