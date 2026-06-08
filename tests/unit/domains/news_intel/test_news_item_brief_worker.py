@@ -468,7 +468,7 @@ async def _test_worker_validation_failure_requeues_without_terminal_current() ->
     assert db.dirty.terminalized == []
     assert db.news.briefs == []
     assert wake_bus.brief_updates == []
-    assert result.failed == 1
+    assert result.failed == 0
     assert result.notes["validation_failed"] == 1
     assert result.notes["ready"] == 0
 

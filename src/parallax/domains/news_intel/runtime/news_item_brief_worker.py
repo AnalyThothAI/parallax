@@ -197,7 +197,7 @@ class NewsItemBriefWorker(WorkerBase):
 
             if current_updates > 0 and self.wake_bus is not None:
                 self.wake_bus.notify_news_item_brief_updated(count=current_updates)
-            failed = int(notes["failed"])
+            failed = max(0, int(notes["failed"]) - int(notes["validation_failed"]))
             processed = int(notes["ready"]) + int(notes["insufficient"])
             skipped += int(notes["backpressure"])
             return WorkerResult(processed=processed, failed=failed, skipped=skipped, notes=notes)
