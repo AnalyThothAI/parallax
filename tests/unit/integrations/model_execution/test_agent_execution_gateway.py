@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from parallax.integrations.model_execution.execution_gateway import AgentExecutionGateway
 from parallax.integrations.model_execution.output_schema import StrictJsonOutputSchema
 from parallax.platform.agent_execution import (
+    RUNTIME_VERSION,
     AgentCapacityReservation,
     AgentExecutionCancelled,
     AgentExecutionError,
@@ -18,7 +19,6 @@ from parallax.platform.agent_execution import (
     AgentRuntimeDefaultsPolicy,
     AgentRuntimePolicy,
     AgentStageSpec,
-    RUNTIME_VERSION,
 )
 from parallax.platform.agent_hashing import artifact_hash_for, json_sha256, text_sha256
 

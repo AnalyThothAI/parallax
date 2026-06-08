@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 ACTIVE_DIRS = (
     ROOT / "docs" / "superpowers" / "specs" / "active",
@@ -32,7 +31,5 @@ def test_active_news_specs_do_not_define_legacy_crypto_gate() -> None:
             if path.name in ALLOWLIST:
                 continue
             text = path.read_text(encoding="utf-8")
-            for token in FORBIDDEN:
-                if token in text:
-                    offenders.append(f"{path.relative_to(ROOT)} contains {token}")
+            offenders.extend(f"{path.relative_to(ROOT)} contains {token}" for token in FORBIDDEN if token in text)
     assert offenders == []
