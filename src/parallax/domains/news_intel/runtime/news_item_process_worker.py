@@ -4,7 +4,7 @@ import asyncio
 import json
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import asdict, is_dataclass
+from dataclasses import fields, is_dataclass
 from typing import Any
 
 from parallax.app.runtime.worker_base import WorkerBase
@@ -246,22 +246,26 @@ class NewsItemProcessWorker(WorkerBase):
         try:
             with self._repository_session() as repos, repos.conn.transaction():
                 if attempt_after_claim >= self._max_attempts():
-                    return repos.news.mark_item_process_terminal_failed(
+                    return int(
+                        repos.news.mark_item_process_terminal_failed(
+                            news_item_id=news_item_id,
+                            error=error_text,
+                            now_ms=failure_now_ms,
+                            lease_owner=lease_owner,
+                            processing_attempts=attempt_after_claim,
+                            commit=False,
+                        )
+                    )
+                return int(
+                    repos.news.mark_item_process_retryable(
                         news_item_id=news_item_id,
                         error=error_text,
+                        next_due_at_ms=failure_now_ms + self._retry_delay_ms(),
                         now_ms=failure_now_ms,
                         lease_owner=lease_owner,
                         processing_attempts=attempt_after_claim,
                         commit=False,
                     )
-                return repos.news.mark_item_process_retryable(
-                    news_item_id=news_item_id,
-                    error=error_text,
-                    next_due_at_ms=failure_now_ms + self._retry_delay_ms(),
-                    now_ms=failure_now_ms,
-                    lease_owner=lease_owner,
-                    processing_attempts=attempt_after_claim,
-                    commit=False,
                 )
         except Exception:
             return None
@@ -344,8 +348,8 @@ class _StaleClaimError(RuntimeError):
 def _object_payload(value: Any) -> dict[str, Any]:
     if isinstance(value, Mapping):
         return dict(value)
-    if is_dataclass(value):
-        return dict(asdict(value))
+    if is_dataclass(value) and not isinstance(value, type):
+        return {field.name: getattr(value, field.name) for field in fields(value)}
     dump = getattr(value, "model_dump", None)
     if dump is not None:
         return dict(dump(mode="json"))
@@ -395,7 +399,11 @@ def _strict_current_payload(
         payload = dict(value)
     elif isinstance(value, expected_type):
         to_payload = getattr(value, "to_payload", None)
-        payload = dict(to_payload() if to_payload is not None else asdict(value))
+        payload = dict(
+            to_payload()
+            if to_payload is not None
+            else {field.name: getattr(value, field.name) for field in fields(value)}
+        )
     else:
         raise ValueError(f"unsupported {label} shape")
     missing = [field for field in required_fields if field not in payload]

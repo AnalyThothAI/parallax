@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from contextlib import nullcontext
 from typing import Any
 
@@ -178,7 +178,7 @@ def _brief_target_id(decision: Mapping[str, Any]) -> str:
     return str(decision["news_item_id"])
 
 
-def _brief_priorities(decisions: list[Mapping[str, Any]]) -> dict[str, int]:
+def _brief_priorities(decisions: Sequence[Mapping[str, Any]]) -> dict[str, int]:
     priorities: dict[str, int] = {}
     for decision in decisions:
         target_id = _brief_target_id(decision)
@@ -190,7 +190,7 @@ def _brief_priorities(decisions: list[Mapping[str, Any]]) -> dict[str, int]:
     return priorities
 
 
-def _brief_watermarks(decisions: list[Mapping[str, Any]]) -> dict[str, int]:
+def _brief_watermarks(decisions: Sequence[Mapping[str, Any]]) -> dict[str, int]:
     watermarks: dict[str, int] = {}
     for decision in decisions:
         target_id = _brief_target_id(decision)

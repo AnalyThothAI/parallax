@@ -2469,6 +2469,8 @@ class NewsRepository:
                 (int(processed_at_ms), int(processed_at_ms), news_item_id),
             )
         else:
+            if processing_attempts is None:
+                raise ValueError("lease_owner and processing_attempts must be provided together")
             cursor = self.conn.execute(
                 """
                 UPDATE news_items
@@ -2949,6 +2951,8 @@ class NewsRepository:
                 (int(next_due_at_ms), _compact_error(error), int(now_ms), news_item_id),
             )
         else:
+            if processing_attempts is None:
+                raise ValueError("lease_owner and processing_attempts must be provided together")
             cursor = self.conn.execute(
                 """
                 UPDATE news_items
@@ -3005,6 +3009,8 @@ class NewsRepository:
                 (_compact_error(error), int(now_ms), news_item_id),
             )
         else:
+            if processing_attempts is None:
+                raise ValueError("lease_owner and processing_attempts must be provided together")
             cursor = self.conn.execute(
                 """
                 UPDATE news_items
