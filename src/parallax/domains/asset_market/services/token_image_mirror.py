@@ -238,4 +238,13 @@ def _error_text(exc: Exception) -> str:
 
 
 def _is_terminal_unsupported_error(error: str) -> bool:
-    return error.startswith("unsupported_") or error.startswith("image_too_large:")
+    if error.startswith("unsupported_") or error.startswith("image_too_large:"):
+        return True
+    if not error.startswith("image_fetch_failed: upstream_status_"):
+        return False
+    status_text = error.rsplit("_", maxsplit=1)[-1]
+    try:
+        status_code = int(status_text)
+    except ValueError:
+        return False
+    return status_code in {404, 410, 415}

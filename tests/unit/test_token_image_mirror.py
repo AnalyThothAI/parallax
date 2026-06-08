@@ -183,7 +183,7 @@ def test_mirror_marks_unsupported_when_actual_body_is_oversized(tmp_path) -> Non
     assert repo.unsupported_rows[0]["error_prefix"] == "image_too_large"
 
 
-def test_mirror_marks_upstream_404_as_error_with_retry_backoff(tmp_path) -> None:
+def test_mirror_marks_upstream_404_as_unsupported_without_retry(tmp_path) -> None:
     repo = _FakeTokenImageAssetRepository()
     service = TokenImageMirrorService(
         repository=repo,
@@ -195,8 +195,33 @@ def test_mirror_marks_upstream_404_as_error_with_retry_backoff(tmp_path) -> None
 
     result = service.mirror_source({"source_url": GMGN_URL}, now_ms=NOW_MS)
 
+    assert result["status"] == "unsupported"
+    assert repo.ready_rows == []
+    assert repo.error_rows == []
+    assert repo.unsupported_rows == [
+        {
+            "source_url": GMGN_URL,
+            "now_ms": NOW_MS,
+            "error_prefix": "image_fetch_failed",
+        }
+    ]
+
+
+def test_mirror_marks_upstream_503_as_error_with_retry_backoff(tmp_path) -> None:
+    repo = _FakeTokenImageAssetRepository()
+    service = TokenImageMirrorService(
+        repository=repo,
+        app_home=tmp_path,
+        http_client=_FakeImageClient(
+            _FakeImageResponse(content=b"temporarily unavailable", content_type="text/plain", status_code=503)
+        ),
+    )
+
+    result = service.mirror_source({"source_url": GMGN_URL}, now_ms=NOW_MS)
+
     assert result["status"] == "error"
     assert repo.ready_rows == []
+    assert repo.unsupported_rows == []
     assert repo.error_rows == [
         {
             "source_url": GMGN_URL,
