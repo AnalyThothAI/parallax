@@ -2,6 +2,7 @@ import {
   formatMacroScalar,
   gapLabel,
   macroAsOfLabel,
+  macroFreshnessAlert,
   macroFieldLabel,
   macroStatusLabel,
 } from "@features/macro/model/macroPageViewModel";
@@ -63,5 +64,50 @@ describe("macroPageViewModel", () => {
     expect(macroFieldLabel("confidence_label")).toBe("置信度");
     expect(macroFieldLabel("crypto_read")).toBe("加密影响");
     expect(macroFieldLabel("token_impact")).toBe("代币影响");
+  });
+
+  it("builds a first-screen freshness alert from stale backend payloads", () => {
+    const module = macroModuleFixture({
+      snapshot: {
+        ...macroModuleFixture().snapshot,
+        status: "stale",
+        status_label: "数据滞后",
+        asof_date: "2026-01-16",
+        asof_label: "截至 2026-01-16",
+      },
+      data_health: {
+        ...macroModuleFixture().data_health,
+        module_gaps: [
+          {
+            code: "stale_latest:135d",
+            label: "最新观测滞后 135 天",
+          },
+        ],
+      },
+    });
+
+    expect(macroFreshnessAlert(module)).toEqual({
+      detail: "截至 2026-01-16；宏观事实层尚未追上最新日期。",
+      items: ["最新观测滞后 135 天"],
+      title: "宏观数据滞后",
+    });
+  });
+
+  it("does not show a freshness alert for fresh backend payloads", () => {
+    const module = macroModuleFixture({
+      snapshot: {
+        ...macroModuleFixture().snapshot,
+        status: "ok",
+        status_label: "正常",
+        asof_date: "2026-05-31",
+        asof_label: "截至 2026-05-31",
+      },
+      data_health: {
+        ...macroModuleFixture().data_health,
+        module_gaps: [],
+      },
+    });
+
+    expect(macroFreshnessAlert(module)).toBeNull();
   });
 });

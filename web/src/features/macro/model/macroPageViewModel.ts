@@ -2,6 +2,12 @@ import type { MacroModuleView } from "@lib/types";
 
 import { type MacroModuleId, macroRouteLabel } from "./macroRoutes";
 
+export type MacroFreshnessAlertModel = {
+  detail: string;
+  items: string[];
+  title: string;
+};
+
 export function macroModuleTitle(moduleId: MacroModuleId, module?: MacroModuleView): string {
   return stringValue(module?.snapshot.title) || macroRouteLabel(moduleId) || "总览";
 }
@@ -16,6 +22,20 @@ export function macroStatusLabel(module?: MacroModuleView): string {
     return label;
   }
   return statusLabel(stringValue(module?.snapshot.status));
+}
+
+export function macroFreshnessAlert(module?: MacroModuleView): MacroFreshnessAlertModel | null {
+  const snapshotStatus = stringValue(module?.snapshot.status)?.toLowerCase() ?? null;
+  const healthStatus = stringValue(module?.data_health?.summary_status)?.toLowerCase() ?? null;
+  const staleGaps = dataHealthGaps(module).filter(isStaleGap);
+  if (snapshotStatus !== "stale" && healthStatus !== "stale" && staleGaps.length === 0) {
+    return null;
+  }
+  return {
+    detail: `${macroAsOfLabel(module)}；宏观事实层尚未追上最新日期。`,
+    items: uniqueLabels(staleGaps.map(staleGapLabel)).slice(0, 3),
+    title: "宏观数据滞后",
+  };
 }
 
 export function formatMacroScalar(value: unknown): string {
@@ -73,6 +93,38 @@ export function macroFieldLabel(key: string): string {
 
 function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
+}
+
+function dataHealthGaps(module?: MacroModuleView): unknown[] {
+  const dataHealth = module?.data_health;
+  if (!dataHealth) {
+    return [];
+  }
+  return [
+    ...(dataHealth.module_gaps ?? []),
+    ...(dataHealth.chart_gaps ?? []),
+    ...(dataHealth.global_gaps ?? []),
+    ...(dataHealth.future_integration_gaps ?? []),
+  ];
+}
+
+function isStaleGap(gap: unknown): boolean {
+  if (!gap || typeof gap !== "object" || Array.isArray(gap)) {
+    return false;
+  }
+  const record = gap as Record<string, unknown>;
+  const code = stringValue(record.code)?.toLowerCase() ?? "";
+  const label = stringValue(record.label) ?? "";
+  return code.startsWith("stale_latest") || code.startsWith("stale_") || label.includes("滞后");
+}
+
+function staleGapLabel(gap: unknown): string {
+  const label = gapLabel(gap);
+  return label === "数据缺口待确认" ? "最新宏观观测滞后" : label;
+}
+
+function uniqueLabels(labels: string[]): string[] {
+  return [...new Set(labels.filter((label) => label && label !== "数据缺口待确认"))];
 }
 
 function dateAsOfLabel(value: unknown): string {

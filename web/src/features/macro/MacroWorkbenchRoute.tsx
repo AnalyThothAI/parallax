@@ -3,7 +3,12 @@ import * as PageState from "@shared/ui/PageState";
 
 import { useMacroModuleQuery } from "./api/useMacroModuleQuery";
 import type { MacroPageKind, MacroProductTier } from "./model/macroPageRegistry";
-import { macroAsOfLabel, macroModuleTitle, macroStatusLabel } from "./model/macroPageViewModel";
+import {
+  macroAsOfLabel,
+  macroFreshnessAlert,
+  macroModuleTitle,
+  macroStatusLabel,
+} from "./model/macroPageViewModel";
 import { buildMacroBreadcrumbs, type MacroModuleId } from "./model/macroRoutes";
 import { MacroMatrixPage } from "./ui/pages/MacroMatrixPage";
 import { MacroModulePageRenderer } from "./ui/pages/MacroModulePageRenderer";
@@ -73,6 +78,7 @@ function MacroModuleWorkbenchRoute({
       {module ? (
         <PageState.Stale updating={query.isFetching && !query.isLoading}>
           <MacroShell
+            freshnessAlert={macroFreshnessAlert(module)}
             header={macroModuleHeader({ module, moduleId })}
             pageKind={pageKind}
             productTier={productTier}

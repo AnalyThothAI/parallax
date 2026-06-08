@@ -105,9 +105,8 @@ def _split_windows(start: date, end: date, *, max_window_days: int) -> list[tupl
 
 
 def _steady_trigger_reason(*, now_ms: int, interval_seconds: float) -> str:
-    interval_ms = max(1, int(float(interval_seconds) * 1000))
-    bucket_start_ms = (int(now_ms) // interval_ms) * interval_ms
-    return f"steady_overlap:{bucket_start_ms}"
+    _ = (now_ms, interval_seconds)
+    return "steady_overlap"
 
 
 __all__ = ["ensure_due_macro_sync_windows"]

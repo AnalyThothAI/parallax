@@ -381,7 +381,7 @@ def test_sync_service_explicit_window_enqueues_and_claims_target_in_one_transact
     )
 
     assert result.status == "ok"
-    assert str(repo.enqueued_windows[0]["trigger_reason"]).startswith("operator_sync:")
+    assert repo.enqueued_windows[0]["trigger_reason"] == "operator_sync"
     assert repo.claimed_by_id == [
         {
             "sync_window_id": "target-window",
@@ -423,7 +423,7 @@ def test_sync_service_explicit_window_trigger_identity_allows_repeated_repairs()
     )
 
     trigger_reasons = [str(window["trigger_reason"]) for window in repo.enqueued_windows]
-    assert trigger_reasons == ["operator_sync:1779000000000", "operator_sync:1779000000001"]
+    assert trigger_reasons == ["operator_sync", "operator_sync"]
 
 
 def test_sync_service_redacts_secret_from_run_payload_and_diagnostics() -> None:

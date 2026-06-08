@@ -8,6 +8,9 @@ from typing import Any
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
+from parallax.domains.macro_intel.services.macro_sync_types import MacroSyncRunSummary
+
+_MAX_WINDOWS_PER_CYCLE = 5
 
 
 class MacroSyncWorker(WorkerBase):
@@ -34,8 +37,15 @@ class MacroSyncWorker(WorkerBase):
     def run_once_sync(self, *, now_ms: int | None = None) -> WorkerResult:
         service = self._service()
         enqueue_summary = service.enqueue_due_windows(now_ms=now_ms)
-        result = service.run_claimed_window_once(lease_owner=self.name, now_ms=now_ms)
-        if result is None:
+        results: list[MacroSyncRunSummary] = []
+        for _ in range(self._batch_size()):
+            result = service.run_claimed_window_once(lease_owner=self.name, now_ms=now_ms)
+            if result is None:
+                break
+            results.append(result)
+            if result.status not in {"ok", "partial"}:
+                break
+        if not results:
             return WorkerResult(
                 processed=0,
                 skipped=1,
@@ -46,20 +56,30 @@ class MacroSyncWorker(WorkerBase):
                     **enqueue_summary,
                 },
             )
+        processed = sum(1 for result in results if result.status in {"ok", "partial"})
+        failed = len(results) - processed
+        last_result = results[-1]
         return WorkerResult(
-            processed=1 if result.status in {"ok", "partial"} else 0,
-            failed=0 if result.status in {"ok", "partial"} else 1,
+            processed=processed,
+            failed=failed,
             notes={
-                "claimed": 1,
-                "provider_calls": 1,
-                "sync_run_id": result.sync_run_id,
-                "import_run_id": result.import_run_id,
-                "status": result.status,
-                "imported_observation_count": result.imported_observation_count,
-                "max_observed_at": str(result.max_observed_at) if result.max_observed_at else None,
-                "asof_date": str(result.asof_date) if result.asof_date else None,
+                "claimed": len(results),
+                "provider_calls": len(results),
+                "sync_run_id": last_result.sync_run_id,
+                "sync_run_ids": [result.sync_run_id for result in results],
+                "import_run_id": last_result.import_run_id,
+                "status": last_result.status,
+                "statuses": [result.status for result in results],
+                "imported_observation_count": sum(result.imported_observation_count for result in results),
+                "max_observed_at": str(last_result.max_observed_at) if last_result.max_observed_at else None,
+                "asof_date": str(last_result.asof_date) if last_result.asof_date else None,
+                **enqueue_summary,
             },
         )
+
+    def _batch_size(self) -> int:
+        configured = max(1, int(getattr(self.settings, "batch_size", 1) or 1))
+        return min(configured, _MAX_WINDOWS_PER_CYCLE)
 
     def _service(self) -> MacroSyncService:
         if self.service_factory is not None:

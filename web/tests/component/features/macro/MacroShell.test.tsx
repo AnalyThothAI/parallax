@@ -90,6 +90,45 @@ describe("MacroShell", () => {
     );
   });
 
+  it("renders a stale macro data alert before module content", () => {
+    const header: MacroShellHeaderModel = {
+      breadcrumbs: [
+        { label: "宏观", href: "/macro" },
+        { label: "大类资产", href: "/macro/assets/equities" },
+      ],
+      eyebrow: "宏观工作台",
+      question: null,
+      statusItems: [
+        { label: "状态", value: "数据滞后" },
+        { label: "截至", value: "截至 2026-01-16" },
+      ],
+      title: "美股风险",
+    };
+
+    renderWithProviders(
+      <MacroShell
+        freshnessAlert={{
+          detail: "截至 2026-01-16；宏观事实层尚未追上最新日期。",
+          items: ["最新观测滞后 135 天"],
+          title: "宏观数据滞后",
+        }}
+        header={header}
+        pageKind="leaf"
+        productTier="primary"
+      >
+        <section aria-label="module content">Backend content slot</section>
+      </MacroShell>,
+      { route: "/macro/assets/equities" },
+    );
+
+    const alert = screen.getByRole("status", { name: "宏观数据滞后" });
+    const content = screen.getByText("Backend content slot");
+
+    expect(alert).toHaveTextContent("截至 2026-01-16");
+    expect(alert).toHaveTextContent("最新观测滞后 135 天");
+    expect(alert.compareDocumentPosition(content) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("keeps compact shell semantics independent from module ids", () => {
     const header: MacroShellHeaderModel = {
       breadcrumbs: [
