@@ -11,13 +11,15 @@ from parallax.domains.news_intel.runtime.news_projection_work import (
     enqueue_page_reprojection,
 )
 from parallax.domains.news_intel.services.news_item_agent_admission import (
-    NewsItemAgentAdmission,
-    NewsItemAgentAdmissionContext,
     decide_news_item_agent_admission,
 )
 from parallax.domains.news_intel.services.news_item_agent_policy import news_item_agent_brief_priority
 from parallax.domains.news_intel.services.news_market_scope import classify_news_market_scope
 from parallax.domains.news_intel.services.news_story_identity import build_news_story_identity
+from parallax.domains.news_intel.types.news_item_agent_admission import (
+    NewsItemAgentAdmission,
+    NewsItemAgentAdmissionContext,
+)
 
 _REPAIR_REASON = "ops_news_market_signal_repair"
 

@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from parallax.domains.news_intel.services.text_normalization import qualified_content_hash
+from parallax.domains.news_intel.types.text_normalization import qualified_content_hash
 
 _HIGH_SIGNAL_TITLE = "Bitcoin ETF flows accelerate after issuer amends registration statement"
 _HIGH_SIGNAL_SUMMARY = (

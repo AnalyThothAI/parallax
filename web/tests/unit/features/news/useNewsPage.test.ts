@@ -47,7 +47,9 @@ describe("useNewsPage", () => {
 
     const { result } = renderHook(() => useNewsPageWithToken("token"), { wrapper: wrapper() });
 
-    await waitFor(() => expect(result.current.data?.items[0].signal.display_signal.label_zh).toBe("利好"));
+    await waitFor(() =>
+      expect(result.current.data?.items[0].signal.display_signal.label_zh).toBe("利好"),
+    );
     expect(result.current.data?.items[0].agent_brief).toBeUndefined();
     expect(result.current.data?.items[0].token_lanes[0].provider_score).toBe(82);
   });
@@ -100,7 +102,11 @@ describe("useNewsPage", () => {
                   lifecycle_status: "processed",
                   headline: "BTC headline",
                   latest_at_ms: 1_779_000_000_000,
-                  signal: newsSignalEnvelope({ source: "provider", status: "ready", direction: "bullish" }),
+                  signal: newsSignalEnvelope({
+                    source: "provider",
+                    status: "ready",
+                    direction: "bullish",
+                  }),
                   token_lanes: [],
                   fact_lanes: [],
                 },
@@ -122,7 +128,11 @@ describe("useNewsPage", () => {
                       lifecycle_status: "processed",
                       headline: "ETH headline",
                       latest_at_ms: 1_779_000_000_100,
-                      signal: newsSignalEnvelope({ source: "provider", status: "ready", direction: "bearish" }),
+                      signal: newsSignalEnvelope({
+                        source: "provider",
+                        status: "ready",
+                        direction: "bearish",
+                      }),
                       token_lanes: [],
                       fact_lanes: [],
                     },

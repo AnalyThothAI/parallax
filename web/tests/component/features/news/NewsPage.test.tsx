@@ -3,7 +3,12 @@ import { join } from "node:path";
 
 import { NewsPage } from "@features/news";
 import { fetchNewsItem, fetchNewsRows } from "@lib/api/client";
-import type { NewsItemDetail, NewsRow, NewsSignalEnvelope, NewsSignalSummary } from "@shared/model/newsIntel";
+import type {
+  NewsItemDetail,
+  NewsRow,
+  NewsSignalEnvelope,
+  NewsSignalSummary,
+} from "@shared/model/newsIntel";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";

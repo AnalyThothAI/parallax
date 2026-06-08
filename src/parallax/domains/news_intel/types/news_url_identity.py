@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
-from parallax.domains.news_intel.services.text_normalization import canonicalize_url
+from parallax.domains.news_intel.types.text_normalization import canonicalize_url
 
 URL_IDENTITY_KINDS = ("article", "live_page", "homepage", "aggregator", "unknown")
 

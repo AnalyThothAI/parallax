@@ -18,8 +18,6 @@ from parallax.domains.news_intel.runtime.news_projection_work import (
     terminalize_work,
 )
 from parallax.domains.news_intel.services.news_item_agent_admission import (
-    NewsItemAgentAdmission,
-    NewsItemAgentAdmissionContext,
     decide_news_item_agent_admission,
 )
 from parallax.domains.news_intel.services.news_item_brief_input import (
@@ -27,6 +25,10 @@ from parallax.domains.news_intel.services.news_item_brief_input import (
 )
 from parallax.domains.news_intel.services.news_item_brief_validation import (
     validate_news_item_brief_output,
+)
+from parallax.domains.news_intel.types.news_item_agent_admission import (
+    NewsItemAgentAdmission,
+    NewsItemAgentAdmissionContext,
 )
 from parallax.domains.news_intel.types.news_item_brief import (
     NEWS_ITEM_BRIEF_LANE,
@@ -376,15 +378,12 @@ class NewsItemBriefWorker(WorkerBase):
 
     def _claim_targets(self, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
         with self._repository_session() as repos:
-            return cast(
-                list[dict[str, Any]],
-                claim_item_brief_work(
-                    repos,
-                    limit=max(1, int(limit)),
-                    lease_ms=self._lease_ms(),
-                    now_ms=now_ms,
-                    lease_owner=_claim_owner(self.name),
-                ),
+            return claim_item_brief_work(
+                repos,
+                limit=max(1, int(limit)),
+                lease_ms=self._lease_ms(),
+                now_ms=now_ms,
+                lease_owner=_claim_owner(self.name),
             )
 
     def _queue_depth(self, *, now_ms: int | None = None) -> int:

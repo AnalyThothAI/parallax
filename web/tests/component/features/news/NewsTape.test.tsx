@@ -39,7 +39,9 @@ describe("NewsTape", () => {
 
     expect(screen.getByText("AGENT INSUFF")).toBeInTheDocument();
     expect(screen.getByText("A · 90")).toBeInTheDocument();
-    expect(screen.getByText("Provider high score without enough agent evidence")).toBeInTheDocument();
+    expect(
+      screen.getByText("Provider high score without enough agent evidence"),
+    ).toBeInTheDocument();
     expect(screen.queryByText("Insufficient agent title")).not.toBeInTheDocument();
   });
 
@@ -114,28 +116,31 @@ const rowWithInsufficientAgentBrief: NewsRow = {
   row_id: "row-2",
   news_item_id: "news-2",
   headline: "Provider high score without enough agent evidence",
-  signal: newsSignalEnvelope({
-    source: "provider",
-    provider: "opennews",
-    status: "ready",
-    direction: "bullish",
-    label_zh: "利好",
-    signal: "long",
-    score: 90,
-    grade: "A",
-    summary_zh: "Provider summary remains visible.",
-    method: "opennews.aiRating",
-  }, {
-    alert_eligibility: {
-      in_app_eligible: true,
-      external_push_ready: false,
-      external_push_block_reason: "agent_brief_not_ready",
-      agent_status: "insufficient",
-      decision_class: "context",
-      provider_status: "ready",
-      provider_score: 90,
+  signal: newsSignalEnvelope(
+    {
+      source: "provider",
+      provider: "opennews",
+      status: "ready",
+      direction: "bullish",
+      label_zh: "利好",
+      signal: "long",
+      score: 90,
+      grade: "A",
+      summary_zh: "Provider summary remains visible.",
+      method: "opennews.aiRating",
     },
-  }),
+    {
+      alert_eligibility: {
+        in_app_eligible: true,
+        external_push_ready: false,
+        external_push_block_reason: "agent_brief_not_ready",
+        agent_status: "insufficient",
+        decision_class: "context",
+        provider_status: "ready",
+        provider_score: 90,
+      },
+    },
+  ),
   agent_brief: {
     status: "insufficient",
     direction: "neutral",
@@ -150,29 +155,32 @@ const rowWithReadyWatchAgentPushBlocked: NewsRow = {
   row_id: "row-3",
   news_item_id: "news-3",
   headline: "Ready watch item",
-  signal: newsSignalEnvelope({
-    source: "agent",
-    provider: "news_item_brief",
-    status: "ready",
-    direction: "bullish",
-    label_zh: "利好",
-    signal: "long",
-    score: 91,
-    grade: "A",
-    title_zh: "Provider title",
-    summary_zh: "Agent summary remains visible.",
-    method: "news_item_brief",
-  }, {
-    alert_eligibility: {
-      in_app_eligible: true,
-      external_push_ready: false,
-      external_push_block_reason: "cooldown",
-      agent_status: "ready",
-      decision_class: "watch",
-      provider_status: "ready",
-      provider_score: 91,
+  signal: newsSignalEnvelope(
+    {
+      source: "agent",
+      provider: "news_item_brief",
+      status: "ready",
+      direction: "bullish",
+      label_zh: "利好",
+      signal: "long",
+      score: 91,
+      grade: "A",
+      title_zh: "Provider title",
+      summary_zh: "Agent summary remains visible.",
+      method: "news_item_brief",
     },
-  }),
+    {
+      alert_eligibility: {
+        in_app_eligible: true,
+        external_push_ready: false,
+        external_push_block_reason: "cooldown",
+        agent_status: "ready",
+        decision_class: "watch",
+        provider_status: "ready",
+        provider_score: 91,
+      },
+    },
+  ),
   agent_brief: {
     status: "ready",
     direction: "bullish",

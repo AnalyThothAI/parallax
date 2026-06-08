@@ -3,24 +3,14 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any
 
 from parallax.domains.news_intel._constants import NEWS_MARKET_SCOPE_VERSION
-
-NewsMarketScopeName = Literal[
-    "crypto",
-    "us_equity",
-    "private_company",
-    "macro_rates",
-    "energy_geopolitics",
-    "commodities",
-    "fx",
-    "ai_semiconductors",
-    "broad_risk",
-    "unknown",
-]
-NewsMarketScopeStatus = Literal["classified", "unknown"]
+from parallax.domains.news_intel.types.news_market_scope import (
+    NewsMarketScope,
+    NewsMarketScopeName,
+    NewsMarketScopeStatus,
+)
 
 _RESOLVED_CRYPTO_STATUSES = frozenset({"exact_address", "known_symbol", "unique_by_context"})
 _CRYPTO_TARGET_TYPES = frozenset({"Asset", "CexToken"})
@@ -82,26 +72,6 @@ _BROAD_RISK_RE = re.compile(
     r"\b(?:broad risk|risk assets?|markets?|equities|futures|nasdaq|s&p|spx|vix|rally|selloff)\b",
     re.IGNORECASE,
 )
-
-
-@dataclass(frozen=True, slots=True)
-class NewsMarketScope:
-    scope: tuple[NewsMarketScopeName, ...]
-    primary: NewsMarketScopeName
-    status: NewsMarketScopeStatus
-    reason: str
-    basis: dict[str, Any]
-    version: str = NEWS_MARKET_SCOPE_VERSION
-
-    def to_payload(self) -> dict[str, Any]:
-        return {
-            "scope": list(self.scope),
-            "primary": self.primary,
-            "status": self.status,
-            "reason": self.reason,
-            "basis": self.basis,
-            "version": self.version,
-        }
 
 
 def classify_news_market_scope(

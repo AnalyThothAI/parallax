@@ -4,7 +4,7 @@ import hashlib
 
 import pytest
 
-from parallax.domains.news_intel.services.text_normalization import (
+from parallax.domains.news_intel.types.text_normalization import (
     canonicalize_url,
     clean_news_text,
     content_hash,

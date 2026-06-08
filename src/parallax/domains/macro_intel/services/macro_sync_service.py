@@ -103,7 +103,7 @@ class MacroSyncService:
     ) -> MacroSyncRunSummary:
         now = int(now_ms if now_ms is not None else self.clock_ms())
         sync_settings = _sync_settings(self.settings)
-        with self._repository_session() as repos, repos.unit_of_work():
+        with self._repository_session() as repos, _unit_of_work(repos):
             sync_window_id = repos.macro_intel.enqueue_macro_sync_window(
                 source_name=str(getattr(sync_settings, "source_name", "macrodata-cli")),
                 bundle_name=bundle_name,
@@ -144,7 +144,7 @@ class MacroSyncService:
             )
             parsed = parse_macrodata_bundle(_run_result_envelope(run_result), now_ms=now_ms)
             diagnostics = _safe_diagnostics(_run_result_diagnostics(run_result))
-            with self._repository_session() as repos, repos.unit_of_work():
+            with self._repository_session() as repos, _unit_of_work(repos):
                 import_summary = write_macrodata_bundle_import(parsed, repos=repos)
                 completed_at_ms = int(self.clock_ms())
                 run_payload = _sync_run_payload(
@@ -270,7 +270,7 @@ class MacroSyncService:
             error_message=_safe_error_message(error_message),
         )
         try:
-            with self._repository_session() as repos, repos.unit_of_work():
+            with self._repository_session() as repos, _unit_of_work(repos):
                 repos.macro_intel.record_macro_sync_run(payload)
                 if retry:
                     terminalized = repos.macro_intel.retry_macro_sync_window(
@@ -507,6 +507,11 @@ def _call_queue_summary(repos: RepositorySession, *, now_ms: int) -> dict[str, A
     if not callable(queue_summary):
         return {}
     return dict(queue_summary(now_ms=now_ms))
+
+
+def _unit_of_work(repos: RepositorySession) -> AbstractContextManager[Any]:
+    unit_of_work = cast(Callable[[], AbstractContextManager[Any]], repos.unit_of_work)
+    return unit_of_work()
 
 
 def _date_string(value: object) -> str:

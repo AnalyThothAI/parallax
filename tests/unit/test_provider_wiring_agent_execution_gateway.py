@@ -98,29 +98,17 @@ def test_wire_providers_passes_one_agent_execution_gateway_to_model_execution_fa
                 "lanes": {
                     "pulse.signal_analyst": {"model": "gpt-pulse"},
                     "narrative.mention_semantics": {"model": "gpt-narrative"},
-                    "watchlist.handle_summary": {"model": "gpt-watchlist"},
                     "news.item_brief": {"model": "gpt-news"},
                 },
             },
             "pulse_candidate": {"enabled": True},
             "mention_semantics": {"enabled": True},
             "token_discussion_digest": {"enabled": True},
-            "handle_summary": {"enabled": True},
             "news_item_brief": {"enabled": True},
         },
     )
     agent_gateway = object()
     calls: list[tuple[str, str, object]] = []
-
-    def fake_social(
-        settings: Settings,
-        *,
-        agent_gateway: object,
-        **kwargs: Any,
-    ) -> object:
-        assert "llm_gateway" not in kwargs
-        calls.append(("social", settings.agent_runtime_model_for_lane("social.event_enrichment"), agent_gateway))
-        return object()
 
     def fake_narrative(
         settings: Settings,
@@ -144,16 +132,6 @@ def test_wire_providers_passes_one_agent_execution_gateway_to_model_execution_fa
         calls.append(("pulse", settings.agent_runtime_model_for_lane("pulse.signal_analyst"), agent_gateway))
         return object()
 
-    def fake_watchlist(
-        settings: Settings,
-        *,
-        agent_gateway: object,
-        **kwargs: Any,
-    ) -> object:
-        assert "llm_gateway" not in kwargs
-        calls.append(("watchlist", settings.agent_runtime_model_for_lane("watchlist.handle_summary"), agent_gateway))
-        return object()
-
     def fake_news_item_brief(
         settings: Settings,
         *,
@@ -165,10 +143,8 @@ def test_wire_providers_passes_one_agent_execution_gateway_to_model_execution_fa
         return object()
 
     db_pool_token = object()
-    monkeypatch.setattr(model_execution, "litellm_social_event_provider", fake_social)
     monkeypatch.setattr(model_execution, "litellm_narrative_intel_provider", fake_narrative)
     monkeypatch.setattr(model_execution, "litellm_pulse_decision_provider", fake_pulse)
-    monkeypatch.setattr(model_execution, "litellm_watchlist_summary_provider", fake_watchlist)
     monkeypatch.setattr(model_execution, "litellm_news_item_brief_provider", fake_news_item_brief)
 
     providers = provider_wiring.wire_providers(
@@ -180,11 +156,9 @@ def test_wire_providers_passes_one_agent_execution_gateway_to_model_execution_fa
 
     assert providers.agent_execution_gateway is agent_gateway
     assert calls == [
-        ("social", "gpt-social", agent_gateway),
         ("narrative", "gpt-narrative", agent_gateway),
         ("news_item_brief", "gpt-news", agent_gateway),
         ("pulse", "gpt-pulse", agent_gateway),
-        ("watchlist", "gpt-watchlist", agent_gateway),
     ]
 
 

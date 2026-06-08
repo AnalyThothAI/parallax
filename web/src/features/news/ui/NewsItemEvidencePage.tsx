@@ -59,10 +59,19 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
             <span>Evidence page</span>
             <span className={newsSignalTone(displaySignal)}>{newsSignalLabel(displaySignal)}</span>
             <span>{brief?.decision_class || "decision pending"}</span>
-            <span>{eligibility.external_push_ready ? "push ready" : eligibility.external_push_block_reason || "push pending"}</span>
+            <span>
+              {eligibility.external_push_ready
+                ? "push ready"
+                : eligibility.external_push_block_reason || "push pending"}
+            </span>
           </div>
           <h2>{displayTitle}</h2>
-          <p>{brief?.summary_zh || displaySignal.summary_zh || item.summary || "No summary is present."}</p>
+          <p>
+            {brief?.summary_zh ||
+              displaySignal.summary_zh ||
+              item.summary ||
+              "No summary is present."}
+          </p>
         </div>
         <SourcePacket item={item} displayTitle={displayTitle} sourceDomains={sourceDomains} />
       </header>
@@ -91,12 +100,23 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
         <EvidenceMetric
           label="Agent run"
           value={run?.outcome || brief?.status || "pending"}
-          detail={run?.latency_ms == null ? run?.model : `${formatDuration(run.latency_ms)} · ${run.model || ""}`}
+          detail={
+            run?.latency_ms == null
+              ? run?.model
+              : `${formatDuration(run.latency_ms)} · ${run.model || ""}`
+          }
         />
         <EvidenceMetric
           label="Tools"
           value={String(toolResults.length)}
-          detail={toolResults.length ? toolResults.map((tool) => tool.tool_name).filter(Boolean).join(", ") : "no calls"}
+          detail={
+            toolResults.length
+              ? toolResults
+                  .map((tool) => tool.tool_name)
+                  .filter(Boolean)
+                  .join(", ")
+              : "no calls"
+          }
         />
       </section>
 
@@ -141,10 +161,16 @@ function MarketScopeEvidence({ item }: { item: NewsItemDetail }) {
         />
         <FieldRow
           label="Representative"
-          value={item.agent_representative_news_item_id || item.agent_admission?.representative_news_item_id}
+          value={
+            item.agent_representative_news_item_id ||
+            item.agent_admission?.representative_news_item_id
+          }
         />
         <FieldRow label="In-app eligible" value={eligibility.in_app_eligible} />
-        <FieldRow label="External push" value={notificationStateLabel(eligibility.external_push_ready)} />
+        <FieldRow
+          label="External push"
+          value={notificationStateLabel(eligibility.external_push_ready)}
+        />
         <FieldRow label="Push block" value={eligibility.external_push_block_reason} />
       </dl>
       <JsonDetails title="Market scope JSON" value={scope ?? {}} />
@@ -168,7 +194,10 @@ function SourcePacket({
       <b>{item.source?.source_name || item.source_domain || "source unknown"}</b>
       <p>{displayTitle}</p>
       <small>
-        {sourceDomains.join(", ") || item.source?.provider_type || item.provider_type || "provider unknown"}
+        {sourceDomains.join(", ") ||
+          item.source?.provider_type ||
+          item.provider_type ||
+          "provider unknown"}
         {item.latest_at_ms ? ` · ${formatRelativeTime(item.latest_at_ms)} ago` : ""}
       </small>
       {item.canonical_url ? (
@@ -233,12 +262,23 @@ function AiInterpretation({
       <dl className="news-evidence-definition-grid">
         <FieldRow label="Direction" value={brief?.direction || displayDirection} />
         <FieldRow label="Decision" value={brief?.decision_class} />
-        <FieldRow label="Evidence refs" value={(brief?.evidence_refs ?? []).map(evidenceRefLabel).join(", ")} />
+        <FieldRow
+          label="Evidence refs"
+          value={(brief?.evidence_refs ?? []).map(evidenceRefLabel).join(", ")}
+        />
       </dl>
       <NarrativeBlock label="Market read" text={brief?.market_read_zh} />
       <div className="news-evidence-view-grid">
-        <ViewCard title="Bull view" strength={brief?.bull_strength} text={brief?.bull_view?.thesis_zh} />
-        <ViewCard title="Bear view" strength={brief?.bear_strength} text={brief?.bear_view?.thesis_zh} />
+        <ViewCard
+          title="Bull view"
+          strength={brief?.bull_strength}
+          text={brief?.bull_view?.thesis_zh}
+        />
+        <ViewCard
+          title="Bear view"
+          strength={brief?.bear_strength}
+          text={brief?.bear_view?.thesis_zh}
+        />
       </div>
       <ExecutionGapPanel brief={brief} />
       <ListBlock title="Watch triggers" items={brief?.watch_triggers ?? []} />
@@ -263,7 +303,10 @@ function ResearchTrail({
         <FieldRow label="Run" value={run?.run_id} />
         <FieldRow label="Model" value={run?.model} />
         <FieldRow label="Provider" value={run?.provider} />
-        <FieldRow label="Latency" value={run?.latency_ms == null ? null : formatDuration(run.latency_ms)} />
+        <FieldRow
+          label="Latency"
+          value={run?.latency_ms == null ? null : formatDuration(run.latency_ms)}
+        />
         <FieldRow label="Tokens" value={usageLabel(run?.usage_json)} />
         <FieldRow label="Input hash" value={run?.input_hash} />
       </dl>
@@ -271,7 +314,10 @@ function ResearchTrail({
       {toolResults.length ? (
         <div className="news-evidence-tool-list">
           {toolResults.map((tool, index) => (
-            <ToolResultCard key={`${tool.tool_call_id || tool.tool_name || "tool"}-${index}`} tool={tool} />
+            <ToolResultCard
+              key={`${tool.tool_call_id || tool.tool_name || "tool"}-${index}`}
+              tool={tool}
+            />
           ))}
         </div>
       ) : (
@@ -298,7 +344,10 @@ function ToolResultCard({ tool }: { tool: NewsResearchToolResult }) {
       </div>
       <dl className="news-evidence-definition-grid">
         <FieldRow label="Rows" value={tool.row_count ?? rows.length} />
-        <FieldRow label="Latency" value={tool.latency_ms == null ? null : formatDuration(tool.latency_ms)} />
+        <FieldRow
+          label="Latency"
+          value={tool.latency_ms == null ? null : formatDuration(tool.latency_ms)}
+        />
         <FieldRow label="Tables" value={(tool.source_tables ?? []).join(", ")} />
         <FieldRow label="Hash" value={tool.result_hash} />
         <FieldRow label="Schema" value={tool.schema_version} />
@@ -372,7 +421,10 @@ function TokenImpactList({ tokens }: { tokens: NewsTokenLane[] }) {
   return (
     <div className="news-evidence-card-list" aria-label="Token impacts">
       {tokens.map((token, index) => (
-        <div className="news-evidence-card" key={`${token.symbol ?? token.target_id ?? "impact"}-${index}`}>
+        <div
+          className="news-evidence-card"
+          key={`${token.symbol ?? token.target_id ?? "impact"}-${index}`}
+        >
           <b>{token.symbol || token.target_id || "unknown token"}</b>
           <span>{token.provider_signal || "provider signal missing"}</span>
           <small>
@@ -398,7 +450,11 @@ function ExecutionGapPanel({ brief }: { brief?: NewsAgentBrief | null }) {
         />
         <GapItem
           label="Liquidity / OI"
-          text={gapText(brief, "liquidity", "No persisted liquidity or open-interest field is attached.")}
+          text={gapText(
+            brief,
+            "liquidity",
+            "No persisted liquidity or open-interest field is attached.",
+          )}
         />
         <GapItem label="Agent thesis" text={agentThesisText(brief)} />
       </div>
@@ -471,12 +527,16 @@ function TokenIdentityEvidence({ tokens }: { tokens: NewsTokenLane[] }) {
       {tokens.length ? (
         <div className="news-evidence-card-list">
           {tokens.map((token, index) => (
-            <div className="news-evidence-card" key={`${token.symbol ?? token.target_id ?? "identity"}-${index}`}>
+            <div
+              className="news-evidence-card"
+              key={`${token.symbol ?? token.target_id ?? "identity"}-${index}`}
+            >
               <b>{token.symbol || token.target_id || "unknown token"}</b>
               <span>{token.resolution_status || token.lane}</span>
               <small>
-                {[token.target_type, token.market_type, token.target_id].filter(Boolean).join(" · ") ||
-                  "identity metadata missing"}
+                {[token.target_type, token.market_type, token.target_id]
+                  .filter(Boolean)
+                  .join(" · ") || "identity metadata missing"}
               </small>
             </div>
           ))}
@@ -495,8 +555,14 @@ function ObservationEvidence({ item }: { item: NewsItemDetail }) {
     <section className="news-evidence-section">
       <SectionHeading icon={Database} title="Observation set" tag={`${edges.length} edges`} />
       <dl className="news-evidence-definition-list">
-        <FieldRow label="Source ids" value={uniqueStrings(edges.map((edge) => edge.source_id)).join(", ")} />
-        <FieldRow label="Domains" value={uniqueStrings(edges.map((edge) => edge.source_domain)).join(", ")} />
+        <FieldRow
+          label="Source ids"
+          value={uniqueStrings(edges.map((edge) => edge.source_id)).join(", ")}
+        />
+        <FieldRow
+          label="Domains"
+          value={uniqueStrings(edges.map((edge) => edge.source_domain)).join(", ")}
+        />
         <FieldRow label="Provider rows" value={observations.length} />
         <FieldRow label="Duplicate" value={item.duplicate_observation_count} />
       </dl>
@@ -509,7 +575,11 @@ function ObservationEvidence({ item }: { item: NewsItemDetail }) {
 function MetadataEvidence({ item }: { item: NewsItemDetail }) {
   return (
     <section className="news-evidence-section">
-      <SectionHeading icon={ShieldCheck} title="Source metadata" tag={item.source?.source_quality_status || "raw"} />
+      <SectionHeading
+        icon={ShieldCheck}
+        title="Source metadata"
+        tag={item.source?.source_quality_status || "raw"}
+      />
       <dl className="news-evidence-definition-list">
         <FieldRow label="Lifecycle" value={item.lifecycle_status} />
         <FieldRow label="Provider" value={item.source?.provider_type || item.provider_type} />
@@ -649,7 +719,8 @@ function usageLabel(value?: Record<string, unknown>): string | null {
   const output = value.output_tokens ?? value.completion_tokens ?? value.output;
   const total = value.total_tokens ?? value.total;
   if (total != null) return `${displayScalar(total)} total`;
-  if (input != null || output != null) return `${displayScalar(input)} in / ${displayScalar(output)} out`;
+  if (input != null || output != null)
+    return `${displayScalar(input)} in / ${displayScalar(output)} out`;
   return null;
 }
 
@@ -706,5 +777,9 @@ function formatJson(value: unknown): string {
 }
 
 function uniqueStrings(values: unknown[]): string[] {
-  return [...new Set(values.map((value) => (typeof value === "string" ? value.trim() : "")).filter(Boolean))];
+  return [
+    ...new Set(
+      values.map((value) => (typeof value === "string" ? value.trim() : "")).filter(Boolean),
+    ),
+  ];
 }

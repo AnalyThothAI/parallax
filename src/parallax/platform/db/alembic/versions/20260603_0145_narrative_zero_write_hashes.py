@@ -143,7 +143,7 @@ def _backfill_narrative_admission_payload_hashes() -> None:
                 update_hash,
                 {
                     "row_ctid": row["row_ctid"],
-                    "payload_hash": narrative_admission_payload_hash(row),
+                    "payload_hash": narrative_admission_payload_hash(dict(row)),
                 },
             )
 
@@ -206,7 +206,7 @@ def _backfill_token_discussion_digest_payload_hashes() -> None:
                 update_hash,
                 {
                     "row_ctid": row["row_ctid"],
-                    "payload_hash": token_discussion_digest_payload_hash(row),
+                    "payload_hash": token_discussion_digest_payload_hash(dict(row)),
                 },
             )
 

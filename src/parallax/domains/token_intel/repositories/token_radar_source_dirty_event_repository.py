@@ -331,7 +331,7 @@ def _key_records(keys: Iterable[Mapping[str, Any]]) -> list[dict[str, str | int]
         payload_hash = str(key.get("payload_hash") or "")
         lease_owner = str(key.get("lease_owner") or "")
         attempt_count = int(key.get("attempt_count") or 0)
-        record = {
+        record: dict[str, str | int] = {
             "projection_version": str(key.get("projection_version") or TOKEN_RADAR_PROJECTION_VERSION),
             "source_event_id": str(key.get("source_event_id") or key.get("event_id") or ""),
             "target_type_key": str(key.get("target_type_key") or key.get("target_type") or ""),

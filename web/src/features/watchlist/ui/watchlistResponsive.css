@@ -15,7 +15,6 @@
     .watchlist-extraction-panel {
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
-
   }
 
   @media (max-width: 840px) {
@@ -32,7 +31,6 @@
     .watchlist-extraction-panel {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
-
   }
 
   @media (max-width: 580px) {
@@ -52,6 +50,5 @@
     .watchlist-monitor-title h2 {
       font-size: 22px;
     }
-
   }
 }

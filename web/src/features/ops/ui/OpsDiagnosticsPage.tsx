@@ -516,10 +516,7 @@ function runtimeChain(diagnostics: OpsDiagnostics): ChainLane[] {
     },
     {
       title: "Delivery",
-      status: worstStatus([
-        diagnostics.domains.notifications,
-        diagnostics.domains.watchlist,
-      ]),
+      status: worstStatus([diagnostics.domains.notifications, diagnostics.domains.watchlist]),
       intent: "Watchlist source monitor 和 notifications 服务操作员。",
       primary: `Watchlist${statusLabel(statusTone(diagnostics.domains.watchlist?.status))}`,
       secondary: `通知${statusLabel(statusTone(diagnostics.domains.notifications?.status))}`,

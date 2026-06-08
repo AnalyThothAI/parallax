@@ -2193,7 +2193,7 @@ def admission_payload_hash(payload: dict[str, Any]) -> str:
 
 
 def digest_payload_hash(digest: dict[str, Any], *, now_ms: int) -> str:
-    return _digest_payload_fields(digest, now_ms=now_ms)["payload_hash"]
+    return cast(str, _digest_payload_fields(digest, now_ms=now_ms)["payload_hash"])
 
 
 def _stable_payload_hash(payload: dict[str, Any]) -> str:

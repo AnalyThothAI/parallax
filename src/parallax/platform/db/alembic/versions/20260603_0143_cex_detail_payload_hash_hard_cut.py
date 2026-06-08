@@ -133,7 +133,7 @@ def _backfill_cex_detail_payload_hashes() -> None:
                 update_hash,
                 {
                     "row_ctid": row["row_ctid"],
-                    "payload_hash": cex_detail_snapshot_payload_hash(row),
+                    "payload_hash": cex_detail_snapshot_payload_hash(dict(row)),
                 },
             )
 

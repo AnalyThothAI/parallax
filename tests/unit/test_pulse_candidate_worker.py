@@ -1152,7 +1152,6 @@ def test_worker_runtime_manifest_uses_wired_provider_evidence_first_contract(mon
                 "defaults": {"model": "gpt-enrich"},
                 "lanes": {
                     "pulse.signal_analyst": {"model": "gpt-pulse"},
-                    "watchlist.handle_summary": {"model": "gpt-summary"},
                 },
             },
         },

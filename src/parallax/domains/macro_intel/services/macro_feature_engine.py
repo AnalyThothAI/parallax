@@ -165,6 +165,8 @@ def _deduped_observations(observations: Sequence[Mapping[str, Any]]) -> list[Map
     seen_dates: set[str] = set()
     for observation in ordered:
         observed_at = _date_text(observation.get("observed_at"))
+        if observed_at is None:
+            continue
         if observed_at in seen_dates:
             continue
         seen_dates.add(observed_at)

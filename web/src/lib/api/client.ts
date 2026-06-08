@@ -250,7 +250,8 @@ function normalizeNewsSignal(
   const providerPayload = objectOrNull(payload.provider_signal);
   const agentPayload = objectOrNull(payload.agent_signal) ?? {};
   const alertPayload = objectOrNull(payload.alert_eligibility) ?? {};
-  const marketScope = normalizeMarketScope(alertPayload.market_scope) ?? context.marketScope ?? null;
+  const marketScope =
+    normalizeMarketScope(alertPayload.market_scope) ?? context.marketScope ?? null;
   return {
     display_signal: normalizeNewsSignalSummary(displayPayload),
     provider_signal: providerPayload ? normalizeNewsSignalSummary(providerPayload) : null,
@@ -502,9 +503,7 @@ function normalizeAgentRun(raw: unknown): NewsAgentRunSummary | null {
     trace_metadata_json: objectOrNull(payload.trace_metadata_json) ?? {},
     research_plan: objectOrNull(payload.research_plan ?? requestJson?.research_plan),
     tool_results: normalizeToolResults(payload.tool_results ?? requestJson?.tool_results),
-    research_execution: objectOrNull(
-      payload.research_execution ?? requestJson?.research_execution,
-    ),
+    research_execution: objectOrNull(payload.research_execution ?? requestJson?.research_execution),
     research_hashes: objectOrNull(payload.research_hashes ?? requestJson?.research_hashes),
     base_packet: objectOrNull(payload.base_packet ?? requestJson?.base_packet),
   };

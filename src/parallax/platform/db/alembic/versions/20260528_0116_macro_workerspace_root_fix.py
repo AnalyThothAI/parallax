@@ -365,7 +365,7 @@ def _backfill_macro_observation_fact_hashes() -> None:
                 update_hash,
                 {
                     "observation_id": row["observation_id"],
-                    "fact_payload_hash": macro_observation_fact_payload_hash(row),
+                    "fact_payload_hash": macro_observation_fact_payload_hash(dict(row)),
                 },
             )
 
@@ -411,7 +411,7 @@ def _backfill_macro_series_current_row_payload_hashes() -> None:
                 update_hash,
                 {
                     "row_ctid": row["row_ctid"],
-                    "payload_hash": macro_series_current_row_payload_hash(row),
+                    "payload_hash": macro_series_current_row_payload_hash(dict(row)),
                 },
             )
 

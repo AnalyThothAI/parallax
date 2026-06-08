@@ -4,6 +4,7 @@ import hashlib
 import math
 from collections.abc import Mapping, Sequence
 from contextlib import AbstractContextManager
+from datetime import date
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, cast
 
@@ -227,9 +228,9 @@ def _sequence(value: object) -> Sequence[Any]:
     return value if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray) else []
 
 
-def _max_observed_at(observations: Sequence[Mapping[str, Any]]) -> object | None:
+def _max_observed_at(observations: Sequence[Mapping[str, Any]]) -> date | str | None:
     observed_dates = [observation["observed_at"] for observation in observations if observation.get("observed_at")]
-    return max(observed_dates) if observed_dates else None
+    return cast("date | str | None", max(observed_dates) if observed_dates else None)
 
 
 def _min_observed_at(observations: Sequence[Mapping[str, Any]]) -> object | None:

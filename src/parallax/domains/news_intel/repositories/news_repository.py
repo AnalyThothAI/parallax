@@ -19,22 +19,22 @@ from parallax.domains.news_intel.services.news_canonical_identity import (
     canonical_identity_for_observation,
     provider_global_article_key,
 )
-from parallax.domains.news_intel.services.news_item_agent_admission import NewsItemAgentAdmission
-from parallax.domains.news_intel.services.news_item_brief_contract import (
+from parallax.domains.news_intel.types import NewsSourceConfig
+from parallax.domains.news_intel.types.news_item_agent_admission import NewsItemAgentAdmission
+from parallax.domains.news_intel.types.news_item_brief_contract import (
     current_news_item_brief_sql_predicate,
     is_current_news_item_brief_contract,
 )
-from parallax.domains.news_intel.services.news_market_scope import NewsMarketScope
-from parallax.domains.news_intel.services.news_material_identity import (
+from parallax.domains.news_intel.types.news_market_scope import NewsMarketScope
+from parallax.domains.news_intel.types.news_material_identity import (
     material_title_fingerprint,
     material_title_is_eligible,
     provider_symbol_set,
     symbol_sets_compatible,
 )
-from parallax.domains.news_intel.services.news_page_projection import build_news_page_search_text
-from parallax.domains.news_intel.services.news_story_identity import NewsStoryIdentity
-from parallax.domains.news_intel.services.news_url_identity import public_url_identity_policy, url_identity_kind
-from parallax.domains.news_intel.types import NewsSourceConfig
+from parallax.domains.news_intel.types.news_page_projection import build_news_page_search_text
+from parallax.domains.news_intel.types.news_story_identity import NewsStoryIdentity
+from parallax.domains.news_intel.types.news_url_identity import public_url_identity_policy, url_identity_kind
 from parallax.domains.news_intel.types.source_classification import normalize_string_tuple
 from parallax.domains.news_intel.types.source_quality_policy import window_ms_for_label
 from parallax.platform.db.json_safety import postgres_safe_json

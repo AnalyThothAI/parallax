@@ -4,15 +4,15 @@ import hashlib
 from dataclasses import dataclass
 from typing import Any
 
-from parallax.domains.news_intel.services.news_material_identity import material_title_fingerprint
-from parallax.domains.news_intel.services.news_url_identity import (
+from parallax.domains.news_intel.types.news_material_identity import material_title_fingerprint
+from parallax.domains.news_intel.types.news_url_identity import (
     hard_public_url_identity_key,
     qualified_content_identity_url_allowed,
 )
-from parallax.domains.news_intel.services.news_url_identity import (
+from parallax.domains.news_intel.types.news_url_identity import (
     url_identity_kind as classify_url_identity_kind,
 )
-from parallax.domains.news_intel.services.text_normalization import qualified_content_hash
+from parallax.domains.news_intel.types.text_normalization import qualified_content_hash
 
 CANONICAL_POLICY_VERSION = "news_canonical_item_v2"
 PROVIDER_GLOBAL_ARTICLE_ID_TYPES = frozenset({"opennews"})

@@ -178,7 +178,7 @@ News Intel contract:
   keyword search scans the deterministic projected `search_text` document on
   `news_page_rows`; it does not call Token Intel search, provider fetches,
   extraction, raw `news_items`, or scattered JSON fallback predicates. See
-  `docs/NEWS_SEARCH.md` for the News search chain contract.
+  `docs/references/NEWS_SEARCH.md` for the News search chain contract.
 - News rows are story-shaped. They expose deterministic fields (`headline`,
   `summary`, `source_domain`, `token_lanes`, `fact_lanes`, lifecycle
   metadata), story fields (`representative_news_item_id`, `story_key`,

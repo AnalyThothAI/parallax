@@ -174,13 +174,14 @@ class TokenRadarProjection:
             except Exception as exc:
                 failures += len(source_claims)
                 first_error = first_error or str(exc)
-                source_dirty_repo.mark_error(
-                    [_source_claim_key(claim) for claim in source_claims],
-                    error=str(exc),
-                    retry_ms=DIRTY_TARGET_RETRY_MS,
-                    now_ms=computed_at_ms,
-                    commit=True,
-                )
+                if source_dirty_repo is not None:
+                    source_dirty_repo.mark_error(
+                        [_source_claim_key(claim) for claim in source_claims],
+                        error=str(exc),
+                        retry_ms=DIRTY_TARGET_RETRY_MS,
+                        now_ms=computed_at_ms,
+                        commit=True,
+                    )
                 source_claims = []
                 source_projection_targets = []
         if source_claims and not source_projection_targets:

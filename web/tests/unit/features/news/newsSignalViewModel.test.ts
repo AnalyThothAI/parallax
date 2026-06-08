@@ -63,18 +63,21 @@ describe("newsSignalViewModel", () => {
   });
 
   it("marks ready watch and driver briefs ready independently of external push readiness", () => {
-    expect(
-      newsAgentReviewBadge(agentRow({ status: "ready", decisionClass: "watch" })),
-    ).toEqual({ label: "AGENT READY", tone: "is-ready" });
-    expect(
-      newsAgentReviewBadge(agentRow({ status: "ready", decisionClass: "driver" })),
-    ).toEqual({ label: "AGENT READY", tone: "is-ready" });
+    expect(newsAgentReviewBadge(agentRow({ status: "ready", decisionClass: "watch" }))).toEqual({
+      label: "AGENT READY",
+      tone: "is-ready",
+    });
+    expect(newsAgentReviewBadge(agentRow({ status: "ready", decisionClass: "driver" }))).toEqual({
+      label: "AGENT READY",
+      tone: "is-ready",
+    });
   });
 
   it("keeps ready context briefs separate from agent hold", () => {
-    expect(
-      newsAgentReviewBadge(agentRow({ status: "ready", decisionClass: "context" })),
-    ).toEqual({ label: "AGENT CONTEXT", tone: "is-waiting" });
+    expect(newsAgentReviewBadge(agentRow({ status: "ready", decisionClass: "context" }))).toEqual({
+      label: "AGENT CONTEXT",
+      tone: "is-waiting",
+    });
   });
 });
 

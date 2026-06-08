@@ -780,7 +780,7 @@ def _hide_existing_public_candidate_for_low_information(
         admission_reason="blocked_low_information",
         commit=False,
     )
-    return hidden_row
+    return cast("dict[str, Any]", hidden_row)
 
 
 def _pending_agent_job_count(repos: Any) -> int:

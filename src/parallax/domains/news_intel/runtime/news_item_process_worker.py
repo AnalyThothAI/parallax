@@ -17,15 +17,17 @@ from parallax.domains.news_intel.services.news_content_classification import cla
 from parallax.domains.news_intel.services.news_entity_extraction import extract_news_entities
 from parallax.domains.news_intel.services.news_fact_candidates import build_fact_candidates
 from parallax.domains.news_intel.services.news_item_agent_admission import (
-    NewsItemAgentAdmissionContext,
     decide_news_item_agent_admission,
 )
 from parallax.domains.news_intel.services.news_item_agent_policy import (
     news_item_agent_brief_priority,
 )
-from parallax.domains.news_intel.services.news_market_scope import NewsMarketScope, classify_news_market_scope
-from parallax.domains.news_intel.services.news_story_identity import NewsStoryIdentity, build_news_story_identity
+from parallax.domains.news_intel.services.news_market_scope import classify_news_market_scope
+from parallax.domains.news_intel.services.news_story_identity import build_news_story_identity
 from parallax.domains.news_intel.services.news_token_mentions import build_news_token_mentions
+from parallax.domains.news_intel.types.news_item_agent_admission import NewsItemAgentAdmissionContext
+from parallax.domains.news_intel.types.news_market_scope import NewsMarketScope
+from parallax.domains.news_intel.types.news_story_identity import NewsStoryIdentity
 from parallax.domains.token_intel.interfaces import TokenIdentityLookup
 
 

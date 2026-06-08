@@ -8,9 +8,9 @@ from typing import Any
 from parallax.domains.news_intel.services.news_item_agent_admission import (
     NEWS_ITEM_AGENT_MAX_PUBLISHED_AGE_MS,
     NEWS_ITEM_AGENT_MIN_PROVIDER_SCORE,
-    NewsItemAgentAdmissionContext,
     decide_news_item_agent_admission,
 )
+from parallax.domains.news_intel.types.news_item_agent_admission import NewsItemAgentAdmissionContext
 
 NEWS_ITEM_AGENT_BRIEF_MIN_PROVIDER_SCORE = NEWS_ITEM_AGENT_MIN_PROVIDER_SCORE
 NEWS_ITEM_AGENT_BRIEF_MAX_PUBLISHED_AGE_MS = NEWS_ITEM_AGENT_MAX_PUBLISHED_AGE_MS

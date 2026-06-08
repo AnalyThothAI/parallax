@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from parallax.domains.news_intel.services import news_duplicate_hard_cut_repair as repair
+from parallax.domains.news_intel.repositories import news_duplicate_hard_cut_repair_repository as repair
 
 
 def test_execute_guard_runs_before_candidate_scans(monkeypatch: pytest.MonkeyPatch) -> None:
