@@ -1426,6 +1426,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 68 — Spec background cited-line relevance gate
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 67
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with docs/sdd/features/active/2026-06-09-executable-harness-hard-cut for SDD background/source citations.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_spec_background_rejects_stale_local_citation_lines` — asserts a local Background citation cannot pass when the cited line exists but omits the backticked evidence token claimed by the Background block.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Local Background citations remain path/line based; when a claim block contains backticked evidence tokens that are not citations, at least one cited local line must mention each token; external HTTPS citation blocks remain accepted; current active specs must cite current lines.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/WORKFLOW.md`, and `scripts/regen_sdd_work_index.py`.
+- **Kill/defer criteria**: Stop if the fix attempts broad natural-language citation scoring, requires network access for external citations, or weakens the existing path/line existence check.
+- **Eval/repair signal**: stale Background line citation, `spec-background-uncited`, active spec citation drift, and SDD generated index drift.
+- **Implementation**: Add cited-line evidence-token validation for local Background citations and update the active hard-cut spec Background to cite current workflow and generated-index lines.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_spec_background_rejects_stale_local_citation_lines -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1495,4 +1516,5 @@
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_score_versions_snapshot -q`
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_non_db_generated_snapshots -q`
 - [ ] `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_requires_task_classification_and_required_reading_evidence tests/architecture/test_agent_playbook_contracts.py::test_subagent_handoff_templates_define_context_and_conflict_contracts -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_spec_background_rejects_stale_local_citation_lines -q`
 - [ ] `make check-all`

@@ -84,6 +84,7 @@ claim is allowed without the corresponding output captured below.
 | AC65 — Generated score-version docs are freshness-checked. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_score_versions_snapshot -q` failed RED before `check-all` ran `scripts/regen_score_versions.py --check`, then passed after adding the non-mutating generator check and Makefile gate. |
 | AC66 — Non-DB generated docs are freshness-checked from the source map. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_non_db_generated_snapshots -q` failed RED on missing `scripts/regen_pulse_agent_desk_decisions.py --check`, then passed after adding the non-mutating generator check and README-derived Makefile gate. |
 | AC67 — Task-bound subagent reading evidence is executable. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_requires_task_classification_and_required_reading_evidence -q` failed RED before task-bound reports required reading evidence, and `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_handoff_templates_define_context_and_conflict_contracts -q` failed RED before the handoff template named `## Required Reading Evidence`; both passed after adding validator and template coverage. |
+| AC68 — Spec Background local citations are semantically anchored. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_spec_background_rejects_stale_local_citation_lines -q` failed RED when an existing but wrong `docs/WORKFLOW.md:1` citation passed, then passed after requiring cited local lines to mention backticked evidence tokens and updating active Background citations. |
 
 Deviations from spec:
 
@@ -232,6 +233,15 @@ exit code: 0
 
 $ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_handoff_templates_define_context_and_conflict_contracts tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_requires_task_classification_and_required_reading_evidence tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_accepts_task_bound_report tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_task_bound_scope_and_command_drift -q
 4 passed in 0.11s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_spec_background_rejects_stale_local_citation_lines -q
+F                                                                        [100%]
+AssertionError: assert 'spec-background-uncited' in set()
+exit code: 1
+
+$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_spec_background_rejects_stale_local_citation_lines -q
+1 passed in 0.04s
 exit code: 0
 
 $ uv run python scripts/validate_sdd_artifacts.py --check

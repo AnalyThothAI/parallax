@@ -194,6 +194,36 @@ def test_spec_background_requires_source_citations(tmp_path: Path) -> None:
     assert "spec-background-uncited" in _issue_codes(issues)
 
 
+def test_spec_background_rejects_stale_local_citation_lines(tmp_path: Path) -> None:
+    workflow = tmp_path / "docs" / "WORKFLOW.md"
+    workflow.parent.mkdir(parents=True, exist_ok=True)
+    workflow.write_text(
+        "\n".join(
+            [
+                "# Workflow",
+                "",
+                "Completion requires `make check-all` evidence before a completion claim.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-stale-background-citation")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _replace_section_body(
+        feature / "spec.md",
+        "## Background",
+        ("Completion requires `make check-all` evidence in `docs/WORKFLOW.md:1`.",),
+    )
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(feature / "tasks.md", status="In Progress", task_status="[~]")
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "spec-background-uncited" in _issue_codes(issues)
+    assert "does not mention cited evidence token" in "\n".join(issue.message for issue in issues)
+
+
 def test_gate_sections_require_non_placeholder_evidence(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-empty-gates")
     _write_valid_spec(feature / "spec.md", status="In Progress")

@@ -35,6 +35,7 @@ LOCAL_CITATION_RE = re.compile(
     r"(?:\.agents|docs|scripts|src|tests|web)/[A-Za-z0-9._/\-]+):(?P<line>\d+)"
 )
 URL_CITATION_RE = re.compile(r"https://[^\s`)>\]]+")
+BACKTICK_TOKEN_RE = re.compile(r"`([^`]+)`")
 SPEC_AC_RE = re.compile(r"^\s*-\s+AC(?P<number>\d+)\.", re.IGNORECASE | re.MULTILINE)
 SPEC_AC_LINE_RE = re.compile(r"^\s*-\s+AC(?P<number>\d+)\..+$", re.IGNORECASE | re.MULTILINE)
 SPEC_AC_FORMAT_RE = re.compile(
@@ -810,6 +811,7 @@ def _citation_block_error(root: Path, block: str) -> str:
     if not citations:
         return f"missing citation in {block!r}"
     invalid: list[str] = []
+    cited_lines: list[str] = []
     for citation in citations:
         citation_path = citation.group("path")
         citation_line = int(citation.group("line"))
@@ -817,10 +819,27 @@ def _citation_block_error(root: Path, block: str) -> str:
         if not path.is_file():
             invalid.append(f"{citation_path}:{citation_line} does not exist")
             continue
-        line_count = len(path.read_text(encoding="utf-8").splitlines())
+        lines = path.read_text(encoding="utf-8").splitlines()
+        line_count = len(lines)
         if citation_line < 1 or citation_line > line_count:
             invalid.append(f"{citation_path}:{citation_line} is outside 1..{line_count}")
+            continue
+        cited_lines.append(lines[citation_line - 1])
+    missing_evidence_tokens = _missing_cited_evidence_tokens(block, cited_lines)
+    invalid.extend(f"does not mention cited evidence token `{token}`" for token in missing_evidence_tokens)
     return ", ".join(invalid)
+
+
+def _missing_cited_evidence_tokens(block: str, cited_lines: list[str]) -> list[str]:
+    evidence_tokens = [
+        token
+        for token in (match.group(1).strip() for match in BACKTICK_TOKEN_RE.finditer(block))
+        if token and not LOCAL_CITATION_RE.fullmatch(token) and not URL_CITATION_RE.fullmatch(token)
+    ]
+    if not evidence_tokens:
+        return []
+    cited_text = "\n".join(cited_lines).lower()
+    return [token for token in evidence_tokens if token.lower() not in cited_text]
 
 
 def _task_issues(feature: SddFeature) -> list[SddIssue]:

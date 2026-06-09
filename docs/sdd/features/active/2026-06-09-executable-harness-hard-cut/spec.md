@@ -9,11 +9,13 @@
 
 ## Background
 
-Parallax already routes non-trivial coding-agent work through the SDD lane in `docs/WORKFLOW.md:7`.
-The lane requires `spec.md`, `plan.md`, `tasks.md`, and `verification.md`, and says production work follows
-`spec -> clarify -> checklist -> plan -> tasks -> analyze -> implement -> verify` in `docs/WORKFLOW.md:22`.
-Completion requires `make check-all` evidence in `docs/WORKFLOW.md:57`. The current generated index is produced
-by `scripts/regen_sdd_work_index.py:1` and currently reports only lifecycle/status hygiene.
+Parallax routes non-trivial coding-agent work through one SDD feature directory in `docs/WORKFLOW.md:7`.
+The lane's canonical artifacts are `spec.md` in `docs/WORKFLOW.md:13`, `plan.md` in `docs/WORKFLOW.md:14`,
+`tasks.md` in `docs/WORKFLOW.md:15`, and `verification.md` in `docs/WORKFLOW.md:16`.
+Production work follows `spec -> clarify -> checklist -> plan -> tasks -> analyze -> implement -> verify`
+in `docs/WORKFLOW.md:27`, and completion requires `make check-all` evidence in `docs/WORKFLOW.md:75`.
+The generated index now renders a `Coordination Board` in `scripts/regen_sdd_work_index.py:86` and a
+`Task Board` in `scripts/regen_sdd_work_index.py:117`.
 
 Latest external SDD and agent-loop references reinforce the same direction: GitHub Spec Kit documents specify, plan, tasks, and implement commands plus clarify/checklist/analyze gates (https://github.com/github/spec-kit), OpenAI's agent evaluation docs emphasize reproducible evals and trace grading (https://platform.openai.com/docs/guides/agent-evals), Claude Code docs separate deterministic hooks and bounded subagents (https://code.claude.com/docs/en/agent-sdk/hooks, https://code.claude.com/docs/en/sub-agents), and GitHub Copilot task guidance emphasizes scoped task prompts for coding agents (https://docs.github.com/en/enterprise-cloud@latest/copilot/using-github-copilot/coding-agent/best-practices-for-using-copilot-to-work-on-tasks).
 
@@ -60,6 +62,7 @@ can both miss real process drift and block healthy refactors.
 | Verified spec-compliance rows must be evidenced. | A `Verified` record cannot mark a compliance row complete unless command-shaped evidence in that row has exit code 0 in canonical evidence sections. |
 | Worktree and branch metadata must be machine-valid. | `plan.md`, `tasks.md`, and `verification.md` must agree on either `codex/<slug>` with `.worktrees/<slug>` or exact `main`/`main` metadata. |
 | Spec background must be source-backed. | Each `spec.md` Background claim block must cite an existing repo `path:line` or an external `https://` source. |
+| Spec background citations must be semantically anchored. | When a Background claim uses backticked evidence tokens, the cited local lines must mention those tokens rather than merely exist. |
 | Public contracts must be source-bound. | Architecture tests compare `docs/CONTRACTS.md` runtime lists and routes against manifest/settings/API source. |
 | Generated README source maps must be real. | Architecture tests require `docs/generated/README.md` rows to name existing generated files, generator scripts, and source paths. |
 | Generated WebSocket docs must expose source message kinds. | Architecture tests compare `docs/generated/ws-protocol.md` against current `type` literals in `src/parallax/app/surfaces/api/ws.py`. |
@@ -134,6 +137,7 @@ can both miss real process drift and block healthy refactors.
 - G43. `make check-all` runs `scripts/regen_score_versions.py --check` before integration gates, so stale score/version docs cannot hide until optional/generated-doc integration checks.
 - G44. `make check-all` runs every non-DB generated-doc script named by `docs/generated/README.md` with `--check` before integration gates, so generated-doc freshness coverage is source-derived instead of one hard-coded assertion per file.
 - G45. Task-bound subagent reports include task classification and required-reading evidence, so subagents cannot pass the parent integration harness with only generic findings and command output.
+- G46. Local Background citations that claim backticked evidence must point at lines mentioning those evidence tokens, so stale line-number drift cannot satisfy SDD audit requirements.
 
 ## Non-goals
 
@@ -246,6 +250,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC65. WHEN `docs/generated/score-versions.md` drifts from score/version literals in `src/` THEN `scripts/regen_score_versions.py --check` SHALL exit non-zero and `make check-all` SHALL run that check before integration, e2e, golden, or coverage gates.
 - AC66. WHEN `docs/generated/README.md` names any non-DB generator script THEN `make check-all` SHALL run that script with `--check` before integration, e2e, golden, or coverage gates.
 - AC67. WHEN a subagent report is validated against an SDD task THEN it SHALL include task classification and required-reading evidence for `AGENTS.md`, `docs/agent-playbook/task-reading-matrix.md`, and task on-demand context paths.
+- AC68. WHEN a `spec.md` Background claim block contains backticked evidence tokens and local `path:line` citations THEN at least one cited line SHALL mention each evidence token, otherwise the validator SHALL report `spec-background-uncited`.
 
 ## Risks
 
