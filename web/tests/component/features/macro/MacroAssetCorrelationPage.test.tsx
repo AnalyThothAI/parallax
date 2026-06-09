@@ -35,6 +35,7 @@ describe("MacroMatrixPage", () => {
       "宏观/大类资产/相关性",
     );
     expect(await screen.findByRole("table", { name: "60d 资产相关性矩阵" })).toBeInTheDocument();
+    expectRegionsInOrder(["相关性简报", "相关性矩阵", "相关性证据", "数据诊断"]);
     expect(screen.getByRole("button", { name: "20d" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "60d" })).toHaveAttribute("aria-pressed", "true");
     expect(await screen.findByRole("columnheader", { name: "SPY" })).toBeInTheDocument();
@@ -43,8 +44,13 @@ describe("MacroMatrixPage", () => {
     expect(screen.getByText("+0.92")).toBeInTheDocument();
     expect(screen.getByText("SPY / TLT")).toBeInTheDocument();
     expect(screen.getAllByText("-0.61").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Yahoo").length).toBeGreaterThan(0);
-    expect(screen.getByText("重叠样本不足：ETH / TLT")).toBeInTheDocument();
+    const diagnostics = screen.getByRole("region", { name: "数据诊断" });
+    expect(diagnostics).toHaveTextContent("Yahoo");
+    expect(diagnostics).toHaveTextContent("重叠样本不足：ETH / TLT");
+    expect(screen.queryByRole("region", { name: "最强正相关" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "最强负相关" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "覆盖度" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "数据缺口" })).not.toBeInTheDocument();
     expect(screen.queryByText(/insufficient_overlap/)).not.toBeInTheDocument();
     expect(
       screen.queryByText(/asset:spy|asset:qqq|asset:tlt|crypto:eth|yahoo/),
@@ -77,6 +83,14 @@ describe("MacroMatrixPage", () => {
     );
   });
 });
+
+function expectRegionsInOrder(regionNames: string[]): void {
+  const regionIndexes = regionNames.map((name) =>
+    screen.getAllByRole("region").findIndex((region) => region.getAttribute("aria-label") === name),
+  );
+  expect(regionIndexes).not.toContain(-1);
+  expect(regionIndexes).toEqual([...regionIndexes].sort((left, right) => left - right));
+}
 
 export function correlationFixture(
   window: MacroAssetCorrelationWindow = "60d",

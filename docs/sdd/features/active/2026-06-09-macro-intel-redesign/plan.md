@@ -24,6 +24,7 @@ Baseline issue resolved in first implementation slice:
 - `docs/sdd/features/active/2026-06-09-macro-intel-redesign/spec.md`: product architecture and acceptance criteria.
 - `docs/sdd/features/active/2026-06-09-macro-intel-redesign/macro-visual-mockup.html`: overall visual mockup for overview, asset dashboard, generic module, rates, and mobile.
 - `docs/sdd/features/active/2026-06-09-macro-intel-redesign/macro-visual-mockup.png`: rendered preview generated from the HTML mockup.
+- `docs/sdd/features/active/2026-06-09-macro-intel-redesign/timsun-assets-comparison.md`: reference-page product structure and gap comparison.
 - `docs/sdd/features/active/2026-06-09-macro-intel-redesign/verification.md`: final command output and manual UI evidence.
 
 ### `web/src/features/macro/ui/workbench/`

@@ -75,7 +75,7 @@ Tasks are TDD-ordered. A task is complete only when its verification command pro
 - **Implementation**: Split the 500-line page into small components and move reusable display derivation into the model layer.
 - **Verification**: `cd web && npm test -- --run tests/component/features/macro/MacroModulePages.test.tsx -x`
 - **Review owner**: parent
-- **Status**: [ ]
+- **Status**: [x]
 
 ### Task 6 — Rates workbench convergence
 
@@ -103,7 +103,7 @@ Tasks are TDD-ordered. A task is complete only when its verification command pro
 - **Implementation**: Wrap the matrix page in the shared workbench frame and keep shared correlation tables.
 - **Verification**: `cd web && npm test -- --run tests/component/features/macro/MacroAssetCorrelationPage.test.tsx -x`
 - **Review owner**: parent
-- **Status**: [ ]
+- **Status**: [x]
 
 ### Task 8 — CSS and compatibility deletion
 

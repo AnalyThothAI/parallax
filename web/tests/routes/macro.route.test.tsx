@@ -178,6 +178,10 @@ describe("macro route", () => {
       "宏观/大类资产/相关性",
     );
     expect(await screen.findByRole("table", { name: "60d 资产相关性矩阵" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "相关性简报" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "相关性矩阵" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "相关性证据" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "数据诊断" })).toBeInTheDocument();
     expect(await screen.findByText("SPY / QQQ")).toBeInTheDocument();
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/assets/correlation", {
