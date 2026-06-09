@@ -29,11 +29,11 @@ export function RatesPrimaryVisual({
 
   return (
     <MacroPanel
-      ariaLabel="主要图表"
+      ariaLabel="利率主图"
       className="macro-rates-primary-visual"
       meta={view.chartNote ?? view.readinessLabel}
       span="full"
-      title="主要图表"
+      title="利率主图"
     >
       <div className="macro-rates-chart-copy">
         <h3>{view.chartTitle}</h3>

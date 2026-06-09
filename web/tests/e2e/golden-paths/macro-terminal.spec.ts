@@ -27,7 +27,7 @@ test.describe("macro terminal navigation hardening", () => {
     await expect(primaryNavigation.getByRole("link", { name: "宏观" })).toBeVisible();
     await expect(primaryNavigation.getByRole("link", { name: "大类资产" })).toBeVisible();
 
-    await expect(page.getByRole("region", { name: "市场板" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "主市场证据" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "美股风险" })).toBeVisible();
     await expectNoDocumentHorizontalOverflow(page);
     await expectNoUnhandledApiRequests(page);
@@ -50,7 +50,10 @@ test.describe("macro terminal navigation hardening", () => {
     await expect(primaryNavigation).toBeVisible();
     await expect(primaryNavigation.getByRole("link", { name: "宏观" })).toBeVisible();
     await expect(primaryNavigation.getByRole("link", { name: "大类资产" })).toBeVisible();
+    await primaryNavigation.getByRole("button", { name: "展开大类资产" }).click();
     await expect(primaryNavigation.getByRole("link", { name: "美股" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(primaryNavigation).toBeHidden();
     await expect(page.getByRole("navigation", { name: "宏观模块" })).toBeVisible();
 
     await expectNoDocumentHorizontalOverflow(page);

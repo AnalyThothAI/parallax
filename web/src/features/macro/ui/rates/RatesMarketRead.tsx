@@ -4,11 +4,11 @@ import { MacroPanel } from "../primitives/MacroPanel";
 export function RatesMarketRead({ view }: { view: RatesWorkbenchView }) {
   return (
     <MacroPanel
-      ariaLabel="市场解读"
+      ariaLabel="利率简报"
       className="macro-rates-market-read-panel"
       meta={view.readinessLabel}
       span="full"
-      title="市场解读"
+      title="利率简报"
     >
       <div className="macro-rates-market-read">
         <div className="macro-rates-market-read-head">

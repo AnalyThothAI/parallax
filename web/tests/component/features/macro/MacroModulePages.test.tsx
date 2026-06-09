@@ -68,17 +68,18 @@ describe("Macro module pages", () => {
       "overview",
     );
     expect(document.querySelector(".macro-page-panel-current")).not.toBeInTheDocument();
-    expectRegionsInOrder(["宏观总览", "核心驱动", "全局传导链", "数据健康"]);
-    const overview = screen.getByRole("region", { name: "宏观总览" });
+    expectRegionsInOrder(["宏观简报", "跨域市场板", "传导链", "数据诊断"]);
+    const overview = screen.getByRole("region", { name: "宏观简报" });
     expect(within(overview).getByText("总览：风险偏好等待利率与流动性确认")).toBeInTheDocument();
     expect(within(overview).getAllByText("风险偏好部分确认").length).toBeGreaterThan(0);
     expect(within(overview).getByText("中低置信度")).toBeInTheDocument();
     expect(within(overview).getByText("加密 beta 需要美元流动性配合。")).toBeInTheDocument();
-    const drivers = screen.getByRole("region", { name: "核心驱动" });
+    const drivers = screen.getByRole("region", { name: "跨域市场板" });
     expect(within(drivers).getByRole("table", { name: "美股代理快照" })).toBeInTheDocument();
-    const dataHealth = screen.getByRole("region", { name: "数据健康" });
+    const dataHealth = screen.getByRole("region", { name: "数据诊断" });
     expect(within(dataHealth).getByText("部分全局历史待回填")).toBeInTheDocument();
     expect(within(dataHealth).getByText("未来宏观日历待接入")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "关键指标" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "当前解读" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "证据板" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "相关页面" })).not.toBeInTheDocument();
@@ -108,7 +109,7 @@ describe("Macro module pages", () => {
       { route: "/macro" },
     );
 
-    const overview = screen.getByRole("region", { name: "宏观总览" });
+    const overview = screen.getByRole("region", { name: "宏观简报" });
     expect(within(overview).getAllByText("期限溢价压力").length).toBeGreaterThan(0);
     expect(within(overview).queryByText("{}")).not.toBeInTheDocument();
     expect(within(overview).queryByText("暂无")).not.toBeInTheDocument();
@@ -127,20 +128,16 @@ describe("Macro module pages", () => {
     );
 
     expect(screen.getByRole("region", { name: "美股模块页面" })).toBeInTheDocument();
-    expectRegionsInOrder([
-      "关键指标",
-      "市场板",
-      "模块判断",
-      "传导链",
-      "模块证据",
-      "数据来源",
-      "模块数据健康",
-    ]);
-    expect(screen.getByRole("region", { name: "市场板" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "模块判断" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "传导链" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "模块证据" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "模块数据健康" })).toBeInTheDocument();
+    expectRegionsInOrder(["模块简报", "主市场证据", "驱动与反证", "数据诊断"]);
+    expect(screen.getByRole("region", { name: "主市场证据" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "模块简报" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "驱动与反证" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "数据诊断" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "关键指标" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "模块判断" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "模块证据" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "数据来源" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "模块数据健康" })).not.toBeInTheDocument();
     expect(screen.queryByText("缺少 SRF")).not.toBeInTheDocument();
     expect(screen.getByText("Yahoo")).toBeInTheDocument();
     expect(screen.getByText("美股风险偏好")).toBeInTheDocument();
@@ -242,6 +239,7 @@ describe("Macro module pages", () => {
       "/api/macro/series",
       expect.objectContaining({ token: "test-token" }),
     );
+    expectRegionsInOrder(["利率简报", "关键事实", "利率主图", "决策支持", "数据诊断"]);
   });
 
   it("renders crypto derivatives CEX board source and explicit data gaps", async () => {
@@ -259,7 +257,8 @@ describe("Macro module pages", () => {
     expect(within(cexBoard).getByText("12.50B")).toBeInTheDocument();
     expect(screen.queryByText("暂无表格行")).not.toBeInTheDocument();
     expect(screen.getAllByRole("table", { name: "CEX 永续看板" })).toHaveLength(1);
-    const dataHealth = screen.getByRole("region", { name: "模块数据健康" });
+    expectRegionsInOrder(["模块简报", "主市场证据", "驱动与反证", "数据诊断"]);
+    const dataHealth = screen.getByRole("region", { name: "数据诊断" });
     expect(screen.getByText("Coinglass 数据不完整")).toBeInTheDocument();
     expect(within(dataHealth).getByText("基差数据缺失")).toBeInTheDocument();
     expect(within(dataHealth).getByText("加密期权数据缺失")).toBeInTheDocument();

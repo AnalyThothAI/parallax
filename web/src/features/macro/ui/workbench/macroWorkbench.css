@@ -1,0 +1,183 @@
+@layer app.features {
+  .macro-workbench-brief-panel,
+  .macro-workbench-driver-panel,
+  .macro-workbench-diagnostics-panel {
+    gap: 14px;
+  }
+
+  .macro-workbench-brief,
+  .macro-workbench-diagnostics,
+  .macro-workbench-driver-layout,
+  .macro-workbench-flow,
+  .macro-workbench-evidence,
+  .macro-workbench-source-block,
+  .macro-workbench-health-bucket,
+  .macro-workbench-evidence-group {
+    display: grid;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .macro-workbench-brief-summary {
+    max-width: 920px;
+    margin: 0;
+    color: var(--text-primary, #f8fafc);
+    font-size: 1.08rem;
+    font-weight: 800;
+    line-height: 1.42;
+  }
+
+  .macro-workbench-brief-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    min-width: 0;
+    margin: 0;
+  }
+
+  .macro-workbench-brief-row,
+  .macro-workbench-health-bucket,
+  .macro-workbench-evidence-group,
+  .macro-workbench-source-block {
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: 8px;
+    background: rgba(10, 16, 27, 0.28);
+  }
+
+  .macro-workbench-brief-row dt,
+  .macro-workbench-flow-node span,
+  .macro-workbench-evidence-list span,
+  .macro-workbench-muted,
+  .macro-workbench-empty {
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.76rem;
+    line-height: 1.4;
+  }
+
+  .macro-workbench-brief-row dd {
+    min-width: 0;
+    margin: 4px 0 0;
+    color: var(--text-primary, #f8fafc);
+    font-size: 0.86rem;
+    font-weight: 750;
+    line-height: 1.35;
+    overflow-wrap: break-word;
+  }
+
+  .macro-workbench-driver-layout {
+    grid-template-columns: minmax(220px, 0.32fr) minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .macro-workbench-section-head,
+  .macro-workbench-evidence-group-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .macro-workbench-section-head h4,
+  .macro-workbench-evidence-group-head h5 {
+    min-width: 0;
+    margin: 0;
+    color: var(--text-primary, #f8fafc);
+    font-size: 0.82rem;
+    line-height: 1.25;
+  }
+
+  .macro-workbench-section-head span,
+  .macro-workbench-evidence-group-head span {
+    flex: 0 0 auto;
+    color: #a7f3d0;
+    font-size: 0.74rem;
+    font-weight: 800;
+  }
+
+  .macro-workbench-flow-list,
+  .macro-workbench-evidence-list {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .macro-workbench-flow-node,
+  .macro-workbench-evidence-list li {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+    padding: 10px 11px;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.24);
+  }
+
+  .macro-workbench-flow-node {
+    border-left: 2px solid rgba(167, 243, 208, 0.46);
+  }
+
+  .macro-workbench-flow-node b,
+  .macro-workbench-evidence-list b {
+    min-width: 0;
+    color: var(--text-primary, #f8fafc);
+    font-size: 0.84rem;
+    line-height: 1.35;
+    overflow-wrap: break-word;
+  }
+
+  .macro-workbench-evidence-grid,
+  .macro-workbench-health-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .macro-workbench-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    min-width: 0;
+  }
+
+  .macro-workbench-chip {
+    max-width: 100%;
+    min-width: 0;
+    padding: 5px 8px;
+    border: 1px solid rgba(251, 191, 36, 0.2);
+    border-radius: 999px;
+    color: #fde68a;
+    background: rgba(251, 191, 36, 0.08);
+    font-size: 0.74rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .macro-workbench-source-block {
+    background: rgba(2, 6, 23, 0.2);
+  }
+
+  @media (min-width: 768px) and (max-width: 1279px) {
+    .macro-workbench-brief-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .macro-workbench-driver-layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  @media (max-width: 767px) {
+    .macro-workbench-brief-grid,
+    .macro-workbench-driver-layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+}

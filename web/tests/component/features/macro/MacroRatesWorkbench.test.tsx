@@ -39,12 +39,12 @@ vi.mock("lightweight-charts", () => ({
 
 const RATES_REGIONS = [
   "利率页导航",
-  "市场解读",
+  "利率简报",
   "关键事实",
-  "主要图表",
+  "利率主图",
   "决策支持",
   "利率明细",
-  "利率数据诊断",
+  "数据诊断",
 ];
 
 const RATES_CASES = [
@@ -107,14 +107,14 @@ describe("Macro rates workbench", () => {
   it("shows auction proxy copy without leaking raw auction codes", async () => {
     renderRatesModule(macroAuctionsProxyModuleFixture(), "rates/auctions", "/macro/rates/auctions");
 
-    const marketRead = screen.getByRole("region", { name: "市场解读" });
+    const marketRead = screen.getByRole("region", { name: "利率简报" });
     expect(within(marketRead).getAllByText(/当前为拍卖代理页面/).length).toBeGreaterThan(0);
     expect(
-      within(screen.getByRole("region", { name: "主要图表" })).queryByText("暂无"),
+      within(screen.getByRole("region", { name: "利率主图" })).queryByText("暂无"),
     ).not.toBeInTheDocument();
     expect(marketRead).not.toHaveTextContent("treasury_auction");
     expect(
-      (await within(screen.getByRole("region", { name: "主要图表" })).findAllByText("110%")).length,
+      (await within(screen.getByRole("region", { name: "利率主图" })).findAllByText("110%")).length,
     ).toBeGreaterThan(0);
   });
 
@@ -125,7 +125,7 @@ describe("Macro rates workbench", () => {
       "/macro/rates/expectations",
     );
 
-    const marketRead = screen.getByRole("region", { name: "市场解读" });
+    const marketRead = screen.getByRole("region", { name: "利率简报" });
     expect(within(marketRead).getAllByText(/当前为政策路径代理页面/).length).toBeGreaterThan(0);
     expect(marketRead).not.toHaveTextContent("fomc_probability_feed_missing");
   });
@@ -138,7 +138,7 @@ describe("Macro rates workbench", () => {
     );
 
     expect(screen.getByRole("table", { name: "未来拍卖日历" })).toBeInTheDocument();
-    const diagnostics = screen.getByRole("region", { name: "利率诊断明细" });
+    const diagnostics = screen.getByRole("region", { name: "数据诊断" });
     expect(within(diagnostics).getByRole("table", { name: "最近拍卖结果" })).toBeInTheDocument();
   });
 
@@ -217,5 +217,5 @@ function expectRegionsInOrder(regionNames: string[]): void {
 
 function textBeforeDiagnostics(container: HTMLElement): string {
   const text = container.textContent ?? "";
-  return text.split("利率数据诊断")[0] ?? text;
+  return text.split("数据诊断")[0] ?? text;
 }

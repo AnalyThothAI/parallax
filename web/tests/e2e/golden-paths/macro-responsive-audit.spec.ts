@@ -116,13 +116,13 @@ async function expectRatesWorkbenchHierarchy(page: Page) {
   if (!path.startsWith("/macro/rates/")) return;
 
   await expect(page.getByLabel("利率页导航")).toBeVisible();
-  await expect(page.getByLabel("市场解读")).toBeVisible();
-  await expect(page.getByLabel("主要图表")).toBeVisible();
-  await expect(page.getByLabel("利率数据诊断")).toBeVisible();
+  await expect(page.getByLabel("利率简报")).toBeVisible();
+  await expect(page.getByLabel("利率主图")).toBeVisible();
+  await expect(page.getByLabel("数据诊断")).toBeVisible();
   await expect(page.getByText("图表序列加载中")).toHaveCount(0);
 
   const order = await page.evaluate(() => {
-    const labels = ["市场解读", "关键事实", "主要图表", "决策支持", "利率明细", "利率数据诊断"];
+    const labels = ["利率简报", "关键事实", "利率主图", "决策支持", "利率明细", "数据诊断"];
     const regions = Array.from(document.querySelectorAll<HTMLElement>("[aria-label]"));
     return labels.map((label) =>
       regions.findIndex((element) => element.getAttribute("aria-label") === label),
@@ -134,7 +134,7 @@ async function expectRatesWorkbenchHierarchy(page: Page) {
 
   const primaryText = await page.evaluate(() => {
     const root = document.querySelector<HTMLElement>(".macro-page-scaffold");
-    const diagnostics = root?.querySelector<HTMLElement>('[aria-label="利率数据诊断"]');
+    const diagnostics = root?.querySelector<HTMLElement>('[aria-label="数据诊断"]');
     if (!root || !diagnostics) return document.body.innerText;
 
     const parts: string[] = [];

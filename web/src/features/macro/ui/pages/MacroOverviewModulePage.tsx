@@ -1,56 +1,47 @@
 import {
-  buildMacroDataHealthBuckets,
-  buildMacroMetrics,
-  macroReadSummary,
   primarySupportingTable,
 } from "../../model/macroModulePresentation";
-import { macroStatusLabel } from "../../model/macroPageViewModel";
-import { MacroDataHealthPanel } from "../primitives/MacroDataHealthPanel";
-import { MacroMetricStrip } from "../primitives/MacroMetricStrip";
+import {
+  buildMacroWorkbenchBrief,
+  buildMacroWorkbenchDiagnostics,
+  buildMacroWorkbenchDrivers,
+} from "../../model/macroWorkbenchModel";
 import { MacroPageScaffold } from "../primitives/MacroPageScaffold";
-import { MacroReadPanel } from "../primitives/MacroReadPanel";
-import { MacroTransmissionPanel } from "../primitives/MacroTransmissionPanel";
+import { MacroDiagnosticsPanel } from "../workbench/MacroDiagnosticsPanel";
+import { MacroDriverBoard } from "../workbench/MacroDriverBoard";
+import { MacroInsightBrief } from "../workbench/MacroInsightBrief";
 
 import { MacroMarketBoard } from "./MacroMarketBoard";
 import type { MacroModulePageProps } from "./MacroModulePageRenderer";
 import { useMacroPrimarySeries } from "./MacroPrimarySeries";
 
 export function MacroOverviewModulePage({ module, moduleId, token }: MacroModulePageProps) {
-  const metrics = buildMacroMetrics({ tiles: module.tiles });
+  const brief = buildMacroWorkbenchBrief(module);
+  const diagnostics = buildMacroWorkbenchDiagnostics(module, "overview");
+  const drivers = buildMacroWorkbenchDrivers(module);
   const supportingTable = primarySupportingTable(module);
   const series = useMacroPrimarySeries({ chart: module.primary_chart, token });
-  const dataHealthBuckets = buildMacroDataHealthBuckets(module.data_health, "overview");
 
   return (
     <MacroPageScaffold label="总览模块页面" pageKind="overview">
-      <MacroReadPanel
-        ariaLabel="宏观总览"
-        meta={macroStatusLabel(module)}
-        read={module.module_read}
-        summary={macroReadSummary(module)}
-        title="宏观总览"
-      />
-      <MacroMetricStrip ariaLabel="关键指标" density="compact" metrics={metrics.slice(0, 6)} />
+      <MacroInsightBrief ariaLabel="宏观简报" brief={brief} title="宏观简报" />
       <MacroMarketBoard
+        ariaLabel="跨域市场板"
         chart={module.primary_chart}
         moduleId={moduleId}
         seriesData={series.data}
         seriesLoading={series.isLoading}
         supportingTable={supportingTable.rows?.length ? supportingTable : null}
-        title="核心驱动"
+        title="跨域市场板"
       />
-      <MacroTransmissionPanel
-        ariaLabel="全局传导链"
+      <MacroDriverBoard
+        ariaLabel="传导链"
+        drivers={drivers}
         meta="总览"
-        nodes={module.transmission}
-        title="全局传导链"
+        title="传导链"
+        transmission={module.transmission}
       />
-      <MacroDataHealthPanel
-        ariaLabel="数据健康"
-        buckets={dataHealthBuckets}
-        meta={module.data_health.summary_label ?? module.data_health.summary_status}
-        title="数据健康"
-      />
+      <MacroDiagnosticsPanel diagnostics={diagnostics} source={module.provenance} />
     </MacroPageScaffold>
   );
 }

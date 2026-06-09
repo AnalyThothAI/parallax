@@ -13,9 +13,9 @@
 - [ ] Spec reviewed against implementation before final verification.
 - [ ] Baseline frontend checks recorded.
 
-Known baseline issues:
+Baseline issue resolved in first implementation slice:
 
-- `web/tests/routes/macro.route.test.tsx` still contains old mobile/tablet assertions that macro module navigation is absent; these must be replaced as part of the redesign.
+- `web/tests/routes/macro.route.test.tsx` now asserts macro module navigation reachability/active state on mobile/tablet instead of preserving the old absence assumption.
 
 ## File-level edits
 

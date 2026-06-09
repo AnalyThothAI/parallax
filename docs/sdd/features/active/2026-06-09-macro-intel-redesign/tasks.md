@@ -33,7 +33,7 @@ Tasks are TDD-ordered. A task is complete only when its verification command pro
 - **Implementation**: Replace old panel-order expectations with spec acceptance criteria.
 - **Verification**: `cd web && npm test -- --run tests/component/features/macro/MacroModulePages.test.tsx tests/routes/macro.route.test.tsx -x`
 - **Review owner**: parent
-- **Status**: [ ]
+- **Status**: [x]
 
 ### Task 3 — Shared workbench model and UI foundation
 
@@ -47,7 +47,7 @@ Tasks are TDD-ordered. A task is complete only when its verification command pro
 - **Implementation**: Add read strip, fact table, evidence lanes, diagnostics summary, and page frame components.
 - **Verification**: `cd web && npm test -- --run tests/component/features/macro/MacroModulePages.test.tsx -x`
 - **Review owner**: parent
-- **Status**: [ ]
+- **Status**: [x]
 
 ### Task 4 — Overview and generic module migration
 
@@ -61,7 +61,7 @@ Tasks are TDD-ordered. A task is complete only when its verification command pro
 - **Implementation**: Replace old equal-weight panel stacks with the shared workbench grammar.
 - **Verification**: `cd web && npm test -- --run tests/component/features/macro/MacroModulePages.test.tsx tests/routes/macro.route.test.tsx -x`
 - **Review owner**: parent
-- **Status**: [ ]
+- **Status**: [x]
 
 ### Task 5 — Asset dashboard decomposition
 
@@ -89,7 +89,7 @@ Tasks are TDD-ordered. A task is complete only when its verification command pro
 - **Implementation**: Retain rates-specific visuals while using shared workbench sections.
 - **Verification**: `cd web && npm test -- --run tests/component/features/macro/MacroRatesWorkbench.test.tsx tests/component/features/macro/MacroModulePages.test.tsx -x`
 - **Review owner**: parent
-- **Status**: [ ]
+- **Status**: [x]
 
 ### Task 7 — Correlation matrix convergence
 
