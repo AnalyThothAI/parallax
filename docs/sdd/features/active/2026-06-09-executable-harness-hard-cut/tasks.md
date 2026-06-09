@@ -1447,6 +1447,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 69 — Worker runtime constraint classification manifest ownership
+
+- **File(s)**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_runtime_worker_constraint_hard_cut.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 68
+- **Touch set**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_runtime_worker_constraint_hard_cut.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/worker_manifest.py` for worker inventory semantics.
+- **Failing test first**: `tests/architecture/test_runtime_worker_constraint_hard_cut.py::test_every_registered_worker_has_runtime_constraint_classification` — asserts each registered worker declares its runtime constraint on `WorkerManifest`.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: `WorkerManifest` must declare `runtime_constraint` for every registered worker; architecture tests must not maintain a separate worker-to-classification inventory; allowed runtime constraint values are represented by the `WorkerRuntimeConstraint` enum.
+- **On-demand context**: `src/parallax/app/runtime/worker_manifest.py`, `tests/architecture/test_runtime_worker_constraint_hard_cut.py`, and worker manifest architecture tests.
+- **Kill/defer criteria**: Stop if the fix leaves a duplicate test-side worker classification map, introduces compatibility aliases for old classifications, or infers classifications from worker names instead of source-owned manifest data.
+- **Eval/repair signal**: worker classification drift, duplicate worker inventory, stale architecture test map, and SDD generated index drift.
+- **Implementation**: Add `WorkerRuntimeConstraint` to the worker manifest, populate every manifest entry, remove the test-owned `WORKER_CLASSIFICATION` map, and assert each manifest carries a valid enum value.
+- **Verification**: `uv run pytest tests/architecture/test_runtime_worker_constraint_hard_cut.py::test_every_registered_worker_has_runtime_constraint_classification -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1517,4 +1538,5 @@
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_non_db_generated_snapshots -q`
 - [ ] `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_requires_task_classification_and_required_reading_evidence tests/architecture/test_agent_playbook_contracts.py::test_subagent_handoff_templates_define_context_and_conflict_contracts -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_spec_background_rejects_stale_local_citation_lines -q`
+- [ ] `uv run pytest tests/architecture/test_runtime_worker_constraint_hard_cut.py::test_every_registered_worker_has_runtime_constraint_classification -q`
 - [ ] `make check-all`

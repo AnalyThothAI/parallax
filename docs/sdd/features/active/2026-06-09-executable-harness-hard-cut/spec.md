@@ -42,6 +42,7 @@ can both miss real process drift and block healthy refactors.
 | SDD truth must be executable. | A script fails false `Verified` records, missing gate sections, missing approval metadata, and incomplete task coordination fields. |
 | Active work must be coordinatable. | The generated SDD index includes owner, worktree, branch, factory lanes, touch set, conflict set, blocked state, and verification status. |
 | Test harness intent must be explicit. | Architecture tests classify permanent invariants, migration tripwires, behavior contracts, and generated hygiene. |
+| Worker runtime constraints must be manifest-owned. | `WorkerManifest` carries each worker's runtime constraint classification, so architecture tests do not maintain a second worker inventory. |
 | SQL tests must avoid accidental alias/order coupling. | A query-contract helper checks tables, predicates, locks, params, and forbidden surfaces without pinning formatting. |
 | Completion gates must be deterministic. | `make check-all` runs the SDD validator and stale generated index check. |
 | Generated CLI docs must stay source-backed. | `make check-all` runs a non-mutating CLI help snapshot freshness check before integration gates. |
@@ -138,6 +139,7 @@ can both miss real process drift and block healthy refactors.
 - G44. `make check-all` runs every non-DB generated-doc script named by `docs/generated/README.md` with `--check` before integration gates, so generated-doc freshness coverage is source-derived instead of one hard-coded assertion per file.
 - G45. Task-bound subagent reports include task classification and required-reading evidence, so subagents cannot pass the parent integration harness with only generic findings and command output.
 - G46. Local Background citations that claim backticked evidence must point at lines mentioning those evidence tokens, so stale line-number drift cannot satisfy SDD audit requirements.
+- G47. Worker runtime constraint classifications live on `WorkerManifest`, so worker additions update the runtime inventory once instead of also updating a test-only classification map.
 
 ## Non-goals
 
@@ -251,6 +253,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC66. WHEN `docs/generated/README.md` names any non-DB generator script THEN `make check-all` SHALL run that script with `--check` before integration, e2e, golden, or coverage gates.
 - AC67. WHEN a subagent report is validated against an SDD task THEN it SHALL include task classification and required-reading evidence for `AGENTS.md`, `docs/agent-playbook/task-reading-matrix.md`, and task on-demand context paths.
 - AC68. WHEN a `spec.md` Background claim block contains backticked evidence tokens and local `path:line` citations THEN at least one cited line SHALL mention each evidence token, otherwise the validator SHALL report `spec-background-uncited`.
+- AC69. WHEN a worker is registered in `WorkerManifest` THEN its runtime constraint classification SHALL be declared on the manifest and architecture tests SHALL NOT maintain a separate worker classification inventory.
 
 ## Risks
 

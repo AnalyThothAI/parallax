@@ -8,7 +8,11 @@ from pathlib import Path
 import pytest
 
 from parallax.app.runtime.queue_health import queue_health_adapter_specs
-from parallax.app.runtime.worker_manifest import worker_class_by_name, worker_queue_health_tables
+from parallax.app.runtime.worker_manifest import (
+    WorkerRuntimeConstraint,
+    all_worker_manifests,
+    worker_queue_health_tables,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src" / "parallax"
@@ -81,43 +85,6 @@ RUNTIME_WORKER_CONTRACTS: tuple[RuntimeWorkerHardCutContract, ...] = (
 )
 ENFORCED_RUNTIME_WORKER_CONTRACTS = RUNTIME_WORKER_CONTRACTS
 
-WORKER_CLASSIFICATION: dict[str, str] = {
-    "collector": "bounded_provider_scheduler",
-    "token_capture_tier": "dirty_target_consumer",
-    "market_tick_stream": "bounded_provider_scheduler",
-    "market_tick_poll": "bounded_provider_scheduler",
-    "market_tick_current_projection": "dirty_target_consumer",
-    "event_anchor_backfill": "leased_job_consumer",
-    "live_price_gateway": "target_scoped_expansion",
-    "resolution_refresh": "target_scoped_expansion",
-    "asset_profile_refresh": "dirty_target_consumer",
-    "token_image_mirror": "dirty_target_consumer",
-    "token_profile_current": "dirty_target_consumer",
-    "token_radar_projection": "dirty_target_consumer",
-    "narrative_admission": "dirty_target_consumer",
-    "news_fetch": "bounded_provider_scheduler",
-    "news_item_process": "target_scoped_expansion",
-    "news_item_brief": "dirty_target_consumer",
-    "news_page_projection": "dirty_target_consumer",
-    "news_source_quality_projection": "dirty_target_consumer",
-    "cex_oi_radar_board": "bounded_provider_scheduler",
-    "macro_sync": "bounded_provider_scheduler",
-    "macro_view_projection": "dirty_target_consumer",
-    "macro_daily_brief_projection": "target_scoped_expansion",
-    "pulse_candidate": "dirty_target_consumer",
-    "notification_rule": "target_scoped_expansion",
-    "notification_delivery": "leased_job_consumer",
-}
-VALID_WORKER_CLASSIFICATIONS = frozenset(
-    {
-        "dirty_target_consumer",
-        "leased_job_consumer",
-        "bounded_provider_scheduler",
-        "target_scoped_expansion",
-        "candidate_for_hard_cut",
-    }
-)
-
 BROAD_DISCOVERY_CALLS = frozenset(call for contract in RUNTIME_WORKER_CONTRACTS for call in contract.banned_calls)
 
 CONTROL_PLANE_TABLES = frozenset(
@@ -165,18 +132,10 @@ MACRO_ROUTE_PATH = SRC / "app/surfaces/api/routes_macro.py"
 
 @pytest.mark.architecture
 def test_every_registered_worker_has_runtime_constraint_classification() -> None:
-    manifest_workers = set(worker_class_by_name())
-    missing = sorted(manifest_workers - set(WORKER_CLASSIFICATION))
-    extra = sorted(set(WORKER_CLASSIFICATION) - manifest_workers)
-    invalid = {
-        worker: classification
-        for worker, classification in WORKER_CLASSIFICATION.items()
-        if classification not in VALID_WORKER_CLASSIFICATIONS
-    }
+    manifests = all_worker_manifests()
 
-    assert missing == []
-    assert extra == []
-    assert invalid == {}
+    assert manifests
+    assert all(isinstance(manifest.runtime_constraint, WorkerRuntimeConstraint) for manifest in manifests)
 
 
 @pytest.mark.architecture

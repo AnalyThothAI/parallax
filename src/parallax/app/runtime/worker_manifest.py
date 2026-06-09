@@ -26,6 +26,13 @@ class WorkerLane(StrEnum):
     MAINTENANCE_CACHE = "maintenance_cache"
 
 
+class WorkerRuntimeConstraint(StrEnum):
+    DIRTY_TARGET_CONSUMER = "dirty_target_consumer"
+    LEASED_JOB_CONSUMER = "leased_job_consumer"
+    BOUNDED_PROVIDER_SCHEDULER = "bounded_provider_scheduler"
+    TARGET_SCOPED_EXPANSION = "target_scoped_expansion"
+
+
 @dataclass(frozen=True, slots=True)
 class WorkerManifest:
     name: str
@@ -33,6 +40,7 @@ class WorkerManifest:
     factory: str
     lane: WorkerLane
     kind: WorkerKind
+    runtime_constraint: WorkerRuntimeConstraint
     worker_class: str
     start_priority: int
     input_contract: tuple[str, ...]
@@ -60,6 +68,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="ingestion.py",
         lane=WorkerLane.INGEST,
         kind=WorkerKind.FACT_INGEST,
+        runtime_constraint=WorkerRuntimeConstraint.BOUNDED_PROVIDER_SCHEDULER,
         worker_class="parallax.domains.ingestion.runtime.collector_service.CollectorService",
         start_priority=10,
         input_contract=("gmgn public websocket frames",),
@@ -76,6 +85,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="asset_market.py",
         lane=WorkerLane.INGEST,
         kind=WorkerKind.FACT_INGEST,
+        runtime_constraint=WorkerRuntimeConstraint.BOUNDED_PROVIDER_SCHEDULER,
         worker_class=("parallax.domains.asset_market.runtime.market_tick_stream_worker.MarketTickStreamWorker"),
         start_priority=30,
         input_contract=("token_capture_tier stream targets", "stream provider ticks"),
@@ -91,6 +101,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="asset_market.py",
         lane=WorkerLane.INGEST,
         kind=WorkerKind.FACT_INGEST,
+        runtime_constraint=WorkerRuntimeConstraint.BOUNDED_PROVIDER_SCHEDULER,
         worker_class="parallax.domains.asset_market.runtime.market_tick_poll_worker.MarketTickPollWorker",
         start_priority=40,
         input_contract=("token_capture_tier poll targets", "quote provider ticks"),
@@ -106,6 +117,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="asset_market.py",
         lane=WorkerLane.PROJECTION,
         kind=WorkerKind.PROJECTION,
+        runtime_constraint=WorkerRuntimeConstraint.DIRTY_TARGET_CONSUMER,
         worker_class=(
             "parallax.domains.asset_market.runtime.market_tick_current_projection_worker."
             "MarketTickCurrentProjectionWorker"
@@ -128,6 +140,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="asset_market.py",
         lane=WorkerLane.IDENTITY_MARKET_FACT,
         kind=WorkerKind.FACT_LIFECYCLE,
+        runtime_constraint=WorkerRuntimeConstraint.LEASED_JOB_CONSUMER,
         worker_class=("parallax.domains.asset_market.runtime.event_anchor_backfill_worker.EventAnchorBackfillWorker"),
         start_priority=45,
         input_contract=("event_anchor_backfill_jobs",),
@@ -145,6 +158,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="asset_market.py",
         lane=WorkerLane.PROJECTION,
         kind=WorkerKind.PROJECTION,
+        runtime_constraint=WorkerRuntimeConstraint.DIRTY_TARGET_CONSUMER,
         worker_class=("parallax.domains.asset_market.runtime.token_capture_tier_worker.TokenCaptureTierWorker"),
         start_priority=20,
         input_contract=("token_capture_tier_dirty_targets",),
@@ -162,6 +176,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="asset_market.py",
         lane=WorkerLane.MAINTENANCE_CACHE,
         kind=WorkerKind.CACHE_FANOUT,
+        runtime_constraint=WorkerRuntimeConstraint.TARGET_SCOPED_EXPANSION,
         worker_class="parallax.domains.asset_market.runtime.live_price_gateway.LivePriceGateway",
         start_priority=50,
         input_contract=("token_capture_tier", "market_ticks"),
@@ -174,6 +189,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="asset_market.py",
         lane=WorkerLane.IDENTITY_MARKET_FACT,
         kind=WorkerKind.FACT_LIFECYCLE,
+        runtime_constraint=WorkerRuntimeConstraint.TARGET_SCOPED_EXPANSION,
         worker_class=("parallax.domains.asset_market.runtime.resolution_refresh_worker.ResolutionRefreshWorker"),
         start_priority=60,
         input_contract=("token_intents", "asset_identity_resolution backlog"),
@@ -194,6 +210,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="asset_market.py",
         lane=WorkerLane.IDENTITY_MARKET_FACT,
         kind=WorkerKind.FACT_LIFECYCLE,
+        runtime_constraint=WorkerRuntimeConstraint.DIRTY_TARGET_CONSUMER,
         worker_class=("parallax.domains.asset_market.runtime.asset_profile_refresh_worker.AssetProfileRefreshWorker"),
         start_priority=70,
         input_contract=("asset_profile_refresh_targets",),
@@ -210,6 +227,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="asset_market.py",
         lane=WorkerLane.IDENTITY_MARKET_FACT,
         kind=WorkerKind.FACT_LIFECYCLE,
+        runtime_constraint=WorkerRuntimeConstraint.DIRTY_TARGET_CONSUMER,
         worker_class=("parallax.domains.asset_market.runtime.token_image_mirror_worker.TokenImageMirrorWorker"),
         start_priority=82,
         input_contract=("token_image_source_dirty_targets",),
@@ -227,6 +245,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="asset_market.py",
         lane=WorkerLane.PROJECTION,
         kind=WorkerKind.PROJECTION,
+        runtime_constraint=WorkerRuntimeConstraint.DIRTY_TARGET_CONSUMER,
         worker_class=("parallax.domains.asset_market.runtime.token_profile_current_worker.TokenProfileCurrentWorker"),
         start_priority=85,
         input_contract=("token_profile_current_dirty_targets",),
@@ -248,6 +267,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="token_intel.py",
         lane=WorkerLane.PROJECTION,
         kind=WorkerKind.PROJECTION,
+        runtime_constraint=WorkerRuntimeConstraint.DIRTY_TARGET_CONSUMER,
         worker_class=("parallax.domains.token_intel.runtime.token_radar_projection_worker.TokenRadarProjectionWorker"),
         start_priority=80,
         input_contract=("token_radar_source_dirty_events", "token_radar_dirty_targets"),
@@ -307,6 +327,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="narrative_intel.py",
         lane=WorkerLane.PROJECTION,
         kind=WorkerKind.PROJECTION,
+        runtime_constraint=WorkerRuntimeConstraint.DIRTY_TARGET_CONSUMER,
         worker_class=("parallax.domains.narrative_intel.runtime.narrative_admission_worker.NarrativeAdmissionWorker"),
         start_priority=87,
         input_contract=("narrative_admission_dirty_targets",),
@@ -325,6 +346,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="news_intel.py",
         lane=WorkerLane.INGEST,
         kind=WorkerKind.FACT_INGEST,
+        runtime_constraint=WorkerRuntimeConstraint.BOUNDED_PROVIDER_SCHEDULER,
         worker_class="parallax.domains.news_intel.runtime.news_fetch_worker.NewsFetchWorker",
         start_priority=90,
         input_contract=("news sources due queue", "news provider documents"),
@@ -341,6 +363,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="news_intel.py",
         lane=WorkerLane.IDENTITY_MARKET_FACT,
         kind=WorkerKind.FACT_LIFECYCLE,
+        runtime_constraint=WorkerRuntimeConstraint.TARGET_SCOPED_EXPANSION,
         worker_class="parallax.domains.news_intel.runtime.news_item_process_worker.NewsItemProcessWorker",
         start_priority=91,
         input_contract=("news items awaiting processing",),
@@ -365,6 +388,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="news_intel.py",
         lane=WorkerLane.AGENT,
         kind=WorkerKind.AGENT_SIDE_EFFECT,
+        runtime_constraint=WorkerRuntimeConstraint.DIRTY_TARGET_CONSUMER,
         worker_class="parallax.domains.news_intel.runtime.news_item_brief_worker.NewsItemBriefWorker",
         start_priority=94,
         input_contract=("semantic news item brief work",),
@@ -385,6 +409,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="news_intel.py",
         lane=WorkerLane.PROJECTION,
         kind=WorkerKind.PROJECTION,
+        runtime_constraint=WorkerRuntimeConstraint.DIRTY_TARGET_CONSUMER,
         worker_class="parallax.domains.news_intel.runtime.news_page_projection_worker.NewsPageProjectionWorker",
         start_priority=95,
         input_contract=("semantic news page reprojection work",),
@@ -408,6 +433,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="news_intel.py",
         lane=WorkerLane.PROJECTION,
         kind=WorkerKind.PROJECTION,
+        runtime_constraint=WorkerRuntimeConstraint.DIRTY_TARGET_CONSUMER,
         worker_class=(
             "parallax.domains.news_intel.runtime.news_source_quality_projection_worker."
             "NewsSourceQualityProjectionWorker"
@@ -429,6 +455,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="cex_market_intel.py",
         lane=WorkerLane.PROJECTION,
         kind=WorkerKind.PROJECTION,
+        runtime_constraint=WorkerRuntimeConstraint.BOUNDED_PROVIDER_SCHEDULER,
         worker_class=("parallax.domains.cex_market_intel.runtime.cex_oi_radar_board_worker.CexOiRadarBoardWorker"),
         start_priority=95,
         input_contract=("cex market universe", "open interest providers"),
@@ -459,6 +486,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="macro_intel.py",
         lane=WorkerLane.INGEST,
         kind=WorkerKind.FACT_INGEST,
+        runtime_constraint=WorkerRuntimeConstraint.BOUNDED_PROVIDER_SCHEDULER,
         worker_class="parallax.domains.macro_intel.runtime.macro_sync_worker.MacroSyncWorker",
         start_priority=80,
         input_contract=("macro_sync_windows", "macrodata macro-core history bundle"),
@@ -481,6 +509,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="macro_intel.py",
         lane=WorkerLane.PROJECTION,
         kind=WorkerKind.PROJECTION,
+        runtime_constraint=WorkerRuntimeConstraint.DIRTY_TARGET_CONSUMER,
         worker_class="parallax.domains.macro_intel.runtime.macro_view_projection_worker.MacroViewProjectionWorker",
         start_priority=95,
         input_contract=("macro_projection_dirty_targets", "macro_observation_series_rows current"),
@@ -508,6 +537,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="macro_intel.py",
         lane=WorkerLane.PROJECTION,
         kind=WorkerKind.PROJECTION,
+        runtime_constraint=WorkerRuntimeConstraint.TARGET_SCOPED_EXPANSION,
         worker_class=(
             "parallax.domains.macro_intel.runtime.macro_daily_brief_projection_worker.MacroDailyBriefProjectionWorker"
         ),
@@ -526,6 +556,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="pulse.py",
         lane=WorkerLane.AGENT,
         kind=WorkerKind.AGENT_SIDE_EFFECT,
+        runtime_constraint=WorkerRuntimeConstraint.DIRTY_TARGET_CONSUMER,
         worker_class="parallax.domains.pulse_lab.runtime.pulse_candidate_worker.PulseCandidateWorker",
         start_priority=96,
         input_contract=("pulse_trigger_dirty_targets", "pulse_agent_jobs"),
@@ -564,6 +595,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="notifications.py",
         lane=WorkerLane.NOTIFICATION,
         kind=WorkerKind.NOTIFICATION_RULE,
+        runtime_constraint=WorkerRuntimeConstraint.TARGET_SCOPED_EXPANSION,
         worker_class="parallax.domains.notifications.runtime.notification_worker.NotificationWorker",
         start_priority=120,
         input_contract=("pulse_candidates", "token radar read models", "news_page_rows", "watchlist read models"),
@@ -579,6 +611,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         factory="notifications.py",
         lane=WorkerLane.NOTIFICATION,
         kind=WorkerKind.NOTIFICATION_DELIVERY,
+        runtime_constraint=WorkerRuntimeConstraint.LEASED_JOB_CONSUMER,
         worker_class=("parallax.domains.notifications.runtime.notification_delivery.NotificationDeliveryWorker"),
         start_priority=130,
         input_contract=("notification_deliveries",),
@@ -750,6 +783,7 @@ __all__ = [
     "WorkerKind",
     "WorkerLane",
     "WorkerManifest",
+    "WorkerRuntimeConstraint",
     "all_worker_manifests",
     "manifest_by_name",
     "manifest_names_for_factory",
