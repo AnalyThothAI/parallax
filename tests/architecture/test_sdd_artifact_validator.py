@@ -112,6 +112,36 @@ def test_verified_feature_requires_skipped_table_to_match_skip_count(tmp_path: P
     assert "verified-unexplained-skips" in _issue_codes(issues)
 
 
+def test_complete_tasks_require_matching_verification_evidence(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-complete-task-without-evidence")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(
+        feature / "tasks.md",
+        status="In Progress",
+        verification="uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_expected_gate -q",
+        task_status="[x]",
+    )
+    _write_valid_verification(
+        feature / "verification.md",
+        status="In Progress",
+        verification_command_lines=(
+            "$ make check-all",
+            "not final evidence",
+            "exit code: 2",
+        ),
+        other_command_lines=(
+            "$ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_other_gate -q",
+            "1 passed in 0.01s",
+            "exit code: 0",
+        ),
+    )
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "task-complete-missing-verification-evidence" in _issue_codes(issues)
+
+
 def test_tasks_require_filled_coordination_fields(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-loose-tasks")
     _write_valid_spec(feature / "spec.md", status="In Progress")
@@ -480,7 +510,11 @@ def _write_valid_verification(
         "all checks passed",
         "exit code: 0",
     ),
-    other_command_lines: tuple[str, ...] = (),
+    other_command_lines: tuple[str, ...] = (
+        "$ uv run pytest tests/architecture/test_sdd_artifact_validator.py -q",
+        "1 passed in 0.01s",
+        "exit code: 0",
+    ),
     skipped_count: str = "0",
     skipped_table_rows: tuple[str, ...] = (),
 ) -> None:

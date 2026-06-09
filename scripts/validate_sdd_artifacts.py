@@ -23,6 +23,7 @@ FIELD_RE = re.compile(r"^\s*\*\*(?P<name>[^*]+)\*\*\s*:\s*(?P<value>.+?)\s*$")
 TASK_RE = re.compile(r"^###\s+Task\b", re.IGNORECASE | re.MULTILINE)
 TASK_FIELD_RE = re.compile(r"^\s*-\s+\*\*(?P<name>[^*]+)\*\*\s*:\s*(?P<value>.*)$", re.MULTILINE)
 FENCED_BLOCK_RE = re.compile(r"```(?:[A-Za-z0-9_-]+)?\n(?P<body>[\s\S]*?)```", re.MULTILINE)
+COMMAND_LINE_RE = re.compile(r"^\s*\$\s+(?P<command>.+?)\s*$")
 EXIT_CODE_RE = re.compile(r"exit code:\s*(?P<code>-?\d+)\b", re.IGNORECASE)
 SKIPPED_RE = re.compile(r"Number of skipped tests in the run above:\s*(?P<count>\d+)", re.IGNORECASE)
 TASK_NUMBER_RE = re.compile(r"^Task\s+(?P<number>\d+)\b", re.IGNORECASE)
@@ -101,6 +102,7 @@ KNOWN_ISSUE_CODES = (
     "task-invalid-review-fields",
     "task-missing-subagent-report-artifact",
     "task-invalid-subagent-report-artifact",
+    "task-complete-missing-verification-evidence",
     "task-incomplete-in-verified-feature",
     "verified-missing-check-all",
     "verified-contradicts-evidence",
@@ -470,6 +472,7 @@ def _task_issues(feature: SddFeature) -> list[SddIssue]:
                 )
             )
         issues.extend(_subagent_report_artifact_issues(feature, task))
+        issues.extend(_complete_task_verification_issues(feature, task))
         if feature.status.lower() == "verified" and task.fields.get("status", "").strip().lower() != "[x]":
             issues.append(
                 _issue("task-incomplete-in-verified-feature", tasks_artifact, f"{task.title} is not complete")
@@ -587,6 +590,48 @@ def _extract_report_mode(text: str) -> str | None:
 
 def _repo_root(feature: SddFeature) -> Path:
     return feature.path.parents[4]
+
+
+def _complete_task_verification_issues(feature: SddFeature, task: TaskRecord) -> list[SddIssue]:
+    if task.fields.get("status", "").strip().lower() != "[x]":
+        return []
+
+    expected_command = _clean_command(task.fields.get("verification", ""))
+    if not expected_command:
+        return []
+
+    artifact = feature.artifacts["verification.md"]
+    if artifact.missing or not _has_successful_command_evidence(artifact.text, expected_command):
+        return [
+            _issue(
+                "task-complete-missing-verification-evidence",
+                feature.artifacts["tasks.md"],
+                f"{task.title} lacks exit code 0 evidence for: {expected_command}",
+            )
+        ]
+    return []
+
+
+def _has_successful_command_evidence(text: str, expected_command: str) -> bool:
+    evidence = _command_evidence(text)
+    return any(exit_code == 0 for exit_code in evidence.get(expected_command, ()))
+
+
+def _command_evidence(text: str) -> dict[str, tuple[int, ...]]:
+    evidence: dict[str, list[int]] = defaultdict(list)
+    for block_match in FENCED_BLOCK_RE.finditer(text):
+        current_command: str | None = None
+        for line in block_match.group("body").splitlines():
+            command_match = COMMAND_LINE_RE.match(line)
+            if command_match:
+                current_command = _clean_command(command_match.group("command"))
+                continue
+
+            exit_match = EXIT_CODE_RE.search(line)
+            if exit_match and current_command:
+                evidence[current_command].append(int(exit_match.group("code")))
+                current_command = None
+    return {command: tuple(exit_codes) for command, exit_codes in evidence.items()}
 
 
 def _verified_issues(feature: SddFeature) -> list[SddIssue]:
@@ -761,6 +806,13 @@ def _looks_like_test_reference(value: str) -> bool:
 def _looks_like_command(value: str) -> bool:
     stripped = value.replace("`", "").strip()
     return bool(re.match(r"^(uv|make|cd|npm|python|pytest)\b", stripped))
+
+
+def _clean_command(value: str) -> str:
+    cleaned = value.strip().strip("`")
+    if cleaned.startswith("$"):
+        cleaned = cleaned[1:].strip()
+    return " ".join(cleaned.split())
 
 
 def _verification_make_check_all_block(text: str) -> str | None:

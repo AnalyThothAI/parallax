@@ -979,6 +979,14 @@ def _write_context_packet_fixture(root: Path) -> None:
             Pending.
             ```
 
+            ## Other commands run
+
+            ```text
+            $ uv run pytest tests/architecture/test_agent_playbook_contracts.py -q
+            1 passed in 0.01s
+            exit code: 0
+            ```
+
             ## Coverage
 
             | metric | value | threshold | status |

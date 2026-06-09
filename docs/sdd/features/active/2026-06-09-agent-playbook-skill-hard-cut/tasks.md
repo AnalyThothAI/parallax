@@ -36,7 +36,7 @@
 - **Kill/defer criteria**: Stop if the guard becomes a wording-only assertion without a maintained docs artifact.
 - **Eval/repair signal**: architecture harness failure and review defects on missing playbook coverage.
 - **Implementation**: Add architecture expectations for playbook examples, checklist, and skills.
-- **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py -q`
+- **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_agent_playbook_has_task_examples_and_read_model_checklist -q`
 - **Review owner**: parent
 - **Status**: [x]
 
@@ -57,7 +57,7 @@
 - **Kill/defer criteria**: Stop if a skill duplicates router rules broadly or asks agents to print secrets or live config values.
 - **Eval/repair signal**: missing skill contract phrases, stale reading matrix links, and recurring prompt/context repair cost.
 - **Implementation**: Add current playbook examples, read-model checklist, and four repo-scoped skills.
-- **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py -q`
+- **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_repo_scoped_agent_skills_cover_high_frequency_workflows -q`
 - **Review owner**: parent
 - **Status**: [x]
 

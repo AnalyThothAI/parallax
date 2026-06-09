@@ -45,6 +45,7 @@ can both miss real process drift and block healthy refactors.
 | Subagent return evidence must be executable. | Subagent reports are validated against the owning SDD task for scope adherence, changed-file claims, expected verification command, exit status, and secret hygiene before parent integration. |
 | Parent review outcome must be visible. | Task records expose subagent report and review result fields, and the generated Task Board surfaces review state including `needs-repair`. |
 | Referenced report artifacts must be real. | Delegated task report paths are checked for existence and validated against the task-bound report contract by the SDD validator. |
+| Completed task status must be evidenced. | A `[x]` task requires matching `verification.md` command evidence with exit code 0. |
 
 ## First principles
 
@@ -69,6 +70,7 @@ can both miss real process drift and block healthy refactors.
 - G13. Subagent handoffs include a task-bound report contract, and returned reports are machine-validated against the owning SDD task before parent integration.
 - G14. Parent review outcome is a structured task field and a generated Task Board state, not prose hidden in a handoff note.
 - G15. SDD validation follows delegated `Subagent report` paths and fails missing or invalid report artifacts.
+- G16. SDD validation fails any `[x]` task whose `Verification` command is not recorded in `verification.md` with exit code 0.
 
 ## Non-goals
 
@@ -129,6 +131,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC13. WHEN a subagent report lacks required report sections, lists changed files outside the task touch set, overlaps the conflict set, runs a verification command different from the task command, or records a non-zero exit code THEN the report validator SHALL fail, and generated handoffs SHALL instruct the parent to run that task-bound validator before integration.
 - AC14. WHEN a task is delegated or reviewed THEN `tasks.md` SHALL contain `Subagent report` and `Review result`, the validator SHALL reject missing or inconsistent review fields, and the generated `Task Board` SHALL expose review result and `needs-repair` dispatch state.
 - AC15. WHEN a delegated task references a `Subagent report` path THEN the SDD validator SHALL require that file to exist and pass the same task-bound subagent report validator.
+- AC16. WHEN a task is marked `[x]` THEN its `Verification` command SHALL appear in `verification.md` with exit code 0, otherwise the validator SHALL report `task-complete-missing-verification-evidence`.
 
 ## Risks
 

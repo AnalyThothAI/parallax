@@ -57,7 +57,7 @@
 - **Kill/defer criteria**: Stop if the board duplicates parsing rules or hides active touch/conflict overlap.
 - **Eval/repair signal**: stale generated index, missing factory lanes, and coordination-board review defects.
 - **Implementation**: Render feature-level coordination metadata from the validator scan.
-- **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_is_generated_and_current -q`
+- **Verification**: `uv run python scripts/regen_sdd_work_index.py --check`
 - **Review owner**: parent
 - **Status**: [x]
 
@@ -334,6 +334,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 16 — Completed task verification evidence gate
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 15
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD records, generated index, and architecture fixtures.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_matching_verification_evidence` — asserts `[x]` tasks cannot lack matching exit-code evidence.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: SDD validation must parse `verification.md` fenced command output and require the exact task `Verification` command to have exit code 0 before `[x]` is accepted.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, active SDD task records, `docs/sdd/README.md`.
+- **Kill/defer criteria**: Stop if task completion can be asserted without matching command evidence or if the gate creates self-referential task commands.
+- **Eval/repair signal**: `task-complete-missing-verification-evidence`, stale generated index, and active record validation failures.
+- **Implementation**: Add task-level command-evidence parsing, update index issue descriptions, and narrow self-referential task verification commands to behavior-specific gates.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_matching_verification_evidence tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -350,4 +371,5 @@
 - [ ] `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_accepts_evidence_report tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_unverifiable_or_out_of_scope_report tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_accepts_task_bound_report tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_task_bound_scope_and_command_drift tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_review_evidence_fields tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_reject_invalid_review_evidence_values tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_has_parallel_subagent_contract_fields tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_report_artifact tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_validate_report_artifact_against_task tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_accepts_task_bound_report -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_matching_verification_evidence tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli -q`
 - [ ] `make check-all`

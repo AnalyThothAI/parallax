@@ -16,8 +16,8 @@ The plan and spec are the contract. This file is the evidence the contract was m
 
 | Acceptance criterion | Status | Evidence |
 |----------------------|--------|----------|
-| AC1 — playbook examples and checklist exist. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py -q` passed after implementation. |
-| AC2 — repo-scoped skills exist. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py -q` passed after implementation. |
+| AC1 — playbook examples and checklist exist. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_agent_playbook_has_task_examples_and_read_model_checklist -q` passed after implementation. |
+| AC2 — repo-scoped skills exist. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_repo_scoped_agent_skills_cover_high_frequency_workflows -q` passed after implementation. |
 | AC3 — macro history count avoids latest-only filter. | ✅ | Targeted macro SQL contract tests passed after implementation. |
 | AC4 — generated SDD index reflects the work. | ✅ | `uv run python scripts/validate_sdd_artifacts.py --check` and `uv run python scripts/regen_sdd_work_index.py --check` passed after merge. |
 
@@ -69,9 +69,18 @@ $ uv run pytest tests/architecture/test_agent_playbook_contracts.py -q
 ..........
 10 passed in 0.18s
 
+$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_agent_playbook_has_task_examples_and_read_model_checklist -q
+1 passed in 0.01s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_repo_scoped_agent_skills_cover_high_frequency_workflows -q
+1 passed in 0.01s
+exit code: 0
+
 $ uv run pytest tests/unit/domains/macro_intel/test_macro_migration_contract.py::test_repository_concept_history_counts_reads_projected_rows tests/unit/domains/macro_intel/test_macro_generation_swap.py::test_observation_series_readers_read_current_rows_directly -q
 ..
 2 passed in 0.20s
+exit code: 0
 
 $ uv run python scripts/validate_sdd_artifacts.py --check
 SDD artifact validation passed.
