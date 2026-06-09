@@ -546,6 +546,8 @@ def test_tasks_template_has_parallel_subagent_contract_fields() -> None:
         "**Touch set**",
         "**Conflict set**",
         "**Subagent handoff**",
+        "**Subagent report**",
+        "**Review result**",
         "**Review owner**",
         "**Factory lane**",
         "**Deterministic constraints**",
@@ -685,6 +687,8 @@ def test_sdd_work_index_renders_task_dispatch_board(tmp_path: Path) -> None:
                     "depends on": "none",
                     "touch set": "scripts/build_agent_context_packet.py",
                     "conflict set": "coordinate with other-feature for context packet docs",
+                    "subagent report": "not delegated",
+                    "review result": "parent-reviewed",
                     "verification": "uv run pytest tests/architecture/test_agent_playbook_contracts.py -q",
                 },
             ),
@@ -697,6 +701,8 @@ def test_sdd_work_index_renders_task_dispatch_board(tmp_path: Path) -> None:
                     "depends on": "Task 1",
                     "touch set": "docs/agent-playbook/context-packet-template.md",
                     "conflict set": "docs/agent-playbook/factory-operating-model.md",
+                    "subagent report": "docs/generated/subagent-reports/task-2.md",
+                    "review result": "accepted",
                     "verification": "uv run pytest tests/architecture/test_agent_playbook_contracts.py -q",
                 },
             ),
@@ -709,6 +715,8 @@ def test_sdd_work_index_renders_task_dispatch_board(tmp_path: Path) -> None:
                     "depends on": "Task 1",
                     "touch set": "scripts/dispatch_sdd_task.py",
                     "conflict set": "coordinate with other-feature for dispatcher docs",
+                    "subagent report": "docs/generated/subagent-reports/task-3.md",
+                    "review result": "needs-repair",
                     "verification": "uv run pytest tests/architecture/test_agent_playbook_contracts.py -q",
                 },
             ),
@@ -722,19 +730,22 @@ def test_sdd_work_index_renders_task_dispatch_board(tmp_path: Path) -> None:
         "| `fixture` | `Task 1 — Build harness` | `[~]` | `dispatchable` | `Harness/tests` | parent | none | "
         "`scripts/build_agent_context_packet.py` | "
         "`coordinate with other-feature for context packet docs` | "
+        "`not delegated` | `parent-reviewed` | "
         "`uv run pytest tests/architecture/test_agent_playbook_contracts.py -q` |"
     ) in text
     assert (
         "| `fixture` | `Task 2 — Completed docs` | `[x]` | `complete` | `Docs/contracts` | parent | Task 1 | "
         "`docs/agent-playbook/context-packet-template.md` | "
         "`docs/agent-playbook/factory-operating-model.md` | "
+        "`docs/generated/subagent-reports/task-2.md` | `accepted` | "
         "`uv run pytest tests/architecture/test_agent_playbook_contracts.py -q` |"
     ) in text
     assert (
-        "| `fixture` | `Task 3 — Blocked dispatch` | `[~]` | `blocked-by-dependencies` | "
+        "| `fixture` | `Task 3 — Blocked dispatch` | `[~]` | `needs-repair` | "
         "`Harness/tests` | parent | Task 1 | "
         "`scripts/dispatch_sdd_task.py` | "
         "`coordinate with other-feature for dispatcher docs` | "
+        "`docs/generated/subagent-reports/task-3.md` | `needs-repair` | "
         "`uv run pytest tests/architecture/test_agent_playbook_contracts.py -q` |"
     ) in text
 
@@ -883,6 +894,8 @@ def _write_context_packet_fixture(root: Path) -> None:
             - **Conflict set**: coordinate with 2026-06-09-other-feature for context packet generator, docs, and tests.
             - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli`
             - **Subagent handoff**: not delegated
+            - **Subagent report**: not delegated
+            - **Review result**: parent-reviewed
             - **Factory lane**: Harness/tests
             - **Deterministic constraints**: Run validator before emitting context.
             - **On-demand context**: `docs/agent-playbook/context-packet-template.md`
@@ -902,6 +915,8 @@ def _write_context_packet_fixture(root: Path) -> None:
             - **Conflict set**: coordinate with 2026-06-09-other-feature for context packet docs.
             - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli`
             - **Subagent handoff**: not delegated
+            - **Subagent report**: not delegated
+            - **Review result**: parent-reviewed
             - **Factory lane**: Docs/contracts
             - **Deterministic constraints**: Completed tasks are not dispatchable.
             - **On-demand context**: `docs/agent-playbook/context-packet-template.md`
@@ -921,6 +936,8 @@ def _write_context_packet_fixture(root: Path) -> None:
             - **Conflict set**: coordinate with 2026-06-09-other-feature for dispatch docs.
             - **Failing test first**: `pytest tests/architecture/test_agent_playbook_contracts.py -q`
             - **Subagent handoff**: not delegated
+            - **Subagent report**: not delegated
+            - **Review result**: parent-reviewed
             - **Factory lane**: Harness/tests
             - **Deterministic constraints**: Dependencies must be complete before dispatch.
             - **On-demand context**: `scripts/dispatch_sdd_task.py`

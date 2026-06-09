@@ -98,6 +98,7 @@ Before dispatching a subagent:
 After dispatch:
 
 - Validate the subagent report before integrating any finding or diff.
+- Record `Subagent report` and `Review result` on the owning SDD task.
 - Integrate only after parent review.
 - Update `docs/generated/sdd-work-index.md` through the generator.
 - Keep the active SDD record honest when a gate is skipped by user instruction.

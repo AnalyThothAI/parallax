@@ -27,6 +27,7 @@ Known-failing baseline tests:
 - Emit deterministic issue codes for missing gate sections, missing approval metadata, incomplete task fields, false `Verified` evidence, stale generated index, and active touch/conflict overlap.
 - Validate task field semantics, not just presence: path-shaped file/touch values, structured conflict rules, command-shaped verification, test-shaped failing-test-first values, and known task status tokens.
 - Parse task dependency references and ranges, reject unsupported dependency syntax, and report unresolved task numbers as `task-invalid-dependencies`.
+- Validate task review evidence: delegated tasks must name a subagent report path and review result, non-delegated tasks must say `not delegated` / `parent-reviewed`, and completed tasks cannot remain `needs-repair`.
 - Parse `Verified` completion evidence from the `## Verification commands` fenced block and require final `make check-all` exit code 0 plus explained skipped-test rows.
 
 ### `scripts/regen_sdd_work_index.py`
@@ -35,6 +36,7 @@ Known-failing baseline tests:
 - Reuse the validator metadata rather than duplicating SDD parsing rules.
 - Add a task-level dispatch board with per-task status, dispatchability, factory lane, owner, dependencies, touch/conflict scopes, and verification command.
 - Mark active tasks with incomplete dependencies as `blocked-by-dependencies`.
+- Add subagent report and review result columns, and surface `needs-repair` as dispatch state.
 
 ### `scripts/build_agent_context_packet.py`
 
@@ -109,6 +111,7 @@ Known-failing baseline tests:
 
 - Add machine-readable approval, gate, worktree, touch set, conflict set, analysis, and verification metadata expected by the validator.
 - Add factory lane, deterministic constraints, on-demand context, kill/defer criteria, and eval/repair signal fields to task records.
+- Add subagent report and review result fields so parent review outcome is task state, not prose.
 
 ## PR breakdown
 
@@ -145,6 +148,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Task dispatch state is visible. | Pass: generated index includes a `Task Board` with dispatchable/complete/blocked/closed task state. |
 | Task dependencies are executable. | Pass: validator checks dependency syntax/resolution and dispatcher/index block incomplete dependencies. |
 | Subagent return evidence is executable. | Pass: report validator checks scope adherence, changed files against task scope, verification command/exit code, and secret hygiene. |
+| Parent review outcome is task state. | Pass: validator rejects missing/inconsistent review evidence and index exposes review result / needs-repair. |
 
 ## Acceptance test commands
 
@@ -161,6 +165,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC11: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board -q`
 - AC12: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_unresolved_dependencies tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_refuses_unmet_dependencies tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board -q`
 - AC13: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_accepts_evidence_report tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_unverifiable_or_out_of_scope_report tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_accepts_task_bound_report tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_task_bound_scope_and_command_drift tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task -q`
+- AC14: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_review_evidence_fields tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_reject_invalid_review_evidence_values tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_has_parallel_subagent_contract_fields tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board -q`
 
 ## Verification
 

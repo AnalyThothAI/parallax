@@ -117,9 +117,9 @@ def render_index(features: list[SddFeature], issues: list[SddIssue]) -> str:
             "## Task Board",
             "",
             "| Feature | Task | Status | Dispatch | Factory lane | Owner | Depends on | Touch set | Conflict set | "
-            "Verification |",
+            "Subagent report | Review result | Verification |",
             "|---------|------|--------|----------|--------------|-------|------------|-----------|--------------|"
-            "--------------|",
+            "-----------------|---------------|--------------|",
         ]
     )
     for feature in sorted(features, key=lambda item: (item.state, item.slug)):
@@ -175,6 +175,8 @@ def _task_row(feature: SddFeature, task: TaskRecord) -> str:
         f"{markdown_escape(_task_field(task, 'depends on'))} | "
         f"{_task_set_cell(task, 'touch set')} | "
         f"{_task_set_cell(task, 'conflict set')} | "
+        f"`{markdown_escape(_task_field(task, 'subagent report'))}` | "
+        f"`{markdown_escape(_task_field(task, 'review result'))}` | "
         f"`{markdown_escape(_task_field(task, 'verification'))}` |"
     )
 
@@ -183,6 +185,9 @@ def _task_dispatch_state(feature: SddFeature, task: TaskRecord) -> str:
     status = _task_field(task, "status").strip().lower()
     if feature.state != "active":
         return "closed"
+    review_result = _task_field(task, "review result").strip().lower()
+    if review_result in {"needs-repair", "blocked"}:
+        return review_result
     if status in {"[ ]", "[~]"}:
         if not task_dependencies_satisfied(feature, task):
             return "blocked-by-dependencies"
@@ -224,6 +229,8 @@ def _issue_meaning(code: str) -> str:
             "Task records lack factory lane, deterministic constraints, on-demand context, kill criteria, "
             "or eval signal."
         ),
+        "task-missing-review-fields": "Task records lack subagent report or parent review result evidence.",
+        "task-invalid-review-fields": "Task report/review evidence is inconsistent with delegation, scope, or status.",
         "task-incomplete-in-verified-feature": "Verified feature contains incomplete task status.",
         "verified-missing-check-all": "Verified record lacks successful make check-all evidence.",
         "verified-contradicts-evidence": "Verified record contains text that contradicts final evidence.",

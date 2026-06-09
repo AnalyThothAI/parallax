@@ -70,7 +70,9 @@ TASK_AGENT_LOOP_FIELDS = (
     "kill/defer criteria",
     "eval/repair signal",
 )
+TASK_REVIEW_FIELDS = ("subagent report", "review result")
 TASK_STATUSES = {"[ ]", "[~]", "[x]", "[!]"}
+TASK_REVIEW_RESULTS = {"not delegated", "parent-reviewed", "accepted", "needs-repair", "blocked"}
 PLACEHOLDER_VALUES = {"", "...", "tbd", "todo", "pending", "<pending>", "<none>"}
 CONTRADICTION_PHRASES = (
     "not final evidence",
@@ -90,6 +92,8 @@ KNOWN_ISSUE_CODES = (
     "task-invalid-coordination-fields",
     "task-invalid-dependencies",
     "task-missing-agent-loop-fields",
+    "task-missing-review-fields",
+    "task-invalid-review-fields",
     "task-incomplete-in-verified-feature",
     "verified-missing-check-all",
     "verified-contradicts-evidence",
@@ -440,6 +444,24 @@ def _task_issues(feature: SddFeature) -> list[SddIssue]:
                     f"{task.title} missing fields: {', '.join(missing_agent_fields)}",
                 )
             )
+        missing_review_fields = [field for field in TASK_REVIEW_FIELDS if _is_placeholder(task.fields.get(field, ""))]
+        if missing_review_fields:
+            issues.append(
+                _issue(
+                    "task-missing-review-fields",
+                    tasks_artifact,
+                    f"{task.title} missing fields: {', '.join(missing_review_fields)}",
+                )
+            )
+        invalid_review_fields = _invalid_review_fields(task)
+        if invalid_review_fields:
+            issues.append(
+                _issue(
+                    "task-invalid-review-fields",
+                    tasks_artifact,
+                    f"{task.title} invalid fields: {', '.join(invalid_review_fields)}",
+                )
+            )
         if feature.status.lower() == "verified" and task.fields.get("status", "").strip().lower() != "[x]":
             issues.append(
                 _issue("task-incomplete-in-verified-feature", tasks_artifact, f"{task.title} is not complete")
@@ -472,6 +494,37 @@ def _invalid_task_fields(task: TaskRecord) -> list[str]:
     if status and status not in TASK_STATUSES:
         invalid.append("status")
     return invalid
+
+
+def _invalid_review_fields(task: TaskRecord) -> list[str]:
+    invalid: list[str] = []
+    subagent_handoff = task.fields.get("subagent handoff", "")
+    subagent_report = task.fields.get("subagent report", "")
+    review_result = task.fields.get("review result", "")
+    if _is_placeholder(subagent_report) or _is_placeholder(review_result):
+        return invalid
+
+    delegated = not _is_not_delegated(subagent_handoff)
+    normalized_report = subagent_report.replace("`", "").strip().lower()
+    normalized_result = review_result.replace("`", "").strip().lower()
+    if normalized_result not in TASK_REVIEW_RESULTS:
+        invalid.append("review result")
+
+    if delegated:
+        if not _is_repo_path(subagent_report):
+            invalid.append("subagent report")
+        if normalized_result == "not delegated":
+            invalid.append("review result")
+    else:
+        if normalized_report != "not delegated":
+            invalid.append("subagent report")
+        if normalized_result not in {"not delegated", "parent-reviewed"}:
+            invalid.append("review result")
+
+    status = task.fields.get("status", "").strip().lower()
+    if status == "[x]" and normalized_result in {"needs-repair", "blocked"}:
+        invalid.append("review result")
+    return list(dict.fromkeys(invalid))
 
 
 def _verified_issues(feature: SddFeature) -> list[SddIssue]:
@@ -618,6 +671,10 @@ def _valid_conflict_set(value: str) -> bool:
 
 def _is_coordination_rule(value: str) -> bool:
     return bool(re.match(r"^coordinate with [a-z0-9][a-z0-9_.\-/]+ for .+", value, re.IGNORECASE))
+
+
+def _is_not_delegated(value: str) -> bool:
+    return value.replace("`", "").strip().lower().startswith("not delegated")
 
 
 def _is_repo_path(value: str) -> bool:

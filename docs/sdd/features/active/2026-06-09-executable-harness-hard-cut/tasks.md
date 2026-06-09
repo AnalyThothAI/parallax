@@ -28,6 +28,8 @@
 - **Conflict set**: `scripts/regen_sdd_work_index.py`
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_requires_successful_make_check_all_evidence` — asserts false `Verified` records fail.
 - **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
 - **Factory lane**: Harness/tests
 - **Deterministic constraints**: `uv run python scripts/validate_sdd_artifacts.py --check`, deterministic issue codes, no `Verified` status without full `make check-all` evidence.
 - **On-demand context**: `docs/sdd/README.md`, `docs/WORKFLOW.md`, active/completed records under `docs/sdd/features/`.
@@ -47,6 +49,8 @@
 - **Conflict set**: `scripts/validate_sdd_artifacts.py`
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_is_generated_and_current` — asserts coordination board fields and freshness.
 - **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
 - **Factory lane**: Harness/tests
 - **Deterministic constraints**: `uv run python scripts/regen_sdd_work_index.py --check` must fail stale generated output.
 - **On-demand context**: `scripts/validate_sdd_artifacts.py`, `docs/generated/sdd-work-index.md`, `docs/agent-playbook/task-reading-matrix.md`.
@@ -66,6 +70,8 @@
 - **Conflict set**: `tests/architecture`
 - **Failing test first**: `tests/architecture/test_test_lane_contracts.py::test_architecture_tests_declare_harness_taxonomy` — asserts taxonomy coverage.
 - **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
 - **Factory lane**: Docs/contracts
 - **Deterministic constraints**: Architecture tests must declare permanent invariants, migration tripwires, behavior contracts, and generated hygiene.
 - **On-demand context**: `docs/TESTING.md`, `tests/architecture/test_test_lane_contracts.py`, current architecture test inventory.
@@ -85,6 +91,8 @@
 - **Conflict set**: `src/parallax/domains/macro_intel/runtime`, `src/parallax/domains/macro_intel/services`
 - **Failing test first**: `tests/unit/domains/macro_intel/test_macro_migration_contract.py::test_repository_concept_history_counts_reads_projected_rows` — asserts request-path history counts read projected rows.
 - **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
 - **Factory lane**: Domain implementation
 - **Deterministic constraints**: SQL contract helper must assert required and forbidden tables/predicates without alias or whitespace coupling.
 - **On-demand context**: `src/parallax/domains/macro_intel/ARCHITECTURE.md`, macro repository tests, query-contract helper.
@@ -104,6 +112,8 @@
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD index, macro repository, and agent playbook test edits; `AGENTS.md`, `CLAUDE.md`
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_has_parallel_subagent_contract_fields` — asserts executable gate fields.
 - **Subagent handoff**: not delegated; mechanical Prettier formatting added after `make check` exposed existing frontend format drift.
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
 - **Factory lane**: Final integration
 - **Deterministic constraints**: `make check-all` must include SDD validation and generated-index freshness before any `Verified` transition.
 - **On-demand context**: `Makefile`, `docs/sdd/_templates`, `docs/WORKFLOW.md`, `docs/sdd/README.md`, `docs/FRONTEND.md`.
@@ -123,6 +133,8 @@
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared agent playbook docs plus SDD templates plus validator plus generated index.
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_development_agent_factory_model_is_explicit_and_bounded` and `tests/architecture/test_agent_playbook_contracts.py::test_development_agent_eval_repair_loop_is_defined` — assert explicit factory and repair-loop contracts.
 - **Subagent handoff**: not delegated; current change consolidates the parent integrator contract before future lane dispatch.
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
 - **Factory lane**: Harness/tests
 - **Deterministic constraints**: New tasks must declare factory lane, deterministic constraints, on-demand context, kill/defer criteria, and eval/repair signal.
 - **On-demand context**: GitHub Spec Kit model, OpenAI AGENTS/Codex loop guidance, Claude/GitHub hooks and custom-instruction separation, and `docs/AGENT_EXECUTION.md` product-agent boundary.
@@ -142,6 +154,8 @@
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared agent playbook docs and tests.
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_context_packet_cli` — asserts an executable CLI can render a bounded packet from an active SDD task.
 - **Subagent handoff**: not delegated; current task creates the handoff packet generator used before future delegation.
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
 - **Factory lane**: Harness/tests
 - **Deterministic constraints**: The CLI must run `scripts/validate_sdd_artifacts.py` semantics before emitting a packet and must reject inactive features.
 - **On-demand context**: `docs/agent-playbook/context-packet-template.md`, `docs/agent-playbook/factory-operating-model.md`, active SDD task metadata.
@@ -161,6 +175,8 @@
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared agent playbook docs and tests.
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task` and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_refuses_completed_task` — assert dry-run handoff generation and completed-task refusal.
 - **Subagent handoff**: not delegated; this task creates the dry-run handoff generator used before future delegation.
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
 - **Factory lane**: Harness/tests
 - **Deterministic constraints**: The dispatcher must validate SDD artifacts before output and must refuse `[x]` completed tasks.
 - **On-demand context**: `scripts/build_agent_context_packet.py`, `docs/agent-playbook/subagent-handoff-template.md`, active SDD task metadata.
@@ -180,6 +196,8 @@
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD validator requirements and generated index.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_invalid_coordination_field_values` — asserts invalid task field values fail even when field names are present.
 - **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
 - **Factory lane**: Harness/tests
 - **Deterministic constraints**: Validator must reject invalid task field semantics while allowing `Depends on: none` and `Subagent handoff: not delegated`.
 - **On-demand context**: `scripts/validate_sdd_artifacts.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/_templates/tasks-template.md`.
@@ -199,6 +217,8 @@
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD validator requirements.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_verified_feature_ignores_old_success_outside_verification_commands` — asserts old successful command snippets outside `## Verification commands` do not satisfy `Verified`.
 - **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
 - **Factory lane**: Harness/tests
 - **Deterministic constraints**: `Verified` must require the canonical `## Verification commands` fenced block to contain the single successful `make check-all` output.
 - **On-demand context**: `scripts/validate_sdd_artifacts.py`, `docs/sdd/_templates/verification-template.md`, current completed SDD records.
@@ -218,6 +238,8 @@
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared generated index and agent playbook tests.
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board` — asserts the generated index renders per-task dispatch rows.
 - **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
 - **Factory lane**: Harness/tests
 - **Deterministic constraints**: `uv run python scripts/regen_sdd_work_index.py --check` must fail stale generated task-board output.
 - **On-demand context**: `scripts/regen_sdd_work_index.py`, `scripts/validate_sdd_artifacts.py`, active SDD task metadata.
@@ -237,6 +259,8 @@
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD validator, dispatcher, generated index, and agent playbook tests.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_unresolved_dependencies`, `tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_refuses_unmet_dependencies`, and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board` — assert unresolved dependencies fail validation and unmet dependencies block dispatch/index state.
 - **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
 - **Factory lane**: Harness/tests
 - **Deterministic constraints**: Dependency parsing must be shared by validator, dispatcher, and generated index; unsupported syntax and unresolved task numbers must fail validation.
 - **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/dispatch_sdd_task.py`, `scripts/regen_sdd_work_index.py`, active SDD task metadata.
@@ -256,6 +280,8 @@
 - **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared agent playbook docs, generated index, and architecture tests.
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_accepts_evidence_report`, `tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_unverifiable_or_out_of_scope_report`, `tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_accepts_task_bound_report`, `tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_task_bound_scope_and_command_drift`, and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task` — assert subagent return packets are validated against the owning SDD task before parent integration.
 - **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
 - **Factory lane**: Harness/tests
 - **Deterministic constraints**: Returned subagent reports must have required sections, scope adherence, changed-file claims compatible with mode and task scope, expected task verification command output with exit code 0, and no secret-bearing fields.
 - **On-demand context**: `docs/agent-playbook/subagent-handoff-template.md`, `docs/agent-playbook/factory-operating-model.md`, `docs/agent-playbook/eval-repair-loop.md`, `scripts/dispatch_sdd_task.py`.
@@ -263,6 +289,27 @@
 - **Eval/repair signal**: subagent report validator failure, parent review defect, missing exit-status evidence, and scope-adherence failure.
 - **Implementation**: Add a filesystem-only report validator that can bind to an active SDD task and include its task-bound command in generated subagent handoffs and playbook docs.
 - **Verification**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_accepts_evidence_report tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_unverifiable_or_out_of_scope_report tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_accepts_task_bound_report tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_task_bound_scope_and_command_drift tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task -q`
+- **Review owner**: parent
+- **Status**: [x]
+
+### Task 14 — Parent review outcome task state
+
+- **File(s)**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `docs/sdd/_templates/tasks-template.md`, `docs/agent-playbook/factory-operating-model.md`, `docs/agent-playbook/eval-repair-loop.md`, `docs/sdd/README.md`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 13
+- **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `docs/sdd/_templates/tasks-template.md`, `docs/agent-playbook/factory-operating-model.md`, `docs/agent-playbook/eval-repair-loop.md`, `docs/sdd/README.md`, `tests/architecture/test_sdd_artifact_validator.py`, `tests/architecture/test_agent_playbook_contracts.py`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared generated index, SDD validator, templates, and architecture tests.
+- **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_review_evidence_fields`, `tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_reject_invalid_review_evidence_values`, `tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_has_parallel_subagent_contract_fields`, and `tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board` — assert parent review outcome is structured task state.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Validator must reject missing/inconsistent `Subagent report` and `Review result`; generated index must show report/review fields and `needs-repair` dispatch state.
+- **On-demand context**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `docs/sdd/_templates/tasks-template.md`, agent playbook docs.
+- **Kill/defer criteria**: Stop if review outcome remains only prose, if delegated tasks can complete without accepted review evidence, or if `needs-repair` is hidden from the Task Board.
+- **Eval/repair signal**: `task-missing-review-fields`, `task-invalid-review-fields`, `needs-repair` dispatch state, and parent review defects.
+- **Implementation**: Add review evidence fields to templates/tasks, validate review evidence, and expose review outcome in the generated Task Board.
+- **Verification**: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_review_evidence_fields tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_reject_invalid_review_evidence_values tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_has_parallel_subagent_contract_fields tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board -q`
 - **Review owner**: parent
 - **Status**: [x]
 
@@ -280,4 +327,5 @@
 - [ ] `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_unresolved_dependencies tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_refuses_unmet_dependencies tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board -q`
 - [ ] `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_accepts_evidence_report tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_unverifiable_or_out_of_scope_report tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_accepts_task_bound_report tests/architecture/test_agent_playbook_contracts.py::test_subagent_report_validator_rejects_task_bound_scope_and_command_drift tests/architecture/test_agent_playbook_contracts.py::test_sdd_task_dispatch_cli_emits_handoff_for_in_progress_task -q`
+- [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_require_review_evidence_fields tests/architecture/test_sdd_artifact_validator.py::test_delegated_tasks_reject_invalid_review_evidence_values tests/architecture/test_agent_playbook_contracts.py::test_tasks_template_has_parallel_subagent_contract_fields tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_renders_task_dispatch_board -q`
 - [ ] `make check-all`

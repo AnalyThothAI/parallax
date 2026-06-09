@@ -38,6 +38,7 @@ Track these metrics when reviewing agent workflow quality:
 | token cost | Approximate agent effort spent on the feature, when available. |
 | false completion attempts | Any claim that out-runs evidence, especially incomplete `make check-all`. |
 | touch conflict count | Number of active lanes touching the same path without coordination. |
+| review result | Parent decision for delegated work: `accepted`, `needs-repair`, or `blocked`. |
 
 Metrics guide process repair; they are not product analytics and must not become product read models.
 

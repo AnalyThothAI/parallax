@@ -192,6 +192,44 @@ def test_tasks_allow_explicit_none_dependency_and_not_delegated_handoff(tmp_path
     assert "task-invalid-coordination-fields" not in _issue_codes(issues)
 
 
+def test_delegated_tasks_require_review_evidence_fields(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-delegated-review-evidence")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(
+        feature / "tasks.md",
+        status="In Progress",
+        subagent_handoff="docs/agent-playbook/subagent-handoff-template.md",
+        subagent_report="",
+        review_result="",
+        task_status="[~]",
+    )
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "task-missing-review-fields" in _issue_codes(issues)
+
+
+def test_delegated_tasks_reject_invalid_review_evidence_values(tmp_path: Path) -> None:
+    feature = _feature_dir(tmp_path, "active", "2026-06-09-invalid-review-evidence")
+    _write_valid_spec(feature / "spec.md", status="In Progress")
+    _write_valid_plan(feature / "plan.md", status="In Progress")
+    _write_valid_tasks(
+        feature / "tasks.md",
+        status="In Progress",
+        subagent_handoff="docs/agent-playbook/subagent-handoff-template.md",
+        subagent_report="looks good",
+        review_result="maybe",
+        task_status="[~]",
+    )
+    _write_valid_verification(feature / "verification.md", status="In Progress")
+
+    issues = validate_sdd_root(tmp_path)
+
+    assert "task-invalid-review-fields" in _issue_codes(issues)
+
+
 def test_tasks_reject_unresolved_dependencies(tmp_path: Path) -> None:
     feature = _feature_dir(tmp_path, "active", "2026-06-09-unresolved-dependency")
     _write_valid_spec(feature / "spec.md", status="In Progress")
@@ -308,6 +346,8 @@ def _write_valid_tasks(
         "test_verified_feature_requires_successful_make_check_all_evidence"
     ),
     subagent_handoff: str = "not delegated",
+    subagent_report: str = "not delegated",
+    review_result: str = "parent-reviewed",
     verification: str = "uv run pytest tests/architecture/test_sdd_artifact_validator.py -q",
     task_status: str = "[x]",
 ) -> None:
@@ -343,6 +383,8 @@ def _write_valid_tasks(
                 f"- **Conflict set**: `{conflict_set}`",
                 f"- **Failing test first**: `{failing_test_first}` - asserts false Verified records fail.",
                 f"- **Subagent handoff**: {subagent_handoff}",
+                f"- **Subagent report**: {subagent_report}",
+                f"- **Review result**: {review_result}",
                 "- **Implementation**: Create validator.",
                 f"- **Verification**: `{verification}`",
                 "- **Review owner**: parent",

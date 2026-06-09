@@ -40,6 +40,8 @@ Tasks are TDD-ordered: write the failing test first, then the implementation, th
 - **Conflict set**: `<paths/concerns this task must not edit without coordination>`
 - **Failing test first**: `tests/<area>/test_<file>.py::<test_name>` — asserts `<observable behaviour>`.
 - **Subagent handoff**: `<not delegated | prompt/link to filled handoff template>`
+- **Subagent report**: `<not delegated | docs/generated/subagent-reports/<feature>-task-<n>.md>`
+- **Review result**: `<not delegated | parent-reviewed | accepted | needs-repair | blocked>`
 - **Implementation**: <one-paragraph description of the code change>.
 - **Verification**: `uv run pytest tests/<area>/test_<file>.py::<test_name> -x`
 - **Review owner**: `<parent agent | person>`
@@ -59,6 +61,8 @@ Tasks are TDD-ordered: write the failing test first, then the implementation, th
 - **Conflict set**:
 - **Failing test first**:
 - **Subagent handoff**:
+- **Subagent report**:
+- **Review result**:
 - **Implementation**:
 - **Verification**:
 - **Review owner**:
@@ -78,6 +82,8 @@ Tasks are TDD-ordered: write the failing test first, then the implementation, th
 - **Conflict set**:
 - **Failing test first**:
 - **Subagent handoff**:
+- **Subagent report**:
+- **Review result**:
 - **Implementation**:
 - **Verification**:
 - **Review owner**:

@@ -28,6 +28,8 @@
 - **Conflict set**: coordinate with `2026-06-09-executable-harness-hard-cut` for shared agent playbook tests and generated index.
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_agent_playbook_has_task_examples_and_read_model_checklist` — asserts examples/checklist presence before implementation.
 - **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
 - **Factory lane**: Harness/tests
 - **Deterministic constraints**: `uv run pytest tests/architecture/test_agent_playbook_contracts.py -q` must fail missing playbook examples and checklist.
 - **On-demand context**: `docs/agent-playbook/task-reading-matrix.md`, current architecture playbook tests, active SDD coordination board.
@@ -47,6 +49,8 @@
 - **Conflict set**: coordinate with `2026-06-09-executable-harness-hard-cut` for shared agent playbook docs and task-reading matrix.
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_repo_scoped_agent_skills_cover_high_frequency_workflows` — asserts the skills are missing before implementation.
 - **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
 - **Factory lane**: Docs/contracts
 - **Deterministic constraints**: Repo-scoped skills must name exact reading lanes and verification commands instead of broad advice.
 - **On-demand context**: `docs/agent-playbook/task-examples.md`, `docs/agent-playbook/read-model-change-checklist.md`, `.agents/skills/*/SKILL.md`.
@@ -66,6 +70,8 @@
 - **Conflict set**: coordinate with `2026-06-09-executable-harness-hard-cut` for shared macro repository and migration-contract edits.
 - **Failing test first**: `tests/unit/domains/macro_intel/test_macro_migration_contract.py::test_repository_concept_history_counts_reads_projected_rows` — forbids `series_rank = 1` in history counts.
 - **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
 - **Factory lane**: Domain implementation
 - **Deterministic constraints**: Query contracts must forbid latest-only `series_rank = 1` history counts and retired generation lookup paths.
 - **On-demand context**: `src/parallax/domains/macro_intel/ARCHITECTURE.md`, macro migration tests, read-model checklist.
@@ -85,6 +91,8 @@
 - **Conflict set**: coordinate with `2026-06-09-executable-harness-hard-cut` for shared SDD validator requirements and generated index.
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_sdd_work_index_is_generated_and_current` — fails until the generated index reflects current SDD records.
 - **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
 - **Factory lane**: Final integration
 - **Deterministic constraints**: `uv run python scripts/validate_sdd_artifacts.py --check` and `uv run python scripts/regen_sdd_work_index.py --check` must pass after both active records are present.
 - **On-demand context**: `docs/sdd/features/active/2026-06-09-agent-playbook-skill-hard-cut`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`.

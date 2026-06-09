@@ -43,6 +43,7 @@ can both miss real process drift and block healthy refactors.
 | Multi-agent development loops must be bounded. | Task records declare factory lane, deterministic constraints, on-demand context, kill/defer criteria, and eval/repair signal. |
 | Task dependencies must be executable. | Task dependency references are parsed, unresolved references fail validation, and unmet dependencies block dry-run dispatch. |
 | Subagent return evidence must be executable. | Subagent reports are validated against the owning SDD task for scope adherence, changed-file claims, expected verification command, exit status, and secret hygiene before parent integration. |
+| Parent review outcome must be visible. | Task records expose subagent report and review result fields, and the generated Task Board surfaces review state including `needs-repair`. |
 
 ## First principles
 
@@ -65,6 +66,7 @@ can both miss real process drift and block healthy refactors.
 - G11. The generated SDD work index exposes task-level dispatch state, not only feature-level coordination.
 - G12. Task dependencies are parsed as task references/ranges, unresolved references fail validation, and dispatch/index state blocks tasks whose dependencies are incomplete.
 - G13. Subagent handoffs include a task-bound report contract, and returned reports are machine-validated against the owning SDD task before parent integration.
+- G14. Parent review outcome is a structured task field and a generated Task Board state, not prose hidden in a handoff note.
 
 ## Non-goals
 
@@ -123,6 +125,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC11. WHEN `docs/generated/sdd-work-index.md` is regenerated THEN it SHALL include a `Task Board` with one row per SDD task showing task status, dispatch state, factory lane, owner, dependency, touch set, conflict set, and verification command.
 - AC12. WHEN a task references missing dependency task numbers or a dispatchable task depends on incomplete tasks THEN the validator SHALL report `task-invalid-dependencies` for unresolved references, the dispatcher SHALL refuse the task, and the generated `Task Board` SHALL show `blocked-by-dependencies`.
 - AC13. WHEN a subagent report lacks required report sections, lists changed files outside the task touch set, overlaps the conflict set, runs a verification command different from the task command, or records a non-zero exit code THEN the report validator SHALL fail, and generated handoffs SHALL instruct the parent to run that task-bound validator before integration.
+- AC14. WHEN a task is delegated or reviewed THEN `tasks.md` SHALL contain `Subagent report` and `Review result`, the validator SHALL reject missing or inconsistent review fields, and the generated `Task Board` SHALL expose review result and `needs-repair` dispatch state.
 
 ## Risks
 
