@@ -1237,6 +1237,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 59 — Governance rule overfit split
+
+- **File(s)**: `docs/TECH_DEBT.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 58
+- **Touch set**: `docs/TECH_DEBT.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `tests/architecture/test_harness_structure.py` for governance rule harness edits.
+- **Failing test first**: `tests/architecture/test_harness_structure.py::test_rule_ownership tests/architecture/test_harness_structure.py::test_routers_have_no_governance_phrases` — asserts governance rules have exactly one owning doc and do not leak into root router prose.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Replace the mixed `test_rule_uniqueness` gate with separate ownership and router-leak tests; use named multi-anchor rule contracts instead of single verbatim phrase keys; remove the resolved open TECH_DEBT rows.
+- **On-demand context**: `tests/architecture/test_harness_structure.py`, `docs/TECH_DEBT.md`, root governance docs under `docs/`, `AGENTS.md`, and `CLAUDE.md`.
+- **Kill/defer criteria**: Stop if the new anchors match multiple owners, if router checks only look for one incidental word, or if resolved debt remains open.
+- **Eval/repair signal**: governance ownership failure, router leak failure, brittle phrase-only test review defect, and stale open TECH_DEBT row.
+- **Implementation**: Replace `RULE_PHRASES` with `GOVERNANCE_RULE_ANCHORS`, add `_governance_paths` and `_has_rule_anchors`, split the test into `test_rule_ownership` plus `test_routers_have_no_governance_phrases`, and delete the resolved TECH_DEBT rows.
+- **Verification**: `uv run pytest tests/architecture/test_harness_structure.py::test_rule_ownership tests/architecture/test_harness_structure.py::test_routers_have_no_governance_phrases -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1297,4 +1318,5 @@
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_architecture_module_map_links_every_domain_architecture_doc -q`
 - [ ] `uv run pytest tests/architecture/test_test_lane_contracts.py::test_architecture_tests_declare_harness_taxonomy -q`
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_debt_references_current_source_and_test_paths -q`
+- [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_rule_ownership tests/architecture/test_harness_structure.py::test_routers_have_no_governance_phrases -q`
 - [ ] `make check-all`

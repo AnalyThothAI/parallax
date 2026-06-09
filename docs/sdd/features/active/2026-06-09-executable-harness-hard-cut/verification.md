@@ -75,6 +75,7 @@ claim is allowed without the corresponding output captured below.
 | AC56 — Architecture module map links current domain docs. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_architecture_module_map_links_every_domain_architecture_doc -q` failed RED on the non-linked Narrative row, then passed after converting it to a markdown link. |
 | AC57 — Architecture test taxonomy inventory is exact. | ✅ | `uv run pytest tests/architecture/test_test_lane_contracts.py::test_architecture_tests_declare_harness_taxonomy -q` failed RED on missing `test_public_contracts_doc_alignment.py`, then passed after exact-set validation and docs update. |
 | AC58 — Open tech debt source/test/doc references are live and self-contained. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_debt_references_current_source_and_test_paths -q` failed RED on stale TECH_DEBT file/function references, bare `::test` shorthand, and unrooted source/doc paths, then passed after removing deleted historical integration rows and making references self-contained. |
+| AC59 — Governance rule checks avoid prose overfit. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_rule_ownership tests/architecture/test_harness_structure.py::test_routers_have_no_governance_phrases -q` passed after splitting the mixed rule test and replacing verbatim phrase keys with named multi-anchor contracts. |
 
 Deviations from spec:
 
@@ -948,6 +949,10 @@ $ uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_deb
 1 passed in 0.02s
 exit code: 0
 
+$ uv run pytest tests/architecture/test_harness_structure.py::test_rule_ownership tests/architecture/test_harness_structure.py::test_routers_have_no_governance_phrases -q
+2 passed in 0.03s
+exit code: 0
+
 $ uv run pytest tests/architecture/test_test_lane_contracts.py -q
 5 passed in 0.13s
 exit code: 0
@@ -957,7 +962,7 @@ All checks passed!
 exit code: 0
 
 $ uv run pytest tests/architecture/test_harness_structure.py -q
-15 passed in 0.18s
+16 passed in 0.19s
 exit code: 0
 
 $ uv run ruff check tests/architecture/test_harness_structure.py

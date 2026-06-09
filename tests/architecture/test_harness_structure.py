@@ -51,18 +51,44 @@ SKIPPED_DIRS = {
     "node_modules",
 }
 
-RULE_PHRASES = {
-    "Single ASGI worker": "RELIABILITY.md",
-    "`projection_version` and `factor_version` are bumped": "CONTRACTS.md",
-    "Integration tests should hit a real PostgreSQL": "TESTING.md",
-    "git worktree add .worktrees": "WORKFLOW.md",
-    "Audit before design": "DESIGN_DISCIPLINE.md",
-    "Single config source": "SECURITY.md",
+GOVERNANCE_RULE_ANCHORS = {
+    "asgi worker ownership": {
+        "owner": "RELIABILITY.md",
+        "anchors": ("ASGI worker", "Multiple workers", "collector"),
+    },
+    "token radar versioning": {
+        "owner": "CONTRACTS.md",
+        "anchors": ("projection_version", "factor_version", "Token Radar"),
+    },
+    "integration test storage boundary": {
+        "owner": "TESTING.md",
+        "anchors": ("Integration tests", "real PostgreSQL", "tests/integration/"),
+    },
+    "agent worktree policy": {
+        "owner": "WORKFLOW.md",
+        "anchors": ("git worktree add", ".worktrees/<slug>", "branch from `main`"),
+    },
+    "design audit before creation": {
+        "owner": "DESIGN_DISCIPLINE.md",
+        "anchors": ("existing `*_service.py`", "Trace the data flow", "fields already in the DB"),
+    },
+    "single config source": {
+        "owner": "SECURITY.md",
+        "anchors": ("~/.parallax/config.yaml", "~/.parallax/workers.yaml", "Do not introduce a third config path"),
+    },
 }
 
 
 def _read(p: Path) -> str:
     return p.read_text(encoding="utf-8")
+
+
+def _governance_paths() -> dict[str, Path]:
+    return {name: DOCS / name for name in EXPECTED_GOVERNANCE}
+
+
+def _has_rule_anchors(text: str, anchors: tuple[str, ...]) -> bool:
+    return all(anchor in text for anchor in anchors)
 
 
 def _tech_debt_open_section() -> str:
@@ -173,13 +199,30 @@ def test_no_legacy_files_at_docs_root() -> None:
     assert legacy == [], f"legacy files still at docs root: {legacy}"
 
 
-def test_rule_uniqueness() -> None:
-    governance_paths = {name: DOCS / name for name in EXPECTED_GOVERNANCE}
-    for phrase, expected_owner in RULE_PHRASES.items():
-        hits = [name for name, path in governance_paths.items() if path.exists() and phrase in _read(path)]
-        assert hits == [expected_owner], f"phrase {phrase!r} expected only in {expected_owner}, found in {hits}"
-        for router in ROUTER_FILES:
-            assert phrase not in _read(REPO_ROOT / router), f"phrase {phrase!r} leaked into {router}"
+def test_rule_ownership() -> None:
+    governance_paths = _governance_paths()
+    for rule_name, contract in GOVERNANCE_RULE_ANCHORS.items():
+        owner = contract["owner"]
+        anchors = contract["anchors"]
+        # Missing docs should fail loudly here instead of being hidden by a
+        # path.exists() guard; docs-root inventory has its own focused failure.
+        hits = [
+            name
+            for name, path in governance_paths.items()
+            if _has_rule_anchors(_read(path), anchors)
+        ]
+        assert hits == [owner], f"rule {rule_name!r} expected only in {owner}, found in {hits}"
+
+
+def test_routers_have_no_governance_phrases() -> None:
+    for rule_name, contract in GOVERNANCE_RULE_ANCHORS.items():
+        anchors = contract["anchors"]
+        leaked = [
+            router
+            for router in ROUTER_FILES
+            if _has_rule_anchors(_read(REPO_ROOT / router), anchors)
+        ]
+        assert leaked == [], f"rule {rule_name!r} leaked into router files: {leaked}"
 
 
 def test_make_check_all_runs_executable_sdd_harness() -> None:
