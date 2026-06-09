@@ -964,10 +964,32 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 46 — Generated CLI help freshness gate
+
+- **File(s)**: `Makefile`, `scripts/regen_cli_help.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 45
+- **Touch set**: `Makefile`, `scripts/regen_cli_help.py`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `2026-06-09-agent-playbook-skill-hard-cut` for shared SDD index and completion-gate semantics.
+- **Failing test first**: `tests/architecture/test_harness_structure.py::test_make_check_all_checks_cli_help_snapshot` — asserts `check-all` runs the generated CLI help freshness check.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: CLI help freshness must be checked by a non-mutating `--check` command before integration/e2e/golden/coverage gates; no database-backed docs regeneration is introduced into the fast harness stage.
+- **On-demand context**: `scripts/regen_cli_help.py`, `docs/generated/cli-help.md`, `Makefile`, `docs/generated/README.md`, and `docs/ARCHITECTURE.md`.
+- **Kill/defer criteria**: Stop if the gate mutates generated files during verification, depends on PostgreSQL, or leaves CLI warning output in normal successful checks.
+- **Eval/repair signal**: stale CLI help snapshot, `test_make_check_all_checks_cli_help_snapshot` failure, and `scripts/regen_cli_help.py --check` non-zero exit.
+- **Implementation**: Add `--check` to the CLI help generator, wire it into `make check-all`, and prove the Makefile gate with an architecture test.
+- **Verification**: `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_cli_help_snapshot -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
 - [ ] `uv run python scripts/regen_sdd_work_index.py --check`
+- [ ] `uv run python scripts/regen_cli_help.py --check`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py tests/architecture/test_test_lane_contracts.py -q`
 - [ ] `uv run pytest tests/unit/domains/macro_intel/test_macro_migration_contract.py -q`
 - [ ] `uv run pytest tests/architecture/test_agent_playbook_contracts.py tests/architecture/test_sdd_artifact_validator.py -q`
@@ -1010,4 +1032,5 @@
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_invalid_factory_lane_values -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_rejects_failed_results -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_failing_test_reference_evidence -q`
+- [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_cli_help_snapshot -q`
 - [ ] `make check-all`

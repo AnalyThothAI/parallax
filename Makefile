@@ -55,6 +55,7 @@ test-contract: ## run only tests/contract/ (OpenAPI drift; populated in P4)
 check-all: ## the only command that may produce verification-artefact evidence (gates 1+2+3)
 	@uv run python scripts/validate_sdd_artifacts.py --check
 	@uv run python scripts/regen_sdd_work_index.py --check
+	@uv run python scripts/regen_cli_help.py --check
 	@$(MAKE) check
 	@$(MAKE) test-integration
 	@$(MAKE) test-e2e

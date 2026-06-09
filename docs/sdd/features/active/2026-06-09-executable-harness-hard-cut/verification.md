@@ -62,6 +62,7 @@ claim is allowed without the corresponding output captured below.
 | AC43 — Factory lane values are bounded to the operating model. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_invalid_factory_lane_values -q` passed after first failing RED run. |
 | AC44 — Analyze Gate result statuses are machine-bounded. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_rejects_failed_results -q` passed after first failing RED run. |
 | AC45 — Completed task failing-test references are evidenced. | ✅ | `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_failing_test_reference_evidence -q` passed after first failing RED run. |
+| AC46 — Generated CLI help docs are freshness-checked. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_cli_help_snapshot -q` passed after first failing RED run; `uv run python scripts/regen_cli_help.py --check` exited 0. |
 
 Deviations from spec:
 
@@ -760,6 +761,18 @@ $ uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete
 1 passed in 0.02s
 exit code: 0
 
+$ uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_cli_help_snapshot -q
+F                                                                        [100%]
+AssertionError: assert 'scripts/regen_cli_help.py --check' in ' ## the only command that may produce verification-artefact evidence (gates 1+2+3)\n\t@uv run python scripts/validate_sdd_artifacts.py --check\n\t@uv run python scripts/regen_sdd_work_index.py --check\n\t@$(MAKE) check\n\t@$(MAKE) test-integration\n\t@$(MAKE) test-e2e\n\t@$(MAKE) test-golden\n\t@$(MAKE) coverage'
+exit code: 1
+
+$ uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_cli_help_snapshot -q
+1 passed in 0.09s
+exit code: 0
+
+$ uv run python scripts/regen_cli_help.py --check
+exit code: 0
+
 $ uv run python scripts/validate_sdd_artifacts.py --check
 SDD artifact validation passed.
 exit code: 0
@@ -768,10 +781,21 @@ $ uv run python scripts/regen_sdd_work_index.py --check
 exit code: 0
 
 $ uv run pytest tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py -q
-64 passed in 0.70s
+64 passed in 1.51s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_harness_structure.py tests/architecture/test_completion_gates.py -q
+15 passed in 0.30s
+exit code: 0
+
+$ uv run python scripts/regen_cli_help.py --check
 exit code: 0
 
 $ uv run ruff check scripts/validate_sdd_artifacts.py scripts/regen_sdd_work_index.py tests/architecture/test_sdd_artifact_validator.py tests/architecture/test_agent_playbook_contracts.py
+All checks passed!
+exit code: 0
+
+$ uv run ruff check scripts/regen_cli_help.py tests/architecture/test_harness_structure.py
 All checks passed!
 exit code: 0
 ```
@@ -797,6 +821,7 @@ Schema or contract changes that consumers must be aware of:
 ## Risks observed
 
 - Integration, e2e, golden, and coverage gates were not completed before merging to `main` by explicit user instruction.
+- Full `uv run pytest tests/architecture -m architecture -q` is currently blocked by unrelated uncommitted News migration files writing `news_projection_dirty_targets` outside the architecture allowlist.
 
 ## Follow-ups
 

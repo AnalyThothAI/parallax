@@ -57,6 +57,11 @@ Known-failing baseline tests:
 - Validate all artifacts in a `Superseded` feature point at the same successor record.
 - Parse `Verified` completion evidence from the `## Verification commands` fenced block and require final `make check-all` exit code 0 plus explained skipped-test rows.
 
+### `scripts/regen_cli_help.py`
+
+- Add a non-mutating `--check` mode that renders CLI help from source and fails when `docs/generated/cli-help.md` is stale.
+- Capture CLI warning output so normal freshness checks stay quiet while command failures still report stderr.
+
 ### `scripts/regen_sdd_work_index.py`
 
 - Replace artifact-only rows with feature-level summaries and a coordination board.
@@ -101,6 +106,10 @@ Known-failing baseline tests:
 - Add fixture tests for invalid task coordination field values and valid explicit `none` dependencies / `not delegated` handoffs.
 - Add fixture tests proving old successful `make check-all` snippets outside the canonical verification block do not satisfy `Verified`.
 
+### `tests/architecture/test_harness_structure.py`
+
+- Assert `make check-all` includes the CLI help snapshot freshness check, so generated public CLI docs cannot drift outside integration-only docs tests.
+
 ### `tests/architecture/test_test_lane_contracts.py`
 
 - Add taxonomy checks for permanent invariants, migration tripwires, behavior contracts, and generated hygiene.
@@ -133,6 +142,7 @@ Known-failing baseline tests:
 ### `Makefile`
 
 - Add `uv run python scripts/validate_sdd_artifacts.py --check` and keep `uv run python scripts/regen_sdd_work_index.py --check` in `check-all`.
+- Add `uv run python scripts/regen_cli_help.py --check` to `check-all` before integration, e2e, golden, and coverage gates.
 
 ### `docs/sdd/_templates/*.md`, `docs/WORKFLOW.md`, `docs/sdd/README.md`
 
@@ -194,6 +204,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Factory lanes are bounded. | Pass: validator rejects task `Factory lane` values outside the six operating-model lanes. |
 | Analyze gate statuses are bounded. | Pass: validator rejects plan Analyze Gate results that do not begin with `Pass:` or `Blocked:`. |
 | Failing-test-first evidence is covered. | Pass: validator rejects completed tasks whose failing-test test file paths never appear in successful command evidence. |
+| Generated CLI docs are freshness-checked. | Pass: `check-all` runs `scripts/regen_cli_help.py --check` before integration gates. |
 
 ## Acceptance test commands
 
@@ -242,6 +253,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC43: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_tasks_reject_invalid_factory_lane_values -q`
 - AC44: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_plan_analyze_gate_rejects_failed_results -q`
 - AC45: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_complete_tasks_require_failing_test_reference_evidence -q`
+- AC46: `uv run pytest tests/architecture/test_harness_structure.py::test_make_check_all_checks_cli_help_snapshot -q`
 
 ## Verification
 

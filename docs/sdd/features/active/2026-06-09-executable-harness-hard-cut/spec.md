@@ -42,6 +42,7 @@ can both miss real process drift and block healthy refactors.
 | Test harness intent must be explicit. | Architecture tests classify permanent invariants, migration tripwires, behavior contracts, and generated hygiene. |
 | SQL tests must avoid accidental alias/order coupling. | A query-contract helper checks tables, predicates, locks, params, and forbidden surfaces without pinning formatting. |
 | Completion gates must be deterministic. | `make check-all` runs the SDD validator and stale generated index check. |
+| Generated CLI docs must stay source-backed. | `make check-all` runs a non-mutating CLI help snapshot freshness check before integration gates. |
 | Multi-agent development loops must be bounded. | Task records declare factory lane, deterministic constraints, on-demand context, kill/defer criteria, and eval/repair signal. |
 | Factory lanes must be deterministic tokens. | Task `Factory lane` values must match the six development-agent lane tokens from the operating model. |
 | Analyze gates must be machine-statused. | Plan `Analyze Gate` result cells must use explicit `Pass:` or `Blocked:` status tokens. |
@@ -90,6 +91,7 @@ can both miss real process drift and block healthy refactors.
 - G21. SDD validation rejects task `Factory lane` values outside the six development-agent lanes defined by the operating model.
 - G22. SDD validation rejects plan `Analyze Gate` result cells that are `Fail:` or freeform prose instead of `Pass:` or `Blocked:` machine statuses.
 - G23. SDD validation rejects `[x]` tasks whose `Failing test first` test file paths are absent from successful verification evidence.
+- G24. `make check-all` rejects stale `docs/generated/cli-help.md` snapshots without running database-backed docs regeneration.
 
 ## Non-goals
 
@@ -180,6 +182,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC43. WHEN a task declares a `Factory lane` outside `Spec/plan`, `Domain implementation`, `Harness/tests`, `Docs/contracts`, `Risk radar`, or `Final integration` THEN the validator SHALL report `task-invalid-agent-loop-fields`; lane budgets are deterministic constraints, not freeform prose.
 - AC44. WHEN `plan.md` `Analyze Gate` rows use `Fail:`, `Pass.`, or any result that does not begin with `Pass:` or `Blocked:` THEN the validator SHALL report `plan-analyze-gate-invalid`; failed analysis must stop or block before implementation.
 - AC45. WHEN a task is marked `[x]` and its `Failing test first` field references a test file path absent from successful verification evidence THEN the validator SHALL report `task-complete-missing-failing-test-evidence`; TDD metadata cannot drift away from commands actually run.
+- AC46. WHEN `docs/generated/cli-help.md` drifts from `parallax --help`, `parallax db --help`, or `parallax ops --help` THEN `scripts/regen_cli_help.py --check` SHALL exit non-zero and `make check-all` SHALL run that check before integration, e2e, golden, or coverage gates.
 
 ## Risks
 

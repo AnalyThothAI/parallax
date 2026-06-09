@@ -147,6 +147,13 @@ def test_make_check_all_runs_executable_sdd_harness() -> None:
     assert "scripts/regen_sdd_work_index.py --check" in check_all
 
 
+def test_make_check_all_checks_cli_help_snapshot() -> None:
+    makefile = _read(REPO_ROOT / "Makefile")
+    check_all = makefile.split("check-all:", 1)[1].split("\n\n", 1)[0]
+
+    assert "scripts/regen_cli_help.py --check" in check_all
+
+
 def test_references_papers_present() -> None:
     papers_dir = DOCS / "references" / "papers"
     assert papers_dir.is_dir(), "docs/references/papers/ missing"
