@@ -42,8 +42,19 @@ describe("MacroShell", () => {
       "href",
       "/macro/assets",
     );
-    expect(screen.queryByRole("navigation", { name: "宏观主模块" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("navigation", { name: "宏观模块" })).not.toBeInTheDocument();
+    const moduleNavigation = screen.getByRole("navigation", { name: "宏观模块" });
+    expect(within(moduleNavigation).getByRole("link", { name: "总览" })).toHaveAttribute(
+      "href",
+      "/macro",
+    );
+    expect(within(moduleNavigation).getByRole("link", { name: "大类资产" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(within(moduleNavigation).getByRole("link", { name: "利率" })).toHaveAttribute(
+      "href",
+      "/macro/rates/fed-funds",
+    );
     const state = screen.getByLabelText("页面状态");
     expect(within(state).getByText("截至")).toBeInTheDocument();
     expect(within(state).getByText("2026-05-20")).toBeInTheDocument();
@@ -81,6 +92,7 @@ describe("MacroShell", () => {
 
     expect(screen.getByLabelText("宏观工作台")).toHaveAttribute("data-page-kind", "matrix");
     expect(screen.getByRole("heading", { name: "资产相关性" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "宏观模块" })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "宏观面包屑" })).toHaveTextContent(
       "宏观/大类资产/相关性",
     );
@@ -152,6 +164,7 @@ describe("MacroShell", () => {
     expect(shell).toHaveAttribute("data-page-kind", "overview");
     expect(shell).toHaveAttribute("data-product-tier", "secondary");
     expect(screen.getByRole("navigation", { name: "宏观面包屑" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "宏观模块" })).toBeInTheDocument();
     expect(screen.getByLabelText("页面状态")).toBeInTheDocument();
     expect(screen.queryByText("assets/equities")).not.toBeInTheDocument();
   });

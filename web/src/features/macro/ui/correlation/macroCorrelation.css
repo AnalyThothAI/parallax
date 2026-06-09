@@ -1,0 +1,144 @@
+@layer app.features {
+  .macro-correlation-matrix-table {
+    width: 100%;
+    min-width: var(--macro-table-min-width, 720px);
+    border-collapse: collapse;
+  }
+
+  .macro-correlation-matrix-table caption {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+  }
+
+  .macro-correlation-matrix-table th,
+  .macro-correlation-matrix-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+    color: var(--text-primary, #f8fafc);
+    font-size: 0.8rem;
+    line-height: 1.35;
+    text-align: left;
+    vertical-align: middle;
+  }
+
+  .macro-correlation-matrix-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: rgba(10, 16, 27, 0.96);
+    color: var(--text-muted, #94a3b8);
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .macro-correlation-matrix-table tbody tr:last-child th,
+  .macro-correlation-matrix-table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+
+  .macro-correlation-matrix-table tbody tr:hover th,
+  .macro-correlation-matrix-table tbody tr:hover td {
+    background: rgba(125, 211, 252, 0.035);
+  }
+
+  .macro-correlation-matrix-table td[data-tone="constructive"] {
+    color: #fee2e2;
+    background: rgba(239, 68, 68, 0.42);
+  }
+
+  .macro-correlation-matrix-table td[data-tone="stress"] {
+    color: #dbeafe;
+    background: rgba(59, 130, 246, 0.42);
+  }
+
+  .macro-correlation-matrix-table td[data-tone="neutral"] {
+    color: var(--text-primary, #f8fafc);
+    background: rgba(148, 163, 184, 0.12);
+  }
+
+  .macro-correlation-matrix-table td[data-tone="gap"] {
+    color: var(--text-muted, #94a3b8);
+    background: rgba(15, 23, 42, 0.28);
+  }
+
+  .macro-correlation-pair-list,
+  .macro-correlation-coverage-list,
+  .macro-correlation-gap-list {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .macro-correlation-pair-list li,
+  .macro-correlation-coverage-list li,
+  .macro-correlation-gap-list li {
+    display: grid;
+    gap: 4px 8px;
+    min-width: 0;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  }
+
+  .macro-correlation-pair-list li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .macro-correlation-pair-list[data-variant="detail"] li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .macro-correlation-pair-list strong,
+  .macro-correlation-coverage-list strong {
+    min-width: 0;
+    color: var(--text-primary, #f8fafc);
+    font-size: 0.8rem;
+    line-height: 1.35;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .macro-correlation-pair-list span {
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.78rem;
+    font-weight: 800;
+  }
+
+  .macro-correlation-pair-list span[data-tone="constructive"] {
+    color: #34d399;
+  }
+
+  .macro-correlation-pair-list span[data-tone="stress"] {
+    color: #fb7185;
+  }
+
+  .macro-correlation-pair-list span[data-tone="neutral"],
+  .macro-correlation-pair-list span[data-tone="gap"] {
+    color: var(--text-muted, #94a3b8);
+  }
+
+  .macro-correlation-pair-list small,
+  .macro-correlation-coverage-list span,
+  .macro-correlation-coverage-list small,
+  .macro-correlation-gap-list li,
+  .macro-correlation-empty {
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.78rem;
+    line-height: 1.4;
+  }
+
+  .macro-correlation-pair-list small {
+    grid-column: 1 / -1;
+  }
+}

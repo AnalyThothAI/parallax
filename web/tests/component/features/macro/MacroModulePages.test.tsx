@@ -147,10 +147,12 @@ describe("Macro module pages", () => {
     expect(await screen.findByText("10%")).toBeInTheDocument();
   });
 
-  it("renders the asset landing page with daily judgment blocks", () => {
+  it("renders the asset landing page as a clear market dashboard first", () => {
     renderWithProviders(
       <MacroModulePageRenderer
-        module={macroAssetsModuleFixture()}
+        module={macroAssetsModuleFixture({
+          tables: [assetDashboardTable()],
+        })}
         moduleId="assets"
         pageKind="leaf"
         token="test-token"
@@ -159,10 +161,29 @@ describe("Macro module pages", () => {
     );
 
     expect(screen.getByRole("region", { name: "大类资产模块页面" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "今日判断" })).toBeInTheDocument();
+    expectRegionsInOrder(["市场仪表盘", "今日判断", "60日相关性", "数据诊断"]);
+    expect(screen.queryByRole("region", { name: "关键指标" })).not.toBeInTheDocument();
+
+    const dashboard = screen.getByRole("region", { name: "市场仪表盘" });
+    expect(within(dashboard).getByRole("table", { name: "美股" })).toBeInTheDocument();
+    expect(within(dashboard).getByRole("table", { name: "债券" })).toBeInTheDocument();
+    expect(within(dashboard).getByRole("table", { name: "商品" })).toBeInTheDocument();
+    expect(within(dashboard).getByRole("table", { name: "外汇" })).toBeInTheDocument();
+    expect(within(dashboard).getByRole("table", { name: "加密货币" })).toBeInTheDocument();
+    expect(within(dashboard).getAllByRole("columnheader").map((header) => header.textContent)).toEqual(
+      expect.arrayContaining(["代码", "名称", "最新", "日涨跌幅", "日期"]),
+    );
+    expect(within(dashboard).getByRole("link", { name: "查看美股详情" })).toHaveAttribute(
+      "href",
+      "/macro/assets/equities",
+    );
+
+    const judgment = screen.getByRole("region", { name: "今日判断" });
+    expect(within(judgment).getByText("今日判断：风险资产偏震荡")).toBeInTheDocument();
     expect(screen.getByText("今日判断：风险资产偏震荡")).toBeInTheDocument();
-    expect(screen.getByText("跨资产相关性")).toBeInTheDocument();
-    expect(screen.getByRole("table", { name: "大类资产快照" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "数据诊断" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "数据来源" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "模块数据健康" })).not.toBeInTheDocument();
   });
 
   it("keeps a stable chart loading state while backend series is pending", async () => {
@@ -257,4 +278,46 @@ function expectRegionsInOrder(regionNames: string[]): void {
   );
   expect(regionIndexes).not.toContain(-1);
   expect(regionIndexes).toEqual([...regionIndexes].sort((left, right) => left - right));
+}
+
+function assetDashboardTable() {
+  const row = (
+    rowId: string,
+    symbol: string,
+    name: string,
+    latest: string,
+    delta: string,
+    date = "2026-05-20",
+  ) => ({
+    row_id: rowId,
+    cells: {
+      indicator: { display_value: name, sort_value: symbol },
+      symbol: { display_value: symbol, sort_value: symbol },
+      latest: { display_value: latest, sort_value: Number.parseFloat(latest.replace(/,/g, "")) },
+      delta_1d: { display_value: delta, sort_value: Number.parseFloat(delta) },
+      delta_20d: { display_value: delta, sort_value: Number.parseFloat(delta) },
+      observed_at: { display_value: date, sort_value: date },
+      source: { display_value: "fixture", sort_value: "fixture" },
+    },
+  });
+
+  return {
+    id: "asset_group_snapshot",
+    title: "大类资产快照",
+    status: "ok",
+    columns: [
+      { key: "symbol", label: "代码" },
+      { key: "indicator", label: "名称" },
+      { key: "latest", label: "最新" },
+      { key: "delta_1d", label: "日涨跌幅" },
+      { key: "observed_at", label: "日期" },
+    ],
+    rows: [
+      row("asset:spx", "^GSPC", "标普500", "5,312.40", "+0.30"),
+      row("asset:tlt", "TLT", "20年+国债ETF", "84.62", "-0.52"),
+      row("commodity:gold", "GC", "黄金", "2,330.10", "+0.49"),
+      row("fx:dxy", "DXY", "美元指数", "99.97", "-0.10"),
+      row("crypto:btc", "BTC", "比特币", "68,300.00", "-0.76"),
+    ],
+  };
 }
