@@ -321,7 +321,7 @@ own maps next to the code they describe, and this file links to them.
 | Module | File | Covers |
 |--------|------|--------|
 | Token Radar and token identity | [`src/parallax/domains/token_intel/ARCHITECTURE.md`](../src/parallax/domains/token_intel/ARCHITECTURE.md) | GMGN frame to token evidence, intents, deterministic resolution, discovery / reprocess, market ticks, radar projection, and hard identity boundaries. |
-| Narrative intelligence | `src/parallax/domains/narrative_intel/ARCHITECTURE.md` | Mention semantics, token discussion digest generation, evidence refs, semantic coverage, and narrative worker state machines. |
+| Narrative intelligence | [`src/parallax/domains/narrative_intel/ARCHITECTURE.md`](../src/parallax/domains/narrative_intel/ARCHITECTURE.md) | Mention semantics, token discussion digest generation, evidence refs, semantic coverage, and narrative worker state machines. |
 | Asset market and market tick capture | [`src/parallax/domains/asset_market/ARCHITECTURE.md`](../src/parallax/domains/asset_market/ARCHITECTURE.md) | Asset identity evidence ledger, `MarketTick` schema, capture-tier / stream / poll workers, cache-only live fan-out, profile / discovery workers, provider capability model. |
 | CEX market intelligence | [`src/parallax/domains/cex_market_intel/ARCHITECTURE.md`](../src/parallax/domains/cex_market_intel/ARCHITECTURE.md) | Binance USDT perpetual universe consumption, OI radar board read model, CEX detail snapshots, and snapshot-only Token Case / Agent read paths. |
 | Signal Pulse pipeline | [`src/parallax/domains/pulse_lab/ARCHITECTURE.md`](../src/parallax/domains/pulse_lab/ARCHITECTURE.md) | Candidate gate, agent route policy, stage runtime, decision persistence, audit ledger, abstain contract. |

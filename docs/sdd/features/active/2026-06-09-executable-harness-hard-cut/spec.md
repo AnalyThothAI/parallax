@@ -68,6 +68,7 @@ can both miss real process drift and block healthy refactors.
 | Agent routers must stay source-aligned. | Architecture tests compare AGENTS/CLAUDE frontend guardrails against current frontend CSS harness constants. |
 | Frontend verification skills must carry current gates. | Architecture tests compare the frontend verification skill against the data-ownership harness, not only generic commands. |
 | Architecture docs must reference executable tests. | Architecture tests reject bare or missing test references in `docs/ARCHITECTURE.md`. |
+| Architecture module maps must be complete links. | Architecture tests compare the global module map against domain `ARCHITECTURE.md` files. |
 
 ## First principles
 
@@ -110,6 +111,7 @@ can both miss real process drift and block healthy refactors.
 - G31. Root agent routers stay mirrored and source-aligned with frontend harness constants instead of preserving stale guardrail examples.
 - G32. The repo-scoped frontend verification skill names the data-ownership harness and forbidden route/UI server-state primitives.
 - G33. `docs/ARCHITECTURE.md` enforcement references are path-qualified and checked against real architecture test files/functions.
+- G34. `docs/ARCHITECTURE.md` module map links every current domain `ARCHITECTURE.md` file and fails missing or stale links.
 
 ## Non-goals
 
@@ -210,6 +212,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC53. WHEN `AGENTS.md` or `CLAUDE.md` frontend guardrails omit a retired CSS bucket declared by `cssArchitectureHarness.test.ts` THEN architecture tests SHALL fail while still requiring their shared router blocks to match.
 - AC54. WHEN `.agents/skills/parallax-frontend-verification/SKILL.md` omits `frontendDataOwnership.test.ts` or any forbidden data-ownership primitive checked by that harness THEN frontend architecture tests SHALL fail.
 - AC55. WHEN `docs/ARCHITECTURE.md` references a test as a bare `test_*` name or references a missing `tests/architecture/...py::test_*` function THEN architecture tests SHALL fail.
+- AC56. WHEN a `src/parallax/domains/*/ARCHITECTURE.md` file lacks a markdown link in `docs/ARCHITECTURE.md`, or the module map links a removed domain architecture file, THEN architecture tests SHALL fail.
 
 ## Risks
 

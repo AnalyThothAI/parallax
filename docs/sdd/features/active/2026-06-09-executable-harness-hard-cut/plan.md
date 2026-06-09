@@ -137,6 +137,7 @@ Known-failing baseline tests:
 
 - Require architecture-document enforcement references to be path-qualified `tests/architecture/...py::test_*` references.
 - Check referenced architecture test files and functions exist so docs cannot point agents at stale or bare test names.
+- Require the global module map to include markdown links for every current `src/parallax/domains/*/ARCHITECTURE.md` file.
 
 ### `AGENTS.md`, `CLAUDE.md`, `tests/architecture/test_agent_playbook_contracts.py`
 
@@ -269,6 +270,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Agent routers are source-aligned. | Pass: `test_agent_router_frontend_guardrails_match_css_harness` compares AGENTS/CLAUDE frontend guardrails with the CSS architecture harness. |
 | Frontend verification skill carries data ownership. | Pass: `frontendDocContract.test.ts` compares the skill against `frontendDataOwnership.test.ts` primitives. |
 | Architecture docs reference executable tests. | Pass: `test_architecture_doc_test_references_are_path_qualified_and_existing` rejects bare or missing enforcement test references. |
+| Architecture module maps are source-complete. | Pass: `test_architecture_module_map_links_every_domain_architecture_doc` compares docs links against current domain architecture files. |
 
 ## Acceptance test commands
 
@@ -327,6 +329,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC53: `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_agent_router_frontend_guardrails_match_css_harness -q`
 - AC54: `cd web && npm run test -- tests/architecture/frontendDocContract.test.ts`
 - AC55: `uv run pytest tests/architecture/test_harness_structure.py::test_architecture_doc_test_references_are_path_qualified_and_existing -q`
+- AC56: `uv run pytest tests/architecture/test_harness_structure.py::test_architecture_module_map_links_every_domain_architecture_doc -q`
 
 ## Verification
 

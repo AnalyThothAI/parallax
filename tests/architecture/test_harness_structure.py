@@ -205,6 +205,20 @@ def test_architecture_doc_test_references_are_path_qualified_and_existing() -> N
             )
 
 
+def test_architecture_module_map_links_every_domain_architecture_doc() -> None:
+    architecture = _read(DOCS / "ARCHITECTURE.md")
+    expected = sorted(
+        path.relative_to(REPO_ROOT).as_posix()
+        for path in (REPO_ROOT / "src" / "parallax" / "domains").glob("*/ARCHITECTURE.md")
+    )
+    linked = sorted(
+        link.lstrip("./")
+        for link in re.findall(r"\[[^\]]+\]\((\.\./src/parallax/domains/[^)]+/ARCHITECTURE\.md)\)", architecture)
+    )
+
+    assert linked == expected
+
+
 def test_references_papers_present() -> None:
     papers_dir = DOCS / "references" / "papers"
     assert papers_dir.is_dir(), "docs/references/papers/ missing"

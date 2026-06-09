@@ -72,6 +72,7 @@ claim is allowed without the corresponding output captured below.
 | AC53 — Agent router frontend guardrails are source-aligned. | ✅ | `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_agent_router_frontend_guardrails_match_css_harness -q` failed RED on missing `macro.css`, then passed after AGENTS/CLAUDE shared router updates. |
 | AC54 — Frontend verification skill carries data ownership. | ✅ | `cd web && npm run test -- tests/architecture/frontendDocContract.test.ts` failed RED on missing `frontendDataOwnership.test.ts` in the skill, then passed after the skill and doc-contract update. |
 | AC55 — Architecture docs reference executable tests. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_architecture_doc_test_references_are_path_qualified_and_existing -q` failed RED on bare `test_legacy_asset_repository_is_not_imported`, then passed after path qualification and parser tightening. |
+| AC56 — Architecture module map links current domain docs. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_architecture_module_map_links_every_domain_architecture_doc -q` failed RED on the non-linked Narrative row, then passed after converting it to a markdown link. |
 
 Deviations from spec:
 
@@ -894,8 +895,17 @@ $ uv run pytest tests/architecture/test_harness_structure.py::test_architecture_
 1 passed in 0.02s
 exit code: 0
 
+$ uv run pytest tests/architecture/test_harness_structure.py::test_architecture_module_map_links_every_domain_architecture_doc -q
+F                                                                        [100%]
+AssertionError: assert linked == expected
+exit code: 1
+
+$ uv run pytest tests/architecture/test_harness_structure.py::test_architecture_module_map_links_every_domain_architecture_doc -q
+1 passed in 0.02s
+exit code: 0
+
 $ uv run pytest tests/architecture/test_harness_structure.py -q
-13 passed in 0.19s
+14 passed in 0.16s
 exit code: 0
 
 $ uv run ruff check tests/architecture/test_harness_structure.py

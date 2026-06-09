@@ -1174,6 +1174,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 56 — Architecture module map source-completeness gate
+
+- **File(s)**: `docs/ARCHITECTURE.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 55
+- **Touch set**: `docs/ARCHITECTURE.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `docs/ARCHITECTURE.md` for architecture module-map links.
+- **Failing test first**: `tests/architecture/test_harness_structure.py::test_architecture_module_map_links_every_domain_architecture_doc` — asserts the global architecture module map markdown-links every current domain `ARCHITECTURE.md` file.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Docs/contracts
+- **Deterministic constraints**: The module map in `docs/ARCHITECTURE.md` must have markdown links for exactly the current `src/parallax/domains/*/ARCHITECTURE.md` files; bare code paths and stale links do not satisfy the gate.
+- **On-demand context**: `docs/ARCHITECTURE.md`, `tests/architecture/test_harness_structure.py`, and `src/parallax/domains/*/ARCHITECTURE.md`.
+- **Kill/defer criteria**: Stop if the test accepts bare backticked paths, ignores removed domain docs, or expands into checking prose wording instead of source/link completeness.
+- **Eval/repair signal**: missing domain architecture link, stale domain architecture link, non-clickable module map entry, and review defects around source-backed architecture navigation.
+- **Implementation**: Add a source-derived module-map architecture test and convert the Narrative architecture row to the same markdown-link shape as the other domain rows.
+- **Verification**: `uv run pytest tests/architecture/test_harness_structure.py::test_architecture_module_map_links_every_domain_architecture_doc -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1231,4 +1252,5 @@
 - [ ] `uv run pytest tests/architecture/test_agent_playbook_contracts.py::test_agent_router_frontend_guardrails_match_css_harness -q`
 - [ ] `cd web && npm run test -- tests/architecture/frontendDocContract.test.ts`
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_architecture_doc_test_references_are_path_qualified_and_existing -q`
+- [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_architecture_module_map_links_every_domain_architecture_doc -q`
 - [ ] `make check-all`
