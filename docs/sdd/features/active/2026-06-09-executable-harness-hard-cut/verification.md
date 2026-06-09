@@ -78,6 +78,7 @@ claim is allowed without the corresponding output captured below.
 | AC59 — Governance rule checks avoid prose overfit. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_rule_ownership tests/architecture/test_harness_structure.py::test_routers_have_no_governance_phrases -q` passed after splitting the mixed rule test and replacing verbatim phrase keys with named multi-anchor contracts. |
 | AC60 — Domain type modules are leaf nodes. | ✅ | `uv run pytest tests/architecture/test_src_domain_architecture.py::test_domain_types_do_not_import_upward_layers -q` failed RED on the evidence entity re-export shim, then passed after moving entity value objects and normalization primitives into `types/entity.py`. |
 | AC61 — Domain interfaces stay runtime-free. | ✅ | `uv run pytest tests/architecture/test_src_domain_architecture.py::test_domain_interfaces_do_not_import_runtime_modules -q` failed RED on `token_intel.interfaces` importing `runtime.token_resolution_refresh`, then passed after moving the use case to `services/token_resolution_refresh.py` and deleting the runtime file. |
+| AC62 — Open tech debt duplicate-symbol claims stay source-backed. | ✅ | `uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_debt_duplicate_symbol_claims_match_current_sources -q` failed RED on the stale resolver-policy duplicate claim, then passed after removing that resolved TECH_DEBT row. |
 
 Deviations from spec:
 
@@ -154,6 +155,15 @@ exit code: 0
 
 $ uv run ruff check src/parallax/domains/token_intel/interfaces.py src/parallax/domains/token_intel/services/token_resolution_refresh.py src/parallax/domains/token_intel/runtime/token_intent_rebuild.py src/parallax/app/surfaces/cli/commands/ops.py tests/unit/test_token_resolution_refresh.py tests/architecture/test_src_domain_architecture.py
 All checks passed!
+exit code: 0
+
+$ uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_debt_duplicate_symbol_claims_match_current_sources -q
+F                                                                        [100%]
+AssertionError: open TECH_DEBT duplicate-symbol claims are stale: ['TOKEN_RADAR_RESOLVER_POLICY_VERSION is absent from src/parallax/domains/asset_market/repositories/registry_repository.py']
+exit code: 1
+
+$ uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_debt_duplicate_symbol_claims_match_current_sources -q
+1 passed in 0.01s
 exit code: 0
 
 $ uv run python scripts/validate_sdd_artifacts.py --check

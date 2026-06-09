@@ -128,6 +128,17 @@ def _tech_debt_referenced_test_name(reference: str) -> str:
     return parts[-1]
 
 
+def _tech_debt_table_rows() -> list[list[str]]:
+    rows: list[list[str]] = []
+    for line in _tech_debt_open_section().splitlines():
+        if not line.startswith("|") or line.startswith("|---") or line.startswith("| Description"):
+            continue
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        if len(cells) == 6:
+            rows.append(cells)
+    return rows
+
+
 def _looks_like_unrooted_source_reference(reference: str) -> bool:
     if reference.startswith((*TECH_DEBT_ROOTED_PREFIXES, "~", "/")):
         return False
@@ -345,6 +356,29 @@ def test_open_tech_debt_references_current_source_and_test_paths() -> None:
 
     assert missing_paths == [], f"open TECH_DEBT references missing files: {missing_paths}"
     assert missing_tests == [], f"open TECH_DEBT references missing test functions: {missing_tests}"
+
+
+def test_open_tech_debt_duplicate_symbol_claims_match_current_sources() -> None:
+    stale_claims: list[str] = []
+    for cells in _tech_debt_table_rows():
+        description = cells[0]
+        if "duplicated in" not in description:
+            continue
+        symbol_match = re.match(r"`([^`]+)` is duplicated in ", description)
+        if symbol_match is None:
+            continue
+        symbol = symbol_match.group(1)
+        source_references = [
+            token
+            for token in re.findall(r"`([^`]+)`", description)
+            if token.startswith("src/") and token.endswith(".py")
+        ]
+        for reference in source_references:
+            path = REPO_ROOT / reference
+            if path.exists() and symbol not in _read(path):
+                stale_claims.append(f"{symbol} is absent from {reference}")
+
+    assert stale_claims == [], f"open TECH_DEBT duplicate-symbol claims are stale: {stale_claims}"
 
 
 def test_references_papers_present() -> None:

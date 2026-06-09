@@ -71,6 +71,7 @@ can both miss real process drift and block healthy refactors.
 | Architecture module maps must be complete links. | Architecture tests compare the global module map against domain `ARCHITECTURE.md` files. |
 | Test taxonomy inventory must be exact. | Architecture tests compare `docs/TESTING.md` architecture-test rows against the current `tests/architecture` files. |
 | Open tech debt references must be live. | Architecture tests require open `docs/TECH_DEBT.md` source/test/doc references to be self-contained repo-root paths and resolve to current files and test functions. |
+| Open tech debt duplicate-symbol claims must be source-backed. | Architecture tests require open `docs/TECH_DEBT.md` rows that claim a symbol is duplicated in source files to find that symbol in each cited source file. |
 | Governance rule checks must not overfit prose. | Architecture tests use named rule anchors and separate ownership from router-leak checks. |
 | Domain type modules must be leaf nodes. | Architecture tests reject `domains/*/types` imports from services, repositories, queries, read models, or runtime. |
 | Domain interfaces must not import runtime. | Architecture tests reject `domains/*/interfaces.py` imports from runtime modules. |
@@ -122,6 +123,7 @@ can both miss real process drift and block healthy refactors.
 - G37. Governance rule checks are split into ownership and router-leak gates, and use multi-anchor rule contracts rather than single verbatim phrase strings.
 - G38. Domain `types/` modules are enforced as leaf value-object modules, so thin re-export shims from services cannot hide upward dependencies.
 - G39. Domain `interfaces.py` modules remain cross-domain contracts and cannot re-export runtime orchestration modules.
+- G40. Open `docs/TECH_DEBT.md` duplicate-symbol claims are checked against current source content, so resolved duplicated constants do not remain as active debt.
 
 ## Non-goals
 
@@ -228,6 +230,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC59. WHEN a governance rule is duplicated across root docs, absent from its owner, or copied into `AGENTS.md`/`CLAUDE.md` router prose THEN architecture tests SHALL fail with separate ownership and router-leak failures.
 - AC60. WHEN any `src/parallax/domains/*/types/*.py` module imports services, repositories, queries, read models, or runtime modules THEN architecture tests SHALL fail.
 - AC61. WHEN any `src/parallax/domains/*/interfaces.py` module imports a runtime module THEN architecture tests SHALL fail.
+- AC62. WHEN an open `docs/TECH_DEBT.md` row claims a backticked symbol is duplicated in one or more backticked `src/**/*.py` files but a cited file no longer contains that symbol THEN architecture tests SHALL fail.
 
 ## Risks
 

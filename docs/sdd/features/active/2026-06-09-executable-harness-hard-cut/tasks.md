@@ -1300,6 +1300,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 62 — Tech debt duplicate-symbol claim gate
+
+- **File(s)**: `docs/TECH_DEBT.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 61
+- **Touch set**: `docs/TECH_DEBT.md`, `tests/architecture/test_harness_structure.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `docs/TECH_DEBT.md` for active debt row semantics.
+- **Failing test first**: `tests/architecture/test_harness_structure.py::test_open_tech_debt_duplicate_symbol_claims_match_current_sources` — asserts duplicate-symbol debt claims match cited source contents.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Docs/contracts
+- **Deterministic constraints**: Open TECH_DEBT duplicate-symbol claims must cite current source facts; resolved duplicate-constant rows must be removed rather than left as compatibility breadcrumbs; the harness must validate a reusable claim pattern rather than a single constant name.
+- **On-demand context**: `docs/TECH_DEBT.md`, existing TECH_DEBT path-reference architecture tests, `src/parallax/domains/token_intel/_constants.py`, and `src/parallax/domains/asset_market/repositories/registry_repository.py`.
+- **Kill/defer criteria**: Stop if the fix hard-codes only `TOKEN_RADAR_RESOLVER_POLICY_VERSION`, deletes unrelated debt rows, or weakens existing TECH_DEBT path-reference checks.
+- **Eval/repair signal**: stale duplicate-symbol TECH_DEBT claim, missing source-backed evidence for active debt, and SDD validator evidence drift.
+- **Implementation**: Add a TECH_DEBT duplicate-symbol claim architecture gate, remove the stale resolver-policy duplicate row after RED, update SDD records, and regenerate the SDD work index.
+- **Verification**: `uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_debt_duplicate_symbol_claims_match_current_sources -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1363,4 +1384,5 @@
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_rule_ownership tests/architecture/test_harness_structure.py::test_routers_have_no_governance_phrases -q`
 - [ ] `uv run pytest tests/architecture/test_src_domain_architecture.py::test_domain_types_do_not_import_upward_layers -q`
 - [ ] `uv run pytest tests/architecture/test_src_domain_architecture.py::test_domain_interfaces_do_not_import_runtime_modules -q`
+- [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_open_tech_debt_duplicate_symbol_claims_match_current_sources -q`
 - [ ] `make check-all`
