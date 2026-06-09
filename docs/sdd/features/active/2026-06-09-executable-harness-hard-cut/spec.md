@@ -116,6 +116,7 @@ can both miss real process drift and block healthy refactors.
 | Publisher existing hash identities must be tuples. | `CurrentReadModelPublisher.changed_rows()` rejects string or scalar existing-hash identity keys before hash lookup can miss unchanged rows and prepare unnecessary serving writes. |
 | Publisher existing hash identity arity must match identity columns. | `CurrentReadModelPublisher.changed_rows()` rejects existing-hash identity tuples whose length differs from the publisher stable identity columns before hash lookup can miss unchanged rows. |
 | Publisher existing hash values must be strings or null. | `CurrentReadModelPublisher.changed_rows()` rejects non-string, non-null existing-hash values before hash lookup can miss unchanged rows and prepare unnecessary serving writes. |
+| Publisher existing hash values must be canonical payload hashes. | `CurrentReadModelPublisher.changed_rows()` rejects malformed existing-hash strings before hash lookup can miss unchanged rows and prepare unnecessary serving writes. |
 | Publisher changed rows must use string row columns. | `CurrentReadModelPublisher.changed_rows()` rejects non-string row keys before payload hashing or changed-row write preparation can preserve compatibility-shaped mapping keys. |
 | Publisher changed rows must have non-null identity values. | `CurrentReadModelPublisher.changed_rows()` rejects rows whose stable identity columns resolve to `None` before payload hashing or changed-row write preparation. |
 | Publisher changed rows must have non-blank identity values. | `CurrentReadModelPublisher.changed_rows()` rejects rows whose stable identity string values are blank before payload hashing or changed-row write preparation. |
@@ -300,6 +301,7 @@ can both miss real process drift and block healthy refactors.
 - G125. Current read-model changed-row publishing rejects non-tuple existing-hash identity keys before hash lookup can miss unchanged rows and reprepare current serving writes.
 - G126. Current read-model changed-row publishing rejects wrong-arity existing-hash identity tuples before hash lookup can miss unchanged rows and reprepare current serving writes.
 - G127. Current read-model changed-row publishing rejects non-string, non-null existing-hash values before hash lookup can miss unchanged rows and reprepare current serving writes.
+- G128. Current read-model changed-row publishing rejects malformed existing-hash strings before hash lookup can miss unchanged rows and reprepare current serving writes.
 
 ## Non-goals
 
@@ -494,6 +496,7 @@ The new arrows are harness-only and do not affect runtime product data flow.
 - AC147. WHEN `CurrentReadModelPublisher.changed_rows()` receives `existing_hashes` with a non-tuple identity key THEN it SHALL raise a dedicated existing-hash identity validation error before row, payload hash, hash-lookup, unchanged-row skip, or changed-row write-preparation validation.
 - AC148. WHEN `CurrentReadModelPublisher.changed_rows()` receives `existing_hashes` with an identity tuple whose arity differs from `identity_columns` THEN it SHALL raise a dedicated existing-hash identity arity validation error before row, payload hash, hash-lookup, unchanged-row skip, or changed-row write-preparation validation.
 - AC149. WHEN `CurrentReadModelPublisher.changed_rows()` receives `existing_hashes` with a value that is neither a string nor `None` THEN it SHALL raise a dedicated existing-hash value validation error before row, payload hash, hash-lookup, unchanged-row skip, or changed-row write-preparation validation.
+- AC150. WHEN `CurrentReadModelPublisher.changed_rows()` receives `existing_hashes` with a string value that is not `sha256:` followed by 64 lowercase hex characters THEN it SHALL raise a dedicated existing-hash value-format validation error before row, payload hash, hash-lookup, unchanged-row skip, or changed-row write-preparation validation.
 
 ## Risks
 

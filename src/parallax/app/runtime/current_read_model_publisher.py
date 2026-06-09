@@ -7,6 +7,9 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
+PAYLOAD_HASH_PREFIX = "sha256:"
+PAYLOAD_HASH_HEX_LENGTH = 64
+
 FORBIDDEN_SERVING_IDENTITY_COLUMNS = frozenset(
     {
         "run_id",
@@ -27,7 +30,7 @@ def stable_current_payload_hash(payload: Mapping[str, Any]) -> str:
         separators=(",", ":"),
         allow_nan=False,
     ).encode("utf-8")
-    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+    return PAYLOAD_HASH_PREFIX + hashlib.sha256(encoded).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,6 +144,16 @@ class CurrentReadModelPublisher:
         )
         if invalid_hash_values:
             raise ValueError(f"current read model existing hash values must be strings or None: {invalid_hash_values}")
+        malformed_hash_values = tuple(
+            (identity, value)
+            for identity, value in existing_hashes.items()
+            if value is not None and not _is_payload_hash(value)
+        )
+        if malformed_hash_values:
+            raise ValueError(
+                "current read model existing hash values must be sha256 payload hashes: "
+                f"{malformed_hash_values}"
+            )
         changed: list[dict[str, Any]] = []
         seen_identities: set[tuple[Any, ...]] = set()
         for row in rows:
@@ -163,6 +176,13 @@ def _validate_row_columns(row: Mapping[str, Any]) -> None:
     non_string_columns = tuple(column for column in row if type(column) is not str)
     if non_string_columns:
         raise ValueError(f"current read model row has non-string columns: {non_string_columns}")
+
+
+def _is_payload_hash(value: str) -> bool:
+    if not value.startswith(PAYLOAD_HASH_PREFIX):
+        return False
+    digest = value[len(PAYLOAD_HASH_PREFIX) :]
+    return len(digest) == PAYLOAD_HASH_HEX_LENGTH and all(character in "0123456789abcdef" for character in digest)
 
 
 def _json_ready(value: Any) -> Any:

@@ -256,6 +256,17 @@ def test_current_read_model_publisher_rejects_non_string_existing_hash_values_be
 
 
 @pytest.mark.architecture
+def test_current_read_model_publisher_rejects_malformed_existing_hash_values_before_hash_lookup() -> None:
+    publisher = CurrentReadModelPublisher(identity_columns=("target_id",), payload_columns=("target_id", "score"))
+
+    with pytest.raises(ValueError, match="current read model existing hash values must be sha256 payload hashes"):
+        publisher.changed_rows(
+            [{"target_id": "asset-1", "score": 10}],
+            existing_hashes={("asset-1",): "sha256:legacy"},
+        )
+
+
+@pytest.mark.architecture
 def test_current_read_model_publisher_rejects_null_row_identity_values_before_hashing() -> None:
     publisher = CurrentReadModelPublisher(identity_columns=("target_id",), payload_columns=("target_id", "score"))
 
