@@ -117,6 +117,11 @@ Known-failing baseline tests:
 
 - Add a static Vitest gate that compares `docs/FRONTEND.md` and `.agents/skills/parallax-frontend-verification/SKILL.md` against current frontend CSS architecture constants and `APP_NAVIGATION_GROUPS`.
 
+### `web/tests/architecture/featureBoundaries.test.ts`
+
+- Replace the stale hard-coded feature-name regex with a source-derived feature root list from `web/src/features`.
+- Add RED coverage proving the boundary scan cannot omit current feature roots or keep removed roots.
+
 ### `tests/architecture/test_public_contracts_doc_alignment.py`
 
 - Add source-bound checks that compare `docs/CONTRACTS.md` worker keys, agent runtime lanes, WebSocket payloads, and News item route against current runtime/API source.
@@ -170,6 +175,7 @@ Known-failing baseline tests:
 
 - Align CSS retired-bucket and side-effect line-budget wording with current frontend architecture tests.
 - Document sanctioned `@features/<name>/shell` route-shell entrypoints and current feature-owned page/controller hook data ownership.
+- Document that the relative-import boundary gate derives feature roots from `web/src/features`.
 - Keep the frontend verification skill's deterministic commands and retired CSS list aligned with the same architecture harness.
 
 ### `docs/sdd/_templates/*.md`, `docs/WORKFLOW.md`, `docs/sdd/README.md`
@@ -237,6 +243,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 | Generated README source map is real. | Pass: architecture tests fail any README source-map row that names a missing generated file, generator script, or source path. |
 | Active touch conflicts are path-aware. | Pass: validator rejects parent/child active touch overlaps when coordination names an unrelated target. |
 | Frontend docs and skill are harness-bound. | Pass: frontend architecture tests compare docs/skill wording against CSS architecture constants and app navigation source. |
+| Frontend boundary scans derive feature roots. | Pass: feature-boundary architecture tests fail stale hard-coded root lists and scan all current feature roots. |
 
 ## Acceptance test commands
 
@@ -290,6 +297,7 @@ This is a development harness hard cut. Rollback is reverting this branch before
 - AC48: `uv run pytest tests/architecture/test_harness_structure.py::test_generated_readme_source_map_points_to_existing_paths -q`
 - AC49: `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_active_touch_sets_reject_nested_or_misdirected_coordination -q`
 - AC50: `cd web && npm run test -- tests/architecture/frontendDocContract.test.ts`
+- AC51: `cd web && npm run test -- tests/architecture/featureBoundaries.test.ts`
 
 ## Verification
 

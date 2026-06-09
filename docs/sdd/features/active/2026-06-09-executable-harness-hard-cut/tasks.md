@@ -1069,6 +1069,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 51 — Frontend feature-boundary root derivation gate
+
+- **File(s)**: `web/tests/architecture/featureBoundaries.test.ts`, `docs/FRONTEND.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 50
+- **Touch set**: `web/tests/architecture/featureBoundaries.test.ts`, `docs/FRONTEND.md`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `docs/FRONTEND.md` for frontend architecture documentation and boundary semantics.
+- **Failing test first**: `tests/architecture/featureBoundaries.test.ts::feature boundaries` — asserts the relative-import boundary scan cannot omit current feature roots or keep removed roots under the `web/` test command.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: Feature-boundary scans must derive feature roots from `web/src/features`, escape feature names before building regexes, and continue scanning production feature source for relative imports into another feature's internals.
+- **On-demand context**: Frontend explorer report, `web/tests/architecture/featureBoundaries.test.ts`, `web/src/features`, `docs/FRONTEND.md`, and frontend architecture test output.
+- **Kill/defer criteria**: Stop if implementation hard-codes the current feature list, scans test fixtures as production boundaries, or weakens deep-import detection to hide existing violations.
+- **Eval/repair signal**: omitted feature root, removed feature root still scanned, frontend boundary architecture failure, and deep-import review defects.
+- **Implementation**: Add RED coverage for stale feature-name lists, replace the hard-coded regex with source-derived feature roots, and document the source-derived boundary gate.
+- **Verification**: `cd web && npm run test -- tests/architecture/featureBoundaries.test.ts`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`
@@ -1121,4 +1142,5 @@
 - [ ] `uv run pytest tests/architecture/test_harness_structure.py::test_generated_readme_source_map_points_to_existing_paths -q`
 - [ ] `uv run pytest tests/architecture/test_sdd_artifact_validator.py::test_active_touch_sets_reject_nested_or_misdirected_coordination -q`
 - [ ] `cd web && npm run test -- tests/architecture/frontendDocContract.test.ts`
+- [ ] `cd web && npm run test -- tests/architecture/featureBoundaries.test.ts`
 - [ ] `make check-all`

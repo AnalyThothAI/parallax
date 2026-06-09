@@ -7,9 +7,15 @@ import { describe, expect, it } from "vitest";
 const webRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const srcRoot = join(webRoot, "src");
 const sourceExtensions = new Set([".ts", ".tsx"]);
-const featureNames = "(cockpit|live|notifications|search|signal-lab|stocks|token-target|watchlist)";
+const featureRoot = join(srcRoot, "features");
+const featureNames = featureDirectories();
+const featureNamePattern = `(${featureNames.map(escapeRegExp).join("|")})`;
 
 describe("feature boundaries", () => {
+  it("keeps the relative-import boundary scan aligned with current feature roots", () => {
+    expect(featureNames).toEqual(featureDirectories());
+  });
+
   it("does not import another feature internals by relative path", () => {
     const offenders = collectFiles(join(srcRoot, "features"))
       .filter((path) => sourceExtensions.has(extname(path)))
@@ -19,7 +25,7 @@ describe("feature boundaries", () => {
         const matches = [
           ...text.matchAll(
             new RegExp(
-              `(?:\\.\\./)+${featureNames}/(?:api|model|state|ui|tokenSearchRoute)(?:/|["'])`,
+              `(?:\\.\\./)+${featureNamePattern}/(?:api|model|state|ui|tokenSearchRoute)(?:/|["'])`,
               "g",
             ),
           ),
@@ -36,4 +42,14 @@ function collectFiles(root: string): string[] {
     const path = join(root, entry);
     return statSync(path).isDirectory() ? collectFiles(path) : [path];
   });
+}
+
+function featureDirectories(): string[] {
+  return readdirSync(featureRoot)
+    .filter((entry) => statSync(join(featureRoot, entry)).isDirectory())
+    .sort();
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
