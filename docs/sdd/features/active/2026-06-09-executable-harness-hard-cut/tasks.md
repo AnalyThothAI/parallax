@@ -3043,6 +3043,27 @@
 - **Review owner**: parent
 - **Status**: [x]
 
+### Task 145 — Publisher changed rows reject non-mapping row containers
+
+- **File(s)**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Owner**: parent
+- **Depends on**: Task 144
+- **Touch set**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `docs/sdd/features/active/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
+- **Conflict set**: coordinate with `src/parallax/app/runtime/current_read_model_publisher.py` for changed-row row-shape validation semantics.
+- **Failing test first**: `tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_mapping_rows_before_column_validation` — call `changed_rows()` with a list-shaped row and assert publisher validation raises a dedicated mapping error before row-column validation.
+- **Subagent handoff**: not delegated
+- **Subagent report**: not delegated
+- **Review result**: parent-reviewed
+- **Factory lane**: Harness/tests
+- **Deterministic constraints**: each `CurrentReadModelPublisher.changed_rows()` row must be a mapping before column, stable identity, payload hash, existing-hash, duplicate identity, or write-preparation checks can consume it.
+- **On-demand context**: `src/parallax/app/runtime/current_read_model_publisher.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, and current read-model changed-row shape contracts.
+- **Kill/defer criteria**: Stop if list-shaped changed rows are an intentional API, if validation only belongs in concrete repositories, or if the fix requires compatibility coercion.
+- **Eval/repair signal**: list-shaped changed rows, row container compatibility drift, row-column validation masking, publisher changed-row write preparation drift, and SDD generated index drift.
+- **Implementation**: Add row mapping validation before row-column validation inside the publisher row-shape guard.
+- **Verification**: `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_mapping_rows_before_column_validation -q`
+- **Review owner**: parent
+- **Status**: [x]
+
 ## Final verification
 
 - [ ] `uv run python scripts/validate_sdd_artifacts.py --check`

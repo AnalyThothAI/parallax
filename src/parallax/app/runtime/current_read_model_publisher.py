@@ -138,6 +138,8 @@ class CurrentReadModelPublisher:
 
 
 def _validate_row_columns(row: Mapping[str, Any]) -> None:
+    if not isinstance(row, Mapping):
+        raise ValueError(f"current read model row must be mapping: {row}")
     non_string_columns = tuple(column for column in row if type(column) is not str)
     if non_string_columns:
         raise ValueError(f"current read model row has non-string columns: {non_string_columns}")

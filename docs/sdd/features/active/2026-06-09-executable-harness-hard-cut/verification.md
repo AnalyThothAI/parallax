@@ -161,6 +161,7 @@ claim is allowed without the corresponding output captured below.
 | AC142 — Publisher changed rows reject null identity values. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_null_row_identity_values_before_hashing -q` failed RED when `None` was accepted as a stable current-row identity value, then passed after adding null identity-value validation. |
 | AC143 — Publisher changed rows reject blank identity values. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_blank_row_identity_values_before_hashing -q` failed RED when a blank string was accepted as a stable current-row identity value, then passed after adding blank identity-value validation. |
 | AC144 — Publisher identity columns reject list-shaped declarations. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_tuple_identity_columns -q` failed RED when list-shaped identity columns were accepted, then passed after adding tuple-shape validation. |
+| AC145 — Publisher changed rows reject non-mapping row containers. | ✅ | `uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_mapping_rows_before_column_validation -q` failed RED when a list-shaped row was reported as non-string columns, then passed after adding dedicated mapping validation. |
 
 Deviations from spec:
 
@@ -2506,6 +2507,47 @@ exit code: 0
 
 $ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
 61 passed in 0.50s
+exit code: 0
+
+$ git diff --check
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_mapping_rows_before_column_validation -q
+F                                                                        [100%]
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'current read model row must be mapping'
+E         Actual message: "current read model row has non-string columns: (('target_id', 'asset-1'), ('score', 10))"
+exit code: 1
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py::test_current_read_model_publisher_rejects_non_mapping_rows_before_column_validation -q
+1 passed in 0.37s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py -q
+24 passed in 0.27s
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py
+wrote docs/generated/sdd-work-index.md
+exit code: 0
+
+$ uv run python scripts/validate_sdd_artifacts.py --check
+SDD artifact validation passed.
+exit code: 0
+
+$ uv run python scripts/regen_sdd_work_index.py --check
+exit code: 0
+
+$ uv run ruff check src/parallax/app/runtime/current_read_model_publisher.py tests/architecture/test_worker_manifest_static_contracts.py
+All checks passed!
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_manifest_static_contracts.py -q
+24 passed in 0.47s
+exit code: 0
+
+$ uv run pytest tests/architecture/test_worker_inventory_contract.py -q
+61 passed in 0.58s
 exit code: 0
 
 $ git diff --check
